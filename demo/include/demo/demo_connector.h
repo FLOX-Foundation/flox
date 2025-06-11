@@ -9,12 +9,10 @@
 
 #pragma once
 
-#include "flox/book/book_update.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/bus/trade_bus.h"
 #include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/connector/exchange_connector.h"
+#include "flox/connector/abstract_exchange_connector.h"
 #include "flox/util/memory/pool.h"
 
 #include <atomic>
@@ -26,7 +24,7 @@ namespace demo
 {
 using namespace flox;
 
-class DemoConnector : public ExchangeConnector
+class DemoConnector : public IExchangeConnector
 {
  public:
   DemoConnector(const std::string& id, SymbolId symbol, BookUpdateBus& bookUpdateBus, TradeBus& tradeBus);

@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "flox/connector/exchange_connector.h"
+#include "flox/connector/abstract_exchange_connector.h"
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/engine/engine_config.h"
 
@@ -25,14 +25,14 @@ struct ExchangeInstance
   std::string exchangeType;
   std::string name;
   std::string symbol;
-  std::shared_ptr<ExchangeConnector> connector;
+  std::shared_ptr<IExchangeConnector> connector;
 };
 
 class Engine : public ISubsystem
 {
  public:
   Engine(const EngineConfig& config, std::vector<std::unique_ptr<ISubsystem>> subsystems,
-         std::vector<std::shared_ptr<ExchangeConnector>> connectors);
+         std::vector<std::shared_ptr<IExchangeConnector>> connectors);
 
   void start() override;
   void stop() override;
@@ -41,7 +41,7 @@ class Engine : public ISubsystem
   EngineConfig _config;
 
   std::vector<std::unique_ptr<ISubsystem>> _subsystems;
-  std::vector<std::shared_ptr<ExchangeConnector>> _connectors;
+  std::vector<std::shared_ptr<IExchangeConnector>> _connectors;
 };
 
 }  // namespace flox

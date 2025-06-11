@@ -16,7 +16,7 @@ namespace flox
 {
 
 Engine::Engine(const EngineConfig& config, std::vector<std::unique_ptr<ISubsystem>> subsystems,
-               std::vector<std::shared_ptr<ExchangeConnector>> connectors)
+               std::vector<std::shared_ptr<IExchangeConnector>> connectors)
     : _config(config), _subsystems(std::move(subsystems)), _connectors(std::move(connectors))
 {
 }

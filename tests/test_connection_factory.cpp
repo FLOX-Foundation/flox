@@ -7,14 +7,14 @@
  * license information.
  */
 
+#include "flox/connector/abstract_exchange_connector.h"
 #include "flox/connector/connector_factory.h"
-#include "flox/connector/exchange_connector.h"
 
 #include <gtest/gtest.h>
 
 using namespace flox;
 
-class DummyConnector : public ExchangeConnector
+class DummyConnector : public IExchangeConnector
 {
  public:
   void start() override {}

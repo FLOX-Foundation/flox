@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "flox/connector/exchange_connector.h"
+#include "flox/connector/abstract_exchange_connector.h"
 
 #include <iostream>
 #include <map>
@@ -22,14 +22,14 @@ namespace flox
 class ConnectorManager
 {
  public:
-  void registerConnector(std::shared_ptr<ExchangeConnector> connector)
+  void registerConnector(std::shared_ptr<IExchangeConnector> connector)
   {
     const auto& id = connector->exchangeId();
     connectors[id] = connector;
   }
 
-  void startAll(ExchangeConnector::BookUpdateCallback onBookUpdate,
-                ExchangeConnector::TradeCallback onTrade)
+  void startAll(IExchangeConnector::BookUpdateCallback onBookUpdate,
+                IExchangeConnector::TradeCallback onTrade)
   {
     for (auto& [symbol, connector] : connectors)
     {
@@ -43,7 +43,7 @@ class ConnectorManager
   }
 
  private:
-  std::map<std::string, std::shared_ptr<ExchangeConnector>> connectors;
+  std::map<std::string, std::shared_ptr<IExchangeConnector>> connectors;
 };
 
 }  // namespace flox

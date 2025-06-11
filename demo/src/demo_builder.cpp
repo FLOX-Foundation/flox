@@ -75,7 +75,7 @@ std::unique_ptr<Engine> DemoBuilder::build()
     tradeBus->subscribe(strat);
   }
 
-  std::vector<std::shared_ptr<ExchangeConnector>> connectors;
+  std::vector<std::shared_ptr<IExchangeConnector>> connectors;
   for (SymbolId sym = 0; sym < 3; ++sym)
   {
     auto conn = std::make_shared<DemoConnector>(std::string("demo") + char('A' + sym), sym, *bookUpdateBus, *tradeBus);

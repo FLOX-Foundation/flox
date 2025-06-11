@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "flox/connector/exchange_connector.h"
+#include "flox/connector/abstract_exchange_connector.h"
 
 #include <functional>
 #include <memory>
@@ -23,7 +23,7 @@ class ConnectorFactory
 {
  public:
   using CreatorFunc =
-      std::move_only_function<std::shared_ptr<ExchangeConnector>(const std::string&)>;
+      std::move_only_function<std::shared_ptr<IExchangeConnector>(const std::string&)>;
 
   static ConnectorFactory& instance()
   {
@@ -36,8 +36,8 @@ class ConnectorFactory
     _creators[type] = std::move(creator);
   }
 
-  std::shared_ptr<ExchangeConnector> createConnector(const std::string& type,
-                                                     const std::string& symbol)
+  std::shared_ptr<IExchangeConnector> createConnector(const std::string& type,
+                                                      const std::string& symbol)
   {
     auto it = _creators.find(type);
     if (it != _creators.end())

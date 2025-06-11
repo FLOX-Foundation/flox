@@ -18,10 +18,10 @@
 namespace flox
 {
 
-class ExchangeConnector
+class IExchangeConnector
 {
  public:
-  virtual ~ExchangeConnector() = default;
+  virtual ~IExchangeConnector() = default;
 
   using BookUpdateCallback = std::move_only_function<void(const BookUpdateEvent&)>;
   using TradeCallback = std::move_only_function<void(const TradeEvent&)>;

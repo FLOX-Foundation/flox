@@ -10,8 +10,9 @@
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/common.h"
+#include "flox/connector/abstract_exchange_connector.h"
 #include "flox/connector/connector_manager.h"
-#include "flox/connector/exchange_connector.h"
+#include "flox/util/memory/pool.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -23,7 +24,7 @@ using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
 
-class MockExchangeConnector : public ExchangeConnector
+class MockExchangeConnector : public IExchangeConnector
 {
  public:
   MOCK_METHOD(void, start, (), (override));
