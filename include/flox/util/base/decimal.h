@@ -58,6 +58,11 @@ class Decimal
   constexpr Decimal operator+(Decimal d) const { return Decimal(_raw + d._raw); }
   constexpr Decimal operator-(Decimal d) const { return Decimal(_raw - d._raw); }
 
+  constexpr Decimal operator*(int64_t x) const { return Decimal(_raw * x); }
+  constexpr Decimal operator/(int64_t x) const { return Decimal(_raw / x); }
+
+  constexpr friend Decimal operator*(int64_t x, Decimal d) { return Decimal(x * d._raw); }
+
   constexpr Decimal& operator+=(const Decimal& other)
   {
     _raw += other._raw;
@@ -69,11 +74,6 @@ class Decimal
     _raw -= other._raw;
     return *this;
   }
-
-  constexpr Decimal operator*(int64_t x) const { return Decimal(_raw * x); }
-  constexpr Decimal operator/(int64_t x) const { return Decimal(_raw / x); }
-
-  constexpr friend Decimal operator*(int64_t x, Decimal d) { return Decimal(x * d._raw); }
 
   constexpr bool isZero() const { return _raw == 0; }
 

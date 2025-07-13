@@ -9,105 +9,88 @@
 
 #pragma once
 
-#include "flox/execution/order.h"
-#include "flox/execution/order_execution_listener_component.h"
+#include "flox/engine/abstract_subscriber.h"
+#include "flox/execution/abstract_execution_listener.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace flox
 {
 
-class MultiExecutionListener
+class MultiExecutionListener : public IOrderExecutionListener
 {
  public:
-  MultiExecutionListener(SubscriberId id) : _id(id) {}
+  MultiExecutionListener(SubscriberId id) : IOrderExecutionListener(id) {}
 
-  void start() {}
-  void stop() {}
-
-  SubscriberId id() const { return _id; }
-  SubscriberMode mode() const { return SubscriberMode::PUSH; }
-
-  void addListener(OrderExecutionListenerRef listener)
+  void addListener(IOrderExecutionListener* listener)
   {
-    for (const auto& l : _listeners)
+    if (listener && std::ranges::find(_listeners, listener) == _listeners.end())
     {
-      if (l.id() == listener.id())
-        return;
-    }
-
-    _listeners.push_back(std::move(listener));
-  }
-
-  void onOrderSubmitted(const Order& o)
-  {
-    for (auto& l : _listeners)
-    {
-      l.onOrderSubmitted(o);
+      _listeners.push_back(listener);
     }
   }
 
-  void onOrderAccepted(const Order& o)
+  void onOrderSubmitted(const Order& order) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderAccepted(o);
-    }
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderSubmitted(order); });
   }
 
-  void onOrderPartiallyFilled(const Order& o, Quantity q)
+  void onOrderAccepted(const Order& order) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderPartiallyFilled(o, q);
-    }
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderAccepted(order); });
   }
 
-  void onOrderFilled(const Order& o)
+  void onOrderPartiallyFilled(const Order& order, Quantity fillQty) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderFilled(o);
-    }
+    std::ranges::for_each(
+        _listeners,
+        [&](auto* l)
+        { l->onOrderPartiallyFilled(order, fillQty); });
   }
 
-  void onOrderCanceled(const Order& o)
+  void onOrderFilled(const Order& order) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderCanceled(o);
-    }
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderFilled(order); });
   }
 
-  void onOrderExpired(const Order& o)
+  void onOrderCanceled(const Order& order) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderExpired(o);
-    }
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderCanceled(order); });
   }
 
-  void onOrderRejected(const Order& o, const std::string& r)
+  void onOrderExpired(const Order& order) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderRejected(o, r);
-    }
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderExpired(order); });
   }
 
-  void onOrderReplaced(const Order& oldOrder, const Order& newOrder)
+  void onOrderRejected(const Order& order, const std::string& reason) override
   {
-    for (auto& l : _listeners)
-    {
-      l.onOrderReplaced(oldOrder, newOrder);
-    }
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderRejected(order, reason); });
+  }
+
+  void onOrderReplaced(const Order& oldOrder, const Order& newOrder) override
+  {
+    std::ranges::for_each(
+        _listeners,
+        [&](auto* l)
+        { l->onOrderReplaced(oldOrder, newOrder); });
   }
 
  private:
-  SubscriberId _id;
-  std::vector<OrderExecutionListenerRef> _listeners;
+  std::vector<IOrderExecutionListener*> _listeners;
 };
 
 }  // namespace flox
-
-static_assert(flox::concepts::OrderExecutionListener<flox::MultiExecutionListener>);

@@ -10,14 +10,14 @@
 #include "flox/aggregator/candle_aggregator.h"
 
 #include <cassert>
+#include <ranges>
 
 namespace flox
 {
 
-CandleAggregator::CandleAggregator(std::chrono::seconds interval, CandleBusRef bus)
+CandleAggregator::CandleAggregator(std::chrono::seconds interval, CandleBus* bus)
     : _interval(interval), _bus(bus)
 {
-  assert(_interval.count() > 0 && "CandleAggregator interval expected to be > 0");
 }
 
 void CandleAggregator::start()
@@ -34,22 +34,12 @@ void CandleAggregator::stop()
     {
       partial->candle.endTime = partial->candle.startTime + _interval;
       CandleEvent ev{id, partial->candle};
-      _bus.publish(ev);
+      _bus->publish(ev);
       partial.reset();
     }
   }
 
   std::vector<std::optional<PartialCandle>>{}.swap(_candles);
-}
-
-SubscriberId CandleAggregator::id() const
-{
-  return reinterpret_cast<SubscriberId>(this);
-}
-
-SubscriberMode CandleAggregator::mode() const
-{
-  return SubscriberMode::PUSH;
 }
 
 void CandleAggregator::onTrade(const TradeEvent& event)
@@ -75,7 +65,7 @@ void CandleAggregator::onTrade(const TradeEvent& event)
       partial->candle.endTime = partial->candle.startTime + _interval;
 
       CandleEvent ev{event.trade.symbol, partial->candle};
-      _bus.publish(ev);
+      _bus->publish(ev);
     }
 
     partial->candle =
@@ -100,15 +90,8 @@ std::chrono::steady_clock::time_point CandleAggregator::alignToInterval(
 {
   auto epoch = tp.time_since_epoch();
   auto secs = std::chrono::duration_cast<std::chrono::seconds>(epoch);
-
-  assert(_interval.count() > 0 && "alignToInterval: interval must be > 0");
-
   auto snapped = (secs.count() / _interval.count()) * _interval.count();
   return std::chrono::steady_clock::time_point(std::chrono::seconds(snapped));
 }
 
-CandleAggregator::~CandleAggregator()
-{
-  stop();
-}
 }  // namespace flox

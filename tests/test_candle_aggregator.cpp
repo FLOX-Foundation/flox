@@ -10,12 +10,9 @@
 #include "flox/aggregator/bus/candle_bus.h"
 #include "flox/aggregator/candle_aggregator.h"
 #include "flox/aggregator/events/candle_event.h"
-#include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/common.h"
-#include "flox/engine/market_data_subscriber_component.h"
-#include "flox/strategy/strategy_component.h"
-#include "flox/util/base/ref.h"
+#include "flox/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
 
@@ -46,26 +43,21 @@ TradeEvent makeTrade(SymbolId symbol, double price, double qty,
   return event;
 }
 
-class TestStrategy
+class TestStrategy : public IStrategy
 {
  public:
-  using Trait = traits::StrategyTrait;
-  using Allocator = PoolAllocator<Trait, 8>;
-
-  explicit TestStrategy(SubscriberId id, std::vector<Candle>& out, std::vector<SymbolId>* symOut = nullptr)
-      : _id(id), _out(out), _symOut(symOut)
+  explicit TestStrategy(std::vector<Candle>& out, std::vector<SymbolId>* symOut = nullptr)
+      : _out(out), _symOut(symOut)
   {
   }
 
-  void start() {}
-  void stop() {}
+  SubscriberId id() const override { return 1; }
+  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  SubscriberId id() const { return _id; }
-  SubscriberMode mode() const { return SubscriberMode::PUSH; }
+  void start() override {}
+  void stop() override {}
 
-  void onBookUpdate(const BookUpdateEvent&) {}
-  void onTrade(const TradeEvent&) {}
-  void onCandle(const CandleEvent& event)
+  void onCandle(const CandleEvent& event) override
   {
     _out.push_back(event.candle);
     if (_symOut)
@@ -73,23 +65,20 @@ class TestStrategy
   }
 
  private:
-  SubscriberId _id;
   std::vector<Candle>& _out;
   std::vector<SymbolId>* _symOut;
 };
-
-static_assert(concepts::Strategy<TestStrategy>);
 
 }  // namespace
 
 TEST(CandleAggregatorTest, AggregatesTradesIntoCandles)
 {
   std::vector<Candle> result;
-  auto bus = make<CandleBus>();
+  CandleBus bus;
   bus.enableDrainOnStop();
-  auto aggregator = make<CandleAggregator>(INTERVAL, bus);
-  auto strat = make<TestStrategy>(1, result);
-  bus.subscribe(strat.as<traits::MarketDataSubscriberTrait>());
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<TestStrategy>(result);
+  bus.subscribe(strat);
 
   bus.start();
   aggregator.start();
@@ -115,12 +104,11 @@ TEST(CandleAggregatorTest, AggregatesTradesIntoCandles)
 TEST(CandleAggregatorTest, FlushesFinalCandleOnStop)
 {
   std::vector<Candle> result;
-  auto bus = make<CandleBus>();
+  CandleBus bus;
   bus.enableDrainOnStop();
-  auto aggregator = make<CandleAggregator>(INTERVAL, bus);
-  auto strat = make<TestStrategy>(1, result);
-  bus.subscribe(strat.as<traits::MarketDataSubscriberTrait>());
-
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<TestStrategy>(result);
+  bus.subscribe(strat);
   bus.start();
   aggregator.start();
 
@@ -141,12 +129,11 @@ TEST(CandleAggregatorTest, FlushesFinalCandleOnStop)
 TEST(CandleAggregatorTest, StartsNewCandleAfterGap)
 {
   std::vector<Candle> result;
-  auto bus = make<CandleBus>();
+  CandleBus bus;
   bus.enableDrainOnStop();
-  auto aggregator = make<CandleAggregator>(INTERVAL, bus);
-  auto strat = make<TestStrategy>(1, result);
-  bus.subscribe(strat.as<traits::MarketDataSubscriberTrait>());
-
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<TestStrategy>(result);
+  bus.subscribe(strat);
   bus.start();
   aggregator.start();
 
@@ -163,15 +150,13 @@ TEST(CandleAggregatorTest, StartsNewCandleAfterGap)
 TEST(CandleAggregatorTest, SingleTradeCandle)
 {
   std::vector<Candle> result;
-  auto bus = make<CandleBus>();
+  CandleBus bus;
   bus.enableDrainOnStop();
-  auto aggregator = make<CandleAggregator>(INTERVAL, bus);
-  auto strat = make<TestStrategy>(1, result);
-  bus.subscribe(strat.as<traits::MarketDataSubscriberTrait>());
-
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<TestStrategy>(result);
+  bus.subscribe(strat);
   bus.start();
   aggregator.start();
-
   aggregator.onTrade(makeTrade(SYMBOL, 123, 1, 5));
   aggregator.stop();  // flush
   bus.stop();
@@ -189,12 +174,11 @@ TEST(CandleAggregatorTest, MultipleSymbolsAreAggregatedSeparately)
 {
   std::vector<Candle> candles;
   std::vector<SymbolId> symbols;
-  auto bus = make<CandleBus>();
+  CandleBus bus;
   bus.enableDrainOnStop();
-  auto aggregator = make<CandleAggregator>(INTERVAL, bus);
-  auto strat = make<TestStrategy>(1, candles, &symbols);
-  bus.subscribe(strat.as<traits::MarketDataSubscriberTrait>());
-
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<TestStrategy>(candles, &symbols);
+  bus.subscribe(strat);
   bus.start();
   aggregator.start();
 
@@ -223,15 +207,14 @@ TEST(CandleAggregatorTest, MultipleSymbolsAreAggregatedSeparately)
 TEST(CandleAggregatorTest, DoubleStartClearsOldState)
 {
   std::vector<Candle> result;
-  auto bus = make<CandleBus>();
+  CandleBus bus;
   bus.enableDrainOnStop();
-  auto aggregator = make<CandleAggregator>(INTERVAL, bus);
-  auto strat = make<TestStrategy>(1, result);
-  bus.subscribe(strat.as<traits::MarketDataSubscriberTrait>());
-
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<TestStrategy>(result);
+  bus.subscribe(strat);
   bus.start();
-  aggregator.start();
 
+  aggregator.start();
   aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
   aggregator.start();  // clears previous state
   aggregator.onTrade(makeTrade(SYMBOL, 105, 2, 65));

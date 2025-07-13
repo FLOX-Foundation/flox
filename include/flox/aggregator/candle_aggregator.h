@@ -10,63 +10,44 @@
 #pragma once
 
 #include "flox/aggregator/bus/candle_bus.h"
-#include "flox/aggregator/candle_aggregator_component.h"
-#include "flox/aggregator/events/candle_event.h"
 #include "flox/book/candle.h"
-#include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
-#include "flox/engine/market_data_subscriber_component.h"
+#include "flox/common.h"
+#include "flox/engine/abstract_market_data_subscriber.h"
+#include "flox/engine/abstract_subsystem.h"
 
 #include <chrono>
+#include <optional>
+#include <vector>
 
 namespace flox
 {
 
-class CandleAggregator
+class CandleAggregator : public ISubsystem, public IMarketDataSubscriber
 {
  public:
-  using Trait = traits::CandleAggregatorTrait;
-  using Allocator = PoolAllocator<Trait, 8>;
+  CandleAggregator(std::chrono::seconds interval, CandleBus* bus);
 
-  CandleAggregator(std::chrono::seconds interval, CandleBusRef bus);
+  void start() override;
+  void stop() override;
 
-  CandleAggregator(CandleAggregator&& other) noexcept
-      : _interval(other._interval), _bus(other._bus), _candles(std::move(other._candles))
-  {
-    assert(_interval.count() > 0 && "CandleAggregator interval expected to be > 0");
-  }
+  SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
+  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  CandleAggregator() = delete;
-  CandleAggregator(const CandleAggregator&) = delete;
-  CandleAggregator& operator=(const CandleAggregator&) = delete;
-  CandleAggregator& operator=(CandleAggregator&&) = delete;
-
-  ~CandleAggregator();
-
-  void start();
-  void stop();
-
-  SubscriberId id() const;
-  SubscriberMode mode() const;
-
-  void onTrade(const TradeEvent& event);
-  void onBookUpdate(const BookUpdateEvent&) {}
-  void onCandle(const CandleEvent&) {}
+  void onTrade(const TradeEvent& trade) override;
 
  private:
   struct PartialCandle
   {
-    Candle candle{};
+    Candle candle;
     bool initialized = false;
   };
 
-  std::chrono::seconds _interval{1};
-  CandleBusRef _bus;
+  std::chrono::seconds _interval;
+  CandleBus* _bus = nullptr;
   std::vector<std::optional<PartialCandle>> _candles;
 
   std::chrono::steady_clock::time_point alignToInterval(std::chrono::steady_clock::time_point tp);
 };
 
 }  // namespace flox
-
-static_assert(flox::concepts::CandleAggregator<flox::CandleAggregator>);

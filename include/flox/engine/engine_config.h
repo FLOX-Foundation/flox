@@ -19,6 +19,7 @@ struct SymbolConfig
 {
   std::string symbol;
   double tickSize;
+  double expectedDeviation;
 };
 
 struct ExchangeConfig

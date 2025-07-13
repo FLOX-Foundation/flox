@@ -7,9 +7,9 @@
  * license information.
  */
 
-#include "flox/util/memory/pool.h"
-
 #include <gtest/gtest.h>
+
+#include <flox/util/memory/pool.h>
 
 using namespace flox;
 
@@ -25,11 +25,10 @@ class DummyEvent : public pool::PoolableBase<DummyEvent>
 
   bool cleared = false;
 };
-static_assert(concepts::Poolable<DummyEvent>);
 
 }  // namespace
 
-TEST(PoolTest, AcquireReturnsValidHandle)
+TEST(EventPoolTest, AcquireReturnsValidHandle)
 {
   pool::Pool<DummyEvent, 3> pool;
 
@@ -38,7 +37,7 @@ TEST(PoolTest, AcquireReturnsValidHandle)
   EXPECT_NE(h.value().get(), nullptr);
 }
 
-TEST(PoolTest, ReleasingReturnsToPool)
+TEST(EventPoolTest, ReleasingReturnsToPool)
 {
   pool::Pool<DummyEvent, 1> pool;
 
@@ -49,11 +48,10 @@ TEST(PoolTest, ReleasingReturnsToPool)
   h1.reset();  // handle released
 
   auto h2 = pool.acquire();
-  EXPECT_TRUE(h2.has_value());
   EXPECT_EQ(h2.value().get(), raw);  // reused
 }
 
-TEST(PoolTest, InUseIsTrackedCorrectly)
+TEST(EventPoolTest, InUseIsTrackedCorrectly)
 {
   pool::Pool<DummyEvent, 3> pool;
 
@@ -72,28 +70,7 @@ TEST(PoolTest, InUseIsTrackedCorrectly)
   EXPECT_EQ(pool.inUse(), 0u);
 }
 
-TEST(PoolHandleTest, UpcastRetainsReference)
-{
-  class Base : public pool::PoolableBase<Base>
-  {
-   public:
-    explicit Base(std::pmr::memory_resource*) {}
-  };
-
-  class Derived : public Base
-  {
-   public:
-    explicit Derived(std::pmr::memory_resource* r) : Base(r) {}
-  };
-
-  pool::Pool<Derived, 1> pool;
-  auto handle = pool.acquire();
-  auto upcasted = handle.value().upcast<Base>();
-
-  EXPECT_NE(upcasted.get(), nullptr);
-}
-
-TEST(PoolHandleTest, MoveReleasesPrevious)
+TEST(HandleTest, MoveReleasesPrevious)
 {
   pool::Pool<DummyEvent, 1> pool;
   auto h1 = pool.acquire();
@@ -110,20 +87,18 @@ TEST(PoolHandleTest, MoveReleasesPrevious)
   EXPECT_EQ(pool.inUse(), 0u);
 }
 
-TEST(PoolHandleTest, DoubleMoveStillValid)
+TEST(HandleTest, DoubleMoveStillValid)
 {
-  using namespace flox::pool;
-
-  Pool<DummyEvent, 1> pool;
+  pool::Pool<DummyEvent, 1> pool;
 
   {
-    std::optional<Handle<DummyEvent>> h1 = pool.acquire();
+    std::optional<pool::Handle<DummyEvent>> h1 = pool.acquire();
 
     EXPECT_TRUE(h1.has_value());
     DummyEvent* ptr = h1->get();
 
-    Handle<DummyEvent> h2 = std::move(*h1);
-    Handle<DummyEvent> h3 = std::move(h2);
+    pool::Handle<DummyEvent> h2 = std::move(*h1);
+    pool::Handle<DummyEvent> h3 = std::move(h2);
 
     EXPECT_EQ(h3.get(), ptr);
     EXPECT_EQ(pool.inUse(), 1u);
@@ -132,7 +107,7 @@ TEST(PoolHandleTest, DoubleMoveStillValid)
   EXPECT_EQ(pool.inUse(), 0u);
 }
 
-TEST(PoolHandleTest, NullHandleIsSafe)
+TEST(HandleTest, NullHandleIsSafe)
 {
   std::optional<pool::Handle<DummyEvent>> h;
   EXPECT_FALSE(h.has_value());
@@ -141,7 +116,7 @@ TEST(PoolHandleTest, NullHandleIsSafe)
   h.reset();  // reassignment of nullptr
 }
 
-TEST(PoolTest, ClearIsCalledOnRelease)
+TEST(EventPoolTest, ClearIsCalledOnRelease)
 {
   pool::Pool<DummyEvent, 1> pool;
 

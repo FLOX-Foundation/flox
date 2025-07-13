@@ -8,29 +8,16 @@
  */
 
 #include "demo/demo_strategy.h"
-
-#include "flox/aggregator/events/candle_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/execution/order.h"
-#include "flox/execution/order_executor_component.h"
-#include "flox/killswitch/killswitch_component.h"
-#include "flox/risk/risk_manager_component.h"
-#include "flox/validation/order_validator_component.h"
-
-#include <iostream>
-
 #include "demo/latency_collector.h"
+
+#include <chrono>
+#include <iostream>
 
 namespace demo
 {
 
-DemoStrategy::DemoStrategy(SubscriberId id, SymbolId symbol,
-                           KillSwitchRef killSwitch,
-                           OrderValidatorRef orderValidator,
-                           RiskManagerRef riskManager,
-                           OrderExecutorRef orderExecutor)
-    : _id(id), _symbol(symbol), _killSwitch(std::move(killSwitch)), _orderValidator(std::move(orderValidator)), _riskManager(std::move(riskManager)), _orderExecutor(std::move(orderExecutor)), _book(Price::fromDouble(0.1))
+DemoStrategy::DemoStrategy(SymbolId symbol, OrderExecutionBus& execBus)
+    : _riskManager(&_killSwitch), _executor(execBus), _symbol(symbol)
 {
 }
 
@@ -41,6 +28,7 @@ void DemoStrategy::start()
 
 void DemoStrategy::stop()
 {
+  std::cout << "[strategy " << _symbol << "] stop" << std::endl;
 }
 
 void DemoStrategy::onTrade(const TradeEvent& ev)
@@ -49,6 +37,7 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
     return;
 
   Order order{};
+
   {
     MEASURE_LATENCY(LatencyCollector::StrategyOnTrade);
 
@@ -72,7 +61,7 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
     }
 
     std::string reason;
-    if (!_orderValidator.validate(order, reason))
+    if (!_validator.validate(order, reason))
     {
       std::cout << "[strategy " << _symbol << "] order rejected: " << reason << '\n';
       return;
@@ -85,7 +74,7 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
     }
   }
 
-  _orderExecutor.submitOrder(order);
+  _executor.submitOrder(order);
 }
 
 void DemoStrategy::onBookUpdate(const BookUpdateEvent& ev)
@@ -95,7 +84,5 @@ void DemoStrategy::onBookUpdate(const BookUpdateEvent& ev)
     _book.applyBookUpdate(ev);
   }
 }
-
-void DemoStrategy::onCandle(const CandleEvent&) {}
 
 }  // namespace demo

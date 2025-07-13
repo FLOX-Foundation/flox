@@ -29,12 +29,12 @@ TEST(ConnectorFactoryTest, RegisterAndCreateConnector)
       { return std::make_shared<DummyConnector>(); });
 
   auto connector = ConnectorFactory::instance().createConnector("dummy", "BTCUSDT");
-  EXPECT_TRUE(connector.has_value());
-  EXPECT_EQ(connector.value()->exchangeId(), "dummy");
+  ASSERT_NE(connector, nullptr);
+  EXPECT_EQ(connector->exchangeId(), "dummy");
 }
 
 TEST(ConnectorFactoryTest, UnknownConnectorReturnsNullptr)
 {
   auto connector = ConnectorFactory::instance().createConnector("unknown", "BTCUSDT");
-  EXPECT_FALSE(connector.has_value());
+  EXPECT_EQ(connector, nullptr);
 }

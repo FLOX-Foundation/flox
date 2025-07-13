@@ -8,17 +8,16 @@
  */
 
 #include "demo/demo_connector.h"
+#include "demo/latency_collector.h"
 
 #include <chrono>
 #include <thread>
-#include "demo/latency_collector.h"
 
 namespace demo
 {
 
-DemoConnector::DemoConnector(const std::string& id, SymbolId symbol,
-                             BookUpdateBusRef bookUpdateBus, TradeBusRef tradeBus)
-    : _id(id), _symbol(symbol), _bookUpdateBus(bookUpdateBus), _tradeBus(tradeBus)
+DemoConnector::DemoConnector(const std::string& id, SymbolId symbol, BookUpdateBus& bookUpdateBus, TradeBus& tradeBus)
+    : _id(id), _symbol(symbol), _boolUpdateBus(bookUpdateBus), _tradeBus(tradeBus)
 {
 }
 
@@ -32,14 +31,9 @@ void DemoConnector::start()
 void DemoConnector::stop()
 {
   if (!_running.exchange(false))
-  {
     return;
-  }
-
   if (_thread.joinable())
-  {
     _thread.join();
-  }
 }
 
 void DemoConnector::run()
@@ -112,7 +106,7 @@ void DemoConnector::run()
 
         {
           MEASURE_LATENCY(LatencyCollector::BusPublish);
-          _bookUpdateBus.publish(std::move(ev));
+          _boolUpdateBus.publish(std::move(ev));
         }
       }
 

@@ -7,20 +7,16 @@
  * license information.
  */
 
-#include "flox/aggregator/events/candle_event.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/bus/trade_bus.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/common.h"
-#include "flox/engine/engine_component.h"
-#include "flox/engine/market_data_subscriber_component.h"
-#include "flox/strategy/strategy_component.h"
-#include "flox/util/base/ref.h"
-#include "flox/util/memory/pool.h"
+#include "flox/engine/abstract_subscriber.h"
+#include "flox/engine/abstract_subsystem.h"
+#include "flox/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
-#include <memory>
 
 using namespace flox;
 
@@ -30,21 +26,18 @@ using namespace flox;
 namespace
 {
 
-class TestStrategy
+class TestStrategy : public IStrategy
 {
  public:
-  using Trait = traits::StrategyTrait;
-  using Allocator = PoolAllocator<Trait, 8>;
+  explicit TestStrategy(SymbolId symbol) : _symbol(symbol) {}
 
-  explicit TestStrategy(SubscriberId id, SymbolId symbol) : _id(id), _symbol(symbol) {}
+  SubscriberId id() const override { return 1; }
+  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  void start() {}
-  void stop() {}
+  void start() override {}
+  void stop() override {}
 
-  SubscriberId id() const { return _id; }
-  SubscriberMode mode() const { return SubscriberMode::PUSH; }
-
-  void onTrade(const TradeEvent& event)
+  void onTrade(const TradeEvent& event) override
   {
     if (event.trade.symbol == _symbol)
     {
@@ -53,7 +46,7 @@ class TestStrategy
     }
   }
 
-  void onBookUpdate(const BookUpdateEvent& event)
+  void onBookUpdate(const BookUpdateEvent& event) override
   {
     if (event.update.symbol == _symbol && !event.update.bids.empty())
     {
@@ -62,29 +55,37 @@ class TestStrategy
     }
   }
 
-  void onCandle(const CandleEvent&) {}
-
-  int seenTrades() const { return _seenTrades; }
-  int seenBooks() const { return _seenBooks; }
-  Price lastTradePrice() const { return _lastTradePrice; }
-  Price lastBid() const { return _lastBid; }
+  int seenTrades() const
+  {
+    return _seenTrades;
+  }
+  int seenBooks() const
+  {
+    return _seenBooks;
+  }
+  Price lastTradePrice() const
+  {
+    return _lastTradePrice;
+  }
+  Price lastBid() const
+  {
+    return _lastBid;
+  }
 
  private:
-  SubscriberId _id;
   SymbolId _symbol;
   int _seenTrades = 0;
   int _seenBooks = 0;
   Price _lastTradePrice = Price::fromDouble(0.0);
   Price _lastBid = Price::fromDouble(0.0);
 };
-static_assert(concepts::Strategy<TestStrategy>);
 
 using BookUpdatePool = pool::Pool<BookUpdateEvent, 7>;
 
 class MockConnector
 {
  public:
-  MockConnector(BookUpdateBusRef bookUpdateBus, TradeBusRef tradeBus, BookUpdatePool& bookPool,
+  MockConnector(BookUpdateBus& bookUpdateBus, TradeBus& tradeBus, BookUpdatePool& bookPool,
                 SymbolId symbol)
       : _bookUpdateBus(bookUpdateBus), _tradeBus(tradeBus), _bookPool(bookPool), _symbol(symbol)
   {
@@ -111,13 +112,13 @@ class MockConnector
     event->update.symbol = _symbol;
     event->update.type = BookUpdateType::SNAPSHOT;
     event->update.bids.push_back({bidPrice, bidQty});
+
     _bookUpdateBus.publish(std::move(event));
   }
 
  private:
-  BookUpdateBusRef _bookUpdateBus;
-  TradeBusRef _tradeBus;
-
+  BookUpdateBus& _bookUpdateBus;
+  TradeBus& _tradeBus;
   BookUpdatePool& _bookPool;
   SymbolId _symbol;
 };
@@ -125,105 +126,85 @@ class MockConnector
 class SmokeEngineBuilder
 {
  public:
-  SmokeEngineBuilder(SymbolId symbol, StrategyRef strategy)
-      : _symbol(symbol), _strategy(strategy)
+  SmokeEngineBuilder(SymbolId symbol, std::shared_ptr<TestStrategy> strategy)
+      : _symbol(symbol), _strategy(std::move(strategy))
   {
   }
 
-  auto build()
+  class EngineImpl : public ISubsystem
   {
-    auto bookUpdateBus = make<BookUpdateBus>();
-    auto tradeBus = make<TradeBus>();
-
-    bookUpdateBus.enableDrainOnStop();
-    tradeBus.enableDrainOnStop();
-
-    auto pool = std::make_unique<BookUpdatePool>();
-    auto connector = std::make_unique<MockConnector>(bookUpdateBus, tradeBus, *pool, _symbol);
-
-    bookUpdateBus.subscribe(_strategy.as<traits::MarketDataSubscriberTrait>());
-    tradeBus.subscribe(_strategy.as<traits::MarketDataSubscriberTrait>());
-
-    return EngineImpl{
-        bookUpdateBus,
-        tradeBus,
-        std::move(pool),
-        std::move(connector),
-        _strategy};
-  }
-
- private:
-  SymbolId _symbol;
-  StrategyRef _strategy;
-
-  struct EngineImpl
-  {
-    EngineImpl(BookUpdateBusRef bookUpdateBus,
-               TradeBusRef tradeBus,
-               std::unique_ptr<BookUpdatePool> pool,
-               std::unique_ptr<MockConnector> connector,
-               StrategyRef strategy)
-        : _bookUpdateBus(bookUpdateBus),
-          _tradeBus(tradeBus),
-          _pool(std::move(pool)),
-          _connector(std::move(connector)),
-          _strategy(strategy)
+   public:
+    EngineImpl(BookUpdateBus& bookUpdateBus, TradeBus& tradeBus, MockConnector& connector,
+               std::shared_ptr<TestStrategy> strategy)
+        : _bookUpdateBus(bookUpdateBus), _tradeBus(tradeBus), _connector(connector), _strategy(std::move(strategy))
     {
     }
 
-    void start()
+    void start() override
     {
       _bookUpdateBus.start();
       _tradeBus.start();
     }
-    void stop()
+    void stop() override
     {
       _bookUpdateBus.stop();
       _tradeBus.stop();
     }
 
-    void runTrade(Price price, Quantity qty)
-    {
-      _connector->publishTrade(price, qty);
-    }
+    void runTrade(Price price, Quantity qty) { _connector.publishTrade(price, qty); }
+    void runBook(Price price, Quantity qty) { _connector.publishBook(price, qty); }
 
-    void runBook(Price price, Quantity qty)
-    {
-      _connector->publishBook(price, qty);
-    }
-
-    auto strategy() const { return _strategy; }
+    std::shared_ptr<TestStrategy> strategy() const { return _strategy; }
 
    private:
-    BookUpdateBusRef _bookUpdateBus;
-    TradeBusRef _tradeBus;
-
-    std::unique_ptr<BookUpdatePool> _pool;
-    std::unique_ptr<MockConnector> _connector;
-    StrategyRef _strategy;
+    BookUpdateBus& _bookUpdateBus;
+    TradeBus& _tradeBus;
+    MockConnector& _connector;
+    std::shared_ptr<TestStrategy> _strategy;
   };
 
-  static_assert(concepts::Engine<EngineImpl>);
-};
+  std::unique_ptr<EngineImpl> build()
+  {
+    _bookUpdateBus = std::make_unique<BookUpdateBus>();
+    _tradeBus = std::make_unique<TradeBus>();
+    _bookPool = std::make_unique<BookUpdatePool>();
 
-static_assert(concepts::EngineBuilder<SmokeEngineBuilder>);
+    _bookUpdateBus->enableDrainOnStop();
+    _tradeBus->enableDrainOnStop();
+
+    _connector = std::make_unique<MockConnector>(*_bookUpdateBus, *_tradeBus, *_bookPool, _symbol);
+
+    _bookUpdateBus->subscribe(_strategy);
+    _tradeBus->subscribe(_strategy);
+
+    return std::make_unique<EngineImpl>(*_bookUpdateBus, *_tradeBus, *_connector, _strategy);
+  }
+
+  SymbolId _symbol;
+  std::shared_ptr<TestStrategy> _strategy;
+  std::unique_ptr<BookUpdateBus> _bookUpdateBus;
+  std::unique_ptr<TradeBus> _tradeBus;
+  std::unique_ptr<BookUpdatePool> _bookPool;
+  std::unique_ptr<MockConnector> _connector;
+};
 
 }  // namespace
 
 TEST(SmokeEngineTest, StrategyReceivesBothEvents)
 {
   constexpr SymbolId SYMBOL = 777;
-  auto strategy = make<TestStrategy>(1, SYMBOL);
+  auto strategy = std::make_shared<TestStrategy>(SYMBOL);
   SmokeEngineBuilder builder(SYMBOL, strategy);
-  auto engine = builder.build();
+  auto engineBase = builder.build();
+  auto engine = static_cast<SmokeEngineBuilder::EngineImpl*>(engineBase.get());
 
-  engine.start();
-  engine.runTrade(Price::fromDouble(101.25), Quantity::fromDouble(10.0));
-  engine.runBook(Price::fromDouble(101.10), Quantity::fromDouble(5.0));
-  engine.stop();
+  engine->start();
+  engine->runTrade(Price::fromDouble(101.25), Quantity::fromDouble(10.0));
+  engine->runBook(Price::fromDouble(101.10), Quantity::fromDouble(5.0));
+  engine->stop();
 
-  EXPECT_EQ(strategy.get<TestStrategy>().seenTrades(), 1);
-  EXPECT_EQ(strategy.get<TestStrategy>().seenBooks(), 1);
-  EXPECT_EQ(strategy.get<TestStrategy>().lastTradePrice(), Price::fromDouble(101.25));
-  EXPECT_EQ(strategy.get<TestStrategy>().lastBid(), Price::fromDouble(101.10));
+  EXPECT_EQ(strategy->seenTrades(), 1);
+  EXPECT_EQ(strategy->seenBooks(), 1);
+  EXPECT_EQ(strategy->lastTradePrice(), Price::fromDouble(101.25));
+  EXPECT_EQ(strategy->lastBid(), Price::fromDouble(101.10));
 }

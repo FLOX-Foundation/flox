@@ -22,8 +22,8 @@ static void BM_CandleAggregator_OnTrade(benchmark::State& state)
   constexpr SymbolId SYMBOL = 42;
   constexpr std::chrono::seconds INTERVAL(60);
 
-  auto bus = make<CandleBus>();
-  CandleAggregator aggregator(INTERVAL, bus);
+  CandleBus bus;
+  CandleAggregator aggregator(INTERVAL, &bus);
   bus.start();
   aggregator.start();
 

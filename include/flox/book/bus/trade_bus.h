@@ -22,8 +22,6 @@ using TradeBus = EventBus<TradeEvent, SyncPolicy<TradeEvent>>;
 using TradeBus = EventBus<TradeEvent, AsyncPolicy<TradeEvent>>;
 #endif
 
-using TradeBusRef = EventBusRef<TradeEvent, TradeBus::Queue>;
-
 /**
  * @brief Create and configure a TradeBus with optimal isolated core settings
  * @param enablePerformanceOptimizations Enable CPU frequency scaling optimizations
@@ -55,5 +53,4 @@ inline bool configureTradeBusForPerformance(TradeBus& bus, bool enablePerformanc
   return true;
 #endif
 }
-
 }  // namespace flox

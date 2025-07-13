@@ -1,11 +1,11 @@
 /*
- * Flox Engine
- * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
- *
- * Copyright (c) 2025 FLOX Foundation
- * Licensed under the MIT License. See LICENSE file in the project root for full
- * license information.
- */
+  * Flox Engine
+  * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+  *
+  * Copyright (c) 2025 FLOX Foundation
+  * Licensed under the MIT License. See LICENSE file in the project root for full
+  * license information.
+  */
 
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/nlevel_order_book.h"

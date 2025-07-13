@@ -11,8 +11,10 @@
 
 #include "flox/connector/exchange_connector.h"
 
+#include <iostream>
 #include <map>
 #include <memory>
+#include <vector>
 
 namespace flox
 {
@@ -31,6 +33,7 @@ class ConnectorManager
   {
     for (auto& [symbol, connector] : connectors)
     {
+      std::cout << "[ConnectorManager] starting: " << symbol << std::endl;
       connector->setCallbacks([onBookUpdate = std::move(onBookUpdate)](const BookUpdateEvent& update) mutable
                               { onBookUpdate(update); },
                               [onTrade = std::move(onTrade)](const TradeEvent& trade) mutable

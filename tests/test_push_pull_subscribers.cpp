@@ -9,15 +9,12 @@
 
 #include <gtest/gtest.h>
 #include <atomic>
-#include <functional>
+#include <memory>
 
-#include "flox/aggregator/events/candle_event.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
-#include "flox/engine/market_data_subscriber_component.h"
-#include "flox/util/base/ref.h"
-#include "flox/util/memory/pool.h"
+#include "flox/engine/abstract_market_data_subscriber.h"
 
 using namespace flox;
 using namespace std::chrono_literals;
@@ -29,69 +26,40 @@ namespace
 // Pull subscriber
 // ---------------------------------
 
-class PullingSubscriber
+class PullingSubscriber : public IMarketDataSubscriber
 {
  public:
-  using Trait = traits::MarketDataSubscriberTrait;
-  using Allocator = PoolAllocator<Trait, 8>;
-
-  PullingSubscriber(SubscriberId id, BookUpdateBusRef bookUpdateBus, std::atomic<int>& counter)
-      : _id(id), _bookUpdateBus(bookUpdateBus), _counter(counter)
+  PullingSubscriber(SubscriberId id, BookUpdateBus& bus, std::atomic<int>& counter)
+      : _id(id), _bus(bus), _counter(counter)
   {
   }
 
-  PullingSubscriber(PullingSubscriber&& other) noexcept
-      : _id(other._id),
-        _bookUpdateBus(other._bookUpdateBus),
-        _counter(other._counter),
-        _lastPrice(other._lastPrice.load())
-  {
-    other._lastPrice.store(-1.0);
-  }
+  SubscriberId id() const override { return _id; }
+  SubscriberMode mode() const override { return SubscriberMode::PULL; }
 
-  PullingSubscriber& operator=(PullingSubscriber&& other) noexcept
-  {
-    if (this != &other)
-    {
-      _id = other._id;
-      _lastPrice.store(other._lastPrice.load());
-      _counter = other._counter;
-      other._lastPrice.store(-1.0);
-    }
-    return *this;
-  }
-
-  PullingSubscriber(const PullingSubscriber&) = delete;
-  PullingSubscriber& operator=(const PullingSubscriber&) = delete;
-
-  SubscriberId id() const { return _id; }
-  SubscriberMode mode() const { return SubscriberMode::PULL; }
-
-  void onBookUpdate(const BookUpdateEvent&)
+  void onBookUpdate(const BookUpdateEvent&) override
   {
     FAIL() << "PULL subscriber must not receive push";
   }
-  void onTrade(const TradeEvent&)
-  {
-    FAIL() << "PULL subscriber must not receive push";
-  }
-  void onCandle(const CandleEvent&)
+  void onTrade(const TradeEvent&) override
   {
     FAIL() << "PULL subscriber must not receive push";
   }
 
   void readLoop()
   {
-    auto optQueue = _bookUpdateBus.getQueue(_id);
-    EXPECT_TRUE(optQueue.has_value());
+    if (!_queue)
+    {
+      _queue = _bus.getQueue(_id);
+      ASSERT_NE(_queue, nullptr);
+    }
 
-    auto& queue = optQueue.value().get();
-    auto opt = queue.try_pop_ref();
+    auto opt = _queue->try_pop_ref();
     if (opt)
     {
       const auto& event = opt->get();
       const auto& book = static_cast<const BookUpdateEvent&>(*event);
-      ++_counter.get();
+      ++_counter;
       if (!book.update.bids.empty())
         _lastPrice.store(book.update.bids[0].price.toDouble());
     }
@@ -101,21 +69,21 @@ class PullingSubscriber
 
  private:
   SubscriberId _id;
-  BookUpdateBusRef _bookUpdateBus;
-  std::reference_wrapper<std::atomic<int>> _counter;
+  BookUpdateBus& _bus;
+  std::atomic<int>& _counter;
   std::atomic<double> _lastPrice{-1.0};
+  BookUpdateBus::Queue* _queue = nullptr;
 };
-static_assert(concepts::MarketDataSubscriber<PullingSubscriber>);
 
 TEST(MarketDataBusTest, PullSubscriberProcessesEvent)
 {
-  auto bus = make<BookUpdateBus>();
+  BookUpdateBus bus;
   bus.enableDrainOnStop();
   std::atomic<int> counter{0};
 
-  auto sub = make<PullingSubscriber>(42, bus, counter);
+  auto sub = std::make_shared<PullingSubscriber>(42, bus, counter);
   bus.subscribe(sub);
-  EXPECT_TRUE(bus.getQueue(42).has_value());
+  ASSERT_NE(bus.getQueue(42), nullptr);
 
   bus.start();
 
@@ -127,50 +95,44 @@ TEST(MarketDataBusTest, PullSubscriberProcessesEvent)
   event->update.bids = {{Price::fromDouble(200.0), Quantity::fromDouble(1.0)}};
   bus.publish(std::move(event));
 
-  sub.get<PullingSubscriber>().readLoop();
+  sub->readLoop();
 
   EXPECT_EQ(counter.load(), 1);
-  EXPECT_EQ(sub.get<PullingSubscriber>().lastPrice(), 200.0);
+  EXPECT_EQ(sub->lastPrice(), 200.0);
 }
 
 // ---------------------------------
 // Push subscriber
 // ---------------------------------
 
-class PushTestSubscriber
+class PushTestSubscriber : public IMarketDataSubscriber
 {
  public:
-  using Trait = traits::MarketDataSubscriberTrait;
-  using Allocator = PoolAllocator<Trait, 8>;
-
   PushTestSubscriber(SubscriberId id, std::atomic<int>& counter) : _id(id), _counter(counter) {}
 
-  SubscriberId id() const { return _id; }
-  SubscriberMode mode() const { return SubscriberMode::PUSH; }
+  SubscriberId id() const override { return _id; }
+  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  void onBookUpdate(const BookUpdateEvent& book)
+  void onBookUpdate(const BookUpdateEvent& book) override
   {
     if (!book.update.bids.empty() && book.update.bids[0].price.toDouble() > 0.0)
     {
       ++_counter;
     }
   }
-  void onTrade(const TradeEvent&) {}
-  void onCandle(const CandleEvent&) {}
 
  private:
   SubscriberId _id;
   std::atomic<int>& _counter;
 };
-static_assert(concepts::MarketDataSubscriber<PushTestSubscriber>);
 
 TEST(MarketDataBusTest, PushSubscriberReceivesAllEvents)
 {
-  auto bus = make<BookUpdateBus>();
+  BookUpdateBus bus;
   bus.enableDrainOnStop();
   std::atomic<int> counter{0};
 
-  auto sub = make<PushTestSubscriber>(7, counter);
+  auto sub = std::make_shared<PushTestSubscriber>(7, counter);
   bus.subscribe(sub);
 
   bus.start();
@@ -197,13 +159,13 @@ TEST(MarketDataBusTest, PushSubscriberReceivesAllEvents)
 
 TEST(MarketDataBusTest, MixedPushAndPullWorkTogether)
 {
-  auto bus = make<BookUpdateBus>();
+  BookUpdateBus bus;
   bus.enableDrainOnStop();
   pool::Pool<BookUpdateEvent, 3> pool;
 
   std::atomic<int> pushCounter{0}, pullCounter{0};
-  auto push = make<PushTestSubscriber>(1, pushCounter);
-  auto pull = make<PullingSubscriber>(2, bus, pullCounter);
+  auto push = std::make_shared<PushTestSubscriber>(1, pushCounter);
+  auto pull = std::make_shared<PullingSubscriber>(2, bus, pullCounter);
 
   bus.subscribe(push);
   bus.subscribe(pull);
@@ -217,12 +179,12 @@ TEST(MarketDataBusTest, MixedPushAndPullWorkTogether)
   handle->update.bids = {{Price::fromDouble(105.5), Quantity::fromDouble(3.3)}};
   bus.publish(std::move(handle));
 
-  pull.get<PullingSubscriber>().readLoop();
+  pull->readLoop();
   bus.stop();
 
   EXPECT_EQ(pushCounter.load(), 1);
   EXPECT_EQ(pullCounter.load(), 1);
-  EXPECT_NE(pull.get<PullingSubscriber>().lastPrice(), -1.0);
+  EXPECT_NE(pull->lastPrice(), -1.0);
 }
 
 }  // namespace

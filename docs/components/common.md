@@ -1,37 +1,60 @@
 # Common Types
 
-`common.h` defines the fundamental enums and fixed-precision numeric aliases used across FLOX.
+This header defines core types and enums used throughout the Flox engine, including identifiers, numeric types (price, quantity), and domain-specific enums.
 
-~~~cpp
-enum class OrderType { LIMIT, MARKET };
-enum class Side      { BUY,   SELL   };
 
-using SymbolId = uint32_t;   // compact key for maps
-using OrderId  = uint64_t;   // globally unique order identifier
+## Enums
 
-// fixed-precision numbers built on Decimal<Tag, Scale, Disp>
-struct PriceTag    {};
-struct QuantityTag {};
-struct VolumeTag   {};
+### `OrderType`
 
-// tick = 0.000001 for all three
-using Price    = Decimal<PriceTag,    1'000'000, 1>;
-using Quantity = Decimal<QuantityTag, 1'000'000, 1>;
-using Volume   = Decimal<VolumeTag,   1'000'000, 1>;
-~~~
+Represents the execution style of an order.
 
-## Purpose
-* Provide **canonical IDs** (`SymbolId`, `OrderId`) and enums (`OrderType`, `Side`).
-* Expose **fixed-precision** `Price`, `Quantity`, `Volume` types to avoid FP rounding and preserve arithmetic integrity.
+```cpp
+enum class OrderType {
+  LIMIT,
+  MARKET
+};
+```
 
-## Decimal Parameters
+### `Side`
 
-| Type       | Scale     | Smallest unit |
-|------------|-----------|---------------|
-| `Price`    | 1 000 000 | 0.000001      |
-| `Quantity` | 1 000 000 | 0.000001      |
-| `Volume`   | 1 000 000 | 0.000001      |
+Represents the direction of an order.
+
+```cpp
+enum class Side {
+  BUY,
+  SELL
+};
+```
+
+
+## Identifiers
+
+| Type       | Description                     |
+| ---------- | ------------------------------- |
+| `SymbolId` | Unique identifier for a symbol. |
+| `OrderId`  | Unique identifier for an order. |
+
+
+## Fixed-Point Types
+
+Built on top of the `Decimal` template for safe, precise arithmetic.
+
+| Type       | Scale | Description                                  |
+| ---------- | ----- | -------------------------------------------- |
+| `Price`    | 1e-6  | Decimal representation of price.             |
+| `Quantity` | 1e-6  | Decimal quantity (e.g. number of contracts). |
+| `Volume`   | 1e-6  | Price × Quantity, used in candle bars etc.   |
+
+All three types use `Decimal<Tag, 1'000'000, 1>` internally, ensuring:
+
+* High precision (6 decimal places)
+* Strong typing (tags prevent mixing price and size)
+* Tick-aligned operations and rounding support
+
 
 ## Notes
-* All three `Decimal` aliases share the same tick size for simplicity; adjust scale if exchange precision differs.
-* `SymbolId` keeps hot maps cache-friendly compared to `std::string` keys.
+
+* These types are used pervasively across all order-related and market data structures.
+* Prevents accidental unit mismatches (e.g., adding price and quantity).
+* Tick size granularity is currently fixed to `1`.

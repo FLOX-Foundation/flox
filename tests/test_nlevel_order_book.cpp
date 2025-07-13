@@ -10,13 +10,12 @@
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/nlevel_order_book.h"
 #include "flox/common.h"
-#include "flox/util/memory/pool.h"
 
 #include <gtest/gtest.h>
 
 using namespace flox;
 
-class FullOrderBookTest : public ::testing::Test
+class NLevelOrderBookTest : public ::testing::Test
 {
  protected:
   NLevelOrderBook<> book{Price::fromDouble(0.1)};
@@ -48,7 +47,7 @@ class FullOrderBookTest : public ::testing::Test
   }
 };
 
-TEST_F(FullOrderBookTest, AppliesSnapshotCorrectly)
+TEST_F(NLevelOrderBookTest, AppliesSnapshotCorrectly)
 {
   auto update = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(2.0)},
                               {Price::fromDouble(99.0), Quantity::fromDouble(1.0)}},
@@ -65,7 +64,7 @@ TEST_F(FullOrderBookTest, AppliesSnapshotCorrectly)
   EXPECT_EQ(book.askAtPrice(Price::fromDouble(102.0)), Quantity::fromDouble(3.0));
 }
 
-TEST_F(FullOrderBookTest, AppliesDeltaCorrectly)
+TEST_F(NLevelOrderBookTest, AppliesDeltaCorrectly)
 {
   auto snap = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(1.0)}},
                            {{Price::fromDouble(101.0), Quantity::fromDouble(2.0)}});
@@ -84,7 +83,7 @@ TEST_F(FullOrderBookTest, AppliesDeltaCorrectly)
   EXPECT_EQ(book.askAtPrice(Price::fromDouble(101.0)), Quantity::fromDouble(3.0));
 }
 
-TEST_F(FullOrderBookTest, HandlesEmptyBook)
+TEST_F(NLevelOrderBookTest, HandlesEmptyBook)
 {
   EXPECT_EQ(book.bestBid(), std::nullopt);
   EXPECT_EQ(book.bestAsk(), std::nullopt);

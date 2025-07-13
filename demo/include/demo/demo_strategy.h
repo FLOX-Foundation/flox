@@ -9,54 +9,43 @@
 
 #pragma once
 
-#include "flox/aggregator/events/candle_event.h"
+#include "demo/simple_components.h"
 #include "flox/book/nlevel_order_book.h"
-#include "flox/common.h"
-#include "flox/execution/order_executor_component.h"
-#include "flox/killswitch/killswitch_component.h"
-#include "flox/risk/risk_manager_component.h"
-#include "flox/strategy/strategy_component.h"
-#include "flox/validation/order_validator_component.h"
+#include "flox/engine/abstract_subscriber.h"
+#include "flox/execution/bus/order_execution_bus.h"
+#include "flox/strategy/abstract_strategy.h"
+
+#include "flox/book/events/book_update_event.h"
+#include "flox/book/events/trade_event.h"
 
 namespace demo
 {
+
 using namespace flox;
 
-class DemoStrategy
+class DemoStrategy : public IStrategy
 {
  public:
-  using Trait = traits::StrategyTrait;
-  using Allocator = PoolAllocator<Trait, 8>;
+  DemoStrategy(SymbolId symbol, OrderExecutionBus& execBus);
 
-  explicit DemoStrategy(
-      SubscriberId id, SymbolId symbol,
-      KillSwitchRef killSwitch,
-      OrderValidatorRef orderValidator,
-      RiskManagerRef riskManager,
-      OrderExecutorRef orderExecutor);
+  SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
+  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  SubscriberId id() const { return _id; }
-  SubscriberMode mode() const { return SubscriberMode::PUSH; }
+  void start() override;
+  void stop() override;
 
-  void start();
-  void stop();
-
-  void onTrade(const TradeEvent& trade);
-  void onBookUpdate(const BookUpdateEvent& book);
-  void onCandle(const CandleEvent&);
+  void onTrade(const TradeEvent& trade) override;
+  void onBookUpdate(const BookUpdateEvent& book) override;
 
  private:
-  SubscriberId _id;
+  SimpleKillSwitch _killSwitch;
+  SimpleOrderValidator _validator;
+  SimpleRiskManager _riskManager;
+  SimpleOrderExecutor _executor;
+
   SymbolId _symbol;
-  NLevelOrderBook<> _book;
+  NLevelOrderBook<> _book{Price::fromDouble(0.1)};
   OrderId _nextId{0};
-
-  KillSwitchRef _killSwitch;
-  OrderValidatorRef _orderValidator;
-  RiskManagerRef _riskManager;
-  OrderExecutorRef _orderExecutor;
 };
-
-static_assert(flox::concepts::Strategy<DemoStrategy>);
 
 }  // namespace demo

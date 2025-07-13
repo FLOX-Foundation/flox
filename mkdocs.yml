@@ -1,5 +1,3 @@
-# mkdocs.yml  – synchronised with current docs/ directory structure
-
 site_name: FLOX
 
 theme:
@@ -17,65 +15,76 @@ theme:
 nav:
   - Home: index.md
   - Architecture: architecture.md
-
   - Usage:
       - Getting Started: usage/getting_started.md
+      - Running Engine: usage/running_engine.md
       - Config: usage/config.md
       - Strategies: usage/strategies.md
       - Demo: usage/demo.md
 
-  - Components:
-      - Common:
+  - Abstract Layer:
+      - Engine Interfaces:
+          - Subsystem: components/engine/abstract_subsystem.md
+          - MarketDataSubscriber: components/engine/abstract_market_data_subscriber.md
+          - Strategy: components/strategy/abstract_strategy.md
+      - Trading Interfaces:
+          - OrderExecutor: components/execution/abstract_executor.md
+          - OrderExecutionListener: components/execution/abstract_execution_listener.md
+          - ExecutionTracker: components/metrics/abstract_execution_tracker.md
+          - PnLTracker: components/metrics/abstract_pnl_tracker.md
+          - PositionManager: components/position/abstract_position_manager.md
+          - RiskManager: components/risk/abstract_risk_manager.md
+          - OrderValidator: components/validation/abstract_order_validator.md
+          - KillSwitch: components/killswitch/abstract_killswitch.md
+          - StorageSink: components/sink/abstract_storage_sink.md
+      - Market-Data Interfaces:
+          - OrderBook: components/book/abstract_order_book.md
+          - ExchangeConnector: components/connector/exchange_connector.md
+
+  - Implementation Layer:
+      - Engine Core:
+          - Engine: components/engine/engine.md
+          - EngineConfig: components/engine/engine_config.md
+          - SymbolRegistry: components/engine/symbol_registry.md
+          - TickBarrier: components/engine/tick_barrier.md
+          - TickGuard: components/engine/tick_guard.md
+          - AbstractSubscriber: components/engine/abstract_subscriber.md
+          - EventDispatcher: components/engine/event_dispatcher.md
+
+      - Market-Data:
+          - Order Books:
+              - NLevelOrderBook: components/book/nlevel_order_book.md
+          - Events:
+              - BookUpdateEvent: components/book/events/book_update_event.md
+              - TradeEvent: components/book/events/trade_event.md
+              - CandleEvent: components/aggregator/events/candle_event.md
+          - Structures:
+              - BookUpdate: components/book/book_update.md
+              - Candle: components/book/candle.md
+              - Trade: components/book/trade.md
+          - Aggregators:
+              - CandleAggregator: components/aggregator/candle_aggregator.md
+
+      - Event Buses:
+          - EventBus (generic): components/util/eventing/event_bus.md
+          - BookUpdateBus: components/book/bus/book_update_bus.md
+          - TradeBus: components/book/bus/trade_bus.md
+          - CandleBus: components/aggregator/bus/candle_bus.md
+          - OrderExecutionBus: components/execution/bus/order_execution_bus.md
+
+      - Execution Flow:
+          - Order: components/execution/order.md
+          - OrderEvent: components/execution/events/order_event.md
+          - ExecutionTrackerAdapter: components/execution/execution_tracker_adapter.md
+          - MultiExecutionListener: components/execution/multi_execution_listener.md
+
+      - Connectors:
+          - ConnectorManager: components/connector/connector_manager.md
+          - ConnectorFactory: components/connector/connector_factory.md
+
+      - Utilities:
+          - Decimal: components/util/base/decimal.md
+          - SPSCQueue: components/util/concurrency/spsc_queue.md
+          - RefCountable: components/util/memory/ref_countable.md
+          - Pool: components/util/memory/pool.md
           - Common Types: components/common.md
-          - Decimal: components/decimal.md
-          - Ref Utilities: components/ref.md
-          - RefCountable: components/ref_countable.md
-          - Meta Helpers: components/meta.md
-      - Memory & Pools:
-          - Free-List Allocator: components/free_list_allocator.md
-          - Object Pool: components/pool.md
-      - Market Infrastructure:
-          - Candle: components/candle.md
-          - Candle Event: components/candle_event.md
-          - Candle Aggregator (impl): components/candle_aggregator.md
-          - Candle Aggregator (component): components/candle_aggregator_component.md
-          - BookUpdate: components/book_update.md
-          - BookUpdate Event: components/book_update_event.md
-          - N-Level Order Book: components/nlevel_order_book.md
-          - Trade: components/trade.md
-          - Trade Event: components/trade_event.md
-          - Event Dispatcher: components/event_dispatcher.md
-          - EventBus (generic): components/event_bus.md
-          - BookUpdateBus: components/book_update_bus.md
-          - TradeBus: components/trade_bus.md
-          - CandleBus: components/candle_bus.md
-          - OrderExecutionBus: components/order_execution_bus.md
-          - SPSCQueue: components/spsc_queue.md
-          - TickBarrier: components/tick_barrier.md
-          - TickGuard: components/tick_guard.md
-      - Execution & Routing:
-          - Order: components/order.md
-          - Order Event: components/order_event.md
-          - Order Executor: components/order_executor_component.md
-          - Order Execution Listener: components/order_execution_listener_component.md
-          - MultiExecutionListener: components/multi_execution_listener.md
-          - ExecutionTracker: components/execution_tracker_component.md
-          - PositionManager: components/position_manager_component.md
-          - KillSwitch: components/killswitch_component.md
-          - RiskManager: components/risk_manager_component.md
-          - OrderValidator: components/order_validator_component.md
-          - StorageSink: components/storage_sink_component.md
-      - Connectors & Engine:
-          - ExchangeConnector: components/exchange_connector.md
-          - ConnectorFactory: components/connector_factory.md
-          - ConnectorManager: components/connector_manager.md
-          - SymbolRegistry: components/symbol_registry.md
-          - EngineConfig: components/engine_config.md
-          - Engine: components/engine.md
-          - Engine Component: components/engine_component.md
-          - MarketDataSubscriber Component: components/market_data_subscriber_component.md
-          - OrderBook Component: components/order_book_component.md
-          - EventBus Component: components/event_bus_component.md
-          - Subscriber Component: components/subscriber_component.md
-          - Subsystem Component: components/subsystem_component.md
-          - Strategy Component: components/strategy_component.md

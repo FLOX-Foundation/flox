@@ -9,8 +9,8 @@
 
 #pragma once
 
+#include "flox/book/abstract_order_book.h"
 #include "flox/book/events/book_update_event.h"
-#include "flox/book/order_book_component.h"
 #include "flox/common.h"
 
 #include <array>
@@ -21,7 +21,7 @@ namespace flox
 {
 
 template <size_t MaxLevels = 8192>
-class NLevelOrderBook
+class NLevelOrderBook : public IOrderBook
 {
  public:
   static constexpr size_t MAX_LEVELS = MaxLevels;
@@ -36,7 +36,7 @@ class NLevelOrderBook
     static_assert(MAX_LEVELS < std::numeric_limits<size_t>::max());
   }
 
-  void applyBookUpdate(const BookUpdateEvent& event)
+  void applyBookUpdate(const BookUpdateEvent& event) override
   {
     const auto& update = event.update;
 
@@ -79,7 +79,7 @@ class NLevelOrderBook
     }
   }
 
-  std::optional<Price> bestBid() const
+  std::optional<Price> bestBid() const override
   {
     if (_minBidIndex >= MAX_LEVELS)
       return std::nullopt;
@@ -94,7 +94,7 @@ class NLevelOrderBook
     return std::nullopt;
   }
 
-  std::optional<Price> bestAsk() const
+  std::optional<Price> bestAsk() const override
   {
     if (_minAskIndex >= MAX_LEVELS)
       return std::nullopt;
@@ -109,13 +109,13 @@ class NLevelOrderBook
     return std::nullopt;
   }
 
-  Quantity bidAtPrice(Price price) const
+  Quantity bidAtPrice(Price price) const override
   {
     const size_t i = priceToIndex(price);
     return i < MAX_LEVELS ? _bids[i] : Quantity{};
   }
 
-  Quantity askAtPrice(Price price) const
+  Quantity askAtPrice(Price price) const override
   {
     const size_t i = priceToIndex(price);
     return i < MAX_LEVELS ? _asks[i] : Quantity{};
@@ -154,5 +154,3 @@ class NLevelOrderBook
 };
 
 }  // namespace flox
-
-static_assert(flox::concepts::OrderBook<flox::NLevelOrderBook<>>);

@@ -36,16 +36,15 @@ class ConnectorFactory
     _creators[type] = std::move(creator);
   }
 
-  std::optional<std::shared_ptr<ExchangeConnector>> createConnector(const std::string& type,
-                                                                    const std::string& symbol)
+  std::shared_ptr<ExchangeConnector> createConnector(const std::string& type,
+                                                     const std::string& symbol)
   {
     auto it = _creators.find(type);
     if (it != _creators.end())
     {
       return it->second(symbol);
     }
-
-    return std::nullopt;
+    return nullptr;
   }
 
  private:

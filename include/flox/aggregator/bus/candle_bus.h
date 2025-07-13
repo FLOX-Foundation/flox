@@ -22,8 +22,6 @@ using CandleBus = EventBus<CandleEvent, SyncPolicy<CandleEvent>>;
 using CandleBus = EventBus<CandleEvent, AsyncPolicy<CandleEvent>>;
 #endif
 
-using CandleBusRef = EventBusRef<CandleEvent, CandleBus::Queue>;
-
 /**
  * @brief Create and configure a CandleBus with optimal isolated core settings
  * @param enablePerformanceOptimizations Enable CPU frequency scaling optimizations
@@ -54,5 +52,4 @@ inline bool configureCandleBusForPerformance(CandleBus& bus, bool enablePerforma
   return true;
 #endif
 }
-
 }  // namespace flox

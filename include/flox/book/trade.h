@@ -10,7 +10,6 @@
 #pragma once
 
 #include <chrono>
-
 #include "flox/common.h"
 
 namespace flox

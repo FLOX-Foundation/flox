@@ -12,7 +12,6 @@
 #include <memory>
 #include "flox/execution/events/order_event.h"
 #include "flox/util/eventing/event_bus.h"
-#include "flox/util/eventing/event_bus_component.h"
 
 namespace flox
 {
@@ -22,8 +21,6 @@ using OrderExecutionBus = EventBus<OrderEvent, SyncPolicy<OrderEvent> >;
 #else
 using OrderExecutionBus = EventBus<OrderEvent, AsyncPolicy<OrderEvent> >;
 #endif
-
-using OrderExecutionBusRef = EventBusRef<OrderEvent, OrderExecutionBus::Queue>;
 
 /**
  * @brief Create and configure an OrderExecutionBus with optimal isolated core settings
@@ -55,5 +52,4 @@ inline bool configureOrderExecutionBusForPerformance(OrderExecutionBus& bus, boo
   return true;
 #endif
 }
-
 }  // namespace flox

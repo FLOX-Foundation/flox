@@ -17,11 +17,13 @@
 #include <thread>
 #include <unordered_map>
 
+#include "flox/engine/abstract_subsystem.h"
 #include "flox/engine/engine_config.h"
-#include "flox/engine/subscriber_component.h"
+#include "flox/engine/event_dispatcher.h"
 #include "flox/engine/tick_barrier.h"
+#include "flox/engine/tick_guard.h"
 #include "flox/util/concurrency/spsc_queue.h"
-#include "flox/util/eventing/event_bus_component.h"
+#include "flox/util/memory/pool.h"
 #if FLOX_CPU_AFFINITY_ENABLED
 #include "flox/util/performance/cpu_affinity.h"
 #endif
@@ -29,16 +31,48 @@
 namespace flox
 {
 
+template <typename T>
+struct ListenerType
+{
+  using type = typename T::Listener;
+};
+
+template <typename T>
+struct ListenerType<pool::Handle<T>>
+{
+  using type = typename T::Listener;
+};
+
+template <typename Event>
+struct SyncPolicy
+{
+  using QueueItem = std::pair<Event, TickBarrier*>;
+  static QueueItem makeItem(Event ev, TickBarrier* barrier) { return {ev, barrier}; }
+  static void dispatch(const QueueItem& item, typename ListenerType<Event>::type& listener)
+  {
+    TickGuard guard(*item.second);
+    EventDispatcher<Event>::dispatch(item.first, listener);
+  }
+};
+
+template <typename Event>
+struct AsyncPolicy
+{
+  using QueueItem = Event;
+  static QueueItem makeItem(Event ev, void*) { return ev; }
+  static void dispatch(const QueueItem& item, typename ListenerType<Event>::type& listener)
+  {
+    EventDispatcher<Event>::dispatch(item, listener);
+  }
+};
+
 template <typename Event, typename Policy, size_t QueueSize = config::DEFAULT_EVENTBUS_QUEUE_SIZE>
-class EventBus
+class EventBus : public ISubsystem
 {
  public:
   using Listener = typename ListenerType<Event>::type;
   using QueueItem = typename Policy::QueueItem;
   using Queue = SPSCQueue<QueueItem, QueueSize>;
-
-  using Trait = traits::EventBusTrait<Event, Queue>;
-  using Allocator = PoolAllocator<Trait, 8>;
 
   EventBus()
 #if FLOX_CPU_AFFINITY_ENABLED
@@ -47,29 +81,25 @@ class EventBus
   {
   }
 
-  ~EventBus()
-  {
-    stop();
-  }
+  ~EventBus() { stop(); }
 
-  EventBus(EventBus&& other) = delete;
-  EventBus& operator=(EventBus&&) = delete;
-
-  void subscribe(Listener listener)
+  void subscribe(std::shared_ptr<Listener> listener)
   {
-    SubscriberId id = listener.id();
-    SubscriberMode mode = listener.mode();
+    SubscriberMode mode = listener->mode();
+
+    Entry e;
+    e.mode = mode;
+    e.listener = std::move(listener);
+    e.queue = std::make_unique<Queue>();
 
     std::lock_guard lock(_mutex);
-    _subs.try_emplace(id, Entry(mode, std::move(listener), std::make_unique<Queue>()));
+    _subs.emplace(e.listener->id(), std::move(e));
   }
 
-  void start()
+  void start() override
   {
     if (_running.exchange(true))
-    {
       return;
-    }
 
     std::lock_guard lock(_mutex);
     _active = 0;
@@ -77,9 +107,7 @@ class EventBus
     for (auto& [_, e] : _subs)
     {
       if (e.mode == SubscriberMode::PUSH)
-      {
         ++_active;
-      }
     }
 
     for (auto& [_, e] : _subs)
@@ -88,9 +116,8 @@ class EventBus
       {
         auto* queue = e.queue.get();
         auto listener = e.listener;
-
-        e.thread = std::make_unique<std::thread>([this, queue, listener = std::move(listener)] mutable
-                                                 {
+        e.thread.emplace([this, queue, listener]
+                         {
 #if FLOX_CPU_AFFINITY_ENABLED
           // Create a local CpuAffinity instance for this thread
           auto threadCpuAffinity = performance::createCpuAffinity();
@@ -161,27 +188,23 @@ class EventBus
             }
           }
 #endif
-
           {
             std::lock_guard<std::mutex> lk(_readyMutex);
             if (--_active == 0) _cv.notify_one();
           }
-
           while (_running.load(std::memory_order_acquire)) {
-            if (auto* item = queue->try_pop())
-            {
-              Policy::dispatch(*item, listener);
+            if (auto* item = queue->try_pop()) {
+              Policy::dispatch(*item, *listener);
               item->~QueueItem();
             } else {
               std::this_thread::yield();
             }
           }
-
           while (auto* item = queue->try_pop())
           {
             if (_drainOnStop)
             {
-              Policy::dispatch(*item, listener);
+              Policy::dispatch(*item, *listener);
             }
 
             item->~QueueItem();
@@ -194,16 +217,17 @@ class EventBus
              { return _active == 0; });
   }
 
-  void stop()
+  void stop() override
   {
     if (!_running.exchange(false))
       return;
-
-    decltype(_subs) localSubs;
+    std::lock_guard lock(_mutex);
+    for (auto& [_, e] : _subs)
     {
-      std::lock_guard lk(_mutex);
-      localSubs.swap(_subs);
+      e.thread.reset();
+      e.queue->clear();
     }
+    _subs.clear();
   }
 
   void publish(Event ev)
@@ -222,7 +246,7 @@ class EventBus
       ev.tickSequence = seq;
     }
 
-    [[maybe_unused]] TickBarrier barrier(_subs.size());
+    TickBarrier barrier(_subs.size());
 
     std::lock_guard lock(_mutex);
     for (auto& [_, e] : _subs)
@@ -243,19 +267,16 @@ class EventBus
     }
   }
 
-  std::optional<std::reference_wrapper<Queue>> getQueue(SubscriberId id) const
+  Queue* getQueue(SubscriberId id)
   {
     std::lock_guard lock(_mutex);
     auto it = _subs.find(id);
-    if (it != _subs.end() && it->second.mode == SubscriberMode::PULL && it->second.queue)
-    {
-      return std::ref(*it->second.queue);
-    }
-
-    return std::nullopt;
+    if (it != _subs.end() && it->second.mode == SubscriberMode::PULL)
+      return it->second.queue.get();
+    return nullptr;
   }
 
-  uint64_t currentTickId() const
+  uint64_t currentTickId() const noexcept
   {
     return _tickCounter.load(std::memory_order_relaxed);
   }
@@ -415,29 +436,10 @@ class EventBus
  private:
   struct Entry
   {
-    SubscriberMode mode = SubscriberMode::PUSH;
-    Listener listener;
+    std::shared_ptr<Listener> listener;
     std::unique_ptr<Queue> queue;
-    std::unique_ptr<std::thread> thread;
-
-    Entry(SubscriberMode mode, Listener&& listener, std::unique_ptr<Queue>&& queue)
-        : mode(mode), listener(std::move(listener)), queue(std::move(queue)) {}
-
-    Entry(const Entry&) = delete;
-    Entry& operator=(const Entry&) = delete;
-
-    Entry(Entry&&) = default;
-    Entry& operator=(Entry&&) = default;
-
-    ~Entry()
-    {
-      if (thread && thread->joinable())
-      {
-        thread->join();
-      }
-
-      thread.reset();
-    }
+    SubscriberMode mode = SubscriberMode::PUSH;
+    std::optional<std::jthread> thread;
   };
 
 #if FLOX_CPU_AFFINITY_ENABLED
@@ -446,7 +448,7 @@ class EventBus
   std::optional<AffinityConfig> _affinityConfig;
 #endif
   std::unordered_map<SubscriberId, Entry> _subs;
-  mutable std::mutex _mutex;
+  std::mutex _mutex;
   std::atomic<bool> _running{false};
   std::atomic<size_t> _active{0};
   std::condition_variable _cv;

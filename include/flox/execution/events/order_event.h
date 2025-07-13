@@ -9,15 +9,15 @@
 
 #pragma once
 
+#include "flox/execution/abstract_execution_listener.h"
 #include "flox/execution/order.h"
-#include "flox/execution/order_execution_listener_component.h"
-#include "flox/util/base/ref.h"
 
 namespace flox
 {
 
 enum class OrderEventType
 {
+  SUBMITTED,
   ACCEPTED,
   PARTIALLY_FILLED,
   FILLED,
@@ -29,23 +29,20 @@ enum class OrderEventType
 
 struct OrderEvent
 {
-  using Listener = OrderExecutionListenerRef;
-
+  using Listener = IOrderExecutionListener;
   OrderEventType type{};
   Order order{};
   Order newOrder{};
   Quantity fillQty{0};
-  std::string rejectionReason;
 
   uint64_t tickSequence = 0;
 
-  template <typename ListenerT>
-  void dispatchTo(ListenerT& listener) const
+  void dispatchTo(IOrderExecutionListener& listener) const
   {
-    static_assert(concepts::OrderExecutionListener<ListenerT>);
-
     switch (type)
     {
+      case OrderEventType::SUBMITTED:
+        listener.onOrderSubmitted(order);
       case OrderEventType::ACCEPTED:
         listener.onOrderAccepted(order);
         break;
@@ -62,7 +59,7 @@ struct OrderEvent
         listener.onOrderExpired(order);
         break;
       case OrderEventType::REJECTED:
-        listener.onOrderRejected(order, rejectionReason);
+        listener.onOrderRejected(order, "");
         break;
       case OrderEventType::REPLACED:
         listener.onOrderReplaced(order, newOrder);

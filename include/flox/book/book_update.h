@@ -12,7 +12,6 @@
 #include <chrono>
 #include <memory_resource>
 #include <vector>
-
 #include "flox/common.h"
 
 namespace flox
