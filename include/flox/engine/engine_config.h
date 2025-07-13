@@ -54,6 +54,17 @@ namespace config
 
 inline constexpr size_t DEFAULT_EVENTBUS_QUEUE_SIZE = FLOX_DEFAULT_EVENTBUS_QUEUE_SIZE;
 
-}
+// CPU Affinity Priority Constants
+inline constexpr int ISOLATED_CORE_PRIORITY_BOOST = 5;
+inline constexpr int DEFAULT_REALTIME_PRIORITY = 80;
+inline constexpr int FALLBACK_REALTIME_PRIORITY = 90;
 
+// Component-specific priority constants
+inline constexpr int MARKET_DATA_PRIORITY = 90;
+inline constexpr int EXECUTION_PRIORITY = 85;
+inline constexpr int STRATEGY_PRIORITY = 80;
+inline constexpr int RISK_PRIORITY = 75;
+inline constexpr int GENERAL_PRIORITY = 70;
+
+}  // namespace config
 }  // namespace flox

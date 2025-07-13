@@ -5,6 +5,17 @@
  * Copyright (c) 2025 FLOX Foundation
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
+ *
+ * IMPORTANT: These benchmarks should be run on an isolated machine with minimal
+ * background processes. CPU affinity can actually decrease performance on busy
+ * or shared systems because:
+ * - It prevents the OS scheduler from optimally distributing load across cores
+ * - Pinned threads may compete with other processes on the same cores
+ * - The OS loses flexibility to move threads to less busy cores
+ * - System-wide performance can degrade due to poor load balancing
+ *
+ * For production systems, consider using CPU affinity only when you have
+ * dedicated hardware and can control the entire system's workload.
  */
 
 #include "flox/util/performance/cpu_affinity.h"
@@ -304,7 +315,7 @@ static void BM_MultiThreaded_WithAffinity(benchmark::State& state)
   const int numThreads = state.range(0);
   std::atomic<int> counter{0};
   auto cpuAffinity = createCpuAffinity();
-  int numCores = cpuAffinity->getNumCores();
+  const auto numCores = cpuAffinity->getNumCores();
 
   for (auto _ : state)
   {

@@ -114,7 +114,7 @@ class ThreadAffinity
   bool verifyCriticalCoreIsolation(const std::vector<int>& criticalCores);
 
  private:
-  std::unique_ptr<ISystemInterface> systemInterface_;
+  std::unique_ptr<ISystemInterface> _systemInterface;
 
   /**
      * @brief Check if a core is isolated
@@ -164,55 +164,55 @@ class ThreadAffinityGuard
   ThreadAffinityGuard& operator=(ThreadAffinityGuard&&) = delete;
 
  private:
-  std::unique_ptr<ISystemInterface> systemInterface_;
-  std::vector<int> originalAffinity_;
+  std::unique_ptr<ISystemInterface> _systemInterface;
+  std::vector<int> _originalAffinity;
   bool validGuard_;
 };
 
 // Inline implementations
 inline ThreadAffinity::ThreadAffinity(std::unique_ptr<ISystemInterface> systemInterface)
-    : systemInterface_(std::move(systemInterface))
+    : _systemInterface(std::move(systemInterface))
 {
 }
 
 inline bool ThreadAffinity::pinCurrentThreadToCore(int coreId)
 {
-  return systemInterface_->setCurrentThreadAffinity({coreId});
+  return _systemInterface->setCurrentThreadAffinity({coreId});
 }
 
 inline bool ThreadAffinity::pinCurrentThreadToCores(const std::vector<int>& coreIds)
 {
-  return systemInterface_->setCurrentThreadAffinity(coreIds);
+  return _systemInterface->setCurrentThreadAffinity(coreIds);
 }
 
 inline bool ThreadAffinity::pinThreadToCore(std::thread& thread, int coreId)
 {
-  return systemInterface_->setThreadAffinity(thread.native_handle(), {coreId});
+  return _systemInterface->setThreadAffinity(thread.native_handle(), {coreId});
 }
 
 inline bool ThreadAffinity::pinThreadToCores(std::thread& thread, const std::vector<int>& coreIds)
 {
-  return systemInterface_->setThreadAffinity(thread.native_handle(), coreIds);
+  return _systemInterface->setThreadAffinity(thread.native_handle(), coreIds);
 }
 
 inline bool ThreadAffinity::setCurrentThreadPriority(int priority)
 {
-  return systemInterface_->setCurrentThreadPriority(priority);
+  return _systemInterface->setCurrentThreadPriority(priority);
 }
 
 inline bool ThreadAffinity::setThreadPriority(std::thread& thread, int priority)
 {
-  return systemInterface_->setThreadPriority(thread.native_handle(), priority);
+  return _systemInterface->setThreadPriority(thread.native_handle(), priority);
 }
 
 inline std::vector<int> ThreadAffinity::getCurrentThreadAffinity()
 {
-  return systemInterface_->getCurrentThreadAffinity();
+  return _systemInterface->getCurrentThreadAffinity();
 }
 
 inline bool ThreadAffinity::setCurrentThreadNumaPolicy(int nodeId)
 {
-  return systemInterface_->setMemoryPolicy(nodeId);
+  return _systemInterface->setMemoryPolicy(nodeId);
 }
 
 inline bool ThreadAffinity::disableCpuFrequencyScaling()
@@ -227,7 +227,7 @@ inline bool ThreadAffinity::enableCpuFrequencyScaling()
 
 inline bool ThreadAffinity::verifyCriticalCoreIsolation(const std::vector<int>& criticalCores)
 {
-  auto isolatedCores = systemInterface_->getIsolatedCores();
+  auto isolatedCores = _systemInterface->getIsolatedCores();
 
   for (int coreId : criticalCores)
   {
@@ -242,19 +242,19 @@ inline bool ThreadAffinity::verifyCriticalCoreIsolation(const std::vector<int>& 
 
 inline bool ThreadAffinity::isCoreIsolated(int coreId)
 {
-  auto isolatedCores = systemInterface_->getIsolatedCores();
+  auto isolatedCores = _systemInterface->getIsolatedCores();
   return std::find(isolatedCores.begin(), isolatedCores.end(), coreId) != isolatedCores.end();
 }
 
 inline bool ThreadAffinity::setCpuGovernor(const std::string& governor)
 {
-  int numCores = systemInterface_->getNumCores();
+  const auto numCores = _systemInterface->getNumCores();
   bool success = true;
 
   for (int i = 0; i < numCores; ++i)
   {
     std::string govPath = "/sys/devices/system/cpu/cpu" + std::to_string(i) + "/cpufreq/scaling_governor";
-    if (!systemInterface_->writeFile(govPath, governor))
+    if (!_systemInterface->writeFile(govPath, governor))
     {
       success = false;
     }
@@ -265,22 +265,22 @@ inline bool ThreadAffinity::setCpuGovernor(const std::string& governor)
 
 // ThreadAffinityGuard implementation
 inline ThreadAffinityGuard::ThreadAffinityGuard(int coreId)
-    : systemInterface_(createSystemInterface()), validGuard_(false)
+    : _systemInterface(createSystemInterface()), validGuard_(false)
 {
-  originalAffinity_ = systemInterface_->getCurrentThreadAffinity();
+  _originalAffinity = _systemInterface->getCurrentThreadAffinity();
 
-  if (systemInterface_->setCurrentThreadAffinity({coreId}))
+  if (_systemInterface->setCurrentThreadAffinity({coreId}))
   {
     validGuard_ = true;
   }
 }
 
 inline ThreadAffinityGuard::ThreadAffinityGuard(const std::vector<int>& coreIds)
-    : systemInterface_(createSystemInterface()), validGuard_(false)
+    : _systemInterface(createSystemInterface()), validGuard_(false)
 {
-  originalAffinity_ = systemInterface_->getCurrentThreadAffinity();
+  _originalAffinity = _systemInterface->getCurrentThreadAffinity();
 
-  if (systemInterface_->setCurrentThreadAffinity(coreIds))
+  if (_systemInterface->setCurrentThreadAffinity(coreIds))
   {
     validGuard_ = true;
   }
@@ -288,9 +288,9 @@ inline ThreadAffinityGuard::ThreadAffinityGuard(const std::vector<int>& coreIds)
 
 inline ThreadAffinityGuard::~ThreadAffinityGuard()
 {
-  if (validGuard_ && !originalAffinity_.empty())
+  if (validGuard_ && !_originalAffinity.empty())
   {
-    systemInterface_->setCurrentThreadAffinity(originalAffinity_);
+    _systemInterface->setCurrentThreadAffinity(_originalAffinity);
   }
 }
 

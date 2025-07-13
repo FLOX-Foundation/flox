@@ -295,7 +295,7 @@ inline int LinuxSystemInterface::getNumaNodeForCore(int coreId)
     return -1;
 
   // Check if core exists by checking if it's within valid range
-  int numCores = getNumCores();
+  const auto numCores = getNumCores();
   if (coreId < 0 || coreId >= numCores)
     return -1;  // Return -1 for invalid cores
 

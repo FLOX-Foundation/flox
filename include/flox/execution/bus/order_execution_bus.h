@@ -31,8 +31,8 @@ inline std::unique_ptr<OrderExecutionBus> createOptimalOrderExecutionBus(bool en
 {
   auto bus = std::make_unique<OrderExecutionBus>();
 #if FLOX_CPU_AFFINITY_ENABLED
-  bus->setupOptimalConfiguration(OrderExecutionBus::ComponentType::EXECUTION,
-                                 enablePerformanceOptimizations);
+  [[maybe_unused]] bool success = bus->setupOptimalConfiguration(OrderExecutionBus::ComponentType::EXECUTION,
+                                                                 enablePerformanceOptimizations);
 #endif
   return bus;
 }

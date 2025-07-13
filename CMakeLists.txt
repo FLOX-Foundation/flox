@@ -45,7 +45,10 @@ target_compile_options(${FLOX_SYNC} PUBLIC
   $<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
 )
 
-option(ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" ON)
+# WARNING: CPU affinity can decrease performance on busy/shared systems.
+# It prevents OS scheduler optimization and should only be used on isolated,
+# dedicated hardware where you control the entire system workload.
+option(ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" OFF)
 if(ENABLE_CPU_AFFINITY)
   message(STATUS "CPU affinity features enabled")
   target_compile_definitions(${FLOX} PUBLIC FLOX_CPU_AFFINITY_ENABLED=1)

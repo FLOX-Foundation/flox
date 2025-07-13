@@ -210,10 +210,10 @@ class CpuAffinity
   CoreAssignmentManager& getCoreAssignmentManager() const;
 
  private:
-  std::unique_ptr<ISystemInterface> systemInterface_;
-  std::shared_ptr<CpuTopology> cpuTopology_;
-  std::unique_ptr<ThreadAffinity> threadAffinity_;
-  std::unique_ptr<CoreAssignmentManager> coreAssignmentManager_;
+  std::unique_ptr<ISystemInterface> _systemInterface;
+  std::shared_ptr<CpuTopology> _cpuTopology;
+  std::unique_ptr<ThreadAffinity> _threadAffinity;
+  std::unique_ptr<CoreAssignmentManager> _coreAssignmentManager;
 };
 
 // Convenience factory function for creating CpuAffinity instances
@@ -231,159 +231,159 @@ inline CpuAffinity::CpuAffinity(std::unique_ptr<ISystemInterface> systemInterfac
   // Create default implementations if not provided
   if (!systemInterface)
   {
-    systemInterface_ = createSystemInterface();
+    _systemInterface = createSystemInterface();
   }
   else
   {
-    systemInterface_ = std::move(systemInterface);
+    _systemInterface = std::move(systemInterface);
   }
 
   if (!cpuTopology)
   {
-    cpuTopology_ = std::make_shared<CpuTopology>(createSystemInterface());
+    _cpuTopology = std::make_shared<CpuTopology>(createSystemInterface());
   }
   else
   {
-    cpuTopology_ = std::move(cpuTopology);
+    _cpuTopology = std::move(cpuTopology);
   }
 
   if (!threadAffinity)
   {
-    threadAffinity_ = std::make_unique<ThreadAffinity>(createSystemInterface());
+    _threadAffinity = std::make_unique<ThreadAffinity>(createSystemInterface());
   }
   else
   {
-    threadAffinity_ = std::move(threadAffinity);
+    _threadAffinity = std::move(threadAffinity);
   }
 
   if (!coreAssignmentManager)
   {
-    coreAssignmentManager_ = std::make_unique<CoreAssignmentManager>(cpuTopology_);
+    _coreAssignmentManager = std::make_unique<CoreAssignmentManager>(_cpuTopology);
   }
   else
   {
-    coreAssignmentManager_ = std::move(coreAssignmentManager);
+    _coreAssignmentManager = std::move(coreAssignmentManager);
   }
 }
 
 inline bool CpuAffinity::pinToCore(int coreId)
 {
-  return threadAffinity_->pinCurrentThreadToCore(coreId);
+  return _threadAffinity->pinCurrentThreadToCore(coreId);
 }
 
 inline bool CpuAffinity::pinToCore(std::thread& thread, int coreId)
 {
-  return threadAffinity_->pinThreadToCore(thread, coreId);
+  return _threadAffinity->pinThreadToCore(thread, coreId);
 }
 
 inline bool CpuAffinity::setRealTimePriority(int priority)
 {
-  return threadAffinity_->setCurrentThreadPriority(priority);
+  return _threadAffinity->setCurrentThreadPriority(priority);
 }
 
 inline bool CpuAffinity::setRealTimePriority(std::thread& thread, int priority)
 {
-  return threadAffinity_->setThreadPriority(thread, priority);
+  return _threadAffinity->setThreadPriority(thread, priority);
 }
 
 inline int CpuAffinity::getNumCores()
 {
-  return cpuTopology_->getNumCores();
+  return _cpuTopology->getNumCores();
 }
 
 inline std::vector<int> CpuAffinity::getIsolatedCores()
 {
-  return cpuTopology_->getIsolatedCores();
+  return _cpuTopology->getIsolatedCores();
 }
 
 inline std::vector<int> CpuAffinity::getCurrentAffinity()
 {
-  return threadAffinity_->getCurrentThreadAffinity();
+  return _threadAffinity->getCurrentThreadAffinity();
 }
 
 inline bool CpuAffinity::disableCpuFrequencyScaling()
 {
-  return threadAffinity_->disableCpuFrequencyScaling();
+  return _threadAffinity->disableCpuFrequencyScaling();
 }
 
 inline bool CpuAffinity::enableCpuFrequencyScaling()
 {
-  return threadAffinity_->enableCpuFrequencyScaling();
+  return _threadAffinity->enableCpuFrequencyScaling();
 }
 
 inline CoreAssignment CpuAffinity::getRecommendedCoreAssignment(const CriticalComponentConfig& config)
 {
-  return coreAssignmentManager_->getRecommendedCoreAssignment(config);
+  return _coreAssignmentManager->getRecommendedCoreAssignment(config);
 }
 
 inline CoreAssignment CpuAffinity::getBasicCoreAssignment(int numCores, const std::vector<int>& isolatedCores)
 {
-  return coreAssignmentManager_->getBasicCoreAssignment(numCores, isolatedCores);
+  return _coreAssignmentManager->getBasicCoreAssignment(numCores, isolatedCores);
 }
 
 inline CoreAssignment CpuAffinity::getNumaAwareCoreAssignment(const CriticalComponentConfig& config)
 {
-  return coreAssignmentManager_->getNumaAwareCoreAssignment(config);
+  return _coreAssignmentManager->getNumaAwareCoreAssignment(config);
 }
 
 inline bool CpuAffinity::pinCriticalComponent(const std::string& component, const CoreAssignment& assignment)
 {
-  return coreAssignmentManager_->pinCriticalComponent(component, assignment);
+  return _coreAssignmentManager->pinCriticalComponent(component, assignment);
 }
 
 inline bool CpuAffinity::verifyCriticalCoreIsolation(const CoreAssignment& assignment)
 {
-  return coreAssignmentManager_->verifyCriticalCoreIsolation(assignment);
+  return _coreAssignmentManager->verifyCriticalCoreIsolation(assignment);
 }
 
 inline NumaTopology CpuAffinity::getNumaTopology()
 {
-  return cpuTopology_->getNumaTopology();
+  return _cpuTopology->getNumaTopology();
 }
 
 inline int CpuAffinity::getNumaNodeForCore(int coreId)
 {
-  return cpuTopology_->getNumaNodeForCore(coreId);
+  return _cpuTopology->getNumaNodeForCore(coreId);
 }
 
 inline bool CpuAffinity::pinToNumaNode(int nodeId)
 {
-  return threadAffinity_->setCurrentThreadNumaPolicy(nodeId);
+  return _threadAffinity->setCurrentThreadNumaPolicy(nodeId);
 }
 
 inline bool CpuAffinity::setMemoryPolicy(int nodeId)
 {
-  return threadAffinity_->setCurrentThreadNumaPolicy(nodeId);
+  return _threadAffinity->setCurrentThreadNumaPolicy(nodeId);
 }
 
 inline bool CpuAffinity::setupAndPinCriticalComponents(const CriticalComponentConfig& config)
 {
-  return coreAssignmentManager_->setupAndPinCriticalComponents(config);
+  return _coreAssignmentManager->setupAndPinCriticalComponents(config);
 }
 
 inline bool CpuAffinity::checkIsolatedCoreRequirements(int minRequiredCores)
 {
-  return coreAssignmentManager_->checkIsolatedCoreRequirements(minRequiredCores);
+  return _coreAssignmentManager->checkIsolatedCoreRequirements(minRequiredCores);
 }
 
 inline void CpuAffinity::demonstrateIsolatedCoreUsage()
 {
-  coreAssignmentManager_->demonstrateIsolatedCoreUsage();
+  _coreAssignmentManager->demonstrateIsolatedCoreUsage();
 }
 
 inline std::shared_ptr<CpuTopology> CpuAffinity::getCpuTopology() const
 {
-  return cpuTopology_;
+  return _cpuTopology;
 }
 
 inline ThreadAffinity& CpuAffinity::getThreadAffinity() const
 {
-  return *threadAffinity_;
+  return *_threadAffinity;
 }
 
 inline CoreAssignmentManager& CpuAffinity::getCoreAssignmentManager() const
 {
-  return *coreAssignmentManager_;
+  return *_coreAssignmentManager;
 }
 
 /**
@@ -393,24 +393,24 @@ class NumaAffinityGuard
 {
  public:
   explicit NumaAffinityGuard(CpuAffinity& cpuAffinity, int numaNodeId)
-      : cpuAffinity_(cpuAffinity), numaNodeId_(numaNodeId)
+      : _cpuAffinity(cpuAffinity), _numaNodeId(numaNodeId)
   {
-    originalAffinity_ = cpuAffinity_.getCurrentAffinity();
-    cpuAffinity_.pinToNumaNode(numaNodeId);
-    cpuAffinity_.setMemoryPolicy(numaNodeId);
+    _originalAffinity = _cpuAffinity.getCurrentAffinity();
+    _cpuAffinity.pinToNumaNode(numaNodeId);
+    _cpuAffinity.setMemoryPolicy(numaNodeId);
   }
 
   explicit NumaAffinityGuard(CpuAffinity& cpuAffinity, int coreId, int numaNodeId)
-      : cpuAffinity_(cpuAffinity), numaNodeId_(numaNodeId)
+      : _cpuAffinity(cpuAffinity), _numaNodeId(numaNodeId)
   {
-    originalAffinity_ = cpuAffinity_.getCurrentAffinity();
-    cpuAffinity_.pinToCore(coreId);
-    cpuAffinity_.setMemoryPolicy(numaNodeId);
+    _originalAffinity = _cpuAffinity.getCurrentAffinity();
+    _cpuAffinity.pinToCore(coreId);
+    _cpuAffinity.setMemoryPolicy(numaNodeId);
   }
 
   ~NumaAffinityGuard()
   {
-    if (restored_ || originalAffinity_.empty())
+    if (_restored || _originalAffinity.empty())
     {
       return;
     }
@@ -420,7 +420,7 @@ class NumaAffinityGuard
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
 
-    for (int coreId : originalAffinity_)
+    for (int coreId : _originalAffinity)
     {
       CPU_SET(coreId, &cpuset);
     }
@@ -433,17 +433,17 @@ class NumaAffinityGuard
 #endif
 #endif
 
-    restored_ = true;
+    _restored = true;
   }
 
   NumaAffinityGuard(const NumaAffinityGuard&) = delete;
   NumaAffinityGuard& operator=(const NumaAffinityGuard&) = delete;
 
  private:
-  CpuAffinity& cpuAffinity_;
-  std::vector<int> originalAffinity_;
-  int numaNodeId_;
-  bool restored_ = false;
+  CpuAffinity& _cpuAffinity;
+  std::vector<int> _originalAffinity;
+  int _numaNodeId;
+  bool _restored = false;
 };
 
 }  // namespace flox::performance

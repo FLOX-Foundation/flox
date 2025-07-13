@@ -76,7 +76,7 @@ class EventBus : public ISubsystem
 
   EventBus()
 #if FLOX_CPU_AFFINITY_ENABLED
-      : cpuAffinity_(performance::createCpuAffinity())
+      : _cpuAffinity(performance::createCpuAffinity())
 #endif
   {
   }
@@ -156,24 +156,27 @@ class EventBus : public ISubsystem
                 break;
             }
             
-            // Pin to appropriate core
             if (!targetCores.empty())
             {
-              int coreId = targetCores[0];  // Use first assigned core
-              bool pinned = threadCpuAffinity->pinToCore(coreId);
+              const auto coreId = targetCores[0];  // Use first assigned core
+              const auto pinned = threadCpuAffinity->pinToCore(coreId);
               
-              if (pinned && assignment.hasIsolatedCores)
-              {
-                // Check if we're using an isolated core
-                bool isIsolated = std::find(assignment.allIsolatedCores.begin(), 
-                                          assignment.allIsolatedCores.end(), coreId) 
-                                != assignment.allIsolatedCores.end();
-              }
-              
-              // Set real-time priority if enabled
               if (config.enableRealTimePriority)
               {
-                threadCpuAffinity->setRealTimePriority(config.realTimePriority);
+                auto priority = config.realTimePriority;
+
+                if (pinned && assignment.hasIsolatedCores)
+                {
+                  const auto isIsolated = std::find(assignment.allIsolatedCores.begin(),
+                                                    assignment.allIsolatedCores.end(), coreId)
+                                           != assignment.allIsolatedCores.end();
+                  if (isIsolated)
+                  {
+                    priority += config::ISOLATED_CORE_PRIORITY_BOOST;
+                  }
+                }
+
+                threadCpuAffinity->setRealTimePriority(priority);
               }
             }
           }
@@ -184,7 +187,7 @@ class EventBus : public ISubsystem
             if (!assignment.marketDataCores.empty())
             {
               threadCpuAffinity->pinToCore(assignment.marketDataCores[0]);
-              threadCpuAffinity->setRealTimePriority(90);
+              threadCpuAffinity->setRealTimePriority(config::FALLBACK_REALTIME_PRIORITY);
             }
           }
 #endif
@@ -306,13 +309,13 @@ class EventBus : public ISubsystem
   {
     ComponentType componentType = ComponentType::GENERAL;
     bool enableRealTimePriority = true;
-    int realTimePriority = 80;
+    int realTimePriority = config::DEFAULT_REALTIME_PRIORITY;
     bool enableNumaAwareness = true;
     bool preferIsolatedCores = true;
 
     AffinityConfig() = default;
 
-    AffinityConfig(ComponentType type, int priority = 80)
+    AffinityConfig(ComponentType type, int priority = config::DEFAULT_REALTIME_PRIORITY)
         : componentType(type), realTimePriority(priority) {}
   };
 #endif
@@ -334,11 +337,11 @@ class EventBus : public ISubsystem
 
     if (config.enableNumaAwareness)
     {
-      _coreAssignment = cpuAffinity_->getNumaAwareCoreAssignment(coreConfig);
+      _coreAssignment = _cpuAffinity->getNumaAwareCoreAssignment(coreConfig);
     }
     else
     {
-      _coreAssignment = cpuAffinity_->getRecommendedCoreAssignment(coreConfig);
+      _coreAssignment = _cpuAffinity->getRecommendedCoreAssignment(coreConfig);
     }
   }
 
@@ -351,7 +354,7 @@ class EventBus : public ISubsystem
   {
     _coreAssignment = assignment;
     // Set default affinity config for compatibility
-    _affinityConfig = AffinityConfig{ComponentType::GENERAL, 80};
+    _affinityConfig = AffinityConfig{ComponentType::GENERAL, config::DEFAULT_REALTIME_PRIORITY};
   }
 
   /**
@@ -390,19 +393,19 @@ class EventBus : public ISubsystem
     switch (componentType)
     {
       case ComponentType::MARKET_DATA:
-        config.realTimePriority = 90;  // Highest priority
+        config.realTimePriority = config::MARKET_DATA_PRIORITY;
         break;
       case ComponentType::EXECUTION:
-        config.realTimePriority = 85;  // Second highest
+        config.realTimePriority = config::EXECUTION_PRIORITY;
         break;
       case ComponentType::STRATEGY:
-        config.realTimePriority = 80;  // Third priority
+        config.realTimePriority = config::STRATEGY_PRIORITY;
         break;
       case ComponentType::RISK:
-        config.realTimePriority = 75;  // Fourth priority
+        config.realTimePriority = config::RISK_PRIORITY;
         break;
       case ComponentType::GENERAL:
-        config.realTimePriority = 70;           // Lower priority
+        config.realTimePriority = config::GENERAL_PRIORITY;
         config.enableRealTimePriority = false;  // Don't use RT priority for general
         break;
     }
@@ -412,7 +415,7 @@ class EventBus : public ISubsystem
     if (enablePerformanceOptimizations)
     {
       // Optionally disable frequency scaling for performance
-      cpuAffinity_->disableCpuFrequencyScaling();
+      _cpuAffinity->disableCpuFrequencyScaling();
     }
 
     return _coreAssignment.has_value();
@@ -429,7 +432,7 @@ class EventBus : public ISubsystem
       return false;
     }
 
-    return cpuAffinity_->verifyCriticalCoreIsolation(_coreAssignment.value());
+    return _cpuAffinity->verifyCriticalCoreIsolation(_coreAssignment.value());
   }
 #endif
 
@@ -443,7 +446,7 @@ class EventBus : public ISubsystem
   };
 
 #if FLOX_CPU_AFFINITY_ENABLED
-  std::unique_ptr<performance::CpuAffinity> cpuAffinity_;
+  std::unique_ptr<performance::CpuAffinity> _cpuAffinity;
   std::optional<performance::CoreAssignment> _coreAssignment;
   std::optional<AffinityConfig> _affinityConfig;
 #endif

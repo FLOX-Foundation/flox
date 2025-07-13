@@ -27,6 +27,11 @@ print_header() {
     echo -e "${BLUE}  FLOX CPU Affinity Performance Profiling${NC}"
     echo -e "${BLUE}================================================${NC}"
     echo
+    echo -e "${YELLOW}WARNING: This script should be run on an isolated machine${NC}"
+    echo -e "${YELLOW}with minimal background processes. CPU affinity benchmarks${NC}"
+    echo -e "${YELLOW}can show misleading results on busy/shared systems where${NC}"
+    echo -e "${YELLOW}affinity may actually decrease performance.${NC}"
+    echo
 }
 
 print_section() {

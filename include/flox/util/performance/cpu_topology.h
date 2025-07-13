@@ -110,10 +110,10 @@ class CpuTopology
   std::vector<int> getNonIsolatedCores() const;
 
  private:
-  std::unique_ptr<ISystemInterface> systemInterface_;
-  mutable std::optional<NumaTopology> cachedTopology_;
-  mutable std::optional<std::vector<int>> cachedIsolatedCores_;
-  mutable std::optional<int> cachedNumCores_;
+  std::unique_ptr<ISystemInterface> _systemInterface;
+  mutable std::optional<NumaTopology> _cachedTopology;
+  mutable std::optional<std::vector<int>> _cachedIsolatedCores;
+  mutable std::optional<int> _cachedNumCores;
 
   /**
      * @brief Parse NUMA node memory information
@@ -132,45 +132,45 @@ class CpuTopology
 
 // Inline implementations
 inline CpuTopology::CpuTopology(std::unique_ptr<ISystemInterface> systemInterface)
-    : systemInterface_(std::move(systemInterface))
+    : _systemInterface(std::move(systemInterface))
 {
 }
 
 inline int CpuTopology::getNumCores() const
 {
-  if (!cachedNumCores_)
+  if (!_cachedNumCores)
   {
-    cachedNumCores_ = systemInterface_->getNumCores();
+    _cachedNumCores = _systemInterface->getNumCores();
   }
-  return *cachedNumCores_;
+  return *_cachedNumCores;
 }
 
 inline std::vector<int> CpuTopology::getIsolatedCores() const
 {
-  if (!cachedIsolatedCores_)
+  if (!_cachedIsolatedCores)
   {
-    cachedIsolatedCores_ = systemInterface_->getIsolatedCores();
+    _cachedIsolatedCores = _systemInterface->getIsolatedCores();
   }
-  return *cachedIsolatedCores_;
+  return *_cachedIsolatedCores;
 }
 
 inline NumaTopology CpuTopology::getNumaTopology() const
 {
-  if (!cachedTopology_)
+  if (!_cachedTopology)
   {
-    cachedTopology_ = buildNumaTopology();
+    _cachedTopology = buildNumaTopology();
   }
-  return *cachedTopology_;
+  return *_cachedTopology;
 }
 
 inline int CpuTopology::getNumaNodeForCore(int coreId) const
 {
-  return systemInterface_->getNumaNodeForCore(coreId);
+  return _systemInterface->getNumaNodeForCore(coreId);
 }
 
 inline bool CpuTopology::isNumaAvailable() const
 {
-  return systemInterface_->isNumaAvailable();
+  return _systemInterface->isNumaAvailable();
 }
 
 inline std::vector<int> CpuTopology::getCoresForNumaNode(int nodeId) const
@@ -190,7 +190,7 @@ inline std::vector<int> CpuTopology::getCoresForNumaNode(int nodeId) const
 
 inline std::vector<int> CpuTopology::getAllCores() const
 {
-  int numCores = getNumCores();
+  const auto numCores = getNumCores();
   std::vector<int> allCores(numCores);
   std::iota(allCores.begin(), allCores.end(), 0);
   return allCores;
@@ -227,7 +227,7 @@ inline NumaTopology CpuTopology::buildNumaTopology() const
   }
 
   // Get NUMA nodes from system interface
-  auto numaNodes = systemInterface_->getNumaNodes();
+  auto numaNodes = _systemInterface->getNumaNodes();
 
   for (const auto& [nodeId, cores] : numaNodes)
   {
@@ -237,7 +237,7 @@ inline NumaTopology CpuTopology::buildNumaTopology() const
 
     // Get memory information for this node
     std::string memInfoPath = "/sys/devices/system/node/node" + std::to_string(nodeId) + "/meminfo";
-    auto memInfo = systemInterface_->readFile(memInfoPath);
+    auto memInfo = _systemInterface->readFile(memInfoPath);
 
     if (memInfo)
     {

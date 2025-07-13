@@ -15,12 +15,18 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 #include "cpu_topology.h"
 #include "thread_affinity.h"
 
 namespace flox::performance
 {
+
+constexpr std::string_view MARKET_DATA_COMPONENT = "marketData";
+constexpr std::string_view EXECUTION_COMPONENT = "execution";
+constexpr std::string_view STRATEGY_COMPONENT = "strategy";
+constexpr std::string_view RISK_COMPONENT = "risk";
 
 /**
  * @brief Core assignment for different system components
@@ -54,7 +60,7 @@ struct CriticalComponentConfig
 
   // Default constructor with sensible defaults
   CriticalComponentConfig()
-      : preferIsolatedCores(true), exclusiveIsolatedCores(true), allowSharedCriticalCores(false), minIsolatedForCritical(1), componentPriority({{"marketData", 0}, {"execution", 1}, {"strategy", 2}, {"risk", 3}})
+      : preferIsolatedCores(true), exclusiveIsolatedCores(true), allowSharedCriticalCores(false), minIsolatedForCritical(1), componentPriority({{std::string(MARKET_DATA_COMPONENT), 0}, {std::string(EXECUTION_COMPONENT), 1}, {std::string(STRATEGY_COMPONENT), 2}, {std::string(RISK_COMPONENT), 3}})
   {
   }
 };
@@ -134,7 +140,7 @@ class CoreAssignmentManager
   void demonstrateIsolatedCoreUsage();
 
  private:
-  std::shared_ptr<CpuTopology> cpuTopology_;
+  std::shared_ptr<CpuTopology> _cpuTopology;
 
   /**
      * @brief Distribute cores among components based on priority
@@ -178,14 +184,14 @@ class CoreAssignmentManager
 
 // Inline implementations
 inline CoreAssignmentManager::CoreAssignmentManager(std::shared_ptr<CpuTopology> cpuTopology)
-    : cpuTopology_(std::move(cpuTopology))
+    : _cpuTopology(std::move(cpuTopology))
 {
 }
 
 inline CoreAssignment CoreAssignmentManager::getRecommendedCoreAssignment(const CriticalComponentConfig& config)
 {
-  int numCores = cpuTopology_->getNumCores();
-  auto isolatedCores = cpuTopology_->getIsolatedCores();
+  const auto numCores = _cpuTopology->getNumCores();
+  auto isolatedCores = _cpuTopology->getIsolatedCores();
 
   // If we have enough isolated cores and prefer them, use NUMA-aware assignment
   if (config.preferIsolatedCores && isolatedCores.size() >= config.minIsolatedForCritical)
@@ -200,8 +206,8 @@ inline CoreAssignment CoreAssignmentManager::getRecommendedCoreAssignment(const 
 inline CoreAssignment CoreAssignmentManager::getNumaAwareCoreAssignment(const CriticalComponentConfig& config)
 {
   CoreAssignment assignment;
-  auto topology = cpuTopology_->getNumaTopology();
-  auto isolatedCores = cpuTopology_->getIsolatedCores();
+  auto topology = _cpuTopology->getNumaTopology();
+  auto isolatedCores = _cpuTopology->getIsolatedCores();
 
   assignment.hasIsolatedCores = !isolatedCores.empty();
   assignment.allIsolatedCores = isolatedCores;
@@ -217,7 +223,7 @@ inline CoreAssignment CoreAssignmentManager::getNumaAwareCoreAssignment(const Cr
             { return a.second < b.second; });
 
   std::vector<int> availableIsolated = isolatedCores;
-  std::vector<int> availableNonIsolated = cpuTopology_->getNonIsolatedCores();
+  auto availableNonIsolated = _cpuTopology->getNonIsolatedCores();
 
   // Assign cores to critical components based on priority
   for (const auto& [component, priority] : sortedComponents)
@@ -227,8 +233,7 @@ inline CoreAssignment CoreAssignmentManager::getNumaAwareCoreAssignment(const Cr
     if (config.exclusiveIsolatedCores && !availableIsolated.empty())
     {
       // Use isolated cores exclusively for critical tasks
-      int coresToAssign = std::min(static_cast<int>(availableIsolated.size()),
-                                   component == "marketData" ? 2 : 1);
+      int coresToAssign = std::min(static_cast<int>(availableIsolated.size()), 1);
 
       for (int i = 0; i < coresToAssign; ++i)
       {
@@ -241,8 +246,7 @@ inline CoreAssignment CoreAssignmentManager::getNumaAwareCoreAssignment(const Cr
     else if (!availableNonIsolated.empty())
     {
       // Use non-isolated cores
-      int coresToAssign = std::min(static_cast<int>(availableNonIsolated.size()),
-                                   component == "marketData" ? 2 : 1);
+      int coresToAssign = std::min(static_cast<int>(availableNonIsolated.size()), 1);
 
       for (int i = 0; i < coresToAssign; ++i)
       {
@@ -294,10 +298,10 @@ inline CoreAssignment CoreAssignmentManager::getBasicCoreAssignment(int numCores
   // Simple assignment strategy
   int coreIndex = 0;
 
-  // Market data gets first 2 cores (if available)
-  for (int i = 0; i < 2 && coreIndex < numCores; ++i, ++coreIndex)
+  // Market data gets first core
+  if (coreIndex < numCores)
   {
-    assignment.marketDataCores.push_back(coreIndex);
+    assignment.marketDataCores.push_back(coreIndex++);
   }
 
   // Execution gets next core
@@ -354,7 +358,7 @@ inline bool CoreAssignmentManager::pinCriticalComponent(const std::string& compo
 
 inline bool CoreAssignmentManager::verifyCriticalCoreIsolation(const CoreAssignment& assignment)
 {
-  auto isolatedCores = cpuTopology_->getIsolatedCores();
+  auto isolatedCores = _cpuTopology->getIsolatedCores();
 
   for (int coreId : assignment.criticalCores)
   {
@@ -393,7 +397,7 @@ inline bool CoreAssignmentManager::setupAndPinCriticalComponents(const CriticalC
 
 inline bool CoreAssignmentManager::checkIsolatedCoreRequirements(int minRequiredCores)
 {
-  auto isolatedCores = cpuTopology_->getIsolatedCores();
+  auto isolatedCores = _cpuTopology->getIsolatedCores();
   return isolatedCores.size() >= minRequiredCores;
 }
 
@@ -401,8 +405,8 @@ inline void CoreAssignmentManager::demonstrateIsolatedCoreUsage()
 {
   std::cout << "=== CPU Affinity and Isolated Core Usage Demonstration ===" << std::endl;
 
-  int numCores = cpuTopology_->getNumCores();
-  auto isolatedCores = cpuTopology_->getIsolatedCores();
+  const auto numCores = _cpuTopology->getNumCores();
+  auto isolatedCores = _cpuTopology->getIsolatedCores();
 
   std::cout << "Total CPU cores: " << numCores << std::endl;
   std::cout << "Isolated cores: ";
@@ -472,7 +476,7 @@ inline CoreAssignment CoreAssignmentManager::distributeCores(const std::vector<i
   // Assign cores based on priority
   for (const auto& [component, priority] : sortedComponents)
   {
-    int coresToAssign = component == "marketData" ? 2 : 1;
+    int coresToAssign = 1;  // All components get 1 core each
     std::vector<int> assignedCores;
 
     for (int i = 0; i < coresToAssign && coreIndex < cores.size(); ++i, ++coreIndex)
@@ -494,19 +498,19 @@ inline CoreAssignment CoreAssignmentManager::distributeCores(const std::vector<i
 
 inline void CoreAssignmentManager::assignCoresTo(CoreAssignment& assignment, const std::string& component, const std::vector<int>& cores)
 {
-  if (component == "marketData")
+  if (component == MARKET_DATA_COMPONENT)
   {
     assignment.marketDataCores = cores;
   }
-  else if (component == "execution")
+  else if (component == EXECUTION_COMPONENT)
   {
     assignment.executionCores = cores;
   }
-  else if (component == "strategy")
+  else if (component == STRATEGY_COMPONENT)
   {
     assignment.strategyCores = cores;
   }
-  else if (component == "risk")
+  else if (component == RISK_COMPONENT)
   {
     assignment.riskCores = cores;
   }
@@ -514,19 +518,19 @@ inline void CoreAssignmentManager::assignCoresTo(CoreAssignment& assignment, con
 
 inline std::vector<int> CoreAssignmentManager::getCoresFor(const CoreAssignment& assignment, const std::string& component)
 {
-  if (component == "marketData")
+  if (component == MARKET_DATA_COMPONENT)
   {
     return assignment.marketDataCores;
   }
-  else if (component == "execution")
+  else if (component == EXECUTION_COMPONENT)
   {
     return assignment.executionCores;
   }
-  else if (component == "strategy")
+  else if (component == STRATEGY_COMPONENT)
   {
     return assignment.strategyCores;
   }
-  else if (component == "risk")
+  else if (component == RISK_COMPONENT)
   {
     return assignment.riskCores;
   }
