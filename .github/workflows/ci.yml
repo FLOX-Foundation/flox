@@ -36,7 +36,7 @@ jobs:
         cmake --build benchmark-build -j$(nproc)
         sudo cmake --install benchmark-build
 
-    - name: Configure project
+    - name: Configure project (no affinity)
       run: |
         cmake -B build \
               -DCMAKE_CXX_COMPILER=g++-13 \
@@ -45,13 +45,34 @@ jobs:
               -DENABLE_BENCHMARK=ON \
               -DENABLE_DEMO=ON
 
-    - name: Build project
+    - name: Build project (no affinity)
       run: cmake --build build -j$(nproc)
 
-    - name: Run all tests and demo
+    - name: Run all tests and demo (no affinity)
       run: |
         ctest --output-on-failure --test-dir build
         ./build/demo/flox_demo
 
-    - name: Run benchmarks
+    - name: Run benchmarks (no affinity)
+      run: ./scripts/run-benchmarks.sh build/benchmarks
+
+    - name: Configure project (with affinity)
+      run: |
+        cmake -B build \
+              -DCMAKE_CXX_COMPILER=g++-13 \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DENABLE_TESTS=ON \
+              -DENABLE_BENCHMARK=ON \
+              -DENABLE_DEMO=ON \
+              -DENABLE_CPU_AFFINITY=ON
+
+    - name: Build project (with affinity)
+      run: cmake --build build -j$(nproc)
+
+    - name: Run all tests and demo (with affinity)
+      run: |
+        ctest --output-on-failure --test-dir build
+        ./build/demo/flox_demo
+
+    - name: Run benchmarks (with affinity)
       run: ./scripts/run-benchmarks.sh build/benchmarks
