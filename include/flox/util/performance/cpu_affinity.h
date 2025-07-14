@@ -9,13 +9,13 @@
 
 #pragma once
 
-#include <iostream>
 #include <memory>
 #include <thread>
-#include "core_assignment.h"
-#include "cpu_topology.h"
-#include "system_interface.h"
-#include "thread_affinity.h"
+
+#include "flox/util/performance/core_assignment.h"
+#include "flox/util/performance/cpu_topology.h"
+#include "flox/util/performance/system_interface.h"
+#include "flox/util/performance/thread_affinity.h"
 
 namespace flox::performance
 {

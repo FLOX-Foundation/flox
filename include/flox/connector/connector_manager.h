@@ -10,11 +10,10 @@
 #pragma once
 
 #include "flox/connector/abstract_exchange_connector.h"
+#include "flox/log/log.h"
 
-#include <iostream>
 #include <map>
 #include <memory>
-#include <vector>
 
 namespace flox
 {
@@ -33,7 +32,7 @@ class ConnectorManager
   {
     for (auto& [symbol, connector] : connectors)
     {
-      std::cout << "[ConnectorManager] starting: " << symbol << std::endl;
+      FLOX_LOG("[ConnectorManager] starting: " << symbol);
       connector->setCallbacks([onBookUpdate = std::move(onBookUpdate)](const BookUpdateEvent& update) mutable
                               { onBookUpdate(update); },
                               [onTrade = std::move(onTrade)](const TradeEvent& trade) mutable

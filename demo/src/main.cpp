@@ -7,37 +7,38 @@
  * license information.
  */
 
+#include "flox/log/log.h"
 #define NO_COUT 1
 
 #include "demo/demo_builder.h"
 #include "demo/latency_collector.h"
 
 #include <chrono>
-#include <iostream>
 #include <thread>
 
 demo::LatencyCollector collector;
 
 int main()
 {
-#if NO_COUT
-  std::cout.setstate(std::ios::badbit);
-#endif
-
   demo::EngineConfig cfg{};
   demo::DemoBuilder builder(cfg);
   auto engine = builder.build();
+
+#if NO_COUT
+  FLOX_LOG_OFF();
+#endif
+
   engine->start();
 
-  std::this_thread::sleep_for(std::chrono::seconds(90));
+  std::this_thread::sleep_for(std::chrono::seconds(30));
 
   engine->stop();
 
 #if NO_COUT
-  std::cout.clear();  // Restore cout
+  FLOX_LOG_ON();
 #endif
 
-  std::cout << "demo finished" << std::endl;
+  FLOX_LOG("demo finished");
 
   collector.report();
 }

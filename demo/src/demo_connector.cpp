@@ -57,7 +57,7 @@ void DemoConnector::run()
       spikeActive = true;
       spikeSteps = 10;
       lastSpike = now;
-      std::cout << "[demo] price spike starting\n";
+      FLOX_LOG("[demo] price spike starting");
     }
 
     if (spikeActive && spikeSteps > 0)

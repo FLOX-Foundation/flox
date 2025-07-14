@@ -32,8 +32,12 @@ createOptimalBookUpdateBus(bool enablePerformanceOptimizations = false)
 {
   auto bus = std::make_unique<BookUpdateBus>();
 #if FLOX_CPU_AFFINITY_ENABLED
-  [[maybe_unused]] bool success = bus->setupOptimalConfiguration(BookUpdateBus::ComponentType::MARKET_DATA,
-                                                                 enablePerformanceOptimizations);
+  bool success = bus->setupOptimalConfiguration(BookUpdateBus::ComponentType::MARKET_DATA,
+                                                enablePerformanceOptimizations);
+  if (!success)
+  {
+    FLOX_LOG_WARN("BookUpdateBus affinity setup failed, continuing with default configuration");
+  }
 #endif
   return bus;
 }

@@ -10,14 +10,13 @@
 #pragma once
 
 #include <algorithm>
-#include <iostream>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 #include "cpu_topology.h"
+#include "flox/log/log.h"
 #include "thread_affinity.h"
 
 namespace flox::performance
@@ -377,7 +376,7 @@ inline bool CoreAssignmentManager::setupAndPinCriticalComponents(const CriticalC
 
   if (!verifyCriticalCoreIsolation(assignment))
   {
-    std::cerr << "Warning: Not all critical cores are isolated" << std::endl;
+    FLOX_LOG_WARN("Warning: Not all critical cores are isolated");
   }
 
   // Set up thread affinity for all components
@@ -387,7 +386,7 @@ inline bool CoreAssignmentManager::setupAndPinCriticalComponents(const CriticalC
   {
     if (!pinCriticalComponent(component, assignment))
     {
-      std::cerr << "Failed to pin component: " << component << std::endl;
+      FLOX_LOG_WARN("Failed to pin component: " << component);
       success = false;
     }
   }
@@ -403,57 +402,51 @@ inline bool CoreAssignmentManager::checkIsolatedCoreRequirements(int minRequired
 
 inline void CoreAssignmentManager::demonstrateIsolatedCoreUsage()
 {
-  std::cout << "=== CPU Affinity and Isolated Core Usage Demonstration ===" << std::endl;
+  FLOX_LOG("=== CPU Affinity and Isolated Core Usage Demonstration ===");
 
   const auto numCores = _cpuTopology->getNumCores();
   auto isolatedCores = _cpuTopology->getIsolatedCores();
 
-  std::cout << "Total CPU cores: " << numCores << std::endl;
-  std::cout << "Isolated cores: ";
+  FLOX_LOG("Total CPU cores: " << numCores);
+  FLOX_LOG("Isolated cores: ");
   for (int core : isolatedCores)
   {
-    std::cout << core << " ";
+    FLOX_LOG(core << " ");
   }
-  std::cout << std::endl;
 
   CriticalComponentConfig config;
   auto assignment = getNumaAwareCoreAssignment(config);
 
-  std::cout << "\nRecommended core assignment:" << std::endl;
-  std::cout << "Market Data cores: ";
+  FLOX_LOG("\nRecommended core assignment:");
+  FLOX_LOG("Market Data cores: ");
   for (int core : assignment.marketDataCores)
   {
-    std::cout << core << " ";
+    FLOX_LOG(core << " ");
   }
-  std::cout << std::endl;
 
-  std::cout << "Execution cores: ";
+  FLOX_LOG("Execution cores: ");
   for (int core : assignment.executionCores)
   {
-    std::cout << core << " ";
+    FLOX_LOG(core << " ");
   }
-  std::cout << std::endl;
 
-  std::cout << "Strategy cores: ";
+  FLOX_LOG("Strategy cores: ");
   for (int core : assignment.strategyCores)
   {
-    std::cout << core << " ";
+    FLOX_LOG(core << " ");
   }
-  std::cout << std::endl;
 
-  std::cout << "Risk cores: ";
+  FLOX_LOG("Risk cores: ");
   for (int core : assignment.riskCores)
   {
-    std::cout << core << " ";
+    FLOX_LOG(core << " ");
   }
-  std::cout << std::endl;
 
-  std::cout << "General cores: ";
+  FLOX_LOG("General cores: ");
   for (int core : assignment.generalCores)
   {
-    std::cout << core << " ";
+    FLOX_LOG(core << " ");
   }
-  std::cout << std::endl;
 }
 
 inline CoreAssignment CoreAssignmentManager::distributeCores(const std::vector<int>& availableCores, const CriticalComponentConfig& config)

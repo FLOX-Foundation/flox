@@ -20,10 +20,11 @@ enum class OverflowPolicy
 
 struct ILogger
 {
+  virtual ~ILogger() = default;
+
   virtual void info(std::string_view msg) = 0;
   virtual void warn(std::string_view msg) = 0;
   virtual void error(std::string_view msg) = 0;
-  virtual ~ILogger() = default;
 };
 
 }  // namespace flox

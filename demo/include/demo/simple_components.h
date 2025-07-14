@@ -23,7 +23,6 @@
 #include "flox/validation/abstract_order_validator.h"
 
 #include <chrono>
-#include <iostream>
 #include <random>
 #include <string>
 
@@ -39,43 +38,43 @@ class ConsoleExecutionTracker final : public IExecutionTracker
 
   void onOrderSubmitted(const Order& order, std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] submitted " << order.id << " at " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] submitted " << order.id << " at " << ts.time_since_epoch().count());
   }
   void onOrderAccepted(const Order& order, std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] accepted " << order.id << " at " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] accepted " << order.id << " at " << ts.time_since_epoch().count());
   }
 
   void onOrderPartiallyFilled(const Order& order, Quantity qty,
                               std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] partial fill " << order.id << " qty=" << qty.toDouble()
-              << " at " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] partial fill " << order.id << " qty=" << qty.toDouble()
+                                       << " at " << ts.time_since_epoch().count());
   }
   void onOrderFilled(const Order& order, std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] filled " << order.id << " after " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] filled " << order.id << " after " << ts.time_since_epoch().count());
   }
   void onOrderCanceled(const Order& order, std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] canceled " << order.id << " at " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] canceled " << order.id << " at " << ts.time_since_epoch().count());
   }
 
   void onOrderExpired(const Order& order, std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] expired " << order.id << " at " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] expired " << order.id << " at " << ts.time_since_epoch().count());
   }
   void onOrderRejected(const Order& order, const std::string& reason,
                        std::chrono::steady_clock::time_point) override
   {
-    std::cout << "[tracker] rejected " << order.id << " reason=" << reason << '\n';
+    FLOX_LOG("[tracker] rejected " << order.id << " reason=" << reason);
   }
 
   void onOrderReplaced(const Order& oldOrder, const Order& newOrder,
                        std::chrono::steady_clock::time_point ts) override
   {
-    std::cout << "[tracker] replaced old=" << oldOrder.id << " new=" << newOrder.id
-              << " at " << ts.time_since_epoch().count() << '\n';
+    FLOX_LOG("[tracker] replaced old=" << oldOrder.id << " new=" << newOrder.id
+                                       << " at " << ts.time_since_epoch().count());
   }
 };
 
@@ -89,7 +88,7 @@ class SimplePnLTracker final : public IPnLTracker
   {
     double value = order.price.toDouble() * order.quantity.toDouble();
     _pnl += (order.side == Side::BUY ? -value : value);
-    std::cout << "[pnl] " << _pnl << '\n';
+    FLOX_LOG("[pnl] " << _pnl);
   }
 
  private:
@@ -102,7 +101,7 @@ class StdoutStorageSink final : public IStorageSink
   void start() override {}
   void stop() override {}
 
-  void store(const Order& order) override { std::cout << "[storage] order " << order.id << '\n'; }
+  void store(const Order& order) override { FLOX_LOG("[storage] order " << order.id); }
 };
 
 class SimpleOrderValidator final : public IOrderValidator
@@ -173,7 +172,7 @@ class SimpleRiskManager final : public IRiskManager
 
     if (dist(rng) < 0.05)
     {
-      std::cout << "[risk] rejected order id=" << order.id << " (random)\n";
+      FLOX_LOG("[risk] rejected order id=" << order.id << " (random)");
       return false;
     }
 
@@ -196,48 +195,48 @@ class SimplePositionManager : public IPositionManager
 
   void onOrderSubmitted(const Order& order) override
   {
-    std::cout << "[position] order submitted: id=" << order.id << '\n';
+    FLOX_LOG("[position] order submitted: id=" << order.id);
   }
 
   void onOrderAccepted(const Order& order) override
   {
-    std::cout << "[position] order accepted: id=" << order.id << '\n';
+    FLOX_LOG("[position] order accepted: id=" << order.id);
   }
 
   void onOrderPartiallyFilled(const Order& order, Quantity qty) override
   {
-    std::cout << "[position] order partially filled: id=" << order.id
-              << ", qty=" << qty.toDouble() << '\n';
+    FLOX_LOG("[position] order partially filled: id=" << order.id
+                                                      << ", qty=" << qty.toDouble());
     update(order, qty);
   }
 
   void onOrderFilled(const Order& order) override
   {
-    std::cout << "[position] order filled: id=" << order.id
-              << ", qty=" << order.quantity.toDouble() << '\n';
+    FLOX_LOG("[position] order filled: id=" << order.id
+                                            << ", qty=" << order.quantity.toDouble());
 
     update(order, order.quantity);
   }
 
   void onOrderCanceled(const Order& order) override
   {
-    std::cout << "[position] order canceled: id=" << order.id << '\n';
+    FLOX_LOG("[position] order canceled: id=" << order.id);
   }
 
   void onOrderExpired(const Order& order) override
   {
-    std::cout << "[position] order expired: id=" << order.id << '\n';
+    FLOX_LOG("[position] order expired: id=" << order.id);
   }
 
   void onOrderRejected(const Order& order, const std::string& reason) override
   {
-    std::cout << "[position] order rejected: id=" << order.id << " reason: " << reason << '\n';
+    FLOX_LOG("[position] order rejected: id=" << order.id << " reason: " << reason);
   }
 
   void onOrderReplaced(const Order& oldOrder, const Order& newOrder) override
   {
-    std::cout << "[position] order replaced: old_id=" << oldOrder.id
-              << ", new_id=" << newOrder.id << '\n';
+    FLOX_LOG("[position] order replaced: old_id=" << oldOrder.id
+                                                  << ", new_id=" << newOrder.id);
   }
 
   Quantity getPosition(SymbolId symbol) const override
@@ -251,7 +250,7 @@ class SimplePositionManager : public IPositionManager
     {
       if (!_positions[i].isZero())
       {
-        std::cout << "Symbol " << i << ": " << _positions[i].toDouble() << "\n";
+        FLOX_LOG("Symbol " << i << ": " << _positions[i].toDouble() << "\n");
       }
     }
   }

@@ -54,14 +54,14 @@ std::unique_ptr<Engine> DemoBuilder::build()
   auto cpuAffinity = createCpuAffinity();
   auto assignment = cpuAffinity->getNumaAwareCoreAssignment(config);
 
-  std::cout << "[DemoBuilder] ✓ CPU affinity configured for high-performance workload:" << std::endl;
-  std::cout << "  - Market Data cores: " << assignment.marketDataCores.size() << std::endl;
-  std::cout << "  - Execution cores: " << assignment.executionCores.size() << std::endl;
-  std::cout << "  - Strategy cores: " << assignment.strategyCores.size() << std::endl;
-  std::cout << "  - Risk cores: " << assignment.riskCores.size() << std::endl;
-  std::cout << "  - Using isolated cores: " << (assignment.hasIsolatedCores ? "Yes" : "No") << std::endl;
+  FLOX_LOG("[DemoBuilder] ✓ CPU affinity configured for high-performance workload:");
+  FLOX_LOG("  - Market Data cores: " << assignment.marketDataCores.size());
+  FLOX_LOG("  - Execution cores: " << assignment.executionCores.size());
+  FLOX_LOG("  - Strategy cores: " << assignment.strategyCores.size());
+  FLOX_LOG("  - Risk cores: " << assignment.riskCores.size());
+  FLOX_LOG("  - Using isolated cores: " << (assignment.hasIsolatedCores ? "Yes" : "No"));
 #else
-  std::cout << "[DemoBuilder] ✓ CPU affinity disabled (ENABLE_CPU_AFFINITY=OFF)" << std::endl;
+  FLOX_LOG("[DemoBuilder] ✓ CPU affinity disabled (ENABLE_CPU_AFFINITY=OFF)");
 #endif
 
   std::vector<std::shared_ptr<IStrategy>> strategies;

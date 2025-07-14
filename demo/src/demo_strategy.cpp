@@ -11,7 +11,6 @@
 #include "demo/latency_collector.h"
 
 #include <chrono>
-#include <iostream>
 
 namespace demo
 {
@@ -23,12 +22,12 @@ DemoStrategy::DemoStrategy(SymbolId symbol, OrderExecutionBus& execBus)
 
 void DemoStrategy::start()
 {
-  std::cout << "[strategy " << _symbol << "] start" << std::endl;
+  FLOX_LOG("[strategy " << _symbol << "] start");
 }
 
 void DemoStrategy::stop()
 {
-  std::cout << "[strategy " << _symbol << "] stop" << std::endl;
+  FLOX_LOG("[strategy " << _symbol << "] stop");
 }
 
 void DemoStrategy::onTrade(const TradeEvent& ev)
@@ -54,22 +53,22 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
 
     if (_killSwitch.isTriggered())
     {
-      std::cout << "[kill] strategy " << _symbol
-                << " blocked by kill switch"
-                << ", reason: " << _killSwitch.reason() << "\n";
+      FLOX_LOG("[kill] strategy " << _symbol
+                                  << " blocked by kill switch"
+                                  << ", reason: " << _killSwitch.reason());
       return;
     }
 
     std::string reason;
     if (!_validator.validate(order, reason))
     {
-      std::cout << "[strategy " << _symbol << "] order rejected: " << reason << '\n';
+      FLOX_LOG("[strategy " << _symbol << "] order rejected: " << reason);
       return;
     }
 
     if (!_riskManager.allow(order))
     {
-      std::cout << "[risk] strategy " << _symbol << " rejected order id=" << order.id << '\n';
+      FLOX_LOG("[risk] strategy " << _symbol << " rejected order id=" << order.id);
       return;
     }
   }

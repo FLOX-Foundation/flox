@@ -14,9 +14,10 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <numeric>
 #include <string_view>
+
+#include "flox/log/log.h"
 
 namespace demo
 {
@@ -63,12 +64,14 @@ class LatencyCollector
       int64_t p95 = sorted[(n * 95) / 100];
       int64_t max = sorted[n - 1];
 
-      std::cout << "[latency] " << Labels[i]
-                << " | count=" << n
-                << " mean=" << mean << "ns"
-                << " p50=" << p50 << "ns"
-                << " p95=" << p95 << "ns"
-                << " max=" << max << "ns\n";
+      FLOX_LOG(
+          "[latency] "
+          << Labels[i]
+          << " | count=" << n
+          << " mean=" << mean << "ns"
+          << " p50=" << p50 << "ns"
+          << " p95=" << p95 << "ns"
+          << " max=" << max << "ns");
     }
   }
 

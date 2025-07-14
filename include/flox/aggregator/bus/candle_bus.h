@@ -31,8 +31,13 @@ inline std::unique_ptr<CandleBus> createOptimalCandleBus(bool enablePerformanceO
 {
   auto bus = std::make_unique<CandleBus>();
 #if FLOX_CPU_AFFINITY_ENABLED
-  [[maybe_unused]] bool success = bus->setupOptimalConfiguration(CandleBus::ComponentType::MARKET_DATA,
-                                                                 enablePerformanceOptimizations);
+  bool success = bus->setupOptimalConfiguration(CandleBus::ComponentType::MARKET_DATA,
+                                                enablePerformanceOptimizations);
+  if (!success)
+  {
+    FLOX_LOG_WARN("CandleBus affinity setup failed, continuing with default configuration");
+  }
+
 #endif
   return bus;
 }
