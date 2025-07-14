@@ -21,8 +21,8 @@
 using namespace flox;
 using namespace std::chrono_literals;
 
-#ifndef USE_SYNC_MARKET_BUS
-#error "Test requires USE_SYNC_ORDER_BUS to be defined"
+#ifndef USE_SYNC_BOOK_UPDATE_BUS
+#error "Test requires USE_SYNC_BOOK_UPDATE_BUS to be defined"
 #endif
 
 namespace

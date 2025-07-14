@@ -3,7 +3,7 @@
 `BookUpdateBus` is a fan-out event channel for `BookUpdateEvent` messages, wrapped in pooled `Handle`s for zero-allocation delivery across components such as order books, strategies, and analytics.
 
 ```cpp
-#ifdef USE_SYNC_MARKET_BUS
+#ifdef USE_SYNC_BOOK_UPDATE_BUS
 using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, SyncPolicy<...>>;
 #else
 using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, AsyncPolicy<...>>;
@@ -19,7 +19,7 @@ using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, AsyncPolicy<...>>;
 | Aspect  | Details                                                                 |
 | ------- | ----------------------------------------------------------------------- |
 | Payload | Uses `pool::Handle<BookUpdateEvent>` for memory reuse and ref-counting. |
-| Mode    | `SyncPolicy` or `AsyncPolicy`, toggled by `USE_SYNC_MARKET_BUS`.        |
+| Mode    | `SyncPolicy` or `AsyncPolicy`, toggled by `USE_SYNC_BOOK_UPDATE_BUS`.   |
 | Target  | Consumed by order book processors, strategies, and market monitors.     |
 
 ## Notes
