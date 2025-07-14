@@ -27,6 +27,7 @@ nav:
           - Subsystem: components/engine/abstract_subsystem.md
           - MarketDataSubscriber: components/engine/abstract_market_data_subscriber.md
           - Strategy: components/strategy/abstract_strategy.md
+          - AbstractSubscriber: components/engine/abstract_subscriber.md
       - Trading Interfaces:
           - OrderExecutor: components/execution/abstract_executor.md
           - OrderExecutionListener: components/execution/abstract_execution_listener.md
@@ -40,6 +41,8 @@ nav:
       - Market-Data Interfaces:
           - OrderBook: components/book/abstract_order_book.md
           - ExchangeConnector: components/connector/exchange_connector.md
+      - Logging:
+          - AbstractLogger: components/log/abstract_logger.md
 
   - Implementation Layer:
       - Engine Core:
@@ -48,7 +51,6 @@ nav:
           - SymbolRegistry: components/engine/symbol_registry.md
           - TickBarrier: components/engine/tick_barrier.md
           - TickGuard: components/engine/tick_guard.md
-          - AbstractSubscriber: components/engine/abstract_subscriber.md
           - EventDispatcher: components/engine/event_dispatcher.md
 
       - Market-Data:
@@ -82,9 +84,21 @@ nav:
           - ConnectorManager: components/connector/connector_manager.md
           - ConnectorFactory: components/connector/connector_factory.md
 
+      - Logging:
+          - Log macros: components/log/log.md
+          - AtomicLoggger: components/log/atomic_logger.md
+          - ConsoleLoggger: components/log/console_logger.md
+
       - Utilities:
           - Decimal: components/util/base/decimal.md
           - SPSCQueue: components/util/concurrency/spsc_queue.md
           - RefCountable: components/util/memory/ref_countable.md
           - Pool: components/util/memory/pool.md
           - Common Types: components/common.md
+      - Internal:
+          - Affinity:
+              - SystemInterface: components/util/performance/system_interface.md
+              - CoreAssignment: components/util/performance/core_assignment.md
+              - CpuAffinity: components/util/performance/cpu_affinity.md
+              - ThreadAffinity: components/util/performance/thread_affinity.md
+              - CpuTopology: components/util/performance/cpu_topology.md

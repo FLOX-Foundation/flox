@@ -15,9 +15,10 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include "cpu_topology.h"
+
 #include "flox/log/log.h"
-#include "thread_affinity.h"
+#include "flox/util/performance/cpu_topology.h"
+#include "flox/util/performance/thread_affinity.h"
 
 namespace flox::performance
 {
