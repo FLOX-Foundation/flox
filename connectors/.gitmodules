@@ -1,0 +1,12 @@
+[submodule "external/flox"]
+	path = external/flox
+	url = https://github.com/flox-foundation/flox
+[submodule "external/ixwebsocket"]
+	path = external/ixwebsocket
+	url = https://github.com/machinezone/IXWebSocket
+[submodule "external/simdjson"]
+	path = external/simdjson
+	url = https://github.com/simdjson/simdjson
+[submodule "external/googletest"]
+	path = external/googletest
+	url = https://github.com/google/googletest
