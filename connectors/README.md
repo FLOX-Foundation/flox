@@ -1,3 +1,5 @@
+[![CI](https://github.com/flox-foundation/flox-connectors/actions/workflows/ci.yml/badge.svg)](https://github.com/flox-foundation/flox-connectors/actions)
+
 # flox-connectors
 
 Open-source exchange connectors for the **Flox** engine.
