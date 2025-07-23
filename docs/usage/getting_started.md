@@ -60,14 +60,14 @@ Flox supports optional components controlled via CMake flags:
 
 | Option             | Default | Description                |
 | ------------------ | ------- | -------------------------- |
-| `ENABLE_TESTS`     | `OFF`   | Build unit tests           |
-| `ENABLE_BENCHMARK` | `OFF`   | Build benchmark binaries   |
-| `ENABLE_DEMO`      | `OFF`   | Build the demo application |
+| `FLOX_ENABLE_TESTS`     | `OFF`   | Build unit tests           |
+| `FLOX_ENABLE_BENCHMARKS` | `OFF`   | Build benchmark binaries   |
+| `FLOX_ENABLE_DEMO`      | `OFF`   | Build the demo application |
 
 To enable them:
 
 ```bash
-cmake .. -DENABLE_TESTS=ON -DENABLE_BENCHMARK=ON -DENABLE_DEMO=ON
+cmake .. -DFLOX_ENABLE_TESTS=ON -DFLOX_ENABLE_BENCHMARKS=ON -DFLOX_ENABLE_DEMO=ON
 ```
 
 ## Run Tests

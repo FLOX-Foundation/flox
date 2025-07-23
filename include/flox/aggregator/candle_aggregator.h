@@ -40,6 +40,7 @@ class CandleAggregator : public ISubsystem, public IMarketDataSubscriber
   struct PartialCandle
   {
     Candle candle;
+    InstrumentType instrument = InstrumentType::Spot;
     bool initialized = false;
   };
 
@@ -47,7 +48,7 @@ class CandleAggregator : public ISubsystem, public IMarketDataSubscriber
   CandleBus* _bus = nullptr;
   std::vector<std::optional<PartialCandle>> _candles;
 
-  std::chrono::steady_clock::time_point alignToInterval(std::chrono::steady_clock::time_point tp);
+  TimePoint alignToInterval(TimePoint tp);
 };
 
 }  // namespace flox

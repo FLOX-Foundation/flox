@@ -80,7 +80,10 @@ TEST(TickBarrierTest, StressTestWithManyThreads)
   }
 
   barrier.wait();
-  for (auto& t : threads) t.join();
+  for (auto& t : threads)
+  {
+    t.join();
+  }
 
   EXPECT_EQ(counter.load(), threadCount);
 }

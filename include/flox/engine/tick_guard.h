@@ -22,7 +22,9 @@ class TickGuard
   ~TickGuard()
   {
     if (_barrier)
+    {
       _barrier->complete();
+    }
   }
 
   TickGuard(const TickGuard&) = delete;

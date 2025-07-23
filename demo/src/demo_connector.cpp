@@ -24,16 +24,22 @@ DemoConnector::DemoConnector(const std::string& id, SymbolId symbol, BookUpdateB
 void DemoConnector::start()
 {
   if (_running.exchange(true))
+  {
     return;
+  }
   _thread = std::thread(&DemoConnector::run, this);
 }
 
 void DemoConnector::stop()
 {
   if (!_running.exchange(false))
+  {
     return;
+  }
   if (_thread.joinable())
+  {
     _thread.join();
+  }
 }
 
 void DemoConnector::run()

@@ -35,7 +35,7 @@ struct TickLogEntry
 {
   uint64_t tickId;
   SubscriberId subscriberId;
-  std::chrono::steady_clock::time_point timestamp;
+  TimePoint timestamp;
 };
 
 TEST(SyncMarketDataBusTest, DetectsAsyncBehaviorWithTimingGaps)
@@ -93,7 +93,7 @@ TEST(SyncMarketDataBusTest, DetectsAsyncBehaviorWithTimingGaps)
 
   bus.stop();
 
-  std::map<uint64_t, std::vector<std::chrono::steady_clock::time_point>> timestampsByTick;
+  std::map<uint64_t, std::vector<TimePoint>> timestampsByTick;
 
   for (const auto& entry : tickLog)
   {

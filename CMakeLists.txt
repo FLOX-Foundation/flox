@@ -5,9 +5,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
+option(FLOX_ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
 
-if(ENABLE_DEV_SETUP)
+if(FLOX_ENABLE_DEV_SETUP)
   message(STATUS "Developer setup enabled")
 
   set(PRECOMMIT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/scripts/pre-commit")
@@ -48,8 +48,8 @@ target_compile_options(${FLOX_SYNC} PUBLIC
 # WARNING: CPU affinity can decrease performance on busy/shared systems.
 # It prevents OS scheduler optimization and should only be used on isolated,
 # dedicated hardware where you control the entire system workload.
-option(ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" OFF)
-if(ENABLE_CPU_AFFINITY)
+option(FLOX_ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" OFF)
+if(FLOX_ENABLE_CPU_AFFINITY)
   message(STATUS "CPU affinity features enabled")
   target_compile_definitions(${FLOX} PUBLIC FLOX_CPU_AFFINITY_ENABLED=1)
   target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_CPU_AFFINITY_ENABLED=1)
@@ -74,20 +74,20 @@ else()
   target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
 endif()
 
-option(ENABLE_BENCHMARK "Enable benchmarks" OFF)
-if (ENABLE_BENCHMARK)
+option(FLOX_ENABLE_BENCHMARKS "Enable benchmarks" OFF)
+if (FLOX_ENABLE_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
 
 
-option(ENABLE_TESTS "Enable tests" OFF)
-if (ENABLE_TESTS)
+option(FLOX_ENABLE_TESTS "Enable tests" OFF)
+if (FLOX_ENABLE_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
 
-option(ENABLE_DEMO "Build demo application" OFF)
-if (ENABLE_DEMO)
+option(FLOX_ENABLE_DEMO "Build demo application" OFF)
+if (FLOX_ENABLE_DEMO)
   add_subdirectory(demo)
 endif()
 

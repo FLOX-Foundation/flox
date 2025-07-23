@@ -41,9 +41,9 @@ jobs:
         cmake -B build \
               -DCMAKE_CXX_COMPILER=g++-13 \
               -DCMAKE_BUILD_TYPE=Debug \
-              -DENABLE_TESTS=ON \
-              -DENABLE_BENCHMARK=ON \
-              -DENABLE_DEMO=ON
+              -DFLOX_ENABLE_TESTS=ON \
+              -DFLOX_ENABLE_BENCHMARKS=ON \
+              -DFLOX_ENABLE_DEMO=ON
 
     - name: Build project (no affinity)
       run: cmake --build build -j$(nproc)
@@ -61,10 +61,10 @@ jobs:
         cmake -B build \
               -DCMAKE_CXX_COMPILER=g++-13 \
               -DCMAKE_BUILD_TYPE=Debug \
-              -DENABLE_TESTS=ON \
-              -DENABLE_BENCHMARK=ON \
-              -DENABLE_DEMO=ON \
-              -DENABLE_CPU_AFFINITY=ON
+              -DFLOX_ENABLE_TESTS=ON \
+              -DFLOX_ENABLE_BENCHMARKS=ON \
+              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_ENABLE_CPU_AFFINITY=ON
 
     - name: Build project (with affinity)
       run: cmake --build build -j$(nproc)

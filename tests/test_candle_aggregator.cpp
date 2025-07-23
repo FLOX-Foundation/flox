@@ -12,6 +12,7 @@
 #include "flox/aggregator/events/candle_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/common.h"
+#include "flox/engine/symbol_registry.h"
 #include "flox/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
@@ -24,17 +25,18 @@ namespace
 constexpr SymbolId SYMBOL = 42;
 const std::chrono::seconds INTERVAL = std::chrono::seconds(60);
 
-std::chrono::steady_clock::time_point ts(int seconds)
+TimePoint ts(int seconds)
 {
-  return std::chrono::steady_clock::time_point(std::chrono::seconds(seconds));
+  return TimePoint(std::chrono::seconds(seconds));
 }
 
 TradeEvent makeTrade(SymbolId symbol, double price, double qty,
-                     int sec)
+                     int sec, InstrumentType instrument = InstrumentType::Spot)
 {
   TradeEvent event;
 
   event.trade.symbol = symbol;
+  event.trade.instrument = instrument;
   event.trade.price = Price::fromDouble(price);
   event.trade.quantity = Quantity::fromDouble(qty);
   event.trade.isBuy = true;
@@ -61,7 +63,9 @@ class TestStrategy : public IStrategy
   {
     _out.push_back(event.candle);
     if (_symOut)
+    {
       _symOut->push_back(event.symbol);
+    }
   }
 
  private:
@@ -225,4 +229,53 @@ TEST(CandleAggregatorTest, DoubleStartClearsOldState)
   EXPECT_EQ(result[0].open, Price::fromDouble(105.0));
   EXPECT_EQ(result[0].volume, Volume::fromDouble(105.0 * 2));
   EXPECT_EQ(result[0].startTime, ts(60));
+}
+
+TEST(CandleAggregatorTest, InstrumentTypeIsPropagated)
+{
+  std::vector<InstrumentType> types;
+
+  class StrategyWithInstrument : public IStrategy
+  {
+   public:
+    StrategyWithInstrument(std::vector<InstrumentType>& out) : _out(out) {}
+
+    SubscriberId id() const override { return 99; }
+    SubscriberMode mode() const override { return SubscriberMode::PUSH; }
+
+    void start() override {}
+    void stop() override {}
+
+    void onCandle(const CandleEvent& event) override
+    {
+      _out.push_back(event.instrument);
+    }
+
+   private:
+    std::vector<InstrumentType>& _out;
+  };
+
+  CandleBus bus;
+  bus.enableDrainOnStop();
+
+  CandleAggregator aggregator(INTERVAL, &bus);
+  auto strat = std::make_shared<StrategyWithInstrument>(types);
+  bus.subscribe(strat);
+
+  SymbolRegistry registry;
+  SymbolInfo info;
+  info.exchange = "test";
+  info.symbol = "BTC-FUT-TEST";
+  info.type = InstrumentType::Future;
+  SymbolId sid = registry.registerSymbol(info);
+
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(sid, 120, 1, 10, InstrumentType::Future));
+  aggregator.stop();
+  bus.stop();
+
+  ASSERT_EQ(types.size(), 1);
+  EXPECT_EQ(types[0], InstrumentType::Future);
 }

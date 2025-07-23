@@ -25,7 +25,9 @@ void ConsoleLogger::error(std::string_view msg) { log(LogLevel::Error, msg); }
 void ConsoleLogger::log(LogLevel level, std::string_view msg)
 {
   if (level < _minLevel)
+  {
     return;
+  }
 
   const char* levelStr =
       level == LogLevel::Info ? "INFO" : level == LogLevel::Warn ? "WARN"

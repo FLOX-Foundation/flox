@@ -20,18 +20,34 @@
 namespace flox
 {
 
+struct SymbolInfo
+{
+  SymbolId id;
+  std::string exchange;
+  std::string symbol;
+  InstrumentType type = InstrumentType::Spot;
+
+  std::optional<Price> strike;
+  std::optional<TimePoint> expiry;
+  std::optional<OptionType> optionType;
+};
+
 class SymbolRegistry
 {
  public:
   SymbolId registerSymbol(const std::string& exchange, const std::string& symbol);
+  SymbolId registerSymbol(const SymbolInfo& info);
 
   std::optional<SymbolId> getSymbolId(const std::string& exchange,
                                       const std::string& symbol) const;
+
+  const SymbolInfo* getSymbolInfo(SymbolId id) const;
 
   std::pair<std::string, std::string> getSymbolName(SymbolId id) const;
 
  private:
   mutable std::mutex _mutex;
+  std::vector<SymbolInfo> _symbols;
   std::unordered_map<std::string, SymbolId> _map;
   std::vector<std::pair<std::string, std::string>> _reverse;
 };

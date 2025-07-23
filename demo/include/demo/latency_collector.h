@@ -17,6 +17,7 @@
 #include <numeric>
 #include <string_view>
 
+#include "flox/common.h"
 #include "flox/log/log.h"
 
 namespace demo
@@ -42,7 +43,9 @@ class LatencyCollector
   void record(LabelId id, std::chrono::nanoseconds delta)
   {
     if (_count[id] < MaxSamples)
+    {
       _samples[id][_count[id]++] = delta.count();
+    }
   }
 
   void report() const
@@ -51,7 +54,9 @@ class LatencyCollector
     {
       const auto n = _count[i];
       if (n == 0 || n > MaxSamples)
+      {
         continue;
+      }
 
       // Allocate buffer on heap
       std::unique_ptr<int64_t[]> sorted = std::make_unique<int64_t[]>(n);
@@ -94,7 +99,7 @@ namespace demo
 class LatencyGuard
 {
  public:
-  LatencyGuard(LatencyCollector::LabelId id, std::chrono::steady_clock::time_point start)
+  LatencyGuard(LatencyCollector::LabelId id, flox::TimePoint start)
       : _id(id), _start(start) {}
 
   ~LatencyGuard()
@@ -105,7 +110,7 @@ class LatencyGuard
 
  private:
   LatencyCollector::LabelId _id;
-  std::chrono::steady_clock::time_point _start;
+  flox::TimePoint _start;
 };
 
 }  // namespace demo

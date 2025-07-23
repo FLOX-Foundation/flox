@@ -24,7 +24,7 @@ private:
   CandleBus* _bus;
   std::vector<std::optional<PartialCandle>> _candles;
 
-  std::chrono::steady_clock::time_point alignToInterval(std::chrono::steady_clock::time_point tp);
+  TimePoint alignToInterval(TimePoint tp);
 };
 ```
 

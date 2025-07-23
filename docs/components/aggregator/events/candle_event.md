@@ -1,32 +1,34 @@
 # CandleEvent
 
-`CandleEvent` represents a finalized OHLCV candle for a specific symbol and time interval, emitted by `CandleAggregator` and delivered via `CandleBus`.
+`CandleEvent` represents a finalized OHLCV candle for a specific instrument and time interval, emitted by `CandleAggregator` and delivered via `CandleBus`.
 
 ```cpp
 struct CandleEvent {
-  using Listener = IMarketDataSubscriber;
+    using Listener = IMarketDataSubscriber;
 
-  SymbolId symbol{};
-  Candle   candle{};
-  uint64_t tickSequence = 0;
+    SymbolId       symbol{};                             // instrument identifier
+    InstrumentType instrument = InstrumentType::Spot;    // Spot | Future | Option
+    Candle         candle{};                             // aggregated OHLCV data
+    uint64_t       tickSequence = 0;                     // global sequencing
 };
 ```
 
 ## Purpose
 
-* Encapsulate a single time-aggregated candle (`Candle`) with metadata for delivery.
+* Encapsulate a single time-aggregated candle with instrument metadata for downstream processing and filtering.
 
 ## Responsibilities
 
-| Aspect       | Details                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| Symbol       | `symbol` identifies the market instrument.                             |
-| Payload      | `candle` contains OHLCV data for the interval.                         |
-| Sequencing   | `tickSequence` ensures deterministic delivery in sync-mode processing. |
-| Subscription | Defines `IMarketDataSubscriber` as listener type for `CandleBus`.      |
+| Field / Aspect   | Description                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| **symbol**       | Unique `SymbolId` of the instrument.                                         |
+| **instrument**   | Instrument class (`Spot`, `Future`, or `Option`) for fast filtering.         |
+| **candle**       | Aggregated OHLCV data (`open`, `high`, `low`, `close`, `volume`, timeframe). |
+| **tickSequence** | Monotonic sequence number for deterministic ordering (sync mode).            |
+| **Listener**     | Defines `IMarketDataSubscriber` as the subscriber interface for `CandleBus`. |
 
 ## Notes
 
-* `tickSequence` enables strict event ordering under `SyncPolicy`.
-* Used in both live and simulated environments.
-* `CandleEvent` is a plain data object; no logic or ownership semantics.
+* `instrument` removes the need for a registry lookup in hot paths.
+* `tickSequence` guarantees strict ordering when `CandleBus` runs in synchronous mode.
+* Used identically in live trading and back-testing environments.

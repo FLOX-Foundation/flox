@@ -61,7 +61,9 @@ class PullingSubscriber : public IMarketDataSubscriber
       const auto& book = static_cast<const BookUpdateEvent&>(*event);
       ++_counter;
       if (!book.update.bids.empty())
+      {
         _lastPrice.store(book.update.bids[0].price.toDouble());
+      }
     }
   }
 

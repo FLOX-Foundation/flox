@@ -13,3 +13,4 @@ SpacesInContainerLiterals: false
 ReflowComments: false
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
+InsertBraces: true

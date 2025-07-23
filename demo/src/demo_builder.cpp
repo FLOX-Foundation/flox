@@ -61,7 +61,7 @@ std::unique_ptr<Engine> DemoBuilder::build()
   FLOX_LOG("  - Risk cores: " << assignment.riskCores.size());
   FLOX_LOG("  - Using isolated cores: " << (assignment.hasIsolatedCores ? "Yes" : "No"));
 #else
-  FLOX_LOG("[DemoBuilder] ✓ CPU affinity disabled (ENABLE_CPU_AFFINITY=OFF)");
+  FLOX_LOG("[DemoBuilder] ✓ CPU affinity disabled (FLOX_ENABLE_CPU_AFFINITY=OFF)");
 #endif
 
   std::vector<std::shared_ptr<IStrategy>> strategies;

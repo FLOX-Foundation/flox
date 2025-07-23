@@ -41,13 +41,17 @@ class IExchangeConnector
   void emitBookUpdate(const BookUpdateEvent& bu)
   {
     if (_onBookUpdate)
+    {
       _onBookUpdate(bu);
+    }
   }
 
   void emitTrade(const TradeEvent& t)
   {
     if (_onTrade)
+    {
       _onTrade(t);
+    }
   }
 
  private:

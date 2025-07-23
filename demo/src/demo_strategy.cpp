@@ -33,7 +33,9 @@ void DemoStrategy::stop()
 void DemoStrategy::onTrade(const TradeEvent& ev)
 {
   if (ev.trade.symbol != _symbol)
+  {
     return;
+  }
 
   Order order{};
 

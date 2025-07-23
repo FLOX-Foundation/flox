@@ -99,7 +99,9 @@ class EventBus : public ISubsystem
   void start() override
   {
     if (_running.exchange(true))
+    {
       return;
+    }
 
     std::lock_guard lock(_mutex);
     _active = 0;
@@ -107,7 +109,9 @@ class EventBus : public ISubsystem
     for (auto& [_, e] : _subs)
     {
       if (e.mode == SubscriberMode::PUSH)
+      {
         ++_active;
+      }
     }
 
     for (auto& [_, e] : _subs)
@@ -223,7 +227,9 @@ class EventBus : public ISubsystem
   void stop() override
   {
     if (!_running.exchange(false))
+    {
       return;
+    }
     std::lock_guard lock(_mutex);
     for (auto& [_, e] : _subs)
     {
@@ -236,7 +242,9 @@ class EventBus : public ISubsystem
   void publish(Event ev)
   {
     if (!_running.load(std::memory_order_acquire))
+    {
       return;
+    }
 
     uint64_t seq = _tickCounter.fetch_add(1, std::memory_order_relaxed);
 
@@ -275,7 +283,9 @@ class EventBus : public ISubsystem
     std::lock_guard lock(_mutex);
     auto it = _subs.find(id);
     if (it != _subs.end() && it->second.mode == SubscriberMode::PULL)
+    {
       return it->second.queue.get();
+    }
     return nullptr;
   }
 

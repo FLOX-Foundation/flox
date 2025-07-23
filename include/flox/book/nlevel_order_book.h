@@ -54,11 +54,15 @@ class NLevelOrderBook : public IOrderBook
     {
       const size_t i = priceToIndex(price);
       if (i >= MAX_LEVELS)
+      {
         continue;
+      }
 
       _bids[i] = qty;
       if (qty.isZero())
+      {
         continue;
+      }
 
       _minBidIndex = std::min(_minBidIndex, i);
       _maxBidIndex = std::max(_maxBidIndex, i);
@@ -68,11 +72,15 @@ class NLevelOrderBook : public IOrderBook
     {
       const size_t i = priceToIndex(price);
       if (i >= MAX_LEVELS)
+      {
         continue;
+      }
 
       _asks[i] = qty;
       if (qty.isZero())
+      {
         continue;
+      }
 
       _minAskIndex = std::min(_minAskIndex, i);
       _maxAskIndex = std::max(_maxAskIndex, i);
@@ -82,7 +90,9 @@ class NLevelOrderBook : public IOrderBook
   std::optional<Price> bestBid() const override
   {
     if (_minBidIndex >= MAX_LEVELS)
+    {
       return std::nullopt;
+    }
 
     for (size_t i = _maxBidIndex + 1; i-- > _minBidIndex;)
     {
@@ -97,7 +107,9 @@ class NLevelOrderBook : public IOrderBook
   std::optional<Price> bestAsk() const override
   {
     if (_minAskIndex >= MAX_LEVELS)
+    {
       return std::nullopt;
+    }
 
     for (size_t i = _minAskIndex; i <= _maxAskIndex && i < MAX_LEVELS; ++i)
     {

@@ -33,9 +33,13 @@ AtomicLogger::~AtomicLogger()
   _running = false;
   _cv.notify_one();
   if (_flushThread.joinable())
+  {
     _flushThread.join();
+  }
   if (_file)
+  {
     std::fclose(_file);
+  }
 }
 
 void AtomicLogger::info(std::string_view msg) { log(LogLevel::Info, msg); }
@@ -45,7 +49,9 @@ void AtomicLogger::error(std::string_view msg) { log(LogLevel::Error, msg); }
 void AtomicLogger::log(LogLevel level, std::string_view msg)
 {
   if (level < _opts.levelThreshold)
+  {
     return;
+  }
 
   size_t currentWrite = _writeIndex.load(std::memory_order_relaxed);
   size_t currentRead = _readIndex.load(std::memory_order_acquire);
@@ -53,7 +59,9 @@ void AtomicLogger::log(LogLevel level, std::string_view msg)
   if (currentWrite - currentRead >= BUFFER_SIZE)
   {
     if (_opts.overflow == OverflowPolicy::Drop)
+    {
       return;
+    }
     _readIndex.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -99,10 +107,14 @@ void AtomicLogger::rotateIfNeeded()
   auto now = std::chrono::system_clock::now();
 
   if (_opts.maxFileSize > 0 && _bytesWritten > _opts.maxFileSize)
+  {
     rotate();
+  }
 
   if (_opts.rotateInterval.count() > 0 && now - _lastRotation >= _opts.rotateInterval)
+  {
     rotate();
+  }
 }
 
 void AtomicLogger::rotate()
@@ -130,7 +142,9 @@ void AtomicLogger::rotate()
 void AtomicLogger::writeToOutput(const LogEntry& entry)
 {
   if (!_file)
+  {
     return;
+  }
 
   const char* levelStr =
       entry.level == LogLevel::Info ? "INFO" : entry.level == LogLevel::Warn ? "WARN"
@@ -141,10 +155,14 @@ void AtomicLogger::writeToOutput(const LogEntry& entry)
 
   int written = std::fprintf(_file, "[%s] %s: %s\n", timebuf, levelStr, entry.message);
   if (written > 0)
+  {
     _bytesWritten += written;
+  }
 
   if (_opts.flushImmediately)
+  {
     std::fflush(_file);
+  }
 }
 
 void AtomicLogger::formatTimestamp(std::chrono::system_clock::time_point ts, char* buf, size_t bufSize)

@@ -28,7 +28,9 @@ struct FileWrapper
   ~FileWrapper()
   {
     if (f)
+    {
       fclose(f);
+    }
     ++destructed;
   }
 };
@@ -57,9 +59,13 @@ TEST(SPSCQueueAdvancedTest, DoubleDestructionCausesAbort)
                   ~Dummy()
                   {
                     if (destroyed && *destroyed)
+                    {
                       std::abort();
+                    }
                     if (destroyed)
+                    {
                       *destroyed = true;
+                    }
                   }
                 };
 

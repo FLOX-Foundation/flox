@@ -208,7 +208,9 @@ inline std::vector<int> LinuxSystemInterface::getIsolatedCores()
 {
   auto content = readFile("/proc/cmdline");
   if (!content)
+  {
     return {};
+  }
 
   std::vector<int> isolatedCores;
   std::stringstream ss(*content);
@@ -231,7 +233,9 @@ inline std::optional<std::string> LinuxSystemInterface::readFile(const std::stri
 {
   std::ifstream file(path);
   if (!file.is_open())
+  {
     return std::nullopt;
+  }
 
   std::stringstream buffer;
   buffer << file.rdbuf();
@@ -242,7 +246,9 @@ inline bool LinuxSystemInterface::writeFile(const std::string& path, const std::
 {
   std::ofstream file(path);
   if (!file.is_open())
+  {
     return false;
+  }
 
   file << content;
   return file.good();
@@ -271,11 +277,15 @@ inline bool LinuxSystemInterface::setMemoryPolicy(int nodeId)
 {
 #if FLOX_NUMA_AVAILABLE
   if (nodeId < 0)
+  {
     return false;
+  }
 
   struct bitmask* nodeMask = numa_allocate_nodemask();
   if (!nodeMask)
+  {
     return false;
+  }
 
   numa_bitmask_setbit(nodeMask, nodeId);
   int result = set_mempolicy(MPOL_PREFERRED, nodeMask->maskp, nodeMask->size + 1);
@@ -292,17 +302,23 @@ inline int LinuxSystemInterface::getNumaNodeForCore(int coreId)
 {
   // Return -1 when NUMA is not available to match original behavior
   if (!isNumaAvailable())
+  {
     return -1;
+  }
 
   // Check if core exists by checking if it's within valid range
   const auto numCores = getNumCores();
   if (coreId < 0 || coreId >= numCores)
+  {
     return -1;  // Return -1 for invalid cores
+  }
 
   std::string nodePath = "/sys/devices/system/cpu/cpu" + std::to_string(coreId) + "/topology/physical_package_id";
   auto content = readFile(nodePath);
   if (!content)
+  {
     return -1;  // Return -1 if can't read the node info
+  }
 
   try
   {
@@ -325,7 +341,9 @@ inline std::vector<std::pair<int, std::vector<int>>> LinuxSystemInterface::getNu
 
     auto content = readFile(cpuListPath);
     if (!content)
+    {
       continue;
+    }
 
     std::vector<int> cpuCores = parseIntList(*content);
     if (!cpuCores.empty())

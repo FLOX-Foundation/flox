@@ -30,9 +30,9 @@ namespace
 constexpr SymbolId SYMBOL = 42;
 const std::chrono::seconds INTERVAL = std::chrono::seconds(60);
 
-std::chrono::steady_clock::time_point ts(int seconds)
+TimePoint ts(int seconds)
 {
-  return std::chrono::steady_clock::time_point(std::chrono::seconds(seconds));
+  return TimePoint(std::chrono::seconds(seconds));
 }
 
 TradeEvent makeTrade(SymbolId symbol, double price, double qty, int sec)
@@ -59,7 +59,9 @@ class TestStrategy : public CandleEvent::Listener
   {
     _out.push_back(event.candle);
     if (_symOut)
+    {
       _symOut->push_back(event.symbol);
+    }
   }
 
  private:

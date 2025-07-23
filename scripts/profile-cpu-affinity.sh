@@ -60,7 +60,7 @@ check_requirements() {
         print_error "Benchmark binary not found at $BENCHMARK_BINARY"
         echo "Please build the project with benchmarks enabled:"
         echo "  mkdir -p build && cd build"
-        echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_BENCHMARK=ON"
+        echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DFLOX_ENABLE_BENCHMARKS=ON"
         echo "  make -j\$(nproc)"
         exit 1
     fi

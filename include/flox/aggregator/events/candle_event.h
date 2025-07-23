@@ -21,6 +21,7 @@ struct CandleEvent
   using Listener = IMarketDataSubscriber;
 
   SymbolId symbol{};
+  InstrumentType instrument = InstrumentType::Spot;
   Candle candle{};
 
   uint64_t tickSequence = 0;

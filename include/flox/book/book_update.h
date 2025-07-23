@@ -9,7 +9,6 @@
 
 #pragma once
 
-#include <chrono>
 #include <memory_resource>
 #include <vector>
 #include "flox/common.h"
@@ -34,10 +33,15 @@ struct BookLevel
 struct BookUpdate
 {
   SymbolId symbol{};
+  InstrumentType instrument = InstrumentType::Spot;
   BookUpdateType type{};
   std::pmr::vector<BookLevel> bids;
   std::pmr::vector<BookLevel> asks;
-  std::chrono::steady_clock::time_point timestamp{};
+  TimePoint timestamp{};
+
+  std::optional<Price> strike;
+  std::optional<TimePoint> expiry;
+  std::optional<OptionType> optionType;
 
   BookUpdate(std::pmr::memory_resource* res) : bids(res), asks(res) {}
 };

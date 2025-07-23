@@ -9,11 +9,11 @@ struct Candle {
   Price low;
   Price close;
   Volume volume;
-  std::chrono::steady_clock::time_point startTime;
-  std::chrono::steady_clock::time_point endTime;
+  TimePoint startTime;
+  TimePoint endTime;
 
   Candle() = default;
-  Candle(std::chrono::steady_clock::time_point ts, Price price, Volume qty);
+  Candle(TimePoint ts, Price price, Volume qty);
 };
 ```
 

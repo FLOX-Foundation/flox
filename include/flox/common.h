@@ -11,16 +11,31 @@
 
 #include "flox/util/base/decimal.h"
 
+#include <chrono>
 #include <cstdint>
 
 namespace flox
 {
+
+enum class InstrumentType
+{
+  Spot,
+  Future,
+  Option
+};
+
+enum class OptionType
+{
+  CALL,
+  PUT
+};
 
 enum class OrderType
 {
   LIMIT,
   MARKET
 };
+
 enum class Side
 {
   BUY,
@@ -44,5 +59,7 @@ struct VolumeTag
 using Price = Decimal<PriceTag, 1'000'000, 1>;
 using Quantity = Decimal<QuantityTag, 1'000'000, 1>;
 using Volume = Decimal<VolumeTag, 1'000'000, 1>;
+
+using TimePoint = std::chrono::steady_clock::time_point;
 
 }  // namespace flox

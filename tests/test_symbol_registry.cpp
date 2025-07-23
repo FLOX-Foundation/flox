@@ -67,7 +67,10 @@ TEST(SymbolRegistryTest, ThreadSafety)
         });
   }
 
-  for (auto& th : threads) th.join();
+  for (auto& th : threads)
+  {
+    th.join();
+  }
 
   int total = threadCount * symbolsPerThread;
   std::unordered_set<SymbolId> ids;
@@ -106,4 +109,36 @@ TEST(SymbolRegistryTest, StressTestMassiveSymbols)
     EXPECT_EQ(ex, "stress");
     EXPECT_EQ(sym, symbol);
   }
+}
+
+TEST(SymbolRegistryTest, RegisterOptionAndFutureSymbols)
+{
+  SymbolRegistry registry;
+
+  SymbolInfo option;
+  option.exchange = "deribit";
+  option.symbol = "BTC-30AUG24-50000-C";
+  option.type = InstrumentType::Option;
+  option.strike = Price::fromDouble(50000.0);
+  option.optionType = OptionType::CALL;
+
+  SymbolInfo future;
+  future.exchange = "deribit";
+  future.symbol = "BTC-30AUG24";
+  future.type = InstrumentType::Future;
+
+  auto optId = registry.registerSymbol(option);
+  auto futId = registry.registerSymbol(future);
+
+  EXPECT_NE(optId, futId);
+
+  const SymbolInfo* optInfo = registry.getSymbolInfo(optId);
+  ASSERT_NE(optInfo, nullptr);
+  EXPECT_EQ(optInfo->type, InstrumentType::Option);
+  EXPECT_EQ(optInfo->optionType.value(), OptionType::CALL);
+  EXPECT_EQ(optInfo->strike.value(), Price::fromDouble(50000.0));
+
+  const SymbolInfo* futInfo = registry.getSymbolInfo(futId);
+  ASSERT_NE(futInfo, nullptr);
+  EXPECT_EQ(futInfo->type, InstrumentType::Future);
 }

@@ -71,7 +71,10 @@ TEST_F(SPSCQueueTest, EmplaceMoveSemantics)
 TEST_F(SPSCQueueTest, TryEmplaceWorks)
 {
   Queue q;
-  for (int i = 0; i < kCap - 1; ++i) EXPECT_TRUE(q.try_emplace(i));
+  for (int i = 0; i < kCap - 1; ++i)
+  {
+    EXPECT_TRUE(q.try_emplace(i));
+  }
   EXPECT_TRUE(q.full());
   EXPECT_FALSE(q.try_emplace(12345));
 }
@@ -109,7 +112,10 @@ TEST_F(SPSCQueueTest, IsInitiallyEmpty)
 TEST_F(SPSCQueueTest, IsFullCorrectly)
 {
   Queue q;
-  for (int i = 0; i < kCap - 1; ++i) q.try_emplace(i);
+  for (int i = 0; i < kCap - 1; ++i)
+  {
+    q.try_emplace(i);
+  }
   EXPECT_TRUE(q.full());
 }
 
@@ -119,7 +125,10 @@ TEST_F(SPSCQueueTest, WrapAroundCycles)
   Queue q;
   for (int round = 0; round < 3; ++round)
   {
-    for (int i = 0; i < kCap - 1; ++i) EXPECT_TRUE(q.try_emplace(i));
+    for (int i = 0; i < kCap - 1; ++i)
+    {
+      EXPECT_TRUE(q.try_emplace(i));
+    }
     for (int i = 0; i < kCap - 1; ++i)
     {
       auto ref = q.try_pop_ref();
@@ -134,7 +143,10 @@ TEST_F(SPSCQueueTest, DestructorCleansUpInQueue)
 {
   {
     Queue q;
-    for (int i = 0; i < kCap - 1; ++i) q.try_emplace(i);
+    for (int i = 0; i < kCap - 1; ++i)
+    {
+      q.try_emplace(i);
+    }
   }
   EXPECT_EQ(Counter::constructed, Counter::destructed);
 }
@@ -165,7 +177,10 @@ TEST_F(SPSCQueueTest, TryPopRefReturnsNulloptWhenEmpty)
 TEST_F(SPSCQueueTest, SizeTracksUsage)
 {
   Queue q;
-  for (int i = 0; i < 3; ++i) q.try_emplace(i);
+  for (int i = 0; i < 3; ++i)
+  {
+    q.try_emplace(i);
+  }
   EXPECT_EQ(q.size(), 3u);
 }
 
@@ -196,7 +211,9 @@ TEST_F(SPSCQueueTest, MultiThreadedPushPop)
         while (running || !q.empty())
         {
           if (q.pop(val))
+          {
             ++consumed;
+          }
         }
       });
 

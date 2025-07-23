@@ -11,6 +11,7 @@
 
 #include <cassert>
 #include <ranges>
+#include "flox/common.h"
 
 namespace flox
 {
@@ -33,7 +34,10 @@ void CandleAggregator::stop()
     if (partial && partial->initialized)
     {
       partial->candle.endTime = partial->candle.startTime + _interval;
-      CandleEvent ev{id, partial->candle};
+      CandleEvent ev{
+          .symbol = id,
+          .instrument = partial->instrument,
+          .candle = partial->candle};
       _bus->publish(ev);
       partial.reset();
     }
@@ -64,7 +68,10 @@ void CandleAggregator::onTrade(const TradeEvent& event)
     {
       partial->candle.endTime = partial->candle.startTime + _interval;
 
-      CandleEvent ev{event.trade.symbol, partial->candle};
+      CandleEvent ev{
+          .symbol = event.trade.symbol,
+          .instrument = event.trade.instrument,
+          .candle = partial->candle};
       _bus->publish(ev);
     }
 
@@ -72,6 +79,7 @@ void CandleAggregator::onTrade(const TradeEvent& event)
         Candle(ts, event.trade.price,
                Volume::fromDouble(event.trade.price.toDouble() * event.trade.quantity.toDouble()));
     partial->candle.endTime = ts + _interval;
+    partial->instrument = event.trade.instrument;
     partial->initialized = true;
 
     return;
@@ -85,13 +93,12 @@ void CandleAggregator::onTrade(const TradeEvent& event)
   c.endTime = partial->candle.startTime + _interval;
 }
 
-std::chrono::steady_clock::time_point CandleAggregator::alignToInterval(
-    std::chrono::steady_clock::time_point tp)
+TimePoint CandleAggregator::alignToInterval(TimePoint tp)
 {
   auto epoch = tp.time_since_epoch();
   auto secs = std::chrono::duration_cast<std::chrono::seconds>(epoch);
   auto snapped = (secs.count() / _interval.count()) * _interval.count();
-  return std::chrono::steady_clock::time_point(std::chrono::seconds(snapped));
+  return TimePoint(std::chrono::seconds(snapped));
 }
 
 }  // namespace flox

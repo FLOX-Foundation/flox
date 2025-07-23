@@ -22,7 +22,9 @@ const std::string kLogDir = "/dev/shm/testlogs";
 void cleanLogs()
 {
   if (fs::exists(kLogDir))
+  {
     fs::remove_all(kLogDir);
+  }
   fs::create_directories(kLogDir);
 }
 
@@ -31,7 +33,10 @@ std::vector<std::string> readLines(const std::string& path)
   std::ifstream f(path);
   std::vector<std::string> lines;
   std::string line;
-  while (std::getline(f, line)) lines.push_back(line);
+  while (std::getline(f, line))
+  {
+    lines.push_back(line);
+  }
   return lines;
 }
 
@@ -101,7 +106,9 @@ TEST(AtomicLoggerTest, RotatesBySize)
   for (const auto& file : fs::directory_iterator(kLogDir))
   {
     if (file.path().string().find("rotating.log.") != std::string::npos)
+    {
       rotatedCount++;
+    }
   }
 
   EXPECT_GT(rotatedCount, 0);

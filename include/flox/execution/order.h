@@ -41,10 +41,10 @@ struct Order
   OrderStatus status = OrderStatus::NEW;
   Quantity filledQuantity{0};
 
-  std::chrono::steady_clock::time_point createdAt{};
-  std::optional<std::chrono::steady_clock::time_point> exchangeTimestamp;
-  std::optional<std::chrono::steady_clock::time_point> lastUpdated;
-  std::optional<std::chrono::steady_clock::time_point> expiresAfter;
+  TimePoint createdAt{};
+  std::optional<TimePoint> exchangeTimestamp;
+  std::optional<TimePoint> lastUpdated;
+  std::optional<TimePoint> expiresAfter;
 };
 
 }  // namespace flox

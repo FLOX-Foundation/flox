@@ -11,6 +11,7 @@
 
 #include "demo/latency_collector.h"
 
+#include "flox/common.h"
 #include "flox/engine/abstract_subscriber.h"
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/bus/order_execution_bus.h"
@@ -36,42 +37,39 @@ class ConsoleExecutionTracker final : public IExecutionTracker
   void start() override {}
   void stop() override {}
 
-  void onOrderSubmitted(const Order& order, std::chrono::steady_clock::time_point ts) override
+  void onOrderSubmitted(const Order& order, TimePoint ts) override
   {
     FLOX_LOG("[tracker] submitted " << order.id << " at " << ts.time_since_epoch().count());
   }
-  void onOrderAccepted(const Order& order, std::chrono::steady_clock::time_point ts) override
+  void onOrderAccepted(const Order& order, TimePoint ts) override
   {
     FLOX_LOG("[tracker] accepted " << order.id << " at " << ts.time_since_epoch().count());
   }
 
-  void onOrderPartiallyFilled(const Order& order, Quantity qty,
-                              std::chrono::steady_clock::time_point ts) override
+  void onOrderPartiallyFilled(const Order& order, Quantity qty, TimePoint ts) override
   {
     FLOX_LOG("[tracker] partial fill " << order.id << " qty=" << qty.toDouble()
                                        << " at " << ts.time_since_epoch().count());
   }
-  void onOrderFilled(const Order& order, std::chrono::steady_clock::time_point ts) override
+  void onOrderFilled(const Order& order, TimePoint ts) override
   {
     FLOX_LOG("[tracker] filled " << order.id << " after " << ts.time_since_epoch().count());
   }
-  void onOrderCanceled(const Order& order, std::chrono::steady_clock::time_point ts) override
+  void onOrderCanceled(const Order& order, TimePoint ts) override
   {
     FLOX_LOG("[tracker] canceled " << order.id << " at " << ts.time_since_epoch().count());
   }
 
-  void onOrderExpired(const Order& order, std::chrono::steady_clock::time_point ts) override
+  void onOrderExpired(const Order& order, TimePoint ts) override
   {
     FLOX_LOG("[tracker] expired " << order.id << " at " << ts.time_since_epoch().count());
   }
-  void onOrderRejected(const Order& order, const std::string& reason,
-                       std::chrono::steady_clock::time_point) override
+  void onOrderRejected(const Order& order, const std::string& reason, TimePoint) override
   {
     FLOX_LOG("[tracker] rejected " << order.id << " reason=" << reason);
   }
 
-  void onOrderReplaced(const Order& oldOrder, const Order& newOrder,
-                       std::chrono::steady_clock::time_point ts) override
+  void onOrderReplaced(const Order& oldOrder, const Order& newOrder, TimePoint ts) override
   {
     FLOX_LOG("[tracker] replaced old=" << oldOrder.id << " new=" << newOrder.id
                                        << " at " << ts.time_since_epoch().count());
@@ -154,7 +152,7 @@ class SimpleKillSwitch final : public IKillSwitch
 
   bool _triggered = false;
   std::string _reason;
-  std::chrono::steady_clock::time_point _since{};
+  TimePoint _since{};
 };
 
 class SimpleRiskManager final : public IRiskManager

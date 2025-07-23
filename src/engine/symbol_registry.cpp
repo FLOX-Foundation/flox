@@ -18,12 +18,35 @@ SymbolId SymbolRegistry::registerSymbol(const std::string& exchange, const std::
   std::string key = exchange + ":" + symbol;
   auto it = _map.find(key);
   if (it != _map.end())
+  {
     return it->second;
+  }
 
   SymbolId id = static_cast<SymbolId>(_reverse.size());
   _map[key] = id;
   _reverse.emplace_back(exchange, symbol);
   return id;
+}
+
+SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
+{
+  std::lock_guard lock(_mutex);
+  std::string key = info.exchange + ":" + info.symbol;
+
+  auto it = _map.find(key);
+  if (it != _map.end())
+  {
+    return it->second;
+  }
+
+  SymbolId newId = static_cast<SymbolId>(_symbols.size() + 1);
+  _map[key] = newId;
+
+  SymbolInfo copy = info;
+  copy.id = newId;
+  _symbols.push_back(std::move(copy));
+
+  return newId;
 }
 
 std::optional<SymbolId> SymbolRegistry::getSymbolId(const std::string& exchange,
@@ -33,7 +56,9 @@ std::optional<SymbolId> SymbolRegistry::getSymbolId(const std::string& exchange,
   std::string key = exchange + ":" + symbol;
   auto it = _map.find(key);
   if (it != _map.end())
+  {
     return it->second;
+  }
   return std::nullopt;
 }
 
@@ -43,4 +68,15 @@ std::pair<std::string, std::string> SymbolRegistry::getSymbolName(SymbolId id) c
   return _reverse.at(id);
 }
 
+const SymbolInfo* SymbolRegistry::getSymbolInfo(SymbolId id) const
+{
+  std::lock_guard lock(_mutex);
+
+  if (id == 0 || id > _symbols.size())
+  {
+    return nullptr;
+  }
+
+  return &_symbols[id - 1];
+}
 }  // namespace flox

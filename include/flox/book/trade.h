@@ -9,7 +9,6 @@
 
 #pragma once
 
-#include <chrono>
 #include "flox/common.h"
 
 namespace flox
@@ -18,10 +17,11 @@ namespace flox
 struct Trade
 {
   SymbolId symbol{};
+  InstrumentType instrument = InstrumentType::Spot;
   Price price{};
   Quantity quantity{};
   bool isBuy{false};
-  std::chrono::steady_clock::time_point timestamp{};
+  TimePoint timestamp{};
 };
 
 }  // namespace flox

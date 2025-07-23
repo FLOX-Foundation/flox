@@ -47,7 +47,9 @@ class SPSCQueue
     const size_t next = (head + 1) & MASK;
 
     if (next == _tail.load(std::memory_order_acquire))
+    {
       return false;
+    }
 
     new (static_cast<void*>(&_buffer[head])) T(item);
     _head.store(next, std::memory_order_release);
@@ -60,7 +62,9 @@ class SPSCQueue
     const size_t next = (head + 1) & MASK;
 
     if (next == _tail.load(std::memory_order_acquire))
+    {
       return false;
+    }
 
     new (static_cast<void*>(&_buffer[head])) T(std::move(item));
     _head.store(next, std::memory_order_release);
@@ -73,7 +77,9 @@ class SPSCQueue
     const size_t head = _head.load(std::memory_order_relaxed);
     const size_t next = (head + 1) & MASK;
     if (next == _tail.load(std::memory_order_acquire))
+    {
       return false;
+    }
 
     void* ptr = static_cast<void*>(&_buffer[head]);
     new (ptr) T(std::forward<Args>(args)...);
@@ -103,7 +109,9 @@ class SPSCQueue
   {
     const size_t tail = _tail.load(std::memory_order_relaxed);
     if (tail == _head.load(std::memory_order_acquire))
+    {
       return nullptr;
+    }
 
     T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
     const size_t next = (tail + 1) & MASK;
@@ -116,7 +124,9 @@ class SPSCQueue
   {
     const size_t tail = _tail.load(std::memory_order_relaxed);
     if (tail == _head.load(std::memory_order_acquire))
+    {
       return std::nullopt;
+    }
 
     T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
     const size_t next = (tail + 1) & MASK;
