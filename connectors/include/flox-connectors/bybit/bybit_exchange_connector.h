@@ -14,7 +14,9 @@
 #include "flox/book/bus/trade_bus.h"
 #include "flox/common.h"
 #include "flox/connector/abstract_exchange_connector.h"
+#include "flox/engine/symbol_registry.h"
 #include "flox/log/abstract_logger.h"
+#include "flox/log/log.h"
 
 #include <simdjson/simdjson.h>
 
@@ -28,8 +30,28 @@ namespace flox
 
 struct BybitConfig
 {
+  enum class BookDepth
+  {
+    Invalid = -1,
+    Top1 = 1,
+    Top25 = 25,
+    Top50 = 50,
+    Top100 = 100,
+    Top200 = 200,
+    Top500 = 500
+  };
+
+  struct SymbolEntry
+  {
+    std::string name;
+    InstrumentType type;
+    BookDepth depth = BookDepth::Invalid;
+  };
+
+  bool isValid() const;
+
   std::string endpoint;
-  std::vector<std::string> symbols;
+  std::vector<SymbolEntry> symbols;
   int reconnectDelayMs{2000};
 };
 
@@ -48,14 +70,19 @@ class BybitExchangeConnector : public IExchangeConnector
 
   std::string exchangeId() const override { return "bybit"; }
 
+  void setSymbolRegistry(SymbolRegistry* reg) { _registry = reg; }
+
+  SymbolId resolveSymbolId(std::string_view symbol);
+
  private:
   void handleMessage(std::string_view payload);
 
-  std::vector<std::string> _symbols;
-  std::string _endpoint;
+  BybitConfig _config;
 
   BookUpdateBus* _bookUpdateBus;
   TradeBus* _tradeBus;
+
+  SymbolRegistry* _registry = nullptr;
 
   std::move_only_function<SymbolId(std::string_view)> _getSymbolId;
   std::shared_ptr<ILogger> _logger;

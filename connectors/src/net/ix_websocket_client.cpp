@@ -68,13 +68,12 @@ void IxWebSocketClient::send(const std::string& data)
 
 void IxWebSocketClient::run()
 {
-  FLOX_LOG("IxWebSocketClient::run");
-
   while (_running)
   {
     _ws.setUrl(_url);
     _ws.setExtraHeaders({{"Origin", _origin}});
     _ws.disablePerMessageDeflate();
+    _ws.setPingInterval(1);
 
     _ws.setOnMessageCallback([this](const ix::WebSocketMessagePtr& msg)
                              {

@@ -24,7 +24,7 @@ if(ENABLE_DEV_SETUP)
   endif()
 endif()
 
-option(BUILD_TESTS "Build unit tests" OFF)
+option(BUILD_TESTS "Build tests" OFF)
 
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB     REQUIRED)
@@ -72,7 +72,7 @@ if(BUILD_TESTS)
   include(CTest)
   add_subdirectory(external/googletest)
 
-  add_executable(bybit_connector_test tests/test_bybit.cpp)
+  add_executable(bybit_connector_test tests/integration_test_bybit.cpp)
   target_link_libraries(bybit_connector_test
     PRIVATE flox-connectors
             gtest gtest_main
