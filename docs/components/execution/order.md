@@ -11,7 +11,6 @@ struct Order {
   OrderType type{};
   SymbolId symbol{};
 
-  OrderStatus status = OrderStatus::NEW;
   Quantity filledQuantity{0};
 
   TimePoint createdAt{};
@@ -35,7 +34,6 @@ struct Order {
 | quantity          | Total order size in base units.                           |
 | type              | `LIMIT`, `MARKET`, or other engine-defined types.         |
 | symbol            | Compact numeric symbol reference (`SymbolId`).            |
-| status            | Current order status (see `OrderStatus`).                 |
 | filledQuantity    | Accumulated quantity filled so far.                       |
 | createdAt         | Local creation timestamp.                                 |
 | exchangeTimestamp | When the exchange acknowledged the order (if applicable). |

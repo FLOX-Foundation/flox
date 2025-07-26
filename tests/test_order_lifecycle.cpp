@@ -7,20 +7,19 @@
  * license information.
  */
 
-#include "flox/execution/order.h"
+#include "flox/execution/events/order_event.h"
 
 #include <gtest/gtest.h>
-#include <chrono>
 
 using namespace flox;
 
 TEST(OrderLifecycleTest, Defaults)
 {
-  Order order{};
-  EXPECT_EQ(order.status, OrderStatus::NEW);
-  EXPECT_TRUE(order.filledQuantity.isZero());
-  EXPECT_EQ(order.createdAt, TimePoint{});
-  EXPECT_FALSE(order.exchangeTimestamp.has_value());
-  EXPECT_FALSE(order.lastUpdated.has_value());
-  EXPECT_FALSE(order.expiresAfter.has_value());
+  OrderEvent orderEvent{};
+  EXPECT_EQ(orderEvent.type, OrderEventType::INVALID);
+  EXPECT_TRUE(orderEvent.order.filledQuantity.isZero());
+  EXPECT_EQ(orderEvent.order.createdAt, TimePoint{});
+  EXPECT_FALSE(orderEvent.order.exchangeTimestamp.has_value());
+  EXPECT_FALSE(orderEvent.order.lastUpdated.has_value());
+  EXPECT_FALSE(orderEvent.order.expiresAfter.has_value());
 }

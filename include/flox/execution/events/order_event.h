@@ -17,6 +17,7 @@ namespace flox
 
 enum class OrderEventType
 {
+  INVALID = -1,
   SUBMITTED,
   ACCEPTED,
   PARTIALLY_FILLED,
@@ -30,7 +31,7 @@ enum class OrderEventType
 struct OrderEvent
 {
   using Listener = IOrderExecutionListener;
-  OrderEventType type{};
+  OrderEventType type = OrderEventType::INVALID;
   Order order{};
   Order newOrder{};
   Quantity fillQty{0};

@@ -11,23 +11,10 @@
 
 #include "flox/common.h"
 
-#include <chrono>
 #include <optional>
 
 namespace flox
 {
-
-enum class OrderStatus
-{
-  NEW,
-  PENDING,
-  PARTIALLY_FILLED,
-  FILLED,
-  CANCELED,
-  EXPIRED,
-  REPLACED,
-  REJECTED
-};
 
 struct Order
 {
@@ -38,7 +25,6 @@ struct Order
   OrderType type{};
   SymbolId symbol{};
 
-  OrderStatus status = OrderStatus::NEW;
   Quantity filledQuantity{0};
 
   TimePoint createdAt{};
