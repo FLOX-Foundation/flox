@@ -69,7 +69,7 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
   tradeBus.start();
 
   BybitConfig cfg;
-  cfg.endpoint = "wss://stream.bybit.com/v5/public/linear";
+  cfg.publicEndpoint = "wss://stream.bybit.com/v5/public/linear";
   cfg.symbols = {
       {"BTCUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1},
       {"ETHUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1}};
@@ -95,7 +95,7 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
 
   auto logger = std::make_shared<AtomicLogger>(logOpts);
 
-  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, mapFunc, logger);
+  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, mapFunc, logger);
   connector.start();
 
   std::this_thread::sleep_for(std::chrono::seconds(12));
@@ -126,7 +126,7 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
   tradeBus.start();
 
   BybitConfig cfg;
-  cfg.endpoint = "wss://stream.bybit.com/v5/public/spot";
+  cfg.publicEndpoint = "wss://stream.bybit.com/v5/public/spot";
   cfg.symbols = {
       {"BTCUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200},
       {"ETHUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200}};
@@ -152,7 +152,7 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
 
   auto logger = std::make_shared<AtomicLogger>(logOpts);
 
-  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, mapFunc, logger);
+  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, mapFunc, logger);
   connector.start();
 
   std::this_thread::sleep_for(std::chrono::seconds(12));

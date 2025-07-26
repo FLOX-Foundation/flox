@@ -15,8 +15,8 @@
 #include "flox/common.h"
 #include "flox/connector/abstract_exchange_connector.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/execution/bus/order_execution_bus.h"
 #include "flox/log/abstract_logger.h"
-#include "flox/log/log.h"
 
 #include <simdjson/simdjson.h>
 
@@ -50,9 +50,13 @@ struct BybitConfig
 
   bool isValid() const;
 
-  std::string endpoint;
+  std::string publicEndpoint;
+  std::string privateEndpoint;
   std::vector<SymbolEntry> symbols;
   int reconnectDelayMs{2000};
+  std::string apiKey;
+  std::string apiSecret;
+  bool enablePrivate = false;
 };
 
 class BybitExchangeConnector : public IExchangeConnector
@@ -62,6 +66,7 @@ class BybitExchangeConnector : public IExchangeConnector
       const BybitConfig& config,
       BookUpdateBus* bookUpdateBus,
       TradeBus* tradeBus,
+      OrderExecutionBus* orderBus,
       std::move_only_function<SymbolId(std::string_view)> symbolMapper,
       std::shared_ptr<ILogger> logger);
 
@@ -76,6 +81,7 @@ class BybitExchangeConnector : public IExchangeConnector
 
  private:
   void handleMessage(std::string_view payload);
+  void handlePrivateMessage(std::string_view payload);
 
   BybitConfig _config;
 
@@ -88,9 +94,11 @@ class BybitExchangeConnector : public IExchangeConnector
   std::shared_ptr<ILogger> _logger;
 
   std::unique_ptr<IWebSocketClient> _wsClient;
+  std::unique_ptr<IWebSocketClient> _wsClientPrivate;
   std::atomic<bool> _running{false};
 
   pool::Pool<BookUpdateEvent, 2047> _bookPool;
+  OrderExecutionBus* _orderBus = nullptr;
 };
 
 }  // namespace flox

@@ -13,6 +13,7 @@
 #include <flox/log/atomic_logger.h>
 #include <flox/log/log.h>
 
+#include <openssl/hmac.h>
 #include <cctype>
 #include <chrono>
 #include <iomanip>
@@ -26,6 +27,8 @@
 
 namespace flox
 {
+
+static constexpr auto BYBIT_ORIGIN = "https://www.bybit.com";
 
 std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol, std::string_view exchange = "bybit")
 {
@@ -94,21 +97,60 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol, std::st
   return info;
 }
 
+static std::string makePrivateAuthPayload(std::string_view apiKey,
+                                          std::string_view apiSecret,
+                                          std::chrono::milliseconds ttl = std::chrono::seconds{15})
+{
+  using namespace std::chrono;
+
+  const auto expires = duration_cast<milliseconds>(system_clock::now().time_since_epoch()) + ttl;
+  const auto expiresMs = expires.count();
+  const std::string toSign = "GET/realtime" + std::to_string(expiresMs);
+
+  unsigned char hash[EVP_MAX_MD_SIZE];
+  unsigned int hashLen = 0;
+  HMAC(EVP_sha256(),
+       apiSecret.data(), static_cast<int>(apiSecret.size()),
+       reinterpret_cast<const unsigned char*>(toSign.data()), toSign.size(),
+       hash, &hashLen);
+
+  char hex[EVP_MAX_MD_SIZE * 2 + 1];
+  for (unsigned i = 0; i < hashLen; ++i)
+  {
+    std::sprintf(hex + i * 2, "%02x", hash[i]);
+  }
+  hex[hashLen * 2] = '\0';
+
+  std::string payload;
+  payload.reserve(128);
+  payload.append(R"({"op":"auth","args":[")")
+      .append(apiKey)
+      .append("\",")
+      .append(std::to_string(expiresMs))
+      .append(",\"")
+      .append(hex)
+      .append("\"]}");
+
+  return payload;
+}
+
 BybitExchangeConnector::BybitExchangeConnector(
     const BybitConfig& config,
     BookUpdateBus* bookUpdateBus,
     TradeBus* tradeBus,
+    OrderExecutionBus* orderBus,
     std::move_only_function<SymbolId(std::string_view)> symbolMapper,
     std::shared_ptr<ILogger> logger)
     : _config(config),
       _bookUpdateBus(bookUpdateBus),
       _tradeBus(tradeBus),
+      _orderBus(orderBus),
       _getSymbolId(std::move(symbolMapper)),
       _logger(std::move(logger))
 {
   _wsClient = std::make_unique<IxWebSocketClient>(
-      config.endpoint,
-      "https://www.bybit.com",
+      config.publicEndpoint,
+      BYBIT_ORIGIN,
       config.reconnectDelayMs,
       _logger.get());
 }
@@ -178,6 +220,30 @@ void BybitExchangeConnector::start()
                                       ", reason=" + std::string(reason)); });
 
   _wsClient->start();
+
+  if (_config.enablePrivate)
+  {
+    _wsClientPrivate = std::make_unique<IxWebSocketClient>(
+        _config.privateEndpoint,
+        BYBIT_ORIGIN,
+        _config.reconnectDelayMs,
+        _logger.get());
+
+    _wsClientPrivate->onOpen([this]()
+                             {
+      auto auth = makePrivateAuthPayload(_config.apiKey, _config.apiSecret);
+      _wsClientPrivate->send(auth); });
+
+    _wsClientPrivate->onMessage([this](std::string_view payload)
+                                { handlePrivateMessage(payload); });
+
+    _wsClientPrivate->onClose([this](int code, std::string_view reason)
+                              {
+      FLOX_LOG("[Bybit] Private WS closed: code=" << std::to_string(code) << ", reason=" << std::string(reason));
+      _logger->info("[Bybit] Private WS closed: code=" + std::to_string(code) + ", reason=" + std::string(reason)); });
+
+    _wsClientPrivate->start();
+  }
 }
 
 void BybitExchangeConnector::stop()
@@ -191,6 +257,12 @@ void BybitExchangeConnector::stop()
   {
     _wsClient->stop();
     _wsClient.reset();
+  }
+
+  if (_wsClientPrivate)
+  {
+    _wsClientPrivate->stop();
+    _wsClientPrivate.reset();
   }
 }
 
@@ -239,6 +311,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
           {
             auto lv = lvl.get_array().value();
             std::string_view psv = lv.at(0).get_string().value();
+            lv.reset();
             std::string_view qsv = lv.at(1).get_string().value();
             side.second->emplace_back(
                 Price::fromDouble(std::strtod(psv.data(), nullptr)),
@@ -279,6 +352,135 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
   catch (const simdjson::simdjson_error& e)
   {
     _logger->warn(std::string("[Bybit] simdjson error: ") + e.what());
+  }
+}
+
+void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
+{
+  static thread_local simdjson::ondemand::parser parser;
+
+  try
+  {
+    std::string json(payload);
+    auto doc = parser.iterate(json);
+
+    if (auto opField = doc["op"]; !opField.error())
+    {
+      auto op = opField.get_string().value();
+
+      if (op == "auth")
+      {
+        bool success = doc["success"].get_bool().value();
+        if (success)
+        {
+          std::string sub = "{\"op\":\"subscribe\",\"args\":[\"order\",\"execution\"]}";
+          _wsClientPrivate->send(sub);
+        }
+      }
+
+      FLOX_LOG("[Bybit] service op=" << op);
+      _logger->info(std::string("[Bybit] service op=") + std::string(op));
+      return;
+    }
+
+    auto topicField = doc["topic"];
+    if (topicField.error())
+    {
+      FLOX_LOG_ERROR("[Bybit] frame without topic, skip");
+      _logger->warn("[Bybit] frame without topic, skip");
+      return;
+    }
+
+    auto topic = topicField.get_string().value();
+    auto data = doc["data"].value();
+
+    if (topic == "order")
+    {
+      for (auto d : data.get_array().value())
+      {
+        OrderEvent ev;
+
+        std::string_view symbol = d["symbol"].get_string().value();
+
+        ev.order.symbol = resolveSymbolId(symbol);
+        ev.order.id = static_cast<OrderId>(
+            std::strtoull(d["orderId"].get_string().value().data(),
+                          nullptr, 10));
+        ev.order.side = (d["side"].get_string().value() == "Buy")
+                            ? Side::BUY
+                            : Side::SELL;
+
+        ev.order.price = Price::fromDouble(
+            std::strtod(d["price"].get_string().value().data(), nullptr));
+        ev.order.quantity = Quantity::fromDouble(
+            std::strtod(d["qty"].get_string().value().data(), nullptr));
+        ev.order.filledQuantity = Quantity::fromDouble(
+            std::strtod(d["cumExecQty"].get_string().value().data(), nullptr));
+
+        std::string_view status = d["orderStatus"].get_string().value();
+        if (status == "New")
+        {
+          ev.type = OrderEventType::SUBMITTED;
+        }
+        else if (status == "PartiallyFilled")
+        {
+          ev.type = OrderEventType::PARTIALLY_FILLED;
+        }
+        else if (status == "Filled")
+        {
+          ev.type = OrderEventType::FILLED;
+        }
+        else if (status == "Cancelled")
+        {
+          ev.type = OrderEventType::CANCELED;
+        }
+        else if (status == "Rejected")
+        {
+          ev.type = OrderEventType::REJECTED;
+        }
+        else if (status == "Expired")
+        {
+          ev.type = OrderEventType::EXPIRED;
+        }
+        else
+        {
+          ev.type = OrderEventType::SUBMITTED;
+        }
+
+        _orderBus->publish(std::move(ev));
+      }
+    }
+    else if (topic == "execution")
+    {
+      for (auto d : data.get_array().value())
+      {
+        OrderEvent ev;
+
+        ev.order.id = static_cast<OrderId>(
+            std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
+        ev.order.symbol = resolveSymbolId(d["symbol"].get_string().value());
+        ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY
+                                                                : Side::SELL;
+
+        ev.order.price = Price::fromDouble(
+            std::strtod(d["execPrice"].get_string().value().data(), nullptr));
+        ev.order.quantity = Quantity::fromDouble(
+            std::strtod(d["execQty"].get_string().value().data(), nullptr));
+
+        ev.order.filledQuantity = ev.order.quantity;
+
+        ev.type = d["execType"].get_string().value() == "Trade"
+                      ? OrderEventType::PARTIALLY_FILLED
+                      : OrderEventType::SUBMITTED;
+
+        _orderBus->publish(std::move(ev));
+      }
+    }
+  }
+  catch (const simdjson::simdjson_error& e)
+  {
+    FLOX_LOG_ERROR("[Bybit] simdjson private error: " << e.what());
+    _logger->warn(std::string("[Bybit] simdjson private error: ") + e.what());
   }
 }
 
@@ -329,9 +531,9 @@ SymbolId BybitExchangeConnector::resolveSymbolId(std::string_view symbol)
 
 bool BybitConfig::isValid() const
 {
-  if (endpoint.empty())
+  if (publicEndpoint.empty())
   {
-    FLOX_LOG_ERROR("BybitConfig validation failed: endpoint is empty");
+    FLOX_LOG_ERROR("BybitConfig validation failed: public endpoint is empty");
     return false;
   }
 
@@ -394,6 +596,21 @@ bool BybitConfig::isValid() const
         FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
                                                                 << " has unknown InstrumentType");
         return false;
+    }
+  }
+
+  if (enablePrivate)
+  {
+    if (privateEndpoint.empty())
+    {
+      FLOX_LOG_ERROR("BybitConfig validation failed: private endpoint is empty");
+      return false;
+    }
+
+    if (apiKey.empty() || apiSecret.empty())
+    {
+      FLOX_LOG_ERROR("BybitConfig validation failed: private API credentials missing");
+      return false;
     }
   }
 
