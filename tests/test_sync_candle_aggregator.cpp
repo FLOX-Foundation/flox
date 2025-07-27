@@ -18,8 +18,8 @@
 #include <memory>
 #include <vector>
 
-#ifndef USE_SYNC_CANDLE_BUS
-#error "Test requires USE_SYNC_CANDLE_BUS to be defined"
+#ifndef FLOX_USE_SYNC_CANDLE_BUS
+#error "Test requires FLOX_USE_SYNC_CANDLE_BUS to be defined"
 #endif
 
 using namespace flox;

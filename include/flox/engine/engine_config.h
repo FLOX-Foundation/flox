@@ -49,6 +49,10 @@ struct EngineConfig
 #define FLOX_DEFAULT_EVENTBUS_QUEUE_SIZE 4096
 #endif
 
+#ifndef FLOX_DEFAULT_ORDER_TRACKER_CAPACITY
+#define FLOX_DEFAULT_ORDER_TRACKER_CAPACITY 4096
+#endif
+
 namespace config
 {
 
@@ -65,6 +69,9 @@ inline constexpr int EXECUTION_PRIORITY = 85;
 inline constexpr int STRATEGY_PRIORITY = 80;
 inline constexpr int RISK_PRIORITY = 75;
 inline constexpr int GENERAL_PRIORITY = 70;
+
+// Order tracker capacity
+inline constexpr int ORDER_TRACKER_CAPACITY = FLOX_DEFAULT_ORDER_TRACKER_CAPACITY;
 
 }  // namespace config
 }  // namespace flox

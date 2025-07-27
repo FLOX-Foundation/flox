@@ -6,7 +6,7 @@
 struct OrderEvent {
   using Listener = IOrderExecutionListener;
 
-  OrderEventType type{};
+  OrderEventStatus type{};
   Order order{};
   Order newOrder{};
   Quantity fillQty{0};

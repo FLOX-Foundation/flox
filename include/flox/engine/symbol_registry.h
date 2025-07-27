@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "flox/common.h"
+#include "flox/engine/abstract_subsystem.h"
 
 namespace flox
 {
@@ -32,7 +33,7 @@ struct SymbolInfo
   std::optional<OptionType> optionType;
 };
 
-class SymbolRegistry
+class SymbolRegistry : public ISubsystem
 {
  public:
   SymbolId registerSymbol(const std::string& exchange, const std::string& symbol);
@@ -41,7 +42,7 @@ class SymbolRegistry
   std::optional<SymbolId> getSymbolId(const std::string& exchange,
                                       const std::string& symbol) const;
 
-  const SymbolInfo* getSymbolInfo(SymbolId id) const;
+  std::optional<SymbolInfo> getSymbolInfo(SymbolId id) const;
 
   std::pair<std::string, std::string> getSymbolName(SymbolId id) const;
 

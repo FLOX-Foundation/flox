@@ -11,6 +11,7 @@
 
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/engine/abstract_subsystem.h"
 
 #include <functional>
 #include <string>
@@ -18,16 +19,13 @@
 namespace flox
 {
 
-class IExchangeConnector
+class IExchangeConnector : public ISubsystem
 {
  public:
   virtual ~IExchangeConnector() = default;
 
   using BookUpdateCallback = std::move_only_function<void(const BookUpdateEvent&)>;
   using TradeCallback = std::move_only_function<void(const TradeEvent&)>;
-
-  virtual void start() = 0;
-  virtual void stop() = 0;
 
   virtual std::string exchangeId() const = 0;
 

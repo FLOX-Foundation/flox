@@ -34,9 +34,6 @@ class TestStrategy : public IStrategy
   SubscriberId id() const override { return 1; }
   SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  void start() override {}
-  void stop() override {}
-
   void onTrade(const TradeEvent& event) override
   {
     if (event.trade.symbol == _symbol)

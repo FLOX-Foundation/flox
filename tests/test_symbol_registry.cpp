@@ -132,13 +132,13 @@ TEST(SymbolRegistryTest, RegisterOptionAndFutureSymbols)
 
   EXPECT_NE(optId, futId);
 
-  const SymbolInfo* optInfo = registry.getSymbolInfo(optId);
-  ASSERT_NE(optInfo, nullptr);
+  auto optInfo = registry.getSymbolInfo(optId);
+  EXPECT_TRUE(optInfo.has_value());
   EXPECT_EQ(optInfo->type, InstrumentType::Option);
   EXPECT_EQ(optInfo->optionType.value(), OptionType::CALL);
   EXPECT_EQ(optInfo->strike.value(), Price::fromDouble(50000.0));
 
-  const SymbolInfo* futInfo = registry.getSymbolInfo(futId);
-  ASSERT_NE(futInfo, nullptr);
-  EXPECT_EQ(futInfo->type, InstrumentType::Future);
+  auto futOptInfo = registry.getSymbolInfo(futId);
+  EXPECT_TRUE(futOptInfo.has_value());
+  EXPECT_EQ(futOptInfo->type, InstrumentType::Future);
 }

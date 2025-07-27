@@ -16,8 +16,8 @@
 #include "flox/execution/events/order_event.h"
 #include "flox/execution/order.h"
 
-#ifndef USE_SYNC_ORDER_BUS
-#error "Test requires USE_SYNC_ORDER_BUS to be defined"
+#ifndef FLOX_USE_SYNC_ORDER_BUS
+#error "Test requires FLOX_USE_SYNC_ORDER_BUS to be defined"
 #endif
 
 using namespace flox;
@@ -64,7 +64,7 @@ TEST(SyncOrderExecutionBusTest, WaitsForAllSubscribers)
   bus.start();
 
   OrderEvent event{};
-  event.type = OrderEventType::FILLED;
+  event.status = OrderEventStatus::FILLED;
   event.order.symbol = 42;
   event.order.side = Side::BUY;
   event.order.quantity = Quantity::fromDouble(1.0);

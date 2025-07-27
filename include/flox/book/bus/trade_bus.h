@@ -16,7 +16,7 @@
 namespace flox
 {
 
-#ifdef USE_SYNC_TRADE_BUS
+#ifdef FLOX_USE_SYNC_TRADE_BUS
 using TradeBus = EventBus<TradeEvent, SyncPolicy<TradeEvent>>;
 #else
 using TradeBus = EventBus<TradeEvent, AsyncPolicy<TradeEvent>>;

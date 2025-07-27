@@ -3,7 +3,7 @@
 `OrderExecutionBus` is the delivery channel for `OrderEvent` messages, used to notify downstream components (e.g. PnL trackers, position managers) about order lifecycle events.
 
 ```cpp
-#ifdef USE_SYNC_ORDER_BUS
+#ifdef FLOX_USE_SYNC_ORDER_BUS
 using OrderExecutionBus = EventBus<OrderEvent, SyncPolicy<OrderEvent>>;
 #else
 using OrderExecutionBus = EventBus<OrderEvent, AsyncPolicy<OrderEvent>>;
@@ -19,7 +19,7 @@ using OrderExecutionBus = EventBus<OrderEvent, AsyncPolicy<OrderEvent>>;
 | Aspect  | Description                                                          |
 | ------- | -------------------------------------------------------------------- |
 | Payload | Transports `OrderEvent` instances directly (no pooling).             |
-| Mode    | Toggled via `USE_SYNC_ORDER_BUS` macro at compile time.              |
+| Mode    | Toggled via `FLOX_USE_SYNC_ORDER_BUS` macro at compile time.              |
 | Usage   | Used to notify components like `PositionManager`, `PnLTracker`, etc. |
 
 ## Notes

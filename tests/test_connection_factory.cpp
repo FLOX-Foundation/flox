@@ -17,8 +17,6 @@ using namespace flox;
 class DummyConnector : public IExchangeConnector
 {
  public:
-  void start() override {}
-  void stop() override {}
   std::string exchangeId() const override { return "dummy"; }
 };
 

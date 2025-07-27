@@ -8,6 +8,8 @@
  */
 
 #include "flox/engine/symbol_registry.h"
+#include <cstddef>
+#include <optional>
 
 namespace flox
 {
@@ -68,15 +70,15 @@ std::pair<std::string, std::string> SymbolRegistry::getSymbolName(SymbolId id) c
   return _reverse.at(id);
 }
 
-const SymbolInfo* SymbolRegistry::getSymbolInfo(SymbolId id) const
+std::optional<SymbolInfo> SymbolRegistry::getSymbolInfo(SymbolId id) const
 {
   std::lock_guard lock(_mutex);
 
   if (id == 0 || id > _symbols.size())
   {
-    return nullptr;
+    return std::nullopt;
   }
 
-  return &_symbols[id - 1];
+  return {_symbols[id - 1]};
 }
 }  // namespace flox

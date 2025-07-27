@@ -56,9 +56,6 @@ class TestStrategy : public IStrategy
   SubscriberId id() const override { return 1; }
   SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
-  void start() override {}
-  void stop() override {}
-
   void onCandle(const CandleEvent& event) override
   {
     _out.push_back(event.candle);
@@ -242,9 +239,6 @@ TEST(CandleAggregatorTest, InstrumentTypeIsPropagated)
 
     SubscriberId id() const override { return 99; }
     SubscriberMode mode() const override { return SubscriberMode::PUSH; }
-
-    void start() override {}
-    void stop() override {}
 
     void onCandle(const CandleEvent& event) override
     {

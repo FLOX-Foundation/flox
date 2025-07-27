@@ -13,7 +13,12 @@
 #include <string>
 #include <string_view>
 
-class IWebSocketClient
+#include "flox/engine/abstract_subsystem.h"
+
+namespace flox
+{
+
+class IWebSocketClient : public ISubsystem
 {
  public:
   virtual ~IWebSocketClient() = default;
@@ -23,6 +28,6 @@ class IWebSocketClient
   virtual void onClose(std::move_only_function<void(int, std::string_view)> cb) = 0;
 
   virtual void send(const std::string& data) = 0;
-  virtual void start() = 0;
-  virtual void stop() = 0;
 };
+
+}  // namespace flox

@@ -17,8 +17,8 @@ class ISubsystem
  public:
   virtual ~ISubsystem() = default;
 
-  virtual void start() = 0;
-  virtual void stop() = 0;
+  virtual void start() {};
+  virtual void stop() {};
 };
 
 }  // namespace flox

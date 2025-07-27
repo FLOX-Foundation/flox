@@ -61,7 +61,7 @@ TEST(OrderExecutionBusTest, SubscribersReceiveFill)
   bus.start();
 
   OrderEvent event{};
-  event.type = OrderEventType::FILLED;
+  event.status = OrderEventStatus::FILLED;
   event.order.symbol = 1;
   event.order.side = Side::BUY;
   event.order.quantity = Quantity::fromDouble(1.0);

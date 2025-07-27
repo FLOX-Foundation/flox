@@ -53,6 +53,7 @@ add_flox_test(test_spsc)
 add_flox_test(test_symbol_registry)
 add_flox_test(test_tick_barrier)
 add_flox_test(test_atomic_logger)
+add_flox_test(test_order_tracker)
 
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_test(test_cpu_affinity)

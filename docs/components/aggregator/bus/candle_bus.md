@@ -3,7 +3,7 @@
 `CandleBus` is a publish-subscribe channel for `CandleEvent` messages, used to deliver aggregated candles from `CandleAggregator` to downstream consumers (e.g., strategies, loggers).
 
 ```cpp
-#ifdef USE_SYNC_CANDLE_BUS
+#ifdef FLOX_USE_SYNC_CANDLE_BUS
 using CandleBus = EventBus<CandleEvent, SyncPolicy<CandleEvent>>;
 #else
 using CandleBus = EventBus<CandleEvent, AsyncPolicy<CandleEvent>>;
@@ -26,4 +26,4 @@ using CandleBus = EventBus<CandleEvent, AsyncPolicy<CandleEvent>>;
 
 * `SyncPolicy` ensures deterministic tick-to-tick sequencing for backtesting.
 * `AsyncPolicy` enables low-latency lock-free fan-out in live trading.
-* Controlled via the `USE_SYNC_CANDLE_BUS` macro, toggled at compile time.
+* Controlled via the `FLOX_USE_SYNC_CANDLE_BUS` macro, toggled at compile time.

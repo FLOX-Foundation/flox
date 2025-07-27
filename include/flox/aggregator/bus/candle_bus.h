@@ -17,7 +17,7 @@
 namespace flox
 {
 
-#ifdef USE_SYNC_CANDLE_BUS
+#ifdef FLOX_USE_SYNC_CANDLE_BUS
 using CandleBus = EventBus<CandleEvent, SyncPolicy<CandleEvent>>;
 #else
 using CandleBus = EventBus<CandleEvent, AsyncPolicy<CandleEvent>>;

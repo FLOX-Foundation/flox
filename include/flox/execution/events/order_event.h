@@ -15,9 +15,9 @@
 namespace flox
 {
 
-enum class OrderEventType
+enum class OrderEventStatus
 {
-  INVALID = -1,
+  NEW,
   SUBMITTED,
   ACCEPTED,
   PARTIALLY_FILLED,
@@ -31,7 +31,7 @@ enum class OrderEventType
 struct OrderEvent
 {
   using Listener = IOrderExecutionListener;
-  OrderEventType type = OrderEventType::INVALID;
+  OrderEventStatus status = OrderEventStatus::NEW;
   Order order{};
   Order newOrder{};
   Quantity fillQty{0};
@@ -40,29 +40,31 @@ struct OrderEvent
 
   void dispatchTo(IOrderExecutionListener& listener) const
   {
-    switch (type)
+    switch (status)
     {
-      case OrderEventType::SUBMITTED:
+      case OrderEventStatus::NEW:
+        break;
+      case OrderEventStatus::SUBMITTED:
         listener.onOrderSubmitted(order);
-      case OrderEventType::ACCEPTED:
+      case OrderEventStatus::ACCEPTED:
         listener.onOrderAccepted(order);
         break;
-      case OrderEventType::PARTIALLY_FILLED:
+      case OrderEventStatus::PARTIALLY_FILLED:
         listener.onOrderPartiallyFilled(order, fillQty);
         break;
-      case OrderEventType::FILLED:
+      case OrderEventStatus::FILLED:
         listener.onOrderFilled(order);
         break;
-      case OrderEventType::CANCELED:
+      case OrderEventStatus::CANCELED:
         listener.onOrderCanceled(order);
         break;
-      case OrderEventType::EXPIRED:
+      case OrderEventStatus::EXPIRED:
         listener.onOrderExpired(order);
         break;
-      case OrderEventType::REJECTED:
+      case OrderEventStatus::REJECTED:
         listener.onOrderRejected(order, "");
         break;
-      case OrderEventType::REPLACED:
+      case OrderEventStatus::REPLACED:
         listener.onOrderReplaced(order, newOrder);
         break;
     }

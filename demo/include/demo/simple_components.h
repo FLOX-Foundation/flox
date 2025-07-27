@@ -34,9 +34,6 @@ using namespace flox;
 class ConsoleExecutionTracker final : public IExecutionTracker
 {
  public:
-  void start() override {}
-  void stop() override {}
-
   void onOrderSubmitted(const Order& order, TimePoint ts) override
   {
     FLOX_LOG("[tracker] submitted " << order.id << " at " << ts.time_since_epoch().count());
@@ -79,9 +76,6 @@ class ConsoleExecutionTracker final : public IExecutionTracker
 class SimplePnLTracker final : public IPnLTracker
 {
  public:
-  void start() override {}
-  void stop() override {}
-
   void onOrderFilled(const Order& order) override
   {
     double value = order.price.toDouble() * order.quantity.toDouble();
@@ -96,18 +90,12 @@ class SimplePnLTracker final : public IPnLTracker
 class StdoutStorageSink final : public IStorageSink
 {
  public:
-  void start() override {}
-  void stop() override {}
-
   void store(const Order& order) override { FLOX_LOG("[storage] order " << order.id); }
 };
 
 class SimpleOrderValidator final : public IOrderValidator
 {
  public:
-  void start() override {}
-  void stop() override {}
-
   bool validate(const Order& order, std::string& reason) const override
   {
     static thread_local std::mt19937 rng(std::random_device{}());
@@ -125,9 +113,6 @@ class SimpleOrderValidator final : public IOrderValidator
 class SimpleKillSwitch final : public IKillSwitch
 {
  public:
-  void start() override {}
-  void stop() override {}
-
   void check(const Order& order) override
   {
   }
@@ -160,9 +145,6 @@ class SimpleRiskManager final : public IRiskManager
  public:
   explicit SimpleRiskManager(SimpleKillSwitch* ks) : _ks(ks) {}
 
-  void start() override {}
-  void stop() override {}
-
   bool allow(const Order& order) const override
   {
     static thread_local std::mt19937 rng(std::random_device{}());
@@ -187,9 +169,6 @@ class SimplePositionManager : public IPositionManager
   static constexpr size_t MAX_SYMBOLS = 65'536;
 
   explicit SimplePositionManager(SubscriberId id) : IPositionManager(id) {}
-
-  void start() override {}
-  void stop() override {}
 
   void onOrderSubmitted(const Order& order) override
   {
@@ -280,14 +259,14 @@ class SimpleOrderExecutor final : public IOrderExecutor
   void submitOrder(const Order& order) override
   {
     // accepted
-    OrderEvent ev{OrderEventType::ACCEPTED};
+    OrderEvent ev{OrderEventStatus::ACCEPTED};
     ev.order = order;
     _bus.publish(ev);
 
     // simulate partial fill
     Quantity half = Quantity::fromRaw(order.quantity.raw() / 2);
     ev = {};
-    ev.type = OrderEventType::PARTIALLY_FILLED;
+    ev.status = OrderEventStatus::PARTIALLY_FILLED;
     ev.order = order;
     ev.fillQty = half;
 
@@ -303,14 +282,14 @@ class SimpleOrderExecutor final : public IOrderExecutor
     Order newOrder = order;
     newOrder.price += Price::fromDouble(0.1);
     ev = {};
-    ev.type = OrderEventType::REPLACED;
+    ev.status = OrderEventStatus::REPLACED;
     ev.order = order;
     ev.newOrder = newOrder;
     _bus.publish(ev);
 
     // final fill of remaining quantity
     ev = {};
-    ev.type = OrderEventType::FILLED;
+    ev.status = OrderEventStatus::FILLED;
     ev.order = newOrder;
     ev.fillQty = order.quantity - half;
     _bus.publish(ev);

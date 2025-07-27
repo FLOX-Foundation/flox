@@ -16,7 +16,7 @@ using namespace flox;
 TEST(OrderLifecycleTest, Defaults)
 {
   OrderEvent orderEvent{};
-  EXPECT_EQ(orderEvent.type, OrderEventType::INVALID);
+  EXPECT_EQ(orderEvent.status, OrderEventStatus::NEW);
   EXPECT_TRUE(orderEvent.order.filledQuantity.isZero());
   EXPECT_EQ(orderEvent.order.createdAt, TimePoint{});
   EXPECT_FALSE(orderEvent.order.exchangeTimestamp.has_value());

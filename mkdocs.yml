@@ -21,6 +21,8 @@ nav:
       - Config: usage/config.md
       - Strategies: usage/strategies.md
       - Demo: usage/demo.md
+      - Integration Flow: usage/integration_flow.md
+      - Connectors: usage/connectors.md
 
   - Abstract Layer:
       - Engine Interfaces:
@@ -41,6 +43,9 @@ nav:
       - Market-Data Interfaces:
           - OrderBook: components/book/abstract_order_book.md
           - ExchangeConnector: components/connector/exchange_connector.md
+      - Networking Interfaces:
+          - Transport (HTTP): components/net/abstract_transport.md
+          - WebSocket client: components/net/abstract_websocket_client.md
       - Logging:
           - AbstractLogger: components/log/abstract_logger.md
 
@@ -78,7 +83,7 @@ nav:
           - Order: components/execution/order.md
           - OrderEvent: components/execution/events/order_event.md
           - ExecutionTrackerAdapter: components/execution/execution_tracker_adapter.md
-          - MultiExecutionListener: components/execution/multi_execution_listener.md
+          - MultiExecutionListener: components/execution/multi_execution_listener.md 
 
       - Connectors:
           - ConnectorManager: components/connector/connector_manager.md
