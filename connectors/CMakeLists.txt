@@ -26,8 +26,9 @@ endif()
 
 option(BUILD_TESTS "Build tests" OFF)
 
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL  REQUIRED)
 find_package(ZLIB     REQUIRED)
+find_package(CURL     REQUIRED)
 
 set(USE_TLS      ON  CACHE BOOL "Enable TLS support in ixwebsocket" FORCE)
 set(USE_OPEN_SSL ON  CACHE BOOL "Use OpenSSL backend"               FORCE)
@@ -49,7 +50,7 @@ target_include_directories(flox-connectors
 target_link_libraries(flox-connectors
   PUBLIC  simdjson::simdjson
           ixwebsocket
-  PRIVATE OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB pthread
+  PRIVATE OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB CURL::libcurl pthread
           flox::flox
 )
 

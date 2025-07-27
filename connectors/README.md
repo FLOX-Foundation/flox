@@ -15,7 +15,7 @@ Available adapters:
   * [Flox](https://github.com/eeiaao/flox) – core engine interfaces  
   * [simdjson](https://github.com/simdjson/simdjson) – JSON parsing  
   * [IXWebSocket](https://github.com/machinezone/IXWebSocket) – TLS WebSocket client  
-* System libs: OpenSSL, Zlib, pthread
+* System libs: OpenSSL, Zlib, pthread, curl
 
 Clone with:
 

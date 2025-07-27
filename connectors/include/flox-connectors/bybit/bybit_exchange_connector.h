@@ -9,14 +9,14 @@
 
 #pragma once
 
-#include "flox-connectors/net/abstract_websocket_client.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/common.h"
-#include "flox/connector/abstract_exchange_connector.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/execution/bus/order_execution_bus.h"
-#include "flox/log/abstract_logger.h"
+#include <flox/book/bus/book_update_bus.h>
+#include <flox/book/bus/trade_bus.h>
+#include <flox/common.h>
+#include <flox/connector/abstract_exchange_connector.h>
+#include <flox/engine/symbol_registry.h>
+#include <flox/execution/bus/order_execution_bus.h>
+#include <flox/log/abstract_logger.h>
+#include <flox/net/abstract_websocket_client.h>
 
 #include <simdjson/simdjson.h>
 

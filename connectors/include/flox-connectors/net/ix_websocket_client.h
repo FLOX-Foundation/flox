@@ -10,13 +10,14 @@
 #pragma once
 
 #include <ixwebsocket/IXWebSocket.h>
+
 #include <atomic>
 #include <mutex>
 #include <string>
 #include <thread>
 
-#include "flox-connectors/net/abstract_websocket_client.h"
-#include "flox/log/abstract_logger.h"
+#include <flox/log/abstract_logger.h>
+#include <flox/net/abstract_websocket_client.h>
 
 namespace flox
 {

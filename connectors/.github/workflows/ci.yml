@@ -21,7 +21,8 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get install -y cmake ninja-build g++-13 \
-                                  libssl-dev zlib1g-dev
+                                  libssl-dev zlib1g-dev \
+                                  libcurl4-openssl-dev
 
       - name: Configure project
         run: |

@@ -293,7 +293,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
       if (_registry)
       {
-        if (const auto* info = _registry->getSymbolInfo(sym))
+        if (const auto info = _registry->getSymbolInfo(sym))
         {
           ev->update.instrument = info->type;
           ev->update.strike = info->strike;
@@ -335,7 +335,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
         if (_registry)
         {
-          if (const auto* info = _registry->getSymbolInfo(sym))
+          if (const auto info = _registry->getSymbolInfo(sym))
           {
             ev.trade.instrument = info->type;
           }
@@ -420,31 +420,31 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         std::string_view status = d["orderStatus"].get_string().value();
         if (status == "New")
         {
-          ev.type = OrderEventType::SUBMITTED;
+          ev.status = OrderEventStatus::SUBMITTED;
         }
         else if (status == "PartiallyFilled")
         {
-          ev.type = OrderEventType::PARTIALLY_FILLED;
+          ev.status = OrderEventStatus::PARTIALLY_FILLED;
         }
         else if (status == "Filled")
         {
-          ev.type = OrderEventType::FILLED;
+          ev.status = OrderEventStatus::FILLED;
         }
         else if (status == "Cancelled")
         {
-          ev.type = OrderEventType::CANCELED;
+          ev.status = OrderEventStatus::CANCELED;
         }
         else if (status == "Rejected")
         {
-          ev.type = OrderEventType::REJECTED;
+          ev.status = OrderEventStatus::REJECTED;
         }
         else if (status == "Expired")
         {
-          ev.type = OrderEventType::EXPIRED;
+          ev.status = OrderEventStatus::EXPIRED;
         }
         else
         {
-          ev.type = OrderEventType::SUBMITTED;
+          ev.status = OrderEventStatus::SUBMITTED;
         }
 
         _orderBus->publish(std::move(ev));
@@ -469,9 +469,9 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 
         ev.order.filledQuantity = ev.order.quantity;
 
-        ev.type = d["execType"].get_string().value() == "Trade"
-                      ? OrderEventType::PARTIALLY_FILLED
-                      : OrderEventType::SUBMITTED;
+        ev.status = d["execType"].get_string().value() == "Trade"
+                        ? OrderEventStatus::PARTIALLY_FILLED
+                        : OrderEventStatus::SUBMITTED;
 
         _orderBus->publish(std::move(ev));
       }

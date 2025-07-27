@@ -8,13 +8,14 @@
  */
 
 #include "flox-connectors/bybit/bybit_exchange_connector.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/common.h"
-#include "flox/log/atomic_logger.h"
-#include "flox/log/log.h"
+
+#include <flox/book/bus/book_update_bus.h>
+#include <flox/book/bus/trade_bus.h>
+#include <flox/book/events/book_update_event.h>
+#include <flox/book/events/trade_event.h>
+#include <flox/common.h>
+#include <flox/log/atomic_logger.h>
+#include <flox/log/log.h>
 
 #include <gtest/gtest.h>
 
