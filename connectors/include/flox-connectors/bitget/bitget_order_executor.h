@@ -15,47 +15,55 @@
 #include <flox/execution/order_tracker.h>
 
 #include <memory>
+#include <string_view>
 
 namespace flox
 {
 
-class AuthenticatedRestClient;
+class BitgetAuthenticatedRestClient;
 
-namespace Bybit
+namespace Bitget
 {
 
-inline std::string_view toString(InstrumentType type)
+inline std::string_view category(InstrumentType type)
 {
   switch (type)
   {
     case InstrumentType::Spot:
       return "spot";
     case InstrumentType::Future:
-      return "linear";
     case InstrumentType::Inverse:
-      return "inverse";
+      return "mix";
     case InstrumentType::Option:
       return "option";
   }
-
-  return "unknown";
+  return "mix";
 }
 
-}  // namespace Bybit
+struct Params
+{
+  std::string productType;
+  std::string marginCoin;
+  std::string marginMode;
+  std::string forcePolicy;
+};
 
-class BybitOrderExecutor : public IOrderExecutor
+}  // namespace Bitget
+
+class BitgetOrderExecutor : public IOrderExecutor
 {
  public:
-  explicit BybitOrderExecutor(std::unique_ptr<AuthenticatedRestClient> client,
-                              SymbolRegistry* registry, OrderTracker* orderTracker);
-  ~BybitOrderExecutor() override;
+  BitgetOrderExecutor(std::unique_ptr<BitgetAuthenticatedRestClient> client,
+                      SymbolRegistry* registry, OrderTracker* orderTracker, Bitget::Params params);
+  ~BitgetOrderExecutor() override;
 
   void submitOrder(const Order& order) override;
   void cancelOrder(OrderId orderId) override;
   void replaceOrder(OrderId oldOrderId, const Order& newOrder) override;
 
  private:
-  std::unique_ptr<AuthenticatedRestClient> _client;
+  Bitget::Params _params;
+  std::unique_ptr<BitgetAuthenticatedRestClient> _client;
   SymbolRegistry* _registry;
   OrderTracker* _orderTracker;
 };

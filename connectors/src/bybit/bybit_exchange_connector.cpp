@@ -30,7 +30,8 @@ namespace flox
 
 static constexpr auto BYBIT_ORIGIN = "https://www.bybit.com";
 
-std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol, std::string_view exchange = "bybit")
+std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
+                                            std::string_view exchange = "bybit")
 {
   if (fullSymbol.ends_with("-USDT"))
   {
@@ -42,15 +43,18 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol, std::st
   size_t dash2 = fullSymbol.find('-', dash1 + 1);
   size_t dash3 = fullSymbol.find('-', dash2 + 1);
 
-  if (dash1 == std::string_view::npos || dash2 == std::string_view::npos || dash3 == std::string_view::npos)
+  if (dash1 == std::string_view::npos || dash2 == std::string_view::npos ||
+      dash3 == std::string_view::npos)
   {
     return std::nullopt;
   }
 
   std::string underlying = std::string(fullSymbol.substr(0, dash1));
-  std::string expiryStr = std::string(fullSymbol.substr(dash1 + 1, dash2 - dash1 - 1));  // e.g. 30AUG24
-  std::string strikeStr = std::string(fullSymbol.substr(dash2 + 1, dash3 - dash2 - 1));  // e.g. 50000
-  std::string typeStr = std::string(fullSymbol.substr(dash3 + 1));                       // e.g. C or P
+  std::string expiryStr =
+      std::string(fullSymbol.substr(dash1 + 1, dash2 - dash1 - 1));  // e.g. 30AUG24
+  std::string strikeStr =
+      std::string(fullSymbol.substr(dash2 + 1, dash3 - dash2 - 1));  // e.g. 50000
+  std::string typeStr = std::string(fullSymbol.substr(dash3 + 1));   // e.g. C or P
 
   // Parse date
   std::istringstream iss(expiryStr);
@@ -97,8 +101,7 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol, std::st
   return info;
 }
 
-static std::string makePrivateAuthPayload(std::string_view apiKey,
-                                          std::string_view apiSecret,
+static std::string makePrivateAuthPayload(std::string_view apiKey, std::string_view apiSecret,
                                           std::chrono::milliseconds ttl = std::chrono::seconds{15})
 {
   using namespace std::chrono;
@@ -109,10 +112,8 @@ static std::string makePrivateAuthPayload(std::string_view apiKey,
 
   unsigned char hash[EVP_MAX_MD_SIZE];
   unsigned int hashLen = 0;
-  HMAC(EVP_sha256(),
-       apiSecret.data(), static_cast<int>(apiSecret.size()),
-       reinterpret_cast<const unsigned char*>(toSign.data()), toSign.size(),
-       hash, &hashLen);
+  HMAC(EVP_sha256(), apiSecret.data(), static_cast<int>(apiSecret.size()),
+       reinterpret_cast<const unsigned char*>(toSign.data()), toSign.size(), hash, &hashLen);
 
   char hex[EVP_MAX_MD_SIZE * 2 + 1];
   for (unsigned i = 0; i < hashLen; ++i)
@@ -135,11 +136,8 @@ static std::string makePrivateAuthPayload(std::string_view apiKey,
 }
 
 BybitExchangeConnector::BybitExchangeConnector(
-    const BybitConfig& config,
-    BookUpdateBus* bookUpdateBus,
-    TradeBus* tradeBus,
-    OrderExecutionBus* orderBus,
-    std::move_only_function<SymbolId(std::string_view)> symbolMapper,
+    const BybitConfig& config, BookUpdateBus* bookUpdateBus, TradeBus* tradeBus,
+    OrderExecutionBus* orderBus, std::move_only_function<SymbolId(std::string_view)> symbolMapper,
     std::shared_ptr<ILogger> logger)
     : _config(config),
       _bookUpdateBus(bookUpdateBus),
@@ -148,11 +146,8 @@ BybitExchangeConnector::BybitExchangeConnector(
       _getSymbolId(std::move(symbolMapper)),
       _logger(std::move(logger))
 {
-  _wsClient = std::make_unique<IxWebSocketClient>(
-      config.publicEndpoint,
-      BYBIT_ORIGIN,
-      config.reconnectDelayMs,
-      _logger.get());
+  _wsClient = std::make_unique<IxWebSocketClient>(config.publicEndpoint, BYBIT_ORIGIN,
+                                                  config.reconnectDelayMs, _logger.get());
 }
 
 void BybitExchangeConnector::start()
@@ -169,78 +164,91 @@ void BybitExchangeConnector::start()
     return;
   }
 
-  _wsClient->onOpen([this]()
-                    {
-    std::string sub;
-    sub.reserve(64 + _config.symbols.size() * 32);
-    sub += R"({"op":"subscribe","args":[)";
-
-    bool first = true;
-    for (const auto& entry : _config.symbols)
-    {
-      const auto& sym = entry.name;
-      const auto& type = entry.type;
-
-      if (!first)
+  _wsClient->onOpen(
+      [this]()
       {
-        sub += ',';
-      }
+        std::string sub;
+        sub.reserve(64 + _config.symbols.size() * 32);
+        sub += R"({"op":"subscribe","args":[)";
 
-      first = false;
+        bool first = true;
+        for (const auto& entry : _config.symbols)
+        {
+          const auto& sym = entry.name;
+          const auto& type = entry.type;
 
-      sub += '"';
-      sub += "orderbook." + std::to_string(static_cast<int>(entry.depth)) + "." + sym;
-      sub += "\",\"";
-      sub += "publicTrade." + sym;
-      sub += '"';
-    }
+          if (!first)
+          {
+            sub += ',';
+          }
 
-  sub += "]}";
+          first = false;
 
-  FLOX_LOG("[Bybit] WebSocket connected, sending subscription " << sub);
-  _logger->info("[Bybit] WebSocket connected, sending subscription");
-  _wsClient->send(sub); });
+          sub += '"';
+          sub += "orderbook." + std::to_string(static_cast<int>(entry.depth)) + "." + sym;
+          sub += "\",\"";
+          sub += "publicTrade." + sym;
+          sub += '"';
+        }
 
-  _wsClient->onMessage([this](std::string_view payload)
-                       {
-      try {
-        handleMessage(payload);
-      }
-      catch (const std::exception& e)
+        sub += "]}";
+
+        FLOX_LOG("[Bybit] WebSocket connected, sending subscription " << sub);
+        _logger->info("[Bybit] WebSocket connected, sending subscription");
+        _wsClient->send(sub);
+      });
+
+  _wsClient->onMessage(
+      [this](std::string_view payload)
       {
-        FLOX_LOG_ERROR("[Bybit] Exception while handling message: " << e.what());
-        _logger->error(std::string("[Bybit] Exception while handling message: ") + e.what());
-      } });
+        try
+        {
+          handleMessage(payload);
+        }
+        catch (const std::exception& e)
+        {
+          FLOX_LOG_ERROR("[Bybit] Exception while handling message: " << e.what());
+          _logger->error(std::string("[Bybit] Exception while handling message: ") + e.what());
+        }
+      });
 
-  _wsClient->onClose([this](int code, std::string_view reason)
-                     {
-                      FLOX_LOG("[Bybit] WebSocket closed: code=" << std::to_string(code) <<
-                                      ", reason=" << std::string(reason));
-                        _logger->info("[Bybit] WebSocket closed: code=" + std::to_string(code) +
-                                      ", reason=" + std::string(reason)); });
+  _wsClient->onClose(
+      [this](int code, std::string_view reason)
+      {
+        FLOX_LOG("[Bybit] WebSocket closed: code=" << std::to_string(code)
+                                                   << ", reason=" << std::string(reason));
+        _logger->info("[Bybit] WebSocket closed: code=" + std::to_string(code) +
+                      ", reason=" + std::string(reason));
+      });
 
   _wsClient->start();
 
   if (_config.enablePrivate)
   {
-    _wsClientPrivate = std::make_unique<IxWebSocketClient>(
-        _config.privateEndpoint,
-        BYBIT_ORIGIN,
-        _config.reconnectDelayMs,
-        _logger.get());
+    _wsClientPrivate = std::make_unique<IxWebSocketClient>(_config.privateEndpoint, BYBIT_ORIGIN,
+                                                           _config.reconnectDelayMs, _logger.get());
 
-    _wsClientPrivate->onOpen([this]()
-                             {
-      auto auth = makePrivateAuthPayload(_config.apiKey, _config.apiSecret);
-      _wsClientPrivate->send(auth); });
+    _wsClientPrivate->onOpen(
+        [this]()
+        {
+          auto auth = makePrivateAuthPayload(_config.apiKey, _config.apiSecret);
+          _wsClientPrivate->send(auth);
+        });
 
-    _wsClientPrivate->onMessage([this](std::string_view payload)
-                                { handlePrivateMessage(payload); });
+    _wsClientPrivate->onMessage(
+        [this](std::string_view payload)
+        {
+          handlePrivateMessage(payload);
+        });
 
-    _wsClientPrivate->onClose([this](int code, std::string_view reason)
-                              {
-      FLOX_LOG("[Bybit] Private WS closed: code=" << std::to_string(code) << ", reason=" << std::string(reason));
-      _logger->info("[Bybit] Private WS closed: code=" + std::to_string(code) + ", reason=" + std::string(reason)); });
+    _wsClientPrivate->onClose(
+        [this](int code, std::string_view reason)
+        {
+          FLOX_LOG("[Bybit] Private WS closed: code=" << std::to_string(code)
+                                                      << ", reason=" << std::string(reason));
+          _logger->info("[Bybit] Private WS closed: code=" + std::to_string(code) +
+                        ", reason=" + std::string(reason));
+        });
 
     _wsClientPrivate->start();
   }
@@ -313,9 +321,8 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
             std::string_view psv = lv.at(0).get_string().value();
             lv.reset();
             std::string_view qsv = lv.at(1).get_string().value();
-            side.second->emplace_back(
-                Price::fromDouble(std::strtod(psv.data(), nullptr)),
-                Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
+            side.second->emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
+                                      Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
           }
         }
       }
@@ -341,8 +348,10 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
           }
         }
 
-        ev.trade.price = Price::fromDouble(std::strtod(t["p"].get_string().value().data(), nullptr));
-        ev.trade.quantity = Quantity::fromDouble(std::strtod(t["v"].get_string().value().data(), nullptr));
+        ev.trade.price =
+            Price::fromDouble(std::strtod(t["p"].get_string().value().data(), nullptr));
+        ev.trade.quantity =
+            Quantity::fromDouble(std::strtod(t["v"].get_string().value().data(), nullptr));
         ev.trade.isBuy = (t["S"].get_string().value() == "Buy");
         ev.trade.timestamp = std::chrono::steady_clock::now();
         _tradeBus->publish(ev);
@@ -404,18 +413,15 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 
         ev.order.symbol = resolveSymbolId(symbol);
         ev.order.id = static_cast<OrderId>(
-            std::strtoull(d["orderId"].get_string().value().data(),
-                          nullptr, 10));
-        ev.order.side = (d["side"].get_string().value() == "Buy")
-                            ? Side::BUY
-                            : Side::SELL;
+            std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
+        ev.order.side = (d["side"].get_string().value() == "Buy") ? Side::BUY : Side::SELL;
 
-        ev.order.price = Price::fromDouble(
-            std::strtod(d["price"].get_string().value().data(), nullptr));
-        ev.order.quantity = Quantity::fromDouble(
-            std::strtod(d["qty"].get_string().value().data(), nullptr));
-        ev.order.filledQuantity = Quantity::fromDouble(
-            std::strtod(d["cumExecQty"].get_string().value().data(), nullptr));
+        ev.order.price =
+            Price::fromDouble(std::strtod(d["price"].get_string().value().data(), nullptr));
+        ev.order.quantity =
+            Quantity::fromDouble(std::strtod(d["qty"].get_string().value().data(), nullptr));
+        ev.order.filledQuantity =
+            Quantity::fromDouble(std::strtod(d["cumExecQty"].get_string().value().data(), nullptr));
 
         std::string_view status = d["orderStatus"].get_string().value();
         if (status == "New")
@@ -459,13 +465,12 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.id = static_cast<OrderId>(
             std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
         ev.order.symbol = resolveSymbolId(d["symbol"].get_string().value());
-        ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY
-                                                                : Side::SELL;
+        ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY : Side::SELL;
 
-        ev.order.price = Price::fromDouble(
-            std::strtod(d["execPrice"].get_string().value().data(), nullptr));
-        ev.order.quantity = Quantity::fromDouble(
-            std::strtod(d["execQty"].get_string().value().data(), nullptr));
+        ev.order.price =
+            Price::fromDouble(std::strtod(d["execPrice"].get_string().value().data(), nullptr));
+        ev.order.quantity =
+            Quantity::fromDouble(std::strtod(d["execQty"].get_string().value().data(), nullptr));
 
         ev.order.filledQuantity = ev.order.quantity;
 
@@ -507,11 +512,11 @@ SymbolId BybitExchangeConnector::resolveSymbolId(std::string_view symbol)
     return _registry->registerSymbol(*parsed);
   }
 
-  auto it = std::find_if(
-      _config.symbols.begin(),
-      _config.symbols.end(),
-      [&](const BybitConfig::SymbolEntry& entry)
-      { return entry.name == symbol; });
+  auto it = std::find_if(_config.symbols.begin(), _config.symbols.end(),
+                         [&](const BybitConfig::SymbolEntry& entry)
+                         {
+                           return entry.name == symbol;
+                         });
 
   if (it != _config.symbols.end())
   {
@@ -547,47 +552,41 @@ bool BybitConfig::isValid() const
 
     if (s.depth == BookDepth::Invalid)
     {
-      FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name << " has invalid BookDepth");
+      FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
+                                                              << " has invalid BookDepth");
       return false;
     }
 
     switch (s.type)
     {
       case InstrumentType::Spot:
-        if (s.depth != BookDepth::Top1 &&
-            s.depth != BookDepth::Top50 &&
+        if (s.depth != BookDepth::Top1 && s.depth != BookDepth::Top50 &&
             s.depth != BookDepth::Top200)
         {
-          FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
-                                                                  << " (Spot) has unsupported BookDepth: "
-                                                                  << static_cast<int>(s.depth)
-                                                                  << ". Allowed: 1, 50, 200");
+          FLOX_LOG_ERROR("BybitConfig validation failed: symbol "
+                         << s.name << " (Spot) has unsupported BookDepth: "
+                         << static_cast<int>(s.depth) << ". Allowed: 1, 50, 200");
           return false;
         }
         break;
 
       case InstrumentType::Future:
-        if (s.depth != BookDepth::Top1 &&
-            s.depth != BookDepth::Top50 &&
-            s.depth != BookDepth::Top200 &&
-            s.depth != BookDepth::Top500)
+        if (s.depth != BookDepth::Top1 && s.depth != BookDepth::Top50 &&
+            s.depth != BookDepth::Top200 && s.depth != BookDepth::Top500)
         {
-          FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
-                                                                  << " (Future) has unsupported BookDepth: "
-                                                                  << static_cast<int>(s.depth)
-                                                                  << ". Allowed: 1, 50, 200, 500");
+          FLOX_LOG_ERROR("BybitConfig validation failed: symbol "
+                         << s.name << " (Future) has unsupported BookDepth: "
+                         << static_cast<int>(s.depth) << ". Allowed: 1, 50, 200, 500");
           return false;
         }
         break;
 
       case InstrumentType::Option:
-        if (s.depth != BookDepth::Top25 &&
-            s.depth != BookDepth::Top100)
+        if (s.depth != BookDepth::Top25 && s.depth != BookDepth::Top100)
         {
-          FLOX_LOG_ERROR("BybitConfig validation failed: symbol " << s.name
-                                                                  << " (Option) has unsupported BookDepth: "
-                                                                  << static_cast<int>(s.depth)
-                                                                  << ". Allowed: 25, 100");
+          FLOX_LOG_ERROR("BybitConfig validation failed: symbol "
+                         << s.name << " (Option) has unsupported BookDepth: "
+                         << static_cast<int>(s.depth) << ". Allowed: 25, 100");
           return false;
         }
         break;

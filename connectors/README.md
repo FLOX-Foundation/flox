@@ -6,7 +6,8 @@ Open-source exchange connectors for the **Flox** engine.
 
 Available adapters:
 
-* **Bybit V5 WebSocket**
+* **Bybit V5 WebSocket + REST executor**
+* **Bitget V2 WebSocket + classic account REST executor**
 
 ## Dependencies
 

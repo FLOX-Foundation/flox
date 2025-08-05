@@ -18,17 +18,16 @@
 namespace flox
 {
 
-AuthenticatedRestClient::AuthenticatedRestClient(std::string apiKey,
-                                                 std::string apiSecret,
-                                                 std::string endpoint,
-                                                 ITransport* transport)
+AuthenticatedRestClient::AuthenticatedRestClient(std::string apiKey, std::string apiSecret,
+                                                 std::string endpoint, ITransport* transport)
     : _apiKey(std::move(apiKey)),
       _apiSecret(std::move(apiSecret)),
       _endpoint(std::move(endpoint)),
-      _transport(transport) {}
+      _transport(transport)
+{
+}
 
-void AuthenticatedRestClient::post(std::string_view path,
-                                   std::string_view body,
+void AuthenticatedRestClient::post(std::string_view path, std::string_view body,
                                    std::move_only_function<void(std::string_view)> onSuccess,
                                    std::move_only_function<void(std::string_view)> onError)
 {
@@ -47,10 +46,8 @@ void AuthenticatedRestClient::post(std::string_view path,
 
   unsigned char hash[EVP_MAX_MD_SIZE];
   unsigned int hashLen = 0;
-  HMAC(EVP_sha256(),
-       _apiSecret.data(), static_cast<int>(_apiSecret.size()),
-       reinterpret_cast<const unsigned char*>(toSign.data()), toSign.size(),
-       hash, &hashLen);
+  HMAC(EVP_sha256(), _apiSecret.data(), static_cast<int>(_apiSecret.size()),
+       reinterpret_cast<const unsigned char*>(toSign.data()), toSign.size(), hash, &hashLen);
 
   char hex[EVP_MAX_MD_SIZE * 2 + 1];
   for (unsigned i = 0; i < hashLen; ++i)

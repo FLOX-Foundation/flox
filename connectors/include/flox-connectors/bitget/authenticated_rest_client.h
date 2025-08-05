@@ -11,18 +11,17 @@
 
 #include <flox/net/abstract_transport.h>
 
-#include <functional>
 #include <string>
 #include <string_view>
 
 namespace flox
 {
 
-class AuthenticatedRestClient
+class BitgetAuthenticatedRestClient
 {
  public:
-  AuthenticatedRestClient(std::string apiKey, std::string apiSecret, std::string endpoint,
-                          ITransport* transport);
+  BitgetAuthenticatedRestClient(std::string apiKey, std::string apiSecret, std::string passphrase,
+                                std::string endpoint, ITransport* transport);
 
   void post(std::string_view path, std::string_view body,
             std::move_only_function<void(std::string_view)> onSuccess,
@@ -31,6 +30,7 @@ class AuthenticatedRestClient
  private:
   std::string _apiKey;
   std::string _apiSecret;
+  std::string _passphrase;
   std::string _endpoint;
   ITransport* _transport;
 };

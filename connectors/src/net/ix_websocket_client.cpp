@@ -16,8 +16,14 @@
 namespace flox
 {
 
-IxWebSocketClient::IxWebSocketClient(std::string url, std::string origin, int reconnectDelayMs, ILogger* logger)
-    : _url(std::move(url)), _origin(std::move(origin)), _reconnectDelayMs(reconnectDelayMs), _logger(logger) {}
+IxWebSocketClient::IxWebSocketClient(std::string url, std::string origin, int reconnectDelayMs,
+                                     ILogger* logger)
+    : _url(std::move(url)),
+      _origin(std::move(origin)),
+      _reconnectDelayMs(reconnectDelayMs),
+      _logger(logger)
+{
+}
 
 IxWebSocketClient::~IxWebSocketClient()
 {
@@ -29,10 +35,7 @@ IxWebSocketClient::~IxWebSocketClient()
   }
 }
 
-void IxWebSocketClient::onOpen(std::move_only_function<void()> cb)
-{
-  _onOpen = std::move(cb);
-}
+void IxWebSocketClient::onOpen(std::move_only_function<void()> cb) { _onOpen = std::move(cb); }
 
 void IxWebSocketClient::onMessage(std::move_only_function<void(std::string_view)> cb)
 {
@@ -75,37 +78,40 @@ void IxWebSocketClient::run()
     _ws.disablePerMessageDeflate();
     _ws.setPingInterval(1);
 
-    _ws.setOnMessageCallback([this](const ix::WebSocketMessagePtr& msg)
-                             {
-      switch (msg->type) {
-          case ix::WebSocketMessageType::Open:
-            if (_onOpen)
-            {
-              _onOpen();
-            }
+    _ws.setOnMessageCallback(
+        [this](const ix::WebSocketMessagePtr& msg)
+        {
+          switch (msg->type)
+          {
+            case ix::WebSocketMessageType::Open:
+              if (_onOpen)
+              {
+                _onOpen();
+              }
 
-            break;
-          case ix::WebSocketMessageType::Message:
-            if (_onMessage)
-            {
-              _onMessage(msg->str);
-            }
-            break;
-  
-          case ix::WebSocketMessageType::Close:
-            if (_onClose)
-            {
-              _onClose(msg->closeInfo.code, msg->closeInfo.reason);
-            }
-            break;
-          case ix::WebSocketMessageType::Error:
+              break;
+            case ix::WebSocketMessageType::Message:
+              if (_onMessage)
+              {
+                _onMessage(msg->str);
+              }
+              break;
+
+            case ix::WebSocketMessageType::Close:
+              if (_onClose)
+              {
+                _onClose(msg->closeInfo.code, msg->closeInfo.reason);
+              }
+              break;
+            case ix::WebSocketMessageType::Error:
               FLOX_LOG_ERROR("WebSocket error: " << msg->errorInfo.reason);
               _logger->warn("WebSocket error: " + msg->errorInfo.reason);
               break;
-  
-          default:
+
+            default:
               break;
-      } });
+          }
+        });
 
     _ws.start();
 
@@ -114,8 +120,10 @@ void IxWebSocketClient::run()
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    FLOX_LOG_WARN("WebSocket disconnected, retrying in " << std::to_string(_reconnectDelayMs) << "ms...");
-    _logger->warn("WebSocket disconnected, retrying in " + std::to_string(_reconnectDelayMs) + "ms...");
+    FLOX_LOG_WARN("WebSocket disconnected, retrying in " << std::to_string(_reconnectDelayMs)
+                                                         << "ms...");
+    _logger->warn("WebSocket disconnected, retrying in " + std::to_string(_reconnectDelayMs) +
+                  "ms...");
     std::this_thread::sleep_for(std::chrono::milliseconds(_reconnectDelayMs));
   }
 }

@@ -26,17 +26,13 @@
 namespace flox
 {
 
-struct BybitConfig
+struct BitgetConfig
 {
   enum class BookDepth
   {
     Invalid = -1,
-    Top1 = 1,
-    Top25 = 25,
-    Top50 = 50,
-    Top100 = 100,
-    Top200 = 200,
-    Top500 = 500
+    Depth1 = 1,
+    Depth50 = 50
   };
 
   struct SymbolEntry
@@ -54,21 +50,22 @@ struct BybitConfig
   int reconnectDelayMs{2000};
   std::string apiKey;
   std::string apiSecret;
+  std::string passphrase;
   bool enablePrivate = false;
 };
 
-class BybitExchangeConnector : public IExchangeConnector
+class BitgetExchangeConnector : public IExchangeConnector
 {
  public:
-  BybitExchangeConnector(const BybitConfig& config, BookUpdateBus* bookUpdateBus,
-                         TradeBus* tradeBus, OrderExecutionBus* orderBus,
-                         std::move_only_function<SymbolId(std::string_view)> symbolMapper,
-                         std::shared_ptr<ILogger> logger);
+  BitgetExchangeConnector(const BitgetConfig& config, BookUpdateBus* bookUpdateBus,
+                          TradeBus* tradeBus, OrderExecutionBus* orderBus,
+                          std::move_only_function<SymbolId(std::string_view)> symbolMapper,
+                          std::shared_ptr<ILogger> logger);
 
   void start() override;
   void stop() override;
 
-  std::string exchangeId() const override { return "bybit"; }
+  std::string exchangeId() const override { return "bitget"; }
 
   void setSymbolRegistry(SymbolRegistry* reg) { _registry = reg; }
 
@@ -78,7 +75,7 @@ class BybitExchangeConnector : public IExchangeConnector
   void handleMessage(std::string_view payload);
   void handlePrivateMessage(std::string_view payload);
 
-  BybitConfig _config;
+  BitgetConfig _config;
 
   BookUpdateBus* _bookUpdateBus;
   TradeBus* _tradeBus;

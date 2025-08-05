@@ -2,7 +2,10 @@ BasedOnStyle: Google
 IndentWidth: 2
 TabWidth: 2
 UseTab: Never
-ColumnLimit: 0
+ContinuationIndentWidth: 4
+AllowShortLambdasOnASingleLine: false
+LambdaBodyIndentation: Signature
+ColumnLimit: 100
 BreakBeforeBraces: Allman
 SortIncludes: true
 IncludeBlocks: Preserve

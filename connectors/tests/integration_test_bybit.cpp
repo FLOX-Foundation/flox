@@ -33,7 +33,9 @@ class CountingSub final : public IMarketDataSubscriber
 {
  public:
   CountingSub(std::atomic<int64_t>& bookCount, std::atomic<int64_t>& tradeCount)
-      : _book(bookCount), _trade(tradeCount) {}
+      : _book(bookCount), _trade(tradeCount)
+  {
+  }
 
   SubscriberId id() const override { return 99; }
   SubscriberMode mode() const override { return SubscriberMode::PUSH; }
@@ -43,10 +45,7 @@ class CountingSub final : public IMarketDataSubscriber
     _book.fetch_add(1, std::memory_order_relaxed);
   }
 
-  void onTrade(const TradeEvent&) override
-  {
-    _trade.fetch_add(1, std::memory_order_relaxed);
-  }
+  void onTrade(const TradeEvent&) override { _trade.fetch_add(1, std::memory_order_relaxed); }
 
  private:
   std::atomic<int64_t>& _book;
@@ -71,9 +70,8 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
 
   BybitConfig cfg;
   cfg.publicEndpoint = "wss://stream.bybit.com/v5/public/linear";
-  cfg.symbols = {
-      {"BTCUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1},
-      {"ETHUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1}};
+  cfg.symbols = {{"BTCUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1},
+                 {"ETHUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1}};
   cfg.reconnectDelayMs = 2000;
 
   std::unordered_map<std::string, SymbolId> symMap = {
@@ -128,9 +126,8 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
 
   BybitConfig cfg;
   cfg.publicEndpoint = "wss://stream.bybit.com/v5/public/spot";
-  cfg.symbols = {
-      {"BTCUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200},
-      {"ETHUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200}};
+  cfg.symbols = {{"BTCUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200},
+                 {"ETHUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200}};
   cfg.reconnectDelayMs = 2000;
 
   std::unordered_map<std::string, SymbolId> symMap = {

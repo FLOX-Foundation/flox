@@ -69,17 +69,9 @@ install(EXPORT flox-connectorsTargets
         FILE flox-connectors-config.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/flox-connectors)
 
+option(BUILD_TESTS "Build connectors tests" ON)
 if(BUILD_TESTS)
-  include(CTest)
-  add_subdirectory(external/googletest)
-
-  add_executable(bybit_connector_test tests/integration_test_bybit.cpp)
-  target_link_libraries(bybit_connector_test
-    PRIVATE flox-connectors
-            gtest gtest_main
-            flox::flox
-            ixwebsocket
-            simdjson::simdjson)
-
-  add_test(NAME bybit_connector_test COMMAND bybit_connector_test)
+    enable_testing()
+    add_subdirectory(external/googletest)
+    add_subdirectory(tests)
 endif()
