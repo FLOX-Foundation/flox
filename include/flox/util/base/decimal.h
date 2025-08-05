@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstdint>
 #include <ostream>
+#include <string>
 
 namespace flox
 {
@@ -76,6 +77,11 @@ class Decimal
   }
 
   constexpr bool isZero() const { return _raw == 0; }
+
+  std::string toString() const
+  {
+    return std::to_string(toDouble());
+  }
 
  private:
   int64_t _raw;
