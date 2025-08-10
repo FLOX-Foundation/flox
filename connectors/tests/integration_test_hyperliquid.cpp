@@ -7,12 +7,14 @@
  * license information.
  */
 
-#include "flox-connectors/bitget/bitget_exchange_connector.h"
+#include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
+#include "flox/common.h"
 
 #include <flox/book/bus/book_update_bus.h>
 #include <flox/book/bus/trade_bus.h>
 #include <flox/book/events/book_update_event.h>
 #include <flox/book/events/trade_event.h>
+#include <flox/engine/symbol_registry.h>
 #include <flox/log/atomic_logger.h>
 #include <flox/log/log.h>
 
@@ -52,8 +54,23 @@ class CountingSub final : public IMarketDataSubscriber
 
 }  // namespace
 
-TEST(BitgetExchangeConnectorIntegrationTest, ReceivesDataFromBitget)
+TEST(HyperliquidExchangeConnectorIntegrationTest, ReceivesDataFromHyperliquid)
 {
+  SymbolRegistry registry;
+
+  SymbolInfo btcInfo;
+  btcInfo.symbol = "BTC";
+  btcInfo.exchange = "hyperliquid";
+  btcInfo.type = InstrumentType::Future;
+
+  SymbolInfo ethInfo;
+  ethInfo.symbol = "ETH";
+  ethInfo.exchange = "hyperliquid";
+  ethInfo.type = InstrumentType::Future;
+
+  SymbolId btcId = registry.registerSymbol(btcInfo);
+  SymbolId ethId = registry.registerSymbol(ethInfo);
+
   std::atomic<int64_t> bookCounter{0};
   std::atomic<int64_t> tradeCounter{0};
 
@@ -66,35 +83,21 @@ TEST(BitgetExchangeConnectorIntegrationTest, ReceivesDataFromBitget)
   bookBus.start();
   tradeBus.start();
 
-  SymbolRegistry registry;
-
-  SymbolInfo btc{};
-  btc.symbol = "BTCUSDT";
-  btc.exchange = "bitget";
-  btc.type = InstrumentType::Future;
-  registry.registerSymbol(btc);
-
-  SymbolInfo eth{};
-  eth.symbol = "ETHUSDT";
-  eth.exchange = "bitget";
-  eth.type = InstrumentType::Future;
-  registry.registerSymbol(eth);
-
-  BitgetConfig cfg;
-  cfg.publicEndpoint = "wss://ws.bitget.com/mix/v1/stream";
-  cfg.symbols = {{"BTCUSDT", InstrumentType::Future, BitgetConfig::BookDepth::Depth1},
-                 {"ETHUSDT", InstrumentType::Future, BitgetConfig::BookDepth::Depth1}};
+  HyperliquidConfig cfg;
+  cfg.wsEndpoint = "wss://api.hyperliquid.xyz/ws";
+  cfg.restEndpoint = "https://api.hyperliquid.xyz";
+  cfg.symbols = {"BTC", "ETH"};
   cfg.reconnectDelayMs = 2000;
 
   AtomicLoggerOptions logOpts;
   logOpts.directory = "/dev/shm/logs";
-  logOpts.basename = "bitget_test.log";
+  logOpts.basename = "hyperliquid_test.log";
   logOpts.levelThreshold = LogLevel::Info;
   logOpts.maxFileSize = 5 * 1024 * 1024;
   logOpts.rotateInterval = std::chrono::minutes(10);
   auto logger = std::make_shared<AtomicLogger>(logOpts);
 
-  BitgetExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, &registry, logger);
+  HyperliquidExchangeConnector connector(cfg, &bookBus, &tradeBus, &registry, logger);
   connector.start();
 
   std::this_thread::sleep_for(std::chrono::seconds(12));
@@ -103,9 +106,6 @@ TEST(BitgetExchangeConnectorIntegrationTest, ReceivesDataFromBitget)
   bookBus.stop();
   tradeBus.stop();
 
-  FLOX_LOG("[bitget] bookCounter.load(): " << bookCounter.load());
-  FLOX_LOG("[bitget] tradeCounter.load(): " << tradeCounter.load());
-
-  EXPECT_GT(bookCounter.load(), 0) << "Expected to receive at least one book update from Bitget";
-  EXPECT_GT(tradeCounter.load(), 0) << "Expected to receive at least one trade from Bitget";
+  EXPECT_GT(bookCounter.load(), 0) << "Expected to receive at least one book update";
+  EXPECT_GT(tradeCounter.load(), 0) << "Expected to receive at least one trade";
 }

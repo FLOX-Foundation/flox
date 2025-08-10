@@ -61,16 +61,13 @@ class BybitExchangeConnector : public IExchangeConnector
 {
  public:
   BybitExchangeConnector(const BybitConfig& config, BookUpdateBus* bookUpdateBus,
-                         TradeBus* tradeBus, OrderExecutionBus* orderBus,
-                         std::move_only_function<SymbolId(std::string_view)> symbolMapper,
+                         TradeBus* tradeBus, OrderExecutionBus* orderBus, SymbolRegistry* registry,
                          std::shared_ptr<ILogger> logger);
 
   void start() override;
   void stop() override;
 
   std::string exchangeId() const override { return "bybit"; }
-
-  void setSymbolRegistry(SymbolRegistry* reg) { _registry = reg; }
 
   SymbolId resolveSymbolId(std::string_view symbol);
 
@@ -85,7 +82,6 @@ class BybitExchangeConnector : public IExchangeConnector
 
   SymbolRegistry* _registry = nullptr;
 
-  std::move_only_function<SymbolId(std::string_view)> _getSymbolId;
   std::shared_ptr<ILogger> _logger;
 
   std::unique_ptr<IWebSocketClient> _wsClient;

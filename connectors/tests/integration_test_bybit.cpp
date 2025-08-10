@@ -22,7 +22,6 @@
 #include <atomic>
 #include <chrono>
 #include <thread>
-#include <unordered_map>
 
 using namespace flox;
 
@@ -68,22 +67,25 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
   bookBus.start();
   tradeBus.start();
 
+  SymbolRegistry registry;
+
+  SymbolInfo btc{};
+  btc.symbol = "BTCUSDT";
+  btc.exchange = "bybit";
+  btc.type = InstrumentType::Future;
+  registry.registerSymbol(btc);
+
+  SymbolInfo eth{};
+  eth.symbol = "ETHUSDT";
+  eth.exchange = "bybit";
+  eth.type = InstrumentType::Future;
+  registry.registerSymbol(eth);
+
   BybitConfig cfg;
   cfg.publicEndpoint = "wss://stream.bybit.com/v5/public/linear";
   cfg.symbols = {{"BTCUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1},
                  {"ETHUSDT", InstrumentType::Future, BybitConfig::BookDepth::Top1}};
   cfg.reconnectDelayMs = 2000;
-
-  std::unordered_map<std::string, SymbolId> symMap = {
-      {"BTCUSDT", 101},
-      {"ETHUSDT", 102},
-  };
-
-  auto mapFunc = [&](std::string_view s) -> SymbolId
-  {
-    auto it = symMap.find(std::string(s));
-    return it != symMap.end() ? it->second : 0;
-  };
 
   AtomicLoggerOptions logOpts;
   logOpts.directory = "/dev/shm/logs";
@@ -91,10 +93,9 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
   logOpts.levelThreshold = LogLevel::Info;
   logOpts.maxFileSize = 5 * 1024 * 1024;
   logOpts.rotateInterval = std::chrono::minutes(10);
-
   auto logger = std::make_shared<AtomicLogger>(logOpts);
 
-  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, mapFunc, logger);
+  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, &registry, logger);
   connector.start();
 
   std::this_thread::sleep_for(std::chrono::seconds(12));
@@ -124,22 +125,25 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
   bookBus.start();
   tradeBus.start();
 
+  SymbolRegistry registry;
+
+  SymbolInfo btc{};
+  btc.symbol = "BTCUSDT";
+  btc.exchange = "bybit";
+  btc.type = InstrumentType::Spot;
+  registry.registerSymbol(btc);
+
+  SymbolInfo eth{};
+  eth.symbol = "ETHUSDT";
+  eth.exchange = "bybit";
+  eth.type = InstrumentType::Spot;
+  registry.registerSymbol(eth);
+
   BybitConfig cfg;
   cfg.publicEndpoint = "wss://stream.bybit.com/v5/public/spot";
   cfg.symbols = {{"BTCUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200},
                  {"ETHUSDT", InstrumentType::Spot, BybitConfig::BookDepth::Top200}};
   cfg.reconnectDelayMs = 2000;
-
-  std::unordered_map<std::string, SymbolId> symMap = {
-      {"BTCUSDT", 201},
-      {"ETHUSDT", 202},
-  };
-
-  auto mapFunc = [&](std::string_view s) -> SymbolId
-  {
-    auto it = symMap.find(std::string(s));
-    return it != symMap.end() ? it->second : 0;
-  };
 
   AtomicLoggerOptions logOpts;
   logOpts.directory = "/dev/shm/logs";
@@ -147,10 +151,9 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
   logOpts.levelThreshold = LogLevel::Info;
   logOpts.maxFileSize = 5 * 1024 * 1024;
   logOpts.rotateInterval = std::chrono::minutes(10);
-
   auto logger = std::make_shared<AtomicLogger>(logOpts);
 
-  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, mapFunc, logger);
+  BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, &registry, logger);
   connector.start();
 
   std::this_thread::sleep_for(std::chrono::seconds(12));

@@ -9,6 +9,7 @@
 
 #include "flox-connectors/bitget/bitget_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
+#include "flox/engine/symbol_registry.h"
 
 #include <flox/log/log.h>
 
@@ -77,15 +78,15 @@ static std::string_view bitgetWsInstType(InstrumentType type)
 
 }  // namespace
 
-BitgetExchangeConnector::BitgetExchangeConnector(
-    const BitgetConfig& cfg, BookUpdateBus* bookBus, TradeBus* tradeBus,
-    OrderExecutionBus* orderBus, std::move_only_function<SymbolId(std::string_view)> mapper,
-    std::shared_ptr<ILogger> logger)
+BitgetExchangeConnector::BitgetExchangeConnector(const BitgetConfig& cfg, BookUpdateBus* bookBus,
+                                                 TradeBus* tradeBus, OrderExecutionBus* orderBus,
+                                                 SymbolRegistry* registry,
+                                                 std::shared_ptr<ILogger> logger)
     : _config(cfg),
       _bookUpdateBus(bookBus),
       _tradeBus(tradeBus),
       _orderBus(orderBus),
-      _getSymbolId(std::move(mapper)),
+      _registry(registry),
       _logger(std::move(logger))
 {
   _wsClient = std::make_unique<IxWebSocketClient>(cfg.publicEndpoint, BITGET_ORIGIN,
@@ -358,10 +359,6 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
 
 SymbolId BitgetExchangeConnector::resolveSymbolId(std::string_view sym)
 {
-  if (!_registry)
-  {
-    return _getSymbolId(sym);
-  }
   if (auto existing = _registry->getSymbolId("bitget", std::string(sym)))
   {
     return *existing;

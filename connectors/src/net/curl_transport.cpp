@@ -37,16 +37,26 @@ void CurlTransport::post(std::string_view url, std::string_view body,
 {
   CURL* h = _pool.acquire();
   curl_easy_reset(h);
+
   curl_easy_setopt(h, CURLOPT_URL, std::string(url).c_str());
   curl_easy_setopt(h, CURLOPT_POST, 1L);
   curl_easy_setopt(h, CURLOPT_POSTFIELDS, body.data());
   curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, body.size());
+
+  curl_easy_setopt(h, CURLOPT_FORBID_REUSE, 0L);
+  curl_easy_setopt(h, CURLOPT_FRESH_CONNECT, 0L);
+  curl_easy_setopt(h, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(h, CURLOPT_TCP_KEEPIDLE, 30L);
+  curl_easy_setopt(h, CURLOPT_TCP_KEEPINTVL, 15L);
+
+  curl_easy_setopt(h, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
 
   std::string response;
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, writeCallback);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &response);
 
   struct curl_slist* hdrs = nullptr;
+  hdrs = curl_slist_append(hdrs, "Connection: keep-alive");
   for (const auto& [k, v] : headers)
   {
     std::string hv;

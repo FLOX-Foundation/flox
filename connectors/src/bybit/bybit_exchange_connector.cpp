@@ -9,6 +9,7 @@
 
 #include "flox-connectors/bybit/bybit_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
+#include "flox/engine/symbol_registry.h"
 
 #include <flox/log/atomic_logger.h>
 #include <flox/log/log.h>
@@ -135,15 +136,16 @@ static std::string makePrivateAuthPayload(std::string_view apiKey, std::string_v
   return payload;
 }
 
-BybitExchangeConnector::BybitExchangeConnector(
-    const BybitConfig& config, BookUpdateBus* bookUpdateBus, TradeBus* tradeBus,
-    OrderExecutionBus* orderBus, std::move_only_function<SymbolId(std::string_view)> symbolMapper,
-    std::shared_ptr<ILogger> logger)
+BybitExchangeConnector::BybitExchangeConnector(const BybitConfig& config,
+                                               BookUpdateBus* bookUpdateBus, TradeBus* tradeBus,
+                                               OrderExecutionBus* orderBus,
+                                               SymbolRegistry* registry,
+                                               std::shared_ptr<ILogger> logger)
     : _config(config),
       _bookUpdateBus(bookUpdateBus),
       _tradeBus(tradeBus),
       _orderBus(orderBus),
-      _getSymbolId(std::move(symbolMapper)),
+      _registry(registry),
       _logger(std::move(logger))
 {
   _wsClient = std::make_unique<IxWebSocketClient>(config.publicEndpoint, BYBIT_ORIGIN,
@@ -491,11 +493,6 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 
 SymbolId BybitExchangeConnector::resolveSymbolId(std::string_view symbol)
 {
-  if (!_registry)
-  {
-    return _getSymbolId(symbol);
-  }
-
   auto existing = _registry->getSymbolId("bybit", std::string(symbol));
   if (existing)
   {

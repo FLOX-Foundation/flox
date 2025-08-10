@@ -8,6 +8,7 @@ Available adapters:
 
 * **Bybit V5 WebSocket + REST executor**
 * **Bitget V2 WebSocket + classic account REST executor**
+* **Hyperliquid WebSocket + REST executor (must use utils/hl_signerd.py as a signing daemon)**
 
 ## Dependencies
 
@@ -17,6 +18,9 @@ Available adapters:
   * [simdjson](https://github.com/simdjson/simdjson) – JSON parsing  
   * [IXWebSocket](https://github.com/machinezone/IXWebSocket) – TLS WebSocket client  
 * System libs: OpenSSL, Zlib, pthread, curl
+* For Hyperliquid connector:
+  * python3
+  * [hyperliquid-python-sdk](https://github.com/hyperliquid-dex/hyperliquid-python-sdk) (install via `pip install git+https://github.com/hyperliquid-dex/hyperliquid-python-sdk.git`)
 
 Clone with:
 
