@@ -17,6 +17,7 @@ struct OrderState
 {
   Order localOrder;
   std::string exchangeOrderId;
+  std::string clientOrderId;
   std::atomic<OrderEventStatus> status{OrderEventStatus::NEW};
   std::atomic<Quantity> filled = Quantity::fromDouble(0.0);
 
@@ -31,11 +32,11 @@ class OrderTracker
 
   OrderTracker();
 
-  void onSubmitted(const Order& order, std::string_view exchangeOrderId);
+  void onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId = "");
   void onFilled(OrderId id, Quantity fill);
   void onCanceled(OrderId id);
   void onRejected(OrderId id, std::string_view reason);
-  void onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId);
+  void onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId = "");
 
   const OrderState* get(OrderId id) const;
 

@@ -38,11 +38,12 @@ OrderTracker::Slot* OrderTracker::insert(OrderId id)
   std::terminate();
 }
 
-void OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId)
+void OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId)
 {
   auto* slot = insert(order.id);
   slot->state.localOrder = order;
   slot->state.exchangeOrderId = std::string(exchangeOrderId);
+  slot->state.clientOrderId = std::string(clientOrderId);
   slot->state.status.store(OrderEventStatus::SUBMITTED, std::memory_order_release);
   slot->state.createdAt = now();
   slot->state.lastUpdate.store(slot->state.createdAt, std::memory_order_release);
@@ -99,7 +100,7 @@ void OrderTracker::onRejected(OrderId id, std::string_view reason)
   FLOX_LOG_ERROR("[OrderTracker] Order " << id << " rejected: " << reason);
 }
 
-void OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId)
+void OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId)
 {
   auto* oldSlot = find(oldId);
   if (oldSlot)
@@ -111,7 +112,8 @@ void OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
   auto* newSlot = insert(newOrder.id);
   newSlot->state.localOrder = newOrder;
   newSlot->state.exchangeOrderId = std::string(newExchangeId);
-  newSlot->state.status.store(OrderEventStatus::SUBMITTED, std::memory_order_release);
+  newSlot->state.clientOrderId = std::string(newClientOrderId);
+  newSlot->state.status.store(OrderEventStatus::REPLACED, std::memory_order_release);
   newSlot->state.createdAt = now();
   newSlot->state.lastUpdate.store(newSlot->state.createdAt, std::memory_order_release);
 }
