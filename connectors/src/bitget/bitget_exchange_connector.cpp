@@ -207,6 +207,19 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
       return;
     }
 
+    std::string_view action{};
+    {
+      auto actFld = doc["action"];
+      if (!actFld.error())
+      {
+        auto actStr = actFld.get_string();
+        if (!actStr.error())
+        {
+          action = actStr.value_unsafe();  // "snapshot" | "update"
+        }
+      }
+    }
+
     auto arg = doc["arg"].get_object();
     auto channel = arg["channel"].get_string().value();
     auto inst = arg["instId"].get_string().value();
@@ -222,7 +235,15 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
       auto& ev = *evOpt;
       SymbolId sid = resolveSymbolId(inst);
       ev->update.symbol = sid;
-      ev->update.type = BookUpdateType::SNAPSHOT;
+
+      BookUpdateType updateType = BookUpdateType::SNAPSHOT;
+      if (action == "update")
+      {
+        updateType = BookUpdateType::DELTA;
+      }
+
+      ev->update.type = updateType;
+
       if (_registry)
       {
         if (const auto info = _registry->getSymbolInfo(sid))

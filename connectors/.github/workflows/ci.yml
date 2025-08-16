@@ -28,7 +28,7 @@ jobs:
         run: |
           cmake -B build -G Ninja \
                 -DCMAKE_CXX_COMPILER=g++-13 \
-                -DBUILD_TESTS=ON \
+                -DFLOX_CONNECTORS_BUILD_TESTS=ON \
 
       - name: Build project
         run: cmake --build build -j$(nproc)

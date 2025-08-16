@@ -48,10 +48,10 @@ target_include_directories(flox-connectors
 )
 
 target_link_libraries(flox-connectors
-  PUBLIC  simdjson::simdjson
+  PUBLIC  flox::flox
+          simdjson::simdjson
           ixwebsocket
   PRIVATE OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB CURL::libcurl pthread
-          flox::flox
 )
 
 include(GNUInstallDirs)
@@ -69,8 +69,8 @@ install(EXPORT flox-connectorsTargets
         FILE flox-connectors-config.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/flox-connectors)
 
-option(BUILD_TESTS "Build connectors tests" ON)
-if(BUILD_TESTS)
+option(FLOX_CONNECTORS_BUILD_TESTS "Build connectors tests" ON)
+if(FLOX_CONNECTORS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(external/googletest)
     add_subdirectory(tests)

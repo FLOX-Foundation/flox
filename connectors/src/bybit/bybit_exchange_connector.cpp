@@ -299,7 +299,19 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       auto& ev = *evOpt;
       SymbolId sym = resolveSymbolId(data["s"]);
       ev->update.symbol = sym;
-      ev->update.type = BookUpdateType::SNAPSHOT;
+
+      auto type = doc["type"];  // "snapshot" | "delta"
+      BookUpdateType updateType = BookUpdateType::SNAPSHOT;
+      if (!type.error())
+      {
+        auto tsv = type.get_string().value();
+        if (tsv == "delta")
+        {
+          updateType = BookUpdateType::DELTA;
+        }
+      }
+
+      ev->update.type = updateType;
 
       if (_registry)
       {
