@@ -21,28 +21,24 @@ struct BusyBackoff
 
   inline void pause()
   {
-    if (spins < 64)
+    if (spins < 2048)
     {
 #if defined(__x86_64__) || defined(__aarch64__)
       _mm_pause();
 #endif
-    }
-    else if (spins < 256)
-    {
-      std::this_thread::yield();
-    }
-    else
-    {
-      struct timespec ts
-      {
-        0, 50000
-      };
-      nanosleep(&ts, nullptr);
-      spins = 0;
+      ++spins;
       return;
     }
 
-    ++spins;
+    std::this_thread::yield();
+    if (spins < 4096)
+    {
+      ++spins;
+    }
+    else
+    {
+      spins = 0;
+    }
   }
 
   inline void reset() { spins = 0; }
