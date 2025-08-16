@@ -88,6 +88,7 @@ void DemoConnector::run()
     te.trade.isBuy = sideDist(_rng);
     te.trade.timestamp = std::chrono::steady_clock::now();
     {
+      FLOX_PROFILE_SCOPE("TradeBusPublish");
       MEASURE_LATENCY(LatencyCollector::BusPublish);
       _tradeBus.publish(te);
     }
@@ -111,6 +112,7 @@ void DemoConnector::run()
         }
 
         {
+          FLOX_PROFILE_SCOPE("BookBusPublish");
           MEASURE_LATENCY(LatencyCollector::BusPublish);
           _boolUpdateBus.publish(std::move(ev));
         }

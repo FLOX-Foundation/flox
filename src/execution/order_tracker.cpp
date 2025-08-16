@@ -1,5 +1,6 @@
 #include "flox/execution/order_tracker.h"
 #include "flox/log/log.h"
+#include "flox/util/performance/profile.h"
 
 namespace flox
 {
@@ -8,6 +9,8 @@ OrderTracker::OrderTracker() = default;
 
 OrderTracker::Slot* OrderTracker::find(OrderId id)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::find");
+
   std::size_t base = id % SIZE;
   for (std::size_t i = 0; i < SIZE; ++i)
   {
@@ -23,6 +26,8 @@ OrderTracker::Slot* OrderTracker::find(OrderId id)
 
 OrderTracker::Slot* OrderTracker::insert(OrderId id)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::insert");
+
   std::size_t base = id % SIZE;
   for (std::size_t i = 0; i < SIZE; ++i)
   {
@@ -40,6 +45,8 @@ OrderTracker::Slot* OrderTracker::insert(OrderId id)
 
 void OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::onSubmitted");
+
   auto* slot = insert(order.id);
   slot->state.localOrder = order;
   slot->state.exchangeOrderId = std::string(exchangeOrderId);
@@ -51,6 +58,8 @@ void OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrde
 
 void OrderTracker::onFilled(OrderId id, Quantity fill)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::onFilled");
+
   auto* slot = find(id);
   if (!slot)
   {
@@ -76,6 +85,8 @@ void OrderTracker::onFilled(OrderId id, Quantity fill)
 
 void OrderTracker::onCanceled(OrderId id)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::onCanceled");
+
   auto* slot = find(id);
   if (!slot)
   {
@@ -88,6 +99,8 @@ void OrderTracker::onCanceled(OrderId id)
 
 void OrderTracker::onRejected(OrderId id, std::string_view reason)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::onRejected");
+
   auto* slot = find(id);
   if (!slot)
   {
@@ -102,6 +115,8 @@ void OrderTracker::onRejected(OrderId id, std::string_view reason)
 
 void OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId)
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::onReplaced");
+
   auto* oldSlot = find(oldId);
   if (oldSlot)
   {
@@ -120,6 +135,8 @@ void OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
 
 const OrderState* OrderTracker::get(OrderId id) const
 {
+  FLOX_PROFILE_SCOPE("OrderTracker::get");
+
   auto* slot = const_cast<OrderTracker*>(this)->find(id);
   if (!slot)
   {

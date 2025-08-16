@@ -8,10 +8,10 @@
  */
 
 #include "flox/aggregator/candle_aggregator.h"
+#include "flox/common.h"
+#include "flox/util/performance/profile.h"
 
 #include <cassert>
-#include <ranges>
-#include "flox/common.h"
 
 namespace flox
 {
@@ -48,6 +48,8 @@ void CandleAggregator::stop()
 
 void CandleAggregator::onTrade(const TradeEvent& event)
 {
+  FLOX_PROFILE_SCOPE("CandleAggregator::onTrade");
+
   auto id = event.trade.symbol;
   if (id >= _candles.size())
   {

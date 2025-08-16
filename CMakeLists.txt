@@ -74,6 +74,23 @@ else()
   target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
 endif()
 
+option(FLOX_ENABLE_TRACY "Enable Tracy profiler" OFF)
+if (FLOX_ENABLE_TRACY)
+  include(FetchContent)
+  FetchContent_Declare(
+    tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_TAG v0.10
+  )
+
+  FetchContent_MakeAvailable(tracy)
+
+  target_link_libraries(${FLOX} PUBLIC Tracy::TracyClient)
+  target_link_libraries(${FLOX_SYNC} PUBLIC Tracy::TracyClient)
+  target_compile_definitions(${FLOX} PUBLIC FLOX_ENABLE_TRACY=1)
+  target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_ENABLE_TRACY=1)
+endif()
+
 option(FLOX_ENABLE_BENCHMARKS "Enable benchmarks" OFF)
 if (FLOX_ENABLE_BENCHMARKS)
   add_subdirectory(benchmarks)

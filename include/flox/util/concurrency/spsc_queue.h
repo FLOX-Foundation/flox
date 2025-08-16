@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "flox/util/performance/profile.h"
+
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -32,6 +34,8 @@ class SPSCQueue
 
   ~SPSCQueue()
   {
+    FLOX_PROFILE_SCOPE("SPSCQueue::~SPSCQueue.drain");
+
     while (!empty())
     {
       if (T* ptr = try_pop())
@@ -43,6 +47,8 @@ class SPSCQueue
 
   bool push(const T& item) noexcept
   {
+    FLOX_PROFILE_SCOPE("SPSCQueue::push");
+
     const size_t head = _head.load(std::memory_order_relaxed);
     const size_t next = (head + 1) & MASK;
 
@@ -58,6 +64,8 @@ class SPSCQueue
 
   bool emplace(T&& item) noexcept
   {
+    FLOX_PROFILE_SCOPE("SPSCQueue::emplace_move");
+
     const size_t head = _head.load(std::memory_order_relaxed);
     const size_t next = (head + 1) & MASK;
 
@@ -74,6 +82,8 @@ class SPSCQueue
   template <typename... Args>
   bool try_emplace(Args&&... args)
   {
+    FLOX_PROFILE_SCOPE("SPSCQueue::try_emplace");
+
     const size_t head = _head.load(std::memory_order_relaxed);
     const size_t next = (head + 1) & MASK;
     if (next == _tail.load(std::memory_order_acquire))
@@ -96,6 +106,8 @@ class SPSCQueue
       return false;
     }
 
+    FLOX_PROFILE_SCOPE("SPSCQueue::pop");
+
     T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
     out = std::move(*ptr);
     ptr->~T();
@@ -113,6 +125,8 @@ class SPSCQueue
       return nullptr;
     }
 
+    FLOX_PROFILE_SCOPE("SPSCQueue::try_pop");
+
     T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
     const size_t next = (tail + 1) & MASK;
     _tail.store(next, std::memory_order_release);
@@ -128,6 +142,8 @@ class SPSCQueue
       return std::nullopt;
     }
 
+    FLOX_PROFILE_SCOPE("SPSCQueue::try_pop_ref");
+
     T* ptr = reinterpret_cast<T*>(&_buffer[tail]);
     const size_t next = (tail + 1) & MASK;
     _tail.store(next, std::memory_order_release);
@@ -137,6 +153,8 @@ class SPSCQueue
 
   void clear() noexcept
   {
+    FLOX_PROFILE_SCOPE("SPSCQueue::clear");
+
     while (!empty())
     {
       const size_t tail = _tail.load(std::memory_order_relaxed);

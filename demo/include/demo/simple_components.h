@@ -258,6 +258,8 @@ class SimpleOrderExecutor final : public IOrderExecutor
 
   void submitOrder(const Order& order) override
   {
+    FLOX_PROFILE_SCOPE("SimpleOrderExecutor::submitOrder");
+
     // accepted
     OrderEvent ev{OrderEventStatus::ACCEPTED};
     ev.order = order;

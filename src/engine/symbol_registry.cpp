@@ -8,7 +8,8 @@
  */
 
 #include "flox/engine/symbol_registry.h"
-#include <cstddef>
+#include "flox/util/performance/profile.h"
+
 #include <optional>
 
 namespace flox
@@ -54,6 +55,8 @@ SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
 std::optional<SymbolId> SymbolRegistry::getSymbolId(const std::string& exchange,
                                                     const std::string& symbol) const
 {
+  FLOX_PROFILE_SCOPE("SymbolRegistry::getSymbolId");
+
   std::scoped_lock lock(_mutex);
   std::string key = exchange + ":" + symbol;
   auto it = _map.find(key);
@@ -72,6 +75,8 @@ std::pair<std::string, std::string> SymbolRegistry::getSymbolName(SymbolId id) c
 
 std::optional<SymbolInfo> SymbolRegistry::getSymbolInfo(SymbolId id) const
 {
+  FLOX_PROFILE_SCOPE("SymbolRegistry::getSymbolInfo");
+
   std::lock_guard lock(_mutex);
 
   if (id == 0 || id > _symbols.size())

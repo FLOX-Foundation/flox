@@ -24,6 +24,8 @@
 #include "flox/engine/tick_guard.h"
 #include "flox/util/concurrency/spsc_queue.h"
 #include "flox/util/memory/pool.h"
+#include "flox/util/performance/busy_backoff.h"
+#include "flox/util/performance/profile.h"
 #if FLOX_CPU_AFFINITY_ENABLED
 #include "flox/util/performance/cpu_affinity.h"
 #endif
@@ -199,18 +201,26 @@ class EventBus : public ISubsystem
             std::lock_guard<std::mutex> lk(_readyMutex);
             if (--_active == 0) _cv.notify_one();
           }
+
+          BusyBackoff backoff;
           while (_running.load(std::memory_order_acquire)) {
             if (auto* item = queue->try_pop()) {
-              Policy::dispatch(*item, *listener);
-              item->~QueueItem();
+              do {
+                FLOX_PROFILE_SCOPE("EventBus::deliver");
+                Policy::dispatch(*item, *listener);
+                item->~QueueItem();
+              } while ((item = queue->try_pop()));
+
+              backoff.reset();
             } else {
-              std::this_thread::yield();
+              backoff.pause();
             }
           }
           while (auto* item = queue->try_pop())
           {
             if (_drainOnStop)
             {
+              FLOX_PROFILE_SCOPE("EventBus::drain_dispatch");
               Policy::dispatch(*item, *listener);
             }
 
@@ -259,21 +269,26 @@ class EventBus : public ISubsystem
 
     TickBarrier barrier(_subs.size());
 
-    std::lock_guard lock(_mutex);
-    for (auto& [_, e] : _subs)
     {
-      if constexpr (std::is_same_v<Policy, SyncPolicy<Event>>)
+      FLOX_PROFILE_SCOPE("EventBus::publish.enqueue_all");
+
+      std::lock_guard lock(_mutex);
+      for (auto& [_, e] : _subs)
       {
-        e.queue->emplace(Policy::makeItem(ev, &barrier));
-      }
-      else
-      {
-        e.queue->emplace(Policy::makeItem(ev, nullptr));
+        if constexpr (std::is_same_v<Policy, SyncPolicy<Event>>)
+        {
+          e.queue->try_emplace(ev, &barrier);
+        }
+        else
+        {
+          e.queue->try_emplace(ev);
+        }
       }
     }
 
     if constexpr (std::is_same_v<Policy, SyncPolicy<Event>>)
     {
+      FLOX_PROFILE_SCOPE("EventBus::publish.barrier_wait");
       barrier.wait();
     }
   }

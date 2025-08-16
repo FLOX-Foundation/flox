@@ -10,6 +10,8 @@
 #include "demo/demo_strategy.h"
 #include "demo/latency_collector.h"
 
+#include "flox/util/performance/profile.h"
+
 #include <chrono>
 
 namespace demo
@@ -37,9 +39,12 @@ void DemoStrategy::onTrade(const TradeEvent& ev)
     return;
   }
 
+  FLOX_PROFILE_SCOPE("DemoStrategy::onTrade");
+
   Order order{};
 
   {
+    FLOX_PROFILE_SCOPE("DemoStrategy::onTrade_self");
     MEASURE_LATENCY(LatencyCollector::StrategyOnTrade);
 
     order.id = ++_nextId;
@@ -82,6 +87,7 @@ void DemoStrategy::onBookUpdate(const BookUpdateEvent& ev)
 {
   if (ev.update.symbol == _symbol)
   {
+    FLOX_PROFILE_SCOPE("DemoStrategy::onBookUpdate");
     _book.applyBookUpdate(ev);
   }
 }
