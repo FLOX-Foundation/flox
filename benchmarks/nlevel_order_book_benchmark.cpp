@@ -116,4 +116,144 @@ static void BM_BestAsk(benchmark::State& state)
 }
 BENCHMARK(BM_BestAsk)->Unit(benchmark::kNanosecond);
 
+static void BM_ConsumeAsks_Dense(benchmark::State& state)
+{
+  constexpr int kLevels = 100000;
+  NLevelOrderBook<kLevels> book{Price::fromDouble(0.1)};
+  BookUpdatePool pool;
+
+  auto opt = pool.acquire();
+  assert(opt);
+  auto& up = *opt;
+
+  up->update.type = BookUpdateType::SNAPSHOT;
+  up->update.asks.reserve(kLevels);
+  up->update.bids.clear();
+
+  const auto p0 = Price::fromDouble(20000.0);
+  const auto ts = Price::fromDouble(0.1).raw();
+
+  for (int i = 0; i < kLevels; ++i)
+  {
+    Price px = Price::fromRaw(p0.raw() + int64_t(i) * ts);
+    double qd = 0.5 + (i % 10) * 0.15;
+    up->update.asks.emplace_back(px, Quantity::fromDouble(qd));
+  }
+
+  book.applyBookUpdate(*up);
+
+  const double needQtyBase = 250.0;
+  for (auto _ : state)
+  {
+    auto res = book.consumeAsks(needQtyBase);
+    benchmark::DoNotOptimize(res);
+  }
+}
+BENCHMARK(BM_ConsumeAsks_Dense)->Unit(benchmark::kMicrosecond);
+
+static void BM_ConsumeBids_Dense(benchmark::State& state)
+{
+  constexpr int kLevels = 100000;
+  NLevelOrderBook<kLevels> book{Price::fromDouble(0.1)};
+  BookUpdatePool pool;
+
+  auto opt = pool.acquire();
+  assert(opt);
+  auto& up = *opt;
+
+  up->update.type = BookUpdateType::SNAPSHOT;
+  up->update.bids.reserve(kLevels);
+  up->update.asks.clear();
+
+  const auto p0 = Price::fromDouble(20000.0);
+  const auto ts = Price::fromDouble(0.1).raw();
+
+  for (int i = 0; i < kLevels; ++i)
+  {
+    Price px = Price::fromRaw(p0.raw() - int64_t(i) * ts);
+    double qd = 0.5 + (i % 10) * 0.15;
+    up->update.bids.emplace_back(px, Quantity::fromDouble(qd));
+  }
+
+  book.applyBookUpdate(*up);
+
+  const double needQtyBase = 250.0;
+  for (auto _ : state)
+  {
+    auto res = book.consumeBids(needQtyBase);
+    benchmark::DoNotOptimize(res);
+  }
+}
+BENCHMARK(BM_ConsumeBids_Dense)->Unit(benchmark::kMicrosecond);
+
+static void BM_ConsumeAsks_Sparse(benchmark::State& state)
+{
+  constexpr int kLevels = 100000;
+  NLevelOrderBook<kLevels> book{Price::fromDouble(0.1)};
+  BookUpdatePool pool;
+
+  auto opt = pool.acquire();
+  assert(opt);
+  auto& up = *opt;
+
+  up->update.type = BookUpdateType::SNAPSHOT;
+  up->update.asks.reserve(kLevels);
+  up->update.bids.clear();
+
+  const auto p0 = Price::fromDouble(20000.0);
+  const auto ts = Price::fromDouble(0.1).raw();
+
+  for (int i = 0; i < kLevels; ++i)
+  {
+    Price px = Price::fromRaw(p0.raw() + int64_t(i) * ts);
+    double qd = (i % 4 == 0) ? (0.5 + (i % 10) * 0.15) : 0.0;
+    up->update.asks.emplace_back(px, Quantity::fromDouble(qd));
+  }
+
+  book.applyBookUpdate(*up);
+
+  const double needQtyBase = 250.0;
+  for (auto _ : state)
+  {
+    auto res = book.consumeAsks(needQtyBase);
+    benchmark::DoNotOptimize(res);
+  }
+}
+BENCHMARK(BM_ConsumeAsks_Sparse)->Unit(benchmark::kMicrosecond);
+
+static void BM_ConsumeBids_Sparse(benchmark::State& state)
+{
+  constexpr int kLevels = 100000;
+  NLevelOrderBook<kLevels> book{Price::fromDouble(0.1)};
+  BookUpdatePool pool;
+
+  auto opt = pool.acquire();
+  assert(opt);
+  auto& up = *opt;
+
+  up->update.type = BookUpdateType::SNAPSHOT;
+  up->update.bids.reserve(kLevels);
+  up->update.asks.clear();
+
+  const auto p0 = Price::fromDouble(20000.0);
+  const auto ts = Price::fromDouble(0.1).raw();
+
+  for (int i = 0; i < kLevels; ++i)
+  {
+    Price px = Price::fromRaw(p0.raw() - int64_t(i) * ts);
+    double qd = (i % 4 == 0) ? (0.5 + (i % 10) * 0.15) : 0.0;
+    up->update.bids.emplace_back(px, Quantity::fromDouble(qd));
+  }
+
+  book.applyBookUpdate(*up);
+
+  const double needQtyBase = 250.0;
+  for (auto _ : state)
+  {
+    auto res = book.consumeBids(needQtyBase);
+    benchmark::DoNotOptimize(res);
+  }
+}
+BENCHMARK(BM_ConsumeBids_Sparse)->Unit(benchmark::kMicrosecond);
+
 BENCHMARK_MAIN();
