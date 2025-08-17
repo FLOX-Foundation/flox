@@ -68,7 +68,7 @@ jobs:
       - name: Create or update PR
         if: steps.update.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           pr_body=$(printf "Previous (tree) SHA: %s\nSubmodule HEAD SHA: %s" "${{ steps.update.outputs.old_sha }}" "${{ steps.update.outputs.new_sha }}")
           pr_number=$(gh pr list --head ci/bump-flox --state open --json number --jq '.[0].number')
