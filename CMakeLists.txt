@@ -30,18 +30,10 @@ file(GLOB_RECURSE SRC_FILES
 )
 
 set(FLOX ${PROJECT_NAME})
-set(FLOX_SYNC ${PROJECT_NAME}_sync)
 
 add_library(${FLOX} STATIC ${SRC_FILES})
 add_library(flox::${FLOX} ALIAS ${FLOX})
 target_compile_options(${FLOX} PUBLIC
-  $<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
-)
-
-add_library(${FLOX_SYNC} STATIC ${SRC_FILES})
-add_library(flox::${FLOX_SYNC} ALIAS ${FLOX_SYNC})
-target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_USE_SYNC_BOOK_UPDATE_BUS FLOX_USE_SYNC_TRADE_BUS FLOX_USE_SYNC_ORDER_BUS FLOX_USE_SYNC_CANDLE_BUS)
-target_compile_options(${FLOX_SYNC} PUBLIC
   $<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
 )
 
@@ -52,26 +44,20 @@ option(FLOX_ENABLE_CPU_AFFINITY "Enable CPU affinity and NUMA functionality" OFF
 if(FLOX_ENABLE_CPU_AFFINITY)
   message(STATUS "CPU affinity features enabled")
   target_compile_definitions(${FLOX} PUBLIC FLOX_CPU_AFFINITY_ENABLED=1)
-  target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_CPU_AFFINITY_ENABLED=1)
   # Find and conditionally link NUMA library for CPU affinity functionality
   find_library(NUMA_LIBRARY numa)
   if(NUMA_LIBRARY)
     target_link_libraries(${FLOX} PUBLIC ${NUMA_LIBRARY})
-    target_link_libraries(${FLOX_SYNC} PUBLIC ${NUMA_LIBRARY})
     target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=1)
-    target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_NUMA_LIBRARY_LINKED=1)
     message(STATUS "Found NUMA library: ${NUMA_LIBRARY}")
   else()
     target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
-    target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
     message(WARNING "NUMA library not found")
   endif()
 else()
   message(STATUS "CPU affinity features disabled")
   target_compile_definitions(${FLOX} PUBLIC FLOX_CPU_AFFINITY_ENABLED=0)
-  target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_CPU_AFFINITY_ENABLED=0)
   target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
-  target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
 endif()
 
 option(FLOX_ENABLE_TRACY "Enable Tracy profiler" OFF)
@@ -86,9 +72,7 @@ if (FLOX_ENABLE_TRACY)
   FetchContent_MakeAvailable(tracy)
 
   target_link_libraries(${FLOX} PUBLIC Tracy::TracyClient)
-  target_link_libraries(${FLOX_SYNC} PUBLIC Tracy::TracyClient)
   target_compile_definitions(${FLOX} PUBLIC FLOX_ENABLE_TRACY=1)
-  target_compile_definitions(${FLOX_SYNC} PUBLIC FLOX_ENABLE_TRACY=1)
 endif()
 
 option(FLOX_ENABLE_BENCHMARKS "Enable benchmarks" OFF)

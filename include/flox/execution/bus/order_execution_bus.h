@@ -16,11 +16,7 @@
 namespace flox
 {
 
-#ifdef FLOX_USE_SYNC_ORDER_BUS
-using OrderExecutionBus = EventBus<OrderEvent, SyncPolicy<OrderEvent> >;
-#else
-using OrderExecutionBus = EventBus<OrderEvent, AsyncPolicy<OrderEvent> >;
-#endif
+using OrderExecutionBus = EventBus<OrderEvent>;
 
 /**
  * @brief Create and configure an OrderExecutionBus with optimal isolated core settings
@@ -56,4 +52,5 @@ inline bool configureOrderExecutionBusForPerformance(OrderExecutionBus& bus, boo
   return true;
 #endif
 }
+
 }  // namespace flox

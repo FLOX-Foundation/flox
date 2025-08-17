@@ -36,11 +36,11 @@ std::unique_ptr<Engine> DemoBuilder::build()
   auto candleBus = std::make_unique<CandleBus>();
 
   auto execTracker = std::make_unique<ConsoleExecutionTracker>();
-  auto trackerAdapter = std::make_shared<ExecutionTrackerAdapter>(1, execTracker.get());
-  execBus->subscribe(trackerAdapter);
+  auto trackerAdapter = std::make_unique<ExecutionTrackerAdapter>(1, execTracker.get());
+  execBus->subscribe(trackerAdapter.get());
 
-  auto candleAggregator = std::make_shared<CandleAggregator>(std::chrono::seconds{60}, candleBus.get());
-  tradeBus->subscribe(candleAggregator);
+  auto candleAggregator = std::make_unique<CandleAggregator>(std::chrono::seconds{60}, candleBus.get());
+  tradeBus->subscribe(candleAggregator.get());
 
 #if FLOX_CPU_AFFINITY_ENABLED
   // Configure CPU affinity for optimal performance
@@ -69,10 +69,12 @@ std::unique_ptr<Engine> DemoBuilder::build()
 
   for (SymbolId sym = 0; sym < 8; ++sym)
   {
-    auto strat = std::make_shared<DemoStrategy>(sym, *execBus);
+    auto strat = std::make_unique<DemoStrategy>(sym, *execBus);
 
-    bookUpdateBus->subscribe(strat);
-    tradeBus->subscribe(strat);
+    bookUpdateBus->subscribe(strat.get());
+    tradeBus->subscribe(strat.get());
+
+    subsystems.push_back(std::move(strat));
   }
 
   std::vector<std::shared_ptr<IExchangeConnector>> connectors;
@@ -87,6 +89,8 @@ std::unique_ptr<Engine> DemoBuilder::build()
   subsystems.push_back(std::move(candleBus));
   subsystems.push_back(std::move(execBus));
   subsystems.push_back(std::move(execTracker));
+  subsystems.push_back(std::move(trackerAdapter));
+  subsystems.push_back(std::move(candleAggregator));
 
   return std::make_unique<Engine>(_config, std::move(subsystems), std::move(connectors));
 }

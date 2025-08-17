@@ -29,7 +29,6 @@ class DemoStrategy : public IStrategy
   DemoStrategy(SymbolId symbol, OrderExecutionBus& execBus);
 
   SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void start() override;
   void stop() override;

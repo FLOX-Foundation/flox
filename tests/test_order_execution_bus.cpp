@@ -24,15 +24,15 @@ namespace
 class CountingListener : public IOrderExecutionListener
 {
  public:
-  explicit CountingListener(SubscriberId id, std::atomic<int>& c)
-      : IOrderExecutionListener(id), _counter(c) {}
+  CountingListener(SubscriberId id, std::atomic<int>& c)
+      : IOrderExecutionListener(id), counter(c) {}
 
   void onOrderSubmitted(const Order&) override {}
   void onOrderAccepted(const Order&) override {}
   void onOrderPartiallyFilled(const Order&, Quantity) override {}
   void onOrderFilled(const Order& order) override
   {
-    ++_counter;
+    ++counter;
     last = order;
   }
   void onOrderCanceled(const Order&) override {}
@@ -41,34 +41,35 @@ class CountingListener : public IOrderExecutionListener
   void onOrderReplaced(const Order&, const Order&) override {}
 
   Order last{};
-
- private:
-  std::atomic<int>& _counter;
+  std::atomic<int>& counter;
 };
 
 }  // namespace
 
 TEST(OrderExecutionBusTest, SubscribersReceiveFill)
 {
-  OrderExecutionBus bus;
-  bus.enableDrainOnStop();
+  auto bus = std::make_unique<OrderExecutionBus>();
+
   std::atomic<int> c1{0}, c2{0};
-  auto l1 = std::make_shared<CountingListener>(1, c1);
-  auto l2 = std::make_shared<CountingListener>(2, c2);
-  bus.subscribe(l1);
-  bus.subscribe(l2);
+  auto l1 = std::make_unique<CountingListener>(1, c1);
+  auto l2 = std::make_unique<CountingListener>(2, c2);
 
-  bus.start();
+  bus->subscribe(l1.get());
+  bus->subscribe(l2.get());
 
-  OrderEvent event{};
-  event.status = OrderEventStatus::FILLED;
-  event.order.symbol = 1;
-  event.order.side = Side::BUY;
-  event.order.quantity = Quantity::fromDouble(1.0);
+  bus->start();
 
-  bus.publish(event);
-  bus.stop();
+  OrderEvent ev{};
+  ev.status = OrderEventStatus::FILLED;
+  ev.order.symbol = 1;
+  ev.order.side = Side::BUY;
+  ev.order.quantity = Quantity::fromDouble(1.0);
+
+  const auto seq = bus->publish(ev);
+  bus->waitConsumed(seq);
 
   EXPECT_EQ(c1.load(), 1);
   EXPECT_EQ(c2.load(), 1);
+
+  bus->stop();
 }

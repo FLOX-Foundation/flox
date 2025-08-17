@@ -54,7 +54,6 @@ class TestStrategy : public IStrategy
   }
 
   SubscriberId id() const override { return 1; }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void onCandle(const CandleEvent& event) override
   {
@@ -78,8 +77,8 @@ TEST(CandleAggregatorTest, AggregatesTradesIntoCandles)
   CandleBus bus;
   bus.enableDrainOnStop();
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
 
   bus.start();
   aggregator.start();
@@ -108,8 +107,8 @@ TEST(CandleAggregatorTest, FlushesFinalCandleOnStop)
   CandleBus bus;
   bus.enableDrainOnStop();
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
 
@@ -133,8 +132,8 @@ TEST(CandleAggregatorTest, StartsNewCandleAfterGap)
   CandleBus bus;
   bus.enableDrainOnStop();
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
 
@@ -154,8 +153,8 @@ TEST(CandleAggregatorTest, SingleTradeCandle)
   CandleBus bus;
   bus.enableDrainOnStop();
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
   aggregator.onTrade(makeTrade(SYMBOL, 123, 1, 5));
@@ -178,8 +177,8 @@ TEST(CandleAggregatorTest, MultipleSymbolsAreAggregatedSeparately)
   CandleBus bus;
   bus.enableDrainOnStop();
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(candles, &symbols);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(candles, &symbols);
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
 
@@ -211,8 +210,8 @@ TEST(CandleAggregatorTest, DoubleStartClearsOldState)
   CandleBus bus;
   bus.enableDrainOnStop();
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
   bus.start();
 
   aggregator.start();
@@ -238,7 +237,6 @@ TEST(CandleAggregatorTest, InstrumentTypeIsPropagated)
     StrategyWithInstrument(std::vector<InstrumentType>& out) : _out(out) {}
 
     SubscriberId id() const override { return 99; }
-    SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
     void onCandle(const CandleEvent& event) override
     {
@@ -253,8 +251,8 @@ TEST(CandleAggregatorTest, InstrumentTypeIsPropagated)
   bus.enableDrainOnStop();
 
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<StrategyWithInstrument>(types);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<StrategyWithInstrument>(types);
+  bus.subscribe(strat.get());
 
   SymbolRegistry registry;
   SymbolInfo info;

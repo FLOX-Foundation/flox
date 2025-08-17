@@ -17,6 +17,7 @@
 #include "flox/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
+#include <memory>
 
 using namespace flox;
 
@@ -32,7 +33,6 @@ class TestStrategy : public IStrategy
   explicit TestStrategy(SymbolId symbol) : _symbol(symbol) {}
 
   SubscriberId id() const override { return 1; }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void onTrade(const TradeEvent& event) override
   {
@@ -123,17 +123,16 @@ class MockConnector
 class SmokeEngineBuilder
 {
  public:
-  SmokeEngineBuilder(SymbolId symbol, std::shared_ptr<TestStrategy> strategy)
-      : _symbol(symbol), _strategy(std::move(strategy))
+  SmokeEngineBuilder(SymbolId symbol, TestStrategy* strategy)
+      : _symbol(symbol), _strategy(strategy)
   {
   }
 
   class EngineImpl : public ISubsystem
   {
    public:
-    EngineImpl(BookUpdateBus& bookUpdateBus, TradeBus& tradeBus, MockConnector& connector,
-               std::shared_ptr<TestStrategy> strategy)
-        : _bookUpdateBus(bookUpdateBus), _tradeBus(tradeBus), _connector(connector), _strategy(std::move(strategy))
+    EngineImpl(BookUpdateBus& bookUpdateBus, TradeBus& tradeBus, MockConnector& connector, TestStrategy* strategy)
+        : _bookUpdateBus(bookUpdateBus), _tradeBus(tradeBus), _connector(connector), _strategy(strategy)
     {
     }
 
@@ -151,13 +150,11 @@ class SmokeEngineBuilder
     void runTrade(Price price, Quantity qty) { _connector.publishTrade(price, qty); }
     void runBook(Price price, Quantity qty) { _connector.publishBook(price, qty); }
 
-    std::shared_ptr<TestStrategy> strategy() const { return _strategy; }
-
    private:
     BookUpdateBus& _bookUpdateBus;
     TradeBus& _tradeBus;
     MockConnector& _connector;
-    std::shared_ptr<TestStrategy> _strategy;
+    TestStrategy* _strategy;
   };
 
   std::unique_ptr<EngineImpl> build()
@@ -178,7 +175,7 @@ class SmokeEngineBuilder
   }
 
   SymbolId _symbol;
-  std::shared_ptr<TestStrategy> _strategy;
+  TestStrategy* _strategy;
   std::unique_ptr<BookUpdateBus> _bookUpdateBus;
   std::unique_ptr<TradeBus> _tradeBus;
   std::unique_ptr<BookUpdatePool> _bookPool;
@@ -190,8 +187,8 @@ class SmokeEngineBuilder
 TEST(SmokeEngineTest, StrategyReceivesBothEvents)
 {
   constexpr SymbolId SYMBOL = 777;
-  auto strategy = std::make_shared<TestStrategy>(SYMBOL);
-  SmokeEngineBuilder builder(SYMBOL, strategy);
+  auto strategy = std::make_unique<TestStrategy>(SYMBOL);
+  SmokeEngineBuilder builder(SYMBOL, strategy.get());
   auto engineBase = builder.build();
   auto engine = static_cast<SmokeEngineBuilder::EngineImpl*>(engineBase.get());
 

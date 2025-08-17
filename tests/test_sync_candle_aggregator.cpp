@@ -18,10 +18,6 @@
 #include <memory>
 #include <vector>
 
-#ifndef FLOX_USE_SYNC_CANDLE_BUS
-#error "Test requires FLOX_USE_SYNC_CANDLE_BUS to be defined"
-#endif
-
 using namespace flox;
 
 namespace
@@ -30,10 +26,7 @@ namespace
 constexpr SymbolId SYMBOL = 42;
 const std::chrono::seconds INTERVAL = std::chrono::seconds(60);
 
-TimePoint ts(int seconds)
-{
-  return TimePoint(std::chrono::seconds(seconds));
-}
+TimePoint ts(int seconds) { return TimePoint(std::chrono::seconds(seconds)); }
 
 TradeEvent makeTrade(SymbolId symbol, double price, double qty, int sec)
 {
@@ -53,7 +46,6 @@ class TestStrategy : public CandleEvent::Listener
       : _out(out), _symOut(symOut) {}
 
   SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void onCandle(const CandleEvent& event) override
   {
@@ -76,8 +68,9 @@ TEST(CandleAggregatorTest, AllEventsAreDeliveredBeforeStop)
   std::vector<Candle> result;
   CandleBus bus;
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+
+  bus.subscribe(strat.get(), /*required=*/true);
   bus.start();
   aggregator.start();
 
@@ -85,12 +78,13 @@ TEST(CandleAggregatorTest, AllEventsAreDeliveredBeforeStop)
   aggregator.onTrade(makeTrade(SYMBOL, 110, 1, 10));  // high
   aggregator.onTrade(makeTrade(SYMBOL, 95, 1, 20));   // low
   aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 50));  // close
-  aggregator.onTrade(makeTrade(SYMBOL, 115, 1, 65));  // triggers flush of first, starts second
+  aggregator.onTrade(makeTrade(SYMBOL, 115, 1, 65));  // flush first, start second
 
   aggregator.stop();
+  bus.flush();
   bus.stop();
 
-  ASSERT_EQ(result.size(), 2);
+  ASSERT_EQ(result.size(), 2u);
 
   const auto& first = result[0];
   EXPECT_EQ(first.startTime, ts(0));
@@ -114,21 +108,24 @@ TEST(CandleAggregatorTest, NoEventsAreLostAcrossMultipleStarts)
   std::vector<Candle> result;
   CandleBus bus;
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+
+  bus.subscribe(strat.get());
   bus.start();
 
   aggregator.start();
   aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
-  aggregator.stop();  // first candle
+  aggregator.stop();
+  bus.flush();
 
   aggregator.start();
   aggregator.onTrade(makeTrade(SYMBOL, 120, 2, 70));
-  aggregator.stop();  // second candle
+  aggregator.stop();
+  bus.flush();
 
   bus.stop();
 
-  ASSERT_EQ(result.size(), 2);
+  ASSERT_EQ(result.size(), 2u);
   EXPECT_EQ(result[0].open, Price::fromDouble(100));
   EXPECT_EQ(result[1].open, Price::fromDouble(120));
 }
@@ -139,17 +136,20 @@ TEST(CandleAggregatorTest, MultipleSymbolsAreDeliveredIndependently)
   std::vector<SymbolId> symbols;
   CandleBus bus;
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(candles, &symbols);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(candles, &symbols);
+
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
 
   aggregator.onTrade(makeTrade(1, 10, 1, 0));
   aggregator.onTrade(makeTrade(2, 20, 1, 0));
+
   aggregator.stop();
+  bus.flush();
   bus.stop();
 
-  ASSERT_EQ(candles.size(), 2);
+  ASSERT_EQ(candles.size(), 2u);
   EXPECT_TRUE(std::count(symbols.begin(), symbols.end(), 1));
   EXPECT_TRUE(std::count(symbols.begin(), symbols.end(), 2));
 }
@@ -159,16 +159,18 @@ TEST(CandleAggregatorTest, CandleIsGeneratedEvenFromSingleTrade)
   std::vector<Candle> result;
   CandleBus bus;
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
 
   aggregator.onTrade(makeTrade(SYMBOL, 111, 1, 0));
   aggregator.stop();
+  bus.flush();
   bus.stop();
 
-  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.size(), 1u);
   const auto& c = result[0];
   EXPECT_EQ(c.open, Price::fromDouble(111));
   EXPECT_EQ(c.close, Price::fromDouble(111));
@@ -180,8 +182,9 @@ TEST(CandleAggregatorTest, StopFlushesAllPendingCandles)
   std::vector<Candle> result;
   CandleBus bus;
   CandleAggregator aggregator(INTERVAL, &bus);
-  auto strat = std::make_shared<TestStrategy>(result);
-  bus.subscribe(strat);
+  auto strat = std::make_unique<TestStrategy>(result);
+
+  bus.subscribe(strat.get());
   bus.start();
   aggregator.start();
 
@@ -190,9 +193,10 @@ TEST(CandleAggregatorTest, StopFlushesAllPendingCandles)
   aggregator.onTrade(makeTrade(SYMBOL, 92, 1, 90));  // starts new
 
   aggregator.stop();
+  bus.flush();
   bus.stop();
 
-  ASSERT_EQ(result.size(), 2);
+  ASSERT_EQ(result.size(), 2u);
   EXPECT_EQ(result[0].close, Price::fromDouble(91));
   EXPECT_EQ(result[1].close, Price::fromDouble(92));
 }

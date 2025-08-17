@@ -16,11 +16,7 @@
 namespace flox
 {
 
-#ifdef FLOX_USE_SYNC_BOOK_UPDATE_BUS
-using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, SyncPolicy<pool::Handle<BookUpdateEvent>>>;
-#else
-using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, AsyncPolicy<pool::Handle<BookUpdateEvent>>>;
-#endif
+using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>>;
 
 /**
  * @brief Create a BookUpdateBus with optimal performance configuration
@@ -57,4 +53,5 @@ inline bool configureBookUpdateBusForPerformance(BookUpdateBus& bus, bool enable
   return true;
 #endif
 }
+
 }  // namespace flox

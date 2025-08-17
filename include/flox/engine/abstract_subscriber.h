@@ -15,16 +15,10 @@ namespace flox
 {
 
 using SubscriberId = uint64_t;
-enum class SubscriberMode
-{
-  PUSH,
-  PULL
-};
 
 struct ISubscriber
 {
   virtual SubscriberId id() const = 0;
-  virtual SubscriberMode mode() const { return SubscriberMode::PUSH; }
 };
 
 }  // namespace flox

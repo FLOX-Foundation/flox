@@ -42,7 +42,6 @@ class TestSubscriber : public IMarketDataSubscriber
   }
 
   SubscriberId id() const override { return _id; }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   double lastPrice() const { return static_cast<double>(_lastPrice.load()) / Price::Scale; }
 
@@ -57,8 +56,8 @@ TEST(MarketDataBusTest, SingleSubscriberReceivesUpdates)
   BookUpdateBus bus;
   std::atomic<int> receivedCount{0};
 
-  auto subscriber = std::make_shared<TestSubscriber>(1, receivedCount);
-  bus.subscribe(subscriber);
+  auto subscriber = std::make_unique<TestSubscriber>(1, receivedCount);
+  bus.subscribe(subscriber.get());
 
   bus.start();
 
@@ -89,11 +88,11 @@ TEST(MarketDataBusTest, MultipleSubscribersReceiveAll)
   std::atomic<int> received1{0};
   std::atomic<int> received2{0};
 
-  auto sub1 = std::make_shared<TestSubscriber>(1, received1);
-  auto sub2 = std::make_shared<TestSubscriber>(2, received2);
+  auto sub1 = std::make_unique<TestSubscriber>(1, received1);
+  auto sub2 = std::make_unique<TestSubscriber>(2, received2);
 
-  bus.subscribe(sub1);
-  bus.subscribe(sub2);
+  bus.subscribe(sub1.get());
+  bus.subscribe(sub2.get());
 
   bus.start();
 
@@ -124,7 +123,8 @@ TEST(MarketDataBusTest, GracefulStopDoesNotLeak)
 {
   BookUpdateBus bus;
   std::atomic<int> count{0};
-  bus.subscribe(std::make_shared<TestSubscriber>(1, count));
+  auto sub = std::make_unique<TestSubscriber>(1, count);
+  bus.subscribe(sub.get());
 
   bus.start();
 

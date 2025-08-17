@@ -32,7 +32,6 @@ class CandleAggregator : public ISubsystem, public IMarketDataSubscriber
   void stop() override;
 
   SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void onTrade(const TradeEvent& trade) override;
 

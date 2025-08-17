@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/engine/abstract_subsystem.h"
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/metrics/abstract_execution_tracker.h"
 
@@ -17,7 +18,7 @@
 namespace flox
 {
 
-class ExecutionTrackerAdapter : public IOrderExecutionListener
+class ExecutionTrackerAdapter : public ISubsystem, public IOrderExecutionListener
 {
  public:
   ExecutionTrackerAdapter(SubscriberId id, IExecutionTracker* tracker)

@@ -8,6 +8,8 @@
  */
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -20,10 +22,6 @@
 
 using namespace flox;
 using namespace std::chrono_literals;
-
-#ifndef FLOX_USE_SYNC_BOOK_UPDATE_BUS
-#error "Test requires FLOX_USE_SYNC_BOOK_UPDATE_BUS to be defined"
-#endif
 
 namespace
 {
@@ -38,7 +36,33 @@ struct TickLogEntry
   TimePoint timestamp;
 };
 
-TEST(SyncMarketDataBusTest, DetectsAsyncBehaviorWithTimingGaps)
+struct TimingSubscriber final : public IMarketDataSubscriber
+{
+  TimingSubscriber(SubscriberId id,
+                   std::mutex& m,
+                   std::vector<TickLogEntry>& log,
+                   int sleepMs)
+      : _id(id), _mutex(m), _log(log), _sleepMs(sleepMs) {}
+
+  void onBookUpdate(const BookUpdateEvent& ev) override
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(_sleepMs));
+    TickLogEntry e{ev.tickSequence, _id, std::chrono::steady_clock::now()};
+    std::lock_guard<std::mutex> lk(_mutex);
+    _log.push_back(e);
+  }
+
+  SubscriberId id() const override { return _id; }
+
+  SubscriberId _id;
+  std::mutex& _mutex;
+  std::vector<TickLogEntry>& _log;
+  int _sleepMs;
+};
+
+}  // namespace
+
+TEST(MarketDataBusTest, RequiredConsumersEnforceTickByTickOrdering)
 {
   BookUpdateBus bus;
   BookUpdatePool pool;
@@ -48,73 +72,50 @@ TEST(SyncMarketDataBusTest, DetectsAsyncBehaviorWithTimingGaps)
   std::mutex logMutex;
   std::vector<TickLogEntry> tickLog;
 
-  struct TimingSubscriber : public IMarketDataSubscriber
-  {
-    TimingSubscriber(SubscriberId id, std::mutex& mutex, std::vector<TickLogEntry>& log, int sleepMs)
-        : _id(id), _mutex(mutex), _log(log), _sleepMs(sleepMs) {}
+  auto fast = std::make_unique<TimingSubscriber>(1, logMutex, tickLog, 10);
+  auto mid = std::make_unique<TimingSubscriber>(2, logMutex, tickLog, 30);
+  auto slow = std::make_unique<TimingSubscriber>(3, logMutex, tickLog, 60);
 
-    void onBookUpdate(const BookUpdateEvent& ev) override
-    {
-      std::this_thread::sleep_for(std::chrono::milliseconds(_sleepMs));
-      TickLogEntry entry{ev.tickSequence, _id, std::chrono::steady_clock::now()};
-      std::lock_guard<std::mutex> lock(_mutex);
-      _log.push_back(entry);
-    }
-
-    SubscriberId id() const override { return _id; }
-
-    SubscriberId _id;
-    std::mutex& _mutex;
-    std::vector<TickLogEntry>& _log;
-    int _sleepMs;
-  };
-
-  auto fast = std::make_shared<TimingSubscriber>(1, logMutex, tickLog, 10);
-  auto mid = std::make_shared<TimingSubscriber>(2, logMutex, tickLog, 30);
-  auto slow = std::make_shared<TimingSubscriber>(3, logMutex, tickLog, 60);
-
-  bus.subscribe(fast);
-  bus.subscribe(mid);
-  bus.subscribe(slow);
+  bus.subscribe(fast.get());
+  bus.subscribe(mid.get());
+  bus.subscribe(slow.get());
 
   bus.start();
 
   for (int i = 0; i < numTicks; ++i)
   {
-    auto handleOpt = pool.acquire();
-    ASSERT_TRUE(handleOpt.has_value());
-    auto& handle = *handleOpt;
+    auto h = pool.acquire();
+    ASSERT_TRUE(h.has_value());
+    auto& ev = *h;
 
-    handle->update.type = BookUpdateType::SNAPSHOT;
-    handle->update.bids = {{Price::fromDouble(100.0 + i), Quantity::fromDouble(1.0)}};
+    ev->update.type = BookUpdateType::SNAPSHOT;
+    ev->update.bids = {{Price::fromDouble(100.0 + i), Quantity::fromDouble(1.0)}};
 
-    bus.publish(std::move(handle));
+    const auto seq = bus.publish(std::move(ev));
+    bus.waitConsumed(seq);
   }
 
   bus.stop();
 
-  std::map<uint64_t, std::vector<TimePoint>> timestampsByTick;
-
-  for (const auto& entry : tickLog)
+  std::map<uint64_t, std::vector<TimePoint>> tsByTick;
+  for (const auto& e : tickLog)
   {
-    timestampsByTick[entry.tickId].push_back(entry.timestamp);
+    tsByTick[e.tickId].push_back(e.timestamp);
   }
 
-  for (uint64_t tick = 1; tick < numTicks; ++tick)
+  for (uint64_t tick = 1; tick < static_cast<uint64_t>(numTicks); ++tick)
   {
-    const auto& prev = timestampsByTick[tick - 1];
-    const auto& curr = timestampsByTick[tick];
+    ASSERT_EQ(tsByTick[tick - 1].size(), 3u);
+    ASSERT_EQ(tsByTick[tick].size(), 3u);
 
-    ASSERT_EQ(prev.size(), 3);
-    ASSERT_EQ(curr.size(), 3);
+    const auto maxPrev = *std::max_element(tsByTick[tick - 1].begin(),
+                                           tsByTick[tick - 1].end());
+    const auto minCurr = *std::min_element(tsByTick[tick].begin(),
+                                           tsByTick[tick].end());
 
-    auto maxPrev = *std::max_element(prev.begin(), prev.end());
-    auto minCurr = *std::min_element(curr.begin(), curr.end());
-
-    EXPECT_GE(minCurr, maxPrev) << "Tick " << tick << " started before previous was fully processed";
+    EXPECT_GE(minCurr, maxPrev) << "Tick " << tick
+                                << " started before previous was fully processed";
   }
 
-  EXPECT_EQ(pool.inUse(), 0);
+  EXPECT_EQ(pool.inUse(), 0u);
 }
-
-}  // namespace

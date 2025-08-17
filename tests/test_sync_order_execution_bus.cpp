@@ -9,35 +9,31 @@
 
 #include <gtest/gtest.h>
 #include <atomic>
+#include <chrono>
 #include <memory>
+#include <thread>
 
 #include "flox/engine/abstract_subscriber.h"
 #include "flox/execution/bus/order_execution_bus.h"
 #include "flox/execution/events/order_event.h"
 #include "flox/execution/order.h"
 
-#ifndef FLOX_USE_SYNC_ORDER_BUS
-#error "Test requires FLOX_USE_SYNC_ORDER_BUS to be defined"
-#endif
-
 using namespace flox;
 
 namespace
 {
 
-class SyncListener : public IOrderExecutionListener
+class CountingListener : public IOrderExecutionListener
 {
  public:
-  explicit SyncListener(SubscriberId id, std::atomic<int>& c)
-      : IOrderExecutionListener(id), _counter(c) {}
-
+  CountingListener(SubscriberId id, std::atomic<int>& c) : IOrderExecutionListener(id), counter(c) {}
   void onOrderSubmitted(const Order&) override {}
   void onOrderAccepted(const Order&) override {}
   void onOrderPartiallyFilled(const Order&, Quantity) override {}
-  void onOrderFilled(const Order& order) override
+  void onOrderFilled(const Order& o) override
   {
-    ++_counter;
-    last = order;
+    last = o;
+    ++counter;
   }
   void onOrderCanceled(const Order&) override {}
   void onOrderExpired(const Order&) override {}
@@ -45,32 +41,117 @@ class SyncListener : public IOrderExecutionListener
   void onOrderReplaced(const Order&, const Order&) override {}
 
   Order last{};
-
- private:
-  std::atomic<int>& _counter;
+  std::atomic<int>& counter;
 };
+
+class SlowListener : public IOrderExecutionListener
+{
+ public:
+  SlowListener(SubscriberId id, std::atomic<int>& c, std::chrono::milliseconds d)
+      : IOrderExecutionListener(id), counter(c), delay(d) {}
+  void onOrderSubmitted(const Order&) override {}
+  void onOrderAccepted(const Order&) override {}
+  void onOrderPartiallyFilled(const Order&, Quantity) override {}
+  void onOrderFilled(const Order&) override
+  {
+    std::this_thread::sleep_for(delay);
+    ++counter;
+  }
+  void onOrderCanceled(const Order&) override {}
+  void onOrderExpired(const Order&) override {}
+  void onOrderRejected(const Order&, const std::string&) override {}
+  void onOrderReplaced(const Order&, const Order&) override {}
+
+  std::atomic<int>& counter;
+  std::chrono::milliseconds delay;
+};
+
+OrderEvent makeFilled()
+{
+  OrderEvent ev{};
+  ev.status = OrderEventStatus::FILLED;
+  ev.order.symbol = 42;
+  ev.order.side = Side::BUY;
+  ev.order.quantity = Quantity::fromDouble(1.0);
+  return ev;
+}
 
 }  // namespace
 
-TEST(SyncOrderExecutionBusTest, WaitsForAllSubscribers)
+TEST(OrderExecutionBusTest, WaitsForAllRequiredConsumers)
 {
-  OrderExecutionBus bus;
+  auto bus = std::make_unique<OrderExecutionBus>();
+
   std::atomic<int> counter{0};
-  auto l1 = std::make_shared<SyncListener>(1, counter);
-  auto l2 = std::make_shared<SyncListener>(2, counter);
-  bus.subscribe(l1);
-  bus.subscribe(l2);
+  auto l1 = std::make_unique<CountingListener>(1, counter);
+  auto l2 = std::make_unique<CountingListener>(2, counter);
 
-  bus.start();
+  bus->subscribe(l1.get());
+  bus->subscribe(l2.get());
 
-  OrderEvent event{};
-  event.status = OrderEventStatus::FILLED;
-  event.order.symbol = 42;
-  event.order.side = Side::BUY;
-  event.order.quantity = Quantity::fromDouble(1.0);
+  bus->start();
 
-  bus.publish(event);
+  auto ev = makeFilled();
+  const auto seq = bus->publish(ev);
+  bus->waitConsumed(seq);
+
   EXPECT_EQ(counter.load(), 2);
 
-  bus.stop();
+  bus->stop();
+}
+
+TEST(OrderExecutionBusTest, OptionalConsumerDoesNotGate)
+{
+  auto bus = std::make_unique<OrderExecutionBus>();
+
+  std::atomic<int> reqCount{0};
+  std::atomic<int> optCount{0};
+
+  auto fastReq = std::make_unique<CountingListener>(10, reqCount);
+  auto slowOpt = std::make_unique<SlowListener>(20, optCount, std::chrono::milliseconds(10));
+
+  bus->subscribe(fastReq.get());
+  bus->subscribe(slowOpt.get(), false);
+
+  bus->start();
+
+  const auto seq = bus->publish(makeFilled());
+  auto t0 = std::chrono::steady_clock::now();
+  bus->waitConsumed(seq);
+  auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t0);
+
+  EXPECT_EQ(reqCount.load(), 1);
+  EXPECT_LT(dt.count(), 5);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  EXPECT_EQ(optCount.load(), 1);
+
+  bus->stop();
+}
+
+TEST(OrderExecutionBusTest, FlushWaitsAllPublished)
+{
+  auto bus = std::make_unique<OrderExecutionBus>();
+
+  std::atomic<int> c1{0}, c2{0};
+  auto a = std::make_unique<CountingListener>(100, c1);
+  auto b = std::make_unique<CountingListener>(200, c2);
+
+  bus->subscribe(a.get());
+  bus->subscribe(b.get());
+  bus->start();
+
+  constexpr int N = 1000;
+  for (int i = 0; i < N; ++i)
+  {
+    bus->publish(makeFilled());
+  }
+
+  bus->flush();
+
+  EXPECT_EQ(c1.load(), N);
+  EXPECT_EQ(c2.load(), N);
+
+  bus->stop();
 }

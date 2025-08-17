@@ -10,17 +10,14 @@
 #pragma once
 
 #include <memory>
+
 #include "flox/book/events/trade_event.h"
 #include "flox/util/eventing/event_bus.h"
 
 namespace flox
 {
 
-#ifdef FLOX_USE_SYNC_TRADE_BUS
-using TradeBus = EventBus<TradeEvent, SyncPolicy<TradeEvent>>;
-#else
-using TradeBus = EventBus<TradeEvent, AsyncPolicy<TradeEvent>>;
-#endif
+using TradeBus = EventBus<TradeEvent>;
 
 /**
  * @brief Create and configure a TradeBus with optimal isolated core settings
@@ -57,4 +54,5 @@ inline bool configureTradeBusForPerformance(TradeBus& bus, bool enablePerformanc
   return true;
 #endif
 }
+
 }  // namespace flox
