@@ -38,22 +38,23 @@ jobs:
         id: update
         run: |
           set -e
-          old_sha=$(git ls-tree HEAD external/flox | awk '{print $3}')
-          echo "Previous SHA: $old_sha"
-          echo "old_sha=$old_sha" >> "$GITHUB_OUTPUT"
+          old_tree_sha=$(git ls-tree HEAD external/flox | awk '{print $3}')
+          echo "Previous (tree) SHA: $old_tree_sha"
+          echo "old_sha=$old_tree_sha" >> "$GITHUB_OUTPUT"
           git submodule update --init --remote --depth 1 external/flox || {
             echo "Retrying submodule update after failure..."
             sleep 5
             git submodule update --init --remote --depth 1 external/flox
           }
-          new_sha=$(git ls-tree HEAD external/flox | awk '{print $3}')
-          echo "New SHA: $new_sha"
-          echo "new_sha=$new_sha" >> "$GITHUB_OUTPUT"
-          if [ "$old_sha" = "$new_sha" ]; then
+          new_sub_sha=$(git -C external/flox rev-parse HEAD)
+          echo "Submodule HEAD SHA: $new_sub_sha"
+          echo "new_sha=$new_sub_sha" >> "$GITHUB_OUTPUT"
+          if [ "$old_tree_sha" = "$new_sub_sha" ]; then
             echo "No submodule changes detected."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Submodule updated."
+            echo "Submodule updated; staging link update in superproject..."
+            git add external/flox
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -61,7 +62,6 @@ jobs:
         if: steps.update.outputs.changed == 'true'
         run: |
           git checkout -B ci/bump-flox
-          git add external/flox
           git commit -m "bump flox submodule to latest main"
           git push --force origin ci/bump-flox
 
@@ -70,7 +70,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pr_body=$(printf "Previous SHA: %s\nNew SHA: %s" "${{ steps.update.outputs.old_sha }}" "${{ steps.update.outputs.new_sha }}")
+          pr_body=$(printf "Previous (tree) SHA: %s\nSubmodule HEAD SHA: %s" "${{ steps.update.outputs.old_sha }}" "${{ steps.update.outputs.new_sha }}")
           pr_number=$(gh pr list --head ci/bump-flox --state open --json number --jq '.[0].number')
           if [ -z "$pr_number" ]; then
             gh pr create --title "bump flox submodule to latest main" --body "$pr_body" --base main --head ci/bump-flox --label ci --label dependencies
