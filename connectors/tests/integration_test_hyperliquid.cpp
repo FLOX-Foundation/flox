@@ -22,6 +22,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <thread>
 
 using namespace flox;
@@ -38,7 +39,6 @@ class CountingSub final : public IMarketDataSubscriber
   }
 
   SubscriberId id() const override { return 99; }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void onBookUpdate(const BookUpdateEvent&) override
   {
@@ -77,9 +77,9 @@ TEST(HyperliquidExchangeConnectorIntegrationTest, ReceivesDataFromHyperliquid)
   BookUpdateBus bookBus;
   TradeBus tradeBus;
 
-  auto subscriber = std::make_shared<CountingSub>(bookCounter, tradeCounter);
-  bookBus.subscribe(subscriber);
-  tradeBus.subscribe(subscriber);
+  auto subscriber = std::make_unique<CountingSub>(bookCounter, tradeCounter);
+  bookBus.subscribe(subscriber.get());
+  tradeBus.subscribe(subscriber.get());
   bookBus.start();
   tradeBus.start();
 

@@ -37,7 +37,6 @@ class CountingSub final : public IMarketDataSubscriber
   }
 
   SubscriberId id() const override { return 99; }
-  SubscriberMode mode() const override { return SubscriberMode::PUSH; }
 
   void onBookUpdate(const BookUpdateEvent&) override
   {
@@ -61,9 +60,9 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
   BookUpdateBus bookBus;
   TradeBus tradeBus;
 
-  auto subscriber = std::make_shared<CountingSub>(bookCounter, tradeCounter);
-  bookBus.subscribe(subscriber);
-  tradeBus.subscribe(subscriber);
+  auto subscriber = std::make_unique<CountingSub>(bookCounter, tradeCounter);
+  bookBus.subscribe(subscriber.get());
+  tradeBus.subscribe(subscriber.get());
   bookBus.start();
   tradeBus.start();
 
@@ -119,9 +118,9 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
   BookUpdateBus bookBus;
   TradeBus tradeBus;
 
-  auto subscriber = std::make_shared<CountingSub>(bookCounter, tradeCounter);
-  bookBus.subscribe(subscriber);
-  tradeBus.subscribe(subscriber);
+  auto subscriber = std::make_unique<CountingSub>(bookCounter, tradeCounter);
+  bookBus.subscribe(subscriber.get());
+  tradeBus.subscribe(subscriber.get());
   bookBus.start();
   tradeBus.start();
 
