@@ -8,6 +8,8 @@
  */
 
 #include "flox/log/log.h"
+#include "flox/util/base/time.h"
+
 #define NO_COUT 1
 
 #include "demo/demo_builder.h"
@@ -20,6 +22,8 @@ demo::LatencyCollector collector;
 
 int main()
 {
+  flox::init_timebase_mapping();
+
   demo::EngineConfig cfg{};
   demo::DemoBuilder builder(cfg);
   auto engine = builder.build();

@@ -17,6 +17,7 @@
 
 #include "flox/common.h"
 #include "flox/engine/abstract_subsystem.h"
+#include "flox/util/base/time.h"
 
 namespace flox
 {

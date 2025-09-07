@@ -61,12 +61,4 @@ using Price = Decimal<PriceTag, 1'000'000, 1>;
 using Quantity = Decimal<QuantityTag, 1'000'000, 1>;
 using Volume = Decimal<VolumeTag, 1'000'000, 1>;
 
-using Clock = std::chrono::steady_clock;
-using TimePoint = Clock::time_point;
-
-inline TimePoint now() noexcept
-{
-  return Clock::now();
-}
-
 }  // namespace flox

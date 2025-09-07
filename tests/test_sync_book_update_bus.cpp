@@ -31,7 +31,7 @@ using BookUpdatePool = pool::Pool<BookUpdateEvent, PoolCapacity>;
 
 struct TickLogEntry
 {
-  uint64_t tickId;
+  int64_t tickId;
   SubscriberId subscriberId;
   TimePoint timestamp;
 };
@@ -47,7 +47,7 @@ struct TimingSubscriber final : public IMarketDataSubscriber
   void onBookUpdate(const BookUpdateEvent& ev) override
   {
     std::this_thread::sleep_for(std::chrono::milliseconds(_sleepMs));
-    TickLogEntry e{ev.tickSequence, _id, std::chrono::steady_clock::now()};
+    TickLogEntry e{ev.seq, _id, std::chrono::steady_clock::now()};
     std::lock_guard<std::mutex> lk(_mutex);
     _log.push_back(e);
   }
@@ -88,6 +88,7 @@ TEST(MarketDataBusTest, RequiredConsumersEnforceTickByTickOrdering)
     ASSERT_TRUE(h.has_value());
     auto& ev = *h;
 
+    ev->seq = i;
     ev->update.type = BookUpdateType::SNAPSHOT;
     ev->update.bids = {{Price::fromDouble(100.0 + i), Quantity::fromDouble(1.0)}};
 

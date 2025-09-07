@@ -36,7 +36,11 @@ struct OrderEvent
   Order newOrder{};
   Quantity fillQty{0};
 
-  uint64_t tickSequence = 0;
+  uint64_t tickSequence{0};
+
+  uint64_t recvNs{0};
+  uint64_t publishNs{0};
+  int64_t exchangeTsNs{0};
 
   void dispatchTo(IOrderExecutionListener& listener) const
   {
@@ -46,6 +50,7 @@ struct OrderEvent
         break;
       case OrderEventStatus::SUBMITTED:
         listener.onOrderSubmitted(order);
+        break;
       case OrderEventStatus::ACCEPTED:
         listener.onOrderAccepted(order);
         break;

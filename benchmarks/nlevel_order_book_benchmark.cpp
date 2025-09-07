@@ -35,7 +35,7 @@ static void BM_ApplyBookUpdate(benchmark::State& state)
 
     auto& update = *opt;
     update->update.type = BookUpdateType::DELTA;
-    update->update.timestamp = std::chrono::steady_clock::now();
+    update->publishTsNs = nowNsMonotonic();
 
     update->update.bids.clear();
     update->update.asks.clear();

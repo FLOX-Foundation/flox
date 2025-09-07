@@ -41,7 +41,7 @@ static void BM_CandleAggregator_OnTrade(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.timestamp = TimePoint(std::chrono::seconds(baseTs++));
+    event.trade.exchangeTsNs = nowNsMonotonic();
 
     aggregator.onTrade(event);
   }

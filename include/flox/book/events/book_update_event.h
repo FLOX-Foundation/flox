@@ -11,6 +11,7 @@
 
 #include "flox/book/book_update.h"
 #include "flox/engine/abstract_market_data_subscriber.h"
+#include "flox/util/base/time.h"
 #include "flox/util/memory/pool.h"
 
 #include <memory_resource>
@@ -24,7 +25,11 @@ struct BookUpdateEvent : public pool::PoolableBase<BookUpdateEvent>
 
   BookUpdate update;
 
-  uint64_t tickSequence = 0;
+  int64_t seq{0};
+  int64_t prevSeq{0};
+
+  MonoNanos recvNs{0};
+  MonoNanos publishTsNs{0};
 
   BookUpdateEvent(std::pmr::memory_resource* res) : update(res)
   {

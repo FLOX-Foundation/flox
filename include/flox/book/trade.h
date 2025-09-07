@@ -10,6 +10,7 @@
 #pragma once
 
 #include "flox/common.h"
+#include "flox/util/base/time.h"
 
 namespace flox
 {
@@ -21,7 +22,7 @@ struct Trade
   Price price{};
   Quantity quantity{};
   bool isBuy{false};
-  TimePoint timestamp{};
+  UnixNanos exchangeTsNs{0};
 };
 
 }  // namespace flox

@@ -62,7 +62,7 @@ void CandleAggregator::onTrade(const TradeEvent& event)
     partial.emplace();
   }
 
-  auto ts = alignToInterval(event.trade.timestamp);
+  auto ts = alignToInterval(fromUnixNs(event.trade.exchangeTsNs));
 
   if (!partial->initialized || partial->candle.startTime != ts)
   {
