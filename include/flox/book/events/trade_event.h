@@ -25,6 +25,8 @@ struct TradeEvent
   int64_t seq = 0;
   uint64_t trade_id = 0;
 
+  uint64_t tickSequence = 0;  // internal, set by bus
+
   MonoNanos recvNs{0};
   MonoNanos publishTsNs{0};
   UnixNanos exchangeMsgTsNs{0};

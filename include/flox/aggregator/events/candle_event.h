@@ -24,7 +24,7 @@ struct CandleEvent
   InstrumentType instrument = InstrumentType::Spot;
   Candle candle{};
 
-  uint64_t tickSequence = 0;
+  uint64_t tickSequence = 0;  // internal, set by bus
 };
 
 }  // namespace flox

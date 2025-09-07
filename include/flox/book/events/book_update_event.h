@@ -28,6 +28,8 @@ struct BookUpdateEvent : public pool::PoolableBase<BookUpdateEvent>
   int64_t seq{0};
   int64_t prevSeq{0};
 
+  uint64_t tickSequence = 0;  // internal, set by bus
+
   MonoNanos recvNs{0};
   MonoNanos publishTsNs{0};
 
