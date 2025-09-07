@@ -24,8 +24,6 @@ if(ENABLE_DEV_SETUP)
   endif()
 endif()
 
-option(BUILD_TESTS "Build tests" OFF)
-
 find_package(OpenSSL  REQUIRED)
 find_package(ZLIB     REQUIRED)
 find_package(CURL     REQUIRED)
@@ -69,7 +67,7 @@ install(EXPORT flox-connectorsTargets
         FILE flox-connectors-config.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/flox-connectors)
 
-option(FLOX_CONNECTORS_BUILD_TESTS "Build connectors tests" ON)
+option(FLOX_CONNECTORS_BUILD_TESTS "Build connectors tests" OFF)
 if(FLOX_CONNECTORS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(external/googletest)

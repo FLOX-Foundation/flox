@@ -252,7 +252,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         ev.trade.price = Price::fromDouble(std::strtod(pxRes.value_unsafe().data(), nullptr));
         ev.trade.quantity = Quantity::fromDouble(std::strtod(szRes.value_unsafe().data(), nullptr));
         ev.trade.isBuy = sideRes.value_unsafe() == "buy";
-        ev.trade.timestamp = std::chrono::steady_clock::now();
+        ev.trade.exchangeTsNs = nowNsMonotonic();
 
         if (const auto info = _registry->getSymbolInfo(sid))
         {

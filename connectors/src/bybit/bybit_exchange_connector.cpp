@@ -13,6 +13,7 @@
 
 #include <flox/log/atomic_logger.h>
 #include <flox/log/log.h>
+#include <flox/util/base/hash.h>
 
 #include <openssl/hmac.h>
 #include <cctype>
@@ -279,14 +280,27 @@ void BybitExchangeConnector::stop()
 void BybitExchangeConnector::handleMessage(std::string_view payload)
 {
   static thread_local simdjson::ondemand::parser parser;
+  const uint64_t recvNs = nowNsMonotonic();
 
   try
   {
     std::string json(payload);
     auto doc = parser.iterate(json);
+    auto root = doc.get_object();
 
-    auto topic = doc["topic"].get_string().value();
-    auto data = doc["data"].value();
+    auto topic_field = root.find_field_unordered("topic");
+    if (topic_field.error())
+    {
+      return;
+    }
+
+    auto data_field = root.find_field_unordered("data");
+    if (data_field.error())
+    {
+      return;
+    }
+
+    auto topic = topic_field.get_string().value();
 
     if (topic.starts_with("orderbook."))
     {
@@ -295,23 +309,24 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       {
         return;
       }
-
       auto& ev = *evOpt;
-      SymbolId sym = resolveSymbolId(data["s"]);
-      ev->update.symbol = sym;
+      ev->recvNs = recvNs;
 
-      auto type = doc["type"];  // "snapshot" | "delta"
       BookUpdateType updateType = BookUpdateType::SNAPSHOT;
-      if (!type.error())
+      auto utv = root.find_field_unordered("type").get_string().value();
+      if (utv == "delta")
       {
-        auto tsv = type.get_string().value();
-        if (tsv == "delta")
-        {
-          updateType = BookUpdateType::DELTA;
-        }
+        updateType = BookUpdateType::DELTA;
       }
 
       ev->update.type = updateType;
+
+      auto data_obj = data_field.get_object();
+
+      // symbol
+      std::string_view ssv = data_obj.find_field_unordered("s").get_string().value();
+      SymbolId sym = resolveSymbolId(ssv);
+      ev->update.symbol = sym;
 
       if (_registry)
       {
@@ -324,34 +339,76 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         }
       }
 
-      for (auto side : {std::pair{"b", &ev->update.bids}, std::pair{"a", &ev->update.asks}})
+      auto tsv = root.find_field_unordered("ts").get_int64().value();
+      auto ctsv = root.find_field_unordered("cts").get_int64().value();
+
+      ev->update.systemTsNs = msToNs(tsv);
+      ev->update.exchangeTsNs = msToNs(ctsv);
+
+      int seq = data_obj.find_field_unordered("seq").get_int64().value();
+      int64_t prev = 0;
+      if (updateType == BookUpdateType::SNAPSHOT)
       {
-        auto arr = data[side.first];
-        if (!arr.error())
+        prev = 0;
+        _lastBookSeq[sym] = seq;
+      }
+      else
+      {
+        auto it = _lastBookSeq.find(sym);
+        if (it != _lastBookSeq.end())
         {
-          for (auto lvl : arr.get_array().value())
-          {
-            auto lv = lvl.get_array().value();
-            std::string_view psv = lv.at(0).get_string().value();
-            lv.reset();
-            std::string_view qsv = lv.at(1).get_string().value();
-            side.second->emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
-                                      Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
-          }
+          prev = it->second;
         }
+
+        _lastBookSeq[sym] = seq;
+      }
+
+      ev->seq = seq;
+      ev->prevSeq = prev;
+
+      ev->update.bids.clear();
+      ev->update.asks.clear();
+
+      auto bf = data_obj.find_field_unordered("b");
+      for (auto lvl : bf.get_array().value())
+      {
+        auto arr = lvl.get_array().value();
+        std::string_view psv = arr.at(0).get_string().value();
+        arr.reset();
+        std::string_view qsv = arr.at(1).get_string().value();
+        ev->update.bids.emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
+                                     Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
+      }
+
+      auto af = data_obj.find_field_unordered("a");
+      for (auto lvl : af.get_array().value())
+      {
+        auto arr = lvl.get_array().value();
+        std::string_view psv = arr.at(0).get_string().value();
+        arr.reset();
+        std::string_view qsv = arr.at(1).get_string().value();
+        ev->update.asks.emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
+                                     Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
       }
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
+        ev->publishTsNs = nowNsMonotonic();
         _bookUpdateBus->publish(std::move(ev));
       }
     }
     else if (topic.starts_with("publicTrade."))
     {
-      for (auto t : data.get_array().value())
+      auto data_arr = data_field.get_array().value();
+      for (auto t : data_arr)
       {
-        SymbolId sym = resolveSymbolId(t["s"]);
-        TradeEvent ev;
+        auto obj = t.get_object();
+
+        std::string_view ssv = obj.find_field_unordered("s").get_string().value();
+        SymbolId sym = resolveSymbolId(ssv);
+
+        TradeEvent ev{};
+        ev.recvNs = recvNs;
         ev.trade.symbol = sym;
 
         if (_registry)
@@ -362,12 +419,21 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
           }
         }
 
-        ev.trade.price =
-            Price::fromDouble(std::strtod(t["p"].get_string().value().data(), nullptr));
-        ev.trade.quantity =
-            Quantity::fromDouble(std::strtod(t["v"].get_string().value().data(), nullptr));
-        ev.trade.isBuy = (t["S"].get_string().value() == "Buy");
-        ev.trade.timestamp = std::chrono::steady_clock::now();
+        auto T = obj.find_field_unordered("T");
+        ev.trade.exchangeTsNs = msToNs(T.get_int64().value());
+
+        ev.seq = obj.find_field_unordered("seq").get_int64().value();
+
+        auto sv = obj.find_field_unordered("i").get_string().value();
+        ev.trade_id = hash::fnv1a_64(sv.data(), sv.size());
+
+        ev.trade.isBuy = (obj.find_field_unordered("S").get_string().value() == "Buy");
+        ev.trade.price = Price::fromDouble(
+            std::strtod(obj.find_field_unordered("p").get_string().value().data(), nullptr));
+        ev.trade.quantity = Quantity::fromDouble(
+            std::strtod(obj.find_field_unordered("v").get_string().value().data(), nullptr));
+
+        ev.publishTsNs = nowNsMonotonic();
         _tradeBus->publish(ev);
       }
     }
@@ -381,6 +447,8 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 {
   static thread_local simdjson::ondemand::parser parser;
+
+  const uint64_t recvNs = nowNsMonotonic();
 
   try
   {
@@ -421,11 +489,12 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
     {
       for (auto d : data.get_array().value())
       {
-        OrderEvent ev;
+        OrderEvent ev{};
+        ev.recvNs = recvNs;
 
         std::string_view symbol = d["symbol"].get_string().value();
-
         ev.order.symbol = resolveSymbolId(symbol);
+
         ev.order.id = static_cast<OrderId>(
             std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
         ev.order.side = (d["side"].get_string().value() == "Buy") ? Side::BUY : Side::SELL;
@@ -436,6 +505,9 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
             Quantity::fromDouble(std::strtod(d["qty"].get_string().value().data(), nullptr));
         ev.order.filledQuantity =
             Quantity::fromDouble(std::strtod(d["cumExecQty"].get_string().value().data(), nullptr));
+
+        ev.exchangeTsNs = msToNs(d["updatedTime"].get_int64().value());
+        ev.publishNs = msToNs(d["createTime"].get_int64().value());
 
         std::string_view status = d["orderStatus"].get_string().value();
         if (status == "New")
@@ -467,6 +539,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           ev.status = OrderEventStatus::SUBMITTED;
         }
 
+        ev.publishNs = nowNsMonotonic();
         _orderBus->publish(std::move(ev));
       }
     }
@@ -474,7 +547,8 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
     {
       for (auto d : data.get_array().value())
       {
-        OrderEvent ev;
+        OrderEvent ev{};
+        ev.recvNs = recvNs;
 
         ev.order.id = static_cast<OrderId>(
             std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
@@ -485,13 +559,22 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
             Price::fromDouble(std::strtod(d["execPrice"].get_string().value().data(), nullptr));
         ev.order.quantity =
             Quantity::fromDouble(std::strtod(d["execQty"].get_string().value().data(), nullptr));
-
         ev.order.filledQuantity = ev.order.quantity;
 
-        ev.status = d["execType"].get_string().value() == "Trade"
+        if (auto et = d["execTime"]; !et.error())
+        {
+          ev.exchangeTsNs = msToNs(et.get_int64().value());
+        }
+        else if (auto ts = d["ts"]; !ts.error())
+        {
+          ev.exchangeTsNs = msToNs(ts.get_int64().value());
+        }
+
+        ev.status = (d["execType"].get_string().value() == "Trade")
                         ? OrderEventStatus::PARTIALLY_FILLED
                         : OrderEventStatus::SUBMITTED;
 
+        ev.publishNs = nowNsMonotonic();
         _orderBus->publish(std::move(ev));
       }
     }

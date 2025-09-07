@@ -82,6 +82,8 @@ class BybitExchangeConnector : public IExchangeConnector
 
   SymbolRegistry* _registry = nullptr;
 
+  std::unordered_map<SymbolId, int64_t> _lastBookSeq;
+
   std::shared_ptr<ILogger> _logger;
 
   std::unique_ptr<IWebSocketClient> _wsClient;
