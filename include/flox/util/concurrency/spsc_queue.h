@@ -25,7 +25,7 @@ namespace flox
 template <typename T, size_t Capacity>
 class SPSCQueue
 {
-  static_assert(Capacity > 0, "Capacity must be > 0");
+  static_assert(Capacity > 1, "Capacity must be > 1");
   static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of 2");
   static_assert(std::is_nothrow_destructible_v<T>, "T must be nothrow destructible");
 
@@ -194,3 +194,4 @@ class SPSCQueue
 };
 
 }  // namespace flox
+
