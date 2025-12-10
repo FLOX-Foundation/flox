@@ -80,7 +80,7 @@ TEST(BitgetExchangeConnectorIntegrationTest, ReceivesDataFromBitget)
   registry.registerSymbol(eth);
 
   BitgetConfig cfg;
-  cfg.publicEndpoint = "wss://ws.bitget.com/mix/v1/stream";
+  cfg.publicEndpoint = "wss://ws.bitget.com/v2/ws/public";
   cfg.symbols = {{"BTCUSDT", InstrumentType::Future, BitgetConfig::BookDepth::Depth1},
                  {"ETHUSDT", InstrumentType::Future, BitgetConfig::BookDepth::Depth1}};
   cfg.reconnectDelayMs = 2000;

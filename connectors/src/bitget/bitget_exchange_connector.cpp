@@ -65,13 +65,13 @@ static std::string_view bitgetWsInstType(InstrumentType type)
   switch (type)
   {
     case InstrumentType::Spot:
-      return "sp";
+      return "SPOT";
     case InstrumentType::Future:
-      return "mc";
+      return "USDT-FUTURES";
     case InstrumentType::Inverse:
-      return "dmc";
+      return "COIN-FUTURES";
     case InstrumentType::Option:
-      return "cmc";
+      return "SUSDT-FUTURES";  // Bitget uses this for simulation
   }
   return "unknown";
 }
@@ -290,15 +290,11 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
     {
       for (auto val : data)
       {
-        simdjson::ondemand::array row = val.get_array();
+        auto tradeObj = val.get_object();
 
-        auto it = row.begin();  // ➜ ts
-        ++it;
-        std::string_view priceSv = (*it).get_string().value();
-        ++it;
-        std::string_view qtySv = (*it).get_string().value();
-        ++it;
-        std::string_view sideSv = (*it).get_string().value();
+        std::string_view priceSv = tradeObj["price"].get_string().value();
+        std::string_view qtySv = tradeObj["size"].get_string().value();
+        std::string_view sideSv = tradeObj["side"].get_string().value();
 
         TradeEvent ev;
         SymbolId sid = resolveSymbolId(inst);
@@ -313,7 +309,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
         ev.trade.price = Price::fromDouble(std::strtod(priceSv.data(), nullptr));
         ev.trade.quantity = Quantity::fromDouble(std::strtod(qtySv.data(), nullptr));
-        ev.trade.isBuy = (sideSv == "buy" || sideSv == "BUY");
+        ev.trade.isBuy = (sideSv == "buy" || sideSv == "Buy");
 
         _tradeBus->publish(ev);
       }
