@@ -20,7 +20,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt install -y cmake g++-13 ninja-build
+        sudo apt install -y cmake g++-13 ninja-build liblz4-dev
 
     - name: Build and Install GoogleTest
       run: |
@@ -43,7 +43,8 @@ jobs:
               -DCMAKE_BUILD_TYPE=Debug \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
-              -DFLOX_ENABLE_DEMO=ON
+              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON
 
     - name: Build project (no affinity)
       run: cmake --build build -j$(nproc)
@@ -64,6 +65,7 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_CPU_AFFINITY=ON
 
     - name: Build project (with affinity)

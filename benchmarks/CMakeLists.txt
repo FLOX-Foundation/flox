@@ -9,6 +9,8 @@ endfunction()
 
 add_flox_benchmark(nlevel_order_book_benchmark)
 add_flox_benchmark(candle_aggregator_benchmark)
+add_flox_benchmark(binary_log_benchmark)
+
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_benchmark(cpu_affinity_benchmark)
 endif()

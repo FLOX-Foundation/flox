@@ -40,6 +40,11 @@ add_flox_test(test_sync_order_execution_bus)
 add_flox_test(test_sync_book_update_bus)
 add_flox_test(test_sync_candle_aggregator)
 
+# Replay tests
+add_flox_test(test_binary_log)
+add_flox_test(test_market_data_recorder)
+add_flox_test(test_replay_connector)
+
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_test(test_cpu_affinity)
 endif()

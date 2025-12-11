@@ -9,8 +9,11 @@
 
 #pragma once
 
+#include <cstddef>
+#include <filesystem>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -42,10 +45,18 @@ class SymbolRegistry : public ISubsystem
 
   std::optional<SymbolId> getSymbolId(const std::string& exchange,
                                       const std::string& symbol) const;
-
   std::optional<SymbolInfo> getSymbolInfo(SymbolId id) const;
-
   std::pair<std::string, std::string> getSymbolName(SymbolId id) const;
+
+  bool saveToFile(const std::filesystem::path& path) const;
+  bool loadFromFile(const std::filesystem::path& path);
+
+  std::vector<std::byte> serialize() const;
+  bool deserialize(std::span<const std::byte> data);
+
+  void clear();
+  std::vector<SymbolInfo> getAllSymbols() const;
+  size_t size() const;
 
  private:
   mutable std::mutex _mutex;

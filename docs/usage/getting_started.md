@@ -7,8 +7,9 @@ This guide will help you build, test, and install Flox on your machine.
 * C++20 or later (e.g. GCC 13 or Clang 16+)
 * CMake 3.22+
 * Git
-* Linux (recommended)
+* Linux (recommended), Windows and macOS supported
 * GoogleTest and Google Benchmark
+* LZ4 (optional, for compression)
 * `clang-format` 18.1.8 (for development)
 
 
@@ -39,6 +40,9 @@ git clone --depth=1 https://github.com/google/benchmark.git
 cmake -B benchmark-build -S benchmark -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
 cmake --build benchmark-build -j$(nproc)
 sudo cmake --install benchmark-build
+
+# LZ4 (for compression support)
+sudo apt install -y liblz4-dev
 ```
 
 ## clang-format Setup
@@ -58,16 +62,18 @@ sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/c
 
 Flox supports optional components controlled via CMake flags:
 
-| Option             | Default | Description                |
-| ------------------ | ------- | -------------------------- |
-| `FLOX_ENABLE_TESTS`     | `OFF`   | Build unit tests           |
-| `FLOX_ENABLE_BENCHMARKS` | `OFF`   | Build benchmark binaries   |
-| `FLOX_ENABLE_DEMO`      | `OFF`   | Build the demo application |
+| Option                   | Default | Description                        |
+| ------------------------ | ------- | ---------------------------------- |
+| `FLOX_ENABLE_TESTS`      | `OFF`   | Build unit tests                   |
+| `FLOX_ENABLE_BENCHMARKS` | `OFF`   | Build benchmark binaries           |
+| `FLOX_ENABLE_DEMO`       | `OFF`   | Build the demo application         |
+| `FLOX_ENABLE_LZ4`        | `OFF`   | Enable LZ4 compression for replay  |
+| `FLOX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity (isolated systems only) |
 
 To enable them:
 
 ```bash
-cmake .. -DFLOX_ENABLE_TESTS=ON -DFLOX_ENABLE_BENCHMARKS=ON -DFLOX_ENABLE_DEMO=ON
+cmake .. -DFLOX_ENABLE_TESTS=ON -DFLOX_ENABLE_BENCHMARKS=ON -DFLOX_ENABLE_DEMO=ON -DFLOX_ENABLE_LZ4=ON
 ```
 
 ## Run Tests
