@@ -3,7 +3,8 @@
 `Order` encapsulates all information related to a client-side order, including identifiers, execution parameters, status, and timestamps.
 
 ```cpp
-struct Order {
+struct Order
+{
   OrderId id{};
   Side side{};
   Price price{};
@@ -14,9 +15,10 @@ struct Order {
   Quantity filledQuantity{0};
 
   TimePoint createdAt{};
-  std::optional<TimePoint> exchangeTimestamp;
-  std::optional<TimePoint> lastUpdated;
-  std::optional<TimePoint> expiresAfter;
+  std::optional<TimePoint> lastUpdated{};
+  std::optional<TimePoint> expiresAfter{};
+
+  std::optional<TimePoint> exchangeTimestamp{};
 };
 ```
 
@@ -24,7 +26,7 @@ struct Order {
 
 * Represent an order's full lifecycle — from submission to final state — including fill progress, exchange timestamps, and status.
 
-## Responsibilities
+## Fields
 
 | Field             | Description                                               |
 | ----------------- | --------------------------------------------------------- |
@@ -36,9 +38,9 @@ struct Order {
 | symbol            | Compact numeric symbol reference (`SymbolId`).            |
 | filledQuantity    | Accumulated quantity filled so far.                       |
 | createdAt         | Local creation timestamp.                                 |
-| exchangeTimestamp | When the exchange acknowledged the order (if applicable). |
 | lastUpdated       | Timestamp of last known state transition.                 |
 | expiresAfter      | Optional expiry deadline (e.g. for IOC/GTC enforcement).  |
+| exchangeTimestamp | When the exchange acknowledged the order (if applicable). |
 
 ## Notes
 

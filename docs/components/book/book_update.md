@@ -1,49 +1,65 @@
 # BookUpdate
 
-`BookUpdate` is a zero-allocation container for transmitting order-book snapshots or deltas.  
-It now supports multiple instrument classes (spot, futures, options) and includes optional option metadata.
+`BookUpdate` is a zero-allocation container for transmitting order-book snapshots or deltas.
+It supports multiple instrument classes (spot, futures, options) and includes optional option metadata.
 
 ```cpp
+enum class BookUpdateType
+{
+  SNAPSHOT,
+  DELTA
+};
+
+struct BookLevel
+{
+  Price price{};
+  Quantity quantity{};
+  BookLevel() = default;
+  BookLevel(Price p, Quantity q) : price(p), quantity(q) {}
+};
+
 struct BookUpdate
 {
-    SymbolId              symbol{};                          // instrument identifier
-    InstrumentType        instrument = InstrumentType::Spot; // Spot | Future | Option
-    BookUpdateType        type{};                            // SNAPSHOT | DELTA
-    std::pmr::vector<BookLevel> bids;                        // depth on bid side
-    std::pmr::vector<BookLevel> asks;                        // depth on ask side
-    TimePoint             timestamp{};                       // receive-time
+  SymbolId symbol{};
+  InstrumentType instrument = InstrumentType::Spot;
+  BookUpdateType type{};
+  std::pmr::vector<BookLevel> bids;
+  std::pmr::vector<BookLevel> asks;
 
-    // — Option-specific fields —
-    std::optional<Price>       strike;                       // strike price
-    std::optional<TimePoint>   expiry;                       // option expiry
-    std::optional<OptionType>  optionType;                   // Call | Put
+  UnixNanos exchangeTsNs{0};
+  UnixNanos systemTsNs{0};
 
-    explicit BookUpdate(std::pmr::memory_resource* res)
-        : bids(res), asks(res) {}
+  std::optional<Price> strike;
+  std::optional<TimePoint> expiry;
+  std::optional<OptionType> optionType;
+
+  BookUpdate(std::pmr::memory_resource* res) : bids(res), asks(res) {}
 };
 ```
 
 ## Purpose
 
-* Provide a **normalized, memory-efficient** representation of an order-book update (full snapshot or incremental delta).  
+* Provide a **normalized, memory-efficient** representation of an order-book update (full snapshot or incremental delta).
 * Embed the **instrument class** so downstream components can branch without a registry lookup.
 
-## Responsibilities
+## Fields
 
-| Field / Aspect | Description |
-|----------------|-------------|
-| **symbol**     | Unique `SymbolId` of the instrument. |
-| **instrument** | `Spot`, `Future`, or `Option`. |
-| **type**       | `SNAPSHOT` (full overwrite) or `DELTA` (incremental change). |
-| **bids / asks**| Depth updates stored in PMR vectors (`BookLevel`). |
-| **timestamp**  | Local receive time, used for sequencing and latency metrics. |
-| **strike**     | Strike price — *only* for option updates. |
-| **expiry**     | Expiry date/time — *only* for option updates. |
-| **optionType** | `Call` or `Put` — *only* for option updates. |
+| Field            | Description                                                      |
+| ---------------- | ---------------------------------------------------------------- |
+| **symbol**       | Unique `SymbolId` of the instrument.                             |
+| **instrument**   | `Spot`, `Future`, or `Option`.                                   |
+| **type**         | `SNAPSHOT` (full overwrite) or `DELTA` (incremental change).     |
+| **bids / asks**  | Depth updates stored in PMR vectors (`BookLevel`).               |
+| **exchangeTsNs** | Exchange timestamp in nanoseconds since Unix epoch.              |
+| **systemTsNs**   | Local system receive time in nanoseconds, for latency metrics.   |
+| **strike**       | Strike price — *only* for option updates.                        |
+| **expiry**       | Expiry date/time — *only* for option updates.                    |
+| **optionType**   | `Call` or `Put` — *only* for option updates.                     |
 
 ## Notes
 
-* When `type == SNAPSHOT`, consumers **must** fully replace their local book for `symbol`.  
-* `bids` and `asks` are typically reserved to capacity in an object pool, avoiding runtime allocations.  
-* Downstream filters can quickly ignore instruments by checking `instrument` without a `SymbolRegistry` lookup.  
+* When `type == SNAPSHOT`, consumers **must** fully replace their local book for `symbol`.
+* `bids` and `asks` are typically reserved to capacity in an object pool, avoiding runtime allocations.
+* Downstream filters can quickly ignore instruments by checking `instrument` without a `SymbolRegistry` lookup.
 * **Option fields are optional:** they are populated only when `instrument == InstrumentType::Option`.
+* Uses `UnixNanos` (int64_t nanoseconds) for precise timestamps.

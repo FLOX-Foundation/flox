@@ -8,21 +8,31 @@ class SegmentOps
 public:
   using ProgressCallback = std::function<void(uint64_t current, uint64_t total)>;
 
+  // Merge
   static MergeResult merge(const std::vector<std::filesystem::path>& input_paths,
                            const MergeConfig& config);
+  static MergeResult merge(const std::vector<std::filesystem::path>& input_paths,
+                           const MergeConfig& config, ProgressCallback progress);
   static MergeResult mergeDirectory(const std::filesystem::path& input_dir,
                                     const MergeConfig& config);
 
+  // Split
   static SplitResult split(const std::filesystem::path& input_path,
                            const SplitConfig& config);
+  static SplitResult split(const std::filesystem::path& input_path,
+                           const SplitConfig& config, ProgressCallback progress);
   static SplitResult splitDirectory(const std::filesystem::path& input_dir,
                                     const SplitConfig& config);
 
+  // Export
   static ExportResult exportData(const std::filesystem::path& input_path,
                                  const ExportConfig& config);
+  static ExportResult exportData(const std::filesystem::path& input_path,
+                                 const ExportConfig& config, ProgressCallback progress);
   static ExportResult exportDirectory(const std::filesystem::path& input_dir,
                                       const ExportConfig& config);
 
+  // Other operations
   static bool recompress(const std::filesystem::path& input_path,
                          const std::filesystem::path& output_path,
                          CompressionType new_compression);
@@ -54,20 +64,20 @@ struct MergeConfig
   std::filesystem::path output_dir;
   std::string output_name;
   bool create_index{true};
-  uint16_t index_interval{1000};
+  uint16_t index_interval{kDefaultIndexInterval};  // 1000
   CompressionType compression{CompressionType::None};
   bool preserve_timestamps{true};
   bool sort_by_timestamp{true};
-  uint64_t max_output_size{0};
+  uint64_t max_output_size{0};  // 0 = no limit
 };
 
 struct MergeResult
 {
-  bool success;
+  bool success{false};
   std::filesystem::path output_path;
-  uint32_t segments_merged;
-  uint64_t events_written;
-  uint64_t bytes_written;
+  uint32_t segments_merged{0};
+  uint64_t events_written{0};
+  uint64_t bytes_written{0};
   std::vector<std::string> errors;
 };
 ```
@@ -107,16 +117,16 @@ struct SplitConfig
   uint64_t bytes_per_file{256ull << 20};            // 256 MB
 
   bool create_index{true};
-  uint16_t index_interval{1000};
+  uint16_t index_interval{kDefaultIndexInterval};   // 1000
   CompressionType compression{CompressionType::None};
 };
 
 struct SplitResult
 {
-  bool success;
+  bool success{false};
   std::vector<std::filesystem::path> output_paths;
-  uint32_t segments_created;
-  uint64_t events_written;
+  uint32_t segments_created{0};
+  uint64_t events_written{0};
   std::vector<std::string> errors;
 };
 ```
@@ -130,7 +140,7 @@ SplitConfig config{
     .time_interval_ns = 3600LL * 1000000000LL
 };
 
-auto result = SegmentOps::split("/data/large.floxseg", config);
+auto result = SegmentOps::split("/data/large.floxlog", config);
 ```
 
 ## Export
@@ -151,25 +161,33 @@ struct ExportConfig
   std::filesystem::path output_path;
   ExportFormat format{ExportFormat::CSV};
 
+  // Filtering
   std::optional<int64_t> from_ts;
   std::optional<int64_t> to_ts;
   std::set<uint32_t> symbols;
   bool trades_only{false};
   bool books_only{false};
 
+  // CSV options
   char delimiter{','};
   bool include_header{true};
 
+  // JSON options
   bool pretty_print{false};
   int indent{2};
+
+  // Binary format options (for ExportFormat::Binary)
+  CompressionType compression{CompressionType::None};
+  bool create_index{true};
+  uint16_t index_interval{kDefaultIndexInterval};  // 1000
 };
 
 struct ExportResult
 {
-  bool success;
+  bool success{false};
   std::filesystem::path output_path;
-  uint64_t events_exported;
-  uint64_t bytes_written;
+  uint64_t events_exported{0};
+  uint64_t bytes_written{0};
   std::vector<std::string> errors;
 };
 ```
@@ -183,46 +201,61 @@ ExportConfig config{
     .trades_only = true
 };
 
-auto result = SegmentOps::exportData("/data/market.floxseg", config);
+auto result = SegmentOps::exportData("/data/market.floxlog", config);
 ```
 
 ## Other Operations
 
 ### Recompress
 
+Change compression of an existing segment:
+
 ```cpp
-SegmentOps::recompress("/data/uncompressed.floxseg",
-                       "/data/compressed.floxseg",
+SegmentOps::recompress("/data/uncompressed.floxlog",
+                       "/data/compressed.floxlog",
                        CompressionType::LZ4);
 ```
 
 ### Filter
 
+Apply custom predicate to filter events:
+
 ```cpp
-SegmentOps::filter("/data/input.floxseg",
-                   "/data/filtered.floxseg",
-                   [](const ReplayEvent& e) {
-                       return e.type == EventType::Trade;
-                   },
-                   writer_config);
+WriterConfig writer_config{.output_dir = "/data/filtered"};
+
+auto count = SegmentOps::filter(
+    "/data/input.floxlog",
+    "/data/filtered/trades.floxlog",
+    [](const ReplayEvent& e) { return e.type == EventType::Trade; },
+    writer_config);
 ```
 
 ### Extract Symbols
 
+Extract events for specific symbol IDs:
+
 ```cpp
-SegmentOps::extractSymbols("/data/input.floxseg",
-                           "/data/btc_only.floxseg",
-                           {1, 2},  // Symbol IDs
-                           writer_config);
+WriterConfig writer_config{.output_dir = "/data/extracted"};
+
+auto count = SegmentOps::extractSymbols(
+    "/data/input.floxlog",
+    "/data/extracted/btc_eth.floxlog",
+    {1, 2},  // Symbol IDs
+    writer_config);
 ```
 
 ### Extract Time Range
 
+Extract events within a time window:
+
 ```cpp
-SegmentOps::extractTimeRange("/data/input.floxseg",
-                             "/data/morning.floxseg",
-                             start_ns, end_ns,
-                             writer_config);
+WriterConfig writer_config{.output_dir = "/data/extracted"};
+
+auto count = SegmentOps::extractTimeRange(
+    "/data/input.floxlog",
+    "/data/extracted/morning.floxlog",
+    start_ns, end_ns,
+    writer_config);
 ```
 
 ## Convenience Functions
@@ -232,15 +265,16 @@ SegmentOps::extractTimeRange("/data/input.floxseg",
 auto result = replay::quickMerge("/data/segments", "/data/merged");
 
 // Quick export to CSV
-auto result = replay::quickExportCSV("/data/market.floxseg", "/data/market.csv");
+auto result = replay::quickExportCSV("/data/market.floxlog", "/data/market.csv");
 
 // Split by hour
-auto result = replay::quickSplitByHour("/data/day.floxseg", "/data/hourly");
+auto result = replay::quickSplitByHour("/data/day.floxlog", "/data/hourly");
 ```
 
 ## Notes
 
-* All operations support progress callbacks for monitoring.
+* All operations support progress callbacks for monitoring long-running tasks.
 * Merge with `sort_by_timestamp=true` performs k-way merge sort.
 * Export formats support filtering by time, symbols, and event type.
 * Compression can be changed during any operation.
+* `SplitMode::BySymbol` creates exactly one output file per unique symbol ID.

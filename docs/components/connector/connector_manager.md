@@ -1,16 +1,17 @@
 # ConnectorManager
 
-`ConnectorManager` coordinates lifecycle and callback wiring for multiple `ExchangeConnector` instances, managing startup and routing of market data events.
+`ConnectorManager` coordinates lifecycle and callback wiring for multiple `IExchangeConnector` instances, managing startup and routing of market data events.
 
 ```cpp
-class ConnectorManager {
+class ConnectorManager
+{
 public:
-  void registerConnector(std::shared_ptr<ExchangeConnector> connector);
-  void startAll(ExchangeConnector::BookUpdateCallback onBookUpdate,
-                ExchangeConnector::TradeCallback onTrade);
+  void registerConnector(std::shared_ptr<IExchangeConnector> connector);
+  void startAll(IExchangeConnector::BookUpdateCallback onBookUpdate,
+                IExchangeConnector::TradeCallback onTrade);
 
 private:
-  std::map<std::string, std::shared_ptr<ExchangeConnector>> connectors;
+  std::map<std::string, std::shared_ptr<IExchangeConnector>> connectors;
 };
 ```
 
@@ -25,7 +26,7 @@ private:
 | Registration | Stores connectors indexed by their `exchangeId()` value.                |
 | Startup      | Calls `start()` on all registered connectors.                           |
 | Callbacks    | Wires trade and book update callbacks to each connector during startup. |
-| Output       | Logs startup of each connector to `stdout`.                             |
+| Output       | Logs startup of each connector via `FLOX_LOG`.                          |
 
 ## Notes
 

@@ -6,7 +6,7 @@ The replay system enables recording live market data and replaying it for backte
 
 ```
 ┌────────────┐     ┌─────────────────┐     ┌───────────────────┐
-│  Live Feed │────▶│ BinaryLogWriter │────▶│ .floxseg files    │
+│  Live Feed │────▶│ BinaryLogWriter │────▶│ .floxlog files    │
 └────────────┘     └─────────────────┘     └─────────┬─────────┘
                                                      │
                    ┌─────────────────┐               │
@@ -26,8 +26,8 @@ Use `BinaryLogWriter` to record live data to segments:
 #include "flox/replay/writers/binary_log_writer.h"
 
 replay::WriterConfig config{
-    .data_dir = "/data/market",
-    .segment_duration_ns = 3600LL * 1e9,  // 1 hour segments
+    .output_dir = "/data/market",
+    .max_segment_bytes = 256ull << 20,  // 256 MB segments
     .create_index = true,
     .compression = CompressionType::LZ4
 };
@@ -37,13 +37,27 @@ replay::BinaryLogWriter writer(config);
 // In your connector callback:
 connector->setCallbacks(
     [&writer](const BookUpdateEvent& ev) {
-        writer.writeBookUpdate(ev);
+        writer.writeBook(ev);
     },
     [&writer](const TradeEvent& ev) {
         writer.writeTrade(ev);
     }
 );
 ```
+
+### WriterConfig Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `output_dir` | `path` | required | Directory for output segments |
+| `output_filename` | `string` | auto | Override auto-generated filename |
+| `max_segment_bytes` | `uint64_t` | 256 MB | Maximum segment file size |
+| `buffer_size` | `uint64_t` | 64 KB | Write buffer size |
+| `exchange_id` | `uint8_t` | 0 | Exchange identifier in header |
+| `sync_on_rotate` | `bool` | true | fsync before rotating segments |
+| `create_index` | `bool` | true | Create seek index |
+| `index_interval` | `uint16_t` | 1000 | Events between index entries |
+| `compression` | `CompressionType` | None | LZ4 or None |
 
 ## Replaying Data
 
@@ -234,10 +248,10 @@ auto result = replay::SegmentOps::mergeDirectory("/data/segments", config);
 replay::SplitConfig config{
     .output_dir = "/data/hourly",
     .mode = replay::SplitMode::ByTime,
-    .time_interval_ns = 3600LL * 1e9  // 1 hour
+    .time_interval_ns = 3600LL * 1000000000LL  // 1 hour
 };
 
-auto result = replay::SegmentOps::split("/data/day.floxseg", config);
+auto result = replay::SegmentOps::split("/data/day.floxlog", config);
 ```
 
 ### Export to CSV
@@ -249,7 +263,7 @@ replay::ExportConfig config{
     .trades_only = true
 };
 
-auto result = replay::SegmentOps::exportData("/data/market.floxseg", config);
+auto result = replay::SegmentOps::exportData("/data/market.floxlog", config);
 ```
 
 ## Data Validation
@@ -257,7 +271,14 @@ auto result = replay::SegmentOps::exportData("/data/market.floxseg", config);
 ```cpp
 #include "flox/replay/ops/validator.h"
 
-replay::DatasetValidator validator;
+replay::ValidatorConfig val_config{
+    .verify_crc = true,
+    .verify_timestamps = true,
+    .verify_index = true,
+    .scan_all_events = true
+};
+
+replay::DatasetValidator validator(val_config);
 auto result = validator.validate("/data/market");
 
 if (!result.valid) {
@@ -272,7 +293,7 @@ if (!result.valid) {
 
 1. Use LZ4 compression for 2-3x size reduction with minimal CPU overhead
 2. Create indexes for fast timestamp-based seeking
-3. Use reasonable segment sizes (1 hour is typical)
+3. Use reasonable segment sizes (256 MB default is good for most cases)
 4. Store symbol registry alongside data for ID resolution
 
 ### Backtesting
@@ -293,7 +314,7 @@ if (!result.valid) {
 
 ## File Format
 
-Segments use the `.floxseg` extension with a compact binary format:
+Segments use the `.floxlog` extension with a compact binary format:
 
 - 64-byte aligned structures for direct memory mapping
 - CRC32 checksums on all frames

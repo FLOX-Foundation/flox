@@ -3,25 +3,27 @@
 `CandleAggregator` transforms incoming `TradeEvent`s into time-aligned OHLCV candles and broadcasts them via `CandleBus`.
 
 ```cpp
-class CandleAggregator : public ISubsystem, public IMarketDataSubscriber {
+class CandleAggregator : public ISubsystem, public IMarketDataSubscriber
+{
 public:
   CandleAggregator(std::chrono::seconds interval, CandleBus* bus);
   void start() override;
   void stop() override;
 
   SubscriberId id() const override;
-  SubscriberMode mode() const override;
 
   void onTrade(const TradeEvent& trade) override;
 
 private:
-  struct PartialCandle {
+  struct PartialCandle
+  {
     Candle candle;
+    InstrumentType instrument = InstrumentType::Spot;
     bool initialized = false;
   };
 
   std::chrono::seconds _interval;
-  CandleBus* _bus;
+  CandleBus* _bus = nullptr;
   std::vector<std::optional<PartialCandle>> _candles;
 
   TimePoint alignToInterval(TimePoint tp);
@@ -41,7 +43,6 @@ private:
 | Event output  | Emits `CandleEvent` to all subscribers via `CandleBus`.        |
 | Lifecycle     | Hooks into engine via `ISubsystem::start()` and `stop()`.      |
 | Subscriber ID | Uses object pointer as a unique `SubscriberId`.                |
-| Mode          | Operates in `PUSH` mode for direct event delivery.             |
 
 ## Internal Behavior
 
@@ -54,7 +55,10 @@ private:
 3. **Candle Rollover**
    If a trade belongs to a new interval, the previous candle is finalized and sent; a new `PartialCandle` is started.
 
-4. **No Hot Allocations**
+4. **Instrument Tracking**
+   Each `PartialCandle` stores the `InstrumentType` from the trade for proper event emission.
+
+5. **No Hot Allocations**
    Once the vector is initialized, the hot path is allocation-free; avoids `unordered_map` lookup cost.
 
 ## Notes

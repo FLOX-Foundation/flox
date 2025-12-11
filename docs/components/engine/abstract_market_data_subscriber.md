@@ -3,7 +3,8 @@
 `IMarketDataSubscriber` is a unified interface for components that consume real-time market data events. It supports optional handling of order book updates, trades, and candles.
 
 ```cpp
-class IMarketDataSubscriber : public ISubscriber {
+class IMarketDataSubscriber : public ISubscriber
+{
 public:
   virtual ~IMarketDataSubscriber() = default;
 
@@ -17,7 +18,7 @@ public:
 
 * Serve as a polymorphic listener for all market-facing event types across the system.
 
-## Responsibilities
+## Methods
 
 | Method       | Description                                      |
 | ------------ | ------------------------------------------------ |
@@ -28,5 +29,5 @@ public:
 ## Notes
 
 * Default implementations are no-ops — subscribers override only what they care about.
-* Always used in conjunction with `EventBus<T>` and its `Policy` (sync or async).
-* Inherits from `ISubscriber`, which provides `id()` and `mode()` for routing.
+* Used with `EventBus<T>` which delivers events via `EventDispatcher`.
+* Inherits from `ISubscriber`, which provides `id()` for routing.

@@ -3,12 +3,13 @@
 `ISubsystem` defines a lifecycle interface for engine components that require explicit startup and shutdown phases.
 
 ```cpp
-class ISubsystem {
+class ISubsystem
+{
 public:
   virtual ~ISubsystem() = default;
 
-  virtual void start() = 0;
-  virtual void stop() = 0;
+  virtual void start() {}
+  virtual void stop() {}
 };
 ```
 
@@ -25,6 +26,7 @@ public:
 
 ## Notes
 
-* Used by core modules like `CandleAggregator`, `Strategy`, `ExecutionTracker`, etc.
+* Methods have default empty implementations, allowing derived classes to override only what they need.
+* Used by core modules like `CandleAggregator`, `Strategy`, `ExecutionTracker`, `SymbolRegistry`, etc.
 * Lifecycle is typically orchestrated by the engine or test harness.
 * No assumptions about threading — start/stop are always externally coordinated.

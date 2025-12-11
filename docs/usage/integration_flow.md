@@ -1,4 +1,4 @@
-## Flox System Integration Flow (Overview)
+## FLOX System Integration Flow (Overview)
 
 ### 1. **Register Symbols**
 

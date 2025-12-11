@@ -1,61 +1,107 @@
 # EventBus
 
-`EventBus` is a lock-free fan-out messaging system for publishing typed events to multiple subscribers. It supports both **push** (threaded delivery) and **pull** (manual draining) modes, and is configurable for **sync** or **async** semantics via policy injection.
+`EventBus` is a high-performance Disruptor-style ring buffer for broadcasting typed events to multiple consumers. It uses lock-free sequencing with busy-spin waiting for minimal latency.
 
 ```cpp
-template <typename Event, typename Policy, size_t QueueSize = config::DEFAULT_EVENTBUS_QUEUE_SIZE>
-class EventBus;
+template <typename Event,
+          size_t CapacityPow2 = config::DEFAULT_EVENTBUS_CAPACITY,
+          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS>
+class EventBus : public ISubsystem;
 ```
 
 ## Purpose
 
-* Deliver high-frequency events (market data, orders, etc.) to multiple subscribers with minimal latency and zero allocations.
+* Deliver high-frequency events (market data, orders, etc.) to multiple subscribers with minimal latency and zero allocations on the hot path.
+* Support CPU affinity and real-time thread priority for latency-critical components.
 
-## Supported Policies
+## Key Methods
 
-| Policy        | Description                                                                |
-| ------------- | -------------------------------------------------------------------------- |
-| `AsyncPolicy` | Lock-free delivery in per-subscriber threads with no tick synchronization. |
-| `SyncPolicy`  | Uses `TickBarrier` to coordinate delivery across all subscribers per tick. |
+| Method                  | Description                                                     |
+| ----------------------- | --------------------------------------------------------------- |
+| `subscribe(listener)`   | Registers a consumer with optional `required` flag for gating.  |
+| `publish(event)`        | Publishes event to ring buffer, returns sequence number.        |
+| `start()` / `stop()`    | Starts or stops all consumer threads.                           |
+| `waitConsumed(seq)`     | Blocks until all consumers have processed up to `seq`.          |
+| `flush()`               | Waits until all published events are consumed.                  |
+| `consumerCount()`       | Returns number of registered consumers.                         |
+| `enableDrainOnStop()`   | Ensures remaining events are dispatched before shutdown.        |
 
-## Key Responsibilities
+## CPU Affinity (when `FLOX_CPU_AFFINITY_ENABLED`)
 
-| Method                | Description                                                             |
-| --------------------- | ----------------------------------------------------------------------- |
-| `subscribe()`         | Registers a new subscriber with individual queue and mode.              |
-| `publish()`           | Broadcasts an event to all subscribers; sync-mode waits for completion. |
-| `start()` / `stop()`  | Starts or stops all push-mode subscriber threads.                       |
-| `getQueue(id)`        | Provides direct access to a subscriber’s queue (for pull-mode).         |
-| `enableDrainOnStop()` | Ensures any remaining events are dispatched before shutdown.            |
+```cpp
+enum class ComponentType
+{
+  MARKET_DATA,
+  EXECUTION,
+  STRATEGY,
+  RISK,
+  GENERAL
+};
+
+struct AffinityConfig
+{
+  ComponentType componentType = ComponentType::GENERAL;
+  bool enableRealTimePriority = true;
+  int realTimePriority = config::DEFAULT_REALTIME_PRIORITY;
+  bool enableNumaAwareness = true;
+  bool preferIsolatedCores = true;
+};
+```
+
+| Method                        | Description                                           |
+| ----------------------------- | ----------------------------------------------------- |
+| `setAffinityConfig(cfg)`      | Configure CPU affinity and RT priority.               |
+| `setCoreAssignment(assign)`   | Manually set core assignment.                         |
+| `setupOptimalConfiguration()` | Auto-configure for component type.                    |
+| `verifyIsolatedCoreConfig()`  | Verify isolated core setup.                           |
 
 ## Design Highlights
 
-* **Queue per subscriber**: Each listener has a dedicated `SPSCQueue` to avoid contention.
-* **Thread-per-subscriber**: Only for `PUSH` mode; `PULL` consumers must drain manually.
-* **RAII-controlled sync**: `TickGuard` ensures deterministic behavior in `SyncPolicy`.
-* **Zero dynamic allocations** in hot path (`emplace()` used directly).
-* **Tick-sequenced events**: `tickSequence` field is automatically set if present.
+* **Disruptor Pattern**: Single producer, multiple consumers with sequence-based coordination.
+* **Ring Buffer**: Fixed-size power-of-2 capacity with wrap-around.
+* **Busy-Spin Waiting**: Uses `BusyBackoff` for low-latency polling.
+* **Gating Sequence**: Publishers wait for slowest required consumer before overwriting.
+* **Per-Consumer Threads**: Each consumer runs in dedicated `std::jthread`.
+* **Zero Allocations**: Events stored directly in pre-allocated ring buffer slots.
+* **Tick Sequencing**: `tickSequence` field is automatically set if present on event.
+* **In-Place Construction**: Events constructed via placement new, destructed on reclaim.
 
 ## Internal Types
 
-| Name        | Description                                                         |
-| ----------- | ------------------------------------------------------------------- |
-| `QueueItem` | Depends on `Policy`: either raw `Event` or `(Event, TickBarrier*)`. |
-| `Listener`  | Inferred from `Event::Listener`.                                    |
-| `Queue`     | Lock-free ring buffer (single producer/consumer).                   |
-| `Entry`     | Subscription record: listener, queue, thread, and mode.             |
+| Name           | Description                                                |
+| -------------- | ---------------------------------------------------------- |
+| `ConsumerSlot` | Per-consumer state: listener, sequence, thread, required.  |
+| `Listener`     | Inferred from `Event::Listener` via `ListenerType` trait.  |
 
-## Notes
+## Template Parameters
 
-* Sync-mode (`SyncPolicy`) is ideal for deterministic backtesting or simulation.
-* Async-mode (`AsyncPolicy`) is best suited for ultra-low-latency live systems.
-* `EventBus` is fully generic — works with any event type that defines a `Listener`.
+| Parameter     | Default                           | Description                    |
+| ------------- | --------------------------------- | ------------------------------ |
+| `Event`       | -                                 | Event type to broadcast.       |
+| `CapacityPow2`| `config::DEFAULT_EVENTBUS_CAPACITY` (4096) | Ring buffer size (power of 2). |
+| `MaxConsumers`| `config::DEFAULT_EVENTBUS_MAX_CONSUMERS` (128) | Maximum consumer count.     |
 
 ## Example Usage
 
 ```cpp
-using BookBus = EventBus<pool::Handle<BookUpdateEvent>, AsyncPolicy<pool::Handle<BookUpdateEvent>>>;
+using BookBus = EventBus<pool::Handle<BookUpdateEvent>>;
+
 BookBus bus;
-bus.subscribe(bookHandler);
-bus.publish(bookUpdateHandle);
+bus.subscribe(&bookHandler);
+
+#if FLOX_CPU_AFFINITY_ENABLED
+bus.setupOptimalConfiguration(BookBus::ComponentType::MARKET_DATA);
+#endif
+
+bus.start();
+bus.publish(std::move(bookUpdateHandle));
+bus.flush();
+bus.stop();
 ```
+
+## Notes
+
+* Capacity must be a power of 2 for efficient masking.
+* Non-required consumers (second arg to `subscribe`) don't block publisher.
+* `enableDrainOnStop()` should be called before `start()` if drain behavior is needed.
+* CPU affinity features require `FLOX_CPU_AFFINITY_ENABLED` compile flag.

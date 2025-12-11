@@ -1,13 +1,12 @@
 # CandleBus
 
-`CandleBus` is a publish-subscribe channel for `CandleEvent` messages, used to deliver aggregated candles from `CandleAggregator` to downstream consumers (e.g., strategies, loggers).
+`CandleBus` is a Disruptor-style publish-subscribe channel for `CandleEvent` messages, used to deliver aggregated candles from `CandleAggregator` to downstream consumers (e.g., strategies, loggers).
 
 ```cpp
-#ifdef FLOX_USE_SYNC_CANDLE_BUS
-using CandleBus = EventBus<CandleEvent, SyncPolicy<CandleEvent>>;
-#else
-using CandleBus = EventBus<CandleEvent, AsyncPolicy<CandleEvent>>;
-#endif
+using CandleBus = EventBus<CandleEvent>;
+
+std::unique_ptr<CandleBus> createOptimalCandleBus(bool enablePerformanceOptimizations = false);
+bool configureCandleBusForPerformance(CandleBus& bus, bool enablePerformanceOptimizations = false);
 ```
 
 ## Purpose
@@ -18,12 +17,18 @@ using CandleBus = EventBus<CandleEvent, AsyncPolicy<CandleEvent>>;
 
 | Aspect  | Details                                                                 |
 | ------- | ----------------------------------------------------------------------- |
-| Policy  | Chooses between `SyncPolicy` and `AsyncPolicy` via compile-time flag.   |
-| Binding | Type alias for `EventBus<CandleEvent, Policy>`.                         |
+| Pattern | Disruptor-style ring buffer with lock-free sequencing.                  |
+| Binding | Type alias for `EventBus<CandleEvent>`.                                 |
 | Usage   | Integrated into `CandleAggregator`; consumed by strategies and metrics. |
+
+## Factory Functions
+
+| Function | Description |
+|----------|-------------|
+| `createOptimalCandleBus()` | Creates bus with optimal CPU affinity for market data. |
+| `configureCandleBusForPerformance()` | Configures existing bus for optimal performance. |
 
 ## Notes
 
-* `SyncPolicy` ensures deterministic tick-to-tick sequencing for backtesting.
-* `AsyncPolicy` enables low-latency lock-free fan-out in live trading.
-* Controlled via the `FLOX_USE_SYNC_CANDLE_BUS` macro, toggled at compile time.
+* Uses `ComponentType::MARKET_DATA` for CPU affinity configuration.
+* Supports optional CPU affinity via `FLOX_CPU_AFFINITY_ENABLED`.
