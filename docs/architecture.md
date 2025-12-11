@@ -1,6 +1,6 @@
 # Architecture
 
-Flox is a modular framework for building low-latency execution systems. Its design emphasizes **separation of concerns**, **predictable performance**, and **composability**.
+FLOX is a modular framework for building low-latency execution systems. Its design emphasizes **separation of concerns**, **predictable performance**, and **composability**.
 
 ## Layers of the Architecture
 
@@ -12,7 +12,7 @@ Defines **pure interfaces** with no internal state. These are the contracts your
 * `IOrderExecutor`: order submission
 * `IOrderExecutionListener`: execution events
 * `IRiskManager`, `IOrderValidator`, `IPositionManager`: trade controls and state
-* `IOrderBook`, `ExchangeConnector`: market structure
+* `IOrderBook`, `IExchangeConnector`: market structure
 * `ISubsystem`: unified lifecycle interface
 * `IMarketDataSubscriber`: receives events via data bus
 
@@ -28,7 +28,7 @@ Defines **pure interfaces** with no internal state. These are the contracts your
 * `NLevelOrderBook`: in-memory order book with tick-aligned price levels
 * `CandleAggregator`: aggregates trades into fixed-interval OHLCV candles
 * `SymbolRegistry`: maps `(exchange:symbol)` pairs to compact `SymbolId`
-* `EventBus`: event fan-out with push/pull delivery modes and sync/async policy
+* `EventBus`: Disruptor-style ring buffer for high-throughput event delivery
 * `BookUpdateEvent`, `TradeEvent`: pooled, reusable market data structures
 
 #### Features
@@ -37,46 +37,29 @@ Defines **pure interfaces** with no internal state. These are the contracts your
 * **Control**: no heap allocation in event flow, deterministic dispatch
 * **Modularity**: all components are independently replaceable and testable
 
-## Strategy Execution: PUSH and PULL Modes
+## Event Delivery
 
-Strategies implement `IMarketDataSubscriber` and can operate in two modes:
-
-### PUSH Mode (default)
-
-The bus actively delivers events to the strategy:
+Strategies implement `IMarketDataSubscriber` and receive events via `EventBus`:
 
 ```cpp
-class MyPushStrategy : public IStrategy {
+class MyStrategy : public IMarketDataSubscriber
+{
 public:
+  SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
+
   void onBookUpdate(const BookUpdateEvent& ev) override { /* handle event */ }
+  void onTrade(const TradeEvent& ev) override { /* handle event */ }
 };
 ```
 
 ```cpp
-marketDataBus->subscribe(strategy);
+marketDataBus->subscribe(&strategy);
+marketDataBus->start();
 ```
 
-### PULL Mode
+## Market Data Fan-Out: EventBus
 
-The strategy explicitly drains its queue:
-
-```cpp
-class MyPullStrategy : public IMarketDataSubscriber {
-public:
-  SubscriberMode mode() const override { return SubscriberMode::PULL; }
-
-  void readLoop(SPSCQueue<EventHandle<BookUpdateEvent>>& queue) {
-    EventHandle<BookUpdateEvent> ev;
-    while (queue.pop(ev)) {
-      EventDispatcher<EventHandle<BookUpdateEvent>>::dispatch(ev, *this);
-    }
-  }
-};
-```
-
-## Market Data Fan-Out: MarketDataBus
-
-The `MarketDataBus` delivers `EventHandle<T>` to each subscriber using dedicated `SPSCQueue`s.
+The `EventBus` uses a Disruptor-pattern ring buffer for high-throughput event delivery:
 
 ### Publishing:
 
@@ -87,14 +70,24 @@ bus->publish(std::move(bookUpdate));
 ### Subscribing:
 
 ```cpp
-bus->subscribe(myStrategy);
+bus->subscribe(&myStrategy);
 ```
 
 ### Behavior:
 
-* Each subscriber has an isolated queue
-* Events are delivered via `EventDispatcher`
-* In `SyncPolicy`, all subscribers are synchronized via `TickBarrier` and `TickGuard`
+* Single producer, multiple consumers
+* Lock-free sequencing with busy-spin waiting
+* Gating prevents overwriting unconsumed events
+* Per-consumer threads with optional CPU affinity
+* Events dispatched via `EventDispatcher`
+
+### CPU Affinity (optional):
+
+```cpp
+#if FLOX_CPU_AFFINITY_ENABLED
+bus->setupOptimalConfiguration(BookUpdateBus::ComponentType::MARKET_DATA);
+#endif
+```
 
 ## Lifecycle and Subsystems
 
@@ -108,11 +101,11 @@ Benefits:
 
 ## Memory and Performance
 
-Flox is designed for allocation-free execution on the hot path:
+FLOX is designed for allocation-free execution on the hot path:
 
 * `BookUpdateEvent`, `TradeEvent` come from `Pool<T>`
 * `Handle<T>` ensures safe ref-counted reuse
-* `SPSCQueue` provides lock-free delivery
+* `EventBus` ring buffer avoids dynamic allocation
 * `std::pmr::vector` used in `BookUpdate` avoids heap churn
 
 ## Symbol-Centric Design
@@ -125,7 +118,7 @@ All routing and lookup is based on `SymbolId` (`uint32_t`):
 
 ## Intended Use
 
-Flox is not a full trading engine — it’s a **toolkit** for building:
+FLOX is not a full trading engine — it's a **toolkit** for building:
 
 * Real-time trading systems
 * Simulators and replay backtesters
@@ -142,28 +135,26 @@ Designed for teams that require:
 
 ```cpp
 auto strategy = std::make_shared<MyStrategy>();
-marketDataBus->subscribe(strategy);
 
-marketDataBus->publish(std::move(bookUpdate));
-```
+BookUpdateBus bus;
+bus.subscribe(strategy.get());
+bus.start();
 
-In pull-mode:
+// Publishing events
+bus.publish(std::move(bookUpdate));
 
-```cpp
-auto* queue = marketDataBus->getQueue(strategy->id());
-EventHandle<BookUpdateEvent> ev;
-while (queue->pop(ev)) {
-  EventDispatcher<EventHandle<BookUpdateEvent>>::dispatch(ev, *strategy);
-}
+// Clean shutdown
+bus.flush();
+bus.stop();
 ```
 
 ## Summary
 
-Flox is:
+FLOX is:
 
 * **Modular** — use only what you need
 * **Deterministic** — fully controlled event timing
 * **Safe** — no hidden allocations, pooled memory
 * **Flexible** — works in backtests, simulation, and live systems
 
-You define the logic — Flox moves the data.
+You define the logic — FLOX moves the data.

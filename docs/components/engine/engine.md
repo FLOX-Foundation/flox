@@ -3,11 +3,12 @@
 `Engine` coordinates the startup and shutdown of the entire trading system. It owns the engine configuration, all exchange connectors, and system subsystems.
 
 ```cpp
-class Engine : public ISubsystem {
+class Engine : public ISubsystem
+{
 public:
   Engine(const EngineConfig& config,
          std::vector<std::unique_ptr<ISubsystem>> subsystems,
-         std::vector<std::shared_ptr<ExchangeConnector>> connectors);
+         std::vector<std::shared_ptr<IExchangeConnector>> connectors);
 
   void start() override;
   void stop() override;
@@ -30,11 +31,12 @@ public:
 ## ExchangeInstance
 
 ```cpp
-struct ExchangeInstance {
+struct ExchangeInstance
+{
   std::string exchangeType;
   std::string name;
   std::string symbol;
-  std::shared_ptr<ExchangeConnector> connector;
+  std::shared_ptr<IExchangeConnector> connector;
 };
 ```
 

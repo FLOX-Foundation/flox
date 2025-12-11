@@ -1,6 +1,6 @@
 # Demo Application
 
-The `demo` folder provides a minimal working example that wires Flox components into a functioning system. It demonstrates the architecture, event flow, and subsystem lifecycle in a controlled, simulated environment.
+The `demo` folder provides a minimal working example that wires FLOX components into a functioning system. It demonstrates the architecture, event flow, and subsystem lifecycle in a controlled, simulated environment.
 
 ## Features
 

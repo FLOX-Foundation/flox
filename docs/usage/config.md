@@ -1,6 +1,6 @@
 # Configuration
 
-Flox is configured via the `EngineConfig` structure, typically loaded from a JSON file or embedded configuration source.
+FLOX is configured via the `EngineConfig` structure, typically loaded from a JSON file or embedded configuration source.
 
 ## Example
 

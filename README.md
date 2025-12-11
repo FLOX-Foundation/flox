@@ -20,8 +20,8 @@ Please follow the existing structure and naming conventions.
 Tests, benchmarks, and documentation should be included where appropriate.  
 Code style is enforced via `clang-format`.
 
-Pre-commit hook setup and formatting instructions are described in  
-[Getting Started → Contribution](https://flox-foundation.github.io/flox/usage/getting_started/).
+Pre-commit hook setup and formatting instructions are described in
+[Contributing Guide](https://flox-foundation.github.io/flox/how-to/contributing/).
 
 
 ## License
@@ -32,6 +32,12 @@ See the [`LICENSE`](./LICENSE) file for details.
 
 ## Disclaimer
 
-FLOX is provided for educational and research purposes.  
-All strategies, connectors, and logic in test and demo code are **demonstrative only** and **not intended for production** use.  
-Use at your own risk. See [`DISCLAIMER.md`](./DISCLAIMER.md) for full legal notice.
+FLOX is provided "as is" without warranty of any kind, express or implied.
+
+The authors and contributors are **not liable** for any damages, losses, or financial harm arising from the use of this software, including but not limited to trading losses, system failures, or data corruption.
+
+This software is intended for **educational and research purposes only**. Any use in production trading systems is entirely at your own risk. The authors make no guarantees regarding the correctness, reliability, or performance of the code.
+
+By using this software, you acknowledge that you understand and accept these terms.
+
+See [`DISCLAIMER.md`](./DISCLAIMER.md) for full legal notice.

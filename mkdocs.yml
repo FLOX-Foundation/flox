@@ -1,119 +1,198 @@
 site_name: FLOX
+site_description: Framework for building high-performance trading applications in C++
+site_url: https://flox-foundation.github.io/flox/
+repo_url: https://github.com/FLOX-Foundation/flox
+repo_name: FLOX-Foundation/flox
 
 theme:
   name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
+    - scheme: default
       primary: blue grey
-      accent: light blue
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
       primary: blue grey
-      accent: light blue
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    logo: material/code-braces
+  favicon: assets/favicon.svg
+
+plugins:
+  - search
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - tables
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - def_list
+  - toc:
+      permalink: true
+      toc_depth: 3
 
 nav:
   - Home: index.md
-  - Architecture: architecture.md
-  - Usage:
-      - Getting Started: usage/getting_started.md
-      - Running Engine: usage/running_engine.md
-      - Config: usage/config.md
-      - Strategies: usage/strategies.md
-      - Replay: usage/replay.md
-      - Demo: usage/demo.md
-      - Integration Flow: usage/integration_flow.md
-      - Connectors: usage/connectors.md
+  - Tutorials:
+      - tutorials/README.md
+      - Quickstart: tutorials/quickstart.md
+      - First Strategy: tutorials/first-strategy.md
+      - Recording Data: tutorials/recording-data.md
+      - Backtesting: tutorials/backtesting.md
+      - Run Demo: tutorials/demo.md
 
-  - Abstract Layer:
-      - Engine Interfaces:
-          - Subsystem: components/engine/abstract_subsystem.md
-          - MarketDataSubscriber: components/engine/abstract_market_data_subscriber.md
-          - Strategy: components/strategy/abstract_strategy.md
-          - AbstractSubscriber: components/engine/abstract_subscriber.md
-      - Trading Interfaces:
-          - OrderExecutor: components/execution/abstract_executor.md
-          - OrderExecutionListener: components/execution/abstract_execution_listener.md
-          - ExecutionTracker: components/metrics/abstract_execution_tracker.md
-          - PnLTracker: components/metrics/abstract_pnl_tracker.md
-          - PositionManager: components/position/abstract_position_manager.md
-          - RiskManager: components/risk/abstract_risk_manager.md
-          - OrderValidator: components/validation/abstract_order_validator.md
-          - KillSwitch: components/killswitch/abstract_killswitch.md
-          - StorageSink: components/sink/abstract_storage_sink.md
-      - Market-Data Interfaces:
-          - OrderBook: components/book/abstract_order_book.md
-          - ExchangeConnector: components/connector/exchange_connector.md
-      - Networking Interfaces:
-          - Transport (HTTP): components/net/abstract_transport.md
-          - WebSocket client: components/net/abstract_websocket_client.md
-      - Logging:
-          - AbstractLogger: components/log/abstract_logger.md
+  - How-To Guides:
+      - how-to/README.md
+      - CPU Affinity: how-to/cpu-affinity.md
+      - Custom Connector: how-to/custom-connector.md
+      - Optimize Performance: how-to/optimize-performance.md
+      - Configuration: how-to/configuration.md
+      - Contributing: how-to/contributing.md
 
-  - Implementation Layer:
-      - Engine Core:
-          - Engine: components/engine/engine.md
-          - EngineConfig: components/engine/engine_config.md
-          - SymbolRegistry: components/engine/symbol_registry.md
-          - TickBarrier: components/engine/tick_barrier.md
-          - TickGuard: components/engine/tick_guard.md
-          - EventDispatcher: components/engine/event_dispatcher.md
+  - Explanation:
+      - explanation/README.md
+      - Architecture: explanation/architecture.md
+      - Disruptor Pattern: explanation/disruptor.md
+      - Memory Model: explanation/memory-model.md
+      - Integration Flow: explanation/integration-flow.md
 
-      - Market-Data:
-          - Order Books:
-              - NLevelOrderBook: components/book/nlevel_order_book.md
-          - Events:
-              - BookUpdateEvent: components/book/events/book_update_event.md
-              - TradeEvent: components/book/events/trade_event.md
-              - CandleEvent: components/aggregator/events/candle_event.md
-          - Structures:
-              - BookUpdate: components/book/book_update.md
-              - Candle: components/book/candle.md
-              - Trade: components/book/trade.md
-          - Aggregators:
-              - CandleAggregator: components/aggregator/candle_aggregator.md
-
-      - Event Buses:
-          - EventBus (generic): components/util/eventing/event_bus.md
-          - BookUpdateBus: components/book/bus/book_update_bus.md
-          - TradeBus: components/book/bus/trade_bus.md
-          - CandleBus: components/aggregator/bus/candle_bus.md
-          - OrderExecutionBus: components/execution/bus/order_execution_bus.md
-
-      - Execution Flow:
-          - Order: components/execution/order.md
-          - OrderEvent: components/execution/events/order_event.md
-          - ExecutionTrackerAdapter: components/execution/execution_tracker_adapter.md
-          - MultiExecutionListener: components/execution/multi_execution_listener.md 
-
-      - Connectors:
-          - ConnectorManager: components/connector/connector_manager.md
-          - ConnectorFactory: components/connector/connector_factory.md
-
-      - Replay:
-          - Binary Format: components/replay/binary_format.md
-          - BinaryLogReader: components/replay/binary_log_reader.md
-          - MmapReader: components/replay/mmap_reader.md
-          - ParallelReader: components/replay/parallel_reader.md
-          - ReplayConnector: components/replay/replay_connector.md
-          - SegmentOps: components/replay/segment_ops.md
-          - Validator: components/replay/validator.md
-
-      - Logging:
-          - Log macros: components/log/log.md
-          - AtomicLoggger: components/log/atomic_logger.md
-          - ConsoleLoggger: components/log/console_logger.md
-
-      - Utilities:
-          - Decimal: components/util/base/decimal.md
-          - SPSCQueue: components/util/concurrency/spsc_queue.md
-          - RefCountable: components/util/memory/ref_countable.md
-          - Pool: components/util/memory/pool.md
-          - Common Types: components/common.md
-      - Internal:
-          - Affinity:
-              - SystemInterface: components/util/performance/system_interface.md
-              - CoreAssignment: components/util/performance/core_assignment.md
-              - CpuAffinity: components/util/performance/cpu_affinity.md
-              - ThreadAffinity: components/util/performance/thread_affinity.md
-              - CpuTopology: components/util/performance/cpu_topology.md
+  - Reference:
+      - reference/README.md
+      - Engine & Lifecycle: reference/engine.md
+      - Market Data: reference/market-data.md
+      - Execution: reference/execution.md
+      - Replay System: reference/replay.md
+      - Utilities: reference/utilities.md
+      - API Reference:
+          - reference/api/README.md
+          - Common: reference/api/common.md
+          - Engine:
+              - Engine: reference/api/engine/engine.md
+              - EngineConfig: reference/api/engine/engine_config.md
+              - SymbolRegistry: reference/api/engine/symbol_registry.md
+              - ISubsystem: reference/api/engine/abstract_subsystem.md
+              - ISubscriber: reference/api/engine/abstract_subscriber.md
+              - IMarketDataSubscriber: reference/api/engine/abstract_market_data_subscriber.md
+              - EventDispatcher: reference/api/engine/event_dispatcher.md
+          - Book:
+              - Trade: reference/api/book/trade.md
+              - BookUpdate: reference/api/book/book_update.md
+              - Candle: reference/api/book/candle.md
+              - NLevelOrderBook: reference/api/book/nlevel_order_book.md
+              - IOrderBook: reference/api/book/abstract_order_book.md
+              - Events:
+                  - TradeEvent: reference/api/book/events/trade_event.md
+                  - BookUpdateEvent: reference/api/book/events/book_update_event.md
+              - Buses:
+                  - TradeBus: reference/api/book/bus/trade_bus.md
+                  - BookUpdateBus: reference/api/book/bus/book_update_bus.md
+          - Aggregator:
+              - CandleAggregator: reference/api/aggregator/candle_aggregator.md
+              - CandleBus: reference/api/aggregator/bus/candle_bus.md
+              - CandleEvent: reference/api/aggregator/events/candle_event.md
+          - Execution:
+              - Order: reference/api/execution/order.md
+              - OrderTracker: reference/api/execution/order_tracker.md
+              - IExecutor: reference/api/execution/abstract_executor.md
+              - IExecutionListener: reference/api/execution/abstract_execution_listener.md
+              - ExecutionTrackerAdapter: reference/api/execution/execution_tracker_adapter.md
+              - MultiExecutionListener: reference/api/execution/multi_execution_listener.md
+              - Events:
+                  - OrderEvent: reference/api/execution/events/order_event.md
+              - Buses:
+                  - OrderExecutionBus: reference/api/execution/bus/order_execution_bus.md
+          - Connector:
+              - IExchangeConnector: reference/api/connector/exchange_connector.md
+              - ConnectorFactory: reference/api/connector/connector_factory.md
+              - ConnectorManager: reference/api/connector/connector_manager.md
+          - Replay:
+              - Binary Format: reference/api/replay/binary_format.md
+              - BinaryLogReader: reference/api/replay/binary_log_reader.md
+              - BinaryLogWriter: reference/api/replay/binary_log_writer.md
+              - MarketDataRecorder: reference/api/replay/market_data_recorder.md
+              - MmapReader: reference/api/replay/mmap_reader.md
+              - ParallelReader: reference/api/replay/parallel_reader.md
+              - ReplayConnector: reference/api/replay/replay_connector.md
+              - SegmentOps: reference/api/replay/segment_ops.md
+              - Validator: reference/api/replay/validator.md
+          - Strategy:
+              - IStrategy: reference/api/strategy/abstract_strategy.md
+          - Risk:
+              - IRiskManager: reference/api/risk/abstract_risk_manager.md
+          - KillSwitch:
+              - IKillSwitch: reference/api/killswitch/abstract_killswitch.md
+          - Metrics:
+              - IExecutionTracker: reference/api/metrics/abstract_execution_tracker.md
+              - IPnLTracker: reference/api/metrics/abstract_pnl_tracker.md
+          - Position:
+              - IPositionManager: reference/api/position/abstract_position_manager.md
+          - Validation:
+              - IOrderValidator: reference/api/validation/abstract_order_validator.md
+          - Net:
+              - ITransport: reference/api/net/abstract_transport.md
+              - IWebSocketClient: reference/api/net/abstract_websocket_client.md
+          - Log:
+              - Log Macros: reference/api/log/log.md
+              - ILogger: reference/api/log/abstract_logger.md
+              - AtomicLogger: reference/api/log/atomic_logger.md
+              - ConsoleLogger: reference/api/log/console_logger.md
+          - Sink:
+              - IStorageSink: reference/api/sink/abstract_storage_sink.md
+          - Util:
+              - Eventing:
+                  - EventBus: reference/api/util/eventing/event_bus.md
+              - Memory:
+                  - Pool: reference/api/util/memory/pool.md
+                  - RefCountable: reference/api/util/memory/ref_countable.md
+              - Concurrency:
+                  - SPSCQueue: reference/api/util/concurrency/spsc_queue.md
+              - Base:
+                  - Decimal: reference/api/util/base/decimal.md
+              - Performance:
+                  - CoreAssignment: reference/api/util/performance/core_assignment.md
+                  - CpuAffinity: reference/api/util/performance/cpu_affinity.md
+                  - CpuTopology: reference/api/util/performance/cpu_topology.md
+                  - SystemInterface: reference/api/util/performance/system_interface.md
+                  - ThreadAffinity: reference/api/util/performance/thread_affinity.md

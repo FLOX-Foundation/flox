@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you build, test, and install Flox on your machine.
+This guide will help you build, test, and install FLOX on your machine.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/c
 
 ## Build Options
 
-Flox supports optional components controlled via CMake flags:
+FLOX supports optional components controlled via CMake flags:
 
 | Option                   | Default | Description                        |
 | ------------------------ | ------- | ---------------------------------- |
@@ -113,9 +113,9 @@ cp scripts/pre-commit .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
-## Using Flox in Your Project
+## Using FLOX in Your Project
 
-Flox is a low-latency infrastructure library.
+FLOX is a low-latency infrastructure library.
 It is suitable for building:
 
 * HFT engines
