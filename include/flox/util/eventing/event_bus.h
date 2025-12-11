@@ -13,9 +13,11 @@
 #include <array>
 #include <atomic>
 #include <cassert>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <new>
 #include <optional>
 #include <thread>
@@ -88,6 +90,14 @@ class EventBus : public ISubsystem
     bool required{true};                       // influence on gating
     alignas(64) std::atomic<int64_t> seq{-1};  // last handled seq
     std::optional<std::jthread> thread{};
+    uint32_t coreIndex{0};  // index for core distribution
+  };
+
+  enum class PublishResult
+  {
+    SUCCESS,
+    TIMEOUT,
+    STOPPED
   };
 
  public:
@@ -111,15 +121,28 @@ class EventBus : public ISubsystem
   EventBus(const EventBus&) = delete;
   EventBus& operator=(const EventBus&) = delete;
 
-  void subscribe(Listener* listener, bool required = true)
+  bool subscribe(Listener* listener, bool required = true)
   {
-    assert(listener && "Listener must not be null");
+    if (!listener)
+    {
+      return false;
+    }
+    if (_running.load(std::memory_order_acquire))
+    {
+      return false;  // Cannot subscribe after start
+    }
     const uint32_t idx = _consumerCount.fetch_add(1, std::memory_order_acq_rel);
-    assert(idx < MaxConsumers && "MaxConsumers limit exceeded");
+    if (idx >= MaxConsumers)
+    {
+      _consumerCount.fetch_sub(1, std::memory_order_acq_rel);
+      return false;
+    }
     _consumers[idx].listener = listener;
     _consumers[idx].required = required;
     _consumers[idx].seq.store(-1, std::memory_order_relaxed);
+    _consumers[idx].coreIndex = idx;  // Store index for core distribution
     _gating[idx].store(required ? -1 : INT64_MAX, std::memory_order_relaxed);
+    return true;
   }
 
   void start() override
@@ -136,8 +159,9 @@ class EventBus : public ISubsystem
     {
       auto* l = _consumers[i].listener;
       auto required = _consumers[i].required;
+      auto coreIdx = _consumers[i].coreIndex;
 
-      _consumers[i].thread.emplace([this, i, l, required]
+      _consumers[i].thread.emplace([this, i, l, required, coreIdx]
                                    {
 #if FLOX_CPU_AFFINITY_ENABLED
          auto threadCpuAffinity = performance::createCpuAffinity();
@@ -156,7 +180,8 @@ class EventBus : public ISubsystem
            }
            if (!targetCores.empty())
            {
-             const auto coreId = targetCores[0];
+             // Distribute consumers across available cores using round-robin
+             const auto coreId = targetCores[coreIdx % targetCores.size()];
              const auto pinned = threadCpuAffinity->pinToCore(coreId);
              if (config.enableRealTimePriority)
              {
@@ -176,7 +201,9 @@ class EventBus : public ISubsystem
            auto& assignment = _coreAssignment.value();
            if (!assignment.marketDataCores.empty())
            {
-             threadCpuAffinity->pinToCore(assignment.marketDataCores[0]);
+             // Distribute across market data cores
+             const auto coreId = assignment.marketDataCores[coreIdx % assignment.marketDataCores.size()];
+             threadCpuAffinity->pinToCore(coreId);
              threadCpuAffinity->setRealTimePriority(config::FALLBACK_REALTIME_PRIORITY);
            }
          }
@@ -199,6 +226,7 @@ class EventBus : public ISubsystem
              if (!_running.load(std::memory_order_relaxed)) break;
              backoff.pause();
            }
+
            if (!_running.load(std::memory_order_relaxed)) break;
  
            if (!required && _constructed[idx].load(std::memory_order_acquire) == 0)
@@ -278,8 +306,18 @@ class EventBus : public ISubsystem
     _reclaimSeq.store(-1, std::memory_order_relaxed);
   }
 
-  int64_t publish(const Event& ev) { return do_publish(ev); }
-  int64_t publish(Event&& ev) { return do_publish(std::move(ev)); }
+  int64_t publish(const Event& ev) { return do_publish(ev, std::nullopt).second; }
+  int64_t publish(Event&& ev) { return do_publish(std::move(ev), std::nullopt).second; }
+
+  // Publish with timeout - returns result and sequence number (-1 on failure)
+  std::pair<PublishResult, int64_t> tryPublish(const Event& ev, std::chrono::microseconds timeout)
+  {
+    return do_publish(ev, timeout);
+  }
+  std::pair<PublishResult, int64_t> tryPublish(Event&& ev, std::chrono::microseconds timeout)
+  {
+    return do_publish(std::move(ev), timeout);
+  }
 
   void waitConsumed(int64_t seq)
   {
@@ -377,17 +415,52 @@ class EventBus : public ISubsystem
 
  private:
   template <typename Ev>
-  int64_t do_publish(Ev&& ev)
+  std::pair<PublishResult, int64_t> do_publish(Ev&& ev, std::optional<std::chrono::microseconds> timeout)
   {
     FLOX_PROFILE_SCOPE("Disruptor::publish");
 
+    if (!_running.load(std::memory_order_acquire))
+    {
+      return {PublishResult::STOPPED, -1};
+    }
+
+    // Reserve sequence number
     const int64_t seq = _next.fetch_add(1, std::memory_order_acq_rel) + 1;
+
+    // Check for overflow (very unlikely but safe)
+    if (seq < 0)
+    {
+      _next.fetch_sub(1, std::memory_order_acq_rel);
+      return {PublishResult::STOPPED, -1};
+    }
+
     const int64_t wrap = seq - static_cast<int64_t>(CapacityPow2);
 
     BusyBackoff bo;
     int64_t cachedMin = _cachedMin.load(std::memory_order_relaxed);
+
+    auto startTime = timeout.has_value() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+
     while (wrap > cachedMin)
     {
+      if (!_running.load(std::memory_order_relaxed))
+      {
+        return {PublishResult::STOPPED, -1};
+      }
+
+      if (timeout.has_value())
+      {
+        auto elapsed = std::chrono::steady_clock::now() - startTime;
+        if (elapsed >= timeout.value())
+        {
+          // Timeout - we already reserved the slot, so mark it as empty placeholder
+          const size_t idx = size_t(seq) & Mask;
+          _constructed[idx].store(0, std::memory_order_release);
+          _published[idx].store(seq, std::memory_order_release);
+          return {PublishResult::TIMEOUT, -1};
+        }
+      }
+
       cachedMin = minGating();
       _cachedMin.store(cachedMin, std::memory_order_relaxed);
       if (wrap <= cachedMin)
@@ -399,6 +472,8 @@ class EventBus : public ISubsystem
 
     const size_t idx = size_t(seq) & Mask;
 
+    // Destroy old event if present - only if not already reclaimed
+    // The _constructed flag ensures only one thread destroys
     if (_constructed[idx].exchange(0, std::memory_order_acq_rel))
     {
       slot_ptr(idx)->~Event();
@@ -419,9 +494,7 @@ class EventBus : public ISubsystem
 
     _published[idx].store(seq, std::memory_order_release);
 
-    tryReclaim();
-
-    return seq;
+    return {PublishResult::SUCCESS, seq};
   }
 
   int64_t minGating() const
@@ -472,9 +545,12 @@ class EventBus : public ISubsystem
   alignas(64) std::atomic<int64_t> _next{-1};
   alignas(64) std::atomic<int64_t> _cachedMin{-1};
 
-  using Storage = std::aligned_storage_t<sizeof(Event), alignof(Event)>;
+  struct alignas(alignof(Event)) Storage
+  {
+    std::byte data[sizeof(Event)];
+  };
   alignas(64) std::array<Storage, CapacityPow2> _storage{};
-  inline Event* slot_ptr(size_t idx) noexcept { return std::launder(reinterpret_cast<Event*>(&_storage[idx])); }
+  inline Event* slot_ptr(size_t idx) noexcept { return std::launder(reinterpret_cast<Event*>(_storage[idx].data)); }
   inline Event& slot_ref(size_t idx) noexcept { return *slot_ptr(idx); }
 
   alignas(64) std::array<std::atomic<int64_t>, CapacityPow2> _published{};
