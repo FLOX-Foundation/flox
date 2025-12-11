@@ -1,66 +1,144 @@
 name: Build and Test
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    # Weekly affinity tests - Sunday at 3:00 UTC
+    - cron: '0 3 * * 0'
 
 jobs:
-  build:
+  format-check:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install clang-format
-      run: |
-        sudo apt update
-        sudo apt install -y clang-format
+      run: sudo apt-get update && sudo apt-get install -y clang-format
 
     - name: Check formatting
       run: ./scripts/check-format.sh
 
+  build-and-test:
+    needs: format-check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++-13]
+        build_type: [Debug]
+
+    steps:
+    - uses: actions/checkout@v4
+
     - name: Install dependencies
       run: |
-        sudo apt install -y cmake g++-13 ninja-build liblz4-dev
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build liblz4-dev ${{ matrix.compiler }}
+
+    - name: Cache GoogleTest
+      id: cache-gtest
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/lib/cmake/GTest
+        key: gtest-${{ runner.os }}-v1
 
     - name: Build and Install GoogleTest
+      if: steps.cache-gtest.outputs.cache-hit != 'true'
       run: |
         git clone --depth=1 https://github.com/google/googletest.git
-        cmake -B gtest-build -S googletest
-        cmake --build gtest-build --target gtest gtest_main gmock gmock_main
+        cmake -B gtest-build -S googletest -G Ninja
+        cmake --build gtest-build
         sudo cmake --install gtest-build
 
+    - name: Cache Google Benchmark
+      id: cache-benchmark
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/lib/cmake/benchmark
+        key: benchmark-${{ runner.os }}-v1
+
     - name: Build and Install Google Benchmark
+      if: steps.cache-benchmark.outputs.cache-hit != 'true'
       run: |
         git clone --depth=1 https://github.com/google/benchmark.git
-        cmake -B benchmark-build -S benchmark -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
-        cmake --build benchmark-build -j$(nproc)
+        cmake -B benchmark-build -S benchmark -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
+        cmake --build benchmark-build
         sudo cmake --install benchmark-build
 
-    - name: Configure project (no affinity)
+    - name: Configure
       run: |
-        cmake -B build \
-              -DCMAKE_CXX_COMPILER=g++-13 \
-              -DCMAKE_BUILD_TYPE=Debug \
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON
 
-    - name: Build project (no affinity)
+    - name: Build
       run: cmake --build build -j$(nproc)
 
-    - name: Run all tests and demo (no affinity)
-      run: |
-        ctest --output-on-failure --test-dir build
-        ./build/demo/flox_demo
+    - name: Run tests
+      run: ctest --output-on-failure --test-dir build
 
-    - name: Run benchmarks (no affinity)
+    - name: Run demo
+      run: ./build/demo/flox_demo
+
+    - name: Run benchmarks
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
-    - name: Configure project (with affinity)
+  # Weekly affinity tests
+  affinity-tests:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++-13]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
       run: |
-        cmake -B build \
-              -DCMAKE_CXX_COMPILER=g++-13 \
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build liblz4-dev ${{ matrix.compiler }}
+
+    - name: Cache GoogleTest
+      id: cache-gtest
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/lib/cmake/GTest
+        key: gtest-${{ runner.os }}-v1
+
+    - name: Build and Install GoogleTest
+      if: steps.cache-gtest.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja
+        cmake --build gtest-build
+        sudo cmake --install gtest-build
+
+    - name: Cache Google Benchmark
+      id: cache-benchmark
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/lib/cmake/benchmark
+        key: benchmark-${{ runner.os }}-v1
+
+    - name: Build and Install Google Benchmark
+      if: steps.cache-benchmark.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth=1 https://github.com/google/benchmark.git
+        cmake -B benchmark-build -S benchmark -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
+        cmake --build benchmark-build
+        sudo cmake --install benchmark-build
+
+    - name: Configure with CPU affinity
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
               -DCMAKE_BUILD_TYPE=Debug \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
@@ -68,13 +146,14 @@ jobs:
               -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_CPU_AFFINITY=ON
 
-    - name: Build project (with affinity)
+    - name: Build
       run: cmake --build build -j$(nproc)
 
-    - name: Run all tests and demo (with affinity)
-      run: |
-        ctest --output-on-failure --test-dir build
-        ./build/demo/flox_demo
+    - name: Run all tests including affinity
+      run: ctest --output-on-failure --test-dir build
 
-    - name: Run benchmarks (with affinity)
+    - name: Run demo
+      run: ./build/demo/flox_demo
+
+    - name: Run benchmarks
       run: ./scripts/run-benchmarks.sh build/benchmarks
