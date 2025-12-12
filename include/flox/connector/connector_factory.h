@@ -10,8 +10,8 @@
 #pragma once
 
 #include "flox/connector/abstract_exchange_connector.h"
+#include "flox/util/base/move_only_function.h"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -22,8 +22,7 @@ namespace flox
 class ConnectorFactory
 {
  public:
-  using CreatorFunc =
-      std::move_only_function<std::shared_ptr<IExchangeConnector>(const std::string&)>;
+  using CreatorFunc = MoveOnlyFunction<std::shared_ptr<IExchangeConnector>(const std::string&)>;
 
   static ConnectorFactory& instance()
   {

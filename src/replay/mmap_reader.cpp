@@ -425,22 +425,25 @@ bool MmapSegmentReader::loadIndex()
     return false;
   }
 
-  const auto* idx_header = reinterpret_cast<const SegmentIndexHeader*>(index_start);
-  if (idx_header->magic != kIndexMagic)
+  // Copy to aligned temporary to avoid UB from misaligned access
+  SegmentIndexHeader idx_header;
+  std::memcpy(&idx_header, index_start, sizeof(SegmentIndexHeader));
+  if (idx_header.magic != kIndexMagic)
   {
     return false;
   }
 
-  const auto* entries_start =
-      reinterpret_cast<const IndexEntry*>(index_start + sizeof(SegmentIndexHeader));
-  const auto* entries_end = entries_start + idx_header->entry_count;
+  const auto* entries_start = index_start + sizeof(SegmentIndexHeader);
+  size_t entries_size = idx_header.entry_count * sizeof(IndexEntry);
 
-  if (reinterpret_cast<const std::byte*>(entries_end) > file_end)
+  if (entries_start + entries_size > file_end)
   {
     return false;
   }
 
-  _index_entries.assign(entries_start, entries_end);
+  // Copy entries to properly aligned vector
+  _index_entries.resize(idx_header.entry_count);
+  std::memcpy(_index_entries.data(), entries_start, entries_size);
   return true;
 }
 
@@ -622,12 +625,16 @@ uint64_t MmapReader::forEachRawTrade(RawTradeCallback callback)
     {
       if (frame->type == static_cast<uint8_t>(EventType::Trade))
       {
-        const auto* trade = reinterpret_cast<const TradeRecord*>(
-            reinterpret_cast<const std::byte*>(frame) + sizeof(FrameHeader));
+        // Copy to aligned temporary to avoid UB from misaligned access
+        // (FrameHeader is 12 bytes, TradeRecord requires 8-byte alignment)
+        TradeRecord trade;
+        std::memcpy(&trade,
+                    reinterpret_cast<const std::byte*>(frame) + sizeof(FrameHeader),
+                    sizeof(TradeRecord));
 
-        if (passesFilter(trade->exchange_ts_ns, trade->symbol_id))
+        if (passesFilter(trade.exchange_ts_ns, trade.symbol_id))
         {
-          if (!callback(trade))
+          if (!callback(&trade))
           {
             return count;
           }

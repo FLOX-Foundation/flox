@@ -17,15 +17,19 @@
 using namespace flox;
 namespace fs = std::filesystem;
 
-const std::string kLogDir = "/dev/shm/testlogs";
+static fs::path getLogDir()
+{
+  return fs::temp_directory_path() / "flox_testlogs";
+}
 
 void cleanLogs()
 {
-  if (fs::exists(kLogDir))
+  auto logDir = getLogDir();
+  if (fs::exists(logDir))
   {
-    fs::remove_all(kLogDir);
+    fs::remove_all(logDir);
   }
-  fs::create_directories(kLogDir);
+  fs::create_directories(logDir);
 }
 
 std::vector<std::string> readLines(const std::string& path)
@@ -43,9 +47,10 @@ std::vector<std::string> readLines(const std::string& path)
 TEST(AtomicLoggerTest, WritesToFile)
 {
   cleanLogs();
+  auto logDir = getLogDir();
 
   AtomicLoggerOptions opts;
-  opts.directory = kLogDir;
+  opts.directory = logDir.string();
   opts.basename = "main.log";
   opts.rotateInterval = std::chrono::minutes(999);  // disable time-based rotation
   opts.maxFileSize = 0;                             // disable size-based rotation
@@ -57,7 +62,7 @@ TEST(AtomicLoggerTest, WritesToFile)
 
   std::this_thread::sleep_for(std::chrono::milliseconds(10));  // flush
 
-  auto lines = readLines(kLogDir + "/main.log");
+  auto lines = readLines((logDir / "main.log").string());
   ASSERT_EQ(lines.size(), 3);
   EXPECT_TRUE(lines[0].find("INFO") != std::string::npos);
   EXPECT_TRUE(lines[1].find("WARN") != std::string::npos);
@@ -67,9 +72,10 @@ TEST(AtomicLoggerTest, WritesToFile)
 TEST(AtomicLoggerTest, HonorsLogLevelThreshold)
 {
   cleanLogs();
+  auto logDir = getLogDir();
 
   AtomicLoggerOptions opts;
-  opts.directory = kLogDir;
+  opts.directory = logDir.string();
   opts.basename = "threshold.log";
   opts.levelThreshold = LogLevel::Warn;
 
@@ -79,7 +85,7 @@ TEST(AtomicLoggerTest, HonorsLogLevelThreshold)
 
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-  auto lines = readLines(kLogDir + "/threshold.log");
+  auto lines = readLines((logDir / "threshold.log").string());
   ASSERT_EQ(lines.size(), 1);
   EXPECT_TRUE(lines[0].find("WARN") != std::string::npos);
 }
@@ -87,9 +93,10 @@ TEST(AtomicLoggerTest, HonorsLogLevelThreshold)
 TEST(AtomicLoggerTest, RotatesBySize)
 {
   cleanLogs();
+  auto logDir = getLogDir();
 
   AtomicLoggerOptions opts;
-  opts.directory = kLogDir;
+  opts.directory = logDir.string();
   opts.basename = "rotating.log";
   opts.maxFileSize = 200;  // force rotation quickly
   opts.rotateInterval = std::chrono::minutes(999);
@@ -103,7 +110,7 @@ TEST(AtomicLoggerTest, RotatesBySize)
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   int rotatedCount = 0;
-  for (const auto& file : fs::directory_iterator(kLogDir))
+  for (const auto& file : fs::directory_iterator(logDir))
   {
     if (file.path().string().find("rotating.log.") != std::string::npos)
     {

@@ -14,3 +14,4 @@ ReflowComments: false
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 InsertBraces: true
+Standard: c++20

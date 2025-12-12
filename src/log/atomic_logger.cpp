@@ -172,7 +172,11 @@ void AtomicLogger::formatTimestamp(std::chrono::system_clock::time_point ts, cha
   auto ms = duration_cast<milliseconds>(ts.time_since_epoch()) % 1000;
 
   std::tm tm;
+#ifdef _WIN32
+  localtime_s(&tm, &in_time_t);
+#else
   localtime_r(&in_time_t, &tm);
+#endif
   std::snprintf(buf, bufSize, "%04d%02d%02d-%02d%02d%02d",
                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
                 tm.tm_hour, tm.tm_min, tm.tm_sec);

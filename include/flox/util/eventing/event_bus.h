@@ -26,6 +26,7 @@
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/engine/engine_config.h"
 #include "flox/engine/event_dispatcher.h"
+#include "flox/util/concurrency/jthread.h"
 #include "flox/util/memory/pool.h"
 #include "flox/util/performance/busy_backoff.h"
 #include "flox/util/performance/profile.h"
@@ -89,7 +90,7 @@ class EventBus : public ISubsystem
     Listener* listener{nullptr};
     bool required{true};                       // influence on gating
     alignas(64) std::atomic<int64_t> seq{-1};  // last handled seq
-    std::optional<std::jthread> thread{};
+    std::optional<jthread> thread{};
     uint32_t coreIndex{0};  // index for core distribution
   };
 
@@ -228,21 +229,22 @@ class EventBus : public ISubsystem
            }
 
            if (!_running.load(std::memory_order_relaxed)) break;
- 
-           if (!required && _constructed[idx].load(std::memory_order_acquire) == 0)
+
+           // Value 2 = timeout placeholder, should be skipped by optional consumers
+           // Value 0 = reclaimed (optional consumers should NOT skip - they haven't processed yet)
+           // Value 1 = valid event
+           if (!required && _constructed[idx].load(std::memory_order_acquire) == 2)
            {
-             // skip
+             // skip timeout placeholder
            }
            else
            {
              FLOX_PROFILE_SCOPE("Disruptor::deliver");
              EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
            }
- 
+
            _consumers[i].seq.store(seq, std::memory_order_release);
            _gating[i].store(required ? seq : INT64_MAX, std::memory_order_release);
- 
-           tryReclaim();
 
            next = seq;
            backoff.reset();
@@ -257,20 +259,19 @@ class EventBus : public ISubsystem
              const size_t  idx  = size_t(want) & Mask;
              if (_published[idx].load(std::memory_order_acquire) != want) break;
  
-             if (!required && _constructed[idx].load(std::memory_order_acquire) == 0)
+             // Value 2 = timeout placeholder, should be skipped by optional consumers
+             if (!required && _constructed[idx].load(std::memory_order_acquire) == 2)
              {
-               // skip
+               // skip timeout placeholder
              }
              else
              {
                FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
                EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
              }
- 
+
              _consumers[i].seq.store(want, std::memory_order_release);
              _gating[i].store(required ? want : INT64_MAX, std::memory_order_release);
-
-             tryReclaim();
 
              seq = want;
            }
@@ -453,9 +454,10 @@ class EventBus : public ISubsystem
         auto elapsed = std::chrono::steady_clock::now() - startTime;
         if (elapsed >= timeout.value())
         {
-          // Timeout - we already reserved the slot, so mark it as empty placeholder
+          // Timeout - we already reserved the slot, so mark it as timeout placeholder (value 2)
+          // This distinguishes from reclaimed slots (value 0) which optional consumers can skip
           const size_t idx = size_t(seq) & Mask;
-          _constructed[idx].store(0, std::memory_order_release);
+          _constructed[idx].store(2, std::memory_order_release);
           _published[idx].store(seq, std::memory_order_release);
           return {PublishResult::TIMEOUT, -1};
         }
@@ -471,6 +473,22 @@ class EventBus : public ISubsystem
     }
 
     const size_t idx = size_t(seq) & Mask;
+
+    // Wait for ALL consumers (including optional) to process the old event
+    // before destroying it. This prevents use-after-free for optional consumers.
+    const int64_t oldSeq = seq - static_cast<int64_t>(CapacityPow2);
+    if (oldSeq >= 0)
+    {
+      BusyBackoff reclaimBo;
+      while (minConsumed() < oldSeq)
+      {
+        if (!_running.load(std::memory_order_relaxed))
+        {
+          return {PublishResult::STOPPED, -1};
+        }
+        reclaimBo.pause();
+      }
+    }
 
     // Destroy old event if present - only if not already reclaimed
     // The _constructed flag ensures only one thread destroys
@@ -509,9 +527,25 @@ class EventBus : public ISubsystem
     return (mn == INT64_MAX) ? _next.load(std::memory_order_acquire) : mn;
   }
 
+  // Returns minimum sequence consumed by ALL consumers (including optional)
+  // Used for safe reclaim - events can only be destroyed after ALL consumers processed them
+  int64_t minConsumed() const
+  {
+    const uint32_t n = _consumerCount.load(std::memory_order_acquire);
+    int64_t mn = INT64_MAX;
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      const int64_t s = _consumers[i].seq.load(std::memory_order_acquire);
+      mn = s < mn ? s : mn;
+    }
+    return (mn == INT64_MAX) ? -1 : mn;
+  }
+
   inline void tryReclaim()
   {
-    const int64_t upto = minGating();
+    // Use minConsumed() instead of minGating() to ensure optional consumers
+    // have processed the event before destruction
+    const int64_t upto = minConsumed();
     int64_t cur = _reclaimSeq.load(std::memory_order_relaxed);
     if (upto <= cur)
     {
@@ -554,6 +588,7 @@ class EventBus : public ISubsystem
   inline Event& slot_ref(size_t idx) noexcept { return *slot_ptr(idx); }
 
   alignas(64) std::array<std::atomic<int64_t>, CapacityPow2> _published{};
+  // _constructed values: 0 = empty/reclaimed, 1 = valid event, 2 = timeout placeholder
   alignas(64) std::array<std::atomic<uint8_t>, CapacityPow2> _constructed{};
 
   alignas(64) std::atomic<int64_t> _reclaimSeq{-1};

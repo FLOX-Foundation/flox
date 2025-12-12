@@ -1,4 +1,5 @@
 find_package(GTest REQUIRED)
+find_package(Threads)
 
 function(add_flox_test name)
   add_executable(${name} ${name}.cpp)
@@ -12,8 +13,10 @@ function(add_flox_test name)
     GTest::gtest_main
     GTest::gmock
     GTest::gmock_main
-    Threads::Threads
   )
+  if(TARGET Threads::Threads)
+    target_link_libraries(${name} PRIVATE Threads::Threads)
+  endif()
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
 

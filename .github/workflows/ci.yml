@@ -19,14 +19,13 @@ jobs:
     - name: Check formatting
       run: ./scripts/check-format.sh
 
-  build-and-test:
+  linux-gcc:
     needs: format-check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        compiler: [g++-13]
-        build_type: [Debug]
+        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
@@ -34,43 +33,34 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev ${{ matrix.compiler }}
-
-    - name: Cache GoogleTest
-      id: cache-gtest
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/lib/cmake/GTest
-        key: gtest-${{ runner.os }}-v1
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
 
     - name: Build and Install GoogleTest
-      if: steps.cache-gtest.outputs.cache-hit != 'true'
       run: |
         git clone --depth=1 https://github.com/google/googletest.git
-        cmake -B gtest-build -S googletest -G Ninja
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
-        sudo cmake --install gtest-build
-
-    - name: Cache Google Benchmark
-      id: cache-benchmark
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/lib/cmake/benchmark
-        key: benchmark-${{ runner.os }}-v1
+        cmake --install gtest-build
 
     - name: Build and Install Google Benchmark
-      if: steps.cache-benchmark.outputs.cache-hit != 'true'
       run: |
         git clone --depth=1 https://github.com/google/benchmark.git
-        cmake -B benchmark-build -S benchmark -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
+        cmake -B benchmark-build -S benchmark -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
         cmake --build benchmark-build
-        sudo cmake --install benchmark-build
+        cmake --install benchmark-build
 
     - name: Configure
       run: |
         cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+              -DCMAKE_CXX_COMPILER=g++-14 \
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
@@ -86,16 +76,86 @@ jobs:
       run: ./build/demo/flox_demo
 
     - name: Run benchmarks
+      if: matrix.build_type == 'Release'
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
-  # Weekly affinity tests
-  affinity-tests:
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+  linux-clang:
+    needs: format-check
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        compiler: [g++-13]
+        build_type: [Debug, Release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install LLVM repository
+      run: |
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build liblz4-dev clang-18 libc++-18-dev libc++abi-18-dev
+
+    - name: Build and Install GoogleTest
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++-18 \
+          -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
+
+    - name: Build and Install Google Benchmark
+      run: |
+        git clone --depth=1 https://github.com/google/benchmark.git
+        cmake -B benchmark-build -S benchmark -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++-18 \
+          -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
+        cmake --build benchmark-build
+        cmake --install benchmark-build
+
+    - name: Configure
+      run: |
+        rm -rf build
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=clang++-18 \
+              -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
+              -DFLOX_ENABLE_TESTS=ON \
+              -DFLOX_ENABLE_BENCHMARKS=ON \
+              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: Run tests
+      run: ctest --output-on-failure --test-dir build
+
+    - name: Run demo
+      run: ./build/demo/flox_demo
+
+    - name: Run benchmarks
+      if: matrix.build_type == 'Release'
+      run: ./scripts/run-benchmarks.sh build/benchmarks
+
+  sanitizers:
+    needs: format-check
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
 
     steps:
     - uses: actions/checkout@v4
@@ -103,43 +163,230 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev ${{ matrix.compiler }}
-
-    - name: Cache GoogleTest
-      id: cache-gtest
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/lib/cmake/GTest
-        key: gtest-${{ runner.os }}-v1
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
 
     - name: Build and Install GoogleTest
-      if: steps.cache-gtest.outputs.cache-hit != 'true'
       run: |
         git clone --depth=1 https://github.com/google/googletest.git
-        cmake -B gtest-build -S googletest -G Ninja
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer" \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
-        sudo cmake --install gtest-build
+        cmake --install gtest-build
 
-    - name: Cache Google Benchmark
-      id: cache-benchmark
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/lib/cmake/benchmark
-        key: benchmark-${{ runner.os }}-v1
+    - name: Configure with sanitizer
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
+              -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
+              -DFLOX_ENABLE_TESTS=ON \
+              -DFLOX_ENABLE_BENCHMARKS=OFF \
+              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: Run tests with sanitizer
+      env:
+        ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      run: ctest --output-on-failure --test-dir build
+
+    - name: Run demo with sanitizer
+      env:
+        ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      run: ./build/demo/flox_demo
+
+  macos:
+    needs: format-check
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: brew install cmake ninja lz4
+
+    - name: Build and Install GoogleTest
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
 
     - name: Build and Install Google Benchmark
-      if: steps.cache-benchmark.outputs.cache-hit != 'true'
       run: |
         git clone --depth=1 https://github.com/google/benchmark.git
-        cmake -B benchmark-build -S benchmark -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON
+        cmake -B benchmark-build -S benchmark -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
         cmake --build benchmark-build
-        sudo cmake --install benchmark-build
+        cmake --install benchmark-build
+
+    - name: Configure
+      run: |
+        LZ4_PREFIX=$(brew --prefix lz4)
+        cmake -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
+              -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
+              -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
+              -DFLOX_ENABLE_TESTS=ON \
+              -DFLOX_ENABLE_BENCHMARKS=ON \
+              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON
+
+    - name: Build
+      run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+    - name: Run tests
+      run: ctest --output-on-failure --test-dir build
+
+    - name: Run demo
+      run: ./build/demo/flox_demo
+
+    # Benchmarks disabled on macOS due to VM overhead causing hangs
+    # - name: Run benchmarks
+    #   if: matrix.build_type == 'Release'
+    #   run: ./scripts/run-benchmarks.sh build/benchmarks
+
+  windows-msvc:
+    needs: format-check
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install ninja
+      run: choco install ninja -y
+
+    - name: Install vcpkg dependencies
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        .\vcpkg\bootstrap-vcpkg.bat
+        .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja `
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+              -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+              -DFLOX_ENABLE_TESTS=ON `
+              -DFLOX_ENABLE_BENCHMARKS=ON `
+              -DFLOX_ENABLE_DEMO=ON `
+              -DFLOX_ENABLE_LZ4=ON
+
+    - name: Build
+      run: cmake --build build -j $env:NUMBER_OF_PROCESSORS
+
+    - name: Run tests
+      run: ctest --output-on-failure --test-dir build
+
+    - name: Run demo
+      run: .\build\demo\flox_demo.exe
+
+  windows-clang-cl:
+    needs: format-check
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install dependencies
+      run: choco install ninja llvm -y
+
+    - name: Install vcpkg dependencies
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        .\vcpkg\bootstrap-vcpkg.bat
+        .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows
+
+    - name: Configure with clang-cl
+      run: |
+        cmake -B build -G Ninja `
+              -DCMAKE_C_COMPILER=clang-cl `
+              -DCMAKE_CXX_COMPILER=clang-cl `
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+              -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+              -DFLOX_ENABLE_TESTS=ON `
+              -DFLOX_ENABLE_BENCHMARKS=ON `
+              -DFLOX_ENABLE_DEMO=ON `
+              -DFLOX_ENABLE_LZ4=ON
+
+    - name: Build
+      run: cmake --build build -j $env:NUMBER_OF_PROCESSORS
+
+    - name: Run tests
+      run: ctest --output-on-failure --test-dir build
+
+    - name: Run demo
+      run: .\build\demo\flox_demo.exe
+
+  # Weekly affinity tests (Linux only)
+  affinity-tests:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build liblz4-dev libnuma-dev g++-14
+
+    - name: Build and Install GoogleTest
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
+
+    - name: Build and Install Google Benchmark
+      run: |
+        git clone --depth=1 https://github.com/google/benchmark.git
+        cmake -B benchmark-build -S benchmark -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
+        cmake --build benchmark-build
+        cmake --install benchmark-build
 
     - name: Configure with CPU affinity
       run: |
         cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
-              -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \

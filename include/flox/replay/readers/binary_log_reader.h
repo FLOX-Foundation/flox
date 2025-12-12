@@ -55,7 +55,9 @@ inline int64_t toNanos(std::chrono::system_clock::time_point tp)
 
 inline std::chrono::system_clock::time_point fromNanos(int64_t ns)
 {
-  return std::chrono::system_clock::time_point(std::chrono::nanoseconds(ns));
+  using namespace std::chrono;
+  return time_point_cast<system_clock::duration>(
+      time_point<system_clock, nanoseconds>(nanoseconds(ns)));
 }
 
 inline int64_t nowNanos()

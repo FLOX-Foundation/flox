@@ -19,12 +19,12 @@ class EventBus : public ISubsystem;
 
 | Method                  | Description                                                     |
 | ----------------------- | --------------------------------------------------------------- |
-| `subscribe(listener)`   | Registers a consumer. Returns `bool` (false if bus running or at capacity). |
+| `subscribe(listener, required)` | Registers a consumer. `required=true` (default) gates publishing. Returns `bool`. |
 | `publish(event)`        | Publishes event to ring buffer, returns sequence number (-1 if stopped). |
 | `tryPublish(event, timeout)` | Publishes with timeout. Returns `{PublishResult, seq}`. |
 | `start()` / `stop()`    | Starts or stops all consumer threads.                           |
-| `waitConsumed(seq)`     | Blocks until all consumers have processed up to `seq`.          |
-| `flush()`               | Waits until all published events are consumed.                  |
+| `waitConsumed(seq)`     | Blocks until all **required** consumers have processed up to `seq`. |
+| `flush()`               | Waits until all published events are consumed by **required** consumers. |
 | `consumerCount()`       | Returns number of registered consumers.                         |
 | `enableDrainOnStop()`   | Ensures remaining events are dispatched before shutdown.        |
 
@@ -141,10 +141,37 @@ bus.flush();
 bus.stop();
 ```
 
+## Required vs Optional Consumers
+
+Consumers can be registered as **required** (default) or **optional**:
+
+```cpp
+bus.subscribe(&criticalHandler, true);   // required (default)
+bus.subscribe(&loggingHandler, false);   // optional
+```
+
+### Behavior differences
+
+| Aspect | Required Consumer | Optional Consumer |
+|--------|-------------------|-------------------|
+| **Gating** | Blocks `waitConsumed()` and `flush()` | Does not block these methods |
+| **Backpressure** | Can cause publisher to wait | Never causes backpressure |
+| **Event delivery** | Always receives all events | Always receives all events |
+| **Reclaim** | Events reclaimed after processing | Events reclaimed after **all** consumers process |
+
+### Key guarantee
+
+**All consumers (required and optional) are guaranteed to receive every event**, even during ring buffer wrap-around. The bus ensures events are not destroyed until all consumers have processed them.
+
+### Use cases
+
+* **Required**: Strategy handlers, risk managers, order routers - anything that must process every event
+* **Optional**: Logging, metrics, debugging tools - where occasional delays shouldn't block the main flow
+
 ## Notes
 
 * Capacity must be a power of 2 for efficient masking.
-* Non-required consumers (second arg to `subscribe`) don't block publisher.
+* Optional consumers don't block `waitConsumed()` or `flush()`, but still receive all events.
 * `subscribe()` must be called before `start()` - returns false otherwise.
 * `enableDrainOnStop()` should be called before `start()` if drain behavior is needed.
 * CPU affinity features require `FLOX_CPU_AFFINITY_ENABLED` compile flag.

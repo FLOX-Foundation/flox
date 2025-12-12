@@ -14,6 +14,10 @@
 #include <cstdio>
 #include <thread>
 
+#ifndef _WIN32
+#include <csignal>
+#endif
+
 using namespace flox;
 
 namespace
@@ -48,37 +52,48 @@ TEST(SPSCQueueAdvancedTest, RAIIObjectsDestroyedProperly)
 }
 
 // Simulated UB: double destruction (intentionally wrong)
+// Helper struct for death test - must be at namespace scope for MSVC
+struct DeathTestDummy
+{
+  int value = 42;
+  bool* destroyed = nullptr;
+
+  ~DeathTestDummy()
+  {
+    if (destroyed && *destroyed)
+    {
+      std::abort();
+    }
+    if (destroyed)
+    {
+      *destroyed = true;
+    }
+  }
+};
+
+// Helper function for death test - MSVC doesn't support GCC statement expressions ({...})
+void triggerDoubleDestruction()
+{
+  bool destroyed = false;
+  SPSCQueue<DeathTestDummy, 4> q;
+  DeathTestDummy d{42, &destroyed};
+  q.push(d);  // creates internal copy
+  DeathTestDummy out;
+  q.pop(out);  // destroys queue copy
+  // now `out` will destroy again on scope exit → abort
+}
+
+#ifdef _WIN32
 TEST(SPSCQueueAdvancedTest, DoubleDestructionCausesAbort)
 {
-  ASSERT_EXIT(({
-                struct Dummy
-                {
-                  int value = 42;
-                  bool* destroyed = nullptr;
-
-                  ~Dummy()
-                  {
-                    if (destroyed && *destroyed)
-                    {
-                      std::abort();
-                    }
-                    if (destroyed)
-                    {
-                      *destroyed = true;
-                    }
-                  }
-                };
-
-                bool destroyed = false;
-                SPSCQueue<Dummy, 4> q;
-                Dummy d{42, &destroyed};
-                q.push(d);  // creates internal copy
-                Dummy out;
-                q.pop(out);  // destroys queue copy
-                // now `out` will destroy again on scope exit
-              }),
-              ::testing::KilledBySignal(SIGABRT), ".*");
+  ASSERT_EXIT(triggerDoubleDestruction(), ::testing::ExitedWithCode(3), ".*");
 }
+#else
+TEST(SPSCQueueAdvancedTest, DoubleDestructionCausesAbort)
+{
+  ASSERT_EXIT(triggerDoubleDestruction(), ::testing::KilledBySignal(SIGABRT), ".*");
+}
+#endif
 
 // Stress test
 TEST(SPSCQueueAdvancedTest, StressTestMillionsOfOps)

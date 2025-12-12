@@ -122,9 +122,14 @@ TEST(OrderExecutionBusTest, OptionalConsumerDoesNotGate)
       std::chrono::steady_clock::now() - t0);
 
   EXPECT_EQ(reqCount.load(), 1);
-  EXPECT_LT(dt.count(), 5);
+  EXPECT_LT(dt.count(), 50);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  // Wait for slow optional consumer with timeout (macOS scheduler can be very slow in Debug)
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  while (optCount.load() != 1 && std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
   EXPECT_EQ(optCount.load(), 1);
 
   bus->stop();

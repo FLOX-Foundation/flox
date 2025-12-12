@@ -189,7 +189,10 @@ class SPSCQueue
 
   static constexpr size_t MASK = Capacity - 1;
 
-  using Storage = std::aligned_storage_t<sizeof(T), alignof(T)>;
+  struct alignas(alignof(T)) Storage
+  {
+    std::byte data[sizeof(T)];
+  };
   alignas(64) Storage _buffer[Capacity];
 };
 

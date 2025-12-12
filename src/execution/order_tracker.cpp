@@ -2,6 +2,8 @@
 #include "flox/log/log.h"
 #include "flox/util/performance/profile.h"
 
+#include <exception>
+
 namespace flox
 {
 
