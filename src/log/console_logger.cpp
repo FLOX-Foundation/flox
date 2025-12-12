@@ -45,7 +45,11 @@ void ConsoleLogger::log(LogLevel level, std::string_view msg)
 
   std::time_t t = std::chrono::system_clock::to_time_t(now);
   std::tm tm;
+#ifdef _WIN32
+  localtime_s(&tm, &t);
+#else
   localtime_r(&t, &tm);
+#endif
 
   char timestamp[64];
   std::snprintf(timestamp, sizeof(timestamp), "%04d.%02d.%02d-%02d:%02d:%02d.%03lld",

@@ -114,8 +114,8 @@ TEST_F(BinaryLogTest, WriteAndReadTrades)
     {
       TradeRecord trade{};
       trade.exchange_ts_ns = 1000000000 + i * 1000000;
-      trade.price_raw = (50000 + i) * 1000000;
-      trade.qty_raw = 1 * 1000000;
+      trade.price_raw = (50000LL + i) * 1000000LL;
+      trade.qty_raw = 1LL * 1000000LL;
       trade.trade_id = i;
       trade.symbol_id = 1;
       trade.side = i % 2;
@@ -153,7 +153,7 @@ TEST_F(BinaryLogTest, WriteAndReadBookUpdates)
     for (int i = 0; i < 50; ++i)
     {
       BookRecordHeader header{};
-      header.exchange_ts_ns = 2000000000 + i * 1000000;
+      header.exchange_ts_ns = 2000000000LL + i * 1000000LL;
       header.seq = i;
       header.symbol_id = 2;
       header.bid_count = 5;
@@ -164,8 +164,8 @@ TEST_F(BinaryLogTest, WriteAndReadBookUpdates)
       std::vector<BookLevel> asks(5);
       for (int j = 0; j < 5; ++j)
       {
-        bids[j] = {(50000 - j) * 1000000, (j + 1) * 1000000};
-        asks[j] = {(50001 + j) * 1000000, (j + 1) * 1000000};
+        bids[j] = {(50000LL - j) * 1000000LL, (j + 1LL) * 1000000LL};
+        asks[j] = {(50001LL + j) * 1000000LL, (j + 1LL) * 1000000LL};
       }
 
       EXPECT_TRUE(writer.writeBook(header, bids, asks));
@@ -204,14 +204,14 @@ TEST_F(BinaryLogTest, MixedEventsTimeOrdering)
       if (i % 2 == 0)
       {
         TradeRecord trade{};
-        trade.exchange_ts_ns = 1000000000 + i * 1000000;
+        trade.exchange_ts_ns = 1000000000LL + i * 1000000LL;
         trade.symbol_id = 1;
         writer.writeTrade(trade);
       }
       else
       {
         BookRecordHeader header{};
-        header.exchange_ts_ns = 1000000000 + i * 1000000;
+        header.exchange_ts_ns = 1000000000LL + i * 1000000LL;
         header.symbol_id = 1;
         header.bid_count = 1;
         header.ask_count = 1;
@@ -252,7 +252,7 @@ TEST_F(BinaryLogTest, TimeRangeFilter)
     for (int i = 0; i < 1000; ++i)
     {
       TradeRecord trade{};
-      trade.exchange_ts_ns = i * 1000000;  // 0 to 999ms in ns
+      trade.exchange_ts_ns = i * 1000000LL;  // 0 to 999ms in ns
       trade.symbol_id = 1;
       writer.writeTrade(trade);
     }
@@ -263,16 +263,16 @@ TEST_F(BinaryLogTest, TimeRangeFilter)
   {
     ReaderConfig config{
         .data_dir = _test_dir,
-        .from_ns = 500 * 1000000,
-        .to_ns = 700 * 1000000,
+        .from_ns = 500LL * 1000000LL,
+        .to_ns = 700LL * 1000000LL,
     };
     BinaryLogReader reader(config);
 
     int count = 0;
     reader.forEach([&](const ReplayEvent& event)
                    {
-      EXPECT_GE(event.timestamp_ns, 500 * 1000000);
-      EXPECT_LE(event.timestamp_ns, 700 * 1000000);
+      EXPECT_GE(event.timestamp_ns, 500LL * 1000000LL);
+      EXPECT_LE(event.timestamp_ns, 700LL * 1000000LL);
       ++count;
       return true; });
 
@@ -290,7 +290,7 @@ TEST_F(BinaryLogTest, SymbolFilter)
     for (int i = 0; i < 300; ++i)
     {
       TradeRecord trade{};
-      trade.exchange_ts_ns = i * 1000000;
+      trade.exchange_ts_ns = i * 1000000LL;
       trade.symbol_id = (i % 3) + 1;  // Symbols 1, 2, 3
       writer.writeTrade(trade);
     }
@@ -330,7 +330,7 @@ TEST_F(BinaryLogTest, SegmentRotation)
   for (int i = 0; i < 100; ++i)
   {
     TradeRecord trade{};
-    trade.exchange_ts_ns = i * 1000000;
+    trade.exchange_ts_ns = i * 1000000LL;
     trade.symbol_id = 1;
     writer.writeTrade(trade);
   }
@@ -421,7 +421,7 @@ TEST_F(BinaryLogTest, EarlyExitFromCallback)
     for (int i = 0; i < 100; ++i)
     {
       TradeRecord trade{};
-      trade.exchange_ts_ns = i * 1000000;
+      trade.exchange_ts_ns = i * 1000000LL;
       trade.symbol_id = 1;
       writer.writeTrade(trade);
     }

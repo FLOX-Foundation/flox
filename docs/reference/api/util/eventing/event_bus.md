@@ -159,13 +159,24 @@ All hot fields are 64-byte aligned to prevent false sharing:
 | `_consumers[]` | cache line | Consumer slots |
 | `_gating[]` | cache line | Gating sequences |
 
+## Required vs Optional Consumers
+
+| Aspect | Required (`true`, default) | Optional (`false`) |
+|--------|----------------------------|-------------------|
+| **Gating** | Blocks `waitConsumed()` and `flush()` | Does not block |
+| **Backpressure** | Can cause publisher to wait | Never causes backpressure |
+| **Event delivery** | Guaranteed all events | Guaranteed all events |
+| **Reclaim** | Events reclaimed after processing | Events reclaimed after **all** consumers process |
+
+**Key guarantee**: All consumers (required and optional) receive every event, even during wrap-around. Events are only destroyed after all consumers have processed them.
+
 ## Notes
 
 * Ring buffer capacity must be a power of 2 for efficient masking.
 * Producer blocks if ring buffer is full (use `tryPublish()` for timeout).
 * `subscribe()` must be called before `start()`.
-* `required=false` consumers are skipped in gating calculation.
-* Events are destructed after all consumers have processed them.
+* Optional consumers don't block `waitConsumed()` or `flush()`, but still receive all events.
+* Events are destructed only after **all** consumers (required and optional) have processed them.
 * `publish()` returns -1 if the bus is not running.
 
 ## Benchmarking

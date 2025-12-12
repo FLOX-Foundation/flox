@@ -33,9 +33,24 @@ set(FLOX ${PROJECT_NAME})
 
 add_library(${FLOX} STATIC ${SRC_FILES})
 add_library(flox::${FLOX} ALIAS ${FLOX})
-target_compile_options(${FLOX} PUBLIC
-  $<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
-)
+
+# Platform-specific Release optimizations
+if(MSVC)
+  target_compile_options(${FLOX} PUBLIC
+    $<$<CONFIG:Release>:/O2 /GL>
+  )
+  target_link_options(${FLOX} PUBLIC
+    $<$<CONFIG:Release>:/LTCG>
+  )
+else()
+  target_compile_options(${FLOX} PUBLIC
+    $<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
+  )
+  # LTO requires -flto flag at link time as well
+  target_link_options(${FLOX} PUBLIC
+    $<$<CONFIG:Release>:-flto>
+  )
+endif()
 
 # WARNING: CPU affinity can decrease performance on busy/shared systems.
 # It prevents OS scheduler optimization and should only be used on isolated,
@@ -62,10 +77,28 @@ endif()
 
 option(FLOX_ENABLE_LZ4 "Enable LZ4 compression for binary logs" OFF)
 if(FLOX_ENABLE_LZ4)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(LZ4 REQUIRED liblz4)
-  target_include_directories(${FLOX} PUBLIC ${LZ4_INCLUDE_DIRS})
-  target_link_libraries(${FLOX} PUBLIC ${LZ4_LIBRARIES})
+  # Try find_package first (works with vcpkg on Windows)
+  find_package(lz4 CONFIG QUIET)
+  if(lz4_FOUND)
+    target_link_libraries(${FLOX} PUBLIC lz4::lz4)
+    message(STATUS "LZ4 found via find_package")
+  else()
+    # Try find_library (works with brew on macOS)
+    find_library(LZ4_LIBRARY NAMES lz4)
+    find_path(LZ4_INCLUDE_DIR NAMES lz4.h)
+    if(LZ4_LIBRARY AND LZ4_INCLUDE_DIR)
+      target_include_directories(${FLOX} PUBLIC ${LZ4_INCLUDE_DIR})
+      target_link_libraries(${FLOX} PUBLIC ${LZ4_LIBRARY})
+      message(STATUS "LZ4 found via find_library: ${LZ4_LIBRARY}")
+    else()
+      # Fallback to pkg-config (Linux)
+      find_package(PkgConfig REQUIRED)
+      pkg_check_modules(LZ4 REQUIRED liblz4)
+      target_include_directories(${FLOX} PUBLIC ${LZ4_INCLUDE_DIRS})
+      target_link_libraries(${FLOX} PUBLIC ${LZ4_LINK_LIBRARIES})
+      message(STATUS "LZ4 found via pkg-config")
+    endif()
+  endif()
   target_compile_definitions(${FLOX} PUBLIC FLOX_LZ4_ENABLED=1)
   message(STATUS "LZ4 compression enabled")
 else()

@@ -85,6 +85,7 @@ TEST(MarketDataBusTest, SingleSubscriberReceivesUpdates)
 TEST(MarketDataBusTest, MultipleSubscribersReceiveAll)
 {
   BookUpdateBus bus;
+  bus.enableDrainOnStop();
   std::atomic<int> received1{0};
   std::atomic<int> received2{0};
 
@@ -109,11 +110,11 @@ TEST(MarketDataBusTest, MultipleSubscribersReceiveAll)
     bus.publish(std::move(update));
   }
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  bus.flush();
   bus.stop();
 
-  EXPECT_GE(received1, 20);
-  EXPECT_GE(received2, 20);
+  EXPECT_EQ(received1, 20);
+  EXPECT_EQ(received2, 20);
   EXPECT_NE(sub1->lastPrice(), -1.0);
   EXPECT_NE(sub2->lastPrice(), -1.0);
   EXPECT_EQ(pool.inUse(), 0);

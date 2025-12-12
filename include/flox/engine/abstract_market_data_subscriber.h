@@ -14,9 +14,9 @@
 namespace flox
 {
 
-class BookUpdateEvent;
-class TradeEvent;
-class CandleEvent;
+struct BookUpdateEvent;
+struct TradeEvent;
+struct CandleEvent;
 
 class IMarketDataSubscriber : public ISubscriber
 {

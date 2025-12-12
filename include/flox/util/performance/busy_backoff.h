@@ -8,8 +8,14 @@
  */
 
 #include <thread>
-#if defined(__x86_64__) || defined(__aarch64__)
+
+#if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#define FLOX_CPU_PAUSE() _mm_pause()
+#elif defined(__aarch64__) || defined(_M_ARM64)
+#define FLOX_CPU_PAUSE() __asm__ __volatile__("yield" ::: "memory")
+#else
+#define FLOX_CPU_PAUSE() ((void)0)
 #endif
 
 namespace flox
@@ -23,9 +29,7 @@ struct BusyBackoff
   {
     if (spins < 2048)
     {
-#if defined(__x86_64__) || defined(__aarch64__)
-      _mm_pause();
-#endif
+      FLOX_CPU_PAUSE();
       ++spins;
       return;
     }

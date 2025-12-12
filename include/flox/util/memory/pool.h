@@ -185,7 +185,10 @@ class Pool
   size_t inUse() const { return _acquired - _released; }
 
  private:
-  using Storage = std::aligned_storage_t<sizeof(T), alignof(T)>;
+  struct alignas(alignof(T)) Storage
+  {
+    std::byte data[sizeof(T)];
+  };
   Storage _slots[Capacity];
 
   std::array<std::byte, 128 * 1024> _buffer;

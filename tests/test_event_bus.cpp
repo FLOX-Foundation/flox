@@ -435,4 +435,100 @@ TEST(EventBusTest, OptionalConsumerDoesNotBlockGating)
   EXPECT_LE(optionalSlowListener.count.load(), 10);
 }
 
+// =============================================================================
+// Regression test for optional consumer race condition during wrap-around
+// This test catches the bug where required consumer's reclaim could destroy
+// events before optional consumer had a chance to process them.
+// =============================================================================
+
+TEST(EventBusTest, OptionalConsumerReceivesAllEventsOnWrapAround)
+{
+  // Small buffer to force wrap-around quickly
+  EventBus<TestEvent, 8, 4> smallBus;
+
+  CountingListener fastRequired;
+  // Slow optional consumer that takes 100µs per event
+  SlowListener slowOptional(std::chrono::microseconds{100});
+
+  smallBus.subscribe(&fastRequired, true);   // required - will be fast
+  smallBus.subscribe(&slowOptional, false);  // optional - will be slow
+
+  smallBus.start();
+
+  // Publish more events than buffer capacity to trigger wrap-around
+  // The fast required consumer will process quickly and could trigger reclaim
+  // before the slow optional consumer processes the events
+  constexpr int kEventCount = 32;  // 4x buffer capacity
+  for (int i = 0; i < kEventCount; ++i)
+  {
+    smallBus.publish(TestEvent{.value = i});
+  }
+
+  // Wait for all consumers to finish
+  smallBus.flush();
+
+  // Give slow consumer extra time to finish (in case flush() only waits for required)
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+  while (slowOptional.count.load() < kEventCount && std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+  }
+
+  smallBus.stop();
+
+  EXPECT_EQ(fastRequired.count.load(), kEventCount);
+  // This is the critical assertion - optional consumer MUST receive ALL events
+  // even during wrap-around when required consumer finishes first
+  EXPECT_EQ(slowOptional.count.load(), kEventCount)
+      << "Optional consumer missed events during wrap-around. "
+         "This indicates a race condition between required consumer's reclaim "
+         "and optional consumer's event processing.";
+}
+
+// Test that optional consumer doesn't process timeout placeholders
+TEST(EventBusTest, OptionalConsumerSkipsTimeoutPlaceholders)
+{
+  SmallBus smallBus;  // 4 slots
+  SlowListener slowConsumer(std::chrono::milliseconds{50});
+
+  smallBus.subscribe(&slowConsumer, false);  // optional
+  smallBus.start();
+
+  // Fill buffer
+  for (int i = 0; i < 4; ++i)
+  {
+    smallBus.publish(TestEvent{.value = i});
+  }
+
+  // Try to publish with very short timeout - should create timeout placeholder
+  auto [result, seq] = smallBus.tryPublish(TestEvent{.value = 999}, std::chrono::microseconds{1});
+
+  // Wait for consumer to process
+  smallBus.flush();
+
+  // Give extra time for slow consumer
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+  while (slowConsumer.count.load() < 4 && std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+  }
+
+  smallBus.stop();
+
+  // Should have processed initial 4 events
+  EXPECT_GE(slowConsumer.count.load(), 4);
+
+  // If timeout occurred, the placeholder should be skipped (not crash, not count as event)
+  if (result == SmallBus::PublishResult::TIMEOUT)
+  {
+    // Exactly 4 events should be processed (timeout placeholder skipped)
+    EXPECT_EQ(slowConsumer.count.load(), 4);
+  }
+  else
+  {
+    // If publish succeeded, 5 events should be processed
+    EXPECT_EQ(slowConsumer.count.load(), 5);
+  }
+}
+
 }  // namespace

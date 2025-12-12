@@ -130,14 +130,14 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
 
     if (sym.strike.has_value())
     {
-      std::fprintf(f, ", \"strike\": %ld", sym.strike->raw());
+      std::fprintf(f, ", \"strike\": %lld", static_cast<long long>(sym.strike->raw()));
     }
     if (sym.expiry.has_value())
     {
       auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                     sym.expiry->time_since_epoch())
                     .count();
-      std::fprintf(f, ", \"expiry\": %ld", ns);
+      std::fprintf(f, ", \"expiry\": %lld", static_cast<long long>(ns));
     }
     if (sym.optionType.has_value())
     {
