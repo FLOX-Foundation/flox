@@ -32,8 +32,8 @@ CurlTransport::~CurlTransport() = default;
 
 void CurlTransport::post(std::string_view url, std::string_view body,
                          const std::vector<std::pair<std::string_view, std::string_view>>& headers,
-                         std::move_only_function<void(std::string_view)> onSuccess,
-                         std::move_only_function<void(std::string_view)> onError)
+                         MoveOnlyFunction<void(std::string_view)> onSuccess,
+                         MoveOnlyFunction<void(std::string_view)> onError)
 {
   CURL* h = _pool.acquire();
   curl_easy_reset(h);

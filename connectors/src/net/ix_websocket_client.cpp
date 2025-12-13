@@ -35,14 +35,14 @@ IxWebSocketClient::~IxWebSocketClient()
   }
 }
 
-void IxWebSocketClient::onOpen(std::move_only_function<void()> cb) { _onOpen = std::move(cb); }
+void IxWebSocketClient::onOpen(MoveOnlyFunction<void()> cb) { _onOpen = std::move(cb); }
 
-void IxWebSocketClient::onMessage(std::move_only_function<void(std::string_view)> cb)
+void IxWebSocketClient::onMessage(MoveOnlyFunction<void(std::string_view)> cb)
 {
   _onMessage = std::move(cb);
 }
 
-void IxWebSocketClient::onClose(std::move_only_function<void(int, std::string_view)> cb)
+void IxWebSocketClient::onClose(MoveOnlyFunction<void(int, std::string_view)> cb)
 {
   _onClose = std::move(cb);
 }

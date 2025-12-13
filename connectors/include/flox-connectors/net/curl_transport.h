@@ -12,6 +12,7 @@
 #include "flox-connectors/net/curl_session_pool.h"
 
 #include <flox/net/abstract_transport.h>
+#include <flox/util/base/move_only_function.h>
 
 #include <string_view>
 #include <vector>
@@ -27,8 +28,8 @@ class CurlTransport : public ITransport
 
   void post(std::string_view url, std::string_view body,
             const std::vector<std::pair<std::string_view, std::string_view>>& headers,
-            std::move_only_function<void(std::string_view)> onSuccess,
-            std::move_only_function<void(std::string_view)> onError) override;
+            MoveOnlyFunction<void(std::string_view)> onSuccess,
+            MoveOnlyFunction<void(std::string_view)> onError) override;
 
  private:
   CurlSessionPool _pool;

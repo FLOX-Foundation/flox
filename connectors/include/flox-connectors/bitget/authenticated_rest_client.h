@@ -10,6 +10,7 @@
 #pragma once
 
 #include <flox/net/abstract_transport.h>
+#include <flox/util/base/move_only_function.h>
 
 #include <string>
 #include <string_view>
@@ -24,8 +25,8 @@ class BitgetAuthenticatedRestClient
                                 std::string endpoint, ITransport* transport);
 
   void post(std::string_view path, std::string_view body,
-            std::move_only_function<void(std::string_view)> onSuccess,
-            std::move_only_function<void(std::string_view)> onError);
+            MoveOnlyFunction<void(std::string_view)> onSuccess,
+            MoveOnlyFunction<void(std::string_view)> onError);
 
  private:
   std::string _apiKey;

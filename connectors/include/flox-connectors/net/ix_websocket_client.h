@@ -18,6 +18,7 @@
 
 #include <flox/log/abstract_logger.h>
 #include <flox/net/abstract_websocket_client.h>
+#include <flox/util/base/move_only_function.h>
 
 namespace flox
 {
@@ -28,9 +29,9 @@ class IxWebSocketClient : public IWebSocketClient
   IxWebSocketClient(std::string url, std::string origin, int reconnectDelayMs, ILogger* logger);
   ~IxWebSocketClient() override;
 
-  void onOpen(std::move_only_function<void()> cb) override;
-  void onMessage(std::move_only_function<void(std::string_view)> cb) override;
-  void onClose(std::move_only_function<void(int, std::string_view)> cb) override;
+  void onOpen(MoveOnlyFunction<void()> cb) override;
+  void onMessage(MoveOnlyFunction<void(std::string_view)> cb) override;
+  void onClose(MoveOnlyFunction<void(int, std::string_view)> cb) override;
 
   void send(const std::string& data) override;
   void start() override;
@@ -49,9 +50,9 @@ class IxWebSocketClient : public IWebSocketClient
   std::thread _thread;
   std::mutex _sendMutex;
 
-  std::move_only_function<void()> _onOpen;
-  std::move_only_function<void(std::string_view)> _onMessage;
-  std::move_only_function<void(int, std::string_view)> _onClose;
+  MoveOnlyFunction<void()> _onOpen;
+  MoveOnlyFunction<void(std::string_view)> _onMessage;
+  MoveOnlyFunction<void(int, std::string_view)> _onClose;
 };
 
 }  // namespace flox

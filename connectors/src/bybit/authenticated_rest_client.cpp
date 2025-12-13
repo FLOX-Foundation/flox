@@ -28,8 +28,8 @@ AuthenticatedRestClient::AuthenticatedRestClient(std::string apiKey, std::string
 }
 
 void AuthenticatedRestClient::post(std::string_view path, std::string_view body,
-                                   std::move_only_function<void(std::string_view)> onSuccess,
-                                   std::move_only_function<void(std::string_view)> onError)
+                                   MoveOnlyFunction<void(std::string_view)> onSuccess,
+                                   MoveOnlyFunction<void(std::string_view)> onError)
 {
   using namespace std::chrono;
 
