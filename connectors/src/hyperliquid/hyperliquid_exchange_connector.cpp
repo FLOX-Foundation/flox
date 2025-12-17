@@ -15,9 +15,8 @@
 #include <simdjson.h>
 
 #include <array>
-#include <chrono>
 #include <cstdio>
-#include <cstring>
+#include <cstdlib>
 
 namespace flox
 {
@@ -126,32 +125,24 @@ SymbolId HyperliquidExchangeConnector::resolveSymbolId(std::string_view symbol)
 
 void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 {
-  static thread_local simdjson::ondemand::parser parser;
-  static thread_local std::array<char, 16384> buf;
-
-  if (payload.size() + simdjson::SIMDJSON_PADDING > buf.size())
-  {
-    return;
-  }
-
-  std::memcpy(buf.data(), payload.data(), payload.size());
+  static thread_local simdjson::dom::parser parser;
 
   try
   {
-    auto doc = parser.iterate(buf.data(), payload.size(), buf.size());
-    auto chField = doc["channel"];
-    if (chField.error())
+    auto doc = parser.parse(payload);
+
+    auto channelEl = doc["channel"];
+    if (channelEl.error())
     {
       return;
     }
 
-    std::string_view channel = chField.get_string().value();
-    auto dataField = doc["data"];
-    if (dataField.error())
+    std::string_view channel = channelEl.get_string().value();
+    auto dataEl = doc["data"];
+    if (dataEl.error())
     {
       return;
     }
-    auto data = dataField.value();
 
     if (channel == "l2Book")
     {
@@ -162,62 +153,59 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
       }
       auto& ev = *evOpt;
 
-      auto coinRes = data["coin"].get_string();
-      if (coinRes.error())
+      auto coinEl = dataEl["coin"];
+      if (coinEl.error())
       {
         return;
       }
 
-      SymbolId sid = resolveSymbolId(coinRes.value_unsafe());
+      SymbolId sid = resolveSymbolId(coinEl.get_string().value());
 
       ev->update.symbol = sid;
+      // Hyperliquid sends full book snapshots on each update
       ev->update.type = BookUpdateType::SNAPSHOT;
 
-      auto levelsRes = data["levels"].get_array();
-      if (levelsRes.error())
+      // Parse timestamp (milliseconds)
+      auto timeEl = dataEl["time"];
+      if (!timeEl.error())
+      {
+        int64_t tsMs = timeEl.get_int64().value();
+        ev->update.exchangeTsNs = tsMs * 1'000'000;
+      }
+
+      auto levelsEl = dataEl["levels"];
+      if (levelsEl.error())
       {
         return;
       }
 
-      auto levels = levelsRes.value();
-      auto bidsNode = levels.at(0);
-      if (!bidsNode.error())
+      auto levels = levelsEl.get_array();
+      size_t idx = 0;
+      for (auto levelArr : levels)
       {
-        auto bidsArr = bidsNode.get_array();
-        if (!bidsArr.error())
+        for (auto lvl : levelArr.get_array())
         {
-          for (auto lvl : bidsArr.value())
+          auto pxEl = lvl["px"];
+          auto szEl = lvl["sz"];
+          if (pxEl.error() || szEl.error())
           {
-            auto px = lvl["px"].get_string();
-            auto sz = lvl["sz"].get_string();
-            if (!px.error() && !sz.error())
-            {
-              ev->update.bids.emplace_back(
-                  Price::fromDouble(std::strtod(px.value_unsafe().data(), nullptr)),
-                  Quantity::fromDouble(std::strtod(sz.value_unsafe().data(), nullptr)));
-            }
+            continue;
           }
-        }
-      }
 
-      auto asksNode = levels.at(1);
-      if (!asksNode.error())
-      {
-        auto asksArr = asksNode.get_array();
-        if (!asksArr.error())
-        {
-          for (auto lvl : asksArr.value())
+          Price price = Price::fromDouble(std::strtod(pxEl.get_string().value().data(), nullptr));
+          Quantity qty =
+              Quantity::fromDouble(std::strtod(szEl.get_string().value().data(), nullptr));
+
+          if (idx == 0)
           {
-            auto px = lvl["px"].get_string();
-            auto sz = lvl["sz"].get_string();
-            if (!px.error() && !sz.error())
-            {
-              ev->update.asks.emplace_back(
-                  Price::fromDouble(std::strtod(px.value_unsafe().data(), nullptr)),
-                  Quantity::fromDouble(std::strtod(sz.value_unsafe().data(), nullptr)));
-            }
+            ev->update.bids.emplace_back(price, qty);
+          }
+          else
+          {
+            ev->update.asks.emplace_back(price, qty);
           }
         }
+        idx++;
       }
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
@@ -227,32 +215,37 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
     }
     else if (channel == "trades")
     {
-      auto arrRes = data.get_array();
-      if (arrRes.error())
-      {
-        return;
-      }
+      auto arr = dataEl.get_array();
 
-      for (auto t : arrRes.value())
+      for (auto t : arr)
       {
-        auto coinRes = t["coin"].get_string();
-        auto pxRes = t["px"].get_string();
-        auto szRes = t["sz"].get_string();
-        auto sideRes = t["side"].get_string();
+        auto coinEl = t["coin"];
+        auto pxEl = t["px"];
+        auto szEl = t["sz"];
+        auto sideEl = t["side"];
 
-        if (coinRes.error() || pxRes.error() || szRes.error() || sideRes.error())
+        if (coinEl.error() || pxEl.error() || szEl.error() || sideEl.error())
         {
           continue;
         }
 
-        SymbolId sid = resolveSymbolId(coinRes.value_unsafe());
+        SymbolId sid = resolveSymbolId(coinEl.get_string().value());
 
         TradeEvent ev;
         ev.trade.symbol = sid;
-        ev.trade.price = Price::fromDouble(std::strtod(pxRes.value_unsafe().data(), nullptr));
-        ev.trade.quantity = Quantity::fromDouble(std::strtod(szRes.value_unsafe().data(), nullptr));
-        ev.trade.isBuy = sideRes.value_unsafe() == "buy";
-        ev.trade.exchangeTsNs = nowNsMonotonic();
+        ev.trade.price = Price::fromDouble(std::strtod(pxEl.get_string().value().data(), nullptr));
+        ev.trade.quantity =
+            Quantity::fromDouble(std::strtod(szEl.get_string().value().data(), nullptr));
+        std::string_view side = sideEl.get_string().value();
+        ev.trade.isBuy = (side == "B" || side == "buy");
+
+        // Parse timestamp (milliseconds)
+        auto timeEl = t["time"];
+        if (!timeEl.error())
+        {
+          int64_t tsMs = timeEl.get_int64().value();
+          ev.trade.exchangeTsNs = tsMs * 1'000'000;
+        }
 
         if (const auto info = _registry->getSymbolInfo(sid))
         {

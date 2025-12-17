@@ -32,7 +32,9 @@ struct BitgetConfig
   {
     Invalid = -1,
     Depth1 = 1,
-    Depth50 = 50
+    Depth5 = 5,
+    Depth15 = 15,
+    DepthFull = 100  // "books" channel - all levels
   };
 
   struct SymbolEntry

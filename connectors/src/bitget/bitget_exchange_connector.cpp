@@ -125,7 +125,22 @@ void BitgetExchangeConnector::start()
           sub += R"({"instType":")";
           sub += bitgetWsInstType(s.type);
           sub += R"(","channel":")";
-          sub += (s.depth == BitgetConfig::BookDepth::Depth1 ? "books1" : "books50");
+          switch (s.depth)
+          {
+            case BitgetConfig::BookDepth::Depth1:
+              sub += "books1";
+              break;
+            case BitgetConfig::BookDepth::Depth5:
+              sub += "books5";
+              break;
+            case BitgetConfig::BookDepth::Depth15:
+              sub += "books15";
+              break;
+            case BitgetConfig::BookDepth::DepthFull:
+            default:
+              sub += "books";
+              break;
+          }
           sub += R"(","instId":")";
           sub += s.name;
           sub += R"("})";
@@ -195,37 +210,42 @@ void BitgetExchangeConnector::stop()
 
 void BitgetExchangeConnector::handleMessage(std::string_view payload)
 {
-  static thread_local simdjson::ondemand::parser parser;
+  static thread_local simdjson::dom::parser parser;
 
   try
   {
-    std::string json_str(payload);
-    auto doc = parser.iterate(json_str);
+    auto doc = parser.parse(payload);
 
-    if (doc["data"].error() && doc["action"].error())
+    // Check if this is a data message
+    auto actionEl = doc["action"];
+    auto dataEl = doc["data"];
+    if (actionEl.error() && dataEl.error())
     {
       return;
     }
 
     std::string_view action{};
+    if (!actionEl.error())
     {
-      auto actFld = doc["action"];
-      if (!actFld.error())
-      {
-        auto actStr = actFld.get_string();
-        if (!actStr.error())
-        {
-          action = actStr.value_unsafe();  // "snapshot" | "update"
-        }
-      }
+      action = actionEl.get_string().value();
     }
 
-    auto arg = doc["arg"].get_object();
-    auto channel = arg["channel"].get_string().value();
-    auto inst = arg["instId"].get_string().value();
-    simdjson::ondemand::array data = doc["data"].get_array();
+    auto arg = doc["arg"];
+    if (arg.error())
+    {
+      return;
+    }
 
-    if (channel.starts_with("books"))
+    std::string_view channel = arg["channel"].get_string().value();
+    std::string_view inst = arg["instId"].get_string().value();
+
+    if (dataEl.error())
+    {
+      return;
+    }
+    auto data = dataEl.get_array();
+
+    if (channel.substr(0, 5) == "books")
     {
       auto evOpt = _bookPool.acquire();
       if (!evOpt)
@@ -251,33 +271,45 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           ev->update.instrument = info->type;
         }
       }
+
       for (auto d : data)
       {
-        auto bids = d["bids"].get_array();
-        if (!bids.error())
+        auto bidsEl = d["bids"];
+        if (!bidsEl.error())
         {
-          for (auto lvl : bids.value())
+          for (auto lvl : bidsEl.get_array())
           {
-            auto row = lvl.get_array().value();
-            std::string_view p = row.at(0).get_string().value();
-            row.reset();
-            std::string_view q = row.at(1).get_string().value();
+            auto row = lvl.get_array();
+            auto it = row.begin();
+            std::string_view p = (*it).get_string().value();
+            ++it;
+            std::string_view q = (*it).get_string().value();
             ev->update.bids.emplace_back(Price::fromDouble(std::strtod(p.data(), nullptr)),
                                          Quantity::fromDouble(std::strtod(q.data(), nullptr)));
           }
         }
-        auto asks = d["asks"].get_array();
-        if (!asks.error())
+        auto asksEl = d["asks"];
+        if (!asksEl.error())
         {
-          for (auto lvl : asks.value())
+          for (auto lvl : asksEl.get_array())
           {
-            auto row = lvl.get_array().value();
-            std::string_view p = row.at(0).get_string().value();
-            row.reset();
-            std::string_view q = row.at(1).get_string().value();
+            auto row = lvl.get_array();
+            auto it = row.begin();
+            std::string_view p = (*it).get_string().value();
+            ++it;
+            std::string_view q = (*it).get_string().value();
             ev->update.asks.emplace_back(Price::fromDouble(std::strtod(p.data(), nullptr)),
                                          Quantity::fromDouble(std::strtod(q.data(), nullptr)));
           }
+        }
+
+        // Parse timestamp if available
+        auto tsEl = d["ts"];
+        if (!tsEl.error())
+        {
+          std::string_view tsStr = tsEl.get_string().value();
+          int64_t tsMs = std::strtoll(tsStr.data(), nullptr, 10);
+          ev->update.exchangeTsNs = tsMs * 1'000'000;
         }
       }
 
@@ -290,11 +322,9 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
     {
       for (auto val : data)
       {
-        auto tradeObj = val.get_object();
-
-        std::string_view priceSv = tradeObj["price"].get_string().value();
-        std::string_view qtySv = tradeObj["size"].get_string().value();
-        std::string_view sideSv = tradeObj["side"].get_string().value();
+        std::string_view priceSv = val["price"].get_string().value();
+        std::string_view qtySv = val["size"].get_string().value();
+        std::string_view sideSv = val["side"].get_string().value();
 
         TradeEvent ev;
         SymbolId sid = resolveSymbolId(inst);
@@ -310,6 +340,15 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
         ev.trade.price = Price::fromDouble(std::strtod(priceSv.data(), nullptr));
         ev.trade.quantity = Quantity::fromDouble(std::strtod(qtySv.data(), nullptr));
         ev.trade.isBuy = (sideSv == "buy" || sideSv == "Buy");
+
+        // Parse timestamp
+        auto tsEl = val["ts"];
+        if (!tsEl.error())
+        {
+          std::string_view tsStr = tsEl.get_string().value();
+          int64_t tsMs = std::strtoll(tsStr.data(), nullptr, 10);
+          ev.trade.exchangeTsNs = tsMs * 1'000'000;
+        }
 
         _tradeBus->publish(ev);
       }
