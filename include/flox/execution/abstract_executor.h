@@ -22,6 +22,7 @@ class IOrderExecutor : public ISubsystem
 
   virtual void submitOrder(const Order& order) {};
   virtual void cancelOrder(OrderId orderId) {};
+  virtual void cancelAllOrders(SymbolId symbol) {};
   virtual void replaceOrder(OrderId oldOrderId, const Order& newOrder) {};
 };
 

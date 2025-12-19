@@ -51,6 +51,10 @@ add_flox_test(test_binary_log)
 add_flox_test(test_market_data_recorder)
 add_flox_test(test_replay_connector)
 
+if(FLOX_ENABLE_BACKTEST)
+  add_flox_test(test_backtest)
+endif()
+
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_test(test_cpu_affinity)
 endif()

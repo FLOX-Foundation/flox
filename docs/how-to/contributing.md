@@ -65,6 +65,7 @@ FLOX welcomes contributions in these areas:
 | `FLOX_ENABLE_TESTS` | `OFF` | Build unit tests |
 | `FLOX_ENABLE_BENCHMARKS` | `OFF` | Build benchmark binaries |
 | `FLOX_ENABLE_DEMO` | `OFF` | Build the demo application |
+| `FLOX_ENABLE_BACKTEST` | `OFF` | Build backtest module (simulated execution) |
 | `FLOX_ENABLE_LZ4` | `OFF` | Enable LZ4 compression for replay |
 | `FLOX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity (isolated systems only) |
 
