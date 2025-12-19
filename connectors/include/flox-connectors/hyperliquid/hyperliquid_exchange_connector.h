@@ -20,6 +20,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace flox
@@ -63,6 +64,9 @@ class HyperliquidExchangeConnector : public IExchangeConnector
 
   std::unique_ptr<IWebSocketClient> _wsClient;
   std::atomic<bool> _running{false};
+
+  std::thread _pingThread;
+  void pingLoop();
 
   pool::Pool<BookUpdateEvent, 2047> _bookPool;
 };

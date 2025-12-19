@@ -17,10 +17,11 @@ namespace flox
 {
 
 IxWebSocketClient::IxWebSocketClient(std::string url, std::string origin, int reconnectDelayMs,
-                                     ILogger* logger)
+                                     ILogger* logger, int pingIntervalSec)
     : _url(std::move(url)),
       _origin(std::move(origin)),
       _reconnectDelayMs(reconnectDelayMs),
+      _pingIntervalSec(pingIntervalSec),
       _logger(logger)
 {
 }
@@ -76,7 +77,15 @@ void IxWebSocketClient::run()
     _ws.setUrl(_url);
     _ws.setExtraHeaders({{"Origin", _origin}});
     _ws.disablePerMessageDeflate();
-    _ws.setPingInterval(1);
+    if (_pingIntervalSec > 0)
+    {
+      _ws.setPingInterval(_pingIntervalSec);
+    }
+    else
+    {
+      // Some servers require application-level heartbeats
+      _ws.setPingInterval(-1);
+    }
 
     _ws.setOnMessageCallback(
         [this](const ix::WebSocketMessagePtr& msg)

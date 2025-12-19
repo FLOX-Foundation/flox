@@ -90,7 +90,7 @@ BitgetExchangeConnector::BitgetExchangeConnector(const BitgetConfig& cfg, BookUp
       _logger(std::move(logger))
 {
   _wsClient = std::make_unique<IxWebSocketClient>(cfg.publicEndpoint, BITGET_ORIGIN,
-                                                  cfg.reconnectDelayMs, _logger.get());
+                                                  cfg.reconnectDelayMs, _logger.get(), 20);
 }
 
 void BitgetExchangeConnector::start()
@@ -109,55 +109,66 @@ void BitgetExchangeConnector::start()
   _wsClient->onOpen(
       [this]()
       {
-        std::string sub;
-        sub.reserve(64 + _config.symbols.size() * 32);
-        sub += R"({"op":"subscribe","args":[)";
+        constexpr size_t BATCH_SIZE = 10;
 
-        bool first = true;
-        for (const auto& s : _config.symbols)
+        for (size_t batchStart = 0; batchStart < _config.symbols.size(); batchStart += BATCH_SIZE)
         {
-          if (!first)
+          std::string sub;
+          sub.reserve(64 + BATCH_SIZE * 200);
+          sub += R"({"op":"subscribe","args":[)";
+
+          bool first = true;
+          size_t batchEnd = std::min(batchStart + BATCH_SIZE, _config.symbols.size());
+
+          for (size_t i = batchStart; i < batchEnd; ++i)
           {
-            sub += ',';
+            const auto& s = _config.symbols[i];
+
+            if (!first)
+            {
+              sub += ',';
+            }
+            first = false;
+
+            sub += R"({"instType":")";
+            sub += bitgetWsInstType(s.type);
+            sub += R"(","channel":")";
+            switch (s.depth)
+            {
+              case BitgetConfig::BookDepth::Depth1:
+                sub += "books1";
+                break;
+              case BitgetConfig::BookDepth::Depth5:
+                sub += "books5";
+                break;
+              case BitgetConfig::BookDepth::Depth15:
+                sub += "books15";
+                break;
+              case BitgetConfig::BookDepth::DepthFull:
+              default:
+                sub += "books";
+                break;
+            }
+            sub += R"(","instId":")";
+            sub += s.name;
+            sub += R"("})";
+
+            sub += ",";
+
+            sub += R"({"instType":")";
+            sub += bitgetWsInstType(s.type);
+            sub += R"(","channel":"trade","instId":")";
+            sub += s.name;
+            sub += R"("})";
           }
-          first = false;
+          sub += "]}";
 
-          sub += R"({"instType":")";
-          sub += bitgetWsInstType(s.type);
-          sub += R"(","channel":")";
-          switch (s.depth)
-          {
-            case BitgetConfig::BookDepth::Depth1:
-              sub += "books1";
-              break;
-            case BitgetConfig::BookDepth::Depth5:
-              sub += "books5";
-              break;
-            case BitgetConfig::BookDepth::Depth15:
-              sub += "books15";
-              break;
-            case BitgetConfig::BookDepth::DepthFull:
-            default:
-              sub += "books";
-              break;
-          }
-          sub += R"(","instId":")";
-          sub += s.name;
-          sub += R"("})";
+          _logger->info(std::string("[Bitget] subscribe batch ") +
+                        std::to_string(batchStart / BATCH_SIZE + 1) + ": " +
+                        std::to_string(batchEnd - batchStart) + " symbols");
 
-          sub += ",";
-
-          sub += R"({"instType":")";
-          sub += bitgetWsInstType(s.type);
-          sub += R"(","channel":"trade","instId":")";
-          sub += s.name;
-          sub += R"("})";
+          _wsClient->send(sub);
         }
-        sub += "]}";
-
-        _logger->info(std::string("[Bitget] subscribe: ") + sub);
-
-        _wsClient->send(sub);
       });
 
   _wsClient->onMessage(
@@ -170,8 +181,8 @@ void BitgetExchangeConnector::start()
 
   if (_config.enablePrivate)
   {
-    _wsClientPrivate = std::make_unique<IxWebSocketClient>(_config.privateEndpoint, BITGET_ORIGIN,
-                                                           _config.reconnectDelayMs, _logger.get());
+    _wsClientPrivate = std::make_unique<IxWebSocketClient>(
+        _config.privateEndpoint, BITGET_ORIGIN, _config.reconnectDelayMs, _logger.get(), 20);
 
     _wsClientPrivate->onOpen(
         [this]()

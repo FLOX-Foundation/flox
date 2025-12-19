@@ -15,6 +15,7 @@
 #include <simdjson.h>
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -36,8 +37,9 @@ HyperliquidExchangeConnector::HyperliquidExchangeConnector(const HyperliquidConf
   assert(_bookBus && "book bus not set");
   assert(_tradeBus && "trade bus not set");
 
+  // Disable WS protocol ping (pingIntervalSec = 0) - Hyperliquid requires application-level ping
   _wsClient = std::make_unique<IxWebSocketClient>(config.wsEndpoint, "https://app.hyperliquid.xyz",
-                                                  config.reconnectDelayMs, _logger.get());
+                                                  config.reconnectDelayMs, _logger.get(), 0);
 }
 
 void HyperliquidExchangeConnector::start()
@@ -58,8 +60,13 @@ void HyperliquidExchangeConnector::start()
       {
         FLOX_LOG("[Hyperliquid] WS open, sending subscriptions");
 
-        for (const auto& coin : _config.symbols)
+        // Send subscriptions in batches with small delays to avoid overwhelming the server
+        // Hyperliquid seems to have issues when >40 messages are sent rapidly
+        constexpr size_t BATCH_SIZE = 10;  // 5 symbols worth of subscriptions per batch
+
+        for (size_t i = 0; i < _config.symbols.size(); ++i)
         {
+          const auto& coin = _config.symbols[i];
           std::array<char, 128> buf{};
 
           int n = std::snprintf(
@@ -79,7 +86,15 @@ void HyperliquidExchangeConnector::start()
           {
             _wsClient->send({buf.data(), static_cast<size_t>(n)});
           }
+
+          // Add small delay after each batch of 5 symbols (10 subscriptions)
+          if ((i + 1) % 5 == 0 && i + 1 < _config.symbols.size())
+          {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+          }
         }
+
+        FLOX_LOG("[Hyperliquid] Subscribed to " << _config.symbols.size() << " symbols");
       });
 
   _wsClient->onClose(
@@ -95,6 +110,25 @@ void HyperliquidExchangeConnector::start()
       });
 
   _wsClient->start();
+
+  // Start ping thread to keep connection alive
+  _pingThread = std::thread(&HyperliquidExchangeConnector::pingLoop, this);
+}
+
+void HyperliquidExchangeConnector::pingLoop()
+{
+  // Initial delay to let connection establish before starting ping loop
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+
+  while (_running.load())
+  {
+    if (_running.load() && _wsClient)
+    {
+      _wsClient->send(R"({"method":"ping"})");
+    }
+    // Send heartbeat every 30 seconds (Hyperliquid timeout is 60 seconds)
+    std::this_thread::sleep_for(std::chrono::seconds(30));
+  }
 }
 
 void HyperliquidExchangeConnector::stop()
@@ -103,6 +137,12 @@ void HyperliquidExchangeConnector::stop()
   {
     return;
   }
+
+  if (_pingThread.joinable())
+  {
+    _pingThread.join();
+  }
+
   if (_wsClient)
   {
     _wsClient->stop();

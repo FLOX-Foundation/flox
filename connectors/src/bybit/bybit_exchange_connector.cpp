@@ -150,7 +150,7 @@ BybitExchangeConnector::BybitExchangeConnector(const BybitConfig& config,
       _logger(std::move(logger))
 {
   _wsClient = std::make_unique<IxWebSocketClient>(config.publicEndpoint, BYBIT_ORIGIN,
-                                                  config.reconnectDelayMs, _logger.get());
+                                                  config.reconnectDelayMs, _logger.get(), 20);
 }
 
 void BybitExchangeConnector::start()
@@ -170,35 +170,45 @@ void BybitExchangeConnector::start()
   _wsClient->onOpen(
       [this]()
       {
-        std::string sub;
-        sub.reserve(64 + _config.symbols.size() * 32);
-        sub += R"({"op":"subscribe","args":[)";
+        constexpr size_t BATCH_SIZE = 10;
 
-        bool first = true;
+        std::vector<std::string> topics;
+        topics.reserve(_config.symbols.size() * 2);
+
         for (const auto& entry : _config.symbols)
         {
-          const auto& sym = entry.name;
-          const auto& type = entry.type;
-
-          if (!first)
-          {
-            sub += ',';
-          }
-
-          first = false;
-
-          sub += '"';
-          sub += "orderbook." + std::to_string(static_cast<int>(entry.depth)) + "." + sym;
-          sub += "\",\"";
-          sub += "publicTrade." + sym;
-          sub += '"';
+          topics.push_back("orderbook." + std::to_string(static_cast<int>(entry.depth)) + "." +
+                           entry.name);
+          topics.push_back("publicTrade." + entry.name);
         }
 
-        sub += "]}";
+        // Send in batches
+        for (size_t i = 0; i < topics.size(); i += BATCH_SIZE)
+        {
+          std::string sub = R"({"op":"subscribe","args":[)";
+          bool first = true;
 
-        FLOX_LOG("[Bybit] WebSocket connected, sending subscription " << sub);
-        _logger->info("[Bybit] WebSocket connected, sending subscription");
-        _wsClient->send(sub);
+          for (size_t j = i; j < std::min(i + BATCH_SIZE, topics.size()); ++j)
+          {
+            if (!first)
+            {
+              sub += ',';
+            }
+            first = false;
+            sub += '"';
+            sub += topics[j];
+            sub += '"';
+          }
+
+          sub += "]}";
+
+          FLOX_LOG("[Bybit] Sending subscription batch " << (i / BATCH_SIZE + 1) << ": " << sub);
+          _wsClient->send(sub);
+        }
+
+        _logger->info("[Bybit] WebSocket connected, sent " +
+                      std::to_string((topics.size() + BATCH_SIZE - 1) / BATCH_SIZE) +
+                      " subscription batches");
       });
 
   _wsClient->onMessage(
@@ -228,8 +238,8 @@ void BybitExchangeConnector::start()
 
   if (_config.enablePrivate)
   {
-    _wsClientPrivate = std::make_unique<IxWebSocketClient>(_config.privateEndpoint, BYBIT_ORIGIN,
-                                                           _config.reconnectDelayMs, _logger.get());
+    _wsClientPrivate = std::make_unique<IxWebSocketClient>(
+        _config.privateEndpoint, BYBIT_ORIGIN, _config.reconnectDelayMs, _logger.get(), 20);
 
     _wsClientPrivate->onOpen(
         [this]()
