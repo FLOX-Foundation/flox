@@ -26,8 +26,19 @@ endif()
 include_directories(include)
 
 file(GLOB_RECURSE SRC_FILES
-    src/**/*.cpp
+    src/aggregator/*.cpp
+    src/engine/*.cpp
+    src/execution/*.cpp
+    src/log/*.cpp
+    src/replay/*.cpp
 )
+
+option(FLOX_ENABLE_BACKTEST "Enable backtest module" OFF)
+if(FLOX_ENABLE_BACKTEST)
+  file(GLOB BACKTEST_SRC_FILES src/backtest/*.cpp)
+  list(APPEND SRC_FILES ${BACKTEST_SRC_FILES})
+  message(STATUS "Backtest module enabled")
+endif()
 
 set(FLOX ${PROJECT_NAME})
 

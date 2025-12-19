@@ -59,6 +59,7 @@ The demo creates a complete trading system:
 | `FLOX_ENABLE_DEMO` | OFF | Build the demo application |
 | `FLOX_ENABLE_TESTS` | OFF | Build unit tests |
 | `FLOX_ENABLE_BENCHMARKS` | OFF | Build performance benchmarks |
+| `FLOX_ENABLE_BACKTEST` | OFF | Build backtest module (simulated execution) |
 | `FLOX_ENABLE_LZ4` | OFF | Enable LZ4 compression for replay |
 | `FLOX_ENABLE_CPU_AFFINITY` | OFF | Enable CPU pinning (requires libnuma) |
 | `FLOX_ENABLE_TRACY` | OFF | Enable Tracy profiler integration |

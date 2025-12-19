@@ -9,6 +9,7 @@ public:
 
   virtual void submitOrder(const Order& order) {};
   virtual void cancelOrder(OrderId orderId) {};
+  virtual void cancelAllOrders(SymbolId symbol) {};
   virtual void replaceOrder(OrderId oldOrderId, const Order& newOrder) {};
 };
 ```
@@ -19,11 +20,12 @@ public:
 
 ## Responsibilities
 
-| Method         | Description                                            |
-| -------------- | ------------------------------------------------------ |
-| `submitOrder`  | Sends a new order to the execution venue or simulator. |
-| `cancelOrder`  | Cancels a previously submitted order.                  |
-| `replaceOrder` | Replaces an existing order with new parameters.        |
+| Method           | Description                                            |
+| ---------------- | ------------------------------------------------------ |
+| `submitOrder`    | Sends a new order to the execution venue or simulator. |
+| `cancelOrder`    | Cancels a previously submitted order by ID.            |
+| `cancelAllOrders`| Cancels all pending orders for a given symbol.         |
+| `replaceOrder`   | Replaces an existing order with new parameters.        |
 
 ## Notes
 

@@ -64,7 +64,8 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON
+              -DFLOX_ENABLE_LZ4=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -134,7 +135,8 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON
+              -DFLOX_ENABLE_LZ4=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -186,7 +188,8 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=OFF \
               -DFLOX_ENABLE_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON
+              -DFLOX_ENABLE_LZ4=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -246,7 +249,8 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON
+              -DFLOX_ENABLE_LZ4=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j$(sysctl -n hw.ncpu)
@@ -293,7 +297,8 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON `
               -DFLOX_ENABLE_BENCHMARKS=ON `
               -DFLOX_ENABLE_DEMO=ON `
-              -DFLOX_ENABLE_LZ4=ON
+              -DFLOX_ENABLE_LZ4=ON `
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j $env:NUMBER_OF_PROCESSORS
@@ -337,7 +342,8 @@ jobs:
               -DFLOX_ENABLE_TESTS=ON `
               -DFLOX_ENABLE_BENCHMARKS=ON `
               -DFLOX_ENABLE_DEMO=ON `
-              -DFLOX_ENABLE_LZ4=ON
+              -DFLOX_ENABLE_LZ4=ON `
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j $env:NUMBER_OF_PROCESSORS
@@ -391,7 +397,8 @@ jobs:
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_CPU_AFFINITY=ON
+              -DFLOX_ENABLE_CPU_AFFINITY=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
