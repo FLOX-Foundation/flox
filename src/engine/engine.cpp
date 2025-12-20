@@ -36,11 +36,18 @@ void Engine::start()
 
 void Engine::stop()
 {
+  // Drain and stop connectors first (wait for in-flight orders)
+  for (auto& connector : _connectors)
+  {
+    connector->drain(_config.drainTimeoutMs);
+  }
+
   for (auto& connector : _connectors)
   {
     connector->stop();
   }
 
+  // Stop subsystems in reverse order
   std::reverse(_subsystems.begin(), _subsystems.end());
   for (auto& subsystem : _subsystems)
   {

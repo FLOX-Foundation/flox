@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,8 @@ struct EngineConfig
 
   std::string logLevel = "info";
   std::string logFile;
+
+  uint32_t drainTimeoutMs = 5000;  ///< Timeout for draining in-flight orders on shutdown
 };
 
 #ifndef FLOX_DEFAULT_EVENTBUS_CAPACITY

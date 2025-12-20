@@ -38,6 +38,7 @@ class OrderTracker
 
   bool onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId = "");
   bool onFilled(OrderId id, Quantity fill);
+  bool onPendingCancel(OrderId id);
   bool onCanceled(OrderId id);
   bool onRejected(OrderId id, std::string_view reason);
   bool onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId = "");

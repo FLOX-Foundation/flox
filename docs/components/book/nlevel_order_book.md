@@ -39,6 +39,32 @@ class NLevelOrderBook : public IOrderBook {
 5. **No Dynamic Allocation**
    Uses `std::array` of fixed size; fully cache-friendly and allocation-free after construction.
 
+## Market State Helpers
+
+```cpp
+[[nodiscard]] bool isCrossed() const noexcept;
+[[nodiscard]] std::optional<Price> spread() const noexcept;
+[[nodiscard]] std::optional<Price> mid() const noexcept;
+```
+
+| Method      | Description                                                      |
+| ----------- | ---------------------------------------------------------------- |
+| `isCrossed` | Returns `true` if best bid >= best ask (crossed/locked market).  |
+| `spread`    | Returns ask - bid spread, or `nullopt` if either side is empty.  |
+| `mid`       | Returns midpoint price, or `nullopt` if either side is empty.    |
+
+These methods are useful for detecting market anomalies and calculating fair value:
+
+```cpp
+if (book.isCrossed()) {
+  // Handle crossed book condition
+}
+
+if (auto mid = book.mid()) {
+  // Use midpoint for fair value calculations
+}
+```
+
 ## Notes
 
 * Extremely fast and deterministic — suitable for backtests and production.

@@ -195,6 +195,11 @@ class SimplePositionManager : public IPositionManager
     update(order, order.quantity);
   }
 
+  void onOrderPendingCancel(const Order& order) override
+  {
+    FLOX_LOG("[position] order pending cancel: id=" << order.id);
+  }
+
   void onOrderCanceled(const Order& order) override
   {
     FLOX_LOG("[position] order canceled: id=" << order.id);

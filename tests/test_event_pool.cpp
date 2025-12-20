@@ -129,3 +129,104 @@ TEST(EventPoolTest, ClearIsCalledOnRelease)
   auto reused = pool.acquire();
   EXPECT_TRUE(reused.value().get()->cleared);
 }
+
+TEST(EventPoolTest, ExhaustionReturnsNullopt)
+{
+  pool::Pool<DummyEvent, 3> pool;
+
+  auto h1 = pool.acquire();
+  auto h2 = pool.acquire();
+  auto h3 = pool.acquire();
+  EXPECT_TRUE(h1.has_value());
+  EXPECT_TRUE(h2.has_value());
+  EXPECT_TRUE(h3.has_value());
+
+  auto h4 = pool.acquire();
+  EXPECT_FALSE(h4.has_value());
+}
+
+TEST(EventPoolTest, ExhaustionCallbackInvoked)
+{
+  pool::Pool<DummyEvent, 3> pool;
+
+  // Test with static callback tracking (can't capture in C function pointer)
+  static size_t s_capacity = 0;
+  static size_t s_inUse = 0;
+  static int s_count = 0;
+  s_capacity = 0;
+  s_inUse = 0;
+  s_count = 0;
+
+  pool.setExhaustionCallback([](size_t capacity, size_t inUse)
+                             {
+    s_capacity = capacity;
+    s_inUse = inUse;
+    ++s_count; });
+
+  auto h1 = pool.acquire();
+  auto h2 = pool.acquire();
+  auto h3 = pool.acquire();
+  EXPECT_EQ(s_count, 0);
+
+  // Fourth acquire should trigger exhaustion callback
+  auto h4 = pool.acquire();
+  EXPECT_FALSE(h4.has_value());
+  EXPECT_EQ(s_count, 1);
+  EXPECT_EQ(s_capacity, 3u);
+  EXPECT_EQ(s_inUse, 3u);
+
+  // Fifth acquire should trigger again
+  auto h5 = pool.acquire();
+  EXPECT_EQ(s_count, 2);
+}
+
+TEST(EventPoolTest, ExhaustionCountTracked)
+{
+  pool::Pool<DummyEvent, 1> pool;
+
+  EXPECT_EQ(pool.exhaustionCount(), 0u);
+
+  auto h1 = pool.acquire();
+  EXPECT_EQ(pool.exhaustionCount(), 0u);
+
+  auto h2 = pool.acquire();  // exhausted
+  EXPECT_FALSE(h2.has_value());
+  EXPECT_EQ(pool.exhaustionCount(), 1u);
+
+  auto h3 = pool.acquire();  // exhausted again
+  EXPECT_EQ(pool.exhaustionCount(), 2u);
+
+  h1.reset();  // release
+
+  auto h4 = pool.acquire();  // should succeed now
+  EXPECT_TRUE(h4.has_value());
+  EXPECT_EQ(pool.exhaustionCount(), 2u);  // count unchanged
+}
+
+TEST(EventPoolTest, AcquireReleaseCountsTracked)
+{
+  pool::Pool<DummyEvent, 3> pool;
+
+  EXPECT_EQ(pool.acquireCount(), 0u);
+  EXPECT_EQ(pool.releaseCount(), 0u);
+
+  auto h1 = pool.acquire();
+  EXPECT_EQ(pool.acquireCount(), 1u);
+  EXPECT_EQ(pool.releaseCount(), 0u);
+
+  auto h2 = pool.acquire();
+  EXPECT_EQ(pool.acquireCount(), 2u);
+
+  h1.reset();
+  EXPECT_EQ(pool.releaseCount(), 1u);
+
+  h2.reset();
+  EXPECT_EQ(pool.releaseCount(), 2u);
+  EXPECT_EQ(pool.acquireCount(), 2u);
+}
+
+TEST(EventPoolTest, CapacityReturnsTemplateParam)
+{
+  pool::Pool<DummyEvent, 63> pool;
+  EXPECT_EQ(pool.capacity(), 63u);
+}

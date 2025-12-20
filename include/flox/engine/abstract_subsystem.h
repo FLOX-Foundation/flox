@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace flox
 {
 
@@ -17,8 +19,15 @@ class ISubsystem
  public:
   virtual ~ISubsystem() = default;
 
-  virtual void start() {};
-  virtual void stop() {};
+  virtual void start() {}
+  virtual void stop() {}
+};
+
+class IDrainable
+{
+ public:
+  virtual ~IDrainable() = default;
+  virtual bool drain(uint32_t timeoutMs) = 0;
 };
 
 }  // namespace flox

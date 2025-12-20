@@ -104,13 +104,6 @@ class PositionTracker : public IPositionManager
     return Price::fromRaw(total);
   }
 
-  void onOrderSubmitted(const Order&) override {}
-  void onOrderAccepted(const Order&) override {}
-  void onOrderCanceled(const Order&) override {}
-  void onOrderExpired(const Order&) override {}
-  void onOrderRejected(const Order&, const std::string&) override {}
-  void onOrderReplaced(const Order&, const Order&) override {}
-
   void onOrderPartiallyFilled(const Order& order, Quantity fillQty) override
   {
     std::lock_guard<std::mutex> lock(_mutex);

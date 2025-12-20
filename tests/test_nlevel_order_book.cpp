@@ -190,3 +190,65 @@ TEST_F(NLevelOrderBookTest, Consume_IsConstDoesNotMutate)
   EXPECT_EQ(book.bestAsk(), Price::fromDouble(100.1));
   EXPECT_EQ(book.bestBid(), Price::fromDouble(100.0));
 }
+
+TEST_F(NLevelOrderBookTest, SpreadCalculation)
+{
+  auto up = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(1.0)}},
+                         {{Price::fromDouble(100.5), Quantity::fromDouble(1.0)}});
+  book.applyBookUpdate(*up);
+
+  auto spreadOpt = book.spread();
+  ASSERT_TRUE(spreadOpt.has_value());
+  EXPECT_NEAR(spreadOpt->toDouble(), 0.5, 1e-9);
+}
+
+TEST_F(NLevelOrderBookTest, MidCalculation)
+{
+  auto up = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(1.0)}},
+                         {{Price::fromDouble(101.0), Quantity::fromDouble(1.0)}});
+  book.applyBookUpdate(*up);
+
+  auto midOpt = book.mid();
+  ASSERT_TRUE(midOpt.has_value());
+  EXPECT_NEAR(midOpt->toDouble(), 100.5, 1e-9);
+}
+
+TEST_F(NLevelOrderBookTest, IsCrossedReturnsFalseForNormalBook)
+{
+  auto up = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(1.0)}},
+                         {{Price::fromDouble(100.1), Quantity::fromDouble(1.0)}});
+  book.applyBookUpdate(*up);
+
+  EXPECT_FALSE(book.isCrossed());
+}
+
+TEST_F(NLevelOrderBookTest, IsCrossedReturnsTrueForCrossedBook)
+{
+  // First set up a normal book
+  auto up1 = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(1.0)}},
+                          {{Price::fromDouble(100.1), Quantity::fromDouble(1.0)}});
+  book.applyBookUpdate(*up1);
+
+  // Then apply a delta that crosses it (bid > ask)
+  auto up2 = makeDelta({{Price::fromDouble(100.2), Quantity::fromDouble(1.0)}}, {});
+  book.applyBookUpdate(*up2);
+
+  EXPECT_TRUE(book.isCrossed());
+}
+
+TEST_F(NLevelOrderBookTest, SpreadAndMidReturnNulloptForEmptyBook)
+{
+  EXPECT_FALSE(book.spread().has_value());
+  EXPECT_FALSE(book.mid().has_value());
+  EXPECT_FALSE(book.isCrossed());
+}
+
+TEST_F(NLevelOrderBookTest, SpreadAndMidReturnNulloptForOneSidedBook)
+{
+  auto up = makeSnapshot({{Price::fromDouble(100.0), Quantity::fromDouble(1.0)}}, {});
+  book.applyBookUpdate(*up);
+
+  EXPECT_FALSE(book.spread().has_value());
+  EXPECT_FALSE(book.mid().has_value());
+  EXPECT_FALSE(book.isCrossed());
+}

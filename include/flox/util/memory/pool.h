@@ -160,6 +160,10 @@ class Pool
     T::_releaseFn = nullptr;
   }
 
+  using ExhaustionCallback = void (*)(size_t capacity, size_t inUse);
+
+  void setExhaustionCallback(ExhaustionCallback cb) { _exhaustionCb = cb; }
+
   std::optional<Handle<T>> acquire()
   {
     T* obj = nullptr;
@@ -170,6 +174,12 @@ class Pool
 
       ++_acquired;
       return Handle<T>(obj);
+    }
+
+    ++_exhaustionCount;
+    if (_exhaustionCb)
+    {
+      _exhaustionCb(Capacity, inUse());
     }
 
     return std::nullopt;
@@ -183,6 +193,10 @@ class Pool
   }
 
   size_t inUse() const { return _acquired - _released; }
+  size_t capacity() const { return Capacity; }
+  size_t exhaustionCount() const { return _exhaustionCount; }
+  size_t acquireCount() const { return _acquired; }
+  size_t releaseCount() const { return _released; }
 
  private:
   struct alignas(alignof(T)) Storage
@@ -199,6 +213,8 @@ class Pool
 
   size_t _acquired = 0;
   size_t _released = 0;
+  size_t _exhaustionCount = 0;
+  ExhaustionCallback _exhaustionCb = nullptr;
 };
 
 }  // namespace flox::pool

@@ -537,6 +537,35 @@ class NLevelOrderBook : public IOrderBook
 
   [[nodiscard]] inline Price tickSize() const noexcept { return _tickSize; }
 
+  [[nodiscard]] inline bool isCrossed() const noexcept
+  {
+    if (_bestBidTick < 0 || _bestAskTick < 0)
+    {
+      return false;
+    }
+    return _bestBidTick >= _bestAskTick;
+  }
+
+  [[nodiscard]] inline std::optional<Price> spread() const noexcept
+  {
+    if (_bestBidTick < 0 || _bestAskTick < 0)
+    {
+      return std::nullopt;
+    }
+    int64_t spreadTicks = _bestAskTick - _bestBidTick;
+    return Price::fromRaw(_tickSize.raw() * spreadTicks);
+  }
+
+  [[nodiscard]] inline std::optional<Price> mid() const noexcept
+  {
+    if (_bestBidTick < 0 || _bestAskTick < 0)
+    {
+      return std::nullopt;
+    }
+    int64_t midTick2 = _bestBidTick + _bestAskTick;
+    return Price::fromRaw((_tickSize.raw() * midTick2) / 2);
+  }
+
   void clear() noexcept
   {
     _bids.fill({});

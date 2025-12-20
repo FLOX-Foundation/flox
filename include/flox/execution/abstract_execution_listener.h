@@ -26,14 +26,15 @@ class IOrderExecutionListener : public ISubscriber
 
   SubscriberId id() const override { return _id; };
 
-  virtual void onOrderSubmitted(const Order& order) = 0;
-  virtual void onOrderAccepted(const Order& order) = 0;
-  virtual void onOrderPartiallyFilled(const Order& order, Quantity fillQty) = 0;
-  virtual void onOrderFilled(const Order& order) = 0;
-  virtual void onOrderCanceled(const Order& order) = 0;
-  virtual void onOrderExpired(const Order& order) = 0;
-  virtual void onOrderRejected(const Order& order, const std::string& reason) = 0;
-  virtual void onOrderReplaced(const Order& oldOrder, const Order& newOrder) = 0;
+  virtual void onOrderSubmitted(const Order&) {}
+  virtual void onOrderAccepted(const Order&) {}
+  virtual void onOrderPartiallyFilled(const Order&, Quantity) {}
+  virtual void onOrderFilled(const Order&) {}
+  virtual void onOrderPendingCancel(const Order&) {}
+  virtual void onOrderCanceled(const Order&) {}
+  virtual void onOrderExpired(const Order&) {}
+  virtual void onOrderRejected(const Order&, const std::string&) {}
+  virtual void onOrderReplaced(const Order&, const Order&) {}
 };
 
 }  // namespace flox

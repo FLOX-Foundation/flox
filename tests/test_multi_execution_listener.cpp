@@ -21,6 +21,7 @@ class MockExecutionListener : public IOrderExecutionListener
   int acceptedCount = 0;
   int partialCount = 0;
   int filledCount = 0;
+  int pendingCancelCount = 0;
   int canceledCount = 0;
   int expiredCount = 0;
   int rejectedCount = 0;
@@ -50,6 +51,12 @@ class MockExecutionListener : public IOrderExecutionListener
   void onOrderFilled(const Order& order) override
   {
     ++filledCount;
+    lastOrder = order;
+  }
+
+  void onOrderPendingCancel(const Order& order) override
+  {
+    ++pendingCancelCount;
     lastOrder = order;
   }
 

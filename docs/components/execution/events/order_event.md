@@ -10,6 +10,7 @@ struct OrderEvent {
   Order order{};
   Order newOrder{};
   Quantity fillQty{0};
+  std::string rejectReason;
   uint64_t tickSequence = 0;
 
   void dispatchTo(IOrderExecutionListener& listener) const;
@@ -28,6 +29,7 @@ struct OrderEvent {
 | order        | The primary order involved in the event.                    |
 | newOrder     | Used only for `REPLACED` events.                            |
 | fillQty      | Quantity filled (used only in `PARTIALLY_FILLED`).          |
+| rejectReason | Reason string (used only in `REJECTED` events).             |
 | tickSequence | Event ordering marker for sequencing and backtesting.       |
 
 ## Dispatch Logic
@@ -38,16 +40,17 @@ void dispatchTo(IOrderExecutionListener& listener) const;
 
 Routes the event to the appropriate method:
 
-| Type               | Dispatched Method                        |
-| ------------------ | ---------------------------------------- |
-| `SUBMITTED`        | `onOrderSubmitted(order)`                |
-| `ACCEPTED`         | `onOrderAccepted(order)`                 |
-| `PARTIALLY_FILLED` | `onOrderPartiallyFilled(order, fillQty)` |
-| `FILLED`           | `onOrderFilled(order)`                   |
-| `CANCELED`         | `onOrderCanceled(order)`                 |
-| `EXPIRED`          | `onOrderExpired(order)`                  |
-| `REJECTED`         | `onOrderRejected(order, /*reason*/ "")`  |
-| `REPLACED`         | `onOrderReplaced(order, newOrder)`       |
+| Type               | Dispatched Method                              |
+| ------------------ | ---------------------------------------------- |
+| `SUBMITTED`        | `onOrderSubmitted(order)`                      |
+| `ACCEPTED`         | `onOrderAccepted(order)`                       |
+| `PARTIALLY_FILLED` | `onOrderPartiallyFilled(order, fillQty)`       |
+| `FILLED`           | `onOrderFilled(order)`                         |
+| `PENDING_CANCEL`   | `onOrderPendingCancel(order)`                  |
+| `CANCELED`         | `onOrderCanceled(order)`                       |
+| `EXPIRED`          | `onOrderExpired(order)`                        |
+| `REJECTED`         | `onOrderRejected(order, rejectReason)`         |
+| `REPLACED`         | `onOrderReplaced(order, newOrder)`             |
 
 ## Notes
 

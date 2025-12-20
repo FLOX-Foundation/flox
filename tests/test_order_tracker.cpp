@@ -164,3 +164,40 @@ TEST(OrderTrackerTest, StatusHelpers)
   EXPECT_FALSE(tracker.isActive(order.id));
   EXPECT_EQ(tracker.getStatus(order.id), OrderEventStatus::CANCELED);
 }
+
+TEST(OrderTrackerTest, PendingCancelState)
+{
+  OrderTracker tracker;
+
+  Order order;
+  order.id = 40;
+  tracker.onSubmitted(order, "ex");
+
+  // Mark as pending cancel
+  EXPECT_TRUE(tracker.onPendingCancel(order.id));
+
+  auto state = tracker.get(order.id);
+  ASSERT_TRUE(state.has_value());
+  EXPECT_EQ(state->status, OrderEventStatus::PENDING_CANCEL);
+
+  // Order is still active (not terminal)
+  EXPECT_TRUE(tracker.isActive(order.id));
+
+  // Can still be canceled
+  EXPECT_TRUE(tracker.onCanceled(order.id));
+  EXPECT_FALSE(tracker.isActive(order.id));
+  EXPECT_EQ(tracker.getStatus(order.id), OrderEventStatus::CANCELED);
+}
+
+TEST(OrderTrackerTest, PendingCancelOnTerminalFails)
+{
+  OrderTracker tracker;
+
+  Order order;
+  order.id = 41;
+  tracker.onSubmitted(order, "ex");
+  tracker.onCanceled(order.id);
+
+  // Can't mark terminal order as pending cancel
+  EXPECT_FALSE(tracker.onPendingCancel(order.id));
+}
