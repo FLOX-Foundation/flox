@@ -21,7 +21,7 @@ function(add_flox_test name)
 endfunction()
 
 add_flox_test(test_book_update_bus)
-add_flox_test(test_candle_aggregator)
+add_flox_test(test_bar_aggregator)
 add_flox_test(test_connection_factory)
 add_flox_test(test_connector_manager)
 add_flox_test(test_decimal)
@@ -41,7 +41,7 @@ add_flox_test(test_order_tracker)
 
 add_flox_test(test_sync_order_execution_bus)
 add_flox_test(test_sync_book_update_bus)
-add_flox_test(test_sync_candle_aggregator)
+add_flox_test(test_sync_bar_aggregator)
 
 # EventBus core tests
 add_flox_test(test_event_bus)

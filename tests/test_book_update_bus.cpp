@@ -123,6 +123,7 @@ TEST(MarketDataBusTest, MultipleSubscribersReceiveAll)
 TEST(MarketDataBusTest, GracefulStopDoesNotLeak)
 {
   BookUpdateBus bus;
+  bus.enableDrainOnStop();
   std::atomic<int> count{0};
   auto sub = std::make_unique<TestSubscriber>(1, count);
   bus.subscribe(sub.get());
@@ -142,10 +143,9 @@ TEST(MarketDataBusTest, GracefulStopDoesNotLeak)
     bus.publish(std::move(update));
   }
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(30));
-  bus.stop();
+  bus.stop();  // drainOnStop ensures all events are processed
 
-  EXPECT_GE(count.load(), 5);
+  EXPECT_EQ(count.load(), 5);
   EXPECT_EQ(pool.inUse(), 0);
 }
 
