@@ -19,7 +19,7 @@ namespace flox
 
 struct BookUpdateEvent;
 struct TradeEvent;
-struct CandleEvent;
+struct BarEvent;
 
 enum class MarketDataErrorCode
 {
@@ -47,7 +47,7 @@ class IMarketDataSubscriber : public ISubscriber
 
   virtual void onBookUpdate(const BookUpdateEvent& ev) {}
   virtual void onTrade(const TradeEvent& ev) {}
-  virtual void onCandle(const CandleEvent& ev) {}
+  virtual void onBar(const BarEvent& ev) {}
   virtual void onMarketDataError(const MarketDataError& error) {}
 };
 

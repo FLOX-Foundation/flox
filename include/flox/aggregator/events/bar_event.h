@@ -9,20 +9,22 @@
 
 #pragma once
 
-#include "flox/book/candle.h"
+#include "flox/aggregator/bar.h"
 #include "flox/common.h"
 #include "flox/engine/abstract_market_data_subscriber.h"
 
 namespace flox
 {
 
-struct CandleEvent
+struct BarEvent
 {
   using Listener = IMarketDataSubscriber;
 
   SymbolId symbol{};
   InstrumentType instrument = InstrumentType::Spot;
-  Candle candle{};
+  BarType barType{};
+  uint32_t barTypeParam{};  // interval seconds, tick count, volume threshold, etc.
+  Bar bar{};
 
   uint64_t tickSequence = 0;  // internal, set by bus
 };

@@ -39,7 +39,7 @@ class MarketDataRecorder : public IMarketDataRecorder
   SubscriberId id() const override { return _id; }
   void onBookUpdate(const BookUpdateEvent& event) override;
   void onTrade(const TradeEvent& event) override;
-  void onCandle(const CandleEvent& event) override;
+  void onBar(const BarEvent& event) override;
 
   // IMarketDataRecorder
   void setOutputDir(const std::filesystem::path& dir) override;

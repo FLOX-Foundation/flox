@@ -529,16 +529,21 @@ class EventBus : public ISubsystem
 
   // Returns minimum sequence consumed by ALL consumers (including optional)
   // Used for safe reclaim - events can only be destroyed after ALL consumers processed them
+  // If no consumers, returns INT64_MAX to indicate all events are "consumed"
   int64_t minConsumed() const
   {
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
+    if (n == 0)
+    {
+      return INT64_MAX;  // No consumers = everything is consumed
+    }
     int64_t mn = INT64_MAX;
     for (uint32_t i = 0; i < n; ++i)
     {
       const int64_t s = _consumers[i].seq.load(std::memory_order_acquire);
       mn = s < mn ? s : mn;
     }
-    return (mn == INT64_MAX) ? -1 : mn;
+    return mn;
   }
 
   inline void tryReclaim()

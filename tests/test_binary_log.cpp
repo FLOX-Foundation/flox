@@ -2239,6 +2239,10 @@ TEST_F(BinaryLogTest, ISegmentReaderFactoryMmap)
 
 TEST_F(BinaryLogTest, ISegmentReaderFactoryIterator)
 {
+#if !FLOX_LZ4_ENABLED
+  GTEST_SKIP() << "LZ4 compression not enabled";
+#endif
+
   // Write compressed data
   WriterConfig wconfig{
       .output_dir = _test_dir,

@@ -129,9 +129,9 @@ void MarketDataRecorder::onTrade(const TradeEvent& event)
   }
 }
 
-void MarketDataRecorder::onCandle(const CandleEvent& /*event*/)
+void MarketDataRecorder::onBar(const BarEvent& /*event*/)
 {
-  // Candles are not recorded - they can be reconstructed from trades
+  // Bars are not recorded - they can be reconstructed from trades
 }
 
 void MarketDataRecorder::setOutputDir(const std::filesystem::path& dir)

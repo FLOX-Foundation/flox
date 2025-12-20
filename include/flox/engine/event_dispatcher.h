@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "flox/aggregator/events/candle_event.h"
+#include "flox/aggregator/events/bar_event.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/engine/abstract_market_data_subscriber.h"
@@ -49,11 +49,11 @@ struct EventDispatcher<TradeEvent>
 };
 
 template <>
-struct EventDispatcher<CandleEvent>
+struct EventDispatcher<BarEvent>
 {
-  static void dispatch(const CandleEvent& ev, IMarketDataSubscriber& sub)
+  static void dispatch(const BarEvent& ev, IMarketDataSubscriber& sub)
   {
-    sub.onCandle(ev);
+    sub.onBar(ev);
   }
 };
 

@@ -15,8 +15,8 @@
 #include <chrono>
 #include <memory>
 
-#include "flox/aggregator/bus/candle_bus.h"
-#include "flox/aggregator/candle_aggregator.h"
+#include "flox/aggregator/bar_aggregator.h"
+#include "flox/aggregator/bus/bar_bus.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/bus/trade_bus.h"
 #include "flox/execution/bus/order_execution_bus.h"
@@ -33,14 +33,14 @@ std::unique_ptr<Engine> DemoBuilder::build()
   auto bookUpdateBus = std::make_unique<BookUpdateBus>();
   auto tradeBus = std::make_unique<TradeBus>();
   auto execBus = std::make_unique<OrderExecutionBus>();
-  auto candleBus = std::make_unique<CandleBus>();
+  auto barBus = std::make_unique<BarBus>();
 
   auto execTracker = std::make_unique<ConsoleExecutionTracker>();
   auto trackerAdapter = std::make_unique<ExecutionTrackerAdapter>(1, execTracker.get());
   execBus->subscribe(trackerAdapter.get());
 
-  auto candleAggregator = std::make_unique<CandleAggregator>(std::chrono::seconds{60}, candleBus.get());
-  tradeBus->subscribe(candleAggregator.get());
+  auto barAggregator = std::make_unique<TimeBarAggregator>(TimeBarPolicy(std::chrono::seconds{60}), barBus.get());
+  tradeBus->subscribe(barAggregator.get());
 
 #if FLOX_CPU_AFFINITY_ENABLED
   // Configure CPU affinity for optimal performance
@@ -86,11 +86,11 @@ std::unique_ptr<Engine> DemoBuilder::build()
 
   subsystems.push_back(std::move(bookUpdateBus));
   subsystems.push_back(std::move(tradeBus));
-  subsystems.push_back(std::move(candleBus));
+  subsystems.push_back(std::move(barBus));
   subsystems.push_back(std::move(execBus));
   subsystems.push_back(std::move(execTracker));
   subsystems.push_back(std::move(trackerAdapter));
-  subsystems.push_back(std::move(candleAggregator));
+  subsystems.push_back(std::move(barAggregator));
 
   return std::make_unique<Engine>(_config, std::move(subsystems), std::move(connectors));
 }

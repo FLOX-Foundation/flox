@@ -10,6 +10,7 @@
 #include "flox/replay/market_data_recorder.h"
 #include "flox/replay/readers/binary_log_reader.h"
 
+#include "flox/aggregator/events/bar_event.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/bus/trade_bus.h"
 #include "flox/book/events/book_update_event.h"
@@ -263,16 +264,16 @@ TEST_F(MarketDataRecorderTest, SetOutputDir)
   EXPECT_TRUE(std::filesystem::exists(new_dir));
 }
 
-TEST_F(MarketDataRecorderTest, CandlesAreIgnored)
+TEST_F(MarketDataRecorderTest, BarsAreIgnored)
 {
   MarketDataRecorderConfig config{.output_dir = _test_dir};
   MarketDataRecorder recorder(config);
 
   recorder.start();
 
-  CandleEvent candle{};
-  candle.symbol = 1;
-  recorder.onCandle(candle);
+  BarEvent bar{};
+  bar.symbol = 1;
+  recorder.onBar(bar);
 
   recorder.stop();
 
