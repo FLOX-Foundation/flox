@@ -9,7 +9,10 @@
 
 #pragma once
 
+#include "flox/common.h"
 #include "flox/engine/abstract_subscriber.h"
+
+#include <string_view>
 
 namespace flox
 {
@@ -17,6 +20,25 @@ namespace flox
 struct BookUpdateEvent;
 struct TradeEvent;
 struct CandleEvent;
+
+enum class MarketDataErrorCode
+{
+  UNKNOWN = 0,
+  CONNECTION_LOST,
+  CONNECTION_TIMEOUT,
+  INVALID_MESSAGE,
+  RATE_LIMITED,
+  SUBSCRIPTION_FAILED,
+  STALE_DATA
+};
+
+struct MarketDataError
+{
+  MarketDataErrorCode code{MarketDataErrorCode::UNKNOWN};
+  SymbolId symbol{0};
+  std::string message;
+  int64_t timestampNs{0};
+};
 
 class IMarketDataSubscriber : public ISubscriber
 {
@@ -26,6 +48,7 @@ class IMarketDataSubscriber : public ISubscriber
   virtual void onBookUpdate(const BookUpdateEvent& ev) {}
   virtual void onTrade(const TradeEvent& ev) {}
   virtual void onCandle(const CandleEvent& ev) {}
+  virtual void onMarketDataError(const MarketDataError& error) {}
 };
 
 }  // namespace flox

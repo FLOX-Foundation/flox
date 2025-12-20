@@ -17,6 +17,7 @@ public:
 - Track positions across all symbols
 - Calculate realized PnL using configurable cost basis method
 - Provide average entry price for position sizing and risk management
+- Thread-safe access from multiple components
 
 ## Cost Basis Methods
 
@@ -82,8 +83,8 @@ PositionTracker(SubscriberId id, CostBasisMethod method = CostBasisMethod::FIFO)
 ```cpp
 Quantity getPosition(SymbolId symbol) const override;
 Price getAvgEntryPrice(SymbolId symbol) const;
-double getRealizedPnl(SymbolId symbol) const;
-double getTotalRealizedPnl() const;
+Price getRealizedPnl(SymbolId symbol) const;
+Price getTotalRealizedPnl() const;
 CostBasisMethod method() const;
 ```
 
@@ -121,7 +122,7 @@ auto result = runner.run(*reader);
 // Check results
 std::cout << "Position: " << positions.getPosition(symbol).toDouble() << "\n";
 std::cout << "Avg entry: " << positions.getAvgEntryPrice(symbol).toDouble() << "\n";
-std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol) << "\n";
+std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol).toDouble() << "\n";
 ```
 
 ### Multiple Symbols
@@ -141,7 +142,7 @@ for (SymbolId sym : symbols)
 }
 
 // Total across all symbols
-std::cout << "Total realized PnL: " << tracker.getTotalRealizedPnl() << "\n";
+std::cout << "Total realized PnL: " << tracker.getTotalRealizedPnl().toDouble() << "\n";
 ```
 
 ## Internal Structure
@@ -151,17 +152,17 @@ std::cout << "Total realized PnL: " << tracker.getTotalRealizedPnl() << "\n";
 ```cpp
 struct Lot
 {
-  double quantity;  // Signed: positive=long, negative=short
-  double price;     // Entry price
+  Quantity quantity;  // Signed: positive=long, negative=short
+  Price price;        // Entry price (fixed-point)
 };
 
 struct PositionState
 {
-  std::deque<Lot> lots;    // Open lots
-  double realizedPnl{0.0}; // Accumulated realized PnL
+  std::deque<Lot> lots;   // Open lots
+  Price realizedPnl{};    // Accumulated realized PnL (fixed-point)
 
-  double position() const;       // Sum of lot quantities
-  double avgEntryPrice() const;  // VWAP of open lots
+  Quantity position() const;    // Sum of lot quantities
+  Price avgEntryPrice() const;  // VWAP of open lots
 };
 ```
 
@@ -173,12 +174,39 @@ struct PositionState
 
 For AVERAGE method, lots are consolidated into single VWAP lot.
 
+## Thread Safety
+
+All public methods are protected by `std::mutex`:
+- Safe for concurrent access from multiple threads
+- Position queries can be called while fills are being processed
+- Uses `SymbolStateMap` for O(1) per-symbol access
+
+## Fixed-Point Arithmetic
+
+All calculations use `Price` and `Quantity` fixed-point types:
+- No floating-point precision issues
+- Portable across all platforms (no `__int128`)
+- Intermediate calculations use `double` then convert back
+
 ## Compliance Notes
 
 - FIFO is required by IRS for tax reporting (US)
 - LIFO may be preferred for tax optimization (where allowed)
 - AVERAGE is common for mutual funds and some jurisdictions
 - All methods track exact lot-level PnL for audit trails
+
+## Migration Notes
+
+`getRealizedPnl()` and `getTotalRealizedPnl()` now return `Price` instead of `double`:
+
+```cpp
+// Old API
+double pnl = tracker.getRealizedPnl(symbol);
+
+// New API
+Price pnl = tracker.getRealizedPnl(symbol);
+double pnlDouble = pnl.toDouble();  // If double needed
+```
 
 ## See Also
 

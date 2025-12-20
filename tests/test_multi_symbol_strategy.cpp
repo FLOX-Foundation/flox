@@ -319,7 +319,7 @@ TEST_F(PositionTrackerTest, CalculatesRealizedPnlOnClose)
   tracker.onOrderFilled(sell);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), 0.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), 100.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 100.0, 0.01);
 }
 
 TEST_F(PositionTrackerTest, VWAPOnAddingToPosition)
@@ -417,7 +417,7 @@ TEST_F(PositionTrackerTest, FIFOPnlCalculation)
   tracker.onOrderFilled(sell);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), 10.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), 150.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 150.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 120.0);
 }
 
@@ -450,7 +450,7 @@ TEST_F(PositionTrackerTest, LIFOPnlCalculation)
   tracker.onOrderFilled(sell);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), 10.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), -50.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), -50.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 100.0);
 }
 
@@ -483,7 +483,7 @@ TEST_F(PositionTrackerTest, AveragePnlCalculation)
   tracker.onOrderFilled(sell);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), 10.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), 50.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 50.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 110.0);
 }
 
@@ -516,7 +516,7 @@ TEST_F(PositionTrackerTest, ShortPositionFIFO)
   tracker.onOrderFilled(buy);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), -10.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), 150.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 150.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 100.0);
 }
 
@@ -541,7 +541,7 @@ TEST_F(PositionTrackerTest, PartialLotClose)
   tracker.onOrderFilled(sell);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), 15.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), 50.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 50.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 100.0);
 }
 
@@ -566,6 +566,6 @@ TEST_F(PositionTrackerTest, FlipPositionLongToShort)
   tracker.onOrderFilled(sell);
 
   EXPECT_EQ(tracker.getPosition(1).toDouble(), -5.0);
-  EXPECT_NEAR(tracker.getRealizedPnl(1), 100.0, 0.01);
+  EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 100.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 110.0);
 }

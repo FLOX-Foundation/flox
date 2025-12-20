@@ -2,150 +2,222 @@
 #include "flox/log/log.h"
 #include "flox/util/performance/profile.h"
 
-#include <exception>
-
 namespace flox
 {
 
-OrderTracker::OrderTracker() = default;
-
-OrderTracker::Slot* OrderTracker::find(OrderId id)
-{
-  FLOX_PROFILE_SCOPE("OrderTracker::find");
-
-  std::size_t base = id % SIZE;
-  for (std::size_t i = 0; i < SIZE; ++i)
-  {
-    std::size_t idx = (base + i) % SIZE;
-    if (_slots[idx].id.load(std::memory_order_acquire) == id)
-    {
-      return &_slots[idx];
-    }
-  }
-
-  return nullptr;
-}
-
-OrderTracker::Slot* OrderTracker::insert(OrderId id)
-{
-  FLOX_PROFILE_SCOPE("OrderTracker::insert");
-
-  std::size_t base = id % SIZE;
-  for (std::size_t i = 0; i < SIZE; ++i)
-  {
-    std::size_t idx = (base + i) % SIZE;
-    OrderId expected = 0;
-    if (_slots[idx].id.compare_exchange_strong(expected, id, std::memory_order_acq_rel))
-    {
-      return &_slots[idx];
-    }
-  }
-
-  FLOX_LOG_ERROR("[OrderTracker] Failed to insert orderId=" << id << ", tracker full.");
-  std::terminate();
-}
-
-void OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId)
+bool OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onSubmitted");
 
-  auto* slot = insert(order.id);
-  slot->state.localOrder = order;
-  slot->state.exchangeOrderId = std::string(exchangeOrderId);
-  slot->state.clientOrderId = std::string(clientOrderId);
-  slot->state.status.store(OrderEventStatus::SUBMITTED, std::memory_order_release);
-  slot->state.createdAt = now();
-  slot->state.lastUpdate.store(slot->state.createdAt, std::memory_order_release);
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto [it, inserted] = _orders.try_emplace(order.id);
+  if (!inserted)
+  {
+    FLOX_LOG_WARN("[OrderTracker] Duplicate orderId=" << order.id << ", ignoring insert.");
+    return false;
+  }
+
+  auto& state = it->second;
+  state.localOrder = order;
+  state.exchangeOrderId = std::string(exchangeOrderId);
+  state.clientOrderId = std::string(clientOrderId);
+  state.filled = Quantity{};
+  state.status = OrderEventStatus::SUBMITTED;
+  state.createdAt = now();
+  state.lastUpdate = state.createdAt;
+  return true;
 }
 
-void OrderTracker::onFilled(OrderId id, Quantity fill)
+bool OrderTracker::onFilled(OrderId id, Quantity fill)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onFilled");
 
-  auto* slot = find(id);
-  if (!slot)
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto it = _orders.find(id);
+  if (it == _orders.end())
   {
-    return;
+    FLOX_LOG_WARN("[OrderTracker] onFilled for unknown orderId=" << id);
+    return false;
   }
 
-  const double prev = slot->state.filled.load(std::memory_order_relaxed).toDouble();
-  const double next = prev + fill.toDouble();
-  slot->state.filled.store(Quantity::fromDouble(next), std::memory_order_relaxed);
-
-  slot->state.lastUpdate.store(now(), std::memory_order_release);
-
-  const double target = slot->state.localOrder.quantity.toDouble();
-  if (next >= target)
+  auto& state = it->second;
+  if (state.status == OrderEventStatus::CANCELED ||
+      state.status == OrderEventStatus::REJECTED ||
+      state.status == OrderEventStatus::EXPIRED)
   {
-    slot->state.status.store(OrderEventStatus::FILLED, std::memory_order_release);
+    FLOX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
+    return false;
+  }
+
+  state.filled = Quantity::fromRaw(state.filled.raw() + fill.raw());
+  state.lastUpdate = now();
+
+  if (state.filled.raw() >= state.localOrder.quantity.raw())
+  {
+    state.status = OrderEventStatus::FILLED;
   }
   else
   {
-    slot->state.status.store(OrderEventStatus::PARTIALLY_FILLED, std::memory_order_release);
+    state.status = OrderEventStatus::PARTIALLY_FILLED;
   }
+  return true;
 }
 
-void OrderTracker::onCanceled(OrderId id)
+bool OrderTracker::onCanceled(OrderId id)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onCanceled");
 
-  auto* slot = find(id);
-  if (!slot)
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto it = _orders.find(id);
+  if (it == _orders.end())
   {
-    return;
+    FLOX_LOG_WARN("[OrderTracker] onCanceled for unknown orderId=" << id);
+    return false;
   }
 
-  slot->state.status.store(OrderEventStatus::CANCELED, std::memory_order_release);
-  slot->state.lastUpdate.store(now(), std::memory_order_release);
+  auto& state = it->second;
+  if (state.isTerminal())
+  {
+    return false;
+  }
+
+  state.status = OrderEventStatus::CANCELED;
+  state.lastUpdate = now();
+  return true;
 }
 
-void OrderTracker::onRejected(OrderId id, std::string_view reason)
+bool OrderTracker::onRejected(OrderId id, std::string_view reason)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onRejected");
 
-  auto* slot = find(id);
-  if (!slot)
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto it = _orders.find(id);
+  if (it == _orders.end())
   {
-    return;
+    FLOX_LOG_WARN("[OrderTracker] onRejected for unknown orderId=" << id);
+    return false;
   }
 
-  slot->state.status.store(OrderEventStatus::REJECTED, std::memory_order_release);
-  slot->state.lastUpdate.store(now(), std::memory_order_release);
+  auto& state = it->second;
+  if (state.isTerminal())
+  {
+    return false;
+  }
+
+  state.status = OrderEventStatus::REJECTED;
+  state.lastUpdate = now();
 
   FLOX_LOG_ERROR("[OrderTracker] Order " << id << " rejected: " << reason);
+  return true;
 }
 
-void OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId)
+bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onReplaced");
 
-  auto* oldSlot = find(oldId);
-  if (oldSlot)
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto oldIt = _orders.find(oldId);
+  if (oldIt != _orders.end() && !oldIt->second.isTerminal())
   {
-    oldSlot->state.status.store(OrderEventStatus::REPLACED, std::memory_order_release);
-    oldSlot->state.lastUpdate.store(now(), std::memory_order_release);
+    oldIt->second.status = OrderEventStatus::REPLACED;
+    oldIt->second.lastUpdate = now();
   }
 
-  auto* newSlot = insert(newOrder.id);
-  newSlot->state.localOrder = newOrder;
-  newSlot->state.exchangeOrderId = std::string(newExchangeId);
-  newSlot->state.clientOrderId = std::string(newClientOrderId);
-  newSlot->state.status.store(OrderEventStatus::SUBMITTED, std::memory_order_release);
-  newSlot->state.createdAt = now();
-  newSlot->state.lastUpdate.store(newSlot->state.createdAt, std::memory_order_release);
+  auto [newIt, inserted] = _orders.try_emplace(newOrder.id);
+  if (!inserted)
+  {
+    FLOX_LOG_WARN("[OrderTracker] Duplicate orderId=" << newOrder.id << " on replace.");
+    return false;
+  }
+
+  auto& state = newIt->second;
+  state.localOrder = newOrder;
+  state.exchangeOrderId = std::string(newExchangeId);
+  state.clientOrderId = std::string(newClientOrderId);
+  state.filled = Quantity{};
+  state.status = OrderEventStatus::SUBMITTED;
+  state.createdAt = now();
+  state.lastUpdate = state.createdAt;
+  return true;
 }
 
-const OrderState* OrderTracker::get(OrderId id) const
+std::optional<OrderState> OrderTracker::get(OrderId id) const
 {
   FLOX_PROFILE_SCOPE("OrderTracker::get");
 
-  auto* slot = const_cast<OrderTracker*>(this)->find(id);
-  if (!slot)
-  {
-    return nullptr;
-  }
+  std::lock_guard<std::mutex> lock(_mutex);
 
-  return &slot->state;
+  auto it = _orders.find(id);
+  if (it == _orders.end())
+  {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+bool OrderTracker::exists(OrderId id) const
+{
+  std::lock_guard<std::mutex> lock(_mutex);
+  return _orders.count(id) > 0;
+}
+
+bool OrderTracker::isActive(OrderId id) const
+{
+  std::lock_guard<std::mutex> lock(_mutex);
+  auto it = _orders.find(id);
+  return it != _orders.end() && !it->second.isTerminal();
+}
+
+std::optional<OrderEventStatus> OrderTracker::getStatus(OrderId id) const
+{
+  std::lock_guard<std::mutex> lock(_mutex);
+  auto it = _orders.find(id);
+  if (it == _orders.end())
+  {
+    return std::nullopt;
+  }
+  return it->second.status;
+}
+
+size_t OrderTracker::activeOrderCount() const
+{
+  std::lock_guard<std::mutex> lock(_mutex);
+  size_t count = 0;
+  for (const auto& [id, state] : _orders)
+  {
+    if (!state.isTerminal())
+    {
+      ++count;
+    }
+  }
+  return count;
+}
+
+size_t OrderTracker::totalOrderCount() const
+{
+  std::lock_guard<std::mutex> lock(_mutex);
+  return _orders.size();
+}
+
+void OrderTracker::pruneTerminal()
+{
+  std::lock_guard<std::mutex> lock(_mutex);
+  for (auto it = _orders.begin(); it != _orders.end();)
+  {
+    if (it->second.isTerminal())
+    {
+      it = _orders.erase(it);
+    }
+    else
+    {
+      ++it;
+    }
+  }
 }
 
 }  // namespace flox
