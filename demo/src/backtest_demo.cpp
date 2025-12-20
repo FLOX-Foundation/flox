@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
   std::cout << "\n=== Position Tracker ===\n";
   std::cout << "Final position: " << positions.getPosition(symbol_id).toDouble() << "\n";
   std::cout << "Avg entry price: " << positions.getAvgEntryPrice(symbol_id).toDouble() << "\n";
-  std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol_id) << "\n";
+  std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol_id).toDouble() << "\n";
 
   return 0;
 }

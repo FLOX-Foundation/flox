@@ -13,6 +13,7 @@
 #include "flox/strategy/symbol_state_map.h"
 
 #include <deque>
+#include <mutex>
 
 namespace flox
 {
@@ -26,35 +27,40 @@ enum class CostBasisMethod
 
 struct Lot
 {
-  double quantity;
-  double price;
+  Quantity quantity;
+  Price price;
 };
 
 struct PositionState
 {
   std::deque<Lot> lots;
-  double realizedPnl{0.0};
+  Price realizedPnl{};
 
-  double position() const
+  Quantity position() const
   {
-    double total = 0.0;
+    int64_t total = 0;
     for (const auto& lot : lots)
     {
-      total += lot.quantity;
+      total += lot.quantity.raw();
     }
-    return total;
+    return Quantity::fromRaw(total);
   }
 
-  double avgEntryPrice() const
+  Price avgEntryPrice() const
   {
     double totalQty = 0.0;
     double totalNotional = 0.0;
     for (const auto& lot : lots)
     {
-      totalQty += std::abs(lot.quantity);
-      totalNotional += std::abs(lot.quantity) * lot.price;
+      double absQty = std::abs(lot.quantity.toDouble());
+      totalQty += absQty;
+      totalNotional += absQty * lot.price.toDouble();
     }
-    return (totalQty > 1e-9) ? (totalNotional / totalQty) : 0.0;
+    if (totalQty == 0.0)
+    {
+      return Price{};
+    }
+    return Price::fromDouble(totalNotional / totalQty);
   }
 };
 
@@ -73,22 +79,29 @@ class PositionTracker : public IPositionManager
 
   Quantity getPosition(SymbolId symbol) const override
   {
-    return Quantity::fromDouble(_states[symbol].position());
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _states[symbol].position();
   }
 
   Price getAvgEntryPrice(SymbolId symbol) const
   {
-    return Price::fromDouble(_states[symbol].avgEntryPrice());
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _states[symbol].avgEntryPrice();
   }
 
-  double getRealizedPnl(SymbolId symbol) const { return _states[symbol].realizedPnl; }
-
-  double getTotalRealizedPnl() const
+  Price getRealizedPnl(SymbolId symbol) const
   {
-    double total = 0.0;
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _states[symbol].realizedPnl;
+  }
+
+  Price getTotalRealizedPnl() const
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    int64_t total = 0;
     _states.forEach([&total](SymbolId, const PositionState& s)
-                    { total += s.realizedPnl; });
-    return total;
+                    { total += s.realizedPnl.raw(); });
+    return Price::fromRaw(total);
   }
 
   void onOrderSubmitted(const Order&) override {}
@@ -100,55 +113,61 @@ class PositionTracker : public IPositionManager
 
   void onOrderPartiallyFilled(const Order& order, Quantity fillQty) override
   {
-    updatePosition(order.symbol, order.side, order.price.toDouble(), fillQty.toDouble());
+    std::lock_guard<std::mutex> lock(_mutex);
+    updatePosition(order.symbol, order.side, order.price, fillQty);
   }
 
   void onOrderFilled(const Order& order) override
   {
-    updatePosition(order.symbol, order.side, order.price.toDouble(), order.quantity.toDouble());
+    std::lock_guard<std::mutex> lock(_mutex);
+    updatePosition(order.symbol, order.side, order.price, order.quantity);
   }
 
  private:
-  void updatePosition(SymbolId symbol, Side side, double price, double qty)
+  void updatePosition(SymbolId symbol, Side side, Price price, Quantity qty)
   {
     auto& s = _states[symbol];
-    double signedQty = (side == Side::BUY) ? qty : -qty;
-    double currentPos = s.position();
+    int64_t signedQty = (side == Side::BUY) ? qty.raw() : -qty.raw();
+    int64_t currentPos = s.position().raw();
 
     bool isOpening = (currentPos >= 0 && signedQty > 0) || (currentPos <= 0 && signedQty < 0);
     bool isClosing = (currentPos > 0 && signedQty < 0) || (currentPos < 0 && signedQty > 0);
 
     if (isClosing)
     {
-      double qtyToClose = std::min(std::abs(signedQty), std::abs(currentPos));
-      double pnl = closePosition(s, qtyToClose, price, currentPos > 0);
-      s.realizedPnl += pnl;
+      int64_t absSignedQty = std::abs(signedQty);
+      int64_t absCurrentPos = std::abs(currentPos);
+      int64_t qtyToClose = std::min(absSignedQty, absCurrentPos);
+      Price pnl = closePosition(s, Quantity::fromRaw(qtyToClose), price, currentPos > 0);
+      s.realizedPnl = Price::fromRaw(s.realizedPnl.raw() + pnl.raw());
 
-      double remaining = std::abs(signedQty) - qtyToClose;
-      if (remaining > 1e-9)
+      int64_t remaining = absSignedQty - qtyToClose;
+      if (remaining > 0)
       {
-        addLot(s, signedQty > 0 ? remaining : -remaining, price);
+        Quantity remQty = Quantity::fromRaw(signedQty > 0 ? remaining : -remaining);
+        addLot(s, remQty, price);
       }
     }
     else if (isOpening)
     {
-      addLot(s, signedQty, price);
+      addLot(s, Quantity::fromRaw(signedQty), price);
     }
   }
 
-  void addLot(PositionState& s, double signedQty, double price)
+  void addLot(PositionState& s, Quantity signedQty, Price price)
   {
     if (_method == CostBasisMethod::AVERAGE && !s.lots.empty())
     {
-      double oldQty = s.lots.front().quantity;
-      double oldPrice = s.lots.front().price;
-      double newQty = oldQty + signedQty;
-      if (std::abs(newQty) > 1e-9)
+      int64_t newQty = s.lots.front().quantity.raw() + signedQty.raw();
+      if (newQty != 0)
       {
-        double newPrice =
-            (std::abs(oldQty) * oldPrice + std::abs(signedQty) * price) / std::abs(newQty);
-        s.lots.front().quantity = newQty;
-        s.lots.front().price = newPrice;
+        double absOld = std::abs(s.lots.front().quantity.toDouble());
+        double absNew = std::abs(signedQty.toDouble());
+        double absTotal = std::abs(Quantity::fromRaw(newQty).toDouble());
+        double notional = absOld * s.lots.front().price.toDouble() +
+                          absNew * price.toDouble();
+        s.lots.front().quantity = Quantity::fromRaw(newQty);
+        s.lots.front().price = Price::fromDouble(notional / absTotal);
       }
       else
       {
@@ -161,28 +180,29 @@ class PositionTracker : public IPositionManager
     }
   }
 
-  double closePosition(PositionState& s, double qtyToClose, double closePrice, bool wasLong)
+  Price closePosition(PositionState& s, Quantity qtyToClose, Price closePrice, bool wasLong)
   {
-    double pnl = 0.0;
-    double remaining = qtyToClose;
+    int64_t pnl = 0;
+    int64_t remaining = qtyToClose.raw();
 
-    while (remaining > 1e-9 && !s.lots.empty())
+    while (remaining > 0 && !s.lots.empty())
     {
       Lot& lot = (_method == CostBasisMethod::LIFO) ? s.lots.back() : s.lots.front();
 
-      double lotQty = std::abs(lot.quantity);
-      double closeQty = std::min(remaining, lotQty);
+      int64_t lotQty = std::abs(lot.quantity.raw());
+      int64_t closeQty = std::min(remaining, lotQty);
 
-      double lotPnl = (closePrice - lot.price) * closeQty;
+      double priceDiff = closePrice.toDouble() - lot.price.toDouble();
+      double lotPnlD = priceDiff * Quantity::fromRaw(closeQty).toDouble();
       if (!wasLong)
       {
-        lotPnl = -lotPnl;
+        lotPnlD = -lotPnlD;
       }
-      pnl += lotPnl;
+      pnl += Price::fromDouble(lotPnlD).raw();
 
       remaining -= closeQty;
 
-      if (closeQty >= lotQty - 1e-9)
+      if (closeQty >= lotQty)
       {
         if (_method == CostBasisMethod::LIFO)
         {
@@ -195,14 +215,16 @@ class PositionTracker : public IPositionManager
       }
       else
       {
-        lot.quantity = (lot.quantity > 0) ? (lotQty - closeQty) : -(lotQty - closeQty);
+        int64_t newQty = (lot.quantity.raw() > 0) ? (lotQty - closeQty) : -(lotQty - closeQty);
+        lot.quantity = Quantity::fromRaw(newQty);
       }
     }
 
-    return pnl;
+    return Price::fromRaw(pnl);
   }
 
   CostBasisMethod _method;
+  mutable std::mutex _mutex;
   mutable SymbolStateMap<PositionState> _states;
 };
 

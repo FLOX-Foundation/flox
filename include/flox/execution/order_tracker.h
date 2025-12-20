@@ -1,14 +1,14 @@
 #pragma once
 
 #include "flox/common.h"
-#include "flox/engine/engine_config.h"
 #include "flox/execution/events/order_event.h"
 #include "flox/execution/order.h"
 
-#include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace flox
 {
@@ -18,39 +18,47 @@ struct OrderState
   Order localOrder;
   std::string exchangeOrderId;
   std::string clientOrderId;
-  std::atomic<OrderEventStatus> status{OrderEventStatus::NEW};
-  std::atomic<Quantity> filled = Quantity::fromDouble(0.0);
+  OrderEventStatus status{OrderEventStatus::NEW};
+  Quantity filled{};
 
   TimePoint createdAt{};
-  std::atomic<TimePoint> lastUpdate{};
+  TimePoint lastUpdate{};
+
+  bool isTerminal() const noexcept
+  {
+    return status == OrderEventStatus::FILLED || status == OrderEventStatus::CANCELED ||
+           status == OrderEventStatus::REJECTED || status == OrderEventStatus::EXPIRED;
+  }
 };
 
 class OrderTracker
 {
  public:
-  static constexpr std::size_t SIZE = config::ORDER_TRACKER_CAPACITY;
+  OrderTracker() = default;
 
-  OrderTracker();
+  bool onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId = "");
+  bool onFilled(OrderId id, Quantity fill);
+  bool onCanceled(OrderId id);
+  bool onRejected(OrderId id, std::string_view reason);
+  bool onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId = "");
 
-  void onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId = "");
-  void onFilled(OrderId id, Quantity fill);
-  void onCanceled(OrderId id);
-  void onRejected(OrderId id, std::string_view reason);
-  void onReplaced(OrderId oldId, const Order& newOrder, std::string_view newExchangeId, std::string_view newClientOrderId = "");
+  std::optional<OrderState> get(OrderId id) const;
 
-  const OrderState* get(OrderId id) const;
+  bool exists(OrderId id) const;
+
+  bool isActive(OrderId id) const;
+
+  std::optional<OrderEventStatus> getStatus(OrderId id) const;
+
+  size_t activeOrderCount() const;
+
+  size_t totalOrderCount() const;
+
+  void pruneTerminal();
 
  private:
-  struct Slot
-  {
-    std::atomic<OrderId> id{0};
-    OrderState state;
-  };
-
-  Slot _slots[SIZE];
-
-  Slot* find(OrderId id);
-  Slot* insert(OrderId id);
+  mutable std::mutex _mutex;
+  std::unordered_map<OrderId, OrderState> _orders;
 };
 
 }  // namespace flox

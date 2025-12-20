@@ -24,11 +24,11 @@ TEST(OrderTrackerTest, SubmitAndGet)
 
   tracker.onSubmitted(order, "abc123");
 
-  const OrderState* state = tracker.get(order.id);
-  ASSERT_NE(state, nullptr);
+  auto state = tracker.get(order.id);
+  ASSERT_TRUE(state.has_value());
   EXPECT_EQ(state->localOrder.id, 42);
   EXPECT_EQ(state->exchangeOrderId, "abc123");
-  EXPECT_EQ(state->status.load(), OrderEventStatus::SUBMITTED);
+  EXPECT_EQ(state->status, OrderEventStatus::SUBMITTED);
 }
 
 TEST(OrderTrackerTest, FillUpdatesQuantity)
@@ -43,10 +43,10 @@ TEST(OrderTrackerTest, FillUpdatesQuantity)
   tracker.onFilled(order.id, Quantity::fromDouble(0.4));
   tracker.onFilled(order.id, Quantity::fromDouble(0.6));
 
-  const OrderState* state = tracker.get(order.id);
-  ASSERT_NE(state, nullptr);
-  EXPECT_EQ(state->filled.load().toDouble(), 1.0);
-  EXPECT_EQ(state->status.load(), OrderEventStatus::FILLED);
+  auto state = tracker.get(order.id);
+  ASSERT_TRUE(state.has_value());
+  EXPECT_EQ(state->filled.toDouble(), 1.0);
+  EXPECT_EQ(state->status, OrderEventStatus::FILLED);
 }
 
 TEST(OrderTrackerTest, CancelAndReject)
@@ -58,18 +58,18 @@ TEST(OrderTrackerTest, CancelAndReject)
 
   tracker.onSubmitted(order, "ex2");
   tracker.onCanceled(order.id);
-  const auto* cancelState = tracker.get(order.id);
-  ASSERT_NE(cancelState, nullptr);
-  EXPECT_EQ(cancelState->status.load(), OrderEventStatus::CANCELED);
+  auto cancelState = tracker.get(order.id);
+  ASSERT_TRUE(cancelState.has_value());
+  EXPECT_EQ(cancelState->status, OrderEventStatus::CANCELED);
 
   Order order2;
   order2.id = 3;
 
   tracker.onSubmitted(order2, "ex3");
   tracker.onRejected(order2.id, "Bad request");
-  const auto* rejectState = tracker.get(order2.id);
-  ASSERT_NE(rejectState, nullptr);
-  EXPECT_EQ(rejectState->status.load(), OrderEventStatus::REJECTED);
+  auto rejectState = tracker.get(order2.id);
+  ASSERT_TRUE(rejectState.has_value());
+  EXPECT_EQ(rejectState->status, OrderEventStatus::REJECTED);
 }
 
 TEST(OrderTrackerTest, ReplaceOrder)
@@ -87,12 +87,80 @@ TEST(OrderTrackerTest, ReplaceOrder)
   tracker.onSubmitted(oldOrder, "old-id");
   tracker.onReplaced(oldOrder.id, newOrder, "new-id");
 
-  const auto* replacedOld = tracker.get(oldOrder.id);
-  const auto* replacedNew = tracker.get(newOrder.id);
+  auto replacedOld = tracker.get(oldOrder.id);
+  auto replacedNew = tracker.get(newOrder.id);
 
-  ASSERT_NE(replacedOld, nullptr);
-  ASSERT_NE(replacedNew, nullptr);
-  EXPECT_EQ(replacedOld->status.load(), OrderEventStatus::REPLACED);
-  EXPECT_EQ(replacedNew->status.load(), OrderEventStatus::SUBMITTED);
+  ASSERT_TRUE(replacedOld.has_value());
+  ASSERT_TRUE(replacedNew.has_value());
+  EXPECT_EQ(replacedOld->status, OrderEventStatus::REPLACED);
+  EXPECT_EQ(replacedNew->status, OrderEventStatus::SUBMITTED);
   EXPECT_EQ(replacedNew->exchangeOrderId, "new-id");
+}
+
+TEST(OrderTrackerTest, DoubleCancelSafe)
+{
+  OrderTracker tracker;
+
+  Order order;
+  order.id = 10;
+  tracker.onSubmitted(order, "ex");
+
+  EXPECT_TRUE(tracker.onCanceled(order.id));
+  EXPECT_FALSE(tracker.onCanceled(order.id));
+}
+
+TEST(OrderTrackerTest, DuplicateOrderIdRejected)
+{
+  OrderTracker tracker;
+
+  Order order;
+  order.id = 20;
+  EXPECT_TRUE(tracker.onSubmitted(order, "ex1"));
+  EXPECT_FALSE(tracker.onSubmitted(order, "ex2"));
+}
+
+TEST(OrderTrackerTest, PruneTerminal)
+{
+  OrderTracker tracker;
+
+  Order o1, o2, o3;
+  o1.id = 100;
+  o2.id = 101;
+  o3.id = 102;
+
+  tracker.onSubmitted(o1, "e1");
+  tracker.onSubmitted(o2, "e2");
+  tracker.onSubmitted(o3, "e3");
+
+  tracker.onCanceled(o1.id);
+  tracker.onFilled(o2.id, o2.quantity);
+
+  EXPECT_EQ(tracker.totalOrderCount(), 3);
+  EXPECT_EQ(tracker.activeOrderCount(), 1);
+
+  tracker.pruneTerminal();
+
+  EXPECT_EQ(tracker.totalOrderCount(), 1);
+  EXPECT_TRUE(tracker.exists(o3.id));
+  EXPECT_FALSE(tracker.exists(o1.id));
+  EXPECT_FALSE(tracker.exists(o2.id));
+}
+
+TEST(OrderTrackerTest, StatusHelpers)
+{
+  OrderTracker tracker;
+
+  Order order;
+  order.id = 30;
+  tracker.onSubmitted(order, "ex");
+
+  EXPECT_TRUE(tracker.exists(order.id));
+  EXPECT_TRUE(tracker.isActive(order.id));
+  EXPECT_EQ(tracker.getStatus(order.id), OrderEventStatus::SUBMITTED);
+
+  tracker.onCanceled(order.id);
+
+  EXPECT_TRUE(tracker.exists(order.id));
+  EXPECT_FALSE(tracker.isActive(order.id));
+  EXPECT_EQ(tracker.getStatus(order.id), OrderEventStatus::CANCELED);
 }
