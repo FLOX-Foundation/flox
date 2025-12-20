@@ -48,6 +48,8 @@ class AtomicLogger final : public ILogger
   void warn(std::string_view msg) override;
   void error(std::string_view msg) override;
 
+  void flush();
+
  private:
   static constexpr size_t BUFFER_SIZE = 1024;
   static constexpr size_t MAX_MESSAGE_SIZE = 256;

@@ -12,12 +12,16 @@
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/execution/order_tracker.h"
+#include "flox/position/abstract_position_manager.h"
 #include "flox/strategy/abstract_signal_handler.h"
 #include "flox/strategy/abstract_strategy.h"
 #include "flox/strategy/signal.h"
 #include "flox/strategy/symbol_context.h"
 #include "flox/strategy/symbol_state_map.h"
 
+#include <atomic>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <vector>
@@ -52,6 +56,8 @@ class Strategy : public IStrategy
   SubscriberId id() const override { return _id; }
 
   void setSignalHandler(ISignalHandler* handler) noexcept { _signalHandler = handler; }
+  void setOrderTracker(OrderTracker* tracker) noexcept { _orderTracker = tracker; }
+  void setPositionManager(IPositionManager* pm) noexcept { _positionManager = pm; }
 
   void onTrade(const TradeEvent& ev) final
   {
@@ -99,6 +105,25 @@ class Strategy : public IStrategy
 
   const std::vector<SymbolId>& symbols() const noexcept { return _symbols; }
 
+  // Position and order status queries
+  Quantity position(SymbolId sym) const
+  {
+    return _positionManager ? _positionManager->getPosition(sym) : Quantity{};
+  }
+
+  Quantity position() const { return position(_symbols[0]); }
+
+  std::optional<OrderEventStatus> getOrderStatus(OrderId orderId) const
+  {
+    return _orderTracker ? _orderTracker->getStatus(orderId) : std::nullopt;
+  }
+
+  std::optional<OrderState> getOrder(OrderId orderId) const
+  {
+    return _orderTracker ? _orderTracker->get(orderId) : std::nullopt;
+  }
+
+  // Signal emission
   void emit(const Signal& signal)
   {
     if (_signalHandler)
@@ -107,22 +132,53 @@ class Strategy : public IStrategy
     }
   }
 
-  void emitMarketBuy(SymbolId symbol, Quantity qty) { emit(Signal::marketBuy(symbol, qty)); }
-  void emitMarketSell(SymbolId symbol, Quantity qty) { emit(Signal::marketSell(symbol, qty)); }
-  void emitLimitBuy(SymbolId symbol, Price price, Quantity qty)
+  OrderId emitMarketBuy(SymbolId symbol, Quantity qty)
   {
-    emit(Signal::limitBuy(symbol, price, qty));
+    OrderId id = nextOrderId();
+    emit(Signal::marketBuy(symbol, qty, id));
+    return id;
   }
-  void emitLimitSell(SymbolId symbol, Price price, Quantity qty)
+
+  OrderId emitMarketSell(SymbolId symbol, Quantity qty)
   {
-    emit(Signal::limitSell(symbol, price, qty));
+    OrderId id = nextOrderId();
+    emit(Signal::marketSell(symbol, qty, id));
+    return id;
   }
+
+  OrderId emitLimitBuy(SymbolId symbol, Price price, Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::limitBuy(symbol, price, qty, id));
+    return id;
+  }
+
+  OrderId emitLimitSell(SymbolId symbol, Price price, Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::limitSell(symbol, price, qty, id));
+    return id;
+  }
+
   void emitCancel(OrderId orderId) { emit(Signal::cancel(orderId)); }
   void emitCancelAll(SymbolId symbol) { emit(Signal::cancelAll(symbol)); }
 
+  void emitModify(OrderId orderId, Price newPrice, Quantity newQty)
+  {
+    emit(Signal::modify(orderId, newPrice, newQty));
+  }
+
  private:
+  OrderId nextOrderId() noexcept
+  {
+    static std::atomic<OrderId> s_globalOrderId{1};
+    return s_globalOrderId++;
+  }
+
   SubscriberId _id;
   ISignalHandler* _signalHandler{nullptr};
+  OrderTracker* _orderTracker{nullptr};
+  IPositionManager* _positionManager{nullptr};
   std::vector<SymbolId> _symbols;
   std::set<SymbolId> _symbolSet;
   mutable SymbolStateMap<SymbolContext> _contexts;

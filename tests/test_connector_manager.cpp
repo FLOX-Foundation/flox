@@ -21,7 +21,6 @@
 
 using namespace flox;
 using ::testing::_;
-using ::testing::Invoke;
 using ::testing::Return;
 
 class MockExchangeConnector : public IExchangeConnector
@@ -72,8 +71,8 @@ TEST(ConnectorManagerTest, RegisterAndStartAll)
 
   EXPECT_CALL(*connector, onCallbacksSet()).Times(1);
 
-  EXPECT_CALL(*connector, start()).WillOnce(Invoke([&]
-                                                   { connector->triggerTestData(); }));
+  EXPECT_CALL(*connector, start()).WillOnce([&]
+                                            { connector->triggerTestData(); });
 
   manager.registerConnector(connector);
 

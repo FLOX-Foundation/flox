@@ -569,3 +569,171 @@ TEST_F(PositionTrackerTest, FlipPositionLongToShort)
   EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 100.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 110.0);
 }
+
+// Tests for Strategy integration with OrderTracker and PositionManager
+
+class SignalCapture : public ISignalHandler
+{
+ public:
+  void onSignal(const Signal& signal) override { signals.push_back(signal); }
+  std::vector<Signal> signals;
+};
+
+class StrategyIntegrationTest : public ::testing::Test
+{
+ protected:
+  SymbolRegistry registry;
+  SignalCapture signalCapture;
+  OrderTracker orderTracker;
+  PositionTracker positionTracker{1};
+
+  void SetUp() override { populateRegistry(registry, {1, 2}); }
+};
+
+TEST_F(StrategyIntegrationTest, EmitMarketBuyReturnsOrderId)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::emitMarketBuy;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy testable({1}, registry);
+  testable.setSignalHandler(&signalCapture);
+
+  OrderId id1 = testable.emitMarketBuy(1, Quantity::fromDouble(10.0));
+  OrderId id2 = testable.emitMarketBuy(1, Quantity::fromDouble(5.0));
+
+  EXPECT_NE(id1, id2);
+  EXPECT_EQ(signalCapture.signals.size(), 2);
+  EXPECT_EQ(signalCapture.signals[0].orderId, id1);
+  EXPECT_EQ(signalCapture.signals[1].orderId, id2);
+}
+
+TEST_F(StrategyIntegrationTest, EmitModifyGeneratesModifySignal)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::emitLimitBuy;
+    using Strategy::emitModify;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy strategy({1}, registry);
+  strategy.setSignalHandler(&signalCapture);
+
+  OrderId id = strategy.emitLimitBuy(1, Price::fromDouble(100.0), Quantity::fromDouble(10.0));
+  strategy.emitModify(id, Price::fromDouble(99.0), Quantity::fromDouble(5.0));
+
+  EXPECT_EQ(signalCapture.signals.size(), 2);
+  EXPECT_EQ(signalCapture.signals[1].type, SignalType::Modify);
+  EXPECT_EQ(signalCapture.signals[1].orderId, id);
+  EXPECT_EQ(signalCapture.signals[1].newPrice.toDouble(), 99.0);
+  EXPECT_EQ(signalCapture.signals[1].newQuantity.toDouble(), 5.0);
+}
+
+TEST_F(StrategyIntegrationTest, GetOrderStatusFromTracker)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::getOrder;
+    using Strategy::getOrderStatus;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy strategy({1}, registry);
+  strategy.setOrderTracker(&orderTracker);
+
+  Order order{.id = 42, .side = Side::BUY, .price = Price::fromDouble(100.0), .quantity = Quantity::fromDouble(10.0)};
+  orderTracker.onSubmitted(order, "exch-123");
+
+  auto status = strategy.getOrderStatus(42);
+  ASSERT_TRUE(status.has_value());
+  EXPECT_EQ(*status, OrderEventStatus::SUBMITTED);
+
+  auto orderState = strategy.getOrder(42);
+  ASSERT_TRUE(orderState.has_value());
+  EXPECT_EQ(orderState->exchangeOrderId, "exch-123");
+}
+
+TEST_F(StrategyIntegrationTest, GetOrderStatusWithoutTrackerReturnsNullopt)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::getOrderStatus;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy strategy({1}, registry);
+  // No tracker set
+
+  auto status = strategy.getOrderStatus(42);
+  EXPECT_FALSE(status.has_value());
+}
+
+TEST_F(StrategyIntegrationTest, PositionFromPositionManager)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::position;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy strategy({1, 2}, registry);
+  strategy.setPositionManager(&positionTracker);
+
+  Order buy{.id = 1,
+            .side = Side::BUY,
+            .price = Price::fromDouble(100.0),
+            .quantity = Quantity::fromDouble(10.0),
+            .type = OrderType::MARKET,
+            .symbol = 1};
+  positionTracker.onOrderFilled(buy);
+
+  EXPECT_EQ(strategy.position(1).toDouble(), 10.0);
+  EXPECT_EQ(strategy.position(2).toDouble(), 0.0);
+  EXPECT_EQ(strategy.position().toDouble(), 10.0);  // First symbol
+}
+
+TEST_F(StrategyIntegrationTest, PositionWithoutManagerReturnsZero)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::position;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy strategy({1}, registry);
+  // No position manager set
+
+  EXPECT_EQ(strategy.position(1).toDouble(), 0.0);
+}
+
+TEST_F(StrategyIntegrationTest, GlobalOrderIdIsUnique)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::emitMarketBuy;
+    using TestStrategy::TestStrategy;
+  };
+
+  TestableStrategy strategy1({1}, registry);
+  TestableStrategy strategy2({2}, registry);
+  strategy1.setSignalHandler(&signalCapture);
+  strategy2.setSignalHandler(&signalCapture);
+
+  OrderId id1 = strategy1.emitMarketBuy(1, Quantity::fromDouble(1.0));
+  OrderId id2 = strategy2.emitMarketBuy(2, Quantity::fromDouble(1.0));
+  OrderId id3 = strategy1.emitMarketBuy(1, Quantity::fromDouble(1.0));
+
+  EXPECT_NE(id1, id2);
+  EXPECT_NE(id2, id3);
+  EXPECT_NE(id1, id3);
+}

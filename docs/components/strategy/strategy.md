@@ -92,15 +92,43 @@ protected:
 
 ## Signal Emission
 
+All order methods return an `OrderId` for tracking:
+
 ```cpp
 protected:
   void emit(const Signal& signal);
-  void emitMarketBuy(SymbolId symbol, Quantity qty);
-  void emitMarketSell(SymbolId symbol, Quantity qty);
-  void emitLimitBuy(SymbolId symbol, Price price, Quantity qty);
-  void emitLimitSell(SymbolId symbol, Price price, Quantity qty);
+
+  // Returns OrderId for tracking
+  OrderId emitMarketBuy(SymbolId symbol, Quantity qty);
+  OrderId emitMarketSell(SymbolId symbol, Quantity qty);
+  OrderId emitLimitBuy(SymbolId symbol, Price price, Quantity qty);
+  OrderId emitLimitSell(SymbolId symbol, Price price, Quantity qty);
+
   void emitCancel(OrderId orderId);
   void emitCancelAll(SymbolId symbol);
+  void emitModify(OrderId orderId, Price newPrice, Quantity newQty);
+```
+
+## Order and Position Tracking
+
+Query order status and positions (requires `setOrderTracker` / `setPositionManager`):
+
+```cpp
+protected:
+  // Position queries
+  Quantity position(SymbolId sym) const;  // Net position for symbol
+  Quantity position() const;              // Primary symbol position
+
+  // Order status queries
+  std::optional<OrderEventStatus> getOrderStatus(OrderId orderId) const;
+  std::optional<OrderState> getOrder(OrderId orderId) const;
+```
+
+Connect trackers:
+
+```cpp
+strategy.setOrderTracker(&orderTracker);
+strategy.setPositionManager(&positionTracker);
 ```
 
 ## Cross-Symbol Helpers
@@ -139,15 +167,28 @@ protected:
     auto ask = c.book.bestAsk();
     if (!bid || !ask) return;
 
-    // Check position
-    if (c.isFlat() && shouldBuy(ev.trade.price))
+    // Check position via tracker
+    if (position().isZero() && shouldBuy(ev.trade.price))
     {
-      emitMarketBuy(c.symbolId, Quantity::fromDouble(1.0));
+      // Returns OrderId for tracking
+      OrderId id = emitMarketBuy(c.symbolId, Quantity::fromDouble(1.0));
+      _pendingOrder = id;
+    }
+
+    // Check order status
+    if (_pendingOrder)
+    {
+      auto status = getOrderStatus(*_pendingOrder);
+      if (status && *status == OrderEventStatus::FILLED)
+      {
+        _pendingOrder = std::nullopt;
+      }
     }
   }
 
 private:
   bool _running{false};
+  std::optional<OrderId> _pendingOrder;
 };
 ```
 

@@ -142,12 +142,21 @@ void BacktestRunner::onSignal(const Signal& signal)
     case SignalType::CancelAll:
       _executor.cancelAllOrders(signal.symbol);
       break;
+    case SignalType::Modify:
+    {
+      Order newOrder{.id = _nextOrderId++,
+                     .price = signal.newPrice,
+                     .quantity = signal.newQuantity};
+      _executor.replaceOrder(signal.orderId, newOrder);
+      break;
+    }
   }
 }
 
 Order BacktestRunner::signalToOrder(const Signal& sig)
 {
-  return Order{.id = _nextOrderId++,
+  OrderId id = (sig.orderId != 0) ? sig.orderId : _nextOrderId++;
+  return Order{.id = id,
                .side = sig.side,
                .price = sig.price,
                .quantity = sig.quantity,

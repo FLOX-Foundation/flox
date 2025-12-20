@@ -19,7 +19,8 @@ enum class SignalType : uint8_t
   Market,
   Limit,
   Cancel,
-  CancelAll
+  CancelAll,
+  Modify
 };
 
 struct Signal
@@ -29,36 +30,43 @@ struct Signal
   Side side{};
   Price price{};
   Quantity quantity{};
-  OrderId orderId{};  // for Cancel
+  OrderId orderId{};
+  Price newPrice{};        // for Modify
+  Quantity newQuantity{};  // for Modify
 
-  static Signal marketBuy(SymbolId sym, Quantity qty)
+  static Signal marketBuy(SymbolId sym, Quantity qty, OrderId id)
   {
-    return Signal{SignalType::Market, sym, Side::BUY, Price{}, qty, 0};
+    return Signal{SignalType::Market, sym, Side::BUY, Price{}, qty, id, Price{}, Quantity{}};
   }
 
-  static Signal marketSell(SymbolId sym, Quantity qty)
+  static Signal marketSell(SymbolId sym, Quantity qty, OrderId id)
   {
-    return Signal{SignalType::Market, sym, Side::SELL, Price{}, qty, 0};
+    return Signal{SignalType::Market, sym, Side::SELL, Price{}, qty, id, Price{}, Quantity{}};
   }
 
-  static Signal limitBuy(SymbolId sym, Price px, Quantity qty)
+  static Signal limitBuy(SymbolId sym, Price px, Quantity qty, OrderId id)
   {
-    return Signal{SignalType::Limit, sym, Side::BUY, px, qty, 0};
+    return Signal{SignalType::Limit, sym, Side::BUY, px, qty, id, Price{}, Quantity{}};
   }
 
-  static Signal limitSell(SymbolId sym, Price px, Quantity qty)
+  static Signal limitSell(SymbolId sym, Price px, Quantity qty, OrderId id)
   {
-    return Signal{SignalType::Limit, sym, Side::SELL, px, qty, 0};
+    return Signal{SignalType::Limit, sym, Side::SELL, px, qty, id, Price{}, Quantity{}};
   }
 
   static Signal cancel(OrderId id)
   {
-    return Signal{SignalType::Cancel, 0, Side::BUY, Price{}, Quantity{}, id};
+    return Signal{SignalType::Cancel, 0, Side::BUY, Price{}, Quantity{}, id, Price{}, Quantity{}};
   }
 
   static Signal cancelAll(SymbolId sym)
   {
-    return Signal{SignalType::CancelAll, sym, Side::BUY, Price{}, Quantity{}, 0};
+    return Signal{SignalType::CancelAll, sym, Side::BUY, Price{}, Quantity{}, 0, Price{}, Quantity{}};
+  }
+
+  static Signal modify(OrderId id, Price newPx, Quantity newQty)
+  {
+    return Signal{SignalType::Modify, 0, Side::BUY, Price{}, Quantity{}, id, newPx, newQty};
   }
 };
 

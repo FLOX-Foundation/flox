@@ -46,6 +46,19 @@ void AtomicLogger::info(std::string_view msg) { log(LogLevel::Info, msg); }
 void AtomicLogger::warn(std::string_view msg) { log(LogLevel::Warn, msg); }
 void AtomicLogger::error(std::string_view msg) { log(LogLevel::Error, msg); }
 
+void AtomicLogger::flush()
+{
+  _cv.notify_one();
+  while (_readIndex.load(std::memory_order_acquire) < _writeIndex.load(std::memory_order_acquire))
+  {
+    std::this_thread::yield();
+  }
+  if (_file)
+  {
+    std::fflush(_file);
+  }
+}
+
 void AtomicLogger::log(LogLevel level, std::string_view msg)
 {
   if (level < _opts.levelThreshold)
@@ -86,10 +99,9 @@ void AtomicLogger::flushLoop()
       _cv.wait_for(lock, std::chrono::milliseconds(1));
     }
 
-    rotateIfNeeded();
-
     while (_readIndex.load(std::memory_order_acquire) < _writeIndex.load(std::memory_order_acquire))
     {
+      rotateIfNeeded();
       const size_t idx = _readIndex.fetch_add(1, std::memory_order_acq_rel) % BUFFER_SIZE;
       writeToOutput(_buffer[idx]);
     }
@@ -97,6 +109,7 @@ void AtomicLogger::flushLoop()
 
   while (_readIndex.load() < _writeIndex.load())
   {
+    rotateIfNeeded();
     const size_t idx = _readIndex.fetch_add(1) % BUFFER_SIZE;
     writeToOutput(_buffer[idx]);
   }

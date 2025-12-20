@@ -12,7 +12,6 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
-#include <thread>
 
 using namespace flox;
 namespace fs = std::filesystem;
@@ -49,18 +48,19 @@ TEST(AtomicLoggerTest, WritesToFile)
   cleanLogs();
   auto logDir = getLogDir();
 
-  AtomicLoggerOptions opts;
-  opts.directory = logDir.string();
-  opts.basename = "main.log";
-  opts.rotateInterval = std::chrono::minutes(999);  // disable time-based rotation
-  opts.maxFileSize = 0;                             // disable size-based rotation
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "main.log";
+    opts.rotateInterval = std::chrono::minutes(999);  // disable time-based rotation
+    opts.maxFileSize = 0;                             // disable size-based rotation
 
-  AtomicLogger logger(opts);
-  logger.info("hello world");
-  logger.warn("warn test");
-  logger.error("err test");
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));  // flush
+    AtomicLogger logger(opts);
+    logger.info("hello world");
+    logger.warn("warn test");
+    logger.error("err test");
+    logger.flush();
+  }  // logger destructor closes file
 
   auto lines = readLines((logDir / "main.log").string());
   ASSERT_EQ(lines.size(), 3);
@@ -74,16 +74,17 @@ TEST(AtomicLoggerTest, HonorsLogLevelThreshold)
   cleanLogs();
   auto logDir = getLogDir();
 
-  AtomicLoggerOptions opts;
-  opts.directory = logDir.string();
-  opts.basename = "threshold.log";
-  opts.levelThreshold = LogLevel::Warn;
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "threshold.log";
+    opts.levelThreshold = LogLevel::Warn;
 
-  AtomicLogger logger(opts);
-  logger.info("ignore this");
-  logger.warn("this should appear");
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    AtomicLogger logger(opts);
+    logger.info("ignore this");
+    logger.warn("this should appear");
+    logger.flush();
+  }  // logger destructor closes file
 
   auto lines = readLines((logDir / "threshold.log").string());
   ASSERT_EQ(lines.size(), 1);
@@ -95,19 +96,20 @@ TEST(AtomicLoggerTest, RotatesBySize)
   cleanLogs();
   auto logDir = getLogDir();
 
-  AtomicLoggerOptions opts;
-  opts.directory = logDir.string();
-  opts.basename = "rotating.log";
-  opts.maxFileSize = 200;  // force rotation quickly
-  opts.rotateInterval = std::chrono::minutes(999);
-
-  AtomicLogger logger(opts);
-  for (int i = 0; i < 100; ++i)
   {
-    logger.error("line " + std::to_string(i));
-  }
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "rotating.log";
+    opts.maxFileSize = 200;  // force rotation quickly
+    opts.rotateInterval = std::chrono::minutes(999);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    AtomicLogger logger(opts);
+    for (int i = 0; i < 100; ++i)
+    {
+      logger.error("line " + std::to_string(i));
+    }
+    logger.flush();
+  }  // logger destructor closes file
 
   int rotatedCount = 0;
   for (const auto& file : fs::directory_iterator(logDir))
