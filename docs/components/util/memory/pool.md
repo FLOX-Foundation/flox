@@ -63,6 +63,26 @@ h->tickSequence = 123;
 * Objects are returned to the pool via an `SPSCQueue<T*>`.
 * Backed by a `monotonic_buffer_resource` and `unsynchronized_pool_resource` for internal vector-like allocations.
 
+## Exhaustion Handling
+
+The pool provides callbacks and statistics for monitoring pool usage:
+
+```cpp
+pool.setExhaustionCallback([](size_t capacity, size_t inUse) {
+  LOG_WARN("Pool exhausted: capacity={}, inUse={}", capacity, inUse);
+});
+```
+
+| Method             | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `capacity()`       | Returns the pool's maximum capacity.                  |
+| `inUse()`          | Returns the number of currently acquired objects.     |
+| `exhaustionCount()`| Returns how many times `acquire()` failed.            |
+| `acquireCount()`   | Returns total number of successful acquisitions.      |
+| `releaseCount()`   | Returns total number of releases back to pool.        |
+
+The exhaustion callback is invoked each time `acquire()` returns `nullopt` due to pool exhaustion.
+
 ## Notes
 
 * Zero allocations in steady-state operation.

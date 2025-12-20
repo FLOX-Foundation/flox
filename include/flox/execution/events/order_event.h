@@ -22,6 +22,7 @@ enum class OrderEventStatus
   ACCEPTED,
   PARTIALLY_FILLED,
   FILLED,
+  PENDING_CANCEL,
   CANCELED,
   EXPIRED,
   REJECTED,
@@ -35,6 +36,7 @@ struct OrderEvent
   Order order{};
   Order newOrder{};
   Quantity fillQty{0};
+  std::string rejectReason;
 
   uint64_t tickSequence{0};  // internal, set by bus
 
@@ -60,6 +62,9 @@ struct OrderEvent
       case OrderEventStatus::FILLED:
         listener.onOrderFilled(order);
         break;
+      case OrderEventStatus::PENDING_CANCEL:
+        listener.onOrderPendingCancel(order);
+        break;
       case OrderEventStatus::CANCELED:
         listener.onOrderCanceled(order);
         break;
@@ -67,7 +72,7 @@ struct OrderEvent
         listener.onOrderExpired(order);
         break;
       case OrderEventStatus::REJECTED:
-        listener.onOrderRejected(order, "");
+        listener.onOrderRejected(order, rejectReason);
         break;
       case OrderEventStatus::REPLACED:
         listener.onOrderReplaced(order, newOrder);

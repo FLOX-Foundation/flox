@@ -9,6 +9,7 @@ struct EngineConfig
   KillSwitchConfig killSwitchConfig;
   std::string logLevel = "info";
   std::string logFile;
+  uint32_t drainTimeoutMs = 5000;
 };
 ```
 
@@ -24,6 +25,7 @@ struct EngineConfig
 | killSwitchConfig | Limits for order size, frequency, and loss (see `KillSwitchConfig`). |
 | logLevel         | Runtime log verbosity (`info`, `debug`, `trace`, etc.).              |
 | logFile          | Optional path to write logs to disk.                                 |
+| drainTimeoutMs   | Timeout for draining subsystems during shutdown (default: 5000ms).   |
 
 
 ## Substructures

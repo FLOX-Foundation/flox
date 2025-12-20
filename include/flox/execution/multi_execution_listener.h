@@ -60,6 +60,13 @@ class MultiExecutionListener : public IOrderExecutionListener
                           { l->onOrderFilled(order); });
   }
 
+  void onOrderPendingCancel(const Order& order) override
+  {
+    std::ranges::for_each(_listeners,
+                          [&](auto* l)
+                          { l->onOrderPendingCancel(order); });
+  }
+
   void onOrderCanceled(const Order& order) override
   {
     std::ranges::for_each(_listeners,

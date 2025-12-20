@@ -27,18 +27,11 @@ class CountingListener : public IOrderExecutionListener
 {
  public:
   CountingListener(SubscriberId id, std::atomic<int>& c) : IOrderExecutionListener(id), counter(c) {}
-  void onOrderSubmitted(const Order&) override {}
-  void onOrderAccepted(const Order&) override {}
-  void onOrderPartiallyFilled(const Order&, Quantity) override {}
   void onOrderFilled(const Order& o) override
   {
     last = o;
     ++counter;
   }
-  void onOrderCanceled(const Order&) override {}
-  void onOrderExpired(const Order&) override {}
-  void onOrderRejected(const Order&, const std::string&) override {}
-  void onOrderReplaced(const Order&, const Order&) override {}
 
   Order last{};
   std::atomic<int>& counter;
@@ -49,18 +42,11 @@ class SlowListener : public IOrderExecutionListener
  public:
   SlowListener(SubscriberId id, std::atomic<int>& c, std::chrono::milliseconds d)
       : IOrderExecutionListener(id), counter(c), delay(d) {}
-  void onOrderSubmitted(const Order&) override {}
-  void onOrderAccepted(const Order&) override {}
-  void onOrderPartiallyFilled(const Order&, Quantity) override {}
   void onOrderFilled(const Order&) override
   {
     std::this_thread::sleep_for(delay);
     ++counter;
   }
-  void onOrderCanceled(const Order&) override {}
-  void onOrderExpired(const Order&) override {}
-  void onOrderRejected(const Order&, const std::string&) override {}
-  void onOrderReplaced(const Order&, const Order&) override {}
 
   std::atomic<int>& counter;
   std::chrono::milliseconds delay;

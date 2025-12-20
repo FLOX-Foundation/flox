@@ -27,18 +27,11 @@ class CountingListener : public IOrderExecutionListener
   CountingListener(SubscriberId id, std::atomic<int>& c)
       : IOrderExecutionListener(id), counter(c) {}
 
-  void onOrderSubmitted(const Order&) override {}
-  void onOrderAccepted(const Order&) override {}
-  void onOrderPartiallyFilled(const Order&, Quantity) override {}
   void onOrderFilled(const Order& order) override
   {
     ++counter;
     last = order;
   }
-  void onOrderCanceled(const Order&) override {}
-  void onOrderExpired(const Order&) override {}
-  void onOrderRejected(const Order&, const std::string&) override {}
-  void onOrderReplaced(const Order&, const Order&) override {}
 
   Order last{};
   std::atomic<int>& counter;

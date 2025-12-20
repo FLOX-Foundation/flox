@@ -65,6 +65,30 @@ bool OrderTracker::onFilled(OrderId id, Quantity fill)
   return true;
 }
 
+bool OrderTracker::onPendingCancel(OrderId id)
+{
+  FLOX_PROFILE_SCOPE("OrderTracker::onPendingCancel");
+
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto it = _orders.find(id);
+  if (it == _orders.end())
+  {
+    FLOX_LOG_WARN("[OrderTracker] onPendingCancel for unknown orderId=" << id);
+    return false;
+  }
+
+  auto& state = it->second;
+  if (state.isTerminal())
+  {
+    return false;
+  }
+
+  state.status = OrderEventStatus::PENDING_CANCEL;
+  state.lastUpdate = now();
+  return true;
+}
+
 bool OrderTracker::onCanceled(OrderId id)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onCanceled");
