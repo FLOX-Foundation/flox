@@ -16,26 +16,28 @@ make -j$(nproc)
 ```cpp
 #include "flox/backtest/backtest_runner.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/engine/symbol_registry.h"
 #include "flox/replay/abstract_event_reader.h"
-#include "flox/strategy/signal_strategy.h"
+#include "flox/strategy/strategy.h"
 
 #include <deque>
 
 using namespace flox;
 
-class SmaCrossover : public SignalStrategy
+class SmaCrossover : public Strategy
 {
 public:
-  SmaCrossover(SymbolId symbol, size_t fast, size_t slow, Quantity size)
-      : _symbol(symbol), _fast(fast), _slow(slow), _size(size) {}
+  SmaCrossover(SymbolId symbol, size_t fast, size_t slow, Quantity size,
+               const SymbolRegistry& registry)
+      : Strategy(1, symbol, registry), _fast(fast), _slow(slow), _size(size) {}
 
-  SubscriberId id() const override { return 1; }
   void start() override { _running = true; }
   void stop() override { _running = false; }
 
-  void onTrade(const TradeEvent& ev) override
+protected:
+  void onSymbolTrade(SymbolContext& ctx, const TradeEvent& ev) override
   {
-    if (!_running || ev.trade.symbol != _symbol)
+    if (!_running)
       return;
 
     _prices.push_back(ev.trade.price.toDouble());
@@ -51,14 +53,14 @@ public:
 
     if (above && !_prev_above && !_long)
     {
-      if (_short) { emitMarketBuy(_symbol, _size); _short = false; }
-      emitMarketBuy(_symbol, _size);
+      if (_short) { emitMarketBuy(symbol(), _size); _short = false; }
+      emitMarketBuy(symbol(), _size);
       _long = true;
     }
     else if (!above && _prev_above && !_short)
     {
-      if (_long) { emitMarketSell(_symbol, _size); _long = false; }
-      emitMarketSell(_symbol, _size);
+      if (_long) { emitMarketSell(symbol(), _size); _long = false; }
+      emitMarketSell(symbol(), _size);
       _short = true;
     }
 
@@ -75,7 +77,6 @@ private:
     return sum / n;
   }
 
-  SymbolId _symbol;
   size_t _fast, _slow;
   Quantity _size;
   std::deque<double> _prices;
@@ -109,9 +110,17 @@ int main(int argc, char* argv[])
 
   BacktestRunner runner(config);
 
+  // Create registry and register symbol
+  SymbolRegistry registry;
+  SymbolInfo info;
+  info.exchange = "EXCHANGE";
+  info.symbol = "SYMBOL";
+  info.tickSize = Price::fromDouble(0.01);
+  registry.registerSymbol(info);
+
   // Create strategy
-  SmaCrossover strategy(symbol_id, 10, 20, Quantity::fromDouble(1.0));
-  runner.setSignalStrategy(&strategy);
+  SmaCrossover strategy(symbol_id, 10, 20, Quantity::fromDouble(1.0), registry);
+  runner.setStrategy(&strategy);
 
   // Run
   BacktestResult result = runner.run(*reader);

@@ -31,6 +31,7 @@ struct SymbolInfo
   std::string exchange;
   std::string symbol;
   InstrumentType type = InstrumentType::Spot;
+  Price tickSize{Price::fromDouble(0.01)};
 
   std::optional<Price> strike;
   std::optional<TimePoint> expiry;

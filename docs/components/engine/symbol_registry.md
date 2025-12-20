@@ -9,6 +9,7 @@ struct SymbolInfo
   std::string exchange;
   std::string symbol;
   InstrumentType type = InstrumentType::Spot;
+  Price tickSize{Price::fromDouble(0.01)};
 
   std::optional<Price> strike;
   std::optional<TimePoint> expiry;
@@ -91,4 +92,6 @@ private:
 * `InstrumentType` allows immediate filtering (`Spot`, `Future`, `Option`) without extra registry calls in hot paths.
 * `SymbolId` remains a compact, contiguous 32-bit value suitable for array indices in event buses and order books.
 * Option-specific fields (`strike`, `expiry`, `optionType`) are populated only when `type == InstrumentType::Option`.
+* `tickSize` stores the minimum price increment for the instrument (default 0.01).
 * Persistence methods are useful for storing symbol mappings alongside recorded market data.
+* Binary format version 2 includes `tickSize`; version 1 files are read with default tickSize.

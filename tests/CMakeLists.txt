@@ -51,6 +51,8 @@ add_flox_test(test_binary_log)
 add_flox_test(test_market_data_recorder)
 add_flox_test(test_replay_connector)
 
+add_flox_test(test_multi_symbol_strategy)
+
 if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest)
 endif()
