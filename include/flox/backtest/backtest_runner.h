@@ -16,7 +16,7 @@
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/strategy/abstract_signal_handler.h"
 #include "flox/strategy/abstract_strategy.h"
-#include "flox/strategy/signal_strategy.h"
+#include "flox/strategy/strategy.h"
 
 #include <vector>
 
@@ -29,7 +29,7 @@ class BacktestRunner : public ISignalHandler
   explicit BacktestRunner(const BacktestConfig& config = {});
 
   void setStrategy(IStrategy* strategy);
-  void setSignalStrategy(SignalStrategy* strategy);
+  void setStrategy(Strategy* strategy);
   void addExecutionListener(IOrderExecutionListener* listener);
 
   BacktestResult run(replay::IMultiSegmentReader& reader);

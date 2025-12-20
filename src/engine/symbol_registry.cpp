@@ -125,8 +125,11 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
   for (size_t i = 0; i < _symbols.size(); ++i)
   {
     const auto& sym = _symbols[i];
-    std::fprintf(f, "    {\"id\": %u, \"exchange\": \"%s\", \"symbol\": \"%s\", \"type\": %d",
-                 sym.id, sym.exchange.c_str(), sym.symbol.c_str(), static_cast<int>(sym.type));
+    std::fprintf(f,
+                 "    {\"id\": %u, \"exchange\": \"%s\", \"symbol\": \"%s\", \"type\": %d, "
+                 "\"tick_size\": %lld",
+                 sym.id, sym.exchange.c_str(), sym.symbol.c_str(), static_cast<int>(sym.type),
+                 static_cast<long long>(sym.tickSize.raw()));
 
     if (sym.strike.has_value())
     {
@@ -166,8 +169,13 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
   std::fseek(f, 0, SEEK_SET);
 
   std::string content(size, '\0');
-  std::fread(content.data(), 1, size, f);
+  size_t bytesRead = std::fread(content.data(), 1, size, f);
   std::fclose(f);
+
+  if (bytesRead != static_cast<size_t>(size))
+  {
+    return false;
+  }
 
   // Simple parsing - look for symbol entries
   // Format: {"id": N, "exchange": "X", "symbol": "Y", "type": T, ...}
@@ -212,6 +220,14 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
     {
       type_start += 7;
       info.type = static_cast<InstrumentType>(std::stoi(content.substr(type_start)));
+    }
+
+    // Parse tick_size
+    size_t tick_start = content.find("\"tick_size\":", pos);
+    if (tick_start != std::string::npos && tick_start < content.find('}', pos))
+    {
+      tick_start += 12;
+      info.tickSize = Price::fromRaw(std::stol(content.substr(tick_start)));
     }
 
     // Optional fields - strike
@@ -263,13 +279,14 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
 //   [2 bytes] symbol length
 //   [N bytes] symbol string
 //   [1 byte] instrument type
+//   [8 bytes] tick_size (v2+)
 //   [1 byte] flags (has_strike, has_expiry, has_option_type)
 //   [8 bytes] strike (if flag set)
 //   [8 bytes] expiry (if flag set)
 //   [1 byte] option_type (if flag set)
 
 static constexpr uint32_t kSymbolRegistryMagic = 0x47455253;  // "SREG"
-static constexpr uint32_t kSymbolRegistryVersion = 1;
+static constexpr uint32_t kSymbolRegistryVersion = 2;
 
 std::vector<std::byte> SymbolRegistry::serialize() const
 {
@@ -324,6 +341,7 @@ std::vector<std::byte> SymbolRegistry::serialize() const
     write_string(sym.exchange);
     write_string(sym.symbol);
     write_u8(static_cast<uint8_t>(sym.type));
+    write_i64(sym.tickSize.raw());
 
     uint8_t flags = 0;
     if (sym.strike.has_value())
@@ -441,7 +459,7 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
   }
 
   uint32_t version = read_u32();
-  if (version != kSymbolRegistryVersion)
+  if (version != 1 && version != 2)
   {
     return false;
   }
@@ -462,6 +480,11 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
     info.exchange = read_string();
     info.symbol = read_string();
     info.type = static_cast<InstrumentType>(read_u8());
+
+    if (version >= 2)
+    {
+      info.tickSize = Price::fromRaw(read_i64());
+    }
 
     uint8_t flags = read_u8();
 

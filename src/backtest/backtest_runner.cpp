@@ -11,6 +11,7 @@
 
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/strategy/strategy.h"
 
 #include <memory_resource>
 
@@ -28,7 +29,7 @@ void BacktestRunner::setStrategy(IStrategy* strategy)
   _strategy = strategy;
 }
 
-void BacktestRunner::setSignalStrategy(SignalStrategy* strategy)
+void BacktestRunner::setStrategy(Strategy* strategy)
 {
   _strategy = strategy;
   strategy->setSignalHandler(this);

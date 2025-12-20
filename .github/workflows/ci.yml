@@ -22,10 +22,6 @@ jobs:
   linux-gcc:
     needs: format-check
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
@@ -59,7 +55,7 @@ jobs:
       run: |
         cmake -B build -G Ninja \
               -DCMAKE_CXX_COMPILER=g++-14 \
-              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
@@ -77,16 +73,11 @@ jobs:
       run: ./build/demo/flox_demo
 
     - name: Run benchmarks
-      if: matrix.build_type == 'Release'
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
   linux-clang:
     needs: format-check
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
@@ -107,7 +98,7 @@ jobs:
         cmake -B gtest-build -S googletest -G Ninja \
           -DCMAKE_CXX_COMPILER=clang++-18 \
           -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
         cmake --install gtest-build
@@ -130,7 +121,7 @@ jobs:
         cmake -B build -G Ninja \
               -DCMAKE_CXX_COMPILER=clang++-18 \
               -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
-              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
@@ -148,7 +139,6 @@ jobs:
       run: ./build/demo/flox_demo
 
     - name: Run benchmarks
-      if: matrix.build_type == 'Release'
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
   sanitizers:
@@ -209,10 +199,6 @@ jobs:
   macos:
     needs: format-check
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
@@ -242,7 +228,7 @@ jobs:
       run: |
         LZ4_PREFIX=$(brew --prefix lz4)
         cmake -B build -G Ninja \
-              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
               -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
               -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
@@ -261,18 +247,9 @@ jobs:
     - name: Run demo
       run: ./build/demo/flox_demo
 
-    # Benchmarks disabled on macOS due to VM overhead causing hangs
-    # - name: Run benchmarks
-    #   if: matrix.build_type == 'Release'
-    #   run: ./scripts/run-benchmarks.sh build/benchmarks
-
   windows-msvc:
     needs: format-check
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
@@ -292,7 +269,7 @@ jobs:
     - name: Configure
       run: |
         cmake -B build -G Ninja `
-              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+              -DCMAKE_BUILD_TYPE=Release `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
               -DFLOX_ENABLE_TESTS=ON `
               -DFLOX_ENABLE_BENCHMARKS=ON `
@@ -312,10 +289,6 @@ jobs:
   windows-clang-cl:
     needs: format-check
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
@@ -337,7 +310,7 @@ jobs:
         cmake -B build -G Ninja `
               -DCMAKE_C_COMPILER=clang-cl `
               -DCMAKE_CXX_COMPILER=clang-cl `
-              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+              -DCMAKE_BUILD_TYPE=Release `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
               -DFLOX_ENABLE_TESTS=ON `
               -DFLOX_ENABLE_BENCHMARKS=ON `

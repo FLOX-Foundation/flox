@@ -9,8 +9,10 @@
 
 #include "flox/backtest/backtest_runner.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/engine/symbol_registry.h"
+#include "flox/position/position_tracker.h"
 #include "flox/replay/abstract_event_reader.h"
-#include "flox/strategy/signal_strategy.h"
+#include "flox/strategy/strategy.h"
 
 #include <deque>
 #include <iostream>
@@ -25,18 +27,23 @@ struct SmaCrossoverConfig
   Quantity order_size{Quantity::fromDouble(1.0)};
 };
 
-class SmaCrossoverStrategy : public SignalStrategy
+class SmaCrossoverStrategy : public Strategy
 {
  public:
-  SmaCrossoverStrategy(SubscriberId id, SmaCrossoverConfig config) : _id(id), _config(config) {}
+  SmaCrossoverStrategy(SubscriberId id, SmaCrossoverConfig config, const SymbolRegistry& registry)
+      : Strategy(id, config.symbol, registry), _config(config)
+  {
+  }
 
-  SubscriberId id() const override { return _id; }
   void start() override { _running = true; }
   void stop() override { _running = false; }
 
-  void onTrade(const TradeEvent& ev) override
+  size_t tradeCount() const { return _trade_count; }
+
+ protected:
+  void onSymbolTrade(SymbolContext& c, const TradeEvent& ev) override
   {
-    if (!_running || ev.trade.symbol != _config.symbol)
+    if (!_running)
     {
       return;
     }
@@ -76,8 +83,6 @@ class SmaCrossoverStrategy : public SignalStrategy
     _prev_fast_above_slow = fast_above_slow;
   }
 
-  size_t tradeCount() const { return _trade_count; }
-
  private:
   double computeSma(size_t period) const
   {
@@ -96,33 +101,32 @@ class SmaCrossoverStrategy : public SignalStrategy
 
   void openLong()
   {
-    emitMarketBuy(_config.symbol, _config.order_size);
+    emitMarketBuy(symbol(), _config.order_size);
     _long_position = true;
     _trade_count++;
   }
 
   void closeLong()
   {
-    emitMarketSell(_config.symbol, _config.order_size);
+    emitMarketSell(symbol(), _config.order_size);
     _long_position = false;
     _trade_count++;
   }
 
   void openShort()
   {
-    emitMarketSell(_config.symbol, _config.order_size);
+    emitMarketSell(symbol(), _config.order_size);
     _short_position = true;
     _trade_count++;
   }
 
   void closeShort()
   {
-    emitMarketBuy(_config.symbol, _config.order_size);
+    emitMarketBuy(symbol(), _config.order_size);
     _short_position = false;
     _trade_count++;
   }
 
-  SubscriberId _id;
   SmaCrossoverConfig _config;
   std::deque<double> _prices;
   bool _running{false};
@@ -160,8 +164,18 @@ int main(int argc, char* argv[])
   strategy_config.slow_period = 20;
   strategy_config.order_size = Quantity::fromDouble(1.0);
 
-  SmaCrossoverStrategy strategy(1, strategy_config);
-  runner.setSignalStrategy(&strategy);
+  SymbolRegistry registry;
+  SymbolInfo info;
+  info.exchange = "BACKTEST";
+  info.symbol = "SYM" + std::to_string(symbol_id);
+  info.tickSize = Price::fromDouble(0.01);
+  registry.registerSymbol(info);
+
+  SmaCrossoverStrategy strategy(1, strategy_config, registry);
+  runner.setStrategy(&strategy);
+
+  PositionTracker positions(2);
+  runner.addExecutionListener(&positions);
 
   std::cout << "Running backtest on " << data_dir << " for symbol " << symbol_id << "...\n";
 
@@ -182,6 +196,11 @@ int main(int argc, char* argv[])
   std::cout << "Profit factor: " << stats.profitFactor << "\n";
   std::cout << "\nMax drawdown: " << stats.maxDrawdown << " (" << stats.maxDrawdownPct << "%)\n";
   std::cout << "Sharpe ratio: " << stats.sharpeRatio << "\n";
+
+  std::cout << "\n=== Position Tracker ===\n";
+  std::cout << "Final position: " << positions.getPosition(symbol_id).toDouble() << "\n";
+  std::cout << "Avg entry price: " << positions.getAvgEntryPrice(symbol_id).toDouble() << "\n";
+  std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol_id) << "\n";
 
   return 0;
 }
