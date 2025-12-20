@@ -150,3 +150,7 @@ Win rate: 51.0638%
 Sharpe:  1.23
 Max DD:  3.21%
 ```
+
+## See Also
+
+- [Interactive Mode](../components/backtest/interactive_runner.md) — step-by-step execution with breakpoints for debugging

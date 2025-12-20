@@ -55,6 +55,7 @@ add_flox_test(test_multi_symbol_strategy)
 
 if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest)
+  add_flox_test(test_interactive_runner)
 endif()
 
 if(FLOX_ENABLE_CPU_AFFINITY)
