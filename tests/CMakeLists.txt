@@ -38,6 +38,7 @@ add_flox_test(test_spsc)
 add_flox_test(test_symbol_registry)
 add_flox_test(test_atomic_logger)
 add_flox_test(test_order_tracker)
+add_flox_test(test_rate_limiter)
 
 add_flox_test(test_sync_order_execution_bus)
 add_flox_test(test_sync_book_update_bus)
