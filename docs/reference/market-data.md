@@ -87,33 +87,40 @@ struct BookLevel
 enum class BookUpdateType { SNAPSHOT, DELTA };
 ```
 
-### CandleEvent
+### BarEvent
 
-**Header:** `flox/aggregator/events/candle_event.h`
+**Header:** `flox/aggregator/events/bar_event.h`
 
-Represents an OHLCV candlestick.
+Represents an OHLCV bar with flexible aggregation type.
 
 ```cpp
-struct CandleEvent
+struct BarEvent
 {
   using Listener = IMarketDataSubscriber;
 
   SymbolId symbol{};
-  InstrumentType instrument = InstrumentType::Spot;
-  Candle candle{};
-  uint64_t tickSequence = 0;  // Internal bus sequence
+  InstrumentType instrument{};
+  BarType barType{};
+  uint32_t barTypeParam{};  // interval seconds, tick count, etc.
+  Bar bar{};
+  uint64_t tickSequence = 0;
 };
 
-struct Candle
+struct Bar
 {
-  Price open;
-  Price high;
-  Price low;
-  Price close;
-  Volume volume;
-  TimePoint startTime;
-  TimePoint endTime;
+  Price open{};
+  Price high{};
+  Price low{};
+  Price close{};
+  Volume volume{};
+  Volume buyVolume{};
+  Quantity tradeCount{};
+  TimePoint startTime{};
+  TimePoint endTime{};
+  BarCloseReason reason{};
 };
+
+enum class BarType : uint8_t { Time, Tick, Volume, Renko, Range, HeikinAshi };
 ```
 
 ---
@@ -157,12 +164,12 @@ if (auto handle = bookPool.acquire()) {
 }
 ```
 
-### CandleBus
+### BarBus
 
-**Header:** `flox/aggregator/bus/candle_bus.h`
+**Header:** `flox/aggregator/bus/bar_bus.h`
 
 ```cpp
-using CandleBus = EventBus<CandleEvent>;
+using BarBus = EventBus<BarEvent>;
 ```
 
 ### Common Bus Operations
@@ -232,34 +239,46 @@ void onBookUpdate(const BookUpdateEvent& ev) {
 
 ---
 
-## CandleAggregator
+## BarAggregator
 
-**Header:** `flox/aggregator/candle_aggregator.h`
+**Header:** `flox/aggregator/bar_aggregator.h`
 
-Aggregates trades into OHLCV candles.
+Aggregates trades into OHLCV bars using flexible policies.
 
 ```cpp
-class CandleAggregator : public IMarketDataSubscriber
+template <typename Policy>
+  requires BarPolicy<Policy>
+class BarAggregator : public ISubsystem, public IMarketDataSubscriber
 {
 public:
-  CandleAggregator(std::chrono::seconds period, CandleBus* bus);
+  BarAggregator(Policy policy, BarBus* bus);
 
   void onTrade(const TradeEvent& ev) override;
   SubscriberId id() const override;
 };
+
+// Type aliases
+using TimeBarAggregator = BarAggregator<TimeBarPolicy>;
+using TickBarAggregator = BarAggregator<TickBarPolicy>;
+using VolumeBarAggregator = BarAggregator<VolumeBarPolicy>;
+using RenkoBarAggregator = BarAggregator<RenkoBarPolicy>;
+using RangeBarAggregator = BarAggregator<RangeBarPolicy>;
+using HeikinAshiBarAggregator = BarAggregator<HeikinAshiBarPolicy>;
 ```
 
 **Example:**
 
 ```cpp
-auto candleBus = std::make_unique<CandleBus>();
-auto aggregator = std::make_unique<CandleAggregator>(
-    std::chrono::seconds{60},  // 1-minute candles
-    candleBus.get()
+auto barBus = std::make_unique<BarBus>();
+auto aggregator = std::make_unique<TimeBarAggregator>(
+    TimeBarPolicy(std::chrono::seconds{60}),  // 1-minute bars
+    barBus.get()
 );
 
 tradeBus->subscribe(aggregator.get());
 ```
+
+See [Bar Types](../explanation/bar-types.md) for details on different aggregation policies.
 
 ---
 

@@ -1,6 +1,6 @@
 # IMarketDataSubscriber
 
-`IMarketDataSubscriber` is a unified interface for components that consume real-time market data events. It supports optional handling of order book updates, trades, candles, and error notifications.
+`IMarketDataSubscriber` is a unified interface for components that consume real-time market data events. It supports optional handling of order book updates, trades, bars, and error notifications.
 
 ```cpp
 enum class MarketDataErrorCode {
@@ -26,7 +26,7 @@ public:
 
   virtual void onBookUpdate(const BookUpdateEvent& ev) {}
   virtual void onTrade(const TradeEvent& ev) {}
-  virtual void onCandle(const CandleEvent& ev) {}
+  virtual void onBar(const BarEvent& ev) {}
   virtual void onMarketDataError(const MarketDataError& error) {}
 };
 ```
@@ -42,7 +42,7 @@ public:
 |--------|-------------|
 | `onBookUpdate` | Receives `BookUpdateEvent` from `BookUpdateBus`. |
 | `onTrade` | Receives `TradeEvent` from `TradeBus`. |
-| `onCandle` | Receives `CandleEvent` from `CandleBus`. |
+| `onBar` | Receives `BarEvent` from `BarBus`. |
 | `onMarketDataError` | Receives error notifications for market data issues. |
 
 ## MarketDataErrorCode Values
@@ -101,4 +101,4 @@ public:
 * [ISubscriber](abstract_subscriber.md) — Base subscriber interface
 * [BookUpdateEvent](../../book/events/book_update_event.md) — Order book update event
 * [TradeEvent](../../book/events/trade_event.md) — Trade event
-* [CandleEvent](../../aggregator/events/candle_event.md) — Candle event
+* [BarEvent](../../aggregator/events/bar_event.md) — Bar event

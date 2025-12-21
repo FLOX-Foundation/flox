@@ -33,7 +33,7 @@ class RenkoBarPolicy
     return RenkoBarPolicy(Price::fromDouble(brickSize).raw());
   }
 
-  [[nodiscard]] constexpr uint32_t param() const noexcept
+  [[nodiscard]] constexpr uint64_t param() const noexcept
   {
     // Return brick size in ticks (fits in 28 bits)
     return static_cast<uint32_t>(_brickSizeRaw);

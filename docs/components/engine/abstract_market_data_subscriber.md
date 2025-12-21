@@ -1,6 +1,6 @@
 # IMarketDataSubscriber
 
-`IMarketDataSubscriber` is a unified interface for components that consume real-time market data events. It supports optional handling of order book updates, trades, and candles.
+`IMarketDataSubscriber` is a unified interface for components that consume real-time market data events. It supports optional handling of order book updates, trades, and bars.
 
 ```cpp
 class IMarketDataSubscriber : public ISubscriber
@@ -10,7 +10,7 @@ public:
 
   virtual void onBookUpdate(const BookUpdateEvent& ev) {}
   virtual void onTrade(const TradeEvent& ev) {}
-  virtual void onCandle(const CandleEvent& ev) {}
+  virtual void onBar(const BarEvent& ev) {}
 };
 ```
 
@@ -24,7 +24,7 @@ public:
 | ------------ | ------------------------------------------------ |
 | onBookUpdate | Receives `BookUpdateEvent` from `BookUpdateBus`. |
 | onTrade      | Receives `TradeEvent` from `TradeBus`.           |
-| onCandle     | Receives `CandleEvent` from `CandleBus`.         |
+| onBar        | Receives `BarEvent` from `BarBus`.               |
 
 ## Notes
 

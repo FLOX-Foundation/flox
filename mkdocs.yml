@@ -119,7 +119,6 @@ nav:
           - Book:
               - Trade: reference/api/book/trade.md
               - BookUpdate: reference/api/book/book_update.md
-              - Candle: reference/api/book/candle.md
               - NLevelOrderBook: reference/api/book/nlevel_order_book.md
               - IOrderBook: reference/api/book/abstract_order_book.md
               - Events:
@@ -129,9 +128,13 @@ nav:
                   - TradeBus: reference/api/book/bus/trade_bus.md
                   - BookUpdateBus: reference/api/book/bus/book_update_bus.md
           - Aggregator:
-              - CandleAggregator: reference/api/aggregator/candle_aggregator.md
-              - CandleBus: reference/api/aggregator/bus/candle_bus.md
-              - CandleEvent: reference/api/aggregator/events/candle_event.md
+              - Bar: reference/api/aggregator/bar.md
+              - BarAggregator: components/aggregator/bar_aggregator.md
+              - Bar Types: explanation/bar-types.md
+              - Events:
+                  - BarEvent: reference/api/aggregator/events/bar_event.md
+              - Buses:
+                  - BarBus: reference/api/aggregator/bus/bar_bus.md
           - Execution:
               - Order: reference/api/execution/order.md
               - OrderTracker: reference/api/execution/order_tracker.md

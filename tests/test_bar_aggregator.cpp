@@ -14,6 +14,7 @@
 #include "flox/aggregator/custom/volume_profile.h"
 #include "flox/aggregator/events/bar_event.h"
 #include "flox/aggregator/multi_timeframe_aggregator.h"
+#include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
 #include "flox/aggregator/policies/range_bar_policy.h"
 #include "flox/aggregator/policies/renko_bar_policy.h"
 #include "flox/aggregator/policies/tick_bar_policy.h"
@@ -151,6 +152,109 @@ TEST(TimeBarPolicyTest, AlignsToIntervalStart)
   EXPECT_EQ(result[0].endTime, ts(60));
 }
 
+TEST(TimeBarPolicyTest, SupportsSubSecondIntervals)
+{
+  // Helper for millisecond timestamps
+  auto tsMs = [](int64_t ms)
+  { return TimePoint(std::chrono::milliseconds(ms)); };
+  auto makeTradeMs = [](SymbolId symbol, double price, double qty, int64_t ms)
+  {
+    TradeEvent event;
+    event.trade.symbol = symbol;
+    event.trade.instrument = InstrumentType::Spot;
+    event.trade.price = Price::fromDouble(price);
+    event.trade.quantity = Quantity::fromDouble(qty);
+    event.trade.isBuy = true;
+    event.trade.exchangeTsNs = std::chrono::nanoseconds(std::chrono::milliseconds(ms)).count();
+    return event;
+  };
+
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  // 100ms bars
+  TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::milliseconds(100)), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  // Trades within first 100ms bar (0-100ms)
+  aggregator.onTrade(makeTradeMs(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTradeMs(SYMBOL, 105, 1, 50));
+
+  // Trade at 100ms triggers flush
+  aggregator.onTrade(makeTradeMs(SYMBOL, 110, 1, 100));
+
+  // Trade at 200ms triggers another flush
+  aggregator.onTrade(makeTradeMs(SYMBOL, 115, 1, 200));
+
+  aggregator.stop();
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 3);
+  EXPECT_EQ(result[0].startTime, tsMs(0));
+  EXPECT_EQ(result[0].endTime, tsMs(100));
+  EXPECT_EQ(result[0].close, Price::fromDouble(105.0));
+
+  EXPECT_EQ(result[1].startTime, tsMs(100));
+  EXPECT_EQ(result[1].endTime, tsMs(200));
+  EXPECT_EQ(result[1].close, Price::fromDouble(110.0));
+
+  EXPECT_EQ(result[2].startTime, tsMs(200));
+  EXPECT_EQ(result[2].endTime, tsMs(300));
+  EXPECT_EQ(result[2].close, Price::fromDouble(115.0));
+}
+
+TEST(TimeBarPolicyTest, SupportsMicrosecondIntervals)
+{
+  // Helper for microsecond timestamps
+  auto tsUs = [](int64_t us)
+  { return TimePoint(std::chrono::microseconds(us)); };
+  auto makeTradeUs = [](SymbolId symbol, double price, double qty, int64_t us)
+  {
+    TradeEvent event;
+    event.trade.symbol = symbol;
+    event.trade.instrument = InstrumentType::Spot;
+    event.trade.price = Price::fromDouble(price);
+    event.trade.quantity = Quantity::fromDouble(qty);
+    event.trade.isBuy = true;
+    event.trade.exchangeTsNs = std::chrono::nanoseconds(std::chrono::microseconds(us)).count();
+    return event;
+  };
+
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  // 100µs bars
+  TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::microseconds(100)), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  // Trades within first 100µs bar
+  aggregator.onTrade(makeTradeUs(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTradeUs(SYMBOL, 101, 1, 50));
+
+  // Trade at 100µs triggers flush
+  aggregator.onTrade(makeTradeUs(SYMBOL, 102, 1, 100));
+
+  // Trade at 200µs triggers another flush
+  aggregator.onTrade(makeTradeUs(SYMBOL, 103, 1, 200));
+
+  aggregator.stop();
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 3);
+  EXPECT_EQ(result[0].startTime, tsUs(0));
+  EXPECT_EQ(result[0].endTime, tsUs(100));
+  EXPECT_EQ(result[0].close, Price::fromDouble(101.0));
+
+  EXPECT_EQ(result[1].startTime, tsUs(100));
+  EXPECT_EQ(result[1].endTime, tsUs(200));
+}
+
 TEST(TimeBarPolicyTest, FlushesFinalBarOnStop)
 {
   std::vector<Bar> result;
@@ -282,6 +386,200 @@ TEST(RangeBarPolicyTest, ClosesOnRangeBreak)
   ASSERT_EQ(result.size(), 1);
   EXPECT_EQ(result[0].high, Price::fromDouble(105.0));
   EXPECT_EQ(result[0].low, Price::fromDouble(100.0));  // Note: didn't update to 95 before close check
+}
+
+// ============================================================================
+// HeikinAshiBarPolicy Tests
+// ============================================================================
+
+TEST(HeikinAshiBarPolicyTest, CalculatesHeikinAshiOHLC)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  // First bar: O=100, H=110, L=95, C=105
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 110, 1, 10));
+  aggregator.onTrade(makeTrade(SYMBOL, 95, 1, 20));
+  aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 30));
+
+  // Trigger close
+  aggregator.onTrade(makeTrade(SYMBOL, 108, 1, 65));
+
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 1);
+
+  // Heikin-Ashi formulas:
+  // HA_Close = (O + H + L + C) / 4 = (100 + 110 + 95 + 105) / 4 = 102.5
+  // HA_Open (first bar) = (rawOpen + rawClose) / 2 = (100 + 105) / 2 = 102.5
+  // HA_High = max(rawHigh, HA_Open, HA_Close) = max(110, 102.5, 102.5) = 110
+  // HA_Low = min(rawLow, HA_Open, HA_Close) = min(95, 102.5, 102.5) = 95
+  EXPECT_EQ(result[0].high, Price::fromDouble(110.0));
+  EXPECT_EQ(result[0].low, Price::fromDouble(95.0));
+  EXPECT_EQ(result[0].close, Price::fromDouble(102.5));
+  EXPECT_EQ(result[0].open, Price::fromDouble(102.5));
+}
+
+TEST(HeikinAshiBarPolicyTest, UsesTimeBasedIntervals)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 30));
+  aggregator.onTrade(makeTrade(SYMBOL, 110, 1, 65));  // triggers flush
+  aggregator.onTrade(makeTrade(SYMBOL, 115, 1, 90));
+
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 1);
+  EXPECT_EQ(result[0].startTime, ts(0));
+  EXPECT_EQ(result[0].endTime, ts(60));
+}
+
+TEST(HeikinAshiBarPolicyTest, ChainedBarsUsesPreviousHAValues)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  // First bar
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 110, 1, 30));
+
+  // Second bar (trigger flush of first)
+  aggregator.onTrade(makeTrade(SYMBOL, 115, 1, 65));
+  aggregator.onTrade(makeTrade(SYMBOL, 120, 1, 90));
+
+  // Third bar (trigger flush of second)
+  aggregator.onTrade(makeTrade(SYMBOL, 125, 1, 125));
+
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 2);
+
+  // Second bar's HA_Open should be based on first bar's HA values
+  // First bar: HA_Close = (100+110+100+110)/4 = 105, HA_Open = (100+110)/2 = 105
+  // Second bar: HA_Open = (prev_HA_Open + prev_HA_Close)/2 = (105+105)/2 = 105
+  EXPECT_EQ(result[1].open, Price::fromDouble(105.0));
+}
+
+TEST(HeikinAshiBarPolicyTest, SmoothsTrends)
+{
+  // Heikin-Ashi is known for smoothing out noise and showing clearer trends
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  // Uptrend with noise
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 30));
+  aggregator.onTrade(makeTrade(SYMBOL, 110, 1, 65));   // bar 1 flush
+  aggregator.onTrade(makeTrade(SYMBOL, 108, 1, 90));   // pullback
+  aggregator.onTrade(makeTrade(SYMBOL, 115, 1, 125));  // bar 2 flush
+  aggregator.onTrade(makeTrade(SYMBOL, 120, 1, 150));
+
+  aggregator.stop();
+  bus.stop();
+
+  // In uptrend, HA bars should have close >= open (bullish)
+  ASSERT_GE(result.size(), 2);
+  for (const auto& bar : result)
+  {
+    EXPECT_GE(bar.close.raw(), bar.open.raw());
+  }
+}
+
+TEST(HeikinAshiBarPolicyTest, MultiSymbolIndependentState)
+{
+  // Each symbol should maintain independent HA state
+  constexpr SymbolId SYM_A = 1;
+  constexpr SymbolId SYM_B = 2;
+
+  std::vector<Bar> result;
+  std::vector<SymbolId> symbols;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result, &symbols);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  // Bar 1 for both symbols with different prices
+  // SYM_A: price 100, SYM_B: price 200
+  aggregator.onTrade(makeTrade(SYM_A, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYM_B, 200, 1, 0));
+
+  // Flush bar 1, start bar 2
+  aggregator.onTrade(makeTrade(SYM_A, 110, 1, 65));  // SYM_A bar 1 flush
+  aggregator.onTrade(makeTrade(SYM_B, 220, 1, 65));  // SYM_B bar 1 flush
+
+  // More trades in bar 2
+  aggregator.onTrade(makeTrade(SYM_A, 120, 1, 90));
+  aggregator.onTrade(makeTrade(SYM_B, 240, 1, 90));
+
+  // Flush bar 2
+  aggregator.onTrade(makeTrade(SYM_A, 130, 1, 130));
+  aggregator.onTrade(makeTrade(SYM_B, 260, 1, 130));
+
+  aggregator.stop();
+  bus.stop();
+
+  // Should have 6 bars: 3 for SYM_A, 3 for SYM_B (including drained bars on stop)
+  ASSERT_EQ(result.size(), 6);
+
+  // Find bars by symbol
+  std::vector<Bar> barsA, barsB;
+  for (size_t i = 0; i < result.size(); ++i)
+  {
+    if (symbols[i] == SYM_A)
+    {
+      barsA.push_back(result[i]);
+    }
+    else
+    {
+      barsB.push_back(result[i]);
+    }
+  }
+
+  ASSERT_EQ(barsA.size(), 3);
+  ASSERT_EQ(barsB.size(), 3);
+
+  // SYM_B prices should be roughly 2x SYM_A prices (independent state)
+  // If state was shared, the HA values would be mixed and incorrect
+  EXPECT_GT(barsB[0].close.raw(), barsA[0].close.raw() * 1.5);
+  EXPECT_GT(barsB[1].close.raw(), barsA[1].close.raw() * 1.5);
+
+  // Each symbol's bar 2 should use its own prev HA values
+  // HA_Open for bar 2 = (prev_HA_Open + prev_HA_Close) / 2
+  // SYM_A bar 2 HA_Open should be around 100-110 range
+  // SYM_B bar 2 HA_Open should be around 200-220 range
+  EXPECT_LT(barsA[1].open.raw(), Price::fromDouble(150).raw());
+  EXPECT_GT(barsB[1].open.raw(), Price::fromDouble(150).raw());
 }
 
 // ============================================================================

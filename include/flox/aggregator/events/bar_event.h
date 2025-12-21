@@ -23,7 +23,7 @@ struct BarEvent
   SymbolId symbol{};
   InstrumentType instrument = InstrumentType::Spot;
   BarType barType{};
-  uint32_t barTypeParam{};  // interval seconds, tick count, volume threshold, etc.
+  uint64_t barTypeParam{};  // interval in nanoseconds, tick count, volume threshold, etc.
   Bar bar{};
 
   uint64_t tickSequence = 0;  // internal, set by bus

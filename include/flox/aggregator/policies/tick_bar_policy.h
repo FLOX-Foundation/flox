@@ -24,7 +24,7 @@ class TickBarPolicy
   {
   }
 
-  [[nodiscard]] constexpr uint32_t param() const noexcept
+  [[nodiscard]] constexpr uint64_t param() const noexcept
   {
     return _tickCount;
   }
