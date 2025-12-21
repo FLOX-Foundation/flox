@@ -179,6 +179,7 @@ void ReplayConnector::emitTradeFromRecord(const replay::TradeRecord& record)
   event.trade_id = record.trade_id;
   event.recvNs = static_cast<MonoNanos>(record.recv_ts_ns);
   event.exchangeMsgTsNs = record.exchange_ts_ns;
+  event.sourceExchange = record.exchange_id;
 
   emitTrade(event);
 }
@@ -198,6 +199,7 @@ void ReplayConnector::emitBookFromRecord(const replay::BookRecordHeader& header,
 
   event.seq = header.seq;
   event.recvNs = static_cast<MonoNanos>(header.recv_ts_ns);
+  event.sourceExchange = header.exchange_id;
 
   event.update.bids.reserve(bids.size());
   for (const auto& level : bids)

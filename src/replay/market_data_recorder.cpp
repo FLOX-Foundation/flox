@@ -118,6 +118,7 @@ void MarketDataRecorder::onTrade(const TradeEvent& event)
   record.symbol_id = trade.symbol;
   record.side = trade.isBuy ? 1 : 0;
   record.instrument = static_cast<uint8_t>(trade.instrument);
+  record.exchange_id = event.sourceExchange;
 
   if (_writer->writeTrade(record))
   {
