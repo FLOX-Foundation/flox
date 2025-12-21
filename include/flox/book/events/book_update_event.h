@@ -33,6 +33,8 @@ struct BookUpdateEvent : public pool::PoolableBase<BookUpdateEvent>
   MonoNanos recvNs{0};
   MonoNanos publishTsNs{0};
 
+  ExchangeId sourceExchange{InvalidExchangeId};  // Source exchange for CEX coordination
+
   BookUpdateEvent(std::pmr::memory_resource* res) : update(res)
   {
     assert(res != nullptr && "pmr::memory_resource is null!");

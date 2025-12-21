@@ -33,3 +33,8 @@ target_link_libraries(footprint_demo PRIVATE ${FLOX})
 add_executable(market_profile_demo src/market_profile_demo.cpp)
 target_include_directories(market_profile_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(market_profile_demo PRIVATE ${FLOX})
+
+# CEX (Cross-Exchange Coordination) demo
+add_executable(cex_demo src/cex_demo.cpp)
+target_include_directories(cex_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(cex_demo PRIVATE ${FLOX})

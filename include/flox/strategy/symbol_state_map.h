@@ -12,7 +12,9 @@
 #include "flox/common.h"
 
 #include <array>
+#include <cassert>
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -31,14 +33,20 @@ class SymbolStateMap
   {
     if (symbol < kMaxSymbols) [[likely]]
     {
-      if (!_initialized[symbol])
-      {
-        _flat[symbol] = State{};
-        _initialized[symbol] = true;
-      }
+      _initialized[symbol] = true;
       return _flat[symbol];
     }
-    return getOverflow(symbol);
+    // For non-movable types, assert we're within bounds
+    if constexpr (!std::is_move_constructible_v<State>)
+    {
+      assert(false && "SymbolId exceeds MaxSymbols for non-movable type");
+      // Return first element as fallback (UB protection)
+      return _flat[0];
+    }
+    else
+    {
+      return getOverflow(symbol);
+    }
   }
 
   [[nodiscard]] const State& operator[](SymbolId symbol) const noexcept
@@ -47,7 +55,15 @@ class SymbolStateMap
     {
       return _flat[symbol];
     }
-    return getOverflowConst(symbol);
+    if constexpr (!std::is_move_constructible_v<State>)
+    {
+      assert(false && "SymbolId exceeds MaxSymbols for non-movable type");
+      return _flat[0];
+    }
+    else
+    {
+      return getOverflowConst(symbol);
+    }
   }
 
   [[nodiscard]] bool contains(SymbolId symbol) const noexcept
@@ -56,11 +72,14 @@ class SymbolStateMap
     {
       return _initialized[symbol];
     }
-    for (const auto& [id, _] : _overflow)
+    if constexpr (std::is_move_constructible_v<State>)
     {
-      if (id == symbol)
+      for (const auto& [id, _] : overflow())
       {
-        return true;
+        if (id == symbol)
+        {
+          return true;
+        }
       }
     }
     return false;
@@ -72,11 +91,14 @@ class SymbolStateMap
     {
       return _initialized[symbol] ? &_flat[symbol] : nullptr;
     }
-    for (auto& [id, state] : _overflow)
+    if constexpr (std::is_move_constructible_v<State>)
     {
-      if (id == symbol)
+      for (auto& [id, state] : overflow())
       {
-        return &state;
+        if (id == symbol)
+        {
+          return &state;
+        }
       }
     }
     return nullptr;
@@ -88,11 +110,14 @@ class SymbolStateMap
     {
       return _initialized[symbol] ? &_flat[symbol] : nullptr;
     }
-    for (const auto& [id, state] : _overflow)
+    if constexpr (std::is_move_constructible_v<State>)
     {
-      if (id == symbol)
+      for (const auto& [id, state] : overflow())
       {
-        return &state;
+        if (id == symbol)
+        {
+          return &state;
+        }
       }
     }
     return nullptr;
@@ -100,9 +125,13 @@ class SymbolStateMap
 
   void clear() noexcept
   {
-    _flat = {};
+    // For non-movable types, just reset the initialized flags
+    if constexpr (std::is_move_constructible_v<State>)
+    {
+      _flat = {};
+    }
     _initialized = {};
-    _overflow.clear();
+    _overflowStorage.clear();
   }
 
   template <typename Func>
@@ -115,9 +144,12 @@ class SymbolStateMap
         fn(static_cast<SymbolId>(i), _flat[i]);
       }
     }
-    for (auto& [id, state] : _overflow)
+    if constexpr (std::is_move_constructible_v<State>)
     {
-      fn(id, state);
+      for (auto& [id, state] : overflow())
+      {
+        fn(id, state);
+      }
     }
   }
 
@@ -131,9 +163,12 @@ class SymbolStateMap
         fn(static_cast<SymbolId>(i), _flat[i]);
       }
     }
-    for (const auto& [id, state] : _overflow)
+    if constexpr (std::is_move_constructible_v<State>)
     {
-      fn(id, state);
+      for (const auto& [id, state] : overflow())
+      {
+        fn(id, state);
+      }
     }
   }
 
@@ -147,26 +182,28 @@ class SymbolStateMap
         ++count;
       }
     }
-    return count + _overflow.size();
+    return count + _overflowStorage.size();
   }
 
  private:
   State& getOverflow(SymbolId symbol)
+    requires std::is_move_constructible_v<State>
   {
-    for (auto& [id, state] : _overflow)
+    for (auto& [id, state] : overflow())
     {
       if (id == symbol)
       {
         return state;
       }
     }
-    _overflow.emplace_back(symbol, State{});
-    return _overflow.back().second;
+    overflow().emplace_back(symbol, State{});
+    return overflow().back().second;
   }
 
   const State& getOverflowConst(SymbolId symbol) const
+    requires std::is_move_constructible_v<State>
   {
-    for (const auto& [id, state] : _overflow)
+    for (const auto& [id, state] : overflow())
     {
       if (id == symbol)
       {
@@ -177,9 +214,38 @@ class SymbolStateMap
     return empty;
   }
 
+  // Helper to conditionally include overflow storage
+  template <typename T, bool Enable>
+  struct OverflowStorage
+  {
+    std::vector<std::pair<SymbolId, T>> data;
+    void clear() { data.clear(); }
+    [[nodiscard]] size_t size() const { return data.size(); }
+  };
+
+  template <typename T>
+  struct OverflowStorage<T, false>
+  {
+    void clear() {}
+    [[nodiscard]] size_t size() const { return 0; }
+  };
+
   alignas(64) std::array<State, kMaxSymbols> _flat{};
   std::array<bool, kMaxSymbols> _initialized{};
-  std::vector<std::pair<SymbolId, State>> _overflow;
+  [[no_unique_address]] OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
+
+  // Accessor for overflow (only valid for movable types)
+  auto& overflow()
+    requires std::is_move_constructible_v<State>
+  {
+    return _overflowStorage.data;
+  }
+
+  const auto& overflow() const
+    requires std::is_move_constructible_v<State>
+  {
+    return _overflowStorage.data;
+  }
 };
 
 }  // namespace flox

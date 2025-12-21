@@ -6,6 +6,7 @@ Solve specific problems. Assumes you know the basics.
 
 | Guide | Problem |
 |-------|---------|
+| [Multi-Exchange Trading](multi-exchange-trading.md) | Trade across multiple exchanges with aggregation and routing |
 | [CI Configuration](ci.md) | Understand the CI pipeline |
 | [Configure CPU Affinity](cpu-affinity.md) | Pin threads to isolated cores for lower latency |
 | [Write a Custom Connector](custom-connector.md) | Connect to a new exchange |
