@@ -1040,3 +1040,231 @@ TEST(MarketProfileTest, IdentifiesPoorHighLow)
   EXPECT_TRUE(profile.isPoorHigh());  // 102 is single print at high
   EXPECT_FALSE(profile.isPoorLow());  // 100 has 2 TPOs
 }
+
+// ============================================================================
+// MultiTimeframeAggregator Edge Case Tests
+// ============================================================================
+
+TEST(MultiTimeframeAggregatorTest, NoSlotsAddedDoesNothing)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  // No slots added
+
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 65));
+
+  aggregator.stop();
+  bus.stop();
+
+  EXPECT_EQ(result.size(), 0);  // No bars without slots
+  EXPECT_EQ(aggregator.numTimeframes(), 0);
+}
+
+TEST(MultiTimeframeAggregatorTest, MaxSlotsReachedReturnsMaxIndex)
+{
+  BarBus bus;
+  MultiTimeframeAggregator<2> aggregator(&bus);  // Max 2 slots
+
+  size_t idx0 = aggregator.addTimeInterval(std::chrono::seconds(60));
+  size_t idx1 = aggregator.addTimeInterval(std::chrono::seconds(300));
+  size_t idx2 = aggregator.addTimeInterval(std::chrono::seconds(900));  // Overflow
+
+  EXPECT_EQ(idx0, 0);
+  EXPECT_EQ(idx1, 1);
+  EXPECT_EQ(idx2, 2);  // Returns MaxTimeframes (out of bounds indicator)
+  EXPECT_EQ(aggregator.numTimeframes(), 2);
+}
+
+TEST(MultiTimeframeAggregatorTest, AllVolumeSlots)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  aggregator.addVolumeInterval(100.0);   // 100 notional
+  aggregator.addVolumeInterval(500.0);   // 500 notional
+  aggregator.addVolumeInterval(1000.0);  // 1000 notional
+
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+
+  bus.start();
+  aggregator.start();
+
+  // Generate trades: price=100, qty=1 => notional=100 per trade
+  for (int i = 0; i < 12; ++i)
+  {
+    aggregator.onTrade(makeTrade(SYMBOL, 100, 1, i));
+  }
+
+  aggregator.stop();
+  bus.stop();
+
+  // 100 threshold: 12 trades = 12 bars
+  // 500 threshold: 12 trades = 2 full bars + 1 partial
+  // 1000 threshold: 12 trades = 1 full bar + 1 partial
+  // Total includes flushed on stop
+  EXPECT_GT(result.size(), 12);  // At least 12 from 100-threshold slot
+}
+
+TEST(MultiTimeframeAggregatorTest, SingleTradeAcrossAllTimeframes)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  aggregator.addTimeInterval(std::chrono::seconds(60));
+  aggregator.addTimeInterval(std::chrono::seconds(300));
+  aggregator.addTickInterval(10);
+  aggregator.addVolumeInterval(1000.0);
+
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+
+  bus.start();
+  aggregator.start();
+
+  // Single trade
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+
+  aggregator.stop();
+  bus.stop();
+
+  // All 4 timeframes should flush their partial bars
+  EXPECT_EQ(result.size(), 4);
+
+  // All bars should have same OHLC from single trade
+  for (const auto& bar : result)
+  {
+    EXPECT_EQ(bar.open, Price::fromDouble(100.0));
+    EXPECT_EQ(bar.high, Price::fromDouble(100.0));
+    EXPECT_EQ(bar.low, Price::fromDouble(100.0));
+    EXPECT_EQ(bar.close, Price::fromDouble(100.0));
+  }
+}
+
+TEST(MultiTimeframeAggregatorTest, StartStopWithoutTradesEmitsNothing)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  aggregator.addTimeInterval(std::chrono::seconds(60));
+  aggregator.addTickInterval(10);
+
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+
+  bus.start();
+  aggregator.start();
+  // No trades
+  aggregator.stop();
+  bus.stop();
+
+  EXPECT_EQ(result.size(), 0);  // No bars without trades
+}
+
+TEST(MultiTimeframeAggregatorTest, MultiSymbolMultiTimeframe)
+{
+  std::vector<Bar> bars;
+  std::vector<SymbolId> symbols;
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  aggregator.addTimeInterval(std::chrono::seconds(60));
+  aggregator.addTickInterval(3);
+
+  auto strat = std::make_unique<TestStrategy>(bars, &symbols);
+  bus.subscribe(strat.get());
+
+  bus.start();
+  aggregator.start();
+
+  // 2 symbols, interleaved trades
+  for (int i = 0; i < 6; ++i)
+  {
+    aggregator.onTrade(makeTrade(1, 100 + i, 1, i * 10));
+    aggregator.onTrade(makeTrade(2, 200 + i, 1, i * 10));
+  }
+
+  aggregator.stop();
+  bus.stop();
+
+  // 6 trades per symbol:
+  // - TickInterval(3): 2 full bars per symbol (6/3=2)
+  // - TimeInterval(60): 1 partial bar per symbol flushed on stop
+  // Total: (2+1) * 2 symbols = 6 bars + potential more tick bars
+  EXPECT_GE(bars.size(), 4);  // At least 2 tick bars per symbol
+
+  // Verify both symbols present
+  auto count1 = std::count(symbols.begin(), symbols.end(), 1);
+  auto count2 = std::count(symbols.begin(), symbols.end(), 2);
+  EXPECT_GT(count1, 0);
+  EXPECT_GT(count2, 0);
+}
+
+TEST(MultiTimeframeAggregatorTest, TimeframesReturnsCorrectIds)
+{
+  BarBus bus;
+  MultiTimeframeAggregator<8> aggregator(&bus);
+
+  aggregator.addTimeInterval(std::chrono::seconds(60));
+  aggregator.addTimeInterval(std::chrono::seconds(300));
+  aggregator.addTickInterval(100);
+  aggregator.addVolumeInterval(10000.0);
+
+  auto tfs = aggregator.timeframes();
+
+  EXPECT_EQ(aggregator.numTimeframes(), 4);
+  EXPECT_EQ(tfs[0].type, BarType::Time);
+  EXPECT_EQ(tfs[0].param, 60);
+  EXPECT_EQ(tfs[1].type, BarType::Time);
+  EXPECT_EQ(tfs[1].param, 300);
+  EXPECT_EQ(tfs[2].type, BarType::Tick);
+  EXPECT_EQ(tfs[2].param, 100);
+  EXPECT_EQ(tfs[3].type, BarType::Volume);
+  EXPECT_EQ(tfs[3].param, 10000);
+}
+
+TEST(MultiTimeframeAggregatorTest, DoubleStartClearsState)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  aggregator.addTimeInterval(std::chrono::seconds(60));
+
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+
+  bus.start();
+  aggregator.start();
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 30));
+
+  // Restart clears state
+  aggregator.start();
+  aggregator.onTrade(makeTrade(SYMBOL, 200, 1, 60));
+
+  aggregator.stop();
+  bus.stop();
+
+  // Only the bar after restart should be emitted
+  ASSERT_EQ(result.size(), 1);
+  EXPECT_EQ(result[0].open, Price::fromDouble(200.0));
+}

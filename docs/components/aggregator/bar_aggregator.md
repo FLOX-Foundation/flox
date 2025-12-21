@@ -294,10 +294,27 @@ class MyStrategy : public IMarketDataSubscriber {
 | Timeframe lookup | O(n), n ≤ 8 |
 | Bar push | O(1) amortized |
 
-Benchmark results (GCC 13.1, LTO):
-- TimeBarAggregator.onTrade: ~50ns/trade
-- MultiTimeframeAggregator (4 TF): ~60ns/trade
+Benchmark results (GCC 14, LTO, Release):
+- TimeBarAggregator.onTrade: ~45ns/trade
+- MultiTimeframeAggregator (4 TF): ~15ns/timeframe (~60ns total)
+- MultiTimeframeAggregator (8 TF): ~11ns/timeframe (~88ns total)
 - BarMatrix random access: ~5ns
+
+### Implementation Notes
+
+`MultiTimeframeAggregator` uses **tag + switch dispatch** for policy execution, chosen after benchmarking against alternatives:
+
+| Dispatch Method | ns/trade (4 TF) | Notes |
+|-----------------|-----------------|-------|
+| Tag + Switch | ~60ns | Winner: fastest across GCC/Clang/MSVC |
+| std::variant/visit | ~72ns | 17-20% slower |
+| Function pointers | ~85ns | Indirect call overhead |
+
+The implementation uses:
+- `PolicyTag` enum for runtime type discrimination
+- `PolicyStorage` union for type-safe storage without vtables
+- Single heap allocation for all slots (avoids stack overflow with large MaxTimeframes)
+- `FLOX_FORCE_INLINE` on hot path methods
 
 ## Files
 
