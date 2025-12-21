@@ -45,6 +45,16 @@ enum class Side
 
 using SymbolId = uint32_t;
 using OrderId = uint64_t;
+using ExchangeId = uint16_t;
+
+static constexpr ExchangeId InvalidExchangeId = 0xFFFF;
+
+enum class VenueType : uint8_t
+{
+  CentralizedExchange,
+  AmmDex,
+  HybridDex
+};
 
 struct PriceTag
 {

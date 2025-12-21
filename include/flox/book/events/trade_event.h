@@ -30,6 +30,8 @@ struct TradeEvent
   MonoNanos recvNs{0};
   MonoNanos publishTsNs{0};
   UnixNanos exchangeMsgTsNs{0};
+
+  ExchangeId sourceExchange{InvalidExchangeId};  // Source exchange for CEX coordination
 };
 
 }  // namespace flox

@@ -17,6 +17,183 @@
 namespace flox
 {
 
+// =============================================================================
+// Exchange management
+// =============================================================================
+
+ExchangeId SymbolRegistry::registerExchange(std::string_view name, VenueType type)
+{
+  std::scoped_lock lock(_mutex);
+
+  // Check if already registered
+  auto it = _exchangeNameToId.find(std::string(name));
+  if (it != _exchangeNameToId.end())
+  {
+    return it->second;
+  }
+
+  // Check capacity
+  if (_numExchanges >= kMaxExchanges)
+  {
+    return InvalidExchangeId;
+  }
+
+  ExchangeId id = static_cast<ExchangeId>(_numExchanges++);
+  _exchanges[id].setName(name);
+  _exchanges[id].type = type;
+  _exchangeNameToId[std::string(name)] = id;
+
+  return id;
+}
+
+const ExchangeInfo* SymbolRegistry::getExchange(ExchangeId id) const
+{
+  if (id >= _numExchanges)
+  {
+    return nullptr;
+  }
+  return &_exchanges[id];
+}
+
+ExchangeId SymbolRegistry::getExchangeId(std::string_view name) const
+{
+  std::scoped_lock lock(_mutex);
+  auto it = _exchangeNameToId.find(std::string(name));
+  if (it != _exchangeNameToId.end())
+  {
+    return it->second;
+  }
+  return InvalidExchangeId;
+}
+
+// =============================================================================
+// Symbol registration (ExchangeId-based API)
+// =============================================================================
+
+SymbolId SymbolRegistry::registerSymbol(ExchangeId exchange, std::string_view symbol)
+{
+  std::scoped_lock lock(_mutex);
+
+  // Get exchange name for key
+  if (exchange >= _numExchanges)
+  {
+    return 0;  // Invalid
+  }
+
+  std::string exchangeName(_exchanges[exchange].nameView());
+  std::string key = exchangeName + ":" + std::string(symbol);
+
+  auto it = _map.find(key);
+  if (it != _map.end())
+  {
+    return it->second;
+  }
+
+  SymbolId id = static_cast<SymbolId>(_reverse.size());
+  _map[key] = id;
+  _reverse.emplace_back(exchangeName, std::string(symbol));
+
+  // Ensure _symbolToExchange has capacity
+  if (_symbolToExchange.size() <= id)
+  {
+    _symbolToExchange.resize(id + 1, InvalidExchangeId);
+  }
+  _symbolToExchange[id] = exchange;
+
+  return id;
+}
+
+ExchangeId SymbolRegistry::getExchangeForSymbol(SymbolId symbol) const
+{
+  if (symbol >= _symbolToExchange.size())
+  {
+    return InvalidExchangeId;
+  }
+  return _symbolToExchange[symbol];
+}
+
+// =============================================================================
+// Symbol equivalence
+// =============================================================================
+
+void SymbolRegistry::mapEquivalentSymbols(std::span<const SymbolId> equivalentSymbols)
+{
+  std::scoped_lock lock(_mutex);
+
+  if (equivalentSymbols.empty())
+  {
+    return;
+  }
+
+  // Ensure capacity
+  SymbolId maxSym = 0;
+  for (SymbolId s : equivalentSymbols)
+  {
+    maxSym = std::max(maxSym, s);
+  }
+
+  size_t requiredSize = (maxSym + 1) * kMaxEquivalentsPerSymbol;
+  if (_equivalents.size() < requiredSize)
+  {
+    _equivalents.resize(requiredSize, 0);
+  }
+  if (_equivalentCounts.size() <= maxSym)
+  {
+    _equivalentCounts.resize(maxSym + 1, 0);
+  }
+
+  // Map all symbols to each other
+  for (SymbolId sym : equivalentSymbols)
+  {
+    size_t baseIdx = sym * kMaxEquivalentsPerSymbol;
+    uint8_t count = 0;
+
+    for (SymbolId eq : equivalentSymbols)
+    {
+      if (count >= kMaxEquivalentsPerSymbol)
+      {
+        break;
+      }
+      _equivalents[baseIdx + count++] = eq;
+    }
+    _equivalentCounts[sym] = count;
+  }
+}
+
+std::span<const SymbolId> SymbolRegistry::getEquivalentSymbols(SymbolId symbol) const
+{
+  if (symbol >= _equivalentCounts.size())
+  {
+    return {};
+  }
+
+  uint8_t count = _equivalentCounts[symbol];
+  if (count == 0)
+  {
+    return {};
+  }
+
+  size_t baseIdx = symbol * kMaxEquivalentsPerSymbol;
+  return {&_equivalents[baseIdx], count};
+}
+
+SymbolId SymbolRegistry::getEquivalentOnExchange(SymbolId symbol, ExchangeId exchange) const
+{
+  auto equivalents = getEquivalentSymbols(symbol);
+  for (SymbolId eq : equivalents)
+  {
+    if (getExchangeForSymbol(eq) == exchange)
+    {
+      return eq;
+    }
+  }
+  return 0;  // Not found
+}
+
+// =============================================================================
+// Legacy string-based API
+// =============================================================================
+
 SymbolId SymbolRegistry::registerSymbol(const std::string& exchange, const std::string& symbol)
 {
   std::scoped_lock lock(_mutex);
@@ -95,6 +272,18 @@ void SymbolRegistry::clear()
   _symbols.clear();
   _map.clear();
   _reverse.clear();
+
+  // Clear exchange data
+  _exchanges = {};
+  _exchangeNameToId.clear();
+  _numExchanges = 0;
+
+  // Clear symbol-to-exchange mapping
+  _symbolToExchange.clear();
+
+  // Clear equivalence data
+  _equivalents.clear();
+  _equivalentCounts.clear();
 }
 
 std::vector<SymbolInfo> SymbolRegistry::getAllSymbols() const

@@ -21,6 +21,7 @@ add_flox_benchmark(bar_aggregator_benchmark)
 add_flox_benchmark(binary_log_benchmark)
 add_flox_benchmark(event_bus_benchmark)
 add_flox_benchmark(multi_symbol_benchmark)
+add_flox_benchmark(cex_benchmark)
 
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_benchmark(cpu_affinity_benchmark)
