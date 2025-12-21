@@ -81,7 +81,7 @@ struct alignas(8) TradeRecord
   uint32_t symbol_id{0};
   uint8_t side{0};
   uint8_t instrument{0};
-  uint16_t reserved{0};
+  uint16_t exchange_id{0};
 };
 static_assert(sizeof(TradeRecord) == 48, "TradeRecord must be 48 bytes");
 
@@ -102,7 +102,7 @@ struct alignas(8) BookRecordHeader
   uint16_t ask_count{0};
   uint8_t type{0};
   uint8_t instrument{0};
-  uint16_t reserved{0};
+  uint16_t exchange_id{0};
   uint32_t _pad{0};
 };
 static_assert(sizeof(BookRecordHeader) == 40, "BookRecordHeader must be 40 bytes");
