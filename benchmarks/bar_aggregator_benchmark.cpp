@@ -231,6 +231,238 @@ static void BM_MultiTimeframeAggregator_4TF(benchmark::State& state)
 BENCHMARK(BM_MultiTimeframeAggregator_4TF);
 
 // =============================================================================
+// MultiTimeframeAggregator scaling benchmarks
+// =============================================================================
+
+template <size_t NumTimeframes>
+static void BM_MultiTimeframeAggregator_Scaling(benchmark::State& state)
+{
+  BarBus bus;
+  bus.enableDrainOnStop();
+  MultiTimeframeAggregator<NumTimeframes> aggregator(&bus);
+
+  // Add timeframes - mix of Time, Tick, Volume policies
+  for (size_t i = 0; i < NumTimeframes; ++i)
+  {
+    switch (i % 3)
+    {
+      case 0:
+        aggregator.addTimeInterval(std::chrono::seconds(60 + i * 30));
+        break;
+      case 1:
+        aggregator.addTickInterval(100 + i * 10);
+        break;
+      case 2:
+        aggregator.addVolumeInterval(1000.0 + i * 500.0);
+        break;
+    }
+  }
+
+  bus.start();
+  aggregator.start();
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<> priceDist(100.0, 110.0);
+  std::uniform_real_distribution<> qtyDist(1.0, 5.0);
+
+  for (auto _ : state)
+  {
+    TradeEvent event;
+    event.trade.symbol = 42;
+    event.trade.price = Price::fromDouble(priceDist(rng));
+    event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
+    event.trade.isBuy = true;
+    event.trade.exchangeTsNs = nowNsMonotonic();
+
+    aggregator.onTrade(event);
+  }
+
+  state.SetItemsProcessed(state.iterations() * NumTimeframes);
+  state.counters["timeframes"] = NumTimeframes;
+  state.counters["ns_per_tf"] =
+      benchmark::Counter(state.iterations() * NumTimeframes,
+                         benchmark::Counter::kIsRate | benchmark::Counter::kInvert);
+
+  aggregator.stop();
+  bus.stop();
+}
+
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<1>)->Name("BM_MTF_Scaling/1");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<2>)->Name("BM_MTF_Scaling/2");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<4>)->Name("BM_MTF_Scaling/4");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<8>)->Name("BM_MTF_Scaling/8");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<16>)->Name("BM_MTF_Scaling/16");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<32>)->Name("BM_MTF_Scaling/32");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<64>)->Name("BM_MTF_Scaling/64");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<128>)->Name("BM_MTF_Scaling/128");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<256>)->Name("BM_MTF_Scaling/256");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<512>)->Name("BM_MTF_Scaling/512");
+BENCHMARK(BM_MultiTimeframeAggregator_Scaling<1024>)->Name("BM_MTF_Scaling/1024");
+
+// Compare with N separate aggregators (no std::variant overhead)
+template <size_t NumAggregators>
+static void BM_SeparateAggregators_Scaling(benchmark::State& state)
+{
+  BarBus bus;
+  bus.enableDrainOnStop();
+
+  // Create N separate TimeBarAggregators
+  std::array<std::unique_ptr<TimeBarAggregator>, NumAggregators> aggregators;
+  for (size_t i = 0; i < NumAggregators; ++i)
+  {
+    aggregators[i] = std::make_unique<TimeBarAggregator>(
+        TimeBarPolicy(std::chrono::seconds(60 + i * 30)), &bus);
+  }
+
+  bus.start();
+  for (auto& agg : aggregators)
+  {
+    agg->start();
+  }
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<> priceDist(100.0, 110.0);
+  std::uniform_real_distribution<> qtyDist(1.0, 5.0);
+
+  for (auto _ : state)
+  {
+    TradeEvent event;
+    event.trade.symbol = 42;
+    event.trade.price = Price::fromDouble(priceDist(rng));
+    event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
+    event.trade.isBuy = true;
+    event.trade.exchangeTsNs = nowNsMonotonic();
+
+    for (auto& agg : aggregators)
+    {
+      agg->onTrade(event);
+    }
+  }
+
+  state.SetItemsProcessed(state.iterations() * NumAggregators);
+  state.counters["aggregators"] = NumAggregators;
+  state.counters["ns_per_agg"] =
+      benchmark::Counter(state.iterations() * NumAggregators,
+                         benchmark::Counter::kIsRate | benchmark::Counter::kInvert);
+
+  for (auto& agg : aggregators)
+  {
+    agg->stop();
+  }
+  bus.stop();
+}
+
+BENCHMARK(BM_SeparateAggregators_Scaling<1>)->Name("BM_Separate_Scaling/1");
+BENCHMARK(BM_SeparateAggregators_Scaling<2>)->Name("BM_Separate_Scaling/2");
+BENCHMARK(BM_SeparateAggregators_Scaling<4>)->Name("BM_Separate_Scaling/4");
+BENCHMARK(BM_SeparateAggregators_Scaling<8>)->Name("BM_Separate_Scaling/8");
+BENCHMARK(BM_SeparateAggregators_Scaling<16>)->Name("BM_Separate_Scaling/16");
+BENCHMARK(BM_SeparateAggregators_Scaling<32>)->Name("BM_Separate_Scaling/32");
+BENCHMARK(BM_SeparateAggregators_Scaling<64>)->Name("BM_Separate_Scaling/64");
+BENCHMARK(BM_SeparateAggregators_Scaling<128>)->Name("BM_Separate_Scaling/128");
+BENCHMARK(BM_SeparateAggregators_Scaling<256>)->Name("BM_Separate_Scaling/256");
+BENCHMARK(BM_SeparateAggregators_Scaling<512>)->Name("BM_Separate_Scaling/512");
+BENCHMARK(BM_SeparateAggregators_Scaling<1024>)->Name("BM_Separate_Scaling/1024");
+
+// =============================================================================
+// Homogeneous benchmarks (all same policy type)
+// =============================================================================
+
+// All TimeBarPolicy (homogeneous)
+template <size_t NumTimeframes>
+static void BM_MTF_TimeOnly(benchmark::State& state)
+{
+  BarBus bus;
+  bus.enableDrainOnStop();
+  MultiTimeframeAggregator<NumTimeframes> aggregator(&bus);
+
+  for (size_t i = 0; i < NumTimeframes; ++i)
+  {
+    aggregator.addTimeInterval(std::chrono::seconds(60 + i * 30));
+  }
+
+  bus.start();
+  aggregator.start();
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<> priceDist(100.0, 110.0);
+  std::uniform_real_distribution<> qtyDist(1.0, 5.0);
+
+  for (auto _ : state)
+  {
+    TradeEvent event;
+    event.trade.symbol = 42;
+    event.trade.price = Price::fromDouble(priceDist(rng));
+    event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
+    event.trade.isBuy = true;
+    event.trade.exchangeTsNs = nowNsMonotonic();
+
+    aggregator.onTrade(event);
+  }
+
+  state.SetItemsProcessed(state.iterations() * NumTimeframes);
+  state.counters["timeframes"] = NumTimeframes;
+  state.counters["ns_per_tf"] =
+      benchmark::Counter(state.iterations() * NumTimeframes,
+                         benchmark::Counter::kIsRate | benchmark::Counter::kInvert);
+
+  aggregator.stop();
+  bus.stop();
+}
+
+BENCHMARK(BM_MTF_TimeOnly<4>)->Name("BM_MTF_Homogeneous_Time/4");
+BENCHMARK(BM_MTF_TimeOnly<8>)->Name("BM_MTF_Homogeneous_Time/8");
+BENCHMARK(BM_MTF_TimeOnly<16>)->Name("BM_MTF_Homogeneous_Time/16");
+BENCHMARK(BM_MTF_TimeOnly<32>)->Name("BM_MTF_Homogeneous_Time/32");
+
+// All VolumeBarPolicy (homogeneous)
+template <size_t NumTimeframes>
+static void BM_MTF_VolumeOnly(benchmark::State& state)
+{
+  BarBus bus;
+  bus.enableDrainOnStop();
+  MultiTimeframeAggregator<NumTimeframes> aggregator(&bus);
+
+  for (size_t i = 0; i < NumTimeframes; ++i)
+  {
+    aggregator.addVolumeInterval(1000.0 + i * 500.0);
+  }
+
+  bus.start();
+  aggregator.start();
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<> priceDist(100.0, 110.0);
+  std::uniform_real_distribution<> qtyDist(1.0, 5.0);
+
+  for (auto _ : state)
+  {
+    TradeEvent event;
+    event.trade.symbol = 42;
+    event.trade.price = Price::fromDouble(priceDist(rng));
+    event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
+    event.trade.isBuy = true;
+    event.trade.exchangeTsNs = nowNsMonotonic();
+
+    aggregator.onTrade(event);
+  }
+
+  state.SetItemsProcessed(state.iterations() * NumTimeframes);
+  state.counters["timeframes"] = NumTimeframes;
+  state.counters["ns_per_tf"] =
+      benchmark::Counter(state.iterations() * NumTimeframes,
+                         benchmark::Counter::kIsRate | benchmark::Counter::kInvert);
+
+  aggregator.stop();
+  bus.stop();
+}
+
+BENCHMARK(BM_MTF_VolumeOnly<4>)->Name("BM_MTF_Homogeneous_Volume/4");
+BENCHMARK(BM_MTF_VolumeOnly<8>)->Name("BM_MTF_Homogeneous_Volume/8");
+BENCHMARK(BM_MTF_VolumeOnly<16>)->Name("BM_MTF_Homogeneous_Volume/16");
+BENCHMARK(BM_MTF_VolumeOnly<32>)->Name("BM_MTF_Homogeneous_Volume/32");
+
+// =============================================================================
 // BarSeries benchmarks
 // =============================================================================
 

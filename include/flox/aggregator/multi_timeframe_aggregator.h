@@ -22,10 +22,11 @@
 #include "flox/engine/abstract_market_data_subscriber.h"
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/strategy/symbol_state_map.h"
+#include "flox/util/performance/force_inline.h"
 
 #include <array>
 #include <chrono>
-#include <variant>
+#include <memory>
 
 namespace flox
 {
@@ -36,8 +37,50 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
  public:
   static constexpr size_t kMaxTimeframes = MaxTimeframes;
 
-  explicit MultiTimeframeAggregator(BarBus* bus) : _bus(bus) {}
+  explicit MultiTimeframeAggregator(BarBus* bus)
+      : _slots(std::make_unique<SlotsArray>()), _bus(bus)
+  {
+  }
 
+ private:
+  enum class PolicyTag : uint8_t
+  {
+    Time,
+    Tick,
+    Volume
+  };
+
+  union PolicyStorage
+  {
+    TimeBarPolicy time;
+    TickBarPolicy tick;
+    VolumeBarPolicy volume;
+
+    PolicyStorage() : time(std::chrono::seconds(60)) {}
+    ~PolicyStorage() {}
+  };
+
+  struct SymbolState
+  {
+    Bar bar{};
+    InstrumentType instrument = InstrumentType::Spot;
+    bool initialized = false;
+  };
+
+  struct Slot
+  {
+    PolicyStorage storage{};
+    PolicyTag tag = PolicyTag::Time;
+    TimeframeId timeframeId{};
+    SymbolStateMap<SymbolState> state{};
+  };
+
+  using SlotsArray = std::array<Slot, MaxTimeframes>;
+
+  FLOX_FORCE_INLINE SlotsArray& slots() noexcept { return *_slots; }
+  FLOX_FORCE_INLINE const SlotsArray& slots() const noexcept { return *_slots; }
+
+ public:
   size_t addTimeInterval(std::chrono::seconds interval)
   {
     if (_numSlots >= MaxTimeframes)
@@ -46,8 +89,10 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     }
 
     const size_t idx = _numSlots++;
-    _slots[idx].policy = TimeBarPolicy(interval);
-    _slots[idx].timeframeId = TimeframeId::time(interval);
+    auto& slot = slots()[idx];
+    slot.tag = PolicyTag::Time;
+    new (&slot.storage.time) TimeBarPolicy(interval);
+    slot.timeframeId = TimeframeId::time(interval);
     return idx;
   }
 
@@ -59,8 +104,10 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     }
 
     const size_t idx = _numSlots++;
-    _slots[idx].policy = TickBarPolicy(tickCount);
-    _slots[idx].timeframeId = TimeframeId::tick(tickCount);
+    auto& slot = slots()[idx];
+    slot.tag = PolicyTag::Tick;
+    new (&slot.storage.tick) TickBarPolicy(tickCount);
+    slot.timeframeId = TimeframeId::tick(tickCount);
     return idx;
   }
 
@@ -72,8 +119,10 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     }
 
     const size_t idx = _numSlots++;
-    _slots[idx].policy = VolumeBarPolicy::fromDouble(volumeThreshold);
-    _slots[idx].timeframeId = TimeframeId::volume(static_cast<uint32_t>(volumeThreshold));
+    auto& slot = slots()[idx];
+    slot.tag = PolicyTag::Volume;
+    new (&slot.storage.volume) VolumeBarPolicy(VolumeBarPolicy::fromDouble(volumeThreshold));
+    slot.timeframeId = TimeframeId::volume(static_cast<uint32_t>(volumeThreshold));
     return idx;
   }
 
@@ -81,7 +130,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
   {
     for (size_t i = 0; i < _numSlots; ++i)
     {
-      _slots[i].state.clear();
+      slots()[i].state.clear();
     }
   }
 
@@ -89,7 +138,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
   {
     for (size_t slotIdx = 0; slotIdx < _numSlots; ++slotIdx)
     {
-      auto& slot = _slots[slotIdx];
+      auto& slot = slots()[slotIdx];
       slot.state.forEach(
           [this, &slot, slotIdx](SymbolId symbol, SymbolState& state)
           {
@@ -118,7 +167,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     std::array<TimeframeId, MaxTimeframes> result{};
     for (size_t i = 0; i < _numSlots; ++i)
     {
-      result[i] = _slots[i].timeframeId;
+      result[i] = slots()[i].timeframeId;
     }
     return result;
   }
@@ -126,56 +175,53 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
   [[nodiscard]] size_t numTimeframes() const noexcept { return _numSlots; }
 
  private:
-  using PolicyVariant = std::variant<TimeBarPolicy, TickBarPolicy, VolumeBarPolicy>;
-
-  struct SymbolState
+  FLOX_FORCE_INLINE void processSlot(size_t slotIdx, const TradeEvent& trade)
   {
-    Bar bar{};
-    InstrumentType instrument = InstrumentType::Spot;
-    bool initialized = false;
-  };
-
-  struct Slot
-  {
-    PolicyVariant policy{TimeBarPolicy(std::chrono::seconds(60))};
-    TimeframeId timeframeId{};
-    SymbolStateMap<SymbolState> state;
-  };
-
-  void processSlot(size_t slotIdx, const TradeEvent& trade)
-  {
-    auto& slot = _slots[slotIdx];
+    auto& slot = slots()[slotIdx];
     auto& state = slot.state[trade.trade.symbol];
 
-    std::visit(
-        [&](auto& policy)
-        {
-          if (!state.initialized) [[unlikely]]
-          {
-            policy.initBar(trade, state.bar);
-            state.instrument = trade.trade.instrument;
-            state.initialized = true;
-            return;
-          }
+    switch (slot.tag)
+    {
+      case PolicyTag::Time:
+        processPolicy(slot.storage.time, slot, slotIdx, trade, state);
+        break;
+      case PolicyTag::Tick:
+        processPolicy(slot.storage.tick, slot, slotIdx, trade, state);
+        break;
+      case PolicyTag::Volume:
+        processPolicy(slot.storage.volume, slot, slotIdx, trade, state);
+        break;
+    }
+  }
 
-          if (policy.shouldClose(trade, state.bar)) [[unlikely]]
-          {
-            emitBar(slotIdx, trade.trade.symbol, state);
-            policy.initBar(trade, state.bar);
-            state.instrument = trade.trade.instrument;
-            return;
-          }
+  template <typename Policy>
+  FLOX_FORCE_INLINE void processPolicy(Policy& policy, Slot& slot, size_t slotIdx,
+                                       const TradeEvent& trade, SymbolState& state)
+  {
+    if (!state.initialized) [[unlikely]]
+    {
+      policy.initBar(trade, state.bar);
+      state.instrument = trade.trade.instrument;
+      state.initialized = true;
+      return;
+    }
 
-          policy.update(trade, state.bar);
-        },
-        slot.policy);
+    if (policy.shouldClose(trade, state.bar)) [[unlikely]]
+    {
+      emitBar(slotIdx, trade.trade.symbol, state);
+      policy.initBar(trade, state.bar);
+      state.instrument = trade.trade.instrument;
+      return;
+    }
+
+    policy.update(trade, state.bar);
   }
 
   void emitBar(size_t slotIdx, SymbolId symbol, SymbolState& state)
   {
     state.bar.reason = BarCloseReason::Threshold;
 
-    const auto& slot = _slots[slotIdx];
+    const auto& slot = slots()[slotIdx];
     BarEvent ev{.symbol = symbol,
                 .instrument = state.instrument,
                 .barType = slot.timeframeId.type,
@@ -188,7 +234,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     }
   }
 
-  std::array<Slot, MaxTimeframes> _slots{};
+  std::unique_ptr<SlotsArray> _slots;
   size_t _numSlots = 0;
   BarBus* _bus;
 };
