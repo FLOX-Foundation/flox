@@ -71,7 +71,7 @@ public:
 | `Engine` | Top-level orchestrator |
 | `EventBus<T>` | Event delivery |
 | `IStrategy` | Trading strategies |
-| `CandleAggregator` | OHLCV aggregation |
+| `BarAggregator` | OHLCV bar aggregation |
 
 ---
 
@@ -120,7 +120,7 @@ public:
 
   virtual void onBookUpdate(const BookUpdateEvent& ev) {}
   virtual void onTrade(const TradeEvent& ev) {}
-  virtual void onCandle(const CandleEvent& ev) {}
+  virtual void onBar(const BarEvent& ev) {}
 };
 ```
 
@@ -289,7 +289,7 @@ struct EventDispatcher
 Specializations exist for:
 - `TradeEvent` → calls `onTrade()`
 - `BookUpdateEvent` → calls `onBookUpdate()`
-- `CandleEvent` → calls `onCandle()`
+- `BarEvent` → calls `onBar()`
 - `pool::Handle<T>` → unwraps handle and dispatches
 
 ---

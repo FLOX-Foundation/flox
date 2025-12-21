@@ -21,15 +21,14 @@ class TimeBarPolicy
  public:
   static constexpr BarType kBarType = BarType::Time;
 
-  explicit constexpr TimeBarPolicy(std::chrono::seconds interval) noexcept
-      : _interval(interval)
+  template <typename Rep, typename Period>
+  explicit constexpr TimeBarPolicy(std::chrono::duration<Rep, Period> interval) noexcept
+      : _interval(std::chrono::duration_cast<std::chrono::nanoseconds>(interval))
   {
   }
 
-  [[nodiscard]] constexpr uint32_t param() const noexcept
-  {
-    return static_cast<uint32_t>(_interval.count());
-  }
+  /// Returns interval in nanoseconds
+  [[nodiscard]] constexpr uint64_t param() const noexcept { return _interval.count(); }
 
   [[nodiscard]] bool shouldClose(const TradeEvent& trade, const Bar& bar) const noexcept
   {
@@ -68,12 +67,12 @@ class TimeBarPolicy
   [[nodiscard]] TimePoint alignToInterval(TimePoint tp) const noexcept
   {
     const auto epoch = tp.time_since_epoch();
-    const auto secs = std::chrono::duration_cast<std::chrono::seconds>(epoch);
-    const auto snapped = (secs.count() / _interval.count()) * _interval.count();
-    return TimePoint(std::chrono::seconds(snapped));
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(epoch);
+    const auto snapped = (ns.count() / _interval.count()) * _interval.count();
+    return TimePoint(std::chrono::nanoseconds(snapped));
   }
 
-  std::chrono::seconds _interval;
+  std::chrono::nanoseconds _interval;
 };
 
 static_assert(BarPolicy<TimeBarPolicy>, "TimeBarPolicy must satisfy BarPolicy concept");

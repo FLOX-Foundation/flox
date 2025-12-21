@@ -23,7 +23,8 @@ enum class BarType : uint8_t
   Tick,
   Volume,
   Renko,
-  Range
+  Range,
+  HeikinAshi
 };
 
 enum class BarCloseReason : uint8_t

@@ -25,6 +25,7 @@ Alternative bar types address this by normalizing **what** closes a bar rather t
 | **Volume** | Notional volume threshold | Volume-weighted analysis |
 | **Renko** | Price moves by brick size | Trend following, noise elimination |
 | **Range** | High-low exceeds threshold | Volatility-based analysis |
+| **Heikin-Ashi** | Fixed time interval (smoothed) | Trend clarity, noise reduction |
 
 ## Time Bars
 
@@ -147,6 +148,40 @@ RangeBarAggregator aggregator(RangeBarPolicy::fromDouble(5.0), &bus);
 
 **Example**: $5 range bars will close quickly during volatile periods (many bars) and slowly during consolidation (fewer bars).
 
+## Heikin-Ashi Bars
+
+```cpp
+HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(std::chrono::seconds(60)), &bus);
+```
+
+**How it works**: Uses smoothed OHLC calculations based on previous bar:
+- HA_Close = (Open + High + Low + Close) / 4
+- HA_Open = (prev_HA_Open + prev_HA_Close) / 2
+- HA_High = max(High, HA_Open, HA_Close)
+- HA_Low = min(Low, HA_Open, HA_Close)
+
+**Pros**:
+- Smoother trends, easier to identify
+- Reduces noise from individual bars
+- Bullish bars always have close > open
+- Great for visual trend analysis
+
+**Cons**:
+- Loses exact price information
+- Not suitable for precise entries
+- Lags behind actual price
+- Requires previous bar for calculation
+
+**Use when**:
+- Trend following strategies
+- Visual trend confirmation
+- Reducing false signals in choppy markets
+- Swing trading with trend filters
+
+**Unique property**: In a strong uptrend, Heikin-Ashi bars will show no lower wicks (or very small ones). Conversely, strong downtrends show no upper wicks. This makes trend strength immediately visible.
+
+**Multi-symbol support**: The Heikin-Ashi aggregator maintains independent state per symbol, so a single aggregator instance can correctly handle multiple symbols simultaneously.
+
 ## Choosing the Right Bar Type
 
 ### Decision Framework
@@ -173,12 +208,12 @@ What matters most for your strategy?
 | Strategy | Recommended Bar Type |
 |----------|---------------------|
 | Mean reversion | Time or Volume |
-| Momentum | Time or Renko |
+| Momentum | Time, Renko, or Heikin-Ashi |
 | Scalping/HFT | Tick |
-| Trend following | Renko or Time |
+| Trend following | Renko, Heikin-Ashi, or Time |
 | Volatility trading | Range |
 | Statistical arb | Tick or Volume |
-| Swing trading | Time (H1, D1) |
+| Swing trading | Time (H1, D1) or Heikin-Ashi |
 
 ### By Market Condition
 
@@ -188,8 +223,9 @@ What matters most for your strategy?
 | Low liquidity | Volume |
 | 24/7 markets | Tick or Volume |
 | Session-based | Time |
-| Trending | Renko |
+| Trending | Renko or Heikin-Ashi |
 | Ranging | Time or Range |
+| Noisy markets | Heikin-Ashi |
 
 ## Multi-Timeframe with Mixed Types
 
@@ -212,10 +248,10 @@ aggregator.addVolumeInterval(1000000.0);                 // Volume for flow
 
 All bar types have similar computational cost:
 
-| Operation | Time | Tick | Volume | Renko | Range |
-|-----------|------|------|--------|-------|-------|
-| shouldClose() | O(1) | O(1) | O(1) | O(1) | O(1) |
-| update() | O(1) | O(1) | O(1) | O(1) | O(1) |
+| Operation | Time | Tick | Volume | Renko | Range | Heikin-Ashi |
+|-----------|------|------|--------|-------|-------|-------------|
+| shouldClose() | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) |
+| update() | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) |
 
 The main difference is **bar frequency**, not computational overhead.
 
@@ -226,8 +262,9 @@ The main difference is **bar frequency**, not computational overhead.
 - **Volume bars**: Consistent economic significance
 - **Renko bars**: Noise-free trend visualization
 - **Range bars**: Volatility-normalized
+- **Heikin-Ashi bars**: Smoothed trends, noise reduction
 
-Choose based on what your strategy needs to hold constant: **time**, **activity**, **volume**, **price movement**, or **volatility**.
+Choose based on what your strategy needs to hold constant: **time**, **activity**, **volume**, **price movement**, **volatility**, or **trend clarity**.
 
 ## See Also
 

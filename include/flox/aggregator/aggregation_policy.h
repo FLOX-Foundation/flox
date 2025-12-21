@@ -24,7 +24,7 @@ concept BarPolicy = requires(T& policy, const TradeEvent& trade, Bar& bar, TimeP
   { policy.update(trade, bar) } noexcept -> std::same_as<void>;
   { policy.initBar(trade, bar) } noexcept -> std::same_as<void>;
   { T::kBarType } -> std::convertible_to<BarType>;
-  { policy.param() } noexcept -> std::convertible_to<uint32_t>;
+  { policy.param() } noexcept -> std::convertible_to<uint64_t>;
 };
 
 // Common OHLCV update - free function, inlined

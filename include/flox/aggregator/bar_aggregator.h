@@ -13,6 +13,7 @@
 #include "flox/aggregator/bar.h"
 #include "flox/aggregator/bus/bar_bus.h"
 #include "flox/aggregator/events/bar_event.h"
+#include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
 #include "flox/aggregator/policies/range_bar_policy.h"
 #include "flox/aggregator/policies/renko_bar_policy.h"
 #include "flox/aggregator/policies/tick_bar_policy.h"
@@ -116,5 +117,6 @@ using TickBarAggregator = BarAggregator<TickBarPolicy>;
 using VolumeBarAggregator = BarAggregator<VolumeBarPolicy>;
 using RenkoBarAggregator = BarAggregator<RenkoBarPolicy>;
 using RangeBarAggregator = BarAggregator<RangeBarPolicy>;
+using HeikinAshiBarAggregator = BarAggregator<HeikinAshiBarPolicy>;
 
 }  // namespace flox
