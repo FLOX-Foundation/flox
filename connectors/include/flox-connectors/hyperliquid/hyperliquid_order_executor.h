@@ -15,8 +15,10 @@
 #include <flox/net/abstract_transport.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace flox
 {
@@ -34,8 +36,7 @@ class HyperliquidOrderExecutor
   void replaceOrder(OrderId oldId, const Order& n);
 
  private:
-  void ensureAssets();
-
+  void loadAssetIds();
   int assetIdFor(std::string_view coin);
 
   std::string _url;
@@ -48,6 +49,11 @@ class HyperliquidOrderExecutor
   OrderTracker* _orderTracker;
   std::shared_ptr<ILogger> _logger;
   std::unique_ptr<ITransport> _transport;
+
+  // Thread-safe asset ID cache
+  mutable std::mutex _assetMutex;
+  std::unordered_map<std::string, int> _assetIds;
+  bool _assetsLoaded{false};
 };
 
 }  // namespace flox

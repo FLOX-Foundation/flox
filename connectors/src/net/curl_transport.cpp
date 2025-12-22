@@ -36,13 +36,30 @@ void CurlTransport::post(std::string_view url, std::string_view body,
                          MoveOnlyFunction<void(std::string_view)> onError)
 {
   CURL* h = _pool.acquire();
+  if (!h)
+  {
+    if (onError)
+    {
+      onError("Connection pool exhausted");
+    }
+    return;
+  }
   curl_easy_reset(h);
 
-  curl_easy_setopt(h, CURLOPT_URL, std::string(url).c_str());
-  curl_easy_setopt(h, CURLOPT_POST, 1L);
-  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body.data());
-  curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, body.size());
+  // Copy string_views to ensure lifetime
+  std::string urlStr(url);
+  std::string bodyStr(body);
 
+  curl_easy_setopt(h, CURLOPT_URL, urlStr.c_str());
+  curl_easy_setopt(h, CURLOPT_POST, 1L);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, bodyStr.c_str());
+  curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, static_cast<long>(bodyStr.size()));
+
+  // Timeouts
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 10L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 30L);
+
+  // Connection reuse
   curl_easy_setopt(h, CURLOPT_FORBID_REUSE, 0L);
   curl_easy_setopt(h, CURLOPT_FRESH_CONNECT, 0L);
   curl_easy_setopt(h, CURLOPT_TCP_KEEPALIVE, 1L);

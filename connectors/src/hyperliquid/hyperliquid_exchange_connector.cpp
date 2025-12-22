@@ -118,16 +118,23 @@ void HyperliquidExchangeConnector::start()
 void HyperliquidExchangeConnector::pingLoop()
 {
   // Initial delay to let connection establish before starting ping loop
-  std::this_thread::sleep_for(std::chrono::seconds(5));
+  for (int i = 0; i < 50 && _running.load(); ++i)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
 
   while (_running.load())
   {
-    if (_running.load() && _wsClient)
+    if (_wsClient)
     {
       _wsClient->send(R"({"method":"ping"})");
     }
     // Send heartbeat every 30 seconds (Hyperliquid timeout is 60 seconds)
-    std::this_thread::sleep_for(std::chrono::seconds(30));
+    // Sleep in small intervals to allow quick shutdown
+    for (int i = 0; i < 300 && _running.load(); ++i)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 }
 

@@ -16,7 +16,6 @@
 #include <flox/log/log.h>
 
 #include <cstdio>
-#include <exception>
 #include <memory>
 #include <string>
 
@@ -39,7 +38,7 @@ void BybitOrderExecutor::submitOrder(const Order& order)
   if (!info.has_value())
   {
     FLOX_LOG_ERROR("[Bybit] No symbol info registered for id " << order.symbol);
-    std::terminate();
+    return;
   }
 
   std::string body;

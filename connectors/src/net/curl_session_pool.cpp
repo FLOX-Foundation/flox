@@ -14,7 +14,7 @@
 namespace flox
 {
 
-CurlSessionPool::CurlSessionPool(std::size_t size)
+CurlSessionPool::CurlSessionPool(std::size_t size, std::size_t maxSize) : _maxSize(maxSize)
 {
   curl_global_init(CURL_GLOBAL_ALL);
   _pool.reserve(size);
@@ -26,11 +26,13 @@ CurlSessionPool::CurlSessionPool(std::size_t size)
       throw std::runtime_error("curl_easy_init failed");
     }
     _pool.push_back(h);
+    ++_totalCreated;
   }
 }
 
 CurlSessionPool::~CurlSessionPool()
 {
+  std::lock_guard lock(_mutex);
   for (auto* h : _pool)
   {
     curl_easy_cleanup(h);
@@ -43,7 +45,16 @@ CURL* CurlSessionPool::acquire()
   std::lock_guard lock(_mutex);
   if (_pool.empty())
   {
-    return curl_easy_init();
+    if (_totalCreated >= _maxSize)
+    {
+      return nullptr;  // Pool exhausted
+    }
+    CURL* h = curl_easy_init();
+    if (h)
+    {
+      ++_totalCreated;
+    }
+    return h;
   }
   CURL* h = _pool.back();
   _pool.pop_back();
@@ -57,7 +68,15 @@ void CurlSessionPool::release(CURL* h)
     return;
   }
   std::lock_guard lock(_mutex);
-  _pool.push_back(h);
+  if (_pool.size() < _maxSize)
+  {
+    _pool.push_back(h);
+  }
+  else
+  {
+    curl_easy_cleanup(h);
+    --_totalCreated;
+  }
 }
 
 }  // namespace flox

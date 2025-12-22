@@ -8,9 +8,10 @@
 
 #include <chrono>
 #include <cstdio>
+#include <iomanip>
 #include <random>
+#include <sstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace flox
@@ -18,9 +19,6 @@ namespace flox
 
 namespace
 {
-
-static std::unordered_map<std::string, int> gAsset;
-static bool gLoaded = false;
 
 inline int64_t nowMs()
 {
@@ -45,50 +43,7 @@ std::string tidy(double v, int prec)
   return s;
 }
 
-void loadAssetIds(ITransport* tx, ILogger* log)
-{
-  if (gLoaded)
-  {
-    return;
-  }
-  gLoaded = true;
-
-  static constexpr char BODY[] = R"({"type":"meta"})";
-  std::vector<std::pair<std::string_view, std::string_view>> hdr = {
-      {"Content-Type", "application/json"}};
-
-  tx->post(
-      "https://api.hyperliquid.xyz/info", BODY, hdr,
-      [log](std::string_view resp)
-      {
-        simdjson::ondemand::parser p;
-        simdjson::padded_string ps(resp);
-        auto doc = p.iterate(ps);
-        auto univ = doc["universe"].get_array();
-        if (univ.error())
-        {
-          log->warn("[HL] meta parse error");
-          return;
-        }
-        size_t idx = 0;
-        for (auto c : univ.value())
-        {
-          auto name = c["name"].get_string();
-          if (!name.error())
-          {
-            gAsset[std::string(name.value_unsafe())] = static_cast<int>(idx);
-          }
-          ++idx;
-        }
-        log->info("[HL] asset map " + std::to_string(gAsset.size()));
-      },
-      [log](std::string_view e)
-      {
-        log->warn(std::string("[HL] meta fetch err ") + std::string(e));
-      });
-}
-
-static std::string genCloid128()
+std::string genCloid128()
 {
   std::random_device rd;
   std::uniform_int_distribution<uint64_t> dist;
@@ -116,13 +71,62 @@ HyperliquidOrderExecutor::HyperliquidOrderExecutor(
       _vaultAddress(vaultAddress ? std::make_optional(*vaultAddress) : std::nullopt),
       _mainnet(mainnet)
 {
-  loadAssetIds(_transport.get(), _logger.get());
+  loadAssetIds();
+}
+
+void HyperliquidOrderExecutor::loadAssetIds()
+{
+  {
+    std::lock_guard lock(_assetMutex);
+    if (_assetsLoaded)
+    {
+      return;
+    }
+    _assetsLoaded = true;
+  }
+
+  static constexpr char BODY[] = R"({"type":"meta"})";
+  std::vector<std::pair<std::string_view, std::string_view>> hdr = {
+      {"Content-Type", "application/json"}};
+
+  _transport->post(
+      "https://api.hyperliquid.xyz/info", BODY, hdr,
+      [this](std::string_view resp)
+      {
+        simdjson::ondemand::parser p;
+        simdjson::padded_string ps(resp);
+        auto doc = p.iterate(ps);
+        auto univ = doc["universe"].get_array();
+        if (univ.error())
+        {
+          _logger->warn("[HL] meta parse error");
+          return;
+        }
+
+        std::lock_guard lock(_assetMutex);
+        size_t idx = 0;
+        for (auto c : univ.value())
+        {
+          auto name = c["name"].get_string();
+          if (!name.error())
+          {
+            _assetIds[std::string(name.value_unsafe())] = static_cast<int>(idx);
+          }
+          ++idx;
+        }
+        _logger->info("[HL] asset map " + std::to_string(_assetIds.size()));
+      },
+      [this](std::string_view e)
+      {
+        _logger->warn(std::string("[HL] meta fetch err ") + std::string(e));
+      });
 }
 
 int HyperliquidOrderExecutor::assetIdFor(std::string_view coin)
 {
-  auto it = gAsset.find(std::string(coin));
-  if (it == gAsset.end())
+  std::lock_guard lock(_assetMutex);
+  auto it = _assetIds.find(std::string(coin));
+  if (it == _assetIds.end())
   {
     return -1;
   }

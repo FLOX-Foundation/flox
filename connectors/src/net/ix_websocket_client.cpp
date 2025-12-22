@@ -7,11 +7,9 @@
  * license information.
  */
 
-#include <flox/log/log.h>
+#include "flox-connectors/net/ix_websocket_client.h"
 
 #include <string>
-
-#include "flox-connectors/net/ix_websocket_client.h"
 
 namespace flox
 {
@@ -60,7 +58,10 @@ void IxWebSocketClient::start()
 
 void IxWebSocketClient::stop()
 {
-  _running = false;
+  if (!_running.exchange(false))
+  {
+    return;  // Already stopped
+  }
   _ws.stop();
 }
 
@@ -113,8 +114,7 @@ void IxWebSocketClient::run()
               }
               break;
             case ix::WebSocketMessageType::Error:
-              FLOX_LOG_ERROR("WebSocket error: " << msg->errorInfo.reason);
-              _logger->warn("WebSocket error: " + msg->errorInfo.reason);
+              _logger->error("WebSocket error: " + msg->errorInfo.reason);
               break;
 
             default:
@@ -124,16 +124,23 @@ void IxWebSocketClient::run()
 
     _ws.start();
 
-    while (_ws.getReadyState() == ix::ReadyState::Open && _running)
+    // Wait for connection to establish or fail
+    while (_running)
     {
+      auto state = _ws.getReadyState();
+      if (state == ix::ReadyState::Closed || state == ix::ReadyState::Closing)
+      {
+        break;
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    FLOX_LOG_WARN("WebSocket disconnected, retrying in " << std::to_string(_reconnectDelayMs)
-                                                         << "ms...");
-    _logger->warn("WebSocket disconnected, retrying in " + std::to_string(_reconnectDelayMs) +
-                  "ms...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(_reconnectDelayMs));
+    if (_running)
+    {
+      _logger->warn("WebSocket disconnected, retrying in " + std::to_string(_reconnectDelayMs) +
+                    "ms...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(_reconnectDelayMs));
+    }
   }
 }
 

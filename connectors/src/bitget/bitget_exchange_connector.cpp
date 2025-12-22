@@ -45,7 +45,7 @@ static std::string makeLoginPayload(std::string_view apiKey, std::string_view ap
   char hex[EVP_MAX_MD_SIZE * 2 + 1];
   for (unsigned i = 0; i < len; ++i)
   {
-    std::sprintf(hex + i * 2, "%02x", hash[i]);
+    std::snprintf(hex + i * 2, 3, "%02x", hash[i]);
   }
   hex[len * 2] = '\0';
 

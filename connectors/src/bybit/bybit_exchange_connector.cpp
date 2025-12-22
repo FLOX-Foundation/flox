@@ -120,7 +120,7 @@ static std::string makePrivateAuthPayload(std::string_view apiKey, std::string_v
   char hex[EVP_MAX_MD_SIZE * 2 + 1];
   for (unsigned i = 0; i < hashLen; ++i)
   {
-    std::sprintf(hex + i * 2, "%02x", hash[i]);
+    std::snprintf(hex + i * 2, 3, "%02x", hash[i]);
   }
   hex[hashLen * 2] = '\0';
 
