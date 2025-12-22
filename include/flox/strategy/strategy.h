@@ -168,6 +168,92 @@ class Strategy : public IStrategy
     emit(Signal::modify(orderId, newPrice, newQty));
   }
 
+  // Stop orders
+  OrderId emitStopMarket(SymbolId symbol, Side side, Price triggerPrice, Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::stopMarket(symbol, side, triggerPrice, qty, id));
+    return id;
+  }
+
+  OrderId emitStopLimit(SymbolId symbol, Side side, Price triggerPrice, Price limitPrice,
+                        Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::stopLimit(symbol, side, triggerPrice, limitPrice, qty, id));
+    return id;
+  }
+
+  // Take profit orders
+  OrderId emitTakeProfitMarket(SymbolId symbol, Side side, Price triggerPrice, Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::takeProfitMarket(symbol, side, triggerPrice, qty, id));
+    return id;
+  }
+
+  OrderId emitTakeProfitLimit(SymbolId symbol, Side side, Price triggerPrice, Price limitPrice,
+                              Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::takeProfitLimit(symbol, side, triggerPrice, limitPrice, qty, id));
+    return id;
+  }
+
+  // Trailing stop
+  OrderId emitTrailingStop(SymbolId symbol, Side side, Price offset, Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::trailingStop(symbol, side, offset, qty, id));
+    return id;
+  }
+
+  OrderId emitTrailingStopPercent(SymbolId symbol, Side side, int32_t callbackBps, Quantity qty)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::trailingStopPercent(symbol, side, callbackBps, qty, id));
+    return id;
+  }
+
+  // Close position (reduce-only market order)
+  OrderId emitClosePosition(SymbolId symbol)
+  {
+    Quantity pos = position(symbol);
+    if (pos.raw() == 0)
+    {
+      return 0;
+    }
+
+    OrderId id = nextOrderId();
+    Side side = (pos.raw() > 0) ? Side::SELL : Side::BUY;
+    Quantity absQty = Quantity::fromRaw(pos.raw() > 0 ? pos.raw() : -pos.raw());
+
+    auto signal = Signal::marketSell(symbol, absQty, id);
+    signal.side = side;
+    signal.reduceOnly = true;
+    emit(signal);
+    return id;
+  }
+
+  // Limit orders with TimeInForce
+  OrderId emitLimitBuy(SymbolId symbol, Price price, Quantity qty, TimeInForce tif)
+  {
+    OrderId id = nextOrderId();
+    auto signal = Signal::limitBuy(symbol, price, qty, id);
+    signal.timeInForce = tif;
+    emit(signal);
+    return id;
+  }
+
+  OrderId emitLimitSell(SymbolId symbol, Price price, Quantity qty, TimeInForce tif)
+  {
+    OrderId id = nextOrderId();
+    auto signal = Signal::limitSell(symbol, price, qty, id);
+    signal.timeInForce = tif;
+    emit(signal);
+    return id;
+  }
+
  private:
   OrderId nextOrderId() noexcept
   {

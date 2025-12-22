@@ -60,6 +60,7 @@ add_flox_test(test_cex_coordination)
 if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest)
   add_flox_test(test_interactive_runner)
+  add_flox_test(test_advanced_orders)
 endif()
 
 if(FLOX_ENABLE_CPU_AFFINITY)
