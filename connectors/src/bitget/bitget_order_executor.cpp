@@ -99,7 +99,7 @@ void BitgetOrderExecutor::submitOrder(const Order& order)
 
 void BitgetOrderExecutor::cancelOrder(OrderId id)
 {
-  const auto* st = _orderTracker->get(id);
+  auto st = _orderTracker->get(id);
   if (!st)
   {
     FLOX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
@@ -158,7 +158,7 @@ void BitgetOrderExecutor::cancelOrder(OrderId id)
 
 void BitgetOrderExecutor::replaceOrder(OrderId oldId, const Order& newOrd)
 {
-  const auto* st = _orderTracker->get(oldId);
+  auto st = _orderTracker->get(oldId);
   if (!st)
   {
     FLOX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);

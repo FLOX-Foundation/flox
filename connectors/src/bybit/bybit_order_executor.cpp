@@ -88,7 +88,7 @@ void BybitOrderExecutor::submitOrder(const Order& order)
 
 void BybitOrderExecutor::cancelOrder(OrderId orderId)
 {
-  const auto* state = _orderTracker->get(orderId);
+  auto state = _orderTracker->get(orderId);
   if (!state)
   {
     FLOX_LOG_ERROR("[BybitOrderExecutor] Cannot cancel, unknown orderId=" << orderId);
@@ -150,7 +150,7 @@ void BybitOrderExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
     return;
   }
 
-  const auto* state = _orderTracker->get(oldOrderId);
+  auto state = _orderTracker->get(oldOrderId);
   if (!state)
   {
     FLOX_LOG_ERROR("[BybitOrderExecutor] Cannot replace, unknown orderId=" << oldOrderId);
