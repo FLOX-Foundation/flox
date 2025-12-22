@@ -68,13 +68,24 @@ BinaryLogWriter& BinaryLogWriter::operator=(BinaryLogWriter&& other) noexcept
   return *this;
 }
 
-std::filesystem::path BinaryLogWriter::generateSegmentPath() const
+std::filesystem::path BinaryLogWriter::generateSegmentPath()
 {
-  if (!_config.output_filename.empty())
+  ++_segment_number;
+
+  // First segment: use output_filename if provided
+  if (_segment_number == 1 && !_config.output_filename.empty())
   {
     return _config.output_dir / _config.output_filename;
   }
 
+  // Use rotation callback if provided
+  if (_config.rotation_callback)
+  {
+    return _config.rotation_callback(_config.rotation_user_data, _config.output_dir,
+                                     _segment_number);
+  }
+
+  // Default: timestamp-based naming
   using namespace std::chrono;
   auto now = system_clock::now();
   auto ns = duration_cast<nanoseconds>(now.time_since_epoch()).count();
