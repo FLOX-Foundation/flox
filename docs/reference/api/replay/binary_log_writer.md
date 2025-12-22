@@ -3,9 +3,15 @@
 `BinaryLogWriter` writes market data to binary log segments. It handles segment rotation, compression, indexing, and CRC checksums.
 
 ```cpp
+// Callback for custom segment naming on rotation
+using RotationCallback = std::filesystem::path (*)(
+    void* user_data,
+    const std::filesystem::path& output_dir,
+    uint32_t segment_number);
+
 struct WriterConfig {
   std::filesystem::path output_dir;
-  std::string output_filename;              // Optional: override generated name
+  std::string output_filename;              // Optional: first segment name
   uint64_t max_segment_bytes{256ull << 20}; // 256 MB default
   uint64_t buffer_size{64ull << 10};        // 64 KB buffer
   uint8_t exchange_id{0};
@@ -13,6 +19,8 @@ struct WriterConfig {
   bool create_index{true};
   uint16_t index_interval{1000};            // Events per index entry
   CompressionType compression{CompressionType::None};
+  RotationCallback rotation_callback{nullptr};  // Custom naming on rotation
+  void* rotation_user_data{nullptr};            // User data for callback
 };
 
 class BinaryLogWriter {
@@ -44,7 +52,7 @@ public:
 | Field | Default | Description |
 |-------|---------|-------------|
 | `output_dir` | - | Directory for segment files. |
-| `output_filename` | - | Optional fixed filename (disables rotation). |
+| `output_filename` | - | Optional filename for first segment. |
 | `max_segment_bytes` | 256 MB | Maximum segment size before rotation. |
 | `buffer_size` | 64 KB | Internal write buffer size. |
 | `exchange_id` | 0 | Exchange identifier in segment header. |
@@ -52,6 +60,8 @@ public:
 | `create_index` | true | Build seek index in segments. |
 | `index_interval` | 1000 | Events between index entries. |
 | `compression` | None | Compression type (`None` or `LZ4`). |
+| `rotation_callback` | nullptr | Custom callback for segment naming on rotation. |
+| `rotation_user_data` | nullptr | User data passed to rotation callback. |
 
 ## Methods
 
@@ -106,6 +116,47 @@ writer.flush();
 // Close cleanly
 writer.close();
 ```
+
+## Custom Rotation Callback
+
+By default, rotated segments use timestamp-based names. To customize naming:
+
+```cpp
+// Context for the callback
+struct MyContext {
+  std::string prefix;
+  int sequence{1};
+};
+
+// Callback function (must be a plain function, not a lambda with captures)
+std::filesystem::path my_rotation_cb(
+    void* user_data,
+    const std::filesystem::path& output_dir,
+    uint32_t segment_number)
+{
+  auto* ctx = static_cast<MyContext*>(user_data);
+  std::ostringstream fname;
+  fname << ctx->prefix << "_" << std::setfill('0') << std::setw(3)
+        << (ctx->sequence + segment_number - 1) << ".floxlog";
+  return output_dir / fname.str();
+}
+
+// Usage
+MyContext ctx{"2025-01-15", 1};
+
+replay::WriterConfig config{
+  .output_dir = "/data/market",
+  .output_filename = "2025-01-15_001.floxlog",  // First segment
+  .max_segment_bytes = 256ull << 20,
+  .rotation_callback = my_rotation_cb,
+  .rotation_user_data = &ctx,  // Must outlive writer!
+};
+
+replay::BinaryLogWriter writer(config);
+// When segment rotates, callback generates "2025-01-15_002.floxlog", etc.
+```
+
+**Important:** The `rotation_user_data` pointer must remain valid for the lifetime of the writer.
 
 ## Notes
 

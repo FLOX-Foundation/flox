@@ -21,10 +21,14 @@
 namespace flox::replay
 {
 
+using RotationCallback = std::filesystem::path (*)(void* user_data,
+                                                   const std::filesystem::path& output_dir,
+                                                   uint32_t segment_number);
+
 struct WriterConfig
 {
   std::filesystem::path output_dir;
-  std::string output_filename;  // If set, use this filename instead of generating one
+  std::string output_filename;  // If set, use this filename for first segment
   uint64_t max_segment_bytes{256ull << 20};
   uint64_t buffer_size{64ull << 10};
   uint8_t exchange_id{0};
@@ -32,6 +36,11 @@ struct WriterConfig
   bool create_index{true};
   uint16_t index_interval{kDefaultIndexInterval};
   CompressionType compression{CompressionType::None};
+
+  /// Optional callback for custom segment naming on rotation.
+  /// If not set, rotated segments use timestamp-based names.
+  RotationCallback rotation_callback{nullptr};
+  void* rotation_user_data{nullptr};
 };
 
 struct WriterStats
@@ -76,7 +85,7 @@ class BinaryLogWriter
   void updateSegmentHeader();
   void writeIndex();
   void closeInternal();
-  std::filesystem::path generateSegmentPath() const;
+  std::filesystem::path generateSegmentPath();
 
   bool isCompressed() const { return _config.compression != CompressionType::None; }
 
@@ -89,6 +98,7 @@ class BinaryLogWriter
 
   SegmentHeader _segment_header{};
   uint64_t _segment_bytes{0};
+  uint32_t _segment_number{0};  // current segment number (1-based after first open)
   bool _header_written{false};
 
   std::vector<IndexEntry> _index_entries;
