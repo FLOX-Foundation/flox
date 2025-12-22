@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/common.h"
 #include "flox/engine/abstract_subscriber.h"
 #include "flox/execution/order.h"
 
@@ -35,6 +36,11 @@ class IOrderExecutionListener : public ISubscriber
   virtual void onOrderExpired(const Order&) {}
   virtual void onOrderRejected(const Order&, const std::string&) {}
   virtual void onOrderReplaced(const Order&, const Order&) {}
+
+  // Conditional order callbacks
+  virtual void onOrderPendingTrigger(const Order&) {}
+  virtual void onOrderTriggered(const Order&) {}
+  virtual void onTrailingStopUpdated(const Order&, Price /*newTriggerPrice*/) {}
 };
 
 }  // namespace flox

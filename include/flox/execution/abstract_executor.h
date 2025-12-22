@@ -10,10 +10,17 @@
 #pragma once
 
 #include "flox/engine/abstract_subsystem.h"
+#include "flox/execution/exchange_capabilities.h"
 #include "flox/execution/order.h"
 
 namespace flox
 {
+
+struct OCOParams
+{
+  Order order1;
+  Order order2;
+};
 
 class IOrderExecutor : public ISubsystem
 {
@@ -24,6 +31,12 @@ class IOrderExecutor : public ISubsystem
   virtual void cancelOrder(OrderId orderId) {}
   virtual void cancelAllOrders(SymbolId symbol) {}
   virtual void replaceOrder(OrderId oldOrderId, const Order& newOrder) {}
+
+  // OCO: one-cancels-other
+  virtual void submitOCO(const OCOParams& params) {}
+
+  // Capability discovery
+  virtual ExchangeCapabilities capabilities() const { return ExchangeCapabilities::simulated(); }
 };
 
 }  // namespace flox

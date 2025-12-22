@@ -33,11 +33,50 @@ enum class OptionType {
 Represents the execution style of an order.
 
 ```cpp
-enum class OrderType {
-  LIMIT,   // Limit order
-  MARKET   // Market order
+enum class OrderType : uint8_t {
+  LIMIT = 0,              // Limit order
+  MARKET = 1,             // Market order
+  STOP_MARKET = 2,        // Stop market (triggers market order when price crosses trigger)
+  STOP_LIMIT = 3,         // Stop limit (triggers limit order when price crosses trigger)
+  TAKE_PROFIT_MARKET = 4, // Take profit market (triggers market order at profit target)
+  TAKE_PROFIT_LIMIT = 5,  // Take profit limit (triggers limit order at profit target)
+  TRAILING_STOP = 6,      // Trailing stop (trigger follows price movement)
+  ICEBERG = 7,            // Iceberg (shows only partial quantity)
 };
 ```
+
+| Type | Description |
+|------|-------------|
+| `LIMIT` | Standard limit order, placed in the order book |
+| `MARKET` | Executes immediately at best available price |
+| `STOP_MARKET` | Market order triggered when price crosses trigger price |
+| `STOP_LIMIT` | Limit order triggered when price crosses trigger price |
+| `TAKE_PROFIT_MARKET` | Market order triggered at profit target |
+| `TAKE_PROFIT_LIMIT` | Limit order triggered at profit target |
+| `TRAILING_STOP` | Stop that follows favorable price movement |
+| `ICEBERG` | Shows only visible portion of total quantity |
+
+### `TimeInForce`
+
+Specifies how long an order remains active.
+
+```cpp
+enum class TimeInForce : uint8_t {
+  GTC = 0,       // Good Till Cancel (default)
+  IOC = 1,       // Immediate Or Cancel
+  FOK = 2,       // Fill Or Kill
+  GTD = 3,       // Good Till Date
+  POST_ONLY = 4, // Maker only (rejected if would take)
+};
+```
+
+| Policy | Description |
+|--------|-------------|
+| `GTC` | Remains active until filled or explicitly canceled |
+| `IOC` | Fills immediately (partially or fully), cancels remainder |
+| `FOK` | Fills completely or rejects entirely |
+| `GTD` | Active until specified expiration time |
+| `POST_ONLY` | Rejected if would immediately match (maker only) |
 
 ### `Side`
 

@@ -26,7 +26,11 @@ enum class OrderEventStatus
   CANCELED,
   EXPIRED,
   REJECTED,
-  REPLACED
+  REPLACED,
+  // Conditional order statuses
+  PENDING_TRIGGER,
+  TRIGGERED,
+  TRAILING_UPDATED
 };
 
 struct OrderEvent
@@ -37,6 +41,10 @@ struct OrderEvent
   Order newOrder{};
   Quantity fillQty{0};
   std::string rejectReason;
+
+  // For fills and trailing updates
+  Price fillPrice{};
+  Price newTrailingPrice{};
 
   uint64_t tickSequence{0};  // internal, set by bus
 
@@ -76,6 +84,15 @@ struct OrderEvent
         break;
       case OrderEventStatus::REPLACED:
         listener.onOrderReplaced(order, newOrder);
+        break;
+      case OrderEventStatus::PENDING_TRIGGER:
+        listener.onOrderPendingTrigger(order);
+        break;
+      case OrderEventStatus::TRIGGERED:
+        listener.onOrderTriggered(order);
+        break;
+      case OrderEventStatus::TRAILING_UPDATED:
+        listener.onTrailingStopUpdated(order, newTrailingPrice);
         break;
     }
   }

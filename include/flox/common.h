@@ -31,10 +31,25 @@ enum class OptionType
   PUT
 };
 
-enum class OrderType
+enum class OrderType : uint8_t
 {
-  LIMIT,
-  MARKET
+  LIMIT = 0,
+  MARKET = 1,
+  STOP_MARKET = 2,
+  STOP_LIMIT = 3,
+  TAKE_PROFIT_MARKET = 4,
+  TAKE_PROFIT_LIMIT = 5,
+  TRAILING_STOP = 6,
+  ICEBERG = 7,
+};
+
+enum class TimeInForce : uint8_t
+{
+  GTC = 0,        // Good Till Cancel (default)
+  IOC = 1,        // Immediate Or Cancel
+  FOK = 2,        // Fill Or Kill
+  GTD = 3,        // Good Till Date
+  POST_ONLY = 4,  // Maker only
 };
 
 enum class Side
