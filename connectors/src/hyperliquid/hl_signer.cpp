@@ -1,56 +1,107 @@
 #include "flox-connectors/hyperliquid/hl_signer.h"
 
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
 #include <cstring>
 #include <optional>
 #include <string>
 
 #include <flox/log/log.h>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+
+using socket_t = SOCKET;
+constexpr socket_t INVALID_SOCK = INVALID_SOCKET;
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+using socket_t = int;
+constexpr socket_t INVALID_SOCK = -1;
+#endif
+
 namespace flox::hl
 {
 
-static bool send_all(int fd, const void* p, size_t n)
+namespace
+{
+
+#ifdef _WIN32
+struct WinsockInit
+{
+  WinsockInit()
+  {
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+  }
+  ~WinsockInit() { WSACleanup(); }
+};
+
+static WinsockInit& ensureWinsock()
+{
+  static WinsockInit init;
+  return init;
+}
+
+inline void close_socket(socket_t s) { ::closesocket(s); }
+#else
+inline void close_socket(socket_t s) { ::close(s); }
+#endif
+
+static bool send_all(socket_t fd, const void* p, size_t n)
 {
   const char* c = static_cast<const char*>(p);
   while (n)
   {
+#ifdef _WIN32
+    int w = ::send(fd, c, static_cast<int>(n), 0);
+#else
     ssize_t w = ::send(fd, c, n, MSG_NOSIGNAL);
+#endif
     if (w <= 0)
     {
       return false;
     }
     c += w;
-    n -= size_t(w);
+    n -= static_cast<size_t>(w);
   }
   return true;
 }
 
-static bool recv_all(int fd, void* p, size_t n)
+static bool recv_all(socket_t fd, void* p, size_t n)
 {
   char* c = static_cast<char*>(p);
   while (n)
   {
+#ifdef _WIN32
+    int r = ::recv(fd, c, static_cast<int>(n), 0);
+#else
     ssize_t r = ::recv(fd, c, n, 0);
+#endif
     if (r <= 0)
     {
       return false;
     }
     c += r;
-    n -= size_t(r);
+    n -= static_cast<size_t>(r);
   }
   return true;
 }
 
-static int connect_unix(const char* path, int timeout_ms = 50)
+#ifndef _WIN32
+static socket_t connect_unix(const char* path, int timeout_ms = 50)
 {
-  int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  socket_t fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd < 0)
   {
-    return -1;
+    return INVALID_SOCK;
   }
   sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
@@ -61,11 +112,50 @@ static int connect_unix(const char* path, int timeout_ms = 50)
   ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
   if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
   {
-    ::close(fd);
-    return -1;
+    close_socket(fd);
+    return INVALID_SOCK;
   }
   return fd;
 }
+#endif
+
+// Connect via TCP to localhost:port (cross-platform fallback)
+static socket_t connect_tcp(uint16_t port, int timeout_ms = 50)
+{
+#ifdef _WIN32
+  ensureWinsock();
+#endif
+
+  socket_t fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd == INVALID_SOCK)
+  {
+    return INVALID_SOCK;
+  }
+
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+#ifdef _WIN32
+  DWORD tv = static_cast<DWORD>(timeout_ms);
+  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+  ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+#else
+  timeval tv{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
+  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+
+  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
+  {
+    close_socket(fd);
+    return INVALID_SOCK;
+  }
+  return fd;
+}
+
+}  // namespace
 
 static std::string escape_json(const std::string& s)
 {
@@ -133,21 +223,37 @@ static std::string build_request_json(const HlSignParams& p)
   return j;
 }
 
+// Default TCP port for hl_signerd (can be overridden via environment)
+static constexpr uint16_t HL_SIGNER_DEFAULT_PORT = 19847;
+
 std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
 {
   const std::string req = build_request_json(p);
 
-  int fd = connect_unix("/dev/shm/hl_sign.sock", /*timeout_ms=*/50);
-  if (fd < 0)
+  socket_t fd = INVALID_SOCK;
+
+#ifndef _WIN32
+  // On POSIX, try Unix socket first (faster, default)
+  fd = connect_unix("/dev/shm/hl_sign.sock", /*timeout_ms=*/50);
+#endif
+
+  // Fall back to TCP localhost (cross-platform)
+  if (fd == INVALID_SOCK)
   {
-    FLOX_LOG_ERROR("[HL] connect hl_signerd failed");
+    fd = connect_tcp(HL_SIGNER_DEFAULT_PORT, /*timeout_ms=*/50);
+  }
+
+  if (fd == INVALID_SOCK)
+  {
+    FLOX_LOG_ERROR("[HL] connect hl_signerd failed (tried Unix socket and TCP localhost:"
+                   << HL_SIGNER_DEFAULT_PORT << ")");
     return std::nullopt;
   }
 
   uint32_t len = htonl(static_cast<uint32_t>(req.size()));
   if (!send_all(fd, &len, 4) || !send_all(fd, req.data(), req.size()))
   {
-    ::close(fd);
+    close_socket(fd);
     FLOX_LOG_ERROR("[HL] send req failed");
     return std::nullopt;
   }
@@ -155,7 +261,7 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   uint32_t rlen_be = 0;
   if (!recv_all(fd, &rlen_be, 4))
   {
-    ::close(fd);
+    close_socket(fd);
     return std::nullopt;
   }
   uint32_t rlen = ntohl(rlen_be);
@@ -163,10 +269,10 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
   out.resize(rlen);
   if (!recv_all(fd, out.data(), rlen))
   {
-    ::close(fd);
+    close_socket(fd);
     return std::nullopt;
   }
-  ::close(fd);
+  close_socket(fd);
 
   auto findv = [&](const char* key) -> std::string
   {

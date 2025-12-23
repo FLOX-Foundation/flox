@@ -4,38 +4,163 @@ on:
   push:
   pull_request:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 6 * * 0'
 
 jobs:
-  build:
+  format-check:
     runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install clang-format
+      run: sudo apt-get update && sudo apt-get install -y clang-format
+
+    - name: Check formatting
+      run: ./scripts/check-format.sh
+
+  linux-gcc:
+    needs: format-check
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-      - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 \
+                                libssl-dev zlib1g-dev \
+                                libcurl4-openssl-dev libgtest-dev
 
-      - name: Check formatting
-        run: ./scripts/check-format.sh
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get install -y cmake ninja-build g++-13 \
-                                  libssl-dev zlib1g-dev \
-                                  libcurl4-openssl-dev
+    - name: Build
+      run: cmake --build build -j$(nproc)
 
-      - name: Configure project
-        run: |
-          cmake -B build -G Ninja \
-                -DCMAKE_CXX_COMPILER=g++-13 \
-                -DFLOX_CONNECTORS_BUILD_TESTS=ON \
+  linux-clang:
+    needs: format-check
+    runs-on: ubuntu-24.04
 
-      - name: Build project
-        run: cmake --build build -j$(nproc)
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+    - name: Install LLVM repository
+      run: |
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-18 libc++-18-dev libc++abi-18-dev \
+                                libssl-dev zlib1g-dev \
+                                libcurl4-openssl-dev
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=clang++-18 \
+              -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
+              -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+  sanitizers:
+    needs: format-check
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 \
+                                libssl-dev zlib1g-dev \
+                                libcurl4-openssl-dev
+
+    - name: Configure with sanitizer
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
+              -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
+              -DCMAKE_BUILD_TYPE=Debug
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+  macos:
+    needs: format-check
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: brew install cmake ninja openssl curl
+
+    - name: Configure
+      run: |
+        OPENSSL_PREFIX=$(brew --prefix openssl)
+        cmake -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DOPENSSL_ROOT_DIR="$OPENSSL_PREFIX"
+
+    - name: Build
+      run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+  windows-msvc:
+    if: github.event_name == 'schedule'
+    runs-on: windows-latest
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Create vcpkg cache directory
+      run: mkdir -p vcpkg-cache
+      shell: bash
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: vcpkg-cache
+        key: vcpkg-win-v1
+
+    - name: Install dependencies
+      run: vcpkg install openssl:x64-windows curl:x64-windows zlib:x64-windows
+
+    - name: Configure
+      run: |
+        cmake -B build -G "Visual Studio 17 2022" -A x64 `
+              -DCMAKE_BUILD_TYPE=Release `
+              -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+    - name: Build
+      run: cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS

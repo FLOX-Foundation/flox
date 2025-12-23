@@ -49,7 +49,9 @@ target_link_libraries(flox-connectors
   PUBLIC  flox::flox
           simdjson::simdjson
           ixwebsocket
-  PRIVATE OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB CURL::libcurl pthread
+  PRIVATE OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB CURL::libcurl
+          $<$<PLATFORM_ID:Windows>:ws2_32>
+          $<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 )
 
 include(GNUInstallDirs)

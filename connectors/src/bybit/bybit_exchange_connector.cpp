@@ -382,10 +382,11 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       auto bf = data_obj.find_field_unordered("b");
       for (auto lvl : bf.get_array().value())
       {
-        auto arr = lvl.get_array().value();
-        std::string_view psv = arr.at(0).get_string().value();
-        arr.reset();
-        std::string_view qsv = arr.at(1).get_string().value();
+        auto arr = lvl.get_array();
+        auto it = arr.begin();
+        std::string_view psv = (*it).get_string().value();
+        ++it;
+        std::string_view qsv = (*it).get_string().value();
         ev->update.bids.emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
                                      Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
       }
@@ -393,10 +394,11 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       auto af = data_obj.find_field_unordered("a");
       for (auto lvl : af.get_array().value())
       {
-        auto arr = lvl.get_array().value();
-        std::string_view psv = arr.at(0).get_string().value();
-        arr.reset();
-        std::string_view qsv = arr.at(1).get_string().value();
+        auto arr = lvl.get_array();
+        auto it = arr.begin();
+        std::string_view psv = (*it).get_string().value();
+        ++it;
+        std::string_view qsv = (*it).get_string().value();
         ev->update.asks.emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
                                      Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
       }

@@ -21,12 +21,20 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <thread>
 
 using namespace flox;
 
 namespace
 {
+
+std::string getTempLogDir()
+{
+  auto dir = std::filesystem::temp_directory_path() / "flox_test_logs";
+  std::filesystem::create_directories(dir);
+  return dir.string();
+}
 
 class CountingSub final : public IMarketDataSubscriber
 {
@@ -87,7 +95,7 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesDataFromBybit)
   cfg.reconnectDelayMs = 2000;
 
   AtomicLoggerOptions logOpts;
-  logOpts.directory = "/dev/shm/logs";
+  logOpts.directory = getTempLogDir();
   logOpts.basename = "bybit_test.log";
   logOpts.levelThreshold = LogLevel::Info;
   logOpts.maxFileSize = 5 * 1024 * 1024;
@@ -145,7 +153,7 @@ TEST(BybitExchangeConnectorIntegrationTest, ReceivesSpotData)
   cfg.reconnectDelayMs = 2000;
 
   AtomicLoggerOptions logOpts;
-  logOpts.directory = "/dev/shm/logs";
+  logOpts.directory = getTempLogDir();
   logOpts.basename = "bybit_spot_test.log";
   logOpts.levelThreshold = LogLevel::Info;
   logOpts.maxFileSize = 5 * 1024 * 1024;

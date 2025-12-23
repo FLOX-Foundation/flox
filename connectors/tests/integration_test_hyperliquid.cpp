@@ -22,6 +22,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <thread>
 
@@ -29,6 +30,13 @@ using namespace flox;
 
 namespace
 {
+
+std::string getTempLogDir()
+{
+  auto dir = std::filesystem::temp_directory_path() / "flox_test_logs";
+  std::filesystem::create_directories(dir);
+  return dir.string();
+}
 
 class CountingSub final : public IMarketDataSubscriber
 {
@@ -90,7 +98,7 @@ TEST(HyperliquidExchangeConnectorIntegrationTest, ReceivesDataFromHyperliquid)
   cfg.reconnectDelayMs = 2000;
 
   AtomicLoggerOptions logOpts;
-  logOpts.directory = "/dev/shm/logs";
+  logOpts.directory = getTempLogDir();
   logOpts.basename = "hyperliquid_test.log";
   logOpts.levelThreshold = LogLevel::Info;
   logOpts.maxFileSize = 5 * 1024 * 1024;
