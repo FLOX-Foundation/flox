@@ -76,7 +76,7 @@ Built on top of the `Decimal` template for safe, precise arithmetic.
 
 All three types use `Decimal<Tag, 1'000'000, 1>` internally, ensuring:
 
-* High precision (6 decimal places)
+* High precision (8 decimal places)
 * Strong typing (tags prevent mixing price and size)
 * Tick-aligned operations and rounding support
 

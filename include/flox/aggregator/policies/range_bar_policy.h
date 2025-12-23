@@ -31,7 +31,7 @@ class RangeBarPolicy
     return RangeBarPolicy(Price::fromDouble(rangeSize).raw());
   }
 
-  [[nodiscard]] constexpr uint64_t param() const noexcept
+  constexpr uint64_t param() const noexcept
   {
     // Return range size in ticks (fits in 28 bits)
     return static_cast<uint32_t>(_rangeSizeRaw);

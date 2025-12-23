@@ -39,12 +39,12 @@ class BarSeries
     }
   }
 
-  [[nodiscard]] const Bar& operator[](size_t idx) const noexcept
+  const Bar& operator[](size_t idx) const noexcept
   {
     return _data[(_head + idx) & (Capacity - 1)];
   }
 
-  [[nodiscard]] const Bar* at(size_t idx) const noexcept
+  const Bar* at(size_t idx) const noexcept
   {
     if (idx >= _size)
     {
@@ -53,10 +53,10 @@ class BarSeries
     return &_data[(_head + idx) & (Capacity - 1)];
   }
 
-  [[nodiscard]] size_t size() const noexcept { return _size; }
-  [[nodiscard]] constexpr size_t capacity() const noexcept { return Capacity; }
-  [[nodiscard]] bool empty() const noexcept { return _size == 0; }
-  [[nodiscard]] bool full() const noexcept { return _size == Capacity; }
+  size_t size() const noexcept { return _size; }
+  constexpr size_t capacity() const noexcept { return Capacity; }
+  bool empty() const noexcept { return _size == 0; }
+  bool full() const noexcept { return _size == Capacity; }
 
   void clear() noexcept
   {
@@ -64,9 +64,9 @@ class BarSeries
     _size = 0;
   }
 
-  [[nodiscard]] const Bar& front() const noexcept { return _data[_head]; }
+  const Bar& front() const noexcept { return _data[_head]; }
 
-  [[nodiscard]] const Bar& back() const noexcept
+  const Bar& back() const noexcept
   {
     return _data[(_head + _size - 1) & (Capacity - 1)];
   }
@@ -106,8 +106,8 @@ class BarSeries
     size_t _idx;
   };
 
-  [[nodiscard]] Iterator begin() const { return Iterator(this, 0); }
-  [[nodiscard]] Iterator end() const { return Iterator(this, _size); }
+  Iterator begin() const { return Iterator(this, 0); }
+  Iterator end() const { return Iterator(this, _size); }
 
  private:
   alignas(64) std::array<Bar, Capacity> _data{};

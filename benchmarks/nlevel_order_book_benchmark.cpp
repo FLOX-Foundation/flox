@@ -142,10 +142,10 @@ static void BM_ConsumeAsks_Dense(benchmark::State& state)
 
   book.applyBookUpdate(*up);
 
-  const double needQtyBase = 250.0;
+  const Quantity needQty = Quantity::fromDouble(250.0);
   for (auto _ : state)
   {
-    auto res = book.consumeAsks(needQtyBase);
+    auto res = book.consumeAsks(needQty);
     benchmark::DoNotOptimize(res);
   }
 }
@@ -177,10 +177,10 @@ static void BM_ConsumeBids_Dense(benchmark::State& state)
 
   book.applyBookUpdate(*up);
 
-  const double needQtyBase = 250.0;
+  const Quantity needQty = Quantity::fromDouble(250.0);
   for (auto _ : state)
   {
-    auto res = book.consumeBids(needQtyBase);
+    auto res = book.consumeBids(needQty);
     benchmark::DoNotOptimize(res);
   }
 }
@@ -212,10 +212,10 @@ static void BM_ConsumeAsks_Sparse(benchmark::State& state)
 
   book.applyBookUpdate(*up);
 
-  const double needQtyBase = 250.0;
+  const Quantity needQty = Quantity::fromDouble(250.0);
   for (auto _ : state)
   {
-    auto res = book.consumeAsks(needQtyBase);
+    auto res = book.consumeAsks(needQty);
     benchmark::DoNotOptimize(res);
   }
 }
@@ -247,10 +247,10 @@ static void BM_ConsumeBids_Sparse(benchmark::State& state)
 
   book.applyBookUpdate(*up);
 
-  const double needQtyBase = 250.0;
+  const Quantity needQty = Quantity::fromDouble(250.0);
   for (auto _ : state)
   {
-    auto res = book.consumeBids(needQtyBase);
+    auto res = book.consumeBids(needQty);
     benchmark::DoNotOptimize(res);
   }
 }

@@ -31,7 +31,7 @@ class VolumeBarPolicy
     return VolumeBarPolicy(Volume::fromDouble(threshold).raw());
   }
 
-  [[nodiscard]] constexpr uint64_t param() const noexcept
+  constexpr uint64_t param() const noexcept
   {
     // Return threshold in scaled units (fits in 28 bits for reasonable values)
     return static_cast<uint32_t>(_thresholdRaw / 1000);  // Compress for TimeframeId

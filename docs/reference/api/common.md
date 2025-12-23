@@ -107,9 +107,9 @@ struct QuantityTag {};
 struct VolumeTag {};
 
 // tick = 0.000001 for everything
-using Price = Decimal<PriceTag, 1'000'000, 1>;
-using Quantity = Decimal<QuantityTag, 1'000'000, 1>;
-using Volume = Decimal<VolumeTag, 1'000'000, 1>;
+using Price = Decimal<PriceTag, 100'000'000, 1>;
+using Quantity = Decimal<QuantityTag, 100'000'000, 1>;
+using Volume = Decimal<VolumeTag, 100'000'000, 1>;
 ```
 
 | Type | Scale | Description |
@@ -120,7 +120,7 @@ using Volume = Decimal<VolumeTag, 1'000'000, 1>;
 
 All three types use `Decimal<Tag, 1'000'000, 1>` internally, ensuring:
 
-* High precision (6 decimal places)
+* High precision (8 decimal places)
 * Strong typing (tags prevent mixing price and quantity)
 * Tick-aligned operations and rounding support
 

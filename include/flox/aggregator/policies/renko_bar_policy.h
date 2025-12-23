@@ -33,7 +33,7 @@ class RenkoBarPolicy
     return RenkoBarPolicy(Price::fromDouble(brickSize).raw());
   }
 
-  [[nodiscard]] constexpr uint64_t param() const noexcept
+  constexpr uint64_t param() const noexcept
   {
     // Return brick size in ticks (fits in 28 bits)
     return static_cast<uint32_t>(_brickSizeRaw);
@@ -53,8 +53,7 @@ class RenkoBarPolicy
     bar.high = std::max(bar.high, trade.trade.price);
     bar.low = std::min(bar.low, trade.trade.price);
 
-    const auto notional = Volume::fromRaw(
-        (trade.trade.price.raw() * trade.trade.quantity.raw()) / Price::Scale);
+    const auto notional = trade.trade.quantity * trade.trade.price;
     bar.volume += notional;
     bar.tradeCount += Quantity::fromRaw(1);
     if (trade.trade.isBuy)

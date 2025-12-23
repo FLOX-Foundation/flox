@@ -125,8 +125,8 @@ class BacktestRunner : public ISignalHandler
 
   // State inspection
   [[nodiscard]] BacktestState state() const;
-  [[nodiscard]] bool isPaused() const { return _paused.load(std::memory_order_acquire); }
-  [[nodiscard]] bool isFinished() const { return _finished.load(std::memory_order_acquire); }
+  bool isPaused() const { return _paused.load(std::memory_order_acquire); }
+  bool isFinished() const { return _finished.load(std::memory_order_acquire); }
 
   // Callbacks (interactive mode only)
   void setEventCallback(EventCallback cb) { _eventCallback = std::move(cb); }

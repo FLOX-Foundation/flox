@@ -91,12 +91,12 @@ TEST_F(NLevelOrderBookTest, HandlesEmptyBook)
   EXPECT_EQ(book.askAtPrice(Price::fromDouble(123.0)), Quantity::fromDouble(0.0));
 }
 
-static inline void ExpectPairNear(const std::pair<double, double>& got,
+static inline void ExpectPairNear(const std::pair<Quantity, Volume>& got,
                                   double expFilled, double expNotional,
-                                  double eps = 1e-9)
+                                  double eps = 1e-6)
 {
-  EXPECT_NEAR(got.first, expFilled, eps);
-  EXPECT_NEAR(got.second, expNotional, eps);
+  EXPECT_NEAR(got.first.toDouble(), expFilled, eps);
+  EXPECT_NEAR(got.second.toDouble(), expNotional, eps);
 }
 
 TEST_F(NLevelOrderBookTest, ConsumeAsks_Basic)
@@ -109,10 +109,10 @@ TEST_F(NLevelOrderBookTest, ConsumeAsks_Basic)
 
   book.applyBookUpdate(*up);
 
-  ExpectPairNear(book.consumeAsks(0.0), 0.0, 0.0);
-  ExpectPairNear(book.consumeAsks(1.0), 1.0, 100.0);
-  ExpectPairNear(book.consumeAsks(2.5), 2.5, 250.15);
-  ExpectPairNear(book.consumeAsks(10.0), 6.0, 600.8);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(0.0)), 0.0, 0.0);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(1.0)), 1.0, 100.0);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(2.5)), 2.5, 250.15);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(10.0)), 6.0, 600.8);
 }
 
 TEST_F(NLevelOrderBookTest, ConsumeBids_Basic)
@@ -125,8 +125,8 @@ TEST_F(NLevelOrderBookTest, ConsumeBids_Basic)
 
   book.applyBookUpdate(*up);
 
-  ExpectPairNear(book.consumeBids(2.5), 2.5, 249.85);
-  ExpectPairNear(book.consumeBids(10.0), 6.0, 599.2);
+  ExpectPairNear(book.consumeBids(Quantity::fromDouble(2.5)), 2.5, 249.85);
+  ExpectPairNear(book.consumeBids(Quantity::fromDouble(10.0)), 6.0, 599.2);
 }
 
 TEST_F(NLevelOrderBookTest, ConsumeAsks_WithHoles)
@@ -140,9 +140,9 @@ TEST_F(NLevelOrderBookTest, ConsumeAsks_WithHoles)
 
   book.applyBookUpdate(*up);
 
-  ExpectPairNear(book.consumeAsks(2.0), 2.0, 200.2);
-  ExpectPairNear(book.consumeAsks(4.0), 4.0, 400.8);
-  ExpectPairNear(book.consumeAsks(10.0), 5.0, 501.1);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(2.0)), 2.0, 200.2);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(4.0)), 4.0, 400.8);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(10.0)), 5.0, 501.1);
 }
 
 TEST_F(NLevelOrderBookTest, ConsumeBids_WithHoles)
@@ -156,8 +156,8 @@ TEST_F(NLevelOrderBookTest, ConsumeBids_WithHoles)
 
   book.applyBookUpdate(*up);
 
-  ExpectPairNear(book.consumeBids(3.0), 3.0, 299.5);
-  ExpectPairNear(book.consumeBids(10.0), 5.0, 498.9);
+  ExpectPairNear(book.consumeBids(Quantity::fromDouble(3.0)), 3.0, 299.5);
+  ExpectPairNear(book.consumeBids(Quantity::fromDouble(10.0)), 5.0, 498.9);
 }
 
 TEST_F(NLevelOrderBookTest, Consume_EmptyBook)
@@ -165,8 +165,8 @@ TEST_F(NLevelOrderBookTest, Consume_EmptyBook)
   auto up = makeSnapshot({}, {});
   book.applyBookUpdate(*up);
 
-  ExpectPairNear(book.consumeAsks(5.0), 0.0, 0.0);
-  ExpectPairNear(book.consumeBids(5.0), 0.0, 0.0);
+  ExpectPairNear(book.consumeAsks(Quantity::fromDouble(5.0)), 0.0, 0.0);
+  ExpectPairNear(book.consumeBids(Quantity::fromDouble(5.0)), 0.0, 0.0);
 }
 
 TEST_F(NLevelOrderBookTest, Consume_IsConstDoesNotMutate)
@@ -179,13 +179,13 @@ TEST_F(NLevelOrderBookTest, Consume_IsConstDoesNotMutate)
 
   book.applyBookUpdate(*up);
 
-  auto r1 = book.consumeAsks(3.5);
-  auto r2 = book.consumeAsks(3.5);
-  ExpectPairNear(r1, r2.first, r2.second);
+  auto r1 = book.consumeAsks(Quantity::fromDouble(3.5));
+  auto r2 = book.consumeAsks(Quantity::fromDouble(3.5));
+  ExpectPairNear(r1, r2.first.toDouble(), r2.second.toDouble());
 
-  auto b1 = book.consumeBids(2.25);
-  auto b2 = book.consumeBids(2.25);
-  ExpectPairNear(b1, b2.first, b2.second);
+  auto b1 = book.consumeBids(Quantity::fromDouble(2.25));
+  auto b2 = book.consumeBids(Quantity::fromDouble(2.25));
+  ExpectPairNear(b1, b2.first.toDouble(), b2.second.toDouble());
 
   EXPECT_EQ(book.bestAsk(), Price::fromDouble(100.1));
   EXPECT_EQ(book.bestBid(), Price::fromDouble(100.0));

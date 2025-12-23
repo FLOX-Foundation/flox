@@ -80,7 +80,7 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
     _policy.update(trade, state.bar);
   }
 
-  [[nodiscard]] const Policy& policy() const noexcept { return _policy; }
+  const Policy& policy() const noexcept { return _policy; }
 
  private:
   struct SymbolState

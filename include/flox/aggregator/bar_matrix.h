@@ -56,7 +56,7 @@ class BarMatrix : public IMarketDataSubscriber
     symbolData.series[tfIdx].push(ev.bar);
   }
 
-  [[nodiscard]] const Bar* bar(SymbolId sym, TimeframeId tf, size_t idx = 0) const noexcept
+  const Bar* bar(SymbolId sym, TimeframeId tf, size_t idx = 0) const noexcept
   {
     const auto tfIdx = findTimeframeIndex(tf);
     if (tfIdx >= _numTimeframes)
@@ -66,7 +66,7 @@ class BarMatrix : public IMarketDataSubscriber
     return bar(sym, tfIdx, idx);
   }
 
-  [[nodiscard]] const Bar* bar(SymbolId sym, size_t tfIdx, size_t idx = 0) const noexcept
+  const Bar* bar(SymbolId sym, size_t tfIdx, size_t idx = 0) const noexcept
   {
     if (tfIdx >= _numTimeframes)
     {
@@ -82,7 +82,7 @@ class BarMatrix : public IMarketDataSubscriber
     return symbolData->series[tfIdx].at(idx);
   }
 
-  [[nodiscard]] const BarSeries<Depth>* series(SymbolId sym, TimeframeId tf) const noexcept
+  const BarSeries<Depth>* series(SymbolId sym, TimeframeId tf) const noexcept
   {
     const auto tfIdx = findTimeframeIndex(tf);
     if (tfIdx >= _numTimeframes)
@@ -92,7 +92,7 @@ class BarMatrix : public IMarketDataSubscriber
     return series(sym, tfIdx);
   }
 
-  [[nodiscard]] const BarSeries<Depth>* series(SymbolId sym, size_t tfIdx) const noexcept
+  const BarSeries<Depth>* series(SymbolId sym, size_t tfIdx) const noexcept
   {
     if (tfIdx >= _numTimeframes)
     {
@@ -123,12 +123,12 @@ class BarMatrix : public IMarketDataSubscriber
     }
   }
 
-  [[nodiscard]] std::span<const TimeframeId> timeframes() const noexcept
+  std::span<const TimeframeId> timeframes() const noexcept
   {
     return std::span<const TimeframeId>(_timeframes.data(), _numTimeframes);
   }
 
-  [[nodiscard]] size_t timeframeIndex(TimeframeId tf) const noexcept
+  size_t timeframeIndex(TimeframeId tf) const noexcept
   {
     return findTimeframeIndex(tf);
   }
@@ -152,7 +152,7 @@ class BarMatrix : public IMarketDataSubscriber
     std::array<BarSeries<Depth>, MaxTimeframes> series{};
   };
 
-  [[nodiscard]] size_t findTimeframeIndex(TimeframeId tf) const noexcept
+  size_t findTimeframeIndex(TimeframeId tf) const noexcept
   {
     for (size_t i = 0; i < _numTimeframes; ++i)
     {
@@ -164,7 +164,7 @@ class BarMatrix : public IMarketDataSubscriber
     return _numTimeframes;
   }
 
-  [[nodiscard]] SymbolData& getSymbolData(SymbolId sym)
+  SymbolData& getSymbolData(SymbolId sym)
   {
     if (sym < MaxSymbols) [[likely]]
     {
@@ -178,7 +178,7 @@ class BarMatrix : public IMarketDataSubscriber
     return getOverflow(sym);
   }
 
-  [[nodiscard]] const SymbolData* tryGetSymbolData(SymbolId sym) const noexcept
+  const SymbolData* tryGetSymbolData(SymbolId sym) const noexcept
   {
     if (sym < MaxSymbols)
     {

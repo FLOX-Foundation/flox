@@ -172,7 +172,7 @@ class SymbolStateMap
     }
   }
 
-  [[nodiscard]] size_t size() const noexcept
+  size_t size() const noexcept
   {
     size_t count = 0;
     for (size_t i = 0; i < kMaxSymbols; ++i)
@@ -220,14 +220,14 @@ class SymbolStateMap
   {
     std::vector<std::pair<SymbolId, T>> data;
     void clear() { data.clear(); }
-    [[nodiscard]] size_t size() const { return data.size(); }
+    size_t size() const { return data.size(); }
   };
 
   template <typename T>
   struct OverflowStorage<T, false>
   {
     void clear() {}
-    [[nodiscard]] size_t size() const { return 0; }
+    size_t size() const { return 0; }
   };
 
   alignas(64) std::array<State, kMaxSymbols> _flat{};

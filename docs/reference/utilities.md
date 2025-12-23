@@ -56,10 +56,10 @@ public:
 ### Predefined Types
 
 ```cpp
-// All use Scale = 1,000,000 (6 decimal places)
-using Price = Decimal<PriceTag, 1'000'000, 1>;
-using Quantity = Decimal<QuantityTag, 1'000'000, 1>;
-using Volume = Decimal<VolumeTag, 1'000'000, 1>;
+// All use Scale = 100,000,000 (8 decimal places, matches Binance precision)
+using Price = Decimal<PriceTag, 100'000'000, 1>;
+using Quantity = Decimal<QuantityTag, 100'000'000, 1>;
+using Volume = Decimal<VolumeTag, 100'000'000, 1>;
 ```
 
 ### Examples
@@ -70,10 +70,20 @@ Price p2 = Price::fromDouble(0.01);
 
 Price sum = p1 + p2;           // 100.51
 double d = sum.toDouble();     // 100.51
-int64_t raw = sum.raw();       // 100510000
+int64_t raw = sum.raw();       // 10051000000 (100.51 * 10^8)
 
 Quantity q = Quantity::fromDouble(10.5);
-Volume v = Price::fromDouble(100.0) * q;  // Volume arithmetic
+Volume v = q * Price::fromDouble(100.0);  // Type-safe: Quantity * Price = Volume
+```
+
+### Cross-Type Arithmetic
+
+The following operators handle 128-bit intermediate calculations to prevent overflow:
+
+```cpp
+Volume notional = qty * price;      // Quantity * Price = Volume
+Price avgPrice = volume / qty;      // Volume / Quantity = Price
+Quantity baseQty = volume / price;  // Volume / Price = Quantity
 ```
 
 ---
