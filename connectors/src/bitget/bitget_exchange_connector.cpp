@@ -9,6 +9,7 @@
 
 #include "flox-connectors/bitget/bitget_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
+#include "flox-connectors/util/safe_parse.h"
 #include "flox/engine/symbol_registry.h"
 
 #include <flox/log/log.h>
@@ -295,8 +296,16 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
             std::string_view p = (*it).get_string().value();
             ++it;
             std::string_view q = (*it).get_string().value();
-            ev->update.bids.emplace_back(Price::fromDouble(std::strtod(p.data(), nullptr)),
-                                         Quantity::fromDouble(std::strtod(q.data(), nullptr)));
+
+            auto priceOpt = util::safeParseDouble(p);
+            auto qtyOpt = util::safeParseDouble(q);
+            if (!priceOpt || !qtyOpt)
+            {
+              _logger->warn("[Bitget] Invalid bid price/qty in book update");
+              continue;
+            }
+            ev->update.bids.emplace_back(Price::fromDouble(*priceOpt),
+                                         Quantity::fromDouble(*qtyOpt));
           }
         }
         auto asksEl = d["asks"];
@@ -309,8 +318,16 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
             std::string_view p = (*it).get_string().value();
             ++it;
             std::string_view q = (*it).get_string().value();
-            ev->update.asks.emplace_back(Price::fromDouble(std::strtod(p.data(), nullptr)),
-                                         Quantity::fromDouble(std::strtod(q.data(), nullptr)));
+
+            auto priceOpt = util::safeParseDouble(p);
+            auto qtyOpt = util::safeParseDouble(q);
+            if (!priceOpt || !qtyOpt)
+            {
+              _logger->warn("[Bitget] Invalid ask price/qty in book update");
+              continue;
+            }
+            ev->update.asks.emplace_back(Price::fromDouble(*priceOpt),
+                                         Quantity::fromDouble(*qtyOpt));
           }
         }
 
@@ -319,8 +336,11 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
         if (!tsEl.error())
         {
           std::string_view tsStr = tsEl.get_string().value();
-          int64_t tsMs = std::strtoll(tsStr.data(), nullptr, 10);
-          ev->update.exchangeTsNs = tsMs * 1'000'000;
+          auto tsOpt = util::parseInt64(tsStr);
+          if (tsOpt)
+          {
+            ev->update.exchangeTsNs = *tsOpt * 1'000'000;
+          }
         }
       }
 
@@ -337,6 +357,14 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
         std::string_view qtySv = val["size"].get_string().value();
         std::string_view sideSv = val["side"].get_string().value();
 
+        auto priceOpt = util::safeParseDouble(priceSv);
+        auto qtyOpt = util::safeParseDouble(qtySv);
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Bitget] Invalid trade price/qty");
+          continue;
+        }
+
         TradeEvent ev;
         SymbolId sid = resolveSymbolId(inst);
         ev.trade.symbol = sid;
@@ -348,8 +376,8 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           }
         }
 
-        ev.trade.price = Price::fromDouble(std::strtod(priceSv.data(), nullptr));
-        ev.trade.quantity = Quantity::fromDouble(std::strtod(qtySv.data(), nullptr));
+        ev.trade.price = Price::fromDouble(*priceOpt);
+        ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
         ev.trade.isBuy = (sideSv == "buy" || sideSv == "Buy");
 
         // Parse timestamp
@@ -357,8 +385,11 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
         if (!tsEl.error())
         {
           std::string_view tsStr = tsEl.get_string().value();
-          int64_t tsMs = std::strtoll(tsStr.data(), nullptr, 10);
-          ev.trade.exchangeTsNs = tsMs * 1'000'000;
+          auto tsOpt = util::parseInt64(tsStr);
+          if (tsOpt)
+          {
+            ev.trade.exchangeTsNs = *tsOpt * 1'000'000;
+          }
         }
 
         _tradeBus->publish(ev);
@@ -393,13 +424,25 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
       {
         OrderEvent ev;
         ev.order.symbol = resolveSymbolId(d["instId"].get_string().value());
-        ev.order.id = static_cast<OrderId>(
-            std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
+
+        auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
+        if (!orderIdOpt)
+        {
+          _logger->warn("[Bitget] Invalid orderId in order event");
+          continue;
+        }
+        ev.order.id = static_cast<OrderId>(*orderIdOpt);
         ev.order.side = d["side"].get_string().value() == "buy" ? Side::BUY : Side::SELL;
-        ev.order.price =
-            Price::fromDouble(std::strtod(d["price"].get_string().value().data(), nullptr));
-        ev.order.quantity =
-            Quantity::fromDouble(std::strtod(d["size"].get_string().value().data(), nullptr));
+
+        auto priceOpt = util::safeParseDouble(d["price"].get_string().value());
+        auto qtyOpt = util::safeParseDouble(d["size"].get_string().value());
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Bitget] Invalid price/qty in order event");
+          continue;
+        }
+        ev.order.price = Price::fromDouble(*priceOpt);
+        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
         std::string_view status = d["status"].get_string().value();
         if (status == "filled")
         {

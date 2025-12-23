@@ -9,6 +9,7 @@
 
 #include "flox-connectors/bybit/bybit_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
+#include "flox-connectors/util/safe_parse.h"
 #include "flox/engine/symbol_registry.h"
 
 #include <flox/log/atomic_logger.h>
@@ -71,11 +72,12 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
   auto expiry_tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
 
   // Strike
-  double strike = std::strtod(strikeStr.c_str(), nullptr);
-  if (strike <= 0.0)
+  auto strikeOpt = util::safeParseDouble(strikeStr);
+  if (!strikeOpt || *strikeOpt <= 0.0)
   {
     return std::nullopt;
   }
+  double strike = *strikeOpt;
 
   OptionType optType;
   if (typeStr == "C")
@@ -387,8 +389,15 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         std::string_view psv = (*it).get_string().value();
         ++it;
         std::string_view qsv = (*it).get_string().value();
-        ev->update.bids.emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
-                                     Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
+
+        auto priceOpt = util::safeParseDouble(psv);
+        auto qtyOpt = util::safeParseDouble(qsv);
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Bybit] Invalid bid price/qty in book update");
+          continue;
+        }
+        ev->update.bids.emplace_back(Price::fromDouble(*priceOpt), Quantity::fromDouble(*qtyOpt));
       }
 
       auto af = data_obj.find_field_unordered("a");
@@ -399,8 +408,15 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         std::string_view psv = (*it).get_string().value();
         ++it;
         std::string_view qsv = (*it).get_string().value();
-        ev->update.asks.emplace_back(Price::fromDouble(std::strtod(psv.data(), nullptr)),
-                                     Quantity::fromDouble(std::strtod(qsv.data(), nullptr)));
+
+        auto priceOpt = util::safeParseDouble(psv);
+        auto qtyOpt = util::safeParseDouble(qsv);
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Bybit] Invalid ask price/qty in book update");
+          continue;
+        }
+        ev->update.asks.emplace_back(Price::fromDouble(*priceOpt), Quantity::fromDouble(*qtyOpt));
       }
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
@@ -440,10 +456,16 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ev.trade_id = hash::fnv1a_64(sv.data(), sv.size());
 
         ev.trade.isBuy = (obj.find_field_unordered("S").get_string().value() == "Buy");
-        ev.trade.price = Price::fromDouble(
-            std::strtod(obj.find_field_unordered("p").get_string().value().data(), nullptr));
-        ev.trade.quantity = Quantity::fromDouble(
-            std::strtod(obj.find_field_unordered("v").get_string().value().data(), nullptr));
+
+        auto priceOpt = util::safeParseDouble(obj.find_field_unordered("p").get_string().value());
+        auto qtyOpt = util::safeParseDouble(obj.find_field_unordered("v").get_string().value());
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Bybit] Invalid trade price/qty");
+          continue;
+        }
+        ev.trade.price = Price::fromDouble(*priceOpt);
+        ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
 
         ev.publishTsNs = nowNsMonotonic();
         _tradeBus->publish(ev);
@@ -507,16 +529,26 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         std::string_view symbol = d["symbol"].get_string().value();
         ev.order.symbol = resolveSymbolId(symbol);
 
-        ev.order.id = static_cast<OrderId>(
-            std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
+        auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
+        if (!orderIdOpt)
+        {
+          _logger->warn("[Bybit] Invalid orderId in order event");
+          continue;
+        }
+        ev.order.id = static_cast<OrderId>(*orderIdOpt);
         ev.order.side = (d["side"].get_string().value() == "Buy") ? Side::BUY : Side::SELL;
 
-        ev.order.price =
-            Price::fromDouble(std::strtod(d["price"].get_string().value().data(), nullptr));
-        ev.order.quantity =
-            Quantity::fromDouble(std::strtod(d["qty"].get_string().value().data(), nullptr));
-        ev.order.filledQuantity =
-            Quantity::fromDouble(std::strtod(d["cumExecQty"].get_string().value().data(), nullptr));
+        auto priceOpt = util::safeParseDouble(d["price"].get_string().value());
+        auto qtyOpt = util::safeParseDouble(d["qty"].get_string().value());
+        auto filledOpt = util::safeParseDouble(d["cumExecQty"].get_string().value());
+        if (!priceOpt || !qtyOpt || !filledOpt)
+        {
+          _logger->warn("[Bybit] Invalid price/qty in order event");
+          continue;
+        }
+        ev.order.price = Price::fromDouble(*priceOpt);
+        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.order.filledQuantity = Quantity::fromDouble(*filledOpt);
 
         ev.exchangeTsNs = msToNs(d["updatedTime"].get_int64().value());
         ev.publishNs = msToNs(d["createTime"].get_int64().value());
@@ -562,15 +594,25 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         OrderEvent ev{};
         ev.recvNs = recvNs;
 
-        ev.order.id = static_cast<OrderId>(
-            std::strtoull(d["orderId"].get_string().value().data(), nullptr, 10));
+        auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
+        if (!orderIdOpt)
+        {
+          _logger->warn("[Bybit] Invalid orderId in execution event");
+          continue;
+        }
+        ev.order.id = static_cast<OrderId>(*orderIdOpt);
         ev.order.symbol = resolveSymbolId(d["symbol"].get_string().value());
         ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY : Side::SELL;
 
-        ev.order.price =
-            Price::fromDouble(std::strtod(d["execPrice"].get_string().value().data(), nullptr));
-        ev.order.quantity =
-            Quantity::fromDouble(std::strtod(d["execQty"].get_string().value().data(), nullptr));
+        auto priceOpt = util::safeParseDouble(d["execPrice"].get_string().value());
+        auto qtyOpt = util::safeParseDouble(d["execQty"].get_string().value());
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Bybit] Invalid price/qty in execution event");
+          continue;
+        }
+        ev.order.price = Price::fromDouble(*priceOpt);
+        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
         ev.order.filledQuantity = ev.order.quantity;
 
         if (auto et = d["execTime"]; !et.error())

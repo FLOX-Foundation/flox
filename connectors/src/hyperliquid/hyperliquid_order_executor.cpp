@@ -1,3 +1,12 @@
+/*
+ * Flox Engine
+ * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
+ * Copyright (c) 2025 FLOX Foundation
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
 #include "flox-connectors/hyperliquid/hyperliquid_order_executor.h"
 #include "flox-connectors/hyperliquid/hl_signer.h"
 #include "flox-connectors/net/curl_transport.h"
@@ -16,6 +25,9 @@
 
 namespace flox
 {
+
+template <typename Policies>
+HyperliquidOrderExecutorT<Policies>::~HyperliquidOrderExecutorT() = default;
 
 namespace
 {
@@ -57,7 +69,8 @@ std::string genCloid128()
 
 }  // namespace
 
-HyperliquidOrderExecutor::HyperliquidOrderExecutor(
+template <typename Policies>
+HyperliquidOrderExecutorT<Policies>::HyperliquidOrderExecutorT(
     std::string url, std::string privateKey, SymbolRegistry* registry, OrderTracker* orderTracker,
     std::shared_ptr<ILogger> logger, std::string accountAddress,
     std::optional<std::string> vaultAddress, bool mainnet)
@@ -67,14 +80,79 @@ HyperliquidOrderExecutor::HyperliquidOrderExecutor(
       _orderTracker(orderTracker),
       _logger(std::move(logger)),
       _transport(std::make_unique<CurlTransport>()),
-      _accountAddress(accountAddress),
-      _vaultAddress(vaultAddress ? std::make_optional(*vaultAddress) : std::nullopt),
+      _accountAddress(std::move(accountAddress)),
+      _vaultAddress(std::move(vaultAddress)),
       _mainnet(mainnet)
 {
   loadAssetIds();
 }
 
-void HyperliquidOrderExecutor::loadAssetIds()
+template <typename Policies>
+template <typename P, typename>
+HyperliquidOrderExecutorT<Policies>::HyperliquidOrderExecutorT(
+    std::string url, std::string privateKey, SymbolRegistry* registry, OrderTracker* orderTracker,
+    std::shared_ptr<ILogger> logger, std::string accountAddress,
+    std::optional<std::string> vaultAddress, bool mainnet, RateLimitConfig rateLimitConfig)
+    : _url(std::move(url)),
+      _privateKey(std::move(privateKey)),
+      _registry(registry),
+      _orderTracker(orderTracker),
+      _logger(std::move(logger)),
+      _transport(std::make_unique<CurlTransport>()),
+      _accountAddress(std::move(accountAddress)),
+      _vaultAddress(std::move(vaultAddress)),
+      _mainnet(mainnet)
+{
+  _policies.rateLimit.init(std::move(rateLimitConfig));
+  loadAssetIds();
+}
+
+template <typename Policies>
+template <typename P, typename>
+HyperliquidOrderExecutorT<Policies>::HyperliquidOrderExecutorT(
+    std::string url, std::string privateKey, SymbolRegistry* registry, OrderTracker* orderTracker,
+    std::shared_ptr<ILogger> logger, std::string accountAddress,
+    std::optional<std::string> vaultAddress, bool mainnet, OrderTimeoutConfig timeoutConfig)
+    : _url(std::move(url)),
+      _privateKey(std::move(privateKey)),
+      _registry(registry),
+      _orderTracker(orderTracker),
+      _logger(std::move(logger)),
+      _transport(std::make_unique<CurlTransport>()),
+      _accountAddress(std::move(accountAddress)),
+      _vaultAddress(std::move(vaultAddress)),
+      _mainnet(mainnet)
+{
+  _policies.timeout.init(std::move(timeoutConfig));
+  _policies.timeout.start();
+  loadAssetIds();
+}
+
+template <typename Policies>
+template <typename P, typename>
+HyperliquidOrderExecutorT<Policies>::HyperliquidOrderExecutorT(
+    std::string url, std::string privateKey, SymbolRegistry* registry, OrderTracker* orderTracker,
+    std::shared_ptr<ILogger> logger, std::string accountAddress,
+    std::optional<std::string> vaultAddress, bool mainnet, RateLimitConfig rateLimitConfig,
+    OrderTimeoutConfig timeoutConfig)
+    : _url(std::move(url)),
+      _privateKey(std::move(privateKey)),
+      _registry(registry),
+      _orderTracker(orderTracker),
+      _logger(std::move(logger)),
+      _transport(std::make_unique<CurlTransport>()),
+      _accountAddress(std::move(accountAddress)),
+      _vaultAddress(std::move(vaultAddress)),
+      _mainnet(mainnet)
+{
+  _policies.rateLimit.init(std::move(rateLimitConfig));
+  _policies.timeout.init(std::move(timeoutConfig));
+  _policies.timeout.start();
+  loadAssetIds();
+}
+
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::loadAssetIds()
 {
   {
     std::lock_guard lock(_assetMutex);
@@ -122,7 +200,8 @@ void HyperliquidOrderExecutor::loadAssetIds()
       });
 }
 
-int HyperliquidOrderExecutor::assetIdFor(std::string_view coin)
+template <typename Policies>
+int HyperliquidOrderExecutorT<Policies>::assetIdFor(std::string_view coin)
 {
   std::lock_guard lock(_assetMutex);
   auto it = _assetIds.find(std::string(coin));
@@ -133,8 +212,14 @@ int HyperliquidOrderExecutor::assetIdFor(std::string_view coin)
   return it->second;
 }
 
-void HyperliquidOrderExecutor::submitOrder(const Order& order)
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
+  if (!_policies.rateLimit.tryAcquire(order.id))
+  {
+    return;
+  }
+
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
@@ -208,10 +293,14 @@ void HyperliquidOrderExecutor::submitOrder(const Order& order)
 
   _logger->info(std::string("[HL] body: ") + body);
 
+  _policies.timeout.trackSubmit(order.id);
+
   _transport->post(
       _url, body, {{"Content-Type", "application/json"}},
       [this, order, cloid](std::string_view resp)
       {
+        _policies.timeout.clearPending(order.id);
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -243,14 +332,21 @@ void HyperliquidOrderExecutor::submitOrder(const Order& order)
 
         _orderTracker->onSubmitted(order, exId, cloid);
       },
-      [this](std::string_view err)
+      [this, order](std::string_view err)
       {
+        _policies.timeout.clearPending(order.id);
         FLOX_LOG_ERROR("[HL] submit error: " << err);
       });
 }
 
-void HyperliquidOrderExecutor::cancelOrder(OrderId localId)
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
 {
+  if (!_policies.rateLimit.tryAcquire(localId))
+  {
+    return;
+  }
+
   auto orderState = _orderTracker->get(localId);
   if (!orderState)
   {
@@ -310,10 +406,14 @@ void HyperliquidOrderExecutor::cancelOrder(OrderId localId)
 
   _logger->info(std::string("[HL] cancel body: ") + body);
 
+  _policies.timeout.trackCancel(localId);
+
   _transport->post(
       _url, body, {{"Content-Type", "application/json"}},
       [this, localId](std::string_view resp)
       {
+        _policies.timeout.clearPending(localId);
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -327,14 +427,21 @@ void HyperliquidOrderExecutor::cancelOrder(OrderId localId)
           FLOX_LOG_ERROR("[HL] cancel failed: " << resp);
         }
       },
-      [this](std::string_view err)
+      [this, localId](std::string_view err)
       {
+        _policies.timeout.clearPending(localId);
         FLOX_LOG_ERROR("[HL] cancel error: " << err);
       });
 }
 
-void HyperliquidOrderExecutor::replaceOrder(OrderId oldLocalId, const Order& n)
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const Order& n)
 {
+  if (!_policies.rateLimit.tryAcquire(oldLocalId))
+  {
+    return;
+  }
+
   auto orderState = _orderTracker->get(oldLocalId);
   if (!orderState)
   {
@@ -406,10 +513,14 @@ void HyperliquidOrderExecutor::replaceOrder(OrderId oldLocalId, const Order& n)
 
   _logger->info(std::string("[HL] modify body: ") + body);
 
+  _policies.timeout.trackReplace(oldLocalId);
+
   _transport->post(
       _url, body, {{"Content-Type", "application/json"}},
       [this, oldLocalId, exId, n, cloid](std::string_view resp)
       {
+        _policies.timeout.clearPending(oldLocalId);
+
         simdjson::ondemand::parser parser;
         simdjson::padded_string padded(resp);
         auto doc = parser.iterate(padded);
@@ -424,10 +535,16 @@ void HyperliquidOrderExecutor::replaceOrder(OrderId oldLocalId, const Order& n)
           FLOX_LOG_ERROR("[HL] modify error: " << status);
         }
       },
-      [this](std::string_view err)
+      [this, oldLocalId](std::string_view err)
       {
+        _policies.timeout.clearPending(oldLocalId);
         FLOX_LOG_ERROR("[HL] modify error: " << err);
       });
 }
+
+template class HyperliquidOrderExecutorT<NoPolicies>;
+template class HyperliquidOrderExecutorT<WithRateLimit>;
+template class HyperliquidOrderExecutorT<WithTimeout>;
+template class HyperliquidOrderExecutorT<FullPolicies>;
 
 }  // namespace flox

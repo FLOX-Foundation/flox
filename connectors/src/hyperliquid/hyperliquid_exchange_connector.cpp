@@ -9,6 +9,7 @@
 
 #include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
+#include "flox-connectors/util/safe_parse.h"
 
 #include <flox/log/log.h>
 
@@ -239,9 +240,16 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
             continue;
           }
 
-          Price price = Price::fromDouble(std::strtod(pxEl.get_string().value().data(), nullptr));
-          Quantity qty =
-              Quantity::fromDouble(std::strtod(szEl.get_string().value().data(), nullptr));
+          auto priceOpt = util::safeParseDouble(pxEl.get_string().value());
+          auto qtyOpt = util::safeParseDouble(szEl.get_string().value());
+          if (!priceOpt || !qtyOpt)
+          {
+            _logger->warn("[Hyperliquid] Invalid price/qty in book level");
+            continue;
+          }
+
+          Price price = Price::fromDouble(*priceOpt);
+          Quantity qty = Quantity::fromDouble(*qtyOpt);
 
           if (idx == 0)
           {
@@ -276,13 +284,20 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
           continue;
         }
 
+        auto priceOpt = util::safeParseDouble(pxEl.get_string().value());
+        auto qtyOpt = util::safeParseDouble(szEl.get_string().value());
+        if (!priceOpt || !qtyOpt)
+        {
+          _logger->warn("[Hyperliquid] Invalid trade price/qty");
+          continue;
+        }
+
         SymbolId sid = resolveSymbolId(coinEl.get_string().value());
 
         TradeEvent ev;
         ev.trade.symbol = sid;
-        ev.trade.price = Price::fromDouble(std::strtod(pxEl.get_string().value().data(), nullptr));
-        ev.trade.quantity =
-            Quantity::fromDouble(std::strtod(szEl.get_string().value().data(), nullptr));
+        ev.trade.price = Price::fromDouble(*priceOpt);
+        ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
         std::string_view side = sideEl.get_string().value();
         ev.trade.isBuy = (side == "B" || side == "buy");
 

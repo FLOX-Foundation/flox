@@ -9,6 +9,8 @@
 
 #include "flox-connectors/net/curl_transport.h"
 
+#include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,7 +28,23 @@ size_t writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
 }
 }  // namespace
 
-CurlTransport::CurlTransport(std::size_t poolSize) : _pool(poolSize) {}
+CurlTransport::CurlTransport(std::size_t poolSize, CurlTimeoutConfig timeoutConfig)
+    : _pool(poolSize), _timeoutConfig(timeoutConfig)
+{
+  if (!_timeoutConfig.isValid())
+  {
+    throw std::invalid_argument("Invalid CurlTimeoutConfig");
+  }
+}
+
+CurlTransport::CurlTransport(CurlSessionPoolConfig poolConfig, CurlTimeoutConfig timeoutConfig)
+    : _pool(poolConfig), _timeoutConfig(timeoutConfig)
+{
+  if (!_timeoutConfig.isValid())
+  {
+    throw std::invalid_argument("Invalid CurlTimeoutConfig");
+  }
+}
 
 CurlTransport::~CurlTransport() = default;
 
@@ -35,12 +53,37 @@ void CurlTransport::post(std::string_view url, std::string_view body,
                          MoveOnlyFunction<void(std::string_view)> onSuccess,
                          MoveOnlyFunction<void(std::string_view)> onError)
 {
+  long connectSec = std::max(1L, static_cast<long>(_timeoutConfig.connectTimeoutMs / 1000));
+  long requestSec = std::max(1L, static_cast<long>(_timeoutConfig.requestTimeoutMs / 1000));
+
+  postImpl(url, body, headers, std::move(onSuccess), std::move(onError), connectSec, requestSec);
+}
+
+void CurlTransport::postWithTimeout(
+    std::string_view url, std::string_view body,
+    const std::vector<std::pair<std::string_view, std::string_view>>& headers,
+    MoveOnlyFunction<void(std::string_view)> onSuccess,
+    MoveOnlyFunction<void(std::string_view)> onError, int requestTimeoutMs)
+{
+  long connectSec = std::max(1L, static_cast<long>(_timeoutConfig.connectTimeoutMs / 1000));
+  long requestSec = std::max(1L, static_cast<long>(requestTimeoutMs / 1000));
+
+  postImpl(url, body, headers, std::move(onSuccess), std::move(onError), connectSec, requestSec);
+}
+
+void CurlTransport::postImpl(
+    std::string_view url, std::string_view body,
+    const std::vector<std::pair<std::string_view, std::string_view>>& headers,
+    MoveOnlyFunction<void(std::string_view)> onSuccess,
+    MoveOnlyFunction<void(std::string_view)> onError, long connectTimeoutSec,
+    long requestTimeoutSec)
+{
   CURL* h = _pool.acquire();
   if (!h)
   {
     if (onError)
     {
-      onError("Connection pool exhausted");
+      onError("Connection pool exhausted or timeout");
     }
     return;
   }
@@ -55,9 +98,9 @@ void CurlTransport::post(std::string_view url, std::string_view body,
   curl_easy_setopt(h, CURLOPT_POSTFIELDS, bodyStr.c_str());
   curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, static_cast<long>(bodyStr.size()));
 
-  // Timeouts
-  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, 10L);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, 30L);
+  // Configurable timeouts
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, connectTimeoutSec);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, requestTimeoutSec);
 
   // Connection reuse
   curl_easy_setopt(h, CURLOPT_FORBID_REUSE, 0L);
@@ -87,14 +130,39 @@ void CurlTransport::post(std::string_view url, std::string_view body,
 
   CURLcode res = curl_easy_perform(h);
 
+  long httpCode = 0;
+  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &httpCode);
+
   curl_slist_free_all(hdrs);
   _pool.release(h);
 
   if (res == CURLE_OK)
   {
-    if (onSuccess)
+    if (httpCode >= 200 && httpCode < 300)
     {
-      onSuccess(response);
+      if (onSuccess)
+      {
+        onSuccess(response);
+      }
+    }
+    else
+    {
+      if (onError)
+      {
+        std::string errMsg = "HTTP " + std::to_string(httpCode);
+        if (!response.empty())
+        {
+          if (response.size() > 1024)
+          {
+            errMsg += ": " + response.substr(0, 1024) + "...";
+          }
+          else
+          {
+            errMsg += ": " + response;
+          }
+        }
+        onError(errMsg);
+      }
     }
   }
   else

@@ -15,25 +15,22 @@
 #include <flox/execution/order_tracker.h>
 #include <flox/log/log.h>
 
-#include <cstdio>
-#include <memory>
-#include <string>
-
 #include <simdjson.h>
 
 namespace flox
 {
 
-BybitOrderExecutor::BybitOrderExecutor(std::unique_ptr<AuthenticatedRestClient> client,
-                                       SymbolRegistry* registry, OrderTracker* orderTracker)
-    : _client(std::move(client)), _registry(registry), _orderTracker(orderTracker)
-{
-}
+template <typename Policies>
+BybitOrderExecutorT<Policies>::~BybitOrderExecutorT() = default;
 
-BybitOrderExecutor::~BybitOrderExecutor() = default;
-
-void BybitOrderExecutor::submitOrder(const Order& order)
+template <typename Policies>
+void BybitOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
+  if (!_policies.rateLimit.tryAcquire(order.id))
+  {
+    return;
+  }
+
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info.has_value())
   {
@@ -55,10 +52,14 @@ void BybitOrderExecutor::submitOrder(const Order& order)
            << (order.side == Side::BUY ? "Buy" : "Sell") << " qty=" << order.quantity.toDouble()
            << " price=" << order.price.toDouble() << " category=" << Bybit::toString(info->type));
 
+  _policies.timeout.trackSubmit(order.id);
+
   _client->post(
       "/v5/order/create", body,
       [this, order](std::string_view response)
       {
+        _policies.timeout.clearPending(order.id);
+
         simdjson::ondemand::parser parser;
         simdjson::padded_string padded(response);
         auto doc = parser.iterate(padded);
@@ -79,14 +80,21 @@ void BybitOrderExecutor::submitOrder(const Order& order)
 
         _orderTracker->onSubmitted(order, orderId);
       },
-      [this](std::string_view error)
+      [this, order](std::string_view error)
       {
+        _policies.timeout.clearPending(order.id);
         FLOX_LOG_ERROR("[BybitOrderExecutor] Transport error: " << error);
       });
 }
 
-void BybitOrderExecutor::cancelOrder(OrderId orderId)
+template <typename Policies>
+void BybitOrderExecutorT<Policies>::cancelOrder(OrderId orderId)
 {
+  if (!_policies.rateLimit.tryAcquire(orderId))
+  {
+    return;
+  }
+
   auto state = _orderTracker->get(orderId);
   if (!state)
   {
@@ -112,10 +120,14 @@ void BybitOrderExecutor::cancelOrder(OrderId orderId)
   FLOX_LOG_INFO("[BybitOrderExecutor] Cancelling order: localId=" << orderId << " exchangeId="
                                                                   << exchangeOrderId);
 
+  _policies.timeout.trackCancel(orderId);
+
   _client->post(
       "/v5/order/cancel", body,
       [this, orderId](std::string_view response)
       {
+        _policies.timeout.clearPending(orderId);
+
         simdjson::ondemand::parser parser;
         simdjson::padded_string padded(response);
         auto doc = parser.iterate(padded);
@@ -133,15 +145,22 @@ void BybitOrderExecutor::cancelOrder(OrderId orderId)
           _orderTracker->onCanceled(orderId);
         }
       },
-      [orderId](std::string_view err)
+      [this, orderId](std::string_view err)
       {
+        _policies.timeout.clearPending(orderId);
         FLOX_LOG_ERROR("[BybitOrderExecutor] Cancel transport error: orderId=" << orderId
                                                                                << " err=" << err);
       });
 }
 
-void BybitOrderExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
+template <typename Policies>
+void BybitOrderExecutorT<Policies>::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
+  if (!_policies.rateLimit.tryAcquire(oldOrderId))
+  {
+    return;
+  }
+
   auto info = _registry->getSymbolInfo(newOrder.symbol);
   if (!info.has_value())
   {
@@ -173,10 +192,14 @@ void BybitOrderExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
                 << oldOrderId << " exchangeId=" << exchangeOrderId << " newQty=" << qty
                 << " newPrice=" << price);
 
+  _policies.timeout.trackReplace(oldOrderId);
+
   _client->post(
       "/v5/order/amend", body,
       [this, oldOrderId, newOrder](std::string_view response)
       {
+        _policies.timeout.clearPending(oldOrderId);
+
         simdjson::ondemand::parser parser;
         simdjson::padded_string padded(response);
         auto doc = parser.iterate(padded);
@@ -194,11 +217,18 @@ void BybitOrderExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
           _orderTracker->onReplaced(oldOrderId, newOrder, "");
         }
       },
-      [oldOrderId](std::string_view err)
+      [this, oldOrderId](std::string_view err)
       {
+        _policies.timeout.clearPending(oldOrderId);
         FLOX_LOG_ERROR("[BybitOrderExecutor] Replace transport error: orderId=" << oldOrderId
                                                                                 << " err=" << err);
       });
 }
+
+// Explicit instantiations
+template class BybitOrderExecutorT<NoPolicies>;
+template class BybitOrderExecutorT<WithRateLimit>;
+template class BybitOrderExecutorT<WithTimeout>;
+template class BybitOrderExecutorT<FullPolicies>;
 
 }  // namespace flox

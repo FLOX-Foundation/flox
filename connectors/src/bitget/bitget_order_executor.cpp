@@ -1,8 +1,10 @@
 /*
  * Flox Engine
  * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
  * Copyright (c) 2025 FLOX Foundation
- * Licensed under the MIT License. See LICENSE file in the project root for full license information.
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
  */
 
 #include "flox-connectors/bitget/bitget_order_executor.h"
@@ -18,24 +20,21 @@
 namespace flox
 {
 
+template <typename Policies>
+BitgetOrderExecutorT<Policies>::~BitgetOrderExecutorT() = default;
+
 static constexpr std::string_view kPathPlace = "/api/v2/mix/order/place-order";
 static constexpr std::string_view kPathCancel = "/api/v2/mix/order/cancel-order";
 static constexpr std::string_view kPathModify = "/api/v2/mix/order/modify-order";
 
-BitgetOrderExecutor::BitgetOrderExecutor(std::unique_ptr<BitgetAuthenticatedRestClient> client,
-                                         SymbolRegistry* registry, OrderTracker* orderTracker,
-                                         Bitget::Params params)
-    : _client(std::move(client)),
-      _registry(registry),
-      _orderTracker(orderTracker),
-      _params(std::move(params))
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-}
+  if (!_policies.rateLimit.tryAcquire(order.id))
+  {
+    return;
+  }
 
-BitgetOrderExecutor::~BitgetOrderExecutor() = default;
-
-void BitgetOrderExecutor::submitOrder(const Order& order)
-{
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
@@ -75,10 +74,14 @@ void BitgetOrderExecutor::submitOrder(const Order& order)
       .append(std::to_string(order.id))
       .append("\"}");
 
+  _policies.timeout.trackSubmit(order.id);
+
   _client->post(
       std::string(kPathPlace), body,
       [this, order](std::string_view resp)
       {
+        _policies.timeout.clearPending(order.id);
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -91,14 +94,21 @@ void BitgetOrderExecutor::submitOrder(const Order& order)
         std::string exchId = std::string(doc["data"]["orderId"].get_string().value());
         _orderTracker->onSubmitted(order, exchId);
       },
-      [](std::string_view err)
+      [this, order](std::string_view err)
       {
+        _policies.timeout.clearPending(order.id);
         FLOX_LOG_ERROR("[BitgetOE] submitOrder transport: " << err);
       });
 }
 
-void BitgetOrderExecutor::cancelOrder(OrderId id)
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
 {
+  if (!_policies.rateLimit.tryAcquire(id))
+  {
+    return;
+  }
+
   auto st = _orderTracker->get(id);
   if (!st)
   {
@@ -134,10 +144,14 @@ void BitgetOrderExecutor::cancelOrder(OrderId id)
     body.append("\"clientOid\":\"").append(std::to_string(id)).append("\"}");
   }
 
+  _policies.timeout.trackCancel(id);
+
   _client->post(
       std::string(kPathCancel), body,
       [this, id](std::string_view resp)
       {
+        _policies.timeout.clearPending(id);
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -150,14 +164,21 @@ void BitgetOrderExecutor::cancelOrder(OrderId id)
           FLOX_LOG_ERROR("[BitgetOE] cancelOrder failed: " << doc["msg"].get_string().value());
         }
       },
-      [](std::string_view err)
+      [this, id](std::string_view err)
       {
+        _policies.timeout.clearPending(id);
         FLOX_LOG_ERROR("[BitgetOE] cancelOrder transport: " << err);
       });
 }
 
-void BitgetOrderExecutor::replaceOrder(OrderId oldId, const Order& newOrd)
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::replaceOrder(OrderId oldId, const Order& newOrd)
 {
+  if (!_policies.rateLimit.tryAcquire(oldId))
+  {
+    return;
+  }
+
   auto st = _orderTracker->get(oldId);
   if (!st)
   {
@@ -196,10 +217,14 @@ void BitgetOrderExecutor::replaceOrder(OrderId oldId, const Order& newOrd)
       .append(std::to_string(newOrd.id))
       .append("\"}");
 
+  _policies.timeout.trackReplace(oldId);
+
   _client->post(
       std::string(kPathModify), body,
       [this, oldId, newOrd](std::string_view resp)
       {
+        _policies.timeout.clearPending(oldId);
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -215,10 +240,17 @@ void BitgetOrderExecutor::replaceOrder(OrderId oldId, const Order& newOrd)
                                : std::string();
         _orderTracker->onReplaced(oldId, newOrd, exch);
       },
-      [](std::string_view err)
+      [this, oldId](std::string_view err)
       {
+        _policies.timeout.clearPending(oldId);
         FLOX_LOG_ERROR("[BitgetOE] replaceOrder transport: " << err);
       });
 }
+
+// Explicit instantiations
+template class BitgetOrderExecutorT<NoPolicies>;
+template class BitgetOrderExecutorT<WithRateLimit>;
+template class BitgetOrderExecutorT<WithTimeout>;
+template class BitgetOrderExecutorT<FullPolicies>;
 
 }  // namespace flox

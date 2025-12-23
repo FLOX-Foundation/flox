@@ -14,11 +14,34 @@
 namespace flox
 {
 
-CurlSessionPool::CurlSessionPool(std::size_t size, std::size_t maxSize) : _maxSize(maxSize)
+CurlSessionPool::CurlSessionPool(std::size_t size, std::size_t maxSize)
+    : _maxSize(maxSize), _acquireTimeoutMs(5000)
 {
   curl_global_init(CURL_GLOBAL_ALL);
   _pool.reserve(size);
   for (std::size_t i = 0; i < size; ++i)
+  {
+    CURL* h = curl_easy_init();
+    if (!h)
+    {
+      throw std::runtime_error("curl_easy_init failed");
+    }
+    _pool.push_back(h);
+    ++_totalCreated;
+  }
+}
+
+CurlSessionPool::CurlSessionPool(CurlSessionPoolConfig config)
+    : _maxSize(config.maxSize), _acquireTimeoutMs(config.acquireTimeoutMs)
+{
+  if (!config.isValid())
+  {
+    throw std::invalid_argument("Invalid CurlSessionPoolConfig");
+  }
+
+  curl_global_init(CURL_GLOBAL_ALL);
+  _pool.reserve(config.initialSize);
+  for (std::size_t i = 0; i < config.initialSize; ++i)
   {
     CURL* h = curl_easy_init();
     if (!h)
@@ -42,13 +65,27 @@ CurlSessionPool::~CurlSessionPool()
 
 CURL* CurlSessionPool::acquire()
 {
-  std::lock_guard lock(_mutex);
-  if (_pool.empty())
+  std::unique_lock lock(_mutex);
+
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(_acquireTimeoutMs);
+
+  while (_pool.empty() && _totalCreated >= _maxSize)
   {
-    if (_totalCreated >= _maxSize)
+    if (_cv.wait_until(lock, deadline) == std::cv_status::timeout)
     {
-      return nullptr;  // Pool exhausted
+      return nullptr;  // Timeout waiting for handle
     }
+  }
+
+  if (!_pool.empty())
+  {
+    CURL* h = _pool.back();
+    _pool.pop_back();
+    return h;
+  }
+
+  if (_totalCreated < _maxSize)
+  {
     CURL* h = curl_easy_init();
     if (h)
     {
@@ -56,9 +93,8 @@ CURL* CurlSessionPool::acquire()
     }
     return h;
   }
-  CURL* h = _pool.back();
-  _pool.pop_back();
-  return h;
+
+  return nullptr;
 }
 
 void CurlSessionPool::release(CURL* h)
@@ -67,16 +103,34 @@ void CurlSessionPool::release(CURL* h)
   {
     return;
   }
+
+  {
+    std::lock_guard lock(_mutex);
+    if (_pool.size() < _maxSize)
+    {
+      _pool.push_back(h);
+    }
+    else
+    {
+      curl_easy_cleanup(h);
+      --_totalCreated;
+      return;  // Don't notify if we cleaned up
+    }
+  }
+
+  _cv.notify_one();
+}
+
+std::size_t CurlSessionPool::available() const
+{
   std::lock_guard lock(_mutex);
-  if (_pool.size() < _maxSize)
-  {
-    _pool.push_back(h);
-  }
-  else
-  {
-    curl_easy_cleanup(h);
-    --_totalCreated;
-  }
+  return _pool.size();
+}
+
+std::size_t CurlSessionPool::totalCreated() const
+{
+  std::lock_guard lock(_mutex);
+  return _totalCreated;
 }
 
 }  // namespace flox
