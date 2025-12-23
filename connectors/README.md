@@ -40,7 +40,11 @@ The static library exports the target **`flox::flox-connectors`**, ready for `ad
 
 ## Contributing
 
-Contributions are welcome! Please follow the project’s `.clang-format` style and keep pull requests focused.
+Contributions are welcome! Please follow the project's `.clang-format` style and keep pull requests focused.
+
+## Commercial Services
+
+For commercial support, enterprise connectors, and custom development services, visit [floxlabs.dev](https://floxlabs.dev)
 
 ## Disclaimer
 
