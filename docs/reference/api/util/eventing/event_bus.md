@@ -203,4 +203,4 @@ Example results on Intel i5-1135G7 @ 2.40GHz (4 cores / 8 threads):
 
 * [Disruptor Pattern](../../../../explanation/disruptor.md)
 * [Memory Model](../../../../explanation/memory-model.md)
-* [Pool](../../memory/pool.md)
+* [Pool](../memory/pool.md)

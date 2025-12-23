@@ -78,15 +78,21 @@ AggregatedPositionTracker<4> tracker;
 ### Recording Fills
 
 ```cpp
-// Buy 100 @ 50000 on Binance (exchange 0)
-tracker.onFill(0, symbol, 100'000'000LL, 50000'000'000LL);
+// Buy 1 BTC @ $50,000 on Binance (exchange 0)
+tracker.onFill(0, symbol,
+    Quantity::fromDouble(1.0).raw(),
+    Price::fromDouble(50000.0).raw());
 
-// Buy 50 @ 50001 on Bybit (exchange 1)
-tracker.onFill(1, symbol, 50'000'000LL, 50001'000'000LL);
+// Buy 0.5 BTC @ $50,001 on Bybit (exchange 1)
+tracker.onFill(1, symbol,
+    Quantity::fromDouble(0.5).raw(),
+    Price::fromDouble(50001.0).raw());
 
-// Sell 30 @ 50002 on Kraken (exchange 2)
+// Sell 0.3 BTC @ $50,002 on Kraken (exchange 2)
 // Note: negative quantity for sells
-tracker.onFill(2, symbol, -30'000'000LL, 50002'000'000LL);
+tracker.onFill(2, symbol,
+    Quantity::fromDouble(-0.3).raw(),
+    Price::fromDouble(50002.0).raw());
 ```
 
 ### Query Positions
@@ -94,20 +100,23 @@ tracker.onFill(2, symbol, -30'000'000LL, 50002'000'000LL);
 ```cpp
 // Per-exchange position (lock-free)
 auto binancePos = tracker.position(0, symbol);
-std::cout << "Binance: qty=" << binancePos.quantityRaw
-          << " avg=" << binancePos.avgEntryPriceRaw << "\n";
+Quantity qty = Quantity::fromRaw(binancePos.quantityRaw);
+Price avgEntry = Price::fromRaw(binancePos.avgEntryPriceRaw);
+std::cout << "Binance: qty=" << qty.toDouble()
+          << " avg=" << avgEntry.toDouble() << "\n";
 
 // Aggregated position across all exchanges (lock-free)
 auto total = tracker.totalPosition(symbol);
-std::cout << "Total: qty=" << total.quantityRaw
-          << " avg=" << total.avgEntryPriceRaw << "\n";
+std::cout << "Total: qty=" << Quantity::fromRaw(total.quantityRaw).toDouble()
+          << " avg=" << Price::fromRaw(total.avgEntryPriceRaw).toDouble() << "\n";
 ```
 
 ### Unrealized PnL
 
 ```cpp
-int64_t currentPrice = 50100'000'000LL;  // 50100
-int64_t pnl = tracker.unrealizedPnlRaw(symbol, currentPrice);
+Price currentPrice = Price::fromDouble(50100.0);
+int64_t pnlRaw = tracker.unrealizedPnlRaw(symbol, currentPrice.raw());
+double pnl = Price::fromRaw(pnlRaw).toDouble();
 // pnl = totalQty * (currentPrice - avgEntry)
 ```
 

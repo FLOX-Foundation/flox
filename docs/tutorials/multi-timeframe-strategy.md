@@ -123,6 +123,7 @@ void onBar(const BarEvent& ev) override
 ```
 
 **Key points:**
+
 - We filter for M1 bars to trigger entry logic on the fastest timeframe
 - `bar(symbol, timeframe, index)` gives us historical bars (0 = latest, 1 = previous)
 - We check conditions across all three timeframes
@@ -287,7 +288,7 @@ if (h1Bullish && m5Pullback && m1BullishReversal && positiveDelta)
 
 ## Complete Example
 
-See [multi_timeframe_demo.cpp](../../demo/src/multi_timeframe_demo.cpp) for a complete working example.
+See [multi_timeframe_demo.cpp](https://github.com/FLOX-Foundation/flox/blob/main/demo/src/multi_timeframe_demo.cpp) for a complete working example.
 
 ## Next Steps
 

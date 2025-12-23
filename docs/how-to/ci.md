@@ -114,5 +114,4 @@ vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows
 
 ## See Also
 
-- [CMake Configuration](cmake-flags.md) - Build options reference
 - [Configuration](configuration.md) - Runtime configuration

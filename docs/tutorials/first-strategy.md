@@ -176,12 +176,14 @@ engine.start();
 ## 5. Best Practices
 
 **Do:**
+
 - Keep callbacks fast and non-blocking
 - Filter events by symbol early (first line of callback)
 - Use `Price::fromDouble()` and `Quantity::fromDouble()` for conversions
 - Implement `id()` to return a unique value
 
 **Don't:**
+
 - Block in callbacks (no I/O, no locks, no allocations)
 - Store pointers to events (they're recycled)
 - Throw exceptions from callbacks

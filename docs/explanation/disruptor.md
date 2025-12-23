@@ -255,12 +255,14 @@ Run benchmarks on your target hardware to establish baseline.
 ## When Disruptor Shines
 
 **Good fit:**
+
 - High-throughput, low-latency requirements
 - Predictable memory usage
 - Single producer, multiple consumers
 - Events are processed in order
 
 **Not ideal for:**
+
 - Multiple producers (requires coordination)
 - Unbounded queues
 - Very uneven consumer speeds

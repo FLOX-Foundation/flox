@@ -70,10 +70,10 @@ SplitOrderTracker tracker;
 
 // Parent order 1000 split into 3 children
 std::array<OrderId, 3> children = {1001, 1002, 1003};
-int64_t totalQty = 1000'000'000LL;  // 1000 in raw units
+Quantity totalQty = Quantity::fromDouble(10.0);  // 10 BTC
 int64_t nowNs = /* current time */;
 
-bool ok = tracker.registerSplit(1000, children, totalQty, nowNs);
+bool ok = tracker.registerSplit(1000, children, totalQty.raw(), nowNs);
 if (!ok) {
   // Failed - parent already exists or too many children
 }
@@ -82,11 +82,11 @@ if (!ok) {
 ### Track Fills
 
 ```cpp
-// Child 1001 filled 400
-tracker.onChildFill(1001, 400'000'000LL);
+// Child 1001 filled 4 BTC
+tracker.onChildFill(1001, Quantity::fromDouble(4.0).raw());
 
-// Child 1002 filled 350
-tracker.onChildFill(1002, 350'000'000LL);
+// Child 1002 filled 3.5 BTC
+tracker.onChildFill(1002, Quantity::fromDouble(3.5).raw());
 
 // Check fill ratio
 auto* state = tracker.getState(1000);
@@ -116,7 +116,8 @@ if (tracker.isComplete(1000)) {
 
 ```cpp
 // Remove splits older than 1 hour
-tracker.cleanup(nowNs, 3600'000'000'000LL);
+constexpr int64_t oneHourNs = 3600LL * 1'000'000'000LL;
+tracker.cleanup(nowNs, oneHourNs);
 ```
 
 ## SplitState Fields

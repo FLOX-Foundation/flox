@@ -85,14 +85,21 @@ if (books.hasArbitrageOpportunity(btcBinance)) {
 AggregatedPositionTracker<8> positions;
 
 // Update on fills (writer thread)
-positions.onFill(binance, btcBinance, 100'000'000LL, 50000'000'000LL);  // Buy 100 @ 50000
-positions.onFill(bybit, btcBybit, -30'000'000LL, 50100'000'000LL);      // Sell 30 @ 50100
+positions.onFill(binance, btcBinance,
+    Quantity::fromDouble(1.0).raw(),      // Buy 1 BTC
+    Price::fromDouble(50000.0).raw());    // @ $50,000
+
+positions.onFill(bybit, btcBybit,
+    Quantity::fromDouble(-0.3).raw(),     // Sell 0.3 BTC
+    Price::fromDouble(50100.0).raw());    // @ $50,100
 
 // Query positions (reader thread, lock-free)
 auto binancePos = positions.position(binance, btcBinance);
 auto totalPos = positions.totalPosition(btcBinance);  // Aggregated across exchanges
 
-int64_t pnl = positions.unrealizedPnlRaw(btcBinance, currentPriceRaw);
+Price currentPrice = Price::fromDouble(50200.0);
+int64_t pnlRaw = positions.unrealizedPnlRaw(btcBinance, currentPrice.raw());
+double pnl = Price::fromRaw(pnlRaw).toDouble();  // Convert to readable value
 ```
 
 ## 5. Configure Order Routing
@@ -135,12 +142,12 @@ SplitOrderTracker tracker;
 // Split parent order across exchanges
 OrderId parentId = 1000;
 std::array<OrderId, 3> childIds = {1001, 1002, 1003};
-int64_t totalQty = 1000'000'000LL;
+Quantity totalQty = Quantity::fromDouble(10.0);  // 10 BTC total
 
-tracker.registerSplit(parentId, childIds, totalQty, nowNs);
+tracker.registerSplit(parentId, childIds, totalQty.raw(), nowNs);
 
 // Update on child events
-tracker.onChildFill(1001, 400'000'000LL);
+tracker.onChildFill(1001, Quantity::fromDouble(4.0).raw());  // 4 BTC filled
 tracker.onChildComplete(1001, true);
 
 // Check status

@@ -99,6 +99,6 @@ public:
 ## See Also
 
 * [ISubscriber](abstract_subscriber.md) — Base subscriber interface
-* [BookUpdateEvent](../../book/events/book_update_event.md) — Order book update event
-* [TradeEvent](../../book/events/trade_event.md) — Trade event
-* [BarEvent](../../aggregator/events/bar_event.md) — Bar event
+* [BookUpdateEvent](../book/events/book_update_event.md) — Order book update event
+* [TradeEvent](../book/events/trade_event.md) — Trade event
+* [BarEvent](../aggregator/events/bar_event.md) — Bar event
