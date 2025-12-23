@@ -12,6 +12,10 @@ It provides low-level infrastructure for constructing execution pipelines, proce
 
 The **open-source community implementations of connectors built on top of Flox** are maintained in the following repository: [https://github.com/FLOX-Foundation/flox-connectors](https://github.com/FLOX-Foundation/flox-connectors)
 
+## Commercial Services
+
+For commercial support, enterprise connectors, and custom development services, visit [floxlabs.dev](https://floxlabs.dev)
+
 ## Contribution
 
 Contributions are welcome via pull requests.
