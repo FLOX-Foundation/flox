@@ -76,11 +76,11 @@ struct SymbolContext
     return unrealizedPnl(*midOpt);
   }
 
-  [[nodiscard]] bool isLong() const noexcept { return position.raw() > 0; }
+  bool isLong() const noexcept { return position.raw() > 0; }
 
-  [[nodiscard]] bool isShort() const noexcept { return position.raw() < 0; }
+  bool isShort() const noexcept { return position.raw() < 0; }
 
-  [[nodiscard]] bool isFlat() const noexcept { return position.isZero(); }
+  bool isFlat() const noexcept { return position.isZero(); }
 
   void reset() noexcept
   {

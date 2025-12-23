@@ -28,7 +28,7 @@ class TimeBarPolicy
   }
 
   /// Returns interval in nanoseconds
-  [[nodiscard]] constexpr uint64_t param() const noexcept { return _interval.count(); }
+  constexpr uint64_t param() const noexcept { return _interval.count(); }
 
   [[nodiscard]] bool shouldClose(const TradeEvent& trade, const Bar& bar) const noexcept
   {
@@ -44,8 +44,7 @@ class TimeBarPolicy
     bar.low = std::min(bar.low, trade.trade.price);
     bar.close = trade.trade.price;
 
-    const auto notional = Volume::fromRaw(
-        (trade.trade.price.raw() * trade.trade.quantity.raw()) / Price::Scale);
+    const auto notional = trade.trade.quantity * trade.trade.price;
     bar.volume += notional;
     bar.tradeCount += Quantity::fromRaw(1);
 
@@ -64,7 +63,7 @@ class TimeBarPolicy
   }
 
  private:
-  [[nodiscard]] TimePoint alignToInterval(TimePoint tp) const noexcept
+  TimePoint alignToInterval(TimePoint tp) const noexcept
   {
     const auto epoch = tp.time_since_epoch();
     const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(epoch);

@@ -65,7 +65,7 @@ class RateLimiter
   }
 
   /// Current available tokens
-  [[nodiscard]] uint32_t available() const noexcept
+  uint32_t available() const noexcept
   {
     return _tokens.load(std::memory_order_relaxed);
   }
@@ -77,8 +77,8 @@ class RateLimiter
     _lastRefill.store(Clock::now().time_since_epoch().count(), std::memory_order_relaxed);
   }
 
-  [[nodiscard]] uint32_t capacity() const noexcept { return _capacity; }
-  [[nodiscard]] uint32_t refillRate() const noexcept { return _refillRate; }
+  uint32_t capacity() const noexcept { return _capacity; }
+  uint32_t refillRate() const noexcept { return _refillRate; }
 
  private:
   void refill() noexcept

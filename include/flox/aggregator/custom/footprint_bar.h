@@ -33,17 +33,17 @@ class FootprintBar
     Quantity bidVolume{};  // Sell market orders hitting bids (aggressive sellers)
     Quantity askVolume{};  // Buy market orders hitting asks (aggressive buyers)
 
-    [[nodiscard]] Quantity totalVolume() const noexcept
+    Quantity totalVolume() const noexcept
     {
       return Quantity::fromRaw(bidVolume.raw() + askVolume.raw());
     }
 
-    [[nodiscard]] Quantity delta() const noexcept
+    Quantity delta() const noexcept
     {
       return Quantity::fromRaw(askVolume.raw() - bidVolume.raw());
     }
 
-    [[nodiscard]] double imbalanceRatio() const noexcept
+    double imbalanceRatio() const noexcept
     {
       const auto total = totalVolume().raw();
       if (total == 0)
@@ -79,7 +79,7 @@ class FootprintBar
     }
   }
 
-  [[nodiscard]] Quantity totalDelta() const noexcept
+  Quantity totalDelta() const noexcept
   {
     int64_t delta = 0;
     for (size_t i = 0; i < _numLevels; ++i)
@@ -89,7 +89,7 @@ class FootprintBar
     return Quantity::fromRaw(delta);
   }
 
-  [[nodiscard]] Quantity totalVolume() const noexcept
+  Quantity totalVolume() const noexcept
   {
     int64_t vol = 0;
     for (size_t i = 0; i < _numLevels; ++i)
@@ -99,14 +99,14 @@ class FootprintBar
     return Quantity::fromRaw(vol);
   }
 
-  [[nodiscard]] size_t numLevels() const noexcept { return _numLevels; }
+  size_t numLevels() const noexcept { return _numLevels; }
 
-  [[nodiscard]] const Level* level(size_t idx) const noexcept
+  const Level* level(size_t idx) const noexcept
   {
     return idx < _numLevels ? &_levels[idx] : nullptr;
   }
 
-  [[nodiscard]] const Level* levelAt(Price price) const noexcept
+  const Level* levelAt(Price price) const noexcept
   {
     const auto quantizedPrice = quantize(price);
     for (size_t i = 0; i < _numLevels; ++i)
@@ -119,7 +119,7 @@ class FootprintBar
     return nullptr;
   }
 
-  [[nodiscard]] Price highestBuyingPressure() const noexcept
+  Price highestBuyingPressure() const noexcept
   {
     if (_numLevels == 0)
     {
@@ -137,7 +137,7 @@ class FootprintBar
     return best->price;
   }
 
-  [[nodiscard]] Price highestSellingPressure() const noexcept
+  Price highestSellingPressure() const noexcept
   {
     if (_numLevels == 0)
     {
@@ -156,7 +156,7 @@ class FootprintBar
   }
 
   // Returns price of strongest imbalance (ratio >= threshold), or empty Price if none
-  [[nodiscard]] Price strongestImbalance(double threshold = 0.7) const noexcept
+  Price strongestImbalance(double threshold = 0.7) const noexcept
   {
     Price result{};
     double maxImbalance = 0.0;
@@ -184,7 +184,7 @@ class FootprintBar
   void clear() noexcept { _numLevels = 0; }
 
  private:
-  [[nodiscard]] Price quantize(Price price) const noexcept
+  Price quantize(Price price) const noexcept
   {
     if (_tickSize.raw() == 0)
     {

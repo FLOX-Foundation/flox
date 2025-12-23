@@ -20,11 +20,21 @@ namespace flox
 
 template <typename T>
 concept BarPolicy = requires(T& policy, const TradeEvent& trade, Bar& bar, TimePoint ts) {
-  { policy.shouldClose(trade, bar) } noexcept -> std::same_as<bool>;
-  { policy.update(trade, bar) } noexcept -> std::same_as<void>;
-  { policy.initBar(trade, bar) } noexcept -> std::same_as<void>;
-  { T::kBarType } -> std::convertible_to<BarType>;
-  { policy.param() } noexcept -> std::convertible_to<uint64_t>;
+  {
+    policy.shouldClose(trade, bar)
+  } noexcept -> std::same_as<bool>;
+  {
+    policy.update(trade, bar)
+  } noexcept -> std::same_as<void>;
+  {
+    policy.initBar(trade, bar)
+  } noexcept -> std::same_as<void>;
+  {
+    T::kBarType
+  } -> std::convertible_to<BarType>;
+  {
+    policy.param()
+  } noexcept -> std::convertible_to<uint64_t>;
 };
 
 // Common OHLCV update - free function, inlined
@@ -36,8 +46,7 @@ inline void updateOHLCV(const TradeEvent& trade, Bar& bar) noexcept
   bar.close = trade.trade.price;
 
   // Volume = price * quantity (notional value)
-  const auto notional = Volume::fromRaw(
-      (trade.trade.price.raw() * trade.trade.quantity.raw()) / Price::Scale);
+  const auto notional = trade.trade.quantity * trade.trade.price;
   bar.volume += notional;
 
   bar.tradeCount += Quantity::fromRaw(1);
@@ -54,8 +63,7 @@ inline void updateOHLCV(const TradeEvent& trade, Bar& bar) noexcept
 inline void initBarFromTrade(const TradeEvent& trade, Bar& bar) noexcept
 {
   const auto ts = fromUnixNs(trade.trade.exchangeTsNs);
-  const auto notional = Volume::fromRaw(
-      (trade.trade.price.raw() * trade.trade.quantity.raw()) / Price::Scale);
+  const auto notional = trade.trade.quantity * trade.trade.price;
 
   bar.open = trade.trade.price;
   bar.high = trade.trade.price;

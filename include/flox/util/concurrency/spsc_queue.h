@@ -28,6 +28,7 @@ class SPSCQueue
   static_assert(Capacity > 1, "Capacity must be > 1");
   static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of 2");
   static_assert(std::is_nothrow_destructible_v<T>, "T must be nothrow destructible");
+  static_assert(std::is_nothrow_move_constructible_v<T>, "T must be nothrow move constructible");
 
  public:
   SPSCQueue() = default;

@@ -35,12 +35,12 @@ class VolumeProfile
     Volume volume{};
     Volume buyVolume{};
 
-    [[nodiscard]] Volume sellVolume() const noexcept
+    Volume sellVolume() const noexcept
     {
       return Volume::fromRaw(volume.raw() - buyVolume.raw());
     }
 
-    [[nodiscard]] Volume delta() const noexcept
+    Volume delta() const noexcept
     {
       return Volume::fromRaw(buyVolume.raw() - sellVolume().raw());
     }
@@ -52,8 +52,7 @@ class VolumeProfile
 
   void addTrade(const TradeEvent& trade) noexcept
   {
-    const auto notional = Volume::fromRaw(
-        (trade.trade.price.raw() * trade.trade.quantity.raw()) / Price::Scale);
+    const auto notional = trade.trade.quantity * trade.trade.price;
 
     const auto quantizedPrice = quantize(trade.trade.price);
     auto* level = findOrCreateLevel(quantizedPrice);
@@ -89,21 +88,21 @@ class VolumeProfile
     return maxLevel->price;
   }
 
-  [[nodiscard]] Price valueAreaHigh() const noexcept
+  [[nodiscard]] Price valueAreaHigh() const
   {
     auto [low, high] = calculateValueArea();
     return high;
   }
 
-  [[nodiscard]] Price valueAreaLow() const noexcept
+  [[nodiscard]] Price valueAreaLow() const
   {
     auto [low, high] = calculateValueArea();
     return low;
   }
 
-  [[nodiscard]] Volume totalVolume() const noexcept { return _totalVolume; }
+  Volume totalVolume() const noexcept { return _totalVolume; }
 
-  [[nodiscard]] Volume totalDelta() const noexcept
+  Volume totalDelta() const noexcept
   {
     int64_t delta = 0;
     for (size_t i = 0; i < _numLevels; ++i)
@@ -113,14 +112,14 @@ class VolumeProfile
     return Volume::fromRaw(delta);
   }
 
-  [[nodiscard]] size_t numLevels() const noexcept { return _numLevels; }
+  size_t numLevels() const noexcept { return _numLevels; }
 
-  [[nodiscard]] const Level* level(size_t idx) const noexcept
+  const Level* level(size_t idx) const noexcept
   {
     return idx < _numLevels ? &_levels[idx] : nullptr;
   }
 
-  [[nodiscard]] Volume volumeAt(Price price) const noexcept
+  Volume volumeAt(Price price) const noexcept
   {
     const auto quantizedPrice = quantize(price);
     for (size_t i = 0; i < _numLevels; ++i)
@@ -140,7 +139,7 @@ class VolumeProfile
   }
 
  private:
-  [[nodiscard]] Price quantize(Price price) const noexcept
+  Price quantize(Price price) const noexcept
   {
     if (_tickSize.raw() == 0)
     {
@@ -173,7 +172,7 @@ class VolumeProfile
     return &newLevel;
   }
 
-  [[nodiscard]] std::pair<Price, Price> calculateValueArea() const noexcept
+  std::pair<Price, Price> calculateValueArea() const
   {
     if (_numLevels == 0)
     {

@@ -887,12 +887,12 @@ TEST(VolumeProfileTest, TracksDelta)
   VolumeProfile<64> profile;
   profile.setTickSize(Price::fromDouble(1.0));
 
-  profile.addTrade(makeTrade(SYMBOL, 100, 1, 0, InstrumentType::Spot, true));   // buy 100
-  profile.addTrade(makeTrade(SYMBOL, 100, 2, 1, InstrumentType::Spot, false));  // sell 200
+  profile.addTrade(makeTrade(SYMBOL, 100, 1, 0, InstrumentType::Spot, true));   // buy notional=100*1=100
+  profile.addTrade(makeTrade(SYMBOL, 100, 2, 1, InstrumentType::Spot, false));  // sell notional=100*2=200
 
-  // Total = 300, buy = 100, sell = 200, delta = -100
+  // Total notional = 300, buy = 100, sell = 200, delta = -100
   EXPECT_EQ(profile.totalVolume(), Volume::fromDouble(300.0));
-  EXPECT_EQ(profile.totalDelta(), Volume::fromRaw(-100 * Volume::Scale));
+  EXPECT_EQ(profile.totalDelta(), Volume::fromDouble(-100.0));
 }
 
 // ============================================================================

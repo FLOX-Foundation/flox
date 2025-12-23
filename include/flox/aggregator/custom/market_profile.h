@@ -38,12 +38,12 @@ class MarketProfile
     std::bitset<MaxPeriods> tpos;  // Which periods traded at this price
     uint32_t tpoCount = 0;         // Number of periods with activity
 
-    [[nodiscard]] bool hasPeriod(size_t period) const noexcept
+    bool hasPeriod(size_t period) const noexcept
     {
       return period < MaxPeriods && tpos.test(period);
     }
 
-    [[nodiscard]] bool isSinglePrint() const noexcept { return tpoCount == 1; }
+    bool isSinglePrint() const noexcept { return tpoCount == 1; }
   };
 
   MarketProfile() = default;
@@ -92,7 +92,7 @@ class MarketProfile
   }
 
   // Point of Control - price with most TPOs
-  [[nodiscard]] Price poc() const noexcept
+  Price poc() const noexcept
   {
     if (_numLevels == 0)
     {
@@ -111,21 +111,21 @@ class MarketProfile
   }
 
   // Value Area High - upper bound of 70% TPO concentration
-  [[nodiscard]] Price valueAreaHigh() const noexcept
+  Price valueAreaHigh() const
   {
     auto [low, high] = calculateValueArea();
     return high;
   }
 
   // Value Area Low - lower bound of 70% TPO concentration
-  [[nodiscard]] Price valueAreaLow() const noexcept
+  Price valueAreaLow() const
   {
     auto [low, high] = calculateValueArea();
     return low;
   }
 
   // Initial Balance High - high of first two periods (A+B)
-  [[nodiscard]] Price initialBalanceHigh() const noexcept
+  Price initialBalanceHigh() const noexcept
   {
     Price ibHigh{};
     for (size_t i = 0; i < _numLevels; ++i)
@@ -142,7 +142,7 @@ class MarketProfile
   }
 
   // Initial Balance Low - low of first two periods (A+B)
-  [[nodiscard]] Price initialBalanceLow() const noexcept
+  Price initialBalanceLow() const noexcept
   {
     Price ibLow{};
     for (size_t i = 0; i < _numLevels; ++i)
@@ -158,18 +158,18 @@ class MarketProfile
     return ibLow;
   }
 
-  [[nodiscard]] Price highPrice() const noexcept { return _highPrice; }
-  [[nodiscard]] Price lowPrice() const noexcept { return _lowPrice; }
+  Price highPrice() const noexcept { return _highPrice; }
+  Price lowPrice() const noexcept { return _lowPrice; }
 
-  [[nodiscard]] size_t numLevels() const noexcept { return _numLevels; }
-  [[nodiscard]] size_t currentPeriod() const noexcept { return _currentPeriod; }
+  size_t numLevels() const noexcept { return _numLevels; }
+  size_t currentPeriod() const noexcept { return _currentPeriod; }
 
-  [[nodiscard]] const Level* level(size_t idx) const noexcept
+  const Level* level(size_t idx) const noexcept
   {
     return idx < _numLevels ? &_levels[idx] : nullptr;
   }
 
-  [[nodiscard]] const Level* levelAt(Price price) const noexcept
+  const Level* levelAt(Price price) const noexcept
   {
     const auto quantizedPrice = quantize(price);
     for (size_t i = 0; i < _numLevels; ++i)
@@ -183,7 +183,7 @@ class MarketProfile
   }
 
   // Find single prints (potential support/resistance)
-  [[nodiscard]] std::pair<size_t, std::array<Price, MaxLevels>> singlePrints() const noexcept
+  std::pair<size_t, std::array<Price, MaxLevels>> singlePrints() const noexcept
   {
     std::array<Price, MaxLevels> result{};
     size_t count = 0;
@@ -199,28 +199,28 @@ class MarketProfile
   }
 
   // Check if price is a poor high (single TPO at extreme)
-  [[nodiscard]] bool isPoorHigh() const noexcept
+  bool isPoorHigh() const noexcept
   {
     const auto* highLevel = levelAt(_highPrice);
     return highLevel && highLevel->isSinglePrint();
   }
 
   // Check if price is a poor low (single TPO at extreme)
-  [[nodiscard]] bool isPoorLow() const noexcept
+  bool isPoorLow() const noexcept
   {
     const auto* lowLevel = levelAt(_lowPrice);
     return lowLevel && lowLevel->isSinglePrint();
   }
 
   // Get TPO count at a specific price
-  [[nodiscard]] uint32_t tpoCountAt(Price price) const noexcept
+  uint32_t tpoCountAt(Price price) const noexcept
   {
     const auto* lvl = levelAt(price);
     return lvl ? lvl->tpoCount : 0;
   }
 
   // Get letter for period (A=0, B=1, etc.)
-  [[nodiscard]] static char periodLetter(size_t period) noexcept
+  static char periodLetter(size_t period) noexcept
   {
     return period < 26 ? static_cast<char>('A' + period) : '?';
   }
@@ -234,7 +234,7 @@ class MarketProfile
   }
 
  private:
-  [[nodiscard]] size_t calculatePeriod(uint64_t tradeNs) const noexcept
+  size_t calculatePeriod(uint64_t tradeNs) const noexcept
   {
     if (_periodDurationNs == 0 || tradeNs < _sessionStartNs)
     {
@@ -243,7 +243,7 @@ class MarketProfile
     return static_cast<size_t>((tradeNs - _sessionStartNs) / _periodDurationNs);
   }
 
-  [[nodiscard]] Price quantize(Price price) const noexcept
+  Price quantize(Price price) const noexcept
   {
     if (_tickSize.raw() == 0)
     {
@@ -275,7 +275,7 @@ class MarketProfile
     return &newLevel;
   }
 
-  [[nodiscard]] std::pair<Price, Price> calculateValueArea() const noexcept
+  std::pair<Price, Price> calculateValueArea() const
   {
     if (_numLevels == 0)
     {

@@ -252,10 +252,10 @@ using OrderId = uint64_t;
 ### Fixed-Point Types
 
 ```cpp
-// Tick = 0.000001 (6 decimal places)
-using Price = Decimal<PriceTag, 1'000'000, 1>;
-using Quantity = Decimal<QuantityTag, 1'000'000, 1>;
-using Volume = Decimal<VolumeTag, 1'000'000, 1>;
+// Tick = 0.00000001 (8 decimal places)
+using Price = Decimal<PriceTag, 100'000'000, 1>;
+using Quantity = Decimal<QuantityTag, 100'000'000, 1>;
+using Volume = Decimal<VolumeTag, 100'000'000, 1>;
 ```
 
 ### Enums

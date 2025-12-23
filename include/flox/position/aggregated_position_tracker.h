@@ -52,7 +52,7 @@ class AggregatedPositionTracker : public ISubsystem
     snap.costBasis = Volume::fromRaw(costRaw);
     if (qtyRaw != 0)
     {
-      snap.avgEntryPrice = Price::fromRaw(costRaw / qtyRaw * Price::Scale);
+      snap.avgEntryPrice = snap.costBasis / snap.quantity;
     }
     return snap;
   }
@@ -79,7 +79,7 @@ class AggregatedPositionTracker : public ISubsystem
     total.costBasis = Volume::fromRaw(totalCostRaw);
     if (totalQtyRaw != 0)
     {
-      total.avgEntryPrice = Price::fromRaw(totalCostRaw / totalQtyRaw * Price::Scale);
+      total.avgEntryPrice = total.costBasis / total.quantity;
     }
     return total;
   }
@@ -93,7 +93,7 @@ class AggregatedPositionTracker : public ISubsystem
     }
     // PnL = qty * (current - avg)
     Price diff = currentPrice - pos.avgEntryPrice;
-    return Volume::fromRaw((pos.quantity.raw() * diff.raw()) / Price::Scale);
+    return pos.quantity * diff;
   }
 
   void onFill(ExchangeId exchangeId, SymbolId symbol, Quantity filledQty, Price fillPrice)
@@ -105,34 +105,31 @@ class AggregatedPositionTracker : public ISubsystem
 
     auto& pos = _positions[exchangeId][symbol];
 
-    int64_t qtyRaw = pos.quantityRaw.load(std::memory_order_relaxed);
-    int64_t costRaw = pos.costBasisRaw.load(std::memory_order_relaxed);
+    Quantity qty = Quantity::fromRaw(pos.quantityRaw.load(std::memory_order_relaxed));
+    Volume cost = Volume::fromRaw(pos.costBasisRaw.load(std::memory_order_relaxed));
 
-    int64_t fillQtyRaw = filledQty.raw();
-    int64_t fillPriceRaw = fillPrice.raw();
-
-    if (fillQtyRaw > 0)
+    if (filledQty.raw() > 0)
     {
-      // Buy: cost += qty * price (stored as volume, already scaled correctly)
-      costRaw += (fillQtyRaw * fillPriceRaw) / Price::Scale;
-      qtyRaw += fillQtyRaw;
+      // Buy: cost += qty * price
+      cost = cost + (filledQty * fillPrice);
+      qty = qty + filledQty;
     }
-    else if (fillQtyRaw < 0)
+    else if (filledQty.raw() < 0)
     {
       // Sell: reduce at avg entry
-      int64_t sellQty = -fillQtyRaw;
-      int64_t avgEntryRaw = (qtyRaw != 0) ? (costRaw / qtyRaw * Price::Scale) : 0;
-      costRaw -= (sellQty * avgEntryRaw) / Price::Scale;
-      qtyRaw -= sellQty;
+      Quantity sellQty = Quantity::fromRaw(-filledQty.raw());
+      Price avgEntry = qty.raw() != 0 ? (cost / qty) : Price{};
+      cost = cost - (sellQty * avgEntry);
+      qty = qty - sellQty;
     }
 
-    if (qtyRaw == 0)
+    if (qty.raw() == 0)
     {
-      costRaw = 0;
+      cost = Volume{};
     }
 
-    pos.costBasisRaw.store(costRaw, std::memory_order_release);
-    pos.quantityRaw.store(qtyRaw, std::memory_order_release);
+    pos.costBasisRaw.store(cost.raw(), std::memory_order_release);
+    pos.quantityRaw.store(qty.raw(), std::memory_order_release);
   }
 
   void reset(SymbolId symbol)

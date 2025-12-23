@@ -449,79 +449,107 @@ class NLevelOrderBook : public IOrderBook
     return std::optional<Price>{Price::fromRaw(_tickSize.raw() * t)};
   }
 
-  [[nodiscard]] inline Quantity bidAtPrice(Price p) const override
+  inline Quantity bidAtPrice(Price p) const override
   {
     const size_t i = localIndex(p);
     return i < MAX_LEVELS ? _bids[i] : Quantity{};
   }
 
-  [[nodiscard]] inline Quantity askAtPrice(Price p) const override
+  inline Quantity askAtPrice(Price p) const override
   {
     const size_t i = localIndex(p);
     return i < MAX_LEVELS ? _asks[i] : Quantity{};
   }
 
-  [[nodiscard]] inline std::pair<double, double> consumeAsks(double needQtyBase) const noexcept
+  [[nodiscard]] inline std::pair<Quantity, Volume> consumeAsks(Quantity needQty) const noexcept
   {
     if (_bestAskIdx >= MAX_LEVELS)
     {
-      return {0.0, 0.0};
+      return {Quantity{}, Volume{}};
     }
 
-    double rem = needQtyBase;
-    double notional = 0.0;
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+    // Fast path: 128-bit accumulator with single division at end (GCC/Clang)
+    int64_t remRaw = needQty.raw();
+    __int128_t notionalRaw2 = 0;
 
-    const double ts = _tickSize.toDouble();
     size_t i = _bestAskIdx;
     const size_t hi = _maxAsk;
+    const int64_t ts = _tickSize.raw();
+    int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
 
-    double px = ts * static_cast<double>(_baseIndex + static_cast<int64_t>(i));
-
-    for (; i <= hi && rem > math::EPS_QTY; ++i, px += ts)
+    for (; i <= hi && remRaw > 0; ++i, ++tickNum)
     {
-      const double q = _asks[i].toDouble();
-      if (q <= 0.0)
+      const int64_t qRaw = _asks[i].raw();
+      if (qRaw == 0)
       {
         continue;
       }
 
-      const double take = q < rem ? q : rem;
-      notional += take * px;
-      rem -= take;
+      const int64_t takeRaw = (qRaw < remRaw) ? qRaw : remRaw;
+      notionalRaw2 += static_cast<__int128_t>(takeRaw) * static_cast<__int128_t>(ts * tickNum);
+      remRaw -= takeRaw;
     }
 
-    return {needQtyBase - rem, notional};
+    return {Quantity::fromRaw(needQty.raw() - remRaw),
+            Volume::fromRaw(static_cast<int64_t>(notionalRaw2 / Volume::Scale))};
+#else
+    // Fallback: use type-safe operators (slower but portable)
+    Quantity remaining = needQty;
+    Volume notional{};
+
+    size_t i = _bestAskIdx;
+    const size_t hi = _maxAsk;
+    int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
+
+    for (; i <= hi && remaining.raw() > 0; ++i, ++tickNum)
+    {
+      const Quantity available = _asks[i];
+      if (available.isZero())
+      {
+        continue;
+      }
+
+      const Quantity take = available.raw() < remaining.raw() ? available : remaining;
+      const Price price = Price::fromRaw(_tickSize.raw() * tickNum);
+      notional = notional + (take * price);
+      remaining = remaining - take;
+    }
+
+    return {needQty - remaining, notional};
+#endif
   }
 
-  [[nodiscard]] inline std::pair<double, double> consumeBids(double needQtyBase) const noexcept
+  [[nodiscard]] inline std::pair<Quantity, Volume> consumeBids(Quantity needQty) const noexcept
   {
     if (_bestBidIdx >= MAX_LEVELS)
     {
-      return {0.0, 0.0};
+      return {Quantity{}, Volume{}};
     }
 
-    double rem = needQtyBase;
-    double notional = 0.0;
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+    // Fast path: 128-bit accumulator with single division at end (GCC/Clang)
+    int64_t remRaw = needQty.raw();
+    __int128_t notionalRaw2 = 0;
 
-    const double ts = _tickSize.toDouble();
     size_t i = _bestBidIdx;
     const size_t lo = _minBid;
-
-    double px = ts * static_cast<double>(_baseIndex + static_cast<int64_t>(i));
+    const int64_t ts = _tickSize.raw();
+    int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
 
     for (;;)
     {
-      if (rem <= math::EPS_QTY)
+      if (remRaw <= 0)
       {
         break;
       }
 
-      const double q = _bids[i].toDouble();
-      if (q > 0.0)
+      const int64_t qRaw = _bids[i].raw();
+      if (qRaw != 0)
       {
-        const double take = q < rem ? q : rem;
-        notional += take * px;
-        rem -= take;
+        const int64_t takeRaw = (qRaw < remRaw) ? qRaw : remRaw;
+        notionalRaw2 += static_cast<__int128_t>(takeRaw) * static_cast<__int128_t>(ts * tickNum);
+        remRaw -= takeRaw;
       }
 
       if (i == lo)
@@ -529,13 +557,49 @@ class NLevelOrderBook : public IOrderBook
         break;
       }
       --i;
-      px -= ts;
+      --tickNum;
     }
 
-    return {needQtyBase - rem, notional};
+    return {Quantity::fromRaw(needQty.raw() - remRaw),
+            Volume::fromRaw(static_cast<int64_t>(notionalRaw2 / Volume::Scale))};
+#else
+    // Fallback: use type-safe operators (slower but portable)
+    Quantity remaining = needQty;
+    Volume notional{};
+
+    size_t i = _bestBidIdx;
+    const size_t lo = _minBid;
+    int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
+
+    for (;;)
+    {
+      if (remaining.raw() <= 0)
+      {
+        break;
+      }
+
+      const Quantity available = _bids[i];
+      if (!available.isZero())
+      {
+        const Quantity take = available.raw() < remaining.raw() ? available : remaining;
+        const Price price = Price::fromRaw(_tickSize.raw() * tickNum);
+        notional = notional + (take * price);
+        remaining = remaining - take;
+      }
+
+      if (i == lo)
+      {
+        break;
+      }
+      --i;
+      --tickNum;
+    }
+
+    return {needQty - remaining, notional};
+#endif
   }
 
-  [[nodiscard]] inline Price tickSize() const noexcept { return _tickSize; }
+  Price tickSize() const noexcept { return _tickSize; }
 
   [[nodiscard]] inline bool isCrossed() const noexcept
   {
@@ -562,8 +626,12 @@ class NLevelOrderBook : public IOrderBook
     {
       return std::nullopt;
     }
-    int64_t midTick2 = _bestBidTick + _bestAskTick;
-    return Price::fromRaw((_tickSize.raw() * midTick2) / 2);
+    // Multiply by half-tick to avoid precision loss from integer division
+    // midPrice = tickSize * (bidTick + askTick) / 2
+    //          = (tickSize / 2) * (bidTick + askTick)
+    const int64_t halfTick = _tickSize.raw() / 2;
+    const int64_t midTick2 = _bestBidTick + _bestAskTick;
+    return Price::fromRaw(halfTick * midTick2);
   }
 
   void clear() noexcept
@@ -578,20 +646,20 @@ class NLevelOrderBook : public IOrderBook
   }
 
  private:
-  [[nodiscard]] inline int64_t ticks(Price p) const noexcept
+  int64_t ticks(Price p) const noexcept
   {
     const int64_t pr = p.raw();
     return math::sdiv_round_nearest(pr, _tickSizeDiv);
   }
 
-  [[nodiscard]] inline Price indexToPrice(size_t i) const noexcept
+  Price indexToPrice(size_t i) const noexcept
   {
     const int64_t ts = _tickSize.raw();
     const int64_t tick = _baseIndex + static_cast<int64_t>(i);
     return Price::fromRaw(ts * tick);
   }
 
-  [[nodiscard]] inline size_t localIndex(Price p) const noexcept
+  size_t localIndex(Price p) const noexcept
   {
     const int64_t t = ticks(p) - _baseIndex;
     return (static_cast<uint64_t>(t) < static_cast<uint64_t>(MAX_LEVELS))
@@ -622,9 +690,120 @@ class NLevelOrderBook : public IOrderBook
     }
   }
 
-  [[nodiscard]] inline size_t nextNonZeroAsk(size_t from) const noexcept
+  void reanchorWithData(int64_t minIdx, int64_t maxIdx) noexcept
   {
-    for (size_t i = from; i < MAX_LEVELS; ++i)
+    const int64_t oldBase = _baseIndex;
+
+    // Calculate new base index
+    const int64_t span = maxIdx - minIdx + 1;
+    int64_t newBase;
+    if (span >= static_cast<int64_t>(MAX_LEVELS))
+    {
+      newBase = minIdx;
+    }
+    else
+    {
+      const int64_t mid = (minIdx + maxIdx) / 2;
+      newBase = mid - static_cast<int64_t>(MAX_LEVELS / 2);
+    }
+
+    if (newBase == oldBase)
+    {
+      return;
+    }
+
+    const int64_t shift = oldBase - newBase;
+
+    // Create temporary copies and shift data
+    std::array<Quantity, MAX_LEVELS> newBids{};
+    std::array<Quantity, MAX_LEVELS> newAsks{};
+
+    // Copy bids with offset
+    if (_minBid < MAX_LEVELS)
+    {
+      for (size_t i = _minBid; i <= _maxBid && i < MAX_LEVELS; ++i)
+      {
+        if (_bids[i].isZero())
+        {
+          continue;
+        }
+        const int64_t newIdx = static_cast<int64_t>(i) + shift;
+        if (newIdx >= 0 && newIdx < static_cast<int64_t>(MAX_LEVELS))
+        {
+          newBids[static_cast<size_t>(newIdx)] = _bids[i];
+        }
+      }
+    }
+
+    // Copy asks with offset
+    if (_minAsk < MAX_LEVELS)
+    {
+      for (size_t i = _minAsk; i <= _maxAsk && i < MAX_LEVELS; ++i)
+      {
+        if (_asks[i].isZero())
+        {
+          continue;
+        }
+        const int64_t newIdx = static_cast<int64_t>(i) + shift;
+        if (newIdx >= 0 && newIdx < static_cast<int64_t>(MAX_LEVELS))
+        {
+          newAsks[static_cast<size_t>(newIdx)] = _asks[i];
+        }
+      }
+    }
+
+    _bids = std::move(newBids);
+    _asks = std::move(newAsks);
+    _baseIndex = newBase;
+
+    // Recalculate min/max/best indices
+    _minBid = _minAsk = MAX_LEVELS;
+    _maxBid = _maxAsk = 0;
+    _bestBidIdx = _bestAskIdx = MAX_LEVELS;
+    _bestBidTick = _bestAskTick = -1;
+
+    for (size_t i = 0; i < MAX_LEVELS; ++i)
+    {
+      if (!_bids[i].isZero())
+      {
+        if (i < _minBid)
+        {
+          _minBid = i;
+        }
+        if (i > _maxBid)
+        {
+          _maxBid = i;
+        }
+        if (_bestBidIdx >= MAX_LEVELS || i > _bestBidIdx)
+        {
+          _bestBidIdx = i;
+          _bestBidTick = newBase + static_cast<int64_t>(i);
+        }
+      }
+      if (!_asks[i].isZero())
+      {
+        if (i < _minAsk)
+        {
+          _minAsk = i;
+        }
+        if (i > _maxAsk)
+        {
+          _maxAsk = i;
+        }
+        if (_bestAskIdx >= MAX_LEVELS || i < _bestAskIdx)
+        {
+          _bestAskIdx = i;
+          _bestAskTick = newBase + static_cast<int64_t>(i);
+        }
+      }
+    }
+  }
+
+  size_t nextNonZeroAsk(size_t from) const noexcept
+  {
+    // Limit search to known ask range
+    const size_t limit = (_maxAsk < MAX_LEVELS) ? _maxAsk + 1 : MAX_LEVELS;
+    for (size_t i = from; i < limit; ++i)
     {
       if (!_asks[i].isZero())
       {
@@ -634,26 +813,29 @@ class NLevelOrderBook : public IOrderBook
     return MAX_LEVELS;
   }
 
-  [[nodiscard]] inline size_t prevNonZeroAsk(size_t from) const noexcept
+  size_t prevNonZeroAsk(size_t from) const noexcept
   {
-    for (size_t i = from + 1; i-- > 0;)
+    // Limit search to known ask range
+    const size_t limit = (_minAsk < MAX_LEVELS) ? _minAsk : 0;
+    if (from < limit)
+    {
+      return MAX_LEVELS;
+    }
+    for (size_t i = from + 1; i-- > limit;)
     {
       if (!_asks[i].isZero())
       {
         return i;
       }
-
-      if (i == 0)
-      {
-        break;
-      }
     }
     return MAX_LEVELS;
   }
 
-  [[nodiscard]] inline size_t nextNonZeroBid(size_t from) const noexcept
+  size_t nextNonZeroBid(size_t from) const noexcept
   {
-    for (size_t i = from; i < MAX_LEVELS; ++i)
+    // Limit search to known bid range
+    const size_t limit = (_maxBid < MAX_LEVELS) ? _maxBid + 1 : MAX_LEVELS;
+    for (size_t i = from; i < limit; ++i)
     {
       if (!_bids[i].isZero())
       {
@@ -663,18 +845,19 @@ class NLevelOrderBook : public IOrderBook
     return MAX_LEVELS;
   }
 
-  [[nodiscard]] inline size_t prevNonZeroBid(size_t from) const noexcept
+  size_t prevNonZeroBid(size_t from) const noexcept
   {
-    for (size_t i = from + 1; i-- > 0;)
+    // Limit search to known bid range
+    const size_t limit = (_minBid < MAX_LEVELS) ? _minBid : 0;
+    if (from < limit)
+    {
+      return MAX_LEVELS;
+    }
+    for (size_t i = from + 1; i-- > limit;)
     {
       if (!_bids[i].isZero())
       {
         return i;
-      }
-
-      if (i == 0)
-      {
-        break;
       }
     }
     return MAX_LEVELS;

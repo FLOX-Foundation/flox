@@ -162,7 +162,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     }
   }
 
-  [[nodiscard]] std::array<TimeframeId, MaxTimeframes> timeframes() const noexcept
+  std::array<TimeframeId, MaxTimeframes> timeframes() const noexcept
   {
     std::array<TimeframeId, MaxTimeframes> result{};
     for (size_t i = 0; i < _numSlots; ++i)
@@ -172,7 +172,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     return result;
   }
 
-  [[nodiscard]] size_t numTimeframes() const noexcept { return _numSlots; }
+  size_t numTimeframes() const noexcept { return _numSlots; }
 
  private:
   FLOX_FORCE_INLINE void processSlot(size_t slotIdx, const TradeEvent& trade)
