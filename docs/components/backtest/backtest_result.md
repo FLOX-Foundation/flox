@@ -43,6 +43,9 @@ struct BacktestStats
 
   double winRate{0.0};
   double profitFactor{0.0};
+  double avgWin{0.0};
+  double avgLoss{0.0};
+
   double sharpeRatio{0.0};
   double returnPct{0.0};
 
@@ -76,6 +79,8 @@ public:
 | `returnPct` | `(netPnl / initialCapital) * 100` |
 | `winRate` | `winningTrades / totalTrades` |
 | `profitFactor` | `grossProfit / grossLoss` |
+| `avgWin` | `grossProfit / winningTrades` |
+| `avgLoss` | `grossLoss / losingTrades` |
 | `maxDrawdownPct` | `maxDrawdown / peakEquity * 100` |
 | `sharpeRatio` | `mean(returns) / std(returns) * sqrt(252)` |
 

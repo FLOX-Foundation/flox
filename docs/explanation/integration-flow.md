@@ -40,6 +40,7 @@ auto symbolId = registry.getSymbolId("binance", "BTCUSDT");
 ```
 
 **Key points:**
+
 - `SymbolId` is a compact integer for fast comparison
 - Registry maps `(exchange, symbol)` pairs to `SymbolId`
 - Metadata includes instrument type, tick size, lot size
@@ -95,11 +96,13 @@ auto connector = std::make_shared<BinanceConnector>(
 ```
 
 **Executor responsibilities:**
+
 - Send orders to exchange
 - Report order status updates
 - Update order tracker
 
 **Connector responsibilities:**
+
 - Connect to exchange (WebSocket, REST, FIX)
 - Parse wire protocol
 - Publish events to buses
@@ -134,6 +137,7 @@ tradeBus->subscribe(metrics.get(), /*optional=*/true);
 | Optional | May miss events if too slow |
 
 **Common subscribers:**
+
 - Trading strategies
 - Data aggregators (candles, VWAP)
 - Metric collectors
@@ -166,6 +170,7 @@ engine.start();  // Blocks until shutdown signal
 ```
 
 **Startup sequence:**
+
 1. Event buses start threads
 2. Connectors establish connections
 3. Strategies begin processing
@@ -228,6 +233,7 @@ void gracefulShutdown() {
 ```
 
 **Shutdown order:**
+
 1. Stop connectors (no new data)
 2. Drain event buses
 3. Stop strategies

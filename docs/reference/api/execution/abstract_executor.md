@@ -112,4 +112,4 @@ if (caps.supports(OrderType::TRAILING_STOP)) {
 
 * [ExchangeCapabilities](exchange_capabilities.md) — Feature discovery
 * [Order](order.md) — Order structure
-* [SimulatedExecutor](../../backtest/simulated_executor.md) — Backtest implementation
+* [SimulatedExecutor](../../../components/backtest/simulated_executor.md) — Backtest implementation

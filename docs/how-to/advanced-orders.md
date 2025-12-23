@@ -29,6 +29,7 @@ emitStopLimit(symbol, Side::SELL,
 ```
 
 **Stop trigger logic:**
+
 - SELL stop: triggers when price <= triggerPrice (falling)
 - BUY stop: triggers when price >= triggerPrice (rising)
 
@@ -46,6 +47,7 @@ emitTakeProfitLimit(symbol, Side::SELL,
 ```
 
 **Take profit trigger logic:**
+
 - SELL TP: triggers when price >= triggerPrice (rising, lock profit on long)
 - BUY TP: triggers when price <= triggerPrice (falling, lock profit on short)
 
@@ -60,6 +62,7 @@ emitTrailingStopPercent(symbol, Side::SELL, 200, qty);  // 200 bps = 2%
 ```
 
 **Trailing stop behavior:**
+
 - SELL trailing: trigger follows price UP (never down)
 - When price drops to trigger -> order executes
 
