@@ -87,7 +87,7 @@ class BitgetExchangeConnector : public IExchangeConnector
   std::unique_ptr<IWebSocketClient> _wsClientPrivate;
   std::atomic<bool> _running{false};
 
-  pool::Pool<BookUpdateEvent, 2047> _bookPool;
+  pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> _bookPool;
   OrderExecutionBus* _orderBus = nullptr;
 };
 

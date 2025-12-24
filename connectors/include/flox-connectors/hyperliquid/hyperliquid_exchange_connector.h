@@ -68,7 +68,7 @@ class HyperliquidExchangeConnector : public IExchangeConnector
   std::thread _pingThread;
   void pingLoop();
 
-  pool::Pool<BookUpdateEvent, 2047> _bookPool;
+  pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> _bookPool;
 };
 
 }  // namespace flox
