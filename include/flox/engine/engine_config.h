@@ -60,11 +60,25 @@ struct EngineConfig
 #define FLOX_DEFAULT_ORDER_TRACKER_CAPACITY 4096
 #endif
 
+// Pool capacity for connectors must be > EventBus capacity to prevent pool exhaustion.
+// EventBus only reclaims events on wrap-around, so if pool < bus capacity, pool exhausts
+// before any events are returned.
+#ifndef FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY
+#define FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY 8191
+#endif
+
 namespace config
 {
 
 inline constexpr size_t DEFAULT_EVENTBUS_CAPACITY = FLOX_DEFAULT_EVENTBUS_CAPACITY;
 inline constexpr size_t DEFAULT_EVENTBUS_MAX_CONSUMERS = FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS;
+
+/// Pool capacity for exchange connectors. Must be greater than DEFAULT_EVENTBUS_CAPACITY
+/// to prevent pool exhaustion before EventBus wrap-around triggers reclamation.
+inline constexpr size_t DEFAULT_CONNECTOR_POOL_CAPACITY = FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY;
+
+static_assert(DEFAULT_CONNECTOR_POOL_CAPACITY > DEFAULT_EVENTBUS_CAPACITY,
+              "Connector pool capacity must be greater than EventBus capacity to prevent exhaustion");
 
 // CPU Affinity Priority Constants
 inline constexpr int ISOLATED_CORE_PRIORITY_BOOST = 5;
