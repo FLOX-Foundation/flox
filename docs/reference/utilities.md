@@ -265,22 +265,71 @@ public:
 
 **Header:** `flox/util/performance/busy_backoff.h`
 
-Adaptive backoff strategy for spin loops.
+Configurable backoff strategy for spin loops with support for different deployment environments.
 
 ```cpp
-class BusyBackoff
+enum class BackoffMode
 {
-public:
-  void pause();   // Spin, yield, or sleep based on iteration count
+  AGGRESSIVE,  // Dedicated colo: busy-spin with CPU pause, minimal yields
+  RELAXED,     // Shared VPS/cloud: early sleep, minimal CPU burn
+  ADAPTIVE     // Auto-adjust: starts aggressive, backs off under contention
+};
+
+namespace config
+{
+  inline BackoffMode defaultBackoffMode = BackoffMode::ADAPTIVE;
+}
+
+struct BusyBackoff
+{
+  explicit BusyBackoff(BackoffMode mode = config::defaultBackoffMode);
+  void pause();   // Spin, yield, or sleep based on mode and iteration count
   void reset();   // Reset iteration counter
 };
 ```
 
-### Strategy
+### Backoff Modes
 
-1. First ~100 iterations: CPU pause instruction
-2. Next ~100 iterations: `std::this_thread::yield()`
-3. Beyond: Short sleep (microseconds)
+| Mode | CPU Usage | Latency | Use Case |
+|------|-----------|---------|----------|
+| `AGGRESSIVE` | ~100% | Lowest | Dedicated colo, bare metal, isolated cores |
+| `RELAXED` | <5% | +100-500µs | Shared VPS, cloud, monitoring-only |
+| `ADAPTIVE` | Variable | Variable | General purpose, good default |
+
+### Mode Details
+
+**AGGRESSIVE** (for dedicated hardware):
+1. First 2048 iterations: CPU pause instruction
+2. Beyond: yield(), then reset
+
+**RELAXED** (for shared infrastructure):
+1. First 8 iterations: CPU pause
+2. Next 8 iterations: yield()
+3. Beyond: sleep(100-500µs)
+
+**ADAPTIVE** (auto-adjusting):
+1. First 128 iterations: CPU pause (burst handling)
+2. 128-512: yield() (medium contention)
+3. 512-2048: sleep(10µs)
+4. Beyond: sleep(100µs), reset to 512
+
+### Configuration
+
+Set the global default at startup:
+```cpp
+// For cloud/VPS deployments
+flox::config::defaultBackoffMode = flox::BackoffMode::RELAXED;
+
+// For dedicated colo
+flox::config::defaultBackoffMode = flox::BackoffMode::AGGRESSIVE;
+```
+
+Or configure per EventBus:
+```cpp
+EventBus<MyEvent> bus;
+bus.setBackoffMode(BackoffMode::RELAXED);
+bus.start();
+```
 
 ---
 

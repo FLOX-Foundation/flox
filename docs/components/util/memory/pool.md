@@ -83,6 +83,24 @@ pool.setExhaustionCallback([](size_t capacity, size_t inUse) {
 
 The exhaustion callback is invoked each time `acquire()` returns `nullopt` due to pool exhaustion.
 
+## Sizing Guidelines
+
+When using pools with `EventBus`, the pool capacity **must be greater than** the EventBus capacity:
+
+```cpp
+// Correct: pool capacity (8191) > bus capacity (4096)
+Pool<BookUpdateEvent, 8191> pool;
+EventBus<Handle<BookUpdateEvent>, 4096> bus;
+
+// Incorrect: will cause pool exhaustion
+Pool<BookUpdateEvent, 4096> pool;  // Same as bus = will exhaust!
+EventBus<Handle<BookUpdateEvent>, 4096> bus;
+```
+
+**Why?** EventBus only reclaims events when the ring buffer wraps around. If pool capacity ≤ bus capacity, all pool slots will be in-flight before any can be returned.
+
+The default `config::DEFAULT_CONNECTOR_POOL_CAPACITY` (8191) is sized for this reason when used with `DEFAULT_EVENTBUS_CAPACITY` (4096).
+
 ## Notes
 
 * Zero allocations in steady-state operation.
