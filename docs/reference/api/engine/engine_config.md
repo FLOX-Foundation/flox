@@ -73,6 +73,10 @@ The header also defines compile-time constants that can be overridden via prepro
 #ifndef FLOX_DEFAULT_ORDER_TRACKER_CAPACITY
 #define FLOX_DEFAULT_ORDER_TRACKER_CAPACITY 4096
 #endif
+
+#ifndef FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY
+#define FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY 8191
+#endif
 ```
 
 ### `config` Namespace Constants
@@ -82,6 +86,9 @@ namespace config {
   // EventBus defaults
   inline constexpr size_t DEFAULT_EVENTBUS_CAPACITY = 4096;
   inline constexpr size_t DEFAULT_EVENTBUS_MAX_CONSUMERS = 128;
+
+  // Connector pool capacity (must be > EventBus capacity)
+  inline constexpr size_t DEFAULT_CONNECTOR_POOL_CAPACITY = 8191;
 
   // CPU Affinity Priority Constants
   inline constexpr int ISOLATED_CORE_PRIORITY_BOOST = 5;
@@ -104,6 +111,7 @@ namespace config {
 |----------|-------|-------------|
 | `DEFAULT_EVENTBUS_CAPACITY` | 4096 | Ring buffer size for EventBus |
 | `DEFAULT_EVENTBUS_MAX_CONSUMERS` | 128 | Maximum subscribers per bus |
+| `DEFAULT_CONNECTOR_POOL_CAPACITY` | 8191 | Pool capacity for exchange connectors (must be > EventBus capacity) |
 | `ISOLATED_CORE_PRIORITY_BOOST` | 5 | Priority boost for isolated cores |
 | `DEFAULT_REALTIME_PRIORITY` | 80 | Default RT priority for threads |
 | `FALLBACK_REALTIME_PRIORITY` | 90 | Fallback RT priority |

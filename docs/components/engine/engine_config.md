@@ -91,6 +91,9 @@ namespace config
   inline constexpr size_t DEFAULT_EVENTBUS_CAPACITY = 4096;
   inline constexpr size_t DEFAULT_EVENTBUS_MAX_CONSUMERS = 128;
 
+  // Connector pool capacity (must be > EventBus capacity to prevent exhaustion)
+  inline constexpr size_t DEFAULT_CONNECTOR_POOL_CAPACITY = 8191;
+
   // CPU Affinity Priority Constants
   inline constexpr int ISOLATED_CORE_PRIORITY_BOOST = 5;
   inline constexpr int DEFAULT_REALTIME_PRIORITY = 80;
@@ -112,6 +115,9 @@ These can be overridden via preprocessor defines:
 - `FLOX_DEFAULT_EVENTBUS_CAPACITY`
 - `FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS`
 - `FLOX_DEFAULT_ORDER_TRACKER_CAPACITY`
+- `FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY`
+
+**Important:** `DEFAULT_CONNECTOR_POOL_CAPACITY` must be greater than `DEFAULT_EVENTBUS_CAPACITY`. EventBus only reclaims events on wrap-around, so if pool capacity ≤ bus capacity, the pool will exhaust before any events are returned.
 
 ## Notes
 

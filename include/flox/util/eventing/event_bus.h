@@ -161,8 +161,9 @@ class EventBus : public ISubsystem
       auto* l = _consumers[i].listener;
       auto required = _consumers[i].required;
       auto coreIdx = _consumers[i].coreIndex;
+      auto backoffMode = _backoffMode;
 
-      _consumers[i].thread.emplace([this, i, l, required, coreIdx]
+      _consumers[i].thread.emplace([this, i, l, required, coreIdx, backoffMode]
                                    {
 #if FLOX_CPU_AFFINITY_ENABLED
          auto threadCpuAffinity = performance::createCpuAffinity();
@@ -214,9 +215,9 @@ class EventBus : public ISubsystem
            if (_active.fetch_sub(1, std::memory_order_acq_rel) == 1) _cv.notify_one();
          }
  
-         BusyBackoff backoff;
+         BusyBackoff backoff(backoffMode);
          int64_t next = -1;
- 
+
          while (_running.load(std::memory_order_acquire))
          {
            const int64_t seq = next + 1;
@@ -338,6 +339,8 @@ class EventBus : public ISubsystem
 
   uint32_t consumerCount() const { return _consumerCount.load(std::memory_order_acquire); }
   void enableDrainOnStop() { _drainOnStop = true; }
+
+  void setBackoffMode(BackoffMode mode) { _backoffMode = mode; }
 
 #if FLOX_CPU_AFFINITY_ENABLED
   // ---------- CPU Affinity / RT priority ----------
@@ -608,6 +611,7 @@ class EventBus : public ISubsystem
   std::atomic<uint32_t> _active{0};
 
   bool _drainOnStop{false};
+  BackoffMode _backoffMode{config::defaultBackoffMode};
 
 #if FLOX_CPU_AFFINITY_ENABLED
   // CPU affinity / RT
