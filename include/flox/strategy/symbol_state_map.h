@@ -232,7 +232,7 @@ class SymbolStateMap
 
   alignas(64) std::array<State, kMaxSymbols> _flat{};
   std::array<bool, kMaxSymbols> _initialized{};
-  [[no_unique_address]] OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
+  OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
 
   // Accessor for overflow (only valid for movable types)
   auto& overflow()

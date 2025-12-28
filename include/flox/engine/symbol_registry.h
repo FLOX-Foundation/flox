@@ -29,7 +29,7 @@ namespace flox
 
 struct SymbolInfo
 {
-  SymbolId id;
+  SymbolId id{0};
   std::string exchange;
   std::string symbol;
   InstrumentType type = InstrumentType::Spot;
@@ -85,7 +85,7 @@ class SymbolRegistry : public ISubsystem
 
  private:
   mutable std::mutex _mutex;
-  std::vector<SymbolInfo> _symbols;
+  std::unordered_map<SymbolId, SymbolInfo> _symbols;
   std::unordered_map<std::string, SymbolId> _map;
   std::vector<std::pair<std::string, std::string>> _reverse;
 

@@ -221,12 +221,40 @@ SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
     return it->second;
   }
 
-  SymbolId newId = static_cast<SymbolId>(_symbols.size() + 1);
+  // Use provided ID or find next available ID
+  SymbolId newId;
+  if (info.id != 0)
+  {
+    newId = info.id;
+  }
+  else
+  {
+    newId = static_cast<SymbolId>(_symbols.size() + 1);
+    while (_symbols.find(newId) != _symbols.end())
+    {
+      ++newId;
+    }
+  }
+
   _map[key] = newId;
+
+  ExchangeId exId = InvalidExchangeId;
+  auto exIt = _exchangeNameToId.find(info.exchange);
+  if (exIt != _exchangeNameToId.end())
+  {
+    exId = exIt->second;
+  }
 
   SymbolInfo copy = info;
   copy.id = newId;
-  _symbols.push_back(std::move(copy));
+  copy.exchangeId = exId;
+  _symbols[newId] = std::move(copy);
+
+  if (_reverse.size() <= newId)
+  {
+    _reverse.resize(newId + 1);
+  }
+  _reverse[newId] = {info.exchange, info.symbol};
 
   return newId;
 }
@@ -258,12 +286,13 @@ std::optional<SymbolInfo> SymbolRegistry::getSymbolInfo(SymbolId id) const
 
   std::lock_guard lock(_mutex);
 
-  if (id == 0 || id > _symbols.size())
+  auto it = _symbols.find(id);
+  if (it != _symbols.end())
   {
-    return std::nullopt;
+    return it->second;
   }
 
-  return {_symbols[id - 1]};
+  return std::nullopt;
 }
 
 void SymbolRegistry::clear()
@@ -289,7 +318,13 @@ void SymbolRegistry::clear()
 std::vector<SymbolInfo> SymbolRegistry::getAllSymbols() const
 {
   std::lock_guard lock(_mutex);
-  return _symbols;
+  std::vector<SymbolInfo> result;
+  result.reserve(_symbols.size());
+  for (const auto& [id, info] : _symbols)
+  {
+    result.push_back(info);
+  }
+  return result;
 }
 
 size_t SymbolRegistry::size() const
@@ -311,9 +346,9 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
   // Simple JSON-like format
   std::fprintf(f, "{\n  \"version\": 1,\n  \"symbols\": [\n");
 
-  for (size_t i = 0; i < _symbols.size(); ++i)
+  size_t count = 0;
+  for (const auto& [id, sym] : _symbols)
   {
-    const auto& sym = _symbols[i];
     std::fprintf(f,
                  "    {\"id\": %u, \"exchange\": \"%s\", \"symbol\": \"%s\", \"type\": %d, "
                  "\"tick_size\": %lld",
@@ -336,7 +371,7 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
       std::fprintf(f, ", \"option_type\": %d", static_cast<int>(*sym.optionType));
     }
 
-    std::fprintf(f, "}%s\n", (i < _symbols.size() - 1) ? "," : "");
+    std::fprintf(f, "}%s\n", (++count < _symbols.size()) ? "," : "");
   }
 
   std::fprintf(f, "  ]\n}\n");
@@ -448,8 +483,10 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
     // Add to registry
     std::string key = info.exchange + ":" + info.symbol;
     _map[key] = info.id;
-    _symbols.push_back(std::move(info));
-    _reverse.emplace_back(info.exchange, info.symbol);
+    std::string exchange_copy = info.exchange;
+    std::string symbol_copy = info.symbol;
+    _symbols[info.id] = std::move(info);
+    _reverse.emplace_back(std::move(exchange_copy), std::move(symbol_copy));
 
     pos = entry_end + 1;
   }
@@ -524,7 +561,7 @@ std::vector<std::byte> SymbolRegistry::serialize() const
   write_u32(static_cast<uint32_t>(_symbols.size()));
 
   // Symbols
-  for (const auto& sym : _symbols)
+  for (const auto& [id, sym] : _symbols)
   {
     write_u32(sym.id);
     write_string(sym.exchange);
@@ -660,8 +697,6 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
   _map.clear();
   _reverse.clear();
 
-  _symbols.reserve(count);
-
   for (uint32_t i = 0; i < count; ++i)
   {
     SymbolInfo info;
@@ -692,8 +727,10 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
 
     std::string key = info.exchange + ":" + info.symbol;
     _map[key] = info.id;
-    _symbols.push_back(std::move(info));
-    _reverse.emplace_back(info.exchange, info.symbol);
+    std::string exchange_copy = info.exchange;
+    std::string symbol_copy = info.symbol;
+    _symbols[info.id] = std::move(info);
+    _reverse.emplace_back(std::move(exchange_copy), std::move(symbol_copy));
   }
 
   return true;

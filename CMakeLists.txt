@@ -45,7 +45,12 @@ set(FLOX ${PROJECT_NAME})
 add_library(${FLOX} STATIC ${SRC_FILES})
 add_library(flox::${FLOX} ALIAS ${FLOX})
 
-# Platform-specific Release optimizations
+# Platform-specific settings
+if(WIN32)
+  # Prevent Windows.h from defining min/max macros that break std::min/max
+  target_compile_definitions(${FLOX} PUBLIC NOMINMAX)
+endif()
+
 if(MSVC)
   target_compile_options(${FLOX} PUBLIC
     $<$<CONFIG:Release>:/O2 /GL>
@@ -147,6 +152,11 @@ endif()
 option(FLOX_ENABLE_DEMO "Build demo application" OFF)
 if (FLOX_ENABLE_DEMO)
   add_subdirectory(demo)
+endif()
+
+option(FLOX_ENABLE_TOOLS "Build command-line tools" OFF)
+if (FLOX_ENABLE_TOOLS)
+  add_subdirectory(tools)
 endif()
 
 target_include_directories(flox PUBLIC

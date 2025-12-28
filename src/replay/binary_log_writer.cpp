@@ -11,7 +11,9 @@
 #include "flox/replay/ops/compression.h"
 
 #include <chrono>
+#include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <stdexcept>
 
 namespace flox::replay
@@ -21,6 +23,12 @@ BinaryLogWriter::BinaryLogWriter(WriterConfig config) : _config(std::move(config
 {
   _buffer.reserve(_config.buffer_size);
   std::filesystem::create_directories(_config.output_dir);
+
+  // Initialize metadata from config if provided
+  if (_config.metadata)
+  {
+    _metadata = *_config.metadata;
+  }
 }
 
 BinaryLogWriter::~BinaryLogWriter() { close(); }
@@ -590,6 +598,31 @@ void BinaryLogWriter::close()
 {
   std::lock_guard lock(_mutex);
   closeInternal();
+
+  // Write metadata.json if metadata is set
+  if (_metadata)
+  {
+    // Update recording_end timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_utc{};
+#ifdef _WIN32
+    gmtime_s(&tm_utc, &time_t_now);
+#else
+    gmtime_r(&time_t_now, &tm_utc);
+#endif
+    char buf[64];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_utc);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  now.time_since_epoch())
+                  .count() %
+              1000;
+    char iso_buf[80];
+    std::snprintf(iso_buf, sizeof(iso_buf), "%s.%03dZ", buf, static_cast<int>(ms));
+    _metadata->recording_end = iso_buf;
+
+    _metadata->save(RecordingMetadata::metadataPath(_config.output_dir));
+  }
 }
 
 WriterStats BinaryLogWriter::stats() const
@@ -602,6 +635,52 @@ std::filesystem::path BinaryLogWriter::currentSegmentPath() const
 {
   std::lock_guard lock(_mutex);
   return _current_path;
+}
+
+void BinaryLogWriter::setMetadata(const RecordingMetadata& meta)
+{
+  std::lock_guard lock(_mutex);
+  _metadata = meta;
+}
+
+void BinaryLogWriter::addSymbol(const SymbolInfo& symbol)
+{
+  std::lock_guard lock(_mutex);
+  if (!_metadata)
+  {
+    _metadata = RecordingMetadata{};
+  }
+  _metadata->symbols.push_back(symbol);
+}
+
+void BinaryLogWriter::setHasTrades(bool v)
+{
+  std::lock_guard lock(_mutex);
+  if (!_metadata)
+  {
+    _metadata = RecordingMetadata{};
+  }
+  _metadata->has_trades = v;
+}
+
+void BinaryLogWriter::setHasBookSnapshots(bool v)
+{
+  std::lock_guard lock(_mutex);
+  if (!_metadata)
+  {
+    _metadata = RecordingMetadata{};
+  }
+  _metadata->has_book_snapshots = v;
+}
+
+void BinaryLogWriter::setHasBookDeltas(bool v)
+{
+  std::lock_guard lock(_mutex);
+  if (!_metadata)
+  {
+    _metadata = RecordingMetadata{};
+  }
+  _metadata->has_book_deltas = v;
 }
 
 }  // namespace flox::replay

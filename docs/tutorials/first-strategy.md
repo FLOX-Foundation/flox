@@ -10,6 +10,7 @@ Write a simple trading strategy that reacts to market data.
 ## 1. Strategy Interface
 
 All strategies implement `IStrategy`, which combines:
+
 - `ISubsystem` — lifecycle (`start()`, `stop()`)
 - `IMarketDataSubscriber` — market data callbacks
 
@@ -31,7 +32,8 @@ public:
   // Market data callbacks
   void onTrade(const flox::TradeEvent& ev) override { /* react to trades */ }
   void onBookUpdate(const flox::BookUpdateEvent& ev) override { /* react to book changes */ }
-  void onCandle(const flox::CandleEvent& ev) override { /* react to candles */ }
+  void onBar(const flox::BarEvent& ev) override { /* react to bars */ }
+  void onMarketDataError(const flox::MarketDataError& error) override { /* handle errors */ }
 };
 ```
 
@@ -101,7 +103,7 @@ A strategy that submits orders based on trades:
 
 ```cpp
 #include "flox/strategy/abstract_strategy.h"
-#include "flox/execution/abstract_order_executor.h"
+#include "flox/execution/abstract_executor.h"
 #include "flox/execution/order.h"
 
 using namespace flox;

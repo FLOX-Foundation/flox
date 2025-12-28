@@ -10,6 +10,7 @@
 #pragma once
 
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/recording_metadata.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -41,6 +42,10 @@ struct WriterConfig
   /// If not set, rotated segments use timestamp-based names.
   RotationCallback rotation_callback{nullptr};
   void* rotation_user_data{nullptr};
+
+  /// Optional metadata to write alongside the log files.
+  /// If set, a metadata.json file will be created in output_dir.
+  std::optional<RecordingMetadata> metadata;
 };
 
 struct WriterStats
@@ -76,6 +81,18 @@ class BinaryLogWriter
   WriterStats stats() const;
   std::filesystem::path currentSegmentPath() const;
 
+  /// Update metadata (can be called during recording to add symbols, etc.)
+  void setMetadata(const RecordingMetadata& meta);
+  RecordingMetadata* metadata() { return _metadata ? &*_metadata : nullptr; }
+
+  /// Add a symbol to metadata
+  void addSymbol(const SymbolInfo& symbol);
+
+  /// Set content flags in metadata
+  void setHasTrades(bool v);
+  void setHasBookSnapshots(bool v);
+  void setHasBookDeltas(bool v);
+
  private:
   bool ensureOpen();
   bool maybeRotate(size_t needed_bytes);
@@ -110,6 +127,8 @@ class BinaryLogWriter
   int64_t _block_first_timestamp{0};
 
   mutable std::mutex _mutex;
+
+  std::optional<RecordingMetadata> _metadata;
 };
 
 }  // namespace flox::replay

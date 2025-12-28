@@ -20,34 +20,34 @@ namespace flox
 
 struct TimeframeId
 {
-  BarType type : 4;
-  uint32_t param : 28;  // seconds for Time, count for Tick, threshold for Volume, etc.
+  BarType type;
+  uint64_t param;  // nanoseconds for Time, count for Tick, threshold for Volume, etc.
 
   constexpr TimeframeId() : type(BarType::Time), param(0) {}
 
-  constexpr TimeframeId(BarType t, uint32_t p) : type(t), param(p) {}
+  constexpr TimeframeId(BarType t, uint64_t p) : type(t), param(p) {}
 
   static constexpr TimeframeId time(std::chrono::seconds s)
   {
-    return TimeframeId(BarType::Time, static_cast<uint32_t>(s.count()));
+    return TimeframeId(BarType::Time, static_cast<uint64_t>(s.count()) * 1'000'000'000ULL);
   }
 
-  static constexpr TimeframeId tick(uint32_t count)
+  static constexpr TimeframeId tick(uint64_t count)
   {
     return TimeframeId(BarType::Tick, count);
   }
 
-  static constexpr TimeframeId volume(uint32_t threshold)
+  static constexpr TimeframeId volume(uint64_t threshold)
   {
     return TimeframeId(BarType::Volume, threshold);
   }
 
-  static constexpr TimeframeId renko(uint32_t brickSizeTicks)
+  static constexpr TimeframeId renko(uint64_t brickSizeTicks)
   {
     return TimeframeId(BarType::Renko, brickSizeTicks);
   }
 
-  static constexpr TimeframeId range(uint32_t rangeTicks)
+  static constexpr TimeframeId range(uint64_t rangeTicks)
   {
     return TimeframeId(BarType::Range, rangeTicks);
   }
@@ -62,14 +62,13 @@ struct TimeframeId
     return !(*this == other);
   }
 
-  constexpr uint32_t toRaw() const noexcept
+  constexpr bool operator<(const TimeframeId& other) const noexcept
   {
-    return (static_cast<uint32_t>(type) << 28) | param;
-  }
-
-  static constexpr TimeframeId fromRaw(uint32_t raw) noexcept
-  {
-    return TimeframeId(static_cast<BarType>(raw >> 28), raw & 0x0FFFFFFF);
+    if (type != other.type)
+    {
+      return type < other.type;
+    }
+    return param < other.param;
   }
 };
 
@@ -107,6 +106,8 @@ struct std::hash<flox::TimeframeId>
 {
   std::size_t operator()(const flox::TimeframeId& tf) const noexcept
   {
-    return std::hash<uint32_t>{}(tf.toRaw());
+    std::size_t h1 = std::hash<int>{}(static_cast<int>(tf.type));
+    std::size_t h2 = std::hash<uint64_t>{}(tf.param);
+    return h1 ^ (h2 << 1);
   }
 };

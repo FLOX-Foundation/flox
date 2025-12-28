@@ -353,13 +353,18 @@ TEST(SymbolRegistryTest, LargeRegistrySerialization)
   EXPECT_TRUE(registry2.deserialize(data));
   EXPECT_EQ(registry2.size(), count);
 
-  // Spot check some symbols
-  auto symbols = registry2.getAllSymbols();
-  EXPECT_EQ(symbols.size(), count);
+  // Spot check some symbols using getSymbolInfo (order-independent)
+  EXPECT_EQ(registry2.getAllSymbols().size(), count);
 
   for (int i = 0; i < count; i += 1000)
   {
-    EXPECT_EQ(symbols[i].symbol, "SYMBOL" + std::to_string(i));
-    EXPECT_EQ(symbols[i].type, static_cast<InstrumentType>(i % 4));
+    std::string exchange = "exchange" + std::to_string(i % 10);
+    std::string symbol = "SYMBOL" + std::to_string(i);
+    auto id = registry2.getSymbolId(exchange, symbol);
+    EXPECT_TRUE(id.has_value());
+    auto info = registry2.getSymbolInfo(*id);
+    EXPECT_TRUE(info.has_value());
+    EXPECT_EQ(info->symbol, symbol);
+    EXPECT_EQ(info->type, static_cast<InstrumentType>(i % 4));
   }
 }

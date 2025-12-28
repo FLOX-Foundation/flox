@@ -55,7 +55,7 @@ class Strategy : public IStrategy
 
   SubscriberId id() const override { return _id; }
 
-  void setSignalHandler(ISignalHandler* handler) noexcept { _signalHandler = handler; }
+  void setSignalHandler(ISignalHandler* handler) override { _signalHandler = handler; }
   void setOrderTracker(OrderTracker* tracker) noexcept { _orderTracker = tracker; }
   void setPositionManager(IPositionManager* pm) noexcept { _positionManager = pm; }
 

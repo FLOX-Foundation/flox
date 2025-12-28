@@ -26,3 +26,8 @@ add_flox_benchmark(cex_benchmark)
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_benchmark(cpu_affinity_benchmark)
 endif()
+
+if(FLOX_ENABLE_BACKTEST)
+    add_flox_benchmark(mmap_bar_storage_benchmark)
+    add_flox_benchmark(backtest_benchmark)
+endif()
