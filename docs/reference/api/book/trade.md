@@ -31,7 +31,7 @@ struct Trade {
 ## Notes
 
 * Emitted via `TradeEvent` through `TradeBus`.
-* Serves as input for candle aggregation, PnL tracking, flow analysis, and latency metrics.
+* Serves as input for bar aggregation, PnL tracking, flow analysis, and latency metrics.
 * `instrument` allows immediate filtering without a registry lookup in hot paths.
 * Uses `UnixNanos` (nanosecond precision) for accurate timestamp handling across exchanges.
 

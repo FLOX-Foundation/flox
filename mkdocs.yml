@@ -79,6 +79,7 @@ nav:
       - tutorials/README.md
       - Quickstart: tutorials/quickstart.md
       - First Strategy: tutorials/first-strategy.md
+      - Multi-Timeframe Strategy: tutorials/multi-timeframe-strategy.md
       - Recording Data: tutorials/recording-data.md
       - Backtesting: tutorials/backtesting.md
       - Run Demo: tutorials/demo.md

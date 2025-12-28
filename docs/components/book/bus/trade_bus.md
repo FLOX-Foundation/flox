@@ -19,7 +19,7 @@ bool configureTradeBusForPerformance(TradeBus& bus, bool enablePerformanceOptimi
 |----------|-------------------------------------------------------------------------|
 | Payload  | Direct delivery of `TradeEvent` instances (no wrapping or pooling).     |
 | Pattern  | Disruptor-style ring buffer with lock-free sequencing.                  |
-| Usage    | Used by connectors, aggregators (e.g., `CandleAggregator`), and strategies.|
+| Usage    | Used by connectors, aggregators (e.g., `BarAggregator`), and strategies.|
 
 ## Factory Functions
 

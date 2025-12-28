@@ -24,7 +24,7 @@ struct EventDispatcher<pool::Handle<T>> {
 | ----------------- | ------------------------------------------------------------- |
 | `BookUpdateEvent` | `IMarketDataSubscriber::onBookUpdate()`                       |
 | `TradeEvent`      | `IMarketDataSubscriber::onTrade()`                            |
-| `CandleEvent`     | `IMarketDataSubscriber::onCandle()`                           |
+| `BarEvent`        | `IMarketDataSubscriber::onBar()`                              |
 | `OrderEvent`      | `IOrderExecutionListener::onOrderFilled()` via `dispatchTo()` |
 | `pool::Handle<T>` | Unwraps and forwards to `EventDispatcher<T>`                  |
 

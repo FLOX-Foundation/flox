@@ -20,7 +20,7 @@ A momentum strategy that:
 2. Uses **M5** (5-minute) bars to identify pullbacks
 3. Uses **M1** (1-minute) bars for entry timing
 
-**Entry logic**: Buy when H1 is bullish, M5 shows a pullback, and M1 prints a reversal candle.
+**Entry logic**: Buy when H1 is bullish, M5 shows a pullback, and M1 prints a reversal bar.
 
 ## Step 1: Project Setup
 
@@ -107,10 +107,10 @@ void onBar(const BarEvent& ev) override
   // 1. Check H1 trend
   bool h1Bullish = h1->close > h1_prev->close;
 
-  // 2. Check M5 pullback (bearish candle in uptrend)
+  // 2. Check M5 pullback (bearish bar in uptrend)
   bool m5Pullback = m5->close < m5->open;
 
-  // 3. Check M1 reversal (bullish candle after pullback)
+  // 3. Check M1 reversal (bullish bar after pullback)
   bool m1Reversal = m1->close > m1->open;
 
   // Generate signal
@@ -234,7 +234,7 @@ class MTFMomentumStrategy : public IMarketDataSubscriber
     bool m5Pullback = m5->close < m5->open;   // Bearish M5 in uptrend
     bool m5Rally = m5->close > m5->open;      // Bullish M5 in downtrend
 
-    // Entry candle
+    // Entry bar
     bool m1BullishReversal = m1->close > m1->open;
     bool m1BearishReversal = m1->close < m1->open;
 

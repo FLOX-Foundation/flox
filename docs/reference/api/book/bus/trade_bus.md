@@ -19,7 +19,7 @@ using TradeBus = EventBus<TradeEvent, AsyncPolicy<TradeEvent>>;
 |----------|-------------------------------------------------------------------------|
 | Payload  | Direct delivery of `TradeEvent` instances (no wrapping or pooling).     |
 | Mode     | Chooses between `SyncPolicy` and `AsyncPolicy` via compile-time macro. |
-| Usage    | Used by connectors, aggregators (e.g., `CandleAggregator`), and strategies.|
+| Usage    | Used by connectors, aggregators (e.g., `BarAggregator`), and strategies.|
 
 ## Notes
 * `SyncPolicy` guarantees deterministic tick-to-tick replay for simulation/backtesting.

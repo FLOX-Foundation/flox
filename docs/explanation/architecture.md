@@ -33,11 +33,11 @@ flowchart TD
     subgraph EventBuses[Event Buses - Disruptor Ring Buffers]
         TB[TradeBus]
         BB[BookUpdateBus]
-        CB[CandleBus]
+        CB[BarBus]
     end
 
     subgraph Aggregators
-        CA[CandleAggregator]
+        CA[BarAggregator]
     end
 
     subgraph Strategies
@@ -102,10 +102,11 @@ All buses use the Disruptor pattern (see [The Disruptor Pattern](disruptor.md)):
 |-----|------------|---------|
 | `TradeBus` | `TradeEvent` | Individual trades |
 | `BookUpdateBus` | `pool::Handle<BookUpdateEvent>` | Order book snapshots/deltas |
-| `CandleBus` | `CandleEvent` | OHLCV candles |
+| `BarBus` | `BarEvent` | OHLCV bars |
 | `OrderExecutionBus` | `OrderEvent` | Order state changes |
 
 Key characteristics:
+
 - Lock-free ring buffer
 - Single producer, multiple consumers
 - Consumers run in dedicated threads
@@ -127,6 +128,7 @@ public:
 ```
 
 Connectors:
+
 - Parse exchange-specific wire protocols
 - Convert to FLOX event types
 - Publish to event buses
@@ -145,11 +147,13 @@ public:
 ```
 
 From `IMarketDataSubscriber`:
+
 - `onTrade(const TradeEvent&)`
 - `onBookUpdate(const BookUpdateEvent&)`
-- `onCandle(const CandleEvent&)`
+- `onBar(const BarEvent&)`
 
 From `ISubsystem`:
+
 - `start()`
 - `stop()`
 
@@ -168,9 +172,10 @@ public:
 ```
 
 Subsystems include:
+
 - Event buses
 - Strategies
-- Aggregators (e.g., CandleAggregator)
+- Aggregators (e.g., BarAggregator)
 - Execution trackers
 - Custom components
 
@@ -185,6 +190,7 @@ auto id = registry.getSymbolId("binance", "BTCUSDT");
 ```
 
 Benefits:
+
 - Fast comparison (integer vs string)
 - Compact event structures
 - Consistent across components
@@ -238,6 +244,7 @@ bus.setupOptimalConfiguration(EventBus::ComponentType::MARKET_DATA);
 ```
 
 This:
+
 - Pins consumer threads to isolated cores
 - Sets real-time scheduling priority
 - Enables NUMA-aware core assignment

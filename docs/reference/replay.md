@@ -5,6 +5,7 @@ Recording, playback, and segment operations.
 ## Binary Format
 
 FLOX uses a custom binary format (`.floxlog`) optimized for:
+
 - Sequential writes (recording)
 - Sequential and indexed reads (replay)
 - Optional LZ4 compression

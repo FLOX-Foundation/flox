@@ -27,7 +27,7 @@ public:
 ## Notes
 
 * Methods have default empty implementations, allowing derived classes to override only what they need.
-* Used by core modules like `CandleAggregator`, `Strategy`, `ExecutionTracker`, `SymbolRegistry`, etc.
+* Used by core modules like `BarAggregator`, `Strategy`, `ExecutionTracker`, `SymbolRegistry`, etc.
 * Lifecycle is typically orchestrated by the engine or test harness.
 * No assumptions about threading — start/stop are always externally coordinated.
 

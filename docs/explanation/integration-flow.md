@@ -139,7 +139,7 @@ tradeBus->subscribe(metrics.get(), /*optional=*/true);
 **Common subscribers:**
 
 - Trading strategies
-- Data aggregators (candles, VWAP)
+- Data aggregators (bars, VWAP)
 - Metric collectors
 - Risk modules
 - Loggers
