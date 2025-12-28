@@ -10,6 +10,7 @@ Capture live market data to disk for later replay and backtesting.
 ## 1. BinaryLogWriter Overview
 
 FLOX records market data in a custom binary format optimized for:
+
 - Sequential writes (no random access during recording)
 - Fast sequential reads during replay
 - Optional LZ4 compression

@@ -168,7 +168,7 @@ Flox supports multiple bar types through different policies:
 | Volume | threshold | Close bar when volume exceeds threshold |
 | Renko | brick size | Fixed price movement bars |
 | Range | range | Close when high-low exceeds range |
-| HeikinAshi | interval | Heikin-Ashi smoothed candles |
+| HeikinAshi | interval | Heikin-Ashi smoothed bars |
 
 Example with tick bars:
 

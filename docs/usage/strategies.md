@@ -17,6 +17,7 @@ public:
 ```
 
 `IStrategy` inherits from:
+
 - `ISubsystem` — provides `start()` and `stop()` lifecycle hooks
 - `IMarketDataSubscriber` — provides market data callbacks and `id()` for routing
 
@@ -27,7 +28,7 @@ From `IMarketDataSubscriber`:
 ```cpp
 virtual void onBookUpdate(const BookUpdateEvent& ev) {}
 virtual void onTrade(const TradeEvent& ev) {}
-virtual void onCandle(const CandleEvent& ev) {}
+virtual void onBar(const BarEvent& ev) {}
 ```
 
 ## Lifecycle

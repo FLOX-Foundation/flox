@@ -8,6 +8,7 @@ Solve specific problems. Assumes you know the basics.
 |-------|---------|
 | [Backtesting](backtest.md) | Run strategy backtests on historical data |
 | [Grid Search Optimization](grid-search.md) | Find optimal strategy parameters |
+| [Bar Aggregation Pipeline](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
 | [Advanced Orders](advanced-orders.md) | Use stop-loss, take-profit, brackets |
 | [Multi-Exchange Trading](multi-exchange-trading.md) | Trade across multiple exchanges with aggregation and routing |
 | [CI Configuration](ci.md) | Understand the CI pipeline |

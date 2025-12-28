@@ -16,7 +16,7 @@ public:
 
 | Inherits From        | Responsibilities                                         |
 |----------------------|----------------------------------------------------------|
-| `IMarketDataSubscriber` | Receives `TradeEvent`, `BookUpdateEvent`, `CandleEvent`. |
+| `IMarketDataSubscriber` | Receives `TradeEvent`, `BookUpdateEvent`, `BarEvent`. |
 | `ISubsystem`         | Enables coordinated `start()` / `stop()` during engine run. |
 
 ## Notes

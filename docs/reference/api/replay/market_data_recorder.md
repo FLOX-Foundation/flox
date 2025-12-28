@@ -22,7 +22,7 @@ public:
   SubscriberId id() const override;
   void onBookUpdate(const BookUpdateEvent& event) override;
   void onTrade(const TradeEvent& event) override;
-  void onCandle(const CandleEvent& event) override;
+  void onBar(const BarEvent& event) override;
 
   // IMarketDataRecorder
   void setOutputDir(const std::filesystem::path& dir) override;
@@ -35,7 +35,7 @@ public:
 ## Purpose
 
 * Provide a ready-to-use market data recording solution.
-* Subscribe to `TradeBus`, `BookUpdateBus`, and `CandleBus` for automatic recording.
+* Subscribe to `TradeBus`, `BookUpdateBus`, and `BarBus` for automatic recording.
 * Abstract away low-level binary format details.
 
 ## Configuration
@@ -54,7 +54,7 @@ public:
 | `stop()` | Stop recording and close current segment. |
 | `onBookUpdate(event)` | Record a book update event. |
 | `onTrade(event)` | Record a trade event. |
-| `onCandle(event)` | Record a candle event (currently no-op). |
+| `onBar(event)` | Record a bar event (currently no-op). |
 | `setOutputDir(dir)` | Change output directory (takes effect on next rotation). |
 | `flush()` | Flush buffers to disk. |
 | `stats()` | Returns recording statistics. |

@@ -25,6 +25,6 @@ public:
 
 ## Notes
 
-* Used by core modules like `CandleAggregator`, `Strategy`, `ExecutionTracker`, etc.
+* Used by core modules like `BarAggregator`, `Strategy`, `ExecutionTracker`, etc.
 * Lifecycle is typically orchestrated by the engine or test harness.
 * No assumptions about threading — start/stop are always externally coordinated.

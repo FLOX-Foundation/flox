@@ -26,7 +26,7 @@ Defines **pure interfaces** with no internal state. These are the contracts your
 
 * `Engine`: orchestrates startup and shutdown
 * `NLevelOrderBook`: in-memory order book with tick-aligned price levels
-* `CandleAggregator`: aggregates trades into fixed-interval OHLCV candles
+* `BarAggregator`: aggregates trades into fixed-interval OHLCV bars
 * `SymbolRegistry`: maps `(exchange:symbol)` pairs to compact `SymbolId`
 * `EventBus`: Disruptor-style ring buffer for high-throughput event delivery
 * `BookUpdateEvent`, `TradeEvent`: pooled, reusable market data structures

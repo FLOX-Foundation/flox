@@ -25,6 +25,6 @@ struct TradeEvent {
 
 ## Notes
 
-* Used by `CandleAggregator`, PnL trackers, and all signal generation components.
+* Used by `BarAggregator`, PnL trackers, and all signal generation components.
 * Designed for ultra-low-latency delivery; no heap allocation involved.
 * Stateless container — no logic beyond encapsulation.

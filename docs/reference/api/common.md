@@ -116,7 +116,7 @@ using Volume = Decimal<VolumeTag, 100'000'000, 1>;
 |------|-------|-------------|
 | `Price` | 1e-6 | Decimal representation of price. |
 | `Quantity` | 1e-6 | Decimal quantity (e.g. number of contracts). |
-| `Volume` | 1e-6 | Price × Quantity, used in candle bars etc. |
+| `Volume` | 1e-6 | Price × Quantity, used in bars etc. |
 
 All three types use `Decimal<Tag, 1'000'000, 1>` internally, ensuring:
 

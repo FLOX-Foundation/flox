@@ -40,5 +40,5 @@ using SubscriberId = uintptr_t;
 |-----|------------|--------|
 | `TradeBus` | `TradeEvent` | `flox/book/bus/trade_bus.h` |
 | `BookUpdateBus` | `pool::Handle<BookUpdateEvent>` | `flox/book/bus/book_update_bus.h` |
-| `CandleBus` | `CandleEvent` | `flox/aggregator/bus/candle_bus.h` |
+| `BarBus` | `BarEvent` | `flox/aggregator/bus/bar_bus.h` |
 | `OrderExecutionBus` | `OrderEvent` | `flox/execution/bus/order_execution_bus.h` |
