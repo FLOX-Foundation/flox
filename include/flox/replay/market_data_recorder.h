@@ -23,6 +23,17 @@ struct MarketDataRecorderConfig
   std::filesystem::path output_dir;
   uint64_t max_segment_bytes{256ull << 20};  // 256 MB
   uint8_t exchange_id{0};
+
+  // Metadata fields
+  std::string exchange_name;    // "binance", "bybit", etc.
+  std::string exchange_type;    // "cex", "dex"
+  std::string instrument_type;  // "spot", "perpetual", "futures"
+  std::string connector_version;
+  std::string description;
+  bool record_trades{true};
+  bool record_book_snapshots{true};
+  bool record_book_deltas{true};
+  uint16_t book_depth{20};
 };
 
 class MarketDataRecorder : public IMarketDataRecorder
@@ -46,6 +57,11 @@ class MarketDataRecorder : public IMarketDataRecorder
   void flush() override;
   RecorderStats stats() const override;
   bool isRecording() const override { return _recording.load(std::memory_order_relaxed); }
+
+  /// Add a symbol to the recording metadata
+  void addSymbol(uint32_t symbol_id, const std::string& name,
+                 const std::string& base_asset = "", const std::string& quote_asset = "",
+                 int8_t price_precision = 8, int8_t qty_precision = 8);
 
  private:
   MarketDataRecorderConfig _config;

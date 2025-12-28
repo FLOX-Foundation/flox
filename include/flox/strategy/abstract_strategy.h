@@ -15,10 +15,14 @@
 namespace flox
 {
 
+class ISignalHandler;
+
 class IStrategy : public ISubsystem, public IMarketDataSubscriber
 {
  public:
   virtual ~IStrategy() = default;
+
+  virtual void setSignalHandler(ISignalHandler*) {}
 };
 
 }  // namespace flox

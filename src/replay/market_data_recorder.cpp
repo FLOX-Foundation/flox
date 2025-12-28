@@ -11,9 +11,34 @@
 
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/replay/recording_metadata.h"
+
+#include <chrono>
+#include <cstdio>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 namespace flox
 {
+
+namespace
+{
+
+std::string getIsoTimestamp()
+{
+  auto now = std::chrono::system_clock::now();
+  auto time_t_now = std::chrono::system_clock::to_time_t(now);
+  auto ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&time_t_now), "%Y-%m-%dT%H:%M:%S");
+  oss << '.' << std::setfill('0') << std::setw(3) << ms << 'Z';
+  return oss.str();
+}
+
+}  // namespace
 
 MarketDataRecorder::MarketDataRecorder(MarketDataRecorderConfig config)
     : _config(std::move(config))
@@ -32,10 +57,24 @@ void MarketDataRecorder::start()
     return;  // Already recording
   }
 
+  // Build metadata
+  replay::RecordingMetadata metadata;
+  metadata.exchange = _config.exchange_name;
+  metadata.exchange_type = _config.exchange_type;
+  metadata.instrument_type = _config.instrument_type;
+  metadata.connector_version = _config.connector_version;
+  metadata.description = _config.description;
+  metadata.has_trades = _config.record_trades;
+  metadata.has_book_snapshots = _config.record_book_snapshots;
+  metadata.has_book_deltas = _config.record_book_deltas;
+  metadata.book_depth = _config.book_depth;
+  metadata.recording_start = getIsoTimestamp();
+
   replay::WriterConfig writer_config{
       .output_dir = _config.output_dir,
       .max_segment_bytes = _config.max_segment_bytes,
       .exchange_id = _config.exchange_id,
+      .metadata = std::move(metadata),
   };
 
   _writer = std::make_unique<replay::BinaryLogWriter>(std::move(writer_config));
@@ -163,6 +202,23 @@ RecorderStats MarketDataRecorder::stats() const
     _stats.files_created = ws.segments_created;
   }
   return _stats;
+}
+
+void MarketDataRecorder::addSymbol(uint32_t symbol_id, const std::string& name,
+                                   const std::string& base_asset, const std::string& quote_asset,
+                                   int8_t price_precision, int8_t qty_precision)
+{
+  if (_writer)
+  {
+    replay::SymbolInfo info;
+    info.symbol_id = symbol_id;
+    info.name = name;
+    info.base_asset = base_asset;
+    info.quote_asset = quote_asset;
+    info.price_precision = price_precision;
+    info.qty_precision = qty_precision;
+    _writer->addSymbol(info);
+  }
 }
 
 }  // namespace flox

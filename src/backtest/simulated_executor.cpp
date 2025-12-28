@@ -231,7 +231,22 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, bool /* isBuy */)
   updateTrailingStops(symbol, price);
 }
 
-SimulatedExecutor::MarketState& SimulatedExecutor::getMarketState(SymbolId symbol) noexcept
+void SimulatedExecutor::onBar(SymbolId symbol, Price price)
+{
+  MarketState& state = getMarketState(symbol);
+  const int64_t priceRaw = price.raw();
+  state.bestBidRaw = priceRaw;
+  state.bestAskRaw = priceRaw;
+  state.lastTradeRaw = priceRaw;
+  state.hasBid = true;
+  state.hasAsk = true;
+  state.hasTrade = true;
+  processPendingOrders(symbol, state);
+  processConditionalOrders(symbol, state);
+  updateTrailingStops(symbol, price);
+}
+
+SimulatedExecutor::MarketState& SimulatedExecutor::getMarketState(SymbolId symbol)
 {
   if (symbol < kMaxSymbols) [[likely]]
   {

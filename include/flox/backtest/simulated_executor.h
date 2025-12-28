@@ -67,11 +67,13 @@ class SimulatedExecutor : public IOrderExecutor
   void onBookUpdate(SymbolId symbol, const std::pmr::vector<BookLevel>& bids,
                     const std::pmr::vector<BookLevel>& asks);
   void onTrade(SymbolId symbol, Price price, bool isBuy);
+  void onBar(SymbolId symbol, Price close);
 
-  const std::vector<Fill>& fills() const noexcept { return _fills; }
-  const std::vector<Order>& conditionalOrders() const noexcept { return _conditional_orders; }
+  const std::vector<Fill>& fills() const { return _fills; }
+  std::vector<Fill> extractFills() { return std::move(_fills); }
+  const std::vector<Order>& conditionalOrders() const { return _conditional_orders; }
 
-  CompositeOrderLogic& compositeLogic() noexcept { return _compositeLogic; }
+  CompositeOrderLogic& compositeLogic() { return _compositeLogic; }
 
  private:
   struct MarketState
@@ -84,7 +86,7 @@ class SimulatedExecutor : public IOrderExecutor
     bool hasTrade{false};
   };
 
-  MarketState& getMarketState(SymbolId symbol) noexcept;
+  MarketState& getMarketState(SymbolId symbol);
   bool tryFillOrder(Order& order);
   void processPendingOrders(SymbolId symbol, const MarketState& state);
   void processConditionalOrders(SymbolId symbol, const MarketState& state);

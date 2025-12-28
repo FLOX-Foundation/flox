@@ -15,10 +15,10 @@
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/strategy/abstract_signal_handler.h"
-#include "flox/strategy/abstract_strategy.h"
 #include "flox/strategy/strategy.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -90,7 +90,7 @@ class BacktestRunner : public ISignalHandler
 
   // Strategy setup
   void setStrategy(IStrategy* strategy);
-  void setStrategy(Strategy* strategy);
+  void addMarketDataSubscriber(IMarketDataSubscriber* subscriber);
   void addExecutionListener(IOrderExecutionListener* listener);
 
   // ========== Non-interactive mode ==========
@@ -134,6 +134,7 @@ class BacktestRunner : public ISignalHandler
 
   // Results
   [[nodiscard]] BacktestResult result() const;
+  [[nodiscard]] BacktestResult extractResult();
 
   // ISignalHandler
   void onSignal(const Signal& signal) override;
@@ -154,6 +155,7 @@ class BacktestRunner : public ISignalHandler
   SimulatedClock _clock;
   SimulatedExecutor _executor;
   IStrategy* _strategy{nullptr};
+  std::vector<IMarketDataSubscriber*> _marketDataSubscribers;
   std::vector<IOrderExecutionListener*> _executionListeners;
   OrderId _nextOrderId{1};
 

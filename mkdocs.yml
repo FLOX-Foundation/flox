@@ -85,8 +85,12 @@ nav:
 
   - How-To Guides:
       - how-to/README.md
+      - Bar Aggregation: how-to/bar-aggregation.md
+      - Backtesting: how-to/backtest.md
+      - Grid Search: how-to/grid-search.md
       - CPU Affinity: how-to/cpu-affinity.md
       - Custom Connector: how-to/custom-connector.md
+      - Custom Bar Policy: how-to/custom-bar-policy.md
       - Optimize Performance: how-to/optimize-performance.md
       - Configuration: how-to/configuration.md
       - Contributing: how-to/contributing.md
@@ -160,6 +164,12 @@ nav:
               - ReplayConnector: reference/api/replay/replay_connector.md
               - SegmentOps: reference/api/replay/segment_ops.md
               - Validator: reference/api/replay/validator.md
+          - Backtest:
+              - BacktestRunner: reference/api/backtest/backtest_runner.md
+              - BacktestResult: reference/api/backtest/backtest_result.md
+              - BacktestOptimizer: reference/api/backtest/backtest_optimizer.md
+              - MmapBarStorage: reference/api/backtest/mmap_bar_storage.md
+              - OptimizationStats: reference/api/backtest/optimization_stats.md
           - Strategy:
               - IStrategy: reference/api/strategy/abstract_strategy.md
           - Risk:

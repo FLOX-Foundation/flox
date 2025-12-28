@@ -143,29 +143,109 @@ bookBus->subscribe(recorder.get());
 
 ## 5. File Format
 
-FLOX creates `.floxlog` segment files:
+FLOX creates `.floxlog` segment files with embedded index:
 
 ```
 /data/market_data/
-├── 20250101_120000_000.floxlog      # First segment
-├── 20250101_120000_000.floxlog.idx  # Index file
+├── metadata.json                    # Recording metadata (exchange, symbols, etc.)
+├── 20250101_120000_000.floxlog      # First segment (index embedded at end)
 ├── 20250101_121500_001.floxlog      # Second segment (after rotation)
-└── 20250101_121500_001.floxlog.idx
+└── index.floxidx                    # Optional: global index across all segments
 ```
 
 Segment structure:
 ```
 ┌──────────────────┐
-│  SegmentHeader   │  Magic, version, compression, timestamps
+│  SegmentHeader   │  Magic, version, compression, timestamps, index_offset
 ├──────────────────┤
 │  Event Frames    │  Trade and book update records
 │  ...             │
 ├──────────────────┤
-│  Index Section   │  Optional: timestamp → offset mapping
+│  SegmentIndex    │  Embedded: timestamp → offset mapping (if create_index=true)
 └──────────────────┘
 ```
 
-## 6. Monitoring Recording
+The global index (`index.floxidx`) can be built separately using `GlobalIndexBuilder` to enable fast lookup across multiple segment files.
+
+## 6. Recording Metadata
+
+Each recording includes a `metadata.json` file with source information:
+
+```json
+{
+  "exchange": "binance",
+  "exchange_type": "cex",
+  "instrument_type": "perpetual",
+
+  "symbols": [
+    {
+      "symbol_id": 1,
+      "name": "BTCUSDT",
+      "base_asset": "BTC",
+      "quote_asset": "USDT",
+      "price_precision": 2,
+      "qty_precision": 3
+    }
+  ],
+
+  "has_trades": true,
+  "has_book_snapshots": true,
+  "has_book_deltas": true,
+  "book_depth": 20,
+
+  "recording_start": "2025-01-15T10:30:00.000Z",
+  "recording_end": "2025-01-15T18:45:00.000Z",
+
+  "price_scale": 100000000,
+  "qty_scale": 100000000
+}
+```
+
+### Using MarketDataRecorder
+
+The high-level `MarketDataRecorder` automatically creates metadata:
+
+```cpp
+#include "flox/replay/market_data_recorder.h"
+
+MarketDataRecorderConfig config;
+config.output_dir = "/data/btcusdt";
+config.exchange_name = "binance";
+config.exchange_type = "cex";
+config.instrument_type = "perpetual";
+config.book_depth = 20;
+
+MarketDataRecorder recorder(config);
+
+// Add symbol mappings
+recorder.addSymbol(1, "BTCUSDT", "BTC", "USDT", 2, 3);
+
+recorder.start();
+// ... subscribe to market data buses ...
+recorder.stop();  // Writes metadata.json automatically
+```
+
+### Manual Metadata with BinaryLogWriter
+
+```cpp
+#include "flox/replay/recording_metadata.h"
+
+RecordingMetadata meta;
+meta.exchange = "bybit";
+meta.instrument_type = "spot";
+meta.has_trades = true;
+
+WriterConfig config;
+config.output_dir = "/data/spot";
+config.metadata = meta;
+
+BinaryLogWriter writer(config);
+writer.addSymbol({.symbol_id = 1, .name = "ETHUSDT"});
+// ... write events ...
+writer.close();  // Saves metadata.json
+```
+
+## 7. Monitoring Recording
 
 ```cpp
 // Periodically check stats
@@ -177,7 +257,7 @@ std::cout << "Events: " << stats.events_written
           << ", Bytes: " << stats.bytes_written << std::endl;
 ```
 
-## 7. Compression
+## 8. Compression
 
 Enable LZ4 for 3-5x size reduction:
 

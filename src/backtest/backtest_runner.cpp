@@ -34,12 +34,12 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
 void BacktestRunner::setStrategy(IStrategy* strategy)
 {
   _strategy = strategy;
+  strategy->setSignalHandler(this);
 }
 
-void BacktestRunner::setStrategy(Strategy* strategy)
+void BacktestRunner::addMarketDataSubscriber(IMarketDataSubscriber* subscriber)
 {
-  _strategy = strategy;
-  strategy->setSignalHandler(this);
+  _marketDataSubscribers.push_back(subscriber);
 }
 
 void BacktestRunner::addExecutionListener(IOrderExecutionListener* listener)
@@ -193,6 +193,11 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     {
       _strategy->onTrade(trade_ev);
     }
+
+    for (auto* subscriber : _marketDataSubscribers)
+    {
+      subscriber->onTrade(trade_ev);
+    }
   }
   else if (event.type == replay::EventType::BookSnapshot || event.type == replay::EventType::BookDelta)
   {
@@ -223,6 +228,11 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     if (_strategy)
     {
       _strategy->onBookUpdate(book_ev);
+    }
+
+    for (auto* subscriber : _marketDataSubscribers)
+    {
+      subscriber->onBookUpdate(book_ev);
     }
 
     _pool->release();
@@ -371,8 +381,19 @@ BacktestState BacktestRunner::state() const
 
 BacktestResult BacktestRunner::result() const
 {
-  BacktestResult res(_config);
+  BacktestResult res(_config, _executor.fills().size());
   for (const auto& fill : _executor.fills())
+  {
+    res.recordFill(fill);
+  }
+  return res;
+}
+
+BacktestResult BacktestRunner::extractResult()
+{
+  BacktestResult res(_config, _executor.fills().size());
+  auto fills = _executor.extractFills();
+  for (auto& fill : fills)
   {
     res.recordFill(fill);
   }
@@ -388,6 +409,11 @@ void BacktestRunner::onSignal(const Signal& signal)
   {
     case SignalType::Market:
     case SignalType::Limit:
+    case SignalType::StopMarket:
+    case SignalType::StopLimit:
+    case SignalType::TakeProfitMarket:
+    case SignalType::TakeProfitLimit:
+    case SignalType::TrailingStop:
       _executor.submitOrder(signalToOrder(signal));
       break;
     case SignalType::Cancel:
@@ -402,18 +428,73 @@ void BacktestRunner::onSignal(const Signal& signal)
       _executor.replaceOrder(signal.orderId, newOrder);
       break;
     }
+    case SignalType::OCO:
+    {
+      // OCO creates two linked orders
+      Order order1 = signalToOrder(signal);
+      order1.type = OrderType::LIMIT;
+      order1.price = signal.price;
+
+      Order order2{.id = _nextOrderId++,
+                   .side = signal.side,
+                   .price = signal.triggerPrice,
+                   .quantity = signal.quantity,
+                   .type = OrderType::LIMIT,
+                   .symbol = signal.symbol,
+                   .timeInForce = signal.timeInForce,
+                   .flags = {.reduceOnly = signal.reduceOnly, .postOnly = signal.postOnly}};
+
+      OCOParams params{.order1 = order1, .order2 = order2};
+      _executor.submitOCO(params);
+      break;
+    }
   }
 }
 
 Order BacktestRunner::signalToOrder(const Signal& sig)
 {
   OrderId id = (sig.orderId != 0) ? sig.orderId : _nextOrderId++;
+
+  OrderType orderType{};
+  switch (sig.type)
+  {
+    case SignalType::Market:
+      orderType = OrderType::MARKET;
+      break;
+    case SignalType::Limit:
+      orderType = OrderType::LIMIT;
+      break;
+    case SignalType::StopMarket:
+      orderType = OrderType::STOP_MARKET;
+      break;
+    case SignalType::StopLimit:
+      orderType = OrderType::STOP_LIMIT;
+      break;
+    case SignalType::TakeProfitMarket:
+      orderType = OrderType::TAKE_PROFIT_MARKET;
+      break;
+    case SignalType::TakeProfitLimit:
+      orderType = OrderType::TAKE_PROFIT_LIMIT;
+      break;
+    case SignalType::TrailingStop:
+      orderType = OrderType::TRAILING_STOP;
+      break;
+    default:
+      orderType = OrderType::MARKET;
+      break;
+  }
+
   return Order{.id = id,
                .side = sig.side,
                .price = sig.price,
                .quantity = sig.quantity,
-               .type = (sig.type == SignalType::Market) ? OrderType::MARKET : OrderType::LIMIT,
-               .symbol = sig.symbol};
+               .type = orderType,
+               .symbol = sig.symbol,
+               .timeInForce = sig.timeInForce,
+               .flags = {.reduceOnly = sig.reduceOnly, .postOnly = sig.postOnly},
+               .triggerPrice = sig.triggerPrice,
+               .trailingOffset = sig.trailingOffset,
+               .trailingCallbackRate = sig.trailingCallbackRate};
 }
 
 }  // namespace flox

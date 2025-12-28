@@ -10,6 +10,7 @@ Complete technical documentation for all FLOX components.
 | [Book](book/nlevel_order_book.md) | Order book structures and market data |
 | [Execution](execution/order.md) | Order management and execution |
 | [Replay](replay/binary_log_reader.md) | Data recording and playback |
+| [Backtest](backtest/backtest_runner.md) | Backtesting and optimization |
 | [Util](util/eventing/event_bus.md) | Utilities, memory pools, event buses |
 | [Connector](connector/exchange_connector.md) | Exchange connectivity |
 | [Strategy](strategy/abstract_strategy.md) | Strategy interfaces |
@@ -50,10 +51,19 @@ Complete technical documentation for all FLOX components.
 - [ReplayConnector](replay/replay_connector.md) — Replay connector
 - [Binary Format](replay/binary_format.md) — File format specification
 
+### Backtest
+
+- [BacktestRunner](backtest/backtest_runner.md) — Backtest executor with interactive mode
+- [BacktestResult](backtest/backtest_result.md) — Results container and stats
+- [BacktestOptimizer](backtest/backtest_optimizer.md) — Grid search optimizer
+- [OptimizationStatistics](backtest/optimization_stats.md) — Statistical analysis
+- [MmapBarStorage](backtest/mmap_bar_storage.md) — Memory-mapped bar data
+
 ## Header Organization
 
 ```
 include/flox/
+├── backtest/       # Backtesting and optimization
 ├── book/           # Order book, trades, events
 ├── connector/      # Exchange connectivity
 ├── engine/         # Core engine components

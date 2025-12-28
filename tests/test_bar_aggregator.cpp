@@ -1231,9 +1231,9 @@ TEST(MultiTimeframeAggregatorTest, TimeframesReturnsCorrectIds)
 
   EXPECT_EQ(aggregator.numTimeframes(), 4);
   EXPECT_EQ(tfs[0].type, BarType::Time);
-  EXPECT_EQ(tfs[0].param, 60);
+  EXPECT_EQ(tfs[0].param, 60'000'000'000ULL);  // 60 seconds in nanoseconds
   EXPECT_EQ(tfs[1].type, BarType::Time);
-  EXPECT_EQ(tfs[1].param, 300);
+  EXPECT_EQ(tfs[1].param, 300'000'000'000ULL);  // 300 seconds in nanoseconds
   EXPECT_EQ(tfs[2].type, BarType::Tick);
   EXPECT_EQ(tfs[2].param, 100);
   EXPECT_EQ(tfs[3].type, BarType::Volume);

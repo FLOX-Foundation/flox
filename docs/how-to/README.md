@@ -6,6 +6,9 @@ Solve specific problems. Assumes you know the basics.
 
 | Guide | Problem |
 |-------|---------|
+| [Backtesting](backtest.md) | Run strategy backtests on historical data |
+| [Grid Search Optimization](grid-search.md) | Find optimal strategy parameters |
+| [Advanced Orders](advanced-orders.md) | Use stop-loss, take-profit, brackets |
 | [Multi-Exchange Trading](multi-exchange-trading.md) | Trade across multiple exchanges with aggregation and routing |
 | [CI Configuration](ci.md) | Understand the CI pipeline |
 | [Configure CPU Affinity](cpu-affinity.md) | Pin threads to isolated cores for lower latency |

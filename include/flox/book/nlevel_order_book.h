@@ -32,14 +32,14 @@ class NLevelOrderBook : public IOrderBook
  public:
   static constexpr size_t MAX_LEVELS = MaxLevels;
 
-  explicit NLevelOrderBook(Price tickSize) noexcept
+  explicit NLevelOrderBook(Price tickSize)
       : _tickSize(tickSize)
   {
     _tickSizeDiv = math::make_fastdiv64((uint64_t)_tickSize.raw(), 1);
     clear();
   }
 
-  [[nodiscard]] inline std::optional<size_t> bestAskIndex() const noexcept
+  inline std::optional<size_t> bestAskIndex() const
   {
     if (_bestAskIdx < MAX_LEVELS)
     {
@@ -61,7 +61,7 @@ class NLevelOrderBook : public IOrderBook
     return std::nullopt;
   }
 
-  [[nodiscard]] inline std::optional<size_t> bestBidIndex() const noexcept
+  inline std::optional<size_t> bestBidIndex() const
   {
     if (_bestBidIdx < MAX_LEVELS)
     {
@@ -429,7 +429,7 @@ class NLevelOrderBook : public IOrderBook
     }
   }
 
-  [[nodiscard]] inline std::optional<Price> bestBid() const override
+  inline std::optional<Price> bestBid() const override
   {
     const int64_t t = _bestBidTick;
     if (t < 0)
@@ -439,7 +439,7 @@ class NLevelOrderBook : public IOrderBook
     return std::optional<Price>{Price::fromRaw(_tickSize.raw() * t)};
   }
 
-  [[nodiscard]] inline std::optional<Price> bestAsk() const override
+  inline std::optional<Price> bestAsk() const override
   {
     const int64_t t = _bestAskTick;
     if (t < 0)
@@ -461,7 +461,7 @@ class NLevelOrderBook : public IOrderBook
     return i < MAX_LEVELS ? _asks[i] : Quantity{};
   }
 
-  [[nodiscard]] inline std::pair<Quantity, Volume> consumeAsks(Quantity needQty) const noexcept
+  inline std::pair<Quantity, Volume> consumeAsks(Quantity needQty) const
   {
     if (_bestAskIdx >= MAX_LEVELS)
     {
@@ -520,7 +520,7 @@ class NLevelOrderBook : public IOrderBook
 #endif
   }
 
-  [[nodiscard]] inline std::pair<Quantity, Volume> consumeBids(Quantity needQty) const noexcept
+  inline std::pair<Quantity, Volume> consumeBids(Quantity needQty) const
   {
     if (_bestBidIdx >= MAX_LEVELS)
     {
@@ -599,9 +599,9 @@ class NLevelOrderBook : public IOrderBook
 #endif
   }
 
-  Price tickSize() const noexcept { return _tickSize; }
+  Price tickSize() const { return _tickSize; }
 
-  [[nodiscard]] inline bool isCrossed() const noexcept
+  inline bool isCrossed() const
   {
     if (_bestBidTick < 0 || _bestAskTick < 0)
     {
@@ -610,7 +610,7 @@ class NLevelOrderBook : public IOrderBook
     return _bestBidTick >= _bestAskTick;
   }
 
-  [[nodiscard]] inline std::optional<Price> spread() const noexcept
+  inline std::optional<Price> spread() const
   {
     if (_bestBidTick < 0 || _bestAskTick < 0)
     {
@@ -620,7 +620,7 @@ class NLevelOrderBook : public IOrderBook
     return Price::fromRaw(_tickSize.raw() * spreadTicks);
   }
 
-  [[nodiscard]] inline std::optional<Price> mid() const noexcept
+  inline std::optional<Price> mid() const
   {
     if (_bestBidTick < 0 || _bestAskTick < 0)
     {
@@ -634,7 +634,55 @@ class NLevelOrderBook : public IOrderBook
     return Price::fromRaw(halfTick * midTick2);
   }
 
-  void clear() noexcept
+  struct PriceLevel
+  {
+    Price price;
+    Quantity quantity;
+  };
+
+  std::vector<PriceLevel> getBidLevels(size_t maxLevels) const
+  {
+    std::vector<PriceLevel> levels;
+    levels.reserve(maxLevels);
+
+    if (auto bidIdx = bestBidIndex())
+    {
+      for (size_t i = *bidIdx + 1; levels.size() < maxLevels;)
+      {
+        if (i-- == 0)
+        {
+          break;
+        }
+        if (_bids[i].isZero())
+        {
+          continue;
+        }
+        levels.push_back({indexToPrice(i), _bids[i]});
+      }
+    }
+    return levels;
+  }
+
+  std::vector<PriceLevel> getAskLevels(size_t maxLevels) const
+  {
+    std::vector<PriceLevel> levels;
+    levels.reserve(maxLevels);
+
+    if (auto askIdx = bestAskIndex())
+    {
+      for (size_t i = *askIdx; levels.size() < maxLevels && i < MAX_LEVELS; i++)
+      {
+        if (_asks[i].isZero())
+        {
+          continue;
+        }
+        levels.push_back({indexToPrice(i), _asks[i]});
+      }
+    }
+    return levels;
+  }
+
+  void clear()
   {
     _bids.fill({});
     _asks.fill({});
@@ -646,20 +694,20 @@ class NLevelOrderBook : public IOrderBook
   }
 
  private:
-  int64_t ticks(Price p) const noexcept
+  int64_t ticks(Price p) const
   {
     const int64_t pr = p.raw();
     return math::sdiv_round_nearest(pr, _tickSizeDiv);
   }
 
-  Price indexToPrice(size_t i) const noexcept
+  Price indexToPrice(size_t i) const
   {
     const int64_t ts = _tickSize.raw();
     const int64_t tick = _baseIndex + static_cast<int64_t>(i);
     return Price::fromRaw(ts * tick);
   }
 
-  size_t localIndex(Price p) const noexcept
+  size_t localIndex(Price p) const
   {
     const int64_t t = ticks(p) - _baseIndex;
     return (static_cast<uint64_t>(t) < static_cast<uint64_t>(MAX_LEVELS))
@@ -667,7 +715,7 @@ class NLevelOrderBook : public IOrderBook
                : MAX_LEVELS;
   }
 
-  void reanchor(int64_t minIdx, int64_t maxIdx) noexcept
+  void reanchor(int64_t minIdx, int64_t maxIdx)
   {
     constexpr int64_t HYST = 8;
     const int64_t span = maxIdx - minIdx + 1;
@@ -690,7 +738,7 @@ class NLevelOrderBook : public IOrderBook
     }
   }
 
-  void reanchorWithData(int64_t minIdx, int64_t maxIdx) noexcept
+  void reanchorWithData(int64_t minIdx, int64_t maxIdx)
   {
     const int64_t oldBase = _baseIndex;
 
@@ -799,7 +847,7 @@ class NLevelOrderBook : public IOrderBook
     }
   }
 
-  size_t nextNonZeroAsk(size_t from) const noexcept
+  size_t nextNonZeroAsk(size_t from) const
   {
     // Limit search to known ask range
     const size_t limit = (_maxAsk < MAX_LEVELS) ? _maxAsk + 1 : MAX_LEVELS;
@@ -813,7 +861,7 @@ class NLevelOrderBook : public IOrderBook
     return MAX_LEVELS;
   }
 
-  size_t prevNonZeroAsk(size_t from) const noexcept
+  size_t prevNonZeroAsk(size_t from) const
   {
     // Limit search to known ask range
     const size_t limit = (_minAsk < MAX_LEVELS) ? _minAsk : 0;
@@ -831,7 +879,7 @@ class NLevelOrderBook : public IOrderBook
     return MAX_LEVELS;
   }
 
-  size_t nextNonZeroBid(size_t from) const noexcept
+  size_t nextNonZeroBid(size_t from) const
   {
     // Limit search to known bid range
     const size_t limit = (_maxBid < MAX_LEVELS) ? _maxBid + 1 : MAX_LEVELS;
@@ -845,7 +893,7 @@ class NLevelOrderBook : public IOrderBook
     return MAX_LEVELS;
   }
 
-  size_t prevNonZeroBid(size_t from) const noexcept
+  size_t prevNonZeroBid(size_t from) const
   {
     // Limit search to known bid range
     const size_t limit = (_minBid < MAX_LEVELS) ? _minBid : 0;

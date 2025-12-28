@@ -1,225 +1,199 @@
 # Backtesting
 
-Replay recorded market data through your strategy.
+Run your strategy against recorded market data.
 
 ## Prerequisites
 
 - Completed [Recording Data](recording-data.md)
 - Recorded `.floxlog` files
+- Build with `-DFLOX_ENABLE_BACKTEST=ON`
 
-## 1. ReplayConnector Overview
+## 1. BacktestRunner Overview
 
-`ReplayConnector` reads recorded data and emits events to your strategy as if they were live.
+`BacktestRunner` replays recorded data through your strategy with simulated execution:
+
+```
+.floxlog files → BacktestRunner → Strategy → SimulatedExecutor → BacktestResult
+```
+
+## 2. Minimal Example
 
 ```cpp
-#include "flox/replay/replay_connector.h"
+#include "flox/backtest/backtest_runner.h"
+#include "flox/replay/readers/binary_log_reader.h"
+#include "flox/engine/symbol_registry.h"
+#include "flox/strategy/strategy.h"
 
 using namespace flox;
+
+int main()
+{
+  // 1. Load recorded data
+  replay::ReaderFilter filter;
+  filter.symbols = {1};  // Only symbol ID 1
+  auto reader = replay::createMultiSegmentReader("/data/market_data", filter);
+
+  // 2. Configure backtest
+  BacktestConfig config;
+  config.initialCapital = 10000.0;
+  config.feeRate = 0.0004;  // 0.04% taker fee
+
+  BacktestRunner runner(config);
+
+  // 3. Create registry and strategy
+  SymbolRegistry registry;
+  SymbolInfo info;
+  info.exchange = "BINANCE";
+  info.symbol = "BTCUSDT";
+  info.tickSize = Price::fromDouble(0.01);
+  SymbolId symbolId = registry.registerSymbol(info);
+
+  MyStrategy strategy(symbolId, registry);
+  runner.setStrategy(&strategy);
+
+  // 4. Run
+  BacktestResult result = runner.run(*reader);
+
+  // 5. Get statistics
+  auto stats = result.computeStats();
+  std::cout << "Return: " << stats.returnPct << "%\n";
+  std::cout << "Sharpe: " << stats.sharpeRatio << "\n";
+  std::cout << "Max DD: " << stats.maxDrawdownPct << "%\n";
+  std::cout << "Trades: " << stats.totalTrades << "\n";
+}
 ```
 
-## 2. Basic Replay
+## 3. Writing a Backtest-Ready Strategy
+
+Use `Strategy` base class with signal emission:
 
 ```cpp
-// Configure replay
-ReplayConnectorConfig config;
-config.data_dir = "/data/market_data";        // Directory with .floxlog files
-config.speed = ReplaySpeed::max();            // As fast as possible
+class MyStrategy : public Strategy
+{
+public:
+  MyStrategy(SymbolId sym, const SymbolRegistry& registry)
+    : Strategy(1, sym, registry) {}
 
-// Create replay connector
-auto replay = std::make_shared<ReplayConnector>(config);
+  void start() override { _running = true; }
+  void stop() override { _running = false; }
 
-// Set up callbacks (same as live connectors)
-replay->setTradeCallback([](const TradeEvent& ev) {
-  // Process trade
-});
+protected:
+  void onSymbolTrade(SymbolContext& ctx, const TradeEvent& ev) override
+  {
+    if (!_running) return;
 
-replay->setBookCallback([](const BookUpdateEvent& ev) {
-  // Process book update
-});
-
-// Run
-replay->start();
-// ... wait for completion ...
-replay->stop();
-```
-
-## 3. Replay with Strategy
-
-Wire the replay connector to your strategy:
-
-```cpp
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/engine/engine.h"
-#include "flox/replay/replay_connector.h"
-
-// Create buses
-auto tradeBus = std::make_unique<TradeBus>();
-auto bookBus = std::make_unique<BookUpdateBus>();
-
-// Create your strategy
-auto strategy = std::make_unique<MyStrategy>(/*symbolId=*/0);
-tradeBus->subscribe(strategy.get());
-bookBus->subscribe(strategy.get());
-
-// Configure replay
-ReplayConnectorConfig replayConfig;
-replayConfig.data_dir = "/data/market_data";
-replayConfig.speed = ReplaySpeed::max();
-
-auto replay = std::make_shared<ReplayConnector>(replayConfig);
-
-// Connect replay to buses
-replay->setTradeCallback([&tradeBus](const TradeEvent& ev) {
-  tradeBus->publish(ev);
-});
-
-replay->setBookCallback([&bookBus](const BookUpdateEvent& ev) {
-  // For pooled events, acquire from pool first
-  auto handle = bookPool.acquire();
-  if (handle) {
-    **handle = ev;
-    bookBus->publish(std::move(handle));
+    // Your logic here
+    if (shouldBuy(ev.trade.price))
+    {
+      emitMarketBuy(symbol(), Quantity::fromDouble(1.0));
+    }
   }
-});
 
-// Build engine
-std::vector<std::unique_ptr<ISubsystem>> subsystems;
-subsystems.push_back(std::move(tradeBus));
-subsystems.push_back(std::move(bookBus));
-subsystems.push_back(std::move(strategy));
-
-std::vector<std::shared_ptr<IExchangeConnector>> connectors;
-connectors.push_back(replay);
-
-EngineConfig config{};
-Engine engine(config, std::move(subsystems), std::move(connectors));
-
-// Run backtest
-engine.start();
-while (!replay->isFinished()) {
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-}
-engine.stop();
+private:
+  bool _running{false};
+};
 ```
 
-## 4. Controlling Replay Speed
+Key points:
+
+- Inherit from `Strategy`, not `IStrategy`
+- Use `emitMarketBuy()` / `emitMarketSell()` — BacktestRunner intercepts these signals
+- Access order book via `ctx.book`, position via `ctx.position`
+
+## 4. BacktestConfig Options
 
 ```cpp
-// Real-time (1x speed)
-config.speed = ReplaySpeed::realtime();
-
-// 10x faster than real-time
-config.speed = ReplaySpeed::multiplied(10.0);
-
-// As fast as possible (no throttling)
-config.speed = ReplaySpeed::max();
-
-// Change speed during replay
-replay->setSpeed(ReplaySpeed::multiplied(5.0));
+BacktestConfig config;
+config.initialCapital = 10000.0;  // Starting capital
+config.feeRate = 0.0004;          // 0.04% per trade
+config.slippage = 0.0;            // Price slippage (0 = fill at signal price)
 ```
 
-## 5. Time Range Filtering
-
-Replay only a portion of your data:
+## 5. BacktestResult Statistics
 
 ```cpp
-ReplayConnectorConfig config;
-config.data_dir = "/data/market_data";
+auto stats = result.computeStats();
 
-// Filter by time range (nanoseconds since Unix epoch)
-config.from_ns = 1704067200000000000LL;  // 2024-01-01 00:00:00 UTC
-config.to_ns = 1704153600000000000LL;    // 2024-01-02 00:00:00 UTC
+stats.initialCapital;    // Starting capital
+stats.finalCapital;      // Ending capital
+stats.returnPct;         // Total return %
+stats.totalTrades;       // Number of trades
+stats.winRate;           // Win rate (0-1)
+stats.sharpeRatio;       // Annualized Sharpe
+stats.sortinoRatio;      // Sortino ratio
+stats.maxDrawdownPct;    // Maximum drawdown %
+stats.profitFactor;      // Gross profit / gross loss
 ```
 
-## 6. Symbol Filtering
+## 6. Time Range Filtering
 
-Replay only specific symbols:
+Backtest only a portion of your data:
 
 ```cpp
-config.symbols = {0, 1, 5};  // Only symbol IDs 0, 1, and 5
+replay::ReaderFilter filter;
+filter.from_ns = 1704067200000000000LL;  // 2024-01-01
+filter.to_ns = 1704153600000000000LL;    // 2024-01-02
+filter.symbols = {1};
+
+auto reader = replay::createMultiSegmentReader("/data", filter);
 ```
 
-## 7. Inspecting Data Before Replay
+## 7. Using Bars Instead of Raw Data
 
-Check what's in your dataset:
-
-```cpp
-#include "flox/replay/readers/binary_log_reader.h"
-
-using namespace flox::replay;
-
-// Quick summary
-DatasetSummary summary = BinaryLogReader::inspect("/data/market_data");
-std::cout << "Events: " << summary.total_events << std::endl;
-std::cout << "Duration: " << summary.durationMinutes() << " minutes" << std::endl;
-std::cout << "Segments: " << summary.segment_count << std::endl;
-std::cout << "Indexed: " << summary.fullyIndexed() << std::endl;
-
-// With symbol list
-DatasetSummary detailed = BinaryLogReader::inspectWithSymbols("/data/market_data");
-std::cout << "Symbols: ";
-for (uint32_t sym : detailed.symbols) {
-  std::cout << sym << " ";
-}
-std::cout << std::endl;
-```
-
-## 8. Seeking Within Data
-
-Jump to a specific timestamp (requires indexed data):
+For bar-based strategies, aggregate on the fly:
 
 ```cpp
-// Seek to specific time
-bool success = replay->seekTo(1704100000000000000LL);
-if (!success) {
-  std::cerr << "Seek failed (data not indexed?)" << std::endl;
-}
-
-// Get current position
-int64_t pos = replay->currentPosition();
-```
-
-## 9. Reading Data Directly
-
-For custom analysis without the connector:
-
-```cpp
-ReaderConfig config;
-config.data_dir = "/data/market_data";
-config.from_ns = std::nullopt;  // No time filter
-config.to_ns = std::nullopt;
-config.verify_crc = true;
-
-BinaryLogReader reader(config);
-
-// Iterate all events
-reader.forEach([](const ReplayEvent& ev) {
-  if (ev.type == EventType::Trade) {
-    std::cout << "Trade: symbol=" << ev.trade.symbol_id
-              << " price=" << ev.trade.price << std::endl;
-  } else if (ev.type == EventType::Book) {
-    std::cout << "Book: symbol=" << ev.book_header.symbol_id
-              << " bids=" << ev.bids.size()
-              << " asks=" << ev.asks.size() << std::endl;
+class BarStrategy : public Strategy
+{
+public:
+  BarStrategy(SymbolId sym, const SymbolRegistry& registry)
+    : Strategy(1, sym, registry)
+  {
+    _aggregator = std::make_unique<TimeBarAggregator>(
+      TimeBarPolicy(std::chrono::seconds(60)),
+      this  // Strategy receives BarEvents
+    );
   }
-  return true;  // Continue iteration
-});
 
-// Stats
-ReaderStats stats = reader.stats();
-std::cout << "Read " << stats.events_read << " events" << std::endl;
+protected:
+  void onSymbolTrade(SymbolContext& ctx, const TradeEvent& ev) override
+  {
+    _aggregator->onTrade(ev);
+  }
+
+  void onBar(const BarEvent& ev) override
+  {
+    // Your bar-based logic
+    if (ev.bar.close > ev.bar.open)
+    {
+      emitMarketBuy(symbol(), Quantity::fromDouble(1.0));
+    }
+  }
+
+private:
+  std::unique_ptr<TimeBarAggregator> _aggregator;
+};
 ```
 
-## 10. Backtest Performance Tips
+## 8. Inspecting Data Before Backtest
 
-1. **Use `ReplaySpeed::max()`** for fastest backtesting
-2. **Disable logging** during backtest runs
-3. **Filter symbols** to reduce processing
-4. **Use indexed data** for time range queries
-5. **Build with `-DCMAKE_BUILD_TYPE=Release -O3`**
+```cpp
+auto summary = replay::BinaryLogReader::inspect("/data/market_data");
+
+std::cout << "Events: " << summary.total_events << "\n";
+std::cout << "Duration: " << summary.durationHours() << " hours\n";
+std::cout << "Segments: " << summary.segment_count << "\n";
+```
+
+## 9. Performance Tips
+
+1. **Build in Release mode**: `cmake .. -DCMAKE_BUILD_TYPE=Release`
+2. **Filter symbols**: Only load what you need
+3. **Disable logging**: Comment out `FLOX_LOG` calls
+4. **Use indexed data**: Enables fast seeking
 
 ## Next Steps
 
-- [Optimize Performance](../how-to/optimize-performance.md) — Tune for minimum latency
-- [Replay System Reference](../reference/replay.md) — Full API documentation
+- [Running a Backtest](../how-to/backtest.md) — Complete SMA crossover example
+- [Grid Search Optimization](../how-to/grid-search.md) — Find optimal parameters
+- [Bar Aggregation](../how-to/bar-aggregation.md) — Pre-aggregate for faster backtests

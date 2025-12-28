@@ -63,6 +63,8 @@ struct BacktestStats
   double avgLoss{0.0};
 
   double sharpeRatio{0.0};
+  double sortinoRatio{0.0};
+  double calmarRatio{0.0};
   double returnPct{0.0};
 
   UnixNanos startTimeNs{0};
@@ -72,19 +74,18 @@ struct BacktestStats
 class BacktestResult
 {
  public:
-  static constexpr size_t kDefaultCapacity = 16384;
   static constexpr size_t kMaxSymbols = 256;
 
-  explicit BacktestResult(const BacktestConfig& config = {}, size_t expectedFills = kDefaultCapacity);
+  explicit BacktestResult(const BacktestConfig& config = {}, size_t expectedFills = 0);
 
   void recordFill(const Fill& fill);
-  BacktestStats computeStats() const noexcept;
+  BacktestStats computeStats() const;
 
-  const BacktestConfig& config() const noexcept { return _config; }
+  const BacktestConfig& config() const { return _config; }
 
-  const std::vector<Fill>& fills() const noexcept { return _fills; }
-  const std::vector<TradeRecord>& trades() const noexcept { return _trades; }
-  double totalPnl() const noexcept;
+  const std::vector<Fill>& fills() const { return _fills; }
+  const std::vector<TradeRecord>& trades() const { return _trades; }
+  double totalPnl() const;
 
  private:
   struct Position
@@ -93,17 +94,19 @@ class BacktestResult
     int64_t avgPriceRaw{0};
   };
 
-  Position& getPosition(SymbolId symbol) noexcept;
+  Position& getPosition(SymbolId symbol);
 
   static int64_t computePnlRaw(int64_t entryPriceRaw, int64_t exitPriceRaw, int64_t qtyRaw,
-                               bool isLong) noexcept;
+                               bool isLong);
 
-  void updatePositionLong(Position& pos, int64_t qtyRaw, int64_t priceRaw) noexcept;
-  void updatePositionShort(Position& pos, int64_t qtyRaw, int64_t priceRaw) noexcept;
+  void updatePositionLong(Position& pos, int64_t qtyRaw, int64_t priceRaw);
+  void updatePositionShort(Position& pos, int64_t qtyRaw, int64_t priceRaw);
   void recordTrade(SymbolId symbol, Side side, int64_t pnlRaw, int64_t feeRaw,
-                   UnixNanos timestampNs) noexcept;
-  int64_t computeFeeRaw(int64_t priceRaw, int64_t qtyRaw) const noexcept;
-  double computeSharpeRatio() const noexcept;
+                   UnixNanos timestampNs);
+  int64_t computeFeeRaw(int64_t priceRaw, int64_t qtyRaw) const;
+  double computeSharpeRatio() const;
+  double computeSortinoRatio() const;
+  double computeCalmarRatio() const;
 
   BacktestConfig _config;
 

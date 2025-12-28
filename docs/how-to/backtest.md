@@ -151,6 +151,34 @@ Sharpe:  1.23
 Max DD:  3.21%
 ```
 
+## Mmap-Based Backtesting
+
+For faster backtests with pre-aggregated bars, use `MmapBarStorage`:
+
+```cpp
+#include "flox/backtest/mmap_bar_storage.h"
+#include "flox/backtest/mmap_bar_replay_source.h"
+
+// Load pre-aggregated bars
+MmapBarStorage storage("/data/BTCUSDT/bars");
+
+// Create replay source
+MmapBarReplaySource source(storage, symbol_id);
+
+// Replay bars through your strategy
+source.replay([&](const BarEvent& ev) {
+  strategy.onBar(ev);
+});
+```
+
+Pre-aggregate bars offline using `preagg_bars`:
+
+```bash
+./preagg_bars /data/raw /data/bars 60 300 900 3600
+```
+
 ## See Also
 
-- [Interactive Mode](../components/backtest/interactive_runner.md) — step-by-step execution with breakpoints for debugging
+- [Grid Search Optimization](grid-search.md) — parameter optimization
+- [Bar Aggregation Pipeline](bar-aggregation.md) — pre-aggregating bars
+- [Interactive Mode](../components/backtest/interactive_runner.md) — step-by-step execution

@@ -15,6 +15,11 @@ if(FLOX_ENABLE_BACKTEST)
   target_include_directories(backtest_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
                                                    ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(backtest_demo PRIVATE ${FLOX})
+
+  add_executable(grid_search_demo src/grid_search_demo.cpp)
+  target_include_directories(grid_search_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include
+                                                      ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(grid_search_demo PRIVATE ${FLOX})
 endif()
 
 # Bar aggregator demos
