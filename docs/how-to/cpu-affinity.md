@@ -58,14 +58,17 @@ tradeBus.setupOptimalConfiguration(
 );
 ```
 
-Component types and their priority:
-| Type | Priority | Use For |
-|------|----------|---------|
-| `MARKET_DATA` | 90 | Market data buses |
+**Component types and their priority:**
+
+| Type | Priority | Description |
+|------|----------|-------------|
+| `MARKET_DATA` | 90 | Market data buses (TradeBus, BookUpdateBus) |
 | `EXECUTION` | 85 | Order execution bus |
-| `STRATEGY` | 80 | Strategy processing |
+| `STRATEGY` | 80 | Strategy processing threads |
 | `RISK` | 75 | Risk management |
-| `GENERAL` | 70 | Everything else |
+| `GENERAL` | 70 | Non-critical threads |
+
+Higher priority components get first choice of isolated cores.
 
 ### Manual Configuration
 

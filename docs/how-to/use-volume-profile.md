@@ -265,6 +265,6 @@ VolumeProfile<512> futuresProfile;  // High precision needed
 
 ## See Also
 
-- [Volume Profile Reference](../components/aggregator/volume_profile.md)
-- [Footprint Chart](../components/aggregator/footprint_chart.md)
+- [Volume Profile Reference](../reference/api/aggregator/volume_profile.md)
+- [Footprint Chart](../reference/api/aggregator/footprint_chart.md)
 - [Bar Types Explained](../explanation/bar-types.md)

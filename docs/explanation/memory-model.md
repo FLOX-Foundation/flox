@@ -13,6 +13,7 @@ tradeBus.publish(event);
 ```
 
 Each allocation:
+
 - May trigger system calls
 - Causes unpredictable latency
 - Fragments the heap
@@ -75,6 +76,7 @@ if (handle) {
 ```
 
 Key properties:
+
 - All objects allocated at pool construction
 - `acquire()` is O(1) — pops from lock-free queue
 - `release()` is O(1) — pushes back
@@ -109,6 +111,7 @@ class Handle {
 ```
 
 Benefits:
+
 - Automatic lifetime management
 - Can be safely copied to multiple consumers
 - Returns to pool when last reference dies
@@ -181,6 +184,7 @@ std::pmr::unsynchronized_pool_resource _pool;      // Pool allocator
 ```
 
 When `BookUpdateEvent` allocates vectors for bids/asks:
+
 1. Memory comes from the pre-allocated buffer
 2. `monotonic_buffer_resource` provides fast bump-pointer allocation
 3. No system calls, no heap fragmentation
@@ -255,6 +259,7 @@ pool::Pool<BookUpdateEvent, 128> bookPool;
 ```
 
 Signs your pool is too small:
+
 - `acquire()` returns `nullopt`
 - High latency spikes
 - Dropped events
@@ -272,6 +277,7 @@ std::array<Storage, CapacityPow2> _storage{};
 ```
 
 This ensures:
+
 - No false sharing between atomics
 - Sequential access patterns for events
 - Minimal cache misses

@@ -22,6 +22,7 @@ public:
   bool onSubmitted(const Order& order, std::string_view exchangeOrderId,
                    std::string_view clientOrderId = "");
   bool onFilled(OrderId id, Quantity fill);
+  bool onPendingCancel(OrderId id);
   bool onCanceled(OrderId id);
   bool onRejected(OrderId id, std::string_view reason);
   bool onReplaced(OrderId oldId, const Order& newOrder,
@@ -51,6 +52,7 @@ public:
 |--------|---------|-------------|
 | `onSubmitted(order, exchangeId, clientId)` | `bool` | Record new order. Returns `false` if OrderId already exists. |
 | `onFilled(id, fill)` | `bool` | Update filled quantity. Returns `false` if order not found or terminal. |
+| `onPendingCancel(id)` | `bool` | Mark as pending cancel. Returns `false` if order not found or terminal. |
 | `onCanceled(id)` | `bool` | Mark as canceled. Returns `false` if already terminal (safe double-cancel). |
 | `onRejected(id, reason)` | `bool` | Mark as rejected. Returns `false` if already terminal. |
 | `onReplaced(oldId, newOrder, ...)` | `bool` | Handle order amendment. Marks old as REPLACED, inserts new. |
@@ -77,6 +79,7 @@ public:
 ## Terminal States
 
 An order is considered terminal when status is one of:
+
 - `FILLED` — fully executed
 - `CANCELED` — canceled by user or system
 - `REJECTED` — rejected by exchange
@@ -120,23 +123,6 @@ tracker.onCanceled(order.id);  // returns false, no error
 // Cleanup
 tracker.pruneTerminal();
 ```
-
-## Migration from Previous Versions
-
-The API changed from pointer-based to optional-based:
-
-```cpp
-// Old API (deprecated)
-const auto* state = tracker.get(orderId);
-if (!state) { /* not found */ }
-
-// New API
-auto state = tracker.get(orderId);
-if (!state.has_value()) { /* not found */ }
-// or simply: if (!state) { /* not found */ }
-```
-
-Methods now return `bool` to indicate success/failure instead of being void.
 
 ## See Also
 

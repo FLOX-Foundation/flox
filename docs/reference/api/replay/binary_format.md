@@ -66,13 +66,13 @@ Each event is wrapped in a frame for integrity checking:
 |--------|------|----------------|----------------------------------|
 | 0      | 8    | exchange_ts_ns | Exchange timestamp (ns)          |
 | 8      | 8    | recv_ts_ns     | Local receive timestamp (ns)     |
-| 16     | 8    | price_raw      | Price (fixed-point, 9 decimals)  |
+| 16     | 8    | price_raw      | Price (fixed-point, 8 decimals)  |
 | 24     | 8    | qty_raw        | Quantity (fixed-point)           |
 | 32     | 8    | trade_id       | Exchange trade ID                |
 | 40     | 4    | symbol_id      | Symbol registry ID               |
 | 44     | 1    | side           | 0=sell, 1=buy                    |
 | 45     | 1    | instrument     | Instrument type                  |
-| 46     | 2    | reserved       | Reserved                         |
+| 46     | 2    | exchange_id    | Exchange identifier              |
 
 ## BookRecordHeader (40 bytes)
 
@@ -86,7 +86,7 @@ Each event is wrapped in a frame for integrity checking:
 | 30     | 2    | ask_count      | Number of ask levels             |
 | 32     | 1    | type           | 0=snapshot, 1=delta              |
 | 33     | 1    | instrument     | Instrument type                  |
-| 34     | 2    | reserved       | Reserved                         |
+| 34     | 2    | exchange_id    | Exchange identifier              |
 | 36     | 4    | _pad           | Alignment padding                |
 
 Immediately following the header are `bid_count + ask_count` BookLevel entries.

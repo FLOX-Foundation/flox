@@ -292,5 +292,5 @@ TEST(MyPolicyTest, ClosesAtThreshold)
 
 ## See Also
 
-- [Bar Aggregator Reference](../components/aggregator/bar_aggregator.md)
+- [Bar Aggregator Reference](../reference/api/aggregator/bar_aggregator.md)
 - [Bar Types Explained](../explanation/bar-types.md)

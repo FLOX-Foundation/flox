@@ -36,7 +36,7 @@
 | Lock-free event delivery | Disruptor-style ring buffers for minimal latency |
 | Zero-allocation hot path | Pre-allocated pools, no heap allocation during trading |
 | CPU affinity support | Pin threads to isolated cores |
-| Multi-exchange trading | [CEX coordination](components/cex/index.md) with aggregation and smart routing |
+| Multi-exchange trading | [CEX coordination](reference/api/cex/index.md) with aggregation and smart routing |
 | Binary replay system | Record live data, replay for backtesting |
 | Grid search optimization | Parallel parameter optimization with mmap-based bar storage |
 | Type-safe primitives | Strong types for Price, Quantity, SymbolId |

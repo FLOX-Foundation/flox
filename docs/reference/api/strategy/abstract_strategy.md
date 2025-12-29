@@ -1,16 +1,17 @@
 # IStrategy
 
-`IStrategy` defines the interface for all trading strategies. It combines market data subscription and subsystem lifecycle control, serving as the main driver of signal generation and order placement.
+`IStrategy` defines the interface for all trading strategies. It combines market data subscription and subsystem lifecycle control.
 
-~~~cpp
+```cpp
 class IStrategy : public ISubsystem, public IMarketDataSubscriber {
 public:
   virtual ~IStrategy() = default;
 };
-~~~
+```
 
 ## Purpose
-* Represent a trading strategy that reacts to market data and drives execution decisions.
+
+* Define the contract for trading strategies that react to market data and emit order signals.
 
 ## Composition
 
@@ -19,7 +20,18 @@ public:
 | `IMarketDataSubscriber` | Receives `TradeEvent`, `BookUpdateEvent`, `BarEvent`. |
 | `ISubsystem`         | Enables coordinated `start()` / `stop()` during engine run. |
 
-## Notes
-* Strategies are typically registered as subscribers to market data buses.
-* Lifecycle hooks (`start`, `stop`) are used for setup, parameter resets, or cleanup.
-* Strategies are expected to emit orders via `IOrderExecutor`, respecting `IRiskManager` and `IKillSwitch` constraints.
+## Implementation
+
+Use the `Strategy` base class which provides:
+
+- Per-symbol context management (`SymbolContext`)
+- Automatic order book maintenance
+- Event routing to symbol-specific handlers
+- Signal emission helpers
+
+See [Strategy](strategy.md) for the recommended implementation pattern.
+
+## See Also
+
+- [Strategy](strategy.md) - Unified strategy base class
+- [SymbolContext](symbol_context.md) - Per-symbol state

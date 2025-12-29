@@ -1,16 +1,18 @@
 # Order
 
-`Order` encapsulates all information related to a client-side order, including identifiers, execution parameters, status, and timestamps.
+`Order` encapsulates all information related to a client-side order, including identifiers, execution parameters, status, timestamps, and advanced order features.
 
 ```cpp
-struct ExecutionFlags {
-  uint8_t reduceOnly : 1 = 0;     // Only reduce existing position
-  uint8_t closePosition : 1 = 0;  // Close entire position
-  uint8_t postOnly : 1 = 0;       // Maker only (reject if would take)
+struct ExecutionFlags
+{
+  uint8_t reduceOnly : 1 = 0;
+  uint8_t closePosition : 1 = 0;
+  uint8_t postOnly : 1 = 0;
   uint8_t _reserved : 5 = 0;
 };
 
-struct Order {
+struct Order
+{
   OrderId id{};
   Side side{};
   Price price{};
@@ -20,25 +22,25 @@ struct Order {
 
   Quantity filledQuantity{0};
 
+  TimePoint createdAt{};
+  std::optional<TimePoint> lastUpdated{};
+  std::optional<TimePoint> expiresAfter{};
+  std::optional<TimePoint> exchangeTimestamp{};
+
   // Advanced order fields
   TimeInForce timeInForce{TimeInForce::GTC};
   ExecutionFlags flags{};
-  Price triggerPrice{};             // For stop/TP orders
-  Price trailingOffset{};           // For trailing stop (fixed offset)
-  int32_t trailingCallbackRate{0};  // For trailing stop (bps, 100 = 1%)
+  Price triggerPrice{};             // for stop/TP orders
+  Price trailingOffset{};           // for trailing stop (fixed)
+  int32_t trailingCallbackRate{0};  // for trailing stop (bps, 100 = 1%)
 
   // Metadata
   uint64_t clientOrderId{0};
   uint16_t strategyId{0};
-  uint16_t orderTag{0};  // For OCO grouping
+  uint16_t orderTag{0};  // for OCO grouping
 
   // Iceberg
-  Quantity visibleQuantity{};  // Visible size (0 = full)
-
-  TimePoint createdAt{};
-  std::optional<TimePoint> exchangeTimestamp;
-  std::optional<TimePoint> lastUpdated;
-  std::optional<TimePoint> expiresAfter;
+  Quantity visibleQuantity{};  // visible size (0 = full)
 };
 ```
 
@@ -48,81 +50,61 @@ struct Order {
 
 ## Core Fields
 
-| Field           | Description                                               |
-|-----------------|-----------------------------------------------------------|
-| id              | Globally unique order identifier.                         |
-| side            | Buy or sell.                                              |
-| price           | Limit price; ignored for market orders.                   |
-| quantity        | Total order size in base units.                           |
-| type            | Order type (see [OrderType](../common.md#ordertype)).     |
-| symbol          | Compact numeric symbol reference (`SymbolId`).            |
-| filledQuantity  | Accumulated quantity filled so far.                       |
+| Field             | Description                                               |
+| ----------------- | --------------------------------------------------------- |
+| id                | Globally unique order identifier.                         |
+| side              | Buy or sell.                                              |
+| price             | Limit price; ignored for market orders.                   |
+| quantity          | Total order size in base units.                           |
+| type              | `LIMIT`, `MARKET`, `STOP_MARKET`, `STOP_LIMIT`, etc.      |
+| symbol            | Compact numeric symbol reference (`SymbolId`).            |
+| filledQuantity    | Accumulated quantity filled so far.                       |
+
+## Timestamps
+
+| Field             | Description                                               |
+| ----------------- | --------------------------------------------------------- |
+| createdAt         | Local creation timestamp.                                 |
+| lastUpdated       | Timestamp of last known state transition.                 |
+| expiresAfter      | Optional expiry deadline (e.g. for IOC/GTD enforcement).  |
+| exchangeTimestamp | When the exchange acknowledged the order (if applicable). |
 
 ## Advanced Order Fields
 
-| Field                | Description                                                    |
-|----------------------|----------------------------------------------------------------|
-| timeInForce          | Order duration policy (see [TimeInForce](../common.md#timeinforce)). |
-| flags                | Execution flags (reduceOnly, closePosition, postOnly).         |
-| triggerPrice         | Price that activates conditional orders (stop, TP).            |
-| trailingOffset       | Fixed price offset for trailing stop.                          |
-| trailingCallbackRate | Percentage offset for trailing stop (basis points, 100 = 1%).  |
-
-## Metadata Fields
-
-| Field          | Description                                               |
-|----------------|-----------------------------------------------------------|
-| clientOrderId  | User-defined order ID for tracking.                       |
-| strategyId     | Strategy that created this order.                         |
-| orderTag       | Tag for grouping related orders (OCO).                    |
-| visibleQuantity| Visible size for iceberg orders (0 = show full quantity). |
-
-## Timestamp Fields
-
-| Field             | Description                                               |
-|-------------------|-----------------------------------------------------------|
-| createdAt         | Local creation timestamp.                                 |
-| exchangeTimestamp | When the exchange acknowledged the order (if applicable). |
-| lastUpdated       | Timestamp of last known state transition.                 |
-| expiresAfter      | Optional expiry deadline (for GTD orders).                |
+| Field               | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| timeInForce         | `GTC`, `IOC`, `FOK`, `GTD` (default: GTC).              |
+| flags               | Execution flags (see below).                            |
+| triggerPrice        | Trigger price for stop/take-profit orders.              |
+| trailingOffset      | Fixed offset for trailing stop orders.                  |
+| trailingCallbackRate| Trailing stop callback rate in bps (100 = 1%).          |
 
 ## ExecutionFlags
 
-Bitfield struct for efficient storage of execution options:
+| Flag          | Description                                   |
+| ------------- | --------------------------------------------- |
+| reduceOnly    | Order can only reduce position, not increase. |
+| closePosition | Order should close entire position.           |
+| postOnly      | Order must be maker; rejects if would take.   |
 
-| Flag          | Description                                        |
-|---------------|----------------------------------------------------|
-| reduceOnly    | Order can only reduce position, not increase it.   |
-| closePosition | Order closes entire position.                      |
-| postOnly      | Rejected if would immediately match (maker only).  |
+## Metadata
 
-## Conditional Order Trigger Logic
+| Field         | Description                                     |
+| ------------- | ----------------------------------------------- |
+| clientOrderId | User-defined ID for correlation.                |
+| strategyId    | ID of the strategy that created the order.      |
+| orderTag      | Tag for order grouping (e.g., OCO pairs).       |
 
-### Stop Orders (STOP_MARKET, STOP_LIMIT)
+## Iceberg Orders
 
-* **SELL stop**: Triggers when price ≤ triggerPrice (price falling)
-* **BUY stop**: Triggers when price ≥ triggerPrice (price rising)
-
-### Take Profit Orders (TAKE_PROFIT_MARKET, TAKE_PROFIT_LIMIT)
-
-* **SELL TP**: Triggers when price ≥ triggerPrice (lock profit on long)
-* **BUY TP**: Triggers when price ≤ triggerPrice (lock profit on short)
-
-### Trailing Stop
-
-* **SELL trailing**: Trigger follows price up (never down), triggers when price drops to trigger
-* **BUY trailing**: Trigger follows price down (never up), triggers when price rises to trigger
+| Field           | Description                                   |
+| --------------- | --------------------------------------------- |
+| visibleQuantity | Visible size in order book (0 = full order).  |
 
 ## Notes
 
 * Used as the payload in `OrderEvent` messages.
 * All timestamps are based on `steady_clock` for monotonic sequencing.
 * Immutable once submitted; all updates produce new events and/or replacement orders.
-* New fields have defaults.
-
-## See Also
-
-* [OrderType](../common.md#ordertype) — Order type enum
-* [TimeInForce](../common.md#timeinforce) — Time-in-force policies
-* [OrderEvent](events/order_event.md) — Order lifecycle events
-* [ExchangeCapabilities](exchange_capabilities.md) — Feature discovery
+* Advanced fields support conditional orders (stop-loss, take-profit, trailing stop).
+* `orderTag` enables OCO (one-cancels-other) order grouping.

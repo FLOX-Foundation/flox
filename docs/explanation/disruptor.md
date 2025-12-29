@@ -6,16 +6,15 @@ Why FLOX uses ring buffers for event delivery.
 
 Traditional publish-subscribe systems have bottlenecks:
 
-```
-Producer → Queue → Consumer
-           ↑
-           └── Contention point
-               - Locks
-               - Allocations
-               - Cache misses
+```mermaid
+flowchart LR
+    P[Producer] --> Q[Queue]
+    Q --> C[Consumer]
+    Q -.->|Contention| X[Locks<br/>Allocations<br/>Cache misses]
 ```
 
 For each event:
+
 1. **Lock acquisition** — Wait for mutex
 2. **Memory allocation** — Create queue node
 3. **Cache invalidation** — Producer and consumer fight over cache lines
@@ -27,18 +26,16 @@ At millions of events per second, these costs add up.
 The Disruptor pattern (from LMAX Exchange) eliminates these costs:
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                    Ring Buffer                         │
-│  ┌────┬────┬────┬────┬────┬────┬────┬────┐             │
-│  │ E0 │ E1 │ E2 │ E3 │ E4 │ E5 │ E6 │ E7 │             │
-│  └────┴────┴────┴────┴────┴────┴────┴────┘             │
-│       ↑                        ↑                       │
-│    Consumer                 Producer                   │
-│    Sequence                 Sequence                   │
-└────────────────────────────────────────────────────────┘
+              Ring Buffer (pre-allocated)
+
+  [0] [1] [2] [3] [4] [5] [6] [7]
+       ↑               ↑
+    Consumer       Producer
+    Sequence       Sequence
 ```
 
 Key insights:
+
 1. **Pre-allocated array** — No allocation during publishing
 2. **Sequence numbers** — Atomic counters replace locks
 3. **Cache-line padding** — False sharing eliminated
@@ -157,26 +154,37 @@ alignas(64) std::array<std::atomic<int64_t>, MaxConsumers> _gating{};
 
 ## Busy-Spin vs. Blocking
 
-Consumers use adaptive backoff:
+Consumers use configurable backoff with three modes:
 
 ```cpp
-class BusyBackoff {
-  void pause() {
-    if (++_spins < 100) {
-      // CPU pause instruction
-      _mm_pause();
-    } else if (_spins < 200) {
-      // Yield to scheduler
-      std::this_thread::yield();
-    } else {
-      // Short sleep
-      std::this_thread::sleep_for(1us);
-    }
-  }
+enum class BackoffMode {
+  AGGRESSIVE,  // Dedicated colo: busy-spin with CPU pause, minimal yields
+  RELAXED,     // Shared VPS/cloud: early sleep, minimal CPU burn
+  ADAPTIVE     // Auto-adjust: starts aggressive, backs off under contention
 };
+
+BusyBackoff backoff(BackoffMode::ADAPTIVE);  // Default
 ```
 
-This balances latency (busy-spin) with CPU usage (sleep).
+**AGGRESSIVE** — for dedicated hardware with isolated cores:
+
+- 2048 spins with CPU pause
+- Then yield, reset at 4096
+
+**RELAXED** — for shared VPS/cloud environments:
+
+- 8 spins, then yield
+- Sleep 100μs after 16 spins
+- Sleep 500μs for sustained idle
+
+**ADAPTIVE** (default) — auto-adjusts based on contention:
+
+- 128 spins with CPU pause (low-latency burst handling)
+- 512 spins with yield (medium contention)
+- Sleep 10μs up to 2048 spins
+- Sleep 100μs and reset to medium level
+
+This balances latency (busy-spin) with CPU usage (sleep) based on deployment environment.
 
 ## Multiple Consumers
 
@@ -214,6 +222,7 @@ tradeBus->subscribe(logger.get());
 ```
 
 Each consumer:
+
 - Gets a dedicated thread
 - Maintains its own sequence
 - Processes events independently
@@ -231,6 +240,7 @@ tradeBus->subscribe(logger.get(), /*required=*/false);
 ```
 
 Optional consumers:
+
 - Won't slow down the system if they fall behind
 - May miss events if too slow
 - Useful for monitoring, logging, metrics

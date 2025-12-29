@@ -16,6 +16,7 @@ This tutorial walks you through building a multi-timeframe momentum strategy fro
 ## What We're Building
 
 A momentum strategy that:
+
 1. Uses **H1** (hourly) bars to determine trend direction
 2. Uses **M5** (5-minute) bars to identify pullbacks
 3. Uses **M1** (1-minute) bars for entry timing
@@ -179,23 +180,24 @@ int main()
 
 ## Step 5: Understanding the Data Flow
 
-```
-TradeEvent
-    │
-    ▼
-MultiTimeframeAggregator
-    │
-    ├──► M1 aggregator ──► BarEvent (M1)
-    ├──► M5 aggregator ──► BarEvent (M5)
-    └──► H1 aggregator ──► BarEvent (H1)
-                               │
-                               ▼
-                            BarBus
-                               │
-              ┌────────────────┴────────────────┐
-              ▼                                 ▼
-          BarMatrix                      MTFMomentumStrategy
-    (stores bar history)                  (generates signals)
+```mermaid
+flowchart TB
+    TE[TradeEvent] --> MTA[MultiTimeframeAggregator]
+
+    MTA --> M1[M1 aggregator]
+    MTA --> M5[M5 aggregator]
+    MTA --> H1[H1 aggregator]
+
+    M1 --> BE1[BarEvent M1]
+    M5 --> BE5[BarEvent M5]
+    H1 --> BEH[BarEvent H1]
+
+    BE1 --> BB[BarBus]
+    BE5 --> BB
+    BEH --> BB
+
+    BB --> BM[BarMatrix<br/>stores bar history]
+    BB --> STR[MTFMomentumStrategy<br/>generates signals]
 ```
 
 1. **Trades** come from your connector
@@ -294,5 +296,5 @@ See [multi_timeframe_demo.cpp](https://github.com/FLOX-Foundation/flox/blob/main
 
 - Add position management and risk controls
 - Implement stop-loss and take-profit logic
-- Add [Volume Profile](../components/aggregator/volume_profile.md) for key level detection
-- Use [Footprint](../components/aggregator/footprint_chart.md) for order flow confirmation
+- Add [Volume Profile](../reference/api/aggregator/volume_profile.md) for key level detection
+- Use [Footprint](../reference/api/aggregator/footprint_chart.md) for order flow confirmation

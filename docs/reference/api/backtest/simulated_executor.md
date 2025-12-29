@@ -32,9 +32,11 @@ public:
   void onBookUpdate(SymbolId symbol, const std::pmr::vector<BookLevel>& bids,
                     const std::pmr::vector<BookLevel>& asks);
   void onTrade(SymbolId symbol, Price price, bool isBuy);
+  void onBar(SymbolId symbol, Price close);
 
-  const std::vector<Fill>& fills() const noexcept;
-  const std::vector<Order>& conditionalOrders() const noexcept;
+  const std::vector<Fill>& fills() const;
+  std::vector<Fill> extractFills();  // Move fills out (clears internal vector)
+  const std::vector<Order>& conditionalOrders() const;
 
   CompositeOrderLogic& compositeLogic() noexcept;
 };
@@ -157,5 +159,5 @@ struct MarketState
 
 - [BacktestRunner](./backtest_runner.md) — Run backtests with strategies
 - [BacktestResult](./backtest_result.md) — Performance statistics
-- [Order Types](../../reference/api/common.md#ordertype) — Order type enum
-- [ExchangeCapabilities](../../reference/api/execution/exchange_capabilities.md) — Feature discovery
+- [Order Types](../common.md#ordertype) — Order type enum
+- [ExchangeCapabilities](../execution/exchange_capabilities.md) — Feature discovery

@@ -40,3 +40,9 @@ public:
 * All timestamps are provided externally (usually by `ExecutionTrackerAdapter`) to ensure consistency.
 * Used in simulations and live systems for detailed latency tracking and event sequencing.
 * Inherits from `ISubsystem` for lifecycle integration with the engine.
+* Does **not** track conditional order events (`onOrderPendingCancel`, `onOrderPendingTrigger`, `onOrderTriggered`, `onTrailingStopUpdated`). Use [IOrderExecutionListener](../execution/abstract_execution_listener.md) for full order lifecycle tracking.
+
+## See Also
+
+* [IOrderExecutionListener](../execution/abstract_execution_listener.md) — Full order lifecycle listener
+* [ExecutionTrackerAdapter](../execution/execution_tracker_adapter.md) — Bridges listener to tracker

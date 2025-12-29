@@ -181,4 +181,4 @@ Pre-aggregate bars offline using `preagg_bars`:
 
 - [Grid Search Optimization](grid-search.md) — parameter optimization
 - [Bar Aggregation Pipeline](bar-aggregation.md) — pre-aggregating bars
-- [Interactive Mode](../components/backtest/interactive_runner.md) — step-by-step execution
+- [Interactive Mode](interactive-backtest.md) — step-by-step execution

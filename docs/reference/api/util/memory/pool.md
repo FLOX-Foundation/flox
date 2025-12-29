@@ -63,6 +63,44 @@ h->tickSequence = 123;
 * Objects are returned to the pool via an `SPSCQueue<T*>`.
 * Backed by a `monotonic_buffer_resource` and `unsynchronized_pool_resource` for internal vector-like allocations.
 
+## Exhaustion Handling
+
+The pool provides callbacks and statistics for monitoring pool usage:
+
+```cpp
+pool.setExhaustionCallback([](size_t capacity, size_t inUse) {
+  LOG_WARN("Pool exhausted: capacity={}, inUse={}", capacity, inUse);
+});
+```
+
+| Method             | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `capacity()`       | Returns the pool's maximum capacity.                  |
+| `inUse()`          | Returns the number of currently acquired objects.     |
+| `exhaustionCount()`| Returns how many times `acquire()` failed.            |
+| `acquireCount()`   | Returns total number of successful acquisitions.      |
+| `releaseCount()`   | Returns total number of releases back to pool.        |
+
+The exhaustion callback is invoked each time `acquire()` returns `nullopt` due to pool exhaustion.
+
+## Sizing Guidelines
+
+When using pools with `EventBus`, the pool capacity **must be greater than** the EventBus capacity:
+
+```cpp
+// Correct: pool capacity (8191) > bus capacity (4096)
+Pool<BookUpdateEvent, 8191> pool;
+EventBus<Handle<BookUpdateEvent>, 4096> bus;
+
+// Incorrect: will cause pool exhaustion
+Pool<BookUpdateEvent, 4096> pool;  // Same as bus = will exhaust!
+EventBus<Handle<BookUpdateEvent>, 4096> bus;
+```
+
+**Why?** EventBus only reclaims events when the ring buffer wraps around. If pool capacity ≤ bus capacity, all pool slots will be in-flight before any can be returned.
+
+The default `config::DEFAULT_CONNECTOR_POOL_CAPACITY` (8191) is sized for this reason when used with `DEFAULT_EVENTBUS_CAPACITY` (4096).
+
 ## Notes
 
 * Zero allocations in steady-state operation.

@@ -3,12 +3,13 @@
 `ExecutionTrackerAdapter` is a proxy that forwards order execution events to an `IExecutionTracker`, timestamping each transition with `steady_clock::now()`.
 
 ```cpp
-class ExecutionTrackerAdapter : public IOrderExecutionListener {
+class ExecutionTrackerAdapter : public ISubsystem, public IOrderExecutionListener
+{
 public:
   ExecutionTrackerAdapter(SubscriberId id, IExecutionTracker* tracker);
   // All IOrderExecutionListener methods overridden
 private:
-  IExecutionTracker* _tracker;
+  IExecutionTracker* _tracker = nullptr;
 };
 ```
 
@@ -31,6 +32,7 @@ private:
 
 ## Notes
 
-* Uses wall-clock `std::chrono::steady_clock::now()` to consistently timestamp all events.
+* Inherits from both `ISubsystem` (for lifecycle management) and `IOrderExecutionListener` (for event handling).
+* Uses `std::chrono::steady_clock::now()` to consistently timestamp all events.
 * The adapter does not own the `IExecutionTracker`; it assumes external lifetime management.
 * Enables clean separation of metrics collection from trading logic.

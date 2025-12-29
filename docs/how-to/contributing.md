@@ -52,6 +52,7 @@ chmod +x .git/hooks/pre-commit
 
 FLOX welcomes contributions in these areas:
 
+- **Features** — New functionality and capabilities
 - **Connectors** — New exchange integrations
 - **Bug fixes** — Correctness improvements
 - **Performance** — Latency and throughput optimizations
@@ -64,10 +65,13 @@ FLOX welcomes contributions in these areas:
 |--------|---------|-------------|
 | `FLOX_ENABLE_TESTS` | `OFF` | Build unit tests |
 | `FLOX_ENABLE_BENCHMARKS` | `OFF` | Build benchmark binaries |
-| `FLOX_ENABLE_DEMO` | `OFF` | Build the demo application |
+| `FLOX_ENABLE_DEMO` | `OFF` | Build demo application |
+| `FLOX_ENABLE_TOOLS` | `OFF` | Build command-line tools (preagg_bars, etc.) |
 | `FLOX_ENABLE_BACKTEST` | `OFF` | Build backtest module (simulated execution) |
-| `FLOX_ENABLE_LZ4` | `OFF` | Enable LZ4 compression for replay |
-| `FLOX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity (isolated systems only) |
+| `FLOX_ENABLE_LZ4` | `OFF` | Enable LZ4 compression for binary logs |
+| `FLOX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity and NUMA functionality |
+| `FLOX_ENABLE_TRACY` | `OFF` | Enable Tracy profiler integration |
+| `FLOX_ENABLE_DEV_SETUP` | `OFF` | Install pre-commit hook automatically |
 
 Enable with:
 

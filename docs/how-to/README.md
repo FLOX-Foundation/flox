@@ -6,16 +6,18 @@ Solve specific problems. Assumes you know the basics.
 
 | Guide | Problem |
 |-------|---------|
+| [Bar Aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
 | [Backtesting](backtest.md) | Run strategy backtests on historical data |
-| [Grid Search Optimization](grid-search.md) | Find optimal strategy parameters |
-| [Bar Aggregation Pipeline](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
+| [Grid Search](grid-search.md) | Find optimal strategy parameters |
+| [CPU Affinity](cpu-affinity.md) | Pin threads to isolated cores for lower latency |
+| [Custom Connector](custom-connector.md) | Connect to a new exchange |
+| [Custom Bar Policy](custom-bar-policy.md) | Create custom bar aggregation policies |
 | [Advanced Orders](advanced-orders.md) | Use stop-loss, take-profit, brackets |
 | [Multi-Exchange Trading](multi-exchange-trading.md) | Trade across multiple exchanges with aggregation and routing |
-| [CI Configuration](ci.md) | Understand the CI pipeline |
-| [Configure CPU Affinity](cpu-affinity.md) | Pin threads to isolated cores for lower latency |
-| [Write a Custom Connector](custom-connector.md) | Connect to a new exchange |
 | [Optimize Performance](optimize-performance.md) | Tune for minimum latency |
 | [Configuration](configuration.md) | Runtime configuration options |
+| [CI Configuration](ci.md) | Understand the CI pipeline |
+| [Contributing](contributing.md) | Contribute to FLOX development |
 
 ## Prerequisites
 

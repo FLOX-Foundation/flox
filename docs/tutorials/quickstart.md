@@ -34,17 +34,30 @@ StrategyOnTrade:  p50=89ns   p99=234ns  max=890ns
 
 The demo creates a complete trading system:
 
-```
-┌─────────────┐     ┌───────────┐     ┌──────────────┐
-│ DemoConnector│────▶│ TradeBus  │────▶│ DemoStrategy │
-│ (generates   │     │ BookBus   │     │ (reacts to   │
-│  fake data)  │     └───────────┘     │  trades)     │
-└─────────────┘                        └──────────────┘
-                                              │
-                                              ▼
-                                       ┌──────────────┐
-                                       │ ExecutionBus │
-                                       └──────────────┘
+```mermaid
+flowchart LR
+    subgraph Connector
+        DC[DemoConnector<br/>generates fake data]
+    end
+
+    subgraph Bus["Event Bus"]
+        TB[TradeBus]
+        BB[BookBus]
+    end
+
+    subgraph Strategy
+        DS[DemoStrategy<br/>reacts to trades]
+    end
+
+    subgraph Execution
+        EB[ExecutionBus]
+    end
+
+    DC --> TB
+    DC --> BB
+    TB --> DS
+    BB --> DS
+    DS --> EB
 ```
 
 1. **DemoConnector** generates fake trades and order book updates

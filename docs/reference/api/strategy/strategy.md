@@ -98,15 +98,54 @@ All order methods return an `OrderId` for tracking:
 protected:
   void emit(const Signal& signal);
 
-  // Returns OrderId for tracking
+  // Market orders
   OrderId emitMarketBuy(SymbolId symbol, Quantity qty);
   OrderId emitMarketSell(SymbolId symbol, Quantity qty);
+
+  // Limit orders
   OrderId emitLimitBuy(SymbolId symbol, Price price, Quantity qty);
   OrderId emitLimitSell(SymbolId symbol, Price price, Quantity qty);
+  OrderId emitLimitBuy(SymbolId symbol, Price price, Quantity qty, TimeInForce tif);
+  OrderId emitLimitSell(SymbolId symbol, Price price, Quantity qty, TimeInForce tif);
 
+  // Order management
   void emitCancel(OrderId orderId);
   void emitCancelAll(SymbolId symbol);
   void emitModify(OrderId orderId, Price newPrice, Quantity newQty);
+
+  // Stop orders
+  OrderId emitStopMarket(SymbolId symbol, Side side, Price triggerPrice, Quantity qty);
+  OrderId emitStopLimit(SymbolId symbol, Side side, Price triggerPrice, Price limitPrice, Quantity qty);
+
+  // Take profit orders
+  OrderId emitTakeProfitMarket(SymbolId symbol, Side side, Price triggerPrice, Quantity qty);
+  OrderId emitTakeProfitLimit(SymbolId symbol, Side side, Price triggerPrice, Price limitPrice, Quantity qty);
+
+  // Trailing stop
+  OrderId emitTrailingStop(SymbolId symbol, Side side, Price offset, Quantity qty);
+  OrderId emitTrailingStopPercent(SymbolId symbol, Side side, int32_t callbackBps, Quantity qty);
+
+  // Close position (reduce-only market order)
+  OrderId emitClosePosition(SymbolId symbol);
+```
+
+### Conditional Order Examples
+
+```cpp
+// Stop-loss: sell when price drops to 95
+emitStopMarket(symbol, Side::SELL, Price::fromDouble(95.0), qty);
+
+// Take-profit: sell when price rises to 110
+emitTakeProfitMarket(symbol, Side::SELL, Price::fromDouble(110.0), qty);
+
+// Trailing stop: sell if price drops 2% from peak
+emitTrailingStopPercent(symbol, Side::SELL, 200, qty);  // 200 bps = 2%
+
+// Close entire position
+emitClosePosition(symbol);
+
+// IOC limit order
+emitLimitBuy(symbol, price, qty, TimeInForce::IOC);
 ```
 
 ## Order and Position Tracking

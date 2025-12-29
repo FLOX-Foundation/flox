@@ -1,13 +1,15 @@
 # EngineConfig
 
-`EngineConfig` holds top-level runtime configuration for the trading engine, including exchange definitions, kill switch limits, logging preferences, and compile-time defaults.
+`EngineConfig` holds top-level runtime configuration for the trading engine, including exchange definitions, kill switch limits, and logging preferences.
 
 ```cpp
-struct EngineConfig {
+struct EngineConfig
+{
   std::vector<ExchangeConfig> exchanges;
   KillSwitchConfig killSwitchConfig;
   std::string logLevel = "info";
   std::string logFile;
+  uint32_t drainTimeoutMs = 5000;
 };
 ```
 
@@ -17,77 +19,79 @@ struct EngineConfig {
 
 ## Fields
 
-| Field | Description |
-|-------|-------------|
-| `exchanges` | List of exchanges and symbols to connect (via `ExchangeConfig`). |
-| `killSwitchConfig` | Limits for order size, frequency, and loss (see `KillSwitchConfig`). |
-| `logLevel` | Runtime log verbosity (`info`, `debug`, `warn`, `error`). |
-| `logFile` | Optional path to write logs to disk. |
+| Field            | Description                                                          |
+| ---------------- | -------------------------------------------------------------------- |
+| exchanges        | List of exchanges and symbols to connect (via `ExchangeConfig`).     |
+| killSwitchConfig | Limits for order size, frequency, and loss (see `KillSwitchConfig`). |
+| logLevel         | Runtime log verbosity (`info`, `debug`, `trace`, etc.).              |
+| logFile          | Optional path to write logs to disk.                                 |
+| drainTimeoutMs   | Timeout for draining subsystems during shutdown (default: 5000ms).   |
+
 
 ## Substructures
 
 ### `ExchangeConfig`
 
 ```cpp
-struct ExchangeConfig {
-  std::string name;                    // Display name (e.g. "bybit")
-  std::string type;                    // Connector type for factory
-  std::vector<SymbolConfig> symbols;   // Symbols to subscribe
+struct ExchangeConfig
+{
+  std::string name;
+  std::string type;
+  std::vector<SymbolConfig> symbols;
 };
 ```
+
+| Field   | Description                                  |
+| ------- | -------------------------------------------- |
+| name    | Display name or label (e.g. `"Bybit"`).      |
+| type    | Connector type (used by `ConnectorFactory`). |
+| symbols | List of `SymbolConfig` entries.              |
 
 ### `SymbolConfig`
 
 ```cpp
-struct SymbolConfig {
-  std::string symbol;          // Symbol name (e.g. "BTCUSDT")
-  double tickSize;             // Price resolution
-  double expectedDeviation;    // Max allowed distance from center
+struct SymbolConfig
+{
+  std::string symbol;
+  double tickSize;
+  double expectedDeviation;
 };
 ```
+
+| Field             | Description                              |
+| ----------------- | ---------------------------------------- |
+| symbol            | Symbol name (e.g. `"DOTUSDT"`).          |
+| tickSize          | Price resolution used by the order book. |
+| expectedDeviation | Max allowed distance from center price.  |
 
 ### `KillSwitchConfig`
 
 ```cpp
-struct KillSwitchConfig {
-  double maxOrderQty = 10'000.0;    // Per-order size limit
-  double maxLoss = -1e6;            // Hard loss cap (negative)
-  int maxOrdersPerSecond = -1;      // Rate limit (-1 = disabled)
+struct KillSwitchConfig
+{
+  double maxOrderQty = 10'000.0;
+  double maxLoss = -1e6;
+  int maxOrdersPerSecond = -1;
 };
 ```
 
-## Compile-Time Defaults
+| Field              | Default   | Description                                         |
+| ------------------ | --------- | --------------------------------------------------- |
+| maxOrderQty        | 10,000    | Per-order size limit.                               |
+| maxLoss            | -1,000,000| Hard loss cap per session.                          |
+| maxOrdersPerSecond | -1        | Throttling limit for message rate (≤ 0 = disabled). |
 
-The header also defines compile-time constants that can be overridden via preprocessor:
+## Global Constants
 
-```cpp
-// Can be overridden at compile time
-#ifndef FLOX_DEFAULT_EVENTBUS_CAPACITY
-#define FLOX_DEFAULT_EVENTBUS_CAPACITY 4096
-#endif
-
-#ifndef FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS
-#define FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS 128
-#endif
-
-#ifndef FLOX_DEFAULT_ORDER_TRACKER_CAPACITY
-#define FLOX_DEFAULT_ORDER_TRACKER_CAPACITY 4096
-#endif
-
-#ifndef FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY
-#define FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY 8191
-#endif
-```
-
-### `config` Namespace Constants
+The header also defines compile-time defaults via `flox::config` namespace:
 
 ```cpp
-namespace config {
-  // EventBus defaults
+namespace config
+{
   inline constexpr size_t DEFAULT_EVENTBUS_CAPACITY = 4096;
   inline constexpr size_t DEFAULT_EVENTBUS_MAX_CONSUMERS = 128;
 
-  // Connector pool capacity (must be > EventBus capacity)
+  // Connector pool capacity (must be > EventBus capacity to prevent exhaustion)
   inline constexpr size_t DEFAULT_CONNECTOR_POOL_CAPACITY = 8191;
 
   // CPU Affinity Priority Constants
@@ -107,31 +111,17 @@ namespace config {
 }
 ```
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `DEFAULT_EVENTBUS_CAPACITY` | 4096 | Ring buffer size for EventBus |
-| `DEFAULT_EVENTBUS_MAX_CONSUMERS` | 128 | Maximum subscribers per bus |
-| `DEFAULT_CONNECTOR_POOL_CAPACITY` | 8191 | Pool capacity for exchange connectors (must be > EventBus capacity) |
-| `ISOLATED_CORE_PRIORITY_BOOST` | 5 | Priority boost for isolated cores |
-| `DEFAULT_REALTIME_PRIORITY` | 80 | Default RT priority for threads |
-| `FALLBACK_REALTIME_PRIORITY` | 90 | Fallback RT priority |
-| `MARKET_DATA_PRIORITY` | 90 | Priority for market data threads |
-| `EXECUTION_PRIORITY` | 85 | Priority for execution threads |
-| `STRATEGY_PRIORITY` | 80 | Priority for strategy threads |
-| `RISK_PRIORITY` | 75 | Priority for risk threads |
-| `GENERAL_PRIORITY` | 70 | Priority for general threads |
-| `ORDER_TRACKER_CAPACITY` | 4096 | Order tracker hash map capacity |
+These can be overridden via preprocessor defines:
+
+- `FLOX_DEFAULT_EVENTBUS_CAPACITY`
+- `FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS`
+- `FLOX_DEFAULT_ORDER_TRACKER_CAPACITY`
+- `FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY`
+
+**Important:** `DEFAULT_CONNECTOR_POOL_CAPACITY` must be greater than `DEFAULT_EVENTBUS_CAPACITY`. EventBus only reclaims events on wrap-around, so if pool capacity ≤ bus capacity, the pool will exhaust before any events are returned.
 
 ## Notes
 
 * Typically loaded from JSON during engine bootstrap.
 * Used by multiple components: symbol registry, kill switch, connector setup, and logging.
-* Priority constants are used by `EventBus` when `FLOX_CPU_AFFINITY_ENABLED` is defined.
-* Compile-time defaults can be customized per build configuration.
-
-## See Also
-
-* [Engine](engine.md) — Uses `EngineConfig` for initialization
-* [IKillSwitch](../killswitch/abstract_killswitch.md) — Uses `KillSwitchConfig`
-* [EventBus](../util/eventing/event_bus.md) — Uses capacity and priority constants
-* [Configuration Guide](../../../how-to/configuration.md) — JSON configuration examples
+* Priority constants are used for CPU affinity and thread scheduling when `FLOX_ENABLE_CPU_AFFINITY` is enabled.

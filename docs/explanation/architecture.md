@@ -4,19 +4,34 @@ How FLOX components fit together.
 
 ## System Layers
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Your Strategy                           │
-├─────────────────────────────────────────────────────────────────┤
-│  EventBus (Disruptor)  │  Order Execution  │  Risk Management   │
-├─────────────────────────────────────────────────────────────────┤
-│  Connectors  │  Order Books  │  Symbol Registry  │  Replay      │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph L3["Application Layer"]
+        strategy[Your Strategy]
+    end
+
+    subgraph L2["Core Layer"]
+        eventbus[EventBus]
+        execution[Order Execution]
+        risk[Risk Management]
+    end
+
+    subgraph L1["Infrastructure Layer"]
+        connectors[Connectors]
+        orderbooks[Order Books]
+        registry[Symbol Registry]
+        replay[Replay]
+    end
+
+    L1 --> L2
+    L2 --> L3
 ```
 
-**Layer 1: Infrastructure** — Connectors, replay, symbol management
-**Layer 2: Core** — Event buses, execution, risk
-**Layer 3: Application** — Your trading strategies
+| Layer | Components | Purpose |
+|-------|------------|---------|
+| **Infrastructure** | Connectors, Replay, Symbol Registry, Order Books | Low-level I/O and data management |
+| **Core** | EventBus, Order Execution, Risk Management | Event routing and order flow |
+| **Application** | Your Strategy | Trading logic |
 
 ## Data Flow
 
@@ -63,11 +78,6 @@ flowchart TD
     RM -->|Allowed| KS
     KS -->|Not Triggered| EXE
     EXE --> OEB
-```
-
-**Text representation:**
-```
-Exchange API → Connector → TradeBus/BookUpdateBus → Strategy → Risk/KillSwitch → Executor
 ```
 
 ## Core Components
@@ -209,26 +219,29 @@ FLOX uses strong types to prevent unit confusion:
 
 ## Threading Model
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Main Thread                          │
-│  - Engine lifecycle                                         │
-│  - Subsystem start/stop                                     │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph main["Main Thread"]
+        engine["Engine lifecycle<br/>Subsystem start/stop"]
+    end
 
-┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-│ Connector     │  │ Connector     │  │ Connector     │
-│ Thread(s)     │  │ Thread(s)     │  │ Thread(s)     │
-│ - Network I/O │  │ - Network I/O │  │ - Network I/O │
-│ - Parsing     │  │ - Parsing     │  │ - Parsing     │
-│ - Publishing  │  │ - Publishing  │  │ - Publishing  │
-└───────────────┘  └───────────────┘  └───────────────┘
+    subgraph connectors["Connector Threads"]
+        c1["Connector 1<br/>Network I/O, Parsing"]
+        c2["Connector 2<br/>Network I/O, Parsing"]
+        c3["Connector N<br/>Network I/O, Parsing"]
+    end
 
-┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-│ Bus Consumer  │  │ Bus Consumer  │  │ Bus Consumer  │
-│ Thread        │  │ Thread        │  │ Thread        │
-│ - Strategy A  │  │ - Strategy B  │  │ - Aggregator  │
-└───────────────┘  └───────────────┘  └───────────────┘
+    subgraph consumers["Bus Consumer Threads"]
+        s1["Strategy A"]
+        s2["Strategy B"]
+        agg["Aggregator"]
+    end
+
+    engine --> connectors
+    engine --> consumers
+    c1 --> s1
+    c2 --> s2
+    c3 --> agg
 ```
 
 - Each connector manages its own threads

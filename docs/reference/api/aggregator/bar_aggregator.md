@@ -6,14 +6,26 @@ The Bar Aggregator system provides flexible bar generation from trade data with 
 
 The aggregator system is built around a **policy-based design** with zero-cost abstractions:
 
-```
-TradeEvent ──► BarAggregator<Policy> ──► BarEvent ──► BarMatrix
-                     │                        │
-                     ▼                        ▼
-              [Time|Tick|Volume|...]    Strategy.onBar()
-                                              │
-                                              ▼
-                                    bars[symbol][timeframe][idx]
+```mermaid
+flowchart TB
+    TE[TradeEvent] --> BA[BarAggregator]
+
+    subgraph Policies
+        direction LR
+        Time[TimeBarPolicy]
+        Tick[TickBarPolicy]
+        Volume[VolumeBarPolicy]
+        Renko[RenkoBarPolicy]
+        Range[RangeBarPolicy]
+    end
+
+    BA -.-> Policies
+    BA --> BE[BarEvent]
+
+    BE --> BM[BarMatrix]
+    BE --> Strategy[Strategy.onBar]
+
+    BM --> Access["bars[symbol][timeframe][idx]"]
 ```
 
 ## Quick Start
@@ -92,6 +104,16 @@ RangeBarAggregator aggregator(RangeBarPolicy::fromDouble(5.0), &bus);  // $5 ran
 ```
 
 **Use cases**: Volatility-based analysis, breakout detection.
+
+### Heikin-Ashi Bars
+
+Smoothed candlesticks using averaged OHLC values:
+
+```cpp
+HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(std::chrono::seconds(60)), &bus);
+```
+
+**Use cases**: Trend identification, noise reduction, smoother signals.
 
 ## Bar Structure
 
@@ -295,6 +317,7 @@ class MyStrategy : public IMarketDataSubscriber {
 | Bar push | O(1) amortized |
 
 Benchmark results (GCC 14, LTO, Release):
+
 - TimeBarAggregator.onTrade: ~45ns/trade
 - MultiTimeframeAggregator (4 TF): ~15ns/timeframe (~60ns total)
 - MultiTimeframeAggregator (8 TF): ~11ns/timeframe (~88ns total)
@@ -311,6 +334,7 @@ Benchmark results (GCC 14, LTO, Release):
 | Function pointers | ~85ns | Indirect call overhead |
 
 The implementation uses:
+
 - `PolicyTag` enum for runtime type discrimination
 - `PolicyStorage` union for type-safe storage without vtables
 - Single heap allocation for all slots (avoids stack overflow with large MaxTimeframes)
