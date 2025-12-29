@@ -187,14 +187,17 @@ bool done = runner.isFinished();
 
 ## Control Flow
 
-```
-start() ──► [Paused] ──► step() ──► [Process 1 event] ──► [Paused]
-                │                                              │
-                ▼                                              │
-           resume() ──► [Running] ──► [Breakpoint hit] ───────►│
-                │                                              │
-                ▼                                              ▼
-            [Finished] ◄────────────── stop() ◄──────────── pause()
+```mermaid
+stateDiagram-v2
+    [*] --> Paused : start()
+    Paused --> Processing : step()
+    Processing --> Paused : event processed
+    Paused --> Running : resume()
+    Running --> Paused : breakpoint hit
+    Running --> Paused : pause()
+    Running --> Finished : end of data
+    Paused --> Finished : stop()
+    Finished --> [*]
 ```
 
 ## Example: Debug Strategy
@@ -249,5 +252,5 @@ int main() {
 
 ## See Also
 
-- [Backtest Runner](./backtest_runner.md) - Non-interactive mode documentation
-- [SimulatedExecutor](./simulated_executor.md) - Order execution simulation
+- [BacktestRunner](../reference/api/backtest/backtest_runner.md) — API reference
+- [SimulatedExecutor](../reference/api/backtest/simulated_executor.md) — Order execution simulation

@@ -321,4 +321,4 @@ Segments use the `.floxlog` extension with a compact binary format:
 - Optional LZ4 compression
 - Optional seek indexes for fast timestamp lookups
 
-See [Binary Format](../components/replay/binary_format.md) for specification.
+See [Binary Format](../reference/api/replay/binary_format.md) for specification.

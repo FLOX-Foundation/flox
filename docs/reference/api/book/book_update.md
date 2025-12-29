@@ -1,48 +1,39 @@
 # BookUpdate
 
-`BookUpdate` is a zero-allocation container for transmitting order-book snapshots or deltas. It supports multiple instrument classes (spot, futures, options) and includes optional option metadata.
+`BookUpdate` is a zero-allocation container for transmitting order-book snapshots or deltas.
+It supports multiple instrument classes (spot, futures, options) and includes optional option metadata.
 
 ```cpp
-struct BookUpdate {
-  SymbolId                    symbol{};                          // instrument identifier
-  InstrumentType              instrument = InstrumentType::Spot; // Spot | Future | Inverse | Option
-  BookUpdateType              type{};                            // SNAPSHOT | DELTA
-  std::pmr::vector<BookLevel> bids;                              // depth on bid side
-  std::pmr::vector<BookLevel> asks;                              // depth on ask side
-
-  UnixNanos exchangeTsNs{0};                                     // exchange timestamp (ns)
-  UnixNanos systemTsNs{0};                                       // local receive timestamp (ns)
-
-  // Option-specific fields
-  std::optional<Price>      strike;                              // strike price
-  std::optional<TimePoint>  expiry;                              // option expiry
-  std::optional<OptionType> optionType;                          // Call | Put
-
-  explicit BookUpdate(std::pmr::memory_resource* res)
-      : bids(res), asks(res) {}
+enum class BookUpdateType
+{
+  SNAPSHOT,
+  DELTA
 };
-```
 
-## Supporting Types
-
-### `BookUpdateType`
-
-```cpp
-enum class BookUpdateType {
-  SNAPSHOT,  // Full book replacement
-  DELTA      // Incremental update
-};
-```
-
-### `BookLevel`
-
-```cpp
-struct BookLevel {
-  Price    price{};
+struct BookLevel
+{
+  Price price{};
   Quantity quantity{};
-
   BookLevel() = default;
   BookLevel(Price p, Quantity q) : price(p), quantity(q) {}
+};
+
+struct BookUpdate
+{
+  SymbolId symbol{};
+  InstrumentType instrument = InstrumentType::Spot;
+  BookUpdateType type{};
+  std::pmr::vector<BookLevel> bids;
+  std::pmr::vector<BookLevel> asks;
+
+  UnixNanos exchangeTsNs{0};
+  UnixNanos systemTsNs{0};
+
+  std::optional<Price> strike;
+  std::optional<TimePoint> expiry;
+  std::optional<OptionType> optionType;
+
+  BookUpdate(std::pmr::memory_resource* res) : bids(res), asks(res) {}
 };
 ```
 
@@ -53,31 +44,22 @@ struct BookLevel {
 
 ## Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `symbol` | `SymbolId` | Unique identifier of the instrument. |
-| `instrument` | `InstrumentType` | `Spot`, `Future`, `Inverse`, or `Option`. |
-| `type` | `BookUpdateType` | `SNAPSHOT` (full overwrite) or `DELTA` (incremental change). |
-| `bids` | `std::pmr::vector<BookLevel>` | Bid side depth levels. |
-| `asks` | `std::pmr::vector<BookLevel>` | Ask side depth levels. |
-| `exchangeTsNs` | `UnixNanos` | Exchange timestamp in nanoseconds. |
-| `systemTsNs` | `UnixNanos` | Local system receive timestamp in nanoseconds. |
-| `strike` | `std::optional<Price>` | Strike price (options only). |
-| `expiry` | `std::optional<TimePoint>` | Expiry date/time (options only). |
-| `optionType` | `std::optional<OptionType>` | `CALL` or `PUT` (options only). |
+| Field            | Description                                                      |
+| ---------------- | ---------------------------------------------------------------- |
+| **symbol**       | Unique `SymbolId` of the instrument.                             |
+| **instrument**   | `Spot`, `Future`, or `Option`.                                   |
+| **type**         | `SNAPSHOT` (full overwrite) or `DELTA` (incremental change).     |
+| **bids / asks**  | Depth updates stored in PMR vectors (`BookLevel`).               |
+| **exchangeTsNs** | Exchange timestamp in nanoseconds since Unix epoch.              |
+| **systemTsNs**   | Local system receive time in nanoseconds, for latency metrics.   |
+| **strike**       | Strike price — *only* for option updates.                        |
+| **expiry**       | Expiry date/time — *only* for option updates.                    |
+| **optionType**   | `Call` or `Put` — *only* for option updates.                     |
 
 ## Notes
 
 * When `type == SNAPSHOT`, consumers **must** fully replace their local book for `symbol`.
-* `bids` and `asks` use PMR vectors backed by a pool allocator, avoiding runtime allocations.
+* `bids` and `asks` are typically reserved to capacity in an object pool, avoiding runtime allocations.
 * Downstream filters can quickly ignore instruments by checking `instrument` without a `SymbolRegistry` lookup.
 * **Option fields are optional:** they are populated only when `instrument == InstrumentType::Option`.
-* Dual timestamps (`exchangeTsNs` and `systemTsNs`) enable accurate latency measurement.
-
-## See Also
-
-* [BookUpdateEvent](events/book_update_event.md) — Event wrapper for BookUpdate
-* [BookUpdateBus](bus/book_update_bus.md) — Event bus for book updates
-* [NLevelOrderBook](nlevel_order_book.md) — Order book implementation
-* [Common Types](../common.md) — `Price`, `InstrumentType`, `OptionType` definitions
-* [Pool](../util/memory/pool.md) — Object pool for BookUpdate allocation
+* Uses `UnixNanos` (int64_t nanoseconds) for precise timestamps.

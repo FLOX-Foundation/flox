@@ -15,6 +15,7 @@ public:
   virtual void onOrderAccepted(const Order& order) {}
   virtual void onOrderPartiallyFilled(const Order& order, Quantity fillQty) {}
   virtual void onOrderFilled(const Order& order) {}
+  virtual void onOrderPendingCancel(const Order& order) {}
   virtual void onOrderCanceled(const Order& order) {}
   virtual void onOrderExpired(const Order& order) {}
   virtual void onOrderRejected(const Order& order, const std::string& reason) {}
@@ -39,6 +40,7 @@ public:
 | `onOrderAccepted`        | Order acknowledged/accepted by the exchange.       |
 | `onOrderPartiallyFilled` | Partial fill received; includes fill quantity.     |
 | `onOrderFilled`          | Fully filled.                                      |
+| `onOrderPendingCancel`   | Cancel request sent, waiting for confirmation.     |
 | `onOrderCanceled`        | Canceled by user or system.                        |
 | `onOrderExpired`         | Expired due to time-in-force or system conditions. |
 | `onOrderRejected`        | Rejected by exchange or risk engine (with reason). |
@@ -54,32 +56,25 @@ public:
 
 ### Conditional Order Flow
 
-```
-submitOrder(STOP_MARKET)
-    │
-    v
-onOrderSubmitted() → onOrderAccepted() → onOrderPendingTrigger()
-    │
-    │ (price crosses trigger)
-    v
-onOrderTriggered() → [order converts to MARKET] → onOrderFilled()
+```mermaid
+flowchart TB
+    Submit[submitOrder STOP_MARKET] --> Submitted[onOrderSubmitted]
+    Submitted --> Accepted[onOrderAccepted]
+    Accepted --> Pending[onOrderPendingTrigger]
+    Pending -->|price crosses trigger| Triggered[onOrderTriggered]
+    Triggered -->|converts to MARKET| Filled[onOrderFilled]
 ```
 
 ### Trailing Stop Flow
 
-```
-submitOrder(TRAILING_STOP)
-    │
-    v
-onOrderPendingTrigger()
-    │
-    │ (price moves favorably)
-    v
-onTrailingStopUpdated(newPrice) → onTrailingStopUpdated(newPrice) → ...
-    │
-    │ (price reverses to trigger)
-    v
-onOrderTriggered() → onOrderFilled()
+```mermaid
+flowchart TB
+    Submit[submitOrder TRAILING_STOP] --> Pending[onOrderPendingTrigger]
+    Pending -->|price moves favorably| Update1[onTrailingStopUpdated]
+    Update1 -->|price continues| Update2[onTrailingStopUpdated]
+    Update2 -.->|...| UpdateN[onTrailingStopUpdated]
+    UpdateN -->|price reverses to trigger| Triggered[onOrderTriggered]
+    Triggered --> Filled[onOrderFilled]
 ```
 
 ## Notes

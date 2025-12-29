@@ -28,3 +28,17 @@ public:
 * Acts as a persistent state store for strategies, risk systems, and reporting.
 * Must be registered with `OrderExecutionBus` to receive fill and cancel notifications.
 * Can optionally implement position limits or exposure constraints internally.
+
+## Implementation
+
+Use `PositionTracker` for a full-featured implementation with:
+
+- FIFO, LIFO, and AVERAGE cost basis methods
+- Realized PnL calculation
+- Average entry price tracking
+
+See [PositionTracker](position_tracker.md) for details.
+
+## See Also
+
+- [PositionTracker](position_tracker.md) - Full implementation with cost basis methods

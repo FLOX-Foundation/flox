@@ -6,9 +6,10 @@ Understand concepts and design decisions behind FLOX.
 
 | Topic | What You'll Learn |
 |-------|-------------------|
-| [Architecture Overview](architecture.md) | How components fit together |
-| [The Disruptor Pattern](disruptor.md) | Why we use ring buffers |
+| [Architecture](architecture.md) | How components fit together |
+| [Disruptor Pattern](disruptor.md) | Why we use ring buffers |
 | [Memory Model](memory-model.md) | Zero-allocation event delivery |
+| [Integration Flow](integration-flow.md) | End-to-end data flow through the system |
 
 ## When to Read These
 

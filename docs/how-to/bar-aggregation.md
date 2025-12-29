@@ -6,23 +6,23 @@ This guide covers the complete workflow for working with bars in Flox: from raw 
 
 The bar pipeline consists of several stages:
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Raw Data       │ -> │  BinaryLogWriter │ -> │  .floxlog files │
-│  (trades/books) │    │                 │    │  (raw data)     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                      │
-                                                      v
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  MmapBarStorage │ <- │  MmapBarWriter  │ <- │  BarAggregator  │
-│  (read bars)    │    │  (write bars)   │    │  + preagg_bars  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-        │
-        v
-┌─────────────────┐    ┌─────────────────┐
-│ MmapBarReplay   │ -> │  Your Strategy  │
-│ Source          │    │  (backtesting)  │
-└─────────────────┘    └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph Recording
+        RD[Raw Data<br/>trades/books] --> BLW[BinaryLogWriter]
+        BLW --> FLX[.floxlog files<br/>raw data]
+    end
+
+    subgraph Aggregation
+        FLX --> BA[BarAggregator<br/>+ preagg_bars]
+        BA --> MBW[MmapBarWriter<br/>write bars]
+        MBW --> MBS[MmapBarStorage<br/>read bars]
+    end
+
+    subgraph Backtesting
+        MBS --> MBRS[MmapBarReplaySource]
+        MBRS --> STR[Your Strategy]
+    end
 ```
 
 ## Step 1: Record Raw Market Data

@@ -188,6 +188,6 @@ switch (err) {
 
 ## See Also
 
-- [CEX Components](../components/cex/index.md)
+- [CEX Components](../reference/api/cex/index.md)
 - [Custom Connector](custom-connector.md)
 - [Backtest Guide](backtest.md)

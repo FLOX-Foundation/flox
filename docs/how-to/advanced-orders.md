@@ -11,7 +11,7 @@ This guide covers the advanced order types available in FLOX, including conditio
 | `TAKE_PROFIT_MARKET` | Lock in profits |
 | `TAKE_PROFIT_LIMIT` | Lock in profits with price control |
 | `TRAILING_STOP` | Dynamic stop that follows price |
-| OCO | One-Cancels-Other for breakouts |
+| `OCO` | One-Cancels-Other for breakouts |
 
 ## Using Signal Factory Methods
 

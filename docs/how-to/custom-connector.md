@@ -5,6 +5,7 @@ Connect FLOX to a new exchange or data source.
 ## Overview
 
 A connector:
+
 1. Connects to an exchange API (WebSocket, REST, FIX, etc.)
 2. Parses incoming messages
 3. Converts to FLOX event types

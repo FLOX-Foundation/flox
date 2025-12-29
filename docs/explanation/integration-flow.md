@@ -198,11 +198,60 @@ void MyExecutor::onOrderFill(const FillMessage& msg) {
 ```
 
 **Order lifecycle:**
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW
+    NEW --> SUBMITTED: send to exchange
+    SUBMITTED --> ACCEPTED: exchange confirms
+    SUBMITTED --> REJECTED: validation failed
+
+    ACCEPTED --> PARTIALLY_FILLED: partial execution
+    ACCEPTED --> FILLED: full execution
+    ACCEPTED --> PENDING_CANCEL: cancel requested
+    ACCEPTED --> EXPIRED: time-in-force expired
+    ACCEPTED --> REPLACED: modify accepted
+
+    PARTIALLY_FILLED --> PARTIALLY_FILLED: more fills
+    PARTIALLY_FILLED --> FILLED: complete
+    PARTIALLY_FILLED --> PENDING_CANCEL: cancel remaining
+
+    PENDING_CANCEL --> CANCELED: cancel confirmed
+
+    FILLED --> [*]
+    CANCELED --> [*]
+    REJECTED --> [*]
+    EXPIRED --> [*]
 ```
-PENDING → SUBMITTED → PARTIALLY_FILLED → FILLED
-                  ↘ REJECTED
-                  ↘ CANCELED
+
+**Conditional order states** (stop-loss, take-profit, trailing stop):
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING_TRIGGER: conditional order created
+    PENDING_TRIGGER --> TRIGGERED: price condition met
+    PENDING_TRIGGER --> TRAILING_UPDATED: trailing stop adjusted
+    TRAILING_UPDATED --> PENDING_TRIGGER: continue monitoring
+    TRIGGERED --> SUBMITTED: becomes regular order
 ```
+
+**OrderEventStatus values:**
+
+| Status | Description |
+|--------|-------------|
+| `NEW` | Order created locally |
+| `SUBMITTED` | Sent to exchange |
+| `ACCEPTED` | Exchange acknowledged |
+| `PARTIALLY_FILLED` | Partial execution |
+| `FILLED` | Fully executed |
+| `PENDING_CANCEL` | Cancel request sent |
+| `CANCELED` | Successfully canceled |
+| `EXPIRED` | Time-in-force expired |
+| `REJECTED` | Exchange rejected |
+| `REPLACED` | Order modified (price/qty) |
+| `PENDING_TRIGGER` | Conditional order waiting |
+| `TRIGGERED` | Condition met, converting to market/limit |
+| `TRAILING_UPDATED` | Trailing stop price adjusted |
 
 ## 7. Shutdown Procedure
 

@@ -59,11 +59,25 @@ Defines which exchange connectors to start and which symbols to subscribe to.
 
 Defines runtime shutdown thresholds:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `maxOrderQty` | number | Maximum order size allowed per submission |
-| `maxLoss` | number | Hard limit on realized/unrealized loss (negative) |
-| `maxOrdersPerSecond` | number | Rate limit for outbound orders (`-1` disables) |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxOrderQty` | number | 10000 | Maximum order size allowed per submission |
+| `maxLoss` | number | -1000000 | Hard limit on realized/unrealized loss (negative) |
+| `maxOrdersPerSecond` | number | -1 | Rate limit for outbound orders (`-1` disables) |
+
+### `logFile`
+
+Optional path to log file. If not set, logs go to stdout only.
+
+```json
+{
+  "logFile": "/var/log/flox/engine.log"
+}
+```
+
+### `drainTimeoutMs`
+
+Timeout in milliseconds for draining in-flight orders on shutdown. Default: `5000`.
 
 ## Loading Configuration
 

@@ -99,6 +99,7 @@ Routes the event to the appropriate method:
 | `ACCEPTED`         | `onOrderAccepted(order)`                     |
 | `PARTIALLY_FILLED` | `onOrderPartiallyFilled(order, fillQty)`     |
 | `FILLED`           | `onOrderFilled(order)`                       |
+| `PENDING_CANCEL`   | `onOrderPendingCancel(order)`                |
 | `CANCELED`         | `onOrderCanceled(order)`                     |
 | `EXPIRED`          | `onOrderExpired(order)`                      |
 | `REJECTED`         | `onOrderRejected(order, rejectReason)`       |

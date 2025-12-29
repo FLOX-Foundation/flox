@@ -1,17 +1,21 @@
 # ConnectorFactory
 
-`ConnectorFactory` is a global registry and dynamic constructor for `ExchangeConnector` instances, used to instantiate exchange adapters based on type and symbol at runtime.
+`ConnectorFactory` is a global registry and dynamic constructor for `IExchangeConnector` instances, used to instantiate exchange adapters based on type and symbol at runtime.
 
 ```cpp
-class ConnectorFactory {
+class ConnectorFactory
+{
 public:
-  using CreatorFunc = std::move_only_function<std::shared_ptr<ExchangeConnector>(const std::string&)>;
+  using CreatorFunc =
+      MoveOnlyFunction<std::shared_ptr<IExchangeConnector>(const std::string&)>;
 
   static ConnectorFactory& instance();
   void registerConnector(const std::string& type, CreatorFunc creator);
-  std::shared_ptr<ExchangeConnector> createConnector(const std::string& type, const std::string& symbol);
+  std::shared_ptr<IExchangeConnector> createConnector(const std::string& type,
+                                                      const std::string& symbol);
 
 private:
+  ConnectorFactory() = default;
   std::unordered_map<std::string, CreatorFunc> _creators;
 };
 ```
@@ -30,6 +34,6 @@ private:
 
 ## Notes
 
-* Uses `std::move_only_function` to avoid overhead of `std::function` and enable capture of ownership semantics.
 * Supports dynamic module systems or runtime configuration of connector types.
 * Not thread-safe by default — external synchronization may be required during registration.
+* Returns `nullptr` if the requested connector type is not registered.

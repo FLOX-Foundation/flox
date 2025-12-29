@@ -10,6 +10,7 @@ Traditional time-based bars (1-minute, hourly, daily) have a fundamental issue: 
 - During low activity: bars contain little information (noise)
 
 This inconsistency creates problems:
+
 - Indicators behave differently at different times
 - Backtests may not reflect live performance
 - Overnight gaps distort analysis
@@ -36,16 +37,19 @@ TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::seconds(60)), &bus);
 **How it works**: Close after a fixed time interval (e.g., 1 minute).
 
 **Pros**:
+
 - Familiar, widely used
 - Easy to compare across instruments
 - Works with most existing tools
 
 **Cons**:
+
 - Information content varies
 - Overnight gaps create distortions
 - Low-activity periods add noise
 
 **Use when**:
+
 - Backtesting strategies designed for time bars
 - Comparing to external data sources
 - Building indicators that expect regular intervals
@@ -59,16 +63,19 @@ TickBarAggregator aggregator(TickBarPolicy(100), &bus);  // 100 trades per bar
 **How it works**: Close after N trades occur, regardless of time.
 
 **Pros**:
+
 - Consistent information per bar
 - No time-based distortions
 - Better for statistical analysis
 
 **Cons**:
+
 - Bar duration varies wildly
 - Can't easily compare across instruments
 - May produce many bars during high activity
 
 **Use when**:
+
 - High-frequency strategies
 - Statistical arbitrage
 - Eliminating time-of-day effects
@@ -84,15 +91,18 @@ VolumeBarAggregator aggregator(VolumeBarPolicy::fromDouble(1000000.0), &bus);
 **How it works**: Close after notional volume (price × quantity) reaches threshold.
 
 **Pros**:
+
 - Normalizes for trade size variation
 - Better represents institutional activity
 - Consistent economic significance per bar
 
 **Cons**:
+
 - Threshold needs tuning per instrument
 - Price changes affect bar frequency
 
 **Use when**:
+
 - Analyzing institutional flow
 - Volume-weighted strategies
 - Markets with varying trade sizes
@@ -108,16 +118,19 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 **How it works**: New bar only when price moves by "brick size" from previous close.
 
 **Pros**:
+
 - Eliminates noise
 - Clear trend visualization
 - No time or volume dependency
 
 **Cons**:
+
 - Loses timing information
 - Can miss reversals within brick
 - Gaps create multiple bricks
 
 **Use when**:
+
 - Trend following strategies
 - Support/resistance identification
 - Filtering out market noise
@@ -133,15 +146,18 @@ RangeBarAggregator aggregator(RangeBarPolicy::fromDouble(5.0), &bus);
 **How it works**: Close when high-low range exceeds threshold.
 
 **Pros**:
+
 - Consistent volatility per bar
 - Adapts to market conditions
 - Good for breakout detection
 
 **Cons**:
+
 - Can produce many small bars in trending markets
 - Range threshold needs tuning
 
 **Use when**:
+
 - Volatility-based strategies
 - Breakout trading
 - Options-related strategies
@@ -155,24 +171,28 @@ HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(std::chrono::seconds(60))
 ```
 
 **How it works**: Uses smoothed OHLC calculations based on previous bar:
+
 - HA_Close = (Open + High + Low + Close) / 4
 - HA_Open = (prev_HA_Open + prev_HA_Close) / 2
 - HA_High = max(High, HA_Open, HA_Close)
 - HA_Low = min(Low, HA_Open, HA_Close)
 
 **Pros**:
+
 - Smoother trends, easier to identify
 - Reduces noise from individual bars
 - Bullish bars always have close > open
 - Great for visual trend analysis
 
 **Cons**:
+
 - Loses exact price information
 - Not suitable for precise entries
 - Lags behind actual price
 - Requires previous bar for calculation
 
 **Use when**:
+
 - Trend following strategies
 - Visual trend confirmation
 - Reducing false signals in choppy markets
@@ -240,6 +260,7 @@ aggregator.addVolumeInterval(1000000.0);                 // Volume for flow
 ```
 
 **Strategy example**:
+
 - H1 time bars for trend direction
 - Volume bars for institutional activity
 - Tick bars for precise entry timing
@@ -268,6 +289,6 @@ Choose based on what your strategy needs to hold constant: **time**, **activity*
 
 ## See Also
 
-- [Bar Aggregator Reference](../components/aggregator/bar_aggregator.md)
+- [Bar Aggregator Reference](../reference/api/aggregator/bar_aggregator.md)
 - [How to Create Custom Bar Policy](../how-to/custom-bar-policy.md)
 - [Multi-Timeframe Strategy Tutorial](../tutorials/multi-timeframe-strategy.md)

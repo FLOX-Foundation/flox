@@ -1,6 +1,6 @@
 # EventBus
 
-`EventBus` is a high-performance, lock-free Disruptor-based messaging system for publishing typed events to multiple subscribers. It uses a ring buffer architecture for zero-allocation event delivery with configurable capacity and consumer count.
+`EventBus` is a high-performance Disruptor-style ring buffer for broadcasting typed events to multiple consumers. It uses lock-free sequencing with busy-spin waiting for minimal latency.
 
 ```cpp
 template <typename Event,
@@ -11,30 +11,22 @@ class EventBus : public ISubsystem;
 
 ## Purpose
 
-* Deliver high-frequency events (market data, orders, etc.) to multiple subscribers with minimal latency and zero allocations using the Disruptor pattern.
+* Deliver high-frequency events (market data, orders, etc.) to multiple subscribers with minimal latency and zero allocations on the hot path.
+* Support CPU affinity and real-time thread priority for latency-critical components.
 * Provide backpressure handling via timeout-based publishing.
-
-## Template Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `Event` | - | The event type to publish (must define `Event::Listener`) |
-| `CapacityPow2` | 4096 | Ring buffer capacity (must be power of 2) |
-| `MaxConsumers` | 128 | Maximum number of subscribers |
 
 ## Key Methods
 
-| Method | Description |
-|--------|-------------|
-| `subscribe(listener, required)` | Registers a subscriber. Returns `bool` (false if bus running or at capacity). |
-| `publish(event)` | Publishes event to ring buffer. Returns sequence number (-1 if stopped). |
+| Method                  | Description                                                     |
+| ----------------------- | --------------------------------------------------------------- |
+| `subscribe(listener, required)` | Registers a consumer. `required=true` (default) gates publishing. Returns `bool`. |
+| `publish(event)`        | Publishes event to ring buffer, returns sequence number (-1 if stopped). |
 | `tryPublish(event, timeout)` | Publishes with timeout. Returns `{PublishResult, seq}`. |
-| `start()` | Starts all consumer threads. |
-| `stop()` | Stops all consumer threads and cleans up. |
-| `waitConsumed(seq)` | Blocks until all required consumers have processed up to `seq`. |
-| `flush()` | Waits for all published events to be consumed. |
-| `enableDrainOnStop()` | Ensures remaining events are dispatched before shutdown. |
-| `consumerCount()` | Returns number of registered consumers. |
+| `start()` / `stop()`    | Starts or stops all consumer threads.                           |
+| `waitConsumed(seq)`     | Blocks until all **required** consumers have processed up to `seq`. |
+| `flush()`               | Waits until all published events are consumed by **required** consumers. |
+| `consumerCount()`       | Returns number of registered consumers.                         |
+| `enableDrainOnStop()`   | Ensures remaining events are dispatched before shutdown.        |
 
 ## PublishResult
 
@@ -49,134 +41,140 @@ enum class PublishResult
 
 ## Backpressure Handling
 
-When the ring buffer is full, `publish()` blocks. Use `tryPublish()` for non-blocking behavior:
+When the ring buffer is full (consumers too slow), `publish()` blocks until space is available. Use `tryPublish()` with a timeout to handle backpressure:
 
 ```cpp
 auto [result, seq] = bus.tryPublish(event, std::chrono::microseconds{1000});
 if (result == Bus::PublishResult::TIMEOUT) {
-  // Handle backpressure
+  // Handle backpressure: drop event, log warning, etc.
 }
 ```
 
-## CPU Affinity Support
-
-When `FLOX_CPU_AFFINITY_ENABLED` is defined, the bus supports advanced thread placement:
+## CPU Affinity (when `FLOX_CPU_AFFINITY_ENABLED`)
 
 ```cpp
-enum class ComponentType {
-  MARKET_DATA,  // Priority 90
-  EXECUTION,    // Priority 85
-  STRATEGY,     // Priority 80
-  RISK,         // Priority 75
-  GENERAL       // Priority 70
+enum class ComponentType
+{
+  MARKET_DATA,
+  EXECUTION,
+  STRATEGY,
+  RISK,
+  GENERAL
 };
 
-struct AffinityConfig {
+struct AffinityConfig
+{
   ComponentType componentType = ComponentType::GENERAL;
   bool enableRealTimePriority = true;
-  int realTimePriority = 80;
+  int realTimePriority = config::DEFAULT_REALTIME_PRIORITY;
   bool enableNumaAwareness = true;
   bool preferIsolatedCores = true;
 };
 ```
 
-| Method | Description |
-|--------|-------------|
-| `setAffinityConfig(cfg)` | Configures CPU affinity for consumer threads. |
-| `setCoreAssignment(assignment)` | Manually sets core assignment. |
-| `setupOptimalConfiguration(type, perf)` | Auto-configures based on component type. |
-| `verifyIsolatedCoreConfiguration()` | Verifies isolated cores are properly configured. |
+| Method                        | Description                                           |
+| ----------------------------- | ----------------------------------------------------- |
+| `setAffinityConfig(cfg)`      | Configure CPU affinity and RT priority.               |
+| `setCoreAssignment(assign)`   | Manually set core assignment.                         |
+| `setupOptimalConfiguration()` | Auto-configure for component type.                    |
+| `verifyIsolatedCoreConfig()`  | Verify isolated core setup.                           |
 
 Consumer threads are distributed across available cores using round-robin assignment.
 
-## Internal Types
-
-| Name | Description |
-|------|-------------|
-| `ConsumerSlot` | Per-consumer state: listener, sequence, thread, required, coreIndex. |
-| `Listener` | Inferred from `Event::Listener` (or `pool::Handle<T>::Listener`). |
-| `Storage` | Aligned byte array for events in ring buffer. |
-| `PublishResult` | Enum for publish outcome. |
-
 ## Design Highlights
 
-* **Disruptor pattern**: Single-producer multi-consumer ring buffer with sequence-based coordination.
-* **Zero allocations**: Events stored directly in pre-allocated ring buffer slots.
-* **Busy-wait with backoff**: `BusyBackoff` for low-latency spinning with exponential backoff.
-* **Gating sequences**: Required consumers gate the producer; optional consumers don't block.
-* **Automatic reclaim**: Consumed slots are destructed and reclaimed automatically.
-* **Cache-line alignment**: All atomics are 64-byte aligned to prevent false sharing.
-* **Tick sequence injection**: If event has `tickSequence` field, it's auto-set on publish.
-* **Thread-safe subscribe**: Returns false if called after `start()`.
-* **Overflow protection**: Sequence counter overflow is detected and handled.
+* **Disruptor Pattern**: Single producer, multiple consumers with sequence-based coordination.
+* **Ring Buffer**: Fixed-size power-of-2 capacity with wrap-around.
+* **Busy-Spin Waiting**: Uses `BusyBackoff` for low-latency polling.
+* **Gating Sequence**: Publishers wait for slowest required consumer before overwriting.
+* **Per-Consumer Threads**: Each consumer runs in dedicated `std::jthread`.
+* **Zero Allocations**: Events stored directly in pre-allocated ring buffer slots.
+* **Tick Sequencing**: `tickSequence` field is automatically set if present on event.
+* **In-Place Construction**: Events constructed via placement new, destructed on reclaim.
+* **Thread-Safe Subscribe**: `subscribe()` returns false if called after `start()`.
+* **Overflow Protection**: Sequence counter overflow is detected and handled.
+
+## Internal Types
+
+| Name           | Description                                                |
+| -------------- | ---------------------------------------------------------- |
+| `ConsumerSlot` | Per-consumer state: listener, sequence, thread, required, coreIndex. |
+| `Listener`     | Inferred from `Event::Listener` via `ListenerType` trait.  |
+| `PublishResult`| Enum for publish outcome (SUCCESS, TIMEOUT, STOPPED).      |
+
+## Template Parameters
+
+| Parameter     | Default                           | Description                    |
+| ------------- | --------------------------------- | ------------------------------ |
+| `Event`       | -                                 | Event type to broadcast.       |
+| `CapacityPow2`| `config::DEFAULT_EVENTBUS_CAPACITY` (4096) | Ring buffer size (power of 2). |
+| `MaxConsumers`| `config::DEFAULT_EVENTBUS_MAX_CONSUMERS` (128) | Maximum consumer count.     |
 
 ## Example Usage
 
 ```cpp
-using TradeBus = EventBus<TradeEvent>;
-TradeBus bus;
+using BookBus = EventBus<pool::Handle<BookUpdateEvent>>;
 
-// Subscribe - check return value
-if (!bus.subscribe(&tradeHandler)) {
-  // Handle error
+BookBus bus;
+
+// subscribe() returns bool - check for success
+if (!bus.subscribe(&bookHandler)) {
+  // Handle error: null listener, bus running, or at capacity
 }
-bus.subscribe(&analyticsHandler, false);  // optional, non-blocking
 
 #if FLOX_CPU_AFFINITY_ENABLED
-bus.setupOptimalConfiguration(TradeBus::ComponentType::MARKET_DATA, true);
+bus.setupOptimalConfiguration(BookBus::ComponentType::MARKET_DATA);
 #endif
 
 bus.start();
 
-// Standard publish
-TradeEvent event;
-event.trade.price = Price::fromDouble(50000.0);
-auto seq = bus.publish(std::move(event));
+// Standard publish (blocks on backpressure)
+auto seq = bus.publish(std::move(bookUpdateHandle));
 
-// Publish with timeout
+// Publish with timeout (non-blocking backpressure handling)
 auto [result, seq2] = bus.tryPublish(event, std::chrono::microseconds{500});
-if (result == TradeBus::PublishResult::TIMEOUT) {
-  LOG_WARN("Backpressure");
+if (result == BookBus::PublishResult::TIMEOUT) {
+  LOG_WARN("Backpressure detected, event dropped");
 }
 
-bus.waitConsumed(seq);
+bus.flush();
 bus.stop();
 ```
 
-## Memory Layout
-
-All hot fields are 64-byte aligned to prevent false sharing:
-
-| Field | Alignment | Description |
-|-------|-----------|-------------|
-| `_running` | cache line | Bus running state |
-| `_next` | cache line | Next sequence to publish |
-| `_cachedMin` | cache line | Cached minimum gating sequence |
-| `_storage[]` | 64-byte | Event ring buffer |
-| `_published[]` | cache line | Published sequence per slot |
-| `_constructed[]` | cache line | Construction flags |
-| `_reclaimSeq` | cache line | Last reclaimed sequence |
-| `_consumers[]` | cache line | Consumer slots |
-| `_gating[]` | cache line | Gating sequences |
-
 ## Required vs Optional Consumers
 
-| Aspect | Required (`true`, default) | Optional (`false`) |
-|--------|----------------------------|-------------------|
-| **Gating** | Blocks `waitConsumed()` and `flush()` | Does not block |
+Consumers can be registered as **required** (default) or **optional**:
+
+```cpp
+bus.subscribe(&criticalHandler, true);   // required (default)
+bus.subscribe(&loggingHandler, false);   // optional
+```
+
+### Behavior differences
+
+| Aspect | Required Consumer | Optional Consumer |
+|--------|-------------------|-------------------|
+| **Gating** | Blocks `waitConsumed()` and `flush()` | Does not block these methods |
 | **Backpressure** | Can cause publisher to wait | Never causes backpressure |
-| **Event delivery** | Guaranteed all events | Guaranteed all events |
+| **Event delivery** | Always receives all events | Always receives all events |
 | **Reclaim** | Events reclaimed after processing | Events reclaimed after **all** consumers process |
 
-**Key guarantee**: All consumers (required and optional) receive every event, even during wrap-around. Events are only destroyed after all consumers have processed them.
+### Key guarantee
+
+**All consumers (required and optional) are guaranteed to receive every event**, even during ring buffer wrap-around. The bus ensures events are not destroyed until all consumers have processed them.
+
+### Use cases
+
+* **Required**: Strategy handlers, risk managers, order routers - anything that must process every event
+* **Optional**: Logging, metrics, debugging tools - where occasional delays shouldn't block the main flow
 
 ## Notes
 
-* Ring buffer capacity must be a power of 2 for efficient masking.
-* Producer blocks if ring buffer is full (use `tryPublish()` for timeout).
-* `subscribe()` must be called before `start()`.
+* Capacity must be a power of 2 for efficient masking.
 * Optional consumers don't block `waitConsumed()` or `flush()`, but still receive all events.
-* Events are destructed only after **all** consumers (required and optional) have processed them.
+* `subscribe()` must be called before `start()` - returns false otherwise.
+* `enableDrainOnStop()` should be called before `start()` if drain behavior is needed.
+* CPU affinity features require `FLOX_CPU_AFFINITY_ENABLED` compile flag.
 * `publish()` returns -1 if the bus is not running.
 
 ## Benchmarking
@@ -198,9 +196,3 @@ Example results on Intel i5-1135G7 @ 2.40GHz (4 cores / 8 threads):
 | MultiConsumer (4) | 195 µs/1000 | 5 M/s |
 | TryPublishLatency | 110 ns | 9 M/s |
 | EndToEndLatency | 200 ns | 5 M/s |
-
-## See Also
-
-* [Disruptor Pattern](../../../../explanation/disruptor.md)
-* [Memory Model](../../../../explanation/memory-model.md)
-* [Pool](../memory/pool.md)

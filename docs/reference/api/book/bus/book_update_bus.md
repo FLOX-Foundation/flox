@@ -1,13 +1,12 @@
 # BookUpdateBus
 
-`BookUpdateBus` is a fan-out event channel for `BookUpdateEvent` messages, wrapped in pooled `Handle`s for zero-allocation delivery across components such as order books, strategies, and analytics.
+`BookUpdateBus` is a Disruptor-style fan-out event channel for `BookUpdateEvent` messages, wrapped in pooled `Handle`s for zero-allocation delivery across components such as order books, strategies, and analytics.
 
 ```cpp
-#ifdef FLOX_USE_SYNC_BOOK_UPDATE_BUS
-using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, SyncPolicy<...>>;
-#else
-using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, AsyncPolicy<...>>;
-#endif
+using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>>;
+
+std::unique_ptr<BookUpdateBus> createOptimalBookUpdateBus(bool enablePerformanceOptimizations = false);
+bool configureBookUpdateBusForPerformance(BookUpdateBus& bus, bool enablePerformanceOptimizations = false);
 ```
 
 ## Purpose
@@ -19,12 +18,19 @@ using BookUpdateBus = EventBus<pool::Handle<BookUpdateEvent>, AsyncPolicy<...>>;
 | Aspect  | Details                                                                 |
 | ------- | ----------------------------------------------------------------------- |
 | Payload | Uses `pool::Handle<BookUpdateEvent>` for memory reuse and ref-counting. |
-| Mode    | `SyncPolicy` or `AsyncPolicy`, toggled by `FLOX_USE_SYNC_BOOK_UPDATE_BUS`.   |
+| Pattern | Disruptor-style ring buffer with lock-free sequencing.                  |
 | Target  | Consumed by order book processors, strategies, and market monitors.     |
+
+## Factory Functions
+
+| Function | Description |
+|----------|-------------|
+| `createOptimalBookUpdateBus()` | Creates bus with optimal CPU affinity for market data. |
+| `configureBookUpdateBusForPerformance()` | Configures existing bus for optimal performance. |
 
 ## Notes
 
-* `SyncPolicy` enforces barrier-based delivery (e.g., for simulation or determinism).
-* `AsyncPolicy` supports lock-free fan-out under production latency constraints.
+* Uses `ComponentType::MARKET_DATA` for CPU affinity configuration.
 * Pooling ensures `BookUpdateEvent`s are reused without dynamic heap allocations.
 * Designed for high-frequency message flow in HFT environments.
+* Supports optional CPU affinity via `FLOX_CPU_AFFINITY_ENABLED`.

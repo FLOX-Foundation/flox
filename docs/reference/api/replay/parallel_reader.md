@@ -145,26 +145,19 @@ uint64_t total = replay::parallelCount("/data/market");
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    ParallelReader                       │
-├─────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │ Worker 0 │  │ Worker 1 │  │ Worker N │              │
-│  │          │  │          │  │          │              │
-│  │ Seg 0    │  │ Seg 1    │  │ Seg N    │              │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘              │
-│       │             │             │                     │
-│       └─────────────┼─────────────┘                     │
-│                     ▼                                   │
-│            ┌────────────────┐                           │
-│            │  Merge Queue   │  (k-way merge)            │
-│            └────────┬───────┘                           │
-│                     ▼                                   │
-│            ┌────────────────┐                           │
-│            │   Callback     │  (timestamp order)        │
-│            └────────────────┘                           │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph ParallelReader
+        subgraph Workers
+            direction LR
+            W0[Worker 0<br/>Seg 0]
+            W1[Worker 1<br/>Seg 1]
+            WN[Worker N<br/>Seg N]
+        end
+
+        Workers --> MQ[Merge Queue<br/>k-way merge]
+        MQ --> CB[Callback<br/>timestamp order]
+    end
 ```
 
 ## Notes

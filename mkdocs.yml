@@ -88,29 +88,29 @@ nav:
       - how-to/README.md
       - Bar Aggregation: how-to/bar-aggregation.md
       - Backtesting: how-to/backtest.md
+      - Interactive Backtest: how-to/interactive-backtest.md
       - Grid Search: how-to/grid-search.md
       - CPU Affinity: how-to/cpu-affinity.md
       - Custom Connector: how-to/custom-connector.md
       - Custom Bar Policy: how-to/custom-bar-policy.md
+      - Advanced Orders: how-to/advanced-orders.md
+      - Multi-Exchange Trading: how-to/multi-exchange-trading.md
       - Optimize Performance: how-to/optimize-performance.md
       - Configuration: how-to/configuration.md
+      - CI Configuration: how-to/ci.md
       - Contributing: how-to/contributing.md
 
   - Explanation:
       - explanation/README.md
       - Architecture: explanation/architecture.md
+      - Bar Types: explanation/bar-types.md
       - Disruptor Pattern: explanation/disruptor.md
       - Memory Model: explanation/memory-model.md
       - Integration Flow: explanation/integration-flow.md
 
   - Reference:
       - reference/README.md
-      - Engine & Lifecycle: reference/engine.md
-      - Market Data: reference/market-data.md
-      - Execution: reference/execution.md
-      - Replay System: reference/replay.md
-      - Utilities: reference/utilities.md
-      - API Reference:
+      - API:
           - reference/api/README.md
           - Common: reference/api/common.md
           - Engine:
@@ -134,8 +134,10 @@ nav:
                   - BookUpdateBus: reference/api/book/bus/book_update_bus.md
           - Aggregator:
               - Bar: reference/api/aggregator/bar.md
-              - BarAggregator: components/aggregator/bar_aggregator.md
-              - Bar Types: explanation/bar-types.md
+              - BarAggregator: reference/api/aggregator/bar_aggregator.md
+              - FootprintChart: reference/api/aggregator/footprint_chart.md
+              - MarketProfile: reference/api/aggregator/market_profile.md
+              - VolumeProfile: reference/api/aggregator/volume_profile.md
               - Events:
                   - BarEvent: reference/api/aggregator/events/bar_event.md
               - Buses:
@@ -169,10 +171,15 @@ nav:
               - BacktestRunner: reference/api/backtest/backtest_runner.md
               - BacktestResult: reference/api/backtest/backtest_result.md
               - BacktestOptimizer: reference/api/backtest/backtest_optimizer.md
+              - SimulatedExecutor: reference/api/backtest/simulated_executor.md
               - MmapBarStorage: reference/api/backtest/mmap_bar_storage.md
               - OptimizationStats: reference/api/backtest/optimization_stats.md
           - Strategy:
               - IStrategy: reference/api/strategy/abstract_strategy.md
+              - Strategy: reference/api/strategy/strategy.md
+              - SignalStrategy: reference/api/strategy/signal_strategy.md
+              - SymbolContext: reference/api/strategy/symbol_context.md
+              - SymbolStateMap: reference/api/strategy/symbol_state_map.md
           - Risk:
               - IRiskManager: reference/api/risk/abstract_risk_manager.md
           - KillSwitch:
@@ -182,6 +189,7 @@ nav:
               - IPnLTracker: reference/api/metrics/abstract_pnl_tracker.md
           - Position:
               - IPositionManager: reference/api/position/abstract_position_manager.md
+              - PositionTracker: reference/api/position/position_tracker.md
           - Validation:
               - IOrderValidator: reference/api/validation/abstract_order_validator.md
           - Net:
@@ -194,7 +202,16 @@ nav:
               - ConsoleLogger: reference/api/log/console_logger.md
           - Sink:
               - IStorageSink: reference/api/sink/abstract_storage_sink.md
+          - CEX:
+              - reference/api/cex/index.md
+              - OrderRouter: reference/api/cex/order_router.md
+              - CompositeBookMatrix: reference/api/cex/composite_book_matrix.md
+              - SplitOrderTracker: reference/api/cex/split_order_tracker.md
+              - AggregatedPositionTracker: reference/api/cex/aggregated_position_tracker.md
+              - ExchangeClockSync: reference/api/cex/exchange_clock_sync.md
+              - ExchangeInfo: reference/api/cex/exchange_info.md
           - Util:
+              - RateLimiter: reference/api/util/rate_limiter.md
               - Eventing:
                   - EventBus: reference/api/util/eventing/event_bus.md
               - Memory:
@@ -205,6 +222,7 @@ nav:
               - Base:
                   - Decimal: reference/api/util/base/decimal.md
               - Performance:
+                  - ForceInline: reference/api/util/performance/force_inline.md
                   - CoreAssignment: reference/api/util/performance/core_assignment.md
                   - CpuAffinity: reference/api/util/performance/cpu_affinity.md
                   - CpuTopology: reference/api/util/performance/cpu_topology.md

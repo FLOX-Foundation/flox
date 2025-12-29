@@ -147,6 +147,7 @@ if (auto* bar = storage.findBar(tf1m, time, 'b')) {
 ## Platform Support
 
 Uses platform-specific memory mapping:
+
 - Linux/macOS: `mmap()`
 - Windows: `CreateFileMapping()` + `MapViewOfFile()`
 

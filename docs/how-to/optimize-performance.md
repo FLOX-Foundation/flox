@@ -165,26 +165,20 @@ for (const auto& item : data) {
 
 ## Logging Optimization
 
-### Disable in Hot Path
+Disable logging during performance-critical sections:
 
 ```cpp
-#if NO_COUT
-  FLOX_LOG_OFF();
-#endif
+FLOX_LOG_OFF();
 
-// Run strategy
+// Hot path - no logging overhead
 
-#if NO_COUT
-  FLOX_LOG_ON();
-#endif
+FLOX_LOG_ON();
 ```
 
-### Use Conditional Logging
+Or disable at build time for production:
 
-```cpp
-#ifdef DEBUG
-  FLOX_LOG("Trade: " << ev.trade.price.toDouble());
-#endif
+```bash
+cmake .. -DFLOX_DISABLE_LOGGING=ON
 ```
 
 ## Profiling
@@ -229,6 +223,7 @@ public:
 ## Compression Trade-offs
 
 For replay:
+
 - **No compression:** Fastest read, largest files
 - **LZ4:** ~3-5x compression, small CPU overhead
 

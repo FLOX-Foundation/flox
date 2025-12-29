@@ -275,4 +275,4 @@ config.compression = CompressionType::LZ4;
 ## Next Steps
 
 - [Backtesting](backtesting.md) — Replay recorded data through your strategy
-- [Replay System Reference](../reference/replay.md) — Full API documentation
+- [Binary Format](../reference/api/replay/binary_format.md) — Recording format specification
