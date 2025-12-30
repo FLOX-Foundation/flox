@@ -142,17 +142,14 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Export GitHub Actions cache environment variables
-      uses: actions/github-script@v7
+    - name: Cache vcpkg installed packages
+      uses: actions/cache@v4
       with:
-        script: |
-          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+        path: C:\vcpkg\installed
+        key: vcpkg-win-installed-v1
 
     - name: Install dependencies
       run: vcpkg install openssl:x64-windows curl:x64-windows zlib:x64-windows
-      env:
-        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     - name: Configure
       run: |
