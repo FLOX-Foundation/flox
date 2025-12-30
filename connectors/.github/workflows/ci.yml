@@ -3,6 +3,7 @@ name: Build and Test
 on:
   push:
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: '0 6 * * 0'
 
@@ -130,7 +131,7 @@ jobs:
       run: cmake --build build -j$(sysctl -n hw.ncpu)
 
   windows-msvc:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
