@@ -40,6 +40,10 @@ file(GLOB_RECURSE FLOX_CONNECTORS_SRC CONFIGURE_DEPENDS src/*.cpp)
 
 add_library(flox-connectors STATIC ${FLOX_CONNECTORS_SRC})
 
+if(WIN32)
+  target_compile_definitions(flox-connectors PRIVATE NOMINMAX)
+endif()
+
 target_include_directories(flox-connectors
   PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
           $<INSTALL_INTERFACE:include>
