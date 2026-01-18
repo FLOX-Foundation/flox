@@ -15,11 +15,12 @@ namespace flox
 {
 
 IxWebSocketClient::IxWebSocketClient(std::string url, std::string origin, int reconnectDelayMs,
-                                     ILogger* logger, int pingIntervalSec)
+                                     ILogger* logger, int pingIntervalSec, std::string userAgent)
     : _url(std::move(url)),
       _origin(std::move(origin)),
       _reconnectDelayMs(reconnectDelayMs),
       _pingIntervalSec(pingIntervalSec),
+      _userAgent(std::move(userAgent)),
       _logger(logger)
 {
 }
@@ -60,7 +61,7 @@ void IxWebSocketClient::stop()
 {
   if (!_running.exchange(false))
   {
-    return;  // Already stopped
+    return;
   }
   _ws.stop();
 }
@@ -73,10 +74,19 @@ void IxWebSocketClient::send(const std::string& data)
 
 void IxWebSocketClient::run()
 {
+  constexpr int MAX_BACKOFF_MS = 30000;
+
   while (_running)
   {
     _ws.setUrl(_url);
-    _ws.setExtraHeaders({{"Origin", _origin}});
+    if (_userAgent.empty())
+    {
+      _ws.setExtraHeaders({{"Origin", _origin}});
+    }
+    else
+    {
+      _ws.setExtraHeaders({{"Origin", _origin}, {"User-Agent", _userAgent}});
+    }
     _ws.disablePerMessageDeflate();
     if (_pingIntervalSec > 0)
     {
@@ -84,7 +94,6 @@ void IxWebSocketClient::run()
     }
     else
     {
-      // Some servers require application-level heartbeats
       _ws.setPingInterval(-1);
     }
 
@@ -94,6 +103,7 @@ void IxWebSocketClient::run()
           switch (msg->type)
           {
             case ix::WebSocketMessageType::Open:
+              _consecutiveFailures = 0;
               if (_onOpen)
               {
                 _onOpen();
@@ -124,7 +134,6 @@ void IxWebSocketClient::run()
 
     _ws.start();
 
-    // Wait for connection to establish or fail
     while (_running)
     {
       auto state = _ws.getReadyState();
@@ -137,9 +146,12 @@ void IxWebSocketClient::run()
 
     if (_running)
     {
-      _logger->warn("WebSocket disconnected, retrying in " + std::to_string(_reconnectDelayMs) +
-                    "ms...");
-      std::this_thread::sleep_for(std::chrono::milliseconds(_reconnectDelayMs));
+      ++_consecutiveFailures;
+      int backoffMs =
+          std::min(_reconnectDelayMs * (1 << std::min(_consecutiveFailures, 4)), MAX_BACKOFF_MS);
+      _logger->warn("WebSocket disconnected, retrying in " + std::to_string(backoffMs) +
+                    "ms... (attempt " + std::to_string(_consecutiveFailures) + ")");
+      std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
     }
   }
 }

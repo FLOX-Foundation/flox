@@ -27,6 +27,9 @@
 namespace flox
 {
 static constexpr auto BITGET_ORIGIN = "https://www.bitget.com";
+static constexpr auto BITGET_USER_AGENT =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36";
 
 namespace
 {
@@ -90,8 +93,8 @@ BitgetExchangeConnector::BitgetExchangeConnector(const BitgetConfig& cfg, BookUp
       _registry(registry),
       _logger(std::move(logger))
 {
-  _wsClient = std::make_unique<IxWebSocketClient>(cfg.publicEndpoint, BITGET_ORIGIN,
-                                                  cfg.reconnectDelayMs, _logger.get(), 20);
+  _wsClient = std::make_unique<IxWebSocketClient>(
+      cfg.publicEndpoint, BITGET_ORIGIN, cfg.reconnectDelayMs, _logger.get(), 0, BITGET_USER_AGENT);
 }
 
 void BitgetExchangeConnector::start()
@@ -179,11 +182,13 @@ void BitgetExchangeConnector::start()
       });
 
   _wsClient->start();
+  _pingThread = std::thread(&BitgetExchangeConnector::pingLoop, this);
 
   if (_config.enablePrivate)
   {
-    _wsClientPrivate = std::make_unique<IxWebSocketClient>(
-        _config.privateEndpoint, BITGET_ORIGIN, _config.reconnectDelayMs, _logger.get(), 20);
+    _wsClientPrivate = std::make_unique<IxWebSocketClient>(_config.privateEndpoint, BITGET_ORIGIN,
+                                                           _config.reconnectDelayMs, _logger.get(),
+                                                           0, BITGET_USER_AGENT);
 
     _wsClientPrivate->onOpen(
         [this]()
@@ -208,6 +213,12 @@ void BitgetExchangeConnector::stop()
   {
     return;
   }
+
+  if (_pingThread.joinable())
+  {
+    _pingThread.join();
+  }
+
   if (_wsClient)
   {
     _wsClient->stop();
@@ -220,8 +231,38 @@ void BitgetExchangeConnector::stop()
   }
 }
 
+void BitgetExchangeConnector::pingLoop()
+{
+  for (int i = 0; i < 50 && _running.load(); ++i)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  while (_running.load())
+  {
+    if (_wsClient)
+    {
+      _wsClient->send("ping");
+    }
+    if (_wsClientPrivate)
+    {
+      _wsClientPrivate->send("ping");
+    }
+
+    for (int i = 0; i < 250 && _running.load(); ++i)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  }
+}
+
 void BitgetExchangeConnector::handleMessage(std::string_view payload)
 {
+  if (payload == "pong")
+  {
+    return;
+  }
+
   static thread_local simdjson::dom::parser parser;
 
   try
@@ -406,6 +447,11 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
 void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
 {
+  if (payload == "pong")
+  {
+    return;
+  }
+
   static thread_local simdjson::ondemand::parser parser;
   try
   {

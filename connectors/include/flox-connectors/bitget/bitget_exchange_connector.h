@@ -21,6 +21,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace flox
@@ -73,6 +74,7 @@ class BitgetExchangeConnector : public IExchangeConnector
  private:
   void handleMessage(std::string_view payload);
   void handlePrivateMessage(std::string_view payload);
+  void pingLoop();
 
   BitgetConfig _config;
 
@@ -86,6 +88,7 @@ class BitgetExchangeConnector : public IExchangeConnector
   std::unique_ptr<IWebSocketClient> _wsClient;
   std::unique_ptr<IWebSocketClient> _wsClientPrivate;
   std::atomic<bool> _running{false};
+  std::thread _pingThread;
 
   pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> _bookPool;
   OrderExecutionBus* _orderBus = nullptr;

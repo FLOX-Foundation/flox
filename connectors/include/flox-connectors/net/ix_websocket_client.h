@@ -27,7 +27,7 @@ class IxWebSocketClient : public IWebSocketClient
 {
  public:
   IxWebSocketClient(std::string url, std::string origin, int reconnectDelayMs, ILogger* logger,
-                    int pingIntervalSec = 1);
+                    int pingIntervalSec = 1, std::string userAgent = "");
   ~IxWebSocketClient() override;
 
   void onOpen(MoveOnlyFunction<void()> cb) override;
@@ -45,6 +45,7 @@ class IxWebSocketClient : public IWebSocketClient
   std::string _origin;
   int _reconnectDelayMs;
   int _pingIntervalSec;
+  std::string _userAgent;
   ILogger* _logger;
 
   std::atomic<bool> _running{false};
@@ -55,6 +56,8 @@ class IxWebSocketClient : public IWebSocketClient
   MoveOnlyFunction<void()> _onOpen;
   MoveOnlyFunction<void(std::string_view)> _onMessage;
   MoveOnlyFunction<void(int, std::string_view)> _onClose;
+
+  int _consecutiveFailures{0};
 };
 
 }  // namespace flox
