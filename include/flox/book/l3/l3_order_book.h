@@ -17,6 +17,9 @@
 
 namespace flox
 {
+#ifdef FLOX_UNIT_TEST
+class L3OrderBookProbe;
+#endif
 
 enum class OrderStatus : uint8_t
 {
@@ -26,7 +29,7 @@ enum class OrderStatus : uint8_t
   Extant
 };
 
-template <size_t MaxOrders = 8192>
+template <std::size_t MaxOrders = 8192>
 class L3OrderBook
 /*
  * Purpose:
@@ -35,6 +38,7 @@ class L3OrderBook
  * - Compile time fixed capacity
  * - Zero runtime allocations
  * - No exceptions
+ * - Time Price FIFO ordering at bid/ask price levels
 */
 {
   using Index = std::uint32_t;
@@ -123,6 +127,8 @@ class L3OrderBook
     return OrderStatus::Ok;
   }
 
+  // NOTE: O(n) scan over price levels
+  // Can be optimized later with cached extremes if required
   std::optional<Price> bestBid() const noexcept
   {
     Price maxPrice{};
@@ -140,8 +146,6 @@ class L3OrderBook
     }
     return found ? std::optional<Price>{maxPrice} : std::nullopt;
   }
-  // NOTE: O(n) scan over price levels
-  // Can be optimized later with cached extremes if required
   std::optional<Price> bestAsk() const noexcept
   {
     Price minPrice{};
@@ -185,6 +189,10 @@ class L3OrderBook
   }
 
  private:
+#ifdef FLOX_UNIT_TEST
+  friend class L3OrderBookProbe;
+#endif
+
   static constexpr std::uint32_t kInvalid = UINT32_MAX;
   Index freeHead_;
 

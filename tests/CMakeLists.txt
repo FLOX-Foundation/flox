@@ -3,6 +3,7 @@ find_package(Threads)
 
 function(add_flox_test name)
   add_executable(${name} ${name}.cpp)
+  target_compile_definitions(${name} PRIVATE FLOX_UNIT_TEST)
   target_include_directories(${name}
     PRIVATE
         include()
