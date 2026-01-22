@@ -56,20 +56,20 @@ class L3OrderBook
 
   OrderStatus addOrder(OrderId id, Price price, Quantity quantity, Side side) noexcept
   {
-    if (findSlot(id) != kInvalid)
+    if (findOrderSlot(id) != kInvalid)
     {
       return OrderStatus::Extant;
     }
 
-    const auto slotIdx = allocateSlot();
+    const auto slotIdx = allocateOrderSlot();
     if (slotIdx == kInvalid)
     {
       return OrderStatus::NoCapacity;
     }
 
-    if (!insertMapping(slotIdx, id))
+    if (!insertOrderMapping(slotIdx, id))
     {
-      deallocateSlot(slotIdx);
+      deallocateOrderSlot(slotIdx);
       return OrderStatus::NoCapacity;
     }
 
@@ -83,8 +83,8 @@ class L3OrderBook
 
     if (levelIdx == kInvalid)
     {
-      deallocateSlot(slotIdx);
-      eraseMapping(id);
+      deallocateOrderSlot(slotIdx);
+      eraseOrderMapping(id);
       return OrderStatus::NoCapacity;
     }
 
@@ -94,25 +94,25 @@ class L3OrderBook
 
   OrderStatus removeOrder(OrderId id) noexcept
   {
-    const auto slotIdx = findSlot(id);
+    const auto slotIdx = findOrderSlot(id);
     if (slotIdx == kInvalid)
     {
       return OrderStatus::NotFound;
     }
-    if (!eraseMapping(id))
+    if (!eraseOrderMapping(id))
     {
       return OrderStatus::NotFound;
     }
 
     unlinkFromLevel(slotIdx);
-    deallocateSlot(slotIdx);
+    deallocateOrderSlot(slotIdx);
 
     return OrderStatus::Ok;
   }
 
   OrderStatus modifyOrder(OrderId id, Quantity newQty) noexcept
   {
-    const auto slotIdx = findSlot(id);
+    const auto slotIdx = findOrderSlot(id);
     if (slotIdx == kInvalid)
     {
       return OrderStatus::NotFound;
@@ -146,6 +146,7 @@ class L3OrderBook
     }
     return found ? std::optional<Price>{maxPrice} : std::nullopt;
   }
+
   std::optional<Price> bestAsk() const noexcept
   {
     Price minPrice{};
@@ -211,7 +212,7 @@ class L3OrderBook
   };
   std::array<OrderSlot, MaxOrders> orders_;
 
-  Index allocateSlot() noexcept
+  Index allocateOrderSlot() noexcept
   {
     if (freeHead_ == kInvalid)
     {
@@ -224,7 +225,7 @@ class L3OrderBook
     return idx;
   }
 
-  void deallocateSlot(Index idx) noexcept
+  void deallocateOrderSlot(Index idx) noexcept
   {
     if (idx >= MaxOrders)
     {
@@ -235,7 +236,7 @@ class L3OrderBook
     freeHead_ = idx;
   }
 
-  static constexpr std::size_t IndexCapacity_ = MaxOrders * 2;
+  static constexpr std::size_t kOrderIndexCapacity = MaxOrders * 2;
 
   enum class SlotState
   {
@@ -243,27 +244,28 @@ class L3OrderBook
     Occupied,
     Tombstone
   };
+
   struct OrderIndex
   {
-    Index slot{};
+    Index slot{kInvalid};
     OrderId id{};
     SlotState state{SlotState::Empty};
   };
 
-  std::size_t hash(OrderId id) const noexcept
+  std::size_t hashOrder(OrderId id) const noexcept
   {
-    return id % IndexCapacity_;  // Assuming Order ID's are integral and well distributed
+    return id % kOrderIndexCapacity;  // Assuming Order ID's are integral and well distributed
   }
 
-  std::array<OrderIndex, IndexCapacity_> orderIndices_;
+  std::array<OrderIndex, kOrderIndexCapacity> orderIndices_;
 
-  bool insertMapping(Index slotIdx, OrderId id) noexcept
+  bool insertOrderMapping(Index slotIdx, OrderId id) noexcept
   {
-    std::size_t h = hash(id);
+    const auto h = hashOrder(id);
     Index firstTombstone = kInvalid;
-    for (Index i = 0; i < IndexCapacity_; ++i)
+    for (Index i = 0; i < kOrderIndexCapacity; ++i)
     {
-      Index idx = (h + i) % IndexCapacity_;
+      Index idx = (h + i) % kOrderIndexCapacity;
       const auto st = orderIndices_[idx].state;
       if (st == SlotState::Occupied)
       {
@@ -283,12 +285,12 @@ class L3OrderBook
     return false;
   }
 
-  bool eraseMapping(OrderId id) noexcept
+  bool eraseOrderMapping(OrderId id) noexcept
   {
-    std::size_t h = hash(id);
-    for (Index i = 0; i < IndexCapacity_; ++i)
+    const auto h = hashOrder(id);
+    for (Index i = 0; i < kOrderIndexCapacity; ++i)
     {
-      const Index idx = (h + i) % IndexCapacity_;
+      const Index idx = (h + i) % kOrderIndexCapacity;
       const auto st = orderIndices_[idx].state;
 
       if (st == SlotState::Empty)
@@ -304,12 +306,12 @@ class L3OrderBook
     return false;
   }
 
-  Index findSlot(OrderId id) const noexcept
+  Index findOrderSlot(OrderId id) const noexcept
   {
-    std::size_t h = hash(id);
-    for (Index i = 0; i < IndexCapacity_; ++i)
+    const auto h = hashOrder(id);
+    for (Index i = 0; i < kOrderIndexCapacity; ++i)
     {
-      const Index idx = (h + i) % IndexCapacity_;
+      const Index idx = (h + i) % kOrderIndexCapacity;
       const auto st = orderIndices_[idx].state;
 
       if (st == SlotState::Empty)
@@ -336,21 +338,124 @@ class L3OrderBook
   std::array<PriceLevel, MaxOrders> bids_;
   std::array<PriceLevel, MaxOrders> asks_;
 
-  Index findOrCreateLevel(Side side, Price price) noexcept
+  struct PriceIndex
   {
-    auto& levels = (side == Side::BUY) ? bids_ : asks_;
-    for (Index i = 0; i < MaxOrders; ++i)
+    Index slot{kInvalid};
+    Price price{};
+    SlotState state{SlotState::Empty};
+  };
+
+  static constexpr std::size_t kPriceIndexCapacity = MaxOrders * 2;
+  std::array<PriceIndex, kPriceIndexCapacity> bidIndices_;
+  std::array<PriceIndex, kPriceIndexCapacity> askIndices_;
+
+  std::size_t hashPrice(Price p) const noexcept
+  {
+    auto r = p.raw();
+    auto u = static_cast<std::uint64_t>(r >= 0 ? r : -r);
+    return static_cast<std::size_t>(u % kPriceIndexCapacity);
+  }
+
+  bool insertPriceMapping(Side side, Index levelIdx, Price price) noexcept
+  {
+    auto& indices = (side == Side::BUY) ? bidIndices_ : askIndices_;
+
+    const auto h = hashPrice(price);
+    Index firstTombstone = kInvalid;
+
+    for (Index i = 0; i < kPriceIndexCapacity; ++i)
     {
-      if (levels[i].used && levels[i].price == price)
+      Index idx = (h + i) % kPriceIndexCapacity;
+      const auto st = indices[idx].state;
+
+      if (st == SlotState::Occupied)
       {
-        return i;
+        if (indices[idx].price == price)
+        {
+          return true;
+        }
+        continue;
+      }
+      if (firstTombstone == kInvalid && st == SlotState::Tombstone)
+      {
+        firstTombstone = idx;
+      }
+      if (st == SlotState::Empty)
+      {
+        idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
+        indices[idx] = {levelIdx, price, SlotState::Occupied};
+        return true;
       }
     }
+    return false;
+  }
+
+  bool erasePriceMapping(Side side, Price price) noexcept
+  {
+    auto& indices = (side == Side::BUY) ? bidIndices_ : askIndices_;
+
+    const auto h = hashPrice(price);
+
+    for (Index i = 0; i < kPriceIndexCapacity; ++i)
+    {
+      const Index idx = (h + i) % kPriceIndexCapacity;
+      const auto st = indices[idx].state;
+      if (st == SlotState::Empty)
+      {
+        return false;
+      }
+      if (st == SlotState::Occupied && indices[idx].price == price)
+      {
+        indices[idx].state = SlotState::Tombstone;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Index findPriceSlot(Side side, Price price) const noexcept
+  {
+    const auto h = hashPrice(price);
+    const auto& indices = (side == Side::BUY) ? bidIndices_ : askIndices_;
+
+    for (Index i = 0; i < kPriceIndexCapacity; ++i)
+    {
+      Index idx = (h + i) % kPriceIndexCapacity;
+      const auto st = indices[idx].state;
+      if (st == SlotState::Occupied && indices[idx].price == price)
+      {
+        return indices[idx].slot;
+      }
+      if (st == SlotState::Empty)
+      {
+        return kInvalid;
+      }
+    }
+    return kInvalid;
+  }
+
+  Index findOrCreateLevel(Side side, Price price) noexcept
+  {
+    Index idx = findPriceSlot(side, price);
+    if (idx != kInvalid)
+    {
+      return idx;
+    }
+    // O(n) scan is acceptable here because:
+    // - number of distinct price levels is typically low
+    // - insertion happens less frequently than order churn
+    // - keeps memory layout simple and predictable
+    auto& levels = (side == Side::BUY) ? bids_ : asks_;
     for (Index i = 0; i < MaxOrders; ++i)
     {
       if (!levels[i].used)
       {
         levels[i] = {price, Quantity{}, kInvalid, kInvalid, true};
+        if (!insertPriceMapping(side, i, price))
+        {
+          levels[i].used = false;
+          return kInvalid;
+        }
         return i;
       }
     }
@@ -417,6 +522,7 @@ class L3OrderBook
     if (level.head == kInvalid)
     {
       level.used = false;
+      erasePriceMapping(slot.side, slot.price);
     }
 
     slot.prev = kInvalid;
