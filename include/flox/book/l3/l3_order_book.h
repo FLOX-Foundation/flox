@@ -13,6 +13,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+
+#include "flox/book/l3/l3_snap_shot.h"
 #include "flox/common.h"
 
 namespace flox
@@ -46,12 +48,8 @@ class L3OrderBook
  public:
   L3OrderBook()
   {
-    for (Index i = 0; i < MaxOrders; ++i)
-    {
-      orders_[i].nextFree = i + 1;
-    }
-    orders_[MaxOrders - 1].nextFree = kInvalid;
-    freeHead_ = 0;
+    static_assert(MaxOrders < UINT32_MAX, "[L3OrderBook] Invalid book capacity");
+    reset();
   }
 
   OrderStatus addOrder(OrderId id, Price price, Quantity quantity, Side side) noexcept
@@ -167,33 +165,59 @@ class L3OrderBook
 
   Quantity bidAtPrice(Price price) const noexcept
   {
-    for (Index i = 0; i < MaxOrders; ++i)
-    {
-      if (bids_[i].used && bids_[i].price == price)
-      {
-        return bids_[i].totalQuantity;
-      }
-    }
-    return Quantity{};
+    auto idx = findPriceSlot(Side::BUY, price);
+
+    return (idx != kInvalid && bids_[idx].used) ? bids_[idx].totalQuantity : Quantity{};
   }
 
   Quantity askAtPrice(Price price) const noexcept
   {
+    auto idx = findPriceSlot(Side::SELL, price);
+    return (idx != kInvalid && asks_[idx].used) ? asks_[idx].totalQuantity : Quantity{};
+  }
+
+  void buildFromSnapshot(const L3Snapshot& snap) noexcept
+  {
+    assert(snap.orders_.size() <= MaxOrders);
+    reset();
+    for (const auto& order : snap.orders_)
+    {
+      addOrder(order.id, order.price, order.quantity, order.side);
+    }
+  }
+
+  L3Snapshot exportSnapshot() const noexcept
+  {
+    L3Snapshot snap;
     for (Index i = 0; i < MaxOrders; ++i)
     {
-      if (asks_[i].used && asks_[i].price == price)
+      if (bids_[i].used)
       {
-        return asks_[i].totalQuantity;
+        // walk the level
+        auto idx = bids_[i].head;
+        while (idx != kInvalid)
+        {
+          const auto& slot = orders_[idx];
+          snap.orders_.push_back({slot.id, slot.price, slot.quantity, slot.side});
+          idx = slot.next;
+        }
+      }
+      if (asks_[i].used)
+      {
+        // walk the level
+        auto idx = asks_[i].head;
+        while (idx != kInvalid)
+        {
+          const auto& slot = orders_[idx];
+          snap.orders_.push_back({slot.id, slot.price, slot.quantity, slot.side});
+          idx = slot.next;
+        }
       }
     }
-    return Quantity{};
+    return snap;
   }
 
  private:
-#ifdef FLOX_UNIT_TEST
-  friend class L3OrderBookProbe;
-#endif
-
   static constexpr std::uint32_t kInvalid = UINT32_MAX;
   Index freeHead_;
 
@@ -236,9 +260,9 @@ class L3OrderBook
     freeHead_ = idx;
   }
 
-  static constexpr std::size_t kOrderIndexCapacity = MaxOrders * 2;
+  static constexpr std::size_t kHashIndexCapacity = MaxOrders * 2;
 
-  enum class SlotState
+  enum class HashState
   {
     Empty,
     Occupied,
@@ -249,35 +273,35 @@ class L3OrderBook
   {
     Index slot{kInvalid};
     OrderId id{};
-    SlotState state{SlotState::Empty};
+    HashState state{HashState::Empty};
   };
 
   std::size_t hashOrder(OrderId id) const noexcept
   {
-    return id % kOrderIndexCapacity;  // Assuming Order ID's are integral and well distributed
+    return id % kHashIndexCapacity;  // Assuming Order ID's are integral and well distributed
   }
 
-  std::array<OrderIndex, kOrderIndexCapacity> orderIndices_;
+  std::array<OrderIndex, kHashIndexCapacity> orderIndices_;
 
   bool insertOrderMapping(Index slotIdx, OrderId id) noexcept
   {
     const auto h = hashOrder(id);
     Index firstTombstone = kInvalid;
-    for (Index i = 0; i < kOrderIndexCapacity; ++i)
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
-      Index idx = (h + i) % kOrderIndexCapacity;
+      Index idx = (h + i) % kHashIndexCapacity;
       const auto st = orderIndices_[idx].state;
-      if (st == SlotState::Occupied)
+      if (st == HashState::Occupied)
       {
         continue;
       }
-      if (st == SlotState::Empty)
+      if (st == HashState::Empty)
       {
         idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
-        orderIndices_[idx] = {slotIdx, id, SlotState::Occupied};
+        orderIndices_[idx] = {slotIdx, id, HashState::Occupied};
         return true;
       }
-      if (st == SlotState::Tombstone && firstTombstone == kInvalid)
+      if (st == HashState::Tombstone && firstTombstone == kInvalid)
       {
         firstTombstone = idx;
       }
@@ -288,18 +312,18 @@ class L3OrderBook
   bool eraseOrderMapping(OrderId id) noexcept
   {
     const auto h = hashOrder(id);
-    for (Index i = 0; i < kOrderIndexCapacity; ++i)
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
-      const Index idx = (h + i) % kOrderIndexCapacity;
+      const Index idx = (h + i) % kHashIndexCapacity;
       const auto st = orderIndices_[idx].state;
 
-      if (st == SlotState::Empty)
+      if (st == HashState::Empty)
       {
         return false;
       }
-      if (st == SlotState::Occupied && orderIndices_[idx].id == id)
+      if (st == HashState::Occupied && orderIndices_[idx].id == id)
       {
-        orderIndices_[idx].state = SlotState::Tombstone;
+        orderIndices_[idx].state = HashState::Tombstone;
         return true;
       }
     }
@@ -309,16 +333,16 @@ class L3OrderBook
   Index findOrderSlot(OrderId id) const noexcept
   {
     const auto h = hashOrder(id);
-    for (Index i = 0; i < kOrderIndexCapacity; ++i)
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
-      const Index idx = (h + i) % kOrderIndexCapacity;
+      const Index idx = (h + i) % kHashIndexCapacity;
       const auto st = orderIndices_[idx].state;
 
-      if (st == SlotState::Empty)
+      if (st == HashState::Empty)
       {
         return kInvalid;
       }
-      if (orderIndices_[idx].id == id && orderIndices_[idx].state == SlotState::Occupied)
+      if (orderIndices_[idx].id == id && orderIndices_[idx].state == HashState::Occupied)
       {
         return orderIndices_[idx].slot;
       }
@@ -342,18 +366,17 @@ class L3OrderBook
   {
     Index slot{kInvalid};
     Price price{};
-    SlotState state{SlotState::Empty};
+    HashState state{HashState::Empty};
   };
 
-  static constexpr std::size_t kPriceIndexCapacity = MaxOrders * 2;
-  std::array<PriceIndex, kPriceIndexCapacity> bidIndices_;
-  std::array<PriceIndex, kPriceIndexCapacity> askIndices_;
+  std::array<PriceIndex, kHashIndexCapacity> bidIndices_;
+  std::array<PriceIndex, kHashIndexCapacity> askIndices_;
 
   std::size_t hashPrice(Price p) const noexcept
   {
     auto r = p.raw();
     auto u = static_cast<std::uint64_t>(r >= 0 ? r : -r);
-    return static_cast<std::size_t>(u % kPriceIndexCapacity);
+    return static_cast<std::size_t>(u % kHashIndexCapacity);
   }
 
   bool insertPriceMapping(Side side, Index levelIdx, Price price) noexcept
@@ -363,12 +386,12 @@ class L3OrderBook
     const auto h = hashPrice(price);
     Index firstTombstone = kInvalid;
 
-    for (Index i = 0; i < kPriceIndexCapacity; ++i)
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
-      Index idx = (h + i) % kPriceIndexCapacity;
+      Index idx = (h + i) % kHashIndexCapacity;
       const auto st = indices[idx].state;
 
-      if (st == SlotState::Occupied)
+      if (st == HashState::Occupied)
       {
         if (indices[idx].price == price)
         {
@@ -376,14 +399,14 @@ class L3OrderBook
         }
         continue;
       }
-      if (firstTombstone == kInvalid && st == SlotState::Tombstone)
+      if (firstTombstone == kInvalid && st == HashState::Tombstone)
       {
         firstTombstone = idx;
       }
-      if (st == SlotState::Empty)
+      if (st == HashState::Empty)
       {
         idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
-        indices[idx] = {levelIdx, price, SlotState::Occupied};
+        indices[idx] = {levelIdx, price, HashState::Occupied};
         return true;
       }
     }
@@ -396,17 +419,17 @@ class L3OrderBook
 
     const auto h = hashPrice(price);
 
-    for (Index i = 0; i < kPriceIndexCapacity; ++i)
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
-      const Index idx = (h + i) % kPriceIndexCapacity;
+      const Index idx = (h + i) % kHashIndexCapacity;
       const auto st = indices[idx].state;
-      if (st == SlotState::Empty)
+      if (st == HashState::Empty)
       {
         return false;
       }
-      if (st == SlotState::Occupied && indices[idx].price == price)
+      if (st == HashState::Occupied && indices[idx].price == price)
       {
-        indices[idx].state = SlotState::Tombstone;
+        indices[idx].state = HashState::Tombstone;
         return true;
       }
     }
@@ -418,15 +441,15 @@ class L3OrderBook
     const auto h = hashPrice(price);
     const auto& indices = (side == Side::BUY) ? bidIndices_ : askIndices_;
 
-    for (Index i = 0; i < kPriceIndexCapacity; ++i)
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
-      Index idx = (h + i) % kPriceIndexCapacity;
+      Index idx = (h + i) % kHashIndexCapacity;
       const auto st = indices[idx].state;
-      if (st == SlotState::Occupied && indices[idx].price == price)
+      if (st == HashState::Occupied && indices[idx].price == price)
       {
         return indices[idx].slot;
       }
-      if (st == SlotState::Empty)
+      if (st == HashState::Empty)
       {
         return kInvalid;
       }
@@ -441,10 +464,8 @@ class L3OrderBook
     {
       return idx;
     }
-    // O(n) scan is acceptable here because:
-    // - number of distinct price levels is typically low
-    // - insertion happens less frequently than order churn
-    // - keeps memory layout simple and predictable
+    // O(n) scan for price level:
+    // - can be optimized if required
     auto& levels = (side == Side::BUY) ? bids_ : asks_;
     for (Index i = 0; i < MaxOrders; ++i)
     {
@@ -529,5 +550,31 @@ class L3OrderBook
     slot.next = kInvalid;
     slot.level = kInvalid;
   }
+
+  void reset() noexcept
+  {
+    for (Index i = 0; i < MaxOrders; ++i)
+    {
+      orders_[i] = {};
+      orders_[i].nextFree = i + 1;
+
+      bids_[i] = {};
+      asks_[i] = {};
+    }
+
+    freeHead_ = 0;
+    orders_[MaxOrders - 1].nextFree = kInvalid;
+
+    for (Index i = 0; i < kHashIndexCapacity; ++i)
+    {
+      orderIndices_[i] = {};
+      bidIndices_[i] = {};
+      askIndices_[i] = {};
+    }
+  }
+
+#ifdef FLOX_UNIT_TEST
+  friend class L3OrderBookProbe;
+#endif
 };
 }  // namespace flox

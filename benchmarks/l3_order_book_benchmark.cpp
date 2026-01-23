@@ -14,23 +14,172 @@
 
 using namespace flox;
 
-static void BM_L3_AddOrder(benchmark::State& state)
+static void BM_L3_AddOrder_ExistingLevel_Hot(benchmark::State& state)
 {
-  constexpr std::size_t N = 8192;
+  constexpr size_t N = 8192;
   L3OrderBook<N> book;
-  OrderId id{123};
-  Price price = Price::fromDouble(100.0);
-  Quantity qty = Quantity::fromDouble(5.0);
+
+  const Price px = Price::fromDouble(100.0);
+  const Quantity qty = Quantity::fromDouble(1.0);
+
+  // Create the price level once
+  book.addOrder(OrderId{1}, px, qty, Side::BUY);
+
+  const OrderId id{2};  // IMPORTANT: reuse same ID every iteration
+
   for (auto _ : state)
   {
+    const auto st = book.addOrder(id, px, qty, Side::BUY);
+    benchmark::DoNotOptimize(book);
+
     state.PauseTiming();
+    book.removeOrder(id);  // restore invariant WITHOUT poisoning hash table
+    state.ResumeTiming();
+  }
+}
+BENCHMARK(BM_L3_AddOrder_ExistingLevel_Hot)->Unit(benchmark::kNanosecond);
+
+static void BM_L3_AddOrder_NewLevel(benchmark::State& state)
+{
+  constexpr size_t N = 8192;
+  L3OrderBook<N> book;
+
+  const Quantity qty = Quantity::fromDouble(1.0);
+  const Price px = Price::fromDouble(100.0);
+  const OrderId id{1};
+
+  for (auto _ : state)
+  {
+    // Add to non-existing level (forces level creation)
+    benchmark::DoNotOptimize(book.addOrder(id, px, qty, Side::BUY));
+
+    state.PauseTiming();
+    // Remove immediately so next iteration is identical
     book.removeOrder(id);
     state.ResumeTiming();
+  }
+}
+BENCHMARK(BM_L3_AddOrder_NewLevel)->Unit(benchmark::kNanosecond);
 
-    benchmark::DoNotOptimize(book.addOrder(id, price, qty, Side::SELL));
+// This benchmark serves to illustrate what happens to addOrder latency when the book is treated like an immortal hash table.
+/*
+What is happening under the benchmark's hood:
+    - monotonically increases order IDs
+    - linear probing hash table
+    - no table rebuild
+    - no lifecycle boundaries
+    - infinite hash table tombstone accumulation
+Effect:
+    - probe chains grow
+    - cache locality dies
+    - addOrder degrades to near full table scans
+    - latency spikes
+*/
+static void BM_L3_AddOrder_TombstoneChurn(benchmark::State& state)
+{
+  constexpr size_t N = 8192;
+  L3OrderBook<N> book;
+
+  const Price px = Price::fromDouble(100.0);
+  const Quantity qty = Quantity::fromDouble(1.0);
+
+  book.addOrder(OrderId{1}, px, qty, Side::BUY);
+
+  OrderId id{2};
+
+  for (auto _ : state)
+  {
+    benchmark::DoNotOptimize(book.addOrder(id, px, qty, Side::BUY));
+    book.removeOrder(id);
+    ++id;  // poison hash table intentionally
+  }
+}
+BENCHMARK(BM_L3_AddOrder_TombstoneChurn)->Unit(benchmark::kMicrosecond);
+
+// This benchmark serves to model a more realistic L3 lifecycle and the associated performance.
+/*
+What is happening under the benchmark's hood:
+    - bounded ID domain
+    - bounded tombstone count
+    - periodic book rebuild (session / snapshot / replay boundary)
+
+Result:
+    - probe chains stay short
+    - hash stays hot in L1/L2
+    - addOrder remains O(1) in practice
+*/
+static void BM_L3_AddOrder_TombstoneChurn_WithReset(benchmark::State& state)
+{
+  constexpr size_t N = 8192;
+  constexpr size_t K = 10'000;  // arbitrary but explicit
+
+  L3OrderBook<N> book;
+  const Price px = Price::fromDouble(100.0);
+  const Quantity qty = Quantity::fromDouble(1.0);
+
+  book.addOrder(OrderId{1}, px, qty, Side::BUY);
+  OrderId id{2};
+  size_t since_reset = 0;
+
+  for (auto _ : state)
+  {
+    benchmark::DoNotOptimize(book.addOrder(id, px, qty, Side::BUY));
+    book.removeOrder(id);
+    ++id;
+
+    if (++since_reset == K)
+    {
+      state.PauseTiming();
+      //book = L3OrderBook<N>();  // or buildFromSnapshot()
+      //book.addOrder(OrderId{1}, px, qty, Side::BUY);
+      auto ss = book.exportSnapshot();
+      book.buildFromSnapshot(ss);
+      since_reset = 0;
+      state.ResumeTiming();
+    }
   }
 }
 
-BENCHMARK(BM_L3_AddOrder)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_L3_AddOrder_TombstoneChurn_WithReset)->Unit(benchmark::kNanosecond);
+
+static void BM_L3_BestBid(benchmark::State& state)
+{
+  constexpr std::size_t N = 8192;
+  L3OrderBook<N> book;
+  Price price = Price::fromDouble(100.0);
+  Quantity qty = Quantity::fromDouble(5.0);
+  Side side = Side::BUY;
+
+  for (std::uint64_t i = 0; i < 1000; ++i)
+  {
+    book.addOrder(OrderId{123 + i}, Price::fromDouble(price.toDouble() + 1.0), qty, side);
+  }
+
+  for (auto _ : state)
+  {
+    benchmark::DoNotOptimize(book.bestBid());
+  }
+}
+BENCHMARK(BM_L3_BestBid)->Unit(benchmark::kNanosecond);
+
+static void BM_L3_BestAsk(benchmark::State& state)
+{
+  constexpr std::size_t N = 8192;
+  L3OrderBook<N> book;
+  Price price = Price::fromDouble(100.0);
+  Quantity qty = Quantity::fromDouble(5.0);
+  Side side = Side::SELL;
+
+  for (std::uint64_t i = 0; i < 1000; ++i)
+  {
+    book.addOrder(OrderId{123 + i}, Price::fromDouble(price.toDouble() + 1.0), qty, side);
+  }
+
+  for (auto _ : state)
+  {
+    benchmark::DoNotOptimize(book.bestAsk());
+  }
+}
+BENCHMARK(BM_L3_BestAsk)->Unit(benchmark::kNanosecond);
 
 BENCHMARK_MAIN();
