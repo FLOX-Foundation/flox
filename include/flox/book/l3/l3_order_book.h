@@ -87,6 +87,29 @@ class L3OrderBook
     }
 
     linkToLevel(slotIdx, side, levelIdx);
+
+    if (side == Side::BUY)
+    {
+      if (cachedBestBidLevel_ == kInvalid)
+      {
+        cachedBestBidLevel_ = levelIdx;
+      }
+      else
+      {
+        cachedBestBidLevel_ = (price > bids_[cachedBestBidLevel_].price) ? levelIdx : cachedBestBidLevel_;
+      }
+    }
+    else
+    {
+      if (cachedBestAskLevel_ == kInvalid)
+      {
+        cachedBestAskLevel_ = levelIdx;
+      }
+      else
+      {
+        cachedBestAskLevel_ = (price < asks_[cachedBestAskLevel_].price) ? levelIdx : cachedBestAskLevel_;
+      }
+    }
     return OrderStatus::Ok;
   }
 
@@ -102,7 +125,26 @@ class L3OrderBook
       return OrderStatus::NotFound;
     }
 
+    const auto& slot = orders_[slotIdx];
+    const auto levelIdx = slot.level;
+    const auto side = slot.side;
+
     unlinkFromLevel(slotIdx);
+    if (side == Side::BUY && cachedBestBidLevel_ == levelIdx)
+    {
+      if (bids_[levelIdx].head == kInvalid)
+      {
+        cachedBestBidLevel_ = kInvalid;
+      }
+    }
+    if (side == Side::SELL && levelIdx == cachedBestAskLevel_)
+    {
+      if (asks_[levelIdx].head == kInvalid)
+      {
+        cachedBestAskLevel_ = kInvalid;
+      }
+    }
+
     deallocateOrderSlot(slotIdx);
 
     return OrderStatus::Ok;
@@ -125,42 +167,47 @@ class L3OrderBook
     return OrderStatus::Ok;
   }
 
-  // NOTE: O(n) scan over price levels
-  // Can be optimized later with cached extremes if required
-  std::optional<Price> bestBid() const noexcept
+  std::optional<Price> bestBid() noexcept
   {
+    if (cachedBestBidLevel_ != kInvalid)
+    {
+      return bids_[cachedBestBidLevel_].price;
+    }
     Price maxPrice{};
-    bool found = false;
     for (Index i = 0; i < MaxOrders; ++i)
     {
       if (bids_[i].used)
       {
-        if (!found || maxPrice < bids_[i].price)
+        if (cachedBestBidLevel_ == kInvalid || maxPrice < bids_[i].price)
         {
           maxPrice = bids_[i].price;
-          found = true;
+          cachedBestBidLevel_ = i;
         }
       }
     }
-    return found ? std::optional<Price>{maxPrice} : std::nullopt;
+    return (cachedBestBidLevel_ != kInvalid) ? std::optional<Price>{maxPrice} : std::nullopt;
   }
 
-  std::optional<Price> bestAsk() const noexcept
+  std::optional<Price> bestAsk() noexcept
   {
+    if (cachedBestAskLevel_ != kInvalid)
+    {
+      return asks_[cachedBestAskLevel_].price;
+    }
+
     Price minPrice{};
-    bool found = false;
     for (Index i = 0; i < MaxOrders; ++i)
     {
       if (asks_[i].used)
       {
-        if (!found || asks_[i].price < minPrice)
+        if (cachedBestAskLevel_ == kInvalid || asks_[i].price < minPrice)
         {
           minPrice = asks_[i].price;
-          found = true;
+          cachedBestAskLevel_ = i;
         }
       }
     }
-    return found ? std::optional<Price>{minPrice} : std::nullopt;
+    return (cachedBestAskLevel_ != kInvalid) ? std::optional<Price>{minPrice} : std::nullopt;
   }
 
   Quantity bidAtPrice(Price price) const noexcept
@@ -234,7 +281,8 @@ class L3OrderBook
 
     Index nextFree{kInvalid};
   };
-  std::array<OrderSlot, MaxOrders> orders_;
+
+  alignas(64) std::array<OrderSlot, MaxOrders> orders_;
 
   Index allocateOrderSlot() noexcept
   {
@@ -278,35 +326,42 @@ class L3OrderBook
 
   std::size_t hashOrder(OrderId id) const noexcept
   {
-    return id % kHashIndexCapacity;  // Assuming Order ID's are integral and well distributed
+    return id % kHashIndexCapacity;
   }
 
-  std::array<OrderIndex, kHashIndexCapacity> orderIndices_;
+  alignas(64) std::array<OrderIndex, kHashIndexCapacity> orderIndices_;
 
   bool insertOrderMapping(Index slotIdx, OrderId id) noexcept
   {
     const auto h = hashOrder(id);
     Index firstTombstone = kInvalid;
+
     for (Index i = 0; i < kHashIndexCapacity; ++i)
     {
       Index idx = (h + i) % kHashIndexCapacity;
       const auto st = orderIndices_[idx].state;
+
       if (st == HashState::Occupied)
       {
         continue;
       }
-      if (st == HashState::Empty)
+
+      if (st == HashState::Tombstone)
       {
-        idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
-        orderIndices_[idx] = {slotIdx, id, HashState::Occupied};
-        return true;
+        if (firstTombstone == kInvalid)
+        {
+          firstTombstone = idx;
+        }
+        continue;
       }
-      if (st == HashState::Tombstone && firstTombstone == kInvalid)
-      {
-        firstTombstone = idx;
-      }
+
+      // st == Empty → safe termination
+      idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
+      orderIndices_[idx] = {slotIdx, id, HashState::Occupied};
+      return true;
     }
-    return false;
+
+    return false;  // table full
   }
 
   bool eraseOrderMapping(OrderId id) noexcept
@@ -359,8 +414,8 @@ class L3OrderBook
     bool used{false};
   };
 
-  std::array<PriceLevel, MaxOrders> bids_;
-  std::array<PriceLevel, MaxOrders> asks_;
+  alignas(64) std::array<PriceLevel, MaxOrders> bids_;
+  alignas(64) std::array<PriceLevel, MaxOrders> asks_;
 
   struct PriceIndex
   {
@@ -369,8 +424,11 @@ class L3OrderBook
     HashState state{HashState::Empty};
   };
 
-  std::array<PriceIndex, kHashIndexCapacity> bidIndices_;
-  std::array<PriceIndex, kHashIndexCapacity> askIndices_;
+  alignas(64) std::array<PriceIndex, kHashIndexCapacity> bidIndices_;
+  alignas(64) std::array<PriceIndex, kHashIndexCapacity> askIndices_;
+
+  Index cachedBestBidLevel_{kInvalid};
+  Index cachedBestAskLevel_{kInvalid};
 
   std::size_t hashPrice(Price p) const noexcept
   {
@@ -382,7 +440,6 @@ class L3OrderBook
   bool insertPriceMapping(Side side, Index levelIdx, Price price) noexcept
   {
     auto& indices = (side == Side::BUY) ? bidIndices_ : askIndices_;
-
     const auto h = hashPrice(price);
     Index firstTombstone = kInvalid;
 
@@ -395,21 +452,26 @@ class L3OrderBook
       {
         if (indices[idx].price == price)
         {
-          return true;
+          return true;  // level already mapped
         }
         continue;
       }
-      if (firstTombstone == kInvalid && st == HashState::Tombstone)
+
+      if (st == HashState::Tombstone)
       {
-        firstTombstone = idx;
+        if (firstTombstone == kInvalid)
+        {
+          firstTombstone = idx;
+        }
+        continue;
       }
-      if (st == HashState::Empty)
-      {
-        idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
-        indices[idx] = {levelIdx, price, HashState::Occupied};
-        return true;
-      }
+
+      // st == Empty → safe termination
+      idx = (firstTombstone != kInvalid) ? firstTombstone : idx;
+      indices[idx] = {levelIdx, price, HashState::Occupied};
+      return true;
     }
+
     return false;
   }
 
@@ -464,7 +526,7 @@ class L3OrderBook
     {
       return idx;
     }
-    // O(n) scan for price level:
+    // Fallback O(n) scan for price level:
     // - can be optimized if required
     auto& levels = (side == Side::BUY) ? bids_ : asks_;
     for (Index i = 0; i < MaxOrders; ++i)
@@ -480,7 +542,7 @@ class L3OrderBook
         return i;
       }
     }
-    return kInvalid;  // caller to translate this to OrderStatus::NoCapacity
+    return kInvalid;
   }
 
   PriceLevel& levelAt(Side side, Index levelIdx) noexcept
@@ -571,6 +633,9 @@ class L3OrderBook
       bidIndices_[i] = {};
       askIndices_[i] = {};
     }
+
+    cachedBestBidLevel_ = kInvalid;
+    cachedBestAskLevel_ = kInvalid;
   }
 
 #ifdef FLOX_UNIT_TEST

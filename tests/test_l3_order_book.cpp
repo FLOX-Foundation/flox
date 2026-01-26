@@ -8,6 +8,7 @@
  */
 
 #include "flox/book/l3/l3_order_book.h"
+#include "flox/book/l3/l3_snap_shot.h"
 #include "flox/common.h"
 
 #include <gtest/gtest.h>
@@ -72,6 +73,30 @@ class L3OrderBookProbe
     return book.kInvalid;
   }
 };
+
+struct CompareL3Snapshots
+{
+  bool operator()(const L3Snapshot& a, const L3Snapshot& b)
+  {
+    if (a.orders_.size() != b.orders_.size())
+    {
+      return false;
+    }
+    for (std::size_t i = 0; i < a.orders_.size(); ++i)
+    {
+      bool equal = a.orders_[i].id == b.orders_[i].id &&
+                   a.orders_[i].price == b.orders_[i].price &&
+                   a.orders_[i].quantity == b.orders_[i].quantity &&
+                   a.orders_[i].side == b.orders_[i].side;
+      if (!equal)
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
 }  // namespace flox
 #endif
 
@@ -376,4 +401,27 @@ TEST(L3OrderBookTest, PreferTombstoneIdx)
 
   // now check that this newly placed order is position at the tombstone index 8;
   ASSERT_EQ(L3OrderBookProbe::hashBucketIndex(book, OrderId{67}), 8);
+}
+
+TEST(L3OrderBookTest, BuildFromSnapShot)
+{
+  Price price = Price::fromDouble(100.0);
+  Quantity qty = Quantity::fromDouble(10.0);
+  Side side = Side::SELL;
+
+  L3Snapshot snap;
+
+  for (std::uint64_t i = 0; i < 1000; ++i)
+  {
+    snap.orders_.push_back({OrderId{123 + i}, price, qty, side});
+  }
+
+  L3OrderBook<> book;
+  book.buildFromSnapshot(snap);
+
+  auto bookSnap = book.exportSnapshot();
+
+  CompareL3Snapshots cmp;
+
+  ASSERT_TRUE(cmp(snap, bookSnap));
 }
