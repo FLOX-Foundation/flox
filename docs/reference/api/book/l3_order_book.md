@@ -32,11 +32,11 @@ class L3OrderBook
 ```
 ## Purpose
 Maintain full-depth, order-level (L3) view of the market: 
-    - Track which orders exits 
-    - At which prices
-    - On which sides 
-    - With what quantity
-    - And in FIFO time order per price level 
+- Track which orders exits 
+- At which prices
+- On which sides 
+- With what quantity
+- And in FIFO time order per price level 
 
 ## Design Invariants
 1) Fixed capacity (`MaxOrders`)
@@ -61,9 +61,12 @@ Semantic Paths
 | Operation     | Status Meaning                                |
 | ------------- | --------------------------------------------- |
 | `addOrder`    | `Extant` if OrderId already exists            |
-|               | `NoCapacity` if book or index space exhausted |
+| `addOrder`    | `NoCapacity` if book or index space exhausted |
+| `addOrder`    | `Ok` on successful order insertion            |
 | `removeOrder` | `NotFound` if OrderId does not exist          |
+| `removeOrder` | `Ok` on successful order removal              |
 | `modifyOrder` | `NotFound` if OrderId does not exist          |
+| `modifyOrder` | `Ok` on successful order quantity update      |
 
 No mutating operation leaves the book in a partially mutated state. All operations either succeed or inflict no state change. 
 
@@ -76,4 +79,5 @@ No mutating operation leaves the book in a partially mutated state. All operatio
 | FIFO Ordering  | Intrusive doubly linked lists per price level                         |
 | Queries        | `bestBid`, `bestAsk`, `bidAtPrice`, `askAtPrice`                      |
 | Lifecycle      | Snapshot export and rebuild for session boundaries                    |
+
 
