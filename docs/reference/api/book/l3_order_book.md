@@ -80,4 +80,68 @@ No mutating operation leaves the book in a partially mutated state. All operatio
 | Queries        | `bestBid`, `bestAsk`, `bidAtPrice`, `askAtPrice`                      |
 | Lifecycle      | Snapshot export and rebuild for session boundaries                    |
 
+## Storage Model 
+### Orders 
+- Stored in a preallocated array
+- Free slots managed through intrusive freelist
+- Indexed by OrderId using flat hash map with tombstones 
+
+### Price Levels
+- Separate preallocated bid / ask arrays
+- Each level owns a FIFO list of orders 
+- Levels indexed by price using flat hash map with tombstones 
+
+### Hashing 
+- Linear probing 
+- Tombstone indices on erase 
+- Probe chains bounded through explicit lifecycle resets 
+
+## Snapshot Contract 
+Represents an authoritative, point-in-time view of all resting orders in a Level-3 order book.
+This structure is intentionally a plain data container with no behavior.
+It exists to define the minimal information required to rebuild an L3OrderBook from a clean state (e.g. on startup, recovery, replay, or session boundary).
+Snapshots are produced by upstream systems (exchange feeds, replay engines, simulators, or checkpoint loaders) and are consumed by L3OrderBook via buildFromSnapshot(...).
+Snapshot creation is not part of the L3OrderBook hot path and is expected to occur infrequently. Use of std::vector is intentional.
+```
+struct OrderSnapshot
+{
+  OrderId id{};
+  Price price{};
+  Quantity quantity{};
+  Side side{};
+};
+
+struct L3Snapshot
+{
+  std::vector<OrderSnapshot> orders_;
+};
+```
+`exportSnapshot()`
+- Walks all active price levels
+- Emits one entry per live order
+- FIFO order preserved per price level
+- Snapshot is NOT latency-sensitive
+- May allocate 
+
+`buildFromSnapshot(...)`
+- Clears all internal state
+- Replays snapshot orders via addOrder
+- Rebuilds:
+- order indices
+- price indices
+- FIFO links
+- cached best bid / ask
+
+This operation is intended for:
+- exchange snapshot replay
+- backtest session resets
+- simulation boundaries
+- hash-table tombstone reclamation
+
+## Final Word on Performance 
+- Hot-path operation (add, remove, modify) are allocation free 
+- Hash-table performance assumes bounded ID domains per session
+- Tombstones are expected and tolerated with a session 
+- Periodic rebuilds restore cache locality and short probe chain lengths 
+- The book is not intended to be used as an immortal hash-table 
 
