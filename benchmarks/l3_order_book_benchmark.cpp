@@ -245,6 +245,26 @@ static void BM_L3_BestAsk(benchmark::State& state)
 }
 BENCHMARK(BM_L3_BestAsk)->Unit(benchmark::kNanosecond);
 
+static void BM_L3_BestBid_WorstCase(benchmark::State& state)
+{
+  constexpr std::size_t N = 8192;
+  L3OrderBook<N> book;
+  Quantity qty = Quantity::fromDouble(5.0);
+  Side side = Side::BUY;
+  book.addOrder(OrderId{1}, Price::fromDouble(100.0), qty, side);
+
+  for (auto _ : state)
+  {
+    state.PauseTiming();
+    book.addOrder(OrderId{2}, Price::fromDouble(101.0), qty, side);
+    book.removeOrder(OrderId{2});  // invalidate the cached max bid
+    state.ResumeTiming();
+
+    benchmark::DoNotOptimize(book.bestBid());  // falls back to O(N) scan
+  }
+}
+BENCHMARK(BM_L3_BestBid_WorstCase)->Unit(benchmark::kNanosecond);
+
 static void BM_L3_BidAtPrice(benchmark::State& state)
 {
   constexpr std::size_t N = 5000;
