@@ -17,6 +17,7 @@ function(add_flox_benchmark name)
 endfunction()
 
 add_flox_benchmark(nlevel_order_book_benchmark)
+add_flox_benchmark(l3_order_book_benchmark)
 add_flox_benchmark(bar_aggregator_benchmark)
 add_flox_benchmark(binary_log_benchmark)
 add_flox_benchmark(event_bus_benchmark)

@@ -3,6 +3,7 @@ find_package(Threads)
 
 function(add_flox_test name)
   add_executable(${name} ${name}.cpp)
+  target_compile_definitions(${name} PRIVATE FLOX_UNIT_TEST)
   target_include_directories(${name}
     PRIVATE
         include()
@@ -27,6 +28,7 @@ add_flox_test(test_connector_manager)
 add_flox_test(test_decimal)
 add_flox_test(test_engine_smoke)
 add_flox_test(test_event_pool)
+add_flox_test(test_l3_order_book)
 add_flox_test(test_multi_execution_listener)
 add_flox_test(test_nlevel_order_book)
 add_flox_test(test_order_execution_bus)
