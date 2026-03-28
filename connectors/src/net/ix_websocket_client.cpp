@@ -103,6 +103,7 @@ void IxWebSocketClient::run()
           switch (msg->type)
           {
             case ix::WebSocketMessageType::Open:
+              _logger->info("WebSocket connected to " + _url);
               _consecutiveFailures = 0;
               if (_onOpen)
               {
@@ -124,7 +125,8 @@ void IxWebSocketClient::run()
               }
               break;
             case ix::WebSocketMessageType::Error:
-              _logger->error("WebSocket error: " + msg->errorInfo.reason);
+              _logger->error("WebSocket error connecting to " + _url + ": " +
+                             msg->errorInfo.reason);
               break;
 
             default:

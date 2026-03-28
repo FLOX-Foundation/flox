@@ -74,6 +74,7 @@ class BitgetExchangeConnector : public IExchangeConnector
  private:
   void handleMessage(std::string_view payload);
   void handlePrivateMessage(std::string_view payload);
+  void subscribePrivateOrders();
   void pingLoop();
 
   BitgetConfig _config;

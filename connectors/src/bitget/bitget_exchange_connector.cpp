@@ -34,11 +34,34 @@ static constexpr auto BITGET_USER_AGENT =
 namespace
 {
 
+static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static std::string base64Encode(const unsigned char* data, size_t len)
+{
+  std::string out((len + 2) / 3 * 4, '=');
+  size_t idx = 0;
+  for (size_t i = 0; i < len; i += 3)
+  {
+    int val =
+        (data[i] << 16) + ((i + 1 < len ? data[i + 1] : 0) << 8) + (i + 2 < len ? data[i + 2] : 0);
+    out[idx++] = b64_table[(val >> 18) & 0x3F];
+    out[idx++] = b64_table[(val >> 12) & 0x3F];
+    out[idx++] = b64_table[(val >> 6) & 0x3F];
+    out[idx++] = b64_table[val & 0x3F];
+  }
+  size_t mod = len % 3;
+  if (mod)
+  {
+    out[out.size() - (3 - mod)] = '=';
+  }
+  return out;
+}
+
 static std::string makeLoginPayload(std::string_view apiKey, std::string_view apiSecret,
                                     std::string_view passphrase)
 {
   using namespace std::chrono;
-  auto ts = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+  auto ts = duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
   std::string toSign = std::to_string(ts) + "GET/user/verify";
 
   unsigned char hash[EVP_MAX_MD_SIZE];
@@ -46,20 +69,15 @@ static std::string makeLoginPayload(std::string_view apiKey, std::string_view ap
   HMAC(EVP_sha256(), apiSecret.data(), static_cast<int>(apiSecret.size()),
        reinterpret_cast<const unsigned char*>(toSign.data()), toSign.size(), hash, &len);
 
-  char hex[EVP_MAX_MD_SIZE * 2 + 1];
-  for (unsigned i = 0; i < len; ++i)
-  {
-    std::snprintf(hex + i * 2, 3, "%02x", hash[i]);
-  }
-  hex[len * 2] = '\0';
+  std::string sign = base64Encode(hash, len);
 
   std::string payload;
-  payload.reserve(200);
+  payload.reserve(256);
   payload.append(R"({"op":"login","args":[{)");
   payload.append("\"apiKey\":\"").append(apiKey).append("\",");
   payload.append("\"passphrase\":\"").append(passphrase).append("\",");
   payload.append("\"timestamp\":\"").append(std::to_string(ts)).append("\",");
-  payload.append("\"sign\":\"").append(hex).append("\"}]}");
+  payload.append("\"sign\":\"").append(sign).append("\"}]}");
 
   return payload;
 }
@@ -193,8 +211,16 @@ void BitgetExchangeConnector::start()
     _wsClientPrivate->onOpen(
         [this]()
         {
+          _logger->info("[Bitget] Private WS connected, sending login");
           auto auth = makeLoginPayload(_config.apiKey, _config.apiSecret, _config.passphrase);
           _wsClientPrivate->send(auth);
+        });
+
+    _wsClientPrivate->onClose(
+        [this](int code, std::string_view reason)
+        {
+          _logger->warn("[Bitget] Private WS closed: code=" + std::to_string(code) +
+                        " reason=" + std::string(reason));
         });
 
     _wsClientPrivate->onMessage(
@@ -445,6 +471,16 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
   }
 }
 
+void BitgetExchangeConnector::subscribePrivateOrders()
+{
+  std::string sub;
+  sub.reserve(128);
+  sub.append(
+      R"({"op":"subscribe","args":[{"instType":"USDT-FUTURES","channel":"orders","instId":"default"}]})");
+  _wsClientPrivate->send(sub);
+  _logger->info("[Bitget] Subscribed to private orders channel");
+}
+
 void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
 {
   if (payload == "pong")
@@ -457,6 +493,20 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
   {
     std::string json(payload);
     auto doc = parser.iterate(json);
+
+    auto eventField = doc["event"];
+    if (!eventField.error())
+    {
+      auto ev = eventField.get_string().value();
+      if (ev == "login")
+      {
+        _logger->info("[Bitget] Private WS authenticated");
+        subscribePrivateOrders();
+      }
+      return;
+    }
+
+    doc.rewind();
     auto channelField = doc["arg"]["channel"];
     if (channelField.error())
     {
@@ -471,13 +521,29 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
         OrderEvent ev;
         ev.order.symbol = resolveSymbolId(d["instId"].get_string().value());
 
-        auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
-        if (!orderIdOpt)
+        auto clientOidField = d["clientOid"];
+        std::string_view clientOid =
+            clientOidField.error() ? "" : clientOidField.get_string().value();
+        if (clientOid.empty())
         {
-          _logger->warn("[Bitget] Invalid orderId in order event");
-          continue;
+          auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
+          if (!orderIdOpt)
+          {
+            _logger->warn("[Bitget] Invalid orderId in order event");
+            continue;
+          }
+          ev.order.id = static_cast<OrderId>(*orderIdOpt);
         }
-        ev.order.id = static_cast<OrderId>(*orderIdOpt);
+        else
+        {
+          auto coidOpt = util::parseUint64(clientOid);
+          if (!coidOpt)
+          {
+            _logger->warn("[Bitget] Invalid clientOid in order event");
+            continue;
+          }
+          ev.order.id = static_cast<OrderId>(*coidOpt);
+        }
         ev.order.side = d["side"].get_string().value() == "buy" ? Side::BUY : Side::SELL;
 
         auto priceOpt = util::safeParseDouble(d["price"].get_string().value());

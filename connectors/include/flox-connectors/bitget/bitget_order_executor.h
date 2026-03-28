@@ -13,6 +13,7 @@
 
 #include <flox/engine/symbol_registry.h>
 #include <flox/execution/abstract_executor.h>
+#include <flox/execution/bus/order_execution_bus.h>
 #include <flox/execution/order.h>
 #include <flox/execution/order_tracker.h>
 
@@ -116,12 +117,21 @@ class BitgetOrderExecutorT : public IOrderExecutor
   void cancelOrder(OrderId orderId) override;
   void replaceOrder(OrderId oldOrderId, const Order& newOrder) override;
 
+  void setOrderBus(OrderExecutionBus* bus) { _orderBus = bus; }
+  void setLeverage(const std::string& symbol, int leverage);
+  void submitOrderWithLeverage(const Order& order, int leverage, double slPrice = 0,
+                               double tpPrice = 0);
+
  private:
+  void submitPlanOrder(const Order& order, const SymbolInfo& info);
+  void publishRejection(const Order& order, const std::string& reason);
+
   std::unique_ptr<BitgetAuthenticatedRestClient> _client;
   SymbolRegistry* _registry;
   OrderTracker* _orderTracker;
   Bitget::Params _params;
   Policies _policies;
+  OrderExecutionBus* _orderBus = nullptr;
 };
 
 using BitgetOrderExecutor = BitgetOrderExecutorT<NoPolicies>;
