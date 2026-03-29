@@ -303,6 +303,23 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
     auto topic_field = root.find_field_unordered("topic");
     if (topic_field.error())
     {
+      // Check for subscription confirmation/error
+      auto op_field = root.find_field_unordered("op");
+      if (!op_field.error())
+      {
+        auto op = op_field.get_string().value();
+        if (op == "subscribe")
+        {
+          auto success_field = root.find_field_unordered("success");
+          if (!success_field.error() && !success_field.get_bool().value())
+          {
+            auto msg_field = root.find_field_unordered("ret_msg");
+            std::string reason =
+                msg_field.error() ? "unknown" : std::string(msg_field.get_string().value());
+            _logger->error("[Bybit] Subscription failed: " + reason);
+          }
+        }
+      }
       return;
     }
 
@@ -319,6 +336,10 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       auto evOpt = _bookPool.acquire();
       if (!evOpt)
       {
+        _logger->error(
+            "[Bybit] Book pool exhausted, dropping orderbook update. Increase "
+            "FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
+            "enough.");
         return;
       }
       auto& ev = *evOpt;
@@ -422,7 +443,13 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
         ev->publishTsNs = nowNsMonotonic();
-        _bookUpdateBus->publish(std::move(ev));
+        auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev), std::chrono::microseconds(0));
+        if (res != BookUpdateBus::PublishResult::SUCCESS)
+        {
+          _logger->error(
+              "[Bybit] Book update dropped: EventBus full. Increase EventBus capacity or reduce "
+              "number of subscriptions.");
+        }
       }
     }
     else if (topic.starts_with("publicTrade."))
@@ -468,7 +495,13 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
 
         ev.publishTsNs = nowNsMonotonic();
-        _tradeBus->publish(ev);
+        auto [res, _] = _tradeBus->tryPublish(ev, std::chrono::microseconds(0));
+        if (res != TradeBus::PublishResult::SUCCESS)
+        {
+          _logger->error(
+              "[Bybit] Trade dropped: EventBus full. Increase EventBus capacity or reduce number "
+              "of subscriptions.");
+        }
       }
     }
   }

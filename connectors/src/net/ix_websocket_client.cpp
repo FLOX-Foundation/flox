@@ -21,7 +21,8 @@ IxWebSocketClient::IxWebSocketClient(std::string url, std::string origin, int re
       _reconnectDelayMs(reconnectDelayMs),
       _pingIntervalSec(pingIntervalSec),
       _userAgent(std::move(userAgent)),
-      _logger(logger)
+      _logger(logger),
+      _ws(std::make_unique<ix::WebSocket>())
 {
 }
 
@@ -63,41 +64,56 @@ void IxWebSocketClient::stop()
   {
     return;
   }
-  _ws.stop();
+  _ws->stop();
 }
 
 void IxWebSocketClient::send(const std::string& data)
 {
   std::lock_guard lock(_sendMutex);
-  _ws.send(data);
+  _ws->send(data);
 }
 
 void IxWebSocketClient::run()
 {
   constexpr int MAX_BACKOFF_MS = 30000;
 
+  bool firstAttempt = true;
+
   while (_running)
   {
-    _ws.setUrl(_url);
+    // On reconnect, replace the socket with a fresh instance to avoid
+    // stale TLS context / frame buffers from the previous connection.
+    if (!firstAttempt)
+    {
+      _ws->disableAutomaticReconnection();
+      _ws->stop();
+      {
+        std::lock_guard lock(_sendMutex);
+        _ws = std::make_unique<ix::WebSocket>();
+      }
+    }
+    firstAttempt = false;
+
+    _ws->setUrl(_url);
     if (_userAgent.empty())
     {
-      _ws.setExtraHeaders({{"Origin", _origin}});
+      _ws->setExtraHeaders({{"Origin", _origin}});
     }
     else
     {
-      _ws.setExtraHeaders({{"Origin", _origin}, {"User-Agent", _userAgent}});
+      _ws->setExtraHeaders({{"Origin", _origin}, {"User-Agent", _userAgent}});
     }
-    _ws.disablePerMessageDeflate();
+    _ws->disablePerMessageDeflate();
     if (_pingIntervalSec > 0)
     {
-      _ws.setPingInterval(_pingIntervalSec);
+      _ws->setPingInterval(_pingIntervalSec);
     }
     else
     {
-      _ws.setPingInterval(-1);
+      _ws->setPingInterval(-1);
     }
 
-    _ws.setOnMessageCallback(
+    _ws->setOnMessageCallback(
         [this](const ix::WebSocketMessagePtr& msg)
         {
           switch (msg->type)
@@ -134,11 +150,11 @@ void IxWebSocketClient::run()
           }
         });
 
-    _ws.start();
+    _ws->start();
 
     while (_running)
     {
-      auto state = _ws.getReadyState();
+      auto state = _ws->getReadyState();
       if (state == ix::ReadyState::Closed || state == ix::ReadyState::Closing)
       {
         break;

@@ -182,6 +182,12 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
     auto channelEl = doc["channel"];
     if (channelEl.error())
     {
+      // Check for error responses
+      auto errorEl = doc["error"];
+      if (!errorEl.error())
+      {
+        _logger->error("[Hyperliquid] WS error: " + std::string(errorEl.get_string().value()));
+      }
       return;
     }
 
@@ -197,6 +203,10 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
       auto evOpt = _bookPool.acquire();
       if (!evOpt)
       {
+        _logger->error(
+            "[Hyperliquid] Book pool exhausted, dropping orderbook update. Increase "
+            "FLOX_DEFAULT_CONNECTOR_POOL_CAPACITY or ensure EventBus consumers are draining fast "
+            "enough.");
         return;
       }
       auto& ev = *evOpt;
@@ -265,7 +275,13 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
-        _bookBus->publish(std::move(ev));
+        auto [res, _] = _bookBus->tryPublish(std::move(ev), std::chrono::microseconds(0));
+        if (res != BookUpdateBus::PublishResult::SUCCESS)
+        {
+          _logger->error(
+              "[Hyperliquid] Book update dropped: EventBus full. Increase EventBus capacity or "
+              "reduce number of subscriptions.");
+        }
       }
     }
     else if (channel == "trades")
@@ -314,7 +330,13 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
           ev.trade.instrument = info->type;
         }
 
-        _tradeBus->publish(ev);
+        auto [res, _] = _tradeBus->tryPublish(ev, std::chrono::microseconds(0));
+        if (res != TradeBus::PublishResult::SUCCESS)
+        {
+          _logger->error(
+              "[Hyperliquid] Trade dropped: EventBus full. Increase EventBus capacity or reduce "
+              "number of subscriptions.");
+        }
       }
     }
   }

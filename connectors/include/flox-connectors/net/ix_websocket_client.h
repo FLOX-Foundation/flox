@@ -12,6 +12,7 @@
 #include <ixwebsocket/IXWebSocket.h>
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -49,7 +50,7 @@ class IxWebSocketClient : public IWebSocketClient
   ILogger* _logger;
 
   std::atomic<bool> _running{false};
-  ix::WebSocket _ws;
+  std::unique_ptr<ix::WebSocket> _ws;
   std::thread _thread;
   std::mutex _sendMutex;
 
