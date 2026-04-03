@@ -101,6 +101,13 @@ class EventBus : public ISubsystem
     STOPPED
   };
 
+  struct Stats
+  {
+    uint64_t published{0};
+    uint64_t dropped{0};
+    uint64_t consumed{0};
+  };
+
  public:
   EventBus()
 #if FLOX_CPU_AFFINITY_ENABLED
@@ -231,17 +238,16 @@ class EventBus : public ISubsystem
 
            if (!_running.load(std::memory_order_relaxed)) break;
 
-           // Value 2 = timeout placeholder, should be skipped by optional consumers
-           // Value 0 = reclaimed (optional consumers should NOT skip - they haven't processed yet)
+           // Value 2 = timeout placeholder (event was never constructed in this slot)
+           // Value 0 = reclaimed
            // Value 1 = valid event
-           if (!required && _constructed[idx].load(std::memory_order_acquire) == 2)
-           {
-             // skip timeout placeholder
-           }
-           else
+           // ALL consumers must skip timeout placeholders -- dispatching would
+           // read stale/uninitialized memory from a previous wrap-around.
+           if (_constructed[idx].load(std::memory_order_acquire) == 1)
            {
              FLOX_PROFILE_SCOPE("Disruptor::deliver");
              EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
+             _consumeCount.fetch_add(1, std::memory_order_relaxed);
            }
 
            _consumers[i].seq.store(seq, std::memory_order_release);
@@ -250,7 +256,7 @@ class EventBus : public ISubsystem
            next = seq;
            backoff.reset();
          }
- 
+
          if (_drainOnStop)
          {
            int64_t seq = _consumers[i].seq.load(std::memory_order_relaxed);
@@ -259,16 +265,12 @@ class EventBus : public ISubsystem
              const int64_t want = seq + 1;
              const size_t  idx  = size_t(want) & Mask;
              if (_published[idx].load(std::memory_order_acquire) != want) break;
- 
-             // Value 2 = timeout placeholder, should be skipped by optional consumers
-             if (!required && _constructed[idx].load(std::memory_order_acquire) == 2)
-             {
-               // skip timeout placeholder
-             }
-             else
+
+             if (_constructed[idx].load(std::memory_order_acquire) == 1)
              {
                FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
                EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
+               _consumeCount.fetch_add(1, std::memory_order_relaxed);
              }
 
              _consumers[i].seq.store(want, std::memory_order_release);
@@ -311,14 +313,25 @@ class EventBus : public ISubsystem
   int64_t publish(const Event& ev) { return do_publish(ev, std::nullopt).second; }
   int64_t publish(Event&& ev) { return do_publish(std::move(ev), std::nullopt).second; }
 
-  // Publish with timeout - returns result and sequence number (-1 on failure)
-  std::pair<PublishResult, int64_t> tryPublish(const Event& ev, std::chrono::microseconds timeout)
+  // Publish with timeout - returns result and sequence number (-1 on failure).
+  // Default 1ms: zero-timeout is an anti-pattern on multi-core due to cache coherency latency.
+  std::pair<PublishResult, int64_t> tryPublish(const Event& ev,
+                                               std::chrono::microseconds timeout = std::chrono::microseconds{1000})
   {
     return do_publish(ev, timeout);
   }
-  std::pair<PublishResult, int64_t> tryPublish(Event&& ev, std::chrono::microseconds timeout)
+  std::pair<PublishResult, int64_t> tryPublish(Event&& ev,
+                                               std::chrono::microseconds timeout = std::chrono::microseconds{1000})
   {
     return do_publish(std::move(ev), timeout);
+  }
+
+  Stats stats() const
+  {
+    return Stats{
+        _publishCount.load(std::memory_order_relaxed),
+        _dropCount.load(std::memory_order_relaxed),
+        _consumeCount.load(std::memory_order_relaxed)};
   }
 
   void waitConsumed(int64_t seq)
@@ -462,6 +475,7 @@ class EventBus : public ISubsystem
           const size_t idx = size_t(seq) & Mask;
           _constructed[idx].store(2, std::memory_order_release);
           _published[idx].store(seq, std::memory_order_release);
+          _dropCount.fetch_add(1, std::memory_order_relaxed);
           return {PublishResult::TIMEOUT, -1};
         }
       }
@@ -515,6 +529,7 @@ class EventBus : public ISubsystem
 
     _published[idx].store(seq, std::memory_order_release);
 
+    _publishCount.fetch_add(1, std::memory_order_relaxed);
     return {PublishResult::SUCCESS, seq};
   }
 
@@ -612,6 +627,11 @@ class EventBus : public ISubsystem
 
   bool _drainOnStop{false};
   BackoffMode _backoffMode{config::defaultBackoffMode};
+
+  // Monitoring counters (relaxed ordering -- advisory only)
+  alignas(64) std::atomic<uint64_t> _publishCount{0};
+  alignas(64) std::atomic<uint64_t> _dropCount{0};
+  alignas(64) std::atomic<uint64_t> _consumeCount{0};
 
 #if FLOX_CPU_AFFINITY_ENABLED
   // CPU affinity / RT

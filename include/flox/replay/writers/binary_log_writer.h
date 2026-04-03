@@ -37,6 +37,7 @@ struct WriterConfig
   bool create_index{true};
   uint16_t index_interval{kDefaultIndexInterval};
   CompressionType compression{CompressionType::None};
+  uint64_t stdio_buffer_size{64ull << 10};  // setvbuf size (default 64KB, 0 = system default 8KB)
 
   /// Optional callback for custom segment naming on rotation.
   /// If not set, rotated segments use timestamp-based names.
@@ -127,6 +128,8 @@ class BinaryLogWriter
   int64_t _block_first_timestamp{0};
 
   mutable std::mutex _mutex;
+
+  std::vector<std::byte> _payload_buffer;  // reusable scratch for writeBook/writeTrade
 
   std::optional<RecordingMetadata> _metadata;
 };
