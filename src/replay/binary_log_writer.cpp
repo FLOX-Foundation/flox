@@ -22,6 +22,9 @@ namespace flox::replay
 BinaryLogWriter::BinaryLogWriter(WriterConfig config) : _config(std::move(config))
 {
   _buffer.reserve(_config.buffer_size);
+  // Reserve for typical max book payload: header + 2 * max_depth * sizeof(BookLevel)
+  // Uses buffer_size as a reasonable upper bound for any single event payload
+  _payload_buffer.reserve(_config.buffer_size);
   std::filesystem::create_directories(_config.output_dir);
 
   // Initialize metadata from config if provided
@@ -47,7 +50,8 @@ BinaryLogWriter::BinaryLogWriter(BinaryLogWriter&& other) noexcept
       _block_buffer(std::move(other._block_buffer)),
       _compress_buffer(std::move(other._compress_buffer)),
       _block_event_count(other._block_event_count),
-      _block_first_timestamp(other._block_first_timestamp)
+      _block_first_timestamp(other._block_first_timestamp),
+      _payload_buffer(std::move(other._payload_buffer))
 {
   other._file = nullptr;
 }
@@ -71,6 +75,7 @@ BinaryLogWriter& BinaryLogWriter::operator=(BinaryLogWriter&& other) noexcept
     _compress_buffer = std::move(other._compress_buffer);
     _block_event_count = other._block_event_count;
     _block_first_timestamp = other._block_first_timestamp;
+    _payload_buffer = std::move(other._payload_buffer);
     other._file = nullptr;
   }
   return *this;
@@ -112,6 +117,10 @@ bool BinaryLogWriter::ensureOpen()
   if (!_file)
   {
     return false;
+  }
+  if (_config.stdio_buffer_size > 0)
+  {
+    std::setvbuf(_file, nullptr, _IOFBF, _config.stdio_buffer_size);
   }
 
   // Initialize segment header
@@ -428,26 +437,27 @@ bool BinaryLogWriter::writeBook(const BookRecordHeader& hdr, std::span<const Boo
     return false;
   }
 
-  // Build the complete payload
+  // Build the complete payload (reuse pre-allocated buffer)
   const size_t payload_size = sizeof(BookRecordHeader) + bids.size_bytes() + asks.size_bytes();
 
-  std::vector<std::byte> payload(payload_size);
-  std::memcpy(payload.data(), &hdr, sizeof(hdr));
+  _payload_buffer.resize(payload_size);
+  std::memcpy(_payload_buffer.data(), &hdr, sizeof(hdr));
   if (!bids.empty())
   {
-    std::memcpy(payload.data() + sizeof(hdr), bids.data(), bids.size_bytes());
+    std::memcpy(_payload_buffer.data() + sizeof(hdr), bids.data(), bids.size_bytes());
   }
   if (!asks.empty())
   {
-    std::memcpy(payload.data() + sizeof(hdr) + bids.size_bytes(), asks.data(), asks.size_bytes());
+    std::memcpy(_payload_buffer.data() + sizeof(hdr) + bids.size_bytes(), asks.data(), asks.size_bytes());
   }
+  auto* payload = _payload_buffer.data();
 
   EventType type = (hdr.type == 0) ? EventType::BookSnapshot : EventType::BookDelta;
 
   bool ok;
   if (isCompressed())
   {
-    ok = writeFrameToBlock(type, payload.data(), payload_size, hdr.exchange_ts_ns);
+    ok = writeFrameToBlock(type, payload, payload_size, hdr.exchange_ts_ns);
   }
   else
   {
@@ -462,7 +472,7 @@ bool BinaryLogWriter::writeBook(const BookRecordHeader& hdr, std::span<const Boo
 
     FrameHeader frame_hdr{};
     frame_hdr.size = static_cast<uint32_t>(payload_size);
-    frame_hdr.crc32 = Crc32::compute(payload.data(), payload_size);
+    frame_hdr.crc32 = Crc32::compute(payload, payload_size);
     frame_hdr.type = static_cast<uint8_t>(type);
     frame_hdr.rec_version = 1;
 
@@ -470,7 +480,7 @@ bool BinaryLogWriter::writeBook(const BookRecordHeader& hdr, std::span<const Boo
     {
       return false;
     }
-    if (std::fwrite(payload.data(), 1, payload_size, _file) != payload_size)
+    if (std::fwrite(payload, 1, payload_size, _file) != payload_size)
     {
       return false;
     }
