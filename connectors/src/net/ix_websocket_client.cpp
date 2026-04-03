@@ -77,31 +77,30 @@ void IxWebSocketClient::run()
 {
   constexpr int MAX_BACKOFF_MS = 30000;
 
-  bool firstAttempt = true;
-
   while (_running)
   {
-    // On reconnect, replace the socket with a fresh instance to avoid
-    // stale TLS context / frame buffers from the previous connection.
-    if (!firstAttempt)
+    // Fresh socket every attempt — avoids stale TLS/frame state
     {
-      _ws->disableAutomaticReconnection();
-      _ws->stop();
+      std::lock_guard lock(_sendMutex);
+      _ws = std::make_unique<ix::WebSocket>();
+    }
+
+    _ws->disableAutomaticReconnection();
+    _ws->setUrl(_url);
+    if (!_origin.empty())
+    {
+      if (_userAgent.empty())
       {
-        std::lock_guard lock(_sendMutex);
-        _ws = std::make_unique<ix::WebSocket>();
+        _ws->setExtraHeaders({{"Origin", _origin}});
+      }
+      else
+      {
+        _ws->setExtraHeaders({{"Origin", _origin}, {"User-Agent", _userAgent}});
       }
     }
-    firstAttempt = false;
-
-    _ws->setUrl(_url);
-    if (_userAgent.empty())
+    else if (!_userAgent.empty())
     {
-      _ws->setExtraHeaders({{"Origin", _origin}});
-    }
-    else
-    {
-      _ws->setExtraHeaders({{"Origin", _origin}, {"User-Agent", _userAgent}});
+      _ws->setExtraHeaders({{"User-Agent", _userAgent}});
     }
     _ws->disablePerMessageDeflate();
     if (_pingIntervalSec > 0)
@@ -113,8 +112,12 @@ void IxWebSocketClient::run()
       _ws->setPingInterval(-1);
     }
 
+    // Local flag — only THIS iteration's callbacks can set it.
+    // Eliminates race between old socket callbacks and new socket state.
+    std::atomic<bool> connectionClosed{false};
+
     _ws->setOnMessageCallback(
-        [this](const ix::WebSocketMessagePtr& msg)
+        [this, &connectionClosed](const ix::WebSocketMessagePtr& msg)
         {
           switch (msg->type)
           {
@@ -125,8 +128,8 @@ void IxWebSocketClient::run()
               {
                 _onOpen();
               }
-
               break;
+
             case ix::WebSocketMessageType::Message:
               if (_onMessage)
               {
@@ -139,10 +142,13 @@ void IxWebSocketClient::run()
               {
                 _onClose(msg->closeInfo.code, msg->closeInfo.reason);
               }
+              connectionClosed.store(true, std::memory_order_release);
               break;
+
             case ix::WebSocketMessageType::Error:
               _logger->error("WebSocket error connecting to " + _url + ": " +
                              msg->errorInfo.reason);
+              connectionClosed.store(true, std::memory_order_release);
               break;
 
             default:
@@ -152,15 +158,14 @@ void IxWebSocketClient::run()
 
     _ws->start();
 
-    while (_running)
+    // Wait for close/error callback or stop signal — NOT polling getReadyState()
+    while (_running && !connectionClosed.load(std::memory_order_acquire))
     {
-      auto state = _ws->getReadyState();
-      if (state == ix::ReadyState::Closed || state == ix::ReadyState::Closing)
-      {
-        break;
-      }
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    // Ensure socket is fully stopped before creating a new one
+    _ws->stop();
 
     if (_running)
     {

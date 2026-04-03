@@ -238,6 +238,29 @@ void BybitExchangeConnector::start()
 
   _wsClient->start();
 
+  // Application-level ping thread (Bybit requires {"op":"ping"} every 20s)
+  _pingThread = std::thread(
+      [this]()
+      {
+        // Wait for initial connection
+        for (int i = 0; i < 50 && _running.load(); ++i)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        while (_running.load())
+        {
+          if (_wsClient)
+          {
+            _wsClient->send(R"({"op":"ping"})");
+          }
+          for (int i = 0; i < 200 && _running.load(); ++i)
+          {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
+        }
+      });
+
   if (_config.enablePrivate)
   {
     _wsClientPrivate = std::make_unique<IxWebSocketClient>(
@@ -276,6 +299,11 @@ void BybitExchangeConnector::stop()
     return;
   }
 
+  if (_pingThread.joinable())
+  {
+    _pingThread.join();
+  }
+
   if (_wsClient)
   {
     _wsClient->stop();
@@ -308,6 +336,11 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       if (!op_field.error())
       {
         auto op = op_field.get_string().value();
+        if (op == "ping")
+        {
+          _wsClient->send(R"({"op":"pong"})");
+          return;
+        }
         if (op == "subscribe")
         {
           auto success_field = root.find_field_unordered("success");
@@ -443,7 +476,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
         ev->publishTsNs = nowNsMonotonic();
-        auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev), std::chrono::microseconds(0));
+        auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev));
         if (res != BookUpdateBus::PublishResult::SUCCESS)
         {
           _logger->error(
@@ -495,7 +528,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
 
         ev.publishTsNs = nowNsMonotonic();
-        auto [res, _] = _tradeBus->tryPublish(ev, std::chrono::microseconds(0));
+        auto [res, _] = _tradeBus->tryPublish(ev);
         if (res != TradeBus::PublishResult::SUCCESS)
         {
           _logger->error(

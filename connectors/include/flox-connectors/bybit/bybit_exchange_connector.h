@@ -92,6 +92,7 @@ class BybitExchangeConnector : public IExchangeConnector
 
   pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> _bookPool;
   OrderExecutionBus* _orderBus = nullptr;
+  std::thread _pingThread;
 };
 
 }  // namespace flox

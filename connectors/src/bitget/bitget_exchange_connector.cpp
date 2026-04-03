@@ -431,7 +431,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
-        auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev), std::chrono::microseconds(0));
+        auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev));
         if (res != BookUpdateBus::PublishResult::SUCCESS)
         {
           _logger->error(
@@ -483,7 +483,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           }
         }
 
-        auto [res, _] = _tradeBus->tryPublish(ev, std::chrono::microseconds(0));
+        auto [res, _] = _tradeBus->tryPublish(ev);
         if (res != TradeBus::PublishResult::SUCCESS)
         {
           _logger->error(
