@@ -190,6 +190,8 @@ nav:
           - Position:
               - IPositionManager: reference/api/position/abstract_position_manager.md
               - PositionTracker: reference/api/position/position_tracker.md
+              - MultiModePositionTracker: reference/api/position/multi_mode_position_tracker.md
+              - PositionReconciler: reference/api/position/position_reconciler.md
           - Validation:
               - IOrderValidator: reference/api/validation/abstract_order_validator.md
           - Net:
