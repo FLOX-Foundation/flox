@@ -29,16 +29,16 @@ public:
 * Must be registered with `OrderExecutionBus` to receive fill and cancel notifications.
 * Can optionally implement position limits or exposure constraints internally.
 
-## Implementation
+## Implementations
 
-Use `PositionTracker` for a full-featured implementation with:
-
-- FIFO, LIFO, and AVERAGE cost basis methods
-- Realized PnL calculation
-- Average entry price tracking
-
-See [PositionTracker](position_tracker.md) for details.
+| Class | Use Case |
+|-------|----------|
+| [PositionTracker](position_tracker.md) | Net position with FIFO/LIFO/AVERAGE cost basis |
+| [MultiModePositionTracker](multi_mode_position_tracker.md) | Net, per-side (hedging), or grouped (per-order) aggregation |
+| [AggregatedPositionTracker](../cex/aggregated_position_tracker.md) | Lock-free multi-exchange aggregation |
 
 ## See Also
 
-- [PositionTracker](position_tracker.md) - Full implementation with cost basis methods
+- [PositionTracker](position_tracker.md) - Net-only, lot-based
+- [MultiModePositionTracker](multi_mode_position_tracker.md) - Multi-mode with reconciliation
+- [PositionReconciler](position_reconciler.md) - Exchange position reconciliation

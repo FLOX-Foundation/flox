@@ -56,6 +56,8 @@ add_flox_test(test_replay_connector)
 
 add_flox_test(test_multi_symbol_strategy)
 
+add_flox_test(test_position_aggregator)
+
 # CEX coordination tests
 add_flox_test(test_cex_coordination)
 
