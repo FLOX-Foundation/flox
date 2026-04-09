@@ -370,3 +370,233 @@ TEST_F(BacktestTest, BacktestStatsCalculation)
 
   EXPECT_GT(stats.profitFactor, 0);
 }
+
+TEST_F(BacktestTest, HighPricePnlNoOverflow)
+{
+  // BTC at $50,000 with 0.5 BTC position
+  // price_raw = 50000 * 1e8 = 5e12
+  // qty_raw = 0.5 * 1e8 = 5e7
+  // product = 2.5e20 — overflows int64 without __int128
+  BacktestConfig config;
+  config.feeRate = 0.0;
+  BacktestResult result(config);
+
+  Fill buy;
+  buy.orderId = 1;
+  buy.symbol = 1;
+  buy.side = Side::BUY;
+  buy.price = Price::fromDouble(50000.0);
+  buy.quantity = Quantity::fromDouble(0.5);
+  buy.timestampNs = 1000;
+  result.recordFill(buy);
+
+  Fill sell;
+  sell.orderId = 2;
+  sell.symbol = 1;
+  sell.side = Side::SELL;
+  sell.price = Price::fromDouble(51000.0);
+  sell.quantity = Quantity::fromDouble(0.5);
+  sell.timestampNs = 2000;
+  result.recordFill(sell);
+
+  auto stats = result.computeStats();
+  // PnL = (51000 - 50000) * 0.5 = 500
+  EXPECT_NEAR(stats.totalPnl, 500.0, 0.01);
+  EXPECT_EQ(stats.totalTrades, 1);
+  EXPECT_EQ(stats.winningTrades, 1);
+  EXPECT_NEAR(stats.finalCapital, 100500.0, 0.01);
+}
+
+TEST_F(BacktestTest, HighPriceShortPnlNoOverflow)
+{
+  BacktestConfig config;
+  config.feeRate = 0.0;
+  BacktestResult result(config);
+
+  Fill sell;
+  sell.orderId = 1;
+  sell.symbol = 1;
+  sell.side = Side::SELL;
+  sell.price = Price::fromDouble(80000.0);
+  sell.quantity = Quantity::fromDouble(1.0);
+  sell.timestampNs = 1000;
+  result.recordFill(sell);
+
+  Fill buy;
+  buy.orderId = 2;
+  buy.symbol = 1;
+  buy.side = Side::BUY;
+  buy.price = Price::fromDouble(75000.0);
+  buy.quantity = Quantity::fromDouble(1.0);
+  buy.timestampNs = 2000;
+  result.recordFill(buy);
+
+  auto stats = result.computeStats();
+  // Short PnL = (80000 - 75000) * 1.0 = 5000
+  EXPECT_NEAR(stats.totalPnl, 5000.0, 0.01);
+  EXPECT_EQ(stats.winningTrades, 1);
+}
+
+TEST_F(BacktestTest, HighPriceFeeNoOverflow)
+{
+  BacktestConfig config;
+  config.feeRate = 0.001;  // 0.1%
+  BacktestResult result(config);
+
+  Fill buy;
+  buy.orderId = 1;
+  buy.symbol = 1;
+  buy.side = Side::BUY;
+  buy.price = Price::fromDouble(100000.0);
+  buy.quantity = Quantity::fromDouble(2.0);
+  buy.timestampNs = 1000;
+  result.recordFill(buy);
+
+  Fill sell;
+  sell.orderId = 2;
+  sell.symbol = 1;
+  sell.side = Side::SELL;
+  sell.price = Price::fromDouble(100000.0);
+  sell.quantity = Quantity::fromDouble(2.0);
+  sell.timestampNs = 2000;
+  result.recordFill(sell);
+
+  auto stats = result.computeStats();
+  // Notional = 100000 * 2.0 = 200000 per fill
+  // Fee per fill = 200000 * 0.001 = 200
+  // Total fees = 200 + 200 = 400
+  EXPECT_NEAR(stats.totalFees, 400.0, 1.0);
+  EXPECT_NEAR(stats.totalPnl, 0.0, 0.01);
+  EXPECT_NEAR(stats.netPnl, -400.0, 1.0);
+}
+
+TEST_F(BacktestTest, HighPriceWeightedAverageNoOverflow)
+{
+  // Add to position at two different high prices — tests weighted average calc
+  BacktestConfig config;
+  config.feeRate = 0.0;
+  BacktestResult result(config);
+
+  Fill buy1;
+  buy1.orderId = 1;
+  buy1.symbol = 1;
+  buy1.side = Side::BUY;
+  buy1.price = Price::fromDouble(50000.0);
+  buy1.quantity = Quantity::fromDouble(1.0);
+  buy1.timestampNs = 1000;
+  result.recordFill(buy1);
+
+  Fill buy2;
+  buy2.orderId = 2;
+  buy2.symbol = 1;
+  buy2.side = Side::BUY;
+  buy2.price = Price::fromDouble(60000.0);
+  buy2.quantity = Quantity::fromDouble(1.0);
+  buy2.timestampNs = 2000;
+  result.recordFill(buy2);
+
+  // Close at 58000: avg entry = 55000, PnL = (58000-55000)*2 = 6000
+  Fill sell;
+  sell.orderId = 3;
+  sell.symbol = 1;
+  sell.side = Side::SELL;
+  sell.price = Price::fromDouble(58000.0);
+  sell.quantity = Quantity::fromDouble(2.0);
+  sell.timestampNs = 3000;
+  result.recordFill(sell);
+
+  auto stats = result.computeStats();
+  EXPECT_NEAR(stats.totalPnl, 6000.0, 0.01);
+  EXPECT_EQ(stats.totalTrades, 1);
+  EXPECT_EQ(stats.winningTrades, 1);
+}
+
+TEST_F(BacktestTest, HighPriceMultipleRoundTrips)
+{
+  // Multiple round trips at BTC prices — cumulative PnL
+  BacktestConfig config;
+  config.feeRate = 0.0;
+  BacktestResult result(config);
+
+  struct Trade
+  {
+    double entry;
+    double exit;
+  };
+  std::vector<Trade> trades = {
+      {50000.0, 52000.0},  // +2000
+      {52000.0, 49000.0},  // -3000
+      {49000.0, 55000.0},  // +6000
+      {55000.0, 53000.0},  // -2000
+      {53000.0, 60000.0},  // +7000
+  };
+
+  OrderId oid = 0;
+  UnixNanos ts = 0;
+  double expectedPnl = 0;
+
+  for (const auto& [entry, exit] : trades)
+  {
+    Fill buy;
+    buy.orderId = ++oid;
+    buy.symbol = 1;
+    buy.side = Side::BUY;
+    buy.price = Price::fromDouble(entry);
+    buy.quantity = Quantity::fromDouble(0.5);
+    buy.timestampNs = ts++;
+    result.recordFill(buy);
+
+    Fill sell;
+    sell.orderId = ++oid;
+    sell.symbol = 1;
+    sell.side = Side::SELL;
+    sell.price = Price::fromDouble(exit);
+    sell.quantity = Quantity::fromDouble(0.5);
+    sell.timestampNs = ts++;
+    result.recordFill(sell);
+
+    expectedPnl += (exit - entry) * 0.5;
+  }
+
+  auto stats = result.computeStats();
+  // Expected: (2000 - 3000 + 6000 - 2000 + 7000) * 0.5 = 5000
+  EXPECT_NEAR(stats.totalPnl, expectedPnl, 0.01);
+  EXPECT_EQ(stats.totalTrades, 5);
+  EXPECT_EQ(stats.winningTrades, 3);
+  EXPECT_EQ(stats.losingTrades, 2);
+  EXPECT_NEAR(stats.winRate, 0.6, 0.001);
+}
+
+TEST_F(BacktestTest, ExtremePriceNoOverflow)
+{
+  // $150,000 BTC with 10 BTC — stress test
+  // price_raw = 150000 * 1e8 = 1.5e13
+  // qty_raw = 10 * 1e8 = 1e9
+  // product = 1.5e22 — massively overflows int64 without __int128
+  BacktestConfig config;
+  config.feeRate = 0.0;
+  BacktestResult result(config);
+
+  Fill buy;
+  buy.orderId = 1;
+  buy.symbol = 1;
+  buy.side = Side::BUY;
+  buy.price = Price::fromDouble(150000.0);
+  buy.quantity = Quantity::fromDouble(10.0);
+  buy.timestampNs = 1000;
+  result.recordFill(buy);
+
+  Fill sell;
+  sell.orderId = 2;
+  sell.symbol = 1;
+  sell.side = Side::SELL;
+  sell.price = Price::fromDouble(155000.0);
+  sell.quantity = Quantity::fromDouble(10.0);
+  sell.timestampNs = 2000;
+  result.recordFill(sell);
+
+  auto stats = result.computeStats();
+  // PnL = (155000 - 150000) * 10 = 50000
+  EXPECT_NEAR(stats.totalPnl, 50000.0, 0.01);
+  EXPECT_NEAR(stats.finalCapital, 150000.0, 0.01);
+}
