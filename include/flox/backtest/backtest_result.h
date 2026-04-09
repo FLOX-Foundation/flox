@@ -31,13 +31,13 @@ struct TradeRecord
 {
   SymbolId symbol{};
   Side side{};
-  int64_t entryPriceRaw{0};
-  int64_t exitPriceRaw{0};
-  int64_t quantityRaw{0};
+  Price entryPrice{};
+  Price exitPrice{};
+  Quantity quantity{};
   UnixNanos entryTimeNs{0};
   UnixNanos exitTimeNs{0};
-  int64_t pnlRaw{0};
-  int64_t feeRaw{0};
+  Volume pnl{};
+  Volume fee{};
 };
 
 struct BacktestStats
@@ -90,20 +90,18 @@ class BacktestResult
  private:
   struct Position
   {
-    int64_t quantityRaw{0};
-    int64_t avgPriceRaw{0};
+    Quantity quantity{};
+    Price avgPrice{};
   };
 
   Position& getPosition(SymbolId symbol);
 
-  static int64_t computePnlRaw(int64_t entryPriceRaw, int64_t exitPriceRaw, int64_t qtyRaw,
-                               bool isLong);
+  static Volume computePnl(Price entryPrice, Price exitPrice, Quantity qty, bool isLong);
 
-  void updatePositionLong(Position& pos, int64_t qtyRaw, int64_t priceRaw);
-  void updatePositionShort(Position& pos, int64_t qtyRaw, int64_t priceRaw);
-  void recordTrade(SymbolId symbol, Side side, int64_t pnlRaw, int64_t feeRaw,
-                   UnixNanos timestampNs);
-  int64_t computeFeeRaw(int64_t priceRaw, int64_t qtyRaw) const;
+  void updatePositionLong(Position& pos, Quantity qty, Price price);
+  void updatePositionShort(Position& pos, Quantity qty, Price price);
+  void recordTrade(SymbolId symbol, Side side, Volume pnl, Volume fee, UnixNanos timestampNs);
+  Volume computeFee(Price price, Quantity qty) const;
   double computeSharpeRatio() const;
   double computeSortinoRatio() const;
   double computeCalmarRatio() const;
@@ -116,11 +114,11 @@ class BacktestResult
   std::array<Position, kMaxSymbols> _positionsFlat{};
   std::vector<std::pair<SymbolId, Position>> _positionsOverflow;
 
-  int64_t _totalPnlRaw{0};
-  int64_t _totalFeesRaw{0};
-  int64_t _currentEquityRaw{0};
-  int64_t _peakEquityRaw{0};
-  int64_t _maxDrawdownRaw{0};
+  Volume _totalPnl{};
+  Volume _totalFees{};
+  Volume _currentEquity{};
+  Volume _peakEquity{};
+  Volume _maxDrawdown{};
 };
 
 }  // namespace flox

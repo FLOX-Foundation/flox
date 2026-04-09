@@ -22,41 +22,40 @@ BacktestResult::BacktestResult(const BacktestConfig& config, size_t expectedFill
     _fills.reserve(expectedFills);
     _trades.reserve(expectedFills / 2);
   }
-  _currentEquityRaw = static_cast<int64_t>(_config.initialCapital * Price::Scale);
-  _peakEquityRaw = _currentEquityRaw;
+  _currentEquity = Volume::fromDouble(_config.initialCapital);
+  _peakEquity = _currentEquity;
 }
 
 void BacktestResult::recordFill(const Fill& fill)
 {
   _fills.push_back(fill);
 
-  const int64_t fillPriceRaw = fill.price.raw();
-  const int64_t fillQtyRaw = fill.quantity.raw();
-  const int64_t feeRaw = computeFeeRaw(fillPriceRaw, fillQtyRaw);
-
-  _totalFeesRaw += feeRaw;
+  const Volume fee = computeFee(fill.price, fill.quantity);
+  _totalFees = Volume::fromRaw(_totalFees.raw() + fee.raw());
 
   Position& pos = getPosition(fill.symbol);
 
   if (fill.side == Side::BUY)
   {
-    if (pos.quantityRaw < 0)
+    if (pos.quantity.raw() < 0)
     {
-      const int64_t closeQtyRaw = std::min(-pos.quantityRaw, fillQtyRaw);
-      const int64_t pnlRaw = computePnlRaw(pos.avgPriceRaw, fillPriceRaw, closeQtyRaw, false);
-      recordTrade(fill.symbol, Side::BUY, pnlRaw, feeRaw, fill.timestampNs);
+      const Quantity closeQty =
+          Quantity::fromRaw(std::min(-pos.quantity.raw(), fill.quantity.raw()));
+      const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, false);
+      recordTrade(fill.symbol, Side::BUY, pnl, fee, fill.timestampNs);
     }
-    updatePositionLong(pos, fillQtyRaw, fillPriceRaw);
+    updatePositionLong(pos, fill.quantity, fill.price);
   }
   else
   {
-    if (pos.quantityRaw > 0)
+    if (pos.quantity.raw() > 0)
     {
-      const int64_t closeQtyRaw = std::min(pos.quantityRaw, fillQtyRaw);
-      const int64_t pnlRaw = computePnlRaw(pos.avgPriceRaw, fillPriceRaw, closeQtyRaw, true);
-      recordTrade(fill.symbol, Side::SELL, pnlRaw, feeRaw, fill.timestampNs);
+      const Quantity closeQty =
+          Quantity::fromRaw(std::min(pos.quantity.raw(), fill.quantity.raw()));
+      const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, true);
+      recordTrade(fill.symbol, Side::SELL, pnl, fee, fill.timestampNs);
     }
-    updatePositionShort(pos, fillQtyRaw, fillPriceRaw);
+    updatePositionShort(pos, fill.quantity, fill.price);
   }
 }
 
@@ -77,25 +76,23 @@ BacktestStats BacktestResult::computeStats() const
 
   for (const auto& trade : _trades)
   {
-    if (trade.pnlRaw > 0)
+    if (trade.pnl.raw() > 0)
     {
       stats.winningTrades++;
-      grossProfitRaw += trade.pnlRaw;
+      grossProfitRaw += trade.pnl.raw();
     }
-    else if (trade.pnlRaw < 0)
+    else if (trade.pnl.raw() < 0)
     {
       stats.losingTrades++;
-      grossLossRaw += -trade.pnlRaw;
+      grossLossRaw += -trade.pnl.raw();
     }
   }
 
-  constexpr double kScale = static_cast<double>(Price::Scale);
-
-  stats.totalPnl = static_cast<double>(_totalPnlRaw) / kScale;
-  stats.totalFees = static_cast<double>(_totalFeesRaw) / kScale;
+  stats.totalPnl = _totalPnl.toDouble();
+  stats.totalFees = _totalFees.toDouble();
   stats.netPnl = stats.totalPnl - stats.totalFees;
-  stats.grossProfit = static_cast<double>(grossProfitRaw) / kScale;
-  stats.grossLoss = static_cast<double>(grossLossRaw) / kScale;
+  stats.grossProfit = Volume::fromRaw(grossProfitRaw).toDouble();
+  stats.grossLoss = Volume::fromRaw(grossLossRaw).toDouble();
 
   stats.finalCapital = _config.initialCapital + stats.netPnl;
   stats.returnPct = (stats.netPnl / _config.initialCapital) * 100.0;
@@ -118,11 +115,11 @@ BacktestStats BacktestResult::computeStats() const
     stats.profitFactor = static_cast<double>(grossProfitRaw) / static_cast<double>(grossLossRaw);
   }
 
-  stats.maxDrawdown = static_cast<double>(_maxDrawdownRaw) / kScale;
-  if (_peakEquityRaw > 0)
+  stats.maxDrawdown = _maxDrawdown.toDouble();
+  if (_peakEquity.raw() > 0)
   {
     stats.maxDrawdownPct =
-        static_cast<double>(_maxDrawdownRaw) / static_cast<double>(_peakEquityRaw) * 100.0;
+        static_cast<double>(_maxDrawdown.raw()) / static_cast<double>(_peakEquity.raw()) * 100.0;
   }
 
   stats.sharpeRatio = computeSharpeRatio();
@@ -140,7 +137,7 @@ BacktestStats BacktestResult::computeStats() const
 
 double BacktestResult::totalPnl() const
 {
-  return static_cast<double>(_totalPnlRaw) / static_cast<double>(Price::Scale);
+  return _totalPnl.toDouble();
 }
 
 BacktestResult::Position& BacktestResult::getPosition(SymbolId symbol)
@@ -161,95 +158,110 @@ BacktestResult::Position& BacktestResult::getPosition(SymbolId symbol)
   return _positionsOverflow.back().second;
 }
 
-int64_t BacktestResult::computePnlRaw(int64_t entryPriceRaw, int64_t exitPriceRaw, int64_t qtyRaw,
-                                      bool isLong)
+Volume BacktestResult::computePnl(Price entryPrice, Price exitPrice, Quantity qty, bool isLong)
 {
-  const int64_t diff = isLong ? (exitPriceRaw - entryPriceRaw) : (entryPriceRaw - exitPriceRaw);
-  return (diff * qtyRaw) / Price::Scale;
+  // Uses Price * Quantity -> Volume which is __int128-safe via common.h
+  if (isLong)
+  {
+    const Price diff = Price::fromRaw(exitPrice.raw() - entryPrice.raw());
+    return diff * qty;
+  }
+  else
+  {
+    const Price diff = Price::fromRaw(entryPrice.raw() - exitPrice.raw());
+    return diff * qty;
+  }
 }
 
-void BacktestResult::updatePositionLong(Position& pos, int64_t qtyRaw, int64_t priceRaw)
+void BacktestResult::updatePositionLong(Position& pos, Quantity qty, Price price)
 {
-  if (pos.quantityRaw >= 0)
+  if (pos.quantity.raw() >= 0)
   {
-    const int64_t totalValueRaw =
-        (pos.avgPriceRaw * pos.quantityRaw + priceRaw * qtyRaw) / Price::Scale;
-    pos.quantityRaw += qtyRaw;
-    if (pos.quantityRaw != 0)
+    // Weighted average: (avgPrice * pos + price * qty) / (pos + qty)
+    // Uses Volume = Price * Quantity (safe) then Volume / Quantity -> Price (safe)
+    const Volume existingValue = pos.avgPrice * pos.quantity;
+    const Volume addedValue = price * qty;
+    pos.quantity = Quantity::fromRaw(pos.quantity.raw() + qty.raw());
+    if (pos.quantity.raw() != 0)
     {
-      pos.avgPriceRaw = (totalValueRaw * Price::Scale) / pos.quantityRaw;
+      const Volume totalValue = Volume::fromRaw(existingValue.raw() + addedValue.raw());
+      pos.avgPrice = totalValue / pos.quantity;
     }
   }
   else
   {
-    pos.quantityRaw += qtyRaw;
-    if (pos.quantityRaw > 0)
+    pos.quantity = Quantity::fromRaw(pos.quantity.raw() + qty.raw());
+    if (pos.quantity.raw() > 0)
     {
-      pos.avgPriceRaw = priceRaw;
+      pos.avgPrice = price;
     }
   }
 }
 
-void BacktestResult::updatePositionShort(Position& pos, int64_t qtyRaw, int64_t priceRaw)
+void BacktestResult::updatePositionShort(Position& pos, Quantity qty, Price price)
 {
-  if (pos.quantityRaw <= 0)
+  if (pos.quantity.raw() <= 0)
   {
-    const int64_t totalValueRaw =
-        (pos.avgPriceRaw * (-pos.quantityRaw) + priceRaw * qtyRaw) / Price::Scale;
-    pos.quantityRaw -= qtyRaw;
-    if (pos.quantityRaw != 0)
+    const Quantity absPos = Quantity::fromRaw(-pos.quantity.raw());
+    const Volume existingValue = pos.avgPrice * absPos;
+    const Volume addedValue = price * qty;
+    pos.quantity = Quantity::fromRaw(pos.quantity.raw() - qty.raw());
+    if (pos.quantity.raw() != 0)
     {
-      pos.avgPriceRaw = (totalValueRaw * Price::Scale) / (-pos.quantityRaw);
+      const Quantity newAbsPos = Quantity::fromRaw(-pos.quantity.raw());
+      const Volume totalValue = Volume::fromRaw(existingValue.raw() + addedValue.raw());
+      pos.avgPrice = totalValue / newAbsPos;
     }
   }
   else
   {
-    pos.quantityRaw -= qtyRaw;
-    if (pos.quantityRaw < 0)
+    pos.quantity = Quantity::fromRaw(pos.quantity.raw() - qty.raw());
+    if (pos.quantity.raw() < 0)
     {
-      pos.avgPriceRaw = priceRaw;
+      pos.avgPrice = price;
     }
   }
 }
 
-void BacktestResult::recordTrade(SymbolId symbol, Side side, int64_t pnlRaw, int64_t feeRaw,
+void BacktestResult::recordTrade(SymbolId symbol, Side side, Volume pnl, Volume fee,
                                  UnixNanos timestampNs)
 {
   TradeRecord trade;
   trade.symbol = symbol;
   trade.side = side;
-  trade.pnlRaw = pnlRaw;
-  trade.feeRaw = feeRaw;
+  trade.pnl = pnl;
+  trade.fee = fee;
   trade.exitTimeNs = timestampNs;
   _trades.push_back(trade);
 
-  const int64_t netPnlRaw = pnlRaw - feeRaw;
-  _totalPnlRaw += pnlRaw;
-  _currentEquityRaw += netPnlRaw;
+  const int64_t netPnlRaw = pnl.raw() - fee.raw();
+  _totalPnl = Volume::fromRaw(_totalPnl.raw() + pnl.raw());
+  _currentEquity = Volume::fromRaw(_currentEquity.raw() + netPnlRaw);
 
-  if (_currentEquityRaw > _peakEquityRaw)
+  if (_currentEquity.raw() > _peakEquity.raw())
   {
-    _peakEquityRaw = _currentEquityRaw;
+    _peakEquity = _currentEquity;
   }
 
-  const int64_t drawdownRaw = _peakEquityRaw - _currentEquityRaw;
-  if (drawdownRaw > _maxDrawdownRaw)
+  const int64_t drawdownRaw = _peakEquity.raw() - _currentEquity.raw();
+  if (drawdownRaw > _maxDrawdown.raw())
   {
-    _maxDrawdownRaw = drawdownRaw;
+    _maxDrawdown = Volume::fromRaw(drawdownRaw);
   }
 }
 
-int64_t BacktestResult::computeFeeRaw(int64_t priceRaw, int64_t qtyRaw) const
+Volume BacktestResult::computeFee(Price price, Quantity qty) const
 {
   if (_config.usePercentageFee)
   {
-    // fee = price * qty * feeRate / Scale (since price and qty are both scaled)
-    const int64_t notionalRaw = (priceRaw * qtyRaw) / Price::Scale;
-    return static_cast<int64_t>(static_cast<double>(notionalRaw) * _config.feeRate);
+    // price * qty -> Volume (safe via __int128)
+    const Volume notional = price * qty;
+    return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * _config.feeRate *
+                                                static_cast<double>(Volume::Scale)));
   }
   else
   {
-    return static_cast<int64_t>(_config.fixedFeePerTrade * Price::Scale);
+    return Volume::fromDouble(_config.fixedFeePerTrade);
   }
 }
 
@@ -261,17 +273,17 @@ double BacktestResult::computeSharpeRatio() const
   }
 
   const size_t n = _trades.size();
-  int64_t sum = 0;
+  double sum = 0.0;
   double sumSq = 0.0;
 
   for (const auto& trade : _trades)
   {
-    sum += trade.pnlRaw;
-    const double pnl = static_cast<double>(trade.pnlRaw);
+    const double pnl = trade.pnl.toDouble();
+    sum += pnl;
     sumSq += pnl * pnl;
   }
 
-  const double mean = static_cast<double>(sum) / static_cast<double>(n);
+  const double mean = sum / static_cast<double>(n);
   const double meanSq = sumSq / static_cast<double>(n);
   const double variance = meanSq - mean * mean;
 
@@ -294,30 +306,27 @@ double BacktestResult::computeSortinoRatio() const
   }
 
   const size_t n = _trades.size();
-  int64_t sum = 0;
+  double sum = 0.0;
   double downsideSumSq = 0.0;
   size_t downsideCount = 0;
 
   for (const auto& trade : _trades)
   {
-    sum += trade.pnlRaw;
-    if (trade.pnlRaw < 0)
+    const double pnl = trade.pnl.toDouble();
+    sum += pnl;
+    if (pnl < 0)
     {
-      const double pnl = static_cast<double>(trade.pnlRaw);
       downsideSumSq += pnl * pnl;
       ++downsideCount;
     }
   }
 
-  // If no losing trades, Sortino is undefined - return 0
   if (downsideCount == 0)
   {
     return 0.0;
   }
 
-  const double mean = static_cast<double>(sum) / static_cast<double>(n);
-
-  // Downside deviation: sqrt of sum of squared negative returns / n
+  const double mean = sum / static_cast<double>(n);
   const double downsideMeanSq = downsideSumSq / static_cast<double>(n);
   const double downsideStddev = std::sqrt(downsideMeanSq);
 
@@ -332,22 +341,20 @@ double BacktestResult::computeSortinoRatio() const
 
 double BacktestResult::computeCalmarRatio() const
 {
-  if (_trades.empty() || _maxDrawdownRaw <= 0)
+  if (_trades.empty() || _maxDrawdown.raw() <= 0)
   {
     return 0.0;
   }
 
-  // Calmar = Return / Max Drawdown (simple ratio, not annualized)
-  constexpr double kScale = static_cast<double>(Price::Scale);
-  const double totalReturn = static_cast<double>(_totalPnlRaw) / kScale;
-  const double maxDrawdown = static_cast<double>(_maxDrawdownRaw) / kScale;
+  const double totalReturn = _totalPnl.toDouble();
+  const double maxDD = _maxDrawdown.toDouble();
 
-  if (maxDrawdown <= 0)
+  if (maxDD <= 0)
   {
     return 0.0;
   }
 
-  return totalReturn / maxDrawdown;
+  return totalReturn / maxDD;
 }
 
 }  // namespace flox
