@@ -1,0 +1,31 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "flox-py"
+version = "0.1.0"
+authors = [{name = "FLOX Foundation"}]
+description = "Python bindings for the Flox indicator library"
+readme = "README.md"
+license = {text = "MIT"}
+license-files = ["../LICENSE"]
+requires-python = ">=3.9"
+dependencies = ["numpy"]
+keywords = ["trading", "backtest", "indicators", "technical-analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Repository = "https://github.com/FLOX-Foundation/flox"
+
+[tool.scikit-build]
+cmake.args = ["-DFLOX_ENABLE_BACKTEST=ON", "-DFLOX_ENABLE_PYTHON=ON"]
+cmake.source-dir = ".."
+wheel.packages = []
+install.components = ["python_module"]

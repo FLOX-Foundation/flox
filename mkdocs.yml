@@ -90,6 +90,9 @@ nav:
       - Backtesting: how-to/backtest.md
       - Interactive Backtest: how-to/interactive-backtest.md
       - Grid Search: how-to/grid-search.md
+      - Python Bindings: how-to/python-bindings.md
+      - Indicator Graph: how-to/indicator-graph.md
+      - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
       - CPU Affinity: how-to/cpu-affinity.md
       - Custom Connector: how-to/custom-connector.md
       - Custom Bar Policy: how-to/custom-bar-policy.md
