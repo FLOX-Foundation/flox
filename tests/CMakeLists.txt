@@ -70,6 +70,8 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_grid_search)
 endif()
 
+add_flox_test(test_indicators)
+
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_test(test_cpu_affinity)
 endif()
