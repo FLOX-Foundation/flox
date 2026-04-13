@@ -164,5 +164,6 @@ Benchmarked on Apple M-series, 100K bars, MA cross strategy:
 
 ## See Also
 
+- [Python API Reference](../reference/python/index.md) — complete Python API documentation
 - [Backtesting](backtest.md) — C++ backtest guide
 - [Grid Search](grid-search.md) — parameter optimization

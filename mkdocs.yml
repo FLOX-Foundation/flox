@@ -233,3 +233,15 @@ nav:
                   - CpuTopology: reference/api/util/performance/cpu_topology.md
                   - SystemInterface: reference/api/util/performance/system_interface.md
                   - ThreadAffinity: reference/api/util/performance/thread_affinity.md
+      - Python:
+          - reference/python/index.md
+          - Engine & Backtest: reference/python/engine.md
+          - Indicators: reference/python/indicators.md
+          - Aggregators: reference/python/aggregators.md
+          - Order Books: reference/python/books.md
+          - Profiles: reference/python/profiles.md
+          - Positions: reference/python/positions.md
+          - Replay: reference/python/replay.md
+          - Segment Ops: reference/python/segment_ops.md
+          - Backtest Components: reference/python/backtest.md
+          - Optimizer: reference/python/optimizer.md

@@ -4,11 +4,20 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "aggregator_bindings.h"
+#include "backtest_bindings.h"
+#include "book_bindings.h"
+#include "composite_book_bindings.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/common.h"
 #include "indicator_bindings.h"
+#include "optimizer_bindings.h"
+#include "position_bindings.h"
+#include "profile_bindings.h"
+#include "replay_bindings.h"
+#include "segment_ops_bindings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -339,4 +348,13 @@ PYBIND11_MODULE(flox_py, m)
           return result; }, "Create signal array from separate numpy arrays", py::arg("timestamps"), py::arg("sides"), py::arg("quantities"), py::arg("prices") = py::none(), py::arg("types") = py::none());
 
   bindIndicators(m);
+  bindAggregators(m);
+  bindBooks(m);
+  bindProfiles(m);
+  bindPositions(m);
+  bindReplay(m);
+  bindSegmentOps(m);
+  bindBacktest(m);
+  bindOptimizer(m);
+  bindCompositeBook(m);
 }

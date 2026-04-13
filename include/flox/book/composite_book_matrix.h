@@ -190,7 +190,7 @@ class CompositeBookMatrix : public IMarketDataSubscriber
       return;
     }
 
-    for (auto& [sym, state] : _books)
+    for (auto&& [sym, state] : _books)
     {
       state.byExchange[exchange].stale.store(true, std::memory_order_release);
     }
@@ -198,7 +198,7 @@ class CompositeBookMatrix : public IMarketDataSubscriber
 
   void checkStaleness(int64_t nowNs, int64_t thresholdNs)
   {
-    for (auto& [sym, state] : _books)
+    for (auto&& [sym, state] : _books)
     {
       for (size_t ex = 0; ex < MaxExchanges; ++ex)
       {
