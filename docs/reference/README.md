@@ -2,4 +2,5 @@
 
 Technical specifications and API documentation.
 
-See [API Reference](api/README.md) for complete component documentation.
+- [C++ API Reference](api/README.md) — complete component documentation
+- [Python API Reference](python/index.md) — Python bindings for all modules

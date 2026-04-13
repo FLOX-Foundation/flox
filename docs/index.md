@@ -15,6 +15,7 @@
 | [**First Strategy**](tutorials/first-strategy.md) | Write and run your first trading strategy |
 | [**Architecture**](explanation/architecture.md) | Understand how components work together |
 | [**API Reference**](reference/README.md) | Complete technical documentation |
+| [**Python API**](reference/python/index.md) | Python bindings reference |
 
 ---
 
@@ -26,6 +27,7 @@
 | [How-To Guides](how-to/README.md) | Solutions for specific problems |
 | [Explanation](explanation/README.md) | Architecture and design concepts |
 | [Reference](reference/README.md) | API specifications |
+| [Python API](reference/python/index.md) | Python bindings for all modules |
 
 ---
 
@@ -39,6 +41,7 @@
 | Multi-exchange trading | [CEX coordination](reference/api/cex/index.md) with aggregation and smart routing |
 | Binary replay system | Record live data, replay for backtesting |
 | Grid search optimization | Parallel parameter optimization with mmap-based bar storage |
+| [Python bindings](reference/python/index.md) | Full API accessible from Python with numpy integration |
 | Type-safe primitives | Strong types for Price, Quantity, SymbolId |
 | Modular architecture | Use only what you need |
 

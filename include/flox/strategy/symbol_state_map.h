@@ -185,6 +185,110 @@ class SymbolStateMap
     return count + _overflowStorage.size();
   }
 
+  // ── STL-compatible iterator ────────────────────────────────────────────────
+
+  template <bool Const>
+  class Iterator
+  {
+   public:
+    using map_type =
+        std::conditional_t<Const, const SymbolStateMap, SymbolStateMap>;
+    using state_ref = std::conditional_t<Const, const State&, State&>;
+    using value_type = std::pair<SymbolId, state_ref>;
+
+    Iterator(map_type* map, size_t flatIdx, size_t overflowIdx)
+        : _map(map), _flatIdx(flatIdx), _overflowIdx(overflowIdx)
+    {
+      advanceToValid();
+    }
+
+    value_type operator*() const
+    {
+      if (_flatIdx < kMaxSymbols)
+      {
+        return {static_cast<SymbolId>(_flatIdx), _map->_flat[_flatIdx]};
+      }
+      if constexpr (std::is_move_constructible_v<State>)
+      {
+        auto& entry = _map->overflow()[_overflowIdx];
+        return {entry.first, entry.second};
+      }
+      // Unreachable for non-movable types (no overflow)
+#ifdef _MSC_VER
+      __assume(false);
+#else
+      __builtin_unreachable();
+#endif
+    }
+
+    Iterator& operator++()
+    {
+      if (_flatIdx < kMaxSymbols)
+      {
+        ++_flatIdx;
+      }
+      else
+      {
+        ++_overflowIdx;
+      }
+      advanceToValid();
+      return *this;
+    }
+
+    bool operator!=(const Iterator& other) const
+    {
+      return _flatIdx != other._flatIdx || _overflowIdx != other._overflowIdx;
+    }
+
+    bool operator==(const Iterator& other) const { return !(*this != other); }
+
+   private:
+    void advanceToValid()
+    {
+      while (_flatIdx < kMaxSymbols && !_map->_initialized[_flatIdx])
+      {
+        ++_flatIdx;
+      }
+    }
+
+    map_type* _map;
+    size_t _flatIdx;
+    size_t _overflowIdx;
+  };
+
+  using iterator = Iterator<false>;
+  using const_iterator = Iterator<true>;
+
+  iterator begin() noexcept
+  {
+    return iterator(this, 0, 0);
+  }
+
+  iterator end() noexcept
+  {
+    size_t overflowSize = 0;
+    if constexpr (std::is_move_constructible_v<State>)
+    {
+      overflowSize = overflow().size();
+    }
+    return iterator(this, kMaxSymbols, overflowSize);
+  }
+
+  const_iterator begin() const noexcept
+  {
+    return const_iterator(this, 0, 0);
+  }
+
+  const_iterator end() const noexcept
+  {
+    size_t overflowSize = 0;
+    if constexpr (std::is_move_constructible_v<State>)
+    {
+      overflowSize = overflow().size();
+    }
+    return const_iterator(this, kMaxSymbols, overflowSize);
+  }
+
  private:
   State& getOverflow(SymbolId symbol)
     requires std::is_move_constructible_v<State>
