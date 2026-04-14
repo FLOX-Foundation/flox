@@ -6,16 +6,28 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Package version (e.g. 0.2.0). Leave empty to use pyproject.toml default."
+        description: "Package version (e.g. 0.2.0)"
         type: string
-        default: ""
-      publish_testpypi:
-        description: "Publish to TestPyPI"
+        required: true
+      publish_pypi:
+        description: "Publish to PyPI (prod)"
         type: boolean
         default: false
 
 jobs:
+  check-actor:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Restrict manual trigger
+        if: github.actor != 'eeiaao'
+        run: |
+          echo "::error::Only eeiaao can trigger this workflow manually."
+          exit 1
+
   build-wheels:
+    needs: [check-actor]
+    if: always() && (needs.check-actor.result == 'success' || needs.check-actor.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -61,6 +73,8 @@ jobs:
           path: wheelhouse/*.whl
 
   build-sdist:
+    needs: [check-actor]
+    if: always() && (needs.check-actor.result == 'success' || needs.check-actor.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,7 +101,6 @@ jobs:
   publish-testpypi:
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
-    if: github.event.inputs.publish_testpypi == 'true'
     permissions:
       id-token: write
     steps:
@@ -103,7 +116,7 @@ jobs:
   publish-pypi:
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_pypi == 'true'
     permissions:
       id-token: write
     steps:
