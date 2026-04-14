@@ -27,7 +27,7 @@ returns = flox.bar_returns(sig_long, sig_short, log_ret)
 pf = flox.profit_factor(returns)
 ```
 
-Full list of indicators and metrics in [python/README.md](python/README.md). Output matches TA-Lib.
+Full API reference in [documentation](https://flox-foundation.github.io/flox/reference/python/).
 
 ## Connectors
 
