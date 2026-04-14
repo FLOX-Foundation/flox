@@ -29,6 +29,37 @@ pf = flox.profit_factor(returns)
 
 Full API reference in [documentation](https://flox-foundation.github.io/flox/reference/python/).
 
+## Codon
+
+[Codon](https://github.com/exaloop/codon) compiles Python-like code to native binaries.
+Flox Codon bindings let you write strategies in Python syntax compiled to native code.
+
+```python
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import TradeData
+from flox.indicators import StreamingSMA
+
+class SmaCrossover(Strategy):
+    fast_sma: StreamingSMA
+    slow_sma: StreamingSMA
+
+    def __init__(self, symbols: List[int]):
+        super().__init__(symbols)
+        self.fast_sma = StreamingSMA(10)
+        self.slow_sma = StreamingSMA(30)
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        fast = self.fast_sma.update(trade.price.to_double())
+        slow = self.slow_sma.update(trade.price.to_double())
+        if self.slow_sma.ready and fast > slow and ctx.is_flat():
+            self.emit_market_buy(self.primary_symbol, 1.0)
+```
+
+```bash
+codon build -exe -o strategy -lflox_capi my_strategy.codon
+```
+
 ## Connectors
 
 The open-source community connector implementations are maintained in [flox-connectors](https://github.com/FLOX-Foundation/flox-connectors).

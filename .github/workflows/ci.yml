@@ -29,7 +29,15 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 python3-dev python3-pip
+
+    - name: Install Python packages
+      run: python3 -m pip install --break-system-packages pybind11 numpy
+
+    - name: Install Codon
+      run: |
+        curl -fsSL https://exaloop.io/install.sh | bash
+        echo "$HOME/.codon/bin" >> $GITHUB_PATH
 
     - name: Build and Install GoogleTest
       run: |
@@ -57,17 +65,44 @@ jobs:
               -DCMAKE_CXX_COMPILER=g++-14 \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
+              -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')" \
               -DFLOX_ENABLE_TESTS=ON \
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -DFLOX_ENABLE_CAPI=ON \
+              -DFLOX_ENABLE_PYTHON=ON \
+              -DFLOX_ENABLE_CODON=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
 
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
+
+    - name: Verify C API
+      run: |
+        test -f build/src/capi/libflox_capi.so
+        nm -D build/src/capi/libflox_capi.so | grep -q flox_emit_market_buy
+
+    - name: Verify Python bindings
+      run: |
+        cd build/python
+        python3 -c "
+        import flox_py as flox
+        s = flox.Strategy([1])
+        assert hasattr(s, 'emit_market_buy')
+        assert hasattr(s, 'on_trade')
+        assert hasattr(s, 'position')
+        print('Python Strategy OK')
+        "
+
+    - name: Verify Codon binaries
+      run: |
+        test -f build/codon/codon_sma_crossover
+        test -f build/codon/codon_pairs_strategy
+        file build/codon/codon_sma_crossover | grep -q ELF
 
     - name: Run demo
       run: ./build/demo/flox_demo
@@ -127,7 +162,8 @@ jobs:
               -DFLOX_ENABLE_BENCHMARKS=ON \
               -DFLOX_ENABLE_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -DFLOX_ENABLE_CAPI=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)

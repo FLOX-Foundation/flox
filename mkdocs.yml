@@ -82,6 +82,7 @@ nav:
       - Multi-Timeframe Strategy: tutorials/multi-timeframe-strategy.md
       - Recording Data: tutorials/recording-data.md
       - Backtesting: tutorials/backtesting.md
+      - Codon Strategy: tutorials/codon-strategy.md
       - Run Demo: tutorials/demo.md
 
   - How-To Guides:
@@ -91,6 +92,8 @@ nav:
       - Interactive Backtest: how-to/interactive-backtest.md
       - Grid Search: how-to/grid-search.md
       - Python Bindings: how-to/python-bindings.md
+      - Codon Bindings: how-to/codon-bindings.md
+      - Strategy Classes: how-to/strategy-classes.md
       - Indicator Graph: how-to/indicator-graph.md
       - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
       - CPU Affinity: how-to/cpu-affinity.md
@@ -233,6 +236,13 @@ nav:
                   - CpuTopology: reference/api/util/performance/cpu_topology.md
                   - SystemInterface: reference/api/util/performance/system_interface.md
                   - ThreadAffinity: reference/api/util/performance/thread_affinity.md
+      - C API:
+          - reference/api/capi/flox_capi.md
+      - Codon:
+          - reference/codon/index.md
+          - Strategy: reference/codon/strategy.md
+          - Types: reference/codon/types.md
+          - Indicators: reference/codon/indicators.md
       - Python:
           - reference/python/index.md
           - Engine & Backtest: reference/python/engine.md
@@ -245,3 +255,4 @@ nav:
           - Segment Ops: reference/python/segment_ops.md
           - Backtest Components: reference/python/backtest.md
           - Optimizer: reference/python/optimizer.md
+          - Strategy Class: reference/python/strategy.md

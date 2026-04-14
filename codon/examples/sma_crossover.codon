@@ -1,0 +1,75 @@
+# SMA Crossover Strategy -- Codon implementation.
+# Mirrors C++ SmaCrossoverStrategy from demo/src/backtest_demo.cpp.
+#
+# Compiles to native code via:
+#   codon build -exe -o sma_crossover -lflox_capi examples/sma_crossover.codon
+
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import TradeData
+from flox.indicators import StreamingSMA
+
+
+class SmaCrossover(Strategy):
+    """SMA crossover strategy.
+
+    Buys when fast SMA crosses above slow SMA, sells on cross below.
+    Compiled to native code by the Codon compiler.
+    """
+
+    fast_sma: StreamingSMA
+    slow_sma: StreamingSMA
+    order_size: float
+    long_position: bool
+    short_position: bool
+    prev_fast_above: bool
+    trade_count: int
+
+    def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30,
+                 size: float = 1.0):
+        super().__init__(symbols)
+        self.fast_sma = StreamingSMA(fast)
+        self.slow_sma = StreamingSMA(slow)
+        self.order_size = size
+        self.long_position = False
+        self.short_position = False
+        self.prev_fast_above = False
+        self.trade_count = 0
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        price = trade.price.to_double()
+        fast_val = self.fast_sma.update(price)
+        slow_val = self.slow_sma.update(price)
+
+        if not self.slow_sma.ready:
+            return
+
+        fast_above = fast_val > slow_val
+        sym = self._symbols[0]
+
+        if fast_above and not self.prev_fast_above and not self.long_position:
+            if self.short_position:
+                self.emit_market_buy(sym, self.order_size)
+                self.short_position = False
+                self.trade_count += 1
+            self.emit_market_buy(sym, self.order_size)
+            self.long_position = True
+            self.trade_count += 1
+        elif not fast_above and self.prev_fast_above and not self.short_position:
+            if self.long_position:
+                self.emit_market_sell(sym, self.order_size)
+                self.long_position = False
+                self.trade_count += 1
+            self.emit_market_sell(sym, self.order_size)
+            self.short_position = True
+            self.trade_count += 1
+
+        self.prev_fast_above = fast_above
+
+    def on_start(self):
+        print(f"SmaCrossover started: fast={self.fast_sma._period}, "
+              f"slow={self.slow_sma._period}, "
+              f"symbols={self._symbols}")
+
+    def on_stop(self):
+        print(f"SmaCrossover stopped: {self.trade_count} trades executed")

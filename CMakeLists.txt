@@ -164,6 +164,21 @@ if (FLOX_ENABLE_PYTHON)
   add_subdirectory(python)
 endif()
 
+option(FLOX_ENABLE_CAPI "Build C API shared library" OFF)
+if (FLOX_ENABLE_CAPI)
+  # Static lib must be PIC to link into the shared CAPI lib
+  set_target_properties(${FLOX} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  add_subdirectory(src/capi)
+endif()
+
+option(FLOX_ENABLE_CODON "Build Codon strategy support" OFF)
+if (FLOX_ENABLE_CODON)
+  if (NOT FLOX_ENABLE_CAPI)
+    message(FATAL_ERROR "FLOX_ENABLE_CODON requires FLOX_ENABLE_CAPI=ON")
+  endif()
+  add_subdirectory(codon)
+endif()
+
 target_include_directories(flox PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
