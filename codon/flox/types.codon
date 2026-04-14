@@ -1,0 +1,144 @@
+# flox/types.codon -- Fixed-point types mirroring C++ flox::Price, flox::Quantity
+
+SCALE: int = 100_000_000  # 1e8 -- matches C++ Decimal scale
+
+
+@dataclass
+class Price:
+    """Fixed-point price with 8 decimal places (scale 1e8).
+    Mirrors C++ flox::Price.
+    """
+
+    _raw: int
+
+    def __init__(self):
+        self._raw = 0
+
+    @staticmethod
+    def from_double(value: float) -> Price:
+        p = Price()
+        p._raw = int(value * float(SCALE) + (0.5 if value >= 0.0 else -0.5))
+        return p
+
+    @staticmethod
+    def from_raw(raw: int) -> Price:
+        p = Price()
+        p._raw = raw
+        return p
+
+    def to_double(self) -> float:
+        return float(self._raw) / float(SCALE)
+
+    def raw(self) -> int:
+        return self._raw
+
+    def is_zero(self) -> bool:
+        return self._raw == 0
+
+    def __eq__(self, other: Price) -> bool:
+        return self._raw == other._raw
+
+    def __lt__(self, other: Price) -> bool:
+        return self._raw < other._raw
+
+    def __gt__(self, other: Price) -> bool:
+        return self._raw > other._raw
+
+    def __le__(self, other: Price) -> bool:
+        return self._raw <= other._raw
+
+    def __ge__(self, other: Price) -> bool:
+        return self._raw >= other._raw
+
+    def __add__(self, other: Price) -> Price:
+        return Price.from_raw(self._raw + other._raw)
+
+    def __sub__(self, other: Price) -> Price:
+        return Price.from_raw(self._raw - other._raw)
+
+    def __repr__(self) -> str:
+        return f"Price({self.to_double():.8f})"
+
+
+@dataclass
+class Quantity:
+    """Fixed-point quantity with 8 decimal places (scale 1e8).
+    Mirrors C++ flox::Quantity.
+    """
+
+    _raw: int
+
+    def __init__(self):
+        self._raw = 0
+
+    @staticmethod
+    def from_double(value: float) -> Quantity:
+        q = Quantity()
+        q._raw = int(value * float(SCALE) + (0.5 if value >= 0.0 else -0.5))
+        return q
+
+    @staticmethod
+    def from_raw(raw: int) -> Quantity:
+        q = Quantity()
+        q._raw = raw
+        return q
+
+    def to_double(self) -> float:
+        return float(self._raw) / float(SCALE)
+
+    def raw(self) -> int:
+        return self._raw
+
+    def is_zero(self) -> bool:
+        return self._raw == 0
+
+    def __repr__(self) -> str:
+        return f"Quantity({self.to_double():.8f})"
+
+
+# Enums mirroring C++ Side, OrderType
+BUY: int = 0
+SELL: int = 1
+
+ORDER_MARKET: int = 0
+ORDER_LIMIT: int = 1
+ORDER_STOP_MARKET: int = 2
+ORDER_STOP_LIMIT: int = 3
+ORDER_TAKE_PROFIT_MARKET: int = 4
+ORDER_TAKE_PROFIT_LIMIT: int = 5
+ORDER_TRAILING_STOP: int = 6
+
+TIF_GTC: int = 0
+TIF_IOC: int = 1
+TIF_FOK: int = 2
+TIF_GTD: int = 3
+TIF_POST_ONLY: int = 4
+
+
+@dataclass
+class TradeData:
+    """Trade event data. Mirrors C++ flox::Trade (flattened)."""
+
+    symbol: int
+    price: Price
+    quantity: Quantity
+    is_buy: bool
+    timestamp_ns: int
+
+    def __init__(self):
+        self.symbol = 0
+        self.price = Price()
+        self.quantity = Quantity()
+        self.is_buy = False
+        self.timestamp_ns = 0
+
+    @staticmethod
+    def from_raw(symbol: int, price_raw: int, qty_raw: int, is_buy: bool,
+                 ts_ns: int) -> TradeData:
+        t = TradeData()
+        t.symbol = symbol
+        t.price = Price.from_raw(price_raw)
+        t.quantity = Quantity.from_raw(qty_raw)
+        t.is_buy = is_buy
+        t.timestamp_ns = ts_ns
+        return t

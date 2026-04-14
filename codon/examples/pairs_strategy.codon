@@ -1,0 +1,137 @@
+# Pairs Trading Strategy -- Codon implementation.
+# Mirrors C++ PairsStrategy from demo/include/demo/pairs_strategy.h.
+#
+# Compiles to native code via:
+#   codon build -exe -o pairs_strategy -lflox_capi examples/pairs_strategy.codon
+
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import TradeData, BUY, SELL
+import math
+from collections import deque
+
+
+class PairsConfig:
+    leg1: int
+    leg2: int
+    entry_z_score: float
+    exit_z_score: float
+    lookback_period: int
+    order_size: float
+    hedge_ratio: float
+
+    def __init__(self, leg1: int = 0, leg2: int = 1,
+                 entry_z: float = 2.0, exit_z: float = 0.5,
+                 lookback: int = 100, size: float = 1.0,
+                 hedge: float = 1.0):
+        self.leg1 = leg1
+        self.leg2 = leg2
+        self.entry_z_score = entry_z
+        self.exit_z_score = exit_z
+        self.lookback_period = lookback
+        self.order_size = size
+        self.hedge_ratio = hedge
+
+
+class PairsStrategy(Strategy):
+    """Pairs trading strategy based on z-score of spread.
+
+    Enters when |z-score| > entry threshold, exits when |z-score| < exit threshold.
+    Compiled to native code -- z-score computation runs at C++ speed.
+    """
+
+    cfg: PairsConfig
+    spread_history: deque[float]
+    is_long_spread: bool
+    has_position: bool
+    trade_count: int
+
+    def __init__(self, cfg: PairsConfig):
+        super().__init__([cfg.leg1, cfg.leg2])
+        self.cfg = cfg
+        self.spread_history = deque[float]()
+        self.is_long_spread = False
+        self.has_position = False
+        self.trade_count = 0
+
+    def on_book_update(self, ctx: SymbolContext):
+        mid1 = self.ctx(self.cfg.leg1).mid_price()
+        mid2 = self.ctx(self.cfg.leg2).mid_price()
+
+        if mid1 == 0.0 or mid2 == 0.0:
+            return
+
+        spread_value = mid1 - mid2
+        self._update_spread_history(spread_value)
+
+        if len(self.spread_history) < self.cfg.lookback_period:
+            return
+
+        z = self._compute_z_score(spread_value)
+
+        if self.has_position:
+            if self._should_exit(z):
+                self._close_spread()
+        elif self._should_enter(z):
+            side = SELL if z > 0 else BUY
+            self._open_spread(side)
+
+    def _update_spread_history(self, spread_value: float):
+        self.spread_history.append(spread_value)
+        if len(self.spread_history) > self.cfg.lookback_period:
+            self.spread_history.popleft()
+
+    def _compute_z_score(self, current_spread: float) -> float:
+        if len(self.spread_history) == 0:
+            return 0.0
+
+        total = 0.0
+        total_sq = 0.0
+        for s in self.spread_history:
+            total += s
+            total_sq += s * s
+
+        n = float(len(self.spread_history))
+        mean = total / n
+        variance = (total_sq / n) - (mean * mean)
+        stddev = math.sqrt(max(variance, 1e-10))
+        return (current_spread - mean) / stddev
+
+    def _should_enter(self, z: float) -> bool:
+        return abs(z) > self.cfg.entry_z_score
+
+    def _should_exit(self, z: float) -> bool:
+        if self.is_long_spread:
+            return z > -self.cfg.exit_z_score
+        return z < self.cfg.exit_z_score
+
+    def _open_spread(self, leg1_side: int):
+        leg2_qty = self.cfg.order_size * self.cfg.hedge_ratio
+        if leg1_side == BUY:
+            self.emit_market_buy(self.cfg.leg1, self.cfg.order_size)
+            self.emit_market_sell(self.cfg.leg2, leg2_qty)
+            self.is_long_spread = True
+        else:
+            self.emit_market_sell(self.cfg.leg1, self.cfg.order_size)
+            self.emit_market_buy(self.cfg.leg2, leg2_qty)
+            self.is_long_spread = False
+        self.has_position = True
+        self.trade_count += 2
+
+    def _close_spread(self):
+        leg2_qty = self.cfg.order_size * self.cfg.hedge_ratio
+        if self.is_long_spread:
+            self.emit_market_sell(self.cfg.leg1, self.cfg.order_size)
+            self.emit_market_buy(self.cfg.leg2, leg2_qty)
+        else:
+            self.emit_market_buy(self.cfg.leg1, self.cfg.order_size)
+            self.emit_market_sell(self.cfg.leg2, leg2_qty)
+        self.has_position = False
+        self.trade_count += 2
+
+    def on_start(self):
+        print(f"PairsStrategy started: leg1={self.cfg.leg1}, leg2={self.cfg.leg2}, "
+              f"entry_z={self.cfg.entry_z_score}, exit_z={self.cfg.exit_z_score}")
+
+    def on_stop(self):
+        print(f"PairsStrategy stopped: {self.trade_count} trades executed")

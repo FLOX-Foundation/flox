@@ -1,0 +1,205 @@
+# flox/strategy.codon -- Strategy base class for Codon.
+# Mirrors C++ flox::Strategy. Override on_trade/on_book_update to implement logic.
+
+from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import flox_strategy_destroy(cobj)
+from C import flox_emit_market_buy(cobj, u32, i64) -> u64
+from C import flox_emit_market_sell(cobj, u32, i64) -> u64
+from C import flox_emit_limit_buy(cobj, u32, i64, i64) -> u64
+from C import flox_emit_limit_sell(cobj, u32, i64, i64) -> u64
+from C import flox_emit_cancel(cobj, u64)
+from C import flox_emit_cancel_all(cobj, u32)
+from C import flox_emit_modify(cobj, u64, i64, i64)
+from C import flox_emit_stop_market(cobj, u32, u8, i64, i64) -> u64
+from C import flox_emit_stop_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import flox_emit_take_profit_market(cobj, u32, u8, i64, i64) -> u64
+from C import flox_emit_trailing_stop(cobj, u32, u8, i64, i64) -> u64
+from C import flox_emit_trailing_stop_percent(cobj, u32, u8, i32, i64) -> u64
+from C import flox_emit_take_profit_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import flox_emit_limit_buy_tif(cobj, u32, i64, i64, u8) -> u64
+from C import flox_emit_limit_sell_tif(cobj, u32, i64, i64, u8) -> u64
+from C import flox_emit_close_position(cobj, u32) -> u64
+from C import flox_position_raw(cobj, u32) -> i64
+from C import flox_get_order_status(cobj, u64) -> i32
+
+from flox.types import SCALE, Price, Quantity, TradeData, BUY, SELL
+from flox.context import SymbolContext
+
+
+class Strategy:
+    """Base class for Codon strategies. Mirrors C++ flox::Strategy.
+
+    Override on_trade() and/or on_book_update() to implement strategy logic.
+    Use emit_* methods to submit orders.
+    Use position() and ctx() to query state.
+
+    Codon compiles this to native code -- no interpreter overhead.
+    """
+
+    _handle: cobj
+    _symbols: List[int]
+
+    def __init__(self, symbols: List[int]):
+        self._symbols = symbols
+        self._handle = cobj()
+
+    # ------------------------------------------------------------------
+    # Overridable callbacks
+    # ------------------------------------------------------------------
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        """Called on each trade event. Override in subclass."""
+        pass
+
+    def on_book_update(self, ctx: SymbolContext):
+        """Called on each book update. Override in subclass."""
+        pass
+
+    def on_start(self):
+        """Called when strategy starts. Override in subclass."""
+        pass
+
+    def on_stop(self):
+        """Called when strategy stops. Override in subclass."""
+        pass
+
+    # ------------------------------------------------------------------
+    # Signal emission -- same API as Python Strategy
+    # ------------------------------------------------------------------
+
+    def emit_market_buy(self, symbol: int, qty: float) -> int:
+        """Submit a market buy order. Returns order ID."""
+        return int(flox_emit_market_buy(
+            self._handle, u32(symbol),
+            Quantity.from_double(qty).raw()))
+
+    def emit_market_sell(self, symbol: int, qty: float) -> int:
+        """Submit a market sell order. Returns order ID."""
+        return int(flox_emit_market_sell(
+            self._handle, u32(symbol),
+            Quantity.from_double(qty).raw()))
+
+    def emit_limit_buy(self, symbol: int, price: float, qty: float) -> int:
+        """Submit a limit buy order. Returns order ID."""
+        return int(flox_emit_limit_buy(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_limit_sell(self, symbol: int, price: float, qty: float) -> int:
+        """Submit a limit sell order. Returns order ID."""
+        return int(flox_emit_limit_sell(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_cancel(self, order_id: int):
+        """Cancel an order by ID."""
+        flox_emit_cancel(self._handle, u64(order_id))
+
+    def emit_cancel_all(self, symbol: int):
+        """Cancel all orders for a symbol."""
+        flox_emit_cancel_all(self._handle, u32(symbol))
+
+    def emit_modify(self, order_id: int, new_price: float, new_qty: float):
+        """Modify an existing order."""
+        flox_emit_modify(
+            self._handle, u64(order_id),
+            Price.from_double(new_price).raw(),
+            Quantity.from_double(new_qty).raw())
+
+    def emit_stop_market(self, symbol: int, side: int, trigger: float,
+                         qty: float) -> int:
+        """Submit a stop market order. side: 0=BUY, 1=SELL."""
+        return int(flox_emit_stop_market(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_stop_limit(self, symbol: int, side: int, trigger: float,
+                        limit_price: float, qty: float) -> int:
+        """Submit a stop limit order. side: 0=BUY, 1=SELL."""
+        return int(flox_emit_stop_limit(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Price.from_double(limit_price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_take_profit_market(self, symbol: int, side: int, trigger: float,
+                                qty: float) -> int:
+        """Submit a take profit market order."""
+        return int(flox_emit_take_profit_market(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_take_profit_limit(self, symbol: int, side: int, trigger: float,
+                               limit_price: float, qty: float) -> int:
+        """Submit a take profit limit order."""
+        return int(flox_emit_take_profit_limit(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(trigger).raw(),
+            Price.from_double(limit_price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_trailing_stop(self, symbol: int, side: int, offset: float,
+                           qty: float) -> int:
+        """Submit a trailing stop order."""
+        return int(flox_emit_trailing_stop(
+            self._handle, u32(symbol), u8(side),
+            Price.from_double(offset).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def emit_trailing_stop_percent(self, symbol: int, side: int,
+                                   callback_bps: int, qty: float) -> int:
+        """Submit a trailing stop with percentage callback (bps). 100 = 1%."""
+        return int(flox_emit_trailing_stop_percent(
+            self._handle, u32(symbol), u8(side),
+            i32(callback_bps),
+            Quantity.from_double(qty).raw()))
+
+    def emit_limit_buy_tif(self, symbol: int, price: float, qty: float,
+                           tif: int) -> int:
+        """Submit a limit buy with TimeInForce. tif: 0=GTC, 1=IOC, 2=FOK, 4=POST_ONLY."""
+        return int(flox_emit_limit_buy_tif(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw(),
+            u8(tif)))
+
+    def emit_limit_sell_tif(self, symbol: int, price: float, qty: float,
+                            tif: int) -> int:
+        """Submit a limit sell with TimeInForce."""
+        return int(flox_emit_limit_sell_tif(
+            self._handle, u32(symbol),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw(),
+            u8(tif)))
+
+    def emit_close_position(self, symbol: int) -> int:
+        """Close entire position for a symbol (reduce-only market order)."""
+        return int(flox_emit_close_position(self._handle, u32(symbol)))
+
+    # ------------------------------------------------------------------
+    # Context queries
+    # ------------------------------------------------------------------
+
+    def position(self, symbol: Optional[int] = None) -> float:
+        """Current position quantity as float."""
+        sym = symbol if symbol is not None else self._symbols[0]
+        raw = flox_position_raw(self._handle, u32(sym))
+        return float(raw) / float(SCALE)
+
+    def ctx(self, symbol: Optional[int] = None) -> SymbolContext:
+        """Get SymbolContext for a symbol."""
+        sym = symbol if symbol is not None else self._symbols[0]
+        return SymbolContext(self._handle, u32(sym))
+
+    def get_order_status(self, order_id: int) -> int:
+        """Get order status. Returns -1 if not found."""
+        return int(flox_get_order_status(self._handle, u64(order_id)))
+
+    @property
+    def primary_symbol(self) -> int:
+        """First symbol in the subscription list."""
+        return self._symbols[0]

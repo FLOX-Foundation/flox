@@ -1,0 +1,69 @@
+# flox/context.codon -- SymbolContext wrapper for Codon strategies.
+# Provides read access to per-symbol state via the C API.
+
+from C import flox_position_raw(cobj, u32) -> i64
+from C import flox_last_trade_price_raw(cobj, u32) -> i64
+from C import flox_best_bid_raw(cobj, u32) -> i64
+from C import flox_best_ask_raw(cobj, u32) -> i64
+from C import flox_mid_price_raw(cobj, u32) -> i64
+
+from flox.types import SCALE, Price, Quantity
+
+
+class SymbolContext:
+    """Per-symbol context providing position, book, and price queries.
+    Mirrors C++ flox::SymbolContext.
+    """
+
+    _handle: cobj
+    symbol_id: u32
+
+    def __init__(self, handle: cobj, symbol_id: u32):
+        self._handle = handle
+        self.symbol_id = symbol_id
+
+    def position(self) -> float:
+        """Current position quantity as float."""
+        raw = flox_position_raw(self._handle, self.symbol_id)
+        return float(raw) / float(SCALE)
+
+    def position_raw(self) -> int:
+        """Current position quantity as raw int64 (scale 1e8)."""
+        return int(flox_position_raw(self._handle, self.symbol_id))
+
+    def last_trade_price(self) -> float:
+        """Last trade price as float."""
+        raw = flox_last_trade_price_raw(self._handle, self.symbol_id)
+        return float(raw) / float(SCALE)
+
+    def best_bid(self) -> float:
+        """Best bid price as float. Returns 0.0 if no bid."""
+        raw = flox_best_bid_raw(self._handle, self.symbol_id)
+        return float(raw) / float(SCALE)
+
+    def best_ask(self) -> float:
+        """Best ask price as float. Returns 0.0 if no ask."""
+        raw = flox_best_ask_raw(self._handle, self.symbol_id)
+        return float(raw) / float(SCALE)
+
+    def mid_price(self) -> float:
+        """Mid price as float. Returns 0.0 if no bid/ask."""
+        raw = flox_mid_price_raw(self._handle, self.symbol_id)
+        return float(raw) / float(SCALE)
+
+    def book_spread(self) -> float:
+        """Bid-ask spread as float."""
+        bid = self.best_bid()
+        ask = self.best_ask()
+        if bid > 0.0 and ask > 0.0:
+            return ask - bid
+        return 0.0
+
+    def is_long(self) -> bool:
+        return flox_position_raw(self._handle, self.symbol_id) > 0
+
+    def is_short(self) -> bool:
+        return flox_position_raw(self._handle, self.symbol_id) < 0
+
+    def is_flat(self) -> bool:
+        return flox_position_raw(self._handle, self.symbol_id) == 0

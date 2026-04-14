@@ -1,0 +1,183 @@
+# flox/indicators.codon -- Indicator wrappers calling C API.
+# All indicators operate on float arrays and return float arrays.
+
+from C import flox_indicator_ema(Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_sma(Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_rsi(Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_atr(Ptr[f64], Ptr[f64], Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_macd(Ptr[f64], int, int, int, int,
+                                   Ptr[f64], Ptr[f64], Ptr[f64])
+from C import flox_indicator_bollinger(Ptr[f64], int, int, f64,
+                                        Ptr[f64], Ptr[f64], Ptr[f64])
+
+
+def ema(data: List[float], period: int) -> List[float]:
+    """Exponential Moving Average. Matches C++ flox::indicator::EMA."""
+    n = len(data)
+    result = [0.0] * n
+    flox_indicator_ema(data.arr.ptr, n, period, result.arr.ptr)
+    return result
+
+
+def sma(data: List[float], period: int) -> List[float]:
+    """Simple Moving Average. Matches C++ flox::indicator::SMA."""
+    n = len(data)
+    result = [0.0] * n
+    flox_indicator_sma(data.arr.ptr, n, period, result.arr.ptr)
+    return result
+
+
+def rsi(data: List[float], period: int) -> List[float]:
+    """Relative Strength Index. Matches C++ flox::indicator::RSI."""
+    n = len(data)
+    result = [0.0] * n
+    flox_indicator_rsi(data.arr.ptr, n, period, result.arr.ptr)
+    return result
+
+
+def atr(high: List[float], low: List[float], close: List[float],
+        period: int) -> List[float]:
+    """Average True Range. Matches C++ flox::indicator::ATR."""
+    n = len(high)
+    result = [0.0] * n
+    flox_indicator_atr(high.arr.ptr, low.arr.ptr, close.arr.ptr,
+                       n, period, result.arr.ptr)
+    return result
+
+
+class MacdResult:
+    """MACD result with line, signal, and histogram arrays."""
+    line: List[float]
+    signal: List[float]
+    histogram: List[float]
+
+    def __init__(self, line: List[float], signal: List[float],
+                 histogram: List[float]):
+        self.line = line
+        self.signal = signal
+        self.histogram = histogram
+
+
+def macd(data: List[float], fast: int = 12, slow: int = 26,
+         signal: int = 9) -> MacdResult:
+    """MACD indicator. Matches C++ flox::indicator::MACD."""
+    n = len(data)
+    line = [0.0] * n
+    sig = [0.0] * n
+    hist = [0.0] * n
+    flox_indicator_macd(data.arr.ptr, n, fast, slow, signal,
+                        line.arr.ptr, sig.arr.ptr, hist.arr.ptr)
+    return MacdResult(line, sig, hist)
+
+
+class BollingerResult:
+    """Bollinger Bands result with upper, middle, and lower bands."""
+    upper: List[float]
+    middle: List[float]
+    lower: List[float]
+
+    def __init__(self, upper: List[float], middle: List[float],
+                 lower: List[float]):
+        self.upper = upper
+        self.middle = middle
+        self.lower = lower
+
+
+def bollinger(data: List[float], period: int = 20,
+              multiplier: float = 2.0) -> BollingerResult:
+    """Bollinger Bands. Matches C++ flox::indicator::Bollinger."""
+    n = len(data)
+    upper = [0.0] * n
+    middle = [0.0] * n
+    lower = [0.0] * n
+    flox_indicator_bollinger(data.arr.ptr, n, period, multiplier,
+                             upper.arr.ptr, middle.arr.ptr, lower.arr.ptr)
+    return BollingerResult(upper, middle, lower)
+
+
+# ======================================================================
+# Streaming indicators (pure Codon, no FFI overhead)
+# ======================================================================
+
+
+class StreamingEMA:
+    """Streaming EMA -- updates incrementally per tick.
+    Compiled to native code by Codon, no C FFI needed.
+    """
+
+    _period: int
+    _alpha: float
+    _value: float
+    _count: int
+    _sum: float
+    _ready: bool
+
+    def __init__(self, period: int):
+        self._period = period
+        self._alpha = 2.0 / (float(period) + 1.0)
+        self._value = 0.0
+        self._count = 0
+        self._sum = 0.0
+        self._ready = False
+
+    def update(self, value: float) -> float:
+        """Feed a new value. Returns current EMA."""
+        self._count += 1
+        if self._count <= self._period:
+            self._sum += value
+            if self._count == self._period:
+                self._value = self._sum / float(self._period)
+                self._ready = True
+            return self._value
+        self._value = self._alpha * value + (1.0 - self._alpha) * self._value
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+
+class StreamingSMA:
+    """Streaming SMA -- updates incrementally per tick.
+    Uses a circular buffer for O(1) update.
+    """
+
+    _period: int
+    _buffer: List[float]
+    _sum: float
+    _count: int
+    _index: int
+    _ready: bool
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buffer = [0.0] * period
+        self._sum = 0.0
+        self._count = 0
+        self._index = 0
+        self._ready = False
+
+    def update(self, value: float) -> float:
+        """Feed a new value. Returns current SMA."""
+        if self._count >= self._period:
+            self._sum -= self._buffer[self._index]
+        self._buffer[self._index] = value
+        self._sum += value
+        self._index = (self._index + 1) % self._period
+        self._count += 1
+        if self._count >= self._period:
+            self._ready = True
+        return self._sum / float(min(self._count, self._period))
+
+    @property
+    def value(self) -> float:
+        n = min(self._count, self._period)
+        return self._sum / float(n) if n > 0 else 0.0
+
+    @property
+    def ready(self) -> bool:
+        return self._ready

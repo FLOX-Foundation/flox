@@ -18,6 +18,7 @@
 #include "profile_bindings.h"
 #include "replay_bindings.h"
 #include "segment_ops_bindings.h"
+#include "strategy_bindings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -357,4 +358,5 @@ PYBIND11_MODULE(flox_py, m)
   bindBacktest(m);
   bindOptimizer(m);
   bindCompositeBook(m);
+  bindStrategy(m);
 }
