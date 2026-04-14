@@ -5,6 +5,10 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
+      version:
+        description: "Package version (e.g. 0.2.0). Leave empty to use pyproject.toml default."
+        type: string
+        default: ""
       publish_testpypi:
         description: "Publish to TestPyPI"
         type: boolean
@@ -19,6 +23,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set version
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            exit 0
+          fi
+          sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" python/pyproject.toml
 
       - uses: actions/setup-python@v5
         with:
@@ -48,6 +64,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set version
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            exit 0
+          fi
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" python/pyproject.toml
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
