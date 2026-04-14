@@ -29,6 +29,24 @@ pf = flox.profit_factor(returns)
 
 Full API reference in [documentation](https://flox-foundation.github.io/flox/reference/python/).
 
+### Strategy
+
+```python
+import flox_py as flox
+
+class MyStrategy(flox.Strategy):
+    def __init__(self):
+        super().__init__(symbols=[1])
+        self.prev_price = 0.0
+
+    def on_trade(self, ctx, trade):
+        if self.prev_price > 0 and trade.price > self.prev_price:
+            self.emit_market_buy(ctx.symbol_id, 1.0)
+        self.prev_price = trade.price
+```
+
+Same API available in [Codon](https://flox-foundation.github.io/flox/how-to/codon-bindings/) for compiled native strategies.
+
 ## Codon
 
 [Codon](https://github.com/exaloop/codon) compiles Python-like code to native binaries.
