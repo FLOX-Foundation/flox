@@ -1,6 +1,6 @@
 [![CI](https://github.com/flox-foundation/flox/actions/workflows/ci.yml/badge.svg)](https://github.com/flox-foundation/flox/actions)
 [![Docs](https://img.shields.io/badge/docs-site-blue)](https://flox-foundation.github.io/flox)
-[![PyPI](https://img.shields.io/pypi/v/flox-py)](https://pypi.org/project/flox-py/)
+[![PyPI](https://img.shields.io/pypi/v/flox-py?v=1)](https://pypi.org/project/flox-py/)
 
 ## FLOX
 
