@@ -99,6 +99,14 @@ extern "C"
   uint32_t flox_registry_add_symbol(FloxRegistryHandle registry, const char* exchange,
                                     const char* name, double tick_size);
 
+  // Symbol name resolution
+  uint8_t flox_registry_get_symbol_id(FloxRegistryHandle registry, const char* exchange,
+                                      const char* name, uint32_t* id_out);
+  uint8_t flox_registry_get_symbol_name(FloxRegistryHandle registry, uint32_t symbol_id,
+                                        char* exchange_out, size_t exchange_len, char* name_out,
+                                        size_t name_len);
+  uint32_t flox_registry_symbol_count(FloxRegistryHandle registry);
+
   // ============================================================
   // Strategy lifecycle
   // ============================================================

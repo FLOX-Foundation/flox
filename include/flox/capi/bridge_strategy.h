@@ -20,9 +20,11 @@ class BridgeStrategy : public Strategy
  public:
   BridgeStrategy(SubscriberId id, std::vector<SymbolId> symbols, const SymbolRegistry& registry,
                  FloxStrategyCallbacks callbacks)
-      : Strategy(id, std::move(symbols), registry), _cb(callbacks)
+      : Strategy(id, std::move(symbols), registry), _cb(callbacks), _registry(&registry)
   {
   }
+
+  const SymbolRegistry& registry() const { return *_registry; }
 
   void start() override
   {
@@ -198,6 +200,7 @@ class BridgeStrategy : public Strategy
   }
 
   FloxStrategyCallbacks _cb;
+  const SymbolRegistry* _registry;
 };
 
 }  // namespace flox

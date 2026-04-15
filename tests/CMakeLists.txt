@@ -72,6 +72,11 @@ endif()
 
 add_flox_test(test_indicators)
 
+if(FLOX_ENABLE_CAPI)
+  add_flox_test(test_capi_registry)
+  target_link_libraries(test_capi_registry PRIVATE flox_capi)
+endif()
+
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_test(test_cpu_affinity)
 endif()

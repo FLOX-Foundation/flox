@@ -63,6 +63,41 @@ uint32_t flox_registry_add_symbol(FloxRegistryHandle registry, const char* excha
   return reg->registerSymbol(info);
 }
 
+uint8_t flox_registry_get_symbol_id(FloxRegistryHandle registry, const char* exchange,
+                                    const char* name, uint32_t* id_out)
+{
+  auto* reg = toRegistry(registry);
+  auto result = reg->getSymbolId(exchange, name);
+  if (result.has_value())
+  {
+    *id_out = result.value();
+    return 1;
+  }
+  return 0;
+}
+
+uint8_t flox_registry_get_symbol_name(FloxRegistryHandle registry, uint32_t symbol_id,
+                                      char* exchange_out, size_t exchange_len, char* name_out,
+                                      size_t name_len)
+{
+  auto* reg = toRegistry(registry);
+  auto info = reg->getSymbolInfo(symbol_id);
+  if (!info.has_value())
+  {
+    return 0;
+  }
+  std::strncpy(exchange_out, info->exchange.c_str(), exchange_len - 1);
+  exchange_out[exchange_len - 1] = '\0';
+  std::strncpy(name_out, info->symbol.c_str(), name_len - 1);
+  name_out[name_len - 1] = '\0';
+  return 1;
+}
+
+uint32_t flox_registry_symbol_count(FloxRegistryHandle registry)
+{
+  return static_cast<uint32_t>(toRegistry(registry)->size());
+}
+
 // ============================================================
 // Strategy lifecycle
 // ============================================================
