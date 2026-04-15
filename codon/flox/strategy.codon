@@ -23,14 +23,19 @@ from C import flox_position_raw(cobj, u32) -> i64
 from C import flox_get_order_status(cobj, u64) -> i32
 
 from flox.types import SCALE, Price, Quantity, TradeData, BUY, SELL
+from flox.types import TIF_GTC, TIF_IOC, TIF_FOK, TIF_POST_ONLY
 from flox.context import SymbolContext
+
+
+_TIF_MAP = {"gtc": TIF_GTC, "ioc": TIF_IOC, "fok": TIF_FOK, "post_only": TIF_POST_ONLY}
+_SIDE_MAP = {"buy": BUY, "sell": SELL}
 
 
 class Strategy:
     """Base class for Codon strategies. Mirrors C++ flox::Strategy.
 
     Override on_trade() and/or on_book_update() to implement strategy logic.
-    Use emit_* methods to submit orders.
+    Use emit_* methods (legacy) or ergonomic methods (market_buy, limit_sell, etc).
     Use position() and ctx() to query state.
 
     Codon compiles this to native code -- no interpreter overhead.
@@ -38,10 +43,16 @@ class Strategy:
 
     _handle: cobj
     _symbols: List[int]
+    _symbol_names: List[str]
+    _symbol_map: Dict[str, int]
+    _reverse_map: Dict[int, str]
 
     def __init__(self, symbols: List[int]):
         self._symbols = symbols
         self._handle = cobj()
+        self._symbol_names = list[str]()
+        self._symbol_map = dict[str, int]()
+        self._reverse_map = dict[int, str]()
 
     # ------------------------------------------------------------------
     # Overridable callbacks
@@ -203,3 +214,79 @@ class Strategy:
     def primary_symbol(self) -> int:
         """First symbol in the subscription list."""
         return self._symbols[0]
+
+    @property
+    def primary_symbol_name(self) -> str:
+        """First symbol name (string) if available."""
+        return self._symbol_names[0] if self._symbol_names else ""
+
+    # ------------------------------------------------------------------
+    # Ergonomic API: string symbols, kwargs, no emit_ prefix
+    # ------------------------------------------------------------------
+
+    def _resolve(self, symbol: Optional[str] = None) -> int:
+        """Resolve a string symbol name to numeric ID."""
+        if symbol is None:
+            return self._symbols[0]
+        if symbol in self._symbol_map:
+            return self._symbol_map[symbol]
+        raise ValueError(f"Unknown symbol: {symbol}")
+
+    def _reverse_lookup(self, symbol_id: int) -> str:
+        """Look up string name for a numeric symbol ID."""
+        if symbol_id in self._reverse_map:
+            return self._reverse_map[symbol_id]
+        return ""
+
+    def market_buy(self, qty: float, symbol: Optional[str] = None) -> int:
+        """Buy at market. Defaults to primary symbol."""
+        return self.emit_market_buy(self._resolve(symbol), qty)
+
+    def market_sell(self, qty: float, symbol: Optional[str] = None) -> int:
+        """Sell at market. Defaults to primary symbol."""
+        return self.emit_market_sell(self._resolve(symbol), qty)
+
+    def limit_buy(self, price: float, qty: float,
+                  symbol: Optional[str] = None, tif: str = "gtc") -> int:
+        """Place a limit buy. Defaults to primary symbol, GTC."""
+        return self.emit_limit_buy_tif(
+            self._resolve(symbol), price, qty, _TIF_MAP.get(tif, TIF_GTC))
+
+    def limit_sell(self, price: float, qty: float,
+                   symbol: Optional[str] = None, tif: str = "gtc") -> int:
+        """Place a limit sell. Defaults to primary symbol, GTC."""
+        return self.emit_limit_sell_tif(
+            self._resolve(symbol), price, qty, _TIF_MAP.get(tif, TIF_GTC))
+
+    def stop_market(self, side: str, trigger: float, qty: float,
+                    symbol: Optional[str] = None) -> int:
+        """Place a stop market order."""
+        return self.emit_stop_market(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), trigger, qty)
+
+    def stop_limit(self, side: str, trigger: float, limit_price: float,
+                   qty: float, symbol: Optional[str] = None) -> int:
+        """Place a stop limit order."""
+        return self.emit_stop_limit(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY),
+            trigger, limit_price, qty)
+
+    def close_position(self, symbol: Optional[str] = None) -> int:
+        """Close entire position for a symbol."""
+        return self.emit_close_position(self._resolve(symbol))
+
+    def cancel_order(self, order_id: int):
+        """Cancel an order by ID."""
+        self.emit_cancel(order_id)
+
+    def cancel_all_orders(self, symbol: Optional[str] = None):
+        """Cancel all orders for a symbol."""
+        self.emit_cancel_all(self._resolve(symbol))
+
+    def pos(self, symbol: Optional[str] = None) -> float:
+        """Current position as float. Defaults to primary symbol."""
+        return self.position(self._resolve(symbol))
+
+    def order_status(self, order_id: int) -> int:
+        """Get order status. Returns -1 if not found."""
+        return self.get_order_status(order_id)

@@ -9,6 +9,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace py = pybind11;
@@ -21,15 +22,18 @@ using namespace flox;
 struct PyTradeData
 {
   uint32_t symbol;
+  std::string symbol_name;
   double price;
   double quantity;
   bool is_buy;
+  std::string side;
   int64_t timestamp_ns;
 };
 
 struct PySymbolCtx
 {
   uint32_t symbol_id;
+  std::string symbol;
   double position;
   double last_trade_price;
   double best_bid;
@@ -296,12 +300,156 @@ class PyStrategyBase
 
   const std::vector<uint32_t>& symbols() const { return _symbols; }
 
+  const std::vector<std::string>& symbol_names() const { return _symbolNames; }
+
   // Internal: set up bridge for backtest
-  void _initBridge(BridgeStrategy* bridge) { _bridge = bridge; }
+  void _initBridge(BridgeStrategy* bridge)
+  {
+    _bridge = bridge;
+    _buildSymbolMap();
+  }
+
+  // ------------------------------------------------------------------
+  // Ergonomic API: string symbols, kwargs, no emit_ prefix
+  // ------------------------------------------------------------------
+
+  uint64_t market_buy(double qty, std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_market_buy(_resolve(symbol), qty);
+  }
+
+  uint64_t market_sell(double qty, std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_market_sell(_resolve(symbol), qty);
+  }
+
+  uint64_t limit_buy(double price, double qty, std::optional<std::string> symbol = std::nullopt,
+                     const std::string& tif = "gtc")
+  {
+    return emit_limit_buy_tif(_resolve(symbol), price, qty, tif);
+  }
+
+  uint64_t limit_sell(double price, double qty, std::optional<std::string> symbol = std::nullopt,
+                      const std::string& tif = "gtc")
+  {
+    return emit_limit_sell_tif(_resolve(symbol), price, qty, tif);
+  }
+
+  uint64_t stop_market(const std::string& side, double trigger, double qty,
+                       std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_stop_market(_resolve(symbol), side, trigger, qty);
+  }
+
+  uint64_t stop_limit(const std::string& side, double trigger, double limit_price, double qty,
+                      std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_stop_limit(_resolve(symbol), side, trigger, limit_price, qty);
+  }
+
+  uint64_t take_profit_market(const std::string& side, double trigger, double qty,
+                              std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_take_profit_market(_resolve(symbol), side, trigger, qty);
+  }
+
+  uint64_t take_profit_limit(const std::string& side, double trigger, double limit_price,
+                             double qty, std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_take_profit_limit(_resolve(symbol), side, trigger, limit_price, qty);
+  }
+
+  uint64_t trailing_stop(const std::string& side, double offset, double qty,
+                         std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_trailing_stop(_resolve(symbol), side, offset, qty);
+  }
+
+  uint64_t trailing_stop_percent(const std::string& side, int32_t callback_bps, double qty,
+                                 std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_trailing_stop_percent(_resolve(symbol), side, callback_bps, qty);
+  }
+
+  uint64_t close_position(std::optional<std::string> symbol = std::nullopt)
+  {
+    return emit_close_position(_resolve(symbol));
+  }
+
+  void cancel_order(uint64_t order_id) { emit_cancel(order_id); }
+
+  void cancel_all_orders(std::optional<std::string> symbol = std::nullopt)
+  {
+    emit_cancel_all(_resolve(symbol));
+  }
+
+  void modify_order(uint64_t order_id, double new_price, double new_qty)
+  {
+    emit_modify(order_id, new_price, new_qty);
+  }
+
+  double pos(std::optional<std::string> symbol = std::nullopt) const
+  {
+    return position(_resolve(symbol));
+  }
+
+  int32_t order_status(uint64_t order_id) const { return get_order_status(order_id); }
+
+  std::string primary_symbol_name() const
+  {
+    return _symbolNames.empty() ? "" : _symbolNames[0];
+  }
 
  private:
   std::vector<uint32_t> _symbols;
+  std::vector<std::string> _symbolNames;
+  std::unordered_map<std::string, uint32_t> _symbolMap;
+  std::unordered_map<uint32_t, std::string> _reverseMap;
   BridgeStrategy* _bridge = nullptr;
+
+  void _buildSymbolMap()
+  {
+    if (!_bridge)
+    {
+      return;
+    }
+    _symbolNames.clear();
+    _symbolMap.clear();
+    _reverseMap.clear();
+    const auto& reg = _bridge->registry();
+    for (uint32_t id : _symbols)
+    {
+      auto [exchange, name] = reg.getSymbolName(id);
+      _symbolNames.push_back(name);
+      _symbolMap[name] = id;
+      _reverseMap[id] = name;
+    }
+  }
+
+  uint32_t _resolve(std::optional<std::string> symbol) const
+  {
+    if (!symbol.has_value())
+    {
+      return _symbols.empty() ? 0 : _symbols[0];
+    }
+    auto it = _symbolMap.find(symbol.value());
+    if (it != _symbolMap.end())
+    {
+      return it->second;
+    }
+    throw std::invalid_argument("Unknown symbol: " + symbol.value());
+  }
+
+  uint32_t _resolve(std::optional<uint32_t> symbol) const
+  {
+    return symbol.value_or(_symbols.empty() ? 0 : _symbols[0]);
+  }
+
+  std::string _reverseLookup(uint32_t id) const
+  {
+    auto it = _reverseMap.find(id);
+    return it != _reverseMap.end() ? it->second : "";
+  }
 };
 
 class PyStrategyTrampoline : public PyStrategyBase
@@ -331,14 +479,17 @@ inline void bindStrategy(py::module_& m)
   py::class_<PyTradeData>(m, "TradeData")
       .def(py::init<>())
       .def_readwrite("symbol", &PyTradeData::symbol)
+      .def_readwrite("symbol_name", &PyTradeData::symbol_name)
       .def_readwrite("price", &PyTradeData::price)
       .def_readwrite("quantity", &PyTradeData::quantity)
       .def_readwrite("is_buy", &PyTradeData::is_buy)
+      .def_readwrite("side", &PyTradeData::side)
       .def_readwrite("timestamp_ns", &PyTradeData::timestamp_ns);
 
   py::class_<PySymbolCtx>(m, "SymbolContext")
       .def(py::init<>())
       .def_readwrite("symbol_id", &PySymbolCtx::symbol_id)
+      .def_readwrite("symbol", &PySymbolCtx::symbol)
       .def_readwrite("position", &PySymbolCtx::position)
       .def_readwrite("last_trade_price", &PySymbolCtx::last_trade_price)
       .def_readwrite("best_bid", &PySymbolCtx::best_bid)
@@ -388,5 +539,37 @@ inline void bindStrategy(py::module_& m)
       .def("get_order_status", &PyStrategyBase::get_order_status, py::arg("order_id"))
       .def("position", &PyStrategyBase::position, py::arg("symbol") = py::none())
       .def("ctx", &PyStrategyBase::ctx, py::arg("symbol") = py::none())
-      .def_property_readonly("symbols", &PyStrategyBase::symbols);
+      .def_property_readonly("symbols", &PyStrategyBase::symbols)
+      // Ergonomic API: string symbols, kwargs, no emit_ prefix
+      .def("market_buy", &PyStrategyBase::market_buy, py::arg("qty"),
+           py::arg("symbol") = py::none())
+      .def("market_sell", &PyStrategyBase::market_sell, py::arg("qty"),
+           py::arg("symbol") = py::none())
+      .def("limit_buy", &PyStrategyBase::limit_buy, py::arg("price"), py::arg("qty"),
+           py::arg("symbol") = py::none(), py::arg("tif") = "gtc")
+      .def("limit_sell", &PyStrategyBase::limit_sell, py::arg("price"), py::arg("qty"),
+           py::arg("symbol") = py::none(), py::arg("tif") = "gtc")
+      .def("stop_market", &PyStrategyBase::stop_market, py::arg("side"), py::arg("trigger"),
+           py::arg("qty"), py::arg("symbol") = py::none())
+      .def("stop_limit", &PyStrategyBase::stop_limit, py::arg("side"), py::arg("trigger"),
+           py::arg("limit_price"), py::arg("qty"), py::arg("symbol") = py::none())
+      .def("take_profit_market", &PyStrategyBase::take_profit_market, py::arg("side"),
+           py::arg("trigger"), py::arg("qty"), py::arg("symbol") = py::none())
+      .def("take_profit_limit", &PyStrategyBase::take_profit_limit, py::arg("side"),
+           py::arg("trigger"), py::arg("limit_price"), py::arg("qty"),
+           py::arg("symbol") = py::none())
+      .def("trailing_stop", &PyStrategyBase::trailing_stop, py::arg("side"), py::arg("offset"),
+           py::arg("qty"), py::arg("symbol") = py::none())
+      .def("trailing_stop_percent", &PyStrategyBase::trailing_stop_percent, py::arg("side"),
+           py::arg("callback_bps"), py::arg("qty"), py::arg("symbol") = py::none())
+      .def("close_position", &PyStrategyBase::close_position, py::arg("symbol") = py::none())
+      .def("cancel_order", &PyStrategyBase::cancel_order, py::arg("order_id"))
+      .def("cancel_all_orders", &PyStrategyBase::cancel_all_orders,
+           py::arg("symbol") = py::none())
+      .def("modify_order", &PyStrategyBase::modify_order, py::arg("order_id"),
+           py::arg("new_price"), py::arg("new_qty"))
+      .def("pos", &PyStrategyBase::pos, py::arg("symbol") = py::none())
+      .def("order_status", &PyStrategyBase::order_status, py::arg("order_id"))
+      .def_property_readonly("symbol_names", &PyStrategyBase::symbol_names)
+      .def_property_readonly("primary_symbol_name", &PyStrategyBase::primary_symbol_name);
 }

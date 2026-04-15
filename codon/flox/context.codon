@@ -17,10 +17,12 @@ class SymbolContext:
 
     _handle: cobj
     symbol_id: u32
+    symbol: str
 
-    def __init__(self, handle: cobj, symbol_id: u32):
+    def __init__(self, handle: cobj, symbol_id: u32, symbol: str = ""):
         self._handle = handle
         self.symbol_id = symbol_id
+        self.symbol = symbol
 
     def position(self) -> float:
         """Current position quantity as float."""
