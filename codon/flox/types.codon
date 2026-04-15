@@ -120,25 +120,31 @@ class TradeData:
     """Trade event data. Mirrors C++ flox::Trade (flattened)."""
 
     symbol: int
+    symbol_name: str
     price: Price
     quantity: Quantity
     is_buy: bool
+    side: str
     timestamp_ns: int
 
     def __init__(self):
         self.symbol = 0
+        self.symbol_name = ""
         self.price = Price()
         self.quantity = Quantity()
         self.is_buy = False
+        self.side = ""
         self.timestamp_ns = 0
 
     @staticmethod
     def from_raw(symbol: int, price_raw: int, qty_raw: int, is_buy: bool,
-                 ts_ns: int) -> TradeData:
+                 ts_ns: int, symbol_name: str = "") -> TradeData:
         t = TradeData()
         t.symbol = symbol
+        t.symbol_name = symbol_name
         t.price = Price.from_raw(price_raw)
         t.quantity = Quantity.from_raw(qty_raw)
         t.is_buy = is_buy
+        t.side = "buy" if is_buy else "sell"
         t.timestamp_ns = ts_ns
         return t
