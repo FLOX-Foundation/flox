@@ -271,6 +271,31 @@ class Strategy:
             self._resolve(symbol), _SIDE_MAP.get(side, BUY),
             trigger, limit_price, qty)
 
+    def take_profit_market(self, side: str, trigger: float, qty: float,
+                           symbol: Optional[str] = None) -> int:
+        """Place a take profit market order."""
+        return self.emit_take_profit_market(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), trigger, qty)
+
+    def take_profit_limit(self, side: str, trigger: float, limit_price: float,
+                          qty: float, symbol: Optional[str] = None) -> int:
+        """Place a take profit limit order."""
+        return self.emit_take_profit_limit(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY),
+            trigger, limit_price, qty)
+
+    def trailing_stop(self, side: str, offset: float, qty: float,
+                      symbol: Optional[str] = None) -> int:
+        """Place a trailing stop order."""
+        return self.emit_trailing_stop(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), offset, qty)
+
+    def trailing_stop_percent(self, side: str, callback_bps: int, qty: float,
+                              symbol: Optional[str] = None) -> int:
+        """Place a trailing stop with percentage callback."""
+        return self.emit_trailing_stop_percent(
+            self._resolve(symbol), _SIDE_MAP.get(side, BUY), callback_bps, qty)
+
     def close_position(self, symbol: Optional[str] = None) -> int:
         """Close entire position for a symbol."""
         return self.emit_close_position(self._resolve(symbol))
@@ -283,9 +308,29 @@ class Strategy:
         """Cancel all orders for a symbol."""
         self.emit_cancel_all(self._resolve(symbol))
 
+    def modify_order(self, order_id: int, new_price: float, new_qty: float):
+        """Modify an existing order."""
+        self.emit_modify(order_id, new_price, new_qty)
+
     def pos(self, symbol: Optional[str] = None) -> float:
         """Current position as float. Defaults to primary symbol."""
         return self.position(self._resolve(symbol))
+
+    def last_price(self, symbol: Optional[str] = None) -> float:
+        """Last trade price. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).last_trade_price()
+
+    def best_bid(self, symbol: Optional[str] = None) -> float:
+        """Best bid price. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).best_bid()
+
+    def best_ask(self, symbol: Optional[str] = None) -> float:
+        """Best ask price. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).best_ask()
+
+    def mid_price(self, symbol: Optional[str] = None) -> float:
+        """Mid price. Defaults to primary symbol."""
+        return self.ctx(self._resolve(symbol)).mid_price()
 
     def order_status(self, order_id: int) -> int:
         """Get order status. Returns -1 if not found."""

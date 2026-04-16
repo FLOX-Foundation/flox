@@ -1,0 +1,8 @@
+{
+    "compilerOptions": {
+        "checkJs": true,
+        "target": "ES2020"
+    },
+    "include": ["flox/**/*.js", "examples/**/*.js"],
+    "typeRoots": ["types"]
+}

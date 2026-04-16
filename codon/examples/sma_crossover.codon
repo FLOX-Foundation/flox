@@ -7,7 +7,7 @@
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData
-from flox.indicators import StreamingSMA
+from flox.indicators import SMA
 
 
 class SmaCrossover(Strategy):
@@ -17,8 +17,8 @@ class SmaCrossover(Strategy):
     Compiled to native code by the Codon compiler.
     """
 
-    fast_sma: StreamingSMA
-    slow_sma: StreamingSMA
+    fast_sma: SMA
+    slow_sma: SMA
     order_size: float
     long_position: bool
     short_position: bool
@@ -28,8 +28,8 @@ class SmaCrossover(Strategy):
     def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30,
                  size: float = 1.0):
         super().__init__(symbols)
-        self.fast_sma = StreamingSMA(fast)
-        self.slow_sma = StreamingSMA(slow)
+        self.fast_sma = SMA(fast)
+        self.slow_sma = SMA(slow)
         self.order_size = size
         self.long_position = False
         self.short_position = False
