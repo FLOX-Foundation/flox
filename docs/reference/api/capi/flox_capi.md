@@ -122,6 +122,73 @@ Destroy a strategy and free resources.
 | `flox_indicator_macd(input, len, fast, slow, signal, ...)` | MACD |
 | `flox_indicator_bollinger(input, len, period, mult, ...)` | Bollinger |
 
+## Additional Indicators
+
+| Function | Description |
+|----------|-------------|
+| `flox_indicator_rma(input, len, period, output)` | Wilder's MA |
+| `flox_indicator_dema(input, len, period, output)` | Double EMA |
+| `flox_indicator_tema(input, len, period, output)` | Triple EMA |
+| `flox_indicator_kama(input, len, period, fast, slow, output)` | Kaufman Adaptive MA |
+| `flox_indicator_slope(input, len, length, output)` | Linear slope |
+| `flox_indicator_adx(high, low, close, len, period, adx, +di, -di)` | ADX |
+| `flox_indicator_cci(high, low, close, len, period, output)` | CCI |
+| `flox_indicator_stochastic(high, low, close, len, k, d, k_out, d_out)` | Stochastic |
+| `flox_indicator_chop(high, low, close, len, period, output)` | Choppiness |
+| `flox_indicator_obv(close, volume, len, output)` | On-Balance Volume |
+| `flox_indicator_vwap(close, volume, len, window, output)` | Rolling VWAP |
+| `flox_indicator_cvd(open, high, low, close, volume, len, output)` | Cumulative Volume Delta |
+
+## Order Book
+
+| Function | Description |
+|----------|-------------|
+| `flox_book_create(tick_size)` | Create NLevelOrderBook |
+| `flox_book_destroy(book)` | Free book |
+| `flox_book_apply_snapshot(book, bp, bq, bl, ap, aq, al)` | Full snapshot |
+| `flox_book_apply_delta(book, bp, bq, bl, ap, aq, al)` | Incremental update |
+| `flox_book_best_bid(book, &price)` | Best bid, returns 0 if empty |
+| `flox_book_best_ask(book, &price)` | Best ask |
+| `flox_book_mid(book, &price)` | Mid price |
+| `flox_book_spread(book, &spread)` | Bid-ask spread |
+| `flox_book_get_bids(book, prices, qtys, max)` | Get bid levels |
+| `flox_book_get_asks(book, prices, qtys, max)` | Get ask levels |
+| `flox_book_is_crossed(book)` | Check if crossed |
+| `flox_book_clear(book)` | Clear all levels |
+
+## Backtesting
+
+| Function | Description |
+|----------|-------------|
+| `flox_executor_create()` | Create SimulatedExecutor |
+| `flox_executor_submit_order(exec, id, side, price, qty, type, sym)` | Submit order |
+| `flox_executor_on_bar(exec, symbol, close)` | Feed bar |
+| `flox_executor_on_trade(exec, symbol, price, is_buy)` | Feed trade |
+| `flox_executor_advance_clock(exec, timestamp_ns)` | Advance time |
+| `flox_executor_fill_count(exec)` | Number of fills |
+| `flox_executor_get_fills(exec, fills, max)` | Get fill array |
+
+## Position Tracking
+
+| Function | Description |
+|----------|-------------|
+| `flox_position_tracker_create(cost_basis)` | Create tracker (0=FIFO) |
+| `flox_position_tracker_on_fill(t, symbol, side, price, qty)` | Record fill |
+| `flox_position_tracker_position(t, symbol)` | Current position |
+| `flox_position_tracker_avg_entry(t, symbol)` | Avg entry price |
+| `flox_position_tracker_realized_pnl(t, symbol)` | Realized PnL |
+| `flox_position_tracker_total_pnl(t)` | Total PnL |
+
+## Statistics
+
+| Function | Description |
+|----------|-------------|
+| `flox_stat_correlation(x, y, len)` | Pearson correlation |
+| `flox_stat_profit_factor(pnl, len)` | Gross profit / gross loss |
+| `flox_stat_win_rate(pnl, len)` | Winning trade ratio |
+| `flox_stat_permutation_test(g1, l1, g2, l2, n)` | Two-sample p-value |
+| `flox_stat_bootstrap_ci(data, len, conf, n, &lo, &med, &hi)` | Bootstrap CI |
+
 ## Conversion Helpers
 
 | Function | Description |

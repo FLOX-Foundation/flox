@@ -4,7 +4,7 @@ set -e
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
-FILES=$(git ls-files '*.cpp' '*.h')
+FILES=$(git ls-files '*.cpp' '*.h' | grep -v '^third_party/')
 if [ -z "$FILES" ]; then
   echo "[check-format] No C++ source files found to check."
   exit 0

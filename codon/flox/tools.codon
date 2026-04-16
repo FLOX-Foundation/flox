@@ -1,0 +1,540 @@
+# flox/tools.codon -- Order book, executor, position tracking, profiles.
+# Wrappers over the C API for non-strategy infrastructure.
+
+from C import flox_book_create(f64) -> cobj
+from C import flox_book_destroy(cobj)
+from C import flox_book_apply_snapshot(cobj, Ptr[f64], Ptr[f64], int,
+                                       Ptr[f64], Ptr[f64], int)
+from C import flox_book_apply_delta(cobj, Ptr[f64], Ptr[f64], int,
+                                     Ptr[f64], Ptr[f64], int)
+from C import flox_book_best_bid(cobj, Ptr[f64]) -> u8
+from C import flox_book_best_ask(cobj, Ptr[f64]) -> u8
+from C import flox_book_mid(cobj, Ptr[f64]) -> u8
+from C import flox_book_spread(cobj, Ptr[f64]) -> u8
+from C import flox_book_is_crossed(cobj) -> u8
+from C import flox_book_clear(cobj)
+
+from C import flox_executor_create() -> cobj
+from C import flox_executor_destroy(cobj)
+from C import flox_executor_submit_order(cobj, u64, u8, f64, f64, u8, u32)
+from C import flox_executor_cancel_order(cobj, u64)
+from C import flox_executor_cancel_all(cobj, u32)
+from C import flox_executor_on_bar(cobj, u32, f64)
+from C import flox_executor_on_trade(cobj, u32, f64, u8)
+from C import flox_executor_advance_clock(cobj, i64)
+from C import flox_executor_fill_count(cobj) -> u32
+
+from C import flox_position_tracker_create(u8) -> cobj
+from C import flox_position_tracker_destroy(cobj)
+from C import flox_position_tracker_on_fill(cobj, u32, u8, f64, f64)
+from C import flox_position_tracker_position(cobj, u32) -> f64
+from C import flox_position_tracker_avg_entry(cobj, u32) -> f64
+from C import flox_position_tracker_realized_pnl(cobj, u32) -> f64
+from C import flox_position_tracker_total_pnl(cobj) -> f64
+
+from C import flox_volume_profile_create(f64) -> cobj
+from C import flox_volume_profile_destroy(cobj)
+from C import flox_volume_profile_add_trade(cobj, f64, f64, u8)
+from C import flox_volume_profile_poc(cobj) -> f64
+from C import flox_volume_profile_vah(cobj) -> f64
+from C import flox_volume_profile_val(cobj) -> f64
+from C import flox_volume_profile_total_volume(cobj) -> f64
+from C import flox_volume_profile_clear(cobj)
+
+from C import flox_stat_correlation(Ptr[f64], Ptr[f64], int) -> f64
+from C import flox_stat_profit_factor(Ptr[f64], int) -> f64
+from C import flox_stat_win_rate(Ptr[f64], int) -> f64
+
+from C import flox_order_tracker_create() -> cobj
+from C import flox_order_tracker_destroy(cobj)
+from C import flox_order_tracker_on_submitted(cobj, u64, u32, u8, f64, f64) -> u8
+from C import flox_order_tracker_on_filled(cobj, u64, f64) -> u8
+from C import flox_order_tracker_on_canceled(cobj, u64) -> u8
+from C import flox_order_tracker_is_active(cobj, u64) -> u8
+from C import flox_order_tracker_active_count(cobj) -> u32
+from C import flox_order_tracker_total_count(cobj) -> u32
+from C import flox_order_tracker_prune(cobj)
+
+from C import flox_position_group_create() -> cobj
+from C import flox_position_group_destroy(cobj)
+from C import flox_position_group_open(cobj, u64, u32, u8, f64, f64) -> u64
+from C import flox_position_group_close(cobj, u64, f64)
+from C import flox_position_group_partial_close(cobj, u64, f64, f64)
+from C import flox_position_group_net_position(cobj, u32) -> f64
+from C import flox_position_group_realized_pnl(cobj, u32) -> f64
+from C import flox_position_group_total_pnl(cobj) -> f64
+from C import flox_position_group_open_count(cobj, u32) -> u32
+from C import flox_position_group_prune(cobj)
+
+from C import flox_market_profile_create(f64, u32, i64) -> cobj
+from C import flox_market_profile_destroy(cobj)
+from C import flox_market_profile_add_trade(cobj, i64, f64, f64, u8)
+from C import flox_market_profile_poc(cobj) -> f64
+from C import flox_market_profile_vah(cobj) -> f64
+from C import flox_market_profile_val(cobj) -> f64
+from C import flox_market_profile_ib_high(cobj) -> f64
+from C import flox_market_profile_ib_low(cobj) -> f64
+from C import flox_market_profile_is_poor_high(cobj) -> u8
+from C import flox_market_profile_is_poor_low(cobj) -> u8
+from C import flox_market_profile_clear(cobj)
+
+from C import flox_composite_book_create() -> cobj
+from C import flox_composite_book_destroy(cobj)
+from C import flox_composite_book_best_bid(cobj, u32, Ptr[f64], Ptr[f64]) -> u8
+from C import flox_composite_book_best_ask(cobj, u32, Ptr[f64], Ptr[f64]) -> u8
+from C import flox_composite_book_has_arb(cobj, u32) -> u8
+from C import flox_composite_book_mark_stale(cobj, u32, u32)
+from C import flox_composite_book_check_staleness(cobj, i64, i64)
+
+from C import flox_l3_book_create() -> cobj
+from C import flox_l3_book_destroy(cobj)
+from C import flox_l3_book_add_order(cobj, u64, f64, f64, u8) -> i32
+from C import flox_l3_book_remove_order(cobj, u64) -> i32
+from C import flox_l3_book_modify_order(cobj, u64, f64) -> i32
+from C import flox_l3_book_best_bid(cobj, Ptr[f64]) -> u8
+from C import flox_l3_book_best_ask(cobj, Ptr[f64]) -> u8
+from C import flox_l3_book_bid_at_price(cobj, f64) -> f64
+from C import flox_l3_book_ask_at_price(cobj, f64) -> f64
+
+from C import flox_footprint_create(f64) -> cobj
+from C import flox_footprint_destroy(cobj)
+from C import flox_footprint_add_trade(cobj, f64, f64, u8)
+from C import flox_footprint_total_delta(cobj) -> f64
+from C import flox_footprint_total_volume(cobj) -> f64
+from C import flox_footprint_num_levels(cobj) -> u32
+from C import flox_footprint_clear(cobj)
+
+from C import flox_data_writer_create(cobj, u64, u8) -> cobj
+from C import flox_data_writer_destroy(cobj)
+from C import flox_data_writer_write_trade(cobj, i64, i64, f64, f64, u64, u32, u8) -> u8
+from C import flox_data_writer_flush(cobj)
+from C import flox_data_writer_close(cobj)
+
+from C import flox_data_reader_create(cobj) -> cobj
+from C import flox_data_reader_destroy(cobj)
+from C import flox_data_reader_count(cobj) -> u64
+
+from C import flox_aggregate_time_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
+                                        f64, cobj, u32) -> u32
+from C import flox_aggregate_tick_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
+                                        u32, cobj, u32) -> u32
+from C import flox_aggregate_volume_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
+                                          f64, cobj, u32) -> u32
+from C import flox_aggregate_range_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
+                                         f64, cobj, u32) -> u32
+from C import flox_aggregate_renko_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
+                                         f64, cobj, u32) -> u32
+from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
+                                               f64, cobj, u32) -> u32
+
+from C import flox_stat_permutation_test(Ptr[f64], int, Ptr[f64], int, u32) -> f64
+from C import flox_stat_bootstrap_ci(Ptr[f64], int, f64, u32, Ptr[f64], Ptr[f64], Ptr[f64])
+
+from C import flox_segment_validate(cobj) -> u8
+from C import flox_segment_merge(cobj, cobj) -> u8
+
+from C import flox_book_get_bids(cobj, Ptr[f64], Ptr[f64], u32) -> u32
+from C import flox_book_get_asks(cobj, Ptr[f64], Ptr[f64], u32) -> u32
+
+BUY_SIDE: int = 0
+SELL_SIDE: int = 1
+
+
+class OrderBook:
+    _h: cobj
+
+    def __init__(self, tick_size: float = 0.01):
+        self._h = flox_book_create(tick_size)
+
+    def apply_snapshot(self, bid_prices: List[float], bid_qtys: List[float],
+                       ask_prices: List[float], ask_qtys: List[float]):
+        flox_book_apply_snapshot(self._h,
+                                 bid_prices.arr.ptr, bid_qtys.arr.ptr, len(bid_prices),
+                                 ask_prices.arr.ptr, ask_qtys.arr.ptr, len(ask_prices))
+
+    def apply_delta(self, bid_prices: List[float], bid_qtys: List[float],
+                    ask_prices: List[float], ask_qtys: List[float]):
+        flox_book_apply_delta(self._h,
+                              bid_prices.arr.ptr, bid_qtys.arr.ptr, len(bid_prices),
+                              ask_prices.arr.ptr, ask_qtys.arr.ptr, len(ask_prices))
+
+    def best_bid(self) -> Optional[float]:
+        p = 0.0
+        if flox_book_best_bid(self._h, __ptr__(p)):
+            return p
+        return None
+
+    def best_ask(self) -> Optional[float]:
+        p = 0.0
+        if flox_book_best_ask(self._h, __ptr__(p)):
+            return p
+        return None
+
+    def mid(self) -> Optional[float]:
+        p = 0.0
+        if flox_book_mid(self._h, __ptr__(p)):
+            return p
+        return None
+
+    def spread(self) -> Optional[float]:
+        s = 0.0
+        if flox_book_spread(self._h, __ptr__(s)):
+            return s
+        return None
+
+    def is_crossed(self) -> bool:
+        return flox_book_is_crossed(self._h) != u8(0)
+
+    def clear(self):
+        flox_book_clear(self._h)
+
+
+class SimulatedExecutor:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_executor_create()
+
+    def submit_order(self, order_id: int, side: str, price: float,
+                     qty: float, order_type: int = 0, symbol: int = 1):
+        s = u8(0) if side == "buy" else u8(1)
+        flox_executor_submit_order(self._h, u64(order_id), s, price, qty,
+                                   u8(order_type), u32(symbol))
+
+    def cancel_order(self, order_id: int):
+        flox_executor_cancel_order(self._h, u64(order_id))
+
+    def cancel_all(self, symbol: int):
+        flox_executor_cancel_all(self._h, u32(symbol))
+
+    def on_bar(self, symbol: int, close_price: float):
+        flox_executor_on_bar(self._h, u32(symbol), close_price)
+
+    def on_trade(self, symbol: int, price: float, is_buy: bool):
+        flox_executor_on_trade(self._h, u32(symbol), price,
+                               u8(1) if is_buy else u8(0))
+
+    def advance_clock(self, timestamp_ns: int):
+        flox_executor_advance_clock(self._h, i64(timestamp_ns))
+
+    @property
+    def fill_count(self) -> int:
+        return int(flox_executor_fill_count(self._h))
+
+
+class PositionTracker:
+    _h: cobj
+
+    def __init__(self, cost_basis: int = 0):
+        self._h = flox_position_tracker_create(u8(cost_basis))
+
+    def on_fill(self, symbol: int, side: str, price: float, qty: float):
+        s = u8(0) if side == "buy" else u8(1)
+        flox_position_tracker_on_fill(self._h, u32(symbol), s, price, qty)
+
+    def position(self, symbol: int) -> float:
+        return flox_position_tracker_position(self._h, u32(symbol))
+
+    def avg_entry_price(self, symbol: int) -> float:
+        return flox_position_tracker_avg_entry(self._h, u32(symbol))
+
+    def realized_pnl(self, symbol: int) -> float:
+        return flox_position_tracker_realized_pnl(self._h, u32(symbol))
+
+    def total_realized_pnl(self) -> float:
+        return flox_position_tracker_total_pnl(self._h)
+
+
+class VolumeProfile:
+    _h: cobj
+
+    def __init__(self, tick_size: float = 0.01):
+        self._h = flox_volume_profile_create(tick_size)
+
+    def add_trade(self, price: float, qty: float, is_buy: bool):
+        flox_volume_profile_add_trade(self._h, price, qty,
+                                      u8(1) if is_buy else u8(0))
+
+    def poc(self) -> float:
+        return flox_volume_profile_poc(self._h)
+
+    def value_area_high(self) -> float:
+        return flox_volume_profile_vah(self._h)
+
+    def value_area_low(self) -> float:
+        return flox_volume_profile_val(self._h)
+
+    def total_volume(self) -> float:
+        return flox_volume_profile_total_volume(self._h)
+
+    def clear(self):
+        flox_volume_profile_clear(self._h)
+
+
+def correlation(x: List[float], y: List[float]) -> float:
+    n = min(len(x), len(y))
+    return flox_stat_correlation(x.arr.ptr, y.arr.ptr, n)
+
+
+def profit_factor(pnl: List[float]) -> float:
+    return flox_stat_profit_factor(pnl.arr.ptr, len(pnl))
+
+
+def win_rate(pnl: List[float]) -> float:
+    return flox_stat_win_rate(pnl.arr.ptr, len(pnl))
+
+
+class OrderTracker:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_order_tracker_create()
+
+    def on_submitted(self, order_id: int, symbol: int, side: str,
+                     price: float, qty: float) -> bool:
+        s = u8(0) if side == "buy" else u8(1)
+        return flox_order_tracker_on_submitted(
+            self._h, u64(order_id), u32(symbol), s, price, qty) != u8(0)
+
+    def on_filled(self, order_id: int, fill_qty: float) -> bool:
+        return flox_order_tracker_on_filled(self._h, u64(order_id), fill_qty) != u8(0)
+
+    def on_canceled(self, order_id: int) -> bool:
+        return flox_order_tracker_on_canceled(self._h, u64(order_id)) != u8(0)
+
+    def is_active(self, order_id: int) -> bool:
+        return flox_order_tracker_is_active(self._h, u64(order_id)) != u8(0)
+
+    @property
+    def active_count(self) -> int:
+        return int(flox_order_tracker_active_count(self._h))
+
+    @property
+    def total_count(self) -> int:
+        return int(flox_order_tracker_total_count(self._h))
+
+    def prune(self):
+        flox_order_tracker_prune(self._h)
+
+
+class PositionGroupTracker:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_position_group_create()
+
+    def open_position(self, order_id: int, symbol: int, side: str,
+                      price: float, qty: float) -> int:
+        s = u8(0) if side == "buy" else u8(1)
+        return int(flox_position_group_open(
+            self._h, u64(order_id), u32(symbol), s, price, qty))
+
+    def close_position(self, position_id: int, exit_price: float):
+        flox_position_group_close(self._h, u64(position_id), exit_price)
+
+    def partial_close(self, position_id: int, qty: float, exit_price: float):
+        flox_position_group_partial_close(self._h, u64(position_id), qty, exit_price)
+
+    def net_position(self, symbol: int) -> float:
+        return flox_position_group_net_position(self._h, u32(symbol))
+
+    def realized_pnl(self, symbol: int) -> float:
+        return flox_position_group_realized_pnl(self._h, u32(symbol))
+
+    def total_realized_pnl(self) -> float:
+        return flox_position_group_total_pnl(self._h)
+
+    def open_position_count(self, symbol: int) -> int:
+        return int(flox_position_group_open_count(self._h, u32(symbol)))
+
+    def prune(self):
+        flox_position_group_prune(self._h)
+
+
+class MarketProfile:
+    _h: cobj
+
+    def __init__(self, tick_size: float, period_minutes: int,
+                 session_start_ns: int):
+        self._h = flox_market_profile_create(tick_size, u32(period_minutes),
+                                              i64(session_start_ns))
+
+    def add_trade(self, timestamp_ns: int, price: float, qty: float,
+                  is_buy: bool):
+        flox_market_profile_add_trade(self._h, i64(timestamp_ns), price, qty,
+                                      u8(1) if is_buy else u8(0))
+
+    def poc(self) -> float:
+        return flox_market_profile_poc(self._h)
+
+    def value_area_high(self) -> float:
+        return flox_market_profile_vah(self._h)
+
+    def value_area_low(self) -> float:
+        return flox_market_profile_val(self._h)
+
+    def initial_balance_high(self) -> float:
+        return flox_market_profile_ib_high(self._h)
+
+    def initial_balance_low(self) -> float:
+        return flox_market_profile_ib_low(self._h)
+
+    def is_poor_high(self) -> bool:
+        return flox_market_profile_is_poor_high(self._h) != u8(0)
+
+    def is_poor_low(self) -> bool:
+        return flox_market_profile_is_poor_low(self._h) != u8(0)
+
+    def clear(self):
+        flox_market_profile_clear(self._h)
+
+
+class CompositeBook:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_composite_book_create()
+
+    def best_bid(self, symbol: int) -> Optional[Tuple[float, float]]:
+        p = 0.0
+        q = 0.0
+        if flox_composite_book_best_bid(self._h, u32(symbol),
+                                         __ptr__(p), __ptr__(q)):
+            return (p, q)
+        return None
+
+    def best_ask(self, symbol: int) -> Optional[Tuple[float, float]]:
+        p = 0.0
+        q = 0.0
+        if flox_composite_book_best_ask(self._h, u32(symbol),
+                                         __ptr__(p), __ptr__(q)):
+            return (p, q)
+        return None
+
+    def has_arbitrage(self, symbol: int) -> bool:
+        return flox_composite_book_has_arb(self._h, u32(symbol)) != u8(0)
+
+    def mark_stale(self, exchange: int, symbol: int):
+        flox_composite_book_mark_stale(self._h, u32(exchange), u32(symbol))
+
+    def check_staleness(self, now_ns: int, threshold_ns: int):
+        flox_composite_book_check_staleness(self._h, i64(now_ns),
+                                             i64(threshold_ns))
+
+
+class L3Book:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_l3_book_create()
+
+    def add_order(self, order_id: int, price: float, qty: float,
+                  side: str) -> int:
+        s = u8(0) if side == "buy" else u8(1)
+        return int(flox_l3_book_add_order(self._h, u64(order_id), price, qty, s))
+
+    def remove_order(self, order_id: int) -> int:
+        return int(flox_l3_book_remove_order(self._h, u64(order_id)))
+
+    def modify_order(self, order_id: int, new_qty: float) -> int:
+        return int(flox_l3_book_modify_order(self._h, u64(order_id), new_qty))
+
+    def best_bid(self) -> Optional[float]:
+        p = 0.0
+        if flox_l3_book_best_bid(self._h, __ptr__(p)):
+            return p
+        return None
+
+    def best_ask(self) -> Optional[float]:
+        p = 0.0
+        if flox_l3_book_best_ask(self._h, __ptr__(p)):
+            return p
+        return None
+
+    def bid_at_price(self, price: float) -> float:
+        return flox_l3_book_bid_at_price(self._h, price)
+
+    def ask_at_price(self, price: float) -> float:
+        return flox_l3_book_ask_at_price(self._h, price)
+
+
+class FootprintBar:
+    _h: cobj
+
+    def __init__(self, tick_size: float = 0.01):
+        self._h = flox_footprint_create(tick_size)
+
+    def add_trade(self, price: float, qty: float, is_buy: bool):
+        flox_footprint_add_trade(self._h, price, qty,
+                                  u8(1) if is_buy else u8(0))
+
+    def total_delta(self) -> float:
+        return flox_footprint_total_delta(self._h)
+
+    def total_volume(self) -> float:
+        return flox_footprint_total_volume(self._h)
+
+    @property
+    def num_levels(self) -> int:
+        return int(flox_footprint_num_levels(self._h))
+
+    def clear(self):
+        flox_footprint_clear(self._h)
+
+
+class DataWriter:
+    _h: cobj
+
+    def __init__(self, output_dir: str, max_segment_mb: int = 256,
+                 exchange_id: int = 0):
+        self._h = flox_data_writer_create(
+            output_dir.c_str(), u64(max_segment_mb), u8(exchange_id))
+
+    def write_trade(self, exchange_ts_ns: int, recv_ts_ns: int,
+                    price: float, qty: float, trade_id: int,
+                    symbol_id: int, side: int) -> bool:
+        return flox_data_writer_write_trade(
+            self._h, i64(exchange_ts_ns), i64(recv_ts_ns), price, qty,
+            u64(trade_id), u32(symbol_id), u8(side)) != u8(0)
+
+    def flush(self):
+        flox_data_writer_flush(self._h)
+
+    def close(self):
+        flox_data_writer_close(self._h)
+
+
+class DataReader:
+    _h: cobj
+
+    def __init__(self, data_dir: str):
+        self._h = flox_data_reader_create(data_dir.c_str())
+
+    def count(self) -> int:
+        return int(flox_data_reader_count(self._h))
+
+
+def permutation_test(group1: List[float], group2: List[float],
+                     num_permutations: int = 10000) -> float:
+    return flox_stat_permutation_test(
+        group1.arr.ptr, len(group1), group2.arr.ptr, len(group2),
+        u32(num_permutations))
+
+
+def bootstrap_ci(data: List[float], confidence: float = 0.95,
+                 num_samples: int = 10000) -> Tuple[float, float, float]:
+    lo = 0.0
+    med = 0.0
+    hi = 0.0
+    flox_stat_bootstrap_ci(data.arr.ptr, len(data), confidence,
+                            u32(num_samples), __ptr__(lo), __ptr__(med),
+                            __ptr__(hi))
+    return (lo, med, hi)
+
+
+def validate_segment(path: str) -> bool:
+    return flox_segment_validate(path.c_str()) != u8(0)
+
+
+def merge_segments(input_dir: str, output_path: str) -> bool:
+    return flox_segment_merge(input_dir.c_str(), output_path.c_str()) != u8(0)

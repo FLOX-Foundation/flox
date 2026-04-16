@@ -93,6 +93,7 @@ nav:
       - Grid Search: how-to/grid-search.md
       - Python Bindings: how-to/python-bindings.md
       - Codon Bindings: how-to/codon-bindings.md
+      - JavaScript Bindings: how-to/quickjs-bindings.md
       - Strategy Classes: how-to/strategy-classes.md
       - Indicator Graph: how-to/indicator-graph.md
       - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md

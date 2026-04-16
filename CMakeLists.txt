@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(flox VERSION 0.2.0 LANGUAGES CXX)
+project(flox VERSION 0.2.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -177,6 +177,14 @@ if (FLOX_ENABLE_CODON)
     message(FATAL_ERROR "FLOX_ENABLE_CODON requires FLOX_ENABLE_CAPI=ON")
   endif()
   add_subdirectory(codon)
+endif()
+
+option(FLOX_ENABLE_QUICKJS "Build QuickJS JavaScript strategy support" OFF)
+if (FLOX_ENABLE_QUICKJS)
+  if (NOT FLOX_ENABLE_CAPI)
+    message(FATAL_ERROR "FLOX_ENABLE_QUICKJS requires FLOX_ENABLE_CAPI=ON")
+  endif()
+  add_subdirectory(src/quickjs)
 endif()
 
 target_include_directories(flox PUBLIC

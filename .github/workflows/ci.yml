@@ -73,7 +73,8 @@ jobs:
               -DFLOX_ENABLE_BACKTEST=ON \
               -DFLOX_ENABLE_CAPI=ON \
               -DFLOX_ENABLE_PYTHON=ON \
-              -DFLOX_ENABLE_CODON=ON
+              -DFLOX_ENABLE_CODON=ON \
+              -DFLOX_ENABLE_QUICKJS=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -103,6 +104,11 @@ jobs:
         test -f build/codon/codon_sma_crossover
         test -f build/codon/codon_pairs_strategy
         file build/codon/codon_sma_crossover | grep -q ELF
+
+    - name: Verify QuickJS runner
+      run: |
+        test -f build/src/quickjs/flox_js_runner
+        ./build/src/quickjs/flox_js_runner quickjs/examples/sma_crossover.js
 
     - name: Run demo
       run: ./build/demo/flox_demo

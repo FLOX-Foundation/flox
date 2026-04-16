@@ -55,6 +55,502 @@ py::array_t<double> computeSingle(const Indicator& ind, py::array_t<double> inpu
   return result;
 }
 
+// =================================================================
+// Streaming indicator wrappers
+// =================================================================
+
+class PySMA
+{
+ public:
+  PySMA(size_t period) : _period(period), _buffer(period, 0), _sum(0), _count(0), _index(0) {}
+  double update(double value)
+  {
+    if (_count < _period)
+    {
+      _buffer[_count] = value;
+      _sum += value;
+      _count++;
+    }
+    else
+    {
+      _sum -= _buffer[_index];
+      _buffer[_index] = value;
+      _sum += value;
+      _index = (_index + 1) % _period;
+    }
+    _value = _sum / _count;
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count >= _period; }
+
+ private:
+  size_t _period, _count, _index;
+  std::vector<double> _buffer;
+  double _sum, _value = 0;
+};
+
+class PyEMA
+{
+ public:
+  PyEMA(size_t period) : _period(period), _mult(2.0 / (period + 1)) {}
+  double update(double value)
+  {
+    if (_count < _period)
+    {
+      _sum += value;
+      _count++;
+      _value = _sum / _count;
+    }
+    else
+    {
+      _value = (value - _value) * _mult + _value;
+    }
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count >= _period; }
+
+ private:
+  size_t _period, _count = 0;
+  double _mult, _sum = 0, _value = 0;
+};
+
+class PyRMA
+{
+ public:
+  PyRMA(size_t period) : _period(period), _alpha(1.0 / period) {}
+  double update(double value)
+  {
+    if (_count < _period)
+    {
+      _sum += value;
+      _count++;
+      _value = _sum / _count;
+    }
+    else
+    {
+      _value = _alpha * value + (1 - _alpha) * _value;
+    }
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count >= _period; }
+
+ private:
+  size_t _period, _count = 0;
+  double _alpha, _sum = 0, _value = 0;
+};
+
+class PyRSI
+{
+ public:
+  PyRSI(size_t period) : _period(period) {}
+  double update(double value)
+  {
+    if (_count == 0)
+    {
+      _prev = value;
+      _count++;
+      return _value;
+    }
+    double change = value - _prev;
+    _prev = value;
+    double gain = change > 0 ? change : 0;
+    double loss = change < 0 ? -change : 0;
+    if (_count <= _period)
+    {
+      _avgGain += gain / _period;
+      _avgLoss += loss / _period;
+      _count++;
+    }
+    else
+    {
+      _avgGain = (_avgGain * (_period - 1) + gain) / _period;
+      _avgLoss = (_avgLoss * (_period - 1) + loss) / _period;
+    }
+    _value = _avgLoss == 0 ? 100.0 : 100.0 - 100.0 / (1.0 + _avgGain / _avgLoss);
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count > _period; }
+
+ private:
+  size_t _period, _count = 0;
+  double _prev = 0, _avgGain = 0, _avgLoss = 0, _value = 50;
+};
+
+class PyATR
+{
+ public:
+  PyATR(size_t period) : _period(period) {}
+  double update(double high, double low, double close)
+  {
+    double tr;
+    if (_count == 0)
+    {
+      tr = high - low;
+    }
+    else
+    {
+      tr = std::max({high - low, std::abs(high - _prevClose), std::abs(low - _prevClose)});
+    }
+    _prevClose = close;
+    _count++;
+    if (_count <= _period)
+    {
+      _sum += tr;
+      _value = _sum / _count;
+    }
+    else
+    {
+      _value = (_value * (_period - 1) + tr) / _period;
+    }
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count >= _period; }
+
+ private:
+  size_t _period, _count = 0;
+  double _prevClose = 0, _sum = 0, _value = 0;
+};
+
+class PyDEMA
+{
+ public:
+  PyDEMA(size_t period) : _ema1(period), _ema2(period) {}
+  double update(double value)
+  {
+    double e1 = _ema1.update(value);
+    double e2 = _ema2.update(e1);
+    _value = 2 * e1 - e2;
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _ema2.isReady(); }
+
+ private:
+  PyEMA _ema1, _ema2;
+  double _value = 0;
+};
+
+class PyTEMA
+{
+ public:
+  PyTEMA(size_t period) : _ema1(period), _ema2(period), _ema3(period) {}
+  double update(double value)
+  {
+    double e1 = _ema1.update(value);
+    double e2 = _ema2.update(e1);
+    double e3 = _ema3.update(e2);
+    _value = 3 * e1 - 3 * e2 + e3;
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _ema3.isReady(); }
+
+ private:
+  PyEMA _ema1, _ema2, _ema3;
+  double _value = 0;
+};
+
+class PyKAMA
+{
+ public:
+  PyKAMA(size_t period, size_t fast = 2, size_t slow = 30)
+      : _period(period), _fastSc(2.0 / (fast + 1)), _slowSc(2.0 / (slow + 1))
+  {
+  }
+  double update(double value)
+  {
+    _buffer.push_back(value);
+    _count++;
+    if (_count <= _period)
+    {
+      _value = value;
+      return _value;
+    }
+    if (_buffer.size() > _period + 1)
+    {
+      _buffer.erase(_buffer.begin());
+    }
+    double direction = std::abs(value - _buffer.front());
+    double volatility = 0;
+    for (size_t i = 1; i < _buffer.size(); i++)
+    {
+      volatility += std::abs(_buffer[i] - _buffer[i - 1]);
+    }
+    double er = volatility != 0 ? direction / volatility : 0;
+    double sc = er * (_fastSc - _slowSc) + _slowSc;
+    sc *= sc;
+    _value += sc * (value - _value);
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count > _period; }
+
+ private:
+  size_t _period, _count = 0;
+  double _fastSc, _slowSc, _value = 0;
+  std::vector<double> _buffer;
+};
+
+class PySlope
+{
+ public:
+  PySlope(size_t length) : _length(length) {}
+  double update(double value)
+  {
+    _buffer.push_back(value);
+    if (_buffer.size() > _length + 1)
+    {
+      _buffer.erase(_buffer.begin());
+    }
+    if (_buffer.size() > _length)
+    {
+      _value = (value - _buffer.front()) / _length;
+    }
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _buffer.size() > _length; }
+
+ private:
+  size_t _length;
+  double _value = 0;
+  std::vector<double> _buffer;
+};
+
+class PyMACD
+{
+ public:
+  PyMACD(size_t fast = 12, size_t slow = 26, size_t signal = 9)
+      : _fastEma(fast), _slowEma(slow), _signalEma(signal)
+  {
+  }
+  double update(double value)
+  {
+    double f = _fastEma.update(value);
+    double s = _slowEma.update(value);
+    _line = f - s;
+    if (_slowEma.isReady())
+    {
+      _signal = _signalEma.update(_line);
+      _ready = _signalEma.isReady();
+    }
+    _histogram = _line - _signal;
+    return _line;
+  }
+  double getLine() const { return _line; }
+  double getSignal() const { return _signal; }
+  double getHistogram() const { return _histogram; }
+  double getValue() const { return _line; }
+  bool isReady() const { return _ready; }
+
+ private:
+  PyEMA _fastEma, _slowEma, _signalEma;
+  double _line = 0, _signal = 0, _histogram = 0;
+  bool _ready = false;
+};
+
+class PyBollinger
+{
+ public:
+  PyBollinger(size_t period = 20, double multiplier = 2.0)
+      : _sma(period), _period(period), _multiplier(multiplier)
+  {
+  }
+  double update(double value)
+  {
+    _middle = _sma.update(value);
+    _buffer.push_back(value);
+    if (_buffer.size() > _period)
+    {
+      _buffer.erase(_buffer.begin());
+    }
+    if (_sma.isReady())
+    {
+      double sum = 0;
+      for (double v : _buffer)
+      {
+        double d = v - _middle;
+        sum += d * d;
+      }
+      double std = std::sqrt(sum / _buffer.size());
+      _upper = _middle + _multiplier * std;
+      _lower = _middle - _multiplier * std;
+    }
+    return _middle;
+  }
+  double getUpper() const { return _upper; }
+  double getMiddle() const { return _middle; }
+  double getLower() const { return _lower; }
+  double getValue() const { return _middle; }
+  bool isReady() const { return _sma.isReady(); }
+
+ private:
+  PySMA _sma;
+  size_t _period;
+  double _multiplier, _upper = 0, _middle = 0, _lower = 0;
+  std::vector<double> _buffer;
+};
+
+class PyStochastic
+{
+ public:
+  PyStochastic(size_t kPeriod = 14, size_t dPeriod = 3)
+      : _kPeriod(kPeriod), _dSma(dPeriod)
+  {
+  }
+  double update(double high, double low, double close)
+  {
+    _highs.push_back(high);
+    _lows.push_back(low);
+    if (_highs.size() > _kPeriod)
+    {
+      _highs.erase(_highs.begin());
+      _lows.erase(_lows.begin());
+    }
+    if (_highs.size() >= _kPeriod)
+    {
+      double hh = *std::max_element(_highs.begin(), _highs.end());
+      double ll = *std::min_element(_lows.begin(), _lows.end());
+      _k = (hh != ll) ? 100.0 * (close - ll) / (hh - ll) : 0;
+      _d = _dSma.update(_k);
+    }
+    return _k;
+  }
+  double getK() const { return _k; }
+  double getD() const { return _d; }
+  double getValue() const { return _k; }
+  bool isReady() const { return _highs.size() >= _kPeriod && _dSma.isReady(); }
+
+ private:
+  size_t _kPeriod;
+  PySMA _dSma;
+  std::vector<double> _highs, _lows;
+  double _k = 0, _d = 0;
+};
+
+class PyCCI
+{
+ public:
+  PyCCI(size_t period = 20) : _period(period) {}
+  double update(double high, double low, double close)
+  {
+    double tp = (high + low + close) / 3.0;
+    _buffer.push_back(tp);
+    if (_buffer.size() > _period)
+    {
+      _buffer.erase(_buffer.begin());
+    }
+    if (_buffer.size() >= _period)
+    {
+      double mean = 0;
+      for (double v : _buffer)
+      {
+        mean += v;
+      }
+      mean /= _buffer.size();
+      double devSum = 0;
+      for (double v : _buffer)
+      {
+        devSum += std::abs(v - mean);
+      }
+      double meanDev = devSum / _buffer.size();
+      _value = meanDev != 0 ? (tp - mean) / (0.015 * meanDev) : 0;
+    }
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _buffer.size() >= _period; }
+
+ private:
+  size_t _period;
+  double _value = 0;
+  std::vector<double> _buffer;
+};
+
+class PyOBV
+{
+ public:
+  double update(double close, double volume)
+  {
+    if (_count == 0)
+    {
+      _value = volume;
+    }
+    else if (close > _prevClose)
+    {
+      _value += volume;
+    }
+    else if (close < _prevClose)
+    {
+      _value -= volume;
+    }
+    _prevClose = close;
+    _count++;
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count > 0; }
+
+ private:
+  size_t _count = 0;
+  double _prevClose = 0, _value = 0;
+};
+
+class PyVWAP
+{
+ public:
+  PyVWAP(size_t window) : _window(window) {}
+  double update(double close, double volume)
+  {
+    _prices.push_back(close);
+    _volumes.push_back(volume);
+    if (_prices.size() > _window)
+    {
+      _prices.erase(_prices.begin());
+      _volumes.erase(_volumes.begin());
+    }
+    double pvSum = 0, vSum = 0;
+    for (size_t i = 0; i < _prices.size(); i++)
+    {
+      pvSum += _prices[i] * _volumes[i];
+      vSum += _volumes[i];
+    }
+    _value = vSum > 0 ? pvSum / vSum : 0;
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _prices.size() >= _window; }
+
+ private:
+  size_t _window;
+  double _value = 0;
+  std::vector<double> _prices, _volumes;
+};
+
+class PyCVD
+{
+ public:
+  double update(double open, double high, double low, double close, double volume)
+  {
+    double range = high - low;
+    double delta = range > 0 ? volume * (close - open) / range : 0;
+    _value += delta;
+    _count++;
+    return _value;
+  }
+  double getValue() const { return _value; }
+  bool isReady() const { return _count > 0; }
+
+ private:
+  size_t _count = 0;
+  double _value = 0;
+};
+
 }  // namespace
 
 inline void bindIndicators(py::module_& m)
@@ -470,4 +966,115 @@ inline void bindIndicators(py::module_& m)
       },
       "Cumulative Volume Delta",
       py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"), py::arg("volume"));
+
+  // =================================================================
+  // Streaming indicator classes
+  // =================================================================
+
+  py::class_<PySMA>(m, "SMA")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PySMA::update, py::arg("value"))
+      .def_property_readonly("value", &PySMA::getValue)
+      .def_property_readonly("ready", &PySMA::isReady);
+
+  py::class_<PyEMA>(m, "EMA")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PyEMA::update, py::arg("value"))
+      .def_property_readonly("value", &PyEMA::getValue)
+      .def_property_readonly("ready", &PyEMA::isReady);
+
+  py::class_<PyRMA>(m, "RMA")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PyRMA::update, py::arg("value"))
+      .def_property_readonly("value", &PyRMA::getValue)
+      .def_property_readonly("ready", &PyRMA::isReady);
+
+  py::class_<PyRSI>(m, "RSI")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PyRSI::update, py::arg("value"))
+      .def_property_readonly("value", &PyRSI::getValue)
+      .def_property_readonly("ready", &PyRSI::isReady);
+
+  py::class_<PyATR>(m, "ATR")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PyATR::update, py::arg("high"), py::arg("low"), py::arg("close"))
+      .def_property_readonly("value", &PyATR::getValue)
+      .def_property_readonly("ready", &PyATR::isReady);
+
+  py::class_<PyDEMA>(m, "DEMA")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PyDEMA::update, py::arg("value"))
+      .def_property_readonly("value", &PyDEMA::getValue)
+      .def_property_readonly("ready", &PyDEMA::isReady);
+
+  py::class_<PyTEMA>(m, "TEMA")
+      .def(py::init<size_t>(), py::arg("period"))
+      .def("update", &PyTEMA::update, py::arg("value"))
+      .def_property_readonly("value", &PyTEMA::getValue)
+      .def_property_readonly("ready", &PyTEMA::isReady);
+
+  py::class_<PyKAMA>(m, "KAMA")
+      .def(py::init<size_t, size_t, size_t>(), py::arg("period"), py::arg("fast") = 2,
+           py::arg("slow") = 30)
+      .def("update", &PyKAMA::update, py::arg("value"))
+      .def_property_readonly("value", &PyKAMA::getValue)
+      .def_property_readonly("ready", &PyKAMA::isReady);
+
+  py::class_<PySlope>(m, "Slope")
+      .def(py::init<size_t>(), py::arg("length"))
+      .def("update", &PySlope::update, py::arg("value"))
+      .def_property_readonly("value", &PySlope::getValue)
+      .def_property_readonly("ready", &PySlope::isReady);
+
+  py::class_<PyMACD>(m, "MACD")
+      .def(py::init<size_t, size_t, size_t>(), py::arg("fast") = 12, py::arg("slow") = 26,
+           py::arg("signal") = 9)
+      .def("update", &PyMACD::update, py::arg("value"))
+      .def_property_readonly("line", &PyMACD::getLine)
+      .def_property_readonly("signal", &PyMACD::getSignal)
+      .def_property_readonly("histogram", &PyMACD::getHistogram)
+      .def_property_readonly("value", &PyMACD::getValue)
+      .def_property_readonly("ready", &PyMACD::isReady);
+
+  py::class_<PyBollinger>(m, "Bollinger")
+      .def(py::init<size_t, double>(), py::arg("period") = 20, py::arg("multiplier") = 2.0)
+      .def("update", &PyBollinger::update, py::arg("value"))
+      .def_property_readonly("upper", &PyBollinger::getUpper)
+      .def_property_readonly("middle", &PyBollinger::getMiddle)
+      .def_property_readonly("lower", &PyBollinger::getLower)
+      .def_property_readonly("value", &PyBollinger::getValue)
+      .def_property_readonly("ready", &PyBollinger::isReady);
+
+  py::class_<PyStochastic>(m, "Stochastic")
+      .def(py::init<size_t, size_t>(), py::arg("k_period") = 14, py::arg("d_period") = 3)
+      .def("update", &PyStochastic::update, py::arg("high"), py::arg("low"), py::arg("close"))
+      .def_property_readonly("k", &PyStochastic::getK)
+      .def_property_readonly("d", &PyStochastic::getD)
+      .def_property_readonly("value", &PyStochastic::getValue)
+      .def_property_readonly("ready", &PyStochastic::isReady);
+
+  py::class_<PyCCI>(m, "CCI")
+      .def(py::init<size_t>(), py::arg("period") = 20)
+      .def("update", &PyCCI::update, py::arg("high"), py::arg("low"), py::arg("close"))
+      .def_property_readonly("value", &PyCCI::getValue)
+      .def_property_readonly("ready", &PyCCI::isReady);
+
+  py::class_<PyOBV>(m, "OBV")
+      .def(py::init<>())
+      .def("update", &PyOBV::update, py::arg("close"), py::arg("volume"))
+      .def_property_readonly("value", &PyOBV::getValue)
+      .def_property_readonly("ready", &PyOBV::isReady);
+
+  py::class_<PyVWAP>(m, "VWAP")
+      .def(py::init<size_t>(), py::arg("window"))
+      .def("update", &PyVWAP::update, py::arg("close"), py::arg("volume"))
+      .def_property_readonly("value", &PyVWAP::getValue)
+      .def_property_readonly("ready", &PyVWAP::isReady);
+
+  py::class_<PyCVD>(m, "CVD")
+      .def(py::init<>())
+      .def("update", &PyCVD::update, py::arg("open"), py::arg("high"), py::arg("low"),
+           py::arg("close"), py::arg("volume"))
+      .def_property_readonly("value", &PyCVD::getValue)
+      .def_property_readonly("ready", &PyCVD::isReady);
 }

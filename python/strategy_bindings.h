@@ -393,6 +393,45 @@ class PyStrategyBase
     return position(_resolve(symbol));
   }
 
+  double last_price(std::optional<std::string> symbol = std::nullopt) const
+  {
+    if (!_bridge)
+    {
+      return 0.0;
+    }
+    return _bridge->ctx(_resolve(symbol)).lastTradePrice.toDouble();
+  }
+
+  double best_bid(std::optional<std::string> symbol = std::nullopt) const
+  {
+    if (!_bridge)
+    {
+      return 0.0;
+    }
+    auto bid = _bridge->ctx(_resolve(symbol)).book.bestBid();
+    return bid ? bid->toDouble() : 0.0;
+  }
+
+  double best_ask(std::optional<std::string> symbol = std::nullopt) const
+  {
+    if (!_bridge)
+    {
+      return 0.0;
+    }
+    auto ask = _bridge->ctx(_resolve(symbol)).book.bestAsk();
+    return ask ? ask->toDouble() : 0.0;
+  }
+
+  double mid_price(std::optional<std::string> symbol = std::nullopt) const
+  {
+    if (!_bridge)
+    {
+      return 0.0;
+    }
+    auto mid = _bridge->ctx(_resolve(symbol)).mid();
+    return mid ? mid->toDouble() : 0.0;
+  }
+
   int32_t order_status(uint64_t order_id) const { return get_order_status(order_id); }
 
   std::string primary_symbol_name() const
@@ -569,6 +608,10 @@ inline void bindStrategy(py::module_& m)
       .def("modify_order", &PyStrategyBase::modify_order, py::arg("order_id"),
            py::arg("new_price"), py::arg("new_qty"))
       .def("pos", &PyStrategyBase::pos, py::arg("symbol") = py::none())
+      .def("last_price", &PyStrategyBase::last_price, py::arg("symbol") = py::none())
+      .def("best_bid", &PyStrategyBase::best_bid, py::arg("symbol") = py::none())
+      .def("best_ask", &PyStrategyBase::best_ask, py::arg("symbol") = py::none())
+      .def("mid_price", &PyStrategyBase::mid_price, py::arg("symbol") = py::none())
       .def("order_status", &PyStrategyBase::order_status, py::arg("order_id"))
       .def_property_readonly("symbol_names", &PyStrategyBase::symbol_names)
       .def_property_readonly("primary_symbol_name", &PyStrategyBase::primary_symbol_name);

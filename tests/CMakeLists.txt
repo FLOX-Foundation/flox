@@ -75,6 +75,13 @@ add_flox_test(test_indicators)
 if(FLOX_ENABLE_CAPI)
   add_flox_test(test_capi_registry)
   target_link_libraries(test_capi_registry PRIVATE flox_capi)
+  add_flox_test(test_capi_infra)
+  target_link_libraries(test_capi_infra PRIVATE flox_capi)
+endif()
+
+if(FLOX_ENABLE_QUICKJS)
+  add_flox_test(test_quickjs)
+  target_link_libraries(test_quickjs PRIVATE flox_quickjs)
 endif()
 
 if(FLOX_ENABLE_CPU_AFFINITY)

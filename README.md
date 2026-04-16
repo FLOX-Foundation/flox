@@ -45,7 +45,44 @@ class MyStrategy(flox.Strategy):
         self.prev_price = trade.price
 ```
 
-Same API available in [Codon](https://flox-foundation.github.io/flox/how-to/codon-bindings/) for compiled native strategies.
+Same API available in [Codon](https://flox-foundation.github.io/flox/how-to/codon-bindings/) for compiled native strategies, and in [JavaScript](https://flox-foundation.github.io/flox/how-to/quickjs-bindings/) via embedded QuickJS.
+
+## JavaScript
+
+Write strategies in JavaScript using embedded [QuickJS](https://bellard.org/quickjs/).
+String symbol names, options objects, TypeScript declarations for IDE support.
+
+```javascript
+class SmaCrossover extends Strategy {
+    constructor() {
+        super({ exchange: "Binance", symbols: ["BTCUSDT"] });
+        this.fastSma = new SMA(10);
+        this.slowSma = new SMA(30);
+    }
+
+    onTrade(ctx, trade) {
+        var fast = this.fastSma.update(trade.price);
+        var slow = this.slowSma.update(trade.price);
+        if (!this.slowSma.ready) return;
+
+        if (fast > slow && !this.hasPosition) {
+            this.marketBuy({ qty: 1.0 });
+        } else if (fast < slow && this.hasPosition) {
+            this.closePosition();
+        }
+    }
+}
+
+flox.register(new SmaCrossover());
+```
+
+```bash
+cmake -B build -DFLOX_ENABLE_CAPI=ON -DFLOX_ENABLE_QUICKJS=ON
+cmake --build build
+./build/src/quickjs/flox_js_runner my_strategy.js
+```
+
+See [JavaScript bindings guide](https://flox-foundation.github.io/flox/how-to/quickjs-bindings/).
 
 ## Codon
 
