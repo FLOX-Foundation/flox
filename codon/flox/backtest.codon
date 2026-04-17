@@ -2,6 +2,8 @@
 #
 # Wraps the C API backtest entry points so Codon strategies can configure
 # realistic fills, record results, pull stats, and export equity curves.
+#
+# Handles are heap-allocated by the C API. Call .close() when done to free them.
 
 from C import flox_executor_create() -> cobj
 from C import flox_executor_destroy(cobj)
@@ -26,21 +28,14 @@ from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
 from C import flox_backtest_result_write_equity_curve_csv(cobj, str) -> u8
 
 
-SLIPPAGE_NONE = 0
-SLIPPAGE_FIXED_TICKS = 1
-SLIPPAGE_FIXED_BPS = 2
-SLIPPAGE_VOLUME_IMPACT = 3
+SLIPPAGE_NONE: int = 0
+SLIPPAGE_FIXED_TICKS: int = 1
+SLIPPAGE_FIXED_BPS: int = 2
+SLIPPAGE_VOLUME_IMPACT: int = 3
 
-QUEUE_NONE = 0
-QUEUE_TOB = 1
-QUEUE_FULL = 2
-
-
-@dataclass
-class EquityPoint:
-    timestamp_ns: int
-    equity: float
-    drawdown_pct: float
+QUEUE_NONE: int = 0
+QUEUE_TOB: int = 1
+QUEUE_FULL: int = 2
 
 
 class SimulatedExecutor:
@@ -51,7 +46,7 @@ class SimulatedExecutor:
     def __init__(self):
         self._handle = flox_executor_create()
 
-    def __del__(self):
+    def close(self):
         if self._handle != cobj():
             flox_executor_destroy(self._handle)
             self._handle = cobj()
@@ -59,9 +54,19 @@ class SimulatedExecutor:
     def submit_order(self, id: int, side: str, price: float, quantity: float,
                      order_type: str = "market", symbol: int = 1):
         side_u = u8(0 if side == "buy" else 1)
-        type_map = {"market": 0, "limit": 1, "stop_market": 2, "stop_limit": 3,
-                    "take_profit_market": 4, "take_profit_limit": 5, "trailing_stop": 6}
-        t = type_map.get(order_type, 0)
+        t = 1
+        if order_type == "limit":
+            t = 0
+        elif order_type == "stop_market":
+            t = 2
+        elif order_type == "stop_limit":
+            t = 3
+        elif order_type == "take_profit_market":
+            t = 4
+        elif order_type == "take_profit_limit":
+            t = 5
+        elif order_type == "trailing_stop":
+            t = 6
         flox_executor_submit_order(self._handle, u64(id), side_u, price, quantity,
                                    u8(t), u32(symbol))
 
@@ -75,7 +80,8 @@ class SimulatedExecutor:
         flox_executor_on_bar(self._handle, u32(symbol), close_price)
 
     def on_trade(self, symbol: int, price: float, is_buy: bool):
-        flox_executor_on_trade(self._handle, u32(symbol), price, u8(1 if is_buy else 0))
+        flox_executor_on_trade(self._handle, u32(symbol), price,
+                               u8(1 if is_buy else 0))
 
     def on_trade_qty(self, symbol: int, price: float, quantity: float, is_buy: bool):
         flox_executor_on_trade_qty(self._handle, u32(symbol), price, quantity,
@@ -90,22 +96,20 @@ class SimulatedExecutor:
 
     def set_default_slippage(self, model: int, ticks: int = 0, bps: float = 0.0,
                              impact_coeff: float = 0.0):
-        flox_executor_set_default_slippage(self._handle, i32(model), i32(ticks), bps,
-                                           impact_coeff)
+        flox_executor_set_default_slippage(self._handle, i32(model), i32(ticks),
+                                           bps, impact_coeff)
 
     def set_symbol_slippage(self, symbol: int, model: int, ticks: int = 0,
                             bps: float = 0.0, impact_coeff: float = 0.0):
-        flox_executor_set_symbol_slippage(self._handle, u32(symbol), i32(model), i32(ticks),
-                                          bps, impact_coeff)
+        flox_executor_set_symbol_slippage(self._handle, u32(symbol), i32(model),
+                                          i32(ticks), bps, impact_coeff)
 
     def set_queue_model(self, model: int, depth: int = 1):
         flox_executor_set_queue_model(self._handle, i32(model), u32(depth))
 
-    @property
     def handle(self) -> cobj:
         return self._handle
 
-    @property
     def fill_count(self) -> int:
         return int(flox_executor_fill_count(self._handle))
 
@@ -119,10 +123,11 @@ class BacktestResult:
                  use_percentage_fee: bool = True, fixed_fee_per_trade: float = 0.0,
                  risk_free_rate: float = 0.0, annualization_factor: float = 252.0):
         self._handle = flox_backtest_result_create(
-            initial_capital, fee_rate, u8(1 if use_percentage_fee else 0),
-            fixed_fee_per_trade, risk_free_rate, annualization_factor)
+            initial_capital, fee_rate,
+            u8(1 if use_percentage_fee else 0), fixed_fee_per_trade,
+            risk_free_rate, annualization_factor)
 
-    def __del__(self):
+    def close(self):
         if self._handle != cobj():
             flox_backtest_result_destroy(self._handle)
             self._handle = cobj()
@@ -134,7 +139,7 @@ class BacktestResult:
                                          side_u, price, quantity, i64(timestamp_ns))
 
     def ingest_executor(self, executor: SimulatedExecutor):
-        flox_backtest_result_ingest_executor(self._handle, executor.handle)
+        flox_backtest_result_ingest_executor(self._handle, executor.handle())
 
     def equity_curve_size(self) -> int:
         return int(flox_backtest_result_equity_curve(self._handle, cobj(), u32(0)))

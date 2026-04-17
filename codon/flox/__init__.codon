@@ -11,4 +11,6 @@ from flox.context import *
 from flox.strategy import *
 from flox.indicators import *
 from flox.tools import *
-from flox.backtest import *
+# Backtest helpers are opt-in to avoid coupling strategy builds to the
+# full backtest surface. Import explicitly:
+#   from flox.backtest import SimulatedExecutor, BacktestResult
