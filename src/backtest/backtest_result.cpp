@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <vector>
 
 namespace flox
 {
@@ -21,6 +23,7 @@ BacktestResult::BacktestResult(const BacktestConfig& config, size_t expectedFill
   {
     _fills.reserve(expectedFills);
     _trades.reserve(expectedFills / 2);
+    _equityCurve.reserve(expectedFills / 2);
   }
   _currentEquity = Volume::fromDouble(_config.initialCapital);
   _peakEquity = _currentEquity;
@@ -42,9 +45,10 @@ void BacktestResult::recordFill(const Fill& fill)
       const Quantity closeQty =
           Quantity::fromRaw(std::min(-pos.quantity.raw(), fill.quantity.raw()));
       const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, false);
-      recordTrade(fill.symbol, Side::BUY, pnl, fee, fill.timestampNs);
+      recordTrade(fill.symbol, Side::BUY, pos.avgPrice, fill.price, closeQty,
+                  pos.entryTimeNs, fill.timestampNs, pnl, fee);
     }
-    updatePositionLong(pos, fill.quantity, fill.price);
+    updatePositionLong(pos, fill.quantity, fill.price, fill.timestampNs);
   }
   else
   {
@@ -53,9 +57,10 @@ void BacktestResult::recordFill(const Fill& fill)
       const Quantity closeQty =
           Quantity::fromRaw(std::min(pos.quantity.raw(), fill.quantity.raw()));
       const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, true);
-      recordTrade(fill.symbol, Side::SELL, pnl, fee, fill.timestampNs);
+      recordTrade(fill.symbol, Side::SELL, pos.avgPrice, fill.price, closeQty,
+                  pos.entryTimeNs, fill.timestampNs, pnl, fee);
     }
-    updatePositionShort(pos, fill.quantity, fill.price);
+    updatePositionShort(pos, fill.quantity, fill.price, fill.timestampNs);
   }
 }
 
@@ -73,6 +78,10 @@ BacktestStats BacktestResult::computeStats() const
 
   int64_t grossProfitRaw = 0;
   int64_t grossLossRaw = 0;
+  size_t winStreak = 0;
+  size_t lossStreak = 0;
+  std::vector<double> durations;
+  durations.reserve(_trades.size());
 
   for (const auto& trade : _trades)
   {
@@ -80,11 +89,34 @@ BacktestStats BacktestResult::computeStats() const
     {
       stats.winningTrades++;
       grossProfitRaw += trade.pnl.raw();
+      ++winStreak;
+      lossStreak = 0;
+      if (winStreak > stats.maxConsecutiveWins)
+      {
+        stats.maxConsecutiveWins = winStreak;
+      }
     }
     else if (trade.pnl.raw() < 0)
     {
       stats.losingTrades++;
       grossLossRaw += -trade.pnl.raw();
+      ++lossStreak;
+      winStreak = 0;
+      if (lossStreak > stats.maxConsecutiveLosses)
+      {
+        stats.maxConsecutiveLosses = lossStreak;
+      }
+    }
+    else
+    {
+      winStreak = 0;
+      lossStreak = 0;
+    }
+
+    if (trade.exitTimeNs >= trade.entryTimeNs)
+    {
+      durations.push_back(
+          static_cast<double>(trade.exitTimeNs - trade.entryTimeNs));
     }
   }
 
@@ -110,6 +142,11 @@ BacktestStats BacktestResult::computeStats() const
     stats.avgLoss = stats.grossLoss / static_cast<double>(stats.losingTrades);
   }
 
+  if (stats.avgLoss > 0.0)
+  {
+    stats.avgWinLossRatio = stats.avgWin / stats.avgLoss;
+  }
+
   if (grossLossRaw > 0)
   {
     stats.profitFactor = static_cast<double>(grossProfitRaw) / static_cast<double>(grossLossRaw);
@@ -122,9 +159,32 @@ BacktestStats BacktestResult::computeStats() const
         static_cast<double>(_maxDrawdown.raw()) / static_cast<double>(_peakEquity.raw()) * 100.0;
   }
 
+  if (!durations.empty())
+  {
+    double sum = 0.0;
+    double maxDur = 0.0;
+    for (double d : durations)
+    {
+      sum += d;
+      if (d > maxDur)
+      {
+        maxDur = d;
+      }
+    }
+    stats.avgTradeDurationNs = sum / static_cast<double>(durations.size());
+    stats.maxTradeDurationNs = maxDur;
+    std::vector<double> sorted = durations;
+    std::sort(sorted.begin(), sorted.end());
+    const size_t mid = sorted.size() / 2;
+    stats.medianTradeDurationNs = (sorted.size() % 2 == 0)
+                                      ? 0.5 * (sorted[mid - 1] + sorted[mid])
+                                      : sorted[mid];
+  }
+
   stats.sharpeRatio = computeSharpeRatio();
   stats.sortinoRatio = computeSortinoRatio();
-  stats.calmarRatio = computeCalmarRatio();
+  stats.timeWeightedReturn = computeTimeWeightedReturn();
+  stats.calmarRatio = computeCalmarRatio(stats.timeWeightedReturn);
 
   if (!_fills.empty())
   {
@@ -138,6 +198,22 @@ BacktestStats BacktestResult::computeStats() const
 double BacktestResult::totalPnl() const
 {
   return _totalPnl.toDouble();
+}
+
+bool BacktestResult::writeEquityCurveCsv(const std::string& path) const
+{
+  std::ofstream out(path);
+  if (!out)
+  {
+    return false;
+  }
+  out << "timestamp_ns,equity,drawdown_pct\n";
+  for (const auto& p : _equityCurve)
+  {
+    out << static_cast<int64_t>(p.timestampNs) << ',' << p.equity << ','
+        << p.drawdownPct << '\n';
+  }
+  return static_cast<bool>(out);
 }
 
 BacktestResult::Position& BacktestResult::getPosition(SymbolId symbol)
@@ -160,7 +236,6 @@ BacktestResult::Position& BacktestResult::getPosition(SymbolId symbol)
 
 Volume BacktestResult::computePnl(Price entryPrice, Price exitPrice, Quantity qty, bool isLong)
 {
-  // Uses Price * Quantity -> Volume which is __int128-safe via common.h
   if (isLong)
   {
     const Price diff = Price::fromRaw(exitPrice.raw() - entryPrice.raw());
@@ -173,12 +248,12 @@ Volume BacktestResult::computePnl(Price entryPrice, Price exitPrice, Quantity qt
   }
 }
 
-void BacktestResult::updatePositionLong(Position& pos, Quantity qty, Price price)
+void BacktestResult::updatePositionLong(Position& pos, Quantity qty, Price price,
+                                        UnixNanos timestampNs)
 {
   if (pos.quantity.raw() >= 0)
   {
-    // Weighted average: (avgPrice * pos + price * qty) / (pos + qty)
-    // Uses Volume = Price * Quantity (safe) then Volume / Quantity -> Price (safe)
+    const bool wasFlat = (pos.quantity.raw() == 0);
     const Volume existingValue = pos.avgPrice * pos.quantity;
     const Volume addedValue = price * qty;
     pos.quantity = Quantity::fromRaw(pos.quantity.raw() + qty.raw());
@@ -187,6 +262,10 @@ void BacktestResult::updatePositionLong(Position& pos, Quantity qty, Price price
       const Volume totalValue = Volume::fromRaw(existingValue.raw() + addedValue.raw());
       pos.avgPrice = totalValue / pos.quantity;
     }
+    if (wasFlat)
+    {
+      pos.entryTimeNs = timestampNs;
+    }
   }
   else
   {
@@ -194,14 +273,21 @@ void BacktestResult::updatePositionLong(Position& pos, Quantity qty, Price price
     if (pos.quantity.raw() > 0)
     {
       pos.avgPrice = price;
+      pos.entryTimeNs = timestampNs;
+    }
+    else if (pos.quantity.raw() == 0)
+    {
+      pos.entryTimeNs = 0;
     }
   }
 }
 
-void BacktestResult::updatePositionShort(Position& pos, Quantity qty, Price price)
+void BacktestResult::updatePositionShort(Position& pos, Quantity qty, Price price,
+                                         UnixNanos timestampNs)
 {
   if (pos.quantity.raw() <= 0)
   {
+    const bool wasFlat = (pos.quantity.raw() == 0);
     const Quantity absPos = Quantity::fromRaw(-pos.quantity.raw());
     const Volume existingValue = pos.avgPrice * absPos;
     const Volume addedValue = price * qty;
@@ -212,6 +298,10 @@ void BacktestResult::updatePositionShort(Position& pos, Quantity qty, Price pric
       const Volume totalValue = Volume::fromRaw(existingValue.raw() + addedValue.raw());
       pos.avgPrice = totalValue / newAbsPos;
     }
+    if (wasFlat)
+    {
+      pos.entryTimeNs = timestampNs;
+    }
   }
   else
   {
@@ -219,19 +309,29 @@ void BacktestResult::updatePositionShort(Position& pos, Quantity qty, Price pric
     if (pos.quantity.raw() < 0)
     {
       pos.avgPrice = price;
+      pos.entryTimeNs = timestampNs;
+    }
+    else if (pos.quantity.raw() == 0)
+    {
+      pos.entryTimeNs = 0;
     }
   }
 }
 
-void BacktestResult::recordTrade(SymbolId symbol, Side side, Volume pnl, Volume fee,
-                                 UnixNanos timestampNs)
+void BacktestResult::recordTrade(SymbolId symbol, Side side, Price entryPrice, Price exitPrice,
+                                 Quantity quantity, UnixNanos entryTimeNs, UnixNanos exitTimeNs,
+                                 Volume pnl, Volume fee)
 {
   TradeRecord trade;
   trade.symbol = symbol;
   trade.side = side;
+  trade.entryPrice = entryPrice;
+  trade.exitPrice = exitPrice;
+  trade.quantity = quantity;
+  trade.entryTimeNs = entryTimeNs;
+  trade.exitTimeNs = exitTimeNs;
   trade.pnl = pnl;
   trade.fee = fee;
-  trade.exitTimeNs = timestampNs;
   _trades.push_back(trade);
 
   const int64_t netPnlRaw = pnl.raw() - fee.raw();
@@ -248,13 +348,19 @@ void BacktestResult::recordTrade(SymbolId symbol, Side side, Volume pnl, Volume 
   {
     _maxDrawdown = Volume::fromRaw(drawdownRaw);
   }
+
+  EquityPoint pt;
+  pt.timestampNs = exitTimeNs;
+  pt.equity = _currentEquity.toDouble();
+  const double peak = _peakEquity.toDouble();
+  pt.drawdownPct = (peak > 0.0) ? (drawdownRaw / static_cast<double>(_peakEquity.raw())) * 100.0 : 0.0;
+  _equityCurve.push_back(pt);
 }
 
 Volume BacktestResult::computeFee(Price price, Quantity qty) const
 {
   if (_config.usePercentageFee)
   {
-    // price * qty -> Volume (safe via __int128)
     const Volume notional = price * qty;
     return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * _config.feeRate *
                                                 static_cast<double>(Volume::Scale)));
@@ -267,20 +373,21 @@ Volume BacktestResult::computeFee(Price price, Quantity qty) const
 
 double BacktestResult::computeSharpeRatio() const
 {
-  if (_trades.size() < 2)
+  if (_trades.size() < 2 || _config.initialCapital <= 0.0)
   {
     return 0.0;
   }
 
   const size_t n = _trades.size();
+  const double capital = _config.initialCapital;
   double sum = 0.0;
   double sumSq = 0.0;
 
   for (const auto& trade : _trades)
   {
-    const double pnl = trade.pnl.toDouble();
-    sum += pnl;
-    sumSq += pnl * pnl;
+    const double ret = (trade.pnl.toDouble() / capital) - _config.riskFreeRate;
+    sum += ret;
+    sumSq += ret * ret;
   }
 
   const double mean = sum / static_cast<double>(n);
@@ -293,30 +400,30 @@ double BacktestResult::computeSharpeRatio() const
   }
 
   const double stddev = std::sqrt(variance);
-  constexpr double kAnnualizationFactor = 15.8745;  // sqrt(252)
-
-  return (mean / stddev) * kAnnualizationFactor;
+  const double annualization = std::sqrt(_config.metricsAnnualizationFactor);
+  return (mean / stddev) * annualization;
 }
 
 double BacktestResult::computeSortinoRatio() const
 {
-  if (_trades.size() < 2)
+  if (_trades.size() < 2 || _config.initialCapital <= 0.0)
   {
     return 0.0;
   }
 
   const size_t n = _trades.size();
+  const double capital = _config.initialCapital;
   double sum = 0.0;
   double downsideSumSq = 0.0;
   size_t downsideCount = 0;
 
   for (const auto& trade : _trades)
   {
-    const double pnl = trade.pnl.toDouble();
-    sum += pnl;
-    if (pnl < 0)
+    const double ret = (trade.pnl.toDouble() / capital) - _config.riskFreeRate;
+    sum += ret;
+    if (ret < 0)
     {
-      downsideSumSq += pnl * pnl;
+      downsideSumSq += ret * ret;
       ++downsideCount;
     }
   }
@@ -335,26 +442,50 @@ double BacktestResult::computeSortinoRatio() const
     return 0.0;
   }
 
-  constexpr double kAnnualizationFactor = 15.8745;  // sqrt(252)
-  return (mean / downsideStddev) * kAnnualizationFactor;
+  const double annualization = std::sqrt(_config.metricsAnnualizationFactor);
+  return (mean / downsideStddev) * annualization;
 }
 
-double BacktestResult::computeCalmarRatio() const
+double BacktestResult::computeCalmarRatio(double annualizedReturn) const
 {
-  if (_trades.empty() || _maxDrawdown.raw() <= 0)
+  if (_trades.empty() || _maxDrawdown.raw() <= 0 || _config.initialCapital <= 0.0)
   {
     return 0.0;
   }
 
-  const double totalReturn = _totalPnl.toDouble();
-  const double maxDD = _maxDrawdown.toDouble();
-
-  if (maxDD <= 0)
+  const double maxDDPct =
+      static_cast<double>(_maxDrawdown.raw()) / static_cast<double>(_peakEquity.raw());
+  if (maxDDPct <= 0.0)
   {
     return 0.0;
   }
 
-  return totalReturn / maxDD;
+  // Calmar = annualized return / max drawdown (as percent fractions).
+  return annualizedReturn / maxDDPct;
+}
+
+double BacktestResult::computeTimeWeightedReturn() const
+{
+  // TWR chains per-period returns computed from consecutive equity points.
+  // Returns the cumulative product minus 1 (i.e. total period return).
+  if (_equityCurve.empty() || _config.initialCapital <= 0.0)
+  {
+    return 0.0;
+  }
+
+  double prev = _config.initialCapital;
+  double product = 1.0;
+  for (const auto& pt : _equityCurve)
+  {
+    if (prev <= 0.0)
+    {
+      break;
+    }
+    const double r = (pt.equity - prev) / prev;
+    product *= (1.0 + r);
+    prev = pt.equity;
+  }
+  return product - 1.0;
 }
 
 }  // namespace flox

@@ -15,6 +15,7 @@
 #include "flox/aggregator/policies/tick_bar_policy.h"
 #include "flox/aggregator/policies/time_bar_policy.h"
 #include "flox/aggregator/policies/volume_bar_policy.h"
+#include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/book/events/book_update_event.h"
@@ -1527,4 +1528,196 @@ uint8_t flox_segment_merge(const char* input_dir, const char* output_path)
   cfg.output_dir = output_path;
   auto result = replay::SegmentOps::mergeDirectory(input_dir, cfg);
   return result.segments_merged > 0 ? 1 : 0;
+}
+
+// ============================================================
+// Backtest: slippage, queue, result, metrics, equity curve
+// ============================================================
+
+namespace
+{
+SlippageProfile makeSlippageProfile(int32_t model, int32_t ticks, double bps,
+                                    double impact_coeff)
+{
+  SlippageProfile prof;
+  prof.model = static_cast<SlippageModel>(model);
+  prof.ticks = ticks;
+  prof.bps = bps;
+  prof.impactCoeff = impact_coeff;
+  return prof;
+}
+}  // namespace
+
+void flox_executor_set_default_slippage(FloxExecutorHandle h, int32_t model, int32_t ticks,
+                                        double bps, double impact_coeff)
+{
+  static_cast<FloxExecutorImpl*>(h)->executor.setDefaultSlippage(
+      makeSlippageProfile(model, ticks, bps, impact_coeff));
+}
+
+void flox_executor_set_symbol_slippage(FloxExecutorHandle h, uint32_t symbol, int32_t model,
+                                       int32_t ticks, double bps, double impact_coeff)
+{
+  static_cast<FloxExecutorImpl*>(h)->executor.setSymbolSlippage(
+      symbol, makeSlippageProfile(model, ticks, bps, impact_coeff));
+}
+
+void flox_executor_set_queue_model(FloxExecutorHandle h, int32_t model, uint32_t depth)
+{
+  static_cast<FloxExecutorImpl*>(h)->executor.setQueueModel(
+      static_cast<QueueModel>(model), depth);
+}
+
+void flox_executor_on_trade_qty(FloxExecutorHandle h, uint32_t symbol, double price,
+                                double quantity, uint8_t is_buy)
+{
+  static_cast<FloxExecutorImpl*>(h)->executor.onTrade(
+      symbol, Price::fromDouble(price), Quantity::fromDouble(quantity), is_buy != 0);
+}
+
+void flox_executor_on_book_level(FloxExecutorHandle h, uint32_t symbol, uint8_t side,
+                                 double price, double quantity)
+{
+  std::pmr::monotonic_buffer_resource pool(512);
+  std::pmr::vector<BookLevel> bids(&pool);
+  std::pmr::vector<BookLevel> asks(&pool);
+  BookLevel lvl(Price::fromDouble(price), Quantity::fromDouble(quantity));
+  if (side == 0)
+  {
+    bids.push_back(lvl);
+  }
+  else
+  {
+    asks.push_back(lvl);
+  }
+  static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+}
+
+void flox_executor_on_best_levels(FloxExecutorHandle h, uint32_t symbol, double bid_price,
+                                  double bid_qty, double ask_price, double ask_qty)
+{
+  std::pmr::monotonic_buffer_resource pool(512);
+  std::pmr::vector<BookLevel> bids(&pool);
+  std::pmr::vector<BookLevel> asks(&pool);
+  bids.emplace_back(Price::fromDouble(bid_price), Quantity::fromDouble(bid_qty));
+  asks.emplace_back(Price::fromDouble(ask_price), Quantity::fromDouble(ask_qty));
+  static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+}
+
+struct FloxBacktestResultImpl
+{
+  BacktestConfig config;
+  std::unique_ptr<BacktestResult> result;
+};
+
+FloxBacktestResultHandle flox_backtest_result_create(double initial_capital, double fee_rate,
+                                                     uint8_t use_percentage_fee,
+                                                     double fixed_fee_per_trade,
+                                                     double risk_free_rate,
+                                                     double annualization_factor)
+{
+  auto* impl = new FloxBacktestResultImpl();
+  impl->config.initialCapital = initial_capital;
+  impl->config.feeRate = fee_rate;
+  impl->config.usePercentageFee = use_percentage_fee != 0;
+  impl->config.fixedFeePerTrade = fixed_fee_per_trade;
+  impl->config.riskFreeRate = risk_free_rate;
+  impl->config.metricsAnnualizationFactor =
+      (annualization_factor > 0.0) ? annualization_factor : 252.0;
+  impl->result = std::make_unique<BacktestResult>(impl->config);
+  return impl;
+}
+
+void flox_backtest_result_destroy(FloxBacktestResultHandle h)
+{
+  delete static_cast<FloxBacktestResultImpl*>(h);
+}
+
+void flox_backtest_result_record_fill(FloxBacktestResultHandle h, uint64_t order_id,
+                                      uint32_t symbol, uint8_t side, double price,
+                                      double quantity, int64_t timestamp_ns)
+{
+  Fill fill{};
+  fill.orderId = order_id;
+  fill.symbol = symbol;
+  fill.side = (side == 0) ? Side::BUY : Side::SELL;
+  fill.price = Price::fromDouble(price);
+  fill.quantity = Quantity::fromDouble(quantity);
+  fill.timestampNs = static_cast<UnixNanos>(timestamp_ns);
+  static_cast<FloxBacktestResultImpl*>(h)->result->recordFill(fill);
+}
+
+void flox_backtest_result_ingest_executor(FloxBacktestResultHandle h, FloxExecutorHandle eh)
+{
+  auto* impl = static_cast<FloxBacktestResultImpl*>(h);
+  for (const auto& fill : static_cast<FloxExecutorImpl*>(eh)->executor.fills())
+  {
+    impl->result->recordFill(fill);
+  }
+}
+
+void flox_backtest_result_stats(FloxBacktestResultHandle h, FloxBacktestStats* out)
+{
+  if (!out)
+  {
+    return;
+  }
+  auto stats = static_cast<FloxBacktestResultImpl*>(h)->result->computeStats();
+  out->totalTrades = stats.totalTrades;
+  out->winningTrades = stats.winningTrades;
+  out->losingTrades = stats.losingTrades;
+  out->maxConsecutiveWins = stats.maxConsecutiveWins;
+  out->maxConsecutiveLosses = stats.maxConsecutiveLosses;
+  out->initialCapital = stats.initialCapital;
+  out->finalCapital = stats.finalCapital;
+  out->totalPnl = stats.totalPnl;
+  out->totalFees = stats.totalFees;
+  out->netPnl = stats.netPnl;
+  out->grossProfit = stats.grossProfit;
+  out->grossLoss = stats.grossLoss;
+  out->maxDrawdown = stats.maxDrawdown;
+  out->maxDrawdownPct = stats.maxDrawdownPct;
+  out->winRate = stats.winRate;
+  out->profitFactor = stats.profitFactor;
+  out->avgWin = stats.avgWin;
+  out->avgLoss = stats.avgLoss;
+  out->avgWinLossRatio = stats.avgWinLossRatio;
+  out->avgTradeDurationNs = stats.avgTradeDurationNs;
+  out->medianTradeDurationNs = stats.medianTradeDurationNs;
+  out->maxTradeDurationNs = stats.maxTradeDurationNs;
+  out->sharpeRatio = stats.sharpeRatio;
+  out->sortinoRatio = stats.sortinoRatio;
+  out->calmarRatio = stats.calmarRatio;
+  out->timeWeightedReturn = stats.timeWeightedReturn;
+  out->returnPct = stats.returnPct;
+  out->startTimeNs = static_cast<int64_t>(stats.startTimeNs);
+  out->endTimeNs = static_cast<int64_t>(stats.endTimeNs);
+}
+
+uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle h, FloxEquityPoint* out,
+                                           uint32_t max_points)
+{
+  const auto& curve = static_cast<FloxBacktestResultImpl*>(h)->result->equityCurve();
+  const uint32_t total = static_cast<uint32_t>(curve.size());
+  if (!out)
+  {
+    return total;
+  }
+  const uint32_t n = (total < max_points) ? total : max_points;
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    out[i].timestamp_ns = static_cast<int64_t>(curve[i].timestampNs);
+    out[i].equity = curve[i].equity;
+    out[i].drawdown_pct = curve[i].drawdownPct;
+  }
+  return n;
+}
+
+uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle h, const char* path)
+{
+  if (!path)
+  {
+    return 0;
+  }
+  return static_cast<FloxBacktestResultImpl*>(h)->result->writeEquityCurveCsv(path) ? 1 : 0;
 }

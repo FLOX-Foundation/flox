@@ -11,3 +11,4 @@ from flox.context import *
 from flox.strategy import *
 from flox.indicators import *
 from flox.tools import *
+from flox.backtest import *

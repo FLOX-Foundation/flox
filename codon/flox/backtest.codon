@@ -1,0 +1,143 @@
+# flox/backtest.codon -- Backtest helpers: slippage, queue simulation, results.
+#
+# Wraps the C API backtest entry points so Codon strategies can configure
+# realistic fills, record results, pull stats, and export equity curves.
+
+from C import flox_executor_create() -> cobj
+from C import flox_executor_destroy(cobj)
+from C import flox_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import flox_executor_cancel_order(cobj, u64)
+from C import flox_executor_cancel_all(cobj, u32)
+from C import flox_executor_on_bar(cobj, u32, float)
+from C import flox_executor_on_trade(cobj, u32, float, u8)
+from C import flox_executor_on_trade_qty(cobj, u32, float, float, u8)
+from C import flox_executor_on_book_level(cobj, u32, u8, float, float)
+from C import flox_executor_advance_clock(cobj, i64)
+from C import flox_executor_fill_count(cobj) -> u32
+from C import flox_executor_set_default_slippage(cobj, i32, i32, float, float)
+from C import flox_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float)
+from C import flox_executor_set_queue_model(cobj, i32, u32)
+
+from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
+from C import flox_backtest_result_destroy(cobj)
+from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
+from C import flox_backtest_result_ingest_executor(cobj, cobj)
+from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
+from C import flox_backtest_result_write_equity_curve_csv(cobj, str) -> u8
+
+
+SLIPPAGE_NONE = 0
+SLIPPAGE_FIXED_TICKS = 1
+SLIPPAGE_FIXED_BPS = 2
+SLIPPAGE_VOLUME_IMPACT = 3
+
+QUEUE_NONE = 0
+QUEUE_TOB = 1
+QUEUE_FULL = 2
+
+
+@dataclass
+class EquityPoint:
+    timestamp_ns: int
+    equity: float
+    drawdown_pct: float
+
+
+class SimulatedExecutor:
+    """Thin wrapper around the C API simulated executor."""
+
+    _handle: cobj
+
+    def __init__(self):
+        self._handle = flox_executor_create()
+
+    def __del__(self):
+        if self._handle != cobj():
+            flox_executor_destroy(self._handle)
+            self._handle = cobj()
+
+    def submit_order(self, id: int, side: str, price: float, quantity: float,
+                     order_type: str = "market", symbol: int = 1):
+        side_u = u8(0 if side == "buy" else 1)
+        type_map = {"market": 0, "limit": 1, "stop_market": 2, "stop_limit": 3,
+                    "take_profit_market": 4, "take_profit_limit": 5, "trailing_stop": 6}
+        t = type_map.get(order_type, 0)
+        flox_executor_submit_order(self._handle, u64(id), side_u, price, quantity,
+                                   u8(t), u32(symbol))
+
+    def cancel_order(self, order_id: int):
+        flox_executor_cancel_order(self._handle, u64(order_id))
+
+    def cancel_all(self, symbol: int):
+        flox_executor_cancel_all(self._handle, u32(symbol))
+
+    def on_bar(self, symbol: int, close_price: float):
+        flox_executor_on_bar(self._handle, u32(symbol), close_price)
+
+    def on_trade(self, symbol: int, price: float, is_buy: bool):
+        flox_executor_on_trade(self._handle, u32(symbol), price, u8(1 if is_buy else 0))
+
+    def on_trade_qty(self, symbol: int, price: float, quantity: float, is_buy: bool):
+        flox_executor_on_trade_qty(self._handle, u32(symbol), price, quantity,
+                                   u8(1 if is_buy else 0))
+
+    def on_book_level(self, symbol: int, side: str, price: float, quantity: float):
+        side_u = u8(0 if side == "bid" else 1)
+        flox_executor_on_book_level(self._handle, u32(symbol), side_u, price, quantity)
+
+    def advance_clock(self, timestamp_ns: int):
+        flox_executor_advance_clock(self._handle, i64(timestamp_ns))
+
+    def set_default_slippage(self, model: int, ticks: int = 0, bps: float = 0.0,
+                             impact_coeff: float = 0.0):
+        flox_executor_set_default_slippage(self._handle, i32(model), i32(ticks), bps,
+                                           impact_coeff)
+
+    def set_symbol_slippage(self, symbol: int, model: int, ticks: int = 0,
+                            bps: float = 0.0, impact_coeff: float = 0.0):
+        flox_executor_set_symbol_slippage(self._handle, u32(symbol), i32(model), i32(ticks),
+                                          bps, impact_coeff)
+
+    def set_queue_model(self, model: int, depth: int = 1):
+        flox_executor_set_queue_model(self._handle, i32(model), u32(depth))
+
+    @property
+    def handle(self) -> cobj:
+        return self._handle
+
+    @property
+    def fill_count(self) -> int:
+        return int(flox_executor_fill_count(self._handle))
+
+
+class BacktestResult:
+    """Aggregates simulated fills into trades, stats, and an equity curve."""
+
+    _handle: cobj
+
+    def __init__(self, initial_capital: float = 100000.0, fee_rate: float = 0.0001,
+                 use_percentage_fee: bool = True, fixed_fee_per_trade: float = 0.0,
+                 risk_free_rate: float = 0.0, annualization_factor: float = 252.0):
+        self._handle = flox_backtest_result_create(
+            initial_capital, fee_rate, u8(1 if use_percentage_fee else 0),
+            fixed_fee_per_trade, risk_free_rate, annualization_factor)
+
+    def __del__(self):
+        if self._handle != cobj():
+            flox_backtest_result_destroy(self._handle)
+            self._handle = cobj()
+
+    def record_fill(self, order_id: int, symbol: int, side: str, price: float,
+                    quantity: float, timestamp_ns: int):
+        side_u = u8(0 if side == "buy" else 1)
+        flox_backtest_result_record_fill(self._handle, u64(order_id), u32(symbol),
+                                         side_u, price, quantity, i64(timestamp_ns))
+
+    def ingest_executor(self, executor: SimulatedExecutor):
+        flox_backtest_result_ingest_executor(self._handle, executor.handle)
+
+    def equity_curve_size(self) -> int:
+        return int(flox_backtest_result_equity_curve(self._handle, cobj(), u32(0)))
+
+    def write_equity_curve_csv(self, path: str) -> bool:
+        return int(flox_backtest_result_write_equity_curve_csv(self._handle, path)) == 1

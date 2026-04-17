@@ -21,6 +21,7 @@ namespace flox
 BacktestRunner::BacktestRunner(const BacktestConfig& config)
     : _config(config), _executor(_clock), _pool(std::make_unique<std::pmr::monotonic_buffer_resource>(1024 * 1024))
 {
+  _executor.applyConfig(_config);
   _executor.setOrderEventCallback(
       [this](const OrderEvent& ev)
       {
@@ -187,7 +188,8 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     trade_ev.trade.instrument = static_cast<InstrumentType>(event.trade.instrument);
     trade_ev.exchangeMsgTsNs = event.trade.exchange_ts_ns;
 
-    _executor.onTrade(trade_ev.trade.symbol, trade_ev.trade.price, trade_ev.trade.isBuy);
+    _executor.onTrade(trade_ev.trade.symbol, trade_ev.trade.price, trade_ev.trade.quantity,
+                      trade_ev.trade.isBuy);
 
     if (_strategy)
     {

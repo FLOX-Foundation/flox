@@ -1,6 +1,6 @@
 # BacktestResult
 
-`BacktestResult` collects fills during backtest execution and computes performance statistics.
+`BacktestResult` collects fills during backtest execution and computes performance statistics, including an equity curve and a range of risk/reward metrics.
 
 ## BacktestConfig
 
@@ -8,9 +8,18 @@
 struct BacktestConfig
 {
   double initialCapital{100000.0};
-  double feeRate{0.0001};        // 0.01% per trade
+  double feeRate{0.0001};            // 0.01% per trade
   bool usePercentageFee{true};
   double fixedFeePerTrade{0.0};
+
+  SlippageProfile defaultSlippage{};
+  std::vector<std::pair<SymbolId, SlippageProfile>> perSymbolSlippage{};
+
+  QueueModel queueModel{QueueModel::NONE};
+  size_t queueDepth{8};
+
+  double riskFreeRate{0.0};
+  double metricsAnnualizationFactor{252.0};
 };
 ```
 
@@ -19,40 +28,86 @@ struct BacktestConfig
 | `initialCapital` | 100000.0 | Starting capital |
 | `feeRate` | 0.0001 | Fee as fraction of notional (0.01%) |
 | `usePercentageFee` | true | Use percentage fee vs fixed |
-| `fixedFeePerTrade` | 0.0 | Fixed fee per trade |
+| `fixedFeePerTrade` | 0.0 | Fixed fee per trade when percentage is off |
+| `defaultSlippage` | `{NONE}` | Slippage profile applied when no per-symbol override exists. See `slippage.md`. |
+| `perSymbolSlippage` | `{}` | Per-symbol overrides of the default profile |
+| `queueModel` | `NONE` | Queue simulation mode for limit orders. See `queue_simulation.md`. |
+| `queueDepth` | 8 | Levels tracked in `FULL` mode |
+| `riskFreeRate` | 0.0 | Per-period risk-free rate subtracted from each trade return before Sharpe/Sortino |
+| `metricsAnnualizationFactor` | 252.0 | Scaling factor used for annualized Sharpe/Sortino/Calmar (sqrt applied) |
 
 ## BacktestStats
 
 ```cpp
 struct BacktestStats
 {
-  size_t totalTrades{0};
-  size_t winningTrades{0};
-  size_t losingTrades{0};
+  size_t totalTrades;
+  size_t winningTrades;
+  size_t losingTrades;
 
-  double initialCapital{0.0};
-  double finalCapital{0.0};
-  double totalPnl{0.0};
-  double totalFees{0.0};
-  double netPnl{0.0};
-  double grossProfit{0.0};
-  double grossLoss{0.0};
+  double initialCapital;
+  double finalCapital;
+  double totalPnl;
+  double totalFees;
+  double netPnl;
+  double grossProfit;
+  double grossLoss;
 
-  double maxDrawdown{0.0};
-  double maxDrawdownPct{0.0};
+  double maxDrawdown;
+  double maxDrawdownPct;
 
-  double winRate{0.0};
-  double profitFactor{0.0};
-  double avgWin{0.0};
-  double avgLoss{0.0};
+  double winRate;
+  double profitFactor;
+  double avgWin;
+  double avgLoss;
+  double avgWinLossRatio;
 
-  double sharpeRatio{0.0};
-  double returnPct{0.0};
+  size_t maxConsecutiveWins;
+  size_t maxConsecutiveLosses;
 
-  UnixNanos startTimeNs{0};
-  UnixNanos endTimeNs{0};
+  double avgTradeDurationNs;
+  double medianTradeDurationNs;
+  double maxTradeDurationNs;
+
+  double sharpeRatio;
+  double sortinoRatio;
+  double calmarRatio;
+  double timeWeightedReturn;
+  double returnPct;
+
+  UnixNanos startTimeNs;
+  UnixNanos endTimeNs;
 };
 ```
+
+### New metrics
+
+| Metric | Description |
+|--------|-------------|
+| `avgWinLossRatio` | `avgWin / avgLoss` (undefined when no losses) |
+| `maxConsecutiveWins` | Longest streak of profitable trades |
+| `maxConsecutiveLosses` | Longest streak of losing trades |
+| `avgTradeDurationNs` | Mean time from entry to exit in nanoseconds |
+| `medianTradeDurationNs` | Median trade duration in nanoseconds |
+| `maxTradeDurationNs` | Longest trade duration in nanoseconds |
+| `timeWeightedReturn` | Cumulative product of per-trade returns minus 1 |
+
+### Formula changes
+
+Sharpe, Sortino and Calmar are computed from per-trade returns against `initialCapital`, annualized with `sqrt(metricsAnnualizationFactor)`. `riskFreeRate` is subtracted from each return before the stats are computed. Calmar is `annualizedReturn / maxDrawdownPct`.
+
+## EquityPoint
+
+```cpp
+struct EquityPoint
+{
+  UnixNanos timestampNs;
+  double equity;
+  double drawdownPct;
+};
+```
+
+One point is appended to the equity curve on every closed trade. The curve is accessible via `BacktestResult::equityCurve()` and can be written to a CSV file with header `timestamp_ns,equity,drawdown_pct` via `writeEquityCurveCsv(path)`.
 
 ## BacktestResult
 
@@ -60,48 +115,40 @@ struct BacktestStats
 class BacktestResult
 {
 public:
-  explicit BacktestResult(const BacktestConfig& config = {}, size_t expectedFills = 16384);
+  explicit BacktestResult(const BacktestConfig& config = {}, size_t expectedFills = 0);
 
   void recordFill(const Fill& fill);
-  BacktestStats computeStats() const noexcept;
+  BacktestStats computeStats() const;
 
-  const std::vector<Fill>& fills() const noexcept;
-  const std::vector<TradeRecord>& trades() const noexcept;
-  double totalPnl() const noexcept;
+  const std::vector<Fill>& fills() const;
+  const std::vector<TradeRecord>& trades() const;
+  const std::vector<EquityPoint>& equityCurve() const;
+  double totalPnl() const;
+
+  bool writeEquityCurveCsv(const std::string& path) const;
 };
 ```
 
-## Metrics
-
-| Metric | Formula |
-|--------|---------|
-| `netPnl` | `totalPnl - totalFees` |
-| `returnPct` | `(netPnl / initialCapital) * 100` |
-| `winRate` | `winningTrades / totalTrades` |
-| `profitFactor` | `grossProfit / grossLoss` |
-| `avgWin` | `grossProfit / winningTrades` |
-| `avgLoss` | `grossLoss / losingTrades` |
-| `maxDrawdownPct` | `maxDrawdown / peakEquity * 100` |
-| `sharpeRatio` | `mean(returns) / std(returns) * sqrt(252)` |
-
-## Fee Calculation
-
-```cpp
-// Percentage fee (default)
-fee = price * quantity * feeRate
-
-// Fixed fee
-fee = fixedFeePerTrade
-```
+Each `TradeRecord` now carries both the entry and exit price, the closed quantity, and the entry/exit timestamps. These fields drive the duration statistics and enable equity-curve analysis per trade.
 
 ## Usage
 
 ```cpp
+BacktestConfig cfg;
+cfg.defaultSlippage = {SlippageModel::FIXED_BPS, 0, 2.0, 0.0};  // 2 bps
+cfg.queueModel = QueueModel::TOB;
+cfg.riskFreeRate = 0.0;
+
+BacktestResult result(cfg);
+// feed fills via result.recordFill(...) or by running a BacktestRunner
 auto stats = result.computeStats();
 
 std::cout << "Return: " << stats.returnPct << "%\n";
 std::cout << "Sharpe: " << stats.sharpeRatio << "\n";
-std::cout << "Max DD: " << stats.maxDrawdownPct << "%\n";
-std::cout << "Win rate: " << stats.winRate * 100 << "%\n";
-std::cout << "Profit factor: " << stats.profitFactor << "\n";
+std::cout << "Sortino: " << stats.sortinoRatio << "\n";
+std::cout << "Calmar: " << stats.calmarRatio << "\n";
+std::cout << "Max consecutive wins: " << stats.maxConsecutiveWins << "\n";
+std::cout << "Avg duration (s): " << stats.avgTradeDurationNs / 1e9 << "\n";
+
+result.writeEquityCurveCsv("equity.csv");
 ```

@@ -521,6 +521,128 @@ extern "C"
   uint8_t flox_segment_validate(const char* path);
   uint8_t flox_segment_merge(const char* input_dir, const char* output_path);
 
+  // ============================================================
+  // Backtest: slippage, queue, result, metrics, equity curve
+  // ============================================================
+
+  typedef enum
+  {
+    FLOX_SLIPPAGE_NONE = 0,
+    FLOX_SLIPPAGE_FIXED_TICKS = 1,
+    FLOX_SLIPPAGE_FIXED_BPS = 2,
+    FLOX_SLIPPAGE_VOLUME_IMPACT = 3
+  } FloxSlippageModel;
+
+  typedef enum
+  {
+    FLOX_QUEUE_NONE = 0,
+    FLOX_QUEUE_TOB = 1,
+    FLOX_QUEUE_FULL = 2
+  } FloxQueueModel;
+
+  // Configure slippage. Applies to market-style fills on all symbols unless
+  // a per-symbol override is set.
+  void flox_executor_set_default_slippage(FloxExecutorHandle executor,
+                                          int32_t model, int32_t ticks,
+                                          double bps, double impact_coeff);
+  void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol,
+                                         int32_t model, int32_t ticks,
+                                         double bps, double impact_coeff);
+
+  // Configure queue simulation for limit orders.
+  void flox_executor_set_queue_model(FloxExecutorHandle executor, int32_t model,
+                                     uint32_t depth);
+
+  // Feed a trade with quantity (enables queue-fill simulation for limit orders).
+  void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol,
+                                  double price, double quantity, uint8_t is_buy);
+
+  // Feed an L2 level update (for queue shrink-as-cancel heuristic).
+  void flox_executor_on_book_level(FloxExecutorHandle executor, uint32_t symbol,
+                                   uint8_t side, double price, double quantity);
+
+  // Feed a top-of-book snapshot (both best bid and best ask in one call).
+  void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol,
+                                    double bid_price, double bid_qty, double ask_price,
+                                    double ask_qty);
+
+  // BacktestResult handle: aggregates fills into trades + stats + equity curve.
+  typedef void* FloxBacktestResultHandle;
+
+  FloxBacktestResultHandle flox_backtest_result_create(double initial_capital,
+                                                       double fee_rate,
+                                                       uint8_t use_percentage_fee,
+                                                       double fixed_fee_per_trade,
+                                                       double risk_free_rate,
+                                                       double annualization_factor);
+  void flox_backtest_result_destroy(FloxBacktestResultHandle result);
+
+  // Feed fills produced by a SimulatedExecutor. Fills are processed in order.
+  void flox_backtest_result_record_fill(FloxBacktestResultHandle result,
+                                        uint64_t order_id, uint32_t symbol, uint8_t side,
+                                        double price, double quantity, int64_t timestamp_ns);
+
+  // Drain all fills from a SimulatedExecutor into a BacktestResult in FIFO order.
+  void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result,
+                                            FloxExecutorHandle executor);
+
+  typedef struct
+  {
+    uint64_t totalTrades;
+    uint64_t winningTrades;
+    uint64_t losingTrades;
+    uint64_t maxConsecutiveWins;
+    uint64_t maxConsecutiveLosses;
+
+    double initialCapital;
+    double finalCapital;
+    double totalPnl;
+    double totalFees;
+    double netPnl;
+    double grossProfit;
+    double grossLoss;
+
+    double maxDrawdown;
+    double maxDrawdownPct;
+
+    double winRate;
+    double profitFactor;
+    double avgWin;
+    double avgLoss;
+    double avgWinLossRatio;
+
+    double avgTradeDurationNs;
+    double medianTradeDurationNs;
+    double maxTradeDurationNs;
+
+    double sharpeRatio;
+    double sortinoRatio;
+    double calmarRatio;
+    double timeWeightedReturn;
+    double returnPct;
+
+    int64_t startTimeNs;
+    int64_t endTimeNs;
+  } FloxBacktestStats;
+
+  void flox_backtest_result_stats(FloxBacktestResultHandle result, FloxBacktestStats* out);
+
+  typedef struct
+  {
+    int64_t timestamp_ns;
+    double equity;
+    double drawdown_pct;
+  } FloxEquityPoint;
+
+  // Returns total available points. If points_out is non-NULL, writes up to
+  // max_points entries and returns the number written.
+  uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle result,
+                                             FloxEquityPoint* points_out,
+                                             uint32_t max_points);
+
+  uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result,
+                                                      const char* path);
+
 #ifdef __cplusplus
 }
 #endif
