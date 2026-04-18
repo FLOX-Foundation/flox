@@ -15,14 +15,9 @@
 namespace flox
 {
 
-namespace
-{
-// 1 tick in raw units. Price has a fixed scale (Price::Scale in common.h);
-// callers that want per-instrument tick size would pass ticks via their own
-// config. Here FIXED_TICKS treats one "tick" as 1/Price::Scale times 1 integer
-// price unit, matching how the rest of the engine stores prices.
-constexpr int64_t kTickRaw = 1;
-}  // namespace
+// FIXED_TICKS uses SlippageProfile::tickSize (raw) as the size of one tick.
+// If the caller left tickSize zero, a single raw price unit is used as a
+// safe fallback.
 
 SimulatedExecutor::SimulatedExecutor(IClock& clock) : _clock(clock)
 {
@@ -109,8 +104,11 @@ int64_t SimulatedExecutor::applySlippage(int64_t priceRaw, Side side, SymbolId s
   switch (prof.model)
   {
     case SlippageModel::FIXED_TICKS:
-      offsetRaw = static_cast<int64_t>(prof.ticks) * kTickRaw;
+    {
+      const int64_t tickRaw = (prof.tickSize.raw() > 0) ? prof.tickSize.raw() : 1;
+      offsetRaw = static_cast<int64_t>(prof.ticks) * tickRaw;
       break;
+    }
     case SlippageModel::FIXED_BPS:
       offsetRaw = static_cast<int64_t>(std::llround(
           static_cast<double>(priceRaw) * (prof.bps * 1e-4)));

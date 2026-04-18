@@ -38,6 +38,7 @@ struct SlippageProfile
 {
   SlippageModel model{SlippageModel::NONE};
   int32_t ticks{0};         // FIXED_TICKS: ticks against the taker
+  Price tickSize{};         // FIXED_TICKS: price per tick; zero means 1 raw unit
   double bps{0.0};          // FIXED_BPS: basis points against the taker
   double impactCoeff{0.0};  // VOLUME_IMPACT: price_move = coeff * (orderQty / levelQty)
 };

@@ -121,6 +121,12 @@ BacktestConfig config;
 config.initialCapital = 10000.0;
 config.feeRate = 0.0004;
 
+// Optional: realistic fill simulation.
+config.defaultSlippage = {SlippageModel::FIXED_BPS, 0, Price{}, 1.0, 0.0};
+config.queueModel = QueueModel::TOB;
+config.riskFreeRate = 0.0;
+config.metricsAnnualizationFactor = 252.0;
+
 BacktestRunner runner(config);
 
 // 2. Strategy
@@ -145,13 +151,17 @@ std::cout << "Sharpe: " << stats.sharpeRatio << "\n";
 
 ## Notes
 
-- Virtual clock advances based on event timestamps from reader
-- Strategy receives events in the same order as in real-time
-- Signals are converted to orders and submitted to SimulatedExecutor
-- All fills are recorded in BacktestResult
+- Virtual clock advances based on event timestamps from reader.
+- Strategy receives events in the same order as in real-time.
+- Signals are converted to orders and submitted to `SimulatedExecutor`.
+- The runner calls `executor.applyConfig(config)` at construction, so slippage, per-symbol overrides, and queue simulation are ready before any events are processed.
+- Trade events from the replay stream pass their quantities to the executor via `onTrade(symbol, price, qty, isBuy)`, which is required for queue-simulated fills.
+- All fills are recorded in `BacktestResult`.
 
 ## See Also
 
 - [Interactive Backtest Mode](../../../how-to/interactive-backtest.md) — Pause, step, breakpoints
 - [SimulatedExecutor](./simulated_executor.md) — Order execution simulation
 - [BacktestResult](./backtest_result.md) — Performance statistics
+- [Slippage](./slippage.md)
+- [Queue simulation](./queue_simulation.md)

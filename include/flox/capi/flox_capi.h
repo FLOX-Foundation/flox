@@ -541,13 +541,17 @@ extern "C"
   } FloxQueueModel;
 
   // Configure slippage. Applies to market-style fills on all symbols unless
-  // a per-symbol override is set.
+  // a per-symbol override is set. `tick_size` is the venue tick size in
+  // price units (e.g. 0.01 for 1-cent ticks); pass 0.0 to fall back to one
+  // raw price unit.
   void flox_executor_set_default_slippage(FloxExecutorHandle executor,
                                           int32_t model, int32_t ticks,
-                                          double bps, double impact_coeff);
+                                          double tick_size, double bps,
+                                          double impact_coeff);
   void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol,
                                          int32_t model, int32_t ticks,
-                                         double bps, double impact_coeff);
+                                         double tick_size, double bps,
+                                         double impact_coeff);
 
   // Configure queue simulation for limit orders.
   void flox_executor_set_queue_model(FloxExecutorHandle executor, int32_t model,
@@ -557,14 +561,19 @@ extern "C"
   void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol,
                                   double price, double quantity, uint8_t is_buy);
 
-  // Feed an L2 level update (for queue shrink-as-cancel heuristic).
-  void flox_executor_on_book_level(FloxExecutorHandle executor, uint32_t symbol,
-                                   uint8_t side, double price, double quantity);
-
   // Feed a top-of-book snapshot (both best bid and best ask in one call).
+  // For multi-level updates, build a BookUpdate on the C++ side; the C API
+  // intentionally does not expose a stateful per-side helper because that
+  // makes it too easy to accidentally clear the opposite side.
   void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol,
                                     double bid_price, double bid_qty, double ask_price,
                                     double ask_qty);
+
+  // Feed a full L2 snapshot with parallel bid/ask arrays.
+  void flox_executor_on_book_snapshot(FloxExecutorHandle executor, uint32_t symbol,
+                                      const double* bid_prices, const double* bid_qtys,
+                                      uint32_t n_bids, const double* ask_prices,
+                                      const double* ask_qtys, uint32_t n_asks);
 
   // BacktestResult handle: aggregates fills into trades + stats + equity curve.
   typedef void* FloxBacktestResultHandle;

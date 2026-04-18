@@ -80,20 +80,14 @@ class OrderQueueTracker
     std::vector<QueueEntry> entries;
   };
 
-  struct OrderIndex
-  {
-    OrderId orderId{};
-    size_t levelIdx{0};
-  };
-
   Level* findLevel(const LevelKey& key);
   Level& getOrCreateLevel(const LevelKey& key);
+  void compact();  // drop levels whose entries are empty
 
   bool _enabled{false};
   size_t _depth{1};
 
   std::vector<Level> _levels;
-  std::vector<OrderIndex> _orderIndex;
 };
 
 }  // namespace flox

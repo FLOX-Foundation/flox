@@ -167,3 +167,66 @@ TEST(BacktestMetrics, AvgWinLossRatio)
   auto stats = result.computeStats();
   EXPECT_NEAR(stats.avgWinLossRatio, 2.0, 0.01);
 }
+
+TEST(BacktestMetrics, TradeFeeIncludesEntryAndExit)
+{
+  BacktestConfig cfg;
+  cfg.feeRate = 0.001;  // 10 bps per fill
+  cfg.usePercentageFee = true;
+  BacktestResult result(cfg);
+
+  // Entry fee = 100 * 1 * 0.001 = 0.1, exit fee = 110 * 1 * 0.001 = 0.11
+  roundTrip(result, 100.0, 110.0, 1000, 2000, 1);
+
+  ASSERT_EQ(result.trades().size(), 1u);
+  const double tradeFee = result.trades()[0].fee.toDouble();
+  EXPECT_NEAR(tradeFee, 0.21, 1e-4);
+
+  auto stats = result.computeStats();
+  // totalFees aggregates both legs as well.
+  EXPECT_NEAR(stats.totalFees, 0.21, 1e-4);
+}
+
+TEST(BacktestMetrics, PartialCloseProratesEntryFee)
+{
+  BacktestConfig cfg;
+  cfg.feeRate = 0.001;
+  BacktestResult result(cfg);
+
+  // Open long 2 @ 100 with 1 fill. Entry fee = 100 * 2 * 0.001 = 0.2.
+  Fill buy;
+  buy.orderId = 1;
+  buy.symbol = 1;
+  buy.side = Side::BUY;
+  buy.price = Price::fromDouble(100.0);
+  buy.quantity = Quantity::fromDouble(2.0);
+  buy.timestampNs = 1000;
+  result.recordFill(buy);
+
+  // Close 1 @ 110. Exit fee = 110 * 1 * 0.001 = 0.11.
+  // Trade fee = entry_portion (0.1) + exit_portion (0.11) = 0.21.
+  Fill sell1;
+  sell1.orderId = 2;
+  sell1.symbol = 1;
+  sell1.side = Side::SELL;
+  sell1.price = Price::fromDouble(110.0);
+  sell1.quantity = Quantity::fromDouble(1.0);
+  sell1.timestampNs = 2000;
+  result.recordFill(sell1);
+
+  ASSERT_EQ(result.trades().size(), 1u);
+  EXPECT_NEAR(result.trades()[0].fee.toDouble(), 0.21, 1e-4);
+
+  // Close remaining 1 @ 120. Entry portion residual (0.1) + exit (0.12) = 0.22.
+  Fill sell2;
+  sell2.orderId = 3;
+  sell2.symbol = 1;
+  sell2.side = Side::SELL;
+  sell2.price = Price::fromDouble(120.0);
+  sell2.quantity = Quantity::fromDouble(1.0);
+  sell2.timestampNs = 3000;
+  result.recordFill(sell2);
+
+  ASSERT_EQ(result.trades().size(), 2u);
+  EXPECT_NEAR(result.trades()[1].fee.toDouble(), 0.22, 1e-4);
+}

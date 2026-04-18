@@ -107,6 +107,7 @@ class BacktestResult
     Quantity quantity{};
     Price avgPrice{};
     UnixNanos entryTimeNs{0};  // set when position opens from flat
+    Volume entryFeeAcc{};      // fees accumulated on opens/adds since position opened
   };
 
   Position& getPosition(SymbolId symbol);
@@ -120,12 +121,14 @@ class BacktestResult
                    Volume pnl, Volume fee);
   Volume computeFee(Price price, Quantity qty) const;
 
-  // Ratios are computed from per-trade returns against initialCapital, then
-  // annualized by sqrt(metricsAnnualizationFactor). riskFreeRate is the
-  // per-period rate subtracted from each return before stats.
+  // Ratios are computed from per-period returns derived from the equity curve.
+  // Each return is (equity[i] - equity[i-1]) / equity[i-1] with the configured
+  // riskFreeRate subtracted. Sharpe/Sortino are annualized by
+  // sqrt(metricsAnnualizationFactor). Calmar annualizes the cumulative TWR
+  // by the observed sample count and divides by the drawdown fraction.
   double computeSharpeRatio() const;
   double computeSortinoRatio() const;
-  double computeCalmarRatio(double annualizedReturn) const;
+  double computeCalmarRatio(double cumulativeTwr) const;
   double computeTimeWeightedReturn() const;
 
   BacktestConfig _config;

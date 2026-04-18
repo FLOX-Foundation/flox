@@ -96,17 +96,19 @@ void FloxJsStrategy::loadStdlib()
       onTradeQty(symbol, price, quantity, isBuy) {
         __flox_executor_on_trade_qty(this._h, symbol, price, quantity, isBuy ? 1 : 0);
       }
-      onBookLevel(symbol, side, price, quantity) {
-        __flox_executor_on_book_level(this._h, symbol, side === "bid" ? 0 : 1, price, quantity);
+      onBestLevels(symbol, bidPrice, bidQty, askPrice, askQty) {
+        __flox_executor_on_best_levels(this._h, symbol, bidPrice, bidQty, askPrice, askQty);
       }
       advanceClock(timestampNs) { __flox_executor_advance_clock(this._h, timestampNs); }
-      setDefaultSlippage(model, ticks, bps, impactCoeff) {
+      setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff) {
         __flox_executor_set_default_slippage(this._h, _slippageMap[model] || 0,
-                                             ticks || 0, bps || 0, impactCoeff || 0);
+                                             ticks || 0, tickSize || 0,
+                                             bps || 0, impactCoeff || 0);
       }
-      setSymbolSlippage(symbol, model, ticks, bps, impactCoeff) {
+      setSymbolSlippage(symbol, model, ticks, tickSize, bps, impactCoeff) {
         __flox_executor_set_symbol_slippage(this._h, symbol, _slippageMap[model] || 0,
-                                            ticks || 0, bps || 0, impactCoeff || 0);
+                                            ticks || 0, tickSize || 0,
+                                            bps || 0, impactCoeff || 0);
       }
       setQueueModel(model, depth) {
         __flox_executor_set_queue_model(this._h, _queueMap[model] || 0, depth || 1);

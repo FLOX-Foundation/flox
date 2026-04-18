@@ -42,6 +42,15 @@ OrderQueueTracker::Level& OrderQueueTracker::getOrCreateLevel(const LevelKey& ke
   return _levels.back();
 }
 
+void OrderQueueTracker::compact()
+{
+  _levels.erase(
+      std::remove_if(_levels.begin(), _levels.end(),
+                     [](const Level& l)
+                     { return l.entries.empty(); }),
+      _levels.end());
+}
+
 void OrderQueueTracker::addOrder(SymbolId symbol, Side side, Price levelPrice,
                                  OrderId orderId, Quantity qty, Quantity levelQtyNow)
 {
@@ -52,16 +61,11 @@ void OrderQueueTracker::addOrder(SymbolId symbol, Side side, Price levelPrice,
 
   LevelKey key{.symbol = symbol, .side = side, .priceRaw = levelPrice.raw()};
   Level& level = getOrCreateLevel(key);
-  // levelQtyNow is the full posted volume at arrival; we treat all of it as
-  // "ahead of us" (our order joins the back of the queue).
   level.totalQty = levelQtyNow;
   level.entries.push_back(QueueEntry{.orderId = orderId,
                                      .remaining = qty,
                                      .aheadRemaining = levelQtyNow,
                                      .aheadAtArrival = levelQtyNow});
-
-  _orderIndex.push_back(OrderIndex{.orderId = orderId,
-                                   .levelIdx = static_cast<size_t>(&level - _levels.data())});
 }
 
 void OrderQueueTracker::removeOrder(OrderId orderId)
@@ -71,21 +75,16 @@ void OrderQueueTracker::removeOrder(OrderId orderId)
     return;
   }
 
-  for (auto it = _orderIndex.begin(); it != _orderIndex.end(); ++it)
+  for (auto& level : _levels)
   {
-    if (it->orderId == orderId)
+    for (auto it = level.entries.begin(); it != level.entries.end(); ++it)
     {
-      Level& level = _levels[it->levelIdx];
-      for (auto eit = level.entries.begin(); eit != level.entries.end(); ++eit)
+      if (it->orderId == orderId)
       {
-        if (eit->orderId == orderId)
-        {
-          level.entries.erase(eit);
-          break;
-        }
+        level.entries.erase(it);
+        compact();
+        return;
       }
-      _orderIndex.erase(it);
-      return;
     }
   }
 }
@@ -98,8 +97,6 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
     return;
   }
 
-  // Trades can match at either side's level (taker buys consume asks, taker
-  // sells consume bids). Walk both sides at this price.
   for (auto& level : _levels)
   {
     if (level.key.symbol != symbol || level.key.priceRaw != price.raw())
@@ -115,7 +112,6 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
         break;
       }
 
-      // First consume queue ahead
       const int64_t aheadConsumed = std::min(entry.aheadRemaining.raw(), remainingRaw);
       entry.aheadRemaining = Quantity::fromRaw(entry.aheadRemaining.raw() - aheadConsumed);
       remainingRaw -= aheadConsumed;
@@ -125,7 +121,6 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
         continue;
       }
 
-      // Queue ahead exhausted, fill our order
       const int64_t fillRaw = std::min(entry.remaining.raw(), remainingRaw);
       if (fillRaw > 0)
       {
@@ -135,7 +130,6 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
       }
     }
 
-    // Drop fully-filled entries and refresh totalQty estimate
     level.entries.erase(std::remove_if(level.entries.begin(), level.entries.end(),
                                        [](const QueueEntry& e)
                                        { return e.remaining.raw() <= 0; }),
@@ -150,21 +144,7 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
     }
   }
 
-  // Compact order index by removing filled entries
-  _orderIndex.erase(std::remove_if(_orderIndex.begin(), _orderIndex.end(),
-                                   [this](const OrderIndex& oi)
-                                   {
-                                     const Level& l = _levels[oi.levelIdx];
-                                     for (const auto& e : l.entries)
-                                     {
-                                       if (e.orderId == oi.orderId)
-                                       {
-                                         return false;
-                                       }
-                                     }
-                                     return true;
-                                   }),
-                    _orderIndex.end());
+  compact();
 }
 
 void OrderQueueTracker::onLevelUpdate(SymbolId symbol, Side side, Price price,
@@ -187,14 +167,10 @@ void OrderQueueTracker::onLevelUpdate(SymbolId symbol, Side side, Price price,
 
   if (newQtyRaw >= oldQtyRaw)
   {
-    // Level grew: new liquidity joins behind us. No change to aheadRemaining.
     level->totalQty = newQty;
     return;
   }
 
-  // Level shrank. onTrade already consumed the "trade-ahead" portion; any
-  // leftover shrink is assumed to be cancels, which remove queue ahead of us
-  // proportionally to each entry's remaining aheadRemaining.
   const int64_t shrinkRaw = oldQtyRaw - newQtyRaw;
   int64_t totalAhead = 0;
   for (const auto& entry : level->entries)

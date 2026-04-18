@@ -374,10 +374,10 @@ declare class SimulatedExecutor {
     onBar(symbol: number, closePrice: number): void;
     onTrade(symbol: number, price: number, isBuy: boolean): void;
     onTradeQty(symbol: number, price: number, quantity: number, isBuy: boolean): void;
-    onBookLevel(symbol: number, side: "bid" | "ask", price: number, quantity: number): void;
+    onBestLevels(symbol: number, bidPrice: number, bidQty: number, askPrice: number, askQty: number): void;
     advanceClock(timestampNs: number): void;
-    setDefaultSlippage(model: SlippageModelName, ticks?: number, bps?: number, impactCoeff?: number): void;
-    setSymbolSlippage(symbol: number, model: SlippageModelName, ticks?: number, bps?: number, impactCoeff?: number): void;
+    setDefaultSlippage(model: SlippageModelName, ticks?: number, tickSize?: number, bps?: number, impactCoeff?: number): void;
+    setSymbolSlippage(symbol: number, model: SlippageModelName, ticks?: number, tickSize?: number, bps?: number, impactCoeff?: number): void;
     setQueueModel(model: QueueModelName, depth?: number): void;
     readonly fillCount: number;
 }

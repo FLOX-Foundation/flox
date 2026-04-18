@@ -97,8 +97,8 @@ inline PyEquityPoint equityToPy(const EquityPoint& p)
           .drawdown_pct = p.drawdownPct};
 }
 
-inline SlippageProfile makePyProfile(const std::string& model, int32_t ticks, double bps,
-                                     double impact)
+inline SlippageProfile makePyProfile(const std::string& model, int32_t ticks,
+                                     double tick_size, double bps, double impact)
 {
   SlippageProfile p;
   if (model == "fixed_ticks")
@@ -118,6 +118,7 @@ inline SlippageProfile makePyProfile(const std::string& model, int32_t ticks, do
     p.model = SlippageModel::NONE;
   }
   p.ticks = ticks;
+  p.tickSize = (tick_size > 0.0) ? Price::fromDouble(tick_size) : Price{};
   p.bps = bps;
   p.impactCoeff = impact;
   return p;
@@ -160,34 +161,50 @@ class PySimulatedExecutor
     _executor.onTrade(symbol, Price::fromDouble(price), Quantity::fromDouble(qty), isBuy);
   }
 
-  void onBookLevel(uint32_t symbol, const std::string& sideStr, double price, double qty)
+  void onBestLevels(uint32_t symbol, double bidPrice, double bidQty, double askPrice,
+                    double askQty)
   {
     std::pmr::monotonic_buffer_resource pool(512);
     std::pmr::vector<BookLevel> bids(&pool);
     std::pmr::vector<BookLevel> asks(&pool);
-    BookLevel lvl(Price::fromDouble(price), Quantity::fromDouble(qty));
-    if (sideStr == "bid")
+    bids.emplace_back(Price::fromDouble(bidPrice), Quantity::fromDouble(bidQty));
+    asks.emplace_back(Price::fromDouble(askPrice), Quantity::fromDouble(askQty));
+    _executor.onBookUpdate(symbol, bids, asks);
+  }
+
+  void onBookSnapshot(uint32_t symbol,
+                      const std::vector<std::pair<double, double>>& bidLevels,
+                      const std::vector<std::pair<double, double>>& askLevels)
+  {
+    std::pmr::monotonic_buffer_resource pool(1024);
+    std::pmr::vector<BookLevel> bids(&pool);
+    std::pmr::vector<BookLevel> asks(&pool);
+    bids.reserve(bidLevels.size());
+    asks.reserve(askLevels.size());
+    for (const auto& [price, qty] : bidLevels)
     {
-      bids.push_back(lvl);
+      bids.emplace_back(Price::fromDouble(price), Quantity::fromDouble(qty));
     }
-    else
+    for (const auto& [price, qty] : askLevels)
     {
-      asks.push_back(lvl);
+      asks.emplace_back(Price::fromDouble(price), Quantity::fromDouble(qty));
     }
     _executor.onBookUpdate(symbol, bids, asks);
   }
 
   void advanceClock(int64_t timestampNs) { _clock.advanceTo(timestampNs); }
 
-  void setDefaultSlippage(const std::string& model, int32_t ticks, double bps, double impact)
+  void setDefaultSlippage(const std::string& model, int32_t ticks, double tick_size,
+                          double bps, double impact)
   {
-    _executor.setDefaultSlippage(makePyProfile(model, ticks, bps, impact));
+    _executor.setDefaultSlippage(makePyProfile(model, ticks, tick_size, bps, impact));
   }
 
-  void setSymbolSlippage(uint32_t symbol, const std::string& model, int32_t ticks, double bps,
-                         double impact)
+  void setSymbolSlippage(uint32_t symbol, const std::string& model, int32_t ticks,
+                         double tick_size, double bps, double impact)
   {
-    _executor.setSymbolSlippage(symbol, makePyProfile(model, ticks, bps, impact));
+    _executor.setSymbolSlippage(symbol,
+                                makePyProfile(model, ticks, tick_size, bps, impact));
   }
 
   void setQueueModel(const std::string& model, uint32_t depth)
@@ -403,20 +420,26 @@ inline void bindBacktest(py::module_& m)
       .def("on_trade_qty", &PySimulatedExecutor::onTradeQty,
            "Feed a trade with quantity (enables queue-fill simulation)",
            py::arg("symbol"), py::arg("price"), py::arg("quantity"), py::arg("is_buy"))
-      .def("on_book_level", &PySimulatedExecutor::onBookLevel,
-           "Feed a single L2 level update",
-           py::arg("symbol"), py::arg("side"), py::arg("price"), py::arg("quantity"))
+      .def("on_best_levels", &PySimulatedExecutor::onBestLevels,
+           "Feed a top-of-book snapshot (both best bid and best ask in one call)",
+           py::arg("symbol"), py::arg("bid_price"), py::arg("bid_qty"),
+           py::arg("ask_price"), py::arg("ask_qty"))
+      .def("on_book_snapshot", &PySimulatedExecutor::onBookSnapshot,
+           "Feed a full L2 snapshot. bid_levels and ask_levels are lists of (price, qty) tuples",
+           py::arg("symbol"), py::arg("bid_levels"), py::arg("ask_levels"))
       .def("advance_clock", &PySimulatedExecutor::advanceClock,
            "Advance simulation clock to timestamp",
            py::arg("timestamp_ns"))
       .def("set_default_slippage", &PySimulatedExecutor::setDefaultSlippage,
-           "Configure default slippage. model: none|fixed_ticks|fixed_bps|volume_impact",
-           py::arg("model"), py::arg("ticks") = 0, py::arg("bps") = 0.0,
-           py::arg("impact_coeff") = 0.0)
+           "Configure default slippage. model: none|fixed_ticks|fixed_bps|volume_impact."
+           " tick_size is in price units (0.0 falls back to one raw price unit).",
+           py::arg("model"), py::arg("ticks") = 0, py::arg("tick_size") = 0.0,
+           py::arg("bps") = 0.0, py::arg("impact_coeff") = 0.0)
       .def("set_symbol_slippage", &PySimulatedExecutor::setSymbolSlippage,
            "Configure slippage for a specific symbol",
            py::arg("symbol"), py::arg("model"), py::arg("ticks") = 0,
-           py::arg("bps") = 0.0, py::arg("impact_coeff") = 0.0)
+           py::arg("tick_size") = 0.0, py::arg("bps") = 0.0,
+           py::arg("impact_coeff") = 0.0)
       .def("set_queue_model", &PySimulatedExecutor::setQueueModel,
            "Configure queue simulation. model: none|tob|full",
            py::arg("model"), py::arg("depth") = 1)

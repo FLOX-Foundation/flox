@@ -17,7 +17,7 @@
 TEST(CapiBacktest, SlippageFixedBps)
 {
   auto exec = flox_executor_create();
-  flox_executor_set_default_slippage(exec, FLOX_SLIPPAGE_FIXED_BPS, 0, 100.0, 0.0);
+  flox_executor_set_default_slippage(exec, FLOX_SLIPPAGE_FIXED_BPS, 0, 0.0, 100.0, 0.0);
   flox_executor_on_best_levels(exec, 1, 100.0, 10.0, 100.0, 10.0);
   flox_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0, /*type=market=*/1, 1);
   ASSERT_EQ(flox_executor_fill_count(exec), 1u);

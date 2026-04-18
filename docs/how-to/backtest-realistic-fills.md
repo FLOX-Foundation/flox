@@ -11,7 +11,7 @@ This guide walks through configuring a backtest with realistic fills: slippage o
 flox::BacktestConfig cfg;
 cfg.initialCapital = 100'000.0;
 cfg.feeRate = 0.0002;  // 2 bps per fill
-cfg.defaultSlippage = {flox::SlippageModel::FIXED_BPS, 0, 1.0, 0.0};  // 1 bps default
+cfg.defaultSlippage = {flox::SlippageModel::FIXED_BPS, 0, flox::Price{}, 1.0, 0.0};  // 1 bps default
 cfg.queueModel = flox::QueueModel::TOB;
 cfg.riskFreeRate = 0.0;
 cfg.metricsAnnualizationFactor = 252.0;
@@ -65,7 +65,7 @@ The CSV has the header `timestamp_ns,equity,drawdown_pct` and one row per closed
 import flox
 
 exec_ = flox.SimulatedExecutor()
-exec_.set_default_slippage("fixed_bps", bps=1.0)
+exec_.set_default_slippage("fixed_bps", bps=1.0)  # ticks=0, tick_size=0.0 by default
 exec_.set_queue_model("tob")
 
 # ... feed book updates, trades, and orders ...
@@ -81,7 +81,7 @@ result.write_equity_curve_csv("equity.csv")
 
 ```js
 const exec = new SimulatedExecutor();
-exec.setDefaultSlippage("fixed_bps", 0, 1.0, 0);
+exec.setDefaultSlippage("fixed_bps", 0, 0, 1.0, 0);
 exec.setQueueModel("tob", 1);
 
 // ... feed data and orders ...
@@ -100,7 +100,7 @@ from flox.backtest import SimulatedExecutor, BacktestResult
 from flox.backtest import SLIPPAGE_FIXED_BPS, QUEUE_TOB
 
 exec_ = SimulatedExecutor()
-exec_.set_default_slippage(SLIPPAGE_FIXED_BPS, 0, 1.0, 0.0)
+exec_.set_default_slippage(SLIPPAGE_FIXED_BPS, 0, 0.0, 1.0, 0.0)
 exec_.set_queue_model(QUEUE_TOB, 1)
 
 # feed market data + orders ...

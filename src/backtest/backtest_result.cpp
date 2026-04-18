@@ -38,6 +38,18 @@ void BacktestResult::recordFill(const Fill& fill)
 
   Position& pos = getPosition(fill.symbol);
 
+  // Pro-rate this fill's fee between a close portion and a new-open portion
+  // by quantity, so a flipping fill (close + open) attributes fees correctly
+  // to the closed trade and the new position.
+  auto feeFractionRaw = [&](const Quantity& part) -> int64_t
+  {
+    if (fill.quantity.raw() == 0)
+    {
+      return 0;
+    }
+    return (fee.raw() * part.raw()) / fill.quantity.raw();
+  };
+
   if (fill.side == Side::BUY)
   {
     if (pos.quantity.raw() < 0)
@@ -45,8 +57,26 @@ void BacktestResult::recordFill(const Fill& fill)
       const Quantity closeQty =
           Quantity::fromRaw(std::min(-pos.quantity.raw(), fill.quantity.raw()));
       const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, false);
+      const int64_t entryFeePortionRaw =
+          (pos.quantity.raw() != 0)
+              ? (pos.entryFeeAcc.raw() * closeQty.raw()) / (-pos.quantity.raw())
+              : 0;
+      const Volume tradeFee =
+          Volume::fromRaw(entryFeePortionRaw + feeFractionRaw(closeQty));
       recordTrade(fill.symbol, Side::BUY, pos.avgPrice, fill.price, closeQty,
-                  pos.entryTimeNs, fill.timestampNs, pnl, fee);
+                  pos.entryTimeNs, fill.timestampNs, pnl, tradeFee);
+      pos.entryFeeAcc = Volume::fromRaw(pos.entryFeeAcc.raw() - entryFeePortionRaw);
+      const Quantity openQty =
+          Quantity::fromRaw(fill.quantity.raw() - closeQty.raw());
+      if (openQty.raw() > 0)
+      {
+        pos.entryFeeAcc =
+            Volume::fromRaw(pos.entryFeeAcc.raw() + feeFractionRaw(openQty));
+      }
+    }
+    else
+    {
+      pos.entryFeeAcc = Volume::fromRaw(pos.entryFeeAcc.raw() + fee.raw());
     }
     updatePositionLong(pos, fill.quantity, fill.price, fill.timestampNs);
   }
@@ -57,10 +87,34 @@ void BacktestResult::recordFill(const Fill& fill)
       const Quantity closeQty =
           Quantity::fromRaw(std::min(pos.quantity.raw(), fill.quantity.raw()));
       const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, true);
+      const int64_t entryFeePortionRaw =
+          (pos.quantity.raw() != 0)
+              ? (pos.entryFeeAcc.raw() * closeQty.raw()) / pos.quantity.raw()
+              : 0;
+      const Volume tradeFee =
+          Volume::fromRaw(entryFeePortionRaw + feeFractionRaw(closeQty));
       recordTrade(fill.symbol, Side::SELL, pos.avgPrice, fill.price, closeQty,
-                  pos.entryTimeNs, fill.timestampNs, pnl, fee);
+                  pos.entryTimeNs, fill.timestampNs, pnl, tradeFee);
+      pos.entryFeeAcc = Volume::fromRaw(pos.entryFeeAcc.raw() - entryFeePortionRaw);
+      const Quantity openQty =
+          Quantity::fromRaw(fill.quantity.raw() - closeQty.raw());
+      if (openQty.raw() > 0)
+      {
+        pos.entryFeeAcc =
+            Volume::fromRaw(pos.entryFeeAcc.raw() + feeFractionRaw(openQty));
+      }
+    }
+    else
+    {
+      pos.entryFeeAcc = Volume::fromRaw(pos.entryFeeAcc.raw() + fee.raw());
     }
     updatePositionShort(pos, fill.quantity, fill.price, fill.timestampNs);
+  }
+
+  // When the position closes fully, reset the residual entry-fee accumulator.
+  if (pos.quantity.raw() == 0)
+  {
+    pos.entryFeeAcc = Volume::fromRaw(0);
   }
 }
 
@@ -371,34 +425,57 @@ Volume BacktestResult::computeFee(Price price, Quantity qty) const
   }
 }
 
+namespace
+{
+// Builds the per-period return series from the equity curve. Each return is
+// relative to the previous equity point (or to initialCapital for the first
+// point). Risk-free rate is subtracted so returns are already "excess".
+std::vector<double> buildReturnSeries(const std::vector<EquityPoint>& curve,
+                                      double initialCapital, double riskFreeRate)
+{
+  std::vector<double> r;
+  if (curve.empty() || initialCapital <= 0.0)
+  {
+    return r;
+  }
+  r.reserve(curve.size());
+  double prev = initialCapital;
+  for (const auto& pt : curve)
+  {
+    if (prev <= 0.0)
+    {
+      break;
+    }
+    r.push_back((pt.equity - prev) / prev - riskFreeRate);
+    prev = pt.equity;
+  }
+  return r;
+}
+}  // namespace
+
 double BacktestResult::computeSharpeRatio() const
 {
-  if (_trades.size() < 2 || _config.initialCapital <= 0.0)
+  const auto returns = buildReturnSeries(_equityCurve, _config.initialCapital,
+                                         _config.riskFreeRate);
+  if (returns.size() < 2)
   {
     return 0.0;
   }
 
-  const size_t n = _trades.size();
-  const double capital = _config.initialCapital;
   double sum = 0.0;
   double sumSq = 0.0;
-
-  for (const auto& trade : _trades)
+  for (double r : returns)
   {
-    const double ret = (trade.pnl.toDouble() / capital) - _config.riskFreeRate;
-    sum += ret;
-    sumSq += ret * ret;
+    sum += r;
+    sumSq += r * r;
   }
-
-  const double mean = sum / static_cast<double>(n);
-  const double meanSq = sumSq / static_cast<double>(n);
-  const double variance = meanSq - mean * mean;
-
-  if (variance <= 0)
+  const double n = static_cast<double>(returns.size());
+  const double mean = sum / n;
+  const double variance = (sumSq / n) - mean * mean;
+  if (variance <= 0.0)
   {
     return 0.0;
   }
-
   const double stddev = std::sqrt(variance);
   const double annualization = std::sqrt(_config.metricsAnnualizationFactor);
   return (mean / stddev) * annualization;
@@ -406,47 +483,35 @@ double BacktestResult::computeSharpeRatio() const
 
 double BacktestResult::computeSortinoRatio() const
 {
-  if (_trades.size() < 2 || _config.initialCapital <= 0.0)
+  const auto returns = buildReturnSeries(_equityCurve, _config.initialCapital,
+                                         _config.riskFreeRate);
+  if (returns.size() < 2)
   {
     return 0.0;
   }
 
-  const size_t n = _trades.size();
-  const double capital = _config.initialCapital;
   double sum = 0.0;
   double downsideSumSq = 0.0;
-  size_t downsideCount = 0;
-
-  for (const auto& trade : _trades)
+  for (double r : returns)
   {
-    const double ret = (trade.pnl.toDouble() / capital) - _config.riskFreeRate;
-    sum += ret;
-    if (ret < 0)
+    sum += r;
+    if (r < 0.0)
     {
-      downsideSumSq += ret * ret;
-      ++downsideCount;
+      downsideSumSq += r * r;
     }
   }
-
-  if (downsideCount == 0)
+  const double n = static_cast<double>(returns.size());
+  const double mean = sum / n;
+  const double downsideStddev = std::sqrt(downsideSumSq / n);
+  if (downsideStddev <= 0.0)
   {
     return 0.0;
   }
-
-  const double mean = sum / static_cast<double>(n);
-  const double downsideMeanSq = downsideSumSq / static_cast<double>(n);
-  const double downsideStddev = std::sqrt(downsideMeanSq);
-
-  if (downsideStddev <= 0)
-  {
-    return 0.0;
-  }
-
   const double annualization = std::sqrt(_config.metricsAnnualizationFactor);
   return (mean / downsideStddev) * annualization;
 }
 
-double BacktestResult::computeCalmarRatio(double annualizedReturn) const
+double BacktestResult::computeCalmarRatio(double twr) const
 {
   if (_trades.empty() || _maxDrawdown.raw() <= 0 || _config.initialCapital <= 0.0)
   {
@@ -460,7 +525,16 @@ double BacktestResult::computeCalmarRatio(double annualizedReturn) const
     return 0.0;
   }
 
-  // Calmar = annualized return / max drawdown (as percent fractions).
+  // Annualize the cumulative TWR using the trade-based sampling rate.
+  // periods per year = metricsAnnualizationFactor (e.g. 252 for daily sampling).
+  // If we observed n periods, annualized return = (1 + twr)^(periodsPerYear/n) - 1.
+  const double periods = static_cast<double>(_equityCurve.size());
+  if (periods <= 0.0)
+  {
+    return 0.0;
+  }
+  const double ratio = _config.metricsAnnualizationFactor / periods;
+  const double annualizedReturn = std::pow(1.0 + twr, ratio) - 1.0;
   return annualizedReturn / maxDDPct;
 }
 

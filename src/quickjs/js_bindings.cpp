@@ -662,7 +662,7 @@ static JSValue js_executor_set_default_slippage(JSContext* ctx, JSValueConst, in
       static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<int32_t>(toInt64(ctx, argv[1])),
       static_cast<int32_t>(toInt64(ctx, argv[2])), toDouble(ctx, argv[3]),
-      toDouble(ctx, argv[4]));
+      toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int,
@@ -672,7 +672,7 @@ static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int
       static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
       static_cast<int32_t>(toInt64(ctx, argv[2])),
       static_cast<int32_t>(toInt64(ctx, argv[3])), toDouble(ctx, argv[4]),
-      toDouble(ctx, argv[5]));
+      toDouble(ctx, argv[5]), toDouble(ctx, argv[6]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
@@ -692,13 +692,13 @@ static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                              static_cast<uint8_t>(toUint32(ctx, argv[4])));
   return JS_UNDEFINED;
 }
-static JSValue js_executor_on_book_level(JSContext* ctx, JSValueConst, int,
-                                         JSValueConst* argv)
+static JSValue js_executor_on_best_levels(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
 {
-  flox_executor_on_book_level(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                              toUint32(ctx, argv[1]),
-                              static_cast<uint8_t>(toUint32(ctx, argv[2])),
-                              toDouble(ctx, argv[3]), toDouble(ctx, argv[4]));
+  flox_executor_on_best_levels(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
+                               toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                               toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
+                               toDouble(ctx, argv[5]));
   return JS_UNDEFINED;
 }
 
@@ -1066,12 +1066,12 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_executor_advance_clock", js_executor_advance, 2);
   addGlobalFunc(ctx, "__flox_executor_fill_count", js_executor_fill_count, 1);
   addGlobalFunc(ctx, "__flox_executor_set_default_slippage",
-                js_executor_set_default_slippage, 5);
+                js_executor_set_default_slippage, 6);
   addGlobalFunc(ctx, "__flox_executor_set_symbol_slippage",
-                js_executor_set_symbol_slippage, 6);
+                js_executor_set_symbol_slippage, 7);
   addGlobalFunc(ctx, "__flox_executor_set_queue_model", js_executor_set_queue_model, 3);
   addGlobalFunc(ctx, "__flox_executor_on_trade_qty", js_executor_on_trade_qty, 5);
-  addGlobalFunc(ctx, "__flox_executor_on_book_level", js_executor_on_book_level, 5);
+  addGlobalFunc(ctx, "__flox_executor_on_best_levels", js_executor_on_best_levels, 6);
 
   // Backtest result
   addGlobalFunc(ctx, "__flox_backtest_result_create", js_backtest_result_create, 6);

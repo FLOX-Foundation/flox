@@ -1536,12 +1536,13 @@ uint8_t flox_segment_merge(const char* input_dir, const char* output_path)
 
 namespace
 {
-SlippageProfile makeSlippageProfile(int32_t model, int32_t ticks, double bps,
-                                    double impact_coeff)
+SlippageProfile makeSlippageProfile(int32_t model, int32_t ticks, double tick_size,
+                                    double bps, double impact_coeff)
 {
   SlippageProfile prof;
   prof.model = static_cast<SlippageModel>(model);
   prof.ticks = ticks;
+  prof.tickSize = (tick_size > 0.0) ? Price::fromDouble(tick_size) : Price{};
   prof.bps = bps;
   prof.impactCoeff = impact_coeff;
   return prof;
@@ -1549,17 +1550,18 @@ SlippageProfile makeSlippageProfile(int32_t model, int32_t ticks, double bps,
 }  // namespace
 
 void flox_executor_set_default_slippage(FloxExecutorHandle h, int32_t model, int32_t ticks,
-                                        double bps, double impact_coeff)
+                                        double tick_size, double bps, double impact_coeff)
 {
   static_cast<FloxExecutorImpl*>(h)->executor.setDefaultSlippage(
-      makeSlippageProfile(model, ticks, bps, impact_coeff));
+      makeSlippageProfile(model, ticks, tick_size, bps, impact_coeff));
 }
 
 void flox_executor_set_symbol_slippage(FloxExecutorHandle h, uint32_t symbol, int32_t model,
-                                       int32_t ticks, double bps, double impact_coeff)
+                                       int32_t ticks, double tick_size, double bps,
+                                       double impact_coeff)
 {
   static_cast<FloxExecutorImpl*>(h)->executor.setSymbolSlippage(
-      symbol, makeSlippageProfile(model, ticks, bps, impact_coeff));
+      symbol, makeSlippageProfile(model, ticks, tick_size, bps, impact_coeff));
 }
 
 void flox_executor_set_queue_model(FloxExecutorHandle h, int32_t model, uint32_t depth)
@@ -1575,24 +1577,6 @@ void flox_executor_on_trade_qty(FloxExecutorHandle h, uint32_t symbol, double pr
       symbol, Price::fromDouble(price), Quantity::fromDouble(quantity), is_buy != 0);
 }
 
-void flox_executor_on_book_level(FloxExecutorHandle h, uint32_t symbol, uint8_t side,
-                                 double price, double quantity)
-{
-  std::pmr::monotonic_buffer_resource pool(512);
-  std::pmr::vector<BookLevel> bids(&pool);
-  std::pmr::vector<BookLevel> asks(&pool);
-  BookLevel lvl(Price::fromDouble(price), Quantity::fromDouble(quantity));
-  if (side == 0)
-  {
-    bids.push_back(lvl);
-  }
-  else
-  {
-    asks.push_back(lvl);
-  }
-  static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
-}
-
 void flox_executor_on_best_levels(FloxExecutorHandle h, uint32_t symbol, double bid_price,
                                   double bid_qty, double ask_price, double ask_qty)
 {
@@ -1601,6 +1585,27 @@ void flox_executor_on_best_levels(FloxExecutorHandle h, uint32_t symbol, double 
   std::pmr::vector<BookLevel> asks(&pool);
   bids.emplace_back(Price::fromDouble(bid_price), Quantity::fromDouble(bid_qty));
   asks.emplace_back(Price::fromDouble(ask_price), Quantity::fromDouble(ask_qty));
+  static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+}
+
+void flox_executor_on_book_snapshot(FloxExecutorHandle h, uint32_t symbol,
+                                    const double* bid_prices, const double* bid_qtys,
+                                    uint32_t n_bids, const double* ask_prices,
+                                    const double* ask_qtys, uint32_t n_asks)
+{
+  std::pmr::monotonic_buffer_resource pool(1024);
+  std::pmr::vector<BookLevel> bids(&pool);
+  std::pmr::vector<BookLevel> asks(&pool);
+  bids.reserve(n_bids);
+  asks.reserve(n_asks);
+  for (uint32_t i = 0; i < n_bids; ++i)
+  {
+    bids.emplace_back(Price::fromDouble(bid_prices[i]), Quantity::fromDouble(bid_qtys[i]));
+  }
+  for (uint32_t i = 0; i < n_asks; ++i)
+  {
+    asks.emplace_back(Price::fromDouble(ask_prices[i]), Quantity::fromDouble(ask_qtys[i]));
+  }
   static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
 }
 

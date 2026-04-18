@@ -13,11 +13,11 @@ from C import flox_executor_cancel_all(cobj, u32)
 from C import flox_executor_on_bar(cobj, u32, float)
 from C import flox_executor_on_trade(cobj, u32, float, u8)
 from C import flox_executor_on_trade_qty(cobj, u32, float, float, u8)
-from C import flox_executor_on_book_level(cobj, u32, u8, float, float)
+from C import flox_executor_on_best_levels(cobj, u32, float, float, float, float)
 from C import flox_executor_advance_clock(cobj, i64)
 from C import flox_executor_fill_count(cobj) -> u32
-from C import flox_executor_set_default_slippage(cobj, i32, i32, float, float)
-from C import flox_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float)
+from C import flox_executor_set_default_slippage(cobj, i32, i32, float, float, float)
+from C import flox_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
 from C import flox_executor_set_queue_model(cobj, i32, u32)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
@@ -87,22 +87,25 @@ class SimulatedExecutor:
         flox_executor_on_trade_qty(self._handle, u32(symbol), price, quantity,
                                    u8(1 if is_buy else 0))
 
-    def on_book_level(self, symbol: int, side: str, price: float, quantity: float):
-        side_u = u8(0 if side == "bid" else 1)
-        flox_executor_on_book_level(self._handle, u32(symbol), side_u, price, quantity)
+    def on_best_levels(self, symbol: int, bid_price: float, bid_qty: float,
+                       ask_price: float, ask_qty: float):
+        flox_executor_on_best_levels(self._handle, u32(symbol), bid_price, bid_qty,
+                                     ask_price, ask_qty)
 
     def advance_clock(self, timestamp_ns: int):
         flox_executor_advance_clock(self._handle, i64(timestamp_ns))
 
-    def set_default_slippage(self, model: int, ticks: int = 0, bps: float = 0.0,
+    def set_default_slippage(self, model: int, ticks: int = 0,
+                             tick_size: float = 0.0, bps: float = 0.0,
                              impact_coeff: float = 0.0):
         flox_executor_set_default_slippage(self._handle, i32(model), i32(ticks),
-                                           bps, impact_coeff)
+                                           tick_size, bps, impact_coeff)
 
     def set_symbol_slippage(self, symbol: int, model: int, ticks: int = 0,
-                            bps: float = 0.0, impact_coeff: float = 0.0):
+                            tick_size: float = 0.0, bps: float = 0.0,
+                            impact_coeff: float = 0.0):
         flox_executor_set_symbol_slippage(self._handle, u32(symbol), i32(model),
-                                          i32(ticks), bps, impact_coeff)
+                                          i32(ticks), tick_size, bps, impact_coeff)
 
     def set_queue_model(self, model: int, depth: int = 1):
         flox_executor_set_queue_model(self._handle, i32(model), u32(depth))

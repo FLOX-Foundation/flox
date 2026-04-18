@@ -94,7 +94,15 @@ struct BacktestStats
 
 ### Formula changes
 
-Sharpe, Sortino and Calmar are computed from per-trade returns against `initialCapital`, annualized with `sqrt(metricsAnnualizationFactor)`. `riskFreeRate` is subtracted from each return before the stats are computed. Calmar is `annualizedReturn / maxDrawdownPct`.
+Sharpe, Sortino and Calmar are computed from the equity curve. A per-period return is the relative change from the previous equity point (or from `initialCapital` for the first point), with `riskFreeRate` subtracted:
+
+```
+r_i = (equity[i] - equity[i-1]) / equity[i-1] - riskFreeRate
+```
+
+Sharpe and Sortino annualize the series with `sqrt(metricsAnnualizationFactor)`. Calmar is `annualizedReturn / maxDrawdownPct`, where `annualizedReturn = (1 + TWR)^(metricsAnnualizationFactor / n) - 1` and `n` is the number of observed periods (closed trades).
+
+`TradeRecord.fee` now includes both the entry-fill fee and the exit-fill fee pro-rated by the quantity closed in the trade. Partial closes keep the residual entry fee accrued to the remaining open portion of the position.
 
 ## EquityPoint
 
