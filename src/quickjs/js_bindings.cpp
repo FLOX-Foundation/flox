@@ -655,6 +655,166 @@ static JSValue js_executor_fill_count(JSContext* ctx, JSValueConst, int, JSValue
       ctx, flox_executor_fill_count(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0]))));
 }
 
+static JSValue js_executor_set_default_slippage(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  flox_executor_set_default_slippage(
+      static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<int32_t>(toInt64(ctx, argv[1])),
+      static_cast<int32_t>(toInt64(ctx, argv[2])), toDouble(ctx, argv[3]),
+      toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  flox_executor_set_symbol_slippage(
+      static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
+      static_cast<int32_t>(toInt64(ctx, argv[2])),
+      static_cast<int32_t>(toInt64(ctx, argv[3])), toDouble(ctx, argv[4]),
+      toDouble(ctx, argv[5]), toDouble(ctx, argv[6]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
+                                           JSValueConst* argv)
+{
+  flox_executor_set_queue_model(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
+                                static_cast<int32_t>(toInt64(ctx, argv[1])),
+                                toUint32(ctx, argv[2]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  flox_executor_on_trade_qty(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
+                             toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                             toDouble(ctx, argv[3]),
+                             static_cast<uint8_t>(toUint32(ctx, argv[4])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_on_best_levels(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  flox_executor_on_best_levels(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
+                               toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                               toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
+                               toDouble(ctx, argv[5]));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_backtest_result_create(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_backtest_result_create(
+               toDouble(ctx, argv[0]), toDouble(ctx, argv[1]),
+               static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]),
+               toDouble(ctx, argv[4]), toDouble(ctx, argv[5])));
+}
+static JSValue js_backtest_result_destroy(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  flox_backtest_result_destroy(
+      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_backtest_result_record_fill(JSContext* ctx, JSValueConst, int,
+                                              JSValueConst* argv)
+{
+  flox_backtest_result_record_fill(
+      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])), toUint32(ctx, argv[2]),
+      static_cast<uint8_t>(toUint32(ctx, argv[3])), toDouble(ctx, argv[4]),
+      toDouble(ctx, argv[5]), toInt64(ctx, argv[6]));
+  return JS_UNDEFINED;
+}
+static JSValue js_backtest_result_ingest(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  flox_backtest_result_ingest_executor(
+      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxExecutorHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_backtest_result_stats(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  FloxBacktestStats s{};
+  flox_backtest_result_stats(
+      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])), &s);
+  JSValue obj = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, obj, "totalTrades", JS_NewInt64(ctx, (int64_t)s.totalTrades));
+  JS_SetPropertyStr(ctx, obj, "winningTrades", JS_NewInt64(ctx, (int64_t)s.winningTrades));
+  JS_SetPropertyStr(ctx, obj, "losingTrades", JS_NewInt64(ctx, (int64_t)s.losingTrades));
+  JS_SetPropertyStr(ctx, obj, "maxConsecutiveWins",
+                    JS_NewInt64(ctx, (int64_t)s.maxConsecutiveWins));
+  JS_SetPropertyStr(ctx, obj, "maxConsecutiveLosses",
+                    JS_NewInt64(ctx, (int64_t)s.maxConsecutiveLosses));
+  JS_SetPropertyStr(ctx, obj, "initialCapital", JS_NewFloat64(ctx, s.initialCapital));
+  JS_SetPropertyStr(ctx, obj, "finalCapital", JS_NewFloat64(ctx, s.finalCapital));
+  JS_SetPropertyStr(ctx, obj, "totalPnl", JS_NewFloat64(ctx, s.totalPnl));
+  JS_SetPropertyStr(ctx, obj, "totalFees", JS_NewFloat64(ctx, s.totalFees));
+  JS_SetPropertyStr(ctx, obj, "netPnl", JS_NewFloat64(ctx, s.netPnl));
+  JS_SetPropertyStr(ctx, obj, "grossProfit", JS_NewFloat64(ctx, s.grossProfit));
+  JS_SetPropertyStr(ctx, obj, "grossLoss", JS_NewFloat64(ctx, s.grossLoss));
+  JS_SetPropertyStr(ctx, obj, "maxDrawdown", JS_NewFloat64(ctx, s.maxDrawdown));
+  JS_SetPropertyStr(ctx, obj, "maxDrawdownPct", JS_NewFloat64(ctx, s.maxDrawdownPct));
+  JS_SetPropertyStr(ctx, obj, "winRate", JS_NewFloat64(ctx, s.winRate));
+  JS_SetPropertyStr(ctx, obj, "profitFactor", JS_NewFloat64(ctx, s.profitFactor));
+  JS_SetPropertyStr(ctx, obj, "avgWin", JS_NewFloat64(ctx, s.avgWin));
+  JS_SetPropertyStr(ctx, obj, "avgLoss", JS_NewFloat64(ctx, s.avgLoss));
+  JS_SetPropertyStr(ctx, obj, "avgWinLossRatio", JS_NewFloat64(ctx, s.avgWinLossRatio));
+  JS_SetPropertyStr(ctx, obj, "avgTradeDurationNs",
+                    JS_NewFloat64(ctx, s.avgTradeDurationNs));
+  JS_SetPropertyStr(ctx, obj, "medianTradeDurationNs",
+                    JS_NewFloat64(ctx, s.medianTradeDurationNs));
+  JS_SetPropertyStr(ctx, obj, "maxTradeDurationNs",
+                    JS_NewFloat64(ctx, s.maxTradeDurationNs));
+  JS_SetPropertyStr(ctx, obj, "sharpeRatio", JS_NewFloat64(ctx, s.sharpeRatio));
+  JS_SetPropertyStr(ctx, obj, "sortinoRatio", JS_NewFloat64(ctx, s.sortinoRatio));
+  JS_SetPropertyStr(ctx, obj, "calmarRatio", JS_NewFloat64(ctx, s.calmarRatio));
+  JS_SetPropertyStr(ctx, obj, "timeWeightedReturn",
+                    JS_NewFloat64(ctx, s.timeWeightedReturn));
+  JS_SetPropertyStr(ctx, obj, "returnPct", JS_NewFloat64(ctx, s.returnPct));
+  JS_SetPropertyStr(ctx, obj, "startTimeNs", JS_NewInt64(ctx, s.startTimeNs));
+  JS_SetPropertyStr(ctx, obj, "endTimeNs", JS_NewInt64(ctx, s.endTimeNs));
+  return obj;
+}
+static JSValue js_backtest_result_equity_curve(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  auto h = static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0]));
+  const uint32_t n = flox_backtest_result_equity_curve(h, nullptr, 0);
+  std::vector<FloxEquityPoint> pts(n);
+  if (n > 0)
+  {
+    flox_backtest_result_equity_curve(h, pts.data(), n);
+  }
+  JSValue arr = JS_NewArray(ctx);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue pt = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, pt, "timestampNs", JS_NewInt64(ctx, pts[i].timestamp_ns));
+    JS_SetPropertyStr(ctx, pt, "equity", JS_NewFloat64(ctx, pts[i].equity));
+    JS_SetPropertyStr(ctx, pt, "drawdownPct", JS_NewFloat64(ctx, pts[i].drawdown_pct));
+    JS_SetPropertyUint32(ctx, arr, i, pt);
+  }
+  return arr;
+}
+static JSValue js_backtest_result_write_csv(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  const char* path = JS_ToCString(ctx, argv[1]);
+  if (!path)
+  {
+    return JS_NewBool(ctx, 0);
+  }
+  uint8_t ok = flox_backtest_result_write_equity_curve_csv(
+      static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])), path);
+  JS_FreeCString(ctx, path);
+  return JS_NewBool(ctx, ok != 0);
+}
+
 // ============================================================
 // Position tracker bindings
 // ============================================================
@@ -905,6 +1065,24 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_executor_advance_clock", js_executor_advance, 2);
   addGlobalFunc(ctx, "__flox_executor_fill_count", js_executor_fill_count, 1);
+  addGlobalFunc(ctx, "__flox_executor_set_default_slippage",
+                js_executor_set_default_slippage, 6);
+  addGlobalFunc(ctx, "__flox_executor_set_symbol_slippage",
+                js_executor_set_symbol_slippage, 7);
+  addGlobalFunc(ctx, "__flox_executor_set_queue_model", js_executor_set_queue_model, 3);
+  addGlobalFunc(ctx, "__flox_executor_on_trade_qty", js_executor_on_trade_qty, 5);
+  addGlobalFunc(ctx, "__flox_executor_on_best_levels", js_executor_on_best_levels, 6);
+
+  // Backtest result
+  addGlobalFunc(ctx, "__flox_backtest_result_create", js_backtest_result_create, 6);
+  addGlobalFunc(ctx, "__flox_backtest_result_destroy", js_backtest_result_destroy, 1);
+  addGlobalFunc(ctx, "__flox_backtest_result_record_fill",
+                js_backtest_result_record_fill, 7);
+  addGlobalFunc(ctx, "__flox_backtest_result_ingest", js_backtest_result_ingest, 2);
+  addGlobalFunc(ctx, "__flox_backtest_result_stats", js_backtest_result_stats, 1);
+  addGlobalFunc(ctx, "__flox_backtest_result_equity_curve",
+                js_backtest_result_equity_curve, 1);
+  addGlobalFunc(ctx, "__flox_backtest_result_write_csv", js_backtest_result_write_csv, 2);
 
   // Position tracker
   addGlobalFunc(ctx, "__flox_pos_create", js_pos_create, 1);

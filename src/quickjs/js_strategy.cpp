@@ -82,6 +82,9 @@ void FloxJsStrategy::loadStdlib()
       clear() { __flox_book_clear(this._h); }
     }
 
+    const _slippageMap = { none: 0, fixed_ticks: 1, fixed_bps: 2, volume_impact: 3 };
+    const _queueMap = { none: 0, tob: 1, full: 2 };
+
     class SimulatedExecutor {
       constructor() { this._h = __flox_executor_create(); }
       destroy() { __flox_executor_destroy(this._h); }
@@ -90,8 +93,52 @@ void FloxJsStrategy::loadStdlib()
       }
       onBar(symbol, closePrice) { __flox_executor_on_bar(this._h, symbol, closePrice); }
       onTrade(symbol, price, isBuy) { __flox_executor_on_trade(this._h, symbol, price, isBuy ? 1 : 0); }
+      onTradeQty(symbol, price, quantity, isBuy) {
+        __flox_executor_on_trade_qty(this._h, symbol, price, quantity, isBuy ? 1 : 0);
+      }
+      onBestLevels(symbol, bidPrice, bidQty, askPrice, askQty) {
+        __flox_executor_on_best_levels(this._h, symbol, bidPrice, bidQty, askPrice, askQty);
+      }
       advanceClock(timestampNs) { __flox_executor_advance_clock(this._h, timestampNs); }
+      setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff) {
+        __flox_executor_set_default_slippage(this._h, _slippageMap[model] || 0,
+                                             ticks || 0, tickSize || 0,
+                                             bps || 0, impactCoeff || 0);
+      }
+      setSymbolSlippage(symbol, model, ticks, tickSize, bps, impactCoeff) {
+        __flox_executor_set_symbol_slippage(this._h, symbol, _slippageMap[model] || 0,
+                                            ticks || 0, tickSize || 0,
+                                            bps || 0, impactCoeff || 0);
+      }
+      setQueueModel(model, depth) {
+        __flox_executor_set_queue_model(this._h, _queueMap[model] || 0, depth || 1);
+      }
       get fillCount() { return __flox_executor_fill_count(this._h); }
+      get handle() { return this._h; }
+    }
+
+    class BacktestResult {
+      constructor(initialCapital, feeRate, usePercentageFee, fixedFeePerTrade,
+                  riskFreeRate, annualizationFactor) {
+        this._h = __flox_backtest_result_create(
+          initialCapital === undefined ? 100000.0 : initialCapital,
+          feeRate === undefined ? 0.0001 : feeRate,
+          usePercentageFee === undefined || usePercentageFee ? 1 : 0,
+          fixedFeePerTrade || 0,
+          riskFreeRate || 0,
+          annualizationFactor || 252.0);
+      }
+      destroy() { __flox_backtest_result_destroy(this._h); }
+      recordFill(orderId, symbol, side, price, qty, timestampNs) {
+        __flox_backtest_result_record_fill(this._h, orderId, symbol,
+                                           side === "buy" ? 0 : 1, price, qty, timestampNs);
+      }
+      ingestExecutor(executor) {
+        __flox_backtest_result_ingest(this._h, executor.handle);
+      }
+      stats() { return __flox_backtest_result_stats(this._h); }
+      equityCurve() { return __flox_backtest_result_equity_curve(this._h); }
+      writeEquityCurveCsv(path) { return __flox_backtest_result_write_csv(this._h, path); }
     }
 
     class PositionTracker {

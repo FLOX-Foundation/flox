@@ -10,6 +10,8 @@
 #pragma once
 
 #include "flox/backtest/abstract_clock.h"
+#include "flox/backtest/backtest_config.h"
+#include "flox/backtest/order_queue_tracker.h"
 #include "flox/book/book_update.h"
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/composite_order_logic.h"
@@ -51,6 +53,15 @@ class SimulatedExecutor : public IOrderExecutor
 
   void setOrderEventCallback(OrderEventCallback cb);
 
+  // Apply slippage and queue-simulation settings from a BacktestConfig. May be
+  // called after construction; existing orders keep their prior behavior.
+  void applyConfig(const BacktestConfig& config);
+
+  // Convenience setters for bindings without a full BacktestConfig.
+  void setDefaultSlippage(const SlippageProfile& profile);
+  void setSymbolSlippage(SymbolId symbol, const SlippageProfile& profile);
+  void setQueueModel(QueueModel model, size_t depth);
+
   void start() override {}
   void stop() override {}
 
@@ -67,6 +78,7 @@ class SimulatedExecutor : public IOrderExecutor
   void onBookUpdate(SymbolId symbol, const std::pmr::vector<BookLevel>& bids,
                     const std::pmr::vector<BookLevel>& asks);
   void onTrade(SymbolId symbol, Price price, bool isBuy);
+  void onTrade(SymbolId symbol, Price price, Quantity qty, bool isBuy);
   void onBar(SymbolId symbol, Price close);
 
   const std::vector<Fill>& fills() const { return _fills; }
@@ -81,12 +93,18 @@ class SimulatedExecutor : public IOrderExecutor
     int64_t bestBidRaw{0};
     int64_t bestAskRaw{0};
     int64_t lastTradeRaw{0};
+    int64_t bestBidQtyRaw{0};
+    int64_t bestAskQtyRaw{0};
     bool hasBid{false};
     bool hasAsk{false};
     bool hasTrade{false};
   };
 
   MarketState& getMarketState(SymbolId symbol);
+  const SlippageProfile& slippageFor(SymbolId symbol) const;
+  int64_t applySlippage(int64_t priceRaw, Side side, SymbolId symbol,
+                        Quantity qty, int64_t levelQtyRaw) const;
+
   bool tryFillOrder(Order& order);
   void processPendingOrders(SymbolId symbol, const MarketState& state);
   void processConditionalOrders(SymbolId symbol, const MarketState& state);
@@ -100,6 +118,9 @@ class SimulatedExecutor : public IOrderExecutor
   void executeFill(Order& order, Price price, Quantity qty);
   void emitEvent(OrderEventStatus status, const Order& order);
   void emitTrailingUpdate(const Order& order, Price newTrigger);
+
+  Order* findPendingOrder(OrderId orderId);
+  void drainQueueFills(SymbolId symbol);
 
   IClock& _clock;
   OrderEventCallback _callback;
@@ -116,6 +137,16 @@ class SimulatedExecutor : public IOrderExecutor
 
   std::array<MarketState, kMaxSymbols> _marketStatesFlat{};
   std::vector<std::pair<SymbolId, MarketState>> _marketStatesOverflow;
+
+  // Slippage config: default + per-symbol overrides
+  std::array<SlippageProfile, kMaxSymbols> _slippageFlat{};
+  std::array<bool, kMaxSymbols> _slippageSetFlat{};
+  std::vector<std::pair<SymbolId, SlippageProfile>> _slippageOverflow;
+  SlippageProfile _defaultSlippage{};
+
+  OrderQueueTracker _queueTracker;
+  QueueModel _queueModel{};
+  std::vector<std::pair<OrderId, Quantity>> _queueFillBuffer;  // reused scratch
 };
 
 }  // namespace flox

@@ -364,14 +364,72 @@ declare class L3Book {
     bestAsk(): number | null;
 }
 
+declare type SlippageModelName = "none" | "fixed_ticks" | "fixed_bps" | "volume_impact";
+declare type QueueModelName = "none" | "tob" | "full";
+
 declare class SimulatedExecutor {
     constructor();
     destroy(): void;
     submitOrder(id: number, side: "buy" | "sell", price: number, qty: number, type?: number, symbol?: number): void;
     onBar(symbol: number, closePrice: number): void;
     onTrade(symbol: number, price: number, isBuy: boolean): void;
+    onTradeQty(symbol: number, price: number, quantity: number, isBuy: boolean): void;
+    onBestLevels(symbol: number, bidPrice: number, bidQty: number, askPrice: number, askQty: number): void;
     advanceClock(timestampNs: number): void;
+    setDefaultSlippage(model: SlippageModelName, ticks?: number, tickSize?: number, bps?: number, impactCoeff?: number): void;
+    setSymbolSlippage(symbol: number, model: SlippageModelName, ticks?: number, tickSize?: number, bps?: number, impactCoeff?: number): void;
+    setQueueModel(model: QueueModelName, depth?: number): void;
     readonly fillCount: number;
+}
+
+declare interface BacktestStats {
+    totalTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+    maxConsecutiveWins: number;
+    maxConsecutiveLosses: number;
+    initialCapital: number;
+    finalCapital: number;
+    totalPnl: number;
+    totalFees: number;
+    netPnl: number;
+    grossProfit: number;
+    grossLoss: number;
+    maxDrawdown: number;
+    maxDrawdownPct: number;
+    winRate: number;
+    profitFactor: number;
+    avgWin: number;
+    avgLoss: number;
+    avgWinLossRatio: number;
+    avgTradeDurationNs: number;
+    medianTradeDurationNs: number;
+    maxTradeDurationNs: number;
+    sharpeRatio: number;
+    sortinoRatio: number;
+    calmarRatio: number;
+    timeWeightedReturn: number;
+    returnPct: number;
+    startTimeNs: number;
+    endTimeNs: number;
+}
+
+declare interface EquityPoint {
+    timestampNs: number;
+    equity: number;
+    drawdownPct: number;
+}
+
+declare class BacktestResult {
+    constructor(initialCapital?: number, feeRate?: number, usePercentageFee?: boolean,
+                fixedFeePerTrade?: number, riskFreeRate?: number, annualizationFactor?: number);
+    destroy(): void;
+    recordFill(orderId: number, symbol: number, side: "buy" | "sell", price: number,
+               quantity: number, timestampNs: number): void;
+    ingestExecutor(executor: SimulatedExecutor): void;
+    stats(): BacktestStats;
+    equityCurve(): EquityPoint[];
+    writeEquityCurveCsv(path: string): boolean;
 }
 
 declare class PositionTracker {

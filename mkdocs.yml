@@ -89,6 +89,7 @@ nav:
       - how-to/README.md
       - Bar Aggregation: how-to/bar-aggregation.md
       - Backtesting: how-to/backtest.md
+      - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
       - Interactive Backtest: how-to/interactive-backtest.md
       - Grid Search: how-to/grid-search.md
       - Python Bindings: how-to/python-bindings.md
@@ -179,6 +180,8 @@ nav:
               - BacktestResult: reference/api/backtest/backtest_result.md
               - BacktestOptimizer: reference/api/backtest/backtest_optimizer.md
               - SimulatedExecutor: reference/api/backtest/simulated_executor.md
+              - Slippage: reference/api/backtest/slippage.md
+              - QueueSimulation: reference/api/backtest/queue_simulation.md
               - MmapBarStorage: reference/api/backtest/mmap_bar_storage.md
               - OptimizationStats: reference/api/backtest/optimization_stats.md
           - Strategy:
