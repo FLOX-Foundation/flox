@@ -169,9 +169,3 @@ console.log("  95% CI: [" + (ci.lower * 100).toFixed(4) + "%, " + (ci.upper * 10
 console.log("  Median return:   " + (ci.median * 100).toFixed(4) + "%");
 
 console.log("\nDone.");
-
-// Runner expects a registered strategy -- register a no-op to avoid error
-class Noop extends Strategy {
-    constructor() { super({ exchange: "X", symbols: ["X"] }); }
-}
-flox.register(new Noop());

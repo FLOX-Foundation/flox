@@ -1,0 +1,14 @@
+{
+  "name": "flox-node",
+  "version": "0.1.0",
+  "description": "Node.js bindings for the Flox trading engine",
+  "main": "index.js",
+  "scripts": {
+    "build": "cmake-js compile",
+    "rebuild": "cmake-js rebuild"
+  },
+  "dependencies": {
+    "cmake-js": "^7.3.0",
+    "node-addon-api": "^8.3.1"
+  }
+}

@@ -262,16 +262,12 @@ void FloxJsStrategy::loadScript(const std::string& path)
     throw std::runtime_error("Failed to load script " + path + ": " + _engine.getErrorMessage());
   }
 
-  // Get the registered strategy
+  // Get the registered strategy (optional -- scripts can run without one)
   _strategyObj = _engine.getGlobalProperty("__flox_registered_strategy");
-  if (JS_IsNull(_strategyObj) || JS_IsUndefined(_strategyObj))
+  if (!JS_IsNull(_strategyObj) && !JS_IsUndefined(_strategyObj))
   {
-    throw std::runtime_error(
-        "No strategy registered. Call flox.register(new YourStrategy()) in "
-        "your script.");
+    resolveSymbols();
   }
-
-  resolveSymbols();
 }
 
 void FloxJsStrategy::resolveSymbols()
