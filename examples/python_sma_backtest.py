@@ -8,7 +8,6 @@ Usage:
 
 import os
 import time
-import numpy as np
 import flox_py as flox
 
 DATA = os.path.join(os.path.dirname(__file__), "data", "btcusdt_1m.csv")
@@ -30,14 +29,14 @@ def sma_signals(ts, close, fast=10, slow=30, size=0.01):
             sig.sell(int(ts[i]), size if pos == 0 else size * 2)
             pos = -1
 
-    return sig.build()
+    return sig
 
 
 if __name__ == "__main__":
     engine = flox.Engine(initial_capital=10_000, fee_rate=0.0004)
     engine.load_csv(DATA)
 
-    ts, close, high, low = engine.ts, engine.close, engine.high, engine.low
+    ts, close, high, low = engine.ts(), engine.close(), engine.high(), engine.low()
     n = len(close)
     print(f"{n} bars  {close[0]:.2f} -> {close[-1]:.2f}  [{close.min():.2f}, {close.max():.2f}]")
 
@@ -63,20 +62,4 @@ if __name__ == "__main__":
     print(f"  sharpe={stats.sharpe:.4f} dd={stats.max_drawdown_pct:.4f}% fees={stats.total_fees:.4f}")
     print(f"  ({dt:.2f}ms)")
 
-    # permutation test
-    rng = np.random.default_rng(42)
-    log_ret = np.diff(np.log(close))
-    sets = []
-    for _ in range(100):
-        perm = log_ret.copy()
-        rng.shuffle(perm)
-        fake = close[0] * np.exp(np.cumsum(np.r_[0, perm]))
-        sets.append(sma_signals(ts, fake))
-
-    t0 = time.perf_counter_ns()
-    batch = engine.run_batch(sets)
-    dt = (time.perf_counter_ns() - t0) / 1e6
-
-    pnls = np.array([r.net_pnl for r in batch])
-    p = np.mean(pnls >= stats.net_pnl)
-    print(f"\npermutation test: p={p:.4f} ({dt:.2f}ms)")
+    print("\nDone.")

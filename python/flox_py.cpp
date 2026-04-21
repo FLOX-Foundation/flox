@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <atomic>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -33,20 +34,17 @@ using namespace flox;
 using contiguous_f64 = py::array_t<double, py::array::c_style | py::array::forcecast>;
 using contiguous_i64 = py::array_t<int64_t, py::array::c_style | py::array::forcecast>;
 
-// ── Signal ──────────────────────────────────────────────────────────
+// ── Bar ─────────────────────────────────────────────────────────────
 
-#pragma pack(push, 1)
-struct PySignal
+struct OhlcvBar
 {
   int64_t timestamp_ns;
-  int64_t quantity_raw;
-  int64_t price_raw;
-  uint8_t side;
-  uint8_t order_type;
-  uint8_t _pad[6];
+  int64_t open_raw;
+  int64_t high_raw;
+  int64_t low_raw;
+  int64_t close_raw;
+  int64_t volume_raw;
 };
-#pragma pack(pop)
-static_assert(sizeof(PySignal) == 32);
 
 static int64_t normalizeTimestamp(int64_t t)
 {
@@ -65,102 +63,196 @@ static int64_t normalizeTimestamp(int64_t t)
   return t;
 }
 
+static std::vector<OhlcvBar> parseCsv(const std::string& path)
+{
+  std::ifstream file(path);
+  if (!file.is_open())
+  {
+    throw std::runtime_error("cannot open: " + path);
+  }
+
+  std::vector<OhlcvBar> bars;
+  std::string line;
+  std::getline(file, line);  // skip header
+
+  while (std::getline(file, line))
+  {
+    if (line.empty())
+    {
+      continue;
+    }
+    std::istringstream ss(line);
+    std::string tok;
+
+    std::getline(ss, tok, ',');
+    int64_t ts = normalizeTimestamp(std::stoll(tok));
+    std::getline(ss, tok, ',');
+    double o = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double h = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double l = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double c = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double v = std::stod(tok);
+
+    bars.push_back({.timestamp_ns = ts,
+                    .open_raw = Price::fromDouble(o).raw(),
+                    .high_raw = Price::fromDouble(h).raw(),
+                    .low_raw = Price::fromDouble(l).raw(),
+                    .close_raw = Price::fromDouble(c).raw(),
+                    .volume_raw = Volume::fromDouble(v).raw()});
+  }
+  return bars;
+}
+
+static std::vector<OhlcvBar> arraysToOhlcv(contiguous_i64 timestamps, contiguous_f64 open,
+                                            contiguous_f64 high, contiguous_f64 low,
+                                            contiguous_f64 close, contiguous_f64 volume)
+{
+  auto n = timestamps.size();
+  std::vector<OhlcvBar> bars(n);
+  auto ts = timestamps.unchecked<1>();
+  auto o = open.unchecked<1>();
+  auto h = high.unchecked<1>();
+  auto l = low.unchecked<1>();
+  auto c = close.unchecked<1>();
+  auto v = volume.unchecked<1>();
+
+  for (py::ssize_t i = 0; i < n; ++i)
+  {
+    bars[i] = {.timestamp_ns = normalizeTimestamp(ts(i)),
+               .open_raw = Price::fromDouble(o(i)).raw(),
+               .high_raw = Price::fromDouble(h(i)).raw(),
+               .low_raw = Price::fromDouble(l(i)).raw(),
+               .close_raw = Price::fromDouble(c(i)).raw(),
+               .volume_raw = Volume::fromDouble(v(i)).raw()};
+  }
+  return bars;
+}
+
+// ── Resample ────────────────────────────────────────────────────────
+
+static std::vector<OhlcvBar> resampleBars(const std::vector<OhlcvBar>& src,
+                                           int64_t intervalNs)
+{
+  if (src.empty() || intervalNs <= 0)
+  {
+    return {};
+  }
+
+  std::vector<OhlcvBar> out;
+  int64_t bucketStart = (src[0].timestamp_ns / intervalNs) * intervalNs;
+  OhlcvBar cur = src[0];
+  cur.timestamp_ns = bucketStart;
+
+  for (size_t i = 1; i < src.size(); ++i)
+  {
+    int64_t bucket = (src[i].timestamp_ns / intervalNs) * intervalNs;
+    if (bucket != bucketStart)
+    {
+      out.push_back(cur);
+      bucketStart = bucket;
+      cur = src[i];
+      cur.timestamp_ns = bucket;
+    }
+    else
+    {
+      // merge
+      if (src[i].high_raw > cur.high_raw)
+      {
+        cur.high_raw = src[i].high_raw;
+      }
+      if (src[i].low_raw < cur.low_raw)
+      {
+        cur.low_raw = src[i].low_raw;
+      }
+      cur.close_raw = src[i].close_raw;
+      cur.volume_raw += src[i].volume_raw;
+    }
+  }
+  out.push_back(cur);
+  return out;
+}
+
+// ── Signal ──────────────────────────────────────────────────────────
+
+struct InternalSignal
+{
+  int64_t timestamp_ns;
+  int64_t quantity_raw;
+  int64_t price_raw;
+  uint8_t side;
+  uint8_t order_type;
+  uint32_t symbol_id;
+};
+
 // ── SignalBuilder ───────────────────────────────────────────────────
 
 class SignalBuilder
 {
  public:
-  void addSignal(int64_t ts, uint8_t side, double qty, double price, uint8_t type)
+  void buy(int64_t ts, double qty, const std::string& sym = "")
+  {
+    add(ts, 0, qty, 0, 0, sym);
+  }
+
+  void sell(int64_t ts, double qty, const std::string& sym = "")
+  {
+    add(ts, 1, qty, 0, 0, sym);
+  }
+
+  void limitBuy(int64_t ts, double price, double qty, const std::string& sym = "")
+  {
+    add(ts, 0, qty, price, 1, sym);
+  }
+
+  void limitSell(int64_t ts, double price, double qty, const std::string& sym = "")
+  {
+    add(ts, 1, qty, price, 1, sym);
+  }
+
+  size_t size() const { return _signals.size(); }
+  void clear() { _signals.clear(); }
+
+  const std::vector<InternalSignal>& signals() const { return _signals; }
+  const std::vector<std::string>& symbolNames() const { return _symbolNames; }
+
+ private:
+  void add(int64_t ts, uint8_t side, double qty, double price, uint8_t type,
+           const std::string& sym)
   {
     _signals.push_back({.timestamp_ns = normalizeTimestamp(ts),
                         .quantity_raw = Quantity::fromDouble(qty).raw(),
                         .price_raw = price > 0 ? Price::fromDouble(price).raw() : 0,
                         .side = side,
                         .order_type = type,
-                        ._pad = {}});
+                        .symbol_id = 0});  // resolved at run time
+    _symbolNames.push_back(sym);
   }
 
-  void buy(int64_t ts, double qty) { addSignal(ts, 0, qty, 0, 0); }
-  void sell(int64_t ts, double qty) { addSignal(ts, 1, qty, 0, 0); }
-  void limitBuy(int64_t ts, double price, double qty) { addSignal(ts, 0, qty, price, 1); }
-  void limitSell(int64_t ts, double price, double qty) { addSignal(ts, 1, qty, price, 1); }
-
-  py::array_t<PySignal> build() const
-  {
-    auto result = py::array_t<PySignal>(_signals.size());
-    std::memcpy(result.mutable_data(), _signals.data(), _signals.size() * sizeof(PySignal));
-    return result;
-  }
-
-  size_t size() const { return _signals.size(); }
-  void clear() { _signals.clear(); }
-
- private:
-  std::vector<PySignal> _signals;
+  std::vector<InternalSignal> _signals;
+  std::vector<std::string> _symbolNames;
 };
-
-// ── Bar ─────────────────────────────────────────────────────────────
-
-#pragma pack(push, 1)
-struct PyBar
-{
-  int64_t timestamp_ns;
-  int64_t open_raw;
-  int64_t high_raw;
-  int64_t low_raw;
-  int64_t close_raw;
-  int64_t volume_raw;
-};
-#pragma pack(pop)
-static_assert(sizeof(PyBar) == 48);
 
 // ── Stats ───────────────────────────────────────────────────────────
 
 struct PyStats
 {
-  size_t total_trades;
-  size_t winning_trades;
-  size_t losing_trades;
-  double initial_capital;
-  double final_capital;
-  double total_pnl;
-  double total_fees;
-  double net_pnl;
-  double gross_profit;
-  double gross_loss;
-  double max_drawdown;
-  double max_drawdown_pct;
-  double win_rate;
-  double profit_factor;
-  double avg_win;
-  double avg_loss;
-  double sharpe;
-  double sortino;
-  double calmar;
-  double return_pct;
+  size_t total_trades, winning_trades, losing_trades;
+  double initial_capital, final_capital, total_pnl, total_fees, net_pnl;
+  double gross_profit, gross_loss, max_drawdown, max_drawdown_pct;
+  double win_rate, profit_factor, avg_win, avg_loss;
+  double sharpe, sortino, calmar, return_pct;
 
   static PyStats fromBacktest(const BacktestStats& s)
   {
-    return {.total_trades = s.totalTrades,
-            .winning_trades = s.winningTrades,
-            .losing_trades = s.losingTrades,
-            .initial_capital = s.initialCapital,
-            .final_capital = s.finalCapital,
-            .total_pnl = s.totalPnl,
-            .total_fees = s.totalFees,
-            .net_pnl = s.netPnl,
-            .gross_profit = s.grossProfit,
-            .gross_loss = s.grossLoss,
-            .max_drawdown = s.maxDrawdown,
-            .max_drawdown_pct = s.maxDrawdownPct,
-            .win_rate = s.winRate,
-            .profit_factor = s.profitFactor,
-            .avg_win = s.avgWin,
-            .avg_loss = s.avgLoss,
-            .sharpe = s.sharpeRatio,
-            .sortino = s.sortinoRatio,
-            .calmar = s.calmarRatio,
-            .return_pct = s.returnPct};
+    return {s.totalTrades,     s.winningTrades, s.losingTrades,    s.initialCapital,
+            s.finalCapital,    s.totalPnl,      s.totalFees,       s.netPnl,
+            s.grossProfit,     s.grossLoss,     s.maxDrawdown,     s.maxDrawdownPct,
+            s.winRate,         s.profitFactor,   s.avgWin,          s.avgLoss,
+            s.sharpeRatio,     s.sortinoRatio,   s.calmarRatio,     s.returnPct};
   }
 
   py::dict toDict() const
@@ -198,65 +290,22 @@ struct PyStats
   }
 };
 
-// ── Backtest execution ──────────────────────────────────────────────
+// ── SymbolData ──────────────────────────────────────────────────────
 
-static BacktestStats executeSignals(const PyBar* bars, size_t numBars,
-                                    const PySignal* signals, size_t numSignals,
-                                    SymbolId symbolId, const BacktestConfig& config)
+struct SymbolData
 {
-  SimulatedClock clock;
-  SimulatedExecutor executor(clock);
-  OrderId nextOrderId = 1;
+  uint32_t id;
+  std::vector<OhlcvBar> bars;
+};
 
-  std::vector<size_t> sigOrder(numSignals);
-  std::iota(sigOrder.begin(), sigOrder.end(), 0);
-  std::sort(sigOrder.begin(), sigOrder.end(),
-            [&](size_t a, size_t b)
-            { return signals[a].timestamp_ns < signals[b].timestamp_ns; });
+// ── Merged event for multi-symbol backtest ──────────────────────────
 
-  size_t sigIdx = 0;
-
-  for (size_t i = 0; i < numBars; ++i)
-  {
-    const auto& bar = bars[i];
-    clock.advanceTo(bar.timestamp_ns);
-    executor.onBar(symbolId, Price::fromRaw(bar.close_raw));
-
-    while (sigIdx < numSignals && signals[sigOrder[sigIdx]].timestamp_ns <= bar.timestamp_ns)
-    {
-      const auto& sig = signals[sigOrder[sigIdx]];
-      Order order{.id = nextOrderId++,
-                  .side = sig.side == 0 ? Side::BUY : Side::SELL,
-                  .price = Price::fromRaw(sig.price_raw),
-                  .quantity = Quantity::fromRaw(sig.quantity_raw),
-                  .type = sig.order_type == 0 ? OrderType::MARKET : OrderType::LIMIT,
-                  .symbol = symbolId};
-      executor.submitOrder(order);
-      ++sigIdx;
-    }
-  }
-
-  while (sigIdx < numSignals)
-  {
-    const auto& sig = signals[sigOrder[sigIdx]];
-    Order order{.id = nextOrderId++,
-                .side = sig.side == 0 ? Side::BUY : Side::SELL,
-                .price = Price::fromRaw(sig.price_raw),
-                .quantity = Quantity::fromRaw(sig.quantity_raw),
-                .type = sig.order_type == 0 ? OrderType::MARKET : OrderType::LIMIT,
-                .symbol = symbolId};
-    executor.submitOrder(order);
-    ++sigIdx;
-  }
-
-  BacktestResult result(config, executor.fills().size());
-  for (const auto& fill : executor.fills())
-  {
-    result.recordFill(fill);
-  }
-
-  return result.computeStats();
-}
+struct MergedBar
+{
+  int64_t timestamp_ns;
+  int64_t close_raw;
+  uint32_t symbol_id;
+};
 
 // ── Engine ──────────────────────────────────────────────────────────
 
@@ -270,37 +319,16 @@ class Engine
     _config.usePercentageFee = true;
   }
 
-  void loadBars(py::array_t<PyBar, py::array::c_style> bars)
+  // -- Loading --
+
+  void loadCsv(const std::string& path, const std::string& symbol = "")
   {
-    auto buf = bars.request();
-    _bars.resize(buf.shape[0]);
-    std::memcpy(_bars.data(), buf.ptr, buf.shape[0] * sizeof(PyBar));
+    std::string sym = symbol.empty() ? inferSymbol(path) : symbol;
+    auto& sd = getOrCreate(sym);
+    sd.bars = parseCsv(path);
   }
 
-  void loadBarsFromArrays(contiguous_i64 timestamps, contiguous_f64 open, contiguous_f64 high,
-                          contiguous_f64 low, contiguous_f64 close, contiguous_f64 volume)
-  {
-    auto n = timestamps.size();
-    _bars.resize(n);
-    auto ts = timestamps.unchecked<1>();
-    auto o = open.unchecked<1>();
-    auto h = high.unchecked<1>();
-    auto l = low.unchecked<1>();
-    auto c = close.unchecked<1>();
-    auto v = volume.unchecked<1>();
-
-    for (py::ssize_t i = 0; i < n; ++i)
-    {
-      _bars[i] = {.timestamp_ns = normalizeTimestamp(ts(i)),
-                  .open_raw = Price::fromDouble(o(i)).raw(),
-                  .high_raw = Price::fromDouble(h(i)).raw(),
-                  .low_raw = Price::fromDouble(l(i)).raw(),
-                  .close_raw = Price::fromDouble(c(i)).raw(),
-                  .volume_raw = Volume::fromDouble(v(i)).raw()};
-    }
-  }
-
-  void loadBarsFromDict(py::dict d)
+  void loadOhlcv(py::dict d, const std::string& symbol = "")
   {
     auto get = [&](const char* key) -> contiguous_f64
     {
@@ -312,79 +340,30 @@ class Engine
     };
 
     contiguous_i64 timestamps;
-    if (d.contains("ts"))
+    for (const char* key : {"ts", "timestamp"})
     {
-      timestamps = d["ts"].cast<contiguous_i64>();
+      if (d.contains(key))
+      {
+        timestamps = d[key].cast<contiguous_i64>();
+        break;
+      }
     }
-    else if (d.contains("timestamp"))
-    {
-      timestamps = d["timestamp"].cast<contiguous_i64>();
-    }
-    else
+    if (timestamps.size() == 0)
     {
       throw std::invalid_argument("missing key: ts or timestamp");
     }
 
-    loadBarsFromArrays(timestamps, get("open"), get("high"), get("low"), get("close"),
-                       get("volume"));
+    std::string sym = symbol.empty() ? "default" : symbol;
+    auto& sd = getOrCreate(sym);
+    sd.bars = arraysToOhlcv(timestamps, get("open"), get("high"), get("low"), get("close"),
+                            get("volume"));
   }
 
-  void loadCsv(const std::string& path)
-  {
-    std::ifstream file(path);
-    if (!file.is_open())
-    {
-      throw std::runtime_error("cannot open: " + path);
-    }
-
-    std::string line;
-    std::getline(file, line);  // skip header
-
-    std::vector<int64_t> ts;
-    std::vector<double> op, hi, lo, cl, vol;
-
-    while (std::getline(file, line))
-    {
-      if (line.empty())
-      {
-        continue;
-      }
-      std::istringstream ss(line);
-      std::string tok;
-
-      std::getline(ss, tok, ',');
-      ts.push_back(std::stoll(tok));
-      std::getline(ss, tok, ',');
-      op.push_back(std::stod(tok));
-      std::getline(ss, tok, ',');
-      hi.push_back(std::stod(tok));
-      std::getline(ss, tok, ',');
-      lo.push_back(std::stod(tok));
-      std::getline(ss, tok, ',');
-      cl.push_back(std::stod(tok));
-      std::getline(ss, tok, ',');
-      vol.push_back(std::stod(tok));
-    }
-
-    size_t n = ts.size();
-    _bars.resize(n);
-    for (size_t i = 0; i < n; ++i)
-    {
-      _bars[i] = {.timestamp_ns = normalizeTimestamp(ts[i]),
-                  .open_raw = Price::fromDouble(op[i]).raw(),
-                  .high_raw = Price::fromDouble(hi[i]).raw(),
-                  .low_raw = Price::fromDouble(lo[i]).raw(),
-                  .close_raw = Price::fromDouble(cl[i]).raw(),
-                  .volume_raw = Volume::fromDouble(vol[i]).raw()};
-    }
-  }
-
-  void loadDf(py::object df)
+  void loadDf(py::object df, const std::string& symbol = "")
   {
     auto cols = df.attr("columns").attr("tolist")().cast<py::list>();
     auto colSet = py::set(cols);
 
-    // Find timestamp column
     contiguous_i64 timestamps;
     for (const char* key : {"ts", "timestamp", "open_time", "time"})
     {
@@ -402,126 +381,280 @@ class Engine
     auto col = [&](const char* key) -> contiguous_f64
     { return df.attr("__getitem__")(key).attr("values").cast<contiguous_f64>(); };
 
-    loadBarsFromArrays(timestamps, col("open"), col("high"), col("low"), col("close"),
-                       col("volume"));
+    std::string sym = symbol.empty() ? "default" : symbol;
+    auto& sd = getOrCreate(sym);
+    sd.bars = arraysToOhlcv(timestamps, col("open"), col("high"), col("low"), col("close"),
+                            col("volume"));
   }
 
-  PyStats run(py::array_t<PySignal, py::array::c_style> signals, uint32_t symbol = 1)
+  // -- Accessors --
+
+  py::list symbolList() const
   {
-    auto buf = signals.request();
-    const auto* sigs = static_cast<const PySignal*>(buf.ptr);
-    size_t n = buf.shape[0];
-
-    BacktestStats stats;
-    {
-      py::gil_scoped_release release;
-      stats = executeSignals(_bars.data(), _bars.size(), sigs, n, symbol, _config);
-    }
-    return PyStats::fromBacktest(stats);
-  }
-
-  py::list runBatch(py::list signalSets, int threads = 0, uint32_t symbol = 1)
-  {
-    size_t numRuns = signalSets.size();
-    if (threads <= 0)
-    {
-      threads = static_cast<int>(std::thread::hardware_concurrency());
-    }
-
-    struct RunData
-    {
-      const PySignal* data;
-      size_t count;
-    };
-    std::vector<RunData> runs(numRuns);
-    std::vector<py::array_t<PySignal, py::array::c_style>> refs(numRuns);
-
-    for (size_t i = 0; i < numRuns; ++i)
-    {
-      refs[i] = signalSets[i].cast<py::array_t<PySignal, py::array::c_style>>();
-      auto buf = refs[i].request();
-      runs[i] = {static_cast<const PySignal*>(buf.ptr), static_cast<size_t>(buf.shape[0])};
-    }
-
-    std::vector<BacktestStats> results(numRuns);
-
-    {
-      py::gil_scoped_release release;
-
-      std::atomic<size_t> nextRun{0};
-      auto worker = [&]()
-      {
-        while (true)
-        {
-          size_t idx = nextRun.fetch_add(1, std::memory_order_relaxed);
-          if (idx >= numRuns)
-          {
-            break;
-          }
-          results[idx] = executeSignals(_bars.data(), _bars.size(), runs[idx].data,
-                                        runs[idx].count, symbol, _config);
-        }
-      };
-
-      int actualThreads = std::min(threads, static_cast<int>(numRuns));
-      std::vector<std::thread> pool;
-      pool.reserve(actualThreads);
-      for (int t = 0; t < actualThreads; ++t)
-      {
-        pool.emplace_back(worker);
-      }
-      for (auto& t : pool)
-      {
-        t.join();
-      }
-    }
-
     py::list out;
-    for (size_t i = 0; i < numRuns; ++i)
+    for (auto& [name, _] : _symbols)
     {
-      out.append(PyStats::fromBacktest(results[i]));
+      out.append(name);
     }
     return out;
   }
 
-  size_t barCount() const { return _bars.size(); }
-
-  py::array_t<int64_t> timestamps() const
+  size_t barCount(const std::string& symbol = "") const
   {
-    size_t n = _bars.size();
-    py::array_t<int64_t> out(n);
-    auto* p = out.mutable_data();
-    for (size_t i = 0; i < n; ++i)
-    {
-      p[i] = _bars[i].timestamp_ns;
-    }
-    return out;
+    return resolve(symbol).bars.size();
   }
 
-  py::array_t<double> extractDoubles(int64_t PyBar::*field) const
+  py::array_t<double> timestamps(const std::string& symbol = "") const
   {
-    size_t n = _bars.size();
-    py::array_t<double> out(n);
+    auto& bars = resolve(symbol).bars;
+    py::array_t<double> out(bars.size());
     auto* p = out.mutable_data();
-    for (size_t i = 0; i < n; ++i)
+    for (size_t i = 0; i < bars.size(); ++i)
     {
-      p[i] = Price::fromRaw(_bars[i].*field).toDouble();
+      p[i] = static_cast<double>(bars[i].timestamp_ns);
     }
     return out;
   }
 
-  py::array_t<double> opens() const { return extractDoubles(&PyBar::open_raw); }
-  py::array_t<double> highs() const { return extractDoubles(&PyBar::high_raw); }
-  py::array_t<double> lows() const { return extractDoubles(&PyBar::low_raw); }
-  py::array_t<double> closes() const { return extractDoubles(&PyBar::close_raw); }
-  py::array_t<double> volumes() const { return extractDoubles(&PyBar::volume_raw); }
+  py::array_t<double> field(const std::string& symbol, int64_t OhlcvBar::*f) const
+  {
+    auto& bars = resolve(symbol).bars;
+    py::array_t<double> out(bars.size());
+    auto* p = out.mutable_data();
+    for (size_t i = 0; i < bars.size(); ++i)
+    {
+      p[i] = Price::fromRaw(bars[i].*f).toDouble();
+    }
+    return out;
+  }
+
+  py::array_t<double> opens(const std::string& s = "") const { return field(s, &OhlcvBar::open_raw); }
+  py::array_t<double> highs(const std::string& s = "") const { return field(s, &OhlcvBar::high_raw); }
+  py::array_t<double> lows(const std::string& s = "") const { return field(s, &OhlcvBar::low_raw); }
+  py::array_t<double> closes(const std::string& s = "") const { return field(s, &OhlcvBar::close_raw); }
+  py::array_t<double> volumes(const std::string& s = "") const { return field(s, &OhlcvBar::volume_raw); }
+
+  // -- Resample --
+
+  void addResample(const std::string& symbol, const std::string& targetName,
+                   const std::string& interval)
+  {
+    int64_t intervalNs = parseInterval(interval);
+    auto& src = resolve(symbol);
+    auto& dst = getOrCreate(targetName);
+    dst.bars = resampleBars(src.bars, intervalNs);
+  }
+
+  // -- Run --
+
+  PyStats run(const SignalBuilder& builder, uint32_t defaultSymbol = 0)
+  {
+    // Resolve signal symbols
+    auto sigs = builder.signals();
+    const auto& names = builder.symbolNames();
+    uint32_t defSym = defaultSymbol > 0 ? defaultSymbol : firstSymbolId();
+
+    for (size_t i = 0; i < sigs.size(); ++i)
+    {
+      if (names[i].empty())
+      {
+        sigs[i].symbol_id = defSym;
+      }
+      else
+      {
+        auto it = _symbols.find(names[i]);
+        if (it == _symbols.end())
+        {
+          throw std::invalid_argument("unknown symbol: " + names[i]);
+        }
+        sigs[i].symbol_id = it->second.id;
+      }
+    }
+
+    // Sort signals by time
+    std::vector<size_t> sigOrder(sigs.size());
+    std::iota(sigOrder.begin(), sigOrder.end(), 0);
+    std::sort(sigOrder.begin(), sigOrder.end(),
+              [&](size_t a, size_t b) { return sigs[a].timestamp_ns < sigs[b].timestamp_ns; });
+
+    // Merge all bars across symbols by timestamp
+    std::vector<MergedBar> merged;
+    for (auto& [_, sd] : _symbols)
+    {
+      for (auto& bar : sd.bars)
+      {
+        merged.push_back({bar.timestamp_ns, bar.close_raw, sd.id});
+      }
+    }
+    std::sort(merged.begin(), merged.end(),
+              [](const MergedBar& a, const MergedBar& b)
+              { return a.timestamp_ns < b.timestamp_ns; });
+
+    // Execute
+    SimulatedClock clock;
+    SimulatedExecutor executor(clock);
+    OrderId nextOrderId = 1;
+    size_t sigIdx = 0;
+
+    for (const auto& mb : merged)
+    {
+      clock.advanceTo(mb.timestamp_ns);
+      executor.onBar(mb.symbol_id, Price::fromRaw(mb.close_raw));
+
+      while (sigIdx < sigs.size() &&
+             sigs[sigOrder[sigIdx]].timestamp_ns <= mb.timestamp_ns)
+      {
+        const auto& sig = sigs[sigOrder[sigIdx]];
+        Order order{.id = nextOrderId++,
+                    .side = sig.side == 0 ? Side::BUY : Side::SELL,
+                    .price = Price::fromRaw(sig.price_raw),
+                    .quantity = Quantity::fromRaw(sig.quantity_raw),
+                    .type = sig.order_type == 0 ? OrderType::MARKET : OrderType::LIMIT,
+                    .symbol = sig.symbol_id};
+        executor.submitOrder(order);
+        ++sigIdx;
+      }
+    }
+
+    BacktestResult result(_config, executor.fills().size());
+    for (const auto& fill : executor.fills())
+    {
+      result.recordFill(fill);
+    }
+    return PyStats::fromBacktest(result.computeStats());
+  }
 
  private:
+  SymbolData& getOrCreate(const std::string& name)
+  {
+    auto it = _symbols.find(name);
+    if (it != _symbols.end())
+    {
+      return it->second;
+    }
+    uint32_t id = static_cast<uint32_t>(_symbols.size()) + 1;
+    auto [jt, _] = _symbols.emplace(name, SymbolData{id, {}});
+    if (_insertOrder.empty() || _insertOrder.back() != name)
+    {
+      _insertOrder.push_back(name);
+    }
+    return jt->second;
+  }
+
+  const SymbolData& resolve(const std::string& symbol) const
+  {
+    if (symbol.empty())
+    {
+      if (_insertOrder.empty())
+      {
+        throw std::runtime_error("no data loaded");
+      }
+      return _symbols.at(_insertOrder.front());
+    }
+    auto it = _symbols.find(symbol);
+    if (it == _symbols.end())
+    {
+      throw std::invalid_argument("unknown symbol: " + symbol);
+    }
+    return it->second;
+  }
+
+  uint32_t firstSymbolId() const
+  {
+    if (_insertOrder.empty())
+    {
+      return 1;
+    }
+    return _symbols.at(_insertOrder.front()).id;
+  }
+
+  static std::string inferSymbol(const std::string& path)
+  {
+    auto pos = path.find_last_of('/');
+    std::string filename = (pos != std::string::npos) ? path.substr(pos + 1) : path;
+    auto dot = filename.find('.');
+    if (dot != std::string::npos)
+    {
+      filename = filename.substr(0, dot);
+    }
+    // Remove common suffixes like _1m, _5m, _1h
+    for (const char* suf : {"_1m", "_5m", "_15m", "_1h", "_4h", "_1d"})
+    {
+      size_t sl = std::strlen(suf);
+      if (filename.size() > sl && filename.substr(filename.size() - sl) == suf)
+      {
+        filename = filename.substr(0, filename.size() - sl);
+        break;
+      }
+    }
+    // uppercase
+    for (auto& c : filename)
+    {
+      c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    return filename;
+  }
+
+  static int64_t parseInterval(const std::string& s)
+  {
+    if (s.empty())
+    {
+      return 0;
+    }
+    size_t numEnd = 0;
+    int64_t val = std::stoll(s, &numEnd);
+    std::string unit = s.substr(numEnd);
+    if (unit == "s")
+    {
+      return val * 1'000'000'000LL;
+    }
+    if (unit == "m")
+    {
+      return val * 60'000'000'000LL;
+    }
+    if (unit == "h")
+    {
+      return val * 3'600'000'000'000LL;
+    }
+    if (unit == "d")
+    {
+      return val * 86'400'000'000'000LL;
+    }
+    throw std::invalid_argument("unknown interval unit: " + unit);
+  }
+
   BacktestConfig _config;
-  std::vector<PyBar> _bars;
+  std::map<std::string, SymbolData> _symbols;
+  std::vector<std::string> _insertOrder;
 };
 
 // ── Module ──────────────────────────────────────────────────────────
+
+// Legacy PySignal for make_signals compat
+#pragma pack(push, 1)
+struct PySignal
+{
+  int64_t timestamp_ns;
+  int64_t quantity_raw;
+  int64_t price_raw;
+  uint8_t side;
+  uint8_t order_type;
+  uint8_t _pad[6];
+};
+#pragma pack(pop)
+static_assert(sizeof(PySignal) == 32);
+
+#pragma pack(push, 1)
+struct PyBar
+{
+  int64_t timestamp_ns;
+  int64_t open_raw;
+  int64_t high_raw;
+  int64_t low_raw;
+  int64_t close_raw;
+  int64_t volume_raw;
+};
+#pragma pack(pop)
 
 PYBIND11_MODULE(flox_py, m)
 {
@@ -561,40 +694,37 @@ PYBIND11_MODULE(flox_py, m)
   // SignalBuilder
   py::class_<SignalBuilder>(m, "SignalBuilder")
       .def(py::init<>())
-      .def("buy", &SignalBuilder::buy, py::arg("ts"), py::arg("qty"))
-      .def("sell", &SignalBuilder::sell, py::arg("ts"), py::arg("qty"))
-      .def("limit_buy", &SignalBuilder::limitBuy, py::arg("ts"), py::arg("price"), py::arg("qty"))
+      .def("buy", &SignalBuilder::buy, py::arg("ts"), py::arg("qty"),
+           py::arg("symbol") = "")
+      .def("sell", &SignalBuilder::sell, py::arg("ts"), py::arg("qty"),
+           py::arg("symbol") = "")
+      .def("limit_buy", &SignalBuilder::limitBuy, py::arg("ts"), py::arg("price"),
+           py::arg("qty"), py::arg("symbol") = "")
       .def("limit_sell", &SignalBuilder::limitSell, py::arg("ts"), py::arg("price"),
-           py::arg("qty"))
-      .def("build", &SignalBuilder::build)
-      .def("clear", &SignalBuilder::clear)
-      .def("__len__", &SignalBuilder::size);
+           py::arg("qty"), py::arg("symbol") = "")
+      .def("__len__", &SignalBuilder::size)
+      .def("clear", &SignalBuilder::clear);
 
   // Engine
   py::class_<Engine>(m, "Engine")
       .def(py::init<double, double>(), py::arg("initial_capital") = 100000.0,
            py::arg("fee_rate") = 0.0001)
-      .def("load_bars", &Engine::loadBars, "Load from numpy structured array")
-      .def("load_bars_df", &Engine::loadBarsFromArrays, "Load from separate arrays",
-           py::arg("timestamps"), py::arg("open"), py::arg("high"), py::arg("low"),
-           py::arg("close"), py::arg("volume"))
-      .def("load_ohlcv", &Engine::loadBarsFromDict,
-           "Load from dict {ts, open, high, low, close, volume}", py::arg("data"))
-      .def("load_csv", &Engine::loadCsv, "Load from CSV file (timestamp,open,high,low,close,volume)",
-           py::arg("path"))
-      .def("load_df", &Engine::loadDf, "Load from pandas DataFrame", py::arg("df"))
-      .def("run", &Engine::run, py::arg("signals"), py::arg("symbol") = 1)
-      .def("run_batch", &Engine::runBatch, py::arg("signal_sets"), py::arg("threads") = 0,
-           py::arg("symbol") = 1)
-      .def_property_readonly("bar_count", &Engine::barCount)
-      .def_property_readonly("ts", &Engine::timestamps)
-      .def_property_readonly("open", &Engine::opens)
-      .def_property_readonly("high", &Engine::highs)
-      .def_property_readonly("low", &Engine::lows)
-      .def_property_readonly("close", &Engine::closes)
-      .def_property_readonly("volume", &Engine::volumes);
+      .def("load_csv", &Engine::loadCsv, py::arg("path"), py::arg("symbol") = "")
+      .def("load_ohlcv", &Engine::loadOhlcv, py::arg("data"), py::arg("symbol") = "")
+      .def("load_df", &Engine::loadDf, py::arg("df"), py::arg("symbol") = "")
+      .def("resample", &Engine::addResample, py::arg("symbol"), py::arg("target"),
+           py::arg("interval"))
+      .def("run", &Engine::run, py::arg("signals"), py::arg("default_symbol") = 0)
+      .def_property_readonly("symbols", &Engine::symbolList)
+      .def("bar_count", &Engine::barCount, py::arg("symbol") = "")
+      .def("ts", &Engine::timestamps, py::arg("symbol") = "")
+      .def("open", &Engine::opens, py::arg("symbol") = "")
+      .def("high", &Engine::highs, py::arg("symbol") = "")
+      .def("low", &Engine::lows, py::arg("symbol") = "")
+      .def("close", &Engine::closes, py::arg("symbol") = "")
+      .def("volume", &Engine::volumes, py::arg("symbol") = "");
 
-  // make_signals (keep for backwards compat)
+  // Legacy make_signals (backwards compat)
   m.def(
       "make_signals",
       [](py::array_t<int64_t> timestamps, py::array_t<uint8_t> sides,

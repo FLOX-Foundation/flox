@@ -11,8 +11,11 @@
 #include "flox/indicator/rsi.h"
 #include "flox/indicator/sma.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <numeric>
 #include <sstream>
 #include <vector>
@@ -21,65 +24,177 @@ using namespace flox;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-static std::vector<double> toDoubleVec(Napi::Env env, Napi::Value val)
-{
-  auto arr = val.As<Napi::Float64Array>();
-  return {arr.Data(), arr.Data() + arr.ElementLength()};
-}
-
-static Napi::Float64Array fromDoubleVec(Napi::Env env, const std::vector<double>& v)
+static Napi::Float64Array fromVec(Napi::Env env, const std::vector<double>& v)
 {
   auto buf = Napi::Float64Array::New(env, v.size());
   std::memcpy(buf.Data(), v.data(), v.size() * sizeof(double));
   return buf;
 }
 
-static Napi::Float64Array fromDoubleSpan(Napi::Env env, const double* data, size_t n)
-{
-  auto buf = Napi::Float64Array::New(env, n);
-  std::memcpy(buf.Data(), data, n * sizeof(double));
-  return buf;
-}
-
 static int64_t normalizeTs(int64_t t)
 {
   if (t < static_cast<int64_t>(1e12))
-  {
     return t * 1'000'000'000LL;
-  }
   if (t < static_cast<int64_t>(1e15))
-  {
     return t * 1'000'000LL;
-  }
   if (t < static_cast<int64_t>(1e18))
-  {
     return t * 1'000LL;
-  }
   return t;
 }
 
-// ── Bar data ────────────────────────────────────────────────────────
+// ── Bar / Signal / SymbolData ───────────────────────────────────────
 
 struct OhlcvBar
 {
-  int64_t timestamp_ns;
-  int64_t open_raw;
-  int64_t high_raw;
-  int64_t low_raw;
-  int64_t close_raw;
-  int64_t volume_raw;
+  int64_t timestamp_ns, open_raw, high_raw, low_raw, close_raw, volume_raw;
 };
 
-// ── Signal ──────────────────────────────────────────────────────────
-
-struct Signal
+struct InternalSignal
 {
-  int64_t timestamp_ns;
-  int64_t quantity_raw;
-  int64_t price_raw;
-  uint8_t side;
-  uint8_t order_type;
+  int64_t timestamp_ns, quantity_raw, price_raw;
+  uint8_t side, order_type;
+  uint32_t symbol_id;
 };
+
+struct SymbolData
+{
+  uint32_t id;
+  std::vector<OhlcvBar> bars;
+};
+
+// ── CSV / Resample ──────────────────────────────────────────────────
+
+static std::vector<OhlcvBar> parseCsv(const std::string& path)
+{
+  std::ifstream file(path);
+  if (!file.is_open())
+    throw std::runtime_error("cannot open: " + path);
+
+  std::vector<OhlcvBar> bars;
+  std::string line;
+  std::getline(file, line);
+
+  while (std::getline(file, line))
+  {
+    if (line.empty())
+      continue;
+    std::istringstream ss(line);
+    std::string tok;
+    std::getline(ss, tok, ',');
+    int64_t ts = normalizeTs(std::stoll(tok));
+    std::getline(ss, tok, ',');
+    double o = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double h = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double l = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double c = std::stod(tok);
+    std::getline(ss, tok, ',');
+    double v = std::stod(tok);
+    bars.push_back({ts, Price::fromDouble(o).raw(), Price::fromDouble(h).raw(),
+                    Price::fromDouble(l).raw(), Price::fromDouble(c).raw(),
+                    Volume::fromDouble(v).raw()});
+  }
+  return bars;
+}
+
+static std::vector<OhlcvBar> resampleBars(const std::vector<OhlcvBar>& src, int64_t intervalNs)
+{
+  if (src.empty() || intervalNs <= 0)
+    return {};
+  std::vector<OhlcvBar> out;
+  int64_t bucket = (src[0].timestamp_ns / intervalNs) * intervalNs;
+  OhlcvBar cur = src[0];
+  cur.timestamp_ns = bucket;
+  for (size_t i = 1; i < src.size(); ++i)
+  {
+    int64_t b = (src[i].timestamp_ns / intervalNs) * intervalNs;
+    if (b != bucket)
+    {
+      out.push_back(cur);
+      bucket = b;
+      cur = src[i];
+      cur.timestamp_ns = b;
+    }
+    else
+    {
+      if (src[i].high_raw > cur.high_raw)
+        cur.high_raw = src[i].high_raw;
+      if (src[i].low_raw < cur.low_raw)
+        cur.low_raw = src[i].low_raw;
+      cur.close_raw = src[i].close_raw;
+      cur.volume_raw += src[i].volume_raw;
+    }
+  }
+  out.push_back(cur);
+  return out;
+}
+
+static std::string inferSymbol(const std::string& path)
+{
+  auto pos = path.find_last_of('/');
+  std::string f = (pos != std::string::npos) ? path.substr(pos + 1) : path;
+  auto dot = f.find('.');
+  if (dot != std::string::npos)
+    f = f.substr(0, dot);
+  for (const char* suf : {"_1m", "_5m", "_15m", "_1h", "_4h", "_1d"})
+  {
+    size_t sl = std::strlen(suf);
+    if (f.size() > sl && f.substr(f.size() - sl) == suf)
+    {
+      f = f.substr(0, f.size() - sl);
+      break;
+    }
+  }
+  for (auto& c : f)
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  return f;
+}
+
+static int64_t parseInterval(const std::string& s)
+{
+  size_t numEnd = 0;
+  int64_t val = std::stoll(s, &numEnd);
+  std::string u = s.substr(numEnd);
+  if (u == "s")
+    return val * 1'000'000'000LL;
+  if (u == "m")
+    return val * 60'000'000'000LL;
+  if (u == "h")
+    return val * 3'600'000'000'000LL;
+  if (u == "d")
+    return val * 86'400'000'000'000LL;
+  throw std::invalid_argument("unknown interval: " + u);
+}
+
+// ── Stats helper ────────────────────────────────────────────────────
+
+static Napi::Object statsObj(Napi::Env env, const BacktestStats& s)
+{
+  auto o = Napi::Object::New(env);
+  o.Set("totalTrades", (double)s.totalTrades);
+  o.Set("winningTrades", (double)s.winningTrades);
+  o.Set("losingTrades", (double)s.losingTrades);
+  o.Set("initialCapital", s.initialCapital);
+  o.Set("finalCapital", s.finalCapital);
+  o.Set("netPnl", s.netPnl);
+  o.Set("totalPnl", s.totalPnl);
+  o.Set("totalFees", s.totalFees);
+  o.Set("grossProfit", s.grossProfit);
+  o.Set("grossLoss", s.grossLoss);
+  o.Set("maxDrawdown", s.maxDrawdown);
+  o.Set("maxDrawdownPct", s.maxDrawdownPct);
+  o.Set("winRate", s.winRate);
+  o.Set("profitFactor", s.profitFactor);
+  o.Set("avgWin", s.avgWin);
+  o.Set("avgLoss", s.avgLoss);
+  o.Set("sharpe", s.sharpeRatio);
+  o.Set("sortino", s.sortinoRatio);
+  o.Set("calmar", s.calmarRatio);
+  o.Set("returnPct", s.returnPct);
+  return o;
+}
 
 // ── SignalBuilder ───────────────────────────────────────────────────
 
@@ -99,126 +214,69 @@ class SignalBuilderWrap : public Napi::ObjectWrap<SignalBuilderWrap>
 
   SignalBuilderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<SignalBuilderWrap>(info) {}
 
-  const std::vector<Signal>& signals() const { return _signals; }
+  const std::vector<InternalSignal>& signals() const { return _signals; }
+  const std::vector<std::string>& symbolNames() const { return _names; }
 
  private:
-  void add(int64_t ts, uint8_t side, double qty, double price, uint8_t type)
+  void add(int64_t ts, uint8_t side, double qty, double price, uint8_t type,
+           const std::string& sym)
   {
-    _signals.push_back({.timestamp_ns = normalizeTs(ts),
-                        .quantity_raw = Quantity::fromDouble(qty).raw(),
-                        .price_raw = price > 0 ? Price::fromDouble(price).raw() : 0,
-                        .side = side,
-                        .order_type = type});
+    _signals.push_back({normalizeTs(ts), Quantity::fromDouble(qty).raw(),
+                        price > 0 ? Price::fromDouble(price).raw() : 0LL, side, type, 0});
+    _names.push_back(sym);
+  }
+
+  std::string getSym(const Napi::CallbackInfo& info, int idx)
+  {
+    if (info.Length() > idx && info[idx].IsString())
+      return info[idx].As<Napi::String>().Utf8Value();
+    return "";
   }
 
   Napi::Value Buy(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 0, info[1].As<Napi::Number>().DoubleValue(), 0,
-        0);
+    add(info[0].As<Napi::Number>().Int64Value(), 0,
+        info[1].As<Napi::Number>().DoubleValue(), 0, 0, getSym(info, 2));
     return info.This();
   }
 
   Napi::Value Sell(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 1, info[1].As<Napi::Number>().DoubleValue(), 0,
-        0);
+    add(info[0].As<Napi::Number>().Int64Value(), 1,
+        info[1].As<Napi::Number>().DoubleValue(), 0, 0, getSym(info, 2));
     return info.This();
   }
 
   Napi::Value LimitBuy(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 0, info[2].As<Napi::Number>().DoubleValue(),
-        info[1].As<Napi::Number>().DoubleValue(), 1);
+    add(info[0].As<Napi::Number>().Int64Value(), 0,
+        info[2].As<Napi::Number>().DoubleValue(),
+        info[1].As<Napi::Number>().DoubleValue(), 1, getSym(info, 3));
     return info.This();
   }
 
   Napi::Value LimitSell(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 1, info[2].As<Napi::Number>().DoubleValue(),
-        info[1].As<Napi::Number>().DoubleValue(), 1);
+    add(info[0].As<Napi::Number>().Int64Value(), 1,
+        info[2].As<Napi::Number>().DoubleValue(),
+        info[1].As<Napi::Number>().DoubleValue(), 1, getSym(info, 3));
     return info.This();
   }
 
-  Napi::Value Length(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _signals.size()); }
+  Napi::Value Length(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), _signals.size());
+  }
 
-  void Clear(const Napi::CallbackInfo&) { _signals.clear(); }
+  void Clear(const Napi::CallbackInfo&)
+  {
+    _signals.clear();
+    _names.clear();
+  }
 
-  std::vector<Signal> _signals;
+  std::vector<InternalSignal> _signals;
+  std::vector<std::string> _names;
 };
-
-// ── Stats ───────────────────────────────────────────────────────────
-
-static Napi::Object statsToObject(Napi::Env env, const BacktestStats& s)
-{
-  auto obj = Napi::Object::New(env);
-  obj.Set("totalTrades", Napi::Number::New(env, s.totalTrades));
-  obj.Set("winningTrades", Napi::Number::New(env, s.winningTrades));
-  obj.Set("losingTrades", Napi::Number::New(env, s.losingTrades));
-  obj.Set("initialCapital", Napi::Number::New(env, s.initialCapital));
-  obj.Set("finalCapital", Napi::Number::New(env, s.finalCapital));
-  obj.Set("netPnl", Napi::Number::New(env, s.netPnl));
-  obj.Set("totalPnl", Napi::Number::New(env, s.totalPnl));
-  obj.Set("totalFees", Napi::Number::New(env, s.totalFees));
-  obj.Set("grossProfit", Napi::Number::New(env, s.grossProfit));
-  obj.Set("grossLoss", Napi::Number::New(env, s.grossLoss));
-  obj.Set("maxDrawdown", Napi::Number::New(env, s.maxDrawdown));
-  obj.Set("maxDrawdownPct", Napi::Number::New(env, s.maxDrawdownPct));
-  obj.Set("winRate", Napi::Number::New(env, s.winRate));
-  obj.Set("profitFactor", Napi::Number::New(env, s.profitFactor));
-  obj.Set("avgWin", Napi::Number::New(env, s.avgWin));
-  obj.Set("avgLoss", Napi::Number::New(env, s.avgLoss));
-  obj.Set("sharpe", Napi::Number::New(env, s.sharpeRatio));
-  obj.Set("sortino", Napi::Number::New(env, s.sortinoRatio));
-  obj.Set("calmar", Napi::Number::New(env, s.calmarRatio));
-  obj.Set("returnPct", Napi::Number::New(env, s.returnPct));
-  return obj;
-}
-
-// ── Backtest execution ──────────────────────────────────────────────
-
-static BacktestStats executeSignals(const std::vector<OhlcvBar>& bars,
-                                    const std::vector<Signal>& signals, SymbolId symbolId,
-                                    const BacktestConfig& config)
-{
-  SimulatedClock clock;
-  SimulatedExecutor executor(clock);
-  OrderId nextOrderId = 1;
-
-  std::vector<size_t> sigOrder(signals.size());
-  std::iota(sigOrder.begin(), sigOrder.end(), 0);
-  std::sort(sigOrder.begin(), sigOrder.end(),
-            [&](size_t a, size_t b)
-            { return signals[a].timestamp_ns < signals[b].timestamp_ns; });
-
-  size_t sigIdx = 0;
-
-  for (const auto& bar : bars)
-  {
-    clock.advanceTo(bar.timestamp_ns);
-    executor.onBar(symbolId, Price::fromRaw(bar.close_raw));
-
-    while (sigIdx < signals.size() &&
-           signals[sigOrder[sigIdx]].timestamp_ns <= bar.timestamp_ns)
-    {
-      const auto& sig = signals[sigOrder[sigIdx]];
-      Order order{.id = nextOrderId++,
-                  .side = sig.side == 0 ? Side::BUY : Side::SELL,
-                  .price = Price::fromRaw(sig.price_raw),
-                  .quantity = Quantity::fromRaw(sig.quantity_raw),
-                  .type = sig.order_type == 0 ? OrderType::MARKET : OrderType::LIMIT,
-                  .symbol = symbolId};
-      executor.submitOrder(order);
-      ++sigIdx;
-    }
-  }
-
-  BacktestResult result(config, executor.fills().size());
-  for (const auto& fill : executor.fills())
-  {
-    result.recordFill(fill);
-  }
-  return result.computeStats();
-}
 
 // ── Engine ──────────────────────────────────────────────────────────
 
@@ -231,14 +289,16 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
         env, "Engine",
         {InstanceMethod("loadCsv", &EngineWrap::LoadCsv),
          InstanceMethod("loadOhlcv", &EngineWrap::LoadOhlcv),
+         InstanceMethod("resample", &EngineWrap::Resample),
          InstanceMethod("run", &EngineWrap::Run),
-         InstanceAccessor("barCount", &EngineWrap::BarCount, nullptr),
-         InstanceAccessor("ts", &EngineWrap::Timestamps, nullptr),
-         InstanceAccessor("open", &EngineWrap::Opens, nullptr),
-         InstanceAccessor("high", &EngineWrap::Highs, nullptr),
-         InstanceAccessor("low", &EngineWrap::Lows, nullptr),
-         InstanceAccessor("close", &EngineWrap::Closes, nullptr),
-         InstanceAccessor("volume", &EngineWrap::Volumes, nullptr)});
+         InstanceMethod("barCount", &EngineWrap::BarCount),
+         InstanceMethod("ts", &EngineWrap::Timestamps),
+         InstanceMethod("open", &EngineWrap::Opens),
+         InstanceMethod("high", &EngineWrap::Highs),
+         InstanceMethod("low", &EngineWrap::Lows),
+         InstanceMethod("close", &EngineWrap::Closes),
+         InstanceMethod("volume", &EngineWrap::Volumes),
+         InstanceAccessor("symbols", &EngineWrap::Symbols, nullptr)});
   }
 
   EngineWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<EngineWrap>(info)
@@ -250,54 +310,60 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
   }
 
  private:
+  SymbolData& getOrCreate(const std::string& name)
+  {
+    auto it = _syms.find(name);
+    if (it != _syms.end())
+      return it->second;
+    uint32_t id = static_cast<uint32_t>(_syms.size()) + 1;
+    _order.push_back(name);
+    return _syms.emplace(name, SymbolData{id, {}}).first->second;
+  }
+
+  const SymbolData& resolve(const Napi::CallbackInfo& info, int idx = 0) const
+  {
+    std::string sym;
+    if (info.Length() > idx && info[idx].IsString())
+      sym = info[idx].As<Napi::String>().Utf8Value();
+    if (sym.empty())
+    {
+      if (_order.empty())
+        throw std::runtime_error("no data loaded");
+      return _syms.at(_order.front());
+    }
+    auto it = _syms.find(sym);
+    if (it == _syms.end())
+      throw std::invalid_argument("unknown symbol: " + sym);
+    return it->second;
+  }
+
+  Napi::Value extractField(const Napi::CallbackInfo& info, int64_t OhlcvBar::*f)
+  {
+    auto& bars = resolve(info).bars;
+    auto buf = Napi::Float64Array::New(info.Env(), bars.size());
+    for (size_t i = 0; i < bars.size(); ++i)
+      buf[i] = Price::fromRaw(bars[i].*f).toDouble();
+    return buf;
+  }
+
+  // -- Methods --
+
   void LoadCsv(const Napi::CallbackInfo& info)
   {
     std::string path = info[0].As<Napi::String>().Utf8Value();
-    std::ifstream file(path);
-    if (!file.is_open())
-    {
-      Napi::Error::New(info.Env(), "cannot open: " + path).ThrowAsJavaScriptException();
-      return;
-    }
-
-    std::string line;
-    std::getline(file, line);  // skip header
-
-    _bars.clear();
-    while (std::getline(file, line))
-    {
-      if (line.empty())
-      {
-        continue;
-      }
-      std::istringstream ss(line);
-      std::string tok;
-
-      std::getline(ss, tok, ',');
-      int64_t ts = normalizeTs(std::stoll(tok));
-      std::getline(ss, tok, ',');
-      double o = std::stod(tok);
-      std::getline(ss, tok, ',');
-      double h = std::stod(tok);
-      std::getline(ss, tok, ',');
-      double l = std::stod(tok);
-      std::getline(ss, tok, ',');
-      double c = std::stod(tok);
-      std::getline(ss, tok, ',');
-      double v = std::stod(tok);
-
-      _bars.push_back({.timestamp_ns = ts,
-                        .open_raw = Price::fromDouble(o).raw(),
-                        .high_raw = Price::fromDouble(h).raw(),
-                        .low_raw = Price::fromDouble(l).raw(),
-                        .close_raw = Price::fromDouble(c).raw(),
-                        .volume_raw = Volume::fromDouble(v).raw()});
-    }
+    std::string sym = (info.Length() > 1 && info[1].IsString())
+                          ? info[1].As<Napi::String>().Utf8Value()
+                          : inferSymbol(path);
+    getOrCreate(sym).bars = parseCsv(path);
   }
 
   void LoadOhlcv(const Napi::CallbackInfo& info)
   {
     auto obj = info[0].As<Napi::Object>();
+    std::string sym = (info.Length() > 1 && info[1].IsString())
+                          ? info[1].As<Napi::String>().Utf8Value()
+                          : "default";
+
     auto ts = obj.Get("ts").As<Napi::Float64Array>();
     auto op = obj.Get("open").As<Napi::Float64Array>();
     auto hi = obj.Get("high").As<Napi::Float64Array>();
@@ -306,49 +372,107 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
     auto vo = obj.Get("volume").As<Napi::Float64Array>();
     size_t n = ts.ElementLength();
 
-    _bars.resize(n);
+    auto& sd = getOrCreate(sym);
+    sd.bars.resize(n);
     for (size_t i = 0; i < n; ++i)
-    {
-      _bars[i] = {.timestamp_ns = normalizeTs(static_cast<int64_t>(ts[i])),
-                   .open_raw = Price::fromDouble(op[i]).raw(),
-                   .high_raw = Price::fromDouble(hi[i]).raw(),
-                   .low_raw = Price::fromDouble(lo[i]).raw(),
-                   .close_raw = Price::fromDouble(cl[i]).raw(),
-                   .volume_raw = Volume::fromDouble(vo[i]).raw()};
-    }
+      sd.bars[i] = {normalizeTs(static_cast<int64_t>(ts[i])),
+                     Price::fromDouble(op[i]).raw(), Price::fromDouble(hi[i]).raw(),
+                     Price::fromDouble(lo[i]).raw(), Price::fromDouble(cl[i]).raw(),
+                     Volume::fromDouble(vo[i]).raw()};
+  }
+
+  void Resample(const Napi::CallbackInfo& info)
+  {
+    std::string src = info[0].As<Napi::String>().Utf8Value();
+    std::string dst = info[1].As<Napi::String>().Utf8Value();
+    std::string interval = info[2].As<Napi::String>().Utf8Value();
+    auto it = _syms.find(src);
+    if (it == _syms.end())
+      throw std::invalid_argument("unknown symbol: " + src);
+    getOrCreate(dst).bars = resampleBars(it->second.bars, parseInterval(interval));
   }
 
   Napi::Value Run(const Napi::CallbackInfo& info)
   {
     auto* builder = Napi::ObjectWrap<SignalBuilderWrap>::Unwrap(info[0].As<Napi::Object>());
-    uint32_t symbol = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
+    auto sigs = builder->signals();
+    const auto& names = builder->symbolNames();
 
-    auto stats = executeSignals(_bars, builder->signals(), symbol, _config);
-    return statsToObject(info.Env(), stats);
+    uint32_t defSym = _order.empty() ? 1 : _syms.at(_order.front()).id;
+    for (size_t i = 0; i < sigs.size(); ++i)
+    {
+      if (names[i].empty())
+      {
+        sigs[i].symbol_id = defSym;
+      }
+      else
+      {
+        auto it = _syms.find(names[i]);
+        if (it == _syms.end())
+          throw std::invalid_argument("unknown symbol: " + names[i]);
+        sigs[i].symbol_id = it->second.id;
+      }
+    }
+
+    std::vector<size_t> sigOrder(sigs.size());
+    std::iota(sigOrder.begin(), sigOrder.end(), 0);
+    std::sort(sigOrder.begin(), sigOrder.end(),
+              [&](size_t a, size_t b)
+              { return sigs[a].timestamp_ns < sigs[b].timestamp_ns; });
+
+    struct MB
+    {
+      int64_t ts;
+      int64_t close;
+      uint32_t sym;
+    };
+    std::vector<MB> merged;
+    for (auto& [_, sd] : _syms)
+      for (auto& b : sd.bars)
+        merged.push_back({b.timestamp_ns, b.close_raw, sd.id});
+    std::sort(merged.begin(), merged.end(), [](const MB& a, const MB& b)
+              { return a.ts < b.ts; });
+
+    SimulatedClock clock;
+    SimulatedExecutor executor(clock);
+    OrderId nextId = 1;
+    size_t si = 0;
+
+    for (const auto& mb : merged)
+    {
+      clock.advanceTo(mb.ts);
+      executor.onBar(mb.sym, Price::fromRaw(mb.close));
+      while (si < sigs.size() && sigs[sigOrder[si]].timestamp_ns <= mb.ts)
+      {
+        const auto& sg = sigs[sigOrder[si]];
+        Order order{.id = nextId++,
+                    .side = sg.side == 0 ? Side::BUY : Side::SELL,
+                    .price = Price::fromRaw(sg.price_raw),
+                    .quantity = Quantity::fromRaw(sg.quantity_raw),
+                    .type = sg.order_type == 0 ? OrderType::MARKET : OrderType::LIMIT,
+                    .symbol = sg.symbol_id};
+        executor.submitOrder(order);
+        ++si;
+      }
+    }
+
+    BacktestResult result(_config, executor.fills().size());
+    for (const auto& fill : executor.fills())
+      result.recordFill(fill);
+    return statsObj(info.Env(), result.computeStats());
   }
 
   Napi::Value BarCount(const Napi::CallbackInfo& info)
   {
-    return Napi::Number::New(info.Env(), _bars.size());
+    return Napi::Number::New(info.Env(), resolve(info).bars.size());
   }
 
   Napi::Value Timestamps(const Napi::CallbackInfo& info)
   {
-    auto buf = Napi::Float64Array::New(info.Env(), _bars.size());
-    for (size_t i = 0; i < _bars.size(); ++i)
-    {
-      buf[i] = static_cast<double>(_bars[i].timestamp_ns);
-    }
-    return buf;
-  }
-
-  Napi::Value extractField(const Napi::CallbackInfo& info, int64_t OhlcvBar::*field)
-  {
-    auto buf = Napi::Float64Array::New(info.Env(), _bars.size());
-    for (size_t i = 0; i < _bars.size(); ++i)
-    {
-      buf[i] = Price::fromRaw(_bars[i].*field).toDouble();
-    }
+    auto& bars = resolve(info).bars;
+    auto buf = Napi::Float64Array::New(info.Env(), bars.size());
+    for (size_t i = 0; i < bars.size(); ++i)
+      buf[i] = static_cast<double>(bars[i].timestamp_ns);
     return buf;
   }
 
@@ -356,118 +480,102 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
   Napi::Value Highs(const Napi::CallbackInfo& info) { return extractField(info, &OhlcvBar::high_raw); }
   Napi::Value Lows(const Napi::CallbackInfo& info) { return extractField(info, &OhlcvBar::low_raw); }
   Napi::Value Closes(const Napi::CallbackInfo& info) { return extractField(info, &OhlcvBar::close_raw); }
-  Napi::Value Volumes(const Napi::CallbackInfo& info)
+  Napi::Value Volumes(const Napi::CallbackInfo& info) { return extractField(info, &OhlcvBar::volume_raw); }
+
+  Napi::Value Symbols(const Napi::CallbackInfo& info)
   {
-    return extractField(info, &OhlcvBar::volume_raw);
+    auto arr = Napi::Array::New(info.Env(), _order.size());
+    for (size_t i = 0; i < _order.size(); ++i)
+      arr.Set(i, _order[i]);
+    return arr;
   }
 
   BacktestConfig _config;
-  std::vector<OhlcvBar> _bars;
+  std::map<std::string, SymbolData> _syms;
+  std::vector<std::string> _order;
 };
 
 // ── Batch indicators ────────────────────────────────────────────────
 
 static Napi::Value JsSma(const Napi::CallbackInfo& info)
 {
-  auto input = info[0].As<Napi::Float64Array>();
-  size_t period = info[1].As<Napi::Number>().Uint32Value();
-  size_t n = input.ElementLength();
-
-  auto result = indicator::SMA(period).compute(std::span<const double>(input.Data(), n));
-  return fromDoubleVec(info.Env(), result);
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t p = info[1].As<Napi::Number>().Uint32Value();
+  return fromVec(info.Env(),
+                 indicator::SMA(p).compute(std::span<const double>(in.Data(), in.ElementLength())));
 }
 
 static Napi::Value JsEma(const Napi::CallbackInfo& info)
 {
-  auto input = info[0].As<Napi::Float64Array>();
-  size_t period = info[1].As<Napi::Number>().Uint32Value();
-  size_t n = input.ElementLength();
-
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t n = in.ElementLength(), p = info[1].As<Napi::Number>().Uint32Value();
   std::vector<double> out(n);
-  indicator::EMA(period).compute(std::span<const double>(input.Data(), n),
-                                 std::span<double>(out.data(), n));
-  return fromDoubleVec(info.Env(), out);
+  indicator::EMA(p).compute({in.Data(), n}, {out.data(), n});
+  return fromVec(info.Env(), out);
 }
 
 static Napi::Value JsRsi(const Napi::CallbackInfo& info)
 {
-  auto input = info[0].As<Napi::Float64Array>();
-  size_t period = info[1].As<Napi::Number>().Uint32Value();
-  size_t n = input.ElementLength();
-
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t n = in.ElementLength(), p = info[1].As<Napi::Number>().Uint32Value();
   std::vector<double> out(n);
-  indicator::RSI(period).compute(std::span<const double>(input.Data(), n),
-                                 std::span<double>(out.data(), n));
-  return fromDoubleVec(info.Env(), out);
+  indicator::RSI(p).compute({in.Data(), n}, {out.data(), n});
+  return fromVec(info.Env(), out);
 }
 
 static Napi::Value JsAtr(const Napi::CallbackInfo& info)
 {
-  auto high = info[0].As<Napi::Float64Array>();
-  auto low = info[1].As<Napi::Float64Array>();
-  auto close = info[2].As<Napi::Float64Array>();
-  size_t period = info[3].As<Napi::Number>().Uint32Value();
-  size_t n = high.ElementLength();
-
+  auto h = info[0].As<Napi::Float64Array>();
+  auto l = info[1].As<Napi::Float64Array>();
+  auto c = info[2].As<Napi::Float64Array>();
+  size_t n = h.ElementLength(), p = info[3].As<Napi::Number>().Uint32Value();
   std::vector<double> out(n);
-  indicator::ATR(period).compute(std::span<const double>(high.Data(), n),
-                                 std::span<const double>(low.Data(), n),
-                                 std::span<const double>(close.Data(), n),
-                                 std::span<double>(out.data(), n));
-  return fromDoubleVec(info.Env(), out);
+  indicator::ATR(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n}, {out.data(), n});
+  return fromVec(info.Env(), out);
 }
 
 static Napi::Value JsMacd(const Napi::CallbackInfo& info)
 {
-  auto input = info[0].As<Napi::Float64Array>();
-  size_t fast = info[1].As<Napi::Number>().Uint32Value();
-  size_t slow = info[2].As<Napi::Number>().Uint32Value();
-  size_t signal = info[3].As<Napi::Number>().Uint32Value();
-  size_t n = input.ElementLength();
-
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t n = in.ElementLength();
+  size_t f = info[1].As<Napi::Number>().Uint32Value();
+  size_t s = info[2].As<Napi::Number>().Uint32Value();
+  size_t sg = info[3].As<Napi::Number>().Uint32Value();
   std::vector<double> line(n), sig(n), hist(n);
-  indicator::MACD(fast, slow, signal)
-      .compute(std::span<const double>(input.Data(), n), std::span<double>(line.data(), n),
-               std::span<double>(sig.data(), n), std::span<double>(hist.data(), n));
-
-  auto obj = Napi::Object::New(info.Env());
-  obj.Set("line", fromDoubleVec(info.Env(), line));
-  obj.Set("signal", fromDoubleVec(info.Env(), sig));
-  obj.Set("histogram", fromDoubleVec(info.Env(), hist));
-  return obj;
+  indicator::MACD(f, s, sg).compute({in.Data(), n}, {line.data(), n}, {sig.data(), n},
+                                    {hist.data(), n});
+  auto o = Napi::Object::New(info.Env());
+  o.Set("line", fromVec(info.Env(), line));
+  o.Set("signal", fromVec(info.Env(), sig));
+  o.Set("histogram", fromVec(info.Env(), hist));
+  return o;
 }
 
 static Napi::Value JsBollinger(const Napi::CallbackInfo& info)
 {
-  auto input = info[0].As<Napi::Float64Array>();
-  size_t period = info[1].As<Napi::Number>().Uint32Value();
-  double stddev = info[2].As<Napi::Number>().DoubleValue();
-  size_t n = input.ElementLength();
-
-  auto result =
-      indicator::Bollinger(period, stddev).compute(std::span<const double>(input.Data(), n));
-
-  auto obj = Napi::Object::New(info.Env());
-  obj.Set("upper", fromDoubleVec(info.Env(), result.upper));
-  obj.Set("middle", fromDoubleVec(info.Env(), result.middle));
-  obj.Set("lower", fromDoubleVec(info.Env(), result.lower));
-  return obj;
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t n = in.ElementLength(), p = info[1].As<Napi::Number>().Uint32Value();
+  double sd = info[2].As<Napi::Number>().DoubleValue();
+  auto r = indicator::Bollinger(p, sd).compute({in.Data(), n});
+  auto o = Napi::Object::New(info.Env());
+  o.Set("upper", fromVec(info.Env(), r.upper));
+  o.Set("middle", fromVec(info.Env(), r.middle));
+  o.Set("lower", fromVec(info.Env(), r.lower));
+  return o;
 }
 
-// ── Module init ─────────────────────────────────────────────────────
+// ── Module ──────────────────────────────────────────────────────────
 
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
   exports.Set("Engine", EngineWrap::Init(env));
   exports.Set("SignalBuilder", SignalBuilderWrap::Init(env));
-
   exports.Set("sma", Napi::Function::New(env, JsSma));
   exports.Set("ema", Napi::Function::New(env, JsEma));
   exports.Set("rsi", Napi::Function::New(env, JsRsi));
   exports.Set("atr", Napi::Function::New(env, JsAtr));
   exports.Set("macd", Napi::Function::New(env, JsMacd));
   exports.Set("bollinger", Napi::Function::New(env, JsBollinger));
-
   return exports;
 }
 

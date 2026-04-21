@@ -1,17 +1,18 @@
-const fs = require('fs');
 const path = require('path');
 const flox = require('../node');
 
-const DATA = path.join(__dirname, 'data', 'btcusdt_1m.csv');
+const DATA = path.join(__dirname, 'data');
 
-// -- load & run --
 const engine = new flox.Engine(10000, 0.0004);
-engine.loadCsv(DATA);
+engine.loadCsv(path.join(DATA, 'btcusdt_1m.csv'));
+engine.loadCsv(path.join(DATA, 'ethusdt_1m.csv'));
 
-const close = engine.close;
-const high = engine.high;
-const low = engine.low;
-const ts = engine.ts;
+console.log('symbols:', engine.symbols);
+
+const close = engine.close();
+const high = engine.high();
+const low = engine.low();
+const ts = engine.ts();
 const n = close.length;
 
 console.log(`${n} bars  ${close[0].toFixed(2)} -> ${close[n-1].toFixed(2)}`);
@@ -67,3 +68,32 @@ console.log(`\n${stats.initialCapital.toFixed(2)} -> ${stats.finalCapital.toFixe
 console.log(`trades=${stats.totalTrades} wr=${(stats.winRate*100).toFixed(1)}% pf=${stats.profitFactor.toFixed(2)}`);
 console.log(`sharpe=${stats.sharpe.toFixed(4)} dd=${stats.maxDrawdownPct.toFixed(4)}% fees=${stats.totalFees.toFixed(4)}`);
 console.log(`(${dt.toFixed(2)}ms)`);
+
+// -- multi-symbol: resample + cross-asset --
+engine.resample("BTCUSDT", "BTCUSDT_5m", "5m");
+engine.resample("ETHUSDT", "ETHUSDT_5m", "5m");
+
+const btc5m = engine.close("BTCUSDT_5m");
+const eth5m = engine.close("ETHUSDT_5m");
+console.log(`\n5m bars: BTC=${engine.barCount("BTCUSDT_5m")} ETH=${engine.barCount("ETHUSDT_5m")}`);
+console.log(`5m last: BTC=${btc5m[btc5m.length-1].toFixed(2)} ETH=${eth5m[eth5m.length-1].toFixed(2)}`);
+
+// -- ETH RSI strategy --
+const ethClose = engine.close("ETHUSDT");
+const ethTs = engine.ts("ETHUSDT");
+const ethRsi = flox.rsi(ethClose, 14);
+
+const ethSig = new flox.SignalBuilder();
+let ethPos = 0;
+for (let i = 14; i < ethClose.length; i++) {
+    if (ethRsi[i] < 30 && ethPos <= 0) {
+        ethSig.buy(ethTs[i], 0.1, "ETHUSDT");
+        ethPos = 1;
+    } else if (ethRsi[i] > 70 && ethPos >= 0) {
+        ethSig.sell(ethTs[i], 0.1, "ETHUSDT");
+        ethPos = -1;
+    }
+}
+
+const ethStats = engine.run(ethSig);
+console.log(`\nETH RSI strategy: ${ethStats.totalTrades} trades, pnl=$${ethStats.netPnl.toFixed(2)}, sharpe=${ethStats.sharpe.toFixed(4)}`);
