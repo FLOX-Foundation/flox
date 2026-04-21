@@ -2,8 +2,10 @@
 
 #include <napi.h>
 
+#include "aggregators.h"
 #include "backtest.h"
 #include "books.h"
+#include "data_ops.h"
 #include "engine.h"
 #include "indicators.h"
 #include "positions.h"
@@ -19,6 +21,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerPositions(env, exports);
   node_flox::registerProfiles(env, exports);
   node_flox::registerStats(env, exports);
+  node_flox::registerAggregators(env, exports);
+  node_flox::registerDataOps(env, exports);
   return exports;
 }
 

@@ -107,10 +107,38 @@ class L3BookWrap : public Napi::ObjectWrap<L3BookWrap>
   FloxL3BookHandle _h;
 };
 
+class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(env, "CompositeBookMatrix",
+      {InstanceMethod("bestBid", &CompositeBookMatrixWrap::BestBid),
+       InstanceMethod("bestAsk", &CompositeBookMatrixWrap::BestAsk),
+       InstanceMethod("hasArbitrage", &CompositeBookMatrixWrap::HasArb),
+       InstanceMethod("markStale", &CompositeBookMatrixWrap::MarkStale),
+       InstanceMethod("checkStaleness", &CompositeBookMatrixWrap::CheckStaleness)});
+  }
+  CompositeBookMatrixWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<CompositeBookMatrixWrap>(info), _h(flox_composite_book_create()) {}
+  ~CompositeBookMatrixWrap() { if (_h) flox_composite_book_destroy(_h); }
+ private:
+  Napi::Value BestBid(const Napi::CallbackInfo& info) {
+    double p=0,q=0; if (flox_composite_book_best_bid(_h, info[0].As<Napi::Number>().Uint32Value(), &p, &q)) { auto o=Napi::Object::New(info.Env()); o.Set("price",p); o.Set("qty",q); return o; } return info.Env().Null();
+  }
+  Napi::Value BestAsk(const Napi::CallbackInfo& info) {
+    double p=0,q=0; if (flox_composite_book_best_ask(_h, info[0].As<Napi::Number>().Uint32Value(), &p, &q)) { auto o=Napi::Object::New(info.Env()); o.Set("price",p); o.Set("qty",q); return o; } return info.Env().Null();
+  }
+  Napi::Value HasArb(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_composite_book_has_arb(_h, info[0].As<Napi::Number>().Uint32Value())); }
+  void MarkStale(const Napi::CallbackInfo& info) { flox_composite_book_mark_stale(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().Uint32Value()); }
+  void CheckStaleness(const Napi::CallbackInfo& info) { flox_composite_book_check_staleness(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Int64Value()); }
+  FloxCompositeBookHandle _h;
+};
+
 inline void registerBooks(Napi::Env env, Napi::Object exports)
 {
   exports.Set("OrderBook", OrderBookWrap::Init(env));
   exports.Set("L3Book", L3BookWrap::Init(env));
+  exports.Set("CompositeBookMatrix", CompositeBookMatrixWrap::Init(env));
 }
 
 }  // namespace node_flox
