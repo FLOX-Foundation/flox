@@ -236,6 +236,167 @@ void FloxJsStrategy::loadStdlib()
       prune() { __flox_pg_prune(this._h); }
     }
 
+    class DataWriter {
+      constructor(dir, maxSegmentSize, compression) {
+        this._h = __flox_dw_create(dir, maxSegmentSize || 0, compression || 0);
+      }
+      destroy() { __flox_dw_destroy(this._h); }
+      writeTrade(symbolId, timestampNs, exchangeNs, price, qty, isBuy, tradeId, sequenceNo) {
+        __flox_dw_write_trade(this._h, symbolId, timestampNs, exchangeNs,
+                              price, qty, isBuy ? 1 : 0, tradeId || 0, sequenceNo || 0);
+      }
+      flush() { __flox_dw_flush(this._h); }
+      close() { __flox_dw_close(this._h); }
+      stats() { return __flox_dw_stats(this._h); }
+    }
+
+    class DataReader {
+      constructor(dirOrOpts) {
+        if (typeof dirOrOpts === "string") {
+          this._h = __flox_dr_create(dirOrOpts);
+        } else {
+          var o = dirOrOpts || {};
+          this._h = __flox_dr_create_filtered(
+            o.dir || "",
+            o.fromNs || 0,
+            o.toNs || 0,
+            o.symbols || []
+          );
+        }
+      }
+      destroy() { __flox_dr_destroy(this._h); }
+      get count() { return __flox_dr_count(this._h); }
+      summary() { return __flox_dr_summary(this._h); }
+      stats() { return __flox_dr_stats(this._h); }
+      readTrades(maxTrades) { return __flox_dr_read_trades(this._h, maxTrades || 0); }
+    }
+
+    class DataRecorder {
+      constructor(dir, maxSegmentSize, compression) {
+        this._h = __flox_recorder_create(dir, maxSegmentSize || 0, compression || 0);
+      }
+      destroy() { __flox_recorder_destroy(this._h); }
+      addSymbol(symbolId, exchange, symbol, tickSize, lotSize, contractSize, takerFee) {
+        __flox_recorder_add_symbol(this._h, symbolId, exchange || "", symbol || "",
+                                   tickSize || 0.01, lotSize || 1.0,
+                                   contractSize || 1.0, takerFee || 0.0);
+      }
+      start() { __flox_recorder_start(this._h); }
+      stop() { __flox_recorder_stop(this._h); }
+      flush() { __flox_recorder_flush(this._h); }
+      get isRecording() { return __flox_recorder_is_recording(this._h) !== 0; }
+    }
+
+    class Partitioner {
+      constructor(dataDir) { this._h = __flox_part_create(dataDir); }
+      destroy() { __flox_part_destroy(this._h); }
+      byTime(numPartitions, warmupNs) {
+        return __flox_part_by_time(this._h, numPartitions || 2, warmupNs || 0);
+      }
+      byDuration(durationNs, warmupNs) {
+        return __flox_part_by_duration(this._h, durationNs, warmupNs || 0);
+      }
+      byCalendar(unit, warmupNs) {
+        return __flox_part_by_calendar(this._h, unit || 0, warmupNs || 0);
+      }
+      bySymbol(symbols) { return __flox_part_by_symbol(this._h, symbols || []); }
+      perSymbol() { return __flox_part_per_symbol(this._h); }
+      byEventCount(eventsPerPartition) {
+        return __flox_part_by_event_count(this._h, eventsPerPartition);
+      }
+    }
+
+    class SignalBuilder {
+      constructor() { this._entries = []; }
+      _add(tsMs, side, qty, price, orderType, symbol) {
+        this._entries.push({ tsMs, side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
+      }
+      buy(tsMs, qty, symbol) { this._add(tsMs, 0, qty, 0, 0, symbol); }
+      sell(tsMs, qty, symbol) { this._add(tsMs, 1, qty, 0, 0, symbol); }
+      limitBuy(tsMs, price, qty, symbol) { this._add(tsMs, 0, qty, price, 1, symbol); }
+      limitSell(tsMs, price, qty, symbol) { this._add(tsMs, 1, qty, price, 1, symbol); }
+      get length() { return this._entries.length; }
+      clear() { this._entries = []; }
+      sorted() { return this._entries.slice().sort(function(a, b) { return a.tsMs - b.tsMs; }); }
+    }
+
+    class Engine {
+      constructor(initialCapital, feeRate) {
+        this._capital = initialCapital === undefined ? 100000.0 : initialCapital;
+        this._feeRate = feeRate === undefined ? 0.0001 : feeRate;
+        this._symbols = {};
+        this._symbolOrder = [];
+      }
+      _canon(symbol) { return (!symbol || symbol === "") ? "__default__" : symbol; }
+      loadCsv(path, symbol) {
+        var key = this._canon(symbol);
+        var bars = __flox_load_csv(path);
+        if (!this._symbols[key]) { this._symbols[key] = bars; this._symbolOrder.push(key); }
+        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return a.ts-b.ts;}); }
+      }
+      get barCount() {
+        var total = 0;
+        for (var k in this._symbols) total += this._symbols[k].length;
+        return total;
+      }
+      run(signals) {
+        var executor = new SimulatedExecutor();
+        var result = new BacktestResult(this._capital, this._feeRate, true);
+        var symIds = {};
+        var nextId = 1;
+        var getSid = function(key) {
+          if (!symIds[key]) { symIds[key] = nextId++; }
+          return symIds[key];
+        };
+        var defaultKey = this._symbolOrder.length > 0 ? this._symbolOrder[0] : "__default__";
+
+        // Build merged bar timeline
+        var merged = [];
+        for (var i = 0; i < this._symbolOrder.length; i++) {
+          var key = this._symbolOrder[i];
+          var bars = this._symbols[key];
+          for (var j = 0; j < bars.length; j++) {
+            merged.push({ ts: bars[j].ts, key: key, bar: bars[j] });
+          }
+        }
+        merged.sort(function(a, b) { return a.ts - b.ts; });
+
+        var sorted = signals.sorted();
+        var sigIdx = 0;
+        var orderId = 1;
+
+        for (var mi = 0; mi < merged.length; mi++) {
+          var ref = merged[mi];
+          var sid = getSid(ref.key);
+          while (sigIdx < sorted.length && sorted[sigIdx].tsMs * 1000000 <= ref.ts) {
+            var sig = sorted[sigIdx];
+            var sigKey = this._canon(sig.symbol) in this._symbols ? this._canon(sig.symbol) : defaultKey;
+            var ssid = getSid(sigKey);
+            executor.submitOrder(orderId, sig.side === 0 ? "buy" : "sell",
+                                 sig.price, sig.qty, sig.orderType, ssid);
+            orderId++;
+            sigIdx++;
+          }
+          executor.advanceClock(ref.ts);
+          executor.onBar(sid, ref.bar.close);
+        }
+        while (sigIdx < sorted.length) {
+          var sig = sorted[sigIdx];
+          var sigKey = this._canon(sig.symbol) in this._symbols ? this._canon(sig.symbol) : defaultKey;
+          var ssid = getSid(sigKey);
+          executor.submitOrder(orderId, sig.side === 0 ? "buy" : "sell",
+                               sig.price, sig.qty, sig.orderType, ssid);
+          orderId++;
+          sigIdx++;
+        }
+        result.ingestExecutor(executor);
+        var stats = result.stats();
+        result.destroy();
+        executor.destroy();
+        return stats;
+      }
+    }
+
     var flox = {
       register: function(strategy) {
         __flox_registered_strategy = strategy;
@@ -246,7 +407,55 @@ void FloxJsStrategy::loadStdlib()
       bootstrapCI: function(data, confidence, samples) { return __flox_stat_bootstrap_ci(data, confidence, samples); },
       permutationTest: function(g1, g2, n) { return __flox_stat_permutation_test(g1, g2, n); },
       validateSegment: function(path) { return __flox_segment_validate(path); },
-      mergeSegments: function(inputDir, outputPath) { return __flox_segment_merge(inputDir, outputPath); }
+      mergeSegments: function(inputDir, outputPath) { return __flox_segment_merge(inputDir, outputPath); },
+
+      // Aggregators — each takes (timestamps, prices, quantities, sides, param)
+      timeBars: function(ts, px, qty, sides, intervalNs) {
+        return __flox_agg_time(ts, px, qty, sides, intervalNs);
+      },
+      tickBars: function(ts, px, qty, sides, ticksPerBar) {
+        return __flox_agg_tick(ts, px, qty, sides, ticksPerBar);
+      },
+      volumeBars: function(ts, px, qty, sides, volumePerBar) {
+        return __flox_agg_volume(ts, px, qty, sides, volumePerBar);
+      },
+      rangeBars: function(ts, px, qty, sides, rangeSize) {
+        return __flox_agg_range(ts, px, qty, sides, rangeSize);
+      },
+      renkoBars: function(ts, px, qty, sides, brickSize) {
+        return __flox_agg_renko(ts, px, qty, sides, brickSize);
+      },
+      heikinBars: function(ts, px, qty, sides, intervalNs) {
+        return __flox_agg_heikin(ts, px, qty, sides, intervalNs);
+      },
+
+      // Extended segment ops
+      mergeDir: function(inputDir, outputDir) {
+        return __flox_seg_merge_dir(inputDir, outputDir);
+      },
+      splitSegment: function(inputPath, outputDir, mode, timeIntervalNs, eventsPerFile) {
+        return __flox_seg_split(inputPath, outputDir, mode || 0,
+                                timeIntervalNs || 0, eventsPerFile || 0);
+      },
+      exportSegment: function(inputPath, outputPath, format, fromNs, toNs, symbols) {
+        return __flox_seg_export(inputPath, outputPath, format || 0,
+                                 fromNs || 0, toNs || 0, symbols || []);
+      },
+      validateSegmentFull: function(path, verifyCrc, verifyTimestamps) {
+        return __flox_seg_validate_full(path, verifyCrc ? 1 : 0, verifyTimestamps ? 1 : 0);
+      },
+      validateDataset: function(dataDir) { return __flox_dataset_validate(dataDir); },
+      recompressSegment: function(inputPath, outputPath, level) {
+        return __flox_seg_recompress(inputPath, outputPath, level || 0);
+      },
+      extractSymbols: function(inputPath, outputDir, symbols) {
+        return __flox_seg_extract_symbols(inputPath, outputDir, symbols || []);
+      },
+      extractTimeRange: function(inputPath, outputPath, fromNs, toNs) {
+        return __flox_seg_extract_time(inputPath, outputPath, fromNs || 0, toNs || 0);
+      },
+
+      loadCsv: function(path) { return __flox_load_csv(path); }
     };
   )";
   if (!_engine.eval(registerCode, "<flox_register>"))
