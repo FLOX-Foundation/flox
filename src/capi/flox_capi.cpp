@@ -2057,3 +2057,68 @@ uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle h, uint32_t num_p
   return copyPartitions(
       static_cast<replay::Partitioner*>(h)->partitionByEventCount(num_partitions), out, max);
 }
+
+// ============================================================
+// Pointer-out wrappers for struct-returning functions.
+// ============================================================
+
+void flox_data_reader_summary_p(FloxDataReaderHandle h, void* out)
+{
+  auto s = flox_data_reader_summary(h);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_data_reader_stats_p(FloxDataReaderHandle h, void* out)
+{
+  auto s = flox_data_reader_stats(h);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_data_writer_stats_p(FloxDataWriterHandle h, void* out)
+{
+  auto s = flox_data_writer_stats(h);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_merge_full_p(const char* input_paths, size_t num_paths,
+                                  const char* output_dir, const char* output_name,
+                                  uint8_t sort, void* out)
+{
+  auto s = flox_segment_merge_full(input_paths, num_paths, output_dir, output_name, sort);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_merge_dir_p(const char* input_dir, const char* output_dir, void* out)
+{
+  auto s = flox_segment_merge_dir(input_dir, output_dir);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_split_p(const char* input_path, const char* output_dir, uint8_t mode,
+                             int64_t time_interval_ns, uint64_t events_per_file, void* out)
+{
+  auto s = flox_segment_split(input_path, output_dir, mode, time_interval_ns, events_per_file);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_export_p(const char* input_path, const char* output_path, uint8_t format,
+                              int64_t from_ns, int64_t to_ns,
+                              const uint32_t* symbols, uint32_t num_symbols, void* out)
+{
+  auto s = flox_segment_export(input_path, output_path, format, from_ns, to_ns,
+                                symbols, num_symbols);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_validate_full_p(const char* path, uint8_t verify_crc,
+                                    uint8_t verify_timestamps, void* out)
+{
+  auto s = flox_segment_validate_full(path, verify_crc, verify_timestamps);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_dataset_validate_p(const char* data_dir, void* out)
+{
+  auto s = flox_dataset_validate(data_dir);
+  memcpy(out, &s, sizeof(s));
+}

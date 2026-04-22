@@ -24,8 +24,51 @@ from C import flox_backtest_result_create(float, float, u8, float, float, float)
 from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
 from C import flox_backtest_result_ingest_executor(cobj, cobj)
+from C import flox_backtest_result_stats(cobj, Ptr[i64])
 from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
 from C import flox_backtest_result_write_equity_curve_csv(cobj, str) -> u8
+
+
+@dataclass
+class BacktestStats:
+    """Backtest performance metrics. Mirrors FloxBacktestStats."""
+
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    max_consecutive_wins: int
+    max_consecutive_losses: int
+    initial_capital: float
+    final_capital: float
+    total_pnl: float
+    total_fees: float
+    net_pnl: float
+    gross_profit: float
+    gross_loss: float
+    max_drawdown: float
+    max_drawdown_pct: float
+    win_rate: float
+    profit_factor: float
+    avg_win: float
+    avg_loss: float
+    avg_win_loss_ratio: float
+    avg_trade_duration_ns: float
+    median_trade_duration_ns: float
+    max_trade_duration_ns: float
+    sharpe: float
+    sortino: float
+    calmar: float
+    time_weighted_return: float
+    return_pct: float
+    start_time_ns: int
+    end_time_ns: int
+
+    def __repr__(self) -> str:
+        return (f"BacktestStats(trades={self.total_trades}, "
+                f"win_rate={self.win_rate * 100.0:.1f}%, "
+                f"net_pnl={self.net_pnl:.2f}, "
+                f"sharpe={self.sharpe:.2f}, "
+                f"max_dd={self.max_drawdown_pct * 100.0:.1f}%)")
 
 
 SLIPPAGE_NONE: int = 0
@@ -149,3 +192,45 @@ class BacktestResult:
 
     def write_equity_curve_csv(self, path: str) -> bool:
         return int(flox_backtest_result_write_equity_curve_csv(self._handle, path)) == 1
+
+    def stats(self) -> BacktestStats:
+        """Return backtest performance metrics.
+
+        All FloxBacktestStats fields are 8 bytes (u64/f64/i64), so a
+        List[i64] buffer has the correct memory layout.  Float fields
+        are read back via a Ptr[f64] alias over the same buffer.
+        """
+        buf = [i64(0)] * 29
+        flox_backtest_result_stats(self._handle, buf.arr.ptr)
+        fp = Ptr[f64](buf.arr.ptr)
+        return BacktestStats(
+            total_trades=int(buf[0]),
+            winning_trades=int(buf[1]),
+            losing_trades=int(buf[2]),
+            max_consecutive_wins=int(buf[3]),
+            max_consecutive_losses=int(buf[4]),
+            initial_capital=fp[5],
+            final_capital=fp[6],
+            total_pnl=fp[7],
+            total_fees=fp[8],
+            net_pnl=fp[9],
+            gross_profit=fp[10],
+            gross_loss=fp[11],
+            max_drawdown=fp[12],
+            max_drawdown_pct=fp[13],
+            win_rate=fp[14],
+            profit_factor=fp[15],
+            avg_win=fp[16],
+            avg_loss=fp[17],
+            avg_win_loss_ratio=fp[18],
+            avg_trade_duration_ns=fp[19],
+            median_trade_duration_ns=fp[20],
+            max_trade_duration_ns=fp[21],
+            sharpe=fp[22],
+            sortino=fp[23],
+            calmar=fp[24],
+            time_weighted_return=fp[25],
+            return_pct=fp[26],
+            start_time_ns=int(buf[27]),
+            end_time_ns=int(buf[28])
+        )

@@ -133,6 +133,44 @@ from C import flox_stat_bootstrap_ci(Ptr[f64], int, f64, u32, Ptr[f64], Ptr[f64]
 from C import flox_segment_validate(cobj) -> u8
 from C import flox_segment_merge(cobj, cobj) -> u8
 
+# Extended DataReader
+from C import flox_data_reader_create_filtered(cobj, i64, i64, Ptr[u32], u32) -> cobj
+from C import flox_data_reader_read_trades(cobj, cobj, u64) -> u64
+from C import flox_data_reader_summary_p(cobj, Ptr[byte])
+from C import flox_data_reader_stats_p(cobj, Ptr[byte])
+
+# Extended DataWriter
+from C import flox_data_writer_stats_p(cobj, Ptr[byte])
+
+# DataRecorder
+from C import flox_data_recorder_create(cobj, cobj, u64) -> cobj
+from C import flox_data_recorder_destroy(cobj)
+from C import flox_data_recorder_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
+from C import flox_data_recorder_start(cobj)
+from C import flox_data_recorder_stop(cobj)
+from C import flox_data_recorder_flush(cobj)
+from C import flox_data_recorder_is_recording(cobj) -> u8
+
+# Partitioner
+from C import flox_partitioner_create(cobj) -> cobj
+from C import flox_partitioner_destroy(cobj)
+from C import flox_partitioner_by_time(cobj, u32, i64, cobj, u32) -> u32
+from C import flox_partitioner_by_duration(cobj, i64, i64, cobj, u32) -> u32
+from C import flox_partitioner_by_calendar(cobj, u8, i64, cobj, u32) -> u32
+from C import flox_partitioner_by_symbol(cobj, u32, cobj, u32) -> u32
+from C import flox_partitioner_per_symbol(cobj, cobj, u32) -> u32
+from C import flox_partitioner_by_event_count(cobj, u32, cobj, u32) -> u32
+
+# Segment ops (extended)
+from C import flox_segment_recompress(cobj, cobj, u8) -> u8
+from C import flox_segment_extract_symbols(cobj, cobj, Ptr[u32], u32) -> u64
+from C import flox_segment_extract_time_range(cobj, cobj, i64, i64) -> u64
+from C import flox_segment_merge_dir_p(cobj, cobj, Ptr[byte])
+from C import flox_segment_split_p(cobj, cobj, u8, i64, u64, Ptr[byte])
+from C import flox_segment_export_p(cobj, cobj, u8, i64, i64, Ptr[u32], u32, Ptr[byte])
+from C import flox_segment_validate_full_p(cobj, u8, u8, Ptr[byte])
+from C import flox_dataset_validate_p(cobj, Ptr[byte])
+
 from C import flox_book_get_bids(cobj, Ptr[f64], Ptr[f64], u32) -> u32
 from C import flox_book_get_asks(cobj, Ptr[f64], Ptr[f64], u32) -> u32
 
@@ -538,3 +576,537 @@ def validate_segment(path: str) -> bool:
 
 def merge_segments(input_dir: str, output_path: str) -> bool:
     return flox_segment_merge(input_dir.c_str(), output_path.c_str()) != u8(0)
+
+
+# ======================================================================
+# Extended DataReader
+# ======================================================================
+
+
+@dataclass
+class DatasetSummary:
+    first_event_ns: int
+    last_event_ns: int
+    total_events: int
+    segment_count: int
+    total_bytes: int
+    duration_seconds: float
+
+    def __repr__(self) -> str:
+        return (f"DatasetSummary(events={self.total_events}, "
+                f"segments={self.segment_count}, "
+                f"bytes={self.total_bytes}, "
+                f"duration={self.duration_seconds:.1f}s)")
+
+
+@dataclass
+class ReaderStats:
+    files_read: int
+    events_read: int
+    trades_read: int
+    book_updates_read: int
+    bytes_read: int
+    crc_errors: int
+
+
+@dataclass
+class TradeRecord:
+    exchange_ts_ns: int
+    recv_ts_ns: int
+    price_raw: int
+    qty_raw: int
+    trade_id: int
+    symbol_id: int
+    side: int  # 0=buy, 1=sell
+
+    def price(self) -> float:
+        return float(self.price_raw) / 1e8
+
+    def qty(self) -> float:
+        return float(self.qty_raw) / 1e8
+
+    def is_buy(self) -> bool:
+        return self.side == 0
+
+
+@dataclass
+class WriterStats:
+    bytes_written: int
+    events_written: int
+    segments_created: int
+    trades_written: int
+
+
+@dataclass
+class MergeResult:
+    success: bool
+    segments_merged: int
+    events_written: int
+    bytes_written: int
+
+
+@dataclass
+class SplitResult:
+    success: bool
+    segments_created: int
+    events_written: int
+
+
+@dataclass
+class ExportResult:
+    success: bool
+    events_exported: int
+    bytes_written: int
+
+
+@dataclass
+class SegmentValidation:
+    valid: bool
+    header_valid: bool
+    reported_event_count: int
+    actual_event_count: int
+    has_index: bool
+    index_valid: bool
+    trades_found: int
+    book_updates_found: int
+    crc_errors: int
+    timestamp_anomalies: int
+
+
+@dataclass
+class DatasetValidation:
+    valid: bool
+    total_segments: int
+    valid_segments: int
+    corrupted_segments: int
+    total_events: int
+    total_bytes: int
+    first_timestamp: int
+    last_timestamp: int
+
+
+@dataclass
+class Partition:
+    partition_id: int
+    from_ns: int
+    to_ns: int
+    warmup_from_ns: int
+    estimated_events: int
+    estimated_bytes: int
+
+
+# ======================================================================
+# Extended DataReader (filtered creation, summary, stats, read_trades)
+# ======================================================================
+
+@extend
+class DataReader:
+
+    @staticmethod
+    def create_filtered(data_dir: str, from_ns: int, to_ns: int,
+                        symbols: List[int] = list[int]()) -> DataReader:
+        """Create a DataReader limited to a time range and set of symbols."""
+        r = DataReader.__new__(DataReader)
+        if len(symbols) > 0:
+            sym_buf = [u32(s) for s in symbols]
+            r._h = flox_data_reader_create_filtered(
+                data_dir.c_str(), i64(from_ns), i64(to_ns),
+                sym_buf.arr.ptr, u32(len(sym_buf)))
+        else:
+            r._h = flox_data_reader_create_filtered(
+                data_dir.c_str(), i64(from_ns), i64(to_ns), cobj(), u32(0))
+        return r
+
+    def summary(self) -> DatasetSummary:
+        """Return dataset summary (event count, time range, etc.)."""
+        # FloxDatasetSummary layout:
+        #   i64 first_event_ns  (offset 0)
+        #   i64 last_event_ns   (offset 8)
+        #   u64 total_events    (offset 16)
+        #   u32 segment_count   (offset 24) + 4 bytes padding
+        #   u64 total_bytes     (offset 32)
+        #   f64 duration_seconds (offset 40)
+        #   total: 48 bytes
+        buf = [byte(0)] * 48
+        flox_data_reader_summary_p(self._h, buf.arr.ptr)
+        lp = Ptr[i64](buf.arr.ptr)
+        up = Ptr[u32](buf.arr.ptr)
+        fp = Ptr[f64](buf.arr.ptr)
+        return DatasetSummary(
+            first_event_ns=int(lp[0]),
+            last_event_ns=int(lp[1]),
+            total_events=int(lp[2]),       # u64 at offset 16 → i64 index 2
+            segment_count=int(up[6]),      # u32 at byte offset 24 → u32 index 6
+            total_bytes=int(lp[4]),        # u64 at offset 32 → i64 index 4
+            duration_seconds=fp[5]         # f64 at offset 40 → f64 index 5
+        )
+
+    def reader_stats(self) -> ReaderStats:
+        """Return reader I/O statistics."""
+        # FloxReaderStats: 6 × u64 = 48 bytes
+        buf = [i64(0)] * 6
+        flox_data_reader_stats_p(self._h, Ptr[byte](buf.arr.ptr))
+        return ReaderStats(
+            files_read=int(buf[0]),
+            events_read=int(buf[1]),
+            trades_read=int(buf[2]),
+            book_updates_read=int(buf[3]),
+            bytes_read=int(buf[4]),
+            crc_errors=int(buf[5])
+        )
+
+    def read_trades(self, max_trades: int = 0) -> List[TradeRecord]:
+        """Read trade records. max_trades=0 reads all."""
+        # Count first
+        n = int(flox_data_reader_read_trades(self._h, cobj(), u64(0)))
+        if max_trades > 0 and max_trades < n:
+            n = max_trades
+        if n == 0:
+            return list[TradeRecord]()
+        # FloxTradeRecord layout:
+        #   i64 exchange_ts_ns  (0)
+        #   i64 recv_ts_ns      (8)
+        #   i64 price_raw       (16)
+        #   i64 qty_raw         (24)
+        #   u64 trade_id        (32)
+        #   u32 symbol_id       (40) + 3 bytes padding
+        #   u8  side            (44)
+        #   total: 48 bytes (with alignment)
+        stride = 48
+        raw = [byte(0)] * (n * stride)
+        got = int(flox_data_reader_read_trades(self._h, Ptr[byte](raw.arr.ptr), u64(n)))
+        result = list[TradeRecord]()
+        for i in range(got):
+            base = i * stride
+            lp = Ptr[i64](Ptr[byte](raw.arr.ptr) + base)
+            up = Ptr[u32](Ptr[byte](raw.arr.ptr) + base)
+            bp = Ptr[u8](Ptr[byte](raw.arr.ptr) + base)
+            result.append(TradeRecord(
+                exchange_ts_ns=int(lp[0]),
+                recv_ts_ns=int(lp[1]),
+                price_raw=int(lp[2]),
+                qty_raw=int(lp[3]),
+                trade_id=int(lp[4]),
+                symbol_id=int(up[10]),   # byte offset 40 → u32 index 10
+                side=int(bp[44])
+            ))
+        return result
+
+
+# ======================================================================
+# Extended DataWriter (stats)
+# ======================================================================
+
+@extend
+class DataWriter:
+
+    def stats(self) -> WriterStats:
+        """Return writer I/O statistics."""
+        # FloxWriterStats: 4 × u64 = 32 bytes
+        buf = [i64(0)] * 4
+        flox_data_writer_stats_p(self._h, Ptr[byte](buf.arr.ptr))
+        return WriterStats(
+            bytes_written=int(buf[0]),
+            events_written=int(buf[1]),
+            segments_created=int(buf[2]),
+            trades_written=int(buf[3])
+        )
+
+
+# ======================================================================
+# DataRecorder
+# ======================================================================
+
+
+class DataRecorder:
+    """Records live market data (trades) to disk in the Flox binary format."""
+
+    _h: cobj
+
+    def __init__(self, output_dir: str, exchange_name: str = "",
+                 max_segment_mb: int = 256):
+        self._h = flox_data_recorder_create(
+            output_dir.c_str(), exchange_name.c_str(), u64(max_segment_mb))
+
+    def close(self):
+        if self._h != cobj():
+            flox_data_recorder_destroy(self._h)
+            self._h = cobj()
+
+    def add_symbol(self, symbol_id: int, name: str, base: str = "",
+                   quote: str = "", price_precision: int = 8,
+                   qty_precision: int = 8):
+        flox_data_recorder_add_symbol(
+            self._h, u32(symbol_id),
+            name.c_str(), base.c_str(), quote.c_str(),
+            i8(price_precision), i8(qty_precision))
+
+    def start(self):
+        flox_data_recorder_start(self._h)
+
+    def stop(self):
+        flox_data_recorder_stop(self._h)
+
+    def flush(self):
+        flox_data_recorder_flush(self._h)
+
+    @property
+    def is_recording(self) -> bool:
+        return flox_data_recorder_is_recording(self._h) != u8(0)
+
+
+# ======================================================================
+# Partitioner
+# ======================================================================
+
+
+class Partitioner:
+    """Splits a dataset into train/test or walk-forward partitions."""
+
+    _h: cobj
+
+    # Calendar units matching FloxPartitioner::CalendarUnit
+    CALENDAR_DAILY: int = 0
+    CALENDAR_WEEKLY: int = 1
+    CALENDAR_MONTHLY: int = 2
+
+    def __init__(self, data_dir: str):
+        self._h = flox_partitioner_create(data_dir.c_str())
+
+    def close(self):
+        if self._h != cobj():
+            flox_partitioner_destroy(self._h)
+            self._h = cobj()
+
+    def _read_partitions(self, n: int, buf: List[byte]) -> List[Partition]:
+        # FloxPartition layout:
+        #   u32 partition_id    (0)
+        #   i64 from_ns         (8, aligned to 8)
+        #   i64 to_ns           (16)
+        #   i64 warmup_from_ns  (24)
+        #   u64 estimated_events (32)
+        #   u64 estimated_bytes  (40)
+        #   total: 48 bytes
+        stride = 48
+        result = list[Partition]()
+        for i in range(n):
+            base = i * stride
+            up = Ptr[u32](Ptr[byte](buf.arr.ptr) + base)
+            lp = Ptr[i64](Ptr[byte](buf.arr.ptr) + base)
+            result.append(Partition(
+                partition_id=int(up[0]),
+                from_ns=int(lp[1]),
+                to_ns=int(lp[2]),
+                warmup_from_ns=int(lp[3]),
+                estimated_events=int(lp[4]),
+                estimated_bytes=int(lp[5])
+            ))
+        return result
+
+    def by_time(self, num_partitions: int, warmup_ns: int = 0) -> List[Partition]:
+        """Split into N equal time slices."""
+        n = int(flox_partitioner_by_time(
+            self._h, u32(num_partitions), i64(warmup_ns), cobj(), u32(0)))
+        if n == 0:
+            return list[Partition]()
+        buf = [byte(0)] * (n * 48)
+        flox_partitioner_by_time(
+            self._h, u32(num_partitions), i64(warmup_ns),
+            Ptr[u32](buf.arr.ptr), u32(n))
+        return self._read_partitions(n, buf)
+
+    def by_duration(self, duration_ns: int, warmup_ns: int = 0) -> List[Partition]:
+        """Split by fixed duration per partition."""
+        n = int(flox_partitioner_by_duration(
+            self._h, i64(duration_ns), i64(warmup_ns), cobj(), u32(0)))
+        if n == 0:
+            return list[Partition]()
+        buf = [byte(0)] * (n * 48)
+        flox_partitioner_by_duration(
+            self._h, i64(duration_ns), i64(warmup_ns),
+            Ptr[u32](buf.arr.ptr), u32(n))
+        return self._read_partitions(n, buf)
+
+    def by_calendar(self, unit: int = 2, warmup_ns: int = 0) -> List[Partition]:
+        """Split by calendar unit (daily=0, weekly=1, monthly=2)."""
+        n = int(flox_partitioner_by_calendar(
+            self._h, u8(unit), i64(warmup_ns), cobj(), u32(0)))
+        if n == 0:
+            return list[Partition]()
+        buf = [byte(0)] * (n * 48)
+        flox_partitioner_by_calendar(
+            self._h, u8(unit), i64(warmup_ns),
+            Ptr[u32](buf.arr.ptr), u32(n))
+        return self._read_partitions(n, buf)
+
+    def by_symbol(self, num_partitions: int) -> List[Partition]:
+        """Split symbols into N groups."""
+        n = int(flox_partitioner_by_symbol(
+            self._h, u32(num_partitions), cobj(), u32(0)))
+        if n == 0:
+            return list[Partition]()
+        buf = [byte(0)] * (n * 48)
+        flox_partitioner_by_symbol(
+            self._h, u32(num_partitions),
+            Ptr[u32](buf.arr.ptr), u32(n))
+        return self._read_partitions(n, buf)
+
+    def per_symbol(self) -> List[Partition]:
+        """One partition per symbol."""
+        n = int(flox_partitioner_per_symbol(self._h, cobj(), u32(0)))
+        if n == 0:
+            return list[Partition]()
+        buf = [byte(0)] * (n * 48)
+        flox_partitioner_per_symbol(self._h, Ptr[u32](buf.arr.ptr), u32(n))
+        return self._read_partitions(n, buf)
+
+    def by_event_count(self, num_partitions: int) -> List[Partition]:
+        """Split into N partitions of roughly equal event counts."""
+        n = int(flox_partitioner_by_event_count(
+            self._h, u32(num_partitions), cobj(), u32(0)))
+        if n == 0:
+            return list[Partition]()
+        buf = [byte(0)] * (n * 48)
+        flox_partitioner_by_event_count(
+            self._h, u32(num_partitions),
+            Ptr[u32](buf.arr.ptr), u32(n))
+        return self._read_partitions(n, buf)
+
+
+# ======================================================================
+# Extended segment operations
+# ======================================================================
+
+
+def recompress_segment(input_path: str, output_path: str,
+                       compression: int = 1) -> bool:
+    return flox_segment_recompress(
+        input_path.c_str(), output_path.c_str(), u8(compression)) != u8(0)
+
+
+def extract_symbols(input_path: str, output_path: str,
+                    symbols: List[int]) -> int:
+    sym_buf = [u32(s) for s in symbols]
+    return int(flox_segment_extract_symbols(
+        input_path.c_str(), output_path.c_str(),
+        sym_buf.arr.ptr, u32(len(sym_buf))))
+
+
+def extract_time_range(input_path: str, output_path: str,
+                       from_ns: int, to_ns: int) -> int:
+    return int(flox_segment_extract_time_range(
+        input_path.c_str(), output_path.c_str(), i64(from_ns), i64(to_ns)))
+
+
+def merge_dir(input_dir: str, output_dir: str) -> MergeResult:
+    # FloxMergeResult: u8 + pad7 + 3×u64 = 32 bytes
+    buf = [byte(0)] * 32
+    flox_segment_merge_dir_p(input_dir.c_str(), output_dir.c_str(), buf.arr.ptr)
+    lp = Ptr[u64](buf.arr.ptr)
+    return MergeResult(
+        success=int(buf[0]) != 0,
+        segments_merged=int(lp[1]),
+        events_written=int(lp[2]),
+        bytes_written=int(lp[3])
+    )
+
+
+def split_segment(input_path: str, output_dir: str,
+                  mode: int = 0, time_interval_ns: int = 0,
+                  events_per_file: int = 0) -> SplitResult:
+    # FloxSplitResult: u8 + pad3 + u32 + u64 = 16 bytes
+    buf = [byte(0)] * 16
+    flox_segment_split_p(
+        input_path.c_str(), output_dir.c_str(),
+        u8(mode), i64(time_interval_ns), u64(events_per_file),
+        buf.arr.ptr)
+    up = Ptr[u32](buf.arr.ptr)
+    lp = Ptr[u64](buf.arr.ptr)
+    return SplitResult(
+        success=int(buf[0]) != 0,
+        segments_created=int(up[1]),
+        events_written=int(lp[1])
+    )
+
+
+def export_segment(input_path: str, output_path: str,
+                   format: int = 0,
+                   from_ns: int = 0, to_ns: int = 0,
+                   symbols: List[int] = list[int]()) -> ExportResult:
+    # FloxExportResult: u8 + pad7 + 2×u64 = 24 bytes
+    buf = [byte(0)] * 24
+    if len(symbols) > 0:
+        sym_buf = [u32(s) for s in symbols]
+        flox_segment_export_p(
+            input_path.c_str(), output_path.c_str(),
+            u8(format), i64(from_ns), i64(to_ns),
+            sym_buf.arr.ptr, u32(len(sym_buf)), buf.arr.ptr)
+    else:
+        flox_segment_export_p(
+            input_path.c_str(), output_path.c_str(),
+            u8(format), i64(from_ns), i64(to_ns),
+            cobj(), u32(0), buf.arr.ptr)
+    lp = Ptr[u64](buf.arr.ptr)
+    return ExportResult(
+        success=int(buf[0]) != 0,
+        events_exported=int(lp[1]),
+        bytes_written=int(lp[2])
+    )
+
+
+def validate_segment_full(path: str, verify_crc: bool = True,
+                          verify_timestamps: bool = True) -> SegmentValidation:
+    # FloxSegmentValidation:
+    #   u8 valid (0), u8 header_valid (1)
+    #   u64 reported_event_count (8), u64 actual_event_count (16)
+    #   u8 has_index (24), u8 index_valid (25)
+    #   u64 trades_found (32), u64 book_updates_found (40)
+    #   u32 crc_errors (48), u32 timestamp_anomalies (52)
+    #   total: 56 bytes
+    buf = [byte(0)] * 56
+    flox_segment_validate_full_p(
+        path.c_str(),
+        u8(1 if verify_crc else 0),
+        u8(1 if verify_timestamps else 0),
+        buf.arr.ptr)
+    lp = Ptr[u64](buf.arr.ptr)
+    up = Ptr[u32](buf.arr.ptr)
+    return SegmentValidation(
+        valid=int(buf[0]) != 0,
+        header_valid=int(buf[1]) != 0,
+        reported_event_count=int(lp[1]),
+        actual_event_count=int(lp[2]),
+        has_index=int(buf[24]) != 0,
+        index_valid=int(buf[25]) != 0,
+        trades_found=int(lp[4]),
+        book_updates_found=int(lp[5]),
+        crc_errors=int(up[12]),
+        timestamp_anomalies=int(up[13])
+    )
+
+
+def validate_dataset(data_dir: str) -> DatasetValidation:
+    # FloxDatasetValidation:
+    #   u8 valid (0) + pad3
+    #   u32 total_segments (4)
+    #   u32 valid_segments (8)
+    #   u32 corrupted_segments (12)
+    #   u64 total_events (16)
+    #   u64 total_bytes (24)
+    #   i64 first_timestamp (32)
+    #   i64 last_timestamp (40)
+    #   total: 48 bytes
+    buf = [byte(0)] * 48
+    flox_dataset_validate_p(data_dir.c_str(), buf.arr.ptr)
+    up = Ptr[u32](buf.arr.ptr)
+    lp = Ptr[i64](buf.arr.ptr)
+    return DatasetValidation(
+        valid=int(buf[0]) != 0,
+        total_segments=int(up[1]),
+        valid_segments=int(up[2]),
+        corrupted_segments=int(up[3]),
+        total_events=int(lp[2]),
+        total_bytes=int(lp[3]),
+        first_timestamp=int(lp[4]),
+        last_timestamp=int(lp[5])
+    )

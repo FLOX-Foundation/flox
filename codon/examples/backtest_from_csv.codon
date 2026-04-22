@@ -1,0 +1,66 @@
+# SMA Crossover backtest from CSV -- Codon implementation.
+#
+# Uses the Engine/SignalBuilder API (mirrors Python flox_py).
+#
+# Compile:
+#   LIBRARY_PATH=build/lib codon build -exe -release \
+#     -l flox_capi examples/backtest_from_csv.codon \
+#     -o examples/backtest_from_csv
+#
+# Run:
+#   LD_LIBRARY_PATH=build/lib ./examples/backtest_from_csv \
+#     examples/data/btcusdt_1m.csv
+
+import sys
+from flox.engine import Engine, SignalBuilder
+from flox.indicators import SMA
+
+
+def sma_crossover(path: str, fast: int = 10, slow: int = 30,
+                  qty: float = 0.01, capital: float = 10000.0,
+                  fee_rate: float = 0.0004) -> None:
+    engine = Engine(initial_capital=capital, fee_rate=fee_rate)
+    engine.load_csv(path)
+
+    bars = engine._symbols["__default__"]
+    fast_sma = SMA(fast)
+    slow_sma = SMA(slow)
+    sb = SignalBuilder()
+
+    in_long = False
+    prev_above = False
+
+    for bar in bars:
+        ts = bar.ts_ns // 1_000_000  # use ms for signal timestamps
+        c = bar.close()
+        fast_val = fast_sma.update(c)
+        slow_val = slow_sma.update(c)
+        if not slow_sma.ready:
+            prev_above = fast_val > slow_val
+            continue
+        above = fast_val > slow_val
+        if above and not prev_above and not in_long:
+            sb.buy(ts, qty)
+            in_long = True
+        elif not above and prev_above and in_long:
+            sb.sell(ts, qty)
+            in_long = False
+        prev_above = above
+
+    stats = engine.run(sb)
+    print(f"SMA({fast}/{slow}) crossover backtest")
+    print(f"  File        : {path}")
+    print(f"  Bars        : {engine.bar_count()}")
+    print(f"  Signals     : {len(sb)}")
+    print(f"  {stats}")
+    print(f"  Win rate    : {stats.win_rate * 100.0:.1f}%")
+    print(f"  Profit factor: {stats.profit_factor:.2f}")
+    print(f"  Net PnL     : {stats.net_pnl:.2f}")
+    print(f"  Return      : {stats.return_pct * 100.0:.2f}%")
+    print(f"  Max drawdown: {stats.max_drawdown_pct * 100.0:.1f}%")
+    print(f"  Sharpe      : {stats.sharpe:.2f}")
+
+
+if __name__ == "__main__":
+    path = sys.argv[1] if len(sys.argv) > 1 else "examples/data/btcusdt_1m.csv"
+    sma_crossover(path)

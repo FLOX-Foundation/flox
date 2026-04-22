@@ -854,6 +854,29 @@ extern "C"
                                             FloxPartition* partitions_out,
                                             uint32_t max_partitions);
 
+  // ============================================================
+  // Pointer-out wrappers for struct-returning functions.
+  // These exist for language bindings (Codon, QuickJS) that cannot
+  // consume C structs returned by value via their FFI.
+  // Each writes sizeof(OriginalStruct) bytes to *out.
+  // ============================================================
+
+  void flox_data_reader_summary_p(FloxDataReaderHandle reader, void* out);
+  void flox_data_reader_stats_p(FloxDataReaderHandle reader, void* out);
+  void flox_data_writer_stats_p(FloxDataWriterHandle writer, void* out);
+  void flox_segment_merge_full_p(const char* input_paths, size_t num_paths,
+                                   const char* output_dir, const char* output_name,
+                                   uint8_t sort, void* out);
+  void flox_segment_merge_dir_p(const char* input_dir, const char* output_dir, void* out);
+  void flox_segment_split_p(const char* input_path, const char* output_dir, uint8_t mode,
+                              int64_t time_interval_ns, uint64_t events_per_file, void* out);
+  void flox_segment_export_p(const char* input_path, const char* output_path, uint8_t format,
+                               int64_t from_ns, int64_t to_ns,
+                               const uint32_t* symbols, uint32_t num_symbols, void* out);
+  void flox_segment_validate_full_p(const char* path, uint8_t verify_crc,
+                                     uint8_t verify_timestamps, void* out);
+  void flox_dataset_validate_p(const char* data_dir, void* out);
+
 #ifdef __cplusplus
 }
 #endif
