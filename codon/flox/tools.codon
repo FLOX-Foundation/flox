@@ -735,15 +735,15 @@ class DataReader:
         return DatasetSummary(
             first_event_ns=int(lp[0]),
             last_event_ns=int(lp[1]),
-            total_events=int(lp[2]),       # u64 at offset 16 → i64 index 2
-            segment_count=int(up[6]),      # u32 at byte offset 24 → u32 index 6
-            total_bytes=int(lp[4]),        # u64 at offset 32 → i64 index 4
-            duration_seconds=fp[5]         # f64 at offset 40 → f64 index 5
+            total_events=int(lp[2]),       # u64 at offset 16 -> i64 index 2
+            segment_count=int(up[6]),      # u32 at byte offset 24 -> u32 index 6
+            total_bytes=int(lp[4]),        # u64 at offset 32 -> i64 index 4
+            duration_seconds=fp[5]         # f64 at offset 40 -> f64 index 5
         )
 
     def reader_stats(self) -> ReaderStats:
         """Return reader I/O statistics."""
-        # FloxReaderStats: 6 × u64 = 48 bytes
+        # FloxReaderStats: 6 x u64 = 48 bytes
         buf = [i64(0)] * 6
         flox_data_reader_stats_p(self._h, Ptr[byte](buf.arr.ptr))
         return ReaderStats(
@@ -787,7 +787,7 @@ class DataReader:
                 price_raw=int(lp[2]),
                 qty_raw=int(lp[3]),
                 trade_id=int(lp[4]),
-                symbol_id=int(up[10]),   # byte offset 40 → u32 index 10
+                symbol_id=int(up[10]),   # byte offset 40 -> u32 index 10
                 side=int(bp[44])
             ))
         return result
@@ -802,7 +802,7 @@ class DataWriter:
 
     def stats(self) -> WriterStats:
         """Return writer I/O statistics."""
-        # FloxWriterStats: 4 × u64 = 32 bytes
+        # FloxWriterStats: 4 x u64 = 32 bytes
         buf = [i64(0)] * 4
         flox_data_writer_stats_p(self._h, Ptr[byte](buf.arr.ptr))
         return WriterStats(
@@ -999,7 +999,7 @@ def extract_time_range(input_path: str, output_path: str,
 
 
 def merge_dir(input_dir: str, output_dir: str) -> MergeResult:
-    # FloxMergeResult: u8 + pad7 + 3×u64 = 32 bytes
+    # FloxMergeResult: u8 + pad7 + 3xu64 = 32 bytes
     buf = [byte(0)] * 32
     flox_segment_merge_dir_p(input_dir.c_str(), output_dir.c_str(), buf.arr.ptr)
     lp = Ptr[u64](buf.arr.ptr)
@@ -1033,7 +1033,7 @@ def export_segment(input_path: str, output_path: str,
                    format: int = 0,
                    from_ns: int = 0, to_ns: int = 0,
                    symbols: List[int] = list[int]()) -> ExportResult:
-    # FloxExportResult: u8 + pad7 + 2×u64 = 24 bytes
+    # FloxExportResult: u8 + pad7 + 2xu64 = 24 bytes
     buf = [byte(0)] * 24
     if len(symbols) > 0:
         sym_buf = [u32(s) for s in symbols]

@@ -119,11 +119,11 @@ def _parse_ts(s: str) -> int:
     ts = int(s)
     # Detect unit by magnitude
     if ts < 1_000_000_000_000:
-        return ts * 1_000_000_000  # seconds → ns
+        return ts * 1_000_000_000  # seconds -> ns
     elif ts < 1_000_000_000_000_000:
-        return ts * 1_000_000      # ms → ns
+        return ts * 1_000_000      # ms -> ns
     elif ts < 1_000_000_000_000_000_000:
-        return ts * 1_000          # us → ns
+        return ts * 1_000          # us -> ns
     else:
         return ts                  # already ns
 
@@ -205,7 +205,7 @@ class Engine:
         self._next_id = dict[str, int]()
 
     def _canon(self, symbol: str) -> str:
-        """Return canonical symbol name (empty → use first / default)."""
+        """Return canonical symbol name (empty -> use first / default)."""
         if len(symbol) == 0:
             return "__default__"
         return symbol
@@ -310,30 +310,32 @@ class Engine:
             bar = self._symbols[ref.key][ref.idx]
             sym_id = self._sym_id(ref.key)
 
-            # Fire all signals due at or before this bar's timestamp
+            # Advance clock and fill any pending orders at this bar's close.
+            # Signals are submitted AFTER on_bar so they fill at the next bar,
+            # matching the Python Engine execution model.
+            executor.advance_clock(bar.ts_ns)
+            executor.on_bar(sym_id, bar.close())
+
+            # Submit signals timestamped at or before this bar
             while sig_idx < len(sorted_signals):
                 sig = sorted_signals[sig_idx]
                 if sig.ts_ns > bar.ts_ns:
                     break
-                # Resolve symbol
                 sig_key = self._canon(sig.symbol) if len(sig.symbol) > 0 else default_key
                 s_id = self._sym_id(sig_key)
                 price = float(sig.price_raw) / float(SCALE)
                 qty = float(sig.qty_raw) / float(SCALE)
+                ot = "limit" if sig.order_type == 1 else "market"
                 executor.submit_order(
-                    order_id=order_id,
-                    side="buy" if sig.side == 0 else "sell",
-                    price=price,
-                    quantity=qty,
-                    order_type=sig.order_type,
-                    symbol=s_id
+                    order_id,
+                    "buy" if sig.side == 0 else "sell",
+                    price,
+                    qty,
+                    ot,
+                    s_id
                 )
                 order_id += 1
                 sig_idx += 1
-
-            # Advance executor clock and mark-to-market
-            executor.advance_clock(bar.ts_ns)
-            executor.on_bar(sym_id, bar.close())
 
         # Remaining signals fire at last bar's close
         while sig_idx < len(sorted_signals):
@@ -342,13 +344,14 @@ class Engine:
             s_id = self._sym_id(sig_key)
             price = float(sig.price_raw) / float(SCALE)
             qty = float(sig.qty_raw) / float(SCALE)
+            ot = "limit" if sig.order_type == 1 else "market"
             executor.submit_order(
-                order_id=order_id,
-                side="buy" if sig.side == 0 else "sell",
-                price=price,
-                quantity=qty,
-                order_type=sig.order_type,
-                symbol=s_id
+                order_id,
+                "buy" if sig.side == 0 else "sell",
+                price,
+                qty,
+                ot,
+                s_id
             )
             order_id += 1
             sig_idx += 1

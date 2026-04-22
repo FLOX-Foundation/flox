@@ -1,99 +1,87 @@
+/**
+ * SMA crossover backtest — BTCUSDT 1m data.
+ *
+ * Demonstrates the Node.js flox addon API:
+ *   - Engine: load CSV, get typed OHLCV arrays
+ *   - Batch indicators: rsi, bollinger, macd, atr
+ *   - Streaming SMA class for signal generation
+ *   - SignalBuilder: accumulate buy/sell signals
+ *   - engine.run(): replay signals against bars, return stats object
+ *
+ * Usage:
+ *   node examples/node_sma_backtest.js
+ */
+
 const path = require('path');
 const flox = require('../node');
 
-const DATA = path.join(__dirname, 'data');
+const DATA = path.join(__dirname, 'data', 'btcusdt_1m.csv');
 
-const engine = new flox.Engine(10000, 0.0004);
-engine.loadCsv(path.join(DATA, 'btcusdt_1m.csv'));
-engine.loadCsv(path.join(DATA, 'ethusdt_1m.csv'));
+// ── Load data ──────────────────────────────────────────────────────────
 
-console.log('symbols:', engine.symbols);
+const engine = new flox.Engine(10_000, 0.0004);
+engine.loadCsv(DATA);
 
-const close = engine.close();
-const high = engine.high();
-const low = engine.low();
-const ts = engine.ts();
-const n = close.length;
+const ts    = engine.ts();      // BigInt64Array — nanosecond timestamps
+const close = engine.close();   // Float64Array
+const high  = engine.high();
+const low   = engine.low();
+const n     = close.length;
 
-console.log(`${n} bars  ${close[0].toFixed(2)} -> ${close[n-1].toFixed(2)}`);
+console.log(`Loaded ${n} bars  ${close[0].toFixed(2)} → ${close[n-1].toFixed(2)}`);
 
-// -- indicators --
-const rsi = flox.rsi(close, 14);
-const bb = flox.bollinger(close, 20, 2.0);
+// ── Batch indicators ────────────────────────────────────────────────────
+
+const rsi  = flox.rsi(close, 14);
+const bb   = flox.bollinger(close, 20, 2.0);
 const macd = flox.macd(close, 12, 26, 9);
-const atr = flox.atr(high, low, close, 14);
+const atr  = flox.atr(high, low, close, 14);
 
-console.log(`\nRSI=${rsi[n-1].toFixed(1)}  BB=${bb.lower[n-1].toFixed(0)}/${bb.middle[n-1].toFixed(0)}/${bb.upper[n-1].toFixed(0)}  MACD=${macd.line[n-1].toFixed(1)}  ATR=${atr[n-1].toFixed(1)}`);
+console.log(
+  `RSI=${rsi[n-1].toFixed(1)}  ` +
+  `BB=${bb.lower[n-1].toFixed(0)}/${bb.middle[n-1].toFixed(0)}/${bb.upper[n-1].toFixed(0)}  ` +
+  `MACD=${macd.line[n-1].toFixed(2)}  ATR=${atr[n-1].toFixed(2)}`
+);
 
-// -- SMA crossover signals --
-function smaSignals(ts, close, fast = 10, slow = 30, size = 0.01) {
-    const sig = new flox.SignalBuilder();
-    let fSum = 0, sSum = 0;
-    const fBuf = [], sBuf = [];
-    let pos = 0;
+// ── Signal generation — SMA(10/30) crossover ───────────────────────────
 
-    for (let i = 0; i < close.length; i++) {
-        fBuf.push(close[i]);
-        sBuf.push(close[i]);
-        fSum += close[i];
-        sSum += close[i];
-        if (fBuf.length > fast) { fSum -= fBuf.shift(); }
-        if (sBuf.length > slow) { sSum -= sBuf.shift(); }
+const fast = new flox.SMA(10);
+const slow  = new flox.SMA(30);
+const signals = new flox.SignalBuilder();
+let pos = 0;   // -1=short  0=flat  1=long
 
-        if (sBuf.length < slow) continue;
+for (let i = 0; i < n; i++) {
+  const fv = fast.update(close[i]);
+  const sv = slow.update(close[i]);
+  if (!slow.ready) continue;
 
-        const fv = fSum / fast;
-        const sv = sSum / slow;
+  // Timestamps from engine.ts() are nanoseconds; SignalBuilder expects ms.
+  const tsMs = Number(ts[i]) / 1e6;
 
-        if (fv > sv && pos <= 0) {
-            sig.buy(ts[i], pos === 0 ? size : size * 2);
-            pos = 1;
-        } else if (fv < sv && pos >= 0) {
-            sig.sell(ts[i], pos === 0 ? size : size * 2);
-            pos = -1;
-        }
-    }
-
-    return sig;
+  if (fv > sv && pos <= 0) {
+    signals.buy(tsMs, pos === 0 ? 0.01 : 0.02);
+    pos = 1;
+  } else if (fv < sv && pos >= 0) {
+    signals.sell(tsMs, pos === 0 ? 0.01 : 0.02);
+    pos = -1;
+  }
 }
 
-const signals = smaSignals(ts, close);
-console.log(`${signals.length} signals`);
+console.log(`\n${signals.length} signals generated`);
 
-const t0 = process.hrtime.bigint();
+// ── Run backtest ────────────────────────────────────────────────────────
+
+const t0    = process.hrtime.bigint();
 const stats = engine.run(signals);
-const dt = Number(process.hrtime.bigint() - t0) / 1e6;
+const dt    = Number(process.hrtime.bigint() - t0) / 1e6;
 
-console.log(`\n${stats.initialCapital.toFixed(2)} -> ${stats.finalCapital.toFixed(2)}  ${stats.returnPct > 0 ? '+' : ''}${stats.returnPct.toFixed(4)}%`);
-console.log(`trades=${stats.totalTrades} wr=${(stats.winRate*100).toFixed(1)}% pf=${stats.profitFactor.toFixed(2)}`);
-console.log(`sharpe=${stats.sharpe.toFixed(4)} dd=${stats.maxDrawdownPct.toFixed(4)}% fees=${stats.totalFees.toFixed(4)}`);
-console.log(`(${dt.toFixed(2)}ms)`);
-
-// -- multi-symbol: resample + cross-asset --
-engine.resample("BTCUSDT", "BTCUSDT_5m", "5m");
-engine.resample("ETHUSDT", "ETHUSDT_5m", "5m");
-
-const btc5m = engine.close("BTCUSDT_5m");
-const eth5m = engine.close("ETHUSDT_5m");
-console.log(`\n5m bars: BTC=${engine.barCount("BTCUSDT_5m")} ETH=${engine.barCount("ETHUSDT_5m")}`);
-console.log(`5m last: BTC=${btc5m[btc5m.length-1].toFixed(2)} ETH=${eth5m[eth5m.length-1].toFixed(2)}`);
-
-// -- ETH RSI strategy --
-const ethClose = engine.close("ETHUSDT");
-const ethTs = engine.ts("ETHUSDT");
-const ethRsi = flox.rsi(ethClose, 14);
-
-const ethSig = new flox.SignalBuilder();
-let ethPos = 0;
-for (let i = 14; i < ethClose.length; i++) {
-    if (ethRsi[i] < 30 && ethPos <= 0) {
-        ethSig.buy(ethTs[i], 0.1, "ETHUSDT");
-        ethPos = 1;
-    } else if (ethRsi[i] > 70 && ethPos >= 0) {
-        ethSig.sell(ethTs[i], 0.1, "ETHUSDT");
-        ethPos = -1;
-    }
-}
-
-const ethStats = engine.run(ethSig);
-console.log(`\nETH RSI strategy: ${ethStats.totalTrades} trades, pnl=$${ethStats.netPnl.toFixed(2)}, sharpe=${ethStats.sharpe.toFixed(4)}`);
+console.log('\nSMA(10/30) crossover results');
+console.log(`  Capital  : ${stats.initialCapital.toFixed(2)} → ${stats.finalCapital.toFixed(2)}`);
+console.log(`  Return   : ${stats.returnPct > 0 ? '+' : ''}${stats.returnPct.toFixed(4)}%`);
+console.log(`  Trades   : ${stats.totalTrades}  (win rate ${(stats.winRate * 100).toFixed(1)}%)`);
+console.log(`  Prof.factor: ${stats.profitFactor.toFixed(2)}`);
+console.log(`  Sharpe   : ${stats.sharpe.toFixed(4)}`);
+console.log(`  Max DD   : ${stats.maxDrawdownPct.toFixed(4)}%`);
+console.log(`  Fees     : ${stats.totalFees.toFixed(4)}`);
+console.log(`  PnL      : ${stats.netPnl.toFixed(4)}`);
+console.log(`  (${dt.toFixed(2)} ms)`);

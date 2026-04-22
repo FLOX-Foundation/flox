@@ -89,7 +89,10 @@ void FloxJsStrategy::loadStdlib()
       constructor() { this._h = __flox_executor_create(); }
       destroy() { __flox_executor_destroy(this._h); }
       submitOrder(id, side, price, qty, type, symbol) {
-        __flox_executor_submit(this._h, id, side === "buy" ? 0 : 1, price, qty, type || 0, symbol || 1);
+        // JS convention: type 0 = market (default), 1 = limit.
+        // C API convention: LIMIT=0, MARKET=1.
+        var cType = (type === 1) ? 0 : 1;
+        __flox_executor_submit(this._h, id, side === "buy" ? 0 : 1, price, qty, cType, symbol || 1);
       }
       onBar(symbol, closePrice) { __flox_executor_on_bar(this._h, symbol, closePrice); }
       onTrade(symbol, price, isBuy) { __flox_executor_on_trade(this._h, symbol, price, isBuy ? 1 : 0); }
@@ -350,16 +353,16 @@ void FloxJsStrategy::loadStdlib()
         };
         var defaultKey = this._symbolOrder.length > 0 ? this._symbolOrder[0] : "__default__";
 
-        // Build merged bar timeline
+        // Build merged bar timeline. bar.ts is in ms (safe integer range).
         var merged = [];
         for (var i = 0; i < this._symbolOrder.length; i++) {
           var key = this._symbolOrder[i];
           var bars = this._symbols[key];
           for (var j = 0; j < bars.length; j++) {
-            merged.push({ ts: bars[j].ts, key: key, bar: bars[j] });
+            merged.push({ tsMs: bars[j].ts, key: key, bar: bars[j] });
           }
         }
-        merged.sort(function(a, b) { return a.ts - b.ts; });
+        merged.sort(function(a, b) { return a.tsMs - b.tsMs; });
 
         var sorted = signals.sorted();
         var sigIdx = 0;
@@ -368,7 +371,12 @@ void FloxJsStrategy::loadStdlib()
         for (var mi = 0; mi < merged.length; mi++) {
           var ref = merged[mi];
           var sid = getSid(ref.key);
-          while (sigIdx < sorted.length && sorted[sigIdx].tsMs * 1000000 <= ref.ts) {
+          // Advance clock (ns) and fill pending orders at this bar's close.
+          // Signals are submitted AFTER onBar to match Python Engine semantics.
+          executor.advanceClock(ref.tsMs * 1000000);
+          executor.onBar(sid, ref.bar.close);
+          // Submit signals timestamped at or before this bar (ms comparison)
+          while (sigIdx < sorted.length && sorted[sigIdx].tsMs <= ref.tsMs) {
             var sig = sorted[sigIdx];
             var sigKey = this._canon(sig.symbol) in this._symbols ? this._canon(sig.symbol) : defaultKey;
             var ssid = getSid(sigKey);
@@ -377,8 +385,6 @@ void FloxJsStrategy::loadStdlib()
             orderId++;
             sigIdx++;
           }
-          executor.advanceClock(ref.ts);
-          executor.onBar(sid, ref.bar.close);
         }
         while (sigIdx < sorted.length) {
           var sig = sorted[sigIdx];

@@ -1655,10 +1655,13 @@ static JSValue js_seg_extract_time(JSContext* c, JSValueConst, int, JSValueConst
 
 static int64_t detectTimestampNs(int64_t ts)
 {
-  if (ts < 1'000'000'000LL)         return ts * 1'000'000'000LL; // seconds
-  if (ts < 1'000'000'000'000LL)     return ts * 1'000'000LL;     // ms
-  if (ts < 1'000'000'000'000'000LL) return ts * 1'000LL;         // us
-  return ts;                                                       // ns
+  // Thresholds match Python normalizeTimestamp and Codon _parse_ts.
+  // Modern unix-ms timestamps (~1.78e12 in 2026) exceed 1e12, so the
+  // seconds/ms boundary must be at 1e12 for seconds, 1e15 for ms.
+  if (ts < 1'000'000'000'000LL)         return ts * 1'000'000'000LL; // seconds → ns
+  if (ts < 1'000'000'000'000'000LL)     return ts * 1'000'000LL;     // ms → ns
+  if (ts < 1'000'000'000'000'000'000LL) return ts * 1'000LL;         // us → ns
+  return ts;                                                           // already ns
 }
 
 static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -1687,14 +1690,17 @@ static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
       if (*ep != '\0') continue; // header row
     }
     try {
-      int64_t ts = detectTimestampNs(std::stoll(parts[0]));
+      // Store ts in milliseconds — safe JS integer range (13 digits < 2^53).
+      // Nanoseconds (19 digits) would lose precision as float64.
+      int64_t ts_ns = detectTimestampNs(std::stoll(parts[0]));
+      int64_t ts_ms = ts_ns / 1'000'000LL;
       double o = std::stod(parts[1]);
       double h = std::stod(parts[2]);
       double l = std::stod(parts[3]);
       double cl = std::stod(parts[4]);
       double v = std::stod(parts[5]);
       JSValue o2 = JS_NewObject(c);
-      JS_SetPropertyStr(c, o2, "ts",     JS_NewInt64(c, ts));
+      JS_SetPropertyStr(c, o2, "ts",     JS_NewInt64(c, ts_ms));
       JS_SetPropertyStr(c, o2, "open",   JS_NewFloat64(c, o));
       JS_SetPropertyStr(c, o2, "high",   JS_NewFloat64(c, h));
       JS_SetPropertyStr(c, o2, "low",    JS_NewFloat64(c, l));
