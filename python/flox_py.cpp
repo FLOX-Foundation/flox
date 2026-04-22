@@ -630,20 +630,6 @@ class Engine
 
 // ── Module ──────────────────────────────────────────────────────────
 
-// Legacy PySignal for make_signals compat
-#pragma pack(push, 1)
-struct PySignal
-{
-  int64_t timestamp_ns;
-  int64_t quantity_raw;
-  int64_t price_raw;
-  uint8_t side;
-  uint8_t order_type;
-  uint8_t _pad[6];
-};
-#pragma pack(pop)
-static_assert(sizeof(PySignal) == 32);
-
 #pragma pack(push, 1)
 struct PyBar
 {
@@ -660,7 +646,6 @@ PYBIND11_MODULE(flox_py, m)
 {
   m.doc() = "Flox -- Python bindings";
 
-  PYBIND11_NUMPY_DTYPE(PySignal, timestamp_ns, quantity_raw, price_raw, side, order_type);
   PYBIND11_NUMPY_DTYPE(PyBar, timestamp_ns, open_raw, high_raw, low_raw, close_raw, volume_raw);
 
   // Stats
@@ -723,50 +708,6 @@ PYBIND11_MODULE(flox_py, m)
       .def("low", &Engine::lows, py::arg("symbol") = "")
       .def("close", &Engine::closes, py::arg("symbol") = "")
       .def("volume", &Engine::volumes, py::arg("symbol") = "");
-
-  // Legacy make_signals (backwards compat)
-  m.def(
-      "make_signals",
-      [](py::array_t<int64_t> timestamps, py::array_t<uint8_t> sides,
-         py::array_t<double> quantities, std::optional<py::array_t<double>> prices,
-         std::optional<py::array_t<uint8_t>> types) -> py::array_t<PySignal>
-      {
-        auto n = timestamps.size();
-        auto ts = timestamps.unchecked<1>();
-        auto sd = sides.unchecked<1>();
-        auto qt = quantities.unchecked<1>();
-
-        bool hasPrices = prices.has_value() && prices->size() == n;
-        bool hasTypes = types.has_value() && types->size() == n;
-
-        auto result = py::array_t<PySignal>(n);
-        auto buf = result.mutable_unchecked<1>();
-
-        using DblAccessor = py::detail::unchecked_reference<double, 1>;
-        using U8Accessor = py::detail::unchecked_reference<uint8_t, 1>;
-        std::optional<DblAccessor> px;
-        std::optional<U8Accessor> tp;
-        if (hasPrices)
-        {
-          px.emplace(prices->unchecked<1>());
-        }
-        if (hasTypes)
-        {
-          tp.emplace(types->unchecked<1>());
-        }
-
-        for (py::ssize_t i = 0; i < n; ++i)
-        {
-          buf(i).timestamp_ns = normalizeTimestamp(ts(i));
-          buf(i).quantity_raw = Quantity::fromDouble(qt(i)).raw();
-          buf(i).price_raw = px ? Price::fromDouble((*px)(i)).raw() : 0;
-          buf(i).side = sd(i);
-          buf(i).order_type = tp ? (*tp)(i) : 0;
-        }
-        return result;
-      },
-      py::arg("timestamps"), py::arg("sides"), py::arg("quantities"),
-      py::arg("prices") = py::none(), py::arg("types") = py::none());
 
   bindIndicators(m);
   bindAggregators(m);
