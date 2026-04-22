@@ -652,6 +652,208 @@ extern "C"
   uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result,
                                                       const char* path);
 
+  // ============================================================
+  // Segment operations (full API)
+  // ============================================================
+
+  typedef struct
+  {
+    uint8_t success;
+    uint64_t segments_merged;
+    uint64_t events_written;
+    uint64_t bytes_written;
+  } FloxMergeResult;
+
+  typedef struct
+  {
+    uint8_t success;
+    uint32_t segments_created;
+    uint64_t events_written;
+  } FloxSplitResult;
+
+  typedef struct
+  {
+    uint8_t success;
+    uint64_t events_exported;
+    uint64_t bytes_written;
+  } FloxExportResult;
+
+  // merge: input_paths is \0-separated list of paths, total_len is combined length
+  FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_paths,
+                                          const char* output_dir, const char* output_name,
+                                          uint8_t sort);
+
+  FloxMergeResult flox_segment_merge_dir(const char* input_dir, const char* output_dir);
+
+  FloxSplitResult flox_segment_split(const char* input_path, const char* output_dir,
+                                     uint8_t mode, int64_t time_interval_ns,
+                                     uint64_t events_per_file);
+
+  FloxExportResult flox_segment_export(const char* input_path, const char* output_path,
+                                       uint8_t format, int64_t from_ns, int64_t to_ns,
+                                       const uint32_t* symbols, uint32_t num_symbols);
+
+  uint8_t flox_segment_recompress(const char* input_path, const char* output_path,
+                                  uint8_t compression);
+
+  uint64_t flox_segment_extract_symbols(const char* input_path, const char* output_path,
+                                        const uint32_t* symbols, uint32_t num_symbols);
+
+  uint64_t flox_segment_extract_time_range(const char* input_path, const char* output_path,
+                                           int64_t from_ns, int64_t to_ns);
+
+  // ============================================================
+  // Validation (full API)
+  // ============================================================
+
+  typedef struct
+  {
+    uint8_t valid;
+    uint8_t header_valid;
+    uint64_t reported_event_count;
+    uint64_t actual_event_count;
+    uint8_t has_index;
+    uint8_t index_valid;
+    uint64_t trades_found;
+    uint64_t book_updates_found;
+    uint32_t crc_errors;
+    uint32_t timestamp_anomalies;
+  } FloxSegmentValidation;
+
+  FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
+                                                    uint8_t verify_timestamps);
+
+  typedef struct
+  {
+    uint8_t valid;
+    uint32_t total_segments;
+    uint32_t valid_segments;
+    uint32_t corrupted_segments;
+    uint64_t total_events;
+    uint64_t total_bytes;
+    int64_t first_timestamp;
+    int64_t last_timestamp;
+  } FloxDatasetValidation;
+
+  FloxDatasetValidation flox_dataset_validate(const char* data_dir);
+
+  // ============================================================
+  // DataReader (full API)
+  // ============================================================
+
+  typedef struct
+  {
+    int64_t first_event_ns;
+    int64_t last_event_ns;
+    uint64_t total_events;
+    uint32_t segment_count;
+    uint64_t total_bytes;
+    double duration_seconds;
+  } FloxDatasetSummary;
+
+  FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int64_t from_ns,
+                                                         int64_t to_ns, const uint32_t* symbols,
+                                                         uint32_t num_symbols);
+
+  FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle reader);
+
+  typedef struct
+  {
+    uint64_t files_read;
+    uint64_t events_read;
+    uint64_t trades_read;
+    uint64_t book_updates_read;
+    uint64_t bytes_read;
+    uint64_t crc_errors;
+  } FloxReaderStats;
+
+  FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle reader);
+
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t recv_ts_ns;
+    int64_t price_raw;
+    int64_t qty_raw;
+    uint64_t trade_id;
+    uint32_t symbol_id;
+    uint8_t side;
+  } FloxTradeRecord;
+
+  // Returns number of trades read. If trades_out is NULL, counts only.
+  uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader, FloxTradeRecord* trades_out,
+                                         uint64_t max_trades);
+
+  // ============================================================
+  // DataWriter (extras)
+  // ============================================================
+
+  typedef struct
+  {
+    uint64_t bytes_written;
+    uint64_t events_written;
+    uint64_t segments_created;
+    uint64_t trades_written;
+  } FloxWriterStats;
+
+  FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer);
+
+  // ============================================================
+  // DataRecorder
+  // ============================================================
+
+  typedef void* FloxDataRecorderHandle;
+
+  FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
+                                                     const char* exchange_name,
+                                                     uint64_t max_segment_mb);
+  void flox_data_recorder_destroy(FloxDataRecorderHandle recorder);
+  void flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder, uint32_t symbol_id,
+                                      const char* name, const char* base, const char* quote,
+                                      int8_t price_precision, int8_t qty_precision);
+  void flox_data_recorder_start(FloxDataRecorderHandle recorder);
+  void flox_data_recorder_stop(FloxDataRecorderHandle recorder);
+  void flox_data_recorder_flush(FloxDataRecorderHandle recorder);
+  uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder);
+
+  // ============================================================
+  // Partitioner
+  // ============================================================
+
+  typedef void* FloxPartitionerHandle;
+
+  typedef struct
+  {
+    uint32_t partition_id;
+    int64_t from_ns;
+    int64_t to_ns;
+    int64_t warmup_from_ns;
+    uint64_t estimated_events;
+    uint64_t estimated_bytes;
+  } FloxPartition;
+
+  FloxPartitionerHandle flox_partitioner_create(const char* data_dir);
+  void flox_partitioner_destroy(FloxPartitionerHandle partitioner);
+
+  // All partition functions return number of partitions.
+  // If partitions_out is NULL, returns count only.
+  uint32_t flox_partitioner_by_time(FloxPartitionerHandle p, uint32_t num_partitions,
+                                     int64_t warmup_ns, FloxPartition* partitions_out,
+                                     uint32_t max_partitions);
+  uint32_t flox_partitioner_by_duration(FloxPartitionerHandle p, int64_t duration_ns,
+                                         int64_t warmup_ns, FloxPartition* partitions_out,
+                                         uint32_t max_partitions);
+  uint32_t flox_partitioner_by_calendar(FloxPartitionerHandle p, uint8_t unit,
+                                         int64_t warmup_ns, FloxPartition* partitions_out,
+                                         uint32_t max_partitions);
+  uint32_t flox_partitioner_by_symbol(FloxPartitionerHandle p, uint32_t num_partitions,
+                                       FloxPartition* partitions_out, uint32_t max_partitions);
+  uint32_t flox_partitioner_per_symbol(FloxPartitionerHandle p, FloxPartition* partitions_out,
+                                        uint32_t max_partitions);
+  uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle p, uint32_t num_partitions,
+                                            FloxPartition* partitions_out,
+                                            uint32_t max_partitions);
+
 #ifdef __cplusplus
 }
 #endif

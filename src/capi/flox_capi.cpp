@@ -50,6 +50,8 @@
 #include "flox/execution/order_tracker.h"
 #include "flox/position/position_group.h"
 #include "flox/position/position_tracker.h"
+#include "flox/replay/market_data_recorder.h"
+#include "flox/replay/ops/partitioner.h"
 #include "flox/replay/ops/segment_ops.h"
 #include "flox/replay/ops/validator.h"
 #include "flox/replay/readers/binary_log_reader.h"
@@ -1725,4 +1727,333 @@ uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle h, 
     return 0;
   }
   return static_cast<FloxBacktestResultImpl*>(h)->result->writeEquityCurveCsv(path) ? 1 : 0;
+}
+
+// ============================================================
+// Segment operations (full API)
+// ============================================================
+
+static replay::CompressionType toCompression(uint8_t c)
+{
+  return c == 1 ? replay::CompressionType::LZ4 : replay::CompressionType::None;
+}
+
+FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_paths,
+                                        const char* output_dir, const char* output_name,
+                                        uint8_t sort)
+{
+  std::vector<std::filesystem::path> paths;
+  const char* p = input_paths;
+  for (size_t i = 0; i < num_paths; ++i)
+  {
+    paths.emplace_back(p);
+    p += std::strlen(p) + 1;
+  }
+  replay::MergeConfig cfg;
+  cfg.output_dir = output_dir;
+  cfg.output_name = output_name ? output_name : "merged";
+  cfg.sort_by_timestamp = sort != 0;
+  auto r = replay::SegmentOps::merge(paths, cfg);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_merged, r.events_written,
+          r.bytes_written};
+}
+
+FloxMergeResult flox_segment_merge_dir(const char* input_dir, const char* output_dir)
+{
+  auto r = replay::quickMerge(input_dir, output_dir);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_merged, r.events_written,
+          r.bytes_written};
+}
+
+FloxSplitResult flox_segment_split(const char* input_path, const char* output_dir, uint8_t mode,
+                                   int64_t time_interval_ns, uint64_t events_per_file)
+{
+  replay::SplitConfig cfg;
+  cfg.output_dir = output_dir;
+  cfg.mode = static_cast<replay::SplitMode>(mode);
+  cfg.time_interval_ns = time_interval_ns;
+  cfg.events_per_file = events_per_file;
+  auto r = replay::SegmentOps::split(input_path, cfg);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_created, r.events_written};
+}
+
+FloxExportResult flox_segment_export(const char* input_path, const char* output_path,
+                                     uint8_t format, int64_t from_ns, int64_t to_ns,
+                                     const uint32_t* symbols, uint32_t num_symbols)
+{
+  replay::ExportConfig cfg;
+  cfg.output_path = output_path;
+  cfg.format = static_cast<replay::ExportFormat>(format);
+  if (from_ns > 0)
+  {
+    cfg.from_ts = from_ns;
+  }
+  if (to_ns > 0)
+  {
+    cfg.to_ts = to_ns;
+  }
+  if (symbols && num_symbols > 0)
+  {
+    cfg.symbols.insert(symbols, symbols + num_symbols);
+  }
+  auto r = replay::SegmentOps::exportData(input_path, cfg);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.events_exported, r.bytes_written};
+}
+
+uint8_t flox_segment_recompress(const char* input_path, const char* output_path,
+                                uint8_t compression)
+{
+  return replay::SegmentOps::recompress(input_path, output_path, toCompression(compression)) ? 1
+                                                                                              : 0;
+}
+
+uint64_t flox_segment_extract_symbols(const char* input_path, const char* output_path,
+                                      const uint32_t* symbols, uint32_t num_symbols)
+{
+  std::set<uint32_t> symSet(symbols, symbols + num_symbols);
+  replay::WriterConfig wc;
+  auto out = std::filesystem::path(output_path);
+  wc.output_dir = out.parent_path();
+  wc.output_filename = out.filename().string();
+  return replay::SegmentOps::extractSymbols(input_path, output_path, symSet, wc);
+}
+
+uint64_t flox_segment_extract_time_range(const char* input_path, const char* output_path,
+                                         int64_t from_ns, int64_t to_ns)
+{
+  replay::WriterConfig wc;
+  auto out = std::filesystem::path(output_path);
+  wc.output_dir = out.parent_path();
+  wc.output_filename = out.filename().string();
+  return replay::SegmentOps::extractTimeRange(input_path, output_path, from_ns, to_ns, wc);
+}
+
+// ============================================================
+// Validation (full API)
+// ============================================================
+
+FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
+                                                  uint8_t verify_timestamps)
+{
+  replay::ValidatorConfig cfg;
+  cfg.verify_crc = verify_crc != 0;
+  cfg.verify_timestamps = verify_timestamps != 0;
+  replay::SegmentValidator validator(cfg);
+  auto r = validator.validate(path);
+  return {r.valid ? (uint8_t)1 : (uint8_t)0,
+          r.header_valid ? (uint8_t)1 : (uint8_t)0,
+          r.reported_event_count,
+          r.actual_event_count,
+          r.has_index ? (uint8_t)1 : (uint8_t)0,
+          r.index_valid ? (uint8_t)1 : (uint8_t)0,
+          r.trades_found,
+          r.book_updates_found,
+          r.crc_errors,
+          r.timestamp_anomalies};
+}
+
+FloxDatasetValidation flox_dataset_validate(const char* data_dir)
+{
+  replay::DatasetValidator validator;
+  auto r = validator.validate(data_dir);
+  return {r.valid ? (uint8_t)1 : (uint8_t)0, r.total_segments,    r.valid_segments,
+          r.corrupted_segments,               r.total_events,      r.total_bytes,
+          r.first_timestamp,                  r.last_timestamp};
+}
+
+// ============================================================
+// DataReader (full API)
+// ============================================================
+
+FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int64_t from_ns,
+                                                       int64_t to_ns, const uint32_t* symbols,
+                                                       uint32_t num_symbols)
+{
+  replay::ReaderConfig cfg;
+  cfg.data_dir = data_dir;
+  if (from_ns > 0)
+  {
+    cfg.from_ns = from_ns;
+  }
+  if (to_ns > 0)
+  {
+    cfg.to_ns = to_ns;
+  }
+  if (symbols && num_symbols > 0)
+  {
+    cfg.symbols.insert(symbols, symbols + num_symbols);
+  }
+  return new replay::BinaryLogReader(cfg);
+}
+
+FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle h)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  auto s = reader->summary();
+  return {s.first_event_ns, s.last_event_ns, s.total_events, s.segment_count, s.total_bytes,
+          s.durationSeconds()};
+}
+
+FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle h)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  auto s = reader->stats();
+  return {s.files_read, s.events_read, s.trades_read, s.book_updates_read, s.bytes_read,
+          s.crc_errors};
+}
+
+uint64_t flox_data_reader_read_trades(FloxDataReaderHandle h, FloxTradeRecord* trades_out,
+                                       uint64_t max_trades)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  uint64_t count = 0;
+  reader->forEach(
+      [&](const replay::ReplayEvent& ev) -> bool
+      {
+        if (ev.type == replay::EventType::Trade)
+        {
+          if (trades_out && count < max_trades)
+          {
+            trades_out[count] = {ev.trade.exchange_ts_ns, ev.trade.recv_ts_ns, ev.trade.price_raw,
+                                 ev.trade.qty_raw,        ev.trade.trade_id,   ev.trade.symbol_id,
+                                 ev.trade.side};
+          }
+          ++count;
+        }
+        return !trades_out || count < max_trades;
+      });
+  return count;
+}
+
+// ============================================================
+// DataWriter (extras)
+// ============================================================
+
+FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle h)
+{
+  auto* w = static_cast<replay::BinaryLogWriter*>(h);
+  auto s = w->stats();
+  return {s.bytes_written, s.events_written, s.segments_created, s.trades_written};
+}
+
+// ============================================================
+// DataRecorder
+// ============================================================
+
+FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
+                                                   const char* exchange_name,
+                                                   uint64_t max_segment_mb)
+{
+  MarketDataRecorderConfig cfg;
+  cfg.output_dir = output_dir;
+  cfg.exchange_name = exchange_name;
+  cfg.max_segment_bytes = max_segment_mb * 1024 * 1024;
+  return new MarketDataRecorder(cfg);
+}
+
+void flox_data_recorder_destroy(FloxDataRecorderHandle h)
+{
+  delete static_cast<MarketDataRecorder*>(h);
+}
+
+void flox_data_recorder_add_symbol(FloxDataRecorderHandle h, uint32_t symbol_id, const char* name,
+                                    const char* base, const char* quote, int8_t price_precision,
+                                    int8_t qty_precision)
+{
+  static_cast<MarketDataRecorder*>(h)->addSymbol(symbol_id, name, base ? base : "",
+                                                  quote ? quote : "", price_precision,
+                                                  qty_precision);
+}
+
+void flox_data_recorder_start(FloxDataRecorderHandle h)
+{
+  static_cast<MarketDataRecorder*>(h)->start();
+}
+
+void flox_data_recorder_stop(FloxDataRecorderHandle h)
+{
+  static_cast<MarketDataRecorder*>(h)->stop();
+}
+
+void flox_data_recorder_flush(FloxDataRecorderHandle h)
+{
+  static_cast<MarketDataRecorder*>(h)->flush();
+}
+
+uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle h)
+{
+  return static_cast<MarketDataRecorder*>(h)->isRecording() ? 1 : 0;
+}
+
+// ============================================================
+// Partitioner
+// ============================================================
+
+FloxPartitionerHandle flox_partitioner_create(const char* data_dir)
+{
+  return new replay::Partitioner(std::filesystem::path(data_dir));
+}
+
+void flox_partitioner_destroy(FloxPartitionerHandle h)
+{
+  delete static_cast<replay::Partitioner*>(h);
+}
+
+static uint32_t copyPartitions(const std::vector<replay::Partition>& parts,
+                               FloxPartition* out, uint32_t max)
+{
+  uint32_t n = static_cast<uint32_t>(parts.size());
+  if (!out)
+  {
+    return n;
+  }
+  uint32_t count = std::min(n, max);
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    out[i] = {parts[i].partition_id, parts[i].from_ns,         parts[i].to_ns,
+              parts[i].warmup_from_ns, parts[i].estimated_events, parts[i].estimated_bytes};
+  }
+  return count;
+}
+
+uint32_t flox_partitioner_by_time(FloxPartitionerHandle h, uint32_t num_partitions,
+                                   int64_t warmup_ns, FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByTime(num_partitions, warmup_ns), out, max);
+}
+
+uint32_t flox_partitioner_by_duration(FloxPartitionerHandle h, int64_t duration_ns,
+                                       int64_t warmup_ns, FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByDuration(duration_ns, warmup_ns), out, max);
+}
+
+uint32_t flox_partitioner_by_calendar(FloxPartitionerHandle h, uint8_t unit, int64_t warmup_ns,
+                                       FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByCalendar(
+          static_cast<replay::Partitioner::CalendarUnit>(unit), warmup_ns),
+      out, max);
+}
+
+uint32_t flox_partitioner_by_symbol(FloxPartitionerHandle h, uint32_t num_partitions,
+                                     FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionBySymbol(num_partitions), out, max);
+}
+
+uint32_t flox_partitioner_per_symbol(FloxPartitionerHandle h, FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(static_cast<replay::Partitioner*>(h)->partitionPerSymbol(), out, max);
+}
+
+uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle h, uint32_t num_partitions,
+                                          FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByEventCount(num_partitions), out, max);
 }
