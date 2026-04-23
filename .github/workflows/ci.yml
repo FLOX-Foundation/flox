@@ -85,6 +85,9 @@ jobs:
 
     - name: Build Node.js addon
       working-directory: node
+      env:
+        CXX: g++-14
+        CC: gcc-14
       run: npm install && npm run build
 
     - name: Run tests
