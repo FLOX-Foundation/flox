@@ -312,12 +312,13 @@ TEST(JsIntegrationTest, NoExchangeThrows)
   EXPECT_THROW(FloxJsStrategy(script.path(), registry), std::runtime_error);
 }
 
-TEST(JsIntegrationTest, NoRegisterThrows)
+TEST(JsIntegrationTest, NoRegisterOk)
 {
+  // Plain scripts without flox.register() are valid (standalone script use case)
   TempJsFile script("var x = 1;");
 
   SymbolRegistry registry;
-  EXPECT_THROW(FloxJsStrategy(script.path(), registry), std::runtime_error);
+  EXPECT_NO_THROW(FloxJsStrategy(script.path(), registry));
 }
 
 TEST(JsIntegrationTest, JsExceptionInOnTradeDoesNotCrash)
