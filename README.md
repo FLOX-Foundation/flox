@@ -18,8 +18,9 @@ Documentation is available at [flox-foundation.github.io/flox](https://flox-foun
 | Node.js | `npm install flox-node` | [reference](https://flox-foundation.github.io/flox/reference/node/) |
 | Codon | build from source | [reference](https://flox-foundation.github.io/flox/reference/codon/) |
 | JavaScript (embedded) | bundled with C++ build | [reference](https://flox-foundation.github.io/flox/reference/quickjs/) |
+| C API | `libflox_capi.so` | [reference](https://flox-foundation.github.io/flox/reference/api/capi/flox_capi/) |
 
-All bindings expose the same strategy API, indicators, order books, backtesting, and data I/O.
+All bindings expose the same strategy API, indicators, order books, backtesting, and data I/O. The C API is the integration point for adding support for any other language.
 
 ## Connectors
 
