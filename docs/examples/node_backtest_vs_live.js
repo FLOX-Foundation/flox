@@ -11,7 +11,7 @@
  */
 
 const path = require('path');
-const flox = require('../node');
+const flox = require('../../node');
 
 const DATA = path.join(__dirname, 'data', 'btcusdt_1m.csv');
 

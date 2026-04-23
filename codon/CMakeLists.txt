@@ -32,3 +32,9 @@ add_codon_executable(codon_sma_crossover
 
 add_codon_executable(codon_pairs_strategy
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/pairs_strategy.codon)
+
+add_codon_executable(codon_backtest_from_csv
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/backtest_from_csv.codon)
+
+add_codon_executable(codon_full_backtest
+  ${CMAKE_SOURCE_DIR}/docs/examples/codon_full_backtest.codon)

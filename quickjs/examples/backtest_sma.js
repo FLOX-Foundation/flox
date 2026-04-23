@@ -14,7 +14,7 @@
 // ── Load data ──────────────────────────────────────────────────────────
 
 var engine = new Engine(10000.0, 0.0004);
-engine.loadCsv("examples/data/btcusdt_1m.csv");
+engine.loadCsv("docs/examples/data/btcusdt_1m.csv");
 
 var bars = engine._symbols["__default__"];
 var n    = bars.length;
