@@ -348,7 +348,8 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
     return it->second;
   }
 
-  Napi::Value extractField(const Napi::CallbackInfo& info, int64_t OhlcvBar::* f)
+  using OhlcvField = int64_t OhlcvBar::*;
+  Napi::Value extractField(const Napi::CallbackInfo& info, OhlcvField f)
   {
     auto& bars = resolve(info).bars;
     auto buf = Napi::Float64Array::New(info.Env(), bars.size());

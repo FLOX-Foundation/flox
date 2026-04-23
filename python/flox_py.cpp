@@ -416,7 +416,8 @@ class Engine
     return out;
   }
 
-  py::array_t<double> field(const std::string& symbol, int64_t OhlcvBar::* f) const
+  using OhlcvField = int64_t OhlcvBar::*;
+  py::array_t<double> field(const std::string& symbol, OhlcvField f) const
   {
     auto& bars = resolve(symbol).bars;
     py::array_t<double> out(bars.size());
