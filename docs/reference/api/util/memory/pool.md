@@ -1,6 +1,6 @@
 # Pool & Handle
 
-This module implements a lock-free, reference-counted object pool for zero-allocation reuse of high-frequency data structures. It is optimized for HFT workloads with strict latency and memory control requirements.
+Lock-free, reference-counted object pool for reusing fixed-size objects without heap allocation.
 
 ## `pool::Pool<T, Capacity>`
 

@@ -1,6 +1,6 @@
 # NLevelOrderBook
 
-`NLevelOrderBook` is a high-performance, fixed-depth limit order book optimized for HFT and simulation. It uses tick-based indexing for fast access and zero allocations in the hot path.
+`NLevelOrderBook` is a fixed-depth limit order book. Uses tick-based indexing and no heap allocations during updates.
 
 ```cpp
 template <size_t MaxLevels = 8192>

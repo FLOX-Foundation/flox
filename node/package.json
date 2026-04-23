@@ -3,11 +3,26 @@
   "version": "0.1.0",
   "description": "Node.js bindings for the Flox trading engine",
   "main": "index.js",
+  "files": [
+    "index.js",
+    "prebuilds/"
+  ],
   "scripts": {
     "build": "cmake-js compile",
     "rebuild": "cmake-js rebuild"
   },
-  "dependencies": {
+  "keywords": [
+    "trading",
+    "strategy",
+    "backtest",
+    "flox"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FLOX-Foundation/flox.git"
+  },
+  "devDependencies": {
     "cmake-js": "^7.3.0",
     "node-addon-api": "^8.3.1"
   }

@@ -70,6 +70,6 @@ This allows you to trade off between completeness and real-time guarantees.
 
 ## Related
 
-* `AtomicLogger`: ultra-low-latency lock-free logger implementation in FLOX
+* `AtomicLogger`: lock-free logger implementation in FLOX
 * `LogLevel`: enumeration for severity control
 * `OverflowPolicy`: controls log buffering behavior

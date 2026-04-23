@@ -1,0 +1,306 @@
+# flox/runner.codon -- Runner and BacktestRunner for Codon.
+#
+# Runner: unified live runner.
+#   Runner(reg, on_signal)               — synchronous (default)
+#   Runner(reg, on_signal, threaded=True) — Disruptor-based consumer thread
+#
+# Both modes expose the same API: add_strategy / start / stop / on_trade.
+# threaded=True uses lock-free publish; strategy callbacks fire in a
+# background C++ thread. No GIL in Codon so this is safe.
+#
+# Usage:
+#   from flox.runner import Runner
+#   from flox.strategy import Strategy
+#
+#   class MyStrat(Strategy):
+#       def on_trade(self, ctx, trade):
+#           if self.position() == 0:
+#               self.market_buy(0.01)
+#
+#   def on_signal(sig):
+#       print("Order:", sig.side, sig.quantity, "@", sig.price)
+#
+#   reg = flox_registry_create()
+#   btc = flox_registry_add_symbol(reg, "binance".c_str(), "BTCUSDT".c_str(), 0.01)
+#
+#   runner = Runner(reg, on_signal)           # sync
+#   # runner = Runner(reg, on_signal, True)   # threaded
+#   runner.add_strategy(MyStrat([btc]))
+#   runner.start()
+#   runner.on_trade(btc, price, qty, True, ts_ns)
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+
+from C import flox_runner_create(cobj, cobj, cobj) -> cobj
+from C import flox_runner_destroy(cobj)
+from C import flox_runner_add_strategy(cobj, cobj)
+from C import flox_runner_start(cobj)
+from C import flox_runner_stop(cobj)
+from C import flox_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import flox_runner_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32,
+                                            Ptr[float], Ptr[float], u32, i64)
+
+from C import flox_live_engine_create(cobj) -> cobj
+from C import flox_live_engine_destroy(cobj)
+from C import flox_live_engine_add_strategy(cobj, cobj, cobj, cobj)
+from C import flox_live_engine_start(cobj)
+from C import flox_live_engine_stop(cobj)
+from C import flox_live_engine_publish_trade(cobj, u32, float, float, u8, i64)
+from C import flox_live_engine_publish_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32,
+                                                       Ptr[float], Ptr[float], u32, i64)
+
+from C import flox_backtest_runner_create(cobj, float, float) -> cobj
+from C import flox_backtest_runner_destroy(cobj)
+from C import flox_backtest_runner_set_strategy(cobj, cobj)
+from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, Ptr[i64]) -> i32
+from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, Ptr[i64]) -> i32
+
+from C import flox_price_to_double(i64) -> float
+from C import flox_quantity_to_double(i64) -> float
+from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+
+from flox.types import SCALE, Price, Quantity
+from flox.backtest import BacktestStats
+
+
+@dataclass
+class FloxSignalC:
+    order_id:        u64
+    symbol:          u32
+    side:            u8
+    order_type:      u8
+    price:           float
+    quantity:        float
+    trigger_price:   float
+    trailing_offset: float
+    trailing_bps:    i32
+    new_price:       float
+    new_quantity:    float
+
+
+@dataclass
+class Signal:
+    """Order signal emitted by a strategy."""
+    order_id:        int
+    symbol:          int
+    side:            str   # "buy" or "sell"
+    order_type:      str   # "market", "limit", "stop_market", ...
+    price:           float
+    quantity:        float
+    trigger_price:   float
+    trailing_offset: float
+    trailing_bps:    int
+    new_price:       float
+    new_quantity:    float
+
+
+_ORDER_TYPE_NAMES = [
+    "market", "limit", "stop_market", "stop_limit",
+    "tp_market", "tp_limit", "trailing_stop",
+    "cancel", "cancel_all", "modify"
+]
+
+
+def _signal_from_c(s: Ptr[FloxSignalC]) -> Signal:
+    ot_idx = int(s[0].order_type)
+    ot = _ORDER_TYPE_NAMES[ot_idx] if ot_idx < len(_ORDER_TYPE_NAMES) else "unknown"
+    return Signal(
+        order_id        = int(s[0].order_id),
+        symbol          = int(s[0].symbol),
+        side            = "buy" if s[0].side == u8(0) else "sell",
+        order_type      = ot,
+        price           = s[0].price,
+        quantity        = s[0].quantity,
+        trigger_price   = s[0].trigger_price,
+        trailing_offset = s[0].trailing_offset,
+        trailing_bps    = int(s[0].trailing_bps),
+        new_price       = s[0].new_price,
+        new_quantity    = s[0].new_quantity,
+    )
+
+
+# ======================================================================
+# Runner
+# ======================================================================
+
+class Runner:
+    """Unified live runner.
+
+    Runner(registry, on_signal)              — synchronous (default)
+    Runner(registry, on_signal, threaded=True) — Disruptor, lock-free
+
+    Both modes expose the same API. threaded=True runs strategy callbacks
+    in a background C++ consumer thread; on_trade() returns immediately.
+
+    Example::
+
+        runner = Runner(registry, on_signal)           # sync
+        runner = Runner(registry, on_signal, True)     # threaded
+        runner.add_strategy(strategy)
+        runner.start()
+        runner.on_trade(btc_id, price, qty, True, ts_ns)
+        runner.stop()
+    """
+
+    _sync_handle:   cobj
+    _live_handle:   cobj
+    _on_signal:     Function[[Signal], None]
+    _threaded:      bool
+
+    def __init__(self, registry: cobj, on_signal: Function[[Signal], None],
+                 threaded: bool = False):
+        self._on_signal = on_signal
+        self._threaded  = threaded
+        self._sync_handle = cobj()
+        self._live_handle = cobj()
+
+        if threaded:
+            self._live_handle = flox_live_engine_create(registry)
+        else:
+            cb = Function[[Ptr[FloxSignalC]], None](
+                lambda sig: on_signal(_signal_from_c(sig))
+            )
+            self._sync_handle = flox_runner_create(registry, cb.__raw__(), __ptr__(self).__raw__())
+
+    def add_strategy(self, strategy):
+        if self._threaded:
+            cb = Function[[Ptr[FloxSignalC]], None](
+                lambda sig: self._on_signal(_signal_from_c(sig))
+            )
+            flox_live_engine_add_strategy(
+                self._live_handle, strategy._handle,
+                cb.__raw__(), __ptr__(self).__raw__()
+            )
+        else:
+            flox_runner_add_strategy(self._sync_handle, strategy._handle)
+
+    def start(self):
+        if self._threaded: flox_live_engine_start(self._live_handle)
+        else:              flox_runner_start(self._sync_handle)
+
+    def stop(self):
+        if self._threaded: flox_live_engine_stop(self._live_handle)
+        else:              flox_runner_stop(self._sync_handle)
+
+    def on_trade(self, symbol: int, price: float, qty: float,
+                 is_buy: bool, ts_ns: int = 0):
+        if self._threaded:
+            flox_live_engine_publish_trade(
+                self._live_handle, u32(symbol), price, qty,
+                u8(1 if is_buy else 0), i64(ts_ns))
+        else:
+            flox_runner_on_trade(self._sync_handle, u32(symbol), price, qty,
+                                  u8(1 if is_buy else 0), i64(ts_ns))
+
+    def on_book_snapshot(self, symbol: int,
+                          bid_prices: List[float], bid_qtys: List[float],
+                          ask_prices: List[float], ask_qtys: List[float],
+                          ts_ns: int = 0):
+        nb = u32(len(bid_prices))
+        na = u32(len(ask_prices))
+        if self._threaded:
+            flox_live_engine_publish_book_snapshot(
+                self._live_handle, u32(symbol),
+                bid_prices.__ptr__(), bid_qtys.__ptr__(), nb,
+                ask_prices.__ptr__(), ask_qtys.__ptr__(), na,
+                i64(ts_ns))
+        else:
+            flox_runner_on_book_snapshot(
+                self._sync_handle, u32(symbol),
+                bid_prices.__ptr__(), bid_qtys.__ptr__(), nb,
+                ask_prices.__ptr__(), ask_qtys.__ptr__(), na,
+                i64(ts_ns))
+
+
+# ======================================================================
+# BacktestRunner
+# ======================================================================
+
+class BacktestRunner:
+    """Replay OHLCV data through a Strategy and collect performance stats.
+
+    The same Strategy subclass used with Runner works
+    unchanged here — BacktestRunner is the signal handler, so emitted
+    orders go to the SimulatedExecutor automatically.
+
+    Example::
+
+        runner = BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000.0)
+        runner.set_strategy(strat)
+        stats = runner.run_csv("/path/to/data.csv", "BTCUSDT")
+        print(stats.return_pct, stats.sharpe)
+    """
+
+    _handle: cobj
+
+    def __init__(self, registry: cobj, fee_rate: float = 0.0004,
+                 initial_capital: float = 10_000.0):
+        self._handle = flox_backtest_runner_create(registry, fee_rate, initial_capital)
+
+    def close(self):
+        if self._handle != cobj():
+            flox_backtest_runner_destroy(self._handle)
+            self._handle = cobj()
+
+    def set_strategy(self, strategy):
+        """Attach a Strategy. Must be called before run_csv / run_ohlcv."""
+        flox_backtest_runner_set_strategy(self._handle, strategy._handle)
+
+    def _parse_stats(self, buf: List[i64]) -> BacktestStats:
+        fp = Ptr[f64](buf.arr.ptr)
+        return BacktestStats(
+            total_trades=int(buf[0]),
+            winning_trades=int(buf[1]),
+            losing_trades=int(buf[2]),
+            max_consecutive_wins=int(buf[3]),
+            max_consecutive_losses=int(buf[4]),
+            initial_capital=fp[5],
+            final_capital=fp[6],
+            total_pnl=fp[7],
+            total_fees=fp[8],
+            net_pnl=fp[9],
+            gross_profit=fp[10],
+            gross_loss=fp[11],
+            max_drawdown=fp[12],
+            max_drawdown_pct=fp[13],
+            win_rate=fp[14],
+            profit_factor=fp[15],
+            avg_win=fp[16],
+            avg_loss=fp[17],
+            avg_win_loss_ratio=fp[18],
+            avg_trade_duration_ns=fp[19],
+            median_trade_duration_ns=fp[20],
+            max_trade_duration_ns=fp[21],
+            sharpe=fp[22],
+            sortino=fp[23],
+            calmar=fp[24],
+            time_weighted_return=fp[25],
+            return_pct=fp[26],
+            start_time_ns=int(buf[27]),
+            end_time_ns=int(buf[28])
+        )
+
+    def run_csv(self, path: str, symbol: str) -> BacktestStats:
+        """Replay a OHLCV CSV file. Returns BacktestStats."""
+        buf = [i64(0)] * 29
+        ok = flox_backtest_runner_run_csv(
+            self._handle, path.c_str(), symbol.c_str(), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError(f"BacktestRunner.run_csv failed: {path}")
+        return self._parse_stats(buf)
+
+    def run_ohlcv(self, timestamps: List[int], closes: List[float],
+                  symbol: str) -> BacktestStats:
+        """Replay raw OHLCV arrays. timestamps in nanoseconds."""
+        n = u32(len(timestamps))
+        ts_buf   = [i64(t) for t in timestamps]
+        buf      = [i64(0)] * 29
+        ok = flox_backtest_runner_run_ohlcv(
+            self._handle,
+            ts_buf.arr.ptr, closes.__ptr__(), n,
+            symbol.c_str(), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError("BacktestRunner.run_ohlcv failed")
+        return self._parse_stats(buf)

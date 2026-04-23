@@ -56,6 +56,57 @@ Feed a trade for order matching.
 executor.on_trade(symbol=1, price=50000.0, is_buy=True)
 ```
 
+#### `on_trade_qty(symbol, price, qty, is_buy)`
+
+Feed a trade with quantity. Required for `QUEUE_FULL` queue simulation.
+
+```python
+executor.on_trade_qty(symbol=1, price=50000.0, qty=0.5, is_buy=True)
+```
+
+#### `on_best_levels(symbol, bid_price, bid_qty, ask_price, ask_qty)`
+
+Feed a top-of-book snapshot.
+
+```python
+executor.on_best_levels(1, 49999.0, 2.0, 50001.0, 1.5)
+```
+
+#### `set_default_slippage(model, ticks=0, tick_size=0.0, bps=0.0, impact_coeff=0.0)`
+
+Configure slippage for all symbols.
+
+```python
+from flox import SLIPPAGE_FIXED_BPS
+executor.set_default_slippage(SLIPPAGE_FIXED_BPS, bps=2.0)
+```
+
+| `model` constant | Value | Description |
+|-----------------|-------|-------------|
+| `SLIPPAGE_NONE` | `0` | No slippage |
+| `SLIPPAGE_FIXED_TICKS` | `1` | Fixed tick count |
+| `SLIPPAGE_FIXED_BPS` | `2` | Fixed basis points |
+| `SLIPPAGE_VOLUME_IMPACT` | `3` | Volume-proportional impact |
+
+#### `set_symbol_slippage(symbol, model, ticks=0, tick_size=0.0, bps=0.0, impact_coeff=0.0)`
+
+Per-symbol slippage override. Same parameters as `set_default_slippage`.
+
+#### `set_queue_model(model, depth=1)`
+
+Configure limit order queue simulation.
+
+```python
+from flox import QUEUE_TOB
+executor.set_queue_model(QUEUE_TOB, depth=1)
+```
+
+| `model` constant | Value | Description |
+|-----------------|-------|-------------|
+| `QUEUE_NONE` | `0` | Fill limit orders immediately at price |
+| `QUEUE_TOB` | `1` | Fill only when price trades through level |
+| `QUEUE_FULL` | `2` | Model queue position; fill as volume passes |
+
 #### `advance_clock(timestamp_ns)`
 
 Advance the simulation clock.
@@ -97,6 +148,45 @@ for fill in executor.fills_list():
 | Property | Type | Description |
 |----------|------|-------------|
 | `fill_count` | `int` | Number of fills |
+
+---
+
+## BacktestResult
+
+Computes statistics and equity curve from a `SimulatedExecutor`'s fills.
+
+```python
+result = flox.BacktestResult(initial_capital=10_000.0, fee_rate=0.0004)
+result.ingest_executor(executor)
+stats = result.stats()
+print(stats['net_pnl'], stats['sharpe'])
+```
+
+### Constructor
+
+```python
+flox.BacktestResult(
+    initial_capital=100000.0,
+    fee_rate=0.0001,
+    use_percentage_fee=True,
+    fixed_fee_per_trade=0.0,
+    risk_free_rate=0.0,
+    annualization_factor=252.0,
+)
+```
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `record_fill(order_id, symbol, side, price, qty, timestamp_ns)` | `None` | Record a single fill |
+| `ingest_executor(executor)` | `None` | Drain all fills from a `SimulatedExecutor` |
+| `stats()` | `dict` | Compute and return statistics |
+| `equity_curve_size()` | `int` | Number of equity curve points |
+| `write_equity_curve_csv(path)` | `bool` | Write equity curve to CSV |
+| `close()` | `None` | Free resources |
+
+`stats()` returns the same keys as `Engine.run()` plus `start_time_ns` and `end_time_ns`.
 
 ---
 

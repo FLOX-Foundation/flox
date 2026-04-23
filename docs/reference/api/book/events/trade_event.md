@@ -51,6 +51,6 @@ struct TradeEvent
 ## Notes
 
 * Used by `BarAggregator`, PnL trackers, and all signal generation components.
-* Designed for ultra-low-latency delivery; no heap allocation involved.
+* No heap allocation.
 * Stateless container — no logic beyond encapsulation.
 * `sourceExchange` enables cross-exchange trade aggregation in CEX mode.

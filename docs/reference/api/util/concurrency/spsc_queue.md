@@ -1,6 +1,6 @@
 # SPSCQueue
 
-`SPSCQueue` is a lock-free, bounded-size single-producer/single-consumer queue optimized for HFT workloads. It supports in-place construction, zero allocations, and cache-line isolation.
+`SPSCQueue` is a lock-free, bounded single-producer/single-consumer queue. Supports in-place construction and cache-line isolation.
 
 ```cpp
 template <typename T, size_t Capacity>

@@ -106,6 +106,8 @@ inline void registerPositions(Napi::Env env, Napi::Object exports)
   exports.Set("PositionTracker", PositionTrackerWrap::Init(env));
   exports.Set("PositionGroupTracker", PositionGroupTrackerWrap::Init(env));
   exports.Set("OrderTracker", OrderTrackerWrap::Init(env));
+  exports.Set("POSITION_FIFO", Napi::Number::New(env, 0));
+  exports.Set("POSITION_AVG_COST", Napi::Number::New(env, 1));
 }
 
 }  // namespace node_flox

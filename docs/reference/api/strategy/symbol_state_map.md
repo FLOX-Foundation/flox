@@ -1,6 +1,6 @@
 # SymbolStateMap
 
-`SymbolStateMap` is a high-performance O(1) container for per-symbol state, optimized for trading systems.
+`SymbolStateMap` is an O(1) container for per-symbol state, indexed by `SymbolId`.
 
 ```cpp
 template <typename State, size_t MaxSymbols = 256>

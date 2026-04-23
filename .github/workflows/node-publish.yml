@@ -1,0 +1,139 @@
+name: Publish flox-node
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version (e.g. 0.2.0)"
+        type: string
+        required: true
+      publish_npm:
+        description: "Publish to npm"
+        type: boolean
+        default: false
+
+jobs:
+  check-actor:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Restrict manual trigger
+        if: github.actor != 'eeiaao'
+        run: |
+          echo "::error::Only eeiaao can trigger this workflow manually."
+          exit 1
+
+  build:
+    needs: [check-actor]
+    if: always() && (needs.check-actor.result == 'success' || needs.check-actor.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set version
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            exit 0
+          fi
+          cd node
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Install dependencies
+        working-directory: node
+        run: npm install
+
+      - name: Build flox + capi
+        shell: bash
+        run: |
+          cmake -B build \
+            -DFLOX_ENABLE_CAPI=ON \
+            -DFLOX_ENABLE_BACKTEST=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      - name: Build node addon
+        working-directory: node
+        run: npm run build
+
+      - name: Copy prebuilt
+        shell: bash
+        run: |
+          mkdir -p node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}
+          cp node/build/Release/flox_node.node \
+             node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/flox_node.node
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.platform }}-${{ matrix.arch }}
+          path: node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/flox_node.node
+
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_npm == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Set version
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            exit 0
+          fi
+          cd node
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: node/prebuilds
+          merge-multiple: true
+
+      - name: Publish
+        working-directory: node
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
