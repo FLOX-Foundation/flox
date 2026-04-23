@@ -116,4 +116,5 @@ for (let i = 0; i < prices.length; i++) {
 setTimeout(() => {
   threaded.stop();
   console.log(`  Signals received: ${engineSigs.length}`);
+  process.exit(0);
 }, 50);
