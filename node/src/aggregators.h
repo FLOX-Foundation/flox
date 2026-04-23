@@ -2,9 +2,9 @@
 
 #pragma once
 #include <napi.h>
-#include "flox/capi/flox_capi.h"
 #include <cstring>
 #include <vector>
+#include "flox/capi/flox_capi.h"
 
 namespace node_flox
 {
@@ -50,7 +50,9 @@ inline TradeArrays extractTrades(const Napi::CallbackInfo& info)
   // Convert float64 timestamps to int64
   std::vector<int64_t> tsVec(n);
   for (size_t i = 0; i < n; i++)
+  {
     tsVec[i] = static_cast<int64_t>(ts[i]);
+  }
 
   return {std::move(tsVec), px.Data(), qty.Data(), ib.Data(), n};
 }

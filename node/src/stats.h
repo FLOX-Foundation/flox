@@ -2,9 +2,9 @@
 
 #pragma once
 #include <napi.h>
-#include "flox/capi/flox_capi.h"
 #include <cstring>
 #include <vector>
+#include "flox/capi/flox_capi.h"
 
 namespace node_flox
 {
@@ -39,7 +39,9 @@ inline Napi::Value stat_bootstrap_ci(const Napi::CallbackInfo& info)
   double lo, med, hi;
   flox_stat_bootstrap_ci(a.Data(), a.ElementLength(), conf, samples, &lo, &med, &hi);
   auto o = Napi::Object::New(info.Env());
-  o.Set("lower", lo); o.Set("median", med); o.Set("upper", hi);
+  o.Set("lower", lo);
+  o.Set("median", med);
+  o.Set("upper", hi);
   return o;
 }
 
@@ -60,7 +62,9 @@ inline Napi::Value stat_bar_returns(const Napi::CallbackInfo& info)
   auto out = Napi::Float64Array::New(info.Env(), n);
   out[0] = 0.0;
   for (size_t i = 1; i < n; ++i)
+  {
     out[i] = static_cast<double>(sl[i - 1] + ss[i - 1]) * lr[i];
+  }
   return out;
 }
 
@@ -71,15 +75,32 @@ inline Napi::Value stat_trade_pnl(const Napi::CallbackInfo& info)
   auto lr = info[2].As<Napi::Float64Array>();
   size_t n = sl.ElementLength();
   std::vector<double> trades;
-  double pnl = 0; int8_t prev = 0; bool inTrade = false;
-  for (size_t i = 1; i < n; ++i) {
-    int8_t pos = sl[i-1] + ss[i-1];
+  double pnl = 0;
+  int8_t prev = 0;
+  bool inTrade = false;
+  for (size_t i = 1; i < n; ++i)
+  {
+    int8_t pos = sl[i - 1] + ss[i - 1];
     double ret = static_cast<double>(pos) * lr[i];
-    if (pos != prev) { if (inTrade) { trades.push_back(pnl); pnl = 0; } inTrade = pos != 0; }
-    if (pos != 0) pnl += ret;
+    if (pos != prev)
+    {
+      if (inTrade)
+      {
+        trades.push_back(pnl);
+        pnl = 0;
+      }
+      inTrade = pos != 0;
+    }
+    if (pos != 0)
+    {
+      pnl += ret;
+    }
     prev = pos;
   }
-  if (inTrade) trades.push_back(pnl);
+  if (inTrade)
+  {
+    trades.push_back(pnl);
+  }
   auto out = Napi::Float64Array::New(info.Env(), trades.size());
   std::memcpy(out.Data(), trades.data(), trades.size() * sizeof(double));
   return out;

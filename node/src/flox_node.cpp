@@ -11,6 +11,7 @@
 #include "positions.h"
 #include "profiles.h"
 #include "stats.h"
+#include "strategy.h"
 
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
@@ -23,6 +24,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerStats(env, exports);
   node_flox::registerAggregators(env, exports);
   node_flox::registerDataOps(env, exports);
+  node_flox::registerStrategy(env, exports);
   return exports;
 }
 

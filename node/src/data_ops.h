@@ -2,9 +2,9 @@
 
 #pragma once
 #include <napi.h>
-#include "flox/capi/flox_capi.h"
 #include <cstring>
 #include <vector>
+#include "flox/capi/flox_capi.h"
 
 namespace node_flox
 {
@@ -17,10 +17,10 @@ class DataWriterWrap : public Napi::ObjectWrap<DataWriterWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "DataWriter",
-      {InstanceMethod("writeTrade", &DataWriterWrap::WriteTrade),
-       InstanceMethod("flush", &DataWriterWrap::Flush),
-       InstanceMethod("close", &DataWriterWrap::Close),
-       InstanceMethod("stats", &DataWriterWrap::Stats)});
+                       {InstanceMethod("writeTrade", &DataWriterWrap::WriteTrade),
+                        InstanceMethod("flush", &DataWriterWrap::Flush),
+                        InstanceMethod("close", &DataWriterWrap::Close),
+                        InstanceMethod("stats", &DataWriterWrap::Stats)});
   }
   DataWriterWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataWriterWrap>(info)
   {
@@ -29,18 +29,28 @@ class DataWriterWrap : public Napi::ObjectWrap<DataWriterWrap>
     uint8_t exId = info.Length() > 2 ? info[2].As<Napi::Number>().Uint32Value() : 0;
     _h = flox_data_writer_create(dir.c_str(), maxMb, exId);
   }
-  ~DataWriterWrap() { if (_h) { flox_data_writer_close(_h); flox_data_writer_destroy(_h); } }
+  ~DataWriterWrap()
+  {
+    if (_h)
+    {
+      flox_data_writer_close(_h);
+      flox_data_writer_destroy(_h);
+    }
+  }
+
  private:
-  Napi::Value WriteTrade(const Napi::CallbackInfo& info) {
+  Napi::Value WriteTrade(const Napi::CallbackInfo& info)
+  {
     return Napi::Boolean::New(info.Env(), flox_data_writer_write_trade(_h,
-      info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Int64Value(),
-      info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue(),
-      info[4].As<Napi::Number>().Int64Value(), info[5].As<Napi::Number>().Uint32Value(),
-      info[6].As<Napi::Number>().Uint32Value()));
+                                                                       info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Int64Value(),
+                                                                       info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue(),
+                                                                       info[4].As<Napi::Number>().Int64Value(), info[5].As<Napi::Number>().Uint32Value(),
+                                                                       info[6].As<Napi::Number>().Uint32Value()));
   }
   void Flush(const Napi::CallbackInfo&) { flox_data_writer_flush(_h); }
   void Close(const Napi::CallbackInfo&) { flox_data_writer_close(_h); }
-  Napi::Value Stats(const Napi::CallbackInfo& info) {
+  Napi::Value Stats(const Napi::CallbackInfo& info)
+  {
     auto s = flox_data_writer_stats(_h);
     auto o = Napi::Object::New(info.Env());
     o.Set("bytesWritten", (double)s.bytes_written);
@@ -60,10 +70,10 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "DataReader",
-      {InstanceAccessor("count", &DataReaderWrap::Count, nullptr),
-       InstanceMethod("summary", &DataReaderWrap::Summary),
-       InstanceMethod("stats", &DataReaderWrap::Stats),
-       InstanceMethod("readTrades", &DataReaderWrap::ReadTrades)});
+                       {InstanceAccessor("count", &DataReaderWrap::Count, nullptr),
+                        InstanceMethod("summary", &DataReaderWrap::Summary),
+                        InstanceMethod("stats", &DataReaderWrap::Stats),
+                        InstanceMethod("readTrades", &DataReaderWrap::ReadTrades)});
   }
   DataReaderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataReaderWrap>(info)
   {
@@ -73,10 +83,18 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     // TODO: symbol filter array
     _h = flox_data_reader_create_filtered(dir.c_str(), from, to, nullptr, 0);
   }
-  ~DataReaderWrap() { if (_h) flox_data_reader_destroy(_h); }
+  ~DataReaderWrap()
+  {
+    if (_h)
+    {
+      flox_data_reader_destroy(_h);
+    }
+  }
+
  private:
   Napi::Value Count(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), (double)flox_data_reader_count(_h)); }
-  Napi::Value Summary(const Napi::CallbackInfo& info) {
+  Napi::Value Summary(const Napi::CallbackInfo& info)
+  {
     auto s = flox_data_reader_summary(_h);
     auto o = Napi::Object::New(info.Env());
     o.Set("firstEventNs", (double)s.first_event_ns);
@@ -87,7 +105,8 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     o.Set("durationSeconds", s.duration_seconds);
     return o;
   }
-  Napi::Value Stats(const Napi::CallbackInfo& info) {
+  Napi::Value Stats(const Napi::CallbackInfo& info)
+  {
     auto s = flox_data_reader_stats(_h);
     auto o = Napi::Object::New(info.Env());
     o.Set("filesRead", (double)s.files_read);
@@ -98,14 +117,19 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     o.Set("crcErrors", (double)s.crc_errors);
     return o;
   }
-  Napi::Value ReadTrades(const Napi::CallbackInfo& info) {
+  Napi::Value ReadTrades(const Napi::CallbackInfo& info)
+  {
     uint64_t maxTrades = info.Length() > 0 ? info[0].As<Napi::Number>().Int64Value() : 0;
     // First pass: count
-    if (maxTrades == 0) maxTrades = flox_data_reader_read_trades(_h, nullptr, 0);
+    if (maxTrades == 0)
+    {
+      maxTrades = flox_data_reader_read_trades(_h, nullptr, 0);
+    }
     std::vector<FloxTradeRecord> trades(maxTrades);
     uint64_t n = flox_data_reader_read_trades(_h, trades.data(), maxTrades);
     auto arr = Napi::Array::New(info.Env(), n);
-    for (uint64_t i = 0; i < n; i++) {
+    for (uint64_t i = 0; i < n; i++)
+    {
       auto o = Napi::Object::New(info.Env());
       o.Set("exchangeTsNs", (double)trades[i].exchange_ts_ns);
       o.Set("recvTsNs", (double)trades[i].recv_ts_ns);
@@ -129,29 +153,37 @@ class DataRecorderWrap : public Napi::ObjectWrap<DataRecorderWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "DataRecorder",
-      {InstanceMethod("addSymbol", &DataRecorderWrap::AddSymbol),
-       InstanceMethod("start", &DataRecorderWrap::Start),
-       InstanceMethod("stop", &DataRecorderWrap::Stop),
-       InstanceMethod("flush", &DataRecorderWrap::Flush),
-       InstanceAccessor("isRecording", &DataRecorderWrap::IsRecording, nullptr)});
+                       {InstanceMethod("addSymbol", &DataRecorderWrap::AddSymbol),
+                        InstanceMethod("start", &DataRecorderWrap::Start),
+                        InstanceMethod("stop", &DataRecorderWrap::Stop),
+                        InstanceMethod("flush", &DataRecorderWrap::Flush),
+                        InstanceAccessor("isRecording", &DataRecorderWrap::IsRecording, nullptr)});
   }
   DataRecorderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataRecorderWrap>(info)
   {
     _h = flox_data_recorder_create(
-      info[0].As<Napi::String>().Utf8Value().c_str(),
-      info.Length() > 1 ? info[1].As<Napi::String>().Utf8Value().c_str() : "default",
-      info.Length() > 2 ? info[2].As<Napi::Number>().Int64Value() : 256);
+        info[0].As<Napi::String>().Utf8Value().c_str(),
+        info.Length() > 1 ? info[1].As<Napi::String>().Utf8Value().c_str() : "default",
+        info.Length() > 2 ? info[2].As<Napi::Number>().Int64Value() : 256);
   }
-  ~DataRecorderWrap() { if (_h) flox_data_recorder_destroy(_h); }
+  ~DataRecorderWrap()
+  {
+    if (_h)
+    {
+      flox_data_recorder_destroy(_h);
+    }
+  }
+
  private:
-  void AddSymbol(const Napi::CallbackInfo& info) {
+  void AddSymbol(const Napi::CallbackInfo& info)
+  {
     flox_data_recorder_add_symbol(_h,
-      info[0].As<Napi::Number>().Uint32Value(),
-      info[1].As<Napi::String>().Utf8Value().c_str(),
-      info.Length() > 2 ? info[2].As<Napi::String>().Utf8Value().c_str() : "",
-      info.Length() > 3 ? info[3].As<Napi::String>().Utf8Value().c_str() : "",
-      info.Length() > 4 ? info[4].As<Napi::Number>().Int32Value() : 8,
-      info.Length() > 5 ? info[5].As<Napi::Number>().Int32Value() : 8);
+                                  info[0].As<Napi::Number>().Uint32Value(),
+                                  info[1].As<Napi::String>().Utf8Value().c_str(),
+                                  info.Length() > 2 ? info[2].As<Napi::String>().Utf8Value().c_str() : "",
+                                  info.Length() > 3 ? info[3].As<Napi::String>().Utf8Value().c_str() : "",
+                                  info.Length() > 4 ? info[4].As<Napi::Number>().Int32Value() : 8,
+                                  info.Length() > 5 ? info[5].As<Napi::Number>().Int32Value() : 8);
   }
   void Start(const Napi::CallbackInfo&) { flox_data_recorder_start(_h); }
   void Stop(const Napi::CallbackInfo&) { flox_data_recorder_stop(_h); }
@@ -168,23 +200,31 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "Partitioner",
-      {InstanceMethod("byTime", &PartitionerWrap::ByTime),
-       InstanceMethod("byDuration", &PartitionerWrap::ByDuration),
-       InstanceMethod("byCalendar", &PartitionerWrap::ByCalendar),
-       InstanceMethod("bySymbol", &PartitionerWrap::BySymbol),
-       InstanceMethod("perSymbol", &PartitionerWrap::PerSymbol),
-       InstanceMethod("byEventCount", &PartitionerWrap::ByEventCount)});
+                       {InstanceMethod("byTime", &PartitionerWrap::ByTime),
+                        InstanceMethod("byDuration", &PartitionerWrap::ByDuration),
+                        InstanceMethod("byCalendar", &PartitionerWrap::ByCalendar),
+                        InstanceMethod("bySymbol", &PartitionerWrap::BySymbol),
+                        InstanceMethod("perSymbol", &PartitionerWrap::PerSymbol),
+                        InstanceMethod("byEventCount", &PartitionerWrap::ByEventCount)});
   }
   PartitionerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PartitionerWrap>(info)
   {
     _h = flox_partitioner_create(info[0].As<Napi::String>().Utf8Value().c_str());
   }
-  ~PartitionerWrap() { if (_h) flox_partitioner_destroy(_h); }
+  ~PartitionerWrap()
+  {
+    if (_h)
+    {
+      flox_partitioner_destroy(_h);
+    }
+  }
+
  private:
   Napi::Value toArray(const Napi::CallbackInfo& info, FloxPartition* parts, uint32_t n)
   {
     auto arr = Napi::Array::New(info.Env(), n);
-    for (uint32_t i = 0; i < n; i++) {
+    for (uint32_t i = 0; i < n; i++)
+    {
       auto o = Napi::Object::New(info.Env());
       o.Set("partitionId", parts[i].partition_id);
       o.Set("fromNs", (double)parts[i].from_ns);
@@ -196,7 +236,8 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
     }
     return arr;
   }
-  Napi::Value ByTime(const Napi::CallbackInfo& info) {
+  Napi::Value ByTime(const Napi::CallbackInfo& info)
+  {
     uint32_t n = info[0].As<Napi::Number>().Uint32Value();
     int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
     uint32_t count = flox_partitioner_by_time(_h, n, warmup, nullptr, 0);
@@ -204,7 +245,8 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
     flox_partitioner_by_time(_h, n, warmup, parts.data(), count);
     return toArray(info, parts.data(), count);
   }
-  Napi::Value ByDuration(const Napi::CallbackInfo& info) {
+  Napi::Value ByDuration(const Napi::CallbackInfo& info)
+  {
     int64_t dur = info[0].As<Napi::Number>().Int64Value();
     int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
     uint32_t count = flox_partitioner_by_duration(_h, dur, warmup, nullptr, 0);
@@ -212,29 +254,45 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
     flox_partitioner_by_duration(_h, dur, warmup, parts.data(), count);
     return toArray(info, parts.data(), count);
   }
-  Napi::Value ByCalendar(const Napi::CallbackInfo& info) {
+  Napi::Value ByCalendar(const Napi::CallbackInfo& info)
+  {
     std::string u = info[0].As<Napi::String>().Utf8Value();
-    uint8_t unit = 0; if (u=="day") unit=1; else if (u=="week") unit=2; else if (u=="month") unit=3;
+    uint8_t unit = 0;
+    if (u == "day")
+    {
+      unit = 1;
+    }
+    else if (u == "week")
+    {
+      unit = 2;
+    }
+    else if (u == "month")
+    {
+      unit = 3;
+    }
     int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
     uint32_t count = flox_partitioner_by_calendar(_h, unit, warmup, nullptr, 0);
     std::vector<FloxPartition> parts(count);
     flox_partitioner_by_calendar(_h, unit, warmup, parts.data(), count);
     return toArray(info, parts.data(), count);
   }
-  Napi::Value BySymbol(const Napi::CallbackInfo& info) {
+  Napi::Value BySymbol(const Napi::CallbackInfo& info)
+  {
     uint32_t n = info[0].As<Napi::Number>().Uint32Value();
     uint32_t count = flox_partitioner_by_symbol(_h, n, nullptr, 0);
     std::vector<FloxPartition> parts(count);
     flox_partitioner_by_symbol(_h, n, parts.data(), count);
     return toArray(info, parts.data(), count);
   }
-  Napi::Value PerSymbol(const Napi::CallbackInfo& info) {
+  Napi::Value PerSymbol(const Napi::CallbackInfo& info)
+  {
     uint32_t count = flox_partitioner_per_symbol(_h, nullptr, 0);
     std::vector<FloxPartition> parts(count);
     flox_partitioner_per_symbol(_h, parts.data(), count);
     return toArray(info, parts.data(), count);
   }
-  Napi::Value ByEventCount(const Napi::CallbackInfo& info) {
+  Napi::Value ByEventCount(const Napi::CallbackInfo& info)
+  {
     uint32_t n = info[0].As<Napi::Number>().Uint32Value();
     uint32_t count = flox_partitioner_by_event_count(_h, n, nullptr, 0);
     std::vector<FloxPartition> parts(count);
@@ -286,14 +344,14 @@ inline Napi::Value seg_validate_dataset(const Napi::CallbackInfo& info)
 inline Napi::Value seg_merge(const Napi::CallbackInfo& info)
 {
   return Napi::Boolean::New(info.Env(), flox_segment_merge(
-    info[0].As<Napi::String>().Utf8Value().c_str(),
-    info[1].As<Napi::String>().Utf8Value().c_str()));
+                                            info[0].As<Napi::String>().Utf8Value().c_str(),
+                                            info[1].As<Napi::String>().Utf8Value().c_str()));
 }
 
 inline Napi::Value seg_merge_dir(const Napi::CallbackInfo& info)
 {
   auto r = flox_segment_merge_dir(info[0].As<Napi::String>().Utf8Value().c_str(),
-                                   info[1].As<Napi::String>().Utf8Value().c_str());
+                                  info[1].As<Napi::String>().Utf8Value().c_str());
   auto o = Napi::Object::New(info.Env());
   o.Set("success", (bool)r.success);
   o.Set("segmentsMerged", (double)r.segments_merged);
@@ -304,15 +362,26 @@ inline Napi::Value seg_merge_dir(const Napi::CallbackInfo& info)
 
 inline Napi::Value seg_split(const Napi::CallbackInfo& info)
 {
-  uint8_t mode = 0; // time
+  uint8_t mode = 0;  // time
   std::string m = info.Length() > 2 ? info[2].As<Napi::String>().Utf8Value() : "time";
-  if (m == "event_count") mode = 1; else if (m == "size") mode = 2; else if (m == "symbol") mode = 3;
+  if (m == "event_count")
+  {
+    mode = 1;
+  }
+  else if (m == "size")
+  {
+    mode = 2;
+  }
+  else if (m == "symbol")
+  {
+    mode = 3;
+  }
   auto r = flox_segment_split(
-    info[0].As<Napi::String>().Utf8Value().c_str(),
-    info[1].As<Napi::String>().Utf8Value().c_str(),
-    mode,
-    info.Length() > 3 ? info[3].As<Napi::Number>().Int64Value() : 3600000000000LL,
-    info.Length() > 4 ? info[4].As<Napi::Number>().Int64Value() : 1000000);
+      info[0].As<Napi::String>().Utf8Value().c_str(),
+      info[1].As<Napi::String>().Utf8Value().c_str(),
+      mode,
+      info.Length() > 3 ? info[3].As<Napi::Number>().Int64Value() : 3600000000000LL,
+      info.Length() > 4 ? info[4].As<Napi::Number>().Int64Value() : 1000000);
   auto o = Napi::Object::New(info.Env());
   o.Set("success", (bool)r.success);
   o.Set("segmentsCreated", r.segments_created);
@@ -323,17 +392,29 @@ inline Napi::Value seg_split(const Napi::CallbackInfo& info)
 inline Napi::Value seg_export(const Napi::CallbackInfo& info)
 {
   uint8_t fmt = 0;
-  if (info.Length() > 2 && info[2].IsString()) {
+  if (info.Length() > 2 && info[2].IsString())
+  {
     std::string f = info[2].As<Napi::String>().Utf8Value();
-    if (f == "json") fmt = 1; else if (f == "jsonlines") fmt = 2; else if (f == "binary") fmt = 3;
+    if (f == "json")
+    {
+      fmt = 1;
+    }
+    else if (f == "jsonlines")
+    {
+      fmt = 2;
+    }
+    else if (f == "binary")
+    {
+      fmt = 3;
+    }
   }
   auto r = flox_segment_export(
-    info[0].As<Napi::String>().Utf8Value().c_str(),
-    info[1].As<Napi::String>().Utf8Value().c_str(),
-    fmt,
-    info.Length() > 3 && info[3].IsNumber() ? info[3].As<Napi::Number>().Int64Value() : 0,
-    info.Length() > 4 && info[4].IsNumber() ? info[4].As<Napi::Number>().Int64Value() : 0,
-    nullptr, 0);
+      info[0].As<Napi::String>().Utf8Value().c_str(),
+      info[1].As<Napi::String>().Utf8Value().c_str(),
+      fmt,
+      info.Length() > 3 && info[3].IsNumber() ? info[3].As<Napi::Number>().Int64Value() : 0,
+      info.Length() > 4 && info[4].IsNumber() ? info[4].As<Napi::Number>().Int64Value() : 0,
+      nullptr, 0);
   auto o = Napi::Object::New(info.Env());
   o.Set("success", (bool)r.success);
   o.Set("eventsExported", (double)r.events_exported);
@@ -343,29 +424,36 @@ inline Napi::Value seg_export(const Napi::CallbackInfo& info)
 
 inline Napi::Value seg_recompress(const Napi::CallbackInfo& info)
 {
-  uint8_t c = 1; // lz4
-  if (info.Length() > 2) { std::string s = info[2].As<Napi::String>().Utf8Value(); if (s == "none") c = 0; }
+  uint8_t c = 1;  // lz4
+  if (info.Length() > 2)
+  {
+    std::string s = info[2].As<Napi::String>().Utf8Value();
+    if (s == "none")
+    {
+      c = 0;
+    }
+  }
   return Napi::Boolean::New(info.Env(), flox_segment_recompress(
-    info[0].As<Napi::String>().Utf8Value().c_str(),
-    info[1].As<Napi::String>().Utf8Value().c_str(), c));
+                                            info[0].As<Napi::String>().Utf8Value().c_str(),
+                                            info[1].As<Napi::String>().Utf8Value().c_str(), c));
 }
 
 inline Napi::Value seg_extract_symbols(const Napi::CallbackInfo& info)
 {
   auto syms = info[2].As<Napi::Uint32Array>();
   return Napi::Number::New(info.Env(), (double)flox_segment_extract_symbols(
-    info[0].As<Napi::String>().Utf8Value().c_str(),
-    info[1].As<Napi::String>().Utf8Value().c_str(),
-    syms.Data(), syms.ElementLength()));
+                                           info[0].As<Napi::String>().Utf8Value().c_str(),
+                                           info[1].As<Napi::String>().Utf8Value().c_str(),
+                                           syms.Data(), syms.ElementLength()));
 }
 
 inline Napi::Value seg_extract_time_range(const Napi::CallbackInfo& info)
 {
   return Napi::Number::New(info.Env(), (double)flox_segment_extract_time_range(
-    info[0].As<Napi::String>().Utf8Value().c_str(),
-    info[1].As<Napi::String>().Utf8Value().c_str(),
-    info[2].As<Napi::Number>().Int64Value(),
-    info[3].As<Napi::Number>().Int64Value()));
+                                           info[0].As<Napi::String>().Utf8Value().c_str(),
+                                           info[1].As<Napi::String>().Utf8Value().c_str(),
+                                           info[2].As<Napi::Number>().Int64Value(),
+                                           info[3].As<Napi::Number>().Int64Value()));
 }
 
 // ── Registration ────────────────────────────────────────────────────

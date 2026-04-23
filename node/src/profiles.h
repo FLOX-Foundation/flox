@@ -13,16 +13,23 @@ class VolumeProfileWrap : public Napi::ObjectWrap<VolumeProfileWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "VolumeProfile",
-      {InstanceMethod("addTrade", &VolumeProfileWrap::AddTrade),
-       InstanceMethod("poc", &VolumeProfileWrap::Poc),
-       InstanceMethod("valueAreaHigh", &VolumeProfileWrap::Vah),
-       InstanceMethod("valueAreaLow", &VolumeProfileWrap::Val),
-       InstanceMethod("totalVolume", &VolumeProfileWrap::TotalVol),
-       InstanceMethod("clear", &VolumeProfileWrap::Clear)});
+                       {InstanceMethod("addTrade", &VolumeProfileWrap::AddTrade),
+                        InstanceMethod("poc", &VolumeProfileWrap::Poc),
+                        InstanceMethod("valueAreaHigh", &VolumeProfileWrap::Vah),
+                        InstanceMethod("valueAreaLow", &VolumeProfileWrap::Val),
+                        InstanceMethod("totalVolume", &VolumeProfileWrap::TotalVol),
+                        InstanceMethod("clear", &VolumeProfileWrap::Clear)});
   }
   VolumeProfileWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<VolumeProfileWrap>(info),
-    _h(flox_volume_profile_create(info[0].As<Napi::Number>().DoubleValue())) {}
-  ~VolumeProfileWrap() { if (_h) flox_volume_profile_destroy(_h); }
+                                                      _h(flox_volume_profile_create(info[0].As<Napi::Number>().DoubleValue())) {}
+  ~VolumeProfileWrap()
+  {
+    if (_h)
+    {
+      flox_volume_profile_destroy(_h);
+    }
+  }
+
  private:
   void AddTrade(const Napi::CallbackInfo& info) { flox_volume_profile_add_trade(_h, info[0].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
   Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_volume_profile_poc(_h)); }
@@ -39,20 +46,27 @@ class MarketProfileWrap : public Napi::ObjectWrap<MarketProfileWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "MarketProfile",
-      {InstanceMethod("addTrade", &MarketProfileWrap::AddTrade),
-       InstanceMethod("poc", &MarketProfileWrap::Poc),
-       InstanceMethod("valueAreaHigh", &MarketProfileWrap::Vah),
-       InstanceMethod("valueAreaLow", &MarketProfileWrap::Val),
-       InstanceMethod("initialBalanceHigh", &MarketProfileWrap::IbHigh),
-       InstanceMethod("initialBalanceLow", &MarketProfileWrap::IbLow),
-       InstanceMethod("isPoorHigh", &MarketProfileWrap::PoorHigh),
-       InstanceMethod("isPoorLow", &MarketProfileWrap::PoorLow),
-       InstanceMethod("clear", &MarketProfileWrap::Clear)});
+                       {InstanceMethod("addTrade", &MarketProfileWrap::AddTrade),
+                        InstanceMethod("poc", &MarketProfileWrap::Poc),
+                        InstanceMethod("valueAreaHigh", &MarketProfileWrap::Vah),
+                        InstanceMethod("valueAreaLow", &MarketProfileWrap::Val),
+                        InstanceMethod("initialBalanceHigh", &MarketProfileWrap::IbHigh),
+                        InstanceMethod("initialBalanceLow", &MarketProfileWrap::IbLow),
+                        InstanceMethod("isPoorHigh", &MarketProfileWrap::PoorHigh),
+                        InstanceMethod("isPoorLow", &MarketProfileWrap::PoorLow),
+                        InstanceMethod("clear", &MarketProfileWrap::Clear)});
   }
   MarketProfileWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<MarketProfileWrap>(info),
-    _h(flox_market_profile_create(info[0].As<Napi::Number>().DoubleValue(),
-      info[1].As<Napi::Number>().Uint32Value(), info[2].As<Napi::Number>().Int64Value())) {}
-  ~MarketProfileWrap() { if (_h) flox_market_profile_destroy(_h); }
+                                                      _h(flox_market_profile_create(info[0].As<Napi::Number>().DoubleValue(),
+                                                                                    info[1].As<Napi::Number>().Uint32Value(), info[2].As<Napi::Number>().Int64Value())) {}
+  ~MarketProfileWrap()
+  {
+    if (_h)
+    {
+      flox_market_profile_destroy(_h);
+    }
+  }
+
  private:
   void AddTrade(const Napi::CallbackInfo& info) { flox_market_profile_add_trade(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Boolean>().Value() ? 1 : 0); }
   Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_poc(_h)); }
@@ -72,15 +86,22 @@ class FootprintBarWrap : public Napi::ObjectWrap<FootprintBarWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "FootprintBar",
-      {InstanceMethod("addTrade", &FootprintBarWrap::AddTrade),
-       InstanceMethod("totalDelta", &FootprintBarWrap::Delta),
-       InstanceMethod("totalVolume", &FootprintBarWrap::Volume),
-       InstanceAccessor("numLevels", &FootprintBarWrap::Levels, nullptr),
-       InstanceMethod("clear", &FootprintBarWrap::Clear)});
+                       {InstanceMethod("addTrade", &FootprintBarWrap::AddTrade),
+                        InstanceMethod("totalDelta", &FootprintBarWrap::Delta),
+                        InstanceMethod("totalVolume", &FootprintBarWrap::Volume),
+                        InstanceAccessor("numLevels", &FootprintBarWrap::Levels, nullptr),
+                        InstanceMethod("clear", &FootprintBarWrap::Clear)});
   }
   FootprintBarWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<FootprintBarWrap>(info),
-    _h(flox_footprint_create(info[0].As<Napi::Number>().DoubleValue())) {}
-  ~FootprintBarWrap() { if (_h) flox_footprint_destroy(_h); }
+                                                     _h(flox_footprint_create(info[0].As<Napi::Number>().DoubleValue())) {}
+  ~FootprintBarWrap()
+  {
+    if (_h)
+    {
+      flox_footprint_destroy(_h);
+    }
+  }
+
  private:
   void AddTrade(const Napi::CallbackInfo& info) { flox_footprint_add_trade(_h, info[0].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
   Napi::Value Delta(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_footprint_total_delta(_h)); }

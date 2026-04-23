@@ -13,20 +13,26 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "SimulatedExecutor",
-      {InstanceMethod("submitOrder", &SimulatedExecutorWrap::SubmitOrder),
-       InstanceMethod("cancelOrder", &SimulatedExecutorWrap::CancelOrder),
-       InstanceMethod("cancelAll", &SimulatedExecutorWrap::CancelAll),
-       InstanceMethod("onBar", &SimulatedExecutorWrap::OnBar),
-       InstanceMethod("onTrade", &SimulatedExecutorWrap::OnTrade),
-       InstanceMethod("advanceClock", &SimulatedExecutorWrap::AdvanceClock),
-       InstanceMethod("setDefaultSlippage", &SimulatedExecutorWrap::SetDefaultSlippage),
-       InstanceMethod("setQueueModel", &SimulatedExecutorWrap::SetQueueModel),
-       InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
+                       {InstanceMethod("submitOrder", &SimulatedExecutorWrap::SubmitOrder),
+                        InstanceMethod("cancelOrder", &SimulatedExecutorWrap::CancelOrder),
+                        InstanceMethod("cancelAll", &SimulatedExecutorWrap::CancelAll),
+                        InstanceMethod("onBar", &SimulatedExecutorWrap::OnBar),
+                        InstanceMethod("onTrade", &SimulatedExecutorWrap::OnTrade),
+                        InstanceMethod("advanceClock", &SimulatedExecutorWrap::AdvanceClock),
+                        InstanceMethod("setDefaultSlippage", &SimulatedExecutorWrap::SetDefaultSlippage),
+                        InstanceMethod("setQueueModel", &SimulatedExecutorWrap::SetQueueModel),
+                        InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
   SimulatedExecutorWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<SimulatedExecutorWrap>(info), _h(flox_executor_create()) {}
-  ~SimulatedExecutorWrap() { if (_h) flox_executor_destroy(_h); }
+  ~SimulatedExecutorWrap()
+  {
+    if (_h)
+    {
+      flox_executor_destroy(_h);
+    }
+  }
   FloxExecutorHandle handle() const { return _h; }
 
  private:
@@ -40,7 +46,10 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     uint32_t sym = info.Length() > 5 ? info[5].As<Napi::Number>().Uint32Value() : 1;
     uint8_t s = side == "buy" ? 0 : 1;
     uint8_t t = 0;
-    if (type == "limit") t = 1;
+    if (type == "limit")
+    {
+      t = 1;
+    }
     flox_executor_submit_order(_h, id, s, price, qty, t, sym);
   }
   void CancelOrder(const Napi::CallbackInfo& info) { flox_executor_cancel_order(_h, info[0].As<Napi::Number>().Int64Value()); }
@@ -52,9 +61,18 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   {
     std::string model = info[0].As<Napi::String>().Utf8Value();
     uint8_t m = 0;
-    if (model == "fixed_ticks") m = 1;
-    else if (model == "fixed_bps") m = 2;
-    else if (model == "volume_impact") m = 3;
+    if (model == "fixed_ticks")
+    {
+      m = 1;
+    }
+    else if (model == "fixed_bps")
+    {
+      m = 2;
+    }
+    else if (model == "volume_impact")
+    {
+      m = 3;
+    }
     int32_t ticks = info.Length() > 1 ? info[1].As<Napi::Number>().Int32Value() : 0;
     double tickSize = info.Length() > 2 ? info[2].As<Napi::Number>().DoubleValue() : 0.0;
     double bps = info.Length() > 3 ? info[3].As<Napi::Number>().DoubleValue() : 0.0;
@@ -65,7 +83,14 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   {
     std::string model = info[0].As<Napi::String>().Utf8Value();
     uint8_t m = 0;
-    if (model == "tob") m = 1; else if (model == "full") m = 2;
+    if (model == "tob")
+    {
+      m = 1;
+    }
+    else if (model == "full")
+    {
+      m = 2;
+    }
     uint32_t depth = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
     flox_executor_set_queue_model(_h, m, depth);
   }
@@ -79,9 +104,9 @@ class BacktestResultWrap : public Napi::ObjectWrap<BacktestResultWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "BacktestResult",
-      {InstanceMethod("recordFill", &BacktestResultWrap::RecordFill),
-       InstanceMethod("ingestExecutor", &BacktestResultWrap::IngestExecutor),
-       InstanceMethod("stats", &BacktestResultWrap::Stats)});
+                       {InstanceMethod("recordFill", &BacktestResultWrap::RecordFill),
+                        InstanceMethod("ingestExecutor", &BacktestResultWrap::IngestExecutor),
+                        InstanceMethod("stats", &BacktestResultWrap::Stats)});
   }
   BacktestResultWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<BacktestResultWrap>(info)
   {
@@ -89,18 +114,24 @@ class BacktestResultWrap : public Napi::ObjectWrap<BacktestResultWrap>
     double fee = info.Length() > 1 ? info[1].As<Napi::Number>().DoubleValue() : 0.0001;
     _h = flox_backtest_result_create(cap, fee, 1, 0.0, 0.0, 252.0);
   }
-  ~BacktestResultWrap() { if (_h) flox_backtest_result_destroy(_h); }
+  ~BacktestResultWrap()
+  {
+    if (_h)
+    {
+      flox_backtest_result_destroy(_h);
+    }
+  }
 
  private:
   void RecordFill(const Napi::CallbackInfo& info)
   {
     flox_backtest_result_record_fill(_h,
-      info[0].As<Napi::Number>().Int64Value(),
-      info[1].As<Napi::Number>().Uint32Value(),
-      info[2].As<Napi::String>().Utf8Value() == "buy" ? 0 : 1,
-      info[3].As<Napi::Number>().DoubleValue(),
-      info[4].As<Napi::Number>().DoubleValue(),
-      info[5].As<Napi::Number>().Int64Value());
+                                     info[0].As<Napi::Number>().Int64Value(),
+                                     info[1].As<Napi::Number>().Uint32Value(),
+                                     info[2].As<Napi::String>().Utf8Value() == "buy" ? 0 : 1,
+                                     info[3].As<Napi::Number>().DoubleValue(),
+                                     info[4].As<Napi::Number>().DoubleValue(),
+                                     info[5].As<Napi::Number>().Int64Value());
   }
   void IngestExecutor(const Napi::CallbackInfo& info)
   {

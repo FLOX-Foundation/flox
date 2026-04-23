@@ -108,8 +108,8 @@ static std::vector<OhlcvBar> parseCsv(const std::string& path)
 }
 
 static std::vector<OhlcvBar> arraysToOhlcv(contiguous_i64 timestamps, contiguous_f64 open,
-                                            contiguous_f64 high, contiguous_f64 low,
-                                            contiguous_f64 close, contiguous_f64 volume)
+                                           contiguous_f64 high, contiguous_f64 low,
+                                           contiguous_f64 close, contiguous_f64 volume)
 {
   auto n = timestamps.size();
   std::vector<OhlcvBar> bars(n);
@@ -135,7 +135,7 @@ static std::vector<OhlcvBar> arraysToOhlcv(contiguous_i64 timestamps, contiguous
 // ── Resample ────────────────────────────────────────────────────────
 
 static std::vector<OhlcvBar> resampleBars(const std::vector<OhlcvBar>& src,
-                                           int64_t intervalNs)
+                                          int64_t intervalNs)
 {
   if (src.empty() || intervalNs <= 0)
   {
@@ -248,11 +248,11 @@ struct PyStats
 
   static PyStats fromBacktest(const BacktestStats& s)
   {
-    return {s.totalTrades,     s.winningTrades, s.losingTrades,    s.initialCapital,
-            s.finalCapital,    s.totalPnl,      s.totalFees,       s.netPnl,
-            s.grossProfit,     s.grossLoss,     s.maxDrawdown,     s.maxDrawdownPct,
-            s.winRate,         s.profitFactor,   s.avgWin,          s.avgLoss,
-            s.sharpeRatio,     s.sortinoRatio,   s.calmarRatio,     s.returnPct};
+    return {s.totalTrades, s.winningTrades, s.losingTrades, s.initialCapital,
+            s.finalCapital, s.totalPnl, s.totalFees, s.netPnl,
+            s.grossProfit, s.grossLoss, s.maxDrawdown, s.maxDrawdownPct,
+            s.winRate, s.profitFactor, s.avgWin, s.avgLoss,
+            s.sharpeRatio, s.sortinoRatio, s.calmarRatio, s.returnPct};
   }
 
   py::dict toDict() const
@@ -416,7 +416,7 @@ class Engine
     return out;
   }
 
-  py::array_t<double> field(const std::string& symbol, int64_t OhlcvBar::*f) const
+  py::array_t<double> field(const std::string& symbol, int64_t OhlcvBar::* f) const
   {
     auto& bars = resolve(symbol).bars;
     py::array_t<double> out(bars.size());
@@ -475,7 +475,8 @@ class Engine
     std::vector<size_t> sigOrder(sigs.size());
     std::iota(sigOrder.begin(), sigOrder.end(), 0);
     std::sort(sigOrder.begin(), sigOrder.end(),
-              [&](size_t a, size_t b) { return sigs[a].timestamp_ns < sigs[b].timestamp_ns; });
+              [&](size_t a, size_t b)
+              { return sigs[a].timestamp_ns < sigs[b].timestamp_ns; });
 
     // Merge all bars across symbols by timestamp
     std::vector<MergedBar> merged;

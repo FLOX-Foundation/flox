@@ -13,20 +13,28 @@ class PositionTrackerWrap : public Napi::ObjectWrap<PositionTrackerWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "PositionTracker",
-      {InstanceMethod("onFill", &PositionTrackerWrap::OnFill),
-       InstanceMethod("position", &PositionTrackerWrap::Position),
-       InstanceMethod("avgEntryPrice", &PositionTrackerWrap::AvgEntry),
-       InstanceMethod("realizedPnl", &PositionTrackerWrap::Pnl),
-       InstanceMethod("totalRealizedPnl", &PositionTrackerWrap::TotalPnl)});
+                       {InstanceMethod("onFill", &PositionTrackerWrap::OnFill),
+                        InstanceMethod("position", &PositionTrackerWrap::Position),
+                        InstanceMethod("avgEntryPrice", &PositionTrackerWrap::AvgEntry),
+                        InstanceMethod("realizedPnl", &PositionTrackerWrap::Pnl),
+                        InstanceMethod("totalRealizedPnl", &PositionTrackerWrap::TotalPnl)});
   }
   PositionTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PositionTrackerWrap>(info),
-    _h(flox_position_tracker_create(info.Length() > 0 ? info[0].As<Napi::Number>().Uint32Value() : 0)) {}
-  ~PositionTrackerWrap() { if (_h) flox_position_tracker_destroy(_h); }
+                                                        _h(flox_position_tracker_create(info.Length() > 0 ? info[0].As<Napi::Number>().Uint32Value() : 0)) {}
+  ~PositionTrackerWrap()
+  {
+    if (_h)
+    {
+      flox_position_tracker_destroy(_h);
+    }
+  }
+
  private:
-  void OnFill(const Napi::CallbackInfo& info) {
+  void OnFill(const Napi::CallbackInfo& info)
+  {
     std::string side = info[1].As<Napi::String>().Utf8Value();
     flox_position_tracker_on_fill(_h, info[0].As<Napi::Number>().Uint32Value(),
-      side == "buy" ? 0 : 1, info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue());
+                                  side == "buy" ? 0 : 1, info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue());
   }
   Napi::Value Position(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_tracker_position(_h, info[0].As<Napi::Number>().Uint32Value())); }
   Napi::Value AvgEntry(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_position_tracker_avg_entry(_h, info[0].As<Napi::Number>().Uint32Value())); }
@@ -41,23 +49,31 @@ class PositionGroupTrackerWrap : public Napi::ObjectWrap<PositionGroupTrackerWra
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "PositionGroupTracker",
-      {InstanceMethod("openPosition", &PositionGroupTrackerWrap::Open),
-       InstanceMethod("closePosition", &PositionGroupTrackerWrap::Close),
-       InstanceMethod("partialClose", &PositionGroupTrackerWrap::PartialClose),
-       InstanceMethod("netPosition", &PositionGroupTrackerWrap::Net),
-       InstanceMethod("realizedPnl", &PositionGroupTrackerWrap::Pnl),
-       InstanceMethod("totalRealizedPnl", &PositionGroupTrackerWrap::TotalPnl),
-       InstanceMethod("openCount", &PositionGroupTrackerWrap::OpenCount),
-       InstanceMethod("prune", &PositionGroupTrackerWrap::Prune)});
+                       {InstanceMethod("openPosition", &PositionGroupTrackerWrap::Open),
+                        InstanceMethod("closePosition", &PositionGroupTrackerWrap::Close),
+                        InstanceMethod("partialClose", &PositionGroupTrackerWrap::PartialClose),
+                        InstanceMethod("netPosition", &PositionGroupTrackerWrap::Net),
+                        InstanceMethod("realizedPnl", &PositionGroupTrackerWrap::Pnl),
+                        InstanceMethod("totalRealizedPnl", &PositionGroupTrackerWrap::TotalPnl),
+                        InstanceMethod("openCount", &PositionGroupTrackerWrap::OpenCount),
+                        InstanceMethod("prune", &PositionGroupTrackerWrap::Prune)});
   }
   PositionGroupTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PositionGroupTrackerWrap>(info), _h(flox_position_group_create()) {}
-  ~PositionGroupTrackerWrap() { if (_h) flox_position_group_destroy(_h); }
+  ~PositionGroupTrackerWrap()
+  {
+    if (_h)
+    {
+      flox_position_group_destroy(_h);
+    }
+  }
+
  private:
-  Napi::Value Open(const Napi::CallbackInfo& info) {
+  Napi::Value Open(const Napi::CallbackInfo& info)
+  {
     std::string side = info[2].As<Napi::String>().Utf8Value();
     return Napi::Number::New(info.Env(), (double)flox_position_group_open(_h,
-      info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Uint32Value(),
-      side == "buy" ? 0 : 1, info[3].As<Napi::Number>().DoubleValue(), info[4].As<Napi::Number>().DoubleValue()));
+                                                                          info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Uint32Value(),
+                                                                          side == "buy" ? 0 : 1, info[3].As<Napi::Number>().DoubleValue(), info[4].As<Napi::Number>().DoubleValue()));
   }
   void Close(const Napi::CallbackInfo& info) { flox_position_group_close(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue()); }
   void PartialClose(const Napi::CallbackInfo& info) { flox_position_group_partial_close(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue()); }
@@ -75,22 +91,30 @@ class OrderTrackerWrap : public Napi::ObjectWrap<OrderTrackerWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "OrderTracker",
-      {InstanceMethod("onSubmitted", &OrderTrackerWrap::OnSubmitted),
-       InstanceMethod("onFilled", &OrderTrackerWrap::OnFilled),
-       InstanceMethod("onCanceled", &OrderTrackerWrap::OnCanceled),
-       InstanceMethod("isActive", &OrderTrackerWrap::IsActive),
-       InstanceAccessor("activeCount", &OrderTrackerWrap::ActiveCount, nullptr),
-       InstanceAccessor("totalCount", &OrderTrackerWrap::TotalCount, nullptr),
-       InstanceMethod("prune", &OrderTrackerWrap::Prune)});
+                       {InstanceMethod("onSubmitted", &OrderTrackerWrap::OnSubmitted),
+                        InstanceMethod("onFilled", &OrderTrackerWrap::OnFilled),
+                        InstanceMethod("onCanceled", &OrderTrackerWrap::OnCanceled),
+                        InstanceMethod("isActive", &OrderTrackerWrap::IsActive),
+                        InstanceAccessor("activeCount", &OrderTrackerWrap::ActiveCount, nullptr),
+                        InstanceAccessor("totalCount", &OrderTrackerWrap::TotalCount, nullptr),
+                        InstanceMethod("prune", &OrderTrackerWrap::Prune)});
   }
   OrderTrackerWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderTrackerWrap>(info), _h(flox_order_tracker_create()) {}
-  ~OrderTrackerWrap() { if (_h) flox_order_tracker_destroy(_h); }
+  ~OrderTrackerWrap()
+  {
+    if (_h)
+    {
+      flox_order_tracker_destroy(_h);
+    }
+  }
+
  private:
-  Napi::Value OnSubmitted(const Napi::CallbackInfo& info) {
+  Napi::Value OnSubmitted(const Napi::CallbackInfo& info)
+  {
     std::string side = info[2].As<Napi::String>().Utf8Value();
     return Napi::Boolean::New(info.Env(), flox_order_tracker_on_submitted(_h,
-      info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Uint32Value(),
-      side == "buy" ? 0 : 1, info[3].As<Napi::Number>().DoubleValue(), info[4].As<Napi::Number>().DoubleValue()));
+                                                                          info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Uint32Value(),
+                                                                          side == "buy" ? 0 : 1, info[3].As<Napi::Number>().DoubleValue(), info[4].As<Napi::Number>().DoubleValue()));
   }
   Napi::Value OnFilled(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_order_tracker_on_filled(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue())); }
   Napi::Value OnCanceled(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_order_tracker_on_canceled(_h, info[0].As<Napi::Number>().Int64Value())); }
