@@ -28,5 +28,9 @@ add_library(flox_node SHARED
   ${CMAKE_SOURCE_DIR}/../src/capi/flox_capi.cpp
   ${CMAKE_JS_SRC})
 set_target_properties(flox_node PROPERTIES PREFIX "" SUFFIX ".node")
+# Match the runtime library used by flox.lib (/MD) — cmake-js defaults to /MT
+if(MSVC)
+  set_property(TARGET flox_node PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+endif()
 target_link_libraries(flox_node ${CMAKE_JS_LIB} ${FLOX_LIB})
 target_compile_definitions(flox_node PRIVATE NAPI_VERSION=8 NODE_ADDON_API_DISABLE_DEPRECATED)
