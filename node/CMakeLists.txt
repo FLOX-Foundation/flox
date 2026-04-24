@@ -17,15 +17,16 @@ include_directories(${CMAKE_JS_INC} ${NAPI_INCLUDE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/../include)
 include_directories(${CMAKE_SOURCE_DIR}/../src/capi)
 
-# Find the built flox libraries (Release/ subdir for MSVC multi-config generators)
+# Find the built flox static library (Release/ subdir for MSVC multi-config generators)
 find_library(FLOX_LIB flox HINTS
   ${CMAKE_SOURCE_DIR}/../build
   ${CMAKE_SOURCE_DIR}/../build/Release)
-find_library(FLOX_CAPI_LIB flox_capi HINTS
-  ${CMAKE_SOURCE_DIR}/../build/src/capi
-  ${CMAKE_SOURCE_DIR}/../build/src/capi/Release)
 
-add_library(flox_node SHARED src/flox_node.cpp ${CMAKE_JS_SRC})
+# Compile flox_capi.cpp directly to avoid DLL/import-lib complexity on Windows
+add_library(flox_node SHARED
+  src/flox_node.cpp
+  ${CMAKE_SOURCE_DIR}/../src/capi/flox_capi.cpp
+  ${CMAKE_JS_SRC})
 set_target_properties(flox_node PROPERTIES PREFIX "" SUFFIX ".node")
-target_link_libraries(flox_node ${CMAKE_JS_LIB} ${FLOX_LIB} ${FLOX_CAPI_LIB})
+target_link_libraries(flox_node ${CMAKE_JS_LIB} ${FLOX_LIB})
 target_compile_definitions(flox_node PRIVATE NAPI_VERSION=8 NODE_ADDON_API_DISABLE_DEPRECATED)
