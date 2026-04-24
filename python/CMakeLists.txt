@@ -1,10 +1,11 @@
 find_package(pybind11 REQUIRED)
 
-pybind11_add_module(flox_py flox_py.cpp)
+pybind11_add_module(flox_py flox_py.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../src/capi/flox_capi.cpp)
 
-target_link_libraries(flox_py PRIVATE flox flox_capi)
+target_link_libraries(flox_py PRIVATE flox)
 target_include_directories(flox_py PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/capi
 )
 
 if(NOT MSVC)
