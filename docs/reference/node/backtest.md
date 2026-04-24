@@ -1,7 +1,7 @@
 # Backtest components
 
 ```javascript
-const { BacktestRunner, SimulatedExecutor, BacktestResult, Engine, SignalBuilder } = require('flox-node');
+const { BacktestRunner, SimulatedExecutor, BacktestResult, Engine, SignalBuilder } = require('@flox-foundation/flox');
 ```
 
 ---

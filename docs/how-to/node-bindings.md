@@ -1,18 +1,18 @@
 # Node.js Bindings
 
-Event-driven live trading and backtesting from Node.js using `flox-node`.
+Event-driven live trading and backtesting from Node.js using `@flox-foundation/flox`.
 
 ## Install / Build
 
 ```bash
-npm install flox-node
+npm install @flox-foundation/flox
 # or build from source:
 cmake -B build -DFLOX_ENABLE_NODE=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
 ```javascript
-const flox = require('flox-node');
+const flox = require('@flox-foundation/flox');
 // or, if building from source:
 const flox = require('../node');
 ```
@@ -129,7 +129,7 @@ const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
 ## Full Example — SMA Crossover
 
 ```javascript
-const flox = require('flox-node');
+const flox = require('@flox-foundation/flox');
 
 const registry = new flox.SymbolRegistry();
 const btc = registry.addSymbol('binance', 'BTCUSDT', 0.01);

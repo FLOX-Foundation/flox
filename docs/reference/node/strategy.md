@@ -1,7 +1,7 @@
 # Strategy, Runner
 
 ```javascript
-const { SymbolRegistry, Runner } = require('flox-node');
+const { SymbolRegistry, Runner } = require('@flox-foundation/flox');
 ```
 
 ---

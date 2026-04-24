@@ -125,7 +125,7 @@ const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
 ## Full Example — SMA Crossover
 
 ```javascript
-const flox = require('flox-node');
+const flox = require('@flox-foundation/flox');
 
 const registry = new flox.SymbolRegistry();
 const btc = registry.addSymbol('binance', 'BTCUSDT', 0.01);

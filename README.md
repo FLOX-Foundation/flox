@@ -1,7 +1,7 @@
 [![CI](https://github.com/flox-foundation/flox/actions/workflows/ci.yml/badge.svg)](https://github.com/flox-foundation/flox/actions)
 [![Docs](https://img.shields.io/badge/docs-site-blue)](https://flox-foundation.github.io/flox)
 [![PyPI](https://img.shields.io/pypi/v/flox-py?v=1)](https://pypi.org/project/flox-py/)
-[![npm](https://img.shields.io/npm/v/flox-node)](https://www.npmjs.com/package/flox-node)
+[![npm](https://img.shields.io/npm/v/@flox-foundation/flox)](https://www.npmjs.com/package/@flox-foundation/flox)
 
 ## FLOX
 
@@ -15,7 +15,7 @@ Documentation is available at [flox-foundation.github.io/flox](https://flox-foun
 | Language | Install | Docs |
 |----------|---------|------|
 | Python | `pip install flox-py` | [reference](https://flox-foundation.github.io/flox/reference/python/) |
-| Node.js | `npm install flox-node` | [reference](https://flox-foundation.github.io/flox/reference/node/) |
+| Node.js | `npm install @flox-foundation/flox` | [reference](https://flox-foundation.github.io/flox/reference/node/) |
 | Codon | build from source | [reference](https://flox-foundation.github.io/flox/reference/codon/) |
 | JavaScript (embedded) | bundled with C++ build | [reference](https://flox-foundation.github.io/flox/reference/quickjs/) |
 | C API | `libflox_capi.so` | [reference](https://flox-foundation.github.io/flox/reference/api/capi/flox_capi/) |

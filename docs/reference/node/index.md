@@ -1,6 +1,6 @@
 # Node.js API reference
 
-Full API for `flox-node`. See [Getting started](../../bindings/node.md) for build instructions and worked examples.
+Full API for `@flox-foundation/flox`. See [Getting started](../../bindings/node.md) for build instructions and worked examples.
 
 ## Modules
 
