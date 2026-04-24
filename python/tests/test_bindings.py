@@ -33,6 +33,18 @@ def approx(a, b, eps=1e-6):
     return math.isfinite(a) and math.isfinite(b) and abs(a - b) < eps
 
 
+# ── Constants ────────────────────────────────────────────────────────
+
+print("=== Constants ===")
+
+check(flox.SLIPPAGE_NONE == 0, "SLIPPAGE_NONE == 0")
+check(flox.SLIPPAGE_FIXED_TICKS == 1, "SLIPPAGE_FIXED_TICKS == 1")
+check(flox.SLIPPAGE_FIXED_BPS == 2, "SLIPPAGE_FIXED_BPS == 2")
+check(flox.SLIPPAGE_VOLUME_IMPACT == 3, "SLIPPAGE_VOLUME_IMPACT == 3")
+check(flox.QUEUE_NONE == 0, "QUEUE_NONE == 0")
+check(flox.QUEUE_TOB == 1, "QUEUE_TOB == 1")
+check(flox.QUEUE_FULL == 2, "QUEUE_FULL == 2")
+
 # ── Streaming indicators ──────────────────────────────────────────────
 
 print("=== Streaming indicators ===")

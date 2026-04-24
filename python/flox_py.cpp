@@ -722,4 +722,15 @@ PYBIND11_MODULE(flox_py, m)
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);
+
+  // Slippage model constants
+  m.attr("SLIPPAGE_NONE") = 0;
+  m.attr("SLIPPAGE_FIXED_TICKS") = 1;
+  m.attr("SLIPPAGE_FIXED_BPS") = 2;
+  m.attr("SLIPPAGE_VOLUME_IMPACT") = 3;
+
+  // Queue model constants
+  m.attr("QUEUE_NONE") = 0;
+  m.attr("QUEUE_TOB") = 1;
+  m.attr("QUEUE_FULL") = 2;
 }

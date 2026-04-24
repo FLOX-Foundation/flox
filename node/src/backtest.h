@@ -172,6 +172,15 @@ inline void registerBacktest(Napi::Env env, Napi::Object exports)
 {
   exports.Set("SimulatedExecutor", SimulatedExecutorWrap::Init(env));
   exports.Set("BacktestResult", BacktestResultWrap::Init(env));
+
+  exports.Set("SLIPPAGE_NONE", Napi::Number::New(env, FLOX_SLIPPAGE_NONE));
+  exports.Set("SLIPPAGE_FIXED_TICKS", Napi::Number::New(env, FLOX_SLIPPAGE_FIXED_TICKS));
+  exports.Set("SLIPPAGE_FIXED_BPS", Napi::Number::New(env, FLOX_SLIPPAGE_FIXED_BPS));
+  exports.Set("SLIPPAGE_VOLUME_IMPACT", Napi::Number::New(env, FLOX_SLIPPAGE_VOLUME_IMPACT));
+
+  exports.Set("QUEUE_NONE", Napi::Number::New(env, FLOX_QUEUE_NONE));
+  exports.Set("QUEUE_TOB", Napi::Number::New(env, FLOX_QUEUE_TOB));
+  exports.Set("QUEUE_FULL", Napi::Number::New(env, FLOX_QUEUE_FULL));
 }
 
 }  // namespace node_flox

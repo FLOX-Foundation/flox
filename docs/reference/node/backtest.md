@@ -69,8 +69,8 @@ exec.setQueueModel('tob', 1);
 | `onBar(symbol, closePrice)` | Feed a bar close |
 | `onTrade(symbol, price, isBuy)` | Feed a trade |
 | `advanceClock(timestampNs)` | Advance simulated time |
-| `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage (`model`: `"none"`, `"fixed_ticks"`, `"fixed_bps"`, `"volume_impact"`) |
-| `setQueueModel(model, depth)` | Configure limit order queue (`model`: `"none"`, `"tob"`, `"full"`) |
+| `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage. `model` is a string or one of `SLIPPAGE_NONE`, `SLIPPAGE_FIXED_TICKS`, `SLIPPAGE_FIXED_BPS`, `SLIPPAGE_VOLUME_IMPACT` |
+| `setQueueModel(model, depth)` | Configure limit order queue. `model` is a string or one of `QUEUE_NONE`, `QUEUE_TOB`, `QUEUE_FULL` |
 | `fillCount` | Number of fills (property) |
 
 ---
