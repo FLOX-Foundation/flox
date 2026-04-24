@@ -1,0 +1,363 @@
+# flox/engine.codon -- Engine and SignalBuilder for batch backtesting.
+#
+# Mirrors the Python flox_py.Engine / SignalBuilder API.
+# Load OHLCV data, build signals, run a backtest, get stats.
+#
+# Usage:
+#   from flox.engine import Engine, SignalBuilder
+
+from flox.backtest import SimulatedExecutor, BacktestResult, BacktestStats
+from flox.types import Price, Quantity, SCALE
+
+
+# ======================================================================
+# SignalEntry / SignalBuilder
+# ======================================================================
+
+
+@dataclass
+class _SignalEntry:
+    ts_ns: int
+    side: int       # 0=buy, 1=sell
+    qty_raw: int    # Quantity.raw()
+    price_raw: int  # 0 for market orders
+    order_type: int # 0=market, 1=limit
+    symbol: str
+
+
+class SignalBuilder:
+    """Accumulates buy/sell signals for Engine.run().
+
+    Each signal is timestamped; the Engine replays them in order against
+    the OHLCV bars.
+
+    Example::
+
+        sb = SignalBuilder()
+        sb.buy(ts_ms=1609459200000, qty=0.1)
+        sb.limit_sell(ts_ms=1609459800000, price=31000.0, qty=0.1)
+        stats = engine.run(sb)
+    """
+
+    _entries: List[_SignalEntry]
+
+    def __init__(self):
+        self._entries = list[_SignalEntry]()
+
+    def _add(self, ts_ms: int, side: int, qty: float, price: float,
+             order_type: int, symbol: str):
+        ts_ns = ts_ms * 1_000_000 if ts_ms < 1_000_000_000_000_000 else ts_ms
+        self._entries.append(_SignalEntry(
+            ts_ns=ts_ns,
+            side=side,
+            qty_raw=int(Quantity.from_double(qty).raw()),
+            price_raw=int(Price.from_double(price).raw()) if price > 0.0 else 0,
+            order_type=order_type,
+            symbol=symbol
+        ))
+
+    def buy(self, ts_ms: int, qty: float, symbol: str = ""):
+        self._add(ts_ms, 0, qty, 0.0, 0, symbol)
+
+    def sell(self, ts_ms: int, qty: float, symbol: str = ""):
+        self._add(ts_ms, 1, qty, 0.0, 0, symbol)
+
+    def limit_buy(self, ts_ms: int, price: float, qty: float, symbol: str = ""):
+        self._add(ts_ms, 0, qty, price, 1, symbol)
+
+    def limit_sell(self, ts_ms: int, price: float, qty: float, symbol: str = ""):
+        self._add(ts_ms, 1, qty, price, 1, symbol)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def clear(self):
+        self._entries = list[_SignalEntry]()
+
+    def _sorted(self) -> List[_SignalEntry]:
+        s = list[_SignalEntry](self._entries)
+        s.sort(key=lambda e: e.ts_ns)
+        return s
+
+
+# ======================================================================
+# OhlcvBar (internal)
+# ======================================================================
+
+
+@dataclass
+class _OhlcvBar:
+    ts_ns: int
+    open_raw: int
+    high_raw: int
+    low_raw: int
+    close_raw: int
+    volume_raw: int
+
+    def close(self) -> float:
+        return float(self.close_raw) / float(SCALE)
+
+    def open(self) -> float:
+        return float(self.open_raw) / float(SCALE)
+
+    def high(self) -> float:
+        return float(self.high_raw) / float(SCALE)
+
+    def low(self) -> float:
+        return float(self.low_raw) / float(SCALE)
+
+    def volume(self) -> float:
+        return float(self.volume_raw) / float(SCALE)
+
+
+def _parse_ts(s: str) -> int:
+    """Parse a timestamp string to nanoseconds.
+    Handles: integer ms (13 digits), integer ns (19 digits), or float seconds.
+    """
+    s = s.strip()
+    # Integer
+    ts = int(s)
+    # Detect unit by magnitude
+    if ts < 1_000_000_000_000:
+        return ts * 1_000_000_000  # seconds -> ns
+    elif ts < 1_000_000_000_000_000:
+        return ts * 1_000_000      # ms -> ns
+    elif ts < 1_000_000_000_000_000_000:
+        return ts * 1_000          # us -> ns
+    else:
+        return ts                  # already ns
+
+
+def _load_csv_bars(path: str) -> List[_OhlcvBar]:
+    """Parse a CSV file with columns: timestamp, open, high, low, close, volume.
+    First row may be a header (detected by non-numeric first field).
+    """
+    bars = list[_OhlcvBar]()
+    first = True
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            parts = line.split(",")
+            if len(parts) < 6:
+                continue
+            if first:
+                first = False
+                # Skip header rows
+                try:
+                    int(parts[0].strip())
+                except:
+                    continue
+            ts_ns = _parse_ts(parts[0])
+            o = float(parts[1].strip())
+            h = float(parts[2].strip())
+            l = float(parts[3].strip())
+            c = float(parts[4].strip())
+            v = float(parts[5].strip())
+            bars.append(_OhlcvBar(
+                ts_ns=ts_ns,
+                open_raw=int(Price.from_double(o).raw()),
+                high_raw=int(Price.from_double(h).raw()),
+                low_raw=int(Price.from_double(l).raw()),
+                close_raw=int(Price.from_double(c).raw()),
+                volume_raw=int(Quantity.from_double(v).raw())
+            ))
+    return bars
+
+
+# ======================================================================
+# Engine
+# ======================================================================
+
+
+class Engine:
+    """Batch backtest engine over OHLCV bars.
+
+    Load one or more symbols, attach signals from a SignalBuilder, and
+    call run() to get BacktestStats.
+
+    Example::
+
+        engine = Engine(initial_capital=10000.0, fee_rate=0.0004)
+        engine.load_csv("btcusdt_1m.csv")
+        engine.load_csv("ethusdt_1m.csv", symbol="ETH")
+
+        sb = SignalBuilder()
+        # ... populate signals ...
+
+        stats = engine.run(sb)
+        print(stats)
+    """
+
+    _initial_capital: float
+    _fee_rate: float
+    _symbols: Dict[str, List[_OhlcvBar]]
+    _symbol_order: List[str]
+    _next_id: Dict[str, int]
+
+    def __init__(self, initial_capital: float = 100000.0,
+                 fee_rate: float = 0.0001):
+        self._initial_capital = initial_capital
+        self._fee_rate = fee_rate
+        self._symbols = dict[str, List[_OhlcvBar]]()
+        self._symbol_order = list[str]()
+        self._next_id = dict[str, int]()
+
+    def _canon(self, symbol: str) -> str:
+        """Return canonical symbol name (empty -> use first / default)."""
+        if len(symbol) == 0:
+            return "__default__"
+        return symbol
+
+    def load_csv(self, path: str, symbol: str = ""):
+        """Load OHLCV bars from a CSV file."""
+        key = self._canon(symbol)
+        bars = _load_csv_bars(path)
+        if key not in self._symbols:
+            self._symbols[key] = bars
+            self._symbol_order.append(key)
+        else:
+            self._symbols[key].extend(bars)
+            self._symbols[key].sort(key=lambda b: b.ts_ns)
+
+    def load_ohlcv(self, timestamps: List[int], opens: List[float],
+                   highs: List[float], lows: List[float],
+                   closes: List[float], volumes: List[float],
+                   symbol: str = ""):
+        """Load OHLCV bars from parallel lists."""
+        key = self._canon(symbol)
+        n = len(timestamps)
+        bars = list[_OhlcvBar]()
+        for i in range(n):
+            ts = timestamps[i]
+            ts_ns = _parse_ts(str(ts))
+            bars.append(_OhlcvBar(
+                ts_ns=ts_ns,
+                open_raw=int(Price.from_double(opens[i]).raw()),
+                high_raw=int(Price.from_double(highs[i]).raw()),
+                low_raw=int(Price.from_double(lows[i]).raw()),
+                close_raw=int(Price.from_double(closes[i]).raw()),
+                volume_raw=int(Quantity.from_double(volumes[i]).raw())
+            ))
+        if key not in self._symbols:
+            self._symbols[key] = bars
+            self._symbol_order.append(key)
+        else:
+            self._symbols[key].extend(bars)
+            self._symbols[key].sort(key=lambda b: b.ts_ns)
+
+    def bar_count(self, symbol: str = "") -> int:
+        key = self._canon(symbol)
+        if key not in self._symbols:
+            return 0
+        return len(self._symbols[key])
+
+    @property
+    def symbols(self) -> List[str]:
+        return [s for s in self._symbol_order if s != "__default__"]
+
+    def _sym_id(self, name: str) -> int:
+        """Assign stable integer IDs to symbol names (1-based)."""
+        if name not in self._next_id:
+            self._next_id[name] = len(self._next_id) + 1
+        return self._next_id[name]
+
+    def run(self, signals: SignalBuilder,
+            default_symbol: str = "") -> BacktestStats:
+        """Run the backtest.
+
+        Signals are matched to bars by timestamp: a signal fires on the
+        first bar whose ts_ns >= signal.ts_ns.
+
+        Returns BacktestStats with full performance metrics.
+        """
+        if len(self._symbols) == 0:
+            raise ValueError("Engine: no bars loaded")
+
+        executor = SimulatedExecutor()
+        result = BacktestResult(
+            initial_capital=self._initial_capital,
+            fee_rate=self._fee_rate,
+            use_percentage_fee=True
+        )
+
+        # Resolve default symbol key
+        default_key = self._canon(default_symbol)
+        if default_key not in self._symbols and len(self._symbol_order) > 0:
+            default_key = self._symbol_order[0]
+
+        # Build merged timeline: (ts_ns, sym_key, bar_index)
+        @dataclass
+        class _BarRef:
+            ts_ns: int
+            key: str
+            idx: int
+
+        merged = list[_BarRef]()
+        for key in self._symbol_order:
+            bars = self._symbols[key]
+            for i in range(len(bars)):
+                merged.append(_BarRef(ts_ns=bars[i].ts_ns, key=key, idx=i))
+        merged.sort(key=lambda r: r.ts_ns)
+
+        # Sort signals
+        sorted_signals = signals._sorted()
+        sig_idx = 0
+        order_id = 1
+
+        for ref in merged:
+            bar = self._symbols[ref.key][ref.idx]
+            sym_id = self._sym_id(ref.key)
+
+            # Advance clock and fill any pending orders at this bar's close.
+            # Signals are submitted AFTER on_bar so they fill at the next bar,
+            # matching the Python Engine execution model.
+            executor.advance_clock(bar.ts_ns)
+            executor.on_bar(sym_id, bar.close())
+
+            # Submit signals timestamped at or before this bar
+            while sig_idx < len(sorted_signals):
+                sig = sorted_signals[sig_idx]
+                if sig.ts_ns > bar.ts_ns:
+                    break
+                sig_key = self._canon(sig.symbol) if len(sig.symbol) > 0 else default_key
+                s_id = self._sym_id(sig_key)
+                price = float(sig.price_raw) / float(SCALE)
+                qty = float(sig.qty_raw) / float(SCALE)
+                ot = "limit" if sig.order_type == 1 else "market"
+                executor.submit_order(
+                    order_id,
+                    "buy" if sig.side == 0 else "sell",
+                    price,
+                    qty,
+                    ot,
+                    s_id
+                )
+                order_id += 1
+                sig_idx += 1
+
+        # Remaining signals fire at last bar's close
+        while sig_idx < len(sorted_signals):
+            sig = sorted_signals[sig_idx]
+            sig_key = self._canon(sig.symbol) if len(sig.symbol) > 0 else default_key
+            s_id = self._sym_id(sig_key)
+            price = float(sig.price_raw) / float(SCALE)
+            qty = float(sig.qty_raw) / float(SCALE)
+            ot = "limit" if sig.order_type == 1 else "market"
+            executor.submit_order(
+                order_id,
+                "buy" if sig.side == 0 else "sell",
+                price,
+                qty,
+                ot,
+                s_id
+            )
+            order_id += 1
+            sig_idx += 1
+
+        result.ingest_executor(executor)
+        stats = result.stats()
+        result.close()
+        executor.close()
+        return stats

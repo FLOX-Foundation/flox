@@ -127,6 +127,6 @@ All three produce identical trading behavior with the same API shape.
 
 ## Next Steps
 
-- See [Pairs Trading](../../codon/examples/pairs_strategy.codon) for multi-symbol strategies
+
 - See [Indicators Reference](../reference/codon/indicators.md) for all available indicators
 - See [Strategy Classes](../how-to/strategy-classes.md) for the full API reference

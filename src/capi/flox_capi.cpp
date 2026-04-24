@@ -15,11 +15,15 @@
 #include "flox/aggregator/policies/tick_bar_policy.h"
 #include "flox/aggregator/policies/time_bar_policy.h"
 #include "flox/aggregator/policies/volume_bar_policy.h"
+#include "flox/backtest/backtest_config.h"
 #include "flox/backtest/backtest_result.h"
+#include "flox/backtest/backtest_runner.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/nlevel_order_book.h"
+#include "flox/replay/abstract_event_reader.h"
+#include "flox/replay/binary_format_v1.h"
 
 #include "flox/indicator/adx.h"
 #include "flox/indicator/atr.h"
@@ -45,24 +49,34 @@
 #include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
 #include "flox/aggregator/policies/range_bar_policy.h"
 #include "flox/aggregator/policies/renko_bar_policy.h"
+#include "flox/book/bus/book_update_bus.h"
+#include "flox/book/bus/trade_bus.h"
 #include "flox/book/composite_book_matrix.h"
+#include "flox/book/events/book_update_event.h"
+#include "flox/book/events/trade_event.h"
 #include "flox/book/l3/l3_order_book.h"
 #include "flox/execution/order_tracker.h"
 #include "flox/position/position_group.h"
 #include "flox/position/position_tracker.h"
+#include "flox/replay/market_data_recorder.h"
+#include "flox/replay/ops/partitioner.h"
 #include "flox/replay/ops/segment_ops.h"
 #include "flox/replay/ops/validator.h"
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/writers/binary_log_writer.h"
+#include "flox/strategy/abstract_signal_handler.h"
+#include "flox/util/memory/pool.h"
 
 #include <random>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <memory>
 #include <memory_resource>
 #include <span>
+#include <sstream>
 #include <vector>
 
 using namespace flox;
@@ -1725,4 +1739,1019 @@ uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle h, 
     return 0;
   }
   return static_cast<FloxBacktestResultImpl*>(h)->result->writeEquityCurveCsv(path) ? 1 : 0;
+}
+
+// ============================================================
+// Segment operations (full API)
+// ============================================================
+
+static replay::CompressionType toCompression(uint8_t c)
+{
+  return c == 1 ? replay::CompressionType::LZ4 : replay::CompressionType::None;
+}
+
+FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_paths,
+                                        const char* output_dir, const char* output_name,
+                                        uint8_t sort)
+{
+  std::vector<std::filesystem::path> paths;
+  const char* p = input_paths;
+  for (size_t i = 0; i < num_paths; ++i)
+  {
+    paths.emplace_back(p);
+    p += std::strlen(p) + 1;
+  }
+  replay::MergeConfig cfg;
+  cfg.output_dir = output_dir;
+  cfg.output_name = output_name ? output_name : "merged";
+  cfg.sort_by_timestamp = sort != 0;
+  auto r = replay::SegmentOps::merge(paths, cfg);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_merged, r.events_written,
+          r.bytes_written};
+}
+
+FloxMergeResult flox_segment_merge_dir(const char* input_dir, const char* output_dir)
+{
+  auto r = replay::quickMerge(input_dir, output_dir);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_merged, r.events_written,
+          r.bytes_written};
+}
+
+FloxSplitResult flox_segment_split(const char* input_path, const char* output_dir, uint8_t mode,
+                                   int64_t time_interval_ns, uint64_t events_per_file)
+{
+  replay::SplitConfig cfg;
+  cfg.output_dir = output_dir;
+  cfg.mode = static_cast<replay::SplitMode>(mode);
+  cfg.time_interval_ns = time_interval_ns;
+  cfg.events_per_file = events_per_file;
+  auto r = replay::SegmentOps::split(input_path, cfg);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_created, r.events_written};
+}
+
+FloxExportResult flox_segment_export(const char* input_path, const char* output_path,
+                                     uint8_t format, int64_t from_ns, int64_t to_ns,
+                                     const uint32_t* symbols, uint32_t num_symbols)
+{
+  replay::ExportConfig cfg;
+  cfg.output_path = output_path;
+  cfg.format = static_cast<replay::ExportFormat>(format);
+  if (from_ns > 0)
+  {
+    cfg.from_ts = from_ns;
+  }
+  if (to_ns > 0)
+  {
+    cfg.to_ts = to_ns;
+  }
+  if (symbols && num_symbols > 0)
+  {
+    cfg.symbols.insert(symbols, symbols + num_symbols);
+  }
+  auto r = replay::SegmentOps::exportData(input_path, cfg);
+  return {r.success ? (uint8_t)1 : (uint8_t)0, r.events_exported, r.bytes_written};
+}
+
+uint8_t flox_segment_recompress(const char* input_path, const char* output_path,
+                                uint8_t compression)
+{
+  return replay::SegmentOps::recompress(input_path, output_path, toCompression(compression)) ? 1
+                                                                                             : 0;
+}
+
+uint64_t flox_segment_extract_symbols(const char* input_path, const char* output_path,
+                                      const uint32_t* symbols, uint32_t num_symbols)
+{
+  std::set<uint32_t> symSet(symbols, symbols + num_symbols);
+  replay::WriterConfig wc;
+  auto out = std::filesystem::path(output_path);
+  wc.output_dir = out.parent_path();
+  wc.output_filename = out.filename().string();
+  return replay::SegmentOps::extractSymbols(input_path, output_path, symSet, wc);
+}
+
+uint64_t flox_segment_extract_time_range(const char* input_path, const char* output_path,
+                                         int64_t from_ns, int64_t to_ns)
+{
+  replay::WriterConfig wc;
+  auto out = std::filesystem::path(output_path);
+  wc.output_dir = out.parent_path();
+  wc.output_filename = out.filename().string();
+  return replay::SegmentOps::extractTimeRange(input_path, output_path, from_ns, to_ns, wc);
+}
+
+// ============================================================
+// Validation (full API)
+// ============================================================
+
+FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
+                                                 uint8_t verify_timestamps)
+{
+  replay::ValidatorConfig cfg;
+  cfg.verify_crc = verify_crc != 0;
+  cfg.verify_timestamps = verify_timestamps != 0;
+  replay::SegmentValidator validator(cfg);
+  auto r = validator.validate(path);
+  return {r.valid ? (uint8_t)1 : (uint8_t)0,
+          r.header_valid ? (uint8_t)1 : (uint8_t)0,
+          r.reported_event_count,
+          r.actual_event_count,
+          r.has_index ? (uint8_t)1 : (uint8_t)0,
+          r.index_valid ? (uint8_t)1 : (uint8_t)0,
+          r.trades_found,
+          r.book_updates_found,
+          r.crc_errors,
+          r.timestamp_anomalies};
+}
+
+FloxDatasetValidation flox_dataset_validate(const char* data_dir)
+{
+  replay::DatasetValidator validator;
+  auto r = validator.validate(data_dir);
+  return {r.valid ? (uint8_t)1 : (uint8_t)0, r.total_segments, r.valid_segments,
+          r.corrupted_segments, r.total_events, r.total_bytes,
+          r.first_timestamp, r.last_timestamp};
+}
+
+// ============================================================
+// DataReader (full API)
+// ============================================================
+
+FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int64_t from_ns,
+                                                      int64_t to_ns, const uint32_t* symbols,
+                                                      uint32_t num_symbols)
+{
+  replay::ReaderConfig cfg;
+  cfg.data_dir = data_dir;
+  if (from_ns > 0)
+  {
+    cfg.from_ns = from_ns;
+  }
+  if (to_ns > 0)
+  {
+    cfg.to_ns = to_ns;
+  }
+  if (symbols && num_symbols > 0)
+  {
+    cfg.symbols.insert(symbols, symbols + num_symbols);
+  }
+  return new replay::BinaryLogReader(cfg);
+}
+
+FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle h)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  auto s = reader->summary();
+  return {s.first_event_ns, s.last_event_ns, s.total_events, s.segment_count, s.total_bytes,
+          s.durationSeconds()};
+}
+
+FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle h)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  auto s = reader->stats();
+  return {s.files_read, s.events_read, s.trades_read, s.book_updates_read, s.bytes_read,
+          s.crc_errors};
+}
+
+uint64_t flox_data_reader_read_trades(FloxDataReaderHandle h, FloxTradeRecord* trades_out,
+                                      uint64_t max_trades)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  uint64_t count = 0;
+  reader->forEach(
+      [&](const replay::ReplayEvent& ev) -> bool
+      {
+        if (ev.type == replay::EventType::Trade)
+        {
+          if (trades_out && count < max_trades)
+          {
+            trades_out[count] = {ev.trade.exchange_ts_ns, ev.trade.recv_ts_ns, ev.trade.price_raw,
+                                 ev.trade.qty_raw, ev.trade.trade_id, ev.trade.symbol_id,
+                                 ev.trade.side};
+          }
+          ++count;
+        }
+        return !trades_out || count < max_trades;
+      });
+  return count;
+}
+
+// ============================================================
+// DataWriter (extras)
+// ============================================================
+
+FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle h)
+{
+  auto* w = static_cast<replay::BinaryLogWriter*>(h);
+  auto s = w->stats();
+  return {s.bytes_written, s.events_written, s.segments_created, s.trades_written};
+}
+
+// ============================================================
+// DataRecorder
+// ============================================================
+
+FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
+                                                 const char* exchange_name,
+                                                 uint64_t max_segment_mb)
+{
+  MarketDataRecorderConfig cfg;
+  cfg.output_dir = output_dir;
+  cfg.exchange_name = exchange_name;
+  cfg.max_segment_bytes = max_segment_mb * 1024 * 1024;
+  return new MarketDataRecorder(cfg);
+}
+
+void flox_data_recorder_destroy(FloxDataRecorderHandle h)
+{
+  delete static_cast<MarketDataRecorder*>(h);
+}
+
+void flox_data_recorder_add_symbol(FloxDataRecorderHandle h, uint32_t symbol_id, const char* name,
+                                   const char* base, const char* quote, int8_t price_precision,
+                                   int8_t qty_precision)
+{
+  static_cast<MarketDataRecorder*>(h)->addSymbol(symbol_id, name, base ? base : "",
+                                                 quote ? quote : "", price_precision,
+                                                 qty_precision);
+}
+
+void flox_data_recorder_start(FloxDataRecorderHandle h)
+{
+  static_cast<MarketDataRecorder*>(h)->start();
+}
+
+void flox_data_recorder_stop(FloxDataRecorderHandle h)
+{
+  static_cast<MarketDataRecorder*>(h)->stop();
+}
+
+void flox_data_recorder_flush(FloxDataRecorderHandle h)
+{
+  static_cast<MarketDataRecorder*>(h)->flush();
+}
+
+uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle h)
+{
+  return static_cast<MarketDataRecorder*>(h)->isRecording() ? 1 : 0;
+}
+
+// ============================================================
+// Partitioner
+// ============================================================
+
+FloxPartitionerHandle flox_partitioner_create(const char* data_dir)
+{
+  return new replay::Partitioner(std::filesystem::path(data_dir));
+}
+
+void flox_partitioner_destroy(FloxPartitionerHandle h)
+{
+  delete static_cast<replay::Partitioner*>(h);
+}
+
+static uint32_t copyPartitions(const std::vector<replay::Partition>& parts,
+                               FloxPartition* out, uint32_t max)
+{
+  uint32_t n = static_cast<uint32_t>(parts.size());
+  if (!out)
+  {
+    return n;
+  }
+  uint32_t count = std::min(n, max);
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    out[i] = {parts[i].partition_id, parts[i].from_ns, parts[i].to_ns,
+              parts[i].warmup_from_ns, parts[i].estimated_events, parts[i].estimated_bytes};
+  }
+  return count;
+}
+
+uint32_t flox_partitioner_by_time(FloxPartitionerHandle h, uint32_t num_partitions,
+                                  int64_t warmup_ns, FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByTime(num_partitions, warmup_ns), out, max);
+}
+
+uint32_t flox_partitioner_by_duration(FloxPartitionerHandle h, int64_t duration_ns,
+                                      int64_t warmup_ns, FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByDuration(duration_ns, warmup_ns), out, max);
+}
+
+uint32_t flox_partitioner_by_calendar(FloxPartitionerHandle h, uint8_t unit, int64_t warmup_ns,
+                                      FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByCalendar(
+          static_cast<replay::Partitioner::CalendarUnit>(unit), warmup_ns),
+      out, max);
+}
+
+uint32_t flox_partitioner_by_symbol(FloxPartitionerHandle h, uint32_t num_partitions,
+                                    FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionBySymbol(num_partitions), out, max);
+}
+
+uint32_t flox_partitioner_per_symbol(FloxPartitionerHandle h, FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(static_cast<replay::Partitioner*>(h)->partitionPerSymbol(), out, max);
+}
+
+uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle h, uint32_t num_partitions,
+                                         FloxPartition* out, uint32_t max)
+{
+  return copyPartitions(
+      static_cast<replay::Partitioner*>(h)->partitionByEventCount(num_partitions), out, max);
+}
+
+// ============================================================
+// Pointer-out wrappers for struct-returning functions.
+// ============================================================
+
+void flox_data_reader_summary_p(FloxDataReaderHandle h, void* out)
+{
+  auto s = flox_data_reader_summary(h);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_data_reader_stats_p(FloxDataReaderHandle h, void* out)
+{
+  auto s = flox_data_reader_stats(h);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_data_writer_stats_p(FloxDataWriterHandle h, void* out)
+{
+  auto s = flox_data_writer_stats(h);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_merge_full_p(const char* input_paths, size_t num_paths,
+                               const char* output_dir, const char* output_name,
+                               uint8_t sort, void* out)
+{
+  auto s = flox_segment_merge_full(input_paths, num_paths, output_dir, output_name, sort);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_merge_dir_p(const char* input_dir, const char* output_dir, void* out)
+{
+  auto s = flox_segment_merge_dir(input_dir, output_dir);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_split_p(const char* input_path, const char* output_dir, uint8_t mode,
+                          int64_t time_interval_ns, uint64_t events_per_file, void* out)
+{
+  auto s = flox_segment_split(input_path, output_dir, mode, time_interval_ns, events_per_file);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_export_p(const char* input_path, const char* output_path, uint8_t format,
+                           int64_t from_ns, int64_t to_ns,
+                           const uint32_t* symbols, uint32_t num_symbols, void* out)
+{
+  auto s = flox_segment_export(input_path, output_path, format, from_ns, to_ns,
+                               symbols, num_symbols);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_segment_validate_full_p(const char* path, uint8_t verify_crc,
+                                  uint8_t verify_timestamps, void* out)
+{
+  auto s = flox_segment_validate_full(path, verify_crc, verify_timestamps);
+  memcpy(out, &s, sizeof(s));
+}
+
+void flox_dataset_validate_p(const char* data_dir, void* out)
+{
+  auto s = flox_dataset_validate(data_dir);
+  memcpy(out, &s, sizeof(s));
+}
+
+// ============================================================
+// Shared internals: RunnerSignalHandler, FloxRunnerImpl, FloxLiveEngineImpl
+// ============================================================
+
+namespace capi_impl
+{
+
+class RunnerSignalHandler : public ISignalHandler
+{
+ public:
+  RunnerSignalHandler(FloxOnSignalCallback cb, void* ud) : _cb(cb), _ud(ud) {}
+
+  void onSignal(const Signal& sig) override
+  {
+    if (!_cb)
+    {
+      return;
+    }
+    FloxSignal fs{};
+    fs.order_id = sig.orderId;
+    fs.symbol = sig.symbol;
+    fs.side = (sig.side == Side::BUY) ? 0 : 1;
+    fs.price = sig.price.toDouble();
+    fs.quantity = sig.quantity.toDouble();
+    fs.trigger_price = sig.triggerPrice.toDouble();
+    fs.trailing_offset = sig.trailingOffset.toDouble();
+    fs.trailing_bps = sig.trailingCallbackRate;
+    fs.new_price = sig.newPrice.toDouble();
+    fs.new_quantity = sig.newQuantity.toDouble();
+
+    switch (sig.type)
+    {
+      case SignalType::Market:
+        fs.order_type = 0;
+        break;
+      case SignalType::Limit:
+        fs.order_type = 1;
+        break;
+      case SignalType::StopMarket:
+        fs.order_type = 2;
+        break;
+      case SignalType::StopLimit:
+        fs.order_type = 3;
+        break;
+      case SignalType::TakeProfitMarket:
+        fs.order_type = 4;
+        break;
+      case SignalType::TakeProfitLimit:
+        fs.order_type = 5;
+        break;
+      case SignalType::TrailingStop:
+        fs.order_type = 6;
+        break;
+      case SignalType::Cancel:
+        fs.order_type = 7;
+        break;
+      case SignalType::CancelAll:
+        fs.order_type = 8;
+        break;
+      case SignalType::Modify:
+        fs.order_type = 9;
+        break;
+      default:
+        fs.order_type = 0;
+        break;
+    }
+    _cb(_ud, &fs);
+  }
+
+ private:
+  FloxOnSignalCallback _cb;
+  void* _ud;
+};
+
+struct FloxRunnerImpl
+{
+  SymbolRegistry* registry;
+  RunnerSignalHandler handler;
+  std::vector<BridgeStrategy*> strategies;
+  std::pmr::unsynchronized_pool_resource pool;
+
+  FloxRunnerImpl(SymbolRegistry* reg, FloxOnSignalCallback cb, void* ud)
+      : registry(reg), handler(cb, ud)
+  {
+  }
+
+  void addStrategy(BridgeStrategy* s)
+  {
+    s->setSignalHandler(&handler);
+    strategies.push_back(s);
+  }
+
+  void start()
+  {
+    for (auto* s : strategies)
+    {
+      s->start();
+    }
+  }
+
+  void stop()
+  {
+    for (auto* s : strategies)
+    {
+      s->stop();
+    }
+  }
+
+  void onTrade(uint32_t symbol, double price, double qty, bool is_buy, int64_t ts_ns)
+  {
+    Trade trade{};
+    trade.symbol = symbol;
+    trade.price = Price::fromDouble(price);
+    trade.quantity = Quantity::fromDouble(qty);
+    trade.isBuy = is_buy;
+    trade.exchangeTsNs = UnixNanos(ts_ns);
+
+    TradeEvent ev{};
+    ev.trade = trade;
+
+    for (auto* s : strategies)
+    {
+      s->onTrade(ev);
+    }
+  }
+
+  void onBookSnapshot(uint32_t symbol,
+                      const double* bid_prices, const double* bid_qtys, uint32_t n_bids,
+                      const double* ask_prices, const double* ask_qtys, uint32_t n_asks,
+                      int64_t ts_ns)
+  {
+    BookUpdateEvent ev(&pool);
+    ev.update.symbol = symbol;
+    ev.update.type = BookUpdateType::SNAPSHOT;
+    ev.update.exchangeTsNs = UnixNanos(ts_ns);
+
+    for (uint32_t i = 0; i < n_bids; ++i)
+    {
+      ev.update.bids.push_back({Price::fromDouble(bid_prices[i]),
+                                Quantity::fromDouble(bid_qtys[i])});
+    }
+    for (uint32_t i = 0; i < n_asks; ++i)
+    {
+      ev.update.asks.push_back({Price::fromDouble(ask_prices[i]),
+                                Quantity::fromDouble(ask_qtys[i])});
+    }
+
+    for (auto* s : strategies)
+    {
+      s->onBookUpdate(ev);
+    }
+  }
+};
+
+static FloxRunnerImpl* toRunner(FloxRunnerHandle h)
+{
+  return static_cast<FloxRunnerImpl*>(h);
+}
+
+// ============================================================
+// FloxLiveEngineImpl — real Disruptor-based live engine
+// ============================================================
+
+struct FloxLiveEngineImpl
+{
+  SymbolRegistry* registry;
+  std::unique_ptr<TradeBus> tradeBus;
+  std::unique_ptr<BookUpdateBus> bookBus;
+  pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> bookPool;
+
+  // Per-strategy signal handlers (owned here, outlive strategies)
+  std::vector<std::unique_ptr<RunnerSignalHandler>> handlers;
+  std::vector<BridgeStrategy*> strategies;
+
+  explicit FloxLiveEngineImpl(SymbolRegistry* reg)
+      : registry(reg), tradeBus(std::make_unique<TradeBus>()), bookBus(std::make_unique<BookUpdateBus>())
+  {
+  }
+
+  void addStrategy(BridgeStrategy* s, FloxOnSignalCallback cb, void* ud)
+  {
+    auto h = std::make_unique<RunnerSignalHandler>(cb, ud);
+    s->setSignalHandler(h.get());
+    handlers.push_back(std::move(h));
+    tradeBus->subscribe(s);
+    bookBus->subscribe(s);
+    strategies.push_back(s);
+  }
+
+  void start()
+  {
+    tradeBus->start();
+    bookBus->start();
+    for (auto* s : strategies)
+    {
+      s->start();
+    }
+  }
+
+  void stop()
+  {
+    for (auto* s : strategies)
+    {
+      s->stop();
+    }
+    tradeBus->stop();
+    bookBus->stop();
+  }
+
+  void publishTrade(uint32_t symbol, double price, double qty, bool is_buy, int64_t ts_ns)
+  {
+    TradeEvent ev{};
+    ev.trade.symbol = symbol;
+    ev.trade.price = Price::fromDouble(price);
+    ev.trade.quantity = Quantity::fromDouble(qty);
+    ev.trade.isBuy = is_buy;
+    ev.trade.exchangeTsNs = UnixNanos(ts_ns);
+    tradeBus->publish(ev);
+  }
+
+  void publishBookSnapshot(uint32_t symbol,
+                           const double* bid_prices, const double* bid_qtys, uint32_t n_bids,
+                           const double* ask_prices, const double* ask_qtys, uint32_t n_asks,
+                           int64_t ts_ns)
+  {
+    auto evOpt = bookPool.acquire();
+    if (!evOpt)
+    {
+      return;
+    }
+    auto& ev = *evOpt;
+    ev->update.symbol = symbol;
+    ev->update.type = BookUpdateType::SNAPSHOT;
+    ev->update.exchangeTsNs = UnixNanos(ts_ns);
+    ev->update.bids.clear();
+    ev->update.asks.clear();
+    for (uint32_t i = 0; i < n_bids; ++i)
+    {
+      ev->update.bids.push_back({Price::fromDouble(bid_prices[i]),
+                                 Quantity::fromDouble(bid_qtys[i])});
+    }
+    for (uint32_t i = 0; i < n_asks; ++i)
+    {
+      ev->update.asks.push_back({Price::fromDouble(ask_prices[i]),
+                                 Quantity::fromDouble(ask_qtys[i])});
+    }
+    bookBus->publish(std::move(evOpt.value()));
+  }
+};
+
+static FloxLiveEngineImpl* toLiveEngine(FloxLiveEngineHandle h)
+{
+  return static_cast<FloxLiveEngineImpl*>(h);
+}
+
+// ──────────────────────────────────────────────────────────────
+// OhlcvBacktestReader — synthesises trade events from OHLCV bars
+// ──────────────────────────────────────────────────────────────
+
+class OhlcvBacktestReader : public replay::IMultiSegmentReader
+{
+ public:
+  struct Bar
+  {
+    int64_t ts_ns;
+    int64_t price_raw;
+    uint32_t symbol_id;
+  };
+
+  explicit OhlcvBacktestReader(std::vector<Bar> bars) : _bars(std::move(bars)) {}
+
+  uint64_t forEach(EventCallback cb) override
+  {
+    uint64_t n = 0;
+    for (const auto& b : _bars)
+    {
+      if (!cb(make(b)))
+      {
+        break;
+      }
+      ++n;
+    }
+    return n;
+  }
+
+  uint64_t forEachFrom(int64_t start_ns, EventCallback cb) override
+  {
+    uint64_t n = 0;
+    for (const auto& b : _bars)
+    {
+      if (b.ts_ns < start_ns)
+      {
+        continue;
+      }
+      if (!cb(make(b)))
+      {
+        break;
+      }
+      ++n;
+    }
+    return n;
+  }
+
+  const std::vector<replay::SegmentInfo>& segments() const override { return _segs; }
+  uint64_t totalEvents() const override { return _bars.size(); }
+
+ private:
+  static replay::ReplayEvent make(const Bar& b)
+  {
+    replay::ReplayEvent ev{};
+    ev.type = replay::EventType::Trade;
+    ev.timestamp_ns = b.ts_ns;
+    ev.trade.exchange_ts_ns = b.ts_ns;
+    ev.trade.price_raw = b.price_raw;
+    ev.trade.qty_raw = Quantity::fromDouble(1.0).raw();
+    ev.trade.symbol_id = b.symbol_id;
+    ev.trade.side = 1;
+    return ev;
+  }
+
+  std::vector<Bar> _bars;
+  std::vector<replay::SegmentInfo> _segs;
+};
+
+// ──────────────────────────────────────────────────────────────
+// FloxBacktestRunnerImpl
+// ──────────────────────────────────────────────────────────────
+
+struct FloxBacktestRunnerImpl
+{
+  SymbolRegistry* registry;
+  std::unique_ptr<BacktestRunner> runner;
+
+  explicit FloxBacktestRunnerImpl(SymbolRegistry* reg, double feeRate, double initialCapital)
+      : registry(reg)
+  {
+    BacktestConfig cfg{};
+    cfg.feeRate = feeRate;
+    cfg.initialCapital = initialCapital;
+    cfg.usePercentageFee = true;
+    runner = std::make_unique<BacktestRunner>(cfg);
+  }
+
+  void setStrategy(BridgeStrategy* bridge)
+  {
+    runner->setStrategy(bridge);
+  }
+
+  static int64_t normalizeTs(int64_t t)
+  {
+    if (t < static_cast<int64_t>(1e12))
+    {
+      return t * 1'000'000'000LL;
+    }
+    if (t < static_cast<int64_t>(1e15))
+    {
+      return t * 1'000'000LL;
+    }
+    if (t < static_cast<int64_t>(1e18))
+    {
+      return t * 1'000LL;
+    }
+    return t;
+  }
+
+  uint32_t resolveSymbol(const char* symbol) const
+  {
+    if (!symbol || symbol[0] == '\0')
+    {
+      auto all = registry->getAllSymbols();
+      return all.empty() ? 0 : all.front().id;
+    }
+    auto all = registry->getAllSymbols();
+    for (const auto& info : all)
+    {
+      if (info.symbol == symbol)
+      {
+        return info.id;
+      }
+    }
+    return 0;
+  }
+
+  static void fillStats(const BacktestStats& s, FloxBacktestStats* out)
+  {
+    out->totalTrades = s.totalTrades;
+    out->winningTrades = s.winningTrades;
+    out->losingTrades = s.losingTrades;
+    out->maxConsecutiveWins = s.maxConsecutiveWins;
+    out->maxConsecutiveLosses = s.maxConsecutiveLosses;
+    out->initialCapital = s.initialCapital;
+    out->finalCapital = s.finalCapital;
+    out->totalPnl = s.totalPnl;
+    out->totalFees = s.totalFees;
+    out->netPnl = s.netPnl;
+    out->grossProfit = s.grossProfit;
+    out->grossLoss = s.grossLoss;
+    out->maxDrawdown = s.maxDrawdown;
+    out->maxDrawdownPct = s.maxDrawdownPct;
+    out->winRate = s.winRate;
+    out->profitFactor = s.profitFactor;
+    out->avgWin = s.avgWin;
+    out->avgLoss = s.avgLoss;
+    out->avgWinLossRatio = s.avgWinLossRatio;
+    out->sharpeRatio = s.sharpeRatio;
+    out->sortinoRatio = s.sortinoRatio;
+    out->calmarRatio = s.calmarRatio;
+    out->returnPct = s.returnPct;
+  }
+
+  int runBars(std::vector<OhlcvBacktestReader::Bar> bars, FloxBacktestStats* out)
+  {
+    OhlcvBacktestReader reader(std::move(bars));
+    BacktestResult result = runner->run(reader);
+    if (out)
+    {
+      fillStats(result.computeStats(), out);
+    }
+    return 1;
+  }
+
+  int runCsv(const char* path, const char* symbol, FloxBacktestStats* out)
+  {
+    uint32_t id = resolveSymbol(symbol);
+    std::ifstream f(path);
+    if (!f.is_open())
+    {
+      return 0;
+    }
+
+    std::vector<OhlcvBacktestReader::Bar> bars;
+    std::string line;
+    std::getline(f, line);  // skip header
+    while (std::getline(f, line))
+    {
+      if (line.empty())
+      {
+        continue;
+      }
+      std::istringstream ss(line);
+      std::string tok;
+      std::getline(ss, tok, ',');
+      int64_t ts = normalizeTs(std::stoll(tok));
+      std::getline(ss, tok, ',');  // open
+      std::getline(ss, tok, ',');  // high
+      std::getline(ss, tok, ',');  // low
+      std::getline(ss, tok, ',');
+      double c = std::stod(tok);
+      bars.push_back({ts, Price::fromDouble(c).raw(), id});
+    }
+    return runBars(std::move(bars), out);
+  }
+
+  int runOhlcv(const int64_t* ts, const double* close, uint32_t n,
+               const char* symbol, FloxBacktestStats* out)
+  {
+    uint32_t id = resolveSymbol(symbol);
+    std::vector<OhlcvBacktestReader::Bar> bars;
+    bars.reserve(n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      bars.push_back({normalizeTs(ts[i]), Price::fromDouble(close[i]).raw(), id});
+    }
+    return runBars(std::move(bars), out);
+  }
+};
+
+static FloxBacktestRunnerImpl* toBacktestRunner(FloxBacktestRunnerHandle h)
+{
+  return static_cast<FloxBacktestRunnerImpl*>(h);
+}
+
+}  // namespace capi_impl
+
+using namespace capi_impl;
+
+FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry,
+                                    FloxOnSignalCallback on_signal,
+                                    void* user_data)
+{
+  return static_cast<FloxRunnerHandle>(
+      new FloxRunnerImpl(toRegistry(registry), on_signal, user_data));
+}
+
+void flox_runner_destroy(FloxRunnerHandle runner)
+{
+  delete toRunner(runner);
+}
+
+void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy)
+{
+  toRunner(runner)->addStrategy(toStrategy(strategy));
+}
+
+void flox_runner_start(FloxRunnerHandle runner)
+{
+  toRunner(runner)->start();
+}
+
+void flox_runner_stop(FloxRunnerHandle runner)
+{
+  toRunner(runner)->stop();
+}
+
+void flox_runner_on_trade(FloxRunnerHandle runner, uint32_t symbol,
+                          double price, double qty, uint8_t is_buy,
+                          int64_t exchange_ts_ns)
+{
+  toRunner(runner)->onTrade(symbol, price, qty, is_buy != 0, exchange_ts_ns);
+}
+
+void flox_runner_on_book_snapshot(FloxRunnerHandle runner, uint32_t symbol,
+                                  const double* bid_prices, const double* bid_qtys,
+                                  uint32_t n_bids,
+                                  const double* ask_prices, const double* ask_qtys,
+                                  uint32_t n_asks,
+                                  int64_t exchange_ts_ns)
+{
+  toRunner(runner)->onBookSnapshot(symbol,
+                                   bid_prices, bid_qtys, n_bids,
+                                   ask_prices, ask_qtys, n_asks,
+                                   exchange_ts_ns);
+}
+
+// ============================================================
+// FloxLiveEngine C API
+// ============================================================
+
+FloxLiveEngineHandle flox_live_engine_create(FloxRegistryHandle registry)
+{
+  return static_cast<FloxLiveEngineHandle>(new FloxLiveEngineImpl(toRegistry(registry)));
+}
+
+void flox_live_engine_destroy(FloxLiveEngineHandle engine)
+{
+  delete toLiveEngine(engine);
+}
+
+void flox_live_engine_add_strategy(FloxLiveEngineHandle engine,
+                                   FloxStrategyHandle strategy,
+                                   FloxOnSignalCallback on_signal,
+                                   void* user_data)
+{
+  toLiveEngine(engine)->addStrategy(toStrategy(strategy), on_signal, user_data);
+}
+
+void flox_live_engine_start(FloxLiveEngineHandle engine)
+{
+  toLiveEngine(engine)->start();
+}
+
+void flox_live_engine_stop(FloxLiveEngineHandle engine)
+{
+  toLiveEngine(engine)->stop();
+}
+
+void flox_live_engine_publish_trade(FloxLiveEngineHandle engine,
+                                    uint32_t symbol,
+                                    double price, double qty, uint8_t is_buy,
+                                    int64_t exchange_ts_ns)
+{
+  toLiveEngine(engine)->publishTrade(symbol, price, qty, is_buy != 0, exchange_ts_ns);
+}
+
+void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine,
+                                            uint32_t symbol,
+                                            const double* bid_prices,
+                                            const double* bid_qtys,
+                                            uint32_t n_bids,
+                                            const double* ask_prices,
+                                            const double* ask_qtys,
+                                            uint32_t n_asks,
+                                            int64_t exchange_ts_ns)
+{
+  toLiveEngine(engine)->publishBookSnapshot(symbol,
+                                            bid_prices, bid_qtys, n_bids,
+                                            ask_prices, ask_qtys, n_asks,
+                                            exchange_ts_ns);
+}
+
+// ============================================================
+// FloxBacktestRunner C API
+// ============================================================
+
+FloxBacktestRunnerHandle flox_backtest_runner_create(FloxRegistryHandle registry,
+                                                     double fee_rate,
+                                                     double initial_capital)
+{
+  return static_cast<FloxBacktestRunnerHandle>(
+      new FloxBacktestRunnerImpl(toRegistry(registry), fee_rate, initial_capital));
+}
+
+void flox_backtest_runner_destroy(FloxBacktestRunnerHandle h)
+{
+  delete toBacktestRunner(h);
+}
+
+void flox_backtest_runner_set_strategy(FloxBacktestRunnerHandle h,
+                                       FloxStrategyHandle strategy)
+{
+  toBacktestRunner(h)->setStrategy(toStrategy(strategy));
+}
+
+int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle h,
+                                 const char* path,
+                                 const char* symbol,
+                                 FloxBacktestStats* out)
+{
+  return toBacktestRunner(h)->runCsv(path, symbol, out);
+}
+
+int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle h,
+                                   const int64_t* ts,
+                                   const double* close,
+                                   uint32_t n,
+                                   const char* symbol,
+                                   FloxBacktestStats* out)
+{
+  return toBacktestRunner(h)->runOhlcv(ts, close, n, symbol, out);
 }

@@ -1,6 +1,6 @@
 # FLOX
 
-**High-performance C++ framework for building trading systems.**
+**C++ framework for building trading systems.**
 
 [![GitHub](https://img.shields.io/badge/GitHub-FLOX--Foundation%2Fflox-blue?logo=github)](https://github.com/FLOX-Foundation/flox)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/FLOX-Foundation/flox/blob/main/LICENSE)
@@ -14,8 +14,20 @@
 | [**Quickstart**](tutorials/quickstart.md) | Build FLOX and run the demo in 5 minutes |
 | [**First Strategy**](tutorials/first-strategy.md) | Write and run your first trading strategy |
 | [**Architecture**](explanation/architecture.md) | Understand how components work together |
+| [**Language Bindings**](bindings/README.md) | Python, Node.js, Codon, JavaScript |
 | [**API Reference**](reference/README.md) | Complete technical documentation |
-| [**Python API**](reference/python/index.md) | Python bindings reference |
+
+---
+
+## Language bindings
+
+| Language | Guide | Reference |
+|---|---|---|
+| Python | [Python](bindings/python.md) | [reference](reference/python/index.md) |
+| Node.js | [Node.js](bindings/node.md) | [reference](reference/node/index.md) |
+| Codon | [Codon](bindings/codon.md) | [reference](reference/codon/index.md) |
+| JavaScript (embedded) | [JavaScript](bindings/javascript.md) | [reference](reference/quickjs/index.md) |
+| C API | [C API](bindings/capi.md) | [reference](reference/api/capi/flox_capi.md) |
 
 ---
 
@@ -27,7 +39,6 @@
 | [How-To Guides](how-to/README.md) | Solutions for specific problems |
 | [Explanation](explanation/README.md) | Architecture and design concepts |
 | [Reference](reference/README.md) | API specifications |
-| [Python API](reference/python/index.md) | Python bindings for all modules |
 
 ---
 
@@ -35,13 +46,13 @@
 
 | Feature | Description |
 |---------|-------------|
-| Lock-free event delivery | Disruptor-style ring buffers for minimal latency |
-| Zero-allocation hot path | Pre-allocated pools, no heap allocation during trading |
+| Lock-free event delivery | Disruptor-style ring buffers, busy-spin consumers |
+| Zero-allocation hot path | Pre-allocated pools, no heap allocation in market data callbacks |
 | CPU affinity support | Pin threads to isolated cores |
 | Multi-exchange trading | [CEX coordination](reference/api/cex/index.md) with aggregation and smart routing |
 | Binary replay system | Record live data, replay for backtesting |
 | Grid search optimization | Parallel parameter optimization with mmap-based bar storage |
-| [Python bindings](reference/python/index.md) | Full API accessible from Python with numpy integration |
+| Multi-language bindings | Python, Node.js, Codon, JavaScript, C API |
 | Type-safe primitives | Strong types for Price, Quantity, SymbolId |
 | Modular architecture | Use only what you need |
 

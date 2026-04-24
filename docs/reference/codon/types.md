@@ -79,6 +79,42 @@ Trade event data passed to `Strategy.on_trade()`.
 | `TIF_FOK` | `2` |
 | `TIF_POST_ONLY` | `4` |
 
+## `SymbolContext`
+
+Per-symbol state passed to `Strategy.on_trade()` and `Strategy.on_book_update()`. Also accessible via `Strategy.ctx(symbol)`.
+
+```python
+from flox.context import SymbolContext
+
+def on_trade(self, ctx: SymbolContext, trade: TradeData):
+    if ctx.is_flat() and trade.price.to_double() > ctx.best_ask():
+        self.emit_market_buy(ctx.symbol_id, 1.0)
+```
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `symbol_id` | `int` | Numeric symbol ID |
+| `symbol` | `str` | Symbol name |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `position()` | `float` | Current position quantity |
+| `position_raw()` | `int` | Current position (raw int64, scale 1e8) |
+| `last_trade_price()` | `float` | Last trade price |
+| `best_bid()` | `float` | Best bid price |
+| `best_ask()` | `float` | Best ask price |
+| `mid_price()` | `float` | Mid price |
+| `book_spread()` | `float` | Bid-ask spread |
+| `is_long()` | `bool` | Position > 0 |
+| `is_short()` | `bool` | Position < 0 |
+| `is_flat()` | `bool` | Position == 0 |
+
+---
+
 ## Scale
 
 All fixed-point types use `SCALE = 100_000_000` (1e8), matching the C++ `Decimal` template.

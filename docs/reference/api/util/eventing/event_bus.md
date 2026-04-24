@@ -1,6 +1,6 @@
 # EventBus
 
-`EventBus` is a high-performance Disruptor-style ring buffer for broadcasting typed events to multiple consumers. It uses lock-free sequencing with busy-spin waiting for minimal latency.
+`EventBus` is a Disruptor-style ring buffer for broadcasting typed events to multiple consumers. Uses lock-free sequencing with busy-spin waiting.
 
 ```cpp
 template <typename Event,

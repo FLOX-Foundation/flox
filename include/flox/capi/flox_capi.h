@@ -652,6 +652,396 @@ extern "C"
   uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result,
                                                       const char* path);
 
+  // ============================================================
+  // Segment operations (full API)
+  // ============================================================
+
+  typedef struct
+  {
+    uint8_t success;
+    uint64_t segments_merged;
+    uint64_t events_written;
+    uint64_t bytes_written;
+  } FloxMergeResult;
+
+  typedef struct
+  {
+    uint8_t success;
+    uint32_t segments_created;
+    uint64_t events_written;
+  } FloxSplitResult;
+
+  typedef struct
+  {
+    uint8_t success;
+    uint64_t events_exported;
+    uint64_t bytes_written;
+  } FloxExportResult;
+
+  // merge: input_paths is \0-separated list of paths, total_len is combined length
+  FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_paths,
+                                          const char* output_dir, const char* output_name,
+                                          uint8_t sort);
+
+  FloxMergeResult flox_segment_merge_dir(const char* input_dir, const char* output_dir);
+
+  FloxSplitResult flox_segment_split(const char* input_path, const char* output_dir,
+                                     uint8_t mode, int64_t time_interval_ns,
+                                     uint64_t events_per_file);
+
+  FloxExportResult flox_segment_export(const char* input_path, const char* output_path,
+                                       uint8_t format, int64_t from_ns, int64_t to_ns,
+                                       const uint32_t* symbols, uint32_t num_symbols);
+
+  uint8_t flox_segment_recompress(const char* input_path, const char* output_path,
+                                  uint8_t compression);
+
+  uint64_t flox_segment_extract_symbols(const char* input_path, const char* output_path,
+                                        const uint32_t* symbols, uint32_t num_symbols);
+
+  uint64_t flox_segment_extract_time_range(const char* input_path, const char* output_path,
+                                           int64_t from_ns, int64_t to_ns);
+
+  // ============================================================
+  // Validation (full API)
+  // ============================================================
+
+  typedef struct
+  {
+    uint8_t valid;
+    uint8_t header_valid;
+    uint64_t reported_event_count;
+    uint64_t actual_event_count;
+    uint8_t has_index;
+    uint8_t index_valid;
+    uint64_t trades_found;
+    uint64_t book_updates_found;
+    uint32_t crc_errors;
+    uint32_t timestamp_anomalies;
+  } FloxSegmentValidation;
+
+  FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
+                                                   uint8_t verify_timestamps);
+
+  typedef struct
+  {
+    uint8_t valid;
+    uint32_t total_segments;
+    uint32_t valid_segments;
+    uint32_t corrupted_segments;
+    uint64_t total_events;
+    uint64_t total_bytes;
+    int64_t first_timestamp;
+    int64_t last_timestamp;
+  } FloxDatasetValidation;
+
+  FloxDatasetValidation flox_dataset_validate(const char* data_dir);
+
+  // ============================================================
+  // DataReader (full API)
+  // ============================================================
+
+  typedef struct
+  {
+    int64_t first_event_ns;
+    int64_t last_event_ns;
+    uint64_t total_events;
+    uint32_t segment_count;
+    uint64_t total_bytes;
+    double duration_seconds;
+  } FloxDatasetSummary;
+
+  FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int64_t from_ns,
+                                                        int64_t to_ns, const uint32_t* symbols,
+                                                        uint32_t num_symbols);
+
+  FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle reader);
+
+  typedef struct
+  {
+    uint64_t files_read;
+    uint64_t events_read;
+    uint64_t trades_read;
+    uint64_t book_updates_read;
+    uint64_t bytes_read;
+    uint64_t crc_errors;
+  } FloxReaderStats;
+
+  FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle reader);
+
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t recv_ts_ns;
+    int64_t price_raw;
+    int64_t qty_raw;
+    uint64_t trade_id;
+    uint32_t symbol_id;
+    uint8_t side;
+  } FloxTradeRecord;
+
+  // Returns number of trades read. If trades_out is NULL, counts only.
+  uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader, FloxTradeRecord* trades_out,
+                                        uint64_t max_trades);
+
+  // ============================================================
+  // DataWriter (extras)
+  // ============================================================
+
+  typedef struct
+  {
+    uint64_t bytes_written;
+    uint64_t events_written;
+    uint64_t segments_created;
+    uint64_t trades_written;
+  } FloxWriterStats;
+
+  FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer);
+
+  // ============================================================
+  // DataRecorder
+  // ============================================================
+
+  typedef void* FloxDataRecorderHandle;
+
+  FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
+                                                   const char* exchange_name,
+                                                   uint64_t max_segment_mb);
+  void flox_data_recorder_destroy(FloxDataRecorderHandle recorder);
+  void flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder, uint32_t symbol_id,
+                                     const char* name, const char* base, const char* quote,
+                                     int8_t price_precision, int8_t qty_precision);
+  void flox_data_recorder_start(FloxDataRecorderHandle recorder);
+  void flox_data_recorder_stop(FloxDataRecorderHandle recorder);
+  void flox_data_recorder_flush(FloxDataRecorderHandle recorder);
+  uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder);
+
+  // ============================================================
+  // Partitioner
+  // ============================================================
+
+  typedef void* FloxPartitionerHandle;
+
+  typedef struct
+  {
+    uint32_t partition_id;
+    int64_t from_ns;
+    int64_t to_ns;
+    int64_t warmup_from_ns;
+    uint64_t estimated_events;
+    uint64_t estimated_bytes;
+  } FloxPartition;
+
+  FloxPartitionerHandle flox_partitioner_create(const char* data_dir);
+  void flox_partitioner_destroy(FloxPartitionerHandle partitioner);
+
+  // All partition functions return number of partitions.
+  // If partitions_out is NULL, returns count only.
+  uint32_t flox_partitioner_by_time(FloxPartitionerHandle p, uint32_t num_partitions,
+                                    int64_t warmup_ns, FloxPartition* partitions_out,
+                                    uint32_t max_partitions);
+  uint32_t flox_partitioner_by_duration(FloxPartitionerHandle p, int64_t duration_ns,
+                                        int64_t warmup_ns, FloxPartition* partitions_out,
+                                        uint32_t max_partitions);
+  uint32_t flox_partitioner_by_calendar(FloxPartitionerHandle p, uint8_t unit,
+                                        int64_t warmup_ns, FloxPartition* partitions_out,
+                                        uint32_t max_partitions);
+  uint32_t flox_partitioner_by_symbol(FloxPartitionerHandle p, uint32_t num_partitions,
+                                      FloxPartition* partitions_out, uint32_t max_partitions);
+  uint32_t flox_partitioner_per_symbol(FloxPartitionerHandle p, FloxPartition* partitions_out,
+                                       uint32_t max_partitions);
+  uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle p, uint32_t num_partitions,
+                                           FloxPartition* partitions_out,
+                                           uint32_t max_partitions);
+
+  // ============================================================
+  // Pointer-out wrappers for struct-returning functions.
+  // These exist for language bindings (Codon, QuickJS) that cannot
+  // consume C structs returned by value via their FFI.
+  // Each writes sizeof(OriginalStruct) bytes to *out.
+  // ============================================================
+
+  void flox_data_reader_summary_p(FloxDataReaderHandle reader, void* out);
+  void flox_data_reader_stats_p(FloxDataReaderHandle reader, void* out);
+  void flox_data_writer_stats_p(FloxDataWriterHandle writer, void* out);
+  void flox_segment_merge_full_p(const char* input_paths, size_t num_paths,
+                                 const char* output_dir, const char* output_name,
+                                 uint8_t sort, void* out);
+  void flox_segment_merge_dir_p(const char* input_dir, const char* output_dir, void* out);
+  void flox_segment_split_p(const char* input_path, const char* output_dir, uint8_t mode,
+                            int64_t time_interval_ns, uint64_t events_per_file, void* out);
+  void flox_segment_export_p(const char* input_path, const char* output_path, uint8_t format,
+                             int64_t from_ns, int64_t to_ns,
+                             const uint32_t* symbols, uint32_t num_symbols, void* out);
+  void flox_segment_validate_full_p(const char* path, uint8_t verify_crc,
+                                    uint8_t verify_timestamps, void* out);
+  void flox_dataset_validate_p(const char* data_dir, void* out);
+
+  // ============================================================
+  // Signal type — emitted by strategies, received by order backends.
+  // Shared by FloxLiveEngine and StrategyRunner.
+  // ============================================================
+
+  typedef struct
+  {
+    uint64_t order_id;
+    uint32_t symbol;
+    uint8_t side;        // 0=buy, 1=sell
+    uint8_t order_type;  // 0=market, 1=limit, 2=stop_market, 3=stop_limit,
+                         // 4=tp_market, 5=tp_limit, 6=trailing_stop,
+                         // 7=cancel, 8=cancel_all, 9=modify
+    double price;        // limit price (0 for market orders)
+    double quantity;
+    double trigger_price;    // stop/take-profit trigger
+    double trailing_offset;  // trailing stop — absolute price offset
+    int32_t trailing_bps;    // trailing stop — callback rate in basis points
+    double new_price;        // modify: updated price
+    double new_quantity;     // modify: updated quantity
+  } FloxSignal;
+
+  typedef void (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);
+
+  // ============================================================
+  // FloxLiveEngine — Disruptor-based live trading engine.
+  //
+  // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
+  // Each subscribed strategy runs in its own bus consumer thread.
+  // Publish functions are called from the caller's thread (e.g., Python
+  // asyncio, Node.js event loop, Codon main thread) and are lock-free.
+  //
+  // Usage:
+  //   1. Create a registry and register symbols.
+  //   2. Create a live engine.
+  //   3. For each strategy: create via flox_strategy_create, then
+  //      call flox_live_engine_add_strategy (assigns a signal handler).
+  //   4. flox_live_engine_start() — spawns consumer threads.
+  //   5. Push market data: flox_live_engine_publish_trade / book_snapshot.
+  //      Returns immediately; strategy callbacks fire in consumer threads.
+  //   6. flox_live_engine_stop() — drains buses, joins threads.
+  // ============================================================
+
+  typedef void* FloxLiveEngineHandle;
+
+  FloxLiveEngineHandle flox_live_engine_create(FloxRegistryHandle registry);
+  void flox_live_engine_destroy(FloxLiveEngineHandle engine);
+
+  // Attach a strategy to both TradeBus and BookUpdateBus.
+  // on_signal is called from the consumer thread when the strategy emits an order.
+  // The caller must ensure thread safety when submitting orders from on_signal.
+  void flox_live_engine_add_strategy(FloxLiveEngineHandle engine,
+                                     FloxStrategyHandle strategy,
+                                     FloxOnSignalCallback on_signal,
+                                     void* user_data);
+
+  void flox_live_engine_start(FloxLiveEngineHandle engine);
+  void flox_live_engine_stop(FloxLiveEngineHandle engine);
+
+  // Publish a trade tick to the TradeBus.
+  // Lock-free. Returns immediately; consumer threads process asynchronously.
+  void flox_live_engine_publish_trade(FloxLiveEngineHandle engine,
+                                      uint32_t symbol,
+                                      double price, double qty, uint8_t is_buy,
+                                      int64_t exchange_ts_ns);
+
+  // Publish a full L2 book snapshot to the BookUpdateBus.
+  // Lock-free. Returns immediately; consumer threads process asynchronously.
+  void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine,
+                                              uint32_t symbol,
+                                              const double* bid_prices,
+                                              const double* bid_qtys,
+                                              uint32_t n_bids,
+                                              const double* ask_prices,
+                                              const double* ask_qtys,
+                                              uint32_t n_asks,
+                                              int64_t exchange_ts_ns);
+
+  // ============================================================
+  // StrategyRunner — synchronous strategy host for live trading.
+  //
+  // Designed for Python, Codon, Node.js, and other language runtimes
+  // that bring their own event loop and market data source (e.g. CCXT).
+  //
+  // Usage:
+  //   1. Create a registry and register symbols.
+  //   2. Create a runner with an on_signal callback.
+  //   3. Create strategies and add them to the runner.
+  //   4. Call flox_runner_start().
+  //   5. Push market events (trades, book snapshots) as they arrive.
+  //      Strategy callbacks fire synchronously before the call returns.
+  //      When a strategy emits an order, on_signal is called immediately.
+  //   6. Submit the received orders via your own execution backend.
+  // ============================================================
+
+  typedef void* FloxRunnerHandle;
+
+  FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry,
+                                      FloxOnSignalCallback on_signal,
+                                      void* user_data);
+  void flox_runner_destroy(FloxRunnerHandle runner);
+
+  // Attach a strategy (created via flox_strategy_create) to the runner.
+  // The runner does NOT take ownership; call flox_strategy_destroy separately.
+  void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy);
+
+  void flox_runner_start(FloxRunnerHandle runner);
+  void flox_runner_stop(FloxRunnerHandle runner);
+
+  // Push a trade tick. Strategy on_trade callbacks fire synchronously.
+  void flox_runner_on_trade(FloxRunnerHandle runner, uint32_t symbol,
+                            double price, double qty, uint8_t is_buy,
+                            int64_t exchange_ts_ns);
+
+  // Push a full L2 book snapshot. Strategy on_book callbacks fire synchronously.
+  void flox_runner_on_book_snapshot(FloxRunnerHandle runner, uint32_t symbol,
+                                    const double* bid_prices, const double* bid_qtys,
+                                    uint32_t n_bids,
+                                    const double* ask_prices, const double* ask_qtys,
+                                    uint32_t n_asks,
+                                    int64_t exchange_ts_ns);
+
+  // ============================================================
+  // BacktestRunner — replay OHLCV data through a Strategy.
+  //
+  // Same Strategy class as StrategyRunner / LiveEngine; just a different
+  // host. Emitted orders go to SimulatedExecutor; stats returned at end.
+  //
+  // Usage:
+  //   1. Create registry, register symbols (flox_registry_add_symbol).
+  //   2. Create a strategy (flox_strategy_create) with on_trade callbacks.
+  //   3. flox_backtest_runner_create + flox_backtest_runner_set_strategy.
+  //   4. flox_backtest_runner_run_csv  OR  flox_backtest_runner_run_ohlcv.
+  //   5. Read FloxBacktestStats out parameter for results.
+  //   6. flox_backtest_runner_destroy.
+  // ============================================================
+
+  typedef void* FloxBacktestRunnerHandle;
+
+  FloxBacktestRunnerHandle flox_backtest_runner_create(FloxRegistryHandle registry,
+                                                       double fee_rate,
+                                                       double initial_capital);
+  void flox_backtest_runner_destroy(FloxBacktestRunnerHandle runner);
+
+  // Attach a strategy. BacktestRunner becomes the signal handler — emitted
+  // orders are routed to SimulatedExecutor automatically.
+  void flox_backtest_runner_set_strategy(FloxBacktestRunnerHandle runner,
+                                         FloxStrategyHandle strategy);
+
+  // Replay a CSV file (columns: timestamp, open, high, low, close, volume).
+  // Returns 1 on success, 0 on error.
+  int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle runner,
+                                   const char* path,
+                                   const char* symbol,
+                                   FloxBacktestStats* stats_out);
+
+  // Replay raw OHLCV arrays (timestamps in nanoseconds, close prices as double).
+  // Returns 1 on success, 0 on error.
+  int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner,
+                                     const int64_t* timestamps_ns,
+                                     const double* close_prices,
+                                     uint32_t n,
+                                     const char* symbol,
+                                     FloxBacktestStats* stats_out);
+
 #ifdef __cplusplus
 }
 #endif

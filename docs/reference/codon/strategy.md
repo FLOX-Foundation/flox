@@ -134,16 +134,16 @@ Returns the first symbol in the subscription list.
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData
-from flox.indicators import StreamingEMA
+from flox.indicators import EMA
 
 class EmaCrossover(Strategy):
-    fast_ema: StreamingEMA
-    slow_ema: StreamingEMA
+    fast_ema: EMA
+    slow_ema: EMA
 
     def __init__(self, symbols: List[int]):
         super().__init__(symbols)
-        self.fast_ema = StreamingEMA(12)
-        self.slow_ema = StreamingEMA(26)
+        self.fast_ema = EMA(12)
+        self.slow_ema = EMA(26)
 
     def on_trade(self, ctx: SymbolContext, trade: TradeData):
         price = trade.price.to_double()

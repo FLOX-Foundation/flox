@@ -1,0 +1,72 @@
+# SMA crossover backtest from CSV -- Codon implementation.
+#
+# Demonstrates the Codon flox API:
+#   - Engine: load CSV, iterate OhlcvBars
+#   - Streaming SMA for signal generation
+#   - SignalBuilder: accumulate buy/sell signals
+#   - Engine.run(): replay signals, return BacktestStats
+#
+# Compile:
+#   cd codon/
+#   LIBRARY_PATH=../build/src/capi \
+#   CODON_PATH=. \
+#   ~/.codon/bin/codon build -exe -release -l flox_capi \
+#     examples/backtest_from_csv.codon \
+#     -o examples/backtest_from_csv
+#
+# Run:
+#   DYLD_LIBRARY_PATH=../build/src/capi \
+#   ./examples/backtest_from_csv ../examples/data/btcusdt_1m.csv
+
+import sys
+from flox.engine import Engine, SignalBuilder
+from flox.indicators import SMA
+
+
+def sma_crossover(path: str, fast: int = 10, slow: int = 30,
+                  initial_capital: float = 10000.0,
+                  fee_rate: float = 0.0004) -> None:
+    engine = Engine(initial_capital=initial_capital, fee_rate=fee_rate)
+    engine.load_csv(path)
+
+    bars    = engine._symbols["__default__"]
+    fast_sma = SMA(fast)
+    slow_sma = SMA(slow)
+    signals  = SignalBuilder()
+    pos      = 0  # -1=short  0=flat  1=long
+
+    for bar in bars:
+        ts_ms = bar.ts_ns // 1_000_000   # engine stores ns; SignalBuilder expects ms
+        c     = bar.close()
+        fv    = fast_sma.update(c)
+        sv    = slow_sma.update(c)
+        if not slow_sma.ready:
+            continue
+        if fv > sv and pos <= 0:
+            signals.buy(ts_ms, 0.01 if pos == 0 else 0.02)
+            pos = 1
+        elif fv < sv and pos >= 0:
+            signals.sell(ts_ms, 0.01 if pos == 0 else 0.02)
+            pos = -1
+
+    print(f"Loaded {engine.bar_count()} bars  "
+          f"{bars[0].close():.2f} -> {bars[-1].close():.2f}")
+    print(f"{len(signals)} signals generated")
+
+    stats = engine.run(signals)
+
+    ret_sign = "+" if stats.return_pct >= 0.0 else ""
+    print(f"\nSMA({fast}/{slow}) crossover results")
+    print(f"  Capital  : {stats.initial_capital:.2f} -> {stats.final_capital:.2f}")
+    print(f"  Return   : {ret_sign}{stats.return_pct:.4f}%")
+    print(f"  Trades   : {stats.total_trades}  (win rate {stats.win_rate * 100.0:.1f}%)")
+    print(f"  Prof.factor: {stats.profit_factor:.2f}")
+    print(f"  Sharpe   : {stats.sharpe:.4f}")
+    print(f"  Max DD   : {stats.max_drawdown_pct:.4f}%")
+    print(f"  Fees     : {stats.total_fees:.4f}")
+    print(f"  PnL      : {stats.net_pnl:.4f}")
+
+
+if __name__ == "__main__":
+    path = sys.argv[1] if len(sys.argv) > 1 else "../examples/data/btcusdt_1m.csv"
+    sma_crossover(path)

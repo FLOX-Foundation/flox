@@ -39,8 +39,12 @@ inline void checkSameSize(size_t a, size_t b, const char* msg)
   }
 }
 
+using contiguous_double = py::array_t<double, py::array::c_style | py::array::forcecast>;
+using contiguous_int8 = py::array_t<int8_t, py::array::c_style | py::array::forcecast>;
+using contiguous_uint8 = py::array_t<uint8_t, py::array::c_style | py::array::forcecast>;
+
 template <typename Indicator>
-py::array_t<double> computeSingle(const Indicator& ind, py::array_t<double> input)
+py::array_t<double> computeSingle(const Indicator& ind, contiguous_double input)
 {
   auto buf = input.request();
   auto* ptr = static_cast<const double*>(buf.ptr);
@@ -556,23 +560,23 @@ class PyCVD
 inline void bindIndicators(py::module_& m)
 {
   m.def(
-      "ema", [](py::array_t<double> input, size_t period)
+      "ema", [](contiguous_double input, size_t period)
       { return computeSingle(flox::indicator::EMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
-      "sma", [](py::array_t<double> input, size_t period)
+      "sma", [](contiguous_double input, size_t period)
       { return computeSingle(flox::indicator::SMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
-      "rsi", [](py::array_t<double> input, size_t period)
+      "rsi", [](contiguous_double input, size_t period)
       { return computeSingle(flox::indicator::RSI(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
       "atr",
-      [](py::array_t<double> high, py::array_t<double> low, py::array_t<double> close,
+      [](contiguous_double high, contiguous_double low, contiguous_double close,
          size_t period) -> py::array_t<double>
       {
         size_t n = high.request().shape[0];
@@ -595,7 +599,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "macd",
-      [](py::array_t<double> input, size_t fast, size_t slow, size_t signal) -> py::dict
+      [](contiguous_double input, size_t fast, size_t slow, size_t signal) -> py::dict
       {
         size_t n = input.request().shape[0];
         auto* inp = input.data();
@@ -618,18 +622,18 @@ inline void bindIndicators(py::module_& m)
       py::arg("input"), py::arg("fast") = 12, py::arg("slow") = 26, py::arg("signal") = 9);
 
   m.def(
-      "slope", [](py::array_t<double> input, size_t length)
+      "slope", [](contiguous_double input, size_t length)
       { return computeSingle(flox::indicator::Slope(length), input); },
       py::arg("input"), py::arg("length") = 1);
 
   m.def(
-      "kama", [](py::array_t<double> input, size_t period)
+      "kama", [](contiguous_double input, size_t period)
       { return computeSingle(flox::indicator::KAMA(period), input); },
       py::arg("input"), py::arg("period") = 10);
 
   m.def(
       "obv",
-      [](py::array_t<double> close, py::array_t<double> volume) -> py::array_t<double>
+      [](contiguous_double close, contiguous_double volume) -> py::array_t<double>
       {
         size_t n = close.request().shape[0];
         checkSameSize(n, volume.request().shape[0], "close and volume must have same size");
@@ -648,7 +652,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "adx",
-      [](py::array_t<double> high, py::array_t<double> low, py::array_t<double> close,
+      [](contiguous_double high, contiguous_double low, contiguous_double close,
          size_t period) -> py::dict
       {
         size_t n = high.request().shape[0];
@@ -678,7 +682,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "chop",
-      [](py::array_t<double> high, py::array_t<double> low, py::array_t<double> close,
+      [](contiguous_double high, contiguous_double low, contiguous_double close,
          size_t period) -> py::array_t<double>
       {
         size_t n = high.request().shape[0];
@@ -702,7 +706,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "bollinger",
-      [](py::array_t<double> input, size_t period, double stddev) -> py::dict
+      [](contiguous_double input, size_t period, double stddev) -> py::dict
       {
         size_t n = input.request().shape[0];
         auto* inp = input.data();
@@ -727,8 +731,8 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "bar_returns",
-      [](py::array_t<int8_t> signal_long, py::array_t<int8_t> signal_short,
-         py::array_t<double> log_returns) -> py::array_t<double>
+      [](contiguous_int8 signal_long, contiguous_int8 signal_short,
+         contiguous_double log_returns) -> py::array_t<double>
       {
         size_t n = signal_long.request().shape[0];
         auto* sl = signal_long.data();
@@ -747,8 +751,8 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "trade_pnl",
-      [](py::array_t<int8_t> signal_long, py::array_t<int8_t> signal_short,
-         py::array_t<double> log_returns) -> py::array_t<double>
+      [](contiguous_int8 signal_long, contiguous_int8 signal_short,
+         contiguous_double log_returns) -> py::array_t<double>
       {
         size_t n = signal_long.request().shape[0];
         auto* sl = signal_long.data();
@@ -793,7 +797,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "profit_factor",
-      [](py::array_t<double> returns) -> double
+      [](contiguous_double returns) -> double
       {
         size_t n = returns.request().shape[0];
         auto* r = returns.data();
@@ -815,7 +819,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "win_rate",
-      [](py::array_t<double> trade_pnls) -> double
+      [](contiguous_double trade_pnls) -> double
       {
         size_t n = trade_pnls.request().shape[0];
         if (n == 0)
@@ -836,12 +840,12 @@ inline void bindIndicators(py::module_& m)
       py::arg("trade_pnls"));
 
   m.def(
-      "rma", [](py::array_t<double> input, size_t period)
+      "rma", [](contiguous_double input, size_t period)
       { return computeSingle(flox::indicator::RMA(period), input); },
       "Wilder's Moving Average (alpha=1/period)", py::arg("input"), py::arg("period"));
 
   m.def(
-      "dema", [](py::array_t<double> input, size_t period)
+      "dema", [](contiguous_double input, size_t period)
       {
         auto buf = input.request();
         size_t n = buf.shape[0];
@@ -853,7 +857,7 @@ inline void bindIndicators(py::module_& m)
         return out; }, "Double EMA: 2*EMA - EMA(EMA)", py::arg("input"), py::arg("period"));
 
   m.def(
-      "tema", [](py::array_t<double> input, size_t period)
+      "tema", [](contiguous_double input, size_t period)
       {
         auto buf = input.request();
         size_t n = buf.shape[0];
@@ -866,7 +870,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "stochastic",
-      [](py::array_t<double> high, py::array_t<double> low, py::array_t<double> close,
+      [](contiguous_double high, contiguous_double low, contiguous_double close,
          size_t k_period, size_t d_period) -> py::dict
       {
         size_t n = high.request().shape[0];
@@ -894,7 +898,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "cci",
-      [](py::array_t<double> high, py::array_t<double> low, py::array_t<double> close,
+      [](contiguous_double high, contiguous_double low, contiguous_double close,
          size_t period)
       {
         size_t n = high.request().shape[0];
@@ -918,7 +922,7 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "vwap",
-      [](py::array_t<double> close, py::array_t<double> volume, size_t window)
+      [](contiguous_double close, contiguous_double volume, size_t window)
       {
         size_t n = close.request().shape[0];
         checkSameSize(n, volume.request().shape[0], "arrays must have same size");
@@ -939,8 +943,8 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "cvd",
-      [](py::array_t<double> open, py::array_t<double> high, py::array_t<double> low,
-         py::array_t<double> close, py::array_t<double> volume)
+      [](contiguous_double open, contiguous_double high, contiguous_double low,
+         contiguous_double close, contiguous_double volume)
       {
         size_t n = close.request().shape[0];
         checkSameSize(n, open.request().shape[0], "arrays must have same size");

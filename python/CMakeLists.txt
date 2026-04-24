@@ -2,7 +2,7 @@ find_package(pybind11 REQUIRED)
 
 pybind11_add_module(flox_py flox_py.cpp)
 
-target_link_libraries(flox_py PRIVATE flox)
+target_link_libraries(flox_py PRIVATE flox flox_capi)
 target_include_directories(flox_py PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )

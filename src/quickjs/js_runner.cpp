@@ -9,7 +9,7 @@ int main(int argc, char* argv[])
 {
   if (argc < 2)
   {
-    std::cerr << "Usage: flox_js_runner <script.js>" << std::endl;
+    std::cerr << "Usage: flox_js_runner <script.js>\n";
     return 1;
   }
 
@@ -18,14 +18,19 @@ int main(int argc, char* argv[])
     flox::SymbolRegistry registry;
     flox::FloxJsStrategy jsStrategy(argv[1], registry);
 
-    auto callbacks = jsStrategy.getCallbacks();
     auto symbolIds = jsStrategy.symbolIds();
 
-    // Create BridgeStrategy to connect JS strategy to the engine
+    if (symbolIds.empty())
+    {
+      // Plain script, no strategy -- already executed, just exit
+      return 0;
+    }
+
+    // Strategy mode
+    auto callbacks = jsStrategy.getCallbacks();
     auto bridge = std::make_unique<flox::BridgeStrategy>(
         1, std::vector<flox::SymbolId>(symbolIds.begin(), symbolIds.end()), registry, callbacks);
 
-    // Inject the bridge handle so JS can call emit_* and query methods
     jsStrategy.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
 
     std::cout << "Loaded JS strategy with " << symbolIds.size() << " symbol(s)" << std::endl;

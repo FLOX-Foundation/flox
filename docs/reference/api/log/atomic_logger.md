@@ -1,7 +1,6 @@
 # AtomicLogger
 
-`AtomicLogger` is a low-latency, lock-free logger implementation designed for high-performance environments.  
-It supports log-level filtering, auto-rotation by time or size, and writes to shared memory by default (`/dev/shm`).
+`AtomicLogger` is a lock-free logger. Supports log-level filtering, auto-rotation by time or size, writes to shared memory by default (`/dev/shm`).
 
 ## Purpose
 

@@ -26,6 +26,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -79,6 +83,13 @@ jobs:
     - name: Build
       run: cmake --build build -j$(nproc)
 
+    - name: Build Node.js addon
+      working-directory: node
+      env:
+        CXX: g++-14
+        CC: gcc-14
+      run: npm install && npm run build
+
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
 
@@ -86,29 +97,42 @@ jobs:
       run: |
         test -f build/src/capi/libflox_capi.so
         nm -D build/src/capi/libflox_capi.so | grep -q flox_emit_market_buy
+        nm -D build/src/capi/libflox_capi.so | grep -q flox_position_tracker_on_fill
+        nm -D build/src/capi/libflox_capi.so | grep -q flox_order_tracker_on_submitted
 
     - name: Verify Python bindings
-      run: |
-        cd build/python
-        python3 -c "
-        import flox_py as flox
-        s = flox.Strategy([1])
-        assert hasattr(s, 'emit_market_buy')
-        assert hasattr(s, 'on_trade')
-        assert hasattr(s, 'position')
-        print('Python Strategy OK')
-        "
+      run: PYTHONPATH=build/python python3 python/tests/test_bindings.py
+
+    - name: Run Python example
+      run: PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
 
     - name: Verify Codon binaries
       run: |
         test -f build/codon/codon_sma_crossover
         test -f build/codon/codon_pairs_strategy
+        test -f build/codon/codon_backtest_from_csv
+        test -f build/codon/codon_full_backtest
         file build/codon/codon_sma_crossover | grep -q ELF
+
+    - name: Run Codon examples
+      run: |
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_full_backtest
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
 
     - name: Verify QuickJS runner
       run: |
         test -f build/src/quickjs/flox_js_runner
         ./build/src/quickjs/flox_js_runner quickjs/examples/sma_crossover.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/backtest_sma.js
+
+    - name: Verify Node.js bindings
+      run: |
+        cd node && node test/test_bindings.js
+
+    - name: Run Node.js example
+      run: node docs/examples/node_backtest_vs_live.js
 
     - name: Run demo
       run: ./build/demo/flox_demo
