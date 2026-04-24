@@ -17,9 +17,13 @@ include_directories(${CMAKE_JS_INC} ${NAPI_INCLUDE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/../include)
 include_directories(${CMAKE_SOURCE_DIR}/../src/capi)
 
-# Find the built flox libraries
-find_library(FLOX_LIB flox HINTS ${CMAKE_SOURCE_DIR}/../build)
-find_library(FLOX_CAPI_LIB flox_capi HINTS ${CMAKE_SOURCE_DIR}/../build/src/capi)
+# Find the built flox libraries (Release/ subdir for MSVC multi-config generators)
+find_library(FLOX_LIB flox HINTS
+  ${CMAKE_SOURCE_DIR}/../build
+  ${CMAKE_SOURCE_DIR}/../build/Release)
+find_library(FLOX_CAPI_LIB flox_capi HINTS
+  ${CMAKE_SOURCE_DIR}/../build/src/capi
+  ${CMAKE_SOURCE_DIR}/../build/src/capi/Release)
 
 add_library(flox_node SHARED src/flox_node.cpp ${CMAKE_JS_SRC})
 set_target_properties(flox_node PROPERTIES PREFIX "" SUFFIX ".node")
