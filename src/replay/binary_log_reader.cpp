@@ -130,12 +130,52 @@ bool BinaryLogReader::readSegment(const std::filesystem::path& path, EventCallba
 
   ++_stats.files_read;
 
+  if (iter.header().isSorted())
+  {
+    // Segment is guaranteed monotonic — stream directly without buffering.
+    ReplayEvent event;
+    while (iter.next(event))
+    {
+      if (!passesFilter(event))
+      {
+        continue;
+      }
+      ++_stats.events_read;
+      if (event.type == EventType::Trade)
+      {
+        ++_stats.trades_read;
+      }
+      else
+      {
+        ++_stats.book_updates_read;
+      }
+      if (!callback(event))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Legacy path: segment has no ordering guarantee — buffer, sort, deliver.
+  std::vector<ReplayEvent> events;
   ReplayEvent event;
   while (iter.next(event))
   {
-    ++_stats.events_read;
+    if (passesFilter(event))
+    {
+      events.push_back(std::move(event));
+    }
+  }
 
-    if (event.type == EventType::Trade)
+  std::stable_sort(events.begin(), events.end(),
+                   [](const ReplayEvent& a, const ReplayEvent& b)
+                   { return a.timestamp_ns < b.timestamp_ns; });
+
+  for (const auto& e : events)
+  {
+    ++_stats.events_read;
+    if (e.type == EventType::Trade)
     {
       ++_stats.trades_read;
     }
@@ -143,13 +183,9 @@ bool BinaryLogReader::readSegment(const std::filesystem::path& path, EventCallba
     {
       ++_stats.book_updates_read;
     }
-
-    if (passesFilter(event))
+    if (!callback(e))
     {
-      if (!callback(event))
-      {
-        return false;  // Early exit requested
-      }
+      return false;
     }
   }
 
@@ -178,31 +214,54 @@ bool BinaryLogReader::readSegmentFrom(const SegmentInfo& segment, int64_t start_
   }
 
   ReplayEvent event;
-  while (iter.next(event))
+
+  if (iter.header().isSorted())
   {
-    // Skip events before start timestamp (linear scan from index position)
-    if (event.timestamp_ns < start_ts_ns)
+    while (iter.next(event))
     {
-      continue;
-    }
-
-    ++_stats.events_read;
-
-    if (event.type == EventType::Trade)
-    {
-      ++_stats.trades_read;
-    }
-    else
-    {
-      ++_stats.book_updates_read;
-    }
-
-    if (passesFilter(event))
-    {
+      if (event.timestamp_ns < start_ts_ns)
+      {
+        continue;
+      }
+      if (!passesFilter(event))
+      {
+        continue;
+      }
+      ++_stats.events_read;
+      event.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
       if (!callback(event))
       {
         return false;
       }
+    }
+    return true;
+  }
+
+  // Legacy path: buffer, sort, deliver.
+  std::vector<ReplayEvent> events;
+  while (iter.next(event))
+  {
+    if (event.timestamp_ns < start_ts_ns)
+    {
+      continue;
+    }
+    if (passesFilter(event))
+    {
+      events.push_back(std::move(event));
+    }
+  }
+
+  std::stable_sort(events.begin(), events.end(),
+                   [](const ReplayEvent& a, const ReplayEvent& b)
+                   { return a.timestamp_ns < b.timestamp_ns; });
+
+  for (const auto& e : events)
+  {
+    ++_stats.events_read;
+    e.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+    if (!callback(e))
+    {
+      return false;
     }
   }
 

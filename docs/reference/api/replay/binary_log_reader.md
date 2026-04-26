@@ -205,9 +205,19 @@ public:
 };
 ```
 
+## Ordering guarantee
+
+`forEach` and `forEachFrom` always deliver events in monotonically non-decreasing `timestamp_ns` order, regardless of how the underlying segment was recorded.
+
+For segments written with the current writer (which sets `SegmentFlags::Sorted`), events are streamed directly — O(1) memory, early exit on `false` return is immediate.
+
+For legacy segments without the flag, all events in the segment are buffered and sorted before delivery — O(segment events) memory, early exit stops delivery but the segment has already been read in full.
+
+`BinaryLogIterator` is a low-level block-by-block streaming API with **no ordering guarantee**. Use `BinaryLogReader` when ordered output is required.
+
 ## Notes
 
-* Segments are automatically discovered and sorted by timestamp.
+* Segments are automatically discovered and sorted by filename.
 * Compressed segments (LZ4) are transparently decompressed.
 * Seeking uses segment indexes when available for O(log n) lookup.
 * The callback returning `false` stops iteration early.
