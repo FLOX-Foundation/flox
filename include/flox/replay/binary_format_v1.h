@@ -31,6 +31,9 @@ namespace SegmentFlags
 inline constexpr uint8_t HasIndex = 0x01;
 inline constexpr uint8_t Compressed = 0x02;
 inline constexpr uint8_t Encrypted = 0x04;
+// Set when the writer guarantees exchange_ts_ns is monotonically non-decreasing
+// across all events in the segment (within and across block boundaries).
+inline constexpr uint8_t Sorted = 0x08;
 }  // namespace SegmentFlags
 
 enum class CompressionType : uint8_t
@@ -57,6 +60,7 @@ struct alignas(8) SegmentHeader
   bool isValid() const noexcept { return magic == kMagic && version == kFormatVersion; }
   bool hasIndex() const noexcept { return (flags & SegmentFlags::HasIndex) && index_offset > 0; }
   bool isCompressed() const noexcept { return (flags & SegmentFlags::Compressed) != 0; }
+  bool isSorted() const noexcept { return (flags & SegmentFlags::Sorted) != 0; }
   CompressionType compressionType() const noexcept { return static_cast<CompressionType>(compression); }
 };
 static_assert(sizeof(SegmentHeader) == 64, "SegmentHeader must be 64 bytes");

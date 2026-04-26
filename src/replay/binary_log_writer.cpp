@@ -10,11 +10,11 @@
 #include "flox/replay/writers/binary_log_writer.h"
 #include "flox/replay/ops/compression.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <stdexcept>
 
 namespace flox::replay
 {
@@ -159,6 +159,8 @@ bool BinaryLogWriter::ensureOpen()
   _block_buffer.clear();
   _block_event_count = 0;
   _block_first_timestamp = 0;
+  _last_block_max_ts = 0;
+  _segment_has_cross_block_inversion = false;
 
   return true;
 }
@@ -262,10 +264,14 @@ bool BinaryLogWriter::writeFrameToBlock(EventType type, const void* payload, siz
   std::memcpy(_block_buffer.data() + old_size, &header, sizeof(header));
   std::memcpy(_block_buffer.data() + old_size + sizeof(header), payload, size);
 
-  // Track first timestamp in block (for index)
+  // Track first timestamp in block (for index) and detect cross-block inversions.
   if (_block_event_count == 0)
   {
     _block_first_timestamp = timestamp;
+    if (_last_block_max_ts > 0 && timestamp < _last_block_max_ts)
+    {
+      _segment_has_cross_block_inversion = true;
+    }
   }
   ++_block_event_count;
 
@@ -300,6 +306,8 @@ bool BinaryLogWriter::flushBlock()
 
   // Record position before writing block (for index)
   uint64_t block_offset = _segment_bytes;
+
+  _last_block_max_ts = (_block_event_count > 1) ? sortBlockBuffer() : _block_first_timestamp;
 
   // Compress the block
   size_t max_compressed = Compressor::maxCompressedSize(_config.compression, _block_buffer.size());
@@ -590,6 +598,11 @@ void BinaryLogWriter::closeInternal()
       flushBlock();
     }
 
+    if (isCompressed() && !_segment_has_cross_block_inversion)
+    {
+      _segment_header.flags |= SegmentFlags::Sorted;
+    }
+
     // Write index before closing (must be done before updateSegmentHeader)
     writeIndex();
     updateSegmentHeader();
@@ -691,6 +704,78 @@ void BinaryLogWriter::setHasBookDeltas(bool v)
     _metadata = RecordingMetadata{};
   }
   _metadata->has_book_deltas = v;
+}
+
+int64_t BinaryLogWriter::sortBlockBuffer()
+{
+  struct FrameRef
+  {
+    size_t offset;
+    size_t total_size;
+    int64_t timestamp;
+  };
+
+  std::vector<FrameRef> refs;
+  refs.reserve(_block_event_count);
+
+  size_t pos = 0;
+  while (pos < _block_buffer.size())
+  {
+    if (pos + sizeof(FrameHeader) > _block_buffer.size())
+    {
+      break;
+    }
+
+    FrameHeader hdr;
+    std::memcpy(&hdr, _block_buffer.data() + pos, sizeof(FrameHeader));
+
+    size_t total = sizeof(FrameHeader) + hdr.size;
+    if (pos + total > _block_buffer.size())
+    {
+      break;
+    }
+
+    // Both TradeRecord and BookRecordHeader have exchange_ts_ns as their first field.
+    int64_t ts = 0;
+    if (hdr.size >= sizeof(int64_t))
+    {
+      std::memcpy(&ts, _block_buffer.data() + pos + sizeof(FrameHeader), sizeof(int64_t));
+    }
+
+    refs.push_back({pos, total, ts});
+    pos += total;
+  }
+
+  // Fast path: already sorted (common case when exchange is well-behaved).
+  bool sorted = true;
+  for (size_t i = 1; i < refs.size(); ++i)
+  {
+    if (refs[i].timestamp < refs[i - 1].timestamp)
+    {
+      sorted = false;
+      break;
+    }
+  }
+  if (sorted)
+  {
+    return refs.empty() ? 0 : refs.back().timestamp;
+  }
+
+  std::stable_sort(refs.begin(), refs.end(),
+                   [](const FrameRef& a, const FrameRef& b)
+                   { return a.timestamp < b.timestamp; });
+
+  _sort_buffer.resize(_block_buffer.size());
+  size_t out_pos = 0;
+  for (const auto& ref : refs)
+  {
+    std::memcpy(_sort_buffer.data() + out_pos, _block_buffer.data() + ref.offset, ref.total_size);
+    out_pos += ref.total_size;
+  }
+
+  std::swap(_block_buffer, _sort_buffer);
+
+  return refs.back().timestamp;
 }
 
 }  // namespace flox::replay

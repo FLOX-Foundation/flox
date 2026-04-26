@@ -14,7 +14,6 @@
 
 #include <cstdio>
 #include <filesystem>
-#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -100,6 +99,7 @@ class BinaryLogWriter
   bool writeFrame(EventType type, const void* payload, size_t size);
   bool writeFrameToBlock(EventType type, const void* payload, size_t size, int64_t timestamp);
   bool flushBlock();
+  int64_t sortBlockBuffer();  // returns max timestamp in block after sort
   void updateSegmentHeader();
   void writeIndex();
   void closeInternal();
@@ -124,8 +124,11 @@ class BinaryLogWriter
 
   std::vector<std::byte> _block_buffer;
   std::vector<std::byte> _compress_buffer;
+  std::vector<std::byte> _sort_buffer;
   uint16_t _block_event_count{0};
   int64_t _block_first_timestamp{0};
+  int64_t _last_block_max_ts{0};
+  bool _segment_has_cross_block_inversion{false};
 
   mutable std::mutex _mutex;
 

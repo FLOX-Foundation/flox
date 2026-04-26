@@ -158,6 +158,12 @@ replay::BinaryLogWriter writer(config);
 
 **Important:** The `rotation_user_data` pointer must remain valid for the lifetime of the writer.
 
+## Event ordering
+
+When `compression` is set to `LZ4`, the writer automatically sorts events by `exchange_ts_ns` within each compressed block before flushing. This eliminates intra-block timestamp inversions that occur when exchange WebSocket feeds deliver trades out of order within a batch.
+
+If no cross-block inversions are detected during recording, the segment is marked with `SegmentFlags::Sorted`. `BinaryLogReader` uses this flag to stream the segment directly without buffering, giving O(1) memory and correct early-exit behaviour. Segments without the flag (recorded before this feature, or with cross-block inversions) are handled by the reader via a buffer-and-sort fallback.
+
 ## Notes
 
 * Thread-safe via internal mutex.
