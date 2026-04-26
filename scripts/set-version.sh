@@ -19,7 +19,9 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$ ]]; then
   exit 1
 fi
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# pwd -W on Git Bash for Windows returns D:/a/... instead of /d/a/...,
+# which Node.js can then resolve correctly. Falls back to plain pwd elsewhere.
+ROOT="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 
 # 1. Root CMakeLists.txt — `project(flox VERSION X.Y.Z LANGUAGES CXX C)`
 #    Use Perl for cross-platform in-place edit (BSD sed and GNU sed disagree on -i).
