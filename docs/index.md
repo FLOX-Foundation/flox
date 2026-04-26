@@ -1,21 +1,81 @@
 # FLOX
 
-**C++ framework for building trading systems.**
+**High-performance trading framework with bindings for Python, Node.js, Codon, and C++.**
 
 [![GitHub](https://img.shields.io/badge/GitHub-FLOX--Foundation%2Fflox-blue?logo=github)](https://github.com/FLOX-Foundation/flox)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/FLOX-Foundation/flox/blob/main/LICENSE)
 
 ---
 
-## Getting Started
+## Getting started
+
+Pick your language:
 
 | | |
 |---|---|
-| [**Quickstart**](tutorials/quickstart.md) | Build FLOX and run the demo in 5 minutes |
-| [**First Strategy**](tutorials/first-strategy.md) | Write and run your first trading strategy |
-| [**Architecture**](explanation/architecture.md) | Understand how components work together |
-| [**Language Bindings**](bindings/README.md) | Python, Node.js, Codon, JavaScript |
-| [**API Reference**](reference/README.md) | Complete technical documentation |
+| [**Python quickstart**](tutorials/python-quickstart.md) | Indicators, strategies, and backtesting from Python |
+| [**Node.js quickstart**](tutorials/node-quickstart.md) | Same API from JavaScript/TypeScript |
+| [**C++ quickstart**](tutorials/quickstart.md) | Build FLOX and run the demo |
+| [**Architecture**](explanation/architecture.md) | How the components fit together |
+
+---
+
+## Quick example
+
+=== "Python"
+
+    ```python
+    import flox_py as flox
+
+    ema = flox.EMA(20)
+    rsi = flox.RSI(14)
+
+    for price in prices:
+        e = ema.update(price)
+        r = rsi.update(price)
+        if e is not None and r is not None:
+            print(f"EMA {e:.2f}  RSI {r:.1f}")
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const flox = require('./build/node');
+
+    const ema = new flox.EMA(20);
+    const rsi = new flox.RSI(14);
+
+    for (const price of prices) {
+        const e = ema.update(price);
+        const r = rsi.update(price);
+        if (e !== null && r !== null) {
+            console.log(`EMA ${e.toFixed(2)}  RSI ${r.toFixed(1)}`);
+        }
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include "flox/strategy/istrategy.h"
+    #include "flox/book/event/trade_event.h"
+
+    class MyStrategy : public flox::IStrategy {
+    public:
+        void onTrade(const flox::TradeEvent& event) override {
+            if (event.trade.symbol == _targetSymbol) {
+                processSignal(event.trade.price);
+            }
+        }
+
+        void start() override { _running = true; }
+        void stop() override  { _running = false; }
+
+    private:
+        flox::SymbolId _targetSymbol;
+        bool _running = false;
+    };
+    ```
 
 ---
 
@@ -68,33 +128,6 @@
 | Platform | Linux (recommended) |
 
 Optional: LZ4 for log compression
-
----
-
-## Quick Example
-
-```cpp
-#include "flox/strategy/istrategy.h"
-#include "flox/book/event/trade_event.h"
-
-class MyStrategy : public flox::IStrategy {
-public:
-    void onTrade(const flox::TradeEvent& event) override {
-        if (event.trade.symbol == _targetSymbol) {
-            processSignal(event.trade.price);
-        }
-    }
-
-    void start() override { _running = true; }
-    void stop() override { _running = false; }
-
-private:
-    flox::SymbolId _targetSymbol;
-    bool _running = false;
-};
-```
-
-[Full tutorial →](tutorials/first-strategy.md)
 
 ---
 

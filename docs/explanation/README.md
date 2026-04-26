@@ -10,6 +10,7 @@ Understand concepts and design decisions behind FLOX.
 | [Disruptor Pattern](disruptor.md) | Why we use ring buffers |
 | [Memory Model](memory-model.md) | Zero-allocation event delivery |
 | [Integration Flow](integration-flow.md) | End-to-end data flow through the system |
+| [Indicators](indicators.md) | What each indicator measures and when to use it |
 
 ## When to Read These
 

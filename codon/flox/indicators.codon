@@ -1,5 +1,7 @@
-# flox/indicators.codon -- All 18 indicators via C API.
+# flox/indicators.codon -- All 25 indicators via C API.
 # Each has a batch function and a streaming class.
+
+import math
 
 from C import flox_indicator_sma(Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_ema(Ptr[f64], int, int, Ptr[f64])
@@ -24,6 +26,13 @@ from C import flox_indicator_obv(Ptr[f64], Ptr[f64], int, Ptr[f64])
 from C import flox_indicator_vwap(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_cvd(Ptr[f64], Ptr[f64], Ptr[f64], Ptr[f64], Ptr[f64],
                                   int, Ptr[f64])
+from C import flox_indicator_skewness(Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_kurtosis(Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_rolling_zscore(Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_shannon_entropy(Ptr[f64], int, int, int, Ptr[f64])
+from C import flox_indicator_parkinson_vol(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_rogers_satchell_vol(Ptr[f64], Ptr[f64], Ptr[f64], Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_correlation(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
 
 
 # ======================================================================
@@ -62,6 +71,12 @@ class SMA:
     @property
     def ready(self) -> bool:
         return self._count >= self._period
+
+    def reset(self):
+        self._buffer = [0.0] * self._period
+        self._sum = 0.0
+        self._count = 0
+        self._index = 0
 
     @staticmethod
     def compute(data: List[float], period: int) -> List[float]:
@@ -102,6 +117,11 @@ class EMA:
     def ready(self) -> bool:
         return self._count >= self._period
 
+    def reset(self):
+        self._value = 0.0
+        self._count = 0
+        self._sum = 0.0
+
     @staticmethod
     def compute(data: List[float], period: int) -> List[float]:
         n = len(data)
@@ -140,6 +160,11 @@ class RMA:
     @property
     def ready(self) -> bool:
         return self._count >= self._period
+
+    def reset(self):
+        self._value = 0.0
+        self._count = 0
+        self._sum = 0.0
 
     @staticmethod
     def compute(data: List[float], period: int) -> List[float]:
@@ -196,6 +221,13 @@ class RSI:
     def ready(self) -> bool:
         return self._count > self._period
 
+    def reset(self):
+        self._count = 0
+        self._prev = 0.0
+        self._avg_gain = 0.0
+        self._avg_loss = 0.0
+        self._value = 50.0
+
     @staticmethod
     def compute(data: List[float], period: int) -> List[float]:
         n = len(data)
@@ -240,6 +272,12 @@ class ATR:
     @property
     def ready(self) -> bool:
         return self._count >= self._period
+
+    def reset(self):
+        self._count = 0
+        self._prev_close = 0.0
+        self._value = 0.0
+        self._sum = 0.0
 
     @staticmethod
     def compute(high: List[float], low: List[float], close: List[float],
@@ -440,6 +478,11 @@ class DEMA:
     def ready(self) -> bool:
         return self._ema2.ready
 
+    def reset(self):
+        self._ema1 = EMA(self._ema1._period)
+        self._ema2 = EMA(self._ema2._period)
+        self._value = 0.0
+
 
 class TEMA:
     _ema1: EMA
@@ -468,6 +511,12 @@ class TEMA:
     def ready(self) -> bool:
         return self._ema3.ready
 
+    def reset(self):
+        self._ema1 = EMA(self._ema1._period)
+        self._ema2 = EMA(self._ema2._period)
+        self._ema3 = EMA(self._ema3._period)
+        self._value = 0.0
+
 
 class Slope:
     _length: int
@@ -494,6 +543,10 @@ class Slope:
     @property
     def ready(self) -> bool:
         return len(self._buffer) > self._length
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
 
 
 class MACD:
@@ -543,6 +596,15 @@ class MACD:
     @property
     def ready(self) -> bool:
         return self._ready
+
+    def reset(self):
+        self._fast_ema = EMA(self._fast_ema._period)
+        self._slow_ema = EMA(self._slow_ema._period)
+        self._signal_ema = EMA(self._signal_ema._period)
+        self._line = 0.0
+        self._signal = 0.0
+        self._histogram = 0.0
+        self._ready = False
 
 
 class Bollinger:
@@ -598,6 +660,13 @@ class Bollinger:
     def ready(self) -> bool:
         return self._sma.ready
 
+    def reset(self):
+        self._sma = SMA(self._period)
+        self._buffer = list[float]()
+        self._upper = 0.0
+        self._middle = 0.0
+        self._lower = 0.0
+
 
 class OBV:
     _value: float
@@ -627,6 +696,11 @@ class OBV:
     @property
     def ready(self) -> bool:
         return self._count > 0
+
+    def reset(self):
+        self._value = 0.0
+        self._prev_close = 0.0
+        self._count = 0
 
 
 class VWAP:
@@ -663,6 +737,11 @@ class VWAP:
     def ready(self) -> bool:
         return len(self._prices) >= self._window
 
+    def reset(self):
+        self._prices = list[float]()
+        self._volumes = list[float]()
+        self._value = 0.0
+
 
 class CVD:
     _value: float
@@ -687,6 +766,402 @@ class CVD:
     @property
     def ready(self) -> bool:
         return self._count > 0
+
+    def reset(self):
+        self._value = 0.0
+        self._count = 0
+
+
+class Skewness:
+    _period: int
+    _buffer: List[float]
+    _value: float
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    def update(self, value: float) -> float:
+        self._buffer.append(value)
+        if len(self._buffer) > self._period:
+            self._buffer.pop(0)
+        if len(self._buffer) >= self._period:
+            n = len(self._buffer)
+            mean = 0.0
+            for v in self._buffer:
+                mean += v
+            mean /= float(n)
+            m2 = 0.0
+            m3 = 0.0
+            for v in self._buffer:
+                d = v - mean
+                m2 += d * d
+                m3 += d * d * d
+            m2 /= float(n)
+            m3 /= float(n)
+            std = math.sqrt(m2)
+            if std == 0.0:
+                self._value = math.nan
+            else:
+                self._value = (float(n * n) / float((n - 1) * (n - 2))) * (m3 / (std * std * std))
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buffer) >= self._period
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(data: List[float], period: int) -> List[float]:
+        n = len(data)
+        result = [0.0] * n
+        flox_indicator_skewness(data.arr.ptr, n, period, result.arr.ptr)
+        return result
+
+
+class Kurtosis:
+    _period: int
+    _buffer: List[float]
+    _value: float
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    def update(self, value: float) -> float:
+        self._buffer.append(value)
+        if len(self._buffer) > self._period:
+            self._buffer.pop(0)
+        if len(self._buffer) >= self._period:
+            n = len(self._buffer)
+            mean = 0.0
+            for v in self._buffer:
+                mean += v
+            mean /= float(n)
+            m2 = 0.0
+            m4 = 0.0
+            for v in self._buffer:
+                d = v - mean
+                d2 = d * d
+                m2 += d2
+                m4 += d2 * d2
+            m2 /= float(n)
+            m4 /= float(n)
+            if m2 == 0.0:
+                self._value = math.nan
+            else:
+                kurt = m4 / (m2 * m2)
+                self._value = (float(n - 1) / float((n - 2) * (n - 3))) * (float(n + 1) * kurt - 3.0 * float(n - 1))
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buffer) >= self._period
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(data: List[float], period: int) -> List[float]:
+        n = len(data)
+        result = [0.0] * n
+        flox_indicator_kurtosis(data.arr.ptr, n, period, result.arr.ptr)
+        return result
+
+
+class RollingZScore:
+    _period: int
+    _buffer: List[float]
+    _value: float
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    def update(self, value: float) -> float:
+        self._buffer.append(value)
+        if len(self._buffer) > self._period:
+            self._buffer.pop(0)
+        if len(self._buffer) >= self._period:
+            n = len(self._buffer)
+            mean = 0.0
+            for v in self._buffer:
+                mean += v
+            mean /= float(n)
+            var = 0.0
+            for v in self._buffer:
+                d = v - mean
+                var += d * d
+            var /= float(n)
+            std = math.sqrt(var)
+            if std == 0.0:
+                self._value = math.nan
+            else:
+                self._value = (value - mean) / std
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buffer) >= self._period
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(data: List[float], period: int) -> List[float]:
+        n = len(data)
+        result = [0.0] * n
+        flox_indicator_rolling_zscore(data.arr.ptr, n, period, result.arr.ptr)
+        return result
+
+
+class ShannonEntropy:
+    _period: int
+    _bins: int
+    _buffer: List[float]
+    _value: float
+
+    def __init__(self, period: int, bins: int = 10):
+        self._period = period
+        self._bins = bins
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    def update(self, value: float) -> float:
+        self._buffer.append(value)
+        if len(self._buffer) > self._period:
+            self._buffer.pop(0)
+        if len(self._buffer) >= self._period:
+            mn = self._buffer[0]
+            mx = self._buffer[0]
+            for v in self._buffer:
+                if v < mn:
+                    mn = v
+                if v > mx:
+                    mx = v
+            rng = mx - mn
+            if rng == 0.0:
+                self._value = 0.0
+            else:
+                counts = [0] * self._bins
+                n = len(self._buffer)
+                for v in self._buffer:
+                    b = int((v - mn) / rng * float(self._bins))
+                    if b >= self._bins:
+                        b = self._bins - 1
+                    counts[b] += 1
+                entropy = 0.0
+                for c in counts:
+                    if c > 0:
+                        p = float(c) / float(n)
+                        entropy -= p * math.log(p)
+                self._value = entropy
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buffer) >= self._period
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(data: List[float], period: int, bins: int = 10) -> List[float]:
+        n = len(data)
+        result = [0.0] * n
+        flox_indicator_shannon_entropy(data.arr.ptr, n, period, bins,
+                                       result.arr.ptr)
+        return result
+
+
+class ParkinsonVol:
+    _period: int
+    _buffer: List[float]
+    _value: float
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    def update(self, high: float, low: float) -> float:
+        if low > 0.0 and high > 0.0:
+            ln_hl = math.log(high / low)
+            self._buffer.append(ln_hl * ln_hl)
+        else:
+            self._buffer.append(0.0)
+        if len(self._buffer) > self._period:
+            self._buffer.pop(0)
+        if len(self._buffer) >= self._period:
+            s = 0.0
+            for v in self._buffer:
+                s += v
+            self._value = math.sqrt(s / (float(len(self._buffer)) * 4.0 * math.log(2.0)))
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buffer) >= self._period
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(high: List[float], low: List[float],
+                period: int) -> List[float]:
+        n = len(high)
+        result = [0.0] * n
+        flox_indicator_parkinson_vol(high.arr.ptr, low.arr.ptr,
+                                     n, period, result.arr.ptr)
+        return result
+
+
+class RogersSatchellVol:
+    _period: int
+    _buffer: List[float]
+    _value: float
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    def update(self, open_: float, high: float,
+               low: float, close: float) -> float:
+        if open_ > 0.0 and high > 0.0 and low > 0.0 and close > 0.0:
+            rs = (math.log(high / close) * math.log(high / open_)
+                  + math.log(low / close) * math.log(low / open_))
+            self._buffer.append(rs)
+        else:
+            self._buffer.append(0.0)
+        if len(self._buffer) > self._period:
+            self._buffer.pop(0)
+        if len(self._buffer) >= self._period:
+            s = 0.0
+            for v in self._buffer:
+                s += v
+            mean = s / float(len(self._buffer))
+            self._value = math.sqrt(mean) if mean >= 0.0 else 0.0
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buffer) >= self._period
+
+    def reset(self):
+        self._buffer = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(open_: List[float], high: List[float],
+                low: List[float], close: List[float],
+                period: int) -> List[float]:
+        n = len(open_)
+        result = [0.0] * n
+        flox_indicator_rogers_satchell_vol(open_.arr.ptr, high.arr.ptr,
+                                           low.arr.ptr, close.arr.ptr,
+                                           n, period, result.arr.ptr)
+        return result
+
+
+class Correlation:
+    _period: int
+    _buf_x: List[float]
+    _buf_y: List[float]
+    _value: float
+
+    def __init__(self, period: int):
+        self._period = period
+        self._buf_x = list[float]()
+        self._buf_y = list[float]()
+        self._value = 0.0
+
+    def update(self, x: float, y: float) -> float:
+        self._buf_x.append(x)
+        self._buf_y.append(y)
+        if len(self._buf_x) > self._period:
+            self._buf_x.pop(0)
+            self._buf_y.pop(0)
+        if len(self._buf_x) >= self._period:
+            n = len(self._buf_x)
+            mean_x = 0.0
+            mean_y = 0.0
+            for i in range(n):
+                mean_x += self._buf_x[i]
+                mean_y += self._buf_y[i]
+            mean_x /= float(n)
+            mean_y /= float(n)
+            cov = 0.0
+            var_x = 0.0
+            var_y = 0.0
+            for i in range(n):
+                dx = self._buf_x[i] - mean_x
+                dy = self._buf_y[i] - mean_y
+                cov += dx * dy
+                var_x += dx * dx
+                var_y += dy * dy
+            denom = math.sqrt(var_x * var_y)
+            if denom == 0.0:
+                self._value = math.nan
+            else:
+                self._value = cov / denom
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buf_x) >= self._period
+
+    def reset(self):
+        self._buf_x = list[float]()
+        self._buf_y = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(x: List[float], y: List[float],
+                period: int) -> List[float]:
+        n = len(x)
+        result = [0.0] * n
+        flox_indicator_correlation(x.arr.ptr, y.arr.ptr,
+                                   n, period, result.arr.ptr)
+        return result
 
 
 # Backward compatibility aliases
