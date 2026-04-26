@@ -61,13 +61,7 @@ jobs:
           else
             exit 0
           fi
-          cd node
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json'));
-            pkg.version = '${VERSION}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+          ./scripts/set-version.sh "${VERSION}"
 
       - name: Install dependencies
         working-directory: node
@@ -119,13 +113,7 @@ jobs:
           else
             exit 0
           fi
-          cd node
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json'));
-            pkg.version = '${VERSION}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+          ./scripts/set-version.sh "${VERSION}"
 
       - uses: actions/download-artifact@v4
         with:

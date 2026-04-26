@@ -1,6 +1,6 @@
 {
   "name": "@flox-foundation/flox",
-  "version": "0.1.0",
+  "version": "0.5.3",
   "description": "Node.js bindings for the FLOX trading engine",
   "main": "index.js",
   "files": [

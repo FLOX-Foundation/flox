@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(flox VERSION 0.2.0 LANGUAGES CXX C)
+project(flox VERSION 0.5.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
