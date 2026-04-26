@@ -117,30 +117,30 @@ if(FLOX_ENABLE_LZ4)
         target_link_libraries(${FLOX} PUBLIC ${LZ4_LINK_LIBRARIES})
         message(STATUS "LZ4 found via pkg-config")
       else()
-        # Last resort: vendor it via FetchContent (Windows without vcpkg, hermetic builds)
+        # Last resort: vendor lz4 source and compile it directly into flox.
+        # We avoid lz4's own cmake build because lz4_static lands in lz4's own
+        # export set, conflicting with install(EXPORT floxTargets) below
+        # (a target can belong to only one export set in CMake). Compiling
+        # lz4.c into ${FLOX} sidesteps the issue and keeps lz4 symbols
+        # available to compression.h consumers without a separate target.
         include(FetchContent)
         FetchContent_Declare(
           lz4_src
           GIT_REPOSITORY https://github.com/lz4/lz4.git
           GIT_TAG v1.10.0
           GIT_SHALLOW TRUE
-          SOURCE_SUBDIR build/cmake
         )
-        set(LZ4_BUILD_CLI OFF CACHE BOOL "" FORCE)
-        set(LZ4_BUILD_LEGACY_LZ4C OFF CACHE BOOL "" FORCE)
-        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(lz4_src)
-        target_link_libraries(${FLOX} PUBLIC lz4_static)
-        # Add lz4_static to floxTargets export set so install(EXPORT floxTargets)
-        # below can reference it. compression.h inlines LZ4_compress_default,
-        # so lz4 must remain in flox's PUBLIC link interface.
-        install(TARGETS lz4_static
-          EXPORT floxTargets
-          ARCHIVE DESTINATION lib
-          LIBRARY DESTINATION lib
-          RUNTIME DESTINATION bin
+        FetchContent_GetProperties(lz4_src)
+        if(NOT lz4_src_POPULATED)
+          FetchContent_Populate(lz4_src)
+        endif()
+        target_sources(${FLOX} PRIVATE ${lz4_src_SOURCE_DIR}/lib/lz4.c)
+        target_include_directories(${FLOX} PUBLIC
+          $<BUILD_INTERFACE:${lz4_src_SOURCE_DIR}/lib>
         )
-        message(STATUS "LZ4 fetched via FetchContent (vendored)")
+        # Install vendored lz4 header so installed flox consumers can include it.
+        install(FILES ${lz4_src_SOURCE_DIR}/lib/lz4.h DESTINATION include)
+        message(STATUS "LZ4 vendored from sources (compiled into flox)")
       endif()
     endif()
   endif()
