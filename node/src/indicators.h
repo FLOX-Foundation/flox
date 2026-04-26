@@ -21,6 +21,16 @@
 #include "flox/indicator/stochastic.h"
 #include "flox/indicator/vwap.h"
 
+#include "flox/indicator/correlation.h"
+#include "flox/indicator/kurtosis.h"
+#include "flox/indicator/parkinson_vol.h"
+#include "flox/indicator/rogers_satchell_vol.h"
+#include "flox/indicator/rolling_zscore.h"
+#include "flox/indicator/shannon_entropy.h"
+#include "flox/indicator/skewness.h"
+
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <span>
 
@@ -209,6 +219,74 @@ inline Napi::Value batch_cvd(const Napi::CallbackInfo& info)
   return vec2arr(info.Env(), r);
 }
 
+// ── Batch: statistical / volatility ─────────────────────────────────
+
+inline Napi::Value batch_skewness(const Napi::CallbackInfo& info)
+{
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t p = info[1].As<Napi::Number>().Uint32Value();
+  auto r = flox::indicator::Skewness(p).compute(arr2span(in));
+  return vec2arr(info.Env(), r);
+}
+
+inline Napi::Value batch_kurtosis(const Napi::CallbackInfo& info)
+{
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t p = info[1].As<Napi::Number>().Uint32Value();
+  auto r = flox::indicator::Kurtosis(p).compute(arr2span(in));
+  return vec2arr(info.Env(), r);
+}
+
+inline Napi::Value batch_rolling_zscore(const Napi::CallbackInfo& info)
+{
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t p = info[1].As<Napi::Number>().Uint32Value();
+  auto r = flox::indicator::RollingZScore(p).compute(arr2span(in));
+  return vec2arr(info.Env(), r);
+}
+
+inline Napi::Value batch_shannon_entropy(const Napi::CallbackInfo& info)
+{
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t p = info[1].As<Napi::Number>().Uint32Value();
+  size_t bins = info[2].As<Napi::Number>().Uint32Value();
+  auto r = flox::indicator::ShannonEntropy(p, bins).compute(arr2span(in));
+  return vec2arr(info.Env(), r);
+}
+
+inline Napi::Value batch_parkinson_vol(const Napi::CallbackInfo& info)
+{
+  auto h = info[0].As<Napi::Float64Array>();
+  auto l = info[1].As<Napi::Float64Array>();
+  size_t n = h.ElementLength(), p = info[2].As<Napi::Number>().Uint32Value();
+  std::vector<double> out(n);
+  flox::indicator::ParkinsonVol(p).compute({h.Data(), n}, {l.Data(), n}, {out.data(), n});
+  return vec2arr(info.Env(), out);
+}
+
+inline Napi::Value batch_rogers_satchell_vol(const Napi::CallbackInfo& info)
+{
+  auto o = info[0].As<Napi::Float64Array>();
+  auto h = info[1].As<Napi::Float64Array>();
+  auto l = info[2].As<Napi::Float64Array>();
+  auto c = info[3].As<Napi::Float64Array>();
+  size_t n = o.ElementLength(), p = info[4].As<Napi::Number>().Uint32Value();
+  std::vector<double> out(n);
+  flox::indicator::RogersSatchellVol(p).compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
+                                                {c.Data(), n}, {out.data(), n});
+  return vec2arr(info.Env(), out);
+}
+
+inline Napi::Value batch_correlation(const Napi::CallbackInfo& info)
+{
+  auto x = info[0].As<Napi::Float64Array>();
+  auto y = info[1].As<Napi::Float64Array>();
+  size_t n = x.ElementLength(), p = info[2].As<Napi::Number>().Uint32Value();
+  std::vector<double> out(n);
+  flox::indicator::Correlation(p).compute({x.Data(), n}, {y.Data(), n}, {out.data(), n});
+  return vec2arr(info.Env(), out);
+}
+
 // ── Streaming indicator classes ─────────────────────────────────────
 
 #define STREAMING_SINGLE(Name, updExpr)                                                                                                \
@@ -241,6 +319,7 @@ class SMAWrap : public Napi::ObjectWrap<SMAWrap>
   {
     return DefineClass(env, "SMA",
                        {InstanceMethod("update", &SMAWrap::Update),
+                        InstanceMethod("reset", &SMAWrap::Reset),
                         InstanceAccessor("value", &SMAWrap::Value, nullptr),
                         InstanceAccessor("ready", &SMAWrap::Ready, nullptr)});
   }
@@ -270,6 +349,14 @@ class SMAWrap : public Napi::ObjectWrap<SMAWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _val); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _count >= _period); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _count = 0;
+    _idx = 0;
+    _sum = 0;
+    _val = 0;
+    std::fill(_buf.begin(), _buf.end(), 0);
+  }
   size_t _period, _count = 0, _idx = 0;
   std::vector<double> _buf;
   double _sum = 0, _val = 0;
@@ -283,6 +370,7 @@ class EMAWrap : public Napi::ObjectWrap<EMAWrap>
   {
     return DefineClass(env, "EMA",
                        {InstanceMethod("update", &EMAWrap::Update),
+                        InstanceMethod("reset", &EMAWrap::Reset),
                         InstanceAccessor("value", &EMAWrap::Value, nullptr),
                         InstanceAccessor("ready", &EMAWrap::Ready, nullptr)});
   }
@@ -308,6 +396,12 @@ class EMAWrap : public Napi::ObjectWrap<EMAWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _val); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _count >= _period); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _count = 0;
+    _sum = 0;
+    _val = 0;
+  }
   size_t _period, _count = 0;
   double _mult, _sum = 0, _val = 0;
 };
@@ -320,6 +414,7 @@ class RSIWrap : public Napi::ObjectWrap<RSIWrap>
   {
     return DefineClass(env, "RSI",
                        {InstanceMethod("update", &RSIWrap::Update),
+                        InstanceMethod("reset", &RSIWrap::Reset),
                         InstanceAccessor("value", &RSIWrap::Value, nullptr),
                         InstanceAccessor("ready", &RSIWrap::Ready, nullptr)});
   }
@@ -355,6 +450,14 @@ class RSIWrap : public Napi::ObjectWrap<RSIWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _val); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _count > _period); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _count = 0;
+    _prev = 0;
+    _avgGain = 0;
+    _avgLoss = 0;
+    _val = 50;
+  }
   size_t _period, _count = 0;
   double _prev = 0, _avgGain = 0, _avgLoss = 0, _val = 50;
 };
@@ -367,6 +470,7 @@ class ATRWrap : public Napi::ObjectWrap<ATRWrap>
   {
     return DefineClass(env, "ATR",
                        {InstanceMethod("update", &ATRWrap::Update),
+                        InstanceMethod("reset", &ATRWrap::Reset),
                         InstanceAccessor("value", &ATRWrap::Value, nullptr),
                         InstanceAccessor("ready", &ATRWrap::Ready, nullptr)});
   }
@@ -395,6 +499,13 @@ class ATRWrap : public Napi::ObjectWrap<ATRWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _val); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _count >= _period); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _count = 0;
+    _prevC = 0;
+    _sum = 0;
+    _val = 0;
+  }
   size_t _period, _count = 0;
   double _prevC = 0, _sum = 0, _val = 0;
 };
@@ -407,6 +518,7 @@ class MACDWrap : public Napi::ObjectWrap<MACDWrap>
   {
     return DefineClass(env, "MACD",
                        {InstanceMethod("update", &MACDWrap::Update),
+                        InstanceMethod("reset", &MACDWrap::Reset),
                         InstanceAccessor("line", &MACDWrap::Line, nullptr),
                         InstanceAccessor("signal", &MACDWrap::Signal, nullptr),
                         InstanceAccessor("histogram", &MACDWrap::Histogram, nullptr),
@@ -457,6 +569,16 @@ class MACDWrap : public Napi::ObjectWrap<MACDWrap>
   Napi::Value Signal(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _sig); }
   Napi::Value Histogram(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _hist); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _rdy); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _fastEma = Ema(_fastEma.p);
+    _slowEma = Ema(_slowEma.p);
+    _sigEma = Ema(_sigEma.p);
+    _line = 0;
+    _sig = 0;
+    _hist = 0;
+    _rdy = false;
+  }
   Ema _fastEma, _slowEma, _sigEma;
   double _line = 0, _sig = 0, _hist = 0;
   bool _rdy = false;
@@ -470,6 +592,7 @@ class BollingerWrap : public Napi::ObjectWrap<BollingerWrap>
   {
     return DefineClass(env, "Bollinger",
                        {InstanceMethod("update", &BollingerWrap::Update),
+                        InstanceMethod("reset", &BollingerWrap::Reset),
                         InstanceAccessor("upper", &BollingerWrap::Upper, nullptr),
                         InstanceAccessor("middle", &BollingerWrap::Middle, nullptr),
                         InstanceAccessor("lower", &BollingerWrap::Lower, nullptr),
@@ -535,6 +658,14 @@ class BollingerWrap : public Napi::ObjectWrap<BollingerWrap>
   Napi::Value Middle(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _mid); }
   Napi::Value Lower(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _lower); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _sma.ready()); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _sma = Sma(_period);
+    _buf.clear();
+    _upper = 0;
+    _mid = 0;
+    _lower = 0;
+  }
   Sma _sma;
   size_t _period;
   double _mult, _upper = 0, _mid = 0, _lower = 0;
@@ -545,7 +676,7 @@ class BollingerWrap : public Napi::ObjectWrap<BollingerWrap>
 class RMAWrap : public Napi::ObjectWrap<RMAWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "RMA", {InstanceMethod("update", &RMAWrap::Update), InstanceAccessor("value", &RMAWrap::Value, nullptr), InstanceAccessor("ready", &RMAWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "RMA", {InstanceMethod("update", &RMAWrap::Update), InstanceMethod("reset", &RMAWrap::Reset), InstanceAccessor("value", &RMAWrap::Value, nullptr), InstanceAccessor("ready", &RMAWrap::Ready, nullptr)}); }
   RMAWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<RMAWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()), _a(1.0 / _p) {}
 
  private:
@@ -566,6 +697,12 @@ class RMAWrap : public Napi::ObjectWrap<RMAWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _c >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _c = 0;
+    _s = 0;
+    _v = 0;
+  }
   size_t _p, _c = 0;
   double _a, _s = 0, _v = 0;
 };
@@ -574,7 +711,7 @@ class RMAWrap : public Napi::ObjectWrap<RMAWrap>
 class DEMAWrap : public Napi::ObjectWrap<DEMAWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "DEMA", {InstanceMethod("update", &DEMAWrap::Update), InstanceAccessor("value", &DEMAWrap::Value, nullptr), InstanceAccessor("ready", &DEMAWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "DEMA", {InstanceMethod("update", &DEMAWrap::Update), InstanceMethod("reset", &DEMAWrap::Reset), InstanceAccessor("value", &DEMAWrap::Value, nullptr), InstanceAccessor("ready", &DEMAWrap::Ready, nullptr)}); }
   DEMAWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DEMAWrap>(info), _e1(info[0].As<Napi::Number>().Uint32Value()), _e2(info[0].As<Napi::Number>().Uint32Value()) {}
 
  private:
@@ -609,6 +746,12 @@ class DEMAWrap : public Napi::ObjectWrap<DEMAWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _e2.rdy()); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _e1 = E(_e1.p);
+    _e2 = E(_e2.p);
+    _v = 0;
+  }
   E _e1, _e2;
   double _v = 0;
 };
@@ -617,7 +760,7 @@ class DEMAWrap : public Napi::ObjectWrap<DEMAWrap>
 class TEMAWrap : public Napi::ObjectWrap<TEMAWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "TEMA", {InstanceMethod("update", &TEMAWrap::Update), InstanceAccessor("value", &TEMAWrap::Value, nullptr), InstanceAccessor("ready", &TEMAWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "TEMA", {InstanceMethod("update", &TEMAWrap::Update), InstanceMethod("reset", &TEMAWrap::Reset), InstanceAccessor("value", &TEMAWrap::Value, nullptr), InstanceAccessor("ready", &TEMAWrap::Ready, nullptr)}); }
   TEMAWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<TEMAWrap>(info), _e1(info[0].As<Napi::Number>().Uint32Value()), _e2(info[0].As<Napi::Number>().Uint32Value()), _e3(info[0].As<Napi::Number>().Uint32Value()) {}
 
  private:
@@ -651,6 +794,13 @@ class TEMAWrap : public Napi::ObjectWrap<TEMAWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _e3.rdy()); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _e1 = E(_e1.p);
+    _e2 = E(_e2.p);
+    _e3 = E(_e3.p);
+    _v = 0;
+  }
   E _e1, _e2, _e3;
   double _v = 0;
 };
@@ -659,7 +809,7 @@ class TEMAWrap : public Napi::ObjectWrap<TEMAWrap>
 class KAMAWrap : public Napi::ObjectWrap<KAMAWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "KAMA", {InstanceMethod("update", &KAMAWrap::Update), InstanceAccessor("value", &KAMAWrap::Value, nullptr), InstanceAccessor("ready", &KAMAWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "KAMA", {InstanceMethod("update", &KAMAWrap::Update), InstanceMethod("reset", &KAMAWrap::Reset), InstanceAccessor("value", &KAMAWrap::Value, nullptr), InstanceAccessor("ready", &KAMAWrap::Ready, nullptr)}); }
   KAMAWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<KAMAWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()), _fsc(2.0 / ((info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 2) + 1)), _ssc(2.0 / ((info.Length() > 2 ? info[2].As<Napi::Number>().Uint32Value() : 30) + 1)) {}
 
  private:
@@ -689,6 +839,12 @@ class KAMAWrap : public Napi::ObjectWrap<KAMAWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _c > _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _c = 0;
+    _v = 0;
+    _buf.clear();
+  }
   size_t _p, _c = 0;
   double _fsc, _ssc, _v = 0;
   std::vector<double> _buf;
@@ -698,7 +854,7 @@ class KAMAWrap : public Napi::ObjectWrap<KAMAWrap>
 class SlopeWrap : public Napi::ObjectWrap<SlopeWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Slope", {InstanceMethod("update", &SlopeWrap::Update), InstanceAccessor("value", &SlopeWrap::Value, nullptr), InstanceAccessor("ready", &SlopeWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Slope", {InstanceMethod("update", &SlopeWrap::Update), InstanceMethod("reset", &SlopeWrap::Reset), InstanceAccessor("value", &SlopeWrap::Value, nullptr), InstanceAccessor("ready", &SlopeWrap::Ready, nullptr)}); }
   SlopeWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<SlopeWrap>(info), _len(info[0].As<Napi::Number>().Uint32Value()) {}
 
  private:
@@ -718,6 +874,11 @@ class SlopeWrap : public Napi::ObjectWrap<SlopeWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _buf.size() > _len); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
   size_t _len;
   double _v = 0;
   std::vector<double> _buf;
@@ -727,7 +888,7 @@ class SlopeWrap : public Napi::ObjectWrap<SlopeWrap>
 class StochasticWrap : public Napi::ObjectWrap<StochasticWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Stochastic", {InstanceMethod("update", &StochasticWrap::Update), InstanceAccessor("k", &StochasticWrap::K, nullptr), InstanceAccessor("d", &StochasticWrap::D, nullptr), InstanceAccessor("value", &StochasticWrap::K, nullptr), InstanceAccessor("ready", &StochasticWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Stochastic", {InstanceMethod("update", &StochasticWrap::Update), InstanceMethod("reset", &StochasticWrap::Reset), InstanceAccessor("k", &StochasticWrap::K, nullptr), InstanceAccessor("d", &StochasticWrap::D, nullptr), InstanceAccessor("value", &StochasticWrap::K, nullptr), InstanceAccessor("ready", &StochasticWrap::Ready, nullptr)}); }
   StochasticWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<StochasticWrap>(info), _kp(info[0].As<Napi::Number>().Uint32Value()), _dsma(info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 3) {}
 
  private:
@@ -778,6 +939,14 @@ class StochasticWrap : public Napi::ObjectWrap<StochasticWrap>
   Napi::Value K(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _k); }
   Napi::Value D(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _d); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _h.size() >= _kp && _dsma.rdy()); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _h.clear();
+    _l.clear();
+    _dsma = Sma(_dsma.p);
+    _k = 0;
+    _d = 0;
+  }
   size_t _kp;
   Sma _dsma;
   std::vector<double> _h, _l;
@@ -788,7 +957,7 @@ class StochasticWrap : public Napi::ObjectWrap<StochasticWrap>
 class CCIWrap : public Napi::ObjectWrap<CCIWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "CCI", {InstanceMethod("update", &CCIWrap::Update), InstanceAccessor("value", &CCIWrap::Value, nullptr), InstanceAccessor("ready", &CCIWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "CCI", {InstanceMethod("update", &CCIWrap::Update), InstanceMethod("reset", &CCIWrap::Reset), InstanceAccessor("value", &CCIWrap::Value, nullptr), InstanceAccessor("ready", &CCIWrap::Ready, nullptr)}); }
   CCIWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<CCIWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
 
  private:
@@ -821,6 +990,11 @@ class CCIWrap : public Napi::ObjectWrap<CCIWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _buf.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
   size_t _p;
   double _v = 0;
   std::vector<double> _buf;
@@ -830,7 +1004,7 @@ class CCIWrap : public Napi::ObjectWrap<CCIWrap>
 class OBVWrap : public Napi::ObjectWrap<OBVWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "OBV", {InstanceMethod("update", &OBVWrap::Update), InstanceAccessor("value", &OBVWrap::Value, nullptr), InstanceAccessor("ready", &OBVWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "OBV", {InstanceMethod("update", &OBVWrap::Update), InstanceMethod("reset", &OBVWrap::Reset), InstanceAccessor("value", &OBVWrap::Value, nullptr), InstanceAccessor("ready", &OBVWrap::Ready, nullptr)}); }
   OBVWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OBVWrap>(info) {}
 
  private:
@@ -855,6 +1029,12 @@ class OBVWrap : public Napi::ObjectWrap<OBVWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _n > 0); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _n = 0;
+    _pc = 0;
+    _v = 0;
+  }
   size_t _n = 0;
   double _pc = 0, _v = 0;
 };
@@ -863,7 +1043,7 @@ class OBVWrap : public Napi::ObjectWrap<OBVWrap>
 class VWAPWrap : public Napi::ObjectWrap<VWAPWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "VWAP", {InstanceMethod("update", &VWAPWrap::Update), InstanceAccessor("value", &VWAPWrap::Value, nullptr), InstanceAccessor("ready", &VWAPWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "VWAP", {InstanceMethod("update", &VWAPWrap::Update), InstanceMethod("reset", &VWAPWrap::Reset), InstanceAccessor("value", &VWAPWrap::Value, nullptr), InstanceAccessor("ready", &VWAPWrap::Ready, nullptr)}); }
   VWAPWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<VWAPWrap>(info), _w(info[0].As<Napi::Number>().Uint32Value()) {}
 
  private:
@@ -888,6 +1068,12 @@ class VWAPWrap : public Napi::ObjectWrap<VWAPWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _p.size() >= _w); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _p.clear();
+    _vol.clear();
+  }
   size_t _w;
   double _v = 0;
   std::vector<double> _p, _vol;
@@ -897,7 +1083,7 @@ class VWAPWrap : public Napi::ObjectWrap<VWAPWrap>
 class CVDWrap : public Napi::ObjectWrap<CVDWrap>
 {
  public:
-  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "CVD", {InstanceMethod("update", &CVDWrap::Update), InstanceAccessor("value", &CVDWrap::Value, nullptr), InstanceAccessor("ready", &CVDWrap::Ready, nullptr)}); }
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "CVD", {InstanceMethod("update", &CVDWrap::Update), InstanceMethod("reset", &CVDWrap::Reset), InstanceAccessor("value", &CVDWrap::Value, nullptr), InstanceAccessor("ready", &CVDWrap::Ready, nullptr)}); }
   CVDWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<CVDWrap>(info) {}
 
  private:
@@ -911,8 +1097,406 @@ class CVDWrap : public Napi::ObjectWrap<CVDWrap>
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
   Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _n > 0); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _n = 0;
+    _v = 0;
+  }
   size_t _n = 0;
   double _v = 0;
+};
+
+// Skewness streaming
+class SkewnessWrap : public Napi::ObjectWrap<SkewnessWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Skewness", {InstanceMethod("update", &SkewnessWrap::Update), InstanceMethod("reset", &SkewnessWrap::Reset), InstanceAccessor("value", &SkewnessWrap::Value, nullptr), InstanceAccessor("ready", &SkewnessWrap::Ready, nullptr)}); }
+  SkewnessWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<SkewnessWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double v = info[0].As<Napi::Number>().DoubleValue();
+    _buf.push_back(v);
+    if (_buf.size() > _p)
+    {
+      _buf.erase(_buf.begin());
+    }
+    if (_buf.size() >= _p)
+    {
+      double p = static_cast<double>(_p);
+      double mean = 0;
+      for (double x : _buf)
+      {
+        mean += x;
+      }
+      mean /= p;
+      double m2 = 0, m3 = 0;
+      for (double x : _buf)
+      {
+        double d = x - mean;
+        double d2 = d * d;
+        m2 += d2;
+        m3 += d2 * d;
+      }
+      double var = m2 / (p - 1.0);
+      if (var == 0.0)
+      {
+        return info.Env().Undefined();
+      }
+      double s = std::sqrt(var);
+      _v = (p / ((p - 1.0) * (p - 2.0))) * (m3 / (s * s * s));
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _buf.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
+  size_t _p;
+  double _v = 0;
+  std::vector<double> _buf;
+};
+
+// Kurtosis streaming
+class KurtosisWrap : public Napi::ObjectWrap<KurtosisWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Kurtosis", {InstanceMethod("update", &KurtosisWrap::Update), InstanceMethod("reset", &KurtosisWrap::Reset), InstanceAccessor("value", &KurtosisWrap::Value, nullptr), InstanceAccessor("ready", &KurtosisWrap::Ready, nullptr)}); }
+  KurtosisWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<KurtosisWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double v = info[0].As<Napi::Number>().DoubleValue();
+    _buf.push_back(v);
+    if (_buf.size() > _p)
+    {
+      _buf.erase(_buf.begin());
+    }
+    if (_buf.size() >= _p)
+    {
+      double p = static_cast<double>(_p);
+      double mean = 0;
+      for (double x : _buf)
+      {
+        mean += x;
+      }
+      mean /= p;
+      double m2 = 0, m4 = 0;
+      for (double x : _buf)
+      {
+        double d = x - mean;
+        double d2 = d * d;
+        m2 += d2;
+        m4 += d2 * d2;
+      }
+      double var = m2 / (p - 1.0);
+      if (var == 0.0)
+      {
+        return info.Env().Undefined();
+      }
+      double s2 = var;
+      double t1 = (p * (p + 1.0)) / ((p - 1.0) * (p - 2.0) * (p - 3.0));
+      double t2 = m4 / (s2 * s2);
+      double t3 = (3.0 * (p - 1.0) * (p - 1.0)) / ((p - 2.0) * (p - 3.0));
+      _v = t1 * t2 - t3;
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _buf.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
+  size_t _p;
+  double _v = 0;
+  std::vector<double> _buf;
+};
+
+// RollingZScore streaming
+class RollingZScoreWrap : public Napi::ObjectWrap<RollingZScoreWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "RollingZScore", {InstanceMethod("update", &RollingZScoreWrap::Update), InstanceMethod("reset", &RollingZScoreWrap::Reset), InstanceAccessor("value", &RollingZScoreWrap::Value, nullptr), InstanceAccessor("ready", &RollingZScoreWrap::Ready, nullptr)}); }
+  RollingZScoreWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<RollingZScoreWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double v = info[0].As<Napi::Number>().DoubleValue();
+    _buf.push_back(v);
+    if (_buf.size() > _p)
+    {
+      _buf.erase(_buf.begin());
+    }
+    if (_buf.size() >= _p)
+    {
+      double p = static_cast<double>(_p);
+      double mean = 0;
+      for (double x : _buf)
+      {
+        mean += x;
+      }
+      mean /= p;
+      double sumSq = 0;
+      for (double x : _buf)
+      {
+        double d = x - mean;
+        sumSq += d * d;
+      }
+      double s = std::sqrt(sumSq / (p - 1.0));
+      if (s == 0.0)
+      {
+        return info.Env().Undefined();
+      }
+      _v = (v - mean) / s;
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _buf.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
+  size_t _p;
+  double _v = 0;
+  std::vector<double> _buf;
+};
+
+// ShannonEntropy streaming
+class ShannonEntropyWrap : public Napi::ObjectWrap<ShannonEntropyWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "ShannonEntropy", {InstanceMethod("update", &ShannonEntropyWrap::Update), InstanceMethod("reset", &ShannonEntropyWrap::Reset), InstanceAccessor("value", &ShannonEntropyWrap::Value, nullptr), InstanceAccessor("ready", &ShannonEntropyWrap::Ready, nullptr)}); }
+  ShannonEntropyWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<ShannonEntropyWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()), _bins(info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 10) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double v = info[0].As<Napi::Number>().DoubleValue();
+    _buf.push_back(v);
+    if (_buf.size() > _p)
+    {
+      _buf.erase(_buf.begin());
+    }
+    if (_buf.size() >= _p)
+    {
+      double lo = *std::min_element(_buf.begin(), _buf.end());
+      double hi = *std::max_element(_buf.begin(), _buf.end());
+      if (lo == hi)
+      {
+        _v = 0.0;
+        return Napi::Number::New(info.Env(), _v);
+      }
+      std::vector<size_t> counts(_bins, 0);
+      double range = hi - lo;
+      for (double x : _buf)
+      {
+        size_t bin = static_cast<size_t>(((x - lo) / range) * _bins);
+        if (bin >= _bins)
+        {
+          bin = _bins - 1;
+        }
+        counts[bin]++;
+      }
+      double ent = 0;
+      double denom = static_cast<double>(_p);
+      for (size_t b = 0; b < _bins; ++b)
+      {
+        if (counts[b] > 0)
+        {
+          double p = static_cast<double>(counts[b]) / denom;
+          ent -= p * std::log(p);
+        }
+      }
+      _v = ent / std::log(static_cast<double>(_bins));
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _buf.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
+  size_t _p, _bins;
+  double _v = 0;
+  std::vector<double> _buf;
+};
+
+// ParkinsonVol streaming
+class ParkinsonVolWrap : public Napi::ObjectWrap<ParkinsonVolWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "ParkinsonVol", {InstanceMethod("update", &ParkinsonVolWrap::Update), InstanceMethod("reset", &ParkinsonVolWrap::Reset), InstanceAccessor("value", &ParkinsonVolWrap::Value, nullptr), InstanceAccessor("ready", &ParkinsonVolWrap::Ready, nullptr)}); }
+  ParkinsonVolWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<ParkinsonVolWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double h = info[0].As<Napi::Number>().DoubleValue(), l = info[1].As<Napi::Number>().DoubleValue();
+    if (l <= 0.0 || h < l)
+    {
+      _hlsq.push_back(std::nan(""));
+    }
+    else
+    {
+      double lnhl = std::log(h / l);
+      _hlsq.push_back(lnhl * lnhl);
+    }
+    if (_hlsq.size() > _p)
+    {
+      _hlsq.erase(_hlsq.begin());
+    }
+    if (_hlsq.size() >= _p)
+    {
+      double sum = 0;
+      bool valid = true;
+      for (double x : _hlsq)
+      {
+        if (std::isnan(x))
+        {
+          valid = false;
+          break;
+        }
+        sum += x;
+      }
+      if (valid)
+      {
+        _v = std::sqrt(sum / static_cast<double>(_p) / (4.0 * std::log(2.0)));
+      }
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _hlsq.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _hlsq.clear();
+  }
+  size_t _p;
+  double _v = 0;
+  std::vector<double> _hlsq;
+};
+
+// RogersSatchellVol streaming
+class RogersSatchellVolWrap : public Napi::ObjectWrap<RogersSatchellVolWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "RogersSatchellVol", {InstanceMethod("update", &RogersSatchellVolWrap::Update), InstanceMethod("reset", &RogersSatchellVolWrap::Reset), InstanceAccessor("value", &RogersSatchellVolWrap::Value, nullptr), InstanceAccessor("ready", &RogersSatchellVolWrap::Ready, nullptr)}); }
+  RogersSatchellVolWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<RogersSatchellVolWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double o = info[0].As<Napi::Number>().DoubleValue(), h = info[1].As<Napi::Number>().DoubleValue(), l = info[2].As<Napi::Number>().DoubleValue(), c = info[3].As<Napi::Number>().DoubleValue();
+    if (o <= 0.0 || c <= 0.0)
+    {
+      _rsq.push_back(std::nan(""));
+    }
+    else
+    {
+      double v = std::log(h / c) * std::log(h / o) + std::log(l / c) * std::log(l / o);
+      _rsq.push_back(v);
+    }
+    if (_rsq.size() > _p)
+    {
+      _rsq.erase(_rsq.begin());
+    }
+    if (_rsq.size() >= _p)
+    {
+      double sum = 0;
+      bool valid = true;
+      for (double x : _rsq)
+      {
+        if (std::isnan(x))
+        {
+          valid = false;
+          break;
+        }
+        sum += x;
+      }
+      if (valid)
+      {
+        double avg = sum / static_cast<double>(_p);
+        _v = avg >= 0.0 ? std::sqrt(avg) : 0.0;
+      }
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _rsq.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _rsq.clear();
+  }
+  size_t _p;
+  double _v = 0;
+  std::vector<double> _rsq;
+};
+
+// Correlation streaming
+class CorrelationWrap : public Napi::ObjectWrap<CorrelationWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env) { return DefineClass(env, "Correlation", {InstanceMethod("update", &CorrelationWrap::Update), InstanceMethod("reset", &CorrelationWrap::Reset), InstanceAccessor("value", &CorrelationWrap::Value, nullptr), InstanceAccessor("ready", &CorrelationWrap::Ready, nullptr)}); }
+  CorrelationWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<CorrelationWrap>(info), _p(info[0].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double x = info[0].As<Napi::Number>().DoubleValue(), y = info[1].As<Napi::Number>().DoubleValue();
+    _xbuf.push_back(x);
+    _ybuf.push_back(y);
+    if (_xbuf.size() > _p)
+    {
+      _xbuf.erase(_xbuf.begin());
+      _ybuf.erase(_ybuf.begin());
+    }
+    if (_xbuf.size() >= _p)
+    {
+      double p = static_cast<double>(_p);
+      double sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+      for (size_t i = 0; i < _p; ++i)
+      {
+        sx += _xbuf[i];
+        sy += _ybuf[i];
+        sxy += _xbuf[i] * _ybuf[i];
+        sx2 += _xbuf[i] * _xbuf[i];
+        sy2 += _ybuf[i] * _ybuf[i];
+      }
+      double num = p * sxy - sx * sy;
+      double den = std::sqrt((p * sx2 - sx * sx) * (p * sy2 - sy * sy));
+      if (den == 0.0)
+      {
+        return info.Env().Undefined();
+      }
+      _v = num / den;
+    }
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), _xbuf.size() >= _p); }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _xbuf.clear();
+    _ybuf.clear();
+  }
+  size_t _p;
+  double _v = 0;
+  std::vector<double> _xbuf, _ybuf;
 };
 
 // ── Registration ────────────────────────────────────────────────────
@@ -938,6 +1522,13 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("obv", Napi::Function::New(env, batch_obv));
   exports.Set("vwap", Napi::Function::New(env, batch_vwap));
   exports.Set("cvd", Napi::Function::New(env, batch_cvd));
+  exports.Set("skewness", Napi::Function::New(env, batch_skewness));
+  exports.Set("kurtosis", Napi::Function::New(env, batch_kurtosis));
+  exports.Set("rolling_zscore", Napi::Function::New(env, batch_rolling_zscore));
+  exports.Set("shannon_entropy", Napi::Function::New(env, batch_shannon_entropy));
+  exports.Set("parkinson_vol", Napi::Function::New(env, batch_parkinson_vol));
+  exports.Set("rogers_satchell_vol", Napi::Function::New(env, batch_rogers_satchell_vol));
+  exports.Set("correlation", Napi::Function::New(env, batch_correlation));
 
   // Streaming
   exports.Set("SMA", SMAWrap::Init(env));
@@ -956,6 +1547,13 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("OBV", OBVWrap::Init(env));
   exports.Set("VWAP", VWAPWrap::Init(env));
   exports.Set("CVD", CVDWrap::Init(env));
+  exports.Set("Skewness", SkewnessWrap::Init(env));
+  exports.Set("Kurtosis", KurtosisWrap::Init(env));
+  exports.Set("RollingZScore", RollingZScoreWrap::Init(env));
+  exports.Set("ShannonEntropy", ShannonEntropyWrap::Init(env));
+  exports.Set("ParkinsonVol", ParkinsonVolWrap::Init(env));
+  exports.Set("RogersSatchellVol", RogersSatchellVolWrap::Init(env));
+  exports.Set("Correlation", CorrelationWrap::Init(env));
 }
 
 }  // namespace node_flox

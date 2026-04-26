@@ -5,5 +5,8 @@ profiling_results
 .vscode
 .cache
 .clangd
+.venv
+
+node_modules
 
 compile_commands.json

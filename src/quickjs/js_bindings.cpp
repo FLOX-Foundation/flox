@@ -530,6 +530,80 @@ static JSValue js_indicator_cvd(JSContext* ctx, JSValueConst, int, JSValueConst*
   return jsArrayFromDoubles(ctx, output);
 }
 
+static JSValue js_indicator_skewness(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto data = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t period = toUint32(ctx, argv[1]);
+  std::vector<double> output(data.size());
+  flox_indicator_skewness(data.data(), data.size(), period, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_indicator_kurtosis(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto data = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t period = toUint32(ctx, argv[1]);
+  std::vector<double> output(data.size());
+  flox_indicator_kurtosis(data.data(), data.size(), period, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_indicator_rolling_zscore(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto data = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t period = toUint32(ctx, argv[1]);
+  std::vector<double> output(data.size());
+  flox_indicator_rolling_zscore(data.data(), data.size(), period, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_indicator_shannon_entropy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto data = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t period = toUint32(ctx, argv[1]);
+  uint32_t bins = toUint32(ctx, argv[2]);
+  std::vector<double> output(data.size());
+  flox_indicator_shannon_entropy(data.data(), data.size(), period, bins, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_indicator_parkinson_vol(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto high = jsArrayToDoubles(ctx, argv[0]);
+  auto low = jsArrayToDoubles(ctx, argv[1]);
+  uint32_t period = toUint32(ctx, argv[2]);
+  size_t len = high.size();
+  std::vector<double> output(len);
+  flox_indicator_parkinson_vol(high.data(), low.data(), len, period, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_indicator_rogers_satchell_vol(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  auto open = jsArrayToDoubles(ctx, argv[0]);
+  auto high = jsArrayToDoubles(ctx, argv[1]);
+  auto low = jsArrayToDoubles(ctx, argv[2]);
+  auto close = jsArrayToDoubles(ctx, argv[3]);
+  uint32_t period = toUint32(ctx, argv[4]);
+  size_t len = open.size();
+  std::vector<double> output(len);
+  flox_indicator_rogers_satchell_vol(open.data(), high.data(), low.data(), close.data(), len,
+                                     period, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_indicator_correlation(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto x = jsArrayToDoubles(ctx, argv[0]);
+  auto y = jsArrayToDoubles(ctx, argv[1]);
+  uint32_t period = toUint32(ctx, argv[2]);
+  size_t len = x.size();
+  std::vector<double> output(len);
+  flox_indicator_correlation(x.data(), y.data(), len, period, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
 // ============================================================
 // Order book bindings
 // ============================================================
@@ -2014,6 +2088,13 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_indicator_obv", js_indicator_obv, 2);
   addGlobalFunc(ctx, "__flox_indicator_vwap", js_indicator_vwap, 3);
   addGlobalFunc(ctx, "__flox_indicator_cvd", js_indicator_cvd, 5);
+  addGlobalFunc(ctx, "__flox_indicator_skewness", js_indicator_skewness, 2);
+  addGlobalFunc(ctx, "__flox_indicator_kurtosis", js_indicator_kurtosis, 2);
+  addGlobalFunc(ctx, "__flox_indicator_rolling_zscore", js_indicator_rolling_zscore, 2);
+  addGlobalFunc(ctx, "__flox_indicator_shannon_entropy", js_indicator_shannon_entropy, 3);
+  addGlobalFunc(ctx, "__flox_indicator_parkinson_vol", js_indicator_parkinson_vol, 3);
+  addGlobalFunc(ctx, "__flox_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
+  addGlobalFunc(ctx, "__flox_indicator_correlation", js_indicator_correlation, 3);
 
   // Order book
   addGlobalFunc(ctx, "__flox_book_create", js_book_create, 1);

@@ -4,15 +4,22 @@
 #include "flox/indicator/bollinger.h"
 #include "flox/indicator/cci.h"
 #include "flox/indicator/chop.h"
+#include "flox/indicator/correlation.h"
 #include "flox/indicator/cvd.h"
 #include "flox/indicator/dema.h"
 #include "flox/indicator/ema.h"
 #include "flox/indicator/indicator_pipeline.h"
 #include "flox/indicator/kama.h"
+#include "flox/indicator/kurtosis.h"
 #include "flox/indicator/macd.h"
 #include "flox/indicator/obv.h"
+#include "flox/indicator/parkinson_vol.h"
 #include "flox/indicator/rma.h"
+#include "flox/indicator/rogers_satchell_vol.h"
+#include "flox/indicator/rolling_zscore.h"
 #include "flox/indicator/rsi.h"
+#include "flox/indicator/shannon_entropy.h"
+#include "flox/indicator/skewness.h"
 #include "flox/indicator/slope.h"
 #include "flox/indicator/sma.h"
 #include "flox/indicator/stochastic.h"
@@ -740,4 +747,431 @@ TEST(IndicatorGraph, CacheInvalidation)
   g.setBars(0, bars);
   auto& r2 = g.require(0, "ema3");
   EXPECT_NE(r2[9], first);
+}
+
+// Skewness
+
+TEST(Skewness, BasicComputation)
+{
+  Skewness skew(5);
+  std::vector<double> input = {1, 2, 3, 4, 10};
+  auto result = skew.compute(input);
+  ASSERT_EQ(result.size(), 5u);
+  for (int i = 0; i < 4; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_FALSE(std::isnan(result[4]));
+  EXPECT_GT(result[4], 0.0);
+}
+
+TEST(Skewness, SymmetricDistribution)
+{
+  Skewness skew(5);
+  std::vector<double> input = {1, 2, 3, 4, 5};
+  auto result = skew.compute(input);
+  EXPECT_NEAR(result[4], 0.0, 1e-10);
+}
+
+TEST(Skewness, ZeroStd)
+{
+  Skewness skew(3);
+  std::vector<double> input = {5, 5, 5};
+  auto result = skew.compute(input);
+  EXPECT_TRUE(std::isnan(result[2]));
+}
+
+TEST(Skewness, EmptyInput)
+{
+  Skewness skew(3);
+  auto result = skew.compute(std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(Skewness, WriteToBuffer)
+{
+  Skewness skew(5);
+  auto p = prices();
+  std::vector<double> buf(p.size());
+  skew.compute(p, buf);
+  auto alloced = skew.compute(p);
+  for (size_t i = 0; i < p.size(); ++i)
+  {
+    if (std::isnan(alloced[i]))
+    {
+      EXPECT_TRUE(std::isnan(buf[i]));
+    }
+    else
+    {
+      EXPECT_DOUBLE_EQ(buf[i], alloced[i]);
+    }
+  }
+}
+
+// Kurtosis
+
+TEST(Kurtosis, BasicComputation)
+{
+  Kurtosis kurt(5);
+  std::vector<double> input = {1, 2, 3, 4, 100};
+  auto result = kurt.compute(input);
+  ASSERT_EQ(result.size(), 5u);
+  for (int i = 0; i < 4; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_FALSE(std::isnan(result[4]));
+  EXPECT_GT(result[4], 0.0);
+}
+
+TEST(Kurtosis, ZeroStd)
+{
+  Kurtosis kurt(4);
+  std::vector<double> input = {5, 5, 5, 5};
+  auto result = kurt.compute(input);
+  EXPECT_TRUE(std::isnan(result[3]));
+}
+
+TEST(Kurtosis, EmptyInput)
+{
+  Kurtosis kurt(4);
+  auto result = kurt.compute(std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(Kurtosis, WriteToBuffer)
+{
+  Kurtosis kurt(5);
+  auto p = prices();
+  std::vector<double> buf(p.size());
+  kurt.compute(p, buf);
+  auto alloced = kurt.compute(p);
+  for (size_t i = 0; i < p.size(); ++i)
+  {
+    if (std::isnan(alloced[i]))
+    {
+      EXPECT_TRUE(std::isnan(buf[i]));
+    }
+    else
+    {
+      EXPECT_DOUBLE_EQ(buf[i], alloced[i]);
+    }
+  }
+}
+
+// RollingZScore
+
+TEST(RollingZScore, BasicComputation)
+{
+  RollingZScore zscore(5);
+  std::vector<double> input = {10, 10, 10, 10, 10};
+  auto result = zscore.compute(input);
+  for (int i = 0; i < 4; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_TRUE(std::isnan(result[4]));
+}
+
+TEST(RollingZScore, MeanIsZero)
+{
+  RollingZScore zscore(3);
+  std::vector<double> input = {1, 2, 3, 2, 1};
+  auto result = zscore.compute(input);
+  EXPECT_FALSE(std::isnan(result[2]));
+}
+
+TEST(RollingZScore, EmptyInput)
+{
+  RollingZScore zscore(3);
+  auto result = zscore.compute(std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(RollingZScore, WriteToBuffer)
+{
+  RollingZScore zscore(5);
+  auto p = prices();
+  std::vector<double> buf(p.size());
+  zscore.compute(p, buf);
+  auto alloced = zscore.compute(p);
+  for (size_t i = 0; i < p.size(); ++i)
+  {
+    if (std::isnan(alloced[i]))
+    {
+      EXPECT_TRUE(std::isnan(buf[i]));
+    }
+    else
+    {
+      EXPECT_DOUBLE_EQ(buf[i], alloced[i]);
+    }
+  }
+}
+
+// ShannonEntropy
+
+TEST(ShannonEntropy, ZeroEntropy)
+{
+  ShannonEntropy ent(5, 10);
+  std::vector<double> input = {5, 5, 5, 5, 5};
+  auto result = ent.compute(input);
+  EXPECT_DOUBLE_EQ(result[4], 0.0);
+}
+
+TEST(ShannonEntropy, MaxEntropy)
+{
+  ShannonEntropy ent(10, 10);
+  std::vector<double> input = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  auto result = ent.compute(input);
+  EXPECT_GT(result[9], 0.8);
+  EXPECT_LE(result[9], 1.0);
+}
+
+TEST(ShannonEntropy, EmptyInput)
+{
+  ShannonEntropy ent(5);
+  auto result = ent.compute(std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(ShannonEntropy, WarmupPeriod)
+{
+  ShannonEntropy ent(5, 10);
+  auto result = ent.compute(prices());
+  for (int i = 0; i < 4; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_FALSE(std::isnan(result[4]));
+}
+
+// ParkinsonVol
+
+TEST(ParkinsonVol, BasicComputation)
+{
+  std::vector<double> h = {48.70, 48.72, 48.90, 48.87, 48.82, 49.05, 49.20, 49.35, 49.92, 50.19};
+  std::vector<double> l = {47.79, 48.14, 48.39, 48.37, 48.24, 48.64, 48.94, 48.86, 49.50, 49.87};
+
+  ParkinsonVol pv(5);
+  auto result = pv.compute(h, l);
+  ASSERT_EQ(result.size(), 10u);
+  for (int i = 0; i < 4; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_FALSE(std::isnan(result[4]));
+  EXPECT_GT(result[4], 0.0);
+}
+
+TEST(ParkinsonVol, EqualHighLow)
+{
+  std::vector<double> h = {10, 10, 10, 10, 10};
+  std::vector<double> l = {10, 10, 10, 10, 10};
+  ParkinsonVol pv(5);
+  auto result = pv.compute(h, l);
+  EXPECT_DOUBLE_EQ(result[4], 0.0);
+}
+
+TEST(ParkinsonVol, EmptyInput)
+{
+  ParkinsonVol pv(5);
+  auto result = pv.compute(std::span<const double>{}, std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(ParkinsonVol, BarOverload)
+{
+  std::vector<Bar> bars(10);
+  for (size_t i = 0; i < 10; ++i)
+  {
+    bars[i].high = Price::fromDouble(101.0 + i);
+    bars[i].low = Price::fromDouble(99.0 + i);
+  }
+  ParkinsonVol pv(5);
+  auto fromBars = pv.compute(std::span<const Bar>(bars));
+
+  std::vector<double> h(10), l(10);
+  for (size_t i = 0; i < 10; ++i)
+  {
+    h[i] = bars[i].high.toDouble();
+    l[i] = bars[i].low.toDouble();
+  }
+  auto fromSpans = pv.compute(h, l);
+
+  for (size_t i = 0; i < 10; ++i)
+  {
+    if (std::isnan(fromBars[i]))
+    {
+      EXPECT_TRUE(std::isnan(fromSpans[i]));
+    }
+    else
+    {
+      EXPECT_NEAR(fromBars[i], fromSpans[i], 1e-10);
+    }
+  }
+}
+
+// RogersSatchellVol
+
+TEST(RogersSatchellVol, BasicComputation)
+{
+  std::vector<double> o = {100, 101, 102, 103, 104};
+  std::vector<double> h = {102, 103, 104, 105, 106};
+  std::vector<double> l = {98, 99, 100, 101, 102};
+  std::vector<double> c = {101, 102, 103, 104, 105};
+
+  RogersSatchellVol rsv(3);
+  auto result = rsv.compute(o, h, l, c);
+  ASSERT_EQ(result.size(), 5u);
+  for (int i = 0; i < 2; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_FALSE(std::isnan(result[2]));
+  EXPECT_GT(result[2], 0.0);
+}
+
+TEST(RogersSatchellVol, FlatBars)
+{
+  std::vector<double> v = {100, 100, 100, 100, 100};
+  RogersSatchellVol rsv(3);
+  auto result = rsv.compute(v, v, v, v);
+  EXPECT_DOUBLE_EQ(result[2], 0.0);
+}
+
+TEST(RogersSatchellVol, EmptyInput)
+{
+  RogersSatchellVol rsv(3);
+  auto result = rsv.compute(std::span<const double>{}, std::span<const double>{},
+                            std::span<const double>{}, std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(RogersSatchellVol, BarOverload)
+{
+  std::vector<Bar> bars(10);
+  for (size_t i = 0; i < 10; ++i)
+  {
+    bars[i].open = Price::fromDouble(100.0 + i);
+    bars[i].high = Price::fromDouble(102.0 + i);
+    bars[i].low = Price::fromDouble(98.0 + i);
+    bars[i].close = Price::fromDouble(101.0 + i);
+  }
+  RogersSatchellVol rsv(5);
+  auto fromBars = rsv.compute(std::span<const Bar>(bars));
+
+  std::vector<double> o(10), h(10), l(10), c(10);
+  for (size_t i = 0; i < 10; ++i)
+  {
+    o[i] = bars[i].open.toDouble();
+    h[i] = bars[i].high.toDouble();
+    l[i] = bars[i].low.toDouble();
+    c[i] = bars[i].close.toDouble();
+  }
+  auto fromSpans = rsv.compute(o, h, l, c);
+
+  for (size_t i = 0; i < 10; ++i)
+  {
+    if (std::isnan(fromBars[i]))
+    {
+      EXPECT_TRUE(std::isnan(fromSpans[i]));
+    }
+    else
+    {
+      EXPECT_NEAR(fromBars[i], fromSpans[i], 1e-10);
+    }
+  }
+}
+
+// Correlation
+
+TEST(Correlation, PerfectPositive)
+{
+  Correlation corr(5);
+  std::vector<double> x = {1, 2, 3, 4, 5};
+  std::vector<double> y = {2, 4, 6, 8, 10};
+  auto result = corr.compute(x, y);
+  EXPECT_NEAR(result[4], 1.0, 1e-10);
+}
+
+TEST(Correlation, PerfectNegative)
+{
+  Correlation corr(5);
+  std::vector<double> x = {1, 2, 3, 4, 5};
+  std::vector<double> y = {10, 8, 6, 4, 2};
+  auto result = corr.compute(x, y);
+  EXPECT_NEAR(result[4], -1.0, 1e-10);
+}
+
+TEST(Correlation, ConstantSeries)
+{
+  Correlation corr(5);
+  std::vector<double> x = {1, 2, 3, 4, 5};
+  std::vector<double> y = {5, 5, 5, 5, 5};
+  auto result = corr.compute(x, y);
+  EXPECT_TRUE(std::isnan(result[4]));
+}
+
+TEST(Correlation, WarmupPeriod)
+{
+  Correlation corr(5);
+  auto p = prices();
+  std::vector<double> p2(p.rbegin(), p.rend());
+  auto result = corr.compute(p, p2);
+  for (int i = 0; i < 4; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result[i]));
+  }
+  EXPECT_FALSE(std::isnan(result[4]));
+}
+
+TEST(Correlation, EmptyInput)
+{
+  Correlation corr(3);
+  auto result = corr.compute(std::span<const double>{}, std::span<const double>{});
+  EXPECT_TRUE(result.empty());
+}
+
+// Contract tests: warmup NaN for all single-input indicators
+
+TEST(Contract, WarmupAllSingleIndicators)
+{
+  auto p = prices();
+  auto check = [&](const std::string& name, const std::vector<double>& result, size_t warmup)
+  {
+    for (size_t i = 0; i < warmup && i < result.size(); ++i)
+    {
+      EXPECT_TRUE(std::isnan(result[i])) << name << " should be NaN at index " << i;
+    }
+    if (result.size() > warmup)
+    {
+      EXPECT_FALSE(std::isnan(result[warmup])) << name << " should be valid at index " << warmup;
+    }
+  };
+
+  check("SMA(5)", SMA(5).compute(p), 4);
+  check("EMA(5)", EMA(5).compute(p), 4);
+  check("RMA(5)", RMA(5).compute(p), 4);
+  check("RSI(5)", RSI(5).compute(p), 5);
+  check("Slope(3)", Slope(3).compute(p), 3);
+  check("KAMA(5)", KAMA(5).compute(p), 5);
+  check("Skewness(5)", Skewness(5).compute(p), 4);
+  check("Kurtosis(5)", Kurtosis(5).compute(p), 4);
+  check("RollingZScore(5)", RollingZScore(5).compute(p), 4);
+  check("ShannonEntropy(5)", ShannonEntropy(5).compute(p), 4);
+}
+
+TEST(Contract, EmptyAllSingleIndicators)
+{
+  std::span<const double> empty{};
+  EXPECT_TRUE(SMA(5).compute(empty).empty());
+  EXPECT_TRUE(EMA(5).compute(empty).empty());
+  EXPECT_TRUE(RMA(5).compute(empty).empty());
+  EXPECT_TRUE(RSI(5).compute(empty).empty());
+  EXPECT_TRUE(Slope(3).compute(empty).empty());
+  EXPECT_TRUE(KAMA(5).compute(empty).empty());
+  EXPECT_TRUE(Skewness(5).compute(empty).empty());
+  EXPECT_TRUE(Kurtosis(5).compute(empty).empty());
+  EXPECT_TRUE(RollingZScore(5).compute(empty).empty());
+  EXPECT_TRUE(ShannonEntropy(5).compute(empty).empty());
 }

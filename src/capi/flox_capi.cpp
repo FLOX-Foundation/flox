@@ -30,14 +30,21 @@
 #include "flox/indicator/bollinger.h"
 #include "flox/indicator/cci.h"
 #include "flox/indicator/chop.h"
+#include "flox/indicator/correlation.h"
 #include "flox/indicator/cvd.h"
 #include "flox/indicator/dema.h"
 #include "flox/indicator/ema.h"
 #include "flox/indicator/kama.h"
+#include "flox/indicator/kurtosis.h"
 #include "flox/indicator/macd.h"
 #include "flox/indicator/obv.h"
+#include "flox/indicator/parkinson_vol.h"
 #include "flox/indicator/rma.h"
+#include "flox/indicator/rogers_satchell_vol.h"
+#include "flox/indicator/rolling_zscore.h"
 #include "flox/indicator/rsi.h"
+#include "flox/indicator/shannon_entropy.h"
+#include "flox/indicator/skewness.h"
 #include "flox/indicator/slope.h"
 #include "flox/indicator/sma.h"
 #include "flox/indicator/stochastic.h"
@@ -518,6 +525,57 @@ void flox_indicator_cvd(const double* open, const double* high, const double* lo
       std::span<const double>(low, len), std::span<const double>(close, len),
       std::span<const double>(volume, len));
   std::copy(result.begin(), result.end(), output);
+}
+
+void flox_indicator_skewness(const double* input, size_t len, size_t period, double* output)
+{
+  indicator::Skewness ind(period);
+  ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+}
+
+void flox_indicator_kurtosis(const double* input, size_t len, size_t period, double* output)
+{
+  indicator::Kurtosis ind(period);
+  ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+}
+
+void flox_indicator_parkinson_vol(const double* high, const double* low, size_t len, size_t period,
+                                  double* output)
+{
+  indicator::ParkinsonVol ind(period);
+  ind.compute(std::span<const double>(high, len), std::span<const double>(low, len),
+              std::span<double>(output, len));
+}
+
+void flox_indicator_rogers_satchell_vol(const double* open, const double* high, const double* low,
+                                        const double* close, size_t len, size_t period,
+                                        double* output)
+{
+  indicator::RogersSatchellVol ind(period);
+  ind.compute(std::span<const double>(open, len), std::span<const double>(high, len),
+              std::span<const double>(low, len), std::span<const double>(close, len),
+              std::span<double>(output, len));
+}
+
+void flox_indicator_rolling_zscore(const double* input, size_t len, size_t period, double* output)
+{
+  indicator::RollingZScore ind(period);
+  ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+}
+
+void flox_indicator_shannon_entropy(const double* input, size_t len, size_t period, size_t bins,
+                                    double* output)
+{
+  indicator::ShannonEntropy ind(period, bins);
+  ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+}
+
+void flox_indicator_correlation(const double* x, const double* y, size_t len, size_t period,
+                                double* output)
+{
+  indicator::Correlation ind(period);
+  ind.compute(std::span<const double>(x, len), std::span<const double>(y, len),
+              std::span<double>(output, len));
 }
 
 // ============================================================

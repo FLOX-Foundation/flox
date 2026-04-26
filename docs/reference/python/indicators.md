@@ -2,6 +2,49 @@
 
 Vectorized technical indicators operating on numpy arrays. All functions release the GIL for parallel computation.
 
+## Streaming classes
+
+All streaming indicators share the same interface:
+
+```python
+ind = flox.EMA(20)
+result = ind.update(price)  # None during warmup, float when ready
+ind.value                   # None or float
+ind.ready                   # bool
+ind.reset()                 # clear state, keep config
+ind2 = ind.fresh()          # new independent instance, same config
+```
+
+During warmup, `update()` and `.value` return `None`. Check with `if result is not None` or use `.ready`.
+
+**Single value** — `update(value) -> float | None`:
+
+`SMA(period)`, `EMA(period)`, `RMA(period)`, `RSI(period)`, `DEMA(period)`, `TEMA(period)`, `KAMA(period, fast=2, slow=30)`, `Slope(length)`, `Skewness(period)`, `Kurtosis(period)`, `RollingZScore(period)`, `ShannonEntropy(period, bins=10)`
+
+**Multi-output** — `update(value) -> float | None`, named properties instead of `.value`:
+
+`MACD(fast=12, slow=26, signal=9)` → `.line`, `.signal`, `.histogram`  
+`Bollinger(period=20, multiplier=2.0)` → `.upper`, `.middle`, `.lower`
+
+**OHLC / multi-input:**
+
+`ATR(period)` — `update(high, low, close)`  
+`Stochastic(k_period=14, d_period=3)` — `update(high, low, close)` → `.k`, `.d`  
+`CCI(period=20)` — `update(high, low, close)`  
+`ParkinsonVol(period)` — `update(high, low)`  
+`RogersSatchellVol(period)` — `update(open, high, low, close)`  
+`Correlation(period)` — `update(x, y)`
+
+**Volume:**
+
+`OBV()` — `update(close, volume)`  
+`VWAP(window)` — `update(close, volume)`  
+`CVD()` — `update(open, high, low, close, volume)`
+
+---
+
+## Batch functions
+
 ## Moving Averages
 
 ### `ema(input, period) -> ndarray`
@@ -70,16 +113,8 @@ Moving Average Convergence Divergence. Returns a dict with three arrays.
 
 ```python
 result = flox.macd(closes, fast=12, slow=26, signal=9)
-macd_line = result['line']
-signal_line = result['signal']
-histogram = result['histogram']
+# result['line'], result['signal'], result['histogram']
 ```
-
-| Key | Description |
-|-----|-------------|
-| `line` | MACD line (fast EMA - slow EMA) |
-| `signal` | Signal line (EMA of MACD line) |
-| `histogram` | MACD - Signal |
 
 ### `stochastic(high, low, close, k_period=14, d_period=3) -> dict`
 
@@ -109,16 +144,8 @@ Average Directional Index with directional indicators.
 
 ```python
 result = flox.adx(highs, lows, closes, period=14)
-adx_values = result['adx']
-plus_di = result['plus_di']
-minus_di = result['minus_di']
+# result['adx'], result['plus_di'], result['minus_di']
 ```
-
-| Key | Description |
-|-----|-------------|
-| `adx` | ADX values |
-| `plus_di` | +DI (positive directional indicator) |
-| `minus_di` | -DI (negative directional indicator) |
 
 ### `chop(high, low, close, period=14) -> ndarray`
 
@@ -154,16 +181,68 @@ Bollinger Bands.
 
 ```python
 result = flox.bollinger(closes, period=20, stddev=2.0)
-upper = result['upper']
-middle = result['middle']
-lower = result['lower']
+# result['upper'], result['middle'], result['lower']
 ```
 
-| Key | Description |
-|-----|-------------|
-| `upper` | Upper band (middle + stddev * std) |
-| `middle` | Middle band (SMA) |
-| `lower` | Lower band (middle - stddev * std) |
+---
+
+## Statistical
+
+### `skewness(input, period) -> ndarray`
+
+Rolling Fisher-Pearson skewness. Measures distribution asymmetry. Requires period >= 3. NaN if std = 0.
+
+```python
+result = flox.skewness(closes, period=20)
+```
+
+### `kurtosis(input, period) -> ndarray`
+
+Rolling Fisher excess kurtosis. Measures tail heaviness. Requires period >= 4. NaN if std = 0.
+
+```python
+result = flox.kurtosis(closes, period=20)
+```
+
+### `rolling_zscore(input, period) -> ndarray`
+
+Rolling z-score normalization: `(x - mean) / std`. NaN if std = 0.
+
+```python
+result = flox.rolling_zscore(closes, period=20)
+```
+
+### `shannon_entropy(input, period, bins=10) -> ndarray`
+
+Rolling Shannon entropy with histogram binning, normalized to [0, 1]. Zero = all values identical, 1 = uniform distribution.
+
+```python
+result = flox.shannon_entropy(closes, period=20, bins=10)
+```
+
+### `parkinson_vol(high, low, period) -> ndarray`
+
+Parkinson high-low volatility estimator: `sqrt(mean(ln(H/L)^2) / (4*ln(2)))`. More efficient than close-to-close volatility.
+
+```python
+result = flox.parkinson_vol(highs, lows, period=20)
+```
+
+### `rogers_satchell_vol(open, high, low, close, period) -> ndarray`
+
+Rogers-Satchell OHLC volatility estimator. Unbiased with drift, suitable for trending markets.
+
+```python
+result = flox.rogers_satchell_vol(opens, highs, lows, closes, period=20)
+```
+
+### `correlation(x, y, period) -> ndarray`
+
+Rolling Pearson correlation between two series. NaN if either series is constant within the window.
+
+```python
+result = flox.correlation(closes_btc, closes_eth, period=20)
+```
 
 ---
 
@@ -205,11 +284,7 @@ Compute per-bar returns given position signals and log returns.
 returns = flox.bar_returns(signal_long, signal_short, log_returns)
 ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `signal_long` | `int8[]` | Long position flags (+1 or 0) |
-| `signal_short` | `int8[]` | Short position flags (-1 or 0) |
-| `log_returns` | `float64[]` | Log returns of the asset |
+`signal_long` and `signal_short` are `int8[]` (+1 or 0 / -1 or 0). `log_returns` is `float64[]`.
 
 ### `trade_pnl(signal_long, signal_short, log_returns) -> ndarray`
 

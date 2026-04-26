@@ -9,28 +9,30 @@ Technical indicators for Codon strategies. Two types:
 
 ## Batch indicators
 
-Use these for historical data processing outside the hot path.
-
 ```codon
 from flox.indicators import ema, sma, rsi, atr, macd, bollinger
+from flox.indicators import Skewness, Kurtosis, RollingZScore, ShannonEntropy
+from flox.indicators import ParkinsonVol, RogersSatchellVol, Correlation
 ```
 
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `ema(data, period)` | `List[float]` | Exponential Moving Average |
-| `sma(data, period)` | `List[float]` | Simple Moving Average |
-| `rsi(data, period)` | `List[float]` | Relative Strength Index |
-| `atr(high, low, close, period)` | `List[float]` | Average True Range |
-| `macd(data, fast=12, slow=26, signal=9)` | `MacdResult` | MACD |
-| `bollinger(data, period=20, multiplier=2.0)` | `BollingerResult` | Bollinger Bands |
+**Single value** — returns `List[float]`:
 
-`MacdResult` fields: `.line`, `.signal`, `.histogram`.
+`ema(data, period)`, `sma(data, period)`, `rma(data, period)`, `rsi(data, period)`, `dema(data, period)`, `tema(data, period)`, `kama(data, period)`
 
-`BollingerResult` fields: `.upper`, `.middle`, `.lower`.
+**OHLC / multi-input** — returns `List[float]`:
+
+`atr(high, low, close, period)`, `ParkinsonVol.compute(high, low, period)`, `RogersSatchellVol.compute(open, high, low, close, period)`, `Correlation.compute(x, y, period)`
+
+**Statistical** — returns `List[float]`:
+
+`Skewness.compute(data, period)`, `Kurtosis.compute(data, period)`, `RollingZScore.compute(data, period)`, `ShannonEntropy.compute(data, period, bins)`
+
+**Multi-output:**
+
+`macd(data, fast=12, slow=26, signal=9)` — returns `MacdResult`: `.line`, `.signal`, `.histogram`  
+`bollinger(data, period=20, multiplier=2.0)` — returns `BollingerResult`: `.upper`, `.middle`, `.lower`
 
 ```codon
-from flox.indicators import ema, atr, macd
-
 values = ema(prices, 20)
 
 m = macd(prices, 12, 26, 9)
@@ -43,12 +45,14 @@ ranges = atr(highs, lows, closes, 14)
 
 ## Streaming indicators
 
-All streaming indicators share the same pattern: call `update()` each tick, read `.value`, check `.ready`.
+All streaming indicators share the same pattern: call `update()` each tick, read `.value`, check `.ready`. All support `.reset()` to clear state.
 
 ```codon
 from flox.indicators import EMA, SMA, RSI, ATR, MACD, Bollinger
 from flox.indicators import RMA, DEMA, TEMA, KAMA, Slope
 from flox.indicators import OBV, VWAP, CVD
+from flox.indicators import Skewness, Kurtosis, RollingZScore, ShannonEntropy
+from flox.indicators import ParkinsonVol, RogersSatchellVol, Correlation
 ```
 
 ### Single-price indicators
@@ -62,16 +66,9 @@ if ema.ready:
     print(ema.value)
 ```
 
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__(period)` | | |
-| `update(value)` | `float` | Feed new value, returns current EMA |
-| `value` | `float` | Current value |
-| `ready` | `bool` | True after `period` values |
-
 #### `SMA`
 
-Same API as `EMA`. Uses a circular buffer for O(1) updates.
+Uses a circular buffer for O(1) updates.
 
 ```codon
 sma = SMA(period=20)
@@ -87,29 +84,23 @@ rma = RMA(period=14)
 value = rma.update(price)
 ```
 
-Same API as `EMA`.
-
 #### `DEMA`
 
-Double Exponential Moving Average.
+Double Exponential Moving Average. `.ready` is true after `2 * period` values.
 
 ```codon
 dema = DEMA(period=20)
 value = dema.update(price)
 ```
 
-Same API as `EMA`. `.ready` is true after `2 * period` values.
-
 #### `TEMA`
 
-Triple Exponential Moving Average.
+Triple Exponential Moving Average. `.ready` is true after `3 * period` values.
 
 ```codon
 tema = TEMA(period=20)
 value = tema.update(price)
 ```
-
-Same API as `EMA`. `.ready` is true after `3 * period` values.
 
 #### `KAMA`
 
@@ -120,8 +111,6 @@ kama = KAMA(period=10)
 value = kama.update(price)
 ```
 
-Same API as `EMA`.
-
 #### `Slope`
 
 Linear regression slope over a rolling window.
@@ -130,8 +119,6 @@ Linear regression slope over a rolling window.
 slope = Slope(period=20)
 value = slope.update(price)
 ```
-
-Same API as `EMA`.
 
 #### `RSI`
 
@@ -142,7 +129,41 @@ if rsi.ready:
     print(rsi.value)  # 0..100
 ```
 
-Same API as `EMA`.
+#### `Skewness`
+
+Fisher-Pearson skewness. Requires period >= 3.
+
+```codon
+skew = Skewness(period=20)
+value = skew.update(price)
+```
+
+#### `Kurtosis`
+
+Fisher excess kurtosis. Requires period >= 4.
+
+```codon
+kurt = Kurtosis(period=20)
+value = kurt.update(price)
+```
+
+#### `RollingZScore`
+
+`(x - mean) / std`.
+
+```codon
+zscore = RollingZScore(period=20)
+value = zscore.update(price)
+```
+
+#### `ShannonEntropy`
+
+Rolling Shannon entropy, normalized to [0, 1].
+
+```codon
+ent = ShannonEntropy(period=20, bins=10)
+value = ent.update(price)
+```
 
 ---
 
@@ -153,16 +174,7 @@ Same API as `EMA`.
 ```codon
 atr = ATR(period=14)
 value = atr.update(high, low, close)
-if atr.ready:
-    print(atr.value)
 ```
-
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__(period)` | | |
-| `update(high, low, close)` | `float` | Feed OHLC values |
-| `value` | `float` | Current ATR |
-| `ready` | `bool` | True after `period` bars |
 
 #### `MACD`
 
@@ -173,15 +185,6 @@ if macd.ready:
     print(macd.line, macd.signal, macd.histogram)
 ```
 
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__(fast, slow, signal)` | | |
-| `update(value)` | `None` | Feed new value |
-| `line` | `float` | MACD line (fast EMA − slow EMA) |
-| `signal` | `float` | Signal line (EMA of MACD line) |
-| `histogram` | `float` | `line − signal` |
-| `ready` | `bool` | True after `slow + signal` values |
-
 #### `Bollinger`
 
 ```codon
@@ -191,14 +194,32 @@ if bb.ready:
     print(bb.upper, bb.middle, bb.lower)
 ```
 
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__(period, multiplier=2.0)` | | |
-| `update(value)` | `None` | Feed new value |
-| `upper` | `float` | Upper band |
-| `middle` | `float` | Middle band (SMA) |
-| `lower` | `float` | Lower band |
-| `ready` | `bool` | True after `period` values |
+#### `ParkinsonVol`
+
+Parkinson high-low volatility estimator.
+
+```codon
+pvol = ParkinsonVol(period=20)
+value = pvol.update(high, low)
+```
+
+#### `RogersSatchellVol`
+
+Rogers-Satchell OHLC volatility estimator.
+
+```codon
+rsv = RogersSatchellVol(period=20)
+value = rsv.update(open_, high, low, close)
+```
+
+#### `Correlation`
+
+Rolling Pearson correlation between two series.
+
+```codon
+corr = Correlation(period=20)
+value = corr.update(x, y)
+```
 
 ---
 
@@ -213,12 +234,6 @@ obv = OBV()
 value = obv.update(price, volume, is_buy)
 ```
 
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__()` | | |
-| `update(price, volume, is_buy)` | `float` | Feed trade data |
-| `value` | `float` | Current OBV |
-
 #### `VWAP`
 
 Volume Weighted Average Price.
@@ -228,13 +243,6 @@ vwap = VWAP()
 value = vwap.update(price, volume)
 ```
 
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__()` | | |
-| `update(price, volume)` | `float` | Feed price and volume |
-| `value` | `float` | Current VWAP |
-| `reset()` | `None` | Reset accumulator (e.g. session start) |
-
 #### `CVD`
 
 Cumulative Volume Delta.
@@ -243,13 +251,6 @@ Cumulative Volume Delta.
 cvd = CVD()
 value = cvd.update(volume, is_buy)
 ```
-
-| Method / Property | Returns | Description |
-|-------------------|---------|-------------|
-| `__init__()` | | |
-| `update(volume, is_buy)` | `float` | Feed volume |
-| `value` | `float` | Current CVD (buy vol − sell vol) |
-| `reset()` | `None` | Reset accumulator |
 
 ---
 

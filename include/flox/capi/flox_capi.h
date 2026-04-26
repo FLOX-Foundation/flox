@@ -222,6 +222,21 @@ extern "C"
   void flox_indicator_cvd(const double* open, const double* high, const double* low,
                           const double* close, const double* volume, size_t len, double* output);
 
+  // Statistical
+  void flox_indicator_skewness(const double* input, size_t len, size_t period, double* output);
+  void flox_indicator_kurtosis(const double* input, size_t len, size_t period, double* output);
+  void flox_indicator_parkinson_vol(const double* high, const double* low, size_t len,
+                                    size_t period, double* output);
+  void flox_indicator_rogers_satchell_vol(const double* open, const double* high, const double* low,
+                                          const double* close, size_t len, size_t period,
+                                          double* output);
+  void flox_indicator_rolling_zscore(const double* input, size_t len, size_t period,
+                                     double* output);
+  void flox_indicator_shannon_entropy(const double* input, size_t len, size_t period, size_t bins,
+                                      double* output);
+  void flox_indicator_correlation(const double* x, const double* y, size_t len, size_t period,
+                                  double* output);
+
   // ============================================================
   // Order book
   // ============================================================
