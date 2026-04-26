@@ -131,6 +131,15 @@ if(FLOX_ENABLE_LZ4)
         set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
         FetchContent_MakeAvailable(lz4_src)
         target_link_libraries(${FLOX} PUBLIC lz4_static)
+        # Add lz4_static to floxTargets export set so install(EXPORT floxTargets)
+        # below can reference it. compression.h inlines LZ4_compress_default,
+        # so lz4 must remain in flox's PUBLIC link interface.
+        install(TARGETS lz4_static
+          EXPORT floxTargets
+          ARCHIVE DESTINATION lib
+          LIBRARY DESTINATION lib
+          RUNTIME DESTINATION bin
+        )
         message(STATUS "LZ4 fetched via FetchContent (vendored)")
       endif()
     endif()
