@@ -9,7 +9,7 @@ authors = [{name = "FLOX Foundation"}]
 description = "Python bindings for the Flox indicator library"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["numpy"]
 keywords = ["trading", "backtest", "indicators", "technical-analysis"]
 classifiers = [
