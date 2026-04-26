@@ -23,7 +23,7 @@ classifiers = [
 Repository = "https://github.com/FLOX-Foundation/flox"
 
 [tool.scikit-build]
-cmake.args = ["-DFLOX_ENABLE_BACKTEST=ON", "-DFLOX_ENABLE_PYTHON=ON"]
+cmake.args = ["-DFLOX_ENABLE_BACKTEST=ON", "-DFLOX_ENABLE_PYTHON=ON", "-DFLOX_ENABLE_LZ4=ON"]
 cmake.source-dir = ".."
 wheel.packages = []
 install.components = ["python_module"]
