@@ -413,6 +413,50 @@ inline void bindReplay(py::module_& m)
   PYBIND11_NUMPY_DTYPE(PyTrade, exchange_ts_ns, recv_ts_ns, price_raw, qty_raw, trade_id,
                        symbol_id, side);
 
+  // Fixed-point scales — match flox::Price/Quantity/Volume in flox/common.h.
+  // Use these instead of hardcoding 1e8 in client code.
+  m.attr("PRICE_SCALE") = py::int_(flox::Price::Scale);
+  m.attr("QUANTITY_SCALE") = py::int_(flox::Quantity::Scale);
+  m.attr("VOLUME_SCALE") = py::int_(flox::Volume::Scale);
+
+  // Vectorized raw → double converters. Operate on numpy int64 arrays of any shape.
+  auto rawToDouble = [](py::array_t<int64_t> raw, int64_t scale) -> py::array_t<double>
+  {
+    auto buf = raw.request();
+    py::array_t<double> out(buf.shape, buf.strides);
+    auto out_buf = out.request();
+    const int64_t* in_ptr = static_cast<const int64_t*>(buf.ptr);
+    double* out_ptr = static_cast<double*>(out_buf.ptr);
+    const double inv_scale = 1.0 / static_cast<double>(scale);
+    const size_t n = static_cast<size_t>(buf.size);
+    for (size_t i = 0; i < n; ++i)
+    {
+      out_ptr[i] = static_cast<double>(in_ptr[i]) * inv_scale;
+    }
+    return out;
+  };
+
+  m.def(
+      "prices_to_double",
+      [rawToDouble](py::array_t<int64_t> raw)
+      { return rawToDouble(raw, flox::Price::Scale); },
+      "Convert raw int64 price array to float64 array (divides by PRICE_SCALE).",
+      py::arg("raw"));
+
+  m.def(
+      "quantities_to_double",
+      [rawToDouble](py::array_t<int64_t> raw)
+      { return rawToDouble(raw, flox::Quantity::Scale); },
+      "Convert raw int64 quantity array to float64 array (divides by QUANTITY_SCALE).",
+      py::arg("raw"));
+
+  m.def(
+      "volumes_to_double",
+      [rawToDouble](py::array_t<int64_t> raw)
+      { return rawToDouble(raw, flox::Volume::Scale); },
+      "Convert raw int64 volume array to float64 array (divides by VOLUME_SCALE).",
+      py::arg("raw"));
+
   // Module-level inspect function
   m.def(
       "inspect",
