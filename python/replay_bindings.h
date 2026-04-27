@@ -419,17 +419,25 @@ inline void bindReplay(py::module_& m)
   m.attr("QUANTITY_SCALE") = py::int_(flox::Quantity::Scale);
   m.attr("VOLUME_SCALE") = py::int_(flox::Volume::Scale);
 
-  // Vectorized raw → double converters. Operate on numpy int64 arrays of any shape.
-  auto rawToDouble = [](py::array_t<int64_t> raw, int64_t scale) -> py::array_t<double>
+  // Vectorized raw → double converters. Operate on numpy int64 arrays of any
+  // shape, including non-contiguous views (e.g. `bars["close_raw"]` taken from
+  // a structured array). Output is always a fresh contiguous array of the same
+  // shape as the input.
+  auto rawToDouble = [](py::array raw, int64_t scale) -> py::array_t<double>
   {
-    auto buf = raw.request();
-    py::array_t<double> out(buf.shape, buf.strides);
-    auto out_buf = out.request();
-    const int64_t* in_ptr = static_cast<const int64_t*>(buf.ptr);
-    double* out_ptr = static_cast<double*>(out_buf.ptr);
+    // Force int64 dtype + contiguous layout. If the caller passed a strided
+    // view (e.g. a structured-array field), this materialises a contiguous
+    // copy; if it was already contiguous int64, no copy.
+    py::array_t<int64_t, py::array::c_style | py::array::forcecast> in(raw);
+    const int64_t* in_ptr = in.data();
+
+    std::vector<py::ssize_t> shape(in.shape(), in.shape() + in.ndim());
+    py::array_t<double> out(shape);
+    double* out_ptr = out.mutable_data();
+
     const double inv_scale = 1.0 / static_cast<double>(scale);
-    const size_t n = static_cast<size_t>(buf.size);
-    for (size_t i = 0; i < n; ++i)
+    const py::ssize_t n = in.size();
+    for (py::ssize_t i = 0; i < n; ++i)
     {
       out_ptr[i] = static_cast<double>(in_ptr[i]) * inv_scale;
     }
