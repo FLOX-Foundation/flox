@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "flox-py"
-version = "0.5.3"
+version = "0.5.6"
 authors = [{name = "FLOX Foundation"}]
 description = "Python bindings for the Flox indicator library"
 readme = "README.md"
