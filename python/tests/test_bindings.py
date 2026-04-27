@@ -45,6 +45,59 @@ check(flox.QUEUE_NONE == 0, "QUEUE_NONE == 0")
 check(flox.QUEUE_TOB == 1, "QUEUE_TOB == 1")
 check(flox.QUEUE_FULL == 2, "QUEUE_FULL == 2")
 
+check(flox.PRICE_SCALE == 100_000_000, "PRICE_SCALE == 1e8")
+check(flox.QUANTITY_SCALE == 100_000_000, "QUANTITY_SCALE == 1e8")
+check(flox.VOLUME_SCALE == 100_000_000, "VOLUME_SCALE == 1e8")
+
+# ── Raw-to-double converters ─────────────────────────────────────────
+
+print("=== Raw-to-double converters ===")
+
+# Contiguous int64 input
+contig = np.array([100_00000000, 200_00000000, 300_00000000], dtype=np.int64)
+out = flox.prices_to_double(contig)
+check(np.allclose(out, [100.0, 200.0, 300.0]), "prices_to_double on contiguous 1D")
+check(out.dtype == np.float64, "prices_to_double returns float64")
+
+# Non-contiguous slice (every-other element)
+strided_src = np.array([1, 999, 2, 999, 3, 999], dtype=np.int64) * 100_000_000
+strided = strided_src[::2]
+check(not strided.flags["C_CONTIGUOUS"], "test setup: strided view is non-contiguous")
+out = flox.prices_to_double(strided)
+check(np.allclose(out, [1.0, 2.0, 3.0]),
+      "prices_to_double on non-contiguous strided view (every-other element)")
+
+# Field of a structured array — the canonical buggy case
+bar_dtype = np.dtype([
+    ("start_time_ns", "<i8"),
+    ("end_time_ns", "<i8"),
+    ("open_raw", "<i8"),
+    ("high_raw", "<i8"),
+    ("low_raw", "<i8"),
+    ("close_raw", "<i8"),
+    ("volume_raw", "<i8"),
+    ("buy_volume_raw", "<i8"),
+    ("trade_count", "<i8"),
+])
+bars = np.zeros(5, dtype=bar_dtype)
+bars["close_raw"] = np.array([100_00000000, 101_00000000, 102_00000000,
+                              103_00000000, 104_00000000], dtype=np.int64)
+# Set other fields to garbage to ensure we don't accidentally read them
+bars["open_raw"] = 999_00000000
+bars["volume_raw"] = 7777_00000000
+out = flox.prices_to_double(bars["close_raw"])
+check(np.allclose(out, [100.0, 101.0, 102.0, 103.0, 104.0]),
+      "prices_to_double on structured-array field view (close_raw)")
+
+out_v = flox.volumes_to_double(bars["volume_raw"])
+check(np.allclose(out_v, [7777.0] * 5), "volumes_to_double on structured-array field view")
+
+# 2D input — shape preserved
+two_d = np.arange(6, dtype=np.int64).reshape(2, 3) * 100_000_000
+out2 = flox.quantities_to_double(two_d)
+check(out2.shape == (2, 3), "quantities_to_double preserves 2D shape")
+check(np.allclose(out2, [[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]), "quantities_to_double 2D values")
+
 # ── Streaming indicators ──────────────────────────────────────────────
 
 print("=== Streaming indicators ===")
