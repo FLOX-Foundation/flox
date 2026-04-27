@@ -39,8 +39,12 @@ jobs:
       run: python3 -m pip install --break-system-packages pybind11 numpy
 
     - name: Install Codon
+      env:
+        CODON_VERSION: v0.19.6
       run: |
-        curl -fsSL https://exaloop.io/install.sh | bash
+        mkdir -p ~/.codon && cd ~/.codon
+        curl -fsSL "https://github.com/exaloop/codon/releases/download/${CODON_VERSION}/codon-linux-x86_64.tar.gz" \
+          | tar zxf - --strip-components=1
         echo "$HOME/.codon/bin" >> $GITHUB_PATH
 
     - name: Build and Install GoogleTest
