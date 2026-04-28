@@ -107,6 +107,42 @@ int TempJsFile::counter_ = 0;
 // Integration tests — full strategy lifecycle
 // ============================================================
 
+TEST(JsEngineTest, AdfBindingExposed)
+{
+  FloxJsEngine engine;
+  registerFloxBindings(engine.context());
+
+  // Build a deterministic random walk and call __flox_indicator_adf.
+  EXPECT_TRUE(engine.eval(R"(
+    var n = 200;
+    var seed = 42;
+    function rand() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return ((seed + 1) / 0x80000000); }
+    function gauss() {
+      var u1 = rand();
+      var u2 = rand();
+      return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+    var walk = [0];
+    for (var i = 1; i < n; ++i) walk.push(walk[i-1] + gauss());
+    var r = __flox_indicator_adf(walk, 4, "c");
+    var test_stat = r.test_stat;
+    var p_value = r.p_value;
+    var used_lag = r.used_lag;
+  )"));
+
+  JSValue ts = engine.getGlobalProperty("test_stat");
+  double tsVal = 0;
+  JS_ToFloat64(engine.context(), &tsVal, ts);
+  JS_FreeValue(engine.context(), ts);
+  EXPECT_TRUE(std::isfinite(tsVal));
+
+  JSValue ul = engine.getGlobalProperty("used_lag");
+  uint32_t ulVal = 0;
+  JS_ToUint32(engine.context(), &ulVal, ul);
+  JS_FreeValue(engine.context(), ul);
+  EXPECT_LE(ulVal, 4u);
+}
+
 TEST(JsIntegrationTest, LoadStrategyAndResolveSymbols)
 {
   TempJsFile script(R"(

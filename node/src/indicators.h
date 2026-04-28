@@ -21,6 +21,7 @@
 #include "flox/indicator/stochastic.h"
 #include "flox/indicator/vwap.h"
 
+#include "flox/indicator/adf.h"
 #include "flox/indicator/correlation.h"
 #include "flox/indicator/kurtosis.h"
 #include "flox/indicator/parkinson_vol.h"
@@ -285,6 +286,21 @@ inline Napi::Value batch_correlation(const Napi::CallbackInfo& info)
   std::vector<double> out(n);
   flox::indicator::Correlation(p).compute({x.Data(), n}, {y.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
+}
+
+inline Napi::Value batch_adf(const Napi::CallbackInfo& info)
+{
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t n = in.ElementLength();
+  size_t maxLag = info[1].As<Napi::Number>().Uint32Value();
+  std::string regression = info[2].As<Napi::String>().Utf8Value();
+  flox::indicator::AdfResult r =
+      flox::indicator::adf(std::span<const double>(in.Data(), n), maxLag, regression);
+  auto o = Napi::Object::New(info.Env());
+  o.Set("test_stat", Napi::Number::New(info.Env(), r.test_stat));
+  o.Set("p_value", Napi::Number::New(info.Env(), r.p_value));
+  o.Set("used_lag", Napi::Number::New(info.Env(), static_cast<double>(r.used_lag)));
+  return o;
 }
 
 // ── Streaming indicator classes ─────────────────────────────────────
@@ -1529,6 +1545,7 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("parkinson_vol", Napi::Function::New(env, batch_parkinson_vol));
   exports.Set("rogers_satchell_vol", Napi::Function::New(env, batch_rogers_satchell_vol));
   exports.Set("correlation", Napi::Function::New(env, batch_correlation));
+  exports.Set("adf", Napi::Function::New(env, batch_adf));
 
   // Streaming
   exports.Set("SMA", SMAWrap::Init(env));

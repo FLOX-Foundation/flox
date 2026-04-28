@@ -25,6 +25,7 @@
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 
+#include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
 #include "flox/indicator/atr.h"
 #include "flox/indicator/bollinger.h"
@@ -576,6 +577,25 @@ void flox_indicator_correlation(const double* x, const double* y, size_t len, si
   indicator::Correlation ind(period);
   ind.compute(std::span<const double>(x, len), std::span<const double>(y, len),
               std::span<double>(output, len));
+}
+
+void flox_indicator_adf(const double* input, size_t len, size_t max_lag, const char* regression,
+                        double* test_stat_out, double* p_value_out, size_t* used_lag_out)
+{
+  std::string reg = regression ? regression : "c";
+  auto r = indicator::adf(std::span<const double>(input, len), max_lag, reg);
+  if (test_stat_out)
+  {
+    *test_stat_out = r.test_stat;
+  }
+  if (p_value_out)
+  {
+    *p_value_out = r.p_value;
+  }
+  if (used_lag_out)
+  {
+    *used_lag_out = r.used_lag;
+  }
 }
 
 // ============================================================

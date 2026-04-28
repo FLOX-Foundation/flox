@@ -33,6 +33,8 @@ from C import flox_indicator_shannon_entropy(Ptr[f64], int, int, int, Ptr[f64])
 from C import flox_indicator_parkinson_vol(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_rogers_satchell_vol(Ptr[f64], Ptr[f64], Ptr[f64], Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_correlation(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_adf(Ptr[f64], int, int, cobj,
+                                  Ptr[f64], Ptr[f64], Ptr[int])
 
 
 # ======================================================================
@@ -337,6 +339,27 @@ class StochasticResult:
     def __init__(self, k: List[float], d: List[float]):
         self.k = k
         self.d = d
+
+
+class AdfResult:
+    test_stat: float
+    p_value: float
+    used_lag: int
+
+    def __init__(self, test_stat: float, p_value: float, used_lag: int):
+        self.test_stat = test_stat
+        self.p_value = p_value
+        self.used_lag = used_lag
+
+
+def adf(data: List[float], max_lag: int = 4, regression: str = "c") -> AdfResult:
+    n = len(data)
+    test_stat = [0.0]
+    p_value = [0.0]
+    used_lag = [0]
+    flox_indicator_adf(data.arr.ptr, n, max_lag, regression.c_str(),
+                       test_stat.arr.ptr, p_value.arr.ptr, used_lag.arr.ptr)
+    return AdfResult(test_stat[0], p_value[0], used_lag[0])
 
 
 def macd(data: List[float], fast: int = 12, slow: int = 26,
