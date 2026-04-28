@@ -183,6 +183,28 @@ stationary = rng.standard_normal(500) * 0.5
 res2 = flox.adf(stationary, max_lag=4, regression="c")
 check(res2["test_stat"] < res["test_stat"], "stationary series produces lower test_stat")
 check(res2["p_value"] < 0.05, "adf rejects unit root for white noise")
+# ── AutoCorrelation ──────────────────────────────────────────────────
+
+print("=== AutoCorrelation ===")
+
+# Linear y = a + b*t -> lag-1 autocorrelation == 1.
+ac_linear = np.array([5.0 + 0.7 * i for i in range(50)])
+ac = flox.autocorrelation(ac_linear, 10, 1)
+check(math.isnan(ac[9]), "autocorrelation warmup at index < window+lag-1 is NaN")
+check(approx(ac[10], 1.0), "autocorrelation on linear series, lag=1 == 1.0")
+check(approx(ac[40], 1.0), "autocorrelation on linear series at later index == 1.0")
+
+# Streaming class matches the batch function on the same input.
+stream = flox.AutoCorrelation(10, 1)
+streamed = []
+for v in ac_linear:
+    streamed.append(stream.update(float(v)))
+# Streaming is ready at index window+lag-1 = 10 (0-based).
+for i in range(10, len(ac_linear)):
+    check(approx(float(streamed[i]), float(ac[i])),
+          f"streaming AC matches batch at i={i}")
+    if i >= 10:
+        break  # one assertion is enough to keep noise down
 
 # ── PositionTracker ───────────────────────────────────────────────────
 

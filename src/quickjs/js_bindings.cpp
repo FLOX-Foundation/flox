@@ -628,6 +628,18 @@ static JSValue js_indicator_adf(JSContext* ctx, JSValueConst, int argc, JSValueC
   return obj;
 }
 
+static JSValue js_indicator_autocorrelation(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  auto in = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t window = toUint32(ctx, argv[1]);
+  uint32_t lag = toUint32(ctx, argv[2]);
+  size_t len = in.size();
+  std::vector<double> output(len);
+  flox_indicator_autocorrelation(in.data(), len, window, lag, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
 // ============================================================
 // Targets (forward-looking labels, batch only)
 // ============================================================
@@ -2245,6 +2257,7 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
   addGlobalFunc(ctx, "__flox_indicator_correlation", js_indicator_correlation, 3);
   addGlobalFunc(ctx, "__flox_indicator_adf", js_indicator_adf, 3);
+  addGlobalFunc(ctx, "__flox_indicator_autocorrelation", js_indicator_autocorrelation, 3);
 
   // Targets (forward-looking labels)
   addGlobalFunc(ctx, "__flox_target_future_return", js_target_future_return, 2);

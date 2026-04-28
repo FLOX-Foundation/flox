@@ -241,6 +241,10 @@ extern "C"
   // Writes the t-statistic, approximate p-value, and AIC-selected lag.
   void flox_indicator_adf(const double* input, size_t len, size_t max_lag, const char* regression,
                           double* test_stat_out, double* p_value_out, size_t* used_lag_out);
+  // AutoCorrelation: Pearson correlation between x[t] and x[t-lag] over a
+  // rolling window. First valid index is (window + lag - 1).
+  void flox_indicator_autocorrelation(const double* input, size_t len, size_t window, size_t lag,
+                                      double* output);
 
   // ============================================================
   // Targets (forward-looking labels, batch only)

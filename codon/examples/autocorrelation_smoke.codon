@@ -1,0 +1,13 @@
+# Smoke test: AutoCorrelation compiles + computes against the C API.
+
+from flox.indicators import autocorrelation, AutoCorrelation
+
+linear = [5.0 + 0.7 * float(i) for i in range(50)]
+ac = autocorrelation(linear, 10, 1)
+print("autocorrelation linear[10] =", ac[10])
+
+stream = AutoCorrelation(10, 1)
+last = 0.0
+for v in linear:
+    last = stream.update(v)
+print("streaming AutoCorrelation last =", last)
