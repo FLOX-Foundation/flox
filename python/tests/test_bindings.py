@@ -169,6 +169,63 @@ sl = flox.targets.future_linear_slope(linear, 4)
 check(approx(sl[0], 0.5), "future_linear_slope on linear series == 0.5")
 check(math.isnan(sl[19]), "future_linear_slope tail is NaN")
 
+# ── IndicatorGraph (batch) ───────────────────────────────────────────
+
+print("=== IndicatorGraph (batch) ===")
+
+ramp = np.array([float(i) for i in range(50)])
+g = flox.IndicatorGraph()
+g.set_bars(0, ramp)
+
+# Two independent batch nodes + one dependent node that reads its parents.
+g.add_node("ema5", [], lambda graph, sym: flox.ema(graph.close(sym), 5))
+g.add_node("sma5", [], lambda graph, sym: flox.sma(graph.close(sym), 5))
+g.add_node("diff", ["ema5", "sma5"],
+           lambda graph, sym: graph.get(sym, "ema5") - graph.get(sym, "sma5"))
+
+ema5 = g.require(0, "ema5")
+diff = g.require(0, "diff")
+check(len(ema5) == 50, "graph require returns full-length array")
+check(len(diff) == 50, "graph dependent node has same length")
+# get() returns cached value after require ran.
+sma5_cached = g.get(0, "sma5")
+check(sma5_cached is not None, "get returns the cached node array after require")
+check(np.allclose(diff, ema5 - sma5_cached, equal_nan=True), "dependent node uses parents")
+
+# Unknown node → throws.
+threw = False
+try:
+    g.require(0, "missing")
+except Exception:
+    threw = True
+check(threw, "require on unknown node throws")
+
+# ── StreamingIndicatorGraph ───────────────────────────────────────────
+
+print("=== StreamingIndicatorGraph ===")
+
+sg = flox.StreamingIndicatorGraph()
+sg.add_node("double_close", [], lambda graph, sym: graph.close(sym) * 2.0)
+
+closes_s = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+for c in closes_s:
+    sg.step(0, c)
+
+check(approx(sg.current(0, "double_close"), 100.0), "streaming current after 5 steps")
+check(sg.bar_count(0) == 5, "streaming bar_count == 5")
+
+# Parity: batch on same data → last element == streaming current.
+bg2 = flox.IndicatorGraph()
+bg2.set_bars(0, closes_s)
+bg2.add_node("double_close", [], lambda graph, sym: graph.close(sym) * 2.0)
+batch_dc = bg2.require(0, "double_close")
+check(approx(sg.current(0, "double_close"), batch_dc[-1]),
+      "streaming current == batch last element")
+
+sg.reset(0)
+check(sg.bar_count(0) == 0, "after reset bar_count == 0")
+check(math.isnan(sg.current(0, "double_close")), "after reset current is NaN")
+
 # ── PositionTracker ───────────────────────────────────────────────────
 
 print("=== PositionTracker ===")

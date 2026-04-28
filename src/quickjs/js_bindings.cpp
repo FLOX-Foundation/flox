@@ -641,6 +641,371 @@ static JSValue js_target_future_linear_slope(JSContext* ctx, JSValueConst, int,
 }
 
 // ============================================================
+// IndicatorGraph (batch) bindings
+// ============================================================
+
+namespace
+{
+
+struct JsGraphNodeState
+{
+  JSContext* ctx;
+  JSValue fn;
+  JSValue thisObj;
+  std::vector<double> buffer;
+};
+
+struct JsGraphState
+{
+  FloxIndicatorGraphHandle handle;
+  std::vector<std::unique_ptr<JsGraphNodeState>> nodes;
+};
+
+static const double* js_graph_node_trampoline(void* user_data, FloxIndicatorGraphHandle,
+                                              uint32_t symbol, size_t* out_len)
+{
+  auto* st = static_cast<JsGraphNodeState*>(user_data);
+  JSValue args[2] = {JS_DupValue(st->ctx, st->thisObj), JS_NewUint32(st->ctx, symbol)};
+  JSValue result = JS_Call(st->ctx, st->fn, JS_UNDEFINED, 2, args);
+  JS_FreeValue(st->ctx, args[0]);
+  JS_FreeValue(st->ctx, args[1]);
+  if (JS_IsException(result))
+  {
+    JS_FreeValue(st->ctx, result);
+    *out_len = 0;
+    return nullptr;
+  }
+  st->buffer = jsArrayToDoubles(st->ctx, result);
+  JS_FreeValue(st->ctx, result);
+  *out_len = st->buffer.size();
+  return st->buffer.data();
+}
+
+}  // namespace
+
+static JSValue js_graph_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  auto* st = new JsGraphState{flox_indicator_graph_create(), {}};
+  return createHandleObject(ctx, st);
+}
+
+static JSValue js_graph_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  if (!st)
+  {
+    return JS_UNDEFINED;
+  }
+  for (auto& node : st->nodes)
+  {
+    JS_FreeValue(node->ctx, node->fn);
+    JS_FreeValue(node->ctx, node->thisObj);
+  }
+  flox_indicator_graph_destroy(st->handle);
+  delete st;
+  return JS_UNDEFINED;
+}
+
+static JSValue js_graph_set_bars(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  auto close = jsArrayToDoubles(ctx, argv[2]);
+  std::vector<double> high, low, volume;
+  const double* hp = nullptr;
+  const double* lp = nullptr;
+  const double* vp = nullptr;
+  if (argc > 3 && !JS_IsNull(argv[3]) && !JS_IsUndefined(argv[3]))
+  {
+    high = jsArrayToDoubles(ctx, argv[3]);
+    hp = high.data();
+  }
+  if (argc > 4 && !JS_IsNull(argv[4]) && !JS_IsUndefined(argv[4]))
+  {
+    low = jsArrayToDoubles(ctx, argv[4]);
+    lp = low.data();
+  }
+  if (argc > 5 && !JS_IsNull(argv[5]) && !JS_IsUndefined(argv[5]))
+  {
+    volume = jsArrayToDoubles(ctx, argv[5]);
+    vp = volume.data();
+  }
+  flox_indicator_graph_set_bars(st->handle, sym, close.data(), hp, lp, vp, close.size());
+  return JS_UNDEFINED;
+}
+
+static JSValue js_graph_add_node(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  std::string nameStr(name);
+  JS_FreeCString(ctx, name);
+
+  std::vector<std::string> deps;
+  if (JS_IsArray(ctx, argv[2]))
+  {
+    uint32_t depsLen = 0;
+    {
+      JSValue lenVal = JS_GetPropertyStr(ctx, argv[2], "length");
+      JS_ToUint32(ctx, &depsLen, lenVal);
+      JS_FreeValue(ctx, lenVal);
+    }
+    for (uint32_t i = 0; i < depsLen; ++i)
+    {
+      JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
+      const char* s = JS_ToCString(ctx, v);
+      deps.emplace_back(s);
+      JS_FreeCString(ctx, s);
+      JS_FreeValue(ctx, v);
+    }
+  }
+
+  std::vector<const char*> depPtrs;
+  depPtrs.reserve(deps.size());
+  for (const auto& d : deps)
+  {
+    depPtrs.push_back(d.c_str());
+  }
+
+  auto node = std::make_unique<JsGraphNodeState>();
+  node->ctx = ctx;
+  node->fn = JS_DupValue(ctx, argv[3]);
+  node->thisObj = JS_DupValue(ctx, argv[4]);
+
+  flox_indicator_graph_add_node(st->handle, nameStr.c_str(),
+                                deps.empty() ? nullptr : depPtrs.data(), deps.size(),
+                                js_graph_node_trampoline, node.get());
+  st->nodes.push_back(std::move(node));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_graph_require(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  const char* name = JS_ToCString(ctx, argv[2]);
+  size_t len = 0;
+  const double* p = flox_indicator_graph_require(st->handle, sym, name, &len);
+  JS_FreeCString(ctx, name);
+  if (!p)
+  {
+    return JS_ThrowTypeError(ctx, "graph: require failed");
+  }
+  return jsArrayFromDoubles(ctx, std::vector<double>(p, p + len));
+}
+
+static JSValue js_graph_get(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  const char* name = JS_ToCString(ctx, argv[2]);
+  size_t len = 0;
+  const double* p = flox_indicator_graph_get(st->handle, sym, name, &len);
+  JS_FreeCString(ctx, name);
+  if (!p)
+  {
+    return JS_NULL;
+  }
+  return jsArrayFromDoubles(ctx, std::vector<double>(p, p + len));
+}
+
+#define GRAPH_FIELD(field)                                                               \
+  static JSValue js_graph_##field(JSContext* ctx, JSValueConst, int, JSValueConst* argv) \
+  {                                                                                      \
+    auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));                      \
+    uint32_t sym = toUint32(ctx, argv[1]);                                               \
+    size_t len = 0;                                                                      \
+    const double* p = flox_indicator_graph_##field(st->handle, sym, &len);               \
+    return jsArrayFromDoubles(ctx, std::vector<double>(p, p + len));                     \
+  }
+GRAPH_FIELD(close)
+GRAPH_FIELD(high)
+GRAPH_FIELD(low)
+GRAPH_FIELD(volume)
+#undef GRAPH_FIELD
+
+static JSValue js_graph_invalidate(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  flox_indicator_graph_invalidate(st->handle, toUint32(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_graph_invalidate_all(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsGraphState*>(getHandle(ctx, argv[0]));
+  flox_indicator_graph_invalidate_all(st->handle);
+  return JS_UNDEFINED;
+}
+
+// ============================================================
+// StreamingIndicatorGraph bindings
+// ============================================================
+
+namespace
+{
+
+struct JsStreamingState
+{
+  FloxStreamingGraphHandle handle;
+  std::vector<std::unique_ptr<JsGraphNodeState>> nodes;
+};
+
+static const double* js_streaming_node_trampoline(void* user_data, FloxIndicatorGraphHandle,
+                                                  uint32_t symbol, size_t* out_len)
+{
+  auto* st = static_cast<JsGraphNodeState*>(user_data);
+  JSValue args[2] = {JS_DupValue(st->ctx, st->thisObj), JS_NewUint32(st->ctx, symbol)};
+  JSValue result = JS_Call(st->ctx, st->fn, JS_UNDEFINED, 2, args);
+  JS_FreeValue(st->ctx, args[0]);
+  JS_FreeValue(st->ctx, args[1]);
+  if (JS_IsException(result))
+  {
+    JS_FreeValue(st->ctx, result);
+    *out_len = 0;
+    return nullptr;
+  }
+  st->buffer = jsArrayToDoubles(st->ctx, result);
+  JS_FreeValue(st->ctx, result);
+  *out_len = st->buffer.size();
+  return st->buffer.data();
+}
+
+}  // namespace
+
+static JSValue js_streaming_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  auto* st = new JsStreamingState{flox_streaming_graph_create(), {}};
+  return createHandleObject(ctx, st);
+}
+
+static JSValue js_streaming_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  if (!st)
+  {
+    return JS_UNDEFINED;
+  }
+  for (auto& node : st->nodes)
+  {
+    JS_FreeValue(node->ctx, node->fn);
+    JS_FreeValue(node->ctx, node->thisObj);
+  }
+  flox_streaming_graph_destroy(st->handle);
+  delete st;
+  return JS_UNDEFINED;
+}
+
+static JSValue js_streaming_add_node(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  std::string nameStr(name);
+  JS_FreeCString(ctx, name);
+
+  std::vector<std::string> deps;
+  if (JS_IsArray(ctx, argv[2]))
+  {
+    uint32_t depsLen = 0;
+    {
+      JSValue lenVal = JS_GetPropertyStr(ctx, argv[2], "length");
+      JS_ToUint32(ctx, &depsLen, lenVal);
+      JS_FreeValue(ctx, lenVal);
+    }
+    for (uint32_t i = 0; i < depsLen; ++i)
+    {
+      JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
+      const char* s = JS_ToCString(ctx, v);
+      deps.emplace_back(s);
+      JS_FreeCString(ctx, s);
+      JS_FreeValue(ctx, v);
+    }
+  }
+
+  std::vector<const char*> depPtrs;
+  depPtrs.reserve(deps.size());
+  for (const auto& d : deps)
+  {
+    depPtrs.push_back(d.c_str());
+  }
+
+  auto node = std::make_unique<JsGraphNodeState>();
+  node->ctx = ctx;
+  node->fn = JS_DupValue(ctx, argv[3]);
+  node->thisObj = JS_DupValue(ctx, argv[4]);
+
+  flox_streaming_graph_add_node(st->handle, nameStr.c_str(),
+                                deps.empty() ? nullptr : depPtrs.data(), deps.size(),
+                                js_streaming_node_trampoline, node.get());
+  st->nodes.push_back(std::move(node));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_streaming_step(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  double c = toDouble(ctx, argv[2]);
+  double h = argc > 3 && !JS_IsUndefined(argv[3]) && !JS_IsNull(argv[3])
+                 ? toDouble(ctx, argv[3])
+                 : c;
+  double l = argc > 4 && !JS_IsUndefined(argv[4]) && !JS_IsNull(argv[4])
+                 ? toDouble(ctx, argv[4])
+                 : c;
+  double v = argc > 5 && !JS_IsUndefined(argv[5]) && !JS_IsNull(argv[5])
+                 ? toDouble(ctx, argv[5])
+                 : 0.0;
+  flox_streaming_graph_step(st->handle, sym, c, h, l, c, v);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_streaming_current(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  const char* name = JS_ToCString(ctx, argv[2]);
+  double val = flox_streaming_graph_current(st->handle, sym, name);
+  JS_FreeCString(ctx, name);
+  return JS_NewFloat64(ctx, val);
+}
+
+static JSValue js_streaming_bar_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  return JS_NewUint32(ctx, flox_streaming_graph_bar_count(st->handle, sym));
+}
+
+static JSValue js_streaming_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  flox_streaming_graph_reset(st->handle, toUint32(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_streaming_reset_all(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));
+  flox_streaming_graph_reset_all(st->handle);
+  return JS_UNDEFINED;
+}
+
+#define STREAMING_FIELD(field)                                                               \
+  static JSValue js_streaming_##field(JSContext* ctx, JSValueConst, int, JSValueConst* argv) \
+  {                                                                                          \
+    auto* st = static_cast<JsStreamingState*>(getHandle(ctx, argv[0]));                      \
+    uint32_t sym = toUint32(ctx, argv[1]);                                                   \
+    size_t len = 0;                                                                          \
+    const double* p = flox_streaming_graph_##field(st->handle, sym, &len);                   \
+    return jsArrayFromDoubles(ctx, std::vector<double>(p, p + len));                         \
+  }
+STREAMING_FIELD(close)
+STREAMING_FIELD(high)
+STREAMING_FIELD(low)
+STREAMING_FIELD(volume)
+#undef STREAMING_FIELD
+
+// ============================================================
 // Order book bindings
 // ============================================================
 
@@ -2136,6 +2501,34 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_target_future_return", js_target_future_return, 2);
   addGlobalFunc(ctx, "__flox_target_future_ctc_volatility", js_target_future_ctc_volatility, 2);
   addGlobalFunc(ctx, "__flox_target_future_linear_slope", js_target_future_linear_slope, 2);
+
+  // IndicatorGraph (batch)
+  addGlobalFunc(ctx, "__flox_graph_create", js_graph_create, 0);
+  addGlobalFunc(ctx, "__flox_graph_destroy", js_graph_destroy, 1);
+  addGlobalFunc(ctx, "__flox_graph_set_bars", js_graph_set_bars, 6);
+  addGlobalFunc(ctx, "__flox_graph_add_node", js_graph_add_node, 5);
+  addGlobalFunc(ctx, "__flox_graph_require", js_graph_require, 3);
+  addGlobalFunc(ctx, "__flox_graph_get", js_graph_get, 3);
+  addGlobalFunc(ctx, "__flox_graph_close", js_graph_close, 2);
+  addGlobalFunc(ctx, "__flox_graph_high", js_graph_high, 2);
+  addGlobalFunc(ctx, "__flox_graph_low", js_graph_low, 2);
+  addGlobalFunc(ctx, "__flox_graph_volume", js_graph_volume, 2);
+  addGlobalFunc(ctx, "__flox_graph_invalidate", js_graph_invalidate, 2);
+  addGlobalFunc(ctx, "__flox_graph_invalidate_all", js_graph_invalidate_all, 1);
+
+  // StreamingIndicatorGraph
+  addGlobalFunc(ctx, "__flox_streaming_create", js_streaming_create, 0);
+  addGlobalFunc(ctx, "__flox_streaming_destroy", js_streaming_destroy, 1);
+  addGlobalFunc(ctx, "__flox_streaming_add_node", js_streaming_add_node, 5);
+  addGlobalFunc(ctx, "__flox_streaming_step", js_streaming_step, 6);
+  addGlobalFunc(ctx, "__flox_streaming_current", js_streaming_current, 3);
+  addGlobalFunc(ctx, "__flox_streaming_bar_count", js_streaming_bar_count, 2);
+  addGlobalFunc(ctx, "__flox_streaming_reset", js_streaming_reset, 2);
+  addGlobalFunc(ctx, "__flox_streaming_reset_all", js_streaming_reset_all, 1);
+  addGlobalFunc(ctx, "__flox_streaming_close", js_streaming_close, 2);
+  addGlobalFunc(ctx, "__flox_streaming_high", js_streaming_high, 2);
+  addGlobalFunc(ctx, "__flox_streaming_low", js_streaming_low, 2);
+  addGlobalFunc(ctx, "__flox_streaming_volume", js_streaming_volume, 2);
 
   // Order book
   addGlobalFunc(ctx, "__flox_book_create", js_book_create, 1);

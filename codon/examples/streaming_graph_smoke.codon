@@ -1,0 +1,43 @@
+from flox.graph import StreamingIndicatorGraph, IndicatorGraph
+import math
+
+# Streaming graph smoke test.
+# Node fn must be a top-level function (Codon constraint on C fn ptrs).
+
+@export
+def double_close_fn(user_data: cobj, g: cobj, sym: u32, out_len: Ptr[int]) -> Ptr[f64]:
+    from flox.graph import flox_indicator_graph_close
+    n = [0]
+    p = flox_indicator_graph_close(g, sym, n.arr.ptr)
+    result = Ptr[f64](n[0])
+    for i in range(n[0]):
+        result[i] = p[i] * 2.0
+    out_len[0] = n[0]
+    return result
+
+
+closes = [10.0, 20.0, 30.0, 40.0, 50.0]
+
+sg = StreamingIndicatorGraph()
+sg.add_node_raw("double_close", [], double_close_fn.__raw__())
+
+for c in closes:
+    sg.step(0, c)
+
+last = sg.current(0, "double_close")
+assert abs(last - 100.0) < 1e-9, f"streaming current: expected 100.0, got {last}"
+assert sg.bar_count(0) == 5, f"bar_count: expected 5, got {sg.bar_count(0)}"
+
+# Parity check with batch.
+bg = IndicatorGraph()
+bg.set_bars(0, closes)
+bg.add_node_raw("double_close", [], double_close_fn.__raw__())
+batch_out = bg.require(0, "double_close")
+assert abs(batch_out[-1] - last) < 1e-9, "streaming != batch"
+
+# Reset.
+sg.reset(0)
+assert sg.bar_count(0) == 0, "after reset bar_count should be 0"
+assert math.isnan(sg.current(0, "double_close")), "after reset current should be NaN"
+
+print("streaming_graph_smoke: OK")

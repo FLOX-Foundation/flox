@@ -7,6 +7,7 @@
 #include "books.h"
 #include "data_ops.h"
 #include "engine.h"
+#include "graph.h"
 #include "indicators.h"
 #include "positions.h"
 #include "profiles.h"
@@ -27,6 +28,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerDataOps(env, exports);
   node_flox::registerStrategy(env, exports);
   node_flox::registerTargets(env, exports);
+  node_flox::registerGraph(env, exports);
   return exports;
 }
 

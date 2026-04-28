@@ -252,6 +252,114 @@ extern "C"
                                        double* output);
 
   // ============================================================
+  // IndicatorGraph (batch)
+  //
+  // Compose batch indicators with shared intermediate caching. Nodes are
+  // user-supplied callbacks; require() walks the DAG in topological order.
+  //
+  //   FloxIndicatorGraphHandle g = flox_indicator_graph_create();
+  //   flox_indicator_graph_set_bars(g, sym, close, high, low, volume, n);
+  //   flox_indicator_graph_add_node(g, "ema50", NULL, 0, ema_fn, ema_state);
+  //   const double* out = flox_indicator_graph_require(g, sym, "ema50", &len);
+  //   flox_indicator_graph_destroy(g);
+  // ============================================================
+
+  typedef void* FloxIndicatorGraphHandle;
+
+  // Compute callback. Output array must be allocated by the callback (or pre-
+  // allocated by the user). The host language is responsible for keeping it
+  // alive until the next graph call. Returning a pointer with len = 0 signals
+  // an empty result.
+  typedef const double* (*FloxGraphNodeFn)(void* user_data, FloxIndicatorGraphHandle g,
+                                           uint32_t symbol, size_t* out_len);
+
+  FloxIndicatorGraphHandle flox_indicator_graph_create(void);
+  void flox_indicator_graph_destroy(FloxIndicatorGraphHandle g);
+
+  // Pass NULL for high/low/volume to default high=low=close and volume=0.
+  void flox_indicator_graph_set_bars(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                     const double* close, const double* high, const double* low,
+                                     const double* volume, size_t len);
+
+  // deps: array of `num_deps` C-string node names (or NULL if num_deps == 0).
+  void flox_indicator_graph_add_node(FloxIndicatorGraphHandle g, const char* name,
+                                     const char* const* deps, size_t num_deps,
+                                     FloxGraphNodeFn fn, void* user_data);
+
+  // Returns a pointer to the cached output for (symbol, name) and writes its
+  // length to *len_out. The pointer is owned by the graph and is valid until
+  // the next invalidate / destroy call. Returns NULL on error (unknown node,
+  // cycle, etc.).
+  const double* flox_indicator_graph_require(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                             const char* name, size_t* len_out);
+
+  // Same as require but only returns a pointer if the node has already been
+  // computed; never triggers compute. Returns NULL if not yet computed.
+  const double* flox_indicator_graph_get(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                         const char* name, size_t* len_out);
+
+  // Field accessors return cached double arrays for the symbol's bars.
+  const double* flox_indicator_graph_close(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                           size_t* len_out);
+  const double* flox_indicator_graph_high(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                          size_t* len_out);
+  const double* flox_indicator_graph_low(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                         size_t* len_out);
+  const double* flox_indicator_graph_volume(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                            size_t* len_out);
+
+  void flox_indicator_graph_invalidate(FloxIndicatorGraphHandle g, uint32_t symbol);
+  void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g);
+
+  // ============================================================
+  // StreamingIndicatorGraph
+  //
+  // Same node definitions as the batch graph; step() advances one bar at a
+  // time and stores each node's last output as the current value.
+  //
+  //   FloxStreamingGraphHandle sg = flox_streaming_graph_create();
+  //   flox_streaming_graph_add_node(sg, "ema5", NULL, 0, ema_fn, state);
+  //   // live bar loop:
+  //   flox_streaming_graph_step(sg, sym, open, high, low, close, volume);
+  //   double v = flox_streaming_graph_current(sg, sym, "ema5");
+  //   flox_streaming_graph_destroy(sg);
+  // ============================================================
+
+  typedef void* FloxStreamingGraphHandle;
+
+  FloxStreamingGraphHandle flox_streaming_graph_create(void);
+  void flox_streaming_graph_destroy(FloxStreamingGraphHandle sg);
+
+  // Same signature as flox_indicator_graph_add_node; node fns receive a
+  // FloxIndicatorGraphHandle pointing to the inner batch graph.
+  void flox_streaming_graph_add_node(FloxStreamingGraphHandle sg, const char* name,
+                                     const char* const* deps, size_t num_deps,
+                                     FloxGraphNodeFn fn, void* user_data);
+
+  // Advance one bar. open/high/low/close/volume are doubles.
+  void flox_streaming_graph_step(FloxStreamingGraphHandle sg, uint32_t symbol, double open,
+                                 double high, double low, double close, double volume);
+
+  // Current (last-bar) value for a node. Returns NaN if not yet computed.
+  double flox_streaming_graph_current(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                      const char* name);
+
+  uint32_t flox_streaming_graph_bar_count(FloxStreamingGraphHandle sg, uint32_t symbol);
+
+  void flox_streaming_graph_reset(FloxStreamingGraphHandle sg, uint32_t symbol);
+  void flox_streaming_graph_reset_all(FloxStreamingGraphHandle sg);
+
+  // Field accessors — return the accumulated history arrays (same as batch graph after step).
+  const double* flox_streaming_graph_close(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                           size_t* len_out);
+  const double* flox_streaming_graph_high(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                          size_t* len_out);
+  const double* flox_streaming_graph_low(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                         size_t* len_out);
+  const double* flox_streaming_graph_volume(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                            size_t* len_out);
+
+  // ============================================================
   // Order book
   // ============================================================
 

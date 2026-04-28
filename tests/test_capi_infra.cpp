@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
+#include <vector>
 
 // ============================================================
 // Order book
@@ -199,4 +200,176 @@ TEST(CapiOrderTrackerTest, Lifecycle)
   EXPECT_EQ(flox_order_tracker_active_count(tracker), 0u);
 
   flox_order_tracker_destroy(tracker);
+}
+
+// ============================================================
+// IndicatorGraph (batch)
+// ============================================================
+
+namespace
+{
+// Test fixture: a node fn that returns the close array * 2.
+static const double* doubleClose(void* user_data, FloxIndicatorGraphHandle g, uint32_t sym,
+                                 size_t* out_len)
+{
+  auto* state = static_cast<std::vector<double>*>(user_data);
+  size_t n = 0;
+  const double* c = flox_indicator_graph_close(g, sym, &n);
+  state->resize(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    (*state)[i] = c[i] * 2.0;
+  }
+  *out_len = n;
+  return state->data();
+}
+
+// dependent: returns close + parent
+static const double* sumWithDouble(void* user_data, FloxIndicatorGraphHandle g, uint32_t sym,
+                                   size_t* out_len)
+{
+  auto* state = static_cast<std::vector<double>*>(user_data);
+  size_t n = 0;
+  const double* c = flox_indicator_graph_close(g, sym, &n);
+  size_t pn = 0;
+  const double* p = flox_indicator_graph_get(g, sym, "double_close", &pn);
+  if (!p || pn != n)
+  {
+    *out_len = 0;
+    return nullptr;
+  }
+  state->resize(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    (*state)[i] = c[i] + p[i];
+  }
+  *out_len = n;
+  return state->data();
+}
+}  // namespace
+
+TEST(CapiGraphTest, BasicComputeAndDeps)
+{
+  auto g = flox_indicator_graph_create();
+  ASSERT_NE(g, nullptr);
+
+  std::vector<double> close = {1.0, 2.0, 3.0, 4.0, 5.0};
+  flox_indicator_graph_set_bars(g, 0, close.data(), nullptr, nullptr, nullptr, close.size());
+
+  std::vector<double> stateA, stateB;
+  flox_indicator_graph_add_node(g, "double_close", nullptr, 0, doubleClose, &stateA);
+  const char* deps[] = {"double_close"};
+  flox_indicator_graph_add_node(g, "sum", deps, 1, sumWithDouble, &stateB);
+
+  size_t len = 0;
+  const double* out = flox_indicator_graph_require(g, 0, "sum", &len);
+  ASSERT_NE(out, nullptr);
+  ASSERT_EQ(len, 5u);
+  for (size_t i = 0; i < 5; ++i)
+  {
+    EXPECT_NEAR(out[i], close[i] * 3.0, 1e-12);
+  }
+
+  // get on cached node returns the same pointer.
+  size_t cl = 0;
+  const double* cached = flox_indicator_graph_get(g, 0, "double_close", &cl);
+  ASSERT_NE(cached, nullptr);
+  EXPECT_EQ(cl, 5u);
+
+  // Unknown node -> nullptr.
+  size_t l2 = 999;
+  const double* missing = flox_indicator_graph_require(g, 0, "nope", &l2);
+  EXPECT_EQ(missing, nullptr);
+  EXPECT_EQ(l2, 0u);
+
+  flox_indicator_graph_destroy(g);
+}
+
+// ============================================================
+// StreamingIndicatorGraph (C API)
+// ============================================================
+
+TEST(CapiStreamingGraphTest, StepAndCurrent)
+{
+  auto sg = flox_streaming_graph_create();
+  ASSERT_NE(sg, nullptr);
+
+  std::vector<double> stateA, stateB;
+  flox_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
+  const char* deps[] = {"double_close"};
+  flox_streaming_graph_add_node(sg, "sum", deps, 1, sumWithDouble, &stateB);
+
+  // Before any steps current returns NaN.
+  EXPECT_TRUE(std::isnan(flox_streaming_graph_current(sg, 0, "double_close")));
+  EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), 0u);
+
+  std::vector<double> closes = {1.0, 2.0, 3.0, 4.0, 5.0};
+  for (size_t i = 0; i < closes.size(); ++i)
+  {
+    double c = closes[i];
+    flox_streaming_graph_step(sg, 0, c, c, c, c, 0.0);
+    EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), i + 1);
+
+    // double_close node: returns close * 2 for the last bar
+    EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "double_close"), c * 2.0, 1e-12);
+    // sum node: returns close + double_close = close * 3
+    EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "sum"), c * 3.0, 1e-12);
+  }
+
+  flox_streaming_graph_destroy(sg);
+}
+
+TEST(CapiStreamingGraphTest, ParityWithBatch)
+{
+  // Verify streaming current values after N steps == batch result[N-1].
+  std::vector<double> stateA, stateB;
+
+  auto sg = flox_streaming_graph_create();
+  flox_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
+  const char* deps[] = {"double_close"};
+  flox_streaming_graph_add_node(sg, "sum", deps, 1, sumWithDouble, &stateB);
+
+  std::vector<double> closes = {10.0, 20.0, 30.0, 40.0, 50.0};
+  for (double c : closes)
+  {
+    flox_streaming_graph_step(sg, 0, c, c, c, c, 0.0);
+  }
+
+  // Batch run on the same data.
+  std::vector<double> batchStateA, batchStateB;
+  auto bg = flox_indicator_graph_create();
+  flox_indicator_graph_add_node(bg, "double_close", nullptr, 0, doubleClose, &batchStateA);
+  flox_indicator_graph_add_node(bg, "sum", deps, 1, sumWithDouble, &batchStateB);
+  flox_indicator_graph_set_bars(bg, 0, closes.data(), nullptr, nullptr, nullptr, closes.size());
+
+  size_t len = 0;
+  const double* batchSum = flox_indicator_graph_require(bg, 0, "sum", &len);
+  ASSERT_EQ(len, closes.size());
+
+  // Streaming current == batch last element.
+  EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "sum"), batchSum[len - 1], 1e-12);
+
+  flox_indicator_graph_destroy(bg);
+  flox_streaming_graph_destroy(sg);
+}
+
+TEST(CapiStreamingGraphTest, Reset)
+{
+  std::vector<double> stateA;
+  auto sg = flox_streaming_graph_create();
+  flox_streaming_graph_add_node(sg, "double_close", nullptr, 0, doubleClose, &stateA);
+
+  flox_streaming_graph_step(sg, 0, 5.0, 5.0, 5.0, 5.0, 0.0);
+  EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "double_close"), 10.0, 1e-12);
+  EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), 1u);
+
+  flox_streaming_graph_reset(sg, 0);
+  EXPECT_EQ(flox_streaming_graph_bar_count(sg, 0), 0u);
+  EXPECT_TRUE(std::isnan(flox_streaming_graph_current(sg, 0, "double_close")));
+
+  // Can resume stepping after reset.
+  flox_streaming_graph_step(sg, 0, 7.0, 7.0, 7.0, 7.0, 0.0);
+  EXPECT_NEAR(flox_streaming_graph_current(sg, 0, "double_close"), 14.0, 1e-12);
+
+  flox_streaming_graph_destroy(sg);
 }

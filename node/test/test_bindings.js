@@ -98,6 +98,72 @@ const sl = flox.targets.future_linear_slope(linear, 4);
 check(approx(sl[0], 0.5), 'targets.future_linear_slope linear-series == 0.5');
 check(Number.isNaN(sl[19]), 'targets.future_linear_slope tail NaN');
 
+// ── IndicatorGraph (batch) ────────────────────────────────────────────
+
+console.log('=== IndicatorGraph (batch) ===');
+
+const ramp = new Float64Array(50);
+for (let i = 0; i < 50; ++i) ramp[i] = i;
+
+const g = new flox.IndicatorGraph();
+g.setBars(0, ramp);
+
+g.addNode('ema5', [], (graph, sym) => flox.ema(graph.close(sym), 5));
+g.addNode('sma5', [], (graph, sym) => flox.sma(graph.close(sym), 5));
+g.addNode('diff', ['ema5', 'sma5'], (graph, sym) => {
+  const a = graph.get(sym, 'ema5');
+  const b = graph.get(sym, 'sma5');
+  const out = new Float64Array(a.length);
+  for (let i = 0; i < a.length; ++i) out[i] = a[i] - b[i];
+  return out;
+});
+
+const ema5 = g.require(0, 'ema5');
+const diff = g.require(0, 'diff');
+check(ema5.length === 50, 'graph require returns full-length array');
+check(diff.length === 50, 'graph dependent node has same length');
+check(g.get(0, 'sma5') !== null, 'graph get returns cached node array');
+check(g.get(0, 'never_added') === null, 'graph get on missing node returns null');
+
+let threw = false;
+try { g.require(0, 'missing'); } catch (e) { threw = true; }
+check(threw, 'graph require on unknown node throws');
+
+// ── StreamingIndicatorGraph ────────────────────────────────────────────
+
+console.log('=== StreamingIndicatorGraph ===');
+
+const sg = new flox.StreamingIndicatorGraph();
+sg.addNode('double_close', [], (graph, sym) => {
+  const c = graph.close(sym);
+  const out = new Float64Array(c.length);
+  for (let i = 0; i < c.length; ++i) out[i] = c[i] * 2.0;
+  return out;
+});
+
+const closesS = [10.0, 20.0, 30.0, 40.0, 50.0];
+for (const c of closesS) sg.step(0, c);
+
+check(Math.abs(sg.current(0, 'double_close') - 100.0) < 1e-9, 'streaming current after 5 steps');
+check(sg.barCount(0) === 5, 'streaming barCount == 5');
+
+// Parity check.
+const bg2 = new flox.IndicatorGraph();
+bg2.setBars(0, new Float64Array(closesS));
+bg2.addNode('double_close', [], (graph, sym) => {
+  const c = graph.close(sym);
+  const out = new Float64Array(c.length);
+  for (let i = 0; i < c.length; ++i) out[i] = c[i] * 2.0;
+  return out;
+});
+const batchDc = bg2.require(0, 'double_close');
+check(Math.abs(sg.current(0, 'double_close') - batchDc[batchDc.length - 1]) < 1e-9,
+      'streaming current == batch last element');
+
+sg.reset(0);
+check(sg.barCount(0) === 0, 'after reset barCount == 0');
+check(Number.isNaN(sg.current(0, 'double_close')), 'after reset current is NaN');
+
 // ── PositionTracker ───────────────────────────────────────────────────
 
 console.log('=== PositionTracker ===');
