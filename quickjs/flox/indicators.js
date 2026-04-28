@@ -781,3 +781,13 @@ class Correlation {
     reset() { this._xs = []; this._ys = []; this._value = NaN; }
     static compute(x, y, period) { return __flox_indicator_correlation(x, y, period); }
 }
+
+// ============================================================
+// Stationarity tests
+// ============================================================
+
+// Augmented Dickey-Fuller test. Returns { test_stat, p_value, used_lag }.
+function adf(data, max_lag, regression) {
+    return __flox_indicator_adf(data, max_lag === undefined ? 4 : max_lag,
+                                regression === undefined ? "c" : regression);
+}

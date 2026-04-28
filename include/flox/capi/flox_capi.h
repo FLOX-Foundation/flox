@@ -237,6 +237,11 @@ extern "C"
   void flox_indicator_correlation(const double* x, const double* y, size_t len, size_t period,
                                   double* output);
 
+  // Augmented Dickey-Fuller test. `regression` accepts: "n", "c", "ct".
+  // Writes the t-statistic, approximate p-value, and AIC-selected lag.
+  void flox_indicator_adf(const double* input, size_t len, size_t max_lag, const char* regression,
+                          double* test_stat_out, double* p_value_out, size_t* used_lag_out);
+
   // ============================================================
   // Order book
   // ============================================================

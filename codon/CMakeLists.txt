@@ -38,3 +38,6 @@ add_codon_executable(codon_backtest_from_csv
 
 add_codon_executable(codon_full_backtest
   ${CMAKE_SOURCE_DIR}/docs/examples/codon_full_backtest.codon)
+
+add_codon_executable(codon_adf_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/adf_smoke.codon)

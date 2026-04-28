@@ -604,6 +604,30 @@ static JSValue js_indicator_correlation(JSContext* ctx, JSValueConst, int, JSVal
   return jsArrayFromDoubles(ctx, output);
 }
 
+static JSValue js_indicator_adf(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  auto input = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t maxLag = argc > 1 ? toUint32(ctx, argv[1]) : 4;
+  const char* reg = "c";
+  if (argc > 2 && JS_IsString(argv[2]))
+  {
+    reg = JS_ToCString(ctx, argv[2]);
+  }
+  double testStat = 0.0;
+  double pValue = 0.0;
+  size_t usedLag = 0;
+  flox_indicator_adf(input.data(), input.size(), maxLag, reg, &testStat, &pValue, &usedLag);
+  if (argc > 2 && JS_IsString(argv[2]))
+  {
+    JS_FreeCString(ctx, reg);
+  }
+  JSValue obj = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, obj, "test_stat", JS_NewFloat64(ctx, testStat));
+  JS_SetPropertyStr(ctx, obj, "p_value", JS_NewFloat64(ctx, pValue));
+  JS_SetPropertyStr(ctx, obj, "used_lag", JS_NewUint32(ctx, static_cast<uint32_t>(usedLag)));
+  return obj;
+}
+
 // ============================================================
 // Order book bindings
 // ============================================================
@@ -2095,6 +2119,7 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_indicator_parkinson_vol", js_indicator_parkinson_vol, 3);
   addGlobalFunc(ctx, "__flox_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
   addGlobalFunc(ctx, "__flox_indicator_correlation", js_indicator_correlation, 3);
+  addGlobalFunc(ctx, "__flox_indicator_adf", js_indicator_adf, 3);
 
   // Order book
   addGlobalFunc(ctx, "__flox_book_create", js_book_create, 1);
