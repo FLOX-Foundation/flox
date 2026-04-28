@@ -107,6 +107,47 @@ int TempJsFile::counter_ = 0;
 // Integration tests — full strategy lifecycle
 // ============================================================
 
+TEST(JsIntegrationTest, TargetsBindings)
+{
+  TempJsFile script(R"(
+    var fr = flox.targets.future_return([100.0, 101.0, 99.0, 105.0, 110.0], 2);
+    var fr0 = fr[0];
+    var fr2 = fr[2];
+    var fr_tail_nan = isNaN(fr[3]) && isNaN(fr[4]);
+
+    var constClose = [];
+    for (var i = 0; i < 20; i++) constClose.push(100.0);
+    var vol = flox.targets.future_ctc_volatility(constClose, 5);
+    var vol0 = vol[0];
+
+    var lin = [];
+    for (var i = 0; i < 20; i++) lin.push(100.0 + 0.5 * i);
+    var sl = flox.targets.future_linear_slope(lin, 4);
+    var sl0 = sl[0];
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  auto getNum = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    double d = 0;
+    JS_ToFloat64(jsStrat.engine().context(), &d, v);
+    JS_FreeValue(jsStrat.engine().context(), v);
+    return d;
+  };
+
+  EXPECT_NEAR(getNum("fr0"), 99.0 / 100.0 - 1.0, 1e-12);
+  EXPECT_NEAR(getNum("fr2"), 110.0 / 99.0 - 1.0, 1e-12);
+  EXPECT_NEAR(getNum("vol0"), 0.0, 1e-12);
+  EXPECT_NEAR(getNum("sl0"), 0.5, 1e-12);
+
+  JSValue tail = jsStrat.engine().getGlobalProperty("fr_tail_nan");
+  EXPECT_TRUE(JS_ToBool(jsStrat.engine().context(), tail));
+  JS_FreeValue(jsStrat.engine().context(), tail);
+}
+
 TEST(JsIntegrationTest, LoadStrategyAndResolveSymbols)
 {
   TempJsFile script(R"(

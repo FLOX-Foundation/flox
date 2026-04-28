@@ -19,6 +19,7 @@
 #include "replay_bindings.h"
 #include "segment_ops_bindings.h"
 #include "strategy_bindings.h"
+#include "target_bindings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -722,6 +723,7 @@ PYBIND11_MODULE(flox_py, m)
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);
+  bindTargets(m);
 
   // Slippage model constants
   m.attr("SLIPPAGE_NONE") = 0;

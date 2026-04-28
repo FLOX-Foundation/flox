@@ -605,6 +605,42 @@ static JSValue js_indicator_correlation(JSContext* ctx, JSValueConst, int, JSVal
 }
 
 // ============================================================
+// Targets (forward-looking labels, batch only)
+// ============================================================
+
+static JSValue js_target_future_return(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto close = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t horizon = toUint32(ctx, argv[1]);
+  size_t len = close.size();
+  std::vector<double> output(len);
+  flox_target_future_return(close.data(), len, horizon, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_target_future_ctc_volatility(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  auto close = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t horizon = toUint32(ctx, argv[1]);
+  size_t len = close.size();
+  std::vector<double> output(len);
+  flox_target_future_ctc_volatility(close.data(), len, horizon, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+static JSValue js_target_future_linear_slope(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  auto close = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t horizon = toUint32(ctx, argv[1]);
+  size_t len = close.size();
+  std::vector<double> output(len);
+  flox_target_future_linear_slope(close.data(), len, horizon, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
+// ============================================================
 // Order book bindings
 // ============================================================
 
@@ -2095,6 +2131,11 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_indicator_parkinson_vol", js_indicator_parkinson_vol, 3);
   addGlobalFunc(ctx, "__flox_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
   addGlobalFunc(ctx, "__flox_indicator_correlation", js_indicator_correlation, 3);
+
+  // Targets (forward-looking labels)
+  addGlobalFunc(ctx, "__flox_target_future_return", js_target_future_return, 2);
+  addGlobalFunc(ctx, "__flox_target_future_ctc_volatility", js_target_future_ctc_volatility, 2);
+  addGlobalFunc(ctx, "__flox_target_future_linear_slope", js_target_future_linear_slope, 2);
 
   // Order book
   addGlobalFunc(ctx, "__flox_book_create", js_book_create, 1);

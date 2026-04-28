@@ -47,9 +47,20 @@ add_custom_command(
   COMMENT "Embedding indicators.js"
 )
 
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_targets.inc
+  COMMAND ${CMAKE_COMMAND}
+    -DIN_FILE=${JS_STDLIB_DIR}/targets.js
+    -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_targets.inc
+    -P ${GEN_INC_SCRIPT}
+  DEPENDS ${JS_STDLIB_DIR}/targets.js ${GEN_INC_SCRIPT}
+  COMMENT "Embedding targets.js"
+)
+
 add_custom_target(js_stdlib_gen DEPENDS
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_strategy.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_indicators.inc
+  ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_targets.inc
 )
 
 # flox_quickjs static library

@@ -5,6 +5,7 @@
 #   from flox.strategy import Strategy
 #   from flox.types import Price, Quantity
 #   from flox.indicators import ema, sma
+#   from flox.targets import future_return  # research-only labels
 
 from flox.types import *
 from flox.context import *

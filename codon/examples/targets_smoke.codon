@@ -1,0 +1,16 @@
+# Smoke test: targets module compiles + computes against the C API.
+
+from flox.targets import future_return, future_ctc_volatility, future_linear_slope
+
+close = [100.0, 101.0, 99.0, 105.0, 110.0]
+fr = future_return(close, 2)
+print("future_return[0] =", fr[0])
+print("future_return[2] =", fr[2])
+
+const_close = [100.0] * 20
+vol = future_ctc_volatility(const_close, 5)
+print("future_ctc_volatility const[0] =", vol[0])
+
+linear = [100.0 + 0.5 * float(i) for i in range(20)]
+sl = future_linear_slope(linear, 4)
+print("future_linear_slope linear[0] =", sl[0])
