@@ -1,0 +1,18 @@
+# Smoke test: IndicatorGraph (batch) bindings via the C API.
+# Tests the surface that doesn't need a Codon-side closure
+# (set_bars / require on field accessor / get).
+
+from flox.graph import IndicatorGraph
+
+close = [float(i) for i in range(20)]
+g = IndicatorGraph()
+g.set_bars(0, close)
+
+c = g.close(0)
+print("len(close) =", len(c))
+print("close[0] =", c[0])
+print("close[19] =", c[19])
+
+# get on a non-existent node returns None.
+maybe = g.get(0, "missing")
+print("get missing is None =", maybe is None)

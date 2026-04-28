@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
+#include <vector>
 
 // ============================================================
 // Order book
@@ -199,4 +200,87 @@ TEST(CapiOrderTrackerTest, Lifecycle)
   EXPECT_EQ(flox_order_tracker_active_count(tracker), 0u);
 
   flox_order_tracker_destroy(tracker);
+}
+
+// ============================================================
+// IndicatorGraph (batch)
+// ============================================================
+
+namespace
+{
+// Test fixture: a node fn that returns the close array * 2.
+static const double* doubleClose(void* user_data, FloxIndicatorGraphHandle g, uint32_t sym,
+                                 size_t* out_len)
+{
+  auto* state = static_cast<std::vector<double>*>(user_data);
+  size_t n = 0;
+  const double* c = flox_indicator_graph_close(g, sym, &n);
+  state->resize(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    (*state)[i] = c[i] * 2.0;
+  }
+  *out_len = n;
+  return state->data();
+}
+
+// dependent: returns close + parent
+static const double* sumWithDouble(void* user_data, FloxIndicatorGraphHandle g, uint32_t sym,
+                                   size_t* out_len)
+{
+  auto* state = static_cast<std::vector<double>*>(user_data);
+  size_t n = 0;
+  const double* c = flox_indicator_graph_close(g, sym, &n);
+  size_t pn = 0;
+  const double* p = flox_indicator_graph_get(g, sym, "double_close", &pn);
+  if (!p || pn != n)
+  {
+    *out_len = 0;
+    return nullptr;
+  }
+  state->resize(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    (*state)[i] = c[i] + p[i];
+  }
+  *out_len = n;
+  return state->data();
+}
+}  // namespace
+
+TEST(CapiGraphTest, BasicComputeAndDeps)
+{
+  auto g = flox_indicator_graph_create();
+  ASSERT_NE(g, nullptr);
+
+  std::vector<double> close = {1.0, 2.0, 3.0, 4.0, 5.0};
+  flox_indicator_graph_set_bars(g, 0, close.data(), nullptr, nullptr, nullptr, close.size());
+
+  std::vector<double> stateA, stateB;
+  flox_indicator_graph_add_node(g, "double_close", nullptr, 0, doubleClose, &stateA);
+  const char* deps[] = {"double_close"};
+  flox_indicator_graph_add_node(g, "sum", deps, 1, sumWithDouble, &stateB);
+
+  size_t len = 0;
+  const double* out = flox_indicator_graph_require(g, 0, "sum", &len);
+  ASSERT_NE(out, nullptr);
+  ASSERT_EQ(len, 5u);
+  for (size_t i = 0; i < 5; ++i)
+  {
+    EXPECT_NEAR(out[i], close[i] * 3.0, 1e-12);
+  }
+
+  // get on cached node returns the same pointer.
+  size_t cl = 0;
+  const double* cached = flox_indicator_graph_get(g, 0, "double_close", &cl);
+  ASSERT_NE(cached, nullptr);
+  EXPECT_EQ(cl, 5u);
+
+  // Unknown node -> nullptr.
+  size_t l2 = 999;
+  const double* missing = flox_indicator_graph_require(g, 0, "nope", &l2);
+  EXPECT_EQ(missing, nullptr);
+  EXPECT_EQ(l2, 0u);
+
+  flox_indicator_graph_destroy(g);
 }

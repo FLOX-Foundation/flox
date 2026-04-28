@@ -41,3 +41,6 @@ add_codon_executable(codon_full_backtest
 
 add_codon_executable(codon_targets_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/targets_smoke.codon)
+
+add_codon_executable(codon_graph_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/graph_smoke.codon)

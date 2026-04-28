@@ -98,6 +98,37 @@ const sl = flox.targets.future_linear_slope(linear, 4);
 check(approx(sl[0], 0.5), 'targets.future_linear_slope linear-series == 0.5');
 check(Number.isNaN(sl[19]), 'targets.future_linear_slope tail NaN');
 
+// ── IndicatorGraph (batch) ────────────────────────────────────────────
+
+console.log('=== IndicatorGraph (batch) ===');
+
+const ramp = new Float64Array(50);
+for (let i = 0; i < 50; ++i) ramp[i] = i;
+
+const g = new flox.IndicatorGraph();
+g.setBars(0, ramp);
+
+g.addNode('ema5', [], (graph, sym) => flox.ema(graph.close(sym), 5));
+g.addNode('sma5', [], (graph, sym) => flox.sma(graph.close(sym), 5));
+g.addNode('diff', ['ema5', 'sma5'], (graph, sym) => {
+  const a = graph.get(sym, 'ema5');
+  const b = graph.get(sym, 'sma5');
+  const out = new Float64Array(a.length);
+  for (let i = 0; i < a.length; ++i) out[i] = a[i] - b[i];
+  return out;
+});
+
+const ema5 = g.require(0, 'ema5');
+const diff = g.require(0, 'diff');
+check(ema5.length === 50, 'graph require returns full-length array');
+check(diff.length === 50, 'graph dependent node has same length');
+check(g.get(0, 'sma5') !== null, 'graph get returns cached node array');
+check(g.get(0, 'never_added') === null, 'graph get on missing node returns null');
+
+let threw = false;
+try { g.require(0, 'missing'); } catch (e) { threw = true; }
+check(threw, 'graph require on unknown node throws');
+
 // ── PositionTracker ───────────────────────────────────────────────────
 
 console.log('=== PositionTracker ===');
