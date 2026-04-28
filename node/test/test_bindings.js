@@ -129,6 +129,41 @@ let threw = false;
 try { g.require(0, 'missing'); } catch (e) { threw = true; }
 check(threw, 'graph require on unknown node throws');
 
+// ── StreamingIndicatorGraph ────────────────────────────────────────────
+
+console.log('=== StreamingIndicatorGraph ===');
+
+const sg = new flox.StreamingIndicatorGraph();
+sg.addNode('double_close', [], (graph, sym) => {
+  const c = graph.close(sym);
+  const out = new Float64Array(c.length);
+  for (let i = 0; i < c.length; ++i) out[i] = c[i] * 2.0;
+  return out;
+});
+
+const closesS = [10.0, 20.0, 30.0, 40.0, 50.0];
+for (const c of closesS) sg.step(0, c);
+
+check(Math.abs(sg.current(0, 'double_close') - 100.0) < 1e-9, 'streaming current after 5 steps');
+check(sg.barCount(0) === 5, 'streaming barCount == 5');
+
+// Parity check.
+const bg2 = new flox.IndicatorGraph();
+bg2.setBars(0, new Float64Array(closesS));
+bg2.addNode('double_close', [], (graph, sym) => {
+  const c = graph.close(sym);
+  const out = new Float64Array(c.length);
+  for (let i = 0; i < c.length; ++i) out[i] = c[i] * 2.0;
+  return out;
+});
+const batchDc = bg2.require(0, 'double_close');
+check(Math.abs(sg.current(0, 'double_close') - batchDc[batchDc.length - 1]) < 1e-9,
+      'streaming current == batch last element');
+
+sg.reset(0);
+check(sg.barCount(0) === 0, 'after reset barCount == 0');
+check(Number.isNaN(sg.current(0, 'double_close')), 'after reset current is NaN');
+
 // ── PositionTracker ───────────────────────────────────────────────────
 
 console.log('=== PositionTracker ===');

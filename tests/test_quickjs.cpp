@@ -212,6 +212,77 @@ TEST(JsIntegrationTest, IndicatorGraphBindings)
   EXPECT_TRUE(getBool("require_throws"));
 }
 
+TEST(JsIntegrationTest, StreamingIndicatorGraph)
+{
+  TempJsFile script(R"(
+    var sg = new flox.StreamingIndicatorGraph();
+    sg.addNode("double_close", [], function(graph, sym) {
+      var c = graph.close(sym);
+      var out = [];
+      for (var i = 0; i < c.length; ++i) out.push(c[i] * 2.0);
+      return out;
+    });
+
+    var closes = [10.0, 20.0, 30.0, 40.0, 50.0];
+    var lastDouble = 0;
+    var barCounts = [];
+    for (var i = 0; i < closes.length; ++i) {
+      sg.step(0, closes[i]);
+      lastDouble = sg.current(0, "double_close");
+      barCounts.push(sg.barCount(0));
+    }
+
+    // After 5 steps: current == last close * 2, bar counts 1..5.
+    var ok_last = Math.abs(lastDouble - 100.0) < 1e-9;
+    var ok_counts = barCounts[0] === 1 && barCounts[4] === 5;
+
+    // Parity: batch on same data should match.
+    var bg = new flox.IndicatorGraph();
+    bg.setBars(0, new Float64Array(closes));
+    bg.addNode("double_close", [], function(graph, sym) {
+      var c = graph.close(sym);
+      var out = [];
+      for (var i = 0; i < c.length; ++i) out.push(c[i] * 2.0);
+      return out;
+    });
+    var batchOut = bg.require(0, "double_close");
+    var parity = Math.abs(batchOut[batchOut.length - 1] - lastDouble) < 1e-9;
+    bg.destroy();
+
+    // Reset and verify bar count resets.
+    sg.reset(0);
+    var after_reset_count = sg.barCount(0);
+    var after_reset_nan = isNaN(sg.current(0, "double_close"));
+    sg.destroy();
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto* ctx = jsStrat.engine().context();
+
+  auto getBool = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    bool b = JS_ToBool(ctx, v);
+    JS_FreeValue(ctx, v);
+    return b;
+  };
+  auto getInt = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    int32_t i = 0;
+    JS_ToInt32(ctx, &i, v);
+    JS_FreeValue(ctx, v);
+    return i;
+  };
+
+  EXPECT_TRUE(getBool("ok_last"));
+  EXPECT_TRUE(getBool("ok_counts"));
+  EXPECT_TRUE(getBool("parity"));
+  EXPECT_EQ(getInt("after_reset_count"), 0);
+  EXPECT_TRUE(getBool("after_reset_nan"));
+}
+
 TEST(JsIntegrationTest, LoadStrategyAndResolveSymbols)
 {
   TempJsFile script(R"(

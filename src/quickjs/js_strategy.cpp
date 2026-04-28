@@ -496,6 +496,32 @@ void FloxJsStrategy::loadStdlib()
         volume(symbol) { return __flox_graph_volume(this._h, symbol); }
         invalidate(symbol) { __flox_graph_invalidate(this._h, symbol); }
         invalidateAll() { __flox_graph_invalidate_all(this._h); }
+      },
+
+      StreamingIndicatorGraph: class {
+        constructor() {
+          this._h = __flox_streaming_create();
+        }
+        destroy() {
+          if (this._h) { __flox_streaming_destroy(this._h); this._h = null; }
+        }
+        addNode(name, deps, fn) {
+          __flox_streaming_add_node(this._h, name, deps || [], fn, this);
+        }
+        step(symbol, close, high, low, volume) {
+          __flox_streaming_step(this._h, symbol, close,
+                                high !== undefined ? high : null,
+                                low !== undefined ? low : null,
+                                volume !== undefined ? volume : null);
+        }
+        current(symbol, name) { return __flox_streaming_current(this._h, symbol, name); }
+        barCount(symbol) { return __flox_streaming_bar_count(this._h, symbol); }
+        reset(symbol) { __flox_streaming_reset(this._h, symbol); }
+        resetAll() { __flox_streaming_reset_all(this._h); }
+        close(symbol) { return __flox_streaming_close(this._h, symbol); }
+        high(symbol) { return __flox_streaming_high(this._h, symbol); }
+        low(symbol) { return __flox_streaming_low(this._h, symbol); }
+        volume(symbol) { return __flox_streaming_volume(this._h, symbol); }
       }
     };
   )";

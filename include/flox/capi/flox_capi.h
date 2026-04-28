@@ -312,6 +312,54 @@ extern "C"
   void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g);
 
   // ============================================================
+  // StreamingIndicatorGraph
+  //
+  // Same node definitions as the batch graph; step() advances one bar at a
+  // time and stores each node's last output as the current value.
+  //
+  //   FloxStreamingGraphHandle sg = flox_streaming_graph_create();
+  //   flox_streaming_graph_add_node(sg, "ema5", NULL, 0, ema_fn, state);
+  //   // live bar loop:
+  //   flox_streaming_graph_step(sg, sym, open, high, low, close, volume);
+  //   double v = flox_streaming_graph_current(sg, sym, "ema5");
+  //   flox_streaming_graph_destroy(sg);
+  // ============================================================
+
+  typedef void* FloxStreamingGraphHandle;
+
+  FloxStreamingGraphHandle flox_streaming_graph_create(void);
+  void flox_streaming_graph_destroy(FloxStreamingGraphHandle sg);
+
+  // Same signature as flox_indicator_graph_add_node; node fns receive a
+  // FloxIndicatorGraphHandle pointing to the inner batch graph.
+  void flox_streaming_graph_add_node(FloxStreamingGraphHandle sg, const char* name,
+                                     const char* const* deps, size_t num_deps,
+                                     FloxGraphNodeFn fn, void* user_data);
+
+  // Advance one bar. open/high/low/close/volume are doubles.
+  void flox_streaming_graph_step(FloxStreamingGraphHandle sg, uint32_t symbol, double open,
+                                 double high, double low, double close, double volume);
+
+  // Current (last-bar) value for a node. Returns NaN if not yet computed.
+  double flox_streaming_graph_current(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                      const char* name);
+
+  uint32_t flox_streaming_graph_bar_count(FloxStreamingGraphHandle sg, uint32_t symbol);
+
+  void flox_streaming_graph_reset(FloxStreamingGraphHandle sg, uint32_t symbol);
+  void flox_streaming_graph_reset_all(FloxStreamingGraphHandle sg);
+
+  // Field accessors — return the accumulated history arrays (same as batch graph after step).
+  const double* flox_streaming_graph_close(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                           size_t* len_out);
+  const double* flox_streaming_graph_high(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                          size_t* len_out);
+  const double* flox_streaming_graph_low(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                         size_t* len_out);
+  const double* flox_streaming_graph_volume(FloxStreamingGraphHandle sg, uint32_t symbol,
+                                            size_t* len_out);
+
+  // ============================================================
   // Order book
   // ============================================================
 
