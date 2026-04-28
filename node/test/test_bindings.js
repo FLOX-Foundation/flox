@@ -98,6 +98,39 @@ const sl = flox.targets.future_linear_slope(linear, 4);
 check(approx(sl[0], 0.5), 'targets.future_linear_slope linear-series == 0.5');
 check(Number.isNaN(sl[19]), 'targets.future_linear_slope tail NaN');
 
+// ── ADF stationarity test ─────────────────────────────────────────────
+
+console.log('=== ADF ===');
+
+function gaussian(seed) {
+  // simple deterministic Box-Muller
+  let s = seed;
+  return function() {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    const u1 = ((s + 1) / 0x80000000);
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    const u2 = ((s + 1) / 0x80000000);
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  };
+}
+
+const N = 500;
+const gen = gaussian(42);
+const walk = new Float64Array(N);
+walk[0] = 0;
+for (let i = 1; i < N; ++i) walk[i] = walk[i - 1] + gen();
+
+const r = flox.adf(walk, 4, 'c');
+check(r.used_lag <= 4, 'adf used_lag <= max_lag');
+check(r.p_value > 0.05, 'adf does not reject H0 for random walk');
+
+const gen2 = gaussian(7);
+const noise = new Float64Array(N);
+for (let i = 0; i < N; ++i) noise[i] = gen2() * 0.5;
+const r2 = flox.adf(noise, 4, 'c');
+check(r2.test_stat < r.test_stat, 'stationary series produces lower test_stat');
+check(r2.p_value < 0.05, 'adf rejects H0 for white noise');
+
 // ── PositionTracker ───────────────────────────────────────────────────
 
 console.log('=== PositionTracker ===');

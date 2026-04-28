@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
 #include "flox/indicator/atr.h"
 #include "flox/indicator/bollinger.h"
@@ -1558,6 +1559,26 @@ inline void bindIndicators(py::module_& m)
         return result;
       },
       py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"), py::arg("period"));
+
+  m.def(
+      "adf",
+      [](contiguous_double input, size_t max_lag, const std::string& regression) -> py::dict
+      {
+        auto buf = input.request();
+        size_t n = buf.shape[0];
+        const auto* p = static_cast<const double*>(buf.ptr);
+        flox::indicator::AdfResult r;
+        {
+          py::gil_scoped_release release;
+          r = flox::indicator::adf(std::span<const double>(p, n), max_lag, regression);
+        }
+        py::dict d;
+        d["test_stat"] = r.test_stat;
+        d["p_value"] = r.p_value;
+        d["used_lag"] = r.used_lag;
+        return d;
+      },
+      py::arg("input"), py::arg("max_lag") = 4, py::arg("regression") = "c");
 
   m.def(
       "correlation",
