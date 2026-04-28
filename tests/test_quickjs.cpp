@@ -107,6 +107,46 @@ int TempJsFile::counter_ = 0;
 // Integration tests — full strategy lifecycle
 // ============================================================
 
+TEST(JsIntegrationTest, AutoCorrelationBindings)
+{
+  TempJsFile script(R"(
+    var linear = [];
+    for (var i = 0; i < 50; ++i) linear.push(5.0 + 0.7 * i);
+
+    // Batch: AutoCorrelation.compute / __flox_indicator_autocorrelation.
+    var ac = AutoCorrelation.compute(linear, 10, 1);
+    var batch_at_10 = ac[10];
+    var warmup_nan = isNaN(ac[9]);
+
+    // Streaming class.
+    var stream = new AutoCorrelation(10, 1);
+    var lastStream = NaN;
+    for (var j = 0; j < linear.length; ++j) {
+      lastStream = stream.update(linear[j]);
+    }
+    var stream_eq_batch = Math.abs(lastStream - ac[ac.length - 1]) < 1e-9;
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  auto* ctx = jsStrat.engine().context();
+
+  JSValue v = jsStrat.engine().getGlobalProperty("batch_at_10");
+  double d = 0;
+  JS_ToFloat64(ctx, &d, v);
+  JS_FreeValue(ctx, v);
+  EXPECT_NEAR(d, 1.0, 1e-10);
+
+  JSValue w = jsStrat.engine().getGlobalProperty("warmup_nan");
+  EXPECT_TRUE(JS_ToBool(ctx, w));
+  JS_FreeValue(ctx, w);
+
+  JSValue eq = jsStrat.engine().getGlobalProperty("stream_eq_batch");
+  EXPECT_TRUE(JS_ToBool(ctx, eq));
+  JS_FreeValue(ctx, eq);
+}
+
 TEST(JsIntegrationTest, LoadStrategyAndResolveSymbols)
 {
   TempJsFile script(R"(

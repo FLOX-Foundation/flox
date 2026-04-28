@@ -21,6 +21,7 @@
 #include "flox/indicator/stochastic.h"
 #include "flox/indicator/vwap.h"
 
+#include "flox/indicator/autocorrelation.h"
 #include "flox/indicator/correlation.h"
 #include "flox/indicator/kurtosis.h"
 #include "flox/indicator/parkinson_vol.h"
@@ -284,6 +285,18 @@ inline Napi::Value batch_correlation(const Napi::CallbackInfo& info)
   size_t n = x.ElementLength(), p = info[2].As<Napi::Number>().Uint32Value();
   std::vector<double> out(n);
   flox::indicator::Correlation(p).compute({x.Data(), n}, {y.Data(), n}, {out.data(), n});
+  return vec2arr(info.Env(), out);
+}
+
+inline Napi::Value batch_autocorrelation(const Napi::CallbackInfo& info)
+{
+  auto in = info[0].As<Napi::Float64Array>();
+  size_t n = in.ElementLength();
+  size_t window = info[1].As<Napi::Number>().Uint32Value();
+  size_t lag = info[2].As<Napi::Number>().Uint32Value();
+  std::vector<double> out(n);
+  flox::indicator::AutoCorrelation(window, lag)
+      .compute(std::span<const double>(in.Data(), n), std::span<double>(out.data(), n));
   return vec2arr(info.Env(), out);
 }
 
@@ -1499,6 +1512,73 @@ class CorrelationWrap : public Napi::ObjectWrap<CorrelationWrap>
   std::vector<double> _xbuf, _ybuf;
 };
 
+class AutoCorrelationWrap : public Napi::ObjectWrap<AutoCorrelationWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(env, "AutoCorrelation",
+                       {InstanceMethod("update", &AutoCorrelationWrap::Update),
+                        InstanceMethod("reset", &AutoCorrelationWrap::Reset),
+                        InstanceAccessor("value", &AutoCorrelationWrap::Value, nullptr),
+                        InstanceAccessor("ready", &AutoCorrelationWrap::Ready, nullptr)});
+  }
+  AutoCorrelationWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<AutoCorrelationWrap>(info),
+        _window(info[0].As<Napi::Number>().Uint32Value()),
+        _lag(info[1].As<Napi::Number>().Uint32Value()) {}
+
+ private:
+  Napi::Value Update(const Napi::CallbackInfo& info)
+  {
+    double x = info[0].As<Napi::Number>().DoubleValue();
+    _buf.push_back(x);
+    size_t needed = _window + _lag;
+    if (_buf.size() > needed)
+    {
+      _buf.erase(_buf.begin());
+    }
+    if (_buf.size() < needed)
+    {
+      return info.Env().Undefined();
+    }
+    double w = static_cast<double>(_window);
+    double sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+    for (size_t i = 0; i < _window; ++i)
+    {
+      double xi = _buf[i + _lag];
+      double yi = _buf[i];
+      sx += xi;
+      sy += yi;
+      sxy += xi * yi;
+      sx2 += xi * xi;
+      sy2 += yi * yi;
+    }
+    double num = w * sxy - sx * sy;
+    double den = std::sqrt((w * sx2 - sx * sx) * (w * sy2 - sy * sy));
+    if (den == 0.0)
+    {
+      return info.Env().Undefined();
+    }
+    _v = num / den;
+    return Napi::Number::New(info.Env(), _v);
+  }
+  Napi::Value Value(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _v); }
+  Napi::Value Ready(const Napi::CallbackInfo& info)
+  {
+    return Napi::Boolean::New(info.Env(), _buf.size() >= _window + _lag);
+  }
+  void Reset(const Napi::CallbackInfo&)
+  {
+    _v = 0;
+    _buf.clear();
+  }
+  size_t _window;
+  size_t _lag;
+  double _v = 0;
+  std::vector<double> _buf;
+};
+
 // ── Registration ────────────────────────────────────────────────────
 
 inline void registerIndicators(Napi::Env env, Napi::Object exports)
@@ -1529,6 +1609,7 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("parkinson_vol", Napi::Function::New(env, batch_parkinson_vol));
   exports.Set("rogers_satchell_vol", Napi::Function::New(env, batch_rogers_satchell_vol));
   exports.Set("correlation", Napi::Function::New(env, batch_correlation));
+  exports.Set("autocorrelation", Napi::Function::New(env, batch_autocorrelation));
 
   // Streaming
   exports.Set("SMA", SMAWrap::Init(env));
@@ -1554,6 +1635,7 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("ParkinsonVol", ParkinsonVolWrap::Init(env));
   exports.Set("RogersSatchellVol", RogersSatchellVolWrap::Init(env));
   exports.Set("Correlation", CorrelationWrap::Init(env));
+  exports.Set("AutoCorrelation", AutoCorrelationWrap::Init(env));
 }
 
 }  // namespace node_flox

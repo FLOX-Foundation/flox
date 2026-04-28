@@ -604,6 +604,18 @@ static JSValue js_indicator_correlation(JSContext* ctx, JSValueConst, int, JSVal
   return jsArrayFromDoubles(ctx, output);
 }
 
+static JSValue js_indicator_autocorrelation(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  auto in = jsArrayToDoubles(ctx, argv[0]);
+  uint32_t window = toUint32(ctx, argv[1]);
+  uint32_t lag = toUint32(ctx, argv[2]);
+  size_t len = in.size();
+  std::vector<double> output(len);
+  flox_indicator_autocorrelation(in.data(), len, window, lag, output.data());
+  return jsArrayFromDoubles(ctx, output);
+}
+
 // ============================================================
 // Order book bindings
 // ============================================================
@@ -2095,6 +2107,7 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_indicator_parkinson_vol", js_indicator_parkinson_vol, 3);
   addGlobalFunc(ctx, "__flox_indicator_rogers_satchell_vol", js_indicator_rogers_satchell_vol, 5);
   addGlobalFunc(ctx, "__flox_indicator_correlation", js_indicator_correlation, 3);
+  addGlobalFunc(ctx, "__flox_indicator_autocorrelation", js_indicator_autocorrelation, 3);
 
   // Order book
   addGlobalFunc(ctx, "__flox_book_create", js_book_create, 1);

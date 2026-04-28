@@ -27,6 +27,7 @@
 
 #include "flox/indicator/adx.h"
 #include "flox/indicator/atr.h"
+#include "flox/indicator/autocorrelation.h"
 #include "flox/indicator/bollinger.h"
 #include "flox/indicator/cci.h"
 #include "flox/indicator/chop.h"
@@ -576,6 +577,13 @@ void flox_indicator_correlation(const double* x, const double* y, size_t len, si
   indicator::Correlation ind(period);
   ind.compute(std::span<const double>(x, len), std::span<const double>(y, len),
               std::span<double>(output, len));
+}
+
+void flox_indicator_autocorrelation(const double* input, size_t len, size_t window, size_t lag,
+                                    double* output)
+{
+  indicator::AutoCorrelation ind(window, lag);
+  ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
 }
 
 // ============================================================

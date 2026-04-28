@@ -237,6 +237,11 @@ extern "C"
   void flox_indicator_correlation(const double* x, const double* y, size_t len, size_t period,
                                   double* output);
 
+  // AutoCorrelation: Pearson correlation between x[t] and x[t-lag] over a
+  // rolling window. First valid index is (window + lag - 1).
+  void flox_indicator_autocorrelation(const double* input, size_t len, size_t window, size_t lag,
+                                      double* output);
+
   // ============================================================
   // Order book
   // ============================================================

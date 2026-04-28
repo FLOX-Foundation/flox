@@ -33,6 +33,7 @@ from C import flox_indicator_shannon_entropy(Ptr[f64], int, int, int, Ptr[f64])
 from C import flox_indicator_parkinson_vol(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_rogers_satchell_vol(Ptr[f64], Ptr[f64], Ptr[f64], Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_correlation(Ptr[f64], Ptr[f64], int, int, Ptr[f64])
+from C import flox_indicator_autocorrelation(Ptr[f64], int, int, int, Ptr[f64])
 
 
 # ======================================================================
@@ -1162,6 +1163,70 @@ class Correlation:
         flox_indicator_correlation(x.arr.ptr, y.arr.ptr,
                                    n, period, result.arr.ptr)
         return result
+
+
+class AutoCorrelation:
+    _window: int
+    _lag: int
+    _buf: List[float]
+    _value: float
+
+    def __init__(self, window: int, lag: int):
+        self._window = window
+        self._lag = lag
+        self._buf = list[float]()
+        self._value = 0.0
+
+    def update(self, x: float) -> float:
+        self._buf.append(x)
+        needed = self._window + self._lag
+        if len(self._buf) > needed:
+            self._buf.pop(0)
+        if len(self._buf) >= needed:
+            w = float(self._window)
+            sx = 0.0
+            sy = 0.0
+            sxy = 0.0
+            sx2 = 0.0
+            sy2 = 0.0
+            for i in range(self._window):
+                xi = self._buf[i + self._lag]
+                yi = self._buf[i]
+                sx += xi
+                sy += yi
+                sxy += xi * yi
+                sx2 += xi * xi
+                sy2 += yi * yi
+            num = w * sxy - sx * sy
+            den = math.sqrt((w * sx2 - sx * sx) * (w * sy2 - sy * sy))
+            if den == 0.0:
+                self._value = math.nan
+            else:
+                self._value = num / den
+        return self._value
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        return len(self._buf) >= self._window + self._lag
+
+    def reset(self):
+        self._buf = list[float]()
+        self._value = 0.0
+
+    @staticmethod
+    def compute(data: List[float], window: int, lag: int) -> List[float]:
+        n = len(data)
+        result = [0.0] * n
+        flox_indicator_autocorrelation(data.arr.ptr, n, window, lag, result.arr.ptr)
+        return result
+
+
+def autocorrelation(data: List[float], window: int, lag: int) -> List[float]:
+    return AutoCorrelation.compute(data, window, lag)
 
 
 # Backward compatibility aliases

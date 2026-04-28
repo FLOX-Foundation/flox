@@ -77,6 +77,24 @@ const bEma = flox.ema(prices, 3);
 check(bEma.length === prices.length, 'batch ema length matches input');
 check(bEma[6] > bEma[2], 'batch ema increases for ascending input');
 
+// ── AutoCorrelation ───────────────────────────────────────────────────
+
+console.log('=== AutoCorrelation ===');
+
+const linear = new Float64Array(50);
+for (let i = 0; i < 50; ++i) linear[i] = 5.0 + 0.7 * i;
+const ac = flox.autocorrelation(linear, 10, 1);
+check(Number.isNaN(ac[9]), 'autocorrelation warmup is NaN');
+check(approx(ac[10], 1.0), 'autocorrelation linear lag=1 == 1.0');
+
+const acStream = new flox.AutoCorrelation(10, 1);
+let lastStreamed = undefined;
+for (let i = 0; i < linear.length; ++i) {
+  lastStreamed = acStream.update(linear[i]);
+}
+check(approx(lastStreamed, ac[ac.length - 1]),
+      'streaming AutoCorrelation matches batch on last index');
+
 // ── PositionTracker ───────────────────────────────────────────────────
 
 console.log('=== PositionTracker ===');

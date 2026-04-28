@@ -10,6 +10,7 @@
 
 #include "flox/indicator/adx.h"
 #include "flox/indicator/atr.h"
+#include "flox/indicator/autocorrelation.h"
 #include "flox/indicator/bollinger.h"
 #include "flox/indicator/cci.h"
 #include "flox/indicator/chop.h"
@@ -1086,6 +1087,59 @@ class PyCorrelation
   std::vector<double> _xbuf, _ybuf;
 };
 
+class PyAutoCorrelation
+{
+ public:
+  PyAutoCorrelation(size_t window, size_t lag) : _window(window), _lag(lag) {}
+  py::object update(double x)
+  {
+    _buf.push_back(x);
+    size_t needed = _window + _lag;
+    if (_buf.size() > needed)
+    {
+      _buf.erase(_buf.begin());
+    }
+    if (_buf.size() < needed)
+    {
+      return py::none();
+    }
+    double w = static_cast<double>(_window);
+    double sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+    for (size_t i = 0; i < _window; ++i)
+    {
+      double xi = _buf[i + _lag];
+      double yi = _buf[i];
+      sx += xi;
+      sy += yi;
+      sxy += xi * yi;
+      sx2 += xi * xi;
+      sy2 += yi * yi;
+    }
+    double num = w * sxy - sx * sy;
+    double den = std::sqrt((w * sx2 - sx * sx) * (w * sy2 - sy * sy));
+    if (den == 0.0)
+    {
+      return py::none();
+    }
+    _value = num / den;
+    return py::cast(_value);
+  }
+  py::object getValue() const { return optVal(_value, isReady()); }
+  bool isReady() const { return _buf.size() >= _window + _lag; }
+  void reset()
+  {
+    _value = 0;
+    _buf.clear();
+  }
+  PyAutoCorrelation fresh() const { return PyAutoCorrelation(_window, _lag); }
+
+ private:
+  size_t _window;
+  size_t _lag;
+  double _value = 0;
+  std::vector<double> _buf;
+};
+
 }  // namespace
 
 inline void bindIndicators(py::module_& m)
@@ -1560,6 +1614,23 @@ inline void bindIndicators(py::module_& m)
       py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"), py::arg("period"));
 
   m.def(
+      "autocorrelation",
+      [](contiguous_double input, size_t window, size_t lag) -> py::array_t<double>
+      {
+        size_t n = input.request().shape[0];
+        const double* p = input.data();
+        py::array_t<double> result(n);
+        auto* o = result.mutable_data();
+        {
+          py::gil_scoped_release release;
+          flox::indicator::AutoCorrelation(window, lag)
+              .compute(std::span<const double>(p, n), std::span<double>(o, n));
+        }
+        return result;
+      },
+      py::arg("input"), py::arg("window"), py::arg("lag"));
+
+  m.def(
       "correlation",
       [](contiguous_double x, contiguous_double y, size_t period) -> py::array_t<double>
       {
@@ -1773,4 +1844,12 @@ inline void bindIndicators(py::module_& m)
       .def("fresh", &PyCorrelation::fresh)
       .def_property_readonly("value", &PyCorrelation::getValue)
       .def_property_readonly("ready", &PyCorrelation::isReady);
+
+  py::class_<PyAutoCorrelation>(m, "AutoCorrelation")
+      .def(py::init<size_t, size_t>(), py::arg("window"), py::arg("lag"))
+      .def("update", &PyAutoCorrelation::update, py::arg("value"))
+      .def("reset", &PyAutoCorrelation::reset)
+      .def("fresh", &PyAutoCorrelation::fresh)
+      .def_property_readonly("value", &PyAutoCorrelation::getValue)
+      .def_property_readonly("ready", &PyAutoCorrelation::isReady);
 }

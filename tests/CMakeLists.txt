@@ -74,6 +74,7 @@ if(FLOX_ENABLE_BACKTEST)
 endif()
 
 add_flox_test(test_indicators)
+add_flox_test(test_autocorrelation)
 
 if(FLOX_ENABLE_CAPI)
   add_flox_test(test_capi_registry)
