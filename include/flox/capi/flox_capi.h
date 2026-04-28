@@ -238,6 +238,20 @@ extern "C"
                                   double* output);
 
   // ============================================================
+  // Targets (forward-looking labels, batch only)
+  //
+  // Targets read into the future relative to t. They are intentionally
+  // separate from indicators: feeding them into a live update loop is a
+  // look-ahead-bias bug.
+  // ============================================================
+
+  void flox_target_future_return(const double* close, size_t len, size_t horizon, double* output);
+  void flox_target_future_ctc_volatility(const double* close, size_t len, size_t horizon,
+                                         double* output);
+  void flox_target_future_linear_slope(const double* close, size_t len, size_t horizon,
+                                       double* output);
+
+  // ============================================================
   // Order book
   // ============================================================
 

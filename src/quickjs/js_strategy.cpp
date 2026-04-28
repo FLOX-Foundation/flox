@@ -13,6 +13,10 @@ static const char* const INDICATORS_JS =
 #include "js_stdlib_indicators.inc"
     ;
 
+static const char* const TARGETS_JS =
+#include "js_stdlib_targets.inc"
+    ;
+
 namespace flox
 {
 
@@ -57,6 +61,10 @@ void FloxJsStrategy::loadStdlib()
   if (!_engine.eval(STRATEGY_JS, "flox/strategy.js"))
   {
     throw std::runtime_error("Failed to load strategy.js: " + _engine.getErrorMessage());
+  }
+  if (!_engine.eval(TARGETS_JS, "flox/targets.js"))
+  {
+    throw std::runtime_error("Failed to load targets.js: " + _engine.getErrorMessage());
   }
 
   // Create flox global object with register() and batch indicators
@@ -461,7 +469,10 @@ void FloxJsStrategy::loadStdlib()
         return __flox_seg_extract_time(inputPath, outputPath, fromNs || 0, toNs || 0);
       },
 
-      loadCsv: function(path) { return __flox_load_csv(path); }
+      loadCsv: function(path) { return __flox_load_csv(path); },
+
+      // Forward-looking labels (research-only). See flox/targets.js.
+      targets: __floxTargets
     };
   )";
   if (!_engine.eval(registerCode, "<flox_register>"))

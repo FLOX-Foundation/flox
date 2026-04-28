@@ -77,6 +77,27 @@ const bEma = flox.ema(prices, 3);
 check(bEma.length === prices.length, 'batch ema length matches input');
 check(bEma[6] > bEma[2], 'batch ema increases for ascending input');
 
+// ── Targets (forward-looking labels) ──────────────────────────────────
+
+console.log('=== Targets ===');
+
+const tClose = new Float64Array([100.0, 101.0, 99.0, 105.0, 110.0]);
+const fr = flox.targets.future_return(tClose, 2);
+check(approx(fr[0], 99.0 / 100.0 - 1.0), 'targets.future_return[0]');
+check(approx(fr[2], 110.0 / 99.0 - 1.0), 'targets.future_return[2]');
+check(Number.isNaN(fr[3]) && Number.isNaN(fr[4]), 'targets.future_return tail NaN');
+
+const constClose = new Float64Array(20).fill(100.0);
+const vol = flox.targets.future_ctc_volatility(constClose, 5);
+check(approx(vol[0], 0.0), 'targets.future_ctc_volatility const-series == 0');
+check(Number.isNaN(vol[19]), 'targets.future_ctc_volatility tail NaN');
+
+const linear = new Float64Array(20);
+for (let i = 0; i < 20; ++i) linear[i] = 100.0 + 0.5 * i;
+const sl = flox.targets.future_linear_slope(linear, 4);
+check(approx(sl[0], 0.5), 'targets.future_linear_slope linear-series == 0.5');
+check(Number.isNaN(sl[19]), 'targets.future_linear_slope tail NaN');
+
 // ── PositionTracker ───────────────────────────────────────────────────
 
 console.log('=== PositionTracker ===');

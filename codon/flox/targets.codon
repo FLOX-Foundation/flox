@@ -1,0 +1,30 @@
+# flox/targets.codon -- Forward-looking labels (research-only).
+#
+# Targets are batch-only and live in their own module so look-ahead is
+# visible at the call site. Feeding them into a live update loop is a
+# look-ahead-bias bug.
+
+from C import flox_target_future_return(Ptr[f64], int, int, Ptr[f64])
+from C import flox_target_future_ctc_volatility(Ptr[f64], int, int, Ptr[f64])
+from C import flox_target_future_linear_slope(Ptr[f64], int, int, Ptr[f64])
+
+
+def future_return(close: List[float], horizon: int) -> List[float]:
+    n = len(close)
+    out = [0.0] * n
+    flox_target_future_return(close.arr.ptr, n, horizon, out.arr.ptr)
+    return out
+
+
+def future_ctc_volatility(close: List[float], horizon: int) -> List[float]:
+    n = len(close)
+    out = [0.0] * n
+    flox_target_future_ctc_volatility(close.arr.ptr, n, horizon, out.arr.ptr)
+    return out
+
+
+def future_linear_slope(close: List[float], horizon: int) -> List[float]:
+    n = len(close)
+    out = [0.0] * n
+    flox_target_future_linear_slope(close.arr.ptr, n, horizon, out.arr.ptr)
+    return out

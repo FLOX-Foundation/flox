@@ -149,6 +149,26 @@ out_ema = flox.ema(prices, 3)
 check(len(out_ema) == len(prices), "batch ema length matches input")
 check(out_ema[6] > out_ema[2], "batch ema is increasing for ascending input")
 
+# ── Targets (forward-looking labels) ──────────────────────────────────
+
+print("=== Targets ===")
+
+close = np.array([100.0, 101.0, 99.0, 105.0, 110.0])
+fr = flox.targets.future_return(close, 2)
+check(approx(fr[0], 99.0 / 100.0 - 1.0), "future_return[0] == c[2]/c[0]-1")
+check(approx(fr[2], 110.0 / 99.0 - 1.0), "future_return[2] == c[4]/c[2]-1")
+check(math.isnan(fr[3]) and math.isnan(fr[4]), "future_return tail is NaN")
+
+const_close = np.full(20, 100.0)
+vol = flox.targets.future_ctc_volatility(const_close, 5)
+check(approx(vol[0], 0.0), "future_ctc_volatility on const series == 0")
+check(math.isnan(vol[19]), "future_ctc_volatility tail is NaN")
+
+linear = np.array([100.0 + 0.5 * i for i in range(20)])
+sl = flox.targets.future_linear_slope(linear, 4)
+check(approx(sl[0], 0.5), "future_linear_slope on linear series == 0.5")
+check(math.isnan(sl[19]), "future_linear_slope tail is NaN")
+
 # ── PositionTracker ───────────────────────────────────────────────────
 
 print("=== PositionTracker ===")

@@ -49,6 +49,9 @@
 #include "flox/indicator/sma.h"
 #include "flox/indicator/stochastic.h"
 #include "flox/indicator/vwap.h"
+#include "flox/target/future_ctc_volatility.h"
+#include "flox/target/future_linear_slope.h"
+#include "flox/target/future_return.h"
 
 #include "flox/aggregator/custom/footprint_bar.h"
 #include "flox/aggregator/custom/market_profile.h"
@@ -576,6 +579,30 @@ void flox_indicator_correlation(const double* x, const double* y, size_t len, si
   indicator::Correlation ind(period);
   ind.compute(std::span<const double>(x, len), std::span<const double>(y, len),
               std::span<double>(output, len));
+}
+
+// ============================================================
+// Targets
+// ============================================================
+
+void flox_target_future_return(const double* close, size_t len, size_t horizon, double* output)
+{
+  target::FutureReturn t(horizon);
+  t.compute(std::span<const double>(close, len), std::span<double>(output, len));
+}
+
+void flox_target_future_ctc_volatility(const double* close, size_t len, size_t horizon,
+                                       double* output)
+{
+  target::FutureCTCVolatility t(horizon);
+  t.compute(std::span<const double>(close, len), std::span<double>(output, len));
+}
+
+void flox_target_future_linear_slope(const double* close, size_t len, size_t horizon,
+                                     double* output)
+{
+  target::FutureLinearSlope t(horizon);
+  t.compute(std::span<const double>(close, len), std::span<double>(output, len));
 }
 
 // ============================================================
