@@ -12,6 +12,7 @@
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/common.h"
+#include "graph_bindings.h"
 #include "indicator_bindings.h"
 #include "optimizer_bindings.h"
 #include "position_bindings.h"
@@ -722,6 +723,7 @@ PYBIND11_MODULE(flox_py, m)
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);
+  bindIndicatorGraph(m);
 
   // Slippage model constants
   m.attr("SLIPPAGE_NONE") = 0;

@@ -107,6 +107,70 @@ int TempJsFile::counter_ = 0;
 // Integration tests — full strategy lifecycle
 // ============================================================
 
+TEST(JsIntegrationTest, IndicatorGraphBindings)
+{
+  TempJsFile script(R"(
+    var ramp = [];
+    for (var i = 0; i < 50; ++i) ramp.push(i);
+
+    var g = new flox.IndicatorGraph();
+    g.setBars(0, ramp);
+
+    g.addNode("ema5", [], function(graph, sym) {
+      return SMA.compute(graph.close(sym), 5);
+    });
+    g.addNode("sma5", [], function(graph, sym) {
+      return SMA.compute(graph.close(sym), 5);
+    });
+    g.addNode("diff", ["ema5", "sma5"], function(graph, sym) {
+      var a = graph.get(sym, "ema5");
+      var b = graph.get(sym, "sma5");
+      var out = [];
+      for (var i = 0; i < a.length; ++i) out.push(a[i] - b[i]);
+      return out;
+    });
+
+    var ema5 = g.require(0, "ema5");
+    var diff = g.require(0, "diff");
+    var ema5_len = ema5.length;
+    var diff_len = diff.length;
+    var sma5_cached = g.get(0, "sma5");
+    var sma5_not_null = sma5_cached !== null;
+
+    var threw = false;
+    try { g.require(0, "missing"); } catch (e) { threw = true; }
+    var require_throws = threw;
+
+    g.destroy();
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  auto* ctx = jsStrat.engine().context();
+
+  auto getInt = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    int32_t i = 0;
+    JS_ToInt32(ctx, &i, v);
+    JS_FreeValue(ctx, v);
+    return i;
+  };
+  auto getBool = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    bool b = JS_ToBool(ctx, v);
+    JS_FreeValue(ctx, v);
+    return b;
+  };
+
+  EXPECT_EQ(getInt("ema5_len"), 50);
+  EXPECT_EQ(getInt("diff_len"), 50);
+  EXPECT_TRUE(getBool("sma5_not_null"));
+  EXPECT_TRUE(getBool("require_throws"));
+}
+
 TEST(JsIntegrationTest, LoadStrategyAndResolveSymbols)
 {
   TempJsFile script(R"(

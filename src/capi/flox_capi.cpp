@@ -34,6 +34,7 @@
 #include "flox/indicator/cvd.h"
 #include "flox/indicator/dema.h"
 #include "flox/indicator/ema.h"
+#include "flox/indicator/indicator_pipeline.h"
 #include "flox/indicator/kama.h"
 #include "flox/indicator/kurtosis.h"
 #include "flox/indicator/macd.h"
@@ -576,6 +577,175 @@ void flox_indicator_correlation(const double* x, const double* y, size_t len, si
   indicator::Correlation ind(period);
   ind.compute(std::span<const double>(x, len), std::span<const double>(y, len),
               std::span<double>(output, len));
+}
+
+// ============================================================
+// IndicatorGraph (batch) — handle-based wrapper.
+// ============================================================
+
+namespace
+{
+
+struct FloxGraphImpl
+{
+  indicator::IndicatorGraph graph;
+  std::unordered_map<uint32_t, std::vector<Bar>> barStorage;
+};
+
+}  // namespace
+
+FloxIndicatorGraphHandle flox_indicator_graph_create(void)
+{
+  return new FloxGraphImpl();
+}
+
+void flox_indicator_graph_destroy(FloxIndicatorGraphHandle g)
+{
+  delete static_cast<FloxGraphImpl*>(g);
+}
+
+void flox_indicator_graph_set_bars(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                   const double* close, const double* high, const double* low,
+                                   const double* volume, size_t len)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  std::vector<Bar> bars(len);
+  for (size_t i = 0; i < len; ++i)
+  {
+    bars[i].open = Price::fromDouble(close[i]);
+    bars[i].high = Price::fromDouble(high ? high[i] : close[i]);
+    bars[i].low = Price::fromDouble(low ? low[i] : close[i]);
+    bars[i].close = Price::fromDouble(close[i]);
+    bars[i].volume = volume ? Volume::fromDouble(volume[i]) : Volume{};
+  }
+  impl->barStorage[symbol] = std::move(bars);
+  impl->graph.setBars(static_cast<SymbolId>(symbol),
+                      std::span<const Bar>(impl->barStorage[symbol]));
+}
+
+void flox_indicator_graph_add_node(FloxIndicatorGraphHandle g, const char* name,
+                                   const char* const* deps, size_t num_deps,
+                                   FloxGraphNodeFn fn, void* user_data)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  std::vector<std::string> depList;
+  depList.reserve(num_deps);
+  for (size_t i = 0; i < num_deps; ++i)
+  {
+    depList.emplace_back(deps[i]);
+  }
+  impl->graph.addNode(name, std::move(depList),
+                      [g, fn, user_data](indicator::IndicatorGraph&, SymbolId sym)
+                      {
+                        size_t outLen = 0;
+                        const double* p = fn(user_data, g, static_cast<uint32_t>(sym), &outLen);
+                        if (!p)
+                        {
+                          return std::vector<double>{};
+                        }
+                        return std::vector<double>(p, p + outLen);
+                      });
+}
+
+const double* flox_indicator_graph_require(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                           const char* name, size_t* len_out)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  try
+  {
+    const auto& v = impl->graph.require(static_cast<SymbolId>(symbol), name);
+    if (len_out)
+    {
+      *len_out = v.size();
+    }
+    return v.data();
+  }
+  catch (...)
+  {
+    if (len_out)
+    {
+      *len_out = 0;
+    }
+    return nullptr;
+  }
+}
+
+const double* flox_indicator_graph_get(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                       const char* name, size_t* len_out)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  const auto* v = impl->graph.get(static_cast<SymbolId>(symbol), name);
+  if (!v)
+  {
+    if (len_out)
+    {
+      *len_out = 0;
+    }
+    return nullptr;
+  }
+  if (len_out)
+  {
+    *len_out = v->size();
+  }
+  return v->data();
+}
+
+const double* flox_indicator_graph_close(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                         size_t* len_out)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  const auto& v = impl->graph.close(static_cast<SymbolId>(symbol));
+  if (len_out)
+  {
+    *len_out = v.size();
+  }
+  return v.data();
+}
+
+const double* flox_indicator_graph_high(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                        size_t* len_out)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  const auto& v = impl->graph.high(static_cast<SymbolId>(symbol));
+  if (len_out)
+  {
+    *len_out = v.size();
+  }
+  return v.data();
+}
+
+const double* flox_indicator_graph_low(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                       size_t* len_out)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  const auto& v = impl->graph.low(static_cast<SymbolId>(symbol));
+  if (len_out)
+  {
+    *len_out = v.size();
+  }
+  return v.data();
+}
+
+const double* flox_indicator_graph_volume(FloxIndicatorGraphHandle g, uint32_t symbol,
+                                          size_t* len_out)
+{
+  auto* impl = static_cast<FloxGraphImpl*>(g);
+  const auto& v = impl->graph.volume(static_cast<SymbolId>(symbol));
+  if (len_out)
+  {
+    *len_out = v.size();
+  }
+  return v.data();
+}
+
+void flox_indicator_graph_invalidate(FloxIndicatorGraphHandle g, uint32_t symbol)
+{
+  static_cast<FloxGraphImpl*>(g)->graph.invalidate(static_cast<SymbolId>(symbol));
+}
+
+void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g)
+{
+  static_cast<FloxGraphImpl*>(g)->graph.invalidateAll();
 }
 
 // ============================================================

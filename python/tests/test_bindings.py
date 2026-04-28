@@ -149,6 +149,37 @@ out_ema = flox.ema(prices, 3)
 check(len(out_ema) == len(prices), "batch ema length matches input")
 check(out_ema[6] > out_ema[2], "batch ema is increasing for ascending input")
 
+# ── IndicatorGraph (batch) ───────────────────────────────────────────
+
+print("=== IndicatorGraph (batch) ===")
+
+ramp = np.array([float(i) for i in range(50)])
+g = flox.IndicatorGraph()
+g.set_bars(0, ramp)
+
+# Two independent batch nodes + one dependent node that reads its parents.
+g.add_node("ema5", [], lambda graph, sym: flox.ema(graph.close(sym), 5))
+g.add_node("sma5", [], lambda graph, sym: flox.sma(graph.close(sym), 5))
+g.add_node("diff", ["ema5", "sma5"],
+           lambda graph, sym: graph.get(sym, "ema5") - graph.get(sym, "sma5"))
+
+ema5 = g.require(0, "ema5")
+diff = g.require(0, "diff")
+check(len(ema5) == 50, "graph require returns full-length array")
+check(len(diff) == 50, "graph dependent node has same length")
+# get() returns cached value after require ran.
+sma5_cached = g.get(0, "sma5")
+check(sma5_cached is not None, "get returns the cached node array after require")
+check(np.allclose(diff, ema5 - sma5_cached, equal_nan=True), "dependent node uses parents")
+
+# Unknown node → throws.
+threw = False
+try:
+    g.require(0, "missing")
+except Exception:
+    threw = True
+check(threw, "require on unknown node throws")
+
 # ── PositionTracker ───────────────────────────────────────────────────
 
 print("=== PositionTracker ===")

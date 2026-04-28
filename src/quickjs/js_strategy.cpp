@@ -461,7 +461,31 @@ void FloxJsStrategy::loadStdlib()
         return __flox_seg_extract_time(inputPath, outputPath, fromNs || 0, toNs || 0);
       },
 
-      loadCsv: function(path) { return __flox_load_csv(path); }
+      loadCsv: function(path) { return __flox_load_csv(path); },
+
+      IndicatorGraph: class {
+        constructor() {
+          this._h = __flox_graph_create();
+        }
+        destroy() {
+          if (this._h) { __flox_graph_destroy(this._h); this._h = null; }
+        }
+        setBars(symbol, close, high, low, volume) {
+          __flox_graph_set_bars(this._h, symbol, close, high || null,
+                                low || null, volume || null);
+        }
+        addNode(name, deps, fn) {
+          __flox_graph_add_node(this._h, name, deps || [], fn, this);
+        }
+        require(symbol, name) { return __flox_graph_require(this._h, symbol, name); }
+        get(symbol, name) { return __flox_graph_get(this._h, symbol, name); }
+        close(symbol) { return __flox_graph_close(this._h, symbol); }
+        high(symbol) { return __flox_graph_high(this._h, symbol); }
+        low(symbol) { return __flox_graph_low(this._h, symbol); }
+        volume(symbol) { return __flox_graph_volume(this._h, symbol); }
+        invalidate(symbol) { __flox_graph_invalidate(this._h, symbol); }
+        invalidateAll() { __flox_graph_invalidate_all(this._h); }
+      }
     };
   )";
   if (!_engine.eval(registerCode, "<flox_register>"))
