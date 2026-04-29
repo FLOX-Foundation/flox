@@ -130,6 +130,23 @@ for (let i = 0; i < N; ++i) noise[i] = gen2() * 0.5;
 const r2 = flox.adf(noise, 4, 'c');
 check(r2.test_stat < r.test_stat, 'stationary series produces lower test_stat');
 check(r2.p_value < 0.05, 'adf rejects H0 for white noise');
+// ── AutoCorrelation ───────────────────────────────────────────────────
+
+console.log('=== AutoCorrelation ===');
+
+const acLinear = new Float64Array(50);
+for (let i = 0; i < 50; ++i) acLinear[i] = 5.0 + 0.7 * i;
+const ac = flox.autocorrelation(acLinear, 10, 1);
+check(Number.isNaN(ac[9]), 'autocorrelation warmup is NaN');
+check(approx(ac[10], 1.0), 'autocorrelation linear lag=1 == 1.0');
+
+const acStream = new flox.AutoCorrelation(10, 1);
+let lastStreamed = undefined;
+for (let i = 0; i < acLinear.length; ++i) {
+  lastStreamed = acStream.update(acLinear[i]);
+}
+check(approx(lastStreamed, ac[ac.length - 1]),
+      'streaming AutoCorrelation matches batch on last index');
 
 // ── PositionTracker ───────────────────────────────────────────────────
 

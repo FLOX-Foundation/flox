@@ -76,6 +76,7 @@ endif()
 add_flox_test(test_indicators)
 add_flox_test(test_targets)
 add_flox_test(test_adf)
+add_flox_test(test_autocorrelation)
 
 if(FLOX_ENABLE_CAPI)
   add_flox_test(test_capi_registry)

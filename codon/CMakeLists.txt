@@ -44,3 +44,6 @@ add_codon_executable(codon_targets_smoke
 
 add_codon_executable(codon_adf_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/adf_smoke.codon)
+
+add_codon_executable(codon_autocorrelation_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/autocorrelation_smoke.codon)

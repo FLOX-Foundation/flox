@@ -791,3 +791,40 @@ function adf(data, max_lag, regression) {
     return __flox_indicator_adf(data, max_lag === undefined ? 4 : max_lag,
                                 regression === undefined ? "c" : regression);
 }
+
+// ============================================================
+// AutoCorrelation
+// ============================================================
+
+class AutoCorrelation {
+    constructor(window, lag) {
+        this._window = window;
+        this._lag = lag;
+        this._buf = [];
+        this._value = NaN;
+    }
+    update(x) {
+        this._buf.push(x);
+        var needed = this._window + this._lag;
+        if (this._buf.length > needed) this._buf.shift();
+        if (this._buf.length < needed) return this._value;
+        var w = this._window;
+        var sx = 0, sy = 0, sxy = 0, sx2 = 0, sy2 = 0;
+        for (var i = 0; i < w; ++i) {
+            var xi = this._buf[i + this._lag];
+            var yi = this._buf[i];
+            sx += xi; sy += yi;
+            sxy += xi * yi;
+            sx2 += xi * xi;
+            sy2 += yi * yi;
+        }
+        var num = w * sxy - sx * sy;
+        var den = Math.sqrt((w * sx2 - sx * sx) * (w * sy2 - sy * sy));
+        this._value = den === 0 ? NaN : num / den;
+        return this._value;
+    }
+    get value() { return this._value; }
+    get ready() { return this._buf.length >= this._window + this._lag; }
+    reset() { this._buf = []; this._value = NaN; }
+    static compute(data, window, lag) { return __flox_indicator_autocorrelation(data, window, lag); }
+}
