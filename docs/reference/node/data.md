@@ -29,6 +29,8 @@ Reads binary log segments.
 ```javascript
 const reader = new flox.DataReader(dataDir, fromNs?, toNs?);
 const trades = reader.readTrades();
+const bbos = reader.readBBO();
+const events = reader.readBookUpdates();
 ```
 
 | Method / Property | Returns | Description |
@@ -37,8 +39,16 @@ const trades = reader.readTrades();
 | `summary()` | `{ firstEventNs, lastEventNs, totalEvents, segmentCount, totalBytes, durationSeconds }` | Dataset summary |
 | `stats()` | `{ filesRead, eventsRead, tradesRead, bookUpdatesRead, bytesRead, crcErrors }` | Read statistics |
 | `readTrades(max?)` | trade record array | Read up to `max` trades (all if omitted) |
+| `readBBO(max?)` | BBO record array | Top of book per book update event |
+| `readBookUpdates()` | book update array | Full depth: each event includes `bids` and `asks` arrays |
 
-Each trade record: `{ exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side }`.
+Record shapes:
+
+- **Trade**: `{ exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side }`
+- **BBO**: `{ exchangeTsNs, recvTsNs, seq, symbolId, eventType, bidPrice, bidQty, askPrice, askQty }`
+- **Book update**: `{ exchangeTsNs, recvTsNs, seq, symbolId, eventType, bids: [{price, qty}, ...], asks: [{price, qty}, ...] }`
+
+`eventType` is `2` for a snapshot, `3` for a delta.
 
 ---
 

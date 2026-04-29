@@ -1506,6 +1506,95 @@ static JSValue js_dr_read_trades(JSContext* c, JSValueConst, int argc, JSValueCo
   return arr;
 }
 
+static JSValue js_dr_read_bbo(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
+  uint64_t n = flox_data_reader_read_bbo(h, nullptr, 0);
+  if (max > 0 && max < n)
+  {
+    n = max;
+  }
+  if (n == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxBBO> bbos(n);
+  uint64_t got = flox_data_reader_read_bbo(h, bbos.data(), n);
+  JSValue arr = JS_NewArray(c);
+  for (uint64_t i = 0; i < got; i++)
+  {
+    const auto& b = bbos[i];
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewInt64(c, b.exchange_ts_ns));
+    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewInt64(c, b.recv_ts_ns));
+    JS_SetPropertyStr(c, o, "seq", JS_NewInt64(c, b.seq));
+    JS_SetPropertyStr(c, o, "symbolId", JS_NewUint32(c, b.symbol_id));
+    JS_SetPropertyStr(c, o, "eventType", JS_NewUint32(c, b.event_type));
+    JS_SetPropertyStr(c, o, "bidPrice",
+                      JS_NewFloat64(c, static_cast<double>(b.bid_price_raw) / 1e8));
+    JS_SetPropertyStr(c, o, "bidQty",
+                      JS_NewFloat64(c, static_cast<double>(b.bid_qty_raw) / 1e8));
+    JS_SetPropertyStr(c, o, "askPrice",
+                      JS_NewFloat64(c, static_cast<double>(b.ask_price_raw) / 1e8));
+    JS_SetPropertyStr(c, o, "askQty",
+                      JS_NewFloat64(c, static_cast<double>(b.ask_qty_raw) / 1e8));
+    JS_SetPropertyUint32(c, arr, static_cast<uint32_t>(i), o);
+  }
+  return arr;
+}
+
+static JSValue js_dr_read_book_updates(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  uint64_t total_levels = 0;
+  uint64_t n_events = flox_data_reader_count_book_updates(h, &total_levels);
+  if (n_events == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxBookUpdateHeader> headers(n_events);
+  std::vector<FloxLevel> levels(total_levels);
+  uint64_t got = flox_data_reader_read_book_updates(h, headers.data(), n_events,
+                                                    levels.data(), total_levels);
+  JSValue arr = JS_NewArray(c);
+  for (uint64_t i = 0; i < got; i++)
+  {
+    const auto& hdr = headers[i];
+    JSValue o = JS_NewObject(c);
+    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewInt64(c, hdr.exchange_ts_ns));
+    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewInt64(c, hdr.recv_ts_ns));
+    JS_SetPropertyStr(c, o, "seq", JS_NewInt64(c, hdr.seq));
+    JS_SetPropertyStr(c, o, "symbolId", JS_NewUint32(c, hdr.symbol_id));
+    JS_SetPropertyStr(c, o, "eventType", JS_NewUint32(c, hdr.event_type));
+
+    JSValue bids = JS_NewArray(c);
+    for (uint16_t k = 0; k < hdr.bid_count; k++)
+    {
+      const auto& l = levels[hdr.level_offset + k];
+      JSValue lo = JS_NewObject(c);
+      JS_SetPropertyStr(c, lo, "price", JS_NewFloat64(c, static_cast<double>(l.price_raw) / 1e8));
+      JS_SetPropertyStr(c, lo, "qty", JS_NewFloat64(c, static_cast<double>(l.qty_raw) / 1e8));
+      JS_SetPropertyUint32(c, bids, k, lo);
+    }
+    JS_SetPropertyStr(c, o, "bids", bids);
+
+    JSValue asks = JS_NewArray(c);
+    for (uint16_t k = 0; k < hdr.ask_count; k++)
+    {
+      const auto& l = levels[hdr.level_offset + hdr.bid_count + k];
+      JSValue lo = JS_NewObject(c);
+      JS_SetPropertyStr(c, lo, "price", JS_NewFloat64(c, static_cast<double>(l.price_raw) / 1e8));
+      JS_SetPropertyStr(c, lo, "qty", JS_NewFloat64(c, static_cast<double>(l.qty_raw) / 1e8));
+      JS_SetPropertyUint32(c, asks, k, lo);
+    }
+    JS_SetPropertyStr(c, o, "asks", asks);
+
+    JS_SetPropertyUint32(c, arr, static_cast<uint32_t>(i), o);
+  }
+  return arr;
+}
+
 // ============================================================
 // DataRecorder
 // ============================================================
@@ -2406,6 +2495,8 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_dr_summary", js_dr_summary, 1);
   addGlobalFunc(ctx, "__flox_dr_stats", js_dr_stats, 1);
   addGlobalFunc(ctx, "__flox_dr_read_trades", js_dr_read_trades, 2);
+  addGlobalFunc(ctx, "__flox_dr_read_bbo", js_dr_read_bbo, 2);
+  addGlobalFunc(ctx, "__flox_dr_read_book_updates", js_dr_read_book_updates, 1);
 
   // DataRecorder
   addGlobalFunc(ctx, "__flox_recorder_create", js_recorder_create, 3);

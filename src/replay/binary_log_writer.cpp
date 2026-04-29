@@ -341,6 +341,10 @@ bool BinaryLogWriter::flushBlock()
     return false;
   }
 
+  // Flush stdio buffer to kernel so the complete block is visible to external
+  // readers (e.g. rsync) even if the process is killed before close().
+  std::fflush(_file);
+
   size_t total_written = sizeof(CompressedBlockHeader) + compressed_size;
   _segment_bytes += total_written;
   _stats.bytes_written += total_written;
@@ -354,6 +358,10 @@ bool BinaryLogWriter::flushBlock()
     _index_entries.push_back(
         IndexEntry{.timestamp_ns = _block_first_timestamp, .file_offset = block_offset});
   }
+
+  // Keep segment header current so readers see valid metadata even if the
+  // process is killed before closeInternal() is reached.
+  updateSegmentHeader();
 
   // Reset block state
   _block_buffer.clear();

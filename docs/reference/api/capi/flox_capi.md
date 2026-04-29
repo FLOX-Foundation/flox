@@ -752,9 +752,37 @@ void     flox_data_reader_stats_p(FloxDataReaderHandle reader, void* out);   // 
 // Returns number of trades read. If trades_out is NULL, counts only.
 uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader,
                                       FloxTradeRecord* trades_out, uint64_t max_trades);
+
+// Top-of-book per book update event. If bbos_out is NULL, counts only.
+uint64_t flox_data_reader_read_bbo(FloxDataReaderHandle reader,
+                                   FloxBBO* bbos_out, uint64_t max_events);
+
+// Counts events and total levels in one pass. *total_levels_out may be NULL.
+uint64_t flox_data_reader_count_book_updates(FloxDataReaderHandle reader,
+                                             uint64_t* total_levels_out);
+
+// Reads book updates into pre-sized headers and a single flat levels array.
+// Caller sizes both via flox_data_reader_count_book_updates() first.
+// Each header carries level_offset, bid_count, ask_count for slicing the
+// levels array. Bids are written before asks for each event.
+uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle reader,
+                                            FloxBookUpdateHeader* headers_out,
+                                            uint64_t max_events,
+                                            FloxLevel* levels_out,
+                                            uint64_t max_levels);
 ```
 
 `FloxTradeRecord` fields: `exchange_ts_ns`, `recv_ts_ns`, `price_raw`, `qty_raw`, `trade_id`, `symbol_id`, `side`.
+
+`FloxBBO` fields (size: 64 B): `exchange_ts_ns`, `recv_ts_ns`, `seq`, `bid_price_raw`, `bid_qty_raw`, `ask_price_raw`, `ask_qty_raw`, `symbol_id`, `event_type` (2=snapshot, 3=delta).
+
+`FloxBookUpdateHeader` fields (size: 48 B): `exchange_ts_ns`, `recv_ts_ns`, `seq`, `level_offset`, `symbol_id`, `bid_count`, `ask_count`, `event_type`.
+
+`FloxLevel` fields (size: 24 B): `price_raw`, `qty_raw`, `side` (0=bid, 1=ask).
+
+Layout sizes are pinned with `static_assert`; language bindings (Codon, QuickJS) parse these structs from raw byte buffers and depend on exact offsets.
+
+Live segments are safe to read while a writer is still appending. Compressed segments whose header has not yet been finalized (`event_count == 0`) are recovered by walking block headers and decompressing the first / last viable block; the very last block is often truncated, so the scan iterates backwards until one decompresses successfully. The same recovery is used by `summary()` / `inspect()`.
 
 ---
 

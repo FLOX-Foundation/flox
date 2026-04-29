@@ -86,3 +86,47 @@ flox.permutationTest([1, 2, 3], [4, 5, 6], 10000); // p-value
 flox.validateSegment('/path/to/segment.flx');
 flox.mergeSegments('/path/to/input_dir', '/path/to/output_dir');
 ```
+
+---
+
+## Data reader / writer / recorder
+
+Read trades and book updates from binary log segments, or record live data.
+
+```javascript
+const reader = new DataReader('./data');
+// Filtered reader:
+//   new DataReader({ dir: './data', fromNs, toNs, symbols })
+
+reader.count;            // total events
+reader.summary();        // { firstEventNs, lastEventNs, totalEvents, segmentCount, totalBytes, durationSeconds }
+reader.stats();          // { filesRead, eventsRead, tradesRead, bookUpdatesRead, bytesRead, crcErrors }
+
+const trades = reader.readTrades(maxTrades = 0);   // 0 = all
+const bbos = reader.readBBO(maxEvents = 0);
+const events = reader.readBookUpdates();
+
+reader.destroy();
+```
+
+Record shapes:
+
+- **Trade**: `{ exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side }`
+- **BBO**: `{ exchangeTsNs, recvTsNs, seq, symbolId, eventType, bidPrice, bidQty, askPrice, askQty }`
+- **Book update**: `{ exchangeTsNs, recvTsNs, seq, symbolId, eventType, bids: [{price, qty}, ...], asks: [{price, qty}, ...] }`
+
+`eventType` is `2` for a snapshot, `3` for a delta.
+
+```javascript
+const writer = new DataWriter('./out', maxSegmentMb, exchangeId);
+writer.writeTrade(exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side);
+writer.flush();
+writer.close();
+writer.stats();          // { bytesWritten, eventsWritten, segmentsCreated, tradesWritten }
+
+const recorder = new DataRecorder('./out', exchangeName, maxSegmentMb);
+recorder.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
+recorder.start();
+// feed live data...
+recorder.stop();
+```
