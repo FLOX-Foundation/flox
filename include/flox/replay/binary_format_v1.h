@@ -59,7 +59,12 @@ struct alignas(8) SegmentHeader
 
   bool isValid() const noexcept { return magic == kMagic && version == kFormatVersion; }
   bool hasIndex() const noexcept { return (flags & SegmentFlags::HasIndex) && index_offset > 0; }
-  bool isCompressed() const noexcept { return (flags & SegmentFlags::Compressed) != 0; }
+  // Some older writers set `compression` field but forgot the Compressed flag.
+  // Treat either signal as compressed.
+  bool isCompressed() const noexcept
+  {
+    return ((flags & SegmentFlags::Compressed) != 0) || (compression != static_cast<uint8_t>(CompressionType::None));
+  }
   bool isSorted() const noexcept { return (flags & SegmentFlags::Sorted) != 0; }
   CompressionType compressionType() const noexcept { return static_cast<CompressionType>(compression); }
 };

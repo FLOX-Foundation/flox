@@ -24,7 +24,8 @@ enum class BarType : uint8_t
   Volume,
   Renko,
   Range,
-  HeikinAshi
+  HeikinAshi,
+  BpsRange
 };
 
 enum class BarCloseReason : uint8_t
