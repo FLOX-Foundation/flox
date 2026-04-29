@@ -1,0 +1,109 @@
+# flox/graph.codon -- IndicatorGraph (batch) bindings via the C API.
+#
+# Compose batch indicators with shared intermediate caching. Mirrors the
+# C++ flox::indicator::IndicatorGraph surface.
+#
+# Usage:
+#   from flox.graph import IndicatorGraph
+#   from flox.indicators import ema, sma
+#
+#   g = IndicatorGraph()
+#   g.set_bars(0, close)
+#   g.add_node("ema50", [], lambda graph, sym: ema(graph.close(sym), 50))
+#   out = g.require(0, "ema50")
+
+from C import flox_indicator_graph_create() -> cobj
+from C import flox_indicator_graph_destroy(cobj)
+from C import flox_indicator_graph_set_bars(cobj, u32, Ptr[f64], Ptr[f64], Ptr[f64], Ptr[f64], int)
+from C import flox_indicator_graph_add_node(cobj, cobj, Ptr[cobj], int, cobj, cobj)
+from C import flox_indicator_graph_require(cobj, u32, cobj, Ptr[int]) -> Ptr[f64]
+from C import flox_indicator_graph_get(cobj, u32, cobj, Ptr[int]) -> Ptr[f64]
+from C import flox_indicator_graph_close(cobj, u32, Ptr[int]) -> Ptr[f64]
+from C import flox_indicator_graph_high(cobj, u32, Ptr[int]) -> Ptr[f64]
+from C import flox_indicator_graph_low(cobj, u32, Ptr[int]) -> Ptr[f64]
+from C import flox_indicator_graph_volume(cobj, u32, Ptr[int]) -> Ptr[f64]
+from C import flox_indicator_graph_invalidate(cobj, u32)
+from C import flox_indicator_graph_invalidate_all(cobj)
+
+
+def _ptr_to_list(p: Ptr[f64], n: int) -> List[float]:
+    out = [0.0] * n
+    for i in range(n):
+        out[i] = p[i]
+    return out
+
+
+class IndicatorGraph:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_indicator_graph_create()
+
+    def __del__(self):
+        if self._h != cobj():
+            flox_indicator_graph_destroy(self._h)
+            self._h = cobj()
+
+    def set_bars(self, symbol: int, close: List[float],
+                 high: List[float] = None, low: List[float] = None,
+                 volume: List[float] = None):
+        n = len(close)
+        h_ptr = high.arr.ptr if high is not None else Ptr[f64]()
+        l_ptr = low.arr.ptr if low is not None else Ptr[f64]()
+        v_ptr = volume.arr.ptr if volume is not None else Ptr[f64]()
+        flox_indicator_graph_set_bars(self._h, u32(symbol), close.arr.ptr,
+                                      h_ptr, l_ptr, v_ptr, n)
+
+    def require(self, symbol: int, name: str) -> List[float]:
+        out_len = [0]
+        p = flox_indicator_graph_require(self._h, u32(symbol), name.c_str(), out_len.arr.ptr)
+        if int(p) == 0:
+            raise ValueError("graph: require failed for node " + name)
+        return _ptr_to_list(p, out_len[0])
+
+    def get(self, symbol: int, name: str) -> Optional[List[float]]:
+        out_len = [0]
+        p = flox_indicator_graph_get(self._h, u32(symbol), name.c_str(), out_len.arr.ptr)
+        if int(p) == 0:
+            return None
+        return _ptr_to_list(p, out_len[0])
+
+    def close(self, symbol: int) -> List[float]:
+        out_len = [0]
+        p = flox_indicator_graph_close(self._h, u32(symbol), out_len.arr.ptr)
+        return _ptr_to_list(p, out_len[0])
+
+    def high(self, symbol: int) -> List[float]:
+        out_len = [0]
+        p = flox_indicator_graph_high(self._h, u32(symbol), out_len.arr.ptr)
+        return _ptr_to_list(p, out_len[0])
+
+    def low(self, symbol: int) -> List[float]:
+        out_len = [0]
+        p = flox_indicator_graph_low(self._h, u32(symbol), out_len.arr.ptr)
+        return _ptr_to_list(p, out_len[0])
+
+    def volume(self, symbol: int) -> List[float]:
+        out_len = [0]
+        p = flox_indicator_graph_volume(self._h, u32(symbol), out_len.arr.ptr)
+        return _ptr_to_list(p, out_len[0])
+
+    def invalidate(self, symbol: int):
+        flox_indicator_graph_invalidate(self._h, u32(symbol))
+
+    def invalidate_all(self):
+        flox_indicator_graph_invalidate_all(self._h)
+
+    # add_node from Codon requires the user to supply a C-compatible
+    # function pointer (top-level function with the FloxGraphNodeFn
+    # signature) rather than a closure. Pass `fn_ptr` as cobj and
+    # `user_data` as cobj or Ptr; the graph keeps both alive.
+    def add_node_raw(self, name: str, deps: List[str],
+                     fn_ptr: cobj, user_data: cobj = cobj()):
+        n = len(deps)
+        # Build a Ptr[cobj] of C-string pointers for deps.
+        dep_ptrs = Ptr[cobj](n) if n > 0 else Ptr[cobj]()
+        for i in range(n):
+            dep_ptrs[i] = deps[i].c_str()
+        flox_indicator_graph_add_node(self._h, name.c_str(), dep_ptrs, n,
+                                      fn_ptr, user_data)
