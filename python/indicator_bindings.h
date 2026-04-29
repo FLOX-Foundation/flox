@@ -230,21 +230,23 @@ class PyATR
   PyATR(size_t period) : _period(period) {}
   py::object update(double high, double low, double close)
   {
-    double tr;
-    if (_count == 0)
-    {
-      tr = high - low;
-    }
-    else
-    {
-      tr = std::max({high - low, std::abs(high - _prevClose), std::abs(low - _prevClose)});
-    }
-    _prevClose = close;
     _count++;
-    if (_count <= _period)
+    if (_count == 1)
+    {
+      // Bar 0: store close only; TR requires a previous close
+      _prevClose = close;
+      return py::none();
+    }
+    double tr = std::max({high - low, std::abs(high - _prevClose), std::abs(low - _prevClose)});
+    _prevClose = close;
+    // Seed phase: accumulate TR[1..period]
+    if (_count <= _period + 1)
     {
       _sum += tr;
-      _value = _sum / _count;
+      if (_count == _period + 1)
+      {
+        _value = _sum / static_cast<double>(_period);
+      }
     }
     else
     {
@@ -253,7 +255,7 @@ class PyATR
     return optVal(_value, isReady());
   }
   py::object getValue() const { return optVal(_value, isReady()); }
-  bool isReady() const { return _count >= _period; }
+  bool isReady() const { return _count >= _period + 1; }
   void reset()
   {
     _count = 0;
@@ -275,11 +277,19 @@ class PyDEMA
   py::object update(double value)
   {
     _ema1.update(value);
-    double e1 = _ema1.isReady() ? py::cast<double>(_ema1.getValue()) : 0;
+    if (!_ema1.isReady())
+    {
+      return py::none();
+    }
+    double e1 = py::cast<double>(_ema1.getValue());
     _ema2.update(e1);
-    double e2 = _ema2.isReady() ? py::cast<double>(_ema2.getValue()) : 0;
-    _value = 2 * e1 - e2;
-    return optVal(_value, isReady());
+    if (!_ema2.isReady())
+    {
+      return py::none();
+    }
+    double e2 = py::cast<double>(_ema2.getValue());
+    _value = 2.0 * e1 - e2;
+    return py::cast(_value);
   }
   py::object getValue() const { return optVal(_value, isReady()); }
   bool isReady() const { return _ema2.isReady(); }
@@ -304,13 +314,25 @@ class PyTEMA
   py::object update(double value)
   {
     _ema1.update(value);
-    double e1 = _ema1.isReady() ? py::cast<double>(_ema1.getValue()) : 0;
+    if (!_ema1.isReady())
+    {
+      return py::none();
+    }
+    double e1 = py::cast<double>(_ema1.getValue());
     _ema2.update(e1);
-    double e2 = _ema2.isReady() ? py::cast<double>(_ema2.getValue()) : 0;
+    if (!_ema2.isReady())
+    {
+      return py::none();
+    }
+    double e2 = py::cast<double>(_ema2.getValue());
     _ema3.update(e2);
-    double e3 = _ema3.isReady() ? py::cast<double>(_ema3.getValue()) : 0;
-    _value = 3 * e1 - 3 * e2 + e3;
-    return optVal(_value, isReady());
+    if (!_ema3.isReady())
+    {
+      return py::none();
+    }
+    double e3 = py::cast<double>(_ema3.getValue());
+    _value = 3.0 * e1 - 3.0 * e2 + e3;
+    return py::cast(_value);
   }
   py::object getValue() const { return optVal(_value, isReady()); }
   bool isReady() const { return _ema3.isReady(); }
@@ -418,17 +440,33 @@ class PyMACD
   }
   py::object update(double value)
   {
-    _fastEma.update(value);
+    _history.push_back(value);
     _slowEma.update(value);
-    double f = _fastEma.isReady() ? py::cast<double>(_fastEma.getValue()) : 0;
-    double s = _slowEma.isReady() ? py::cast<double>(_slowEma.getValue()) : 0;
-    _line = f - s;
-    if (_slowEma.isReady())
+
+    if (!_slowEma.isReady())
     {
-      _signalEma.update(_line);
-      _ready = _signalEma.isReady();
-      _signalVal = _signalEma.isReady() ? py::cast<double>(_signalEma.getValue()) : 0;
+      return py::none();
     }
+
+    // TA-Lib convention: seed fast EMA at the same index as slow EMA,
+    // using the last `_fast` values from history.
+    if (!_fastSeeded)
+    {
+      for (size_t i = _history.size() - _fast; i < _history.size(); ++i)
+      {
+        _fastEma.update(_history[i]);
+      }
+      _fastSeeded = true;
+    }
+    else
+    {
+      _fastEma.update(value);
+    }
+
+    _line = py::cast<double>(_fastEma.getValue()) - py::cast<double>(_slowEma.getValue());
+    _signalEma.update(_line);
+    _ready = _signalEma.isReady();
+    _signalVal = _ready ? py::cast<double>(_signalEma.getValue()) : 0;
     _histogram = _line - _signalVal;
     return optVal(_line, _ready);
   }
@@ -442,6 +480,8 @@ class PyMACD
     _fastEma.reset();
     _slowEma.reset();
     _signalEma.reset();
+    _history.clear();
+    _fastSeeded = false;
     _line = 0;
     _signalVal = 0;
     _histogram = 0;
@@ -452,6 +492,8 @@ class PyMACD
  private:
   size_t _fast, _slow, _signal;
   PyEMA _fastEma, _slowEma, _signalEma;
+  std::vector<double> _history;
+  bool _fastSeeded = false;
   double _line = 0, _signalVal = 0, _histogram = 0;
   bool _ready = false;
 };

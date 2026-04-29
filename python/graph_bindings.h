@@ -196,6 +196,12 @@ class PyStreamingIndicatorGraph
     return _sg.barCount(static_cast<flox::SymbolId>(symbol));
   }
 
+  py::array_t<double> require(uint32_t symbol, const std::string& name)
+  {
+    const auto& v = _sg.batchGraph().require(static_cast<flox::SymbolId>(symbol), name);
+    return toArray(v);
+  }
+
   void reset(uint32_t symbol) { _sg.reset(static_cast<flox::SymbolId>(symbol)); }
   void resetAll() { _sg.resetAll(); }
 
@@ -254,6 +260,7 @@ inline void bindIndicatorGraph(py::module_& m)
       .def("step", &PyStreamingIndicatorGraph::step, py::arg("symbol"), py::arg("close"),
            py::arg("high") = py::none(), py::arg("low") = py::none(),
            py::arg("volume") = py::none())
+      .def("require", &PyStreamingIndicatorGraph::require, py::arg("symbol"), py::arg("name"))
       .def("current", &PyStreamingIndicatorGraph::current, py::arg("symbol"), py::arg("name"))
       .def("bar_count", &PyStreamingIndicatorGraph::barCount, py::arg("symbol"))
       .def("reset", &PyStreamingIndicatorGraph::reset, py::arg("symbol"))

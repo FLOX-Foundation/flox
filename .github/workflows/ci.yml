@@ -107,6 +107,9 @@ jobs:
     - name: Verify Python bindings
       run: PYTHONPATH=build/python python3 python/tests/test_bindings.py
 
+    - name: Parity tests (batch vs streaming, all dual-exposed indicators)
+      run: PYTHONPATH=build/python python3 python/tests/test_parity.py
+
     - name: Run Python example
       run: PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
 
