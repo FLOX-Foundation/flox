@@ -813,6 +813,60 @@ extern "C"
   uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader, FloxTradeRecord* trades_out,
                                         uint64_t max_trades);
 
+  // Best bid/ask extracted from each book update event.
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t recv_ts_ns;
+    int64_t seq;
+    int64_t bid_price_raw;
+    int64_t bid_qty_raw;
+    int64_t ask_price_raw;
+    int64_t ask_qty_raw;
+    uint32_t symbol_id;
+    uint8_t event_type;  // 2=snapshot, 3=delta
+  } FloxBBO;
+
+  // Per-event header for read_book_updates(). Levels live in a separate
+  // flat array; level_offset/bid_count/ask_count slice it for this event.
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t recv_ts_ns;
+    int64_t seq;
+    uint64_t level_offset;
+    uint32_t symbol_id;
+    uint16_t bid_count;
+    uint16_t ask_count;
+    uint8_t event_type;  // 2=snapshot, 3=delta
+  } FloxBookUpdateHeader;
+
+  typedef struct
+  {
+    int64_t price_raw;
+    int64_t qty_raw;
+    uint8_t side;  // 0=bid, 1=ask
+  } FloxLevel;
+
+  // Returns number of book update events read. If bbos_out is NULL, counts only.
+  uint64_t flox_data_reader_read_bbo(FloxDataReaderHandle reader, FloxBBO* bbos_out,
+                                     uint64_t max_events);
+
+  // Counts book update events and total levels in a single pass.
+  // Returns event count; writes total level count to *total_levels_out (may be NULL).
+  uint64_t flox_data_reader_count_book_updates(FloxDataReaderHandle reader,
+                                               uint64_t* total_levels_out);
+
+  // Reads book updates into pre-sized arrays. Caller must size headers_out
+  // (>= event count) and levels_out (>= total levels) using
+  // flox_data_reader_count_book_updates().
+  // Returns number of events read.
+  uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle reader,
+                                              FloxBookUpdateHeader* headers_out,
+                                              uint64_t max_events,
+                                              FloxLevel* levels_out,
+                                              uint64_t max_levels);
+
   // ============================================================
   // DataWriter (extras)
   // ============================================================

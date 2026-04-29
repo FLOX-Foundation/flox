@@ -2022,6 +2022,129 @@ uint64_t flox_data_reader_read_trades(FloxDataReaderHandle h, FloxTradeRecord* t
   return count;
 }
 
+// Layout invariants — language bindings (Codon, QuickJS) parse these structs
+// from raw byte buffers and depend on exact offsets/sizes.
+static_assert(sizeof(FloxBBO) == 64, "FloxBBO must be 64 bytes");
+static_assert(sizeof(FloxBookUpdateHeader) == 48, "FloxBookUpdateHeader must be 48 bytes");
+static_assert(sizeof(FloxLevel) == 24, "FloxLevel must be 24 bytes");
+
+uint64_t flox_data_reader_read_bbo(FloxDataReaderHandle h, FloxBBO* bbos_out,
+                                   uint64_t max_events)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  uint64_t count = 0;
+  reader->forEach(
+      [&](const replay::ReplayEvent& ev) -> bool
+      {
+        if (ev.type != replay::EventType::BookSnapshot &&
+            ev.type != replay::EventType::BookDelta)
+        {
+          return true;
+        }
+
+        if (bbos_out && count < max_events)
+        {
+          FloxBBO b{};
+          b.exchange_ts_ns = ev.book_header.exchange_ts_ns;
+          b.recv_ts_ns = ev.book_header.recv_ts_ns;
+          b.seq = ev.book_header.seq;
+          b.symbol_id = ev.book_header.symbol_id;
+          b.event_type = ev.book_header.type;
+          if (!ev.bids.empty())
+          {
+            b.bid_price_raw = ev.bids[0].price_raw;
+            b.bid_qty_raw = ev.bids[0].qty_raw;
+          }
+          if (!ev.asks.empty())
+          {
+            b.ask_price_raw = ev.asks[0].price_raw;
+            b.ask_qty_raw = ev.asks[0].qty_raw;
+          }
+          bbos_out[count] = b;
+        }
+        ++count;
+        return !bbos_out || count < max_events;
+      });
+  return count;
+}
+
+uint64_t flox_data_reader_count_book_updates(FloxDataReaderHandle h, uint64_t* total_levels_out)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  uint64_t events = 0;
+  uint64_t levels = 0;
+  reader->forEach(
+      [&](const replay::ReplayEvent& ev) -> bool
+      {
+        if (ev.type == replay::EventType::BookSnapshot ||
+            ev.type == replay::EventType::BookDelta)
+        {
+          ++events;
+          levels += ev.bids.size() + ev.asks.size();
+        }
+        return true;
+      });
+  if (total_levels_out)
+  {
+    *total_levels_out = levels;
+  }
+  return events;
+}
+
+uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle h,
+                                            FloxBookUpdateHeader* headers_out,
+                                            uint64_t max_events,
+                                            FloxLevel* levels_out,
+                                            uint64_t max_levels)
+{
+  auto* reader = static_cast<replay::BinaryLogReader*>(h);
+  uint64_t events = 0;
+  uint64_t levels_written = 0;
+  reader->forEach(
+      [&](const replay::ReplayEvent& ev) -> bool
+      {
+        if (ev.type != replay::EventType::BookSnapshot &&
+            ev.type != replay::EventType::BookDelta)
+        {
+          return true;
+        }
+
+        const uint64_t bid_n = ev.bids.size();
+        const uint64_t ask_n = ev.asks.size();
+        const uint64_t total = bid_n + ask_n;
+
+        if (headers_out && events < max_events && levels_written + total <= max_levels)
+        {
+          FloxBookUpdateHeader hdr{};
+          hdr.exchange_ts_ns = ev.book_header.exchange_ts_ns;
+          hdr.recv_ts_ns = ev.book_header.recv_ts_ns;
+          hdr.seq = ev.book_header.seq;
+          hdr.level_offset = levels_written;
+          hdr.symbol_id = ev.book_header.symbol_id;
+          hdr.bid_count = static_cast<uint16_t>(bid_n);
+          hdr.ask_count = static_cast<uint16_t>(ask_n);
+          hdr.event_type = ev.book_header.type;
+          headers_out[events] = hdr;
+
+          for (uint64_t i = 0; i < bid_n; ++i)
+          {
+            levels_out[levels_written + i] = {ev.bids[i].price_raw, ev.bids[i].qty_raw, 0};
+          }
+          for (uint64_t i = 0; i < ask_n; ++i)
+          {
+            levels_out[levels_written + bid_n + i] = {ev.asks[i].price_raw, ev.asks[i].qty_raw, 1};
+          }
+
+          levels_written += total;
+          ++events;
+          return true;
+        }
+
+        return false;
+      });
+  return events;
+}
+
 // ============================================================
 // DataWriter (extras)
 // ============================================================

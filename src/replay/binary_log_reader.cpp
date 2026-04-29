@@ -12,9 +12,211 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 namespace flox::replay
 {
+
+namespace
+{
+
+// Extract the first non-zero timestamp from a decompressed block buffer.
+int64_t firstTimestampInBlock(const std::vector<std::byte>& data)
+{
+  size_t offset = 0;
+  while (offset + sizeof(FrameHeader) <= data.size())
+  {
+    FrameHeader frame;
+    std::memcpy(&frame, data.data() + offset, sizeof(frame));
+    offset += sizeof(FrameHeader);
+    if (offset + frame.size > data.size())
+    {
+      break;
+    }
+
+    int64_t ts = 0;
+    auto type = static_cast<EventType>(frame.type);
+    if (type == EventType::Trade && frame.size >= sizeof(TradeRecord))
+    {
+      TradeRecord tr;
+      std::memcpy(&tr, data.data() + offset, sizeof(TradeRecord));
+      ts = tr.exchange_ts_ns;
+    }
+    else if ((type == EventType::BookSnapshot || type == EventType::BookDelta) &&
+             frame.size >= sizeof(BookRecordHeader))
+    {
+      BookRecordHeader bh;
+      std::memcpy(&bh, data.data() + offset, sizeof(BookRecordHeader));
+      ts = bh.exchange_ts_ns;
+    }
+    if (ts > 0)
+    {
+      return ts;
+    }
+
+    offset += frame.size;
+  }
+  return 0;
+}
+
+// Extract the last non-zero timestamp from a decompressed block buffer.
+int64_t lastTimestampInBlock(const std::vector<std::byte>& data)
+{
+  int64_t last = 0;
+  size_t offset = 0;
+  while (offset + sizeof(FrameHeader) <= data.size())
+  {
+    FrameHeader frame;
+    std::memcpy(&frame, data.data() + offset, sizeof(frame));
+    offset += sizeof(FrameHeader);
+    if (offset + frame.size > data.size())
+    {
+      break;
+    }
+
+    int64_t ts = 0;
+    auto type = static_cast<EventType>(frame.type);
+    if (type == EventType::Trade && frame.size >= sizeof(TradeRecord))
+    {
+      TradeRecord tr;
+      std::memcpy(&tr, data.data() + offset, sizeof(TradeRecord));
+      ts = tr.exchange_ts_ns;
+    }
+    else if ((type == EventType::BookSnapshot || type == EventType::BookDelta) &&
+             frame.size >= sizeof(BookRecordHeader))
+    {
+      BookRecordHeader bh;
+      std::memcpy(&bh, data.data() + offset, sizeof(BookRecordHeader));
+      ts = bh.exchange_ts_ns;
+    }
+    if (ts > 0)
+    {
+      last = ts;
+    }
+
+    offset += frame.size;
+  }
+  return last;
+}
+
+// Decompress a single block at a known file position.
+std::vector<std::byte> decompressBlock(std::FILE* f, long data_pos,
+                                       const CompressedBlockHeader& block,
+                                       CompressionType comp_type)
+{
+  std::vector<std::byte> compressed(block.compressed_size);
+  if (std::fseek(f, data_pos, SEEK_SET) != 0)
+  {
+    return {};
+  }
+  if (std::fread(compressed.data(), 1, block.compressed_size, f) != block.compressed_size)
+  {
+    return {};
+  }
+  return Compressor::decompress(comp_type, std::span<const std::byte>(compressed),
+                                block.original_size);
+}
+
+// For compressed segments where the writer did not finalize the segment header
+// (event_count/first_event_ns/last_event_ns are all 0), recover these fields by:
+//   - scanning all CompressedBlockHeaders to sum event_count (no decompression)
+//   - decompressing only the necessary blocks for timestamps
+//
+// The last block of an active segment is often truncated (the writer flushes the
+// block header before completing the compressed data write). We therefore iterate
+// backwards from the end to find the last block that decompresses successfully.
+void recoverCompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
+                                  uint32_t& out_event_count,
+                                  int64_t& out_first_ns, int64_t& out_last_ns)
+{
+  out_event_count = 0;
+  out_first_ns = 0;
+  out_last_ns = 0;
+
+  const long stop_at = (hdr.hasIndex() && hdr.index_offset > 0)
+                           ? static_cast<long>(hdr.index_offset)
+                           : std::numeric_limits<long>::max();
+
+  if (std::fseek(f, sizeof(SegmentHeader), SEEK_SET) != 0)
+  {
+    return;
+  }
+
+  // Scan all block headers: count events, collect positions of non-empty blocks.
+  struct BlockLoc
+  {
+    long data_pos;
+    CompressedBlockHeader hdr;
+  };
+  std::vector<BlockLoc> blocks;
+
+  for (;;)
+  {
+    long pos = std::ftell(f);
+    if (pos < 0 || pos >= stop_at)
+    {
+      break;
+    }
+
+    CompressedBlockHeader block;
+    if (std::fread(&block, sizeof(block), 1, f) != 1 || !block.isValid())
+    {
+      break;
+    }
+
+    long data_pos = std::ftell(f);
+    out_event_count += block.event_count;
+
+    if (block.event_count > 0)
+    {
+      blocks.push_back({data_pos, block});
+    }
+
+    if (std::fseek(f, data_pos + static_cast<long>(block.compressed_size), SEEK_SET) != 0)
+    {
+      break;
+    }
+  }
+
+  if (blocks.empty())
+  {
+    return;
+  }
+
+  auto comp_type = hdr.compressionType();
+
+  // first_ns: try blocks forward until one decompresses.
+  for (const auto& bl : blocks)
+  {
+    auto data = decompressBlock(f, bl.data_pos, bl.hdr, comp_type);
+    if (!data.empty())
+    {
+      int64_t ts = firstTimestampInBlock(data);
+      if (ts > 0)
+      {
+        out_first_ns = ts;
+        break;
+      }
+    }
+  }
+
+  // last_ns: try blocks backward — the last block is often truncated.
+  for (int i = static_cast<int>(blocks.size()) - 1; i >= 0; --i)
+  {
+    auto data = decompressBlock(f, blocks[i].data_pos, blocks[i].hdr, comp_type);
+    if (!data.empty())
+    {
+      int64_t ts = lastTimestampInBlock(data);
+      if (ts > 0)
+      {
+        out_last_ns = ts;
+        break;
+      }
+    }
+  }
+}
+
+}  // namespace
 
 BinaryLogReader::BinaryLogReader(ReaderConfig config) : _config(std::move(config)) {}
 
@@ -85,6 +287,15 @@ bool BinaryLogReader::scanSegments()
       info.event_count = header.event_count;
       info.has_index = header.hasIndex();
       info.index_offset = header.index_offset;
+
+      if (header.event_count == 0 && header.isCompressed())
+      {
+        recoverCompressedSegmentMeta(f, header,
+                                     info.event_count,
+                                     info.first_event_ns,
+                                     info.last_event_ns);
+      }
+
       _segments.push_back(std::move(info));
     }
     std::fclose(f);
@@ -393,20 +604,30 @@ DatasetSummary BinaryLogReader::inspect(const std::filesystem::path& data_dir)
     if (std::fread(&header, sizeof(header), 1, f) == 1 && header.isValid())
     {
       ++summary.segment_count;
-      summary.total_events += header.event_count;
+
+      int64_t first_ns = header.first_event_ns;
+      int64_t last_ns = header.last_event_ns;
+      uint32_t ev_count = header.event_count;
+
+      if (ev_count == 0 && header.isCompressed())
+      {
+        recoverCompressedSegmentMeta(f, header, ev_count, first_ns, last_ns);
+      }
+
+      summary.total_events += ev_count;
 
       // Get file size
       std::fseek(f, 0, SEEK_END);
       summary.total_bytes += static_cast<uint64_t>(std::ftell(f));
 
       // Update time range
-      if (summary.first_event_ns == 0 || header.first_event_ns < summary.first_event_ns)
+      if (first_ns > 0 && (summary.first_event_ns == 0 || first_ns < summary.first_event_ns))
       {
-        summary.first_event_ns = header.first_event_ns;
+        summary.first_event_ns = first_ns;
       }
-      if (header.last_event_ns > summary.last_event_ns)
+      if (last_ns > summary.last_event_ns)
       {
-        summary.last_event_ns = header.last_event_ns;
+        summary.last_event_ns = last_ns;
       }
 
       // Index status

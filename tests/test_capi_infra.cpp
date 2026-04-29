@@ -1,7 +1,11 @@
 #include "flox/capi/flox_capi.h"
+#include "flox/replay/binary_format_v1.h"
+#include "flox/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
 #include <cmath>
+#include <filesystem>
+#include <vector>
 
 // ============================================================
 // Order book
@@ -199,4 +203,104 @@ TEST(CapiOrderTrackerTest, Lifecycle)
   EXPECT_EQ(flox_order_tracker_active_count(tracker), 0u);
 
   flox_order_tracker_destroy(tracker);
+}
+
+// ============================================================
+// Replay book reads (parity with Python; same C path used by Node/Codon/QuickJS)
+// ============================================================
+
+TEST(CapiReplayTest, ReadBboAndBookUpdates)
+{
+  using namespace flox::replay;
+
+  auto dir = std::filesystem::temp_directory_path() / "flox_test_capi_replay";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+
+  constexpr int kEvents = 10;
+  constexpr uint16_t kBidCount = 3;
+  constexpr uint16_t kAskCount = 4;
+
+  // Write 10 book updates via the C++ writer.
+  {
+    WriterConfig wcfg{.output_dir = dir};
+    BinaryLogWriter writer(wcfg);
+
+    for (int i = 0; i < kEvents; ++i)
+    {
+      BookRecordHeader header{};
+      header.exchange_ts_ns = 1000000000LL + i * 1000000LL;
+      header.recv_ts_ns = header.exchange_ts_ns + 100;
+      header.seq = 1000 + i;
+      header.symbol_id = 7;
+      header.bid_count = kBidCount;
+      header.ask_count = kAskCount;
+      header.type = (i == 0) ? 0 : 1;  // 0=snapshot, 1=delta
+
+      std::vector<BookLevel> bids(kBidCount);
+      std::vector<BookLevel> asks(kAskCount);
+      for (uint16_t j = 0; j < kBidCount; ++j)
+      {
+        bids[j] = {(50000LL - j) * 1000000LL, (j + 1LL) * 1000000LL};
+      }
+      for (uint16_t j = 0; j < kAskCount; ++j)
+      {
+        asks[j] = {(50001LL + j) * 1000000LL, (j + 1LL) * 1000000LL};
+      }
+
+      EXPECT_TRUE(writer.writeBook(header, bids, asks));
+    }
+    writer.close();
+  }
+
+  // BBO read.
+  FloxDataReaderHandle r = flox_data_reader_create(dir.string().c_str());
+  ASSERT_NE(r, nullptr);
+
+  uint64_t bbo_count = flox_data_reader_read_bbo(r, nullptr, 0);
+  EXPECT_EQ(bbo_count, static_cast<uint64_t>(kEvents));
+
+  std::vector<FloxBBO> bbos(bbo_count);
+  uint64_t got = flox_data_reader_read_bbo(r, bbos.data(), bbo_count);
+  EXPECT_EQ(got, bbo_count);
+  for (uint64_t i = 0; i < got; ++i)
+  {
+    EXPECT_EQ(bbos[i].symbol_id, 7u);
+    EXPECT_EQ(bbos[i].seq, static_cast<int64_t>(1000 + i));
+    EXPECT_EQ(bbos[i].bid_price_raw, 50000LL * 1000000LL);
+    EXPECT_EQ(bbos[i].ask_price_raw, 50001LL * 1000000LL);
+  }
+
+  // Full book updates (headers + flat levels).
+  uint64_t total_levels = 0;
+  uint64_t event_count = flox_data_reader_count_book_updates(r, &total_levels);
+  EXPECT_EQ(event_count, static_cast<uint64_t>(kEvents));
+  EXPECT_EQ(total_levels, static_cast<uint64_t>(kEvents) * (kBidCount + kAskCount));
+
+  std::vector<FloxBookUpdateHeader> headers(event_count);
+  std::vector<FloxLevel> levels(total_levels);
+  uint64_t events_got = flox_data_reader_read_book_updates(
+      r, headers.data(), event_count, levels.data(), total_levels);
+  EXPECT_EQ(events_got, event_count);
+
+  for (uint64_t i = 0; i < events_got; ++i)
+  {
+    const auto& h = headers[i];
+    EXPECT_EQ(h.symbol_id, 7u);
+    EXPECT_EQ(h.bid_count, kBidCount);
+    EXPECT_EQ(h.ask_count, kAskCount);
+    EXPECT_EQ(h.level_offset, i * (kBidCount + kAskCount));
+
+    for (uint16_t k = 0; k < kBidCount; ++k)
+    {
+      EXPECT_EQ(levels[h.level_offset + k].side, 0);
+    }
+    for (uint16_t k = 0; k < kAskCount; ++k)
+    {
+      EXPECT_EQ(levels[h.level_offset + kBidCount + k].side, 1);
+    }
+  }
+
+  flox_data_reader_destroy(r);
+  std::filesystem::remove_all(dir);
 }

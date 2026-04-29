@@ -41,6 +41,55 @@ struct PyTrade
 #pragma pack(pop)
 static_assert(sizeof(PyTrade) == 48);
 
+// ─── Numpy-compatible book structs ─────────────────────────────────────────────
+
+// Best bid/ask from a single book update event.
+#pragma pack(push, 1)
+struct PyBBO
+{
+  int64_t exchange_ts_ns;
+  int64_t recv_ts_ns;
+  int64_t seq;
+  uint32_t symbol_id;
+  uint8_t event_type;  // 2=snapshot, 3=delta
+  uint8_t _pad[3];
+  int64_t bid_price_raw;
+  int64_t bid_qty_raw;
+  int64_t ask_price_raw;
+  int64_t ask_qty_raw;
+};
+#pragma pack(pop)
+static_assert(sizeof(PyBBO) == 64);
+
+// Per-event header for read_book_updates(); levels are in a separate flat array.
+#pragma pack(push, 1)
+struct PyBookUpdateHeader
+{
+  int64_t exchange_ts_ns;
+  int64_t recv_ts_ns;
+  int64_t seq;
+  uint32_t symbol_id;
+  uint16_t bid_count;
+  uint16_t ask_count;
+  uint32_t level_offset;  // index into the flat levels array for this event
+  uint8_t event_type;     // 2=snapshot, 3=delta
+  uint8_t _pad[3];
+};
+#pragma pack(pop)
+static_assert(sizeof(PyBookUpdateHeader) == 40);
+
+// One price level in the flat levels array.
+#pragma pack(push, 1)
+struct PyLevel
+{
+  int64_t price_raw;
+  int64_t qty_raw;
+  uint8_t side;  // 0=bid, 1=ask
+  uint8_t _pad[7];
+};
+#pragma pack(pop)
+static_assert(sizeof(PyLevel) == 24);
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 inline PyTrade tradeRecordToPyTrade(const flox::replay::TradeRecord& tr)
@@ -230,6 +279,110 @@ class PyDataReader
     return result;
   }
 
+  // Read best bid/ask from every book update as a structured numpy array.
+  py::array_t<PyBBO> readBBO()
+  {
+    std::vector<PyBBO> bbos;
+    {
+      py::gil_scoped_release release;
+      _reader.forEach(
+          [&](const ReplayEvent& ev) -> bool
+          {
+            if (ev.type != EventType::BookSnapshot && ev.type != EventType::BookDelta)
+            {
+              return true;
+            }
+
+            PyBBO b{};
+            b.exchange_ts_ns = ev.book_header.exchange_ts_ns;
+            b.recv_ts_ns = ev.book_header.recv_ts_ns;
+            b.seq = ev.book_header.seq;
+            b.symbol_id = ev.book_header.symbol_id;
+            b.event_type = ev.book_header.type;
+            if (!ev.bids.empty())
+            {
+              b.bid_price_raw = ev.bids[0].price_raw;
+              b.bid_qty_raw = ev.bids[0].qty_raw;
+            }
+            if (!ev.asks.empty())
+            {
+              b.ask_price_raw = ev.asks[0].price_raw;
+              b.ask_qty_raw = ev.asks[0].qty_raw;
+            }
+            bbos.push_back(b);
+            return true;
+          });
+    }
+
+    py::array_t<PyBBO> result(bbos.size());
+    if (!bbos.empty())
+    {
+      std::memcpy(result.mutable_data(), bbos.data(), bbos.size() * sizeof(PyBBO));
+    }
+    return result;
+  }
+
+  // Read all book updates.
+  // Returns (headers, levels):
+  //   headers  — structured array of PyBookUpdateHeader
+  //   levels   — flat structured array of PyLevel (bids then asks per event)
+  // To slice levels for event i:
+  //   offset = headers[i]['level_offset']
+  //   bids   = levels[offset : offset + headers[i]['bid_count']]
+  //   asks   = levels[offset + headers[i]['bid_count'] : offset + headers[i]['bid_count'] + headers[i]['ask_count']]
+  py::tuple readBookUpdates()
+  {
+    std::vector<PyBookUpdateHeader> headers;
+    std::vector<PyLevel> levels;
+    {
+      py::gil_scoped_release release;
+      _reader.forEach(
+          [&](const ReplayEvent& ev) -> bool
+          {
+            if (ev.type != EventType::BookSnapshot && ev.type != EventType::BookDelta)
+            {
+              return true;
+            }
+
+            PyBookUpdateHeader h{};
+            h.exchange_ts_ns = ev.book_header.exchange_ts_ns;
+            h.recv_ts_ns = ev.book_header.recv_ts_ns;
+            h.seq = ev.book_header.seq;
+            h.symbol_id = ev.book_header.symbol_id;
+            h.bid_count = static_cast<uint16_t>(ev.bids.size());
+            h.ask_count = static_cast<uint16_t>(ev.asks.size());
+            h.level_offset = static_cast<uint32_t>(levels.size());
+            h.event_type = ev.book_header.type;
+            headers.push_back(h);
+
+            for (const auto& bl : ev.bids)
+            {
+              levels.push_back({bl.price_raw, bl.qty_raw, 0, {}});
+            }
+            for (const auto& bl : ev.asks)
+            {
+              levels.push_back({bl.price_raw, bl.qty_raw, 1, {}});
+            }
+
+            return true;
+          });
+    }
+
+    py::array_t<PyBookUpdateHeader> h_arr(headers.size());
+    if (!headers.empty())
+    {
+      std::memcpy(h_arr.mutable_data(), headers.data(), headers.size() * sizeof(PyBookUpdateHeader));
+    }
+
+    py::array_t<PyLevel> l_arr(levels.size());
+    if (!levels.empty())
+    {
+      std::memcpy(l_arr.mutable_data(), levels.data(), levels.size() * sizeof(PyLevel));
+    }
+
+    return py::make_tuple(h_arr, l_arr);
+  }
+
   py::dict stats()
   {
     auto s = _reader.stats();
@@ -412,6 +565,11 @@ inline void bindReplay(py::module_& m)
 {
   PYBIND11_NUMPY_DTYPE(PyTrade, exchange_ts_ns, recv_ts_ns, price_raw, qty_raw, trade_id,
                        symbol_id, side);
+  PYBIND11_NUMPY_DTYPE(PyBBO, exchange_ts_ns, recv_ts_ns, seq, symbol_id, event_type,
+                       bid_price_raw, bid_qty_raw, ask_price_raw, ask_qty_raw);
+  PYBIND11_NUMPY_DTYPE(PyBookUpdateHeader, exchange_ts_ns, recv_ts_ns, seq, symbol_id,
+                       bid_count, ask_count, level_offset, event_type);
+  PYBIND11_NUMPY_DTYPE(PyLevel, price_raw, qty_raw, side);
 
   // Fixed-point scales — match flox::Price/Quantity/Volume in flox/common.h.
   // Use these instead of hardcoding 1e8 in client code.
@@ -510,6 +668,13 @@ inline void bindReplay(py::module_& m)
       .def("read_trades_from", &PyDataReader::readTradesFrom,
            "Read trades starting from a given timestamp (nanoseconds)",
            py::arg("start_ts_ns"))
+      .def("read_bbo", &PyDataReader::readBBO,
+           "Read best bid/ask from every book update as a numpy structured array (PyBBO dtype)")
+      .def("read_book_updates", &PyDataReader::readBookUpdates,
+           "Read all book updates. Returns (headers, levels) tuple of numpy structured arrays. "
+           "headers dtype: PyBookUpdateHeader; levels dtype: PyLevel. "
+           "For event i: bids=levels[h['level_offset']:h['level_offset']+h['bid_count']], "
+           "asks=levels[h['level_offset']+h['bid_count']:h['level_offset']+h['bid_count']+h['ask_count']]")
       .def("stats", &PyDataReader::stats,
            "Return reader statistics as a dict")
       .def("segment_files", &PyDataReader::segmentFiles,

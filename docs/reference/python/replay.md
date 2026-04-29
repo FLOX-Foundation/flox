@@ -27,7 +27,7 @@ print(f"Events: {info['total_events']}, Duration: {info['duration_seconds']:.0f}
 
 ## DataReader
 
-Read trades from binary log files.
+Read trades and book updates from binary log files.
 
 ```python
 reader = flox.DataReader(
@@ -74,6 +74,30 @@ Read trades starting from a given timestamp.
 trades = reader.read_trades_from(start_ts_ns=1704067200_000_000_000)
 ```
 
+#### `read_bbo() -> ndarray`
+
+Read top-of-book (best bid/ask) from every book update event as a numpy structured array with `PyBBO` dtype.
+
+```python
+bbos = reader.read_bbo()
+mids = (bbos['bid_price_raw'] + bbos['ask_price_raw']) / 2 / 1e8
+```
+
+#### `read_book_updates() -> tuple[ndarray, ndarray]`
+
+Read every book update event with full depth. Returns `(headers, levels)`:
+
+- `headers` — structured array of `PyBookUpdateHeader`. Each row carries `level_offset`, `bid_count`, `ask_count` for slicing the levels array.
+- `levels` — single flat structured array of `PyLevel` shared by all events; bids first, then asks, per event.
+
+```python
+headers, levels = reader.read_book_updates()
+for h in headers:
+    off, nb, na = h['level_offset'], h['bid_count'], h['ask_count']
+    bids = levels[off : off + nb]
+    asks = levels[off + nb : off + nb + na]
+```
+
 #### `stats() -> dict`
 
 Reader statistics.
@@ -114,6 +138,41 @@ Segment metadata.
 | `trade_id` | `uint64` | Exchange trade ID |
 | `symbol_id` | `uint32` | Symbol ID |
 | `side` | `uint8` | 0 = buy, 1 = sell |
+
+### PyBBO Dtype
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `exchange_ts_ns` | `int64` | Exchange timestamp (ns) |
+| `recv_ts_ns` | `int64` | Local receive timestamp (ns) |
+| `seq` | `int64` | Exchange sequence number |
+| `symbol_id` | `uint32` | Symbol ID |
+| `event_type` | `uint8` | 2 = snapshot, 3 = delta |
+| `bid_price_raw` | `int64` | Best bid price * 10^8 (0 if absent) |
+| `bid_qty_raw` | `int64` | Best bid quantity * 10^8 |
+| `ask_price_raw` | `int64` | Best ask price * 10^8 (0 if absent) |
+| `ask_qty_raw` | `int64` | Best ask quantity * 10^8 |
+
+### PyBookUpdateHeader Dtype
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `exchange_ts_ns` | `int64` | Exchange timestamp (ns) |
+| `recv_ts_ns` | `int64` | Local receive timestamp (ns) |
+| `seq` | `int64` | Exchange sequence number |
+| `symbol_id` | `uint32` | Symbol ID |
+| `bid_count` | `uint16` | Number of bid levels for this event |
+| `ask_count` | `uint16` | Number of ask levels for this event |
+| `level_offset` | `uint32` | Index of this event's first level in the levels array |
+| `event_type` | `uint8` | 2 = snapshot, 3 = delta |
+
+### PyLevel Dtype
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `price_raw` | `int64` | Price * 10^8 |
+| `qty_raw` | `int64` | Quantity * 10^8 |
+| `side` | `uint8` | 0 = bid, 1 = ask |
 
 ---
 

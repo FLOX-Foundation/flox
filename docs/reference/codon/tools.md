@@ -250,6 +250,8 @@ writer.close()
 reader = DataReader("./data")
 reader = DataReader.create_filtered("./data", from_ns=0, to_ns=0, symbols=[])
 trades = reader.read_trades()
+bbos = reader.read_bbo()
+events = reader.read_book_updates()
 ```
 
 | Method / Property | Returns | Description |
@@ -258,10 +260,18 @@ trades = reader.read_trades()
 | `summary()` | `DatasetSummary` | Dataset summary |
 | `reader_stats()` | `ReaderStats` | Read statistics |
 | `read_trades(max_trades=0)` | `List[TradeRecord]` | Read trades (all if `max_trades=0`) |
+| `read_bbo(max_events=0)` | `List[BBO]` | Top of book per book update event |
+| `read_book_updates()` | `List[BookUpdate]` | Full depth per book update event |
 
 `DatasetSummary` fields: `first_event_ns`, `last_event_ns`, `total_events`, `segment_count`, `total_bytes`, `duration_seconds`.
 
 `TradeRecord` fields: `exchange_ts_ns`, `recv_ts_ns`, `price_raw`, `qty_raw`, `trade_id`, `symbol_id`, `side`. Methods: `price()`, `qty()`, `is_buy()`.
+
+`BBO` fields: `exchange_ts_ns`, `recv_ts_ns`, `seq`, `symbol_id`, `event_type` (2=snapshot, 3=delta), `bid_price_raw`, `bid_qty_raw`, `ask_price_raw`, `ask_qty_raw`. Methods: `bid_price()`, `ask_price()`, `bid_qty()`, `ask_qty()`.
+
+`BookLevel` fields: `price_raw`, `qty_raw`, `side` (0=bid, 1=ask). Methods: `price()`, `qty()`.
+
+`BookUpdate` fields: `exchange_ts_ns`, `recv_ts_ns`, `seq`, `symbol_id`, `event_type`, `bids: List[BookLevel]`, `asks: List[BookLevel]`.
 
 ### DataRecorder
 

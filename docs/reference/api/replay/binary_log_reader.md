@@ -222,3 +222,9 @@ For legacy segments without the flag, all events in the segment are buffered and
 * Seeking uses segment indexes when available for O(log n) lookup.
 * The callback returning `false` stops iteration early.
 * File extension is `.floxlog`.
+
+## Live-tail safety
+
+Active segments — those whose writer is still appending — are safe to read. The writer fflushes after each compressed block and refreshes the segment header, so a snapshot of the file taken mid-run (e.g. via `rsync`) contains complete blocks and a non-zero `SegmentHeader`.
+
+If the header is still zero-initialized at the time of read (`event_count == 0` on a compressed segment), `scanSegments()` and `inspect()` recover the metadata: every `CompressedBlockHeader` is walked to sum `event_count`, and the first / last viable blocks are decompressed for `first_event_ns` / `last_event_ns`. The very last block is often truncated because the writer flushes its block header before the compressed payload is fully written, so the scan iterates backwards until one block decompresses successfully.

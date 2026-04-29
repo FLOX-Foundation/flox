@@ -280,6 +280,8 @@ void FloxJsStrategy::loadStdlib()
       summary() { return __flox_dr_summary(this._h); }
       stats() { return __flox_dr_stats(this._h); }
       readTrades(maxTrades) { return __flox_dr_read_trades(this._h, maxTrades || 0); }
+      readBBO(maxEvents) { return __flox_dr_read_bbo(this._h, maxEvents || 0); }
+      readBookUpdates() { return __flox_dr_read_book_updates(this._h); }
     }
 
     class DataRecorder {
