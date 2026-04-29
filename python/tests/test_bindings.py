@@ -169,6 +169,21 @@ sl = flox.targets.future_linear_slope(linear, 4)
 check(approx(sl[0], 0.5), "future_linear_slope on linear series == 0.5")
 check(math.isnan(sl[19]), "future_linear_slope tail is NaN")
 
+# ── ADF stationarity test ────────────────────────────────────────────
+
+print("=== ADF ===")
+
+rng = np.random.default_rng(42)
+walk = np.cumsum(rng.standard_normal(500))
+res = flox.adf(walk, max_lag=4, regression="c")
+check(res["used_lag"] <= 4, "adf reports used_lag")
+check(res["p_value"] > 0.05, "adf does not reject unit root for random walk")
+
+stationary = rng.standard_normal(500) * 0.5
+res2 = flox.adf(stationary, max_lag=4, regression="c")
+check(res2["test_stat"] < res["test_stat"], "stationary series produces lower test_stat")
+check(res2["p_value"] < 0.05, "adf rejects unit root for white noise")
+
 # ── PositionTracker ───────────────────────────────────────────────────
 
 print("=== PositionTracker ===")
