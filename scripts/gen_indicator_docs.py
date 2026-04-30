@@ -177,10 +177,14 @@ def replace_block(path: Path, content: str) -> bool:
     text = path.read_text()
     if START not in text or END not in text:
         return False
+    # Match the entire block including blank lines around the marker, then
+    # rewrite with a stable canonical form: blank line after START, blank
+    # line before END.
     pattern = re.compile(
-        rf"({re.escape(START)}\n)(.*?)(\n{re.escape(END)})", re.DOTALL
+        rf"{re.escape(START)}.*?{re.escape(END)}", re.DOTALL
     )
-    new = pattern.sub(rf"\1{content}\3", text)
+    canonical = f"{START}\n\n{content}\n\n{END}"
+    new = pattern.sub(canonical, text, count=1)
     if new != text:
         path.write_text(new)
         return True
