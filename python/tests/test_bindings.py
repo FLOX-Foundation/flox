@@ -263,6 +263,45 @@ sg.reset(0)
 check(sg.bar_count(0) == 0, "after reset bar_count == 0")
 check(math.isnan(sg.current(0, "double_close")), "after reset current is NaN")
 
+# ── Discovery API ────────────────────────────────────────────────────
+
+print("=== Discovery ===")
+
+names = flox.list_indicators()
+check(len(names) >= 21, f"list_indicators returns at least 21 entries (got {len(names)})")
+check("EMA" in names, "EMA in list_indicators")
+check("MACD" in names, "MACD in list_indicators")
+check("AutoCorrelation" in names, "AutoCorrelation in list_indicators")
+
+# ── Declarative DAG helper: g.indicator(name, factory, source=) ─────
+
+print("=== g.indicator helper ===")
+
+g3 = flox.IndicatorGraph()
+prices_d = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0])
+g3.set_bars(0, prices_d)
+g3.indicator("ema3", flox.EMA(3), source="close")
+ema_arr = g3.require(0, "ema3")
+check(len(ema_arr) == len(prices_d), "g.indicator(EMA(3)) returns full-length array")
+check(np.isnan(ema_arr[0]) and np.isnan(ema_arr[1]), "g.indicator EMA warmup is NaN")
+check(approx(float(ema_arr[2]), 20.0), "g.indicator EMA(3) seed at index 2 == 20.0")
+
+# ── Unified streaming on the same IndicatorGraph (no separate type) ─
+
+print("=== Unified DAG: step+current on IndicatorGraph ===")
+
+g_unified = flox.IndicatorGraph()
+g_unified.add_node("triple_close", [], lambda gr, sym: gr.close(sym) * 3.0)
+for v in [1.0, 2.0, 3.0]:
+    g_unified.step(0, v)
+check(approx(g_unified.current(0, "triple_close"), 9.0),
+      "IndicatorGraph.step+current on the same instance (was StreamingIndicatorGraph)")
+check(g_unified.bar_count(0) == 3, "IndicatorGraph.bar_count works on same instance")
+
+# Backward-compat alias: flox.StreamingIndicatorGraph is the same class.
+check(flox.StreamingIndicatorGraph is flox.IndicatorGraph,
+      "flox.StreamingIndicatorGraph aliases flox.IndicatorGraph")
+
 # ── PositionTracker ───────────────────────────────────────────────────
 
 print("=== PositionTracker ===")

@@ -181,8 +181,8 @@ class PyIndicatorGraph
 
 inline void bindIndicatorGraph(py::module_& m)
 {
-  py::class_<PyIndicatorGraph>(m, "IndicatorGraph")
-      .def(py::init<>())
+  auto cls = py::class_<PyIndicatorGraph>(m, "IndicatorGraph");
+  cls.def(py::init<>())
       .def("set_bars", &PyIndicatorGraph::setBars, py::arg("symbol"), py::arg("close"),
            py::arg("high") = py::none(), py::arg("low") = py::none(),
            py::arg("volume") = py::none())
@@ -204,6 +204,33 @@ inline void bindIndicatorGraph(py::module_& m)
       .def("invalidate_all", &PyIndicatorGraph::invalidateAll)
       .def("reset", &PyIndicatorGraph::reset, py::arg("symbol"))
       .def("reset_all", &PyIndicatorGraph::resetAll);
+
+  // Declarative helper. Sugar over add_node:
+  //
+  //   g.indicator("ema5", flox.EMA(5), source="close")
+  //
+  // is equivalent to:
+  //
+  //   g.add_node("ema5", [], lambda gr, sym: ind.compute(gr.<source>(sym)))
+  //
+  // The indicator object is moved into the closure; pass a fresh instance
+  // per call.
+  cls.def(
+      "indicator",
+      [](PyIndicatorGraph& self, const std::string& name, py::object indicator_obj,
+         const std::string& source)
+      {
+        auto fn = py::cpp_function(
+            [indicator_obj, source](py::object graph, uint32_t sym) -> py::object
+            {
+              auto field = graph.attr(source.c_str())(sym);
+              return indicator_obj.attr("compute")(field);
+            });
+        self.addNode(name, {}, fn);
+      },
+      py::arg("name"), py::arg("indicator"), py::arg("source") = "close",
+      "Add a node that runs `indicator.compute(graph.<source>(sym))`. "
+      "Sugar over add_node.");
 
   // Backward-compat alias: the old StreamingIndicatorGraph name resolves to
   // the same class. Will be removed in a future major version. New code
