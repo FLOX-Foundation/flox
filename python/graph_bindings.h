@@ -12,6 +12,7 @@
 #include "flox/aggregator/bar.h"
 #include "flox/common.h"
 #include "flox/indicator/indicator_pipeline.h"
+#include "flox/indicator/streaming_graph.h"
 
 namespace py = pybind11;
 
@@ -147,6 +148,85 @@ class PyIndicatorGraph
   std::unordered_map<uint32_t, std::vector<flox::Bar>> _bars;
 };
 
+class PyStreamingIndicatorGraph
+{
+ public:
+  PyStreamingIndicatorGraph() = default;
+
+  void addNode(const std::string& name, std::vector<std::string> deps, py::object fn)
+  {
+    PyStreamingIndicatorGraph* self = this;
+    _sg.addNode(
+        name, std::move(deps),
+        [self, fn](flox::indicator::IndicatorGraph&, flox::SymbolId sym) -> std::vector<double>
+        {
+          py::object result = fn(py::cast(self, py::return_value_policy::reference),
+                                 static_cast<uint32_t>(sym));
+          py::array_t<double, py::array::c_style | py::array::forcecast> arr =
+              result.cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
+          auto buf = arr.request();
+          size_t n = buf.shape[0];
+          const double* p = static_cast<const double*>(buf.ptr);
+          return std::vector<double>(p, p + n);
+        });
+  }
+
+  void step(uint32_t symbol, double close, std::optional<double> high, std::optional<double> low,
+            std::optional<double> volume)
+  {
+    flox::Bar bar;
+    double h = high.value_or(close);
+    double l = low.value_or(close);
+    double v = volume.value_or(0.0);
+    bar.open = flox::Price::fromDouble(close);
+    bar.high = flox::Price::fromDouble(h);
+    bar.low = flox::Price::fromDouble(l);
+    bar.close = flox::Price::fromDouble(close);
+    bar.volume = flox::Volume::fromDouble(v);
+    _sg.step(static_cast<flox::SymbolId>(symbol), bar);
+  }
+
+  double current(uint32_t symbol, const std::string& name) const
+  {
+    return _sg.current(static_cast<flox::SymbolId>(symbol), name);
+  }
+
+  size_t barCount(uint32_t symbol) const
+  {
+    return _sg.barCount(static_cast<flox::SymbolId>(symbol));
+  }
+
+  void reset(uint32_t symbol) { _sg.reset(static_cast<flox::SymbolId>(symbol)); }
+  void resetAll() { _sg.resetAll(); }
+
+  py::array_t<double> close(uint32_t symbol)
+  {
+    return toArray(_sg.batchGraph().close(static_cast<flox::SymbolId>(symbol)));
+  }
+  py::array_t<double> high(uint32_t symbol)
+  {
+    return toArray(_sg.batchGraph().high(static_cast<flox::SymbolId>(symbol)));
+  }
+  py::array_t<double> low(uint32_t symbol)
+  {
+    return toArray(_sg.batchGraph().low(static_cast<flox::SymbolId>(symbol)));
+  }
+  py::array_t<double> volume(uint32_t symbol)
+  {
+    return toArray(_sg.batchGraph().volume(static_cast<flox::SymbolId>(symbol)));
+  }
+
+ private:
+  static py::array_t<double> toArray(const std::vector<double>& v)
+  {
+    py::array_t<double> out(v.size());
+    std::memcpy(out.mutable_data(), v.data(), v.size() * sizeof(double));
+    return out;
+  }
+
+  flox::indicator::StreamingIndicatorGraph _sg;
+};
+
 }  // namespace
 
 inline void bindIndicatorGraph(py::module_& m)
@@ -166,4 +246,20 @@ inline void bindIndicatorGraph(py::module_& m)
       .def("volume", &PyIndicatorGraph::volume, py::arg("symbol"))
       .def("invalidate", &PyIndicatorGraph::invalidate, py::arg("symbol"))
       .def("invalidate_all", &PyIndicatorGraph::invalidateAll);
+
+  py::class_<PyStreamingIndicatorGraph>(m, "StreamingIndicatorGraph")
+      .def(py::init<>())
+      .def("add_node", &PyStreamingIndicatorGraph::addNode, py::arg("name"), py::arg("deps"),
+           py::arg("fn"))
+      .def("step", &PyStreamingIndicatorGraph::step, py::arg("symbol"), py::arg("close"),
+           py::arg("high") = py::none(), py::arg("low") = py::none(),
+           py::arg("volume") = py::none())
+      .def("current", &PyStreamingIndicatorGraph::current, py::arg("symbol"), py::arg("name"))
+      .def("bar_count", &PyStreamingIndicatorGraph::barCount, py::arg("symbol"))
+      .def("reset", &PyStreamingIndicatorGraph::reset, py::arg("symbol"))
+      .def("reset_all", &PyStreamingIndicatorGraph::resetAll)
+      .def("close", &PyStreamingIndicatorGraph::close, py::arg("symbol"))
+      .def("high", &PyStreamingIndicatorGraph::high, py::arg("symbol"))
+      .def("low", &PyStreamingIndicatorGraph::low, py::arg("symbol"))
+      .def("volume", &PyStreamingIndicatorGraph::volume, py::arg("symbol"));
 }

@@ -12,6 +12,7 @@
 #include "flox/aggregator/bar.h"
 #include "flox/common.h"
 #include "flox/indicator/indicator_pipeline.h"
+#include "flox/indicator/streaming_graph.h"
 
 namespace node_flox
 {
@@ -187,9 +188,150 @@ class IndicatorGraphWrap : public Napi::ObjectWrap<IndicatorGraphWrap>
   std::unordered_map<uint32_t, std::vector<flox::Bar>> _bars;
 };
 
+class StreamingIndicatorGraphWrap : public Napi::ObjectWrap<StreamingIndicatorGraphWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(
+        env, "StreamingIndicatorGraph",
+        {InstanceMethod("addNode", &StreamingIndicatorGraphWrap::AddNode),
+         InstanceMethod("step", &StreamingIndicatorGraphWrap::Step),
+         InstanceMethod("current", &StreamingIndicatorGraphWrap::Current),
+         InstanceMethod("barCount", &StreamingIndicatorGraphWrap::BarCount),
+         InstanceMethod("reset", &StreamingIndicatorGraphWrap::Reset),
+         InstanceMethod("resetAll", &StreamingIndicatorGraphWrap::ResetAll),
+         InstanceMethod("close", &StreamingIndicatorGraphWrap::Close),
+         InstanceMethod("high", &StreamingIndicatorGraphWrap::High),
+         InstanceMethod("low", &StreamingIndicatorGraphWrap::Low),
+         InstanceMethod("volume", &StreamingIndicatorGraphWrap::Volume)});
+  }
+
+  StreamingIndicatorGraphWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<StreamingIndicatorGraphWrap>(info)
+  {
+  }
+
+ private:
+  Napi::Value vec2arr(Napi::Env env, const std::vector<double>& v)
+  {
+    auto a = Napi::Float64Array::New(env, v.size());
+    std::memcpy(a.Data(), v.data(), v.size() * sizeof(double));
+    return a;
+  }
+
+  Napi::Value AddNode(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    std::string name = info[0].As<Napi::String>().Utf8Value();
+
+    auto depsArr = info[1].As<Napi::Array>();
+    std::vector<std::string> deps;
+    deps.reserve(depsArr.Length());
+    for (uint32_t i = 0; i < depsArr.Length(); ++i)
+    {
+      deps.push_back(depsArr.Get(i).As<Napi::String>().Utf8Value());
+    }
+
+    auto fnRef = std::make_shared<Napi::FunctionReference>(
+        Napi::Persistent(info[2].As<Napi::Function>()));
+    auto thisRef = std::make_shared<Napi::ObjectReference>(
+        Napi::Persistent(info.This().As<Napi::Object>()));
+    Napi::Env fnEnv = env;
+
+    _sg.addNode(name, std::move(deps),
+                [fnRef, thisRef, fnEnv](flox::indicator::IndicatorGraph&,
+                                        flox::SymbolId sym) -> std::vector<double>
+                {
+                  Napi::HandleScope scope(fnEnv);
+                  Napi::Value result = fnRef->Call(
+                      {thisRef->Value(),
+                       Napi::Number::New(fnEnv, static_cast<uint32_t>(sym))});
+                  auto arr = result.As<Napi::Float64Array>();
+                  return std::vector<double>(arr.Data(), arr.Data() + arr.ElementLength());
+                });
+    return env.Undefined();
+  }
+
+  Napi::Value Step(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
+    double c = info[1].As<Napi::Number>().DoubleValue();
+    double h = info.Length() > 2 && !info[2].IsUndefined() && !info[2].IsNull()
+                   ? info[2].As<Napi::Number>().DoubleValue()
+                   : c;
+    double l = info.Length() > 3 && !info[3].IsUndefined() && !info[3].IsNull()
+                   ? info[3].As<Napi::Number>().DoubleValue()
+                   : c;
+    double v = info.Length() > 4 && !info[4].IsUndefined() && !info[4].IsNull()
+                   ? info[4].As<Napi::Number>().DoubleValue()
+                   : 0.0;
+    flox::Bar bar;
+    bar.open = flox::Price::fromDouble(c);
+    bar.high = flox::Price::fromDouble(h);
+    bar.low = flox::Price::fromDouble(l);
+    bar.close = flox::Price::fromDouble(c);
+    bar.volume = flox::Volume::fromDouble(v);
+    _sg.step(static_cast<flox::SymbolId>(symbol), bar);
+    return env.Undefined();
+  }
+
+  Napi::Value Current(const Napi::CallbackInfo& info)
+  {
+    uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
+    std::string name = info[1].As<Napi::String>().Utf8Value();
+    return Napi::Number::New(info.Env(),
+                             _sg.current(static_cast<flox::SymbolId>(symbol), name));
+  }
+
+  Napi::Value BarCount(const Napi::CallbackInfo& info)
+  {
+    uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
+    return Napi::Number::New(info.Env(),
+                             static_cast<double>(_sg.barCount(static_cast<flox::SymbolId>(symbol))));
+  }
+
+  Napi::Value Reset(const Napi::CallbackInfo& info)
+  {
+    _sg.reset(static_cast<flox::SymbolId>(info[0].As<Napi::Number>().Uint32Value()));
+    return info.Env().Undefined();
+  }
+
+  Napi::Value ResetAll(const Napi::CallbackInfo& info)
+  {
+    _sg.resetAll();
+    return info.Env().Undefined();
+  }
+
+  Napi::Value Close(const Napi::CallbackInfo& info)
+  {
+    uint32_t s = info[0].As<Napi::Number>().Uint32Value();
+    return vec2arr(info.Env(), _sg.batchGraph().close(static_cast<flox::SymbolId>(s)));
+  }
+  Napi::Value High(const Napi::CallbackInfo& info)
+  {
+    uint32_t s = info[0].As<Napi::Number>().Uint32Value();
+    return vec2arr(info.Env(), _sg.batchGraph().high(static_cast<flox::SymbolId>(s)));
+  }
+  Napi::Value Low(const Napi::CallbackInfo& info)
+  {
+    uint32_t s = info[0].As<Napi::Number>().Uint32Value();
+    return vec2arr(info.Env(), _sg.batchGraph().low(static_cast<flox::SymbolId>(s)));
+  }
+  Napi::Value Volume(const Napi::CallbackInfo& info)
+  {
+    uint32_t s = info[0].As<Napi::Number>().Uint32Value();
+    return vec2arr(info.Env(), _sg.batchGraph().volume(static_cast<flox::SymbolId>(s)));
+  }
+
+  flox::indicator::StreamingIndicatorGraph _sg;
+};
+
 inline void registerGraph(Napi::Env env, Napi::Object exports)
 {
   exports.Set("IndicatorGraph", IndicatorGraphWrap::Init(env));
+  exports.Set("StreamingIndicatorGraph", StreamingIndicatorGraphWrap::Init(env));
 }
 
 }  // namespace node_flox
