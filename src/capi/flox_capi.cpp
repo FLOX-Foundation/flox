@@ -805,192 +805,104 @@ void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g)
 }
 
 // ============================================================
-// StreamingIndicatorGraph — handle-based wrapper.
+// IndicatorGraph — streaming methods on the same handle.
 // ============================================================
 
-namespace
-{
-
-struct FloxStreamingGraphImpl
-{
-  FloxGraphImpl batchImpl;
-  std::vector<std::string> nodeNames;
-  std::unordered_map<uint32_t, std::vector<Bar>> history;
-
-  using CurrentKey = std::pair<uint32_t, std::string>;
-  struct CurrentKeyHash
-  {
-    size_t operator()(const CurrentKey& k) const
-    {
-      return std::hash<uint32_t>{}(k.first) ^ (std::hash<std::string>{}(k.second) * 2654435761u);
-    }
-  };
-  std::unordered_map<CurrentKey, double, CurrentKeyHash> current;
-};
-
-}  // namespace
-
-FloxStreamingGraphHandle flox_streaming_graph_create(void)
-{
-  return new FloxStreamingGraphImpl();
-}
-
-void flox_streaming_graph_destroy(FloxStreamingGraphHandle sg)
-{
-  delete static_cast<FloxStreamingGraphImpl*>(sg);
-}
-
-void flox_streaming_graph_add_node(FloxStreamingGraphHandle sg, const char* name,
-                                   const char* const* deps, size_t num_deps, FloxGraphNodeFn fn,
-                                   void* user_data)
-{
-  auto* impl = static_cast<FloxStreamingGraphImpl*>(sg);
-  auto* batchHandle = static_cast<FloxIndicatorGraphHandle>(&impl->batchImpl);
-
-  impl->nodeNames.emplace_back(name);
-
-  std::vector<std::string> depList;
-  depList.reserve(num_deps);
-  for (size_t i = 0; i < num_deps; ++i)
-  {
-    depList.emplace_back(deps[i]);
-  }
-
-  impl->batchImpl.graph.addNode(
-      name, std::move(depList),
-      [batchHandle, fn, user_data](indicator::IndicatorGraph&, SymbolId sym)
-      {
-        size_t outLen = 0;
-        const double* p = fn(user_data, batchHandle, static_cast<uint32_t>(sym), &outLen);
-        if (!p)
-        {
-          return std::vector<double>{};
-        }
-        return std::vector<double>(p, p + outLen);
-      });
-}
-
-void flox_streaming_graph_step(FloxStreamingGraphHandle sg, uint32_t symbol, double open,
+void flox_indicator_graph_step(FloxIndicatorGraphHandle g, uint32_t symbol, double open,
                                double high, double low, double close, double volume)
 {
-  auto* impl = static_cast<FloxStreamingGraphImpl*>(sg);
-
+  auto* impl = static_cast<FloxGraphImpl*>(g);
   Bar bar;
   bar.open = Price::fromDouble(open);
   bar.high = Price::fromDouble(high);
   bar.low = Price::fromDouble(low);
   bar.close = Price::fromDouble(close);
   bar.volume = Volume::fromDouble(volume);
+  impl->graph.step(static_cast<SymbolId>(symbol), bar);
+}
 
-  auto& hist = impl->history[symbol];
-  hist.push_back(bar);
-  impl->batchImpl.barStorage[symbol] = hist;
-  impl->batchImpl.graph.setBars(static_cast<SymbolId>(symbol),
-                                std::span<const Bar>(impl->batchImpl.barStorage[symbol]));
+double flox_indicator_graph_current(FloxIndicatorGraphHandle g, uint32_t symbol, const char* name)
+{
+  return static_cast<FloxGraphImpl*>(g)->graph.current(static_cast<SymbolId>(symbol), name);
+}
 
-  for (const auto& nodeName : impl->nodeNames)
-  {
-    try
-    {
-      const auto& v = impl->batchImpl.graph.require(static_cast<SymbolId>(symbol), nodeName);
-      impl->current[{symbol, nodeName}] = v.empty() ? std::nan("")
-                                                    : v.back();
-    }
-    catch (...)
-    {
-      impl->current[{symbol, nodeName}] = std::nan("");
-    }
-  }
+uint32_t flox_indicator_graph_bar_count(FloxIndicatorGraphHandle g, uint32_t symbol)
+{
+  return static_cast<uint32_t>(
+      static_cast<FloxGraphImpl*>(g)->graph.barCount(static_cast<SymbolId>(symbol)));
+}
+
+void flox_indicator_graph_reset(FloxIndicatorGraphHandle g, uint32_t symbol)
+{
+  static_cast<FloxGraphImpl*>(g)->graph.reset(static_cast<SymbolId>(symbol));
+}
+
+void flox_indicator_graph_reset_all(FloxIndicatorGraphHandle g)
+{
+  static_cast<FloxGraphImpl*>(g)->graph.resetAll();
+}
+
+// ── Deprecated streaming-graph shim — forwards to the unified API ──
+
+FloxStreamingGraphHandle flox_streaming_graph_create(void) { return flox_indicator_graph_create(); }
+
+void flox_streaming_graph_destroy(FloxStreamingGraphHandle sg)
+{
+  flox_indicator_graph_destroy(sg);
+}
+
+void flox_streaming_graph_add_node(FloxStreamingGraphHandle sg, const char* name,
+                                   const char* const* deps, size_t num_deps, FloxGraphNodeFn fn,
+                                   void* user_data)
+{
+  flox_indicator_graph_add_node(sg, name, deps, num_deps, fn, user_data);
+}
+
+void flox_streaming_graph_step(FloxStreamingGraphHandle sg, uint32_t symbol, double open,
+                               double high, double low, double close, double volume)
+{
+  flox_indicator_graph_step(sg, symbol, open, high, low, close, volume);
 }
 
 double flox_streaming_graph_current(FloxStreamingGraphHandle sg, uint32_t symbol, const char* name)
 {
-  auto* impl = static_cast<FloxStreamingGraphImpl*>(sg);
-  auto it = impl->current.find({symbol, std::string(name)});
-  return it != impl->current.end() ? it->second : std::nan("");
+  return flox_indicator_graph_current(sg, symbol, name);
 }
 
 uint32_t flox_streaming_graph_bar_count(FloxStreamingGraphHandle sg, uint32_t symbol)
 {
-  auto* impl = static_cast<FloxStreamingGraphImpl*>(sg);
-  auto it = impl->history.find(symbol);
-  return it != impl->history.end() ? static_cast<uint32_t>(it->second.size()) : 0u;
+  return flox_indicator_graph_bar_count(sg, symbol);
 }
 
 void flox_streaming_graph_reset(FloxStreamingGraphHandle sg, uint32_t symbol)
 {
-  auto* impl = static_cast<FloxStreamingGraphImpl*>(sg);
-  impl->history.erase(symbol);
-  impl->batchImpl.barStorage.erase(symbol);
-  impl->batchImpl.graph.invalidate(static_cast<SymbolId>(symbol));
-  for (auto it = impl->current.begin(); it != impl->current.end();)
-  {
-    if (it->first.first == symbol)
-    {
-      it = impl->current.erase(it);
-    }
-    else
-    {
-      ++it;
-    }
-  }
+  flox_indicator_graph_reset(sg, symbol);
 }
 
 void flox_streaming_graph_reset_all(FloxStreamingGraphHandle sg)
 {
-  auto* impl = static_cast<FloxStreamingGraphImpl*>(sg);
-  impl->history.clear();
-  impl->batchImpl.barStorage.clear();
-  impl->batchImpl.graph.invalidateAll();
-  impl->current.clear();
+  flox_indicator_graph_reset_all(sg);
 }
 
 const double* flox_streaming_graph_close(FloxStreamingGraphHandle sg, uint32_t symbol,
                                          size_t* len_out)
 {
-  const auto& v =
-      static_cast<FloxStreamingGraphImpl*>(sg)->batchImpl.graph.close(static_cast<SymbolId>(symbol));
-  if (len_out)
-  {
-    *len_out = v.size();
-  }
-  return v.data();
+  return flox_indicator_graph_close(sg, symbol, len_out);
 }
-
 const double* flox_streaming_graph_high(FloxStreamingGraphHandle sg, uint32_t symbol,
                                         size_t* len_out)
 {
-  const auto& v =
-      static_cast<FloxStreamingGraphImpl*>(sg)->batchImpl.graph.high(static_cast<SymbolId>(symbol));
-  if (len_out)
-  {
-    *len_out = v.size();
-  }
-  return v.data();
+  return flox_indicator_graph_high(sg, symbol, len_out);
 }
-
 const double* flox_streaming_graph_low(FloxStreamingGraphHandle sg, uint32_t symbol,
                                        size_t* len_out)
 {
-  const auto& v =
-      static_cast<FloxStreamingGraphImpl*>(sg)->batchImpl.graph.low(static_cast<SymbolId>(symbol));
-  if (len_out)
-  {
-    *len_out = v.size();
-  }
-  return v.data();
+  return flox_indicator_graph_low(sg, symbol, len_out);
 }
-
 const double* flox_streaming_graph_volume(FloxStreamingGraphHandle sg, uint32_t symbol,
                                           size_t* len_out)
 {
-  const auto& v =
-      static_cast<FloxStreamingGraphImpl*>(sg)->batchImpl.graph.volume(static_cast<SymbolId>(symbol));
-  if (len_out)
-  {
-    *len_out = v.size();
-  }
-  return v.data();
+  return flox_indicator_graph_volume(sg, symbol, len_out);
 }
 
 // ============================================================
