@@ -11,7 +11,7 @@
 #   DYLD_LIBRARY_PATH=build/src/capi:~/.local/lib/codon \
 #     ./build/codon/codon_full_backtest
 
-from flox.indicators import SMA, EMA, RSI, StreamingSMA
+from flox.indicators import SMA, EMA, RSI
 from flox.tools import (SimulatedExecutor, PositionTracker, VolumeProfile,
                         OrderTracker, FootprintBar, OrderBook, L3Book,
                         correlation, profit_factor, win_rate,
