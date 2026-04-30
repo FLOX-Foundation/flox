@@ -84,11 +84,19 @@ You now have:
   `update()`/`value()`/`ready()`/`reset()` (streaming) on the same instance.
 - `flox.MyIndicator(...)` in Python with `compute(arr)` and
   `update(v)` / `value` / `ready` / `reset()` on the same instance.
+- `flox.MyIndicator(...)` in **Node.js** — same surface, same semantics
+  (thin N-API wrapper around the same C++ class).
+- `MyIndicator` in **QuickJS** (`quickjs/flox/indicators.js`) — accumulates
+  history and re-runs the batch C-API; same `update`/`value`/`ready`/`reset`.
+  Add a 3-line class to that file using one of the `_Stream*` helper bases.
+- `MyIndicator` in **Codon** (`codon/flox/indicators.codon`) — same pattern
+  as QuickJS, history + batch call.
 - The streaming-vs-batch parity test
   (`tests/test_streaming_parity.cpp`) automatically covers it once you add
   one line to the registry-driven test list.
-- `flox.list_indicators()` returns it.
-- The docs site lists it on every per-binding page.
+- `flox.list_indicators()` returns it (Python and Node).
+- The docs site lists it on every per-binding page (run
+  `python3 scripts/gen_indicator_docs.py`).
 
 The parity is **by construction** — `update()` calls your `compute()`
 internally, so there is no separate streaming logic to drift. No ring
