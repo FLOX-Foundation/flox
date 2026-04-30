@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -8,7 +10,7 @@
 namespace flox::indicator
 {
 
-class RollingZScore
+class RollingZScore : public StreamingSingle<RollingZScore>
 {
  public:
   explicit RollingZScore(size_t period) noexcept : _period(period) { assert(period >= 2); }

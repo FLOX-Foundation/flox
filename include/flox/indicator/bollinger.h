@@ -25,6 +25,29 @@ class Bollinger
   {
   }
 
+  // ── Streaming API ─────────────────────────────────────────────────
+  void update(double v)
+  {
+    _history.push_back(v);
+    _dirty = true;
+  }
+  double value() const { return tail(_last.middle); }
+  double upperValue() const { return tail(_last.upper); }
+  double middleValue() const { return tail(_last.middle); }
+  double lowerValue() const { return tail(_last.lower); }
+  bool ready() const
+  {
+    refresh();
+    return !_last.middle.empty() && std::isfinite(_last.middle.back());
+  }
+  void reset()
+  {
+    _history.clear();
+    _last = BollingerResult{};
+    _dirty = false;
+  }
+  size_t count() const noexcept { return _history.size(); }
+
   BollingerResult compute(std::span<const double> input) const
   {
     const size_t n = input.size();
@@ -97,8 +120,35 @@ class Bollinger
   size_t period() const noexcept { return _period; }
 
  private:
+  void refresh() const
+  {
+    if (!_dirty)
+    {
+      return;
+    }
+    if (_history.empty())
+    {
+      _last = BollingerResult{};
+    }
+    else
+    {
+      _last = compute(std::span<const double>(_history));
+    }
+    _dirty = false;
+  }
+  double tail(const std::vector<double>& v) const
+  {
+    refresh();
+    return v.empty() ? std::nan("") : v.back();
+  }
+
   size_t _period;
   double _stddev;
+
+  // streaming state
+  std::vector<double> _history;
+  mutable BollingerResult _last;
+  mutable bool _dirty = false;
 };
 
 }  // namespace flox::indicator

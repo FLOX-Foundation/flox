@@ -22,6 +22,33 @@ class Stochastic
   {
   }
 
+  // ── Streaming API ─────────────────────────────────────────────────
+  void update(double high, double low, double close)
+  {
+    _high.push_back(high);
+    _low.push_back(low);
+    _close.push_back(close);
+    _dirty = true;
+  }
+  double value() const { return tail(_last.k); }
+  double kValue() const { return tail(_last.k); }
+  double dValue() const { return tail(_last.d); }
+  bool ready() const
+  {
+    refresh();
+    return !_last.k.empty() && std::isfinite(_last.k.back()) &&
+           !_last.d.empty() && std::isfinite(_last.d.back());
+  }
+  void reset()
+  {
+    _high.clear();
+    _low.clear();
+    _close.clear();
+    _last = StochasticResult{};
+    _dirty = false;
+  }
+  size_t count() const noexcept { return _high.size(); }
+
   StochasticResult compute(std::span<const double> high, std::span<const double> low,
                            std::span<const double> close) const
   {
@@ -75,8 +102,36 @@ class Stochastic
   size_t period() const noexcept { return _kPeriod; }
 
  private:
+  void refresh() const
+  {
+    if (!_dirty)
+    {
+      return;
+    }
+    if (_high.empty())
+    {
+      _last = StochasticResult{};
+    }
+    else
+    {
+      _last = compute(std::span<const double>(_high), std::span<const double>(_low),
+                      std::span<const double>(_close));
+    }
+    _dirty = false;
+  }
+  double tail(const std::vector<double>& v) const
+  {
+    refresh();
+    return v.empty() ? std::nan("") : v.back();
+  }
+
   size_t _kPeriod;
   size_t _dPeriod;
+
+  // streaming state
+  std::vector<double> _high, _low, _close;
+  mutable StochasticResult _last;
+  mutable bool _dirty = false;
 };
 
 }  // namespace flox::indicator

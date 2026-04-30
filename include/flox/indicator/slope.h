@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -9,7 +11,7 @@ namespace flox::indicator
 {
 
 // (input[i] - input[i-length]) / length
-class Slope
+class Slope : public StreamingSingle<Slope>
 {
  public:
   explicit Slope(size_t length) noexcept : _length(length) {}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "flox/indicator/ema.h"
+#include "flox/indicator/streaming.h"
 
 #include <cassert>
 #include <cmath>
@@ -10,7 +11,7 @@
 namespace flox::indicator
 {
 
-class DEMA
+class DEMA : public StreamingSingle<DEMA>
 {
  public:
   explicit DEMA(size_t period) noexcept : _ema(period), _period(period) {}
@@ -38,7 +39,7 @@ class DEMA
   size_t _period;
 };
 
-class TEMA
+class TEMA : public StreamingSingle<TEMA>
 {
  public:
   explicit TEMA(size_t period) noexcept : _ema(period), _period(period) {}

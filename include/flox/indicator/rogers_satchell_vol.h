@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -10,7 +12,7 @@
 namespace flox::indicator
 {
 
-class RogersSatchellVol
+class RogersSatchellVol : public StreamingOhlc<RogersSatchellVol>
 {
  public:
   explicit RogersSatchellVol(size_t period) noexcept : _period(period) { assert(period >= 1); }

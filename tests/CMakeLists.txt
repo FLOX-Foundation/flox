@@ -74,6 +74,7 @@ if(FLOX_ENABLE_BACKTEST)
 endif()
 
 add_flox_test(test_indicators)
+add_flox_test(test_streaming_parity)
 add_flox_test(test_targets)
 add_flox_test(test_adf)
 add_flox_test(test_autocorrelation)
