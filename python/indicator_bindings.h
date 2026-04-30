@@ -949,4 +949,20 @@ inline void bindIndicators(py::module_& m)
 
   bindSingleIndicator<flox::indicator::AutoCorrelation>(m, "AutoCorrelation")
       .def(py::init<size_t, size_t>(), py::arg("window"), py::arg("lag"));
+
+  // ── Discovery API ────────────────────────────────────────────────
+  // Generated from include/flox/indicator/registry.def. Adding an indicator
+  // there makes it appear in list_indicators() automatically.
+  m.def(
+      "list_indicators",
+      []()
+      {
+        py::list out;
+#define FLOX_INDICATOR(Cls, name, Kind, Args) out.append(#Cls);
+#include "flox/indicator/registry.def"
+#undef FLOX_INDICATOR
+        return out;
+      },
+      "Return the list of indicator names registered in this build "
+      "(both batch compute() and streaming update()/value on each).");
 }

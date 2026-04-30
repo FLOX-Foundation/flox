@@ -257,3 +257,37 @@ value = cvd.update(volume, is_buy)
 ## Aliases
 
 `StreamingEMA` and `StreamingSMA` are available as aliases for `EMA` and `SMA` for backward compatibility.
+
+## Indicator catalog
+
+<!-- INDICATOR-LIST-START -->
+
+Every indicator below is **one Codon class** with both a batch
+`compute()` method and streaming `update()` / `value` / `ready` / `reset()`.
+
+| Indicator | Constructor | Kind |
+|---|---|---|
+| `EMA` | `flox.EMA(size_t period)` | SingleInput |
+| `SMA` | `flox.SMA(size_t period)` | SingleInput |
+| `RMA` | `flox.RMA(size_t period)` | SingleInput |
+| `RSI` | `flox.RSI(size_t period)` | SingleInput |
+| `KAMA` | `flox.KAMA(size_t period, size_t fast, size_t slow)` | SingleInput |
+| `DEMA` | `flox.DEMA(size_t period)` | SingleInput |
+| `TEMA` | `flox.TEMA(size_t period)` | SingleInput |
+| `Slope` | `flox.Slope(size_t length)` | SingleInput |
+| `Skewness` | `flox.Skewness(size_t period)` | SingleInput |
+| `Kurtosis` | `flox.Kurtosis(size_t period)` | SingleInput |
+| `RollingZScore` | `flox.RollingZScore(size_t period)` | SingleInput |
+| `ShannonEntropy` | `flox.ShannonEntropy(size_t period, size_t bins)` | SingleInput |
+| `AutoCorrelation` | `flox.AutoCorrelation(size_t window, size_t lag)` | SingleInput |
+| `ATR` | `flox.ATR(size_t period)` | BarInput |
+| `CCI` | `flox.CCI(size_t period)` | BarInput |
+| `Stochastic` | `flox.Stochastic(size_t k_period, size_t d_period)` | BarInput |
+| `ParkinsonVol` | `flox.ParkinsonVol(size_t period)` | HighLowInput |
+| `RogersSatchellVol` | `flox.RogersSatchellVol(size_t period)` | OhlcInput |
+| `Correlation` | `flox.Correlation(size_t period)` | PairInput |
+| `MACD` | `flox.MACD(size_t fast, size_t slow, size_t signal)` | MultiOutput |
+| `Bollinger` | `flox.Bollinger(size_t period, double stddev)` | MultiOutput |
+
+
+<!-- INDICATOR-LIST-END -->

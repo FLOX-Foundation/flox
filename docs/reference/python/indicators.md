@@ -309,3 +309,48 @@ Fraction of trades with positive PnL.
 ```python
 wr = flox.win_rate(pnls)
 ```
+
+## Indicator catalog
+
+<!-- INDICATOR-LIST-START -->
+
+Every indicator below is **one Python class** with both a batch
+`compute()` method and streaming `update()`/`value`/`ready`/`reset()`.
+Same instance, two ways to use it:
+
+```python
+import flox_py as flox
+ema = flox.EMA(10)
+out = ema.compute(prices)             # batch
+for v in stream:
+    ema.update(v)
+    if ema.ready: print(ema.value)    # streaming on the same instance
+```
+
+| Indicator | Constructor | Kind |
+|---|---|---|
+| `EMA` | `flox.EMA(period)` | SingleInput |
+| `SMA` | `flox.SMA(period)` | SingleInput |
+| `RMA` | `flox.RMA(period)` | SingleInput |
+| `RSI` | `flox.RSI(period)` | SingleInput |
+| `KAMA` | `flox.KAMA(period, fast, slow)` | SingleInput |
+| `DEMA` | `flox.DEMA(period)` | SingleInput |
+| `TEMA` | `flox.TEMA(period)` | SingleInput |
+| `Slope` | `flox.Slope(length)` | SingleInput |
+| `Skewness` | `flox.Skewness(period)` | SingleInput |
+| `Kurtosis` | `flox.Kurtosis(period)` | SingleInput |
+| `RollingZScore` | `flox.RollingZScore(period)` | SingleInput |
+| `ShannonEntropy` | `flox.ShannonEntropy(period, bins)` | SingleInput |
+| `AutoCorrelation` | `flox.AutoCorrelation(window, lag)` | SingleInput |
+| `ATR` | `flox.ATR(period)` | BarInput |
+| `CCI` | `flox.CCI(period)` | BarInput |
+| `Stochastic` | `flox.Stochastic(k_period, d_period)` | BarInput |
+| `ParkinsonVol` | `flox.ParkinsonVol(period)` | HighLowInput |
+| `RogersSatchellVol` | `flox.RogersSatchellVol(period)` | OhlcInput |
+| `Correlation` | `flox.Correlation(period)` | PairInput |
+| `MACD` | `flox.MACD(fast, slow, signal)` | MultiOutput |
+| `Bollinger` | `flox.Bollinger(period, stddev)` | MultiOutput |
+
+Discovery: `flox.list_indicators()` returns the full list at runtime.
+
+<!-- INDICATOR-LIST-END -->
