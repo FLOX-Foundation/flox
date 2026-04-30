@@ -70,3 +70,48 @@ ind.reset()          // clear state, keep config
 `OBV()` — `update(close, volume)`  
 `VWAP(window)` — `update(close, volume)`  
 `CVD()` — `update(open, high, low, close, volume)`
+
+## Indicator catalog
+
+<!-- INDICATOR-LIST-START -->
+
+Every indicator below is **one Node.js class** with both a batch
+`compute()` method and streaming `update()` / `value` / `ready` / `reset()`.
+Same instance, two ways to use it:
+
+```js
+const flox = require('flox-node');
+const ema = new flox.EMA(10);
+const out = ema.compute(prices);            // batch
+for (const v of stream) {
+  ema.update(v);
+  if (ema.ready) console.log(ema.value);    // streaming on the same instance
+}
+```
+
+| Indicator | Constructor | Kind |
+|---|---|---|
+| `EMA` | `new flox.EMA(period)` | SingleInput |
+| `SMA` | `new flox.SMA(period)` | SingleInput |
+| `RMA` | `new flox.RMA(period)` | SingleInput |
+| `RSI` | `new flox.RSI(period)` | SingleInput |
+| `KAMA` | `new flox.KAMA(period, fast, slow)` | SingleInput |
+| `DEMA` | `new flox.DEMA(period)` | SingleInput |
+| `TEMA` | `new flox.TEMA(period)` | SingleInput |
+| `Slope` | `new flox.Slope(length)` | SingleInput |
+| `Skewness` | `new flox.Skewness(period)` | SingleInput |
+| `Kurtosis` | `new flox.Kurtosis(period)` | SingleInput |
+| `RollingZScore` | `new flox.RollingZScore(period)` | SingleInput |
+| `ShannonEntropy` | `new flox.ShannonEntropy(period, bins)` | SingleInput |
+| `AutoCorrelation` | `new flox.AutoCorrelation(window, lag)` | SingleInput |
+| `ATR` | `new flox.ATR(period)` | BarInput |
+| `CCI` | `new flox.CCI(period)` | BarInput |
+| `Stochastic` | `new flox.Stochastic(k_period, d_period)` | BarInput |
+| `ParkinsonVol` | `new flox.ParkinsonVol(period)` | HighLowInput |
+| `RogersSatchellVol` | `new flox.RogersSatchellVol(period)` | OhlcInput |
+| `Correlation` | `new flox.Correlation(period)` | PairInput |
+| `MACD` | `new flox.MACD(fast, slow, signal)` | MultiOutput |
+| `Bollinger` | `new flox.Bollinger(period, stddev)` | MultiOutput |
+
+
+<!-- INDICATOR-LIST-END -->

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -8,7 +10,7 @@
 namespace flox::indicator
 {
 
-class EMA
+class EMA : public StreamingSingle<EMA>
 {
  public:
   explicit EMA(size_t period) noexcept : _period(period), _alpha(2.0 / (period + 1.0)) {}

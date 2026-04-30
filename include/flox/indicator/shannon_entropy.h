@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -9,7 +11,7 @@
 namespace flox::indicator
 {
 
-class ShannonEntropy
+class ShannonEntropy : public StreamingSingle<ShannonEntropy>
 {
  public:
   explicit ShannonEntropy(size_t period, size_t bins = 10) noexcept : _period(period), _bins(bins)

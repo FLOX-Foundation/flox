@@ -112,6 +112,7 @@ nav:
       - Grid Search: how-to/grid-search.md
       - Strategy Classes: how-to/strategy-classes.md
       - Indicator Graph: how-to/indicator-graph.md
+      - Add a New Indicator: how-to/add-an-indicator.md
       - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
       - CPU Affinity: how-to/cpu-affinity.md
       - Custom Connector: how-to/custom-connector.md

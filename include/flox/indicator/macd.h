@@ -25,6 +25,52 @@ class MACD
   {
   }
 
+  // ── Streaming API ─────────────────────────────────────────────────
+  void update(double v)
+  {
+    _history.push_back(v);
+    _dirty = true;
+  }
+  double value() const { return tail(_last.line); }
+  double signalValue() const { return tail(_last.signal); }
+  double histogramValue() const { return tail(_last.histogram); }
+  bool ready() const
+  {
+    refresh();
+    return !_last.line.empty() && std::isfinite(_last.line.back());
+  }
+  void reset()
+  {
+    _history.clear();
+    _last = MacdResult{};
+    _dirty = false;
+  }
+  size_t count() const noexcept { return _history.size(); }
+
+ private:
+  void refresh() const
+  {
+    if (!_dirty)
+    {
+      return;
+    }
+    if (_history.empty())
+    {
+      _last = MacdResult{};
+    }
+    else
+    {
+      _last = compute(std::span<const double>(_history));
+    }
+    _dirty = false;
+  }
+  double tail(const std::vector<double>& v) const
+  {
+    refresh();
+    return v.empty() ? std::nan("") : v.back();
+  }
+
+ public:
   MacdResult compute(std::span<const double> input) const
   {
     MacdResult result;
@@ -108,6 +154,11 @@ class MACD
   EMA _slow;
   EMA _signal;
   size_t _slowPeriod;
+
+  // streaming state
+  std::vector<double> _history;
+  mutable MacdResult _last;
+  mutable bool _dirty = false;
 };
 
 }  // namespace flox::indicator

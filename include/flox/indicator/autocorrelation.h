@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -17,7 +19,7 @@ namespace flox::indicator
 //
 // Reuses Pearson's standard closed form so output matches Correlation when
 // the same data is paired manually.
-class AutoCorrelation
+class AutoCorrelation : public StreamingSingle<AutoCorrelation>
 {
  public:
   AutoCorrelation(size_t window, size_t lag) noexcept : _window(window), _lag(lag)

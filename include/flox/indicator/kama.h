@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -8,7 +10,7 @@
 namespace flox::indicator
 {
 
-class KAMA
+class KAMA : public StreamingSingle<KAMA>
 {
  public:
   explicit KAMA(size_t period, size_t fast = 2, size_t slow = 30) noexcept

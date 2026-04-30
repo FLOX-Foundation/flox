@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -8,7 +10,7 @@
 namespace flox::indicator
 {
 
-class RSI
+class RSI : public StreamingSingle<RSI>
 {
  public:
   explicit RSI(size_t period) noexcept : _period(period) {}

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include "flox/indicator/sma.h"
 
 #include <cassert>
@@ -10,7 +12,7 @@
 namespace flox::indicator
 {
 
-class CCI
+class CCI : public StreamingBar<CCI>
 {
  public:
   explicit CCI(size_t period = 20) noexcept : _period(period) {}

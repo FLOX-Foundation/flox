@@ -1,0 +1,51 @@
+// flox/indicator/registry.def
+//
+// Single source of truth for the list of indicators.
+//
+// Every layer (C API, Python / Node / QuickJS / Codon bindings, parity test
+// matrix, doc generator) includes this file with its own definition of
+// FLOX_INDICATOR. Adding a row here propagates everywhere automatically.
+//
+// FLOX_INDICATOR(class_name, snake_name, kind, ctor_args)
+//
+// kind ∈ {
+//   SingleInput   — compute(span<const double>) -> vector<double>
+//   BarInput      — compute(high, low, close) per-bar
+//   HighLowInput  — compute(high, low)
+//   OhlcInput     — compute(open, high, low, close)
+//   PairInput     — compute(x, y)
+//   MultiOutput   — compute(span) -> struct (e.g. {line, signal, histogram})
+// }
+
+// ---- Single-input ---------------------------------------------------------
+FLOX_INDICATOR(EMA,               ema,                 SingleInput,  (size_t period))
+FLOX_INDICATOR(SMA,               sma,                 SingleInput,  (size_t period))
+FLOX_INDICATOR(RMA,               rma,                 SingleInput,  (size_t period))
+FLOX_INDICATOR(RSI,               rsi,                 SingleInput,  (size_t period))
+FLOX_INDICATOR(KAMA,              kama,                SingleInput,  (size_t period, size_t fast, size_t slow))
+FLOX_INDICATOR(DEMA,              dema,                SingleInput,  (size_t period))
+FLOX_INDICATOR(TEMA,              tema,                SingleInput,  (size_t period))
+FLOX_INDICATOR(Slope,             slope,               SingleInput,  (size_t length))
+FLOX_INDICATOR(Skewness,          skewness,            SingleInput,  (size_t period))
+FLOX_INDICATOR(Kurtosis,          kurtosis,            SingleInput,  (size_t period))
+FLOX_INDICATOR(RollingZScore,     rolling_zscore,      SingleInput,  (size_t period))
+FLOX_INDICATOR(ShannonEntropy,    shannon_entropy,     SingleInput,  (size_t period, size_t bins))
+FLOX_INDICATOR(AutoCorrelation,   autocorrelation,     SingleInput,  (size_t window, size_t lag))
+
+// ---- Bar (high, low, close) ----------------------------------------------
+FLOX_INDICATOR(ATR,               atr,                 BarInput,     (size_t period))
+FLOX_INDICATOR(CCI,               cci,                 BarInput,     (size_t period))
+FLOX_INDICATOR(Stochastic,        stochastic,          BarInput,     (size_t k_period, size_t d_period))
+
+// ---- High/Low only -------------------------------------------------------
+FLOX_INDICATOR(ParkinsonVol,      parkinson_vol,       HighLowInput, (size_t period))
+
+// ---- OHLC ---------------------------------------------------------------
+FLOX_INDICATOR(RogersSatchellVol, rogers_satchell_vol, OhlcInput,    (size_t period))
+
+// ---- Two-series ---------------------------------------------------------
+FLOX_INDICATOR(Correlation,       correlation,         PairInput,    (size_t period))
+
+// ---- Multi-output -------------------------------------------------------
+FLOX_INDICATOR(MACD,              macd,                MultiOutput,  (size_t fast, size_t slow, size_t signal))
+FLOX_INDICATOR(Bollinger,         bollinger,           MultiOutput,  (size_t period, double stddev))

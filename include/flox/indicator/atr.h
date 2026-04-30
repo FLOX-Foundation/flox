@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include "flox/aggregator/bar.h"
 
 #include <algorithm>
@@ -11,7 +13,7 @@
 namespace flox::indicator
 {
 
-class ATR
+class ATR : public StreamingBar<ATR>
 {
  public:
   explicit ATR(size_t period) noexcept : _period(period) {}

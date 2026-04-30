@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -10,7 +12,7 @@ namespace flox::indicator
 
 // Wilder's Moving Average. alpha = 1/period (not 2/(period+1) like EMA).
 // Used internally by ATR, RSI, ADX. Exposed for direct use.
-class RMA
+class RMA : public StreamingSingle<RMA>
 {
  public:
   explicit RMA(size_t period) noexcept : _period(period) {}

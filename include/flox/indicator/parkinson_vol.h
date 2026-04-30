@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -10,7 +12,7 @@
 namespace flox::indicator
 {
 
-class ParkinsonVol
+class ParkinsonVol : public StreamingHighLow<ParkinsonVol>
 {
  public:
   explicit ParkinsonVol(size_t period) noexcept : _period(period) { assert(period >= 1); }

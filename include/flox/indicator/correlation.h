@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flox/indicator/streaming.h"
+
 #include <cassert>
 #include <cmath>
 #include <span>
@@ -8,7 +10,7 @@
 namespace flox::indicator
 {
 
-class Correlation
+class Correlation : public StreamingPair<Correlation>
 {
  public:
   explicit Correlation(size_t period) noexcept : _period(period) { assert(period >= 2); }
