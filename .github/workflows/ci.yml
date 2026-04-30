@@ -19,6 +19,22 @@ jobs:
     - name: Check formatting
       run: ./scripts/check-format.sh
 
+  verify-docs-current:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Verify indicator docs are in sync with registry.def
+      run: |
+        python3 scripts/gen_indicator_docs.py
+        if ! git diff --exit-code -- docs/; then
+          echo "::error::docs/ out of sync with include/flox/indicator/registry.def"
+          echo "Run: python3 scripts/gen_indicator_docs.py"
+          exit 1
+        fi
+
   linux-gcc:
     needs: format-check
     runs-on: ubuntu-24.04
@@ -134,6 +150,9 @@ jobs:
     - name: Verify Node.js bindings
       run: |
         cd node && node test/test_bindings.js
+
+    - name: Cross-binding parity (Python ↔ Node, same C++ math)
+      run: PYTHONPATH=build/python python3 scripts/cross_binding_parity.py
 
     - name: Run Node.js example
       run: node docs/examples/node_backtest_vs_live.js
