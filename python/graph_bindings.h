@@ -4,6 +4,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <cstring>
 #include <optional>
 #include <span>
 #include <string>
@@ -12,7 +13,6 @@
 #include "flox/aggregator/bar.h"
 #include "flox/common.h"
 #include "flox/indicator/indicator_pipeline.h"
-#include "flox/indicator/streaming_graph.h"
 
 namespace py = pybind11;
 
@@ -22,8 +22,11 @@ namespace
 using contiguous_double_graph =
     py::array_t<double, py::array::c_style | py::array::forcecast>;
 
-// Wraps flox::indicator::IndicatorGraph for Python. Single-symbol path is
-// the primary use; multi-symbol works by passing distinct symbol IDs.
+// Single Python class for the DAG. Same instance exposes BOTH:
+//   - batch path: set_bars(...) / require(...) / get(...) / field accessors
+//   - streaming path: step(...) / current(...) / bar_count(...) / reset(...)
+// Same nodes serve both. Same cache. Same invalidation rules. There is no
+// separate StreamingIndicatorGraph type.
 class PyIndicatorGraph
 {
  public:
@@ -77,9 +80,8 @@ class PyIndicatorGraph
       bars[i].close = flox::Price::fromDouble(c[i]);
       bars[i].volume = v ? flox::Volume::fromDouble(v[i]) : flox::Volume{};
     }
-    _bars[symbol] = std::move(bars);
     _graph.setBars(static_cast<flox::SymbolId>(symbol),
-                   std::span<const flox::Bar>(_bars[symbol]));
+                   std::span<const flox::Bar>(bars));
   }
 
   void addNode(const std::string& name, std::vector<std::string> deps, py::object fn)
@@ -116,6 +118,32 @@ class PyIndicatorGraph
     return toArray(*v);
   }
 
+  // ── Streaming path on the same graph ─────────────────────────────
+  void step(uint32_t symbol, double close, std::optional<double> high,
+            std::optional<double> low, std::optional<double> volume)
+  {
+    flox::Bar bar;
+    double h = high.value_or(close);
+    double l = low.value_or(close);
+    double v = volume.value_or(0.0);
+    bar.open = flox::Price::fromDouble(close);
+    bar.high = flox::Price::fromDouble(h);
+    bar.low = flox::Price::fromDouble(l);
+    bar.close = flox::Price::fromDouble(close);
+    bar.volume = flox::Volume::fromDouble(v);
+    _graph.step(static_cast<flox::SymbolId>(symbol), bar);
+  }
+
+  double current(uint32_t symbol, const std::string& name)
+  {
+    return _graph.current(static_cast<flox::SymbolId>(symbol), name);
+  }
+
+  size_t barCount(uint32_t symbol) const
+  {
+    return _graph.barCount(static_cast<flox::SymbolId>(symbol));
+  }
+
   py::array_t<double> close(uint32_t symbol)
   {
     return toArray(_graph.close(static_cast<flox::SymbolId>(symbol)));
@@ -135,6 +163,8 @@ class PyIndicatorGraph
 
   void invalidate(uint32_t symbol) { _graph.invalidate(static_cast<flox::SymbolId>(symbol)); }
   void invalidateAll() { _graph.invalidateAll(); }
+  void reset(uint32_t symbol) { _graph.reset(static_cast<flox::SymbolId>(symbol)); }
+  void resetAll() { _graph.resetAll(); }
 
  private:
   static py::array_t<double> toArray(const std::vector<double>& v)
@@ -145,86 +175,6 @@ class PyIndicatorGraph
   }
 
   flox::indicator::IndicatorGraph _graph;
-  std::unordered_map<uint32_t, std::vector<flox::Bar>> _bars;
-};
-
-class PyStreamingIndicatorGraph
-{
- public:
-  PyStreamingIndicatorGraph() = default;
-
-  void addNode(const std::string& name, std::vector<std::string> deps, py::object fn)
-  {
-    PyStreamingIndicatorGraph* self = this;
-    _sg.addNode(
-        name, std::move(deps),
-        [self, fn](flox::indicator::IndicatorGraph&, flox::SymbolId sym) -> std::vector<double>
-        {
-          py::object result = fn(py::cast(self, py::return_value_policy::reference),
-                                 static_cast<uint32_t>(sym));
-          py::array_t<double, py::array::c_style | py::array::forcecast> arr =
-              result.cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
-          auto buf = arr.request();
-          size_t n = buf.shape[0];
-          const double* p = static_cast<const double*>(buf.ptr);
-          return std::vector<double>(p, p + n);
-        });
-  }
-
-  void step(uint32_t symbol, double close, std::optional<double> high, std::optional<double> low,
-            std::optional<double> volume)
-  {
-    flox::Bar bar;
-    double h = high.value_or(close);
-    double l = low.value_or(close);
-    double v = volume.value_or(0.0);
-    bar.open = flox::Price::fromDouble(close);
-    bar.high = flox::Price::fromDouble(h);
-    bar.low = flox::Price::fromDouble(l);
-    bar.close = flox::Price::fromDouble(close);
-    bar.volume = flox::Volume::fromDouble(v);
-    _sg.step(static_cast<flox::SymbolId>(symbol), bar);
-  }
-
-  double current(uint32_t symbol, const std::string& name) const
-  {
-    return _sg.current(static_cast<flox::SymbolId>(symbol), name);
-  }
-
-  size_t barCount(uint32_t symbol) const
-  {
-    return _sg.barCount(static_cast<flox::SymbolId>(symbol));
-  }
-
-  void reset(uint32_t symbol) { _sg.reset(static_cast<flox::SymbolId>(symbol)); }
-  void resetAll() { _sg.resetAll(); }
-
-  py::array_t<double> close(uint32_t symbol)
-  {
-    return toArray(_sg.batchGraph().close(static_cast<flox::SymbolId>(symbol)));
-  }
-  py::array_t<double> high(uint32_t symbol)
-  {
-    return toArray(_sg.batchGraph().high(static_cast<flox::SymbolId>(symbol)));
-  }
-  py::array_t<double> low(uint32_t symbol)
-  {
-    return toArray(_sg.batchGraph().low(static_cast<flox::SymbolId>(symbol)));
-  }
-  py::array_t<double> volume(uint32_t symbol)
-  {
-    return toArray(_sg.batchGraph().volume(static_cast<flox::SymbolId>(symbol)));
-  }
-
- private:
-  static py::array_t<double> toArray(const std::vector<double>& v)
-  {
-    py::array_t<double> out(v.size());
-    std::memcpy(out.mutable_data(), v.data(), v.size() * sizeof(double));
-    return out;
-  }
-
-  flox::indicator::StreamingIndicatorGraph _sg;
 };
 
 }  // namespace
@@ -240,26 +190,23 @@ inline void bindIndicatorGraph(py::module_& m)
            py::arg("fn"))
       .def("require", &PyIndicatorGraph::require, py::arg("symbol"), py::arg("name"))
       .def("get", &PyIndicatorGraph::get, py::arg("symbol"), py::arg("name"))
+      // Streaming path on the same instance — no separate type.
+      .def("step", &PyIndicatorGraph::step, py::arg("symbol"), py::arg("close"),
+           py::arg("high") = py::none(), py::arg("low") = py::none(),
+           py::arg("volume") = py::none())
+      .def("current", &PyIndicatorGraph::current, py::arg("symbol"), py::arg("name"))
+      .def("bar_count", &PyIndicatorGraph::barCount, py::arg("symbol"))
       .def("close", &PyIndicatorGraph::close, py::arg("symbol"))
       .def("high", &PyIndicatorGraph::high, py::arg("symbol"))
       .def("low", &PyIndicatorGraph::low, py::arg("symbol"))
       .def("volume", &PyIndicatorGraph::volume, py::arg("symbol"))
       .def("invalidate", &PyIndicatorGraph::invalidate, py::arg("symbol"))
-      .def("invalidate_all", &PyIndicatorGraph::invalidateAll);
+      .def("invalidate_all", &PyIndicatorGraph::invalidateAll)
+      .def("reset", &PyIndicatorGraph::reset, py::arg("symbol"))
+      .def("reset_all", &PyIndicatorGraph::resetAll);
 
-  py::class_<PyStreamingIndicatorGraph>(m, "StreamingIndicatorGraph")
-      .def(py::init<>())
-      .def("add_node", &PyStreamingIndicatorGraph::addNode, py::arg("name"), py::arg("deps"),
-           py::arg("fn"))
-      .def("step", &PyStreamingIndicatorGraph::step, py::arg("symbol"), py::arg("close"),
-           py::arg("high") = py::none(), py::arg("low") = py::none(),
-           py::arg("volume") = py::none())
-      .def("current", &PyStreamingIndicatorGraph::current, py::arg("symbol"), py::arg("name"))
-      .def("bar_count", &PyStreamingIndicatorGraph::barCount, py::arg("symbol"))
-      .def("reset", &PyStreamingIndicatorGraph::reset, py::arg("symbol"))
-      .def("reset_all", &PyStreamingIndicatorGraph::resetAll)
-      .def("close", &PyStreamingIndicatorGraph::close, py::arg("symbol"))
-      .def("high", &PyStreamingIndicatorGraph::high, py::arg("symbol"))
-      .def("low", &PyStreamingIndicatorGraph::low, py::arg("symbol"))
-      .def("volume", &PyStreamingIndicatorGraph::volume, py::arg("symbol"));
+  // Backward-compat alias: the old StreamingIndicatorGraph name resolves to
+  // the same class. Will be removed in a future major version. New code
+  // should use IndicatorGraph directly.
+  m.attr("StreamingIndicatorGraph") = m.attr("IndicatorGraph");
 }

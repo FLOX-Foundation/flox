@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cmath>
 #include <functional>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "flox/aggregator/bar.h"
@@ -149,6 +151,55 @@ class IndicatorGraph
     _cache.clear();
     _fields.clear();
   }
+
+  // ── Streaming path ─────────────────────────────────────────────────
+  // Append one bar; cached node results for that symbol are invalidated.
+  // Combines naturally with set_bars: set_bars seeds, then step appends.
+  void step(SymbolId symbol, const Bar& bar)
+  {
+    _bars[symbol].push_back(bar);
+    invalidate(symbol);
+  }
+
+  // Latest value of a given node for the symbol. NaN if no bars yet, or if
+  // the node hasn't warmed up. Triggers compute on first access for the
+  // current bar.
+  double current(SymbolId symbol, const std::string& name)
+  {
+    try
+    {
+      const auto& v = require(symbol, name);
+      return v.empty() ? std::nan("") : v.back();
+    }
+    catch (...)
+    {
+      return std::nan("");
+    }
+  }
+
+  size_t barCount(SymbolId symbol) const
+  {
+    auto it = _bars.find(symbol);
+    return it != _bars.end() ? it->second.size() : 0;
+  }
+
+  void reset(SymbolId symbol)
+  {
+    _bars.erase(symbol);
+    invalidate(symbol);
+  }
+
+  void resetAll()
+  {
+    _bars.clear();
+    invalidateAll();
+  }
+
+  // Compatibility shim for code that used the old StreamingIndicatorGraph
+  // pattern of "batch graph held inside streaming graph". Now the same
+  // object IS the batch graph.
+  IndicatorGraph& batchGraph() { return *this; }
+  const IndicatorGraph& batchGraph() const { return *this; }
 
  private:
   struct Node
