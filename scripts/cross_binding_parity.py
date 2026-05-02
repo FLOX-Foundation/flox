@@ -227,16 +227,17 @@ def main() -> int:
         py_bbo_from       = reader_py.read_bbo_from(mid_ts)
         py_trades_from    = reader_py.read_trades_from(mid_ts)
 
-        # Node side: just emit counts to compare. Wrapped because some platforms
-        # (Linux without an LZ4-linked Node binding) can't read compressed
-        # demo segments — we'd rather skip than block CI.
+        # Node side: emit counts to compare. The Node binding now links lz4
+        # itself (see node/CMakeLists.txt), so compressed demo segments work
+        # on every platform. mid_ts is passed as BigInt — JS Numbers are
+        # float64 and silently round nanosecond timestamps past 2^53.
         node_script = (
             f"const flox = require('.');\n"
             f"const r = new flox.DataReader({json.dumps(str(sample))});\n"
             f"const tr = r.readTrades(), bu = r.readBookUpdates(), bb = r.readBBO();\n"
-            f"const trF = r.readTradesFrom({mid_ts});\n"
-            f"const buF = r.readBookUpdatesFrom({mid_ts});\n"
-            f"const bbF = r.readBBOFrom({mid_ts});\n"
+            f"const trF = r.readTradesFrom({mid_ts}n);\n"
+            f"const buF = r.readBookUpdatesFrom({mid_ts}n);\n"
+            f"const bbF = r.readBBOFrom({mid_ts}n);\n"
             f"process.stdout.write(JSON.stringify({{\n"
             f"  count: r.count, trades: tr.length, bbo: bb.length, book: bu.length,\n"
             f"  tradesFrom: trF.length, bboFrom: bbF.length, bookFrom: buF.length,\n"
@@ -245,39 +246,27 @@ def main() -> int:
             f"  book0_bidcnt: bu.length ? bu[0].bids.length : null,\n"
             f"}}));\n"
         )
-        try:
-            node_out = run_node(node_script)
-        except RuntimeError as e:
-            # Most common cause: the Node binding wasn't built with LZ4 and the
-            # sample dataset is compressed.
-            msg = str(e)
-            if "LZ4" in msg or "lz4" in msg:
-                print("  SKIP  DataReader parity: Node binding lacks LZ4; "
-                      "demo data is compressed. Python side validated.")
-            else:
-                print(f"  SKIP  DataReader parity: node failed ({msg.splitlines()[0]})")
-            node_out = None
+        node_out = run_node(node_script)
 
-        if node_out is not None:
-            checks = [
-                ("count",        node_out["count"],       py_count_total),
-                ("trades",       node_out["trades"],      len(py_trades)),
-                ("bbo",          node_out["bbo"],         len(py_bbo)),
-                ("book",         node_out["book"],        len(py_book_h)),
-                ("tradesFrom",   node_out["tradesFrom"],  len(py_trades_from)),
-                ("bboFrom",      node_out["bboFrom"],     len(py_bbo_from)),
-                ("bookFrom",     node_out["bookFrom"],    len(py_book_from_h)),
-            ]
-            all_match = True
-            for name, js_v, py_v in checks:
-                if js_v != py_v:
-                    print(f"  FAIL  DataReader.{name}: py={py_v}  js={js_v}")
-                    all_match = False
-            if all_match:
-                print(f"  ok    DataReader: counts match across all 6 read methods")
-                ok += 1
-            else:
-                bad += 1
+        checks = [
+            ("count",        node_out["count"],       py_count_total),
+            ("trades",       node_out["trades"],      len(py_trades)),
+            ("bbo",          node_out["bbo"],         len(py_bbo)),
+            ("book",         node_out["book"],        len(py_book_h)),
+            ("tradesFrom",   node_out["tradesFrom"],  len(py_trades_from)),
+            ("bboFrom",      node_out["bboFrom"],     len(py_bbo_from)),
+            ("bookFrom",     node_out["bookFrom"],    len(py_book_from_h)),
+        ]
+        all_match = True
+        for name, js_v, py_v in checks:
+            if js_v != py_v:
+                print(f"  FAIL  DataReader.{name}: py={py_v}  js={js_v}")
+                all_match = False
+        if all_match:
+            print(f"  ok    DataReader: counts match across all 6 read methods")
+            ok += 1
+        else:
+            bad += 1
 
     print(f"\n{ok} passed, {bad} failed")
     return 0 if bad == 0 else 1

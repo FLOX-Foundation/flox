@@ -9,6 +9,21 @@
 namespace node_flox
 {
 
+// JS Numbers are float64 and lose precision past 2^53, which truncates
+// nanosecond timestamps in unpredictable ways (e.g. 1765615835519000000
+// round-trips as 1765615835519000064). Accept BigInt for any int64_t arg
+// that may hold a real ns timestamp; fall back to Number for callers that
+// pass smaller values.
+inline int64_t toInt64Ns(const Napi::Value& v)
+{
+  if (v.IsBigInt())
+  {
+    bool lossless = false;
+    return v.As<Napi::BigInt>().Int64Value(&lossless);
+  }
+  return v.As<Napi::Number>().Int64Value();
+}
+
 // ── DataWriter ──────────────────────────────────────────────────────
 
 class DataWriterWrap : public Napi::ObjectWrap<DataWriterWrap>
@@ -83,8 +98,8 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   DataReaderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataReaderWrap>(info)
   {
     std::string dir = info[0].As<Napi::String>().Utf8Value();
-    int64_t from = info.Length() > 1 && info[1].IsNumber() ? info[1].As<Napi::Number>().Int64Value() : 0;
-    int64_t to = info.Length() > 2 && info[2].IsNumber() ? info[2].As<Napi::Number>().Int64Value() : 0;
+    int64_t from = info.Length() > 1 && (info[1].IsNumber() || info[1].IsBigInt()) ? toInt64Ns(info[1]) : 0;
+    int64_t to = info.Length() > 2 && (info[2].IsNumber() || info[2].IsBigInt()) ? toInt64Ns(info[2]) : 0;
     // TODO: symbol filter array
     _h = flox_data_reader_create_filtered(dir.c_str(), from, to, nullptr, 0);
   }
@@ -131,7 +146,7 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   }
   Napi::Value ReadTradesFrom(const Napi::CallbackInfo& info)
   {
-    int64_t startTsNs = info[0].As<Napi::Number>().Int64Value();
+    int64_t startTsNs = toInt64Ns(info[0]);
     uint64_t maxTrades = info.Length() > 1 && info[1].IsNumber()
                              ? info[1].As<Napi::Number>().Int64Value()
                              : 0;
@@ -146,7 +161,7 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   }
   Napi::Value ReadBBOFrom(const Napi::CallbackInfo& info)
   {
-    int64_t startTsNs = info[0].As<Napi::Number>().Int64Value();
+    int64_t startTsNs = toInt64Ns(info[0]);
     uint64_t maxEvents = info.Length() > 1 && info[1].IsNumber()
                              ? info[1].As<Napi::Number>().Int64Value()
                              : 0;
@@ -220,7 +235,7 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   }
   Napi::Value ReadBookUpdatesFrom(const Napi::CallbackInfo& info)
   {
-    int64_t startTsNs = info[0].As<Napi::Number>().Int64Value();
+    int64_t startTsNs = toInt64Ns(info[0]);
     return readBookUpdatesImpl(info.Env(), startTsNs, /*useFrom=*/true);
   }
 
