@@ -1,5 +1,8 @@
 # Add a new indicator
 
+!!! info "C++ extension point"
+    Indicators are defined once in C++ and surface automatically in every binding. Most users don't need this guide — the [built-in indicators](../reference/python/indicators.md) cover the standard set.
+
 The framework is designed so that adding a new indicator is **one C++ class
 plus one line in a registry**. After those two changes it appears in C++,
 Python, every binding, in `flox.list_indicators()` discovery, in the parity

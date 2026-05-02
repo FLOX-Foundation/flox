@@ -1,206 +1,237 @@
 # First Strategy
 
-Write a simple trading strategy that reacts to market data.
+Write a simple trading strategy that reacts to market data. After your [language quickstart](README.md) you should already have FLOX building. This tutorial introduces the callback model that every binding shares.
 
-## Prerequisites
+## The model
 
-- Completed [Quickstart](quickstart.md)
-- Basic C++ knowledge
+Every Strategy subclass gets four callbacks. You override the ones you need:
 
-## 1. Strategy Interface
+| Callback | Fires when |
+|---|---|
+| `on_trade(ctx, trade)` | A trade tick arrives |
+| `on_book_update(ctx)` | Top-of-book moves (bid/ask change) |
+| `on_bar(ctx, bar)` | A closed OHLC bar is dispatched |
+| `on_start()` / `on_stop()` | Strategy lifecycle |
 
-All strategies implement `IStrategy`, which combines:
+Inside callbacks you query state via `ctx` and place orders with helpers like `market_buy(qty)` / `limit_sell(price, qty)`.
 
-- `ISubsystem` — lifecycle (`start()`, `stop()`)
-- `IMarketDataSubscriber` — market data callbacks
+## A printing strategy
 
-```cpp
-#include "flox/strategy/abstract_strategy.h"
+This strategy logs every trade and tracks the best bid / ask.
 
-class MyStrategy : public flox::IStrategy
-{
-public:
-  // Required: unique identifier for event routing
-  flox::SubscriberId id() const override {
-    return reinterpret_cast<flox::SubscriberId>(this);
-  }
+=== "Python"
 
-  // Lifecycle
-  void start() override { /* initialization */ }
-  void stop() override { /* cleanup */ }
+    ```python
+    import flox_py as flox
 
-  // Market data callbacks
-  void onTrade(const flox::TradeEvent& ev) override { /* react to trades */ }
-  void onBookUpdate(const flox::BookUpdateEvent& ev) override { /* react to book changes */ }
-  void onBar(const flox::BarEvent& ev) override { /* react to bars */ }
-  void onMarketDataError(const flox::MarketDataError& error) override { /* handle errors */ }
-};
-```
+    class PrintingStrategy(flox.Strategy):
+        def __init__(self, symbols):
+            super().__init__(symbols)
+            self.trade_count = 0
 
-## 2. Simple Example
+        def on_start(self):
+            print(f"PrintingStrategy started")
 
-A strategy that prints trades and tracks best bid/ask:
+        def on_stop(self):
+            print(f"PrintingStrategy stopped. Trades seen: {self.trade_count}")
 
-```cpp
-#include "flox/strategy/abstract_strategy.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/log/log.h"
+        def on_trade(self, ctx, trade):
+            self.trade_count += 1
+            side = "BUY" if trade.is_buy else "SELL"
+            print(f"Trade: {trade.price:.2f} x {trade.quantity:.4f} ({side})")
 
-using namespace flox;
+        def on_book_update(self, ctx):
+            print(f"Book: {ctx.best_bid:.2f} / {ctx.best_ask:.2f}")
+    ```
 
-class PrintingStrategy : public IStrategy
-{
-public:
-  explicit PrintingStrategy(SymbolId symbol) : _symbol(symbol) {}
+=== "Node.js"
 
-  SubscriberId id() const override {
-    return reinterpret_cast<SubscriberId>(this);
-  }
+    ```javascript
+    class PrintingStrategy {
+      constructor(symbols) {
+        this.symbols = symbols;
+        this.tradeCount = 0;
+      }
+      onStart() { console.log("PrintingStrategy started"); }
+      onStop()  { console.log(`PrintingStrategy stopped. Trades seen: ${this.tradeCount}`); }
 
-  void start() override {
-    FLOX_LOG("[PrintingStrategy] Started for symbol " << _symbol);
-  }
-
-  void stop() override {
-    FLOX_LOG("[PrintingStrategy] Stopped. Trades seen: " << _tradeCount);
-  }
-
-  void onTrade(const TradeEvent& ev) override {
-    // Filter by symbol
-    if (ev.trade.symbol != _symbol) return;
-
-    ++_tradeCount;
-    FLOX_LOG("Trade: " << ev.trade.price.toDouble()
-             << " x " << ev.trade.quantity.toDouble()
-             << " (" << (ev.trade.isBuy ? "BUY" : "SELL") << ")");
-  }
-
-  void onBookUpdate(const BookUpdateEvent& ev) override {
-    if (ev.update.symbol != _symbol) return;
-
-    if (!ev.update.bids.empty()) {
-      _bestBid = ev.update.bids[0].price;
+      onTrade(ctx, trade) {
+        this.tradeCount++;
+        const side = trade.isBuy ? "BUY" : "SELL";
+        console.log(`Trade: ${trade.price.toFixed(2)} x ${trade.qty.toFixed(4)} (${side})`);
+      }
+      onBookUpdate(ctx) {
+        console.log(`Book: ${ctx.bestBid.toFixed(2)} / ${ctx.bestAsk.toFixed(2)}`);
+      }
     }
-    if (!ev.update.asks.empty()) {
-      _bestAsk = ev.update.asks[0].price;
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.strategy import Strategy
+    from flox.context import SymbolContext
+    from flox.types import TradeData
+
+    class PrintingStrategy(Strategy):
+        trade_count: int = 0
+
+        def __init__(self, symbols: List[int]):
+            super().__init__(symbols)
+
+        def on_start(self):
+            print("PrintingStrategy started")
+
+        def on_trade(self, ctx: SymbolContext, trade: TradeData):
+            self.trade_count += 1
+            side = "BUY" if trade.is_buy else "SELL"
+            print(f"Trade: {trade.price.to_double():.2f} ({side})")
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include "flox/strategy/strategy.h"
+
+    using namespace flox;
+
+    class PrintingStrategy : public Strategy {
+    public:
+      PrintingStrategy(SymbolId symbol, const SymbolRegistry& reg)
+          : Strategy(/*id=*/1, symbol, reg) {}
+
+      void start() override { FLOX_LOG("PrintingStrategy started"); }
+      void stop()  override { FLOX_LOG("Trades seen: " << _tradeCount); }
+
+    protected:
+      void onSymbolTrade(SymbolContext& /*ctx*/, const TradeEvent& ev) override {
+        ++_tradeCount;
+        FLOX_LOG("Trade: " << ev.trade.price.toDouble()
+                 << " x " << ev.trade.quantity.toDouble()
+                 << " (" << (ev.trade.isBuy ? "BUY" : "SELL") << ")");
+      }
+
+      void onSymbolBook(SymbolContext& ctx, const BookUpdateEvent& /*ev*/) override {
+        FLOX_LOG("Book: " << ctx.book.bestBid()->toDouble()
+                 << " / " << ctx.book.bestAsk()->toDouble());
+      }
+
+    private:
+      uint64_t _tradeCount{0};
+    };
+    ```
+
+## A trading strategy
+
+Submit a buy after every 10th trade.
+
+=== "Python"
+
+    ```python
+    class TenthTradeBuyer(flox.Strategy):
+        def __init__(self, symbols):
+            super().__init__(symbols)
+            self.count = 0
+
+        def on_trade(self, ctx, trade):
+            self.count += 1
+            if self.count % 10 == 0:
+                self.limit_buy(price=trade.price - 0.01, qty=1.0)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    class TenthTradeBuyer {
+      constructor(symbols) { this.symbols = symbols; this.count = 0; }
+      onTrade(ctx, trade, emit) {
+        this.count++;
+        if (this.count % 10 === 0) emit.limitBuy(trade.price - 0.01, 1.0);
+      }
     }
+    ```
 
-    FLOX_LOG("Book: " << _bestBid.toDouble() << " / " << _bestAsk.toDouble());
-  }
+=== "C++"
 
-private:
-  SymbolId _symbol;
-  uint64_t _tradeCount{0};
-  Price _bestBid{};
-  Price _bestAsk{};
-};
-```
+    ```cpp
+    void onSymbolTrade(SymbolContext& /*ctx*/, const TradeEvent& ev) override {
+      if (++_tradeCount % 10 != 0) return;
+      auto px = Price::fromRaw(ev.trade.price.raw() - Price::fromDouble(0.01).raw());
+      emitLimitBuy(symbol(), px, Quantity::fromDouble(1.0));
+    }
+    ```
 
-## 3. Strategy with Order Execution
+## Wiring it up
 
-A strategy that submits orders based on trades:
+Each language has a small bit of boilerplate to register your symbols and run the strategy.
 
-```cpp
-#include "flox/strategy/abstract_strategy.h"
-#include "flox/execution/abstract_executor.h"
-#include "flox/execution/order.h"
+=== "Python"
 
-using namespace flox;
+    ```python
+    reg = flox.SymbolRegistry()
+    btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-class TradingStrategy : public IStrategy
-{
-public:
-  TradingStrategy(SymbolId symbol, IOrderExecutor* executor)
-    : _symbol(symbol), _executor(executor) {}
+    strat = PrintingStrategy([btc])
+    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+    bt.set_strategy(strat)
+    bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
+    ```
 
-  SubscriberId id() const override {
-    return reinterpret_cast<SubscriberId>(this);
-  }
+=== "Node.js"
 
-  void onTrade(const TradeEvent& ev) override {
-    if (ev.trade.symbol != _symbol) return;
+    ```javascript
+    const reg = new flox.SymbolRegistry();
+    const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
 
-    // Simple logic: buy after every 10th trade
-    if (++_tradeCount % 10 != 0) return;
+    const strat = new PrintingStrategy([btc]);
+    const bt = new flox.BacktestRunner(reg, 0.0004, 10_000);
+    bt.setStrategy(strat);
+    bt.runCsv("data/btcusdt_1m.csv", "BTCUSDT");
+    ```
 
-    Order order{};
-    order.id = _nextOrderId++;
-    order.symbol = _symbol;
-    order.side = Side::BUY;
-    order.price = ev.trade.price - Price::fromDouble(0.01);  // 1 cent below
-    order.quantity = Quantity::fromDouble(1.0);
-    order.type = OrderType::LIMIT;
+=== "C++"
 
-    _executor->submitOrder(order);
-  }
+    ```cpp
+    auto tradeBus = std::make_unique<TradeBus>();
+    auto bookBus  = std::make_unique<BookUpdateBus>();
 
-private:
-  SymbolId _symbol;
-  IOrderExecutor* _executor;
-  uint64_t _tradeCount{0};
-  OrderId _nextOrderId{1};
-};
-```
+    SymbolRegistry registry;
+    SymbolInfo info{ .exchange = "binance", .symbol = "BTCUSDT",
+                      .tickSize = Price::fromDouble(0.01) };
+    auto symId = registry.registerSymbol(info);
 
-## 4. Wiring the Strategy
+    auto strat = std::make_unique<PrintingStrategy>(symId, registry);
+    tradeBus->subscribe(strat.get());
+    bookBus ->subscribe(strat.get());
 
-Connect your strategy to the engine:
+    std::vector<std::unique_ptr<ISubsystem>> subsystems;
+    subsystems.push_back(std::move(tradeBus));
+    subsystems.push_back(std::move(bookBus));
+    subsystems.push_back(std::move(strat));
 
-```cpp
-#include "flox/book/bus/trade_bus.h"
-#include "flox/book/bus/book_update_bus.h"
-#include "flox/engine/engine.h"
+    EngineConfig config{};
+    Engine engine(config, std::move(subsystems), std::move(connectors));
+    engine.start();
+    ```
 
-// Create buses
-auto tradeBus = std::make_unique<TradeBus>();
-auto bookBus = std::make_unique<BookUpdateBus>();
+## Best practices
 
-// Create strategy
-auto strategy = std::make_unique<PrintingStrategy>(/*symbolId=*/0);
-
-// Subscribe to buses
-tradeBus->subscribe(strategy.get());
-bookBus->subscribe(strategy.get());
-
-// Add to subsystems
-std::vector<std::unique_ptr<ISubsystem>> subsystems;
-subsystems.push_back(std::move(tradeBus));
-subsystems.push_back(std::move(bookBus));
-subsystems.push_back(std::move(strategy));
-
-// Create and run engine
-EngineConfig config{};
-Engine engine(config, std::move(subsystems), std::move(connectors));
-engine.start();
-```
-
-## 5. Best Practices
-
-**Do:**
+**Do**:
 
 - Keep callbacks fast and non-blocking
-- Filter events by symbol early (first line of callback)
-- Use `Price::fromDouble()` and `Quantity::fromDouble()` for conversions
-- Implement `id()` to return a unique value
+- Filter or short-circuit on the first line if the event isn't relevant
+- Let `ctx.is_flat()` / `ctx.position` decide entries — don't track position state yourself
+- Use the strategy emit helpers (`market_buy(qty)`) — they wire fees, queue position, and reduce-only flags correctly
 
-**Don't:**
+**Don't**:
 
-- Block in callbacks (no I/O, no locks, no allocations)
-- Store pointers to events (they're recycled)
+- Block in callbacks (no I/O, no locks, no big allocations)
+- Hold references to event structs after the callback returns — they're recycled
 - Throw exceptions from callbacks
 
-## Key Types
+## Next
 
-| Type | Description |
-|------|-------------|
-| `SymbolId` | `uint32_t` identifier for an instrument |
-| `Price` | Fixed-point price (use `fromDouble()`, `toDouble()`) |
-| `Quantity` | Fixed-point quantity |
-| `Side` | `BUY` or `SELL` |
-| `OrderType` | `LIMIT`, `MARKET`, etc. |
-
-## Next Steps
-
-- [Recording Data](recording-data.md) — Capture market data to disk
-- [Architecture Overview](../explanation/architecture.md) — Understand the event flow
+- [Multi-Timeframe Strategy](multi-timeframe-strategy.md) — work with multiple bar timeframes
+- [Recording Data](recording-data.md) — capture market data to disk
+- [Backtesting](backtesting.md) — replay recorded data
+- [Architecture overview](../explanation/architecture.md) — how events flow

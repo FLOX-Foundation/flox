@@ -1,5 +1,5 @@
 site_name: FLOX
-site_description: C++ framework for building trading systems
+site_description: High-performance trading framework with Python, Node.js, Codon, and C++ bindings
 site_url: https://flox-foundation.github.io/flox/
 repo_url: https://github.com/FLOX-Foundation/flox
 repo_name: FLOX-Foundation/flox
@@ -80,6 +80,7 @@ nav:
       - tutorials/README.md
       - Python quickstart: tutorials/python-quickstart.md
       - Node.js quickstart: tutorials/node-quickstart.md
+      - Codon quickstart: tutorials/codon-strategy.md
       - C++ quickstart: tutorials/quickstart.md
       - First Strategy: tutorials/first-strategy.md
       - Multi-Timeframe Strategy: tutorials/multi-timeframe-strategy.md
@@ -91,9 +92,10 @@ nav:
           - Python - backtest & live: examples/python-backtest-vs-live.md
           - Python - multi-symbol: examples/python-multi-symbol.md
           - Python - live via ccxt: examples/python-ccxt-live.md
+          - Node.js - backtest & live: examples/node-backtest-vs-live.md
           - Codon - backtest & live: examples/codon-backtest-vs-live.md
           - Codon - full API: examples/codon-full-backtest.md
-          - Node.js - backtest & live: examples/node-backtest-vs-live.md
+          - C++ - SMA backtest: examples/cpp-sma-backtest.md
 
   - Bindings:
       - bindings/README.md
@@ -105,24 +107,30 @@ nav:
 
   - How-To Guides:
       - how-to/README.md
-      - Bar Aggregation: how-to/bar-aggregation.md
-      - Backtesting: how-to/backtest.md
-      - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
-      - Interactive Backtest: how-to/interactive-backtest.md
-      - Grid Search: how-to/grid-search.md
-      - Strategy Classes: how-to/strategy-classes.md
-      - Indicator Graph: how-to/indicator-graph.md
-      - Add a New Indicator: how-to/add-an-indicator.md
-      - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
-      - CPU Affinity: how-to/cpu-affinity.md
-      - Custom Connector: how-to/custom-connector.md
-      - Custom Bar Policy: how-to/custom-bar-policy.md
-      - Advanced Orders: how-to/advanced-orders.md
-      - Multi-Exchange Trading: how-to/multi-exchange-trading.md
-      - Optimize Performance: how-to/optimize-performance.md
-      - Configuration: how-to/configuration.md
-      - CI Configuration: how-to/ci.md
-      - Contributing: how-to/contributing.md
+      - Strategy & Backtest:
+          - Strategy Classes: how-to/strategy-classes.md
+          - Backtesting: how-to/backtest.md
+          - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
+          - Interactive Backtest: how-to/interactive-backtest.md
+          - Grid Search: how-to/grid-search.md
+          - Advanced Orders: how-to/advanced-orders.md
+          - Multi-Exchange Trading: how-to/multi-exchange-trading.md
+      - Indicators & Aggregation:
+          - Indicator Graph: how-to/indicator-graph.md
+          - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
+          - Bar Aggregation: how-to/bar-aggregation.md
+          - Custom Bar Policy: how-to/custom-bar-policy.md
+          - Volume Profile: how-to/use-volume-profile.md
+      - Performance (system-level):
+          - Optimize Performance: how-to/optimize-performance.md
+          - CPU Affinity: how-to/cpu-affinity.md
+      - Extending the core (C++):
+          - Add a New Indicator: how-to/add-an-indicator.md
+          - Custom Connector: how-to/custom-connector.md
+      - Project ops:
+          - Configuration: how-to/configuration.md
+          - CI Configuration: how-to/ci.md
+          - Contributing: how-to/contributing.md
 
   - Explanation:
       - explanation/README.md
@@ -135,7 +143,45 @@ nav:
 
   - Reference:
       - reference/README.md
-      - C++ API:
+      - Python:
+          - reference/python/index.md
+          - Engine & Backtest: reference/python/engine.md
+          - Indicators: reference/python/indicators.md
+          - Aggregators: reference/python/aggregators.md
+          - Order Books: reference/python/books.md
+          - Profiles: reference/python/profiles.md
+          - Positions: reference/python/positions.md
+          - Replay: reference/python/replay.md
+          - Segment Ops: reference/python/segment_ops.md
+          - Backtest Components: reference/python/backtest.md
+          - Optimizer: reference/python/optimizer.md
+          - Strategy Class: reference/python/strategy.md
+      - Node.js:
+          - reference/node/index.md
+          - Strategy & Runner: reference/node/strategy.md
+          - Backtest components: reference/node/backtest.md
+          - Indicators: reference/node/indicators.md
+          - Bar aggregation: reference/node/aggregators.md
+          - Order books: reference/node/books.md
+          - Position tracking: reference/node/positions.md
+          - Profiles & statistics: reference/node/profiles.md
+          - Data I/O: reference/node/data.md
+      - Codon:
+          - reference/codon/index.md
+          - Strategy: reference/codon/strategy.md
+          - Types: reference/codon/types.md
+          - Indicators: reference/codon/indicators.md
+          - Runner & BacktestRunner: reference/codon/runner.md
+          - Backtest Components: reference/codon/backtest.md
+          - Tools: reference/codon/tools.md
+      - JavaScript (embedded):
+          - reference/quickjs/index.md
+          - Strategy: reference/quickjs/strategy.md
+          - Indicators: reference/quickjs/indicators.md
+          - Tools: reference/quickjs/tools.md
+          - Backtest & runtime: reference/quickjs/backtest.md
+      - C API: reference/api/capi/flox_capi.md
+      - Core (C++ internals):
           - reference/api/README.md
           - Common: reference/api/common.md
           - Engine:
@@ -150,6 +196,7 @@ nav:
               - Trade: reference/api/book/trade.md
               - BookUpdate: reference/api/book/book_update.md
               - NLevelOrderBook: reference/api/book/nlevel_order_book.md
+              - L3OrderBook: reference/api/book/l3_order_book.md
               - IOrderBook: reference/api/book/abstract_order_book.md
               - Events:
                   - TradeEvent: reference/api/book/events/trade_event.md
@@ -170,6 +217,7 @@ nav:
           - Execution:
               - Order: reference/api/execution/order.md
               - OrderTracker: reference/api/execution/order_tracker.md
+              - ExchangeCapabilities: reference/api/execution/exchange_capabilities.md
               - IExecutor: reference/api/execution/abstract_executor.md
               - IExecutionListener: reference/api/execution/abstract_execution_listener.md
               - ExecutionTrackerAdapter: reference/api/execution/execution_tracker_adapter.md
@@ -257,40 +305,3 @@ nav:
                   - CpuTopology: reference/api/util/performance/cpu_topology.md
                   - SystemInterface: reference/api/util/performance/system_interface.md
                   - ThreadAffinity: reference/api/util/performance/thread_affinity.md
-      - Python:
-          - reference/python/index.md
-          - Engine & Backtest: reference/python/engine.md
-          - Indicators: reference/python/indicators.md
-          - Aggregators: reference/python/aggregators.md
-          - Order Books: reference/python/books.md
-          - Profiles: reference/python/profiles.md
-          - Positions: reference/python/positions.md
-          - Replay: reference/python/replay.md
-          - Segment Ops: reference/python/segment_ops.md
-          - Backtest Components: reference/python/backtest.md
-          - Optimizer: reference/python/optimizer.md
-          - Strategy Class: reference/python/strategy.md
-      - Node.js:
-          - reference/node/index.md
-          - Strategy & Runner: reference/node/strategy.md
-          - Backtest components: reference/node/backtest.md
-          - Indicators: reference/node/indicators.md
-          - Bar aggregation: reference/node/aggregators.md
-          - Order books: reference/node/books.md
-          - Position tracking: reference/node/positions.md
-          - Profiles & statistics: reference/node/profiles.md
-          - Data I/O: reference/node/data.md
-      - Codon:
-          - reference/codon/index.md
-          - Strategy: reference/codon/strategy.md
-          - Types: reference/codon/types.md
-          - Indicators: reference/codon/indicators.md
-          - Runner & BacktestRunner: reference/codon/runner.md
-          - Backtest Components: reference/codon/backtest.md
-          - Tools: reference/codon/tools.md
-      - JavaScript (embedded):
-          - reference/quickjs/index.md
-          - Strategy: reference/quickjs/strategy.md
-          - Indicators: reference/quickjs/indicators.md
-          - Tools: reference/quickjs/tools.md
-          - Backtest & runtime: reference/quickjs/backtest.md

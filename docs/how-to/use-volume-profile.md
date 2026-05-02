@@ -1,15 +1,67 @@
 # How to Use Volume Profile
 
-This guide shows practical applications of VolumeProfile for trading.
+Volume Profile aggregates traded volume by price level over a session, exposing point-of-control (POC), value area, and high/low volume nodes. Available in C++, Python, and Node.js. The advanced pattern examples below are written in C++ but the same logic ports directly to the Python/Node API.
 
-## Basic Setup
+## Basic setup
 
-```cpp
-#include "flox/aggregator/custom/volume_profile.h"
+=== "Python"
 
-VolumeProfile<256> profile;
-profile.setTickSize(Price::fromDouble(0.50));  // Aggregate to $0.50 levels
-```
+    ```python
+    import flox_py as flox
+
+    vp = flox.VolumeProfile(tick_size=0.50)   # aggregate to $0.50 levels
+
+    # On every trade
+    vp.add_trade(price, qty, is_buy=trade.is_buy)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const vp = new flox.VolumeProfile(0.50);
+    vp.addTrade(price, qty, /*isBuy=*/ true);
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include "flox/aggregator/custom/volume_profile.h"
+
+    VolumeProfile<256> profile;
+    profile.setTickSize(Price::fromDouble(0.50));
+    ```
+
+## Reading key levels
+
+=== "Python"
+
+    ```python
+    poc      = vp.poc()
+    va_low   = vp.value_area_low()
+    va_high  = vp.value_area_high()
+    total    = vp.total_volume()
+    delta    = vp.total_delta()        # buy − sell
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const poc     = vp.poc();
+    const vaLow   = vp.valueAreaLow();
+    const vaHigh  = vp.valueAreaHigh();
+    ```
+
+=== "C++"
+
+    ```cpp
+    Price poc    = profile.poc();
+    Price vaLow  = profile.valueAreaLow();
+    Price vaHigh = profile.valueAreaHigh();
+    ```
+
+## Trading patterns (C++)
+
+The following examples show common patterns. They use the C++ API but the calls are 1:1 with Python (`vp.poc()`) and Node (`vp.poc()`).
 
 ## Building a Session Profile
 

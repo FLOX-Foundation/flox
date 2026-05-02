@@ -1,5 +1,8 @@
 # Write a Custom Connector
 
+!!! info "C++ extension point"
+    Connectors are written against the C++ engine. Once a connector is built into FLOX, every binding (Python, Node.js, Codon, embedded JS) gets access to it automatically — no further work per language. If you just want to *use* an existing connector from Python or Node.js, see the [Python](../bindings/python.md) / [Node.js](../bindings/node.md) bindings docs instead.
+
 Connect FLOX to a new exchange or data source.
 
 ## Overview

@@ -1,161 +1,149 @@
-# Strategy Classes (Python & Codon)
+# Strategy classes
 
-Flox provides event-driven Strategy base classes for both Python and Codon that
-mirror the C++ `Strategy` class. This enables writing trading strategies in a
-familiar Python-like syntax while leveraging the C++ execution engine.
+FLOX exposes the same event-driven Strategy model in every language. Override callbacks (`on_trade`, `on_book_update`, `on_bar`), emit orders through the strategy's helper methods, and the C++ engine handles bus dispatch, fills, and bookkeeping.
 
 ## Architecture
 
 ```
-C++ Strategy (fastest)
-      |
-  C API Layer (libflox_capi.so)
-      |                |
-Python Strategy    Codon Strategy
-(pybind11)         (C FFI, compiled)
+                   C++ Strategy (canonical)
+                            |
+                    C API (libflox_capi.so)
+              ____________ | ____________
+             |             |              |
+   Python Strategy   Node Strategy   Codon Strategy
+       (pybind11)        (N-API)      (C FFI, AOT)
 ```
 
-## Python Strategy
+All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behaviour is identical across languages.
 
-```python
-import flox_py as flox
+## A simple strategy
 
-class SmaCrossover(flox.Strategy):
-    def __init__(self, symbols, fast=10, slow=30):
-        super().__init__(symbols)
-        self.prices = []
-        self.fast = fast
-        self.slow = slow
+10/30 SMA crossover, long-only.
 
-    def on_trade(self, ctx, trade):
-        self.prices.append(trade.price)
-        if len(self.prices) < self.slow:
-            return
+=== "Python"
 
-        fast_sma = sum(self.prices[-self.fast:]) / self.fast
-        slow_sma = sum(self.prices[-self.slow:]) / self.slow
+    ```python
+    import flox_py as flox
 
-        if fast_sma > slow_sma and ctx.is_flat():
-            self.emit_market_buy(ctx.symbol_id, 1.0)
-        elif fast_sma < slow_sma and ctx.is_long():
-            self.emit_close_position(ctx.symbol_id)
-```
+    class SmaCrossover(flox.Strategy):
+        def __init__(self, symbols, fast=10, slow=30):
+            super().__init__(symbols)
+            self.prices = []
+            self.fast, self.slow = fast, slow
 
-## Codon Strategy
+        def on_trade(self, ctx, trade):
+            self.prices.append(trade.price)
+            if len(self.prices) < self.slow:
+                return
+            f = sum(self.prices[-self.fast:]) / self.fast
+            s = sum(self.prices[-self.slow:]) / self.slow
+            if f > s and ctx.is_flat():
+                self.market_buy(1.0)
+            elif f < s and ctx.is_long():
+                self.close_position()
+    ```
 
-```python
-from flox.strategy import Strategy
-from flox.context import SymbolContext
-from flox.types import TradeData
-from flox.indicators import StreamingSMA
+=== "Node.js"
 
-class SmaCrossover(Strategy):
-    fast_sma: StreamingSMA
-    slow_sma: StreamingSMA
+    ```javascript
+    class SmaCrossover {
+      constructor(symbols, fast = 10, slow = 30) {
+        this.symbols = symbols;
+        this.fast = fast; this.slow = slow;
+        this.prices = [];
+      }
+      onTrade(ctx, trade, emit) {
+        this.prices.push(trade.price);
+        if (this.prices.length < this.slow) return;
+        const f = this.prices.slice(-this.fast).reduce((a,b)=>a+b)/this.fast;
+        const s = this.prices.slice(-this.slow).reduce((a,b)=>a+b)/this.slow;
+        if (f > s && ctx.position === 0)        emit.marketBuy(1.0);
+        else if (f < s && ctx.position > 0)     emit.closePosition();
+      }
+    }
+    ```
 
-    def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30):
-        super().__init__(symbols)
-        self.fast_sma = StreamingSMA(fast)
-        self.slow_sma = StreamingSMA(slow)
+=== "Codon"
 
-    def on_trade(self, ctx: SymbolContext, trade: TradeData):
-        price = trade.price.to_double()
-        fast = self.fast_sma.update(price)
-        slow = self.slow_sma.update(price)
-        if not self.slow_sma.ready:
-            return
+    ```python
+    from flox.strategy import Strategy
+    from flox.context import SymbolContext
+    from flox.types import TradeData
+    from flox.indicators import StreamingSMA
 
-        sym = self._symbols[0]
-        if fast > slow and ctx.is_flat():
-            self.emit_market_buy(sym, 1.0)
-        elif fast < slow and ctx.is_long():
-            self.emit_close_position(sym)
-```
+    class SmaCrossover(Strategy):
+        fast_sma: StreamingSMA
+        slow_sma: StreamingSMA
 
-## API Reference
+        def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30):
+            super().__init__(symbols)
+            self.fast_sma = StreamingSMA(fast)
+            self.slow_sma = StreamingSMA(slow)
 
-### Overridable Callbacks
+        def on_trade(self, ctx: SymbolContext, trade: TradeData):
+            price = trade.price.to_double()
+            f = self.fast_sma.update(price)
+            s = self.slow_sma.update(price)
+            if not self.slow_sma.ready:
+                return
+            if f > s and self.position() == 0.0:
+                self.market_buy(1.0)
+            elif f < s and self.position() > 0.0:
+                self.close_position()
+    ```
 
-| Method | Description |
-|--------|-------------|
-| `on_trade(ctx, trade)` | Called on each trade event |
-| `on_book_update(ctx)` | Called on each book update |
-| `on_start()` | Called when strategy starts |
-| `on_stop()` | Called when strategy stops |
+=== "C++"
 
-### Signal Emission
+    ```cpp
+    class SmaCrossover : public flox::Strategy {
+      // ... see docs/how-to/backtest.md for the full C++ class
+    };
+    ```
 
-| Method | Description |
-|--------|-------------|
-| `emit_market_buy(symbol, qty)` | Submit market buy order |
-| `emit_market_sell(symbol, qty)` | Submit market sell order |
-| `emit_limit_buy(symbol, price, qty)` | Submit limit buy order |
-| `emit_limit_sell(symbol, price, qty)` | Submit limit sell order |
-| `emit_cancel(order_id)` | Cancel an order |
-| `emit_cancel_all(symbol)` | Cancel all orders for symbol |
-| `emit_modify(order_id, price, qty)` | Modify existing order |
-| `emit_stop_market(symbol, side, trigger, qty)` | Stop market order |
-| `emit_stop_limit(symbol, side, trigger, limit, qty)` | Stop limit order |
-| `emit_take_profit_market(symbol, side, trigger, qty)` | Take profit market |
-| `emit_take_profit_limit(symbol, side, trigger, limit, qty)` | Take profit limit |
-| `emit_trailing_stop(symbol, side, offset, qty)` | Trailing stop |
-| `emit_trailing_stop_percent(symbol, side, bps, qty)` | Trailing stop (%) |
-| `emit_close_position(symbol)` | Close entire position |
+## Overridable callbacks
 
-### Context Queries
+| Callback | When it fires | Available |
+|---|---|---|
+| `on_trade(ctx, trade)` | Tick-level trade event | All bindings |
+| `on_book_update(ctx)` | L2 book changed (bid/ask, mid) | All bindings |
+| `on_bar(ctx, bar)` | Closed OHLC bar | All bindings (since [#123](https://github.com/FLOX-Foundation/flox/pull/123)) |
+| `on_start()` / `on_stop()` | Lifecycle hooks | All bindings |
 
-| Method | Description |
-|--------|-------------|
-| `position(symbol)` | Current position as float |
-| `ctx(symbol)` | Get SymbolContext for a symbol |
-| `get_order_status(order_id)` | Order status (-1 if not found) |
+## Order emission helpers
 
-### SymbolContext Properties
+Names differ slightly by language (snake_case vs camelCase) but the surface is the same.
 
-| Property | Description |
-|----------|-------------|
-| `symbol_id` | Symbol identifier |
-| `position` | Current position quantity |
-| `last_trade_price` | Last trade price |
-| `best_bid` | Best bid price |
-| `best_ask` | Best ask price |
-| `mid_price` | Mid price |
-| `book_spread()` | Bid-ask spread |
-| `is_long()` / `is_short()` / `is_flat()` | Position state |
+| Action | Python | Node.js | Codon | C++ |
+|---|---|---|---|---|
+| Market buy | `market_buy(qty)` | `emit.marketBuy(qty)` | `market_buy(qty)` | `emitMarketBuy(sym, qty)` |
+| Market sell | `market_sell(qty)` | `emit.marketSell(qty)` | `market_sell(qty)` | `emitMarketSell(sym, qty)` |
+| Limit buy | `limit_buy(price, qty)` | `emit.limitBuy(p, qty)` | `limit_buy(price, qty)` | `emitLimitBuy(sym, p, qty)` |
+| Limit sell | `limit_sell(price, qty)` | `emit.limitSell(p, qty)` | `limit_sell(price, qty)` | `emitLimitSell(sym, p, qty)` |
+| Cancel | `cancel_order(id)` | `emit.cancel(id)` | `cancel_order(id)` | `emitCancel(id)` |
+| Cancel all | `cancel_all_orders()` | `emit.cancelAll(sym)` | `cancel_all_orders()` | `emitCancelAll(sym)` |
+| Stop market | `stop_market(side, trigger, qty)` | — | `stop_market(side, trigger, qty)` | `emitStopMarket(sym, side, trigger, qty)` |
+| Take profit market | `take_profit_market(side, trigger, qty)` | — | `take_profit_market(side, trigger, qty)` | `emitTakeProfitMarket(sym, side, trigger, qty)` |
+| Trailing stop | `trailing_stop(side, offset, qty)` | — | `trailing_stop(side, offset, qty)` | `emitTrailingStop(sym, side, offset, qty)` |
+| Close position | `close_position()` | `emit.closePosition()` | `close_position()` | `emitClosePosition(sym)` |
 
-### TradeData Properties
+In Python / Node.js / Codon `symbol` defaults to the first registered symbol when omitted.
 
-| Property | Description |
-|----------|-------------|
-| `symbol` | Symbol ID |
-| `price` | Trade price (float) |
-| `quantity` | Trade quantity (float) |
-| `is_buy` | Whether trade was a buy |
-| `timestamp_ns` | Exchange timestamp in nanoseconds |
+## Context (`ctx`) properties
 
-## C++ Equivalent
+| Property | Type | Description |
+|---|---|---|
+| `position` | float | Current position quantity (signed) |
+| `symbol_id` (Py/Codon) / `symbolId` (Node) | int | Numeric symbol id |
+| `last_trade_price` / `lastTradePrice` | float | Most recent trade price |
+| `best_bid` / `bestBid`, `best_ask` / `bestAsk` | float | Top-of-book |
+| `mid_price` / `midPrice` | float | `(best_bid + best_ask) / 2` |
+| `is_long()` / `is_short()` / `is_flat()` (Py/Codon) | bool | Position state |
 
-The Strategy classes mirror the C++ `flox::Strategy`:
+## C++ ↔ binding name map
 
-| Python/Codon | C++ |
-|-------------|-----|
-| `on_trade(ctx, trade)` | `onSymbolTrade(SymbolContext&, TradeEvent&)` |
-| `on_book_update(ctx)` | `onSymbolBook(SymbolContext&, BookUpdateEvent&)` |
-| `on_start()` / `on_stop()` | `start()` / `stop()` |
-| `emit_market_buy(sym, qty)` | `emitMarketBuy(sym, qty)` |
-| `emit_market_sell(sym, qty)` | `emitMarketSell(sym, qty)` |
-| `emit_limit_buy(sym, price, qty)` | `emitLimitBuy(sym, price, qty)` |
-| `emit_limit_sell(sym, price, qty)` | `emitLimitSell(sym, price, qty)` |
-| `emit_cancel(order_id)` | `emitCancel(orderId)` |
-| `emit_cancel_all(sym)` | `emitCancelAll(sym)` |
-| `emit_modify(order_id, price, qty)` | `emitModify(orderId, price, qty)` |
-| `emit_stop_market(sym, side, trigger, qty)` | `emitStopMarket(sym, side, trigger, qty)` |
-| `emit_stop_limit(sym, side, trigger, limit, qty)` | `emitStopLimit(sym, side, trigger, limit, qty)` |
-| `emit_take_profit_market(sym, side, trigger, qty)` | `emitTakeProfitMarket(sym, side, trigger, qty)` |
-| `emit_take_profit_limit(sym, side, trigger, limit, qty)` | `emitTakeProfitLimit(sym, side, trigger, limit, qty)` |
-| `emit_trailing_stop(sym, side, offset, qty)` | `emitTrailingStop(sym, side, offset, qty)` |
-| `emit_trailing_stop_percent(sym, side, bps, qty)` | `emitTrailingStopPercent(sym, side, bps, qty)` |
-| `emit_close_position(sym)` | `emitClosePosition(sym)` |
-| `position(sym)` | `position(sym)` |
-| `ctx(sym)` | `ctx(sym)` |
-| `get_order_status(order_id)` | `getOrderStatus(orderId)` |
+For the canonical reference of every callback and emit helper, see the per-language API references:
+
+- [Python reference](../reference/python/strategy.md)
+- [Node.js reference](../reference/node/strategy.md)
+- [Codon reference](../reference/codon/strategy.md)
+- [C++ Strategy](../reference/api/strategy/strategy.md)

@@ -1,5 +1,8 @@
 # Memory Model
 
+!!! info "Internals — for context only"
+    This page explains how the C++ engine avoids heap allocation on the hot path. Bindings (Python, Node.js, Codon) inherit this behaviour automatically — there's no per-language API to manage pools. Read this if you care about the latency story; skip if you just want to ship a strategy.
+
 Zero-allocation event delivery in FLOX.
 
 ## The Problem

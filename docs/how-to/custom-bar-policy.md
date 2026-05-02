@@ -1,5 +1,8 @@
 # How to Create a Custom Bar Policy
 
+!!! info "C++ extension point"
+    A bar policy is a small C++ class plugged into `BarAggregator<T>` via a template parameter. Once written, the new bar type is available everywhere — Python, Node.js, Codon — through the standard aggregator API. If you only need the built-in bar types (Time, Tick, Volume, Renko, Range, BpsRange, HeikinAshi), see [Bar aggregation](bar-aggregation.md).
+
 This guide shows how to create your own bar closing policy for the BarAggregator.
 
 ## When to Use

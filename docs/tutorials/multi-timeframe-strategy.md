@@ -1,5 +1,8 @@
 # Tutorial: Multi-Timeframe Strategy
 
+!!! info "C++ tutorial"
+    This walkthrough uses `BarMatrix<...>` and `MultiTimeframeAggregator<...>` — C++ template infrastructure that isn't yet exposed as a high-level Python/Node API. You can replicate the logic from those bindings by aggregating each timeframe yourself with `flox.aggregate_time_bars(...)` and indexing the result. The pattern below is the canonical C++ flow.
+
 This tutorial walks you through building a multi-timeframe momentum strategy from scratch. You'll learn how to:
 
 - Set up bar aggregation for multiple timeframes
@@ -9,9 +12,8 @@ This tutorial walks you through building a multi-timeframe momentum strategy fro
 
 ## Prerequisites
 
-- Basic C++ knowledge
-- Flox Engine installed and building
 - Completed [First Strategy](first-strategy.md) tutorial
+- Basic C++ knowledge — for Python users, see [Multi-symbol indicators](../how-to/multi-symbol-indicators.md) for the binding-friendly approach
 
 ## What We're Building
 

@@ -1,257 +1,154 @@
-# Parameter Optimization with Grid Search
+# Parameter optimization with grid search
 
-Optimize strategy parameters using exhaustive grid search.
+Find good strategy parameters by sweeping a grid and ranking results. The pattern is the same in every binding: define a grid, run a backtest per combination, rank by your chosen metric.
 
-## Quick Start
+## Quick start
 
-```cpp
-#include "flox/backtest/backtest_optimizer.h"
-#include "flox/backtest/optimization_stats.h"
+=== "Python"
 
-using namespace flox;
+    ```python
+    import flox_py as flox
+    import pandas as pd
 
-// 1. Define your parameters
-struct MAParams {
-  int fastPeriod;
-  int slowPeriod;
-  std::string toString() const {
-    return "fast=" + std::to_string(fastPeriod) +
-           ",slow=" + std::to_string(slowPeriod);
-  }
-};
+    def run_one(fast: int, slow: int) -> dict:
+        reg = flox.SymbolRegistry()
+        btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+        strat = SmaCrossover([btc], fast=fast, slow=slow)
+        bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+        bt.set_strategy(strat)
+        return bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
 
-// 2. Define parameter grid
-struct MAGrid {
-  std::vector<int> fastPeriods = {5, 10, 15, 20};
-  std::vector<int> slowPeriods = {20, 30, 40, 50};
+    rows = []
+    for fast in [5, 10, 15, 20]:
+        for slow in [20, 30, 40, 50]:
+            if fast >= slow:
+                continue
+            stats = run_one(fast, slow)
+            rows.append({"fast": fast, "slow": slow, **stats})
 
-  size_t totalCombinations() const {
-    return fastPeriods.size() * slowPeriods.size();
-  }
+    df = pd.DataFrame(rows).sort_values("sharpe", ascending=False)
+    print(df.head())
+    df.to_csv("grid_results.csv", index=False)
+    ```
 
-  MAParams operator[](size_t index) const {
-    return {
-      fastPeriods[index / slowPeriods.size()],
-      slowPeriods[index % slowPeriods.size()]
+    For parallelism, wrap `run_one` in `multiprocessing.Pool` or `concurrent.futures.ProcessPoolExecutor`. FLOX releases the GIL during the C++ backtest, so threads work too.
+
+=== "Node.js"
+
+    ```javascript
+    const flox = require('@flox-foundation/flox');
+
+    function runOne(fast, slow) {
+      const reg = new flox.SymbolRegistry();
+      const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
+      const strat = new SmaCrossover([btc], fast, slow);
+      const bt = new flox.BacktestRunner(reg, 0.0004, 10_000);
+      bt.setStrategy(strat);
+      return bt.runCsv("data/btcusdt_1m.csv", "BTCUSDT");
+    }
+
+    const rows = [];
+    for (const fast of [5, 10, 15, 20]) {
+      for (const slow of [20, 30, 40, 50]) {
+        if (fast >= slow) continue;
+        rows.push({ fast, slow, ...runOne(fast, slow) });
+      }
+    }
+    rows.sort((a, b) => b.sharpeRatio - a.sharpeRatio);
+    console.log(rows.slice(0, 5));
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include "flox/backtest/backtest_optimizer.h"
+    #include "flox/backtest/optimization_stats.h"
+
+    struct MAParams {
+      int fastPeriod, slowPeriod;
+      std::string toString() const {
+        return "fast=" + std::to_string(fastPeriod) + ",slow=" + std::to_string(slowPeriod);
+      }
     };
-  }
-};
 
-// 3. Create optimizer
-BacktestOptimizer<MAParams, MAGrid> optimizer;
-optimizer.setParameterGrid(MAGrid{});
+    struct MAGrid {
+      std::vector<int> fastPeriods = {5, 10, 15, 20};
+      std::vector<int> slowPeriods = {20, 30, 40, 50};
+      size_t totalCombinations() const { return fastPeriods.size() * slowPeriods.size(); }
+      MAParams operator[](size_t i) const {
+        return { fastPeriods[i / slowPeriods.size()], slowPeriods[i % slowPeriods.size()] };
+      }
+    };
 
-// 4. Set backtest factory
-optimizer.setBacktestFactory([&](const MAParams& params) {
-  // Create and run your strategy with these params
-  return runBacktest(params);
-});
+    BacktestOptimizer<MAParams, MAGrid> optimizer;
+    optimizer.setParameterGrid(MAGrid{});
+    optimizer.setBacktestFactory([&](const MAParams& p) { return runBacktest(p); });
+    auto results = optimizer.runLocal();
+    auto ranked  = BacktestOptimizer<MAParams, MAGrid>::rankResults(results, RankMetric::SharpeRatio);
+    std::cout << "Best: " << ranked[0].parameters.toString() << "\n";
+    ```
 
-// 5. Run optimization
-auto results = optimizer.runLocal();
+The C++ optimizer parallelises across threads automatically (`runLocal(numThreads)`).
 
-// 6. Analyze results
-auto ranked = BacktestOptimizer<MAParams, MAGrid>::rankResults(
-    results, RankMetric::SharpeRatio);
+## Ranking metrics
 
-std::cout << "Best params: " << ranked[0].parameters.toString() << "\n";
-std::cout << "Sharpe: " << ranked[0].sharpeRatio() << "\n";
-```
+| Metric | Python (in stats dict) | C++ (`RankMetric::*`) |
+|---|---|---|
+| Sharpe | `sharpe` / `sharpeRatio` | `SharpeRatio` |
+| Sortino | `sortino` | `SortinoRatio` |
+| Calmar | n/a (compute as `return / max_dd`) | `CalmarRatio` |
+| Total return | `return_pct` | `TotalReturn` |
+| Max drawdown | `max_drawdown_pct` | `MaxDrawdown` |
+| Win rate | `win_rate` | `WinRate` |
+| Profit factor | `profit_factor` | `ProfitFactor` |
 
-## Components
+## Filtering, stability, statistical tests
 
-### BacktestOptimizer
+The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permutation tests as templated utilities (see [`optimization_stats.h`](../reference/api/backtest/optimization_stats.md)). From Python / Node.js you use `pandas` / `numpy` / `scipy` directly:
 
-```cpp
-template <typename ParamsT, typename GridT>
-class BacktestOptimizer {
-  void setParameterGrid(const GridT& grid);
-  void setBacktestFactory(BacktestFactory factory);
-  void setProgressCallback(ProgressCallback callback);
+=== "Python"
 
-  size_t totalCombinations() const;
-  std::vector<OptimizationResult<ParamsT>> runLocal(size_t numThreads = 0);
-  OptimizationResult<ParamsT> runSingle(size_t index);
+    ```python
+    import numpy as np
+    from scipy import stats
 
-  static std::vector<OptimizationResult<ParamsT>> rankResults(
-      std::vector<OptimizationResult<ParamsT>> results,
-      RankMetric metric,
-      bool ascending = false);
+    sharpes = df["sharpe"].values
+    returns = df["return_pct"].values
+    print("mean Sharpe:", sharpes.mean(), " std:", sharpes.std())
+    print("corr(Sharpe, return):", np.corrcoef(sharpes, returns)[0, 1])
 
-  static std::vector<OptimizationResult<ParamsT>> filterResults(
-      const std::vector<OptimizationResult<ParamsT>>& results,
-      Predicate&& predicate);
+    # Bootstrap 95% CI for mean Sharpe
+    boot = [np.random.choice(sharpes, size=len(sharpes), replace=True).mean() for _ in range(10_000)]
+    print("CI:", np.percentile(boot, [2.5, 97.5]))
 
-  static bool exportToCSV(
-      const std::vector<OptimizationResult<ParamsT>>& results,
-      const std::filesystem::path& path);
-};
-```
+    # Permutation test: top-10 vs bottom-10
+    top, bot = np.sort(sharpes)[-10:], np.sort(sharpes)[:10]
+    perm = stats.permutation_test((top, bot), lambda a, b: a.mean() - b.mean(),
+                                    n_resamples=10_000, alternative="greater")
+    print("p =", perm.pvalue)
+    ```
 
-### OptimizationResult
+=== "C++"
 
-```cpp
-template <typename ParamsT>
-struct OptimizationResult {
-  ParamsT parameters;
-  BacktestStats stats;
+    ```cpp
+    using Stats = OptimizationStatistics<MAParams, MAGrid>;
+    Stats::printSummary(results);
+    auto sharpes = extractMetric(results, RankMetric::SharpeRatio);
+    auto ci      = Stats::bootstrapCI(sharpes, 0.95, 10000);     // .lower / .median / .upper
+    auto pValue  = Stats::permutationTest(group1, group2, 10000);
+    Stats::generateReport(results, "report.md");
+    ```
 
-  double sharpeRatio() const;
-  double sortinoRatio() const;
-  double calmarRatio() const;
-  double totalReturn() const;
-  double maxDrawdown() const;
-  double winRate() const;
-  double profitFactor() const;
-  size_t totalTrades() const;
-};
-```
+## Best practices
 
-### RankMetric
+1. **Avoid overfitting** — every extra parameter increases overfit risk
+2. **Walk-forward** — optimise on train, validate on a held-out test slice
+3. **Parameter stability** — the best point should have good neighbours, not be an isolated peak
+4. **Realistic costs** — include slippage and exchange fees
+5. **Statistical significance** — bootstrap CI / permutation tests separate luck from edge
 
-```cpp
-enum class RankMetric {
-  SharpeRatio,
-  SortinoRatio,
-  CalmarRatio,
-  TotalReturn,
-  MaxDrawdown,
-  WinRate,
-  ProfitFactor
-};
-```
+## See also
 
-## Grid Requirements
-
-Your grid type must provide:
-
-```cpp
-struct MyGrid {
-  // Return total number of parameter combinations
-  size_t totalCombinations() const;
-
-  // Return parameters at index [0, totalCombinations())
-  MyParams operator[](size_t index) const;
-};
-```
-
-Your params type must provide:
-
-```cpp
-struct MyParams {
-  // For CSV export and reporting
-  std::string toString() const;
-};
-```
-
-## Progress Tracking
-
-```cpp
-optimizer.setProgressCallback(
-    [](size_t completed, size_t total, const OptimizationResult<MAParams>& latest) {
-      std::cout << "\rProgress: " << completed << "/" << total
-                << " (Sharpe: " << latest.sharpeRatio() << ")" << std::flush;
-    });
-```
-
-## Filtering Results
-
-```cpp
-// Only profitable strategies with sharpe > 1.0
-auto filtered = BacktestOptimizer<MAParams, MAGrid>::filterResults(
-    results,
-    [](const auto& r) {
-      return r.totalReturn() > 0 && r.sharpeRatio() > 1.0;
-    });
-```
-
-## Statistical Analysis
-
-```cpp
-using Stats = OptimizationStatistics<MAParams, MAGrid>;
-
-// Summary with mean/stddev
-Stats::printSummary(results);
-
-// Generate markdown report
-Stats::generateReport(results, "report.md");
-
-// Extract metric values
-auto sharpes = extractMetric(results, RankMetric::SharpeRatio);
-double mean = detail::mean(sharpes);
-double stddev = detail::stddev(sharpes);
-
-// Bootstrap confidence interval
-auto ci = Stats::bootstrapCI(sharpes, 0.95, 10000);
-// ci.lower, ci.median, ci.upper
-
-// Correlation between metrics
-auto returns = extractMetric(results, RankMetric::TotalReturn);
-double corr = Stats::correlation(sharpes, returns);
-
-// Permutation test for significance
-auto group1 = /* top 10 sharpes */;
-auto group2 = /* bottom 10 sharpes */;
-double pValue = Stats::permutationTest(group1, group2, 10000);
-```
-
-## Export Results
-
-```cpp
-// CSV export
-BacktestOptimizer<MAParams, MAGrid>::exportToCSV(ranked, "results.csv");
-
-// Markdown report
-Stats::generateReport(results, "optimization_report.md");
-```
-
-## Best Practices
-
-1. **Avoid overfitting** - More parameters = higher overfitting risk
-2. **Use walk-forward analysis** - Optimize on train, validate on test
-3. **Check parameter stability** - Best params should have good neighbors
-4. **Consider transaction costs** - Include realistic slippage/fees
-5. **Statistical significance** - Use permutation tests to validate
-
-## Example: Full Optimization Pipeline
-
-```cpp
-// 1. Load data
-auto reader = replay::createMultiSegmentReader(dataDir, filter);
-
-// 2. Define grid
-MAGrid grid;
-grid.fastPeriods = {5, 10, 15, 20, 25};
-grid.slowPeriods = {20, 30, 40, 50, 60};
-
-// 3. Setup optimizer
-BacktestOptimizer<MAParams, MAGrid> optimizer;
-optimizer.setParameterGrid(grid);
-optimizer.setBacktestFactory([&](const MAParams& p) {
-  return runStrategyBacktest(p, reader);
-});
-
-// 4. Run
-auto results = optimizer.runLocal();
-
-// 5. Rank and filter
-auto ranked = BacktestOptimizer<MAParams, MAGrid>::rankResults(
-    results, RankMetric::SharpeRatio);
-
-auto stable = BacktestOptimizer<MAParams, MAGrid>::filterResults(
-    ranked, [](const auto& r) { return r.totalTrades() > 30; });
-
-// 6. Analyze top performer
-const auto& best = stable[0];
-std::cout << "Best: " << best.parameters.toString() << "\n";
-std::cout << "Sharpe: " << best.sharpeRatio() << "\n";
-std::cout << "Return: " << best.totalReturn() << "\n";
-std::cout << "Trades: " << best.totalTrades() << "\n";
-
-// 7. Export
-BacktestOptimizer<MAParams, MAGrid>::exportToCSV(stable, "results.csv");
-```
-
-## See Also
-
-- [Backtesting Guide](./backtest.md)
+- [Backtesting](./backtest.md)
+- [Optimization stats reference (C++)](../reference/api/backtest/optimization_stats.md)
+- [Python optimizer reference](../reference/python/optimizer.md)

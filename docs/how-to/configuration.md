@@ -1,5 +1,8 @@
 # Configuration
 
+!!! info "C++ engine setup"
+    `EngineConfig` is how the **C++ engine** wires up exchanges, symbols, and the kill switch on startup. Python, Node.js, and Codon users build the equivalent imperatively (`flox.SymbolRegistry`, `flox.Runner`, etc.) — see the [Bindings](../bindings/README.md) page. This guide is for the C++ entrypoint.
+
 FLOX is configured via the `EngineConfig` structure, typically loaded from a JSON file or embedded configuration source.
 
 ## Example Configuration

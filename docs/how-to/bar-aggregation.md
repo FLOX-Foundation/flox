@@ -1,188 +1,191 @@
-# Bar Aggregation Pipeline
+# Bar aggregation pipeline
 
-This guide covers the complete workflow for working with bars in Flox: from raw market data to pre-aggregated bars for backtesting.
-
-## Overview
-
-The bar pipeline consists of several stages:
+Get from raw market data to bars you can backtest against. The pipeline has three stages — record, aggregate, replay — and each is reachable from every binding.
 
 ```mermaid
 flowchart TB
     subgraph Recording
-        RD[Raw Data<br/>trades/books] --> BLW[BinaryLogWriter]
-        BLW --> FLX[.floxlog files<br/>raw data]
+        RD[Raw data<br/>trades / books] --> BLW[Binary log writer]
+        BLW --> FLX[.floxlog files]
     end
 
     subgraph Aggregation
-        FLX --> BA[BarAggregator<br/>+ preagg_bars]
-        BA --> MBW[MmapBarWriter<br/>write bars]
-        MBW --> MBS[MmapBarStorage<br/>read bars]
+        FLX --> BA[Bar aggregator<br/>+ preagg_bars tool]
+        BA --> MBW[Mmap bar writer]
+        MBW --> MBS[Mmap bar storage]
     end
 
     subgraph Backtesting
-        MBS --> MBRS[MmapBarReplaySource]
-        MBRS --> STR[Your Strategy]
+        MBS --> MBRS[Bar replay source]
+        MBRS --> STR[Your strategy]
     end
 ```
 
-## Step 1: Record Raw Market Data
+## 1. Record raw data
 
-Use `BinaryLogWriter` to record trades and order book updates:
+Most users record from a live connector. The Python recorder writes the same `.floxlog` format as the C++ writer.
 
-```cpp
-#include "flox/replay/writers/binary_log_writer.h"
+=== "Python"
 
-replay::WriterConfig config;
-config.output_dir = "/data/bybit/BTCUSDT";
-config.max_segment_bytes = 256 << 20;  // 256 MB per segment
+    ```python
+    import flox_py as flox
 
-replay::BinaryLogWriter writer(config);
+    rec = flox.MarketDataRecorder(output_dir="/data/bybit/BTCUSDT",
+                                   max_segment_bytes=256 << 20)
+    # Feed trades / book updates from your connector
+    rec.write_trade(trade_record)
+    rec.write_book(book_header, bids, asks)
+    rec.close()
+    ```
 
-// From your exchange connector:
-writer.writeTrade(tradeRecord);
-writer.writeBook(bookHeader, bids, asks);
+=== "Node.js"
 
-writer.close();
-```
+    ```javascript
+    const rec = new flox.MarketDataRecorder({
+      outputDir: "/data/bybit/BTCUSDT",
+      maxSegmentBytes: 256 << 20,
+    });
+    rec.writeTrade(tradeRecord);
+    rec.writeBook(bookHeader, bids, asks);
+    rec.close();
+    ```
 
-## Step 2: Pre-aggregate Bars (Offline)
+=== "C++"
 
-Use the `preagg_bars` tool to convert raw trades into bar files:
+    ```cpp
+    #include "flox/replay/writers/binary_log_writer.h"
+
+    replay::WriterConfig config;
+    config.output_dir = "/data/bybit/BTCUSDT";
+    config.max_segment_bytes = 256 << 20;
+    replay::BinaryLogWriter writer(config);
+
+    writer.writeTrade(tradeRecord);
+    writer.writeBook(bookHeader, bids, asks);
+    writer.close();
+    ```
+
+## 2. Pre-aggregate bars (offline)
+
+Run `preagg_bars` once per dataset; it writes one bar file per timeframe.
 
 ```bash
-# Build with tools enabled
 cmake -B build -DFLOX_ENABLE_TOOLS=ON -DFLOX_ENABLE_BACKTEST=ON
 cmake --build build
 
-# Run pre-aggregation
 ./build/tools/preagg_bars /data/bybit/BTCUSDT /data/bybit/BTCUSDT/bars 60 300 900 3600
-
-# Output:
-#   bars_60s.bin   (1-minute bars)
-#   bars_300s.bin  (5-minute bars)
-#   bars_900s.bin  (15-minute bars)
-#   bars_3600s.bin (1-hour bars)
+# bars_60s.bin   (1m)
+# bars_300s.bin  (5m)
+# bars_900s.bin  (15m)
+# bars_3600s.bin (1h)
 ```
 
-### Command-Line Options
+Same tool for every binding — it's a standalone CLI binary.
 
-```
-Usage: preagg_bars <input_dir> <output_dir> [timeframe_seconds...]
+## 3. Load bars for backtesting
 
-Arguments:
-  input_dir   Directory containing binary log files (.floxlog)
-  output_dir  Directory to write bar files (will be created)
-  timeframes  List of timeframe intervals in seconds (default: 60 300 900 3600)
+=== "Python"
 
-Examples:
-  preagg_bars data/BTCUSDT bars/BTCUSDT 60 300 900
-  preagg_bars /path/to/trades /path/to/bars 60 300 900 1800 3600
-```
+    Bars come back as a structured numpy array. Pass directly to `BacktestRunner.run_bars(...)`:
 
-## Step 3: Load Bars for Backtesting
+    ```python
+    storage = flox.MmapBarStorage("/data/bybit/BTCUSDT/bars")
+    bars = storage.bars(timeframe_ns=60 * 1_000_000_000)   # 1-minute bars
 
-Use `MmapBarStorage` to memory-map bar files for fast access:
+    bt.run_bars(
+        start_time_ns = bars["start_time_ns"],
+        end_time_ns   = bars["end_time_ns"],
+        open  = bars["open"],   high = bars["high"],
+        low   = bars["low"],    close = bars["close"],
+        volume = bars["volume"],
+        symbol = "BTCUSDT",
+    )
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const storage = new flox.MmapBarStorage("/data/bybit/BTCUSDT/bars");
+    const bars = storage.bars(60n * 1_000_000_000n);
+    bt.runBars(bars.startTimeNs, bars.endTimeNs,
+                bars.open, bars.high, bars.low, bars.close, bars.volume,
+                "BTCUSDT");
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include "flox/backtest/mmap_bar_storage.h"
+    #include "flox/backtest/mmap_bar_replay_source.h"
+
+    MmapBarStorage storage("/data/bybit/BTCUSDT/bars");
+    auto tf = TimeframeId::time(std::chrono::seconds(60));
+    auto bars = storage.getBars(tf);                    // std::span<const Bar>
+
+    MmapBarReplaySource replay(storage, symbolId);
+    replay.replay([&](const BarEvent& ev) { strat.onBar(ev); });
+    ```
+
+## Live aggregation (no offline step)
+
+For real-time bar generation while you trade, configure the aggregator with the timeframes you want and connect it to your strategy.
+
+=== "C++"
+
+    ```cpp
+    BarBus bus;
+    MultiTimeframeAggregator<4> aggregator(&bus);
+    aggregator.addTimeInterval(std::chrono::seconds(60));    // 1m
+    aggregator.addTimeInterval(std::chrono::seconds(300));   // 5m
+    aggregator.addTimeInterval(std::chrono::seconds(900));   // 15m
+    aggregator.addTimeInterval(std::chrono::seconds(3600));  // 1h
+
+    MmapBarWriter writer("/data/bybit/BTCUSDT/bars");
+    bus.subscribe(&writer);
+
+    aggregator.start();
+    aggregator.onTrade(tradeEvent);
+    ```
+
+=== "Python / Node.js"
+
+    Live bar aggregation isn't yet exposed as an idiomatic Python/Node.js API — drive your strategy from `Runner.on_trade(...)` and accumulate bars yourself, or pre-aggregate with `preagg_bars` and replay.
+
+## Bar types
+
+| Type | Parameter | Description |
+|---|---|---|
+| Time | interval (seconds) | Close every N seconds |
+| Tick | count | Close after N trades |
+| Volume | threshold | Close when cumulative volume crosses threshold |
+| Renko | brick size | Fixed price-move bars |
+| Range | range | Close when high − low > range |
+| BpsRange | bps | Range in basis points relative to bar open (works across price scales) |
+| HeikinAshi | interval | Heikin-Ashi smoothed |
 
 ```cpp
-#include "flox/backtest/mmap_bar_storage.h"
-#include "flox/backtest/mmap_bar_replay_source.h"
-
-// Load bars
-MmapBarStorage storage("/data/bybit/BTCUSDT/bars");
-
-// Check available timeframes
-for (auto tf : storage.timeframes()) {
-    std::cout << "Timeframe: " << (tf.param / 1'000'000'000) << "s, "
-              << storage.barCount(tf) << " bars\n";
-}
-
-// Get bars directly
-auto tf1m = TimeframeId::time(std::chrono::seconds(60));
-auto bars = storage.getBars(tf1m);  // std::span<const Bar>
-
-// Or use replay source for backtesting
-MmapBarReplaySource replaySource(storage, symbolId);
-replaySource.replay([&](const BarEvent& ev) {
-    myStrategy.onBar(ev);
-});
+aggregator.addTickInterval(100);          // 100-trade bars
+aggregator.addVolumeInterval(1'000'000);  // 1M-volume bars
 ```
 
-## Alternative: Live Bar Aggregation
-
-For real-time bar generation with persistence:
-
-```cpp
-#include "flox/aggregator/multi_timeframe_aggregator.h"
-#include "flox/backtest/mmap_bar_writer.h"
-
-BarBus bus;
-MultiTimeframeAggregator<4> aggregator(&bus);
-
-// Configure timeframes
-aggregator.addTimeInterval(std::chrono::seconds(60));   // 1m
-aggregator.addTimeInterval(std::chrono::seconds(300));  // 5m
-aggregator.addTimeInterval(std::chrono::seconds(900));  // 15m
-aggregator.addTimeInterval(std::chrono::seconds(3600)); // 1h
-
-// Writer saves bars to disk
-MmapBarWriter writer("/data/bybit/BTCUSDT/bars");
-bus.subscribe(&writer);
-
-// Start aggregation
-aggregator.start();
-
-// Feed trades from your connector
-aggregator.onTrade(tradeEvent);
-// ...
-
-// Flush to disk
-writer.flush();
-```
-
-## Bar File Format
-
-Bar files use a simple binary format compatible with memory mapping:
+## File format
 
 ```
 [uint64_t]  bar_count
 [Bar × N]   bar data
 ```
 
-Each `Bar` struct contains:
-- `open`, `high`, `low`, `close` - OHLC prices
-- `volume`, `buyVolume` - Volume data
-- `tradeCount` - Number of trades
-- `startTime`, `endTime` - Time range
-- `reason` - Close reason (Threshold, Gap, Forced, Warmup)
+Each `Bar` carries `open / high / low / close / volume / buyVolume / tradeCount / startTime / endTime / reason`. File naming: `bars_<seconds>s.bin`.
 
-File naming convention: `bars_<seconds>s.bin` (e.g., `bars_60s.bin` for 1-minute bars)
+## Performance tips
 
-## Available Bar Types
+1. **mmap for big data** — `MmapBarStorage` lets the OS manage paging
+2. **Pre-aggregate offline** for repeated parameter sweeps
+3. **Pick coarser timeframes** for faster iteration; smaller bars = more events
+4. **Batch flushes** — `MmapBarWriter` buffers; call `flush()` periodically for durability
 
-Flox supports multiple bar types through different policies:
+## See also
 
-| Type | Parameter | Description |
-|------|-----------|-------------|
-| Time | interval in seconds | Close bar every N seconds |
-| Tick | count | Close bar after N trades |
-| Volume | threshold | Close bar when volume exceeds threshold |
-| Renko | brick size | Fixed price movement bars |
-| Range | range | Close when high-low exceeds range |
-| HeikinAshi | interval | Heikin-Ashi smoothed bars |
-
-Example with tick bars:
-
-```cpp
-aggregator.addTickInterval(100);   // 100-trade bars
-aggregator.addVolumeInterval(1000000);  // 1M volume bars
-```
-
-## Performance Tips
-
-1. **Use mmap for large datasets** - `MmapBarStorage` memory-maps files, allowing the OS to manage memory efficiently.
-
-2. **Pre-aggregate offline** - Use `preagg_bars` instead of aggregating during backtest for faster iteration.
-
-3. **Choose appropriate timeframes** - Smaller timeframes = more bars = more processing.
-
-4. **Batch flush writes** - `MmapBarWriter` buffers bars in memory; call `flush()` periodically for durability.
+- [Custom bar policy](custom-bar-policy.md) — write your own aggregator
+- [Bar types explained](../explanation/bar-types.md)
+- [Backtesting](backtest.md)

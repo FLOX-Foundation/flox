@@ -1,6 +1,6 @@
 # Architecture Overview
 
-How FLOX components fit together.
+How FLOX components fit together. The diagrams below describe the runtime engine — the same architecture you get from every binding (Python, Node.js, Codon, C++). Bindings are thin wrappers; the engine layout is identical.
 
 ## System Layers
 

@@ -1,5 +1,8 @@
 # Optimize Performance
 
+!!! info "System-level (C++)"
+    These tuning knobs live in the C++ engine. Every binding inherits them automatically; there's nothing per-language to configure. If you only run Python or Node.js the relevant tuning is "use a Release build of FLOX" — the rest is for advanced low-latency setups.
+
 Tune FLOX for minimum latency.
 
 ## Build Optimization
