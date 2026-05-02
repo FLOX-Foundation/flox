@@ -17,12 +17,24 @@
 namespace flox
 {
 
+// Hold-side hint for exchanges that operate in hedge / dual-position mode
+// (Bitget, Bybit, Binance hedge). 0 = unspecified (one-way mode), 1 = long
+// side, 2 = short side. Connectors serialise this to whatever field the
+// exchange expects (Bitget: posSide=long|short).
+enum class HoldSide : uint8_t
+{
+  Unspecified = 0,
+  Long = 1,
+  Short = 2
+};
+
 struct ExecutionFlags
 {
   uint8_t reduceOnly : 1 = 0;
   uint8_t closePosition : 1 = 0;
   uint8_t postOnly : 1 = 0;
-  uint8_t _reserved : 5 = 0;
+  uint8_t holdSide : 2 = 0;  // HoldSide; cast through static_cast<HoldSide>
+  uint8_t _reserved : 3 = 0;
 };
 
 struct Order
