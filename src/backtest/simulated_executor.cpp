@@ -138,6 +138,24 @@ void SimulatedExecutor::submitOrder(const Order& order)
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
   emitEvent(OrderEventStatus::ACCEPTED, accepted);
 
+  // POST_ONLY: reject any limit that would cross the book (taker semantics
+  // are not allowed for post-only). Real exchanges reject these on submit;
+  // the simulator must do the same so backtests don't silently fill them
+  // as makers via the queue tracker on subsequent ticks.
+  if (accepted.type == OrderType::LIMIT && accepted.timeInForce == TimeInForce::POST_ONLY)
+  {
+    const MarketState& state = getMarketState(accepted.symbol);
+    const int64_t orderPriceRaw = accepted.price.raw();
+    const bool crosses =
+        (accepted.side == Side::BUY && state.hasAsk && orderPriceRaw >= state.bestAskRaw) ||
+        (accepted.side == Side::SELL && state.hasBid && orderPriceRaw <= state.bestBidRaw);
+    if (crosses)
+    {
+      emitEvent(OrderEventStatus::REJECTED, accepted);
+      return;
+    }
+  }
+
   // Handle conditional orders (stop, TP, trailing)
   if (isConditionalOrder(accepted.type))
   {
