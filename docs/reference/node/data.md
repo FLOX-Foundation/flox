@@ -53,6 +53,11 @@ Record shapes:
 
 `eventType` is `2` for a snapshot, `3` for a delta.
 
+`startTsNs`, `fromNs`, `toNs` accept either a `number` or a `bigint`. Pass
+`bigint` for real nanosecond timestamps — JS `number` is float64 and silently
+rounds values past 2^53 (e.g. `1765615835519000000` becomes
+`1765615835519000064`), which can shift seek boundaries off by one event.
+
 ---
 
 ## DataRecorder

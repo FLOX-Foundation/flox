@@ -229,14 +229,15 @@ def main() -> int:
 
         # Node side: emit counts to compare. The Node binding now links lz4
         # itself (see node/CMakeLists.txt), so compressed demo segments work
-        # on every platform.
+        # on every platform. mid_ts is passed as BigInt — JS Numbers are
+        # float64 and silently round nanosecond timestamps past 2^53.
         node_script = (
             f"const flox = require('.');\n"
             f"const r = new flox.DataReader({json.dumps(str(sample))});\n"
             f"const tr = r.readTrades(), bu = r.readBookUpdates(), bb = r.readBBO();\n"
-            f"const trF = r.readTradesFrom({mid_ts});\n"
-            f"const buF = r.readBookUpdatesFrom({mid_ts});\n"
-            f"const bbF = r.readBBOFrom({mid_ts});\n"
+            f"const trF = r.readTradesFrom({mid_ts}n);\n"
+            f"const buF = r.readBookUpdatesFrom({mid_ts}n);\n"
+            f"const bbF = r.readBBOFrom({mid_ts}n);\n"
             f"process.stdout.write(JSON.stringify({{\n"
             f"  count: r.count, trades: tr.length, bbo: bb.length, book: bu.length,\n"
             f"  tradesFrom: trF.length, bboFrom: bbF.length, bookFrom: buF.length,\n"
