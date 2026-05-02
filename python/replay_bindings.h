@@ -280,38 +280,54 @@ class PyDataReader
   }
 
   // Read best bid/ask from every book update as a structured numpy array.
-  py::array_t<PyBBO> readBBO()
+  py::array_t<PyBBO> readBBO() { return readBBOInternal(/*from=*/std::nullopt); }
+
+  py::array_t<PyBBO> readBBOFrom(int64_t startTsNs)
+  {
+    return readBBOInternal(startTsNs);
+  }
+
+ private:
+  py::array_t<PyBBO> readBBOInternal(std::optional<int64_t> fromTsNs)
   {
     std::vector<PyBBO> bbos;
+    auto cb = [&](const ReplayEvent& ev) -> bool
+    {
+      if (ev.type != EventType::BookSnapshot && ev.type != EventType::BookDelta)
+      {
+        return true;
+      }
+
+      PyBBO b{};
+      b.exchange_ts_ns = ev.book_header.exchange_ts_ns;
+      b.recv_ts_ns = ev.book_header.recv_ts_ns;
+      b.seq = ev.book_header.seq;
+      b.symbol_id = ev.book_header.symbol_id;
+      b.event_type = ev.book_header.type;
+      if (!ev.bids.empty())
+      {
+        b.bid_price_raw = ev.bids[0].price_raw;
+        b.bid_qty_raw = ev.bids[0].qty_raw;
+      }
+      if (!ev.asks.empty())
+      {
+        b.ask_price_raw = ev.asks[0].price_raw;
+        b.ask_qty_raw = ev.asks[0].qty_raw;
+      }
+      bbos.push_back(b);
+      return true;
+    };
+
     {
       py::gil_scoped_release release;
-      _reader.forEach(
-          [&](const ReplayEvent& ev) -> bool
-          {
-            if (ev.type != EventType::BookSnapshot && ev.type != EventType::BookDelta)
-            {
-              return true;
-            }
-
-            PyBBO b{};
-            b.exchange_ts_ns = ev.book_header.exchange_ts_ns;
-            b.recv_ts_ns = ev.book_header.recv_ts_ns;
-            b.seq = ev.book_header.seq;
-            b.symbol_id = ev.book_header.symbol_id;
-            b.event_type = ev.book_header.type;
-            if (!ev.bids.empty())
-            {
-              b.bid_price_raw = ev.bids[0].price_raw;
-              b.bid_qty_raw = ev.bids[0].qty_raw;
-            }
-            if (!ev.asks.empty())
-            {
-              b.ask_price_raw = ev.asks[0].price_raw;
-              b.ask_qty_raw = ev.asks[0].qty_raw;
-            }
-            bbos.push_back(b);
-            return true;
-          });
+      if (fromTsNs)
+      {
+        _reader.forEachFrom(*fromTsNs, cb);
+      }
+      else
+      {
+        _reader.forEach(cb);
+      }
     }
 
     py::array_t<PyBBO> result(bbos.size());
@@ -322,6 +338,7 @@ class PyDataReader
     return result;
   }
 
+ public:
   // Read all book updates.
   // Returns (headers, levels):
   //   headers  — structured array of PyBookUpdateHeader
@@ -330,42 +347,58 @@ class PyDataReader
   //   offset = headers[i]['level_offset']
   //   bids   = levels[offset : offset + headers[i]['bid_count']]
   //   asks   = levels[offset + headers[i]['bid_count'] : offset + headers[i]['bid_count'] + headers[i]['ask_count']]
-  py::tuple readBookUpdates()
+  py::tuple readBookUpdates() { return readBookUpdatesInternal(/*from=*/std::nullopt); }
+
+  py::tuple readBookUpdatesFrom(int64_t startTsNs)
+  {
+    return readBookUpdatesInternal(startTsNs);
+  }
+
+ private:
+  py::tuple readBookUpdatesInternal(std::optional<int64_t> fromTsNs)
   {
     std::vector<PyBookUpdateHeader> headers;
     std::vector<PyLevel> levels;
+    auto cb = [&](const ReplayEvent& ev) -> bool
+    {
+      if (ev.type != EventType::BookSnapshot && ev.type != EventType::BookDelta)
+      {
+        return true;
+      }
+
+      PyBookUpdateHeader h{};
+      h.exchange_ts_ns = ev.book_header.exchange_ts_ns;
+      h.recv_ts_ns = ev.book_header.recv_ts_ns;
+      h.seq = ev.book_header.seq;
+      h.symbol_id = ev.book_header.symbol_id;
+      h.bid_count = static_cast<uint16_t>(ev.bids.size());
+      h.ask_count = static_cast<uint16_t>(ev.asks.size());
+      h.level_offset = static_cast<uint32_t>(levels.size());
+      h.event_type = ev.book_header.type;
+      headers.push_back(h);
+
+      for (const auto& bl : ev.bids)
+      {
+        levels.push_back({bl.price_raw, bl.qty_raw, 0, {}});
+      }
+      for (const auto& bl : ev.asks)
+      {
+        levels.push_back({bl.price_raw, bl.qty_raw, 1, {}});
+      }
+
+      return true;
+    };
+
     {
       py::gil_scoped_release release;
-      _reader.forEach(
-          [&](const ReplayEvent& ev) -> bool
-          {
-            if (ev.type != EventType::BookSnapshot && ev.type != EventType::BookDelta)
-            {
-              return true;
-            }
-
-            PyBookUpdateHeader h{};
-            h.exchange_ts_ns = ev.book_header.exchange_ts_ns;
-            h.recv_ts_ns = ev.book_header.recv_ts_ns;
-            h.seq = ev.book_header.seq;
-            h.symbol_id = ev.book_header.symbol_id;
-            h.bid_count = static_cast<uint16_t>(ev.bids.size());
-            h.ask_count = static_cast<uint16_t>(ev.asks.size());
-            h.level_offset = static_cast<uint32_t>(levels.size());
-            h.event_type = ev.book_header.type;
-            headers.push_back(h);
-
-            for (const auto& bl : ev.bids)
-            {
-              levels.push_back({bl.price_raw, bl.qty_raw, 0, {}});
-            }
-            for (const auto& bl : ev.asks)
-            {
-              levels.push_back({bl.price_raw, bl.qty_raw, 1, {}});
-            }
-
-            return true;
-          });
+      if (fromTsNs)
+      {
+        _reader.forEachFrom(*fromTsNs, cb);
+      }
+      else
+      {
+        _reader.forEach(cb);
+      }
     }
 
     py::array_t<PyBookUpdateHeader> h_arr(headers.size());
@@ -383,6 +416,7 @@ class PyDataReader
     return py::make_tuple(h_arr, l_arr);
   }
 
+ public:
   py::dict stats()
   {
     auto s = _reader.stats();
@@ -670,11 +704,18 @@ inline void bindReplay(py::module_& m)
            py::arg("start_ts_ns"))
       .def("read_bbo", &PyDataReader::readBBO,
            "Read best bid/ask from every book update as a numpy structured array (PyBBO dtype)")
+      .def("read_bbo_from", &PyDataReader::readBBOFrom,
+           "Read BBO starting from a given timestamp (nanoseconds)",
+           py::arg("start_ts_ns"))
       .def("read_book_updates", &PyDataReader::readBookUpdates,
            "Read all book updates. Returns (headers, levels) tuple of numpy structured arrays. "
            "headers dtype: PyBookUpdateHeader; levels dtype: PyLevel. "
            "For event i: bids=levels[h['level_offset']:h['level_offset']+h['bid_count']], "
            "asks=levels[h['level_offset']+h['bid_count']:h['level_offset']+h['bid_count']+h['ask_count']]")
+      .def("read_book_updates_from", &PyDataReader::readBookUpdatesFrom,
+           "Read book updates starting from a given timestamp (nanoseconds). "
+           "Same return shape as read_book_updates().",
+           py::arg("start_ts_ns"))
       .def("stats", &PyDataReader::stats,
            "Return reader statistics as a dict")
       .def("segment_files", &PyDataReader::segmentFiles,

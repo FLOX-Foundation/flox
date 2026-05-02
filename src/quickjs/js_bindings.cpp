@@ -1877,21 +1877,11 @@ static JSValue js_dr_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
   return o;
 }
 
-static JSValue js_dr_read_trades(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+// ── helpers shared by read_X / read_X_from ───────────────────────────────
+
+static JSValue js_dr_build_trades_array(JSContext* c, const std::vector<FloxTradeRecord>& trades,
+                                        uint64_t got)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
-  uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
-  uint64_t n = flox_data_reader_count(h);
-  if (max > 0 && max < n)
-  {
-    n = max;
-  }
-  if (n == 0)
-  {
-    return JS_NewArray(c);
-  }
-  std::vector<FloxTradeRecord> trades(n);
-  uint64_t got = flox_data_reader_read_trades(h, trades.data(), n);
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < got; i++)
   {
@@ -1909,21 +1899,8 @@ static JSValue js_dr_read_trades(JSContext* c, JSValueConst, int argc, JSValueCo
   return arr;
 }
 
-static JSValue js_dr_read_bbo(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+static JSValue js_dr_build_bbos_array(JSContext* c, const std::vector<FloxBBO>& bbos, uint64_t got)
 {
-  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
-  uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
-  uint64_t n = flox_data_reader_read_bbo(h, nullptr, 0);
-  if (max > 0 && max < n)
-  {
-    n = max;
-  }
-  if (n == 0)
-  {
-    return JS_NewArray(c);
-  }
-  std::vector<FloxBBO> bbos(n);
-  uint64_t got = flox_data_reader_read_bbo(h, bbos.data(), n);
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < got; i++)
   {
@@ -1947,19 +1924,84 @@ static JSValue js_dr_read_bbo(JSContext* c, JSValueConst, int argc, JSValueConst
   return arr;
 }
 
-static JSValue js_dr_read_book_updates(JSContext* c, JSValueConst, int, JSValueConst* a)
+static JSValue js_dr_read_trades(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
   auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
-  uint64_t total_levels = 0;
-  uint64_t n_events = flox_data_reader_count_book_updates(h, &total_levels);
-  if (n_events == 0)
+  uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
+  uint64_t n = flox_data_reader_count(h);
+  if (max > 0 && max < n)
+  {
+    n = max;
+  }
+  if (n == 0)
   {
     return JS_NewArray(c);
   }
-  std::vector<FloxBookUpdateHeader> headers(n_events);
-  std::vector<FloxLevel> levels(total_levels);
-  uint64_t got = flox_data_reader_read_book_updates(h, headers.data(), n_events,
-                                                    levels.data(), total_levels);
+  std::vector<FloxTradeRecord> trades(n);
+  uint64_t got = flox_data_reader_read_trades(h, trades.data(), n);
+  return js_dr_build_trades_array(c, trades, got);
+}
+
+static JSValue js_dr_read_trades_from(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  int64_t startTsNs = toInt64(c, a[1]);
+  uint64_t max = argc > 2 ? static_cast<uint64_t>(toInt64(c, a[2])) : 0;
+  uint64_t n = flox_data_reader_read_trades_from(h, startTsNs, nullptr, 0);
+  if (max > 0 && max < n)
+  {
+    n = max;
+  }
+  if (n == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxTradeRecord> trades(n);
+  uint64_t got = flox_data_reader_read_trades_from(h, startTsNs, trades.data(), n);
+  return js_dr_build_trades_array(c, trades, got);
+}
+
+static JSValue js_dr_read_bbo(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  uint64_t max = argc > 1 ? static_cast<uint64_t>(toInt64(c, a[1])) : 0;
+  uint64_t n = flox_data_reader_read_bbo(h, nullptr, 0);
+  if (max > 0 && max < n)
+  {
+    n = max;
+  }
+  if (n == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxBBO> bbos(n);
+  uint64_t got = flox_data_reader_read_bbo(h, bbos.data(), n);
+  return js_dr_build_bbos_array(c, bbos, got);
+}
+
+static JSValue js_dr_read_bbo_from(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  int64_t startTsNs = toInt64(c, a[1]);
+  uint64_t max = argc > 2 ? static_cast<uint64_t>(toInt64(c, a[2])) : 0;
+  uint64_t n = flox_data_reader_read_bbo_from(h, startTsNs, nullptr, 0);
+  if (max > 0 && max < n)
+  {
+    n = max;
+  }
+  if (n == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxBBO> bbos(n);
+  uint64_t got = flox_data_reader_read_bbo_from(h, startTsNs, bbos.data(), n);
+  return js_dr_build_bbos_array(c, bbos, got);
+}
+
+static JSValue js_dr_build_book_updates_array(JSContext* c,
+                                              const std::vector<FloxBookUpdateHeader>& headers,
+                                              const std::vector<FloxLevel>& levels, uint64_t got)
+{
   JSValue arr = JS_NewArray(c);
   for (uint64_t i = 0; i < got; i++)
   {
@@ -1996,6 +2038,39 @@ static JSValue js_dr_read_book_updates(JSContext* c, JSValueConst, int, JSValueC
     JS_SetPropertyUint32(c, arr, static_cast<uint32_t>(i), o);
   }
   return arr;
+}
+
+static JSValue js_dr_read_book_updates(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  uint64_t total_levels = 0;
+  uint64_t n_events = flox_data_reader_count_book_updates(h, &total_levels);
+  if (n_events == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxBookUpdateHeader> headers(n_events);
+  std::vector<FloxLevel> levels(total_levels);
+  uint64_t got = flox_data_reader_read_book_updates(h, headers.data(), n_events, levels.data(),
+                                                    total_levels);
+  return js_dr_build_book_updates_array(c, headers, levels, got);
+}
+
+static JSValue js_dr_read_book_updates_from(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataReaderHandle>(getHandle(c, a[0]));
+  int64_t startTsNs = toInt64(c, a[1]);
+  uint64_t total_levels = 0;
+  uint64_t n_events = flox_data_reader_count_book_updates_from(h, startTsNs, &total_levels);
+  if (n_events == 0)
+  {
+    return JS_NewArray(c);
+  }
+  std::vector<FloxBookUpdateHeader> headers(n_events);
+  std::vector<FloxLevel> levels(total_levels);
+  uint64_t got = flox_data_reader_read_book_updates_from(
+      h, startTsNs, headers.data(), n_events, levels.data(), total_levels);
+  return js_dr_build_book_updates_array(c, headers, levels, got);
 }
 
 // ============================================================
@@ -2930,6 +3005,9 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_dr_read_trades", js_dr_read_trades, 2);
   addGlobalFunc(ctx, "__flox_dr_read_bbo", js_dr_read_bbo, 2);
   addGlobalFunc(ctx, "__flox_dr_read_book_updates", js_dr_read_book_updates, 1);
+  addGlobalFunc(ctx, "__flox_dr_read_trades_from", js_dr_read_trades_from, 3);
+  addGlobalFunc(ctx, "__flox_dr_read_bbo_from", js_dr_read_bbo_from, 3);
+  addGlobalFunc(ctx, "__flox_dr_read_book_updates_from", js_dr_read_book_updates_from, 2);
 
   // DataRecorder
   addGlobalFunc(ctx, "__flox_recorder_create", js_recorder_create, 3);

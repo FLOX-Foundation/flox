@@ -139,6 +139,10 @@ from C import flox_data_reader_read_trades(cobj, cobj, u64) -> u64
 from C import flox_data_reader_read_bbo(cobj, cobj, u64) -> u64
 from C import flox_data_reader_count_book_updates(cobj, Ptr[u64]) -> u64
 from C import flox_data_reader_read_book_updates(cobj, cobj, u64, cobj, u64) -> u64
+from C import flox_data_reader_read_trades_from(cobj, i64, cobj, u64) -> u64
+from C import flox_data_reader_read_bbo_from(cobj, i64, cobj, u64) -> u64
+from C import flox_data_reader_count_book_updates_from(cobj, i64, Ptr[u64]) -> u64
+from C import flox_data_reader_read_book_updates_from(cobj, i64, cobj, u64, cobj, u64) -> u64
 from C import flox_data_reader_summary_p(cobj, Ptr[byte])
 from C import flox_data_reader_stats_p(cobj, Ptr[byte])
 
@@ -925,6 +929,131 @@ class DataReader:
             symbol_id    = int(up[8])         # u32 at offset 32 -> u32 index 8
             bid_count    = int(us[18])        # u16 at offset 36 -> u16 index 18
             ask_count    = int(us[19])        # u16 at offset 38 -> u16 index 19
+            event_type   = int(bp[40])
+
+            bids = list[BookLevel]()
+            for k in range(bid_count):
+                lbase = (level_offset + k) * lstride
+                llp = Ptr[i64](Ptr[byte](lraw.arr.ptr) + lbase)
+                lbp = Ptr[u8](Ptr[byte](lraw.arr.ptr) + lbase)
+                bids.append(BookLevel(
+                    price_raw=int(llp[0]),
+                    qty_raw=int(llp[1]),
+                    side=int(lbp[16])
+                ))
+            asks = list[BookLevel]()
+            for k in range(ask_count):
+                lbase = (level_offset + bid_count + k) * lstride
+                llp = Ptr[i64](Ptr[byte](lraw.arr.ptr) + lbase)
+                lbp = Ptr[u8](Ptr[byte](lraw.arr.ptr) + lbase)
+                asks.append(BookLevel(
+                    price_raw=int(llp[0]),
+                    qty_raw=int(llp[1]),
+                    side=int(lbp[16])
+                ))
+
+            result.append(BookUpdate(
+                exchange_ts_ns=int(lp[0]),
+                recv_ts_ns=int(lp[1]),
+                seq=int(lp[2]),
+                symbol_id=symbol_id,
+                event_type=event_type,
+                bids=bids,
+                asks=asks
+            ))
+        return result
+
+    # ── _from variants ──────────────────────────────────────────────
+    # Mid-stream seek: start iteration from the first event whose
+    # exchange_ts_ns >= start_ts_ns.
+
+    def read_trades_from(self, start_ts_ns: int, max_trades: int = 0) -> List[TradeRecord]:
+        """Read trade records starting from a given timestamp (nanoseconds)."""
+        n = int(flox_data_reader_read_trades_from(self._h, i64(start_ts_ns), cobj(), u64(0)))
+        if max_trades > 0 and max_trades < n:
+            n = max_trades
+        if n == 0:
+            return list[TradeRecord]()
+        stride = 48
+        raw = [byte(0)] * (n * stride)
+        got = int(flox_data_reader_read_trades_from(
+            self._h, i64(start_ts_ns), Ptr[byte](raw.arr.ptr), u64(n)))
+        result = list[TradeRecord]()
+        for i in range(got):
+            base = i * stride
+            lp = Ptr[i64](Ptr[byte](raw.arr.ptr) + base)
+            up = Ptr[u32](Ptr[byte](raw.arr.ptr) + base)
+            bp = Ptr[u8](Ptr[byte](raw.arr.ptr) + base)
+            result.append(TradeRecord(
+                exchange_ts_ns=int(lp[0]),
+                recv_ts_ns=int(lp[1]),
+                price_raw=int(lp[2]),
+                qty_raw=int(lp[3]),
+                trade_id=int(lp[4]),
+                symbol_id=int(up[10]),
+                side=int(bp[44])
+            ))
+        return result
+
+    def read_bbo_from(self, start_ts_ns: int, max_events: int = 0) -> List[BBO]:
+        """Read top-of-book starting from a given timestamp."""
+        n = int(flox_data_reader_read_bbo_from(self._h, i64(start_ts_ns), cobj(), u64(0)))
+        if max_events > 0 and max_events < n:
+            n = max_events
+        if n == 0:
+            return list[BBO]()
+        stride = 64
+        raw = [byte(0)] * (n * stride)
+        got = int(flox_data_reader_read_bbo_from(
+            self._h, i64(start_ts_ns), Ptr[byte](raw.arr.ptr), u64(n)))
+        result = list[BBO]()
+        for i in range(got):
+            base = i * stride
+            lp = Ptr[i64](Ptr[byte](raw.arr.ptr) + base)
+            up = Ptr[u32](Ptr[byte](raw.arr.ptr) + base)
+            bp = Ptr[u8](Ptr[byte](raw.arr.ptr) + base)
+            result.append(BBO(
+                exchange_ts_ns=int(lp[0]),
+                recv_ts_ns=int(lp[1]),
+                seq=int(lp[2]),
+                bid_price_raw=int(lp[3]),
+                bid_qty_raw=int(lp[4]),
+                ask_price_raw=int(lp[5]),
+                ask_qty_raw=int(lp[6]),
+                symbol_id=int(up[14]),
+                event_type=int(bp[60])
+            ))
+        return result
+
+    def read_book_updates_from(self, start_ts_ns: int) -> List[BookUpdate]:
+        """Read every book update event starting from a given timestamp."""
+        total_levels = u64(0)
+        n_events = int(flox_data_reader_count_book_updates_from(
+            self._h, i64(start_ts_ns), __ptr__(total_levels)))
+        if n_events == 0:
+            return list[BookUpdate]()
+
+        hstride = 48
+        lstride = 24
+        n_levels = int(total_levels)
+        hraw = [byte(0)] * (n_events * hstride)
+        lraw = [byte(0)] * (n_levels * lstride)
+        got = int(flox_data_reader_read_book_updates_from(
+            self._h, i64(start_ts_ns),
+            Ptr[byte](hraw.arr.ptr), u64(n_events),
+            Ptr[byte](lraw.arr.ptr), u64(n_levels)))
+
+        result = list[BookUpdate]()
+        for i in range(got):
+            hbase = i * hstride
+            lp = Ptr[i64](Ptr[byte](hraw.arr.ptr) + hbase)
+            up = Ptr[u32](Ptr[byte](hraw.arr.ptr) + hbase)
+            us = Ptr[u16](Ptr[byte](hraw.arr.ptr) + hbase)
+            bp = Ptr[u8](Ptr[byte](hraw.arr.ptr) + hbase)
+            level_offset = int(lp[3])
+            symbol_id    = int(up[8])
+            bid_count    = int(us[18])
+            ask_count    = int(us[19])
             event_type   = int(bp[40])
 
             bids = list[BookLevel]()

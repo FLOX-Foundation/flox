@@ -74,8 +74,11 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
                         InstanceMethod("summary", &DataReaderWrap::Summary),
                         InstanceMethod("stats", &DataReaderWrap::Stats),
                         InstanceMethod("readTrades", &DataReaderWrap::ReadTrades),
+                        InstanceMethod("readTradesFrom", &DataReaderWrap::ReadTradesFrom),
                         InstanceMethod("readBBO", &DataReaderWrap::ReadBBO),
-                        InstanceMethod("readBookUpdates", &DataReaderWrap::ReadBookUpdates)});
+                        InstanceMethod("readBBOFrom", &DataReaderWrap::ReadBBOFrom),
+                        InstanceMethod("readBookUpdates", &DataReaderWrap::ReadBookUpdates),
+                        InstanceMethod("readBookUpdatesFrom", &DataReaderWrap::ReadBookUpdatesFrom)});
   }
   DataReaderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataReaderWrap>(info)
   {
@@ -121,18 +124,51 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   }
   Napi::Value ReadTrades(const Napi::CallbackInfo& info)
   {
-    uint64_t maxTrades = info.Length() > 0 ? info[0].As<Napi::Number>().Int64Value() : 0;
-    // First pass: count
+    uint64_t maxTrades = info.Length() > 0 && info[0].IsNumber()
+                             ? info[0].As<Napi::Number>().Int64Value()
+                             : 0;
+    return readTradesImpl(info.Env(), /*startTsNs=*/0, /*useFrom=*/false, maxTrades);
+  }
+  Napi::Value ReadTradesFrom(const Napi::CallbackInfo& info)
+  {
+    int64_t startTsNs = info[0].As<Napi::Number>().Int64Value();
+    uint64_t maxTrades = info.Length() > 1 && info[1].IsNumber()
+                             ? info[1].As<Napi::Number>().Int64Value()
+                             : 0;
+    return readTradesImpl(info.Env(), startTsNs, /*useFrom=*/true, maxTrades);
+  }
+  Napi::Value ReadBBO(const Napi::CallbackInfo& info)
+  {
+    uint64_t maxEvents = info.Length() > 0 && info[0].IsNumber()
+                             ? info[0].As<Napi::Number>().Int64Value()
+                             : 0;
+    return readBboImpl(info.Env(), /*startTsNs=*/0, /*useFrom=*/false, maxEvents);
+  }
+  Napi::Value ReadBBOFrom(const Napi::CallbackInfo& info)
+  {
+    int64_t startTsNs = info[0].As<Napi::Number>().Int64Value();
+    uint64_t maxEvents = info.Length() > 1 && info[1].IsNumber()
+                             ? info[1].As<Napi::Number>().Int64Value()
+                             : 0;
+    return readBboImpl(info.Env(), startTsNs, /*useFrom=*/true, maxEvents);
+  }
+
+ private:
+  Napi::Value readTradesImpl(Napi::Env env, int64_t startTsNs, bool useFrom, uint64_t maxTrades)
+  {
     if (maxTrades == 0)
     {
-      maxTrades = flox_data_reader_read_trades(_h, nullptr, 0);
+      maxTrades = useFrom ? flox_data_reader_read_trades_from(_h, startTsNs, nullptr, 0)
+                          : flox_data_reader_read_trades(_h, nullptr, 0);
     }
     std::vector<FloxTradeRecord> trades(maxTrades);
-    uint64_t n = flox_data_reader_read_trades(_h, trades.data(), maxTrades);
-    auto arr = Napi::Array::New(info.Env(), n);
+    uint64_t n = useFrom
+                     ? flox_data_reader_read_trades_from(_h, startTsNs, trades.data(), maxTrades)
+                     : flox_data_reader_read_trades(_h, trades.data(), maxTrades);
+    auto arr = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; i++)
     {
-      auto o = Napi::Object::New(info.Env());
+      auto o = Napi::Object::New(env);
       o.Set("exchangeTsNs", (double)trades[i].exchange_ts_ns);
       o.Set("recvTsNs", (double)trades[i].recv_ts_ns);
       o.Set("price", (double)trades[i].price_raw / 1e8);
@@ -144,19 +180,22 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     }
     return arr;
   }
-  Napi::Value ReadBBO(const Napi::CallbackInfo& info)
+
+  Napi::Value readBboImpl(Napi::Env env, int64_t startTsNs, bool useFrom, uint64_t maxEvents)
   {
-    uint64_t maxEvents = info.Length() > 0 && info[0].IsNumber() ? info[0].As<Napi::Number>().Int64Value() : 0;
     if (maxEvents == 0)
     {
-      maxEvents = flox_data_reader_read_bbo(_h, nullptr, 0);
+      maxEvents = useFrom ? flox_data_reader_read_bbo_from(_h, startTsNs, nullptr, 0)
+                          : flox_data_reader_read_bbo(_h, nullptr, 0);
     }
     std::vector<FloxBBO> bbos(maxEvents);
-    uint64_t n = flox_data_reader_read_bbo(_h, bbos.data(), maxEvents);
-    auto arr = Napi::Array::New(info.Env(), n);
+    uint64_t n = useFrom
+                     ? flox_data_reader_read_bbo_from(_h, startTsNs, bbos.data(), maxEvents)
+                     : flox_data_reader_read_bbo(_h, bbos.data(), maxEvents);
+    auto arr = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; i++)
     {
-      auto o = Napi::Object::New(info.Env());
+      auto o = Napi::Object::New(env);
       o.Set("exchangeTsNs", (double)bbos[i].exchange_ts_ns);
       o.Set("recvTsNs", (double)bbos[i].recv_ts_ns);
       o.Set("seq", (double)bbos[i].seq);
@@ -170,46 +209,65 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     }
     return arr;
   }
+
+ public:
   // Returns an array of book update events. Each event:
   //   { exchangeTsNs, recvTsNs, seq, symbolId, eventType,
   //     bids: [{price, qty}, ...], asks: [{price, qty}, ...] }
   Napi::Value ReadBookUpdates(const Napi::CallbackInfo& info)
   {
+    return readBookUpdatesImpl(info.Env(), /*startTsNs=*/0, /*useFrom=*/false);
+  }
+  Napi::Value ReadBookUpdatesFrom(const Napi::CallbackInfo& info)
+  {
+    int64_t startTsNs = info[0].As<Napi::Number>().Int64Value();
+    return readBookUpdatesImpl(info.Env(), startTsNs, /*useFrom=*/true);
+  }
+
+ private:
+  Napi::Value readBookUpdatesImpl(Napi::Env env, int64_t startTsNs, bool useFrom)
+  {
     uint64_t totalLevels = 0;
-    uint64_t maxEvents = flox_data_reader_count_book_updates(_h, &totalLevels);
+    uint64_t maxEvents = useFrom
+                             ? flox_data_reader_count_book_updates_from(_h, startTsNs, &totalLevels)
+                             : flox_data_reader_count_book_updates(_h, &totalLevels);
 
     std::vector<FloxBookUpdateHeader> headers(maxEvents);
     std::vector<FloxLevel> levels(totalLevels);
-    uint64_t n = flox_data_reader_read_book_updates(_h, headers.data(), maxEvents,
-                                                    levels.data(), totalLevels);
+    uint64_t n = useFrom
+                     ? flox_data_reader_read_book_updates_from(_h, startTsNs, headers.data(),
+                                                               maxEvents, levels.data(),
+                                                               totalLevels)
+                     : flox_data_reader_read_book_updates(_h, headers.data(), maxEvents,
+                                                          levels.data(), totalLevels);
 
-    auto arr = Napi::Array::New(info.Env(), n);
+    auto arr = Napi::Array::New(env, n);
     for (uint64_t i = 0; i < n; i++)
     {
       const auto& h = headers[i];
-      auto o = Napi::Object::New(info.Env());
+      auto o = Napi::Object::New(env);
       o.Set("exchangeTsNs", (double)h.exchange_ts_ns);
       o.Set("recvTsNs", (double)h.recv_ts_ns);
       o.Set("seq", (double)h.seq);
       o.Set("symbolId", h.symbol_id);
       o.Set("eventType", h.event_type);
 
-      auto bids = Napi::Array::New(info.Env(), h.bid_count);
+      auto bids = Napi::Array::New(env, h.bid_count);
       for (uint16_t k = 0; k < h.bid_count; k++)
       {
         const auto& l = levels[h.level_offset + k];
-        auto lo = Napi::Object::New(info.Env());
+        auto lo = Napi::Object::New(env);
         lo.Set("price", (double)l.price_raw / 1e8);
         lo.Set("qty", (double)l.qty_raw / 1e8);
         bids.Set((uint32_t)k, lo);
       }
       o.Set("bids", bids);
 
-      auto asks = Napi::Array::New(info.Env(), h.ask_count);
+      auto asks = Napi::Array::New(env, h.ask_count);
       for (uint16_t k = 0; k < h.ask_count; k++)
       {
         const auto& l = levels[h.level_offset + h.bid_count + k];
-        auto lo = Napi::Object::New(info.Env());
+        auto lo = Napi::Object::New(env);
         lo.Set("price", (double)l.price_raw / 1e8);
         lo.Set("qty", (double)l.qty_raw / 1e8);
         asks.Set((uint32_t)k, lo);
@@ -220,6 +278,8 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     }
     return arr;
   }
+
+ public:
   FloxDataReaderHandle _h = nullptr;
 };
 
