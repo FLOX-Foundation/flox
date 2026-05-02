@@ -41,6 +41,9 @@ from C import flox_runner_stop(cobj)
 from C import flox_runner_on_trade(cobj, u32, float, float, u8, i64)
 from C import flox_runner_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32,
                                             Ptr[float], Ptr[float], u32, i64)
+from C import flox_runner_on_bar(cobj, u32, u8, u64,
+                                  float, float, float, float,
+                                  float, float, i64, i64, u8)
 
 from C import flox_live_engine_create(cobj) -> cobj
 from C import flox_live_engine_destroy(cobj)
@@ -50,12 +53,19 @@ from C import flox_live_engine_stop(cobj)
 from C import flox_live_engine_publish_trade(cobj, u32, float, float, u8, i64)
 from C import flox_live_engine_publish_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32,
                                                        Ptr[float], Ptr[float], u32, i64)
+from C import flox_live_engine_publish_bar(cobj, u32, u8, u64,
+                                            float, float, float, float,
+                                            float, float, i64, i64, u8)
 
 from C import flox_backtest_runner_create(cobj, float, float) -> cobj
 from C import flox_backtest_runner_destroy(cobj)
 from C import flox_backtest_runner_set_strategy(cobj, cobj)
 from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, Ptr[i64]) -> i32
 from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, Ptr[i64]) -> i32
+from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64],
+                                              Ptr[float], Ptr[float], Ptr[float],
+                                              Ptr[float], Ptr[float],
+                                              u32, cobj, u8, u64, Ptr[i64]) -> i32
 
 from C import flox_price_to_double(i64) -> float
 from C import flox_quantity_to_double(i64) -> float
@@ -213,6 +223,25 @@ class Runner:
                 ask_prices.__ptr__(), ask_qtys.__ptr__(), na,
                 i64(ts_ns))
 
+    def on_bar(self, symbol: int,
+               open: float, high: float, low: float, close: float,
+               volume: float = 0.0, buy_volume: float = 0.0,
+               start_time_ns: int = 0, end_time_ns: int = 0,
+               bar_type: int = 0, bar_type_param: int = 0,
+               close_reason: int = 0):
+        if self._threaded:
+            flox_live_engine_publish_bar(
+                self._live_handle, u32(symbol),
+                u8(bar_type), u64(bar_type_param),
+                open, high, low, close, volume, buy_volume,
+                i64(start_time_ns), i64(end_time_ns), u8(close_reason))
+        else:
+            flox_runner_on_bar(
+                self._sync_handle, u32(symbol),
+                u8(bar_type), u64(bar_type_param),
+                open, high, low, close, volume, buy_volume,
+                i64(start_time_ns), i64(end_time_ns), u8(close_reason))
+
 
 # ======================================================================
 # BacktestRunner
@@ -303,4 +332,27 @@ class BacktestRunner:
             symbol.c_str(), buf.arr.ptr)
         if ok == i32(0):
             raise ValueError("BacktestRunner.run_ohlcv failed")
+        return self._parse_stats(buf)
+
+    def run_bars(self, start_ns: List[int], end_ns: List[int],
+                 opens: List[float], highs: List[float],
+                 lows: List[float], closes: List[float],
+                 volumes: List[float],
+                 symbol: str,
+                 bar_type: int = 0, bar_type_param: int = 0) -> BacktestStats:
+        """Replay full OHLCV bars. Strategy.on_bar fires; on_trade does NOT."""
+        n = u32(len(start_ns))
+        sn = [i64(t) for t in start_ns]
+        en = [i64(t) for t in end_ns]
+        buf = [i64(0)] * 29
+        ok = flox_backtest_runner_run_bars(
+            self._handle,
+            sn.arr.ptr, en.arr.ptr,
+            opens.__ptr__(), highs.__ptr__(), lows.__ptr__(),
+            closes.__ptr__(), volumes.__ptr__(),
+            n, symbol.c_str(),
+            u8(bar_type), u64(bar_type_param),
+            buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError("BacktestRunner.run_bars failed")
         return self._parse_stats(buf)

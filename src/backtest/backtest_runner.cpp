@@ -82,6 +82,52 @@ BacktestResult BacktestRunner::run(replay::IMultiSegmentReader& reader)
   return result();
 }
 
+BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
+{
+  _interactiveMode = false;
+  _running.store(true, std::memory_order_release);
+  _paused.store(false, std::memory_order_release);
+  _finished.store(false, std::memory_order_release);
+  _eventCount = 0;
+  _tradeCount = 0;
+  _bookUpdateCount = 0;
+  _signalCount = 0;
+
+  if (_strategy)
+  {
+    _strategy->start();
+  }
+
+  for (const auto& ev : bars)
+  {
+    _clock.advanceTo(ev.bar.endTime.time_since_epoch().count());
+    ++_eventCount;
+
+    // Feed the bar's close into the executor so resting orders can match.
+    // (SimulatedExecutor::onBar already handles SL/TP triggers using close.)
+    _executor.onBar(ev.symbol, ev.bar.close);
+
+    if (_strategy)
+    {
+      _strategy->onBar(ev);
+    }
+    for (auto* sub : _marketDataSubscribers)
+    {
+      sub->onBar(ev);
+    }
+  }
+
+  if (_strategy)
+  {
+    _strategy->stop();
+  }
+
+  _finished.store(true, std::memory_order_release);
+  _running.store(false, std::memory_order_release);
+
+  return result();
+}
+
 // ========== Interactive mode ==========
 
 void BacktestRunner::start(replay::IMultiSegmentReader& reader)

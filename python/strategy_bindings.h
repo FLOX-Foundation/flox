@@ -53,6 +53,23 @@ struct PyTradeData
   int64_t timestamp_ns;
 };
 
+struct PyBarData
+{
+  uint32_t symbol;
+  std::string symbol_name;
+  uint8_t bar_type;
+  uint64_t bar_type_param;
+  double open;
+  double high;
+  double low;
+  double close;
+  double volume;
+  double buy_volume;
+  int64_t start_time_ns;
+  int64_t end_time_ns;
+  uint8_t close_reason;
+};
+
 struct PySymbolCtx
 {
   uint32_t symbol_id;
@@ -92,6 +109,7 @@ class PyStrategyBase
 
   virtual void on_trade(const PySymbolCtx& ctx, const PyTradeData& trade) {}
   virtual void on_book_update(const PySymbolCtx& ctx) {}
+  virtual void on_bar(const PySymbolCtx& ctx, const PyBarData& bar) {}
   virtual void on_start() {}
   virtual void on_stop() {}
 
@@ -529,6 +547,11 @@ class PyStrategyTrampoline : public PyStrategyBase
     PYBIND11_OVERRIDE(void, PyStrategyBase, on_book_update, ctx);
   }
 
+  void on_bar(const PySymbolCtx& ctx, const PyBarData& bar) override
+  {
+    PYBIND11_OVERRIDE(void, PyStrategyBase, on_bar, ctx, bar);
+  }
+
   void on_start() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_start); }
 
   void on_stop() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_stop); }
@@ -594,6 +617,7 @@ struct PyStrategyHost
     cbs.user_data = this;
     cbs.on_trade = &PyStrategyHost::onTrade;
     cbs.on_book = &PyStrategyHost::onBook;
+    cbs.on_bar = &PyStrategyHost::onBar;
     cbs.on_start = &PyStrategyHost::onStart;
     cbs.on_stop = &PyStrategyHost::onStop;
 
@@ -653,6 +677,47 @@ struct PyStrategyHost
       pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
       pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
       self->strategy->on_book_update(pc);
+    };
+    if (self->with_gil)
+    {
+      py::gil_scoped_acquire gil;
+      call();
+    }
+    else
+    {
+      call();
+    }
+  }
+
+  static void onBar(void* ud, const FloxSymbolContext* ctx,
+                    const FloxBarData* bar)
+  {
+    auto* self = static_cast<PyStrategyHost*>(ud);
+    auto call = [self, ctx, bar]()
+    {
+      PySymbolCtx pc{};
+      pc.symbol_id = ctx->symbol_id;
+      pc.position = flox_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
+      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
+      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+
+      PyBarData pb{};
+      pb.symbol = bar->symbol;
+      pb.bar_type = bar->bar_type;
+      pb.bar_type_param = bar->bar_type_param;
+      pb.open = flox_price_to_double(bar->open_raw);
+      pb.high = flox_price_to_double(bar->high_raw);
+      pb.low = flox_price_to_double(bar->low_raw);
+      pb.close = flox_price_to_double(bar->close_raw);
+      pb.volume = flox_quantity_to_double(bar->volume_raw);
+      pb.buy_volume = flox_quantity_to_double(bar->buy_volume_raw);
+      pb.start_time_ns = bar->start_time_ns;
+      pb.end_time_ns = bar->end_time_ns;
+      pb.close_reason = bar->close_reason;
+
+      self->strategy->on_bar(pc, pb);
     };
     if (self->with_gil)
     {
@@ -755,6 +820,18 @@ class PyStrategyRunner
                                  ts_ns);
   }
 
+  void on_bar(uint32_t symbol,
+              double open, double high, double low, double close,
+              double volume, double buy_volume,
+              int64_t start_time_ns, int64_t end_time_ns,
+              uint8_t bar_type = 0, uint64_t bar_type_param = 0,
+              uint8_t close_reason = 0)
+  {
+    flox_runner_on_bar(_runner, symbol, bar_type, bar_type_param,
+                       open, high, low, close, volume, buy_volume,
+                       start_time_ns, end_time_ns, close_reason);
+  }
+
  private:
   SymbolRegistry* _reg;
   FloxRunnerHandle _runner{nullptr};
@@ -832,6 +909,17 @@ class PyLiveEngine
                                            bid_prices.data(), bid_qtys.data(), nb,
                                            ask_prices.data(), ask_qtys.data(), na,
                                            ts_ns);
+  }
+
+  void publish_bar(uint32_t symbol, uint8_t bar_type, uint64_t bar_type_param,
+                   double open, double high, double low, double close,
+                   double volume, double buy_volume,
+                   int64_t start_time_ns, int64_t end_time_ns,
+                   uint8_t close_reason)
+  {
+    flox_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,
+                                 open, high, low, close, volume, buy_volume,
+                                 start_time_ns, end_time_ns, close_reason);
   }
 
  private:
@@ -940,6 +1028,27 @@ class PyRunner
     {
       _sync->on_book_snapshot(symbol, bid_prices, bid_qtys,
                               ask_prices, ask_qtys, ts_ns);
+    }
+  }
+
+  void on_bar(uint32_t symbol,
+              double open, double high, double low, double close,
+              double volume, double buy_volume,
+              int64_t start_time_ns, int64_t end_time_ns,
+              uint8_t bar_type = 0, uint64_t bar_type_param = 0,
+              uint8_t close_reason = 0)
+  {
+    if (_live)
+    {
+      _live->publish_bar(symbol, bar_type, bar_type_param,
+                         open, high, low, close, volume, buy_volume,
+                         start_time_ns, end_time_ns, close_reason);
+    }
+    else
+    {
+      _sync->on_bar(symbol, open, high, low, close, volume, buy_volume,
+                    start_time_ns, end_time_ns, bar_type, bar_type_param,
+                    close_reason);
     }
   }
 
@@ -1069,6 +1178,79 @@ class PyBacktestRunner
       bars.push_back({normalizeTs(pts(i)), Price::fromDouble(pc(i)).raw(), id});
     }
     return runBars(std::move(bars));
+  }
+
+  // Replay full OHLCV bars. Strategy.on_bar fires; on_trade does NOT.
+  // bar_type: 0=Time (default), 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi.
+  py::object run_bars(
+      py::array_t<int64_t, py::array::c_style | py::array::forcecast> start_ns,
+      py::array_t<int64_t, py::array::c_style | py::array::forcecast> end_ns,
+      py::array_t<double, py::array::c_style | py::array::forcecast> open,
+      py::array_t<double, py::array::c_style | py::array::forcecast> high,
+      py::array_t<double, py::array::c_style | py::array::forcecast> low,
+      py::array_t<double, py::array::c_style | py::array::forcecast> close,
+      py::array_t<double, py::array::c_style | py::array::forcecast> volume,
+      const std::string& symbol = "",
+      uint8_t bar_type = 0,
+      uint64_t bar_type_param = 0)
+  {
+    if (!_host)
+    {
+      throw std::runtime_error("call set_strategy() before run");
+    }
+    std::string sym = symbol.empty() ? "default" : symbol;
+    auto id = resolveSymbol(sym);
+    const auto n = start_ns.size();
+    if (end_ns.size() != n || open.size() != n || high.size() != n || low.size() != n || close.size() != n || volume.size() != n)
+    {
+      throw std::invalid_argument("run_bars: all arrays must have the same length");
+    }
+    auto ps = start_ns.unchecked<1>();
+    auto pe = end_ns.unchecked<1>();
+    auto po = open.unchecked<1>();
+    auto ph = high.unchecked<1>();
+    auto pl = low.unchecked<1>();
+    auto pc = close.unchecked<1>();
+    auto pv = volume.unchecked<1>();
+    std::vector<BarEvent> events;
+    events.reserve(n);
+    for (py::ssize_t i = 0; i < n; ++i)
+    {
+      BarEvent ev{};
+      ev.symbol = id;
+      ev.barType = static_cast<BarType>(bar_type);
+      ev.barTypeParam = bar_type_param;
+      ev.bar.open = Price::fromDouble(po(i));
+      ev.bar.high = Price::fromDouble(ph(i));
+      ev.bar.low = Price::fromDouble(pl(i));
+      ev.bar.close = Price::fromDouble(pc(i));
+      ev.bar.volume = Volume::fromDouble(pv(i));
+      ev.bar.startTime = TimePoint{std::chrono::nanoseconds{normalizeTs(ps(i))}};
+      ev.bar.endTime = TimePoint{std::chrono::nanoseconds{normalizeTs(pe(i))}};
+      ev.bar.reason = BarCloseReason::Threshold;
+      events.push_back(ev);
+    }
+    BacktestResult result = _runner->runBars(events);
+    BacktestStats stats = result.computeStats();
+    py::dict d;
+    d["total_trades"] = stats.totalTrades;
+    d["winning_trades"] = stats.winningTrades;
+    d["losing_trades"] = stats.losingTrades;
+    d["initial_capital"] = stats.initialCapital;
+    d["final_capital"] = stats.finalCapital;
+    d["total_pnl"] = stats.totalPnl;
+    d["total_fees"] = stats.totalFees;
+    d["net_pnl"] = stats.netPnl;
+    d["gross_profit"] = stats.grossProfit;
+    d["gross_loss"] = stats.grossLoss;
+    d["max_drawdown"] = stats.maxDrawdown;
+    d["max_drawdown_pct"] = stats.maxDrawdownPct;
+    d["win_rate"] = stats.winRate;
+    d["profit_factor"] = stats.profitFactor;
+    d["sharpe"] = stats.sharpeRatio;
+    d["sortino"] = stats.sortinoRatio;
+    d["return_pct"] = stats.returnPct;
+    return d;
   }
 
  private:
@@ -1277,6 +1459,22 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("side", &PyTradeData::side)
       .def_readwrite("timestamp_ns", &PyTradeData::timestamp_ns);
 
+  py::class_<PyBarData>(m, "BarData")
+      .def(py::init<>())
+      .def_readwrite("symbol", &PyBarData::symbol)
+      .def_readwrite("symbol_name", &PyBarData::symbol_name)
+      .def_readwrite("bar_type", &PyBarData::bar_type)
+      .def_readwrite("bar_type_param", &PyBarData::bar_type_param)
+      .def_readwrite("open", &PyBarData::open)
+      .def_readwrite("high", &PyBarData::high)
+      .def_readwrite("low", &PyBarData::low)
+      .def_readwrite("close", &PyBarData::close)
+      .def_readwrite("volume", &PyBarData::volume)
+      .def_readwrite("buy_volume", &PyBarData::buy_volume)
+      .def_readwrite("start_time_ns", &PyBarData::start_time_ns)
+      .def_readwrite("end_time_ns", &PyBarData::end_time_ns)
+      .def_readwrite("close_reason", &PyBarData::close_reason);
+
   py::class_<PySymbolCtx>(m, "SymbolContext")
       .def(py::init<>())
       .def_readwrite("symbol_id", &PySymbolCtx::symbol_id)
@@ -1298,6 +1496,7 @@ inline void bindStrategy(py::module_& m)
            py::arg("symbols"))
       .def("on_trade", &PyStrategyBase::on_trade, py::arg("ctx"), py::arg("trade"))
       .def("on_book_update", &PyStrategyBase::on_book_update, py::arg("ctx"))
+      .def("on_bar", &PyStrategyBase::on_bar, py::arg("ctx"), py::arg("bar"))
       .def("on_start", &PyStrategyBase::on_start)
       .def("on_stop", &PyStrategyBase::on_stop)
       .def("emit_market_buy", &PyStrategyBase::emit_market_buy, py::arg("symbol"),
@@ -1396,7 +1595,10 @@ inline void bindStrategy(py::module_& m)
       .def("on_trade", [](PyRunner& r, py::object sym, double price, double qty, bool is_buy, int64_t ts_ns)
            { r.on_trade(symId(sym), price, qty, is_buy, ts_ns); }, py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("is_buy"), py::arg("ts_ns") = 0)
       .def("on_book_snapshot", [](PyRunner& r, py::object sym, const std::vector<double>& bp, const std::vector<double>& bq, const std::vector<double>& ap, const std::vector<double>& aq, int64_t ts_ns)
-           { r.on_book_snapshot(symId(sym), bp, bq, ap, aq, ts_ns); }, py::arg("symbol"), py::arg("bid_prices"), py::arg("bid_qtys"), py::arg("ask_prices"), py::arg("ask_qtys"), py::arg("ts_ns") = 0);
+           { r.on_book_snapshot(symId(sym), bp, bq, ap, aq, ts_ns); }, py::arg("symbol"), py::arg("bid_prices"), py::arg("bid_qtys"), py::arg("ask_prices"), py::arg("ask_qtys"), py::arg("ts_ns") = 0)
+      .def("on_bar", [](PyRunner& r, py::object sym, double o, double h, double l, double c, double v, double bv, int64_t start_ns, int64_t end_ns, uint8_t bar_type, uint64_t bar_type_param, uint8_t close_reason)
+           { r.on_bar(symId(sym), o, h, l, c, v, bv, start_ns, end_ns,
+                      bar_type, bar_type_param, close_reason); }, py::arg("symbol"), py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"), py::arg("volume") = 0.0, py::arg("buy_volume") = 0.0, py::arg("start_time_ns") = 0, py::arg("end_time_ns") = 0, py::arg("bar_type") = 0, py::arg("bar_type_param") = 0, py::arg("close_reason") = 0);
 
   py::class_<PyBacktestRunner>(m, "BacktestRunner")
       .def(py::init([](SymbolRegistry* reg, double fee_rate, double initial_capital)
@@ -1410,5 +1612,12 @@ inline void bindStrategy(py::module_& m)
       .def("run_csv", &PyBacktestRunner::run_csv,
            py::arg("path"), py::arg("symbol") = "")
       .def("run_ohlcv", &PyBacktestRunner::run_ohlcv,
-           py::arg("ts"), py::arg("close"), py::arg("symbol") = "");
+           py::arg("ts"), py::arg("close"), py::arg("symbol") = "")
+      .def("run_bars", &PyBacktestRunner::run_bars,
+           py::arg("start_time_ns"), py::arg("end_time_ns"),
+           py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"),
+           py::arg("volume"),
+           py::arg("symbol") = "",
+           py::arg("bar_type") = 0,
+           py::arg("bar_type_param") = 0);
 }

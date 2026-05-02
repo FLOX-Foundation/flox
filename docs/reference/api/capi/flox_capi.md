@@ -90,6 +90,7 @@ typedef void* FloxPartitionerHandle;
 |-------|------|-------------|
 | `on_trade` | `FloxOnTradeCallback` | Trade event callback |
 | `on_book` | `FloxOnBookCallback` | Book update callback |
+| `on_bar` | `FloxOnBarCallback` | Closed OHLC bar callback (`FloxBarData`) |
 | `on_start` | `FloxOnStartCallback` | Strategy start callback |
 | `on_stop` | `FloxOnStopCallback` | Strategy stop callback |
 | `user_data` | `void*` | Passed to all callbacks |

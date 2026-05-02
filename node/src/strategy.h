@@ -130,6 +130,7 @@ struct NodeStrategyHost
   Napi::Env env;
   Napi::FunctionReference on_trade_fn;
   Napi::FunctionReference on_book_fn;
+  Napi::FunctionReference on_bar_fn;
   Napi::FunctionReference on_start_fn;
   Napi::FunctionReference on_stop_fn;
   Napi::ObjectReference emitter;
@@ -151,6 +152,12 @@ struct NodeStrategyHost
   struct BookCallData
   {
     FloxSymbolContext ctx;
+    NodeStrategyHost* host;
+  };
+  struct BarCallData
+  {
+    FloxSymbolContext ctx;
+    FloxBarData bar;
     NodeStrategyHost* host;
   };
 
@@ -185,6 +192,7 @@ struct NodeStrategyHost
     };
     on_trade_fn = get("onTrade");
     on_book_fn = get("onBookUpdate");
+    on_bar_fn = get("onBar");
     on_start_fn = get("onStart");
     on_stop_fn = get("onStop");
 
@@ -192,6 +200,7 @@ struct NodeStrategyHost
     cbs.user_data = this;
     cbs.on_trade = &NodeStrategyHost::onTrade;
     cbs.on_book = &NodeStrategyHost::onBook;
+    cbs.on_bar = &NodeStrategyHost::onBar;
     cbs.on_start = &NodeStrategyHost::onStart;
     cbs.on_stop = &NodeStrategyHost::onStop;
 
@@ -302,6 +311,36 @@ struct NodeStrategyHost
     delete d;
   }
 
+  static void buildBarObj(Napi::Env env, Napi::Object& o, const FloxBarData* bar)
+  {
+    o.Set("symbol", Napi::Number::New(env, bar->symbol));
+    o.Set("barType", Napi::Number::New(env, bar->bar_type));
+    o.Set("barTypeParam", Napi::Number::New(env, static_cast<double>(bar->bar_type_param)));
+    o.Set("open", Napi::Number::New(env, flox_price_to_double(bar->open_raw)));
+    o.Set("high", Napi::Number::New(env, flox_price_to_double(bar->high_raw)));
+    o.Set("low", Napi::Number::New(env, flox_price_to_double(bar->low_raw)));
+    o.Set("close", Napi::Number::New(env, flox_price_to_double(bar->close_raw)));
+    o.Set("volume", Napi::Number::New(env, flox_quantity_to_double(bar->volume_raw)));
+    o.Set("buyVolume", Napi::Number::New(env, flox_quantity_to_double(bar->buy_volume_raw)));
+    o.Set("startTimeNs", Napi::Number::New(env, static_cast<double>(bar->start_time_ns)));
+    o.Set("endTimeNs", Napi::Number::New(env, static_cast<double>(bar->end_time_ns)));
+    o.Set("closeReason", Napi::Number::New(env, bar->close_reason));
+  }
+
+  static void callOnBar(Napi::Env env, Napi::Function, BarCallData* d)
+  {
+    auto* self = d->host;
+    if (!self->on_bar_fn.IsEmpty())
+    {
+      auto ctxObj = Napi::Object::New(env);
+      buildCtxObj(env, ctxObj, &d->ctx);
+      auto barObj = Napi::Object::New(env);
+      buildBarObj(env, barObj, &d->bar);
+      self->on_bar_fn.Call({ctxObj, barObj, self->emitter.Value()});
+    }
+    delete d;
+  }
+
   static void onTrade(void* ud, const FloxSymbolContext* ctx,
                       const FloxTradeData* trade)
   {
@@ -352,6 +391,31 @@ struct NodeStrategyHost
       auto ctxObj = Napi::Object::New(env);
       buildCtxObj(env, ctxObj, ctx);
       self->on_book_fn.Call({ctxObj, self->emitter.Value()});
+    }
+  }
+
+  static void onBar(void* ud, const FloxSymbolContext* ctx,
+                    const FloxBarData* bar)
+  {
+    auto* self = static_cast<NodeStrategyHost*>(ud);
+    if (self->on_bar_fn.IsEmpty())
+    {
+      return;
+    }
+
+    if (self->_threaded)
+    {
+      auto* d = new BarCallData{*ctx, *bar, self};
+      self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnBar);
+    }
+    else
+    {
+      auto env = self->env;
+      auto ctxObj = Napi::Object::New(env);
+      buildCtxObj(env, ctxObj, ctx);
+      auto barObj = Napi::Object::New(env);
+      buildBarObj(env, barObj, bar);
+      self->on_bar_fn.Call({ctxObj, barObj, self->emitter.Value()});
     }
   }
 
@@ -420,6 +484,7 @@ class StrategyRunnerNode : public Napi::ObjectWrap<StrategyRunnerNode>
                            InstanceMethod("stop", &StrategyRunnerNode::stop),
                            InstanceMethod("onTrade", &StrategyRunnerNode::onTrade),
                            InstanceMethod("onBookSnapshot", &StrategyRunnerNode::onBookSnapshot),
+                           InstanceMethod("onBar", &StrategyRunnerNode::onBar),
                        });
   }
 
@@ -523,6 +588,40 @@ class StrategyRunnerNode : public Napi::ObjectWrap<StrategyRunnerNode>
     return env.Undefined();
   }
 
+  // onBar(symbol, { open, high, low, close, volume?, buyVolume?,
+  //                 startTimeNs?, endTimeNs?, barType?, barTypeParam?,
+  //                 closeReason? })
+  Napi::Value onBar(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    uint32_t sym = symId(info[0]);
+    auto opts = info[1].As<Napi::Object>();
+    auto getNum = [&](const char* k, double dflt) -> double
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
+    };
+    auto getInt = [&](const char* k, int64_t dflt) -> int64_t
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
+    };
+    auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? static_cast<uint8_t>(v.As<Napi::Number>().Uint32Value()) : dflt;
+    };
+    flox_runner_on_bar(_runner, sym,
+                       getU8("barType", 0),
+                       static_cast<uint64_t>(getInt("barTypeParam", 0)),
+                       getNum("open", 0.0), getNum("high", 0.0),
+                       getNum("low", 0.0), getNum("close", 0.0),
+                       getNum("volume", 0.0), getNum("buyVolume", 0.0),
+                       getInt("startTimeNs", 0), getInt("endTimeNs", 0),
+                       getU8("closeReason", 0));
+    return env.Undefined();
+  }
+
   static void signalCb(void* ud, const FloxSignal* sig)
   {
     auto* self = static_cast<StrategyRunnerNode*>(ud);
@@ -550,6 +649,7 @@ class LiveEngineNode : public Napi::ObjectWrap<LiveEngineNode>
                            InstanceMethod("stop", &LiveEngineNode::stop),
                            InstanceMethod("publishTrade", &LiveEngineNode::publishTrade),
                            InstanceMethod("publishBookSnapshot", &LiveEngineNode::publishBookSnapshot),
+                           InstanceMethod("publishBar", &LiveEngineNode::publishBar),
                        });
   }
 
@@ -660,6 +760,39 @@ class LiveEngineNode : public Napi::ObjectWrap<LiveEngineNode>
     return info.Env().Undefined();
   }
 
+  // publishBar(symbol, { open, high, low, close, volume?, buyVolume?,
+  //                      startTimeNs?, endTimeNs?, barType?, barTypeParam?,
+  //                      closeReason? })
+  Napi::Value publishBar(const Napi::CallbackInfo& info)
+  {
+    uint32_t sym = symId(info[0]);
+    auto opts = info[1].As<Napi::Object>();
+    auto getNum = [&](const char* k, double dflt) -> double
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
+    };
+    auto getInt = [&](const char* k, int64_t dflt) -> int64_t
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
+    };
+    auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? static_cast<uint8_t>(v.As<Napi::Number>().Uint32Value()) : dflt;
+    };
+    flox_live_engine_publish_bar(_engine, sym,
+                                 getU8("barType", 0),
+                                 static_cast<uint64_t>(getInt("barTypeParam", 0)),
+                                 getNum("open", 0.0), getNum("high", 0.0),
+                                 getNum("low", 0.0), getNum("close", 0.0),
+                                 getNum("volume", 0.0), getNum("buyVolume", 0.0),
+                                 getInt("startTimeNs", 0), getInt("endTimeNs", 0),
+                                 getU8("closeReason", 0));
+    return info.Env().Undefined();
+  }
+
   static void signalCb(void* ud, const FloxSignal* sig)
   {
     auto* self = static_cast<LiveEngineNode*>(ud);
@@ -686,6 +819,7 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
                            InstanceMethod("setStrategy", &BacktestRunnerNode::setStrategy),
                            InstanceMethod("runCsv", &BacktestRunnerNode::runCsv),
                            InstanceMethod("runOhlcv", &BacktestRunnerNode::runOhlcv),
+                           InstanceMethod("runBars", &BacktestRunnerNode::runBars),
                        });
   }
 
@@ -766,6 +900,38 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
     return statsToJs(info.Env(), s);
   }
 
+  // runner.runBars(startNs, endNs, open, high, low, close, volume,
+  //                symbol, barType?, barTypeParam?) → stats
+  // All arrays are typed (BigInt64Array for ts, Float64Array for OHLCV).
+  Napi::Value runBars(const Napi::CallbackInfo& info)
+  {
+    auto startNs = info[0].As<Napi::BigInt64Array>();
+    auto endNs = info[1].As<Napi::BigInt64Array>();
+    auto openA = info[2].As<Napi::Float64Array>();
+    auto highA = info[3].As<Napi::Float64Array>();
+    auto lowA = info[4].As<Napi::Float64Array>();
+    auto closeA = info[5].As<Napi::Float64Array>();
+    auto volA = info[6].As<Napi::Float64Array>();
+    std::string symbol = info[7].As<Napi::String>().Utf8Value();
+    uint8_t barType = info.Length() > 8 ? static_cast<uint8_t>(info[8].As<Napi::Number>().Uint32Value()) : 0;
+    uint64_t barTypeParam = info.Length() > 9
+                                ? static_cast<uint64_t>(info[9].As<Napi::Number>().Int64Value())
+                                : 0;
+    uint32_t n = static_cast<uint32_t>(startNs.ElementLength());
+    FloxBacktestStats s{};
+    int ok = flox_backtest_runner_run_bars(
+        _handle,
+        reinterpret_cast<const int64_t*>(startNs.Data()),
+        reinterpret_cast<const int64_t*>(endNs.Data()),
+        openA.Data(), highA.Data(), lowA.Data(), closeA.Data(), volA.Data(),
+        n, symbol.c_str(), barType, barTypeParam, &s);
+    if (!ok)
+    {
+      return info.Env().Null();
+    }
+    return statsToJs(info.Env(), s);
+  }
+
   static Napi::Object statsToJs(Napi::Env env, const FloxBacktestStats& s)
   {
     auto obj = Napi::Object::New(env);
@@ -807,6 +973,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
                            InstanceMethod("stop", &RunnerNode::stop),
                            InstanceMethod("onTrade", &RunnerNode::onTrade),
                            InstanceMethod("onBookSnapshot", &RunnerNode::onBookSnapshot),
+                           InstanceMethod("onBar", &RunnerNode::onBar),
                        });
   }
 
@@ -978,6 +1145,47 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
       flox_live_engine_publish_book_snapshot(_engine, sym,
                                              bp.data(), bq.data(), static_cast<uint32_t>(bp.size()),
                                              ap.data(), aq.data(), static_cast<uint32_t>(ap.size()), ts);
+    }
+    return info.Env().Undefined();
+  }
+
+  Napi::Value onBar(const Napi::CallbackInfo& info)
+  {
+    uint32_t sym = symId(info[0]);
+    auto opts = info[1].As<Napi::Object>();
+    auto getNum = [&](const char* k, double dflt) -> double
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
+    };
+    auto getInt = [&](const char* k, int64_t dflt) -> int64_t
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
+    };
+    auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
+    {
+      auto v = opts.Get(k);
+      return v.IsNumber() ? static_cast<uint8_t>(v.As<Napi::Number>().Uint32Value()) : dflt;
+    };
+    uint8_t bt = getU8("barType", 0);
+    uint64_t btp = static_cast<uint64_t>(getInt("barTypeParam", 0));
+    double o = getNum("open", 0.0);
+    double h = getNum("high", 0.0);
+    double l = getNum("low", 0.0);
+    double c = getNum("close", 0.0);
+    double v = getNum("volume", 0.0);
+    double bv = getNum("buyVolume", 0.0);
+    int64_t sNs = getInt("startTimeNs", 0);
+    int64_t eNs = getInt("endTimeNs", 0);
+    uint8_t cr = getU8("closeReason", 0);
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_on_bar(_runner, sym, bt, btp, o, h, l, c, v, bv, sNs, eNs, cr);
+    }
+    else
+    {
+      flox_live_engine_publish_bar(_engine, sym, bt, btp, o, h, l, c, v, bv, sNs, eNs, cr);
     }
     return info.Env().Undefined();
   }

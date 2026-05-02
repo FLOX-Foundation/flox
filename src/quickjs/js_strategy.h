@@ -32,12 +32,14 @@ class FloxJsStrategy
   // C callbacks dispatched from BridgeStrategy
   static void onTrade(void* userData, const FloxSymbolContext* ctx, const FloxTradeData* trade);
   static void onBook(void* userData, const FloxSymbolContext* ctx, const FloxBookData* book);
+  static void onBar(void* userData, const FloxSymbolContext* ctx, const FloxBarData* bar);
   static void onStart(void* userData);
   static void onStop(void* userData);
 
   JSValue makeCtxObject(const FloxSymbolContext* ctx);
   JSValue makeTradeObject(const FloxTradeData* trade);
   JSValue makeBookObject(const FloxBookData* book);
+  JSValue makeBarObject(const FloxBarData* bar);
 
   FloxJsEngine _engine;
   SymbolRegistry& _registry;

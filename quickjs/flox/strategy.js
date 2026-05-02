@@ -25,6 +25,7 @@ class Strategy {
 
     onTrade(ctx, trade) {}
     onBookUpdate(ctx, book) {}
+    onBar(ctx, bar) {}
     onStart() {}
     onStop() {}
 
@@ -131,5 +132,11 @@ class Strategy {
         rawCtx.symbol = this._reverseMap[rawCtx.symbolId] || "";
         rawBook.symbol = this._reverseMap[rawBook.symbolId] || "";
         this.onBookUpdate(rawCtx, rawBook);
+    }
+
+    _dispatchBar(rawCtx, rawBar) {
+        rawCtx.symbol = this._reverseMap[rawCtx.symbolId] || "";
+        rawBar.symbol = this._reverseMap[rawBar.symbolId] || "";
+        this.onBar(rawCtx, rawBar);
     }
 }

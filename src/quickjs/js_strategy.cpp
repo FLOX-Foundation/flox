@@ -641,6 +641,7 @@ FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
   FloxStrategyCallbacks cb{};
   cb.on_trade = FloxJsStrategy::onTrade;
   cb.on_book = FloxJsStrategy::onBook;
+  cb.on_bar = FloxJsStrategy::onBar;
   cb.on_start = FloxJsStrategy::onStart;
   cb.on_stop = FloxJsStrategy::onStop;
   cb.user_data = this;
@@ -700,6 +701,31 @@ void FloxJsStrategy::onBook(void* userData, const FloxSymbolContext* ctx,
   JS_FreeValue(jsCtx, method);
   JS_FreeValue(jsCtx, ctxObj);
   JS_FreeValue(jsCtx, bookObj);
+}
+
+void FloxJsStrategy::onBar(void* userData, const FloxSymbolContext* ctx,
+                           const FloxBarData* bar)
+{
+  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* jsCtx = self->_engine.context();
+
+  JSValue ctxObj = self->makeCtxObject(ctx);
+  JSValue barObj = self->makeBarObject(bar);
+
+  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchBar");
+  if (JS_IsFunction(jsCtx, method))
+  {
+    JSValue args[2] = {ctxObj, barObj};
+    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
+    if (JS_IsException(ret))
+    {
+      std::cerr << "[flox-js] Error in onBar: " << self->_engine.getErrorMessage() << std::endl;
+    }
+    JS_FreeValue(jsCtx, ret);
+  }
+  JS_FreeValue(jsCtx, method);
+  JS_FreeValue(jsCtx, ctxObj);
+  JS_FreeValue(jsCtx, barObj);
 }
 
 void FloxJsStrategy::onStart(void* userData)
@@ -800,6 +826,30 @@ JSValue FloxJsStrategy::makeBookObject(const FloxBookData* book)
   JS_SetPropertyStr(c, snap, "spread",
                     JS_NewFloat64(c, flox_price_to_double(book->snapshot.spread_raw)));
   JS_SetPropertyStr(c, obj, "snapshot", snap);
+  return obj;
+}
+
+JSValue FloxJsStrategy::makeBarObject(const FloxBarData* bar)
+{
+  auto* c = _engine.context();
+  JSValue obj = JS_NewObject(c);
+  JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, bar->symbol));
+  JS_SetPropertyStr(c, obj, "barType", JS_NewUint32(c, bar->bar_type));
+  JS_SetPropertyStr(c, obj, "barTypeParam",
+                    JS_NewFloat64(c, static_cast<double>(bar->bar_type_param)));
+  JS_SetPropertyStr(c, obj, "open", JS_NewFloat64(c, flox_price_to_double(bar->open_raw)));
+  JS_SetPropertyStr(c, obj, "high", JS_NewFloat64(c, flox_price_to_double(bar->high_raw)));
+  JS_SetPropertyStr(c, obj, "low", JS_NewFloat64(c, flox_price_to_double(bar->low_raw)));
+  JS_SetPropertyStr(c, obj, "close", JS_NewFloat64(c, flox_price_to_double(bar->close_raw)));
+  JS_SetPropertyStr(c, obj, "volume",
+                    JS_NewFloat64(c, flox_quantity_to_double(bar->volume_raw)));
+  JS_SetPropertyStr(c, obj, "buyVolume",
+                    JS_NewFloat64(c, flox_quantity_to_double(bar->buy_volume_raw)));
+  JS_SetPropertyStr(c, obj, "startTimeNs",
+                    JS_NewFloat64(c, static_cast<double>(bar->start_time_ns)));
+  JS_SetPropertyStr(c, obj, "endTimeNs",
+                    JS_NewFloat64(c, static_cast<double>(bar->end_time_ns)));
+  JS_SetPropertyStr(c, obj, "closeReason", JS_NewUint32(c, bar->close_reason));
   return obj;
 }
 
