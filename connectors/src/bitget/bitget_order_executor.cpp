@@ -18,6 +18,9 @@
 
 #include <simdjson.h>
 
+#include <cmath>
+#include <cstdio>
+
 namespace flox
 {
 
@@ -30,6 +33,38 @@ static constexpr std::string_view kPathCancel = "/api/v2/mix/order/cancel-order"
 static constexpr std::string_view kPathCancelPlan = "/api/v2/mix/order/cancel-plan-order";
 static constexpr std::string_view kPathModify = "/api/v2/mix/order/modify-order";
 static constexpr std::string_view kPathSetLeverage = "/api/v2/mix/account/set-leverage";
+static constexpr std::string_view kPathPosTpsl = "/api/v2/mix/order/place-pos-tpsl";
+static constexpr std::string_view kPathModifyTpsl = "/api/v2/mix/order/modify-tpsl-order";
+
+// Format a double as a fixed-point decimal with up to `max_decimals` fractional
+// digits, rounded half-to-even, trailing zeros stripped. Bitget validates
+// trigger prices against the symbol's pricePrecision (BTC perp = 1 digit) and
+// rejects values like "73577.65" even though they parse to the same number.
+static std::string trimDouble(double v, int max_decimals = 1)
+{
+  // Round to max_decimals first.
+  double scale = 1.0;
+  for (int i = 0; i < max_decimals; ++i)
+  {
+    scale *= 10.0;
+  }
+  double rounded = std::round(v * scale) / scale;
+  char buf[64];
+  std::snprintf(buf, sizeof(buf), "%.*f", max_decimals, rounded);
+  std::string s(buf);
+  if (s.find('.') != std::string::npos)
+  {
+    while (!s.empty() && s.back() == '0')
+    {
+      s.pop_back();
+    }
+    if (!s.empty() && s.back() == '.')
+    {
+      s.pop_back();
+    }
+  }
+  return s;
+}
 
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int leverage)
@@ -164,6 +199,18 @@ void BitgetOrderExecutorT<Policies>::submitOrderWithLeverage(const Order& order,
             .append(isMarket ? "market" : "limit")
             .append("\",");
 
+        // Hedge-mode posSide hint. Bitget requires this when the account is
+        // in hedge_mode; ignored in one_way_mode.
+        const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
+        if (holdSide == HoldSide::Long)
+        {
+          body.append("\"posSide\":\"long\",");
+        }
+        else if (holdSide == HoldSide::Short)
+        {
+          body.append("\"posSide\":\"short\",");
+        }
+
         if (!isMarket)
         {
           body.append("\"force\":\"").append(_params.forcePolicy).append("\",");
@@ -296,6 +343,19 @@ void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
       .append(isMarket ? "market" : "limit")
       .append("\",");
 
+  // Hedge-mode posSide hint.
+  {
+    const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
+    if (holdSide == HoldSide::Long)
+    {
+      body.append("\"posSide\":\"long\",");
+    }
+    else if (holdSide == HoldSide::Short)
+    {
+      body.append("\"posSide\":\"short\",");
+    }
+  }
+
   if (!isMarket)
   {
     body.append("\"force\":\"").append(_params.forcePolicy).append("\",");
@@ -367,10 +427,22 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
       .append("\"tradeSide\":\"")
       .append(tradeSide)
       .append("\",")
-      .append("\"orderType\":\"market\",")
-      .append("\"clientOid\":\"")
-      .append(std::to_string(order.id))
-      .append("\"}");
+      .append("\"orderType\":\"market\",");
+
+  // Hedge-mode posSide hint.
+  {
+    const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
+    if (holdSide == HoldSide::Long)
+    {
+      body.append("\"posSide\":\"long\",");
+    }
+    else if (holdSide == HoldSide::Short)
+    {
+      body.append("\"posSide\":\"short\",");
+    }
+  }
+
+  body.append("\"clientOid\":\"").append(std::to_string(order.id)).append("\"}");
 
   _policies.timeout.trackSubmit(order.id);
 
@@ -553,6 +625,162 @@ void BitgetOrderExecutorT<Policies>::replaceOrder(OrderId oldId, const Order& ne
       {
         _policies.timeout.clearPending(oldId);
         FLOX_LOG_ERROR("[BitgetOE] replaceOrder transport: " << err);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::placePosTpsl(SymbolId symbol, HoldSide holdSide,
+                                                  double slPrice, double tpPrice, OrderId localId)
+{
+  auto info = _registry->getSymbolInfo(symbol);
+  if (!info)
+  {
+    FLOX_LOG_ERROR("[BitgetOE] placePosTpsl: unknown symbolId=" << symbol);
+    return;
+  }
+  if (holdSide == HoldSide::Unspecified)
+  {
+    FLOX_LOG_ERROR("[BitgetOE] placePosTpsl: holdSide must be Long or Short");
+    return;
+  }
+
+  std::string body;
+  body.reserve(384);
+  body.append("{\"symbol\":\"")
+      .append(info->symbol)
+      .append("\",")
+      .append("\"productType\":\"")
+      .append(_params.productType)
+      .append("\",")
+      .append("\"marginCoin\":\"")
+      .append(_params.marginCoin)
+      .append("\",")
+      .append("\"holdSide\":\"")
+      .append(holdSide == HoldSide::Long ? "long" : "short")
+      .append("\",")
+      .append("\"planType\":\"")
+      .append(slPrice > 0 && tpPrice > 0 ? "profit_loss"
+              : slPrice > 0              ? "pos_loss"
+                                         : "pos_profit")
+      .append("\",");
+  if (slPrice > 0)
+  {
+    body.append("\"stopLossTriggerPrice\":\"")
+        .append(trimDouble(slPrice))
+        .append("\",")
+        .append("\"stopLossTriggerType\":\"mark_price\",");
+  }
+  if (tpPrice > 0)
+  {
+    body.append("\"stopSurplusTriggerPrice\":\"")
+        .append(trimDouble(tpPrice))
+        .append("\",")
+        .append("\"stopSurplusTriggerType\":\"mark_price\",");
+  }
+  body.append("\"clientOid\":\"").append(std::to_string(localId)).append("\"}");
+
+  _client->post(
+      std::string(kPathPosTpsl), body,
+      [this, localId](std::string_view resp)
+      {
+        simdjson::ondemand::parser p;
+        simdjson::padded_string ps(resp);
+        simdjson::ondemand::document doc;
+        if (p.iterate(ps).get(doc))
+        {
+          FLOX_LOG_ERROR("[BitgetOE] placePosTpsl: bad json");
+          return;
+        }
+        std::string_view code;
+        if (doc["code"].get_string().get(code) || code != "00000")
+        {
+          std::string_view msg;
+          (void)doc["msg"].get_string().get(msg);
+          FLOX_LOG_ERROR("[BitgetOE] placePosTpsl failed: " << std::string(msg));
+          return;
+        }
+        // /data is an array; extract first orderId.
+        simdjson::ondemand::array arr;
+        if (doc["data"].get_array().get(arr))
+        {
+          return;
+        }
+        for (auto el : arr)
+        {
+          std::string_view oid;
+          if (el["orderId"].get_string().get(oid))
+          {
+            continue;
+          }
+          Order tmp;
+          tmp.id = localId;
+          _orderTracker->onSubmitted(tmp, std::string(oid));
+          break;
+        }
+      },
+      [](std::string_view err)
+      {
+        FLOX_LOG_ERROR("[BitgetOE] placePosTpsl transport: " << err);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::modifyPosTpsl(SymbolId symbol,
+                                                   const std::string& exchangeOrderId,
+                                                   double newTriggerPrice, double qty)
+{
+  auto info = _registry->getSymbolInfo(symbol);
+  if (!info)
+  {
+    return;
+  }
+
+  std::string body;
+  body.reserve(256);
+  body.append("{\"orderId\":\"")
+      .append(exchangeOrderId)
+      .append("\",")
+      .append("\"symbol\":\"")
+      .append(info->symbol)
+      .append("\",")
+      .append("\"productType\":\"")
+      .append(_params.productType)
+      .append("\",")
+      .append("\"marginCoin\":\"")
+      .append(_params.marginCoin)
+      .append("\",")
+      .append("\"size\":\"")
+      .append(trimDouble(qty, /*max_decimals=*/4))
+      .append("\",")
+      .append("\"triggerPrice\":\"")
+      .append(trimDouble(newTriggerPrice, /*max_decimals=*/1))
+      .append("\",")
+      .append("\"triggerType\":\"mark_price\"}");
+
+  _client->post(
+      std::string(kPathModifyTpsl), body,
+      [exchangeOrderId, newTriggerPrice](std::string_view resp)
+      {
+        simdjson::ondemand::parser p;
+        simdjson::padded_string ps(resp);
+        simdjson::ondemand::document doc;
+        if (p.iterate(ps).get(doc))
+        {
+          return;
+        }
+        std::string_view code;
+        if (doc["code"].get_string().get(code) || code != "00000")
+        {
+          std::string_view msg;
+          (void)doc["msg"].get_string().get(msg);
+          FLOX_LOG_ERROR("[BitgetOE] modifyPosTpsl failed: " << std::string(msg)
+                                                             << " (orderId=" << exchangeOrderId
+                                                             << " new=" << newTriggerPrice << ")");
+        }
+      },
+      [](std::string_view err)
+      {
+        FLOX_LOG_ERROR("[BitgetOE] modifyPosTpsl transport: " << err);
       });
 }
 

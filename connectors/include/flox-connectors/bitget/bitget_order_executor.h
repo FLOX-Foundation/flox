@@ -122,6 +122,26 @@ class BitgetOrderExecutorT : public IOrderExecutor
   void submitOrderWithLeverage(const Order& order, int leverage, double slPrice = 0,
                                double tpPrice = 0);
 
+  // Position-attached stop-loss (and optionally take-profit). Bitget's
+  // /api/v2/mix/order/place-pos-tpsl endpoint creates a stop that trails the
+  // position itself, identified by holdSide (long|short) in hedge mode. This
+  // is preferable to a free-standing plan-order because (a) Bitget always
+  // attaches it to the right side of the position and (b) we can move it via
+  // /modify-tpsl-order without a cancel+place round-trip.
+  //
+  // Pass slPrice or tpPrice = 0 to skip that leg. holdSide must be
+  // HoldSide::Long or HoldSide::Short.
+  //
+  // The returned exchangeOrderId is reported via the order bus on success and
+  // recorded in the OrderTracker. If the call fails, the order is rejected.
+  void placePosTpsl(SymbolId symbol, HoldSide holdSide, double slPrice, double tpPrice,
+                    OrderId localId);
+
+  // Modify an existing pos-tpsl order's trigger price (used by the kijun trail
+  // to walk the SL up without cancel+replace).
+  void modifyPosTpsl(SymbolId symbol, const std::string& exchangeOrderId, double newTriggerPrice,
+                     double qty);
+
  private:
   void submitPlanOrder(const Order& order, const SymbolInfo& info);
   void publishRejection(const Order& order, const std::string& reason);
