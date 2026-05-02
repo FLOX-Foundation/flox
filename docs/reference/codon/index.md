@@ -37,4 +37,4 @@ codon build -exe -o my_strategy -lflox_capi my_strategy.codon
 Codon strategies call the C API (`libflox_capi.so`) via Codon's C FFI.
 Strategy callbacks are compiled to native code via Codon's C FFI.
 
-See [How-To: Codon Bindings](../../how-to/codon-bindings.md) for build instructions.
+See [Codon Bindings guide](../../bindings/codon.md) for build instructions.

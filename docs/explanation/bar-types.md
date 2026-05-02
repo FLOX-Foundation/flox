@@ -1,6 +1,6 @@
 # Understanding Bar Types
 
-This document explains the different bar types available in Flox and when to use each one.
+This document explains the different bar types available in Flox and when to use each one. Examples are shown in C++ because that's where the aggregator templates live, but every binding can produce and consume each bar type — see [Bar aggregation](../how-to/bar-aggregation.md) for the binding-level API.
 
 ## The Problem with Time Bars
 

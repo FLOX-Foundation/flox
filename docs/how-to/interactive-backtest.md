@@ -1,5 +1,8 @@
 # Interactive Backtest Mode
 
+!!! info "C++ only"
+    Interactive mode (pause, step, breakpoints) is currently exposed only through the C++ `BacktestRunner` API. The Python and Node bindings run backtests synchronously to completion — for step-by-step debugging from those languages, drive your own loop with `Runner.on_trade(...)` and inspect state between calls. See the [Backtesting how-to](backtest.md) for the synchronous flow.
+
 `BacktestRunner` supports an interactive mode with step-by-step execution, pause, breakpoints, and state inspection. This is useful for debugging strategies and understanding market dynamics at specific points in time.
 
 ## Quick Start

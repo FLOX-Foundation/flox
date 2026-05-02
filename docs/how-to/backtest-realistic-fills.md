@@ -1,111 +1,129 @@
 # Realistic backtest fills
 
-This guide walks through configuring a backtest with realistic fills: slippage on market orders, queue simulation for limit orders, and an exported equity curve for analysis.
+Configure a backtest with realistic execution: slippage on market orders, queue simulation for limit orders, and an exported equity curve. Same model in every binding.
 
-## 1. Configure the backtest
+## 1. Configure the simulator
 
-```cpp
-#include "flox/backtest/backtest_config.h"
-#include "flox/backtest/backtest_runner.h"
+=== "Python"
 
-flox::BacktestConfig cfg;
-cfg.initialCapital = 100'000.0;
-cfg.feeRate = 0.0002;  // 2 bps per fill
-cfg.defaultSlippage = {flox::SlippageModel::FIXED_BPS, 0, flox::Price{}, 1.0, 0.0};  // 1 bps default
-cfg.queueModel = flox::QueueModel::TOB;
-cfg.riskFreeRate = 0.0;
-cfg.metricsAnnualizationFactor = 252.0;
+    ```python
+    import flox_py as flox
 
-flox::BacktestRunner runner(cfg);
-```
+    ex = flox.SimulatedExecutor()
+    ex.set_default_slippage("fixed_bps", bps=1.0)   # 1 bps default
+    ex.set_queue_model("tob")                       # top-of-book queue
+    # Per-symbol override:
+    ex.set_symbol_slippage(eth_usd, "volume_impact", impact_coeff=0.01)
+    ```
 
-Per-symbol overrides extend the default:
+=== "Node.js"
 
-```cpp
-cfg.perSymbolSlippage.emplace_back(
-    kEthUsd, flox::SlippageProfile{flox::SlippageModel::VOLUME_IMPACT, 0, 0.0, 0.01});
-```
+    ```javascript
+    const ex = new flox.SimulatedExecutor();
+    ex.setDefaultSlippage("fixed_bps", 0, 0, 1.0, 0);    // ticks, tickSize, bps, impactCoeff
+    ex.setQueueModel("tob", 1);
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.backtest import SimulatedExecutor, SLIPPAGE_FIXED_BPS, QUEUE_TOB
+
+    ex = SimulatedExecutor()
+    ex.set_default_slippage(SLIPPAGE_FIXED_BPS, 0, 0.0, 1.0, 0.0)
+    ex.set_queue_model(QUEUE_TOB, 1)
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include "flox/backtest/backtest_config.h"
+    #include "flox/backtest/backtest_runner.h"
+
+    flox::BacktestConfig cfg;
+    cfg.initialCapital = 100'000.0;
+    cfg.feeRate = 0.0002;                                                                 // 2 bps per fill
+    cfg.defaultSlippage = { flox::SlippageModel::FIXED_BPS, 0, flox::Price{}, 1.0, 0.0 };  // 1 bps default
+    cfg.queueModel = flox::QueueModel::TOB;
+    cfg.riskFreeRate = 0.0;
+    cfg.metricsAnnualizationFactor = 252.0;
+
+    flox::BacktestRunner runner(cfg);
+
+    cfg.perSymbolSlippage.emplace_back(
+        kEthUsd, flox::SlippageProfile{flox::SlippageModel::VOLUME_IMPACT, 0, 0.0, 0.01});
+    ```
 
 ## 2. Run it
 
-```cpp
-runner.setStrategy(&yourStrategy);
-auto result = runner.run(*reader);  // reader is a replay::IMultiSegmentReader
-```
+=== "Python"
 
-## 3. Inspect the stats
+    ```python
+    bt = flox.BacktestRunner(reg, fee_rate=0.0002, initial_capital=100_000)
+    bt.set_strategy(my_strategy)
+    stats = bt.run_csv("data.csv", "BTCUSDT")
+    ```
 
-```cpp
-auto stats = result.computeStats();
-fmt::print("Trades: {}\n", stats.totalTrades);
-fmt::print("Net PnL: {:.2f}\n", stats.netPnl);
-fmt::print("Sharpe: {:.3f}\n", stats.sharpeRatio);
-fmt::print("Sortino: {:.3f}\n", stats.sortinoRatio);
-fmt::print("Calmar: {:.3f}\n", stats.calmarRatio);
-fmt::print("Max consecutive wins: {}\n", stats.maxConsecutiveWins);
-fmt::print("Avg trade duration: {:.2f}s\n", stats.avgTradeDurationNs / 1e9);
-```
+=== "Node.js"
+
+    ```javascript
+    const bt = new flox.BacktestRunner(reg, 0.0002, 100_000);
+    bt.setStrategy(myStrategy);
+    const stats = bt.runCsv("data.csv", "BTCUSDT");
+    ```
+
+=== "C++"
+
+    ```cpp
+    runner.setStrategy(&yourStrategy);
+    auto result = runner.run(*reader);   // reader: replay::IMultiSegmentReader
+    auto stats  = result.computeStats();
+    ```
+
+## 3. Inspect stats
+
+The same fields are returned by every binding (snake_case in Python/Codon, camelCase in Node, `BacktestStats` struct in C++).
+
+| Field | Description |
+|---|---|
+| `total_trades` / `totalTrades` | Number of closed trades |
+| `net_pnl` / `netPnl` | Total P&L net of fees |
+| `return_pct` / `returnPct` | Total return % |
+| `sharpe` / `sharpeRatio` | Annualised Sharpe |
+| `sortino` / `sortinoRatio` | Annualised Sortino |
+| `max_drawdown_pct` / `maxDrawdownPct` | Worst drawdown |
+| `win_rate` / `winRate` | Win rate |
+| `profit_factor` / `profitFactor` | Gross profit / gross loss |
 
 ## 4. Export the equity curve
 
-```cpp
-for (const auto& pt : result.equityCurve())
-{
-    fmt::print("{},{:.2f},{:.2f}\n", pt.timestampNs, pt.equity, pt.drawdownPct);
-}
+=== "Python"
 
-result.writeEquityCurveCsv("equity.csv");
-```
+    ```python
+    curve = bt.equity_curve()                  # structured numpy array
+    bt.write_equity_curve_csv("equity.csv")
+    ```
 
-The CSV has the header `timestamp_ns,equity,drawdown_pct` and one row per closed trade.
+=== "Node.js"
 
-## 5. Python
+    ```javascript
+    const curve = bt.equityCurve();
+    bt.writeEquityCurveCsv("equity.csv");
+    ```
 
-```python
-import flox
+=== "C++"
 
-exec_ = flox.SimulatedExecutor()
-exec_.set_default_slippage("fixed_bps", bps=1.0)  # ticks=0, tick_size=0.0 by default
-exec_.set_queue_model("tob")
+    ```cpp
+    for (const auto& pt : result.equityCurve()) {
+      fmt::print("{},{:.2f},{:.2f}\n", pt.timestampNs, pt.equity, pt.drawdownPct);
+    }
+    result.writeEquityCurveCsv("equity.csv");
+    ```
 
-# ... feed book updates, trades, and orders ...
+CSV header: `timestamp_ns,equity,drawdown_pct`. One row per closed trade.
 
-result = flox.BacktestResult(initial_capital=100_000, fee_rate=0.0002)
-result.ingest_executor(exec_)
-print(result.stats())
-equity = result.equity_curve()           # numpy structured array
-result.write_equity_curve_csv("equity.csv")
-```
+## See also
 
-## 6. JavaScript (QuickJS)
-
-```js
-const exec = new SimulatedExecutor();
-exec.setDefaultSlippage("fixed_bps", 0, 0, 1.0, 0);
-exec.setQueueModel("tob", 1);
-
-// ... feed data and orders ...
-
-const result = new BacktestResult(100000, 0.0002, true, 0, 0, 252);
-result.ingestExecutor(exec);
-const stats = result.stats();
-const curve = result.equityCurve();
-result.writeEquityCurveCsv("equity.csv");
-```
-
-## 7. Codon
-
-```python
-from flox.backtest import SimulatedExecutor, BacktestResult
-from flox.backtest import SLIPPAGE_FIXED_BPS, QUEUE_TOB
-
-exec_ = SimulatedExecutor()
-exec_.set_default_slippage(SLIPPAGE_FIXED_BPS, 0, 0.0, 1.0, 0.0)
-exec_.set_queue_model(QUEUE_TOB, 1)
-
-# feed market data + orders ...
-
-result = BacktestResult(initial_capital=100000.0, fee_rate=0.0002)
-result.ingest_executor(exec_)
-result.write_equity_curve_csv("equity.csv")
-```
+- [Backtesting](backtest.md)
+- [Slippage reference](../reference/api/backtest/slippage.md)
+- [Queue simulation](../reference/api/backtest/queue_simulation.md)

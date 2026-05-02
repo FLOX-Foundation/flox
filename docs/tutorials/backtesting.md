@@ -1,199 +1,181 @@
 # Backtesting
 
-Run your strategy against recorded market data.
+Run your strategy against recorded market data. Each language exposes the same `BacktestRunner` model.
 
 ## Prerequisites
 
-- Completed [Recording Data](recording-data.md)
-- Recorded `.floxlog` files
-- Build with `-DFLOX_ENABLE_BACKTEST=ON`
+- Completed [Recording Data](recording-data.md) (or have a CSV / `.floxlog` file)
+- Build / install with backtest support — see [Bindings](../bindings/README.md) for per-language details
 
-## 1. BacktestRunner Overview
-
-`BacktestRunner` replays recorded data through your strategy with simulated execution:
+## Pipeline
 
 ```
-.floxlog files → BacktestRunner → Strategy → SimulatedExecutor → BacktestResult
+data file → BacktestRunner → Strategy → SimulatedExecutor → BacktestResult
 ```
 
-## 2. Minimal Example
+## Minimal example
 
-```cpp
-#include "flox/backtest/backtest_runner.h"
-#include "flox/replay/readers/binary_log_reader.h"
-#include "flox/engine/symbol_registry.h"
-#include "flox/strategy/strategy.h"
+A strategy that buys when price crosses above a 20-period SMA.
 
-using namespace flox;
+=== "Python"
 
-int main()
-{
-  // 1. Load recorded data
-  replay::ReaderFilter filter;
-  filter.symbols = {1};  // Only symbol ID 1
-  auto reader = replay::createMultiSegmentReader("/data/market_data", filter);
+    ```python
+    import flox_py as flox
+    from collections import deque
 
-  // 2. Configure backtest
-  BacktestConfig config;
-  config.initialCapital = 10000.0;
-  config.feeRate = 0.0004;  // 0.04% taker fee
+    class CrossAboveSMA(flox.Strategy):
+        def __init__(self, symbols, period=20):
+            super().__init__(symbols)
+            self.window = deque(maxlen=period)
 
-  BacktestRunner runner(config);
+        def on_trade(self, ctx, trade):
+            self.window.append(trade.price)
+            if len(self.window) < self.window.maxlen:
+                return
+            sma = sum(self.window) / len(self.window)
+            if trade.price > sma and ctx.is_flat():
+                self.market_buy(1.0)
+            elif trade.price < sma and ctx.is_long():
+                self.close_position()
 
-  // 3. Create registry and strategy
-  SymbolRegistry registry;
-  SymbolInfo info;
-  info.exchange = "BINANCE";
-  info.symbol = "BTCUSDT";
-  info.tickSize = Price::fromDouble(0.01);
-  SymbolId symbolId = registry.registerSymbol(info);
+    reg = flox.SymbolRegistry()
+    btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-  MyStrategy strategy(symbolId, registry);
-  runner.setStrategy(&strategy);
+    strat = CrossAboveSMA([btc])
+    bt = flox.BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000)
+    bt.set_strategy(strat)
 
-  // 4. Run
-  BacktestResult result = runner.run(*reader);
+    stats = bt.run_csv("/data/btcusdt_1m.csv", "BTCUSDT")
+    print(f"Return {stats['return_pct']:.2f}%  Sharpe {stats['sharpe']:.2f}  "
+          f"DD {stats['max_drawdown_pct']:.2f}%  trades {stats['total_trades']}")
+    ```
 
-  // 5. Get statistics
-  auto stats = result.computeStats();
-  std::cout << "Return: " << stats.returnPct << "%\n";
-  std::cout << "Sharpe: " << stats.sharpeRatio << "\n";
-  std::cout << "Max DD: " << stats.maxDrawdownPct << "%\n";
-  std::cout << "Trades: " << stats.totalTrades << "\n";
-}
-```
+=== "Node.js"
 
-## 3. Writing a Backtest-Ready Strategy
+    ```javascript
+    const flox = require('@flox-foundation/flox');
 
-Use `Strategy` base class with signal emission:
-
-```cpp
-class MyStrategy : public Strategy
-{
-public:
-  MyStrategy(SymbolId sym, const SymbolRegistry& registry)
-    : Strategy(1, sym, registry) {}
-
-  void start() override { _running = true; }
-  void stop() override { _running = false; }
-
-protected:
-  void onSymbolTrade(SymbolContext& ctx, const TradeEvent& ev) override
-  {
-    if (!_running) return;
-
-    // Your logic here
-    if (shouldBuy(ev.trade.price))
-    {
-      emitMarketBuy(symbol(), Quantity::fromDouble(1.0));
+    class CrossAboveSMA {
+      constructor(symbols, period = 20) {
+        this.symbols = symbols;
+        this.period = period;
+        this.window = [];
+      }
+      onTrade(ctx, trade, emit) {
+        this.window.push(trade.price);
+        if (this.window.length > this.period) this.window.shift();
+        if (this.window.length < this.period) return;
+        const sma = this.window.reduce((a,b)=>a+b, 0) / this.period;
+        if (trade.price > sma && ctx.position === 0) emit.marketBuy(1.0);
+        else if (trade.price < sma && ctx.position > 0) emit.closePosition();
+      }
     }
-  }
 
-private:
-  bool _running{false};
-};
-```
+    const reg = new flox.SymbolRegistry();
+    const btc = reg.addSymbol("binance", "BTCUSDT", 0.01);
+    const bt  = new flox.BacktestRunner(reg, 0.0004, 10_000);
+    bt.setStrategy(new CrossAboveSMA([btc]));
 
-Key points:
+    const stats = bt.runCsv("/data/btcusdt_1m.csv", "BTCUSDT");
+    console.log(`Return ${stats.returnPct.toFixed(2)}%  Sharpe ${stats.sharpeRatio.toFixed(2)}`);
+    ```
 
-- Inherit from `Strategy`, not `IStrategy`
-- Use `emitMarketBuy()` / `emitMarketSell()` — BacktestRunner intercepts these signals
-- Access order book via `ctx.book`, position via `ctx.position`
+=== "Codon"
 
-## 4. BacktestConfig Options
+    ```python
+    from flox.runner import BacktestRunner
+    from flox.strategy import Strategy
+    from flox.context import SymbolContext
+    from flox.types import TradeData
+    from flox.indicators import StreamingSMA
 
-```cpp
-BacktestConfig config;
-config.initialCapital = 10000.0;  // Starting capital
-config.feeRate = 0.0004;          // 0.04% per trade
-config.slippage = 0.0;            // Price slippage (0 = fill at signal price)
-```
+    class CrossAboveSMA(Strategy):
+        sma: StreamingSMA
+        def __init__(self, symbols: List[int], period: int = 20):
+            super().__init__(symbols)
+            self.sma = StreamingSMA(period)
 
-## 5. BacktestResult Statistics
+        def on_trade(self, ctx: SymbolContext, trade: TradeData):
+            v = self.sma.update(trade.price.to_double())
+            if not self.sma.ready:
+                return
+            if trade.price.to_double() > v and self.position() == 0.0:
+                self.market_buy(1.0)
+            elif trade.price.to_double() < v and self.position() > 0.0:
+                self.close_position()
 
-```cpp
-auto stats = result.computeStats();
+    bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
+    bt.set_strategy(CrossAboveSMA([btc]))
+    stats = bt.run_csv("/data/btcusdt_1m.csv", "BTCUSDT")
+    ```
 
-stats.initialCapital;    // Starting capital
-stats.finalCapital;      // Ending capital
-stats.returnPct;         // Total return %
-stats.totalTrades;       // Number of trades
-stats.winRate;           // Win rate (0-1)
-stats.sharpeRatio;       // Annualized Sharpe
-stats.sortinoRatio;      // Sortino ratio
-stats.maxDrawdownPct;    // Maximum drawdown %
-stats.profitFactor;      // Gross profit / gross loss
-```
+=== "C++"
 
-## 6. Time Range Filtering
+    ```cpp
+    #include "flox/backtest/backtest_runner.h"
+    #include "flox/replay/abstract_event_reader.h"
 
-Backtest only a portion of your data:
+    int main() {
+      replay::ReaderFilter filter;
+      filter.symbols = {1};
+      auto reader = replay::createMultiSegmentReader("/data/btcusdt", filter);
 
-```cpp
-replay::ReaderFilter filter;
-filter.from_ns = 1704067200000000000LL;  // 2024-01-01
-filter.to_ns = 1704153600000000000LL;    // 2024-01-02
-filter.symbols = {1};
+      BacktestConfig config{ .initialCapital = 10000.0, .feeRate = 0.0004 };
+      BacktestRunner runner(config);
 
-auto reader = replay::createMultiSegmentReader("/data", filter);
-```
+      SymbolRegistry registry;
+      SymbolInfo info{ .exchange = "binance", .symbol = "BTCUSDT",
+                       .tickSize = Price::fromDouble(0.01) };
+      auto symId = registry.registerSymbol(info);
 
-## 7. Using Bars Instead of Raw Data
+      MyStrategy strat(symId, registry);
+      runner.setStrategy(&strat);
 
-For bar-based strategies, aggregate on the fly:
-
-```cpp
-class BarStrategy : public Strategy
-{
-public:
-  BarStrategy(SymbolId sym, const SymbolRegistry& registry)
-    : Strategy(1, sym, registry)
-  {
-    _aggregator = std::make_unique<TimeBarAggregator>(
-      TimeBarPolicy(std::chrono::seconds(60)),
-      this  // Strategy receives BarEvents
-    );
-  }
-
-protected:
-  void onSymbolTrade(SymbolContext& ctx, const TradeEvent& ev) override
-  {
-    _aggregator->onTrade(ev);
-  }
-
-  void onBar(const BarEvent& ev) override
-  {
-    // Your bar-based logic
-    if (ev.bar.close > ev.bar.open)
-    {
-      emitMarketBuy(symbol(), Quantity::fromDouble(1.0));
+      auto result = runner.run(*reader);
+      auto stats  = result.computeStats();
+      std::cout << "Return " << stats.returnPct << "%\n";
     }
-  }
+    ```
 
-private:
-  std::unique_ptr<TimeBarAggregator> _aggregator;
-};
-```
+## What's in `stats`
 
-## 8. Inspecting Data Before Backtest
+| Field | Description |
+|---|---|
+| `total_trades` / `totalTrades` | Number of closed trades |
+| `final_capital` / `finalCapital` | Ending capital |
+| `return_pct` / `returnPct` | Total return % |
+| `sharpe` / `sharpeRatio` | Annualised Sharpe |
+| `sortino` / `sortinoRatio` | Annualised Sortino |
+| `max_drawdown_pct` / `maxDrawdownPct` | Worst drawdown |
+| `win_rate` / `winRate` | Win rate (0–1) |
+| `profit_factor` / `profitFactor` | Gross profit / gross loss |
 
-```cpp
-auto summary = replay::BinaryLogReader::inspect("/data/market_data");
+## Time-range filtering
 
-std::cout << "Events: " << summary.total_events << "\n";
-std::cout << "Duration: " << summary.durationHours() << " hours\n";
-std::cout << "Segments: " << summary.segment_count << "\n";
-```
+=== "Python"
 
-## 9. Performance Tips
+    Use `pandas` to slice your CSV before passing in, or pass arrays to `run_bars(start_time_ns, end_time_ns, ...)` filtered to the window you want.
 
-1. **Build in Release mode**: `cmake .. -DCMAKE_BUILD_TYPE=Release`
-2. **Filter symbols**: Only load what you need
-3. **Disable logging**: Comment out `FLOX_LOG` calls
-4. **Use indexed data**: Enables fast seeking
+=== "C++"
 
-## Next Steps
+    ```cpp
+    replay::ReaderFilter filter;
+    filter.from_ns = 1704067200000000000LL;   // 2024-01-01
+    filter.to_ns   = 1704153600000000000LL;   // 2024-01-02
+    filter.symbols = {1};
+    auto reader = replay::createMultiSegmentReader("/data", filter);
+    ```
 
-- [Running a Backtest](../how-to/backtest.md) — Complete SMA crossover example
-- [Grid Search Optimization](../how-to/grid-search.md) — Find optimal parameters
-- [Bar Aggregation](../how-to/bar-aggregation.md) — Pre-aggregate for faster backtests
+## Performance tips
+
+1. **Release build** — `cmake -DCMAKE_BUILD_TYPE=Release` (`pip install flox-py` already gives you Release)
+2. **Filter symbols** — only load what you need
+3. **Pre-aggregate** for repeated parameter sweeps; see [Bar aggregation](../how-to/bar-aggregation.md)
+4. **Avoid logging in callbacks** — measure first; logging in the inner loop dominates
+
+## Next
+
+- [Running a Backtest](../how-to/backtest.md) — fuller SMA crossover walkthrough
+- [Grid search](../how-to/grid-search.md) — sweep parameters
+- [Realistic fills](../how-to/backtest-realistic-fills.md) — slippage and queue position
+- [Bar aggregation](../how-to/bar-aggregation.md) — pre-aggregate offline for speed

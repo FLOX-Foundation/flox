@@ -120,14 +120,16 @@ Pick your language:
 
 ## Requirements
 
-| Component | Version |
-|-----------|---------|
-| C++ Standard | C++20 |
-| Compiler | GCC 13+ or Clang 16+ |
-| Build System | CMake 3.22+ |
-| Platform | Linux (recommended) |
+Pick the row for your binding. The C++ engine itself only matters if you build from source.
 
-Optional: LZ4 for log compression
+| If you use | You need |
+|---|---|
+| **Python** | Python 3.10+. `pip install flox-py` for prebuilt wheels (Linux / macOS). |
+| **Node.js** | Node 18+. `npm install @flox-foundation/flox`. |
+| **Codon** | Codon compiler + `flox` built with `-DFLOX_ENABLE_CAPI=ON`. |
+| **C++** | C++20 compiler (GCC 13+ / Clang 16+), CMake 3.22+, Linux or macOS. |
+
+Optional across all bindings: LZ4 for binary log compression.
 
 ---
 

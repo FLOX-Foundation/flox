@@ -1,5 +1,8 @@
 # The Disruptor Pattern
 
+!!! info "Internals — for context only"
+    This page describes how the C++ engine delivers events between threads. If you write strategies in Python, Node.js, or Codon, you don't see any of this directly — you just receive events in your callbacks. Read this if you want to understand *why* FLOX scales the way it does, not because you need it to write code.
+
 Why FLOX uses ring buffers for event delivery.
 
 ## The Problem

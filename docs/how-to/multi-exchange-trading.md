@@ -1,5 +1,8 @@
 # Multi-Exchange Trading
 
+!!! info "C++ CEX layer"
+    Multi-exchange aggregation, clock sync, and smart routing live in the C++ CEX coordination layer (`CompositeBookMatrix`, `ExchangeClockSync`, `OrderRouter`). Bindings can subscribe to a single exchange today; cross-venue routing is built in the C++ engine. See [CEX reference](../reference/api/cex/index.md).
+
 Set up trading across multiple exchanges with position aggregation and smart routing.
 
 ## Prerequisites

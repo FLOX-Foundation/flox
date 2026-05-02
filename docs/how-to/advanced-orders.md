@@ -1,168 +1,261 @@
-# Advanced Orders
+# Advanced orders
 
-This guide covers the advanced order types available in FLOX, including conditional orders, OCO, and execution flags.
+Stop orders, take-profit, trailing stops, OCO, and execution flags. Every order type below is exposed through every binding — only the method name differs.
 
-## Order Types Overview
+## Order types
 
-| Type | Use Case |
+| Type | Use case |
 |------|----------|
 | `STOP_MARKET` | Stop loss, breakout entry |
 | `STOP_LIMIT` | Stop with price control |
 | `TAKE_PROFIT_MARKET` | Lock in profits |
 | `TAKE_PROFIT_LIMIT` | Lock in profits with price control |
 | `TRAILING_STOP` | Dynamic stop that follows price |
-| `OCO` | One-Cancels-Other for breakouts |
+| `OCO` | One-cancels-other for breakouts |
 
-## Using Signal Factory Methods
+## Stop orders
 
-### Stop Orders
+Stop trigger logic: SELL stop fires when `price <= trigger`; BUY stop fires when `price >= trigger`.
 
-```cpp
-// Stop market - triggers market order when price crosses trigger
-emitStopMarket(symbol, Side::SELL, Price::fromDouble(95.0), qty);
+=== "Python"
 
-// Stop limit - triggers limit order when price crosses trigger
-emitStopLimit(symbol, Side::SELL,
-              Price::fromDouble(95.0),   // trigger
-              Price::fromDouble(94.5),   // limit price
-              qty);
-```
+    ```python
+    # Stop market: stop loss for a long
+    self.stop_market(side="sell", trigger=95.0, qty=qty)
 
-**Stop trigger logic:**
+    # Stop limit
+    self.stop_limit(side="sell", trigger=95.0, limit_price=94.5, qty=qty)
+    ```
 
-- SELL stop: triggers when price <= triggerPrice (falling)
-- BUY stop: triggers when price >= triggerPrice (rising)
+=== "Node.js"
 
-### Take Profit Orders
+    ```javascript
+    emit.stopMarket("sell", 95.0, qty);
+    emit.stopLimit("sell", 95.0, 94.5, qty);
+    ```
 
-```cpp
-// Take profit market - exits position at profit target
-emitTakeProfitMarket(symbol, Side::SELL, Price::fromDouble(110.0), qty);
+=== "Codon"
 
-// Take profit limit
-emitTakeProfitLimit(symbol, Side::SELL,
-                    Price::fromDouble(110.0),  // trigger
-                    Price::fromDouble(109.5),  // limit price
-                    qty);
-```
+    ```python
+    self.stop_market("sell", 95.0, qty)
+    self.stop_limit("sell", 95.0, 94.5, qty)
+    ```
 
-**Take profit trigger logic:**
+=== "C++"
 
-- SELL TP: triggers when price >= triggerPrice (rising, lock profit on long)
-- BUY TP: triggers when price <= triggerPrice (falling, lock profit on short)
+    ```cpp
+    emitStopMarket(symbol, Side::SELL, Price::fromDouble(95.0), qty);
+    emitStopLimit (symbol, Side::SELL, Price::fromDouble(95.0),
+                                       Price::fromDouble(94.5), qty);
+    ```
 
-### Trailing Stop
+## Take-profit orders
 
-```cpp
-// Fixed offset trailing stop (follows price by 5.0)
-emitTrailingStop(symbol, Side::SELL, Price::fromDouble(5.0), qty);
+SELL TP fires when `price >= trigger` (lock profit on a long); BUY TP fires when `price <= trigger`.
 
-// Percentage trailing stop (follows price by 2%)
-emitTrailingStopPercent(symbol, Side::SELL, 200, qty);  // 200 bps = 2%
-```
+=== "Python"
 
-**Trailing stop behavior:**
+    ```python
+    self.take_profit_market(side="sell", trigger=110.0, qty=qty)
+    self.take_profit_limit (side="sell", trigger=110.0, limit_price=109.5, qty=qty)
+    ```
 
-- SELL trailing: trigger follows price UP (never down)
-- When price drops to trigger -> order executes
+=== "Node.js"
 
-## Time-In-Force Options
+    ```javascript
+    emit.takeProfitMarket("sell", 110.0, qty);
+    emit.takeProfitLimit ("sell", 110.0, 109.5, qty);
+    ```
 
-```cpp
-// IOC (Immediate-Or-Cancel) - fill immediately or cancel
-emitLimitBuy(symbol, price, qty, TimeInForce::IOC);
+=== "Codon"
 
-// FOK (Fill-Or-Kill) - fill completely or reject
-emitLimitBuy(symbol, price, qty, TimeInForce::FOK);
+    ```python
+    self.take_profit_market("sell", 110.0, qty)
+    self.take_profit_limit ("sell", 110.0, 109.5, qty)
+    ```
 
-// POST_ONLY - maker only, reject if would take
-emitLimitBuy(symbol, price, qty, TimeInForce::POST_ONLY);
-```
+=== "C++"
 
-## Execution Flags
+    ```cpp
+    emitTakeProfitMarket(symbol, Side::SELL, Price::fromDouble(110.0), qty);
+    emitTakeProfitLimit (symbol, Side::SELL,
+                          Price::fromDouble(110.0), Price::fromDouble(109.5), qty);
+    ```
 
-### Using Signal Modifiers
+## Trailing stops
 
-```cpp
-auto signal = Signal::limitBuy(symbol, price, qty, orderId)
-                  .withTimeInForce(TimeInForce::IOC)
-                  .withReduceOnly()
-                  .withPostOnly();
-emit(signal);
-```
+SELL trailing trigger follows price up; when price drops to trigger, the order executes.
 
-### Close Position
+=== "Python"
 
-```cpp
-// Close entire position with reduce-only market order
-emitClosePosition(symbol);
-```
+    ```python
+    # Fixed-offset trailing stop (5.0 below price)
+    self.trailing_stop(side="sell", offset=5.0, qty=qty)
 
-## Checking Exchange Capabilities
+    # Percentage trailing stop (2% = 200 bps)
+    self.trailing_stop_percent(side="sell", callback_bps=200, qty=qty)
+    ```
 
-Before using advanced features, check if they're supported:
+=== "Node.js"
 
-```cpp
-void MyStrategy::onStart() {
-  auto caps = engine().executor().capabilities();
+    ```javascript
+    emit.trailingStop("sell", 5.0, qty);
+    emit.trailingStopPercent("sell", 200, qty);   // 200 bps = 2%
+    ```
 
-  _useTrailingStop = caps.supports(OrderType::TRAILING_STOP);
-  _useOCO = caps.supportsOCO;
+=== "Codon"
 
-  if (!_useTrailingStop) {
-    log().warn("Trailing stop not supported, using manual logic");
-  }
-}
-```
+    ```python
+    self.trailing_stop("sell", 5.0, qty)
+    self.trailing_stop_percent("sell", 200, qty)
+    ```
 
-## Example: Manual TP/SL Management
+=== "C++"
 
-Since strategies have full control over order lifecycle, you can implement custom TP/SL logic:
+    ```cpp
+    emitTrailingStop       (symbol, Side::SELL, Price::fromDouble(5.0), qty);
+    emitTrailingStopPercent(symbol, Side::SELL, /*callback_bps=*/200,   qty);
+    ```
 
-```cpp
-void onOrderFilled(const Order& entryOrder) {
-  if (entryOrder.id == _entryOrderId) {
-    Price entryPrice = entryOrder.price;
+## Time-in-force
 
-    // Place TP
-    _tpOrderId = emitTakeProfitMarket(
-        entryOrder.symbol, Side::SELL,
-        Price::fromDouble(entryPrice.toDouble() * 1.06), // 6% profit
-        entryOrder.quantity);
+`IOC` (immediate-or-cancel), `FOK` (fill-or-kill), `POST_ONLY` (maker-only — reject if would cross spread).
 
-    // Place SL
-    _slOrderId = emitStopMarket(
-        entryOrder.symbol, Side::SELL,
-        Price::fromDouble(entryPrice.toDouble() * 0.98), // 2% stop
-        entryOrder.quantity);
-  }
+=== "Python"
 
-  // When TP fills, cancel SL
-  if (entryOrder.id == _tpOrderId) {
-    emitCancel(_slOrderId);
-  }
+    ```python
+    self.limit_buy(price, qty, tif="ioc")
+    self.limit_buy(price, qty, tif="fok")
+    self.limit_buy(price, qty, tif="post_only")
+    ```
 
-  // When SL fills, cancel TP
-  if (entryOrder.id == _slOrderId) {
-    emitCancel(_tpOrderId);
-  }
-}
-```
+=== "Node.js"
 
-## Example: Trailing Stop for Profit Protection
+    ```javascript
+    emit.limitBuy(price, qty, /*tif=*/ "IOC");
+    emit.limitBuy(price, qty, /*tif=*/ "FOK");
+    emit.limitBuy(price, qty, /*tif=*/ "POST_ONLY");
+    ```
 
-```cpp
-void onOrderFilled(const Order& order) {
-  if (order.side == Side::BUY) {
-    // Place trailing stop to protect profits
-    emitTrailingStopPercent(order.symbol, Side::SELL, 300, order.quantity);
-  }
-}
-```
+=== "Codon"
 
-## See Also
+    ```python
+    self.limit_buy(price, qty, tif="ioc")
+    self.limit_buy(price, qty, tif="fok")
+    self.limit_buy(price, qty, tif="post_only")
+    ```
 
-* [Order Types](../reference/api/common.md#ordertype)
-* [Time-In-Force](../reference/api/common.md#timeinforce)
-* [Order Structure](../reference/api/execution/order.md)
-* [Exchange Capabilities](../reference/api/execution/exchange_capabilities.md)
+=== "C++"
+
+    ```cpp
+    emitLimitBuy(symbol, price, qty, TimeInForce::IOC);
+    emitLimitBuy(symbol, price, qty, TimeInForce::FOK);
+    emitLimitBuy(symbol, price, qty, TimeInForce::POST_ONLY);
+    ```
+
+`POST_ONLY` orders that would cross the book are rejected at submit time (matches real-exchange behaviour, including in `BacktestRunner` since [#124](https://github.com/FLOX-Foundation/flox/pull/124)).
+
+## Close current position
+
+`close_position` issues a reduce-only market order sized to flatten the existing position.
+
+=== "Python"
+
+    ```python
+    self.close_position()         # primary symbol
+    self.close_position("BTCUSDT")
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    emit.closePosition();
+    emit.closePosition("BTCUSDT");
+    ```
+
+=== "Codon"
+
+    ```python
+    self.close_position()
+    ```
+
+=== "C++"
+
+    ```cpp
+    emitClosePosition(symbol);
+    ```
+
+## Manual TP/SL bracket
+
+A common pattern: on entry-fill, place TP and SL; cancel one when the other fills.
+
+=== "Python"
+
+    ```python
+    def on_order_filled(self, order):
+        if order.id == self.entry_id:
+            entry = order.price
+            self.tp_id = self.take_profit_market("sell", trigger=entry * 1.06, qty=order.quantity)
+            self.sl_id = self.stop_market       ("sell", trigger=entry * 0.98, qty=order.quantity)
+        elif order.id == self.tp_id:
+            self.cancel_order(self.sl_id)
+        elif order.id == self.sl_id:
+            self.cancel_order(self.tp_id)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    onOrderFilled(order, emit) {
+      if (order.id === this.entryId) {
+        const entry = order.price;
+        this.tpId = emit.takeProfitMarket("sell", entry * 1.06, order.quantity);
+        this.slId = emit.stopMarket       ("sell", entry * 0.98, order.quantity);
+      } else if (order.id === this.tpId) {
+        emit.cancel(this.slId);
+      } else if (order.id === this.slId) {
+        emit.cancel(this.tpId);
+      }
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    void onOrderFilled(const Order& order) {
+      if (order.id == _entryId) {
+        auto entry = order.price.toDouble();
+        _tpId = emitTakeProfitMarket(order.symbol, Side::SELL,
+                                      Price::fromDouble(entry * 1.06), order.quantity);
+        _slId = emitStopMarket      (order.symbol, Side::SELL,
+                                      Price::fromDouble(entry * 0.98), order.quantity);
+      } else if (order.id == _tpId) {
+        emitCancel(_slId);
+      } else if (order.id == _slId) {
+        emitCancel(_tpId);
+      }
+    }
+    ```
+
+## Checking exchange capabilities
+
+Real exchanges support different subsets of order types. Before using an advanced feature in live trading, ask the executor what it supports.
+
+=== "C++"
+
+    ```cpp
+    auto caps = engine().executor().capabilities();
+    bool hasTrailing = caps.supports(OrderType::TRAILING_STOP);
+    bool hasOCO      = caps.supportsOCO;
+    ```
+
+=== "Python / Node.js / Codon"
+
+    Capabilities introspection isn't yet exposed in the binding APIs — check the [exchange's connector source](../bindings/README.md) or fall back to manual TP/SL.
+
+## See also
+
+- [Order Types reference](../reference/api/common.md)
+- [Time-In-Force](../reference/api/common.md)
+- [Order structure](../reference/api/execution/order.md)
+- [Exchange capabilities](../reference/api/execution/exchange_capabilities.md)

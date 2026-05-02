@@ -1,66 +1,87 @@
 # Recording Data
 
-Capture live market data to disk for later replay and backtesting.
+Capture live market data to disk for later replay and backtesting. The same `.floxlog` binary format is produced by every binding — record from Python or Node.js and replay from C++ later, or vice versa.
 
 ## Prerequisites
 
 - Completed [First Strategy](first-strategy.md)
 - Optional: LZ4 library for compression (`-DFLOX_ENABLE_LZ4=ON`)
 
-## 1. BinaryLogWriter Overview
+## What gets recorded
 
-FLOX records market data in a custom binary format optimized for:
+FLOX writes a custom binary format optimised for sequential writes and fast sequential / indexed reads. Optional LZ4 compression. Automatic segment rotation.
 
-- Sequential writes (no random access during recording)
-- Fast sequential reads during replay
-- Optional LZ4 compression
-- Automatic file rotation
+## Basic recording
 
-```cpp
-#include "flox/replay/writers/binary_log_writer.h"
+=== "Python"
 
-using namespace flox::replay;
-```
+    ```python
+    import flox_py as flox
 
-## 2. Basic Recording
+    rec = flox.MarketDataRecorder(
+        output_dir="/data/btcusdt",
+        exchange_name="binance",
+        instrument_type="perpetual",
+        book_depth=20,
+        max_segment_bytes=256 << 20,
+    )
+    rec.add_symbol(1, "BTCUSDT", base="BTC", quote="USDT",
+                   price_precision=2, qty_precision=3)
+    rec.start()
 
-```cpp
-// Configure the writer
-WriterConfig config;
-config.output_dir = "/data/market_data";      // Output directory
-config.max_segment_bytes = 256 * 1024 * 1024; // 256 MB per segment
-config.create_index = true;                    // Enable fast seeking
-config.compression = CompressionType::None;    // Or CompressionType::LZ4
+    # Feed events as they arrive — for example from a Runner subscription
+    rec.write_trade(symbol_id=1, price=10050.0, qty=0.5, is_buy=True,
+                     exchange_ts_ns=ts_ns)
+    rec.write_book_snapshot(symbol_id=1, bids=bids_arr, asks=asks_arr,
+                             exchange_ts_ns=ts_ns)
 
-BinaryLogWriter writer(config);
+    rec.stop()    # writes metadata.json
+    ```
 
-// Write a trade
-TradeRecord trade;
-trade.symbol_id = 42;
-trade.price = 10050;        // Fixed-point (multiply by 100)
-trade.quantity = 100;       // Fixed-point
-trade.side = 1;             // 1=buy, 0=sell
-trade.exchange_ts_ns = 1234567890123456789;  // Nanoseconds since epoch
+=== "Node.js"
 
-writer.writeTrade(trade);
+    ```javascript
+    const rec = new flox.MarketDataRecorder({
+      outputDir: "/data/btcusdt",
+      exchangeName: "binance",
+      instrumentType: "perpetual",
+      bookDepth: 20,
+      maxSegmentBytes: 256 << 20,
+    });
+    rec.addSymbol(1, "BTCUSDT", "BTC", "USDT", 2, 3);
+    rec.start();
 
-// Write a book update
-BookRecordHeader header;
-header.symbol_id = 42;
-header.update_type = static_cast<uint8_t>(BookUpdateType::SNAPSHOT);
-header.bid_count = 5;
-header.ask_count = 5;
-header.exchange_ts_ns = 1234567890123456789;
+    rec.writeTrade(1, 10050.0, 0.5, /*isBuy=*/ true, tsNs);
+    rec.writeBookSnapshot(1, bidPrices, bidQtys, askPrices, askQtys, tsNs);
 
-std::vector<BookLevel> bids = { {10049, 100}, {10048, 200}, ... };
-std::vector<BookLevel> asks = { {10051, 150}, {10052, 250}, ... };
+    rec.stop();
+    ```
 
-writer.writeBook(header, bids, asks);
+=== "C++"
 
-// Ensure data is persisted
-writer.flush();
-writer.close();
-```
+    ```cpp
+    #include "flox/replay/writers/binary_log_writer.h"
+    using namespace flox::replay;
+
+    WriterConfig config;
+    config.output_dir = "/data/market_data";
+    config.max_segment_bytes = 256 * 1024 * 1024;
+    config.create_index = true;
+    config.compression = CompressionType::None;       // or LZ4
+
+    BinaryLogWriter writer(config);
+
+    TradeRecord trade{ .symbol_id = 42, .price = 10050, .quantity = 100,
+                        .side = 1, .exchange_ts_ns = ts_ns };
+    writer.writeTrade(trade);
+
+    BookRecordHeader header{ .symbol_id = 42, .update_type = static_cast<uint8_t>(BookUpdateType::SNAPSHOT),
+                              .bid_count = 5, .ask_count = 5, .exchange_ts_ns = ts_ns };
+    writer.writeBook(header, bids, asks);
+
+    writer.flush();
+    writer.close();
+    ```
 
 ## 3. Recording from Live Connectors
 

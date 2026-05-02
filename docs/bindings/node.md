@@ -1,16 +1,20 @@
 # Node.js Bindings
 
-Event-driven live trading and backtesting from Node.js.
+Event-driven live trading and backtesting from Node.js using `@flox-foundation/flox`.
 
-## Build
+## Install / Build
 
 ```bash
+npm install @flox-foundation/flox
+# or build from source:
 cmake -B build -DFLOX_ENABLE_NODE=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
 ```javascript
-const flox = require('./build/node');
+const flox = require('@flox-foundation/flox');
+// or, if building from source:
+const flox = require('../node');
 ```
 
 ## SymbolRegistry and Symbol

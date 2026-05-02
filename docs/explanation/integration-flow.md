@@ -1,5 +1,8 @@
 # Integration Flow
 
+!!! info "C++ engine integration"
+    This page walks through wiring up the C++ engine end-to-end (registry → buses → strategies → executor → connector). If you use Python, Node.js, or Codon, all of this is hidden behind `Runner` and `BacktestRunner` — you don't wire buses by hand. Read this if you embed FLOX in a C++ host or want to understand what happens beneath the bindings.
+
 Step-by-step guide to integrating FLOX components into a complete trading system.
 
 ## Overview

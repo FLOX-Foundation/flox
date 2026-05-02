@@ -1,5 +1,8 @@
 # Configure CPU Affinity
 
+!!! info "System-level (C++)"
+    Thread pinning is configured in the C++ engine layer. Bindings (Python, Node.js, Codon) inherit whatever the host engine is configured with — there is no per-language API for this.
+
 Pin threads to isolated CPU cores for lower, more predictable latency.
 
 ## When to Use

@@ -1,6 +1,6 @@
 # Indicators
 
-flox has around 25 indicators, split across moving averages, oscillators, volatility, volume, and statistics. Each works in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`).
+FLOX has around 25 indicators, split across moving averages, oscillators, volatility, volume, and statistics. Each works in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). The same indicator set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
 
 This page covers what each one actually measures and when you'd want it.
 
