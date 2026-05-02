@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/aggregator/events/bar_event.h"
 #include "flox/capi/flox_capi.h"
 #include "flox/strategy/strategy.h"
 
@@ -155,6 +156,32 @@ class BridgeStrategy : public Strategy
     fbook.snapshot = toBookSnapshot(c);
 
     _cb.on_book(_cb.user_data, &fctx, &fbook);
+  }
+
+  void onSymbolBar(SymbolContext& c, const BarEvent& ev) override
+  {
+    if (!_cb.on_bar)
+    {
+      return;
+    }
+
+    FloxSymbolContext fctx = toFloxContext(c);
+    FloxBarData fbar{};
+    fbar.symbol = ev.symbol;
+    fbar.bar_type = static_cast<uint8_t>(ev.barType);
+    fbar.close_reason = static_cast<uint8_t>(ev.bar.reason);
+    fbar.bar_type_param = ev.barTypeParam;
+    fbar.open_raw = ev.bar.open.raw();
+    fbar.high_raw = ev.bar.high.raw();
+    fbar.low_raw = ev.bar.low.raw();
+    fbar.close_raw = ev.bar.close.raw();
+    fbar.volume_raw = ev.bar.volume.raw();
+    fbar.buy_volume_raw = ev.bar.buyVolume.raw();
+    fbar.trade_count_raw = ev.bar.tradeCount.raw();
+    fbar.start_time_ns = ev.bar.startTime.time_since_epoch().count();
+    fbar.end_time_ns = ev.bar.endTime.time_since_epoch().count();
+
+    _cb.on_bar(_cb.user_data, &fctx, &fbar);
   }
 
  private:

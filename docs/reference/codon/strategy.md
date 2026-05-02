@@ -38,6 +38,17 @@ def on_book_update(self, ctx: SymbolContext):
     # strategy logic here
 ```
 
+#### `on_bar(ctx, bar)`
+
+Called on each closed OHLC bar.
+
+```python
+def on_bar(self, ctx: SymbolContext, bar: BarData):
+    # bar.open, bar.high, bar.low, bar.close, bar.volume, ...
+    if bar.close > bar.open and self.position() == 0.0:
+        self.market_buy(0.01)
+```
+
 #### `on_start()` / `on_stop()`
 
 Lifecycle callbacks.

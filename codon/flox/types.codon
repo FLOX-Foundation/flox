@@ -148,3 +148,59 @@ class TradeData:
         t.side = "buy" if is_buy else "sell"
         t.timestamp_ns = ts_ns
         return t
+
+
+@dataclass
+class BarData:
+    """Closed OHLC bar. Mirrors C++ flox::BarEvent (flattened)."""
+
+    symbol: int
+    symbol_name: str
+    bar_type: int          # 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi
+    bar_type_param: int    # interval_ns / tick count / volume threshold
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    buy_volume: float
+    start_time_ns: int
+    end_time_ns: int
+    close_reason: int      # 0=Threshold, 1=Gap, 2=Forced, 3=Warmup
+
+    def __init__(self):
+        self.symbol = 0
+        self.symbol_name = ""
+        self.bar_type = 0
+        self.bar_type_param = 0
+        self.open = 0.0
+        self.high = 0.0
+        self.low = 0.0
+        self.close = 0.0
+        self.volume = 0.0
+        self.buy_volume = 0.0
+        self.start_time_ns = 0
+        self.end_time_ns = 0
+        self.close_reason = 0
+
+    @staticmethod
+    def from_raw(symbol: int, bar_type: int, bar_type_param: int,
+                 o_raw: int, h_raw: int, l_raw: int, c_raw: int,
+                 v_raw: int, bv_raw: int,
+                 start_ns: int, end_ns: int, close_reason: int,
+                 symbol_name: str = "") -> BarData:
+        b = BarData()
+        b.symbol = symbol
+        b.symbol_name = symbol_name
+        b.bar_type = bar_type
+        b.bar_type_param = bar_type_param
+        b.open  = float(o_raw) / float(SCALE)
+        b.high  = float(h_raw) / float(SCALE)
+        b.low   = float(l_raw) / float(SCALE)
+        b.close = float(c_raw) / float(SCALE)
+        b.volume     = float(v_raw)  / float(SCALE)
+        b.buy_volume = float(bv_raw) / float(SCALE)
+        b.start_time_ns = start_ns
+        b.end_time_ns   = end_ns
+        b.close_reason  = close_reason
+        return b

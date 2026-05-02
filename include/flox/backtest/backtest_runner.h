@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "flox/aggregator/bar.h"
+#include "flox/aggregator/events/bar_event.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
@@ -97,6 +99,13 @@ class BacktestRunner : public ISignalHandler
 
   /// Run backtest synchronously from start to end
   BacktestResult run(replay::IMultiSegmentReader& reader);
+
+  /// Replay a sequence of pre-built BarEvents through the strategy.
+  /// Each bar updates the SimulatedExecutor (so resting orders / SL/TP get
+  /// matched against bar.high / bar.low / bar.close) and is dispatched to
+  /// Strategy::onBar and any registered IMarketDataSubscriber.
+  /// Bars must be in non-decreasing endTime order.
+  BacktestResult runBars(const std::vector<BarEvent>& bars);
 
   // ========== Interactive mode ==========
 

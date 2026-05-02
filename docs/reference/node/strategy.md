@@ -53,8 +53,19 @@ const strategy = {
 
     onTrade(ctx, trade, emit) { ... },
     onBookUpdate(ctx, emit) { ... },
+    onBar(ctx, bar, emit) { ... },
 };
 ```
+
+### BarData (`bar`)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `open`, `high`, `low`, `close` | `number` | OHLC prices |
+| `volume`, `buyVolume` | `number` | Total / buy-side volume |
+| `startTimeNs`, `endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
+| `barType`, `barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
+| `closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup |
 
 ### SymbolContext (`ctx`)
 
@@ -107,6 +118,8 @@ In threaded mode, events are published to a lock-free ring buffer and callbacks 
 | `start()` | Start the runner |
 | `stop()` | Stop and clean up |
 | `onTrade(symbol, price, qty, isBuy, tsNs)` | Inject a trade tick |
+| `onBookSnapshot(symbol, bidPrices, bidQtys, askPrices, askQtys, tsNs)` | Inject an L2 snapshot |
+| `onBar(symbol, { open, high, low, close, volume?, ... })` | Inject a closed OHLC bar |
 
 `symbol` accepts a `Symbol` object or a raw number.
 

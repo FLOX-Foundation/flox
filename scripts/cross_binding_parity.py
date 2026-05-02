@@ -129,6 +129,78 @@ def main() -> int:
         print(f"  ok    {name}: parity within 1e-9")
         ok += 1
 
+    # ── on_bar callback parity: Python and Node strategies must observe
+    #    identical OHLC values when fed the same bars.
+    print("\n  on_bar callback parity (Python vs Node):")
+    bars_n = 8
+    bar_open  = [100.0 + i * 1.5 for i in range(bars_n)]
+    bar_high  = [o + 0.7 for o in bar_open]
+    bar_low   = [o - 0.7 for o in bar_open]
+    bar_close = [o + 0.3 for o in bar_open]
+    bar_vol   = [10.0 for _ in range(bars_n)]
+    bar_start = [i * 1_000_000_000 for i in range(bars_n)]
+    bar_end   = [(i + 1) * 1_000_000_000 for i in range(bars_n)]
+
+    # Python: subclass flox.Strategy, capture each bar
+    reg_py = flox.SymbolRegistry()
+    sym_py = reg_py.add_symbol("test", "TST", tick_size=0.01)
+    captured_py = []
+
+    class _BarCapture(flox.Strategy):
+        def on_bar(self, ctx, bar):
+            captured_py.append((bar.open, bar.high, bar.low, bar.close))
+
+    strat_py = _BarCapture([sym_py])
+    bt_py = flox.BacktestRunner(reg_py, fee_rate=0.0, initial_capital=10_000.0)
+    bt_py.set_strategy(strat_py)
+    bt_py.run_bars(
+        np.array(bar_start, dtype=np.int64),
+        np.array(bar_end,   dtype=np.int64),
+        np.array(bar_open,  dtype=np.float64),
+        np.array(bar_high,  dtype=np.float64),
+        np.array(bar_low,   dtype=np.float64),
+        np.array(bar_close, dtype=np.float64),
+        np.array(bar_vol,   dtype=np.float64),
+        "TST",
+    )
+
+    # Node: same flow, capture from JS strategy.onBar
+    starts_js = [i * 1_000_000_000 for i in range(bars_n)]
+    ends_js   = [(i + 1) * 1_000_000_000 for i in range(bars_n)]
+    js_bars = (
+        "const flox = require('.');\n"
+        "const reg = new flox.SymbolRegistry();\n"
+        "const sym = reg.addSymbol('test', 'TST', 0.01);\n"
+        f"const startNs = new BigInt64Array({starts_js}.map(BigInt));\n"
+        f"const endNs   = new BigInt64Array({ends_js}.map(BigInt));\n"
+        f"const op = new Float64Array({bar_open});\n"
+        f"const hi = new Float64Array({bar_high});\n"
+        f"const lo = new Float64Array({bar_low});\n"
+        f"const cl = new Float64Array({bar_close});\n"
+        f"const vo = new Float64Array({bar_vol});\n"
+        "const captured = [];\n"
+        "const strat = { symbols: [sym], "
+        "  onBar: (ctx, bar, em) => captured.push([bar.open, bar.high, bar.low, bar.close]) };\n"
+        "const bt = new flox.BacktestRunner(reg, 0.0, 10000.0);\n"
+        "bt.setStrategy(strat);\n"
+        "bt.runBars(startNs, endNs, op, hi, lo, cl, vo, 'TST');\n"
+        "process.stdout.write(JSON.stringify(captured));\n"
+    )
+    js_out = run_node(js_bars)
+
+    py_arr = np.array(captured_py)
+    js_arr = np.array(js_out)
+    bar_pass = (py_arr.shape == js_arr.shape) and np.allclose(py_arr, js_arr, atol=1e-9)
+    if bar_pass:
+        print(f"  ok    on_bar: {len(captured_py)} bars, OHLC parity within 1e-9")
+        ok += 1
+    else:
+        print(f"  FAIL  on_bar: py shape={py_arr.shape} js shape={js_arr.shape}")
+        if py_arr.shape == js_arr.shape:
+            worst = float(np.max(np.abs(py_arr - js_arr)))
+            print(f"          max abs diff = {worst:.3e}")
+        bad += 1
+
     print(f"\n{ok} passed, {bad} failed")
     return 0 if bad == 0 else 1
 

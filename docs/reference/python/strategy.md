@@ -55,6 +55,21 @@ def on_trade(self, ctx, trade):
 
 Called on each order book update.
 
+#### `on_bar(ctx: SymbolContext, bar: BarData)`
+
+Called on each closed OHLC bar. `bar` exposes `open`, `high`, `low`, `close`,
+`volume`, `buy_volume`, `start_time_ns`, `end_time_ns`, `bar_type`,
+`bar_type_param`, `close_reason`. Use `BacktestRunner.run_bars(...)` to replay
+historical bars or `Runner.on_bar(...)` to push live bars.
+
+```python
+def on_bar(self, ctx, bar):
+    # detect breakout on bar close
+    if bar.close > self.prev_high and ctx.is_flat():
+        self.market_buy(0.01)
+    self.prev_high = max(getattr(self, "prev_high", 0.0), bar.high)
+```
+
 #### `on_start()` / `on_stop()`
 
 Lifecycle callbacks.
@@ -137,6 +152,7 @@ runner.add_strategy(strategy)
 runner.start()
 runner.on_trade(symbol, price, qty, is_buy, ts_ns)
 runner.on_book_snapshot(symbol, bid_prices, bid_qtys, ask_prices, ask_qtys, ts_ns)
+runner.on_bar(symbol, open, high, low, close, volume, ...)
 runner.stop()
 ```
 
@@ -147,6 +163,7 @@ runner.stop()
 | `stop()` | Stop the runner |
 | `on_trade(symbol, price, qty, is_buy, ts_ns)` | Inject a trade event |
 | `on_book_snapshot(symbol, bid_px, bid_qty, ask_px, ask_qty, ts_ns)` | Inject an order book snapshot |
+| `on_bar(symbol, open, high, low, close, volume=0, buy_volume=0, start_time_ns=0, end_time_ns=0, bar_type=0, bar_type_param=0, close_reason=0)` | Inject a closed OHLC bar |
 
 `symbol` accepts a `Symbol` object or a raw `int`.
 
@@ -178,6 +195,8 @@ stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
 |--------|-------------|
 | `set_strategy(strategy)` | Set the strategy to backtest |
 | `run_csv(path, symbol=None)` | Run backtest against a CSV file, returns stats dict |
+| `run_ohlcv(ts, close, symbol=None)` | Replay close-only bars as synthetic trades (`Strategy.on_trade` fires) |
+| `run_bars(start_time_ns, end_time_ns, open, high, low, close, volume, symbol=None, bar_type=0, bar_type_param=0)` | Replay full OHLCV bars (`Strategy.on_bar` fires) |
 
 ### Stats dict keys
 

@@ -69,6 +69,27 @@ extern "C"
     FloxBookSnapshot snapshot;
   } FloxBookData;
 
+  // OHLC bar event. bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi.
+  // bar_type_param: interval_ns / tick count / volume threshold depending on type.
+  // close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup.
+  typedef struct
+  {
+    uint32_t symbol;
+    uint8_t bar_type;
+    uint8_t close_reason;
+    uint8_t _pad[2];
+    uint64_t bar_type_param;
+    int64_t open_raw;
+    int64_t high_raw;
+    int64_t low_raw;
+    int64_t close_raw;
+    int64_t volume_raw;
+    int64_t buy_volume_raw;
+    int64_t trade_count_raw;
+    int64_t start_time_ns;
+    int64_t end_time_ns;
+  } FloxBarData;
+
   typedef struct
   {
     uint32_t symbol_id;
@@ -87,6 +108,8 @@ extern "C"
                                       const FloxTradeData* trade);
   typedef void (*FloxOnBookCallback)(void* user_data, const FloxSymbolContext* ctx,
                                      const FloxBookData* book);
+  typedef void (*FloxOnBarCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                    const FloxBarData* bar);
   typedef void (*FloxOnStartCallback)(void* user_data);
   typedef void (*FloxOnStopCallback)(void* user_data);
 
@@ -94,6 +117,7 @@ extern "C"
   {
     FloxOnTradeCallback on_trade;
     FloxOnBookCallback on_book;
+    FloxOnBarCallback on_bar;
     FloxOnStartCallback on_start;
     FloxOnStopCallback on_stop;
     void* user_data;
@@ -1148,6 +1172,16 @@ extern "C"
                                               uint32_t n_asks,
                                               int64_t exchange_ts_ns);
 
+  // Publish a closed OHLC bar to the BarBus.
+  // Lock-free. Returns immediately; consumer threads process asynchronously.
+  void flox_live_engine_publish_bar(FloxLiveEngineHandle engine,
+                                    uint32_t symbol,
+                                    uint8_t bar_type, uint64_t bar_type_param,
+                                    double open, double high, double low, double close,
+                                    double volume, double buy_volume,
+                                    int64_t start_time_ns, int64_t end_time_ns,
+                                    uint8_t close_reason);
+
   // ============================================================
   // StrategyRunner — synchronous strategy host for live trading.
   //
@@ -1192,6 +1226,15 @@ extern "C"
                                     uint32_t n_asks,
                                     int64_t exchange_ts_ns);
 
+  // Push a closed OHLC bar. Strategy on_bar callbacks fire synchronously.
+  // bar_type / bar_type_param / close_reason match FloxBarData.
+  void flox_runner_on_bar(FloxRunnerHandle runner, uint32_t symbol,
+                          uint8_t bar_type, uint64_t bar_type_param,
+                          double open, double high, double low, double close,
+                          double volume, double buy_volume,
+                          int64_t start_time_ns, int64_t end_time_ns,
+                          uint8_t close_reason);
+
   // ============================================================
   // BacktestRunner — replay OHLCV data through a Strategy.
   //
@@ -1227,6 +1270,7 @@ extern "C"
                                    FloxBacktestStats* stats_out);
 
   // Replay raw OHLCV arrays (timestamps in nanoseconds, close prices as double).
+  // Each row produces one synthetic trade (price=close, qty=1). Strategy.on_trade fires.
   // Returns 1 on success, 0 on error.
   int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner,
                                      const int64_t* timestamps_ns,
@@ -1234,6 +1278,25 @@ extern "C"
                                      uint32_t n,
                                      const char* symbol,
                                      FloxBacktestStats* stats_out);
+
+  // Replay full OHLCV bars (open/high/low/close/volume). Each row produces one
+  // BarEvent. Strategy.on_bar fires; on_trade does NOT.
+  // bar_type matches FloxBarData (0=Time, 1=Tick, …); bar_type_param is the
+  // interval in ns / tick count / volume threshold.
+  // Returns 1 on success, 0 on error.
+  int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle runner,
+                                    const int64_t* start_time_ns,
+                                    const int64_t* end_time_ns,
+                                    const double* open,
+                                    const double* high,
+                                    const double* low,
+                                    const double* close,
+                                    const double* volume,
+                                    uint32_t n,
+                                    const char* symbol,
+                                    uint8_t bar_type,
+                                    uint64_t bar_type_param,
+                                    FloxBacktestStats* stats_out);
 
 #ifdef __cplusplus
 }

@@ -22,7 +22,7 @@ from C import flox_emit_close_position(cobj, u32) -> u64
 from C import flox_position_raw(cobj, u32) -> i64
 from C import flox_get_order_status(cobj, u64) -> i32
 
-from flox.types import SCALE, Price, Quantity, TradeData, BUY, SELL
+from flox.types import SCALE, Price, Quantity, TradeData, BarData, BUY, SELL
 from flox.types import TIF_GTC, TIF_IOC, TIF_FOK, TIF_POST_ONLY
 from flox.context import SymbolContext
 
@@ -64,6 +64,10 @@ class Strategy:
 
     def on_book_update(self, ctx: SymbolContext):
         """Called on each book update. Override in subclass."""
+        pass
+
+    def on_bar(self, ctx: SymbolContext, bar: BarData):
+        """Called on each closed bar. Override in subclass."""
         pass
 
     def on_start(self):

@@ -9,6 +9,8 @@ class MyStrategy extends Strategy {
     }
 
     onTrade(ctx, trade) { ... }
+    onBookUpdate(ctx, book) { ... }
+    onBar(ctx, bar) { ... }
     onStart() { ... }
     onStop() { ... }
 }
@@ -54,6 +56,16 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `trade.side` | `string` | `"buy"` or `"sell"` |
 | `trade.isBuy` | `boolean` | |
 | `trade.timestampNs` | `number` | Nanosecond timestamp |
+
+### `onBar(ctx, bar)`
+
+| Field | Type | Description |
+|---|---|---|
+| `bar.open`, `bar.high`, `bar.low`, `bar.close` | `number` | OHLC prices |
+| `bar.volume`, `bar.buyVolume` | `number` | Total / buy-side volume |
+| `bar.startTimeNs`, `bar.endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
+| `bar.barType`, `bar.barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
+| `bar.closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup |
 
 ### `onStart()` / `onStop()`
 

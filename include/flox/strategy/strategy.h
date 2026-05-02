@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/aggregator/events/bar_event.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/engine/symbol_registry.h"
@@ -89,9 +90,25 @@ class Strategy : public IStrategy
     onSymbolBook(c, ev);
   }
 
+  void onBar(const BarEvent& ev) final
+  {
+    SymbolId sym = ev.symbol;
+    if (!isSubscribed(sym))
+    {
+      return;
+    }
+
+    auto& c = _contexts[sym];
+    c.lastTradePrice = ev.bar.close;
+    c.lastUpdateNs = ev.bar.endTime.time_since_epoch().count();
+
+    onSymbolBar(c, ev);
+  }
+
  protected:
   virtual void onSymbolTrade(SymbolContext& ctx, const TradeEvent& ev) {}
   virtual void onSymbolBook(SymbolContext& ctx, const BookUpdateEvent& ev) {}
+  virtual void onSymbolBar(SymbolContext& ctx, const BarEvent& ev) {}
 
   SymbolContext& ctx(SymbolId sym) noexcept { return _contexts[sym]; }
   const SymbolContext& ctx(SymbolId sym) const noexcept { return _contexts[sym]; }

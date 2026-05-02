@@ -57,6 +57,7 @@
 #include "flox/target/future_linear_slope.h"
 #include "flox/target/future_return.h"
 
+#include "flox/aggregator/bus/bar_bus.h"
 #include "flox/aggregator/custom/footprint_bar.h"
 #include "flox/aggregator/custom/market_profile.h"
 #include "flox/aggregator/custom/volume_profile.h"
@@ -2795,6 +2796,32 @@ struct FloxRunnerImpl
       s->onBookUpdate(ev);
     }
   }
+
+  void onBar(uint32_t symbol, uint8_t bar_type, uint64_t bar_type_param,
+             double open, double high, double low, double close,
+             double volume, double buy_volume,
+             int64_t start_time_ns, int64_t end_time_ns,
+             uint8_t close_reason)
+  {
+    BarEvent ev{};
+    ev.symbol = symbol;
+    ev.barType = static_cast<BarType>(bar_type);
+    ev.barTypeParam = bar_type_param;
+    ev.bar.open = Price::fromDouble(open);
+    ev.bar.high = Price::fromDouble(high);
+    ev.bar.low = Price::fromDouble(low);
+    ev.bar.close = Price::fromDouble(close);
+    ev.bar.volume = Volume::fromDouble(volume);
+    ev.bar.buyVolume = Volume::fromDouble(buy_volume);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{start_time_ns}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{end_time_ns}};
+    ev.bar.reason = static_cast<BarCloseReason>(close_reason);
+
+    for (auto* s : strategies)
+    {
+      s->onBar(ev);
+    }
+  }
 };
 
 static FloxRunnerImpl* toRunner(FloxRunnerHandle h)
@@ -2811,6 +2838,7 @@ struct FloxLiveEngineImpl
   SymbolRegistry* registry;
   std::unique_ptr<TradeBus> tradeBus;
   std::unique_ptr<BookUpdateBus> bookBus;
+  std::unique_ptr<BarBus> barBus;
   pool::Pool<BookUpdateEvent, config::DEFAULT_CONNECTOR_POOL_CAPACITY> bookPool;
 
   // Per-strategy signal handlers (owned here, outlive strategies)
@@ -2818,7 +2846,10 @@ struct FloxLiveEngineImpl
   std::vector<BridgeStrategy*> strategies;
 
   explicit FloxLiveEngineImpl(SymbolRegistry* reg)
-      : registry(reg), tradeBus(std::make_unique<TradeBus>()), bookBus(std::make_unique<BookUpdateBus>())
+      : registry(reg),
+        tradeBus(std::make_unique<TradeBus>()),
+        bookBus(std::make_unique<BookUpdateBus>()),
+        barBus(std::make_unique<BarBus>())
   {
   }
 
@@ -2829,6 +2860,7 @@ struct FloxLiveEngineImpl
     handlers.push_back(std::move(h));
     tradeBus->subscribe(s);
     bookBus->subscribe(s);
+    barBus->subscribe(s);
     strategies.push_back(s);
   }
 
@@ -2836,6 +2868,7 @@ struct FloxLiveEngineImpl
   {
     tradeBus->start();
     bookBus->start();
+    barBus->start();
     for (auto* s : strategies)
     {
       s->start();
@@ -2850,6 +2883,7 @@ struct FloxLiveEngineImpl
     }
     tradeBus->stop();
     bookBus->stop();
+    barBus->stop();
   }
 
   void publishTrade(uint32_t symbol, double price, double qty, bool is_buy, int64_t ts_ns)
@@ -2890,6 +2924,28 @@ struct FloxLiveEngineImpl
                                  Quantity::fromDouble(ask_qtys[i])});
     }
     bookBus->publish(std::move(evOpt.value()));
+  }
+
+  void publishBar(uint32_t symbol, uint8_t bar_type, uint64_t bar_type_param,
+                  double open, double high, double low, double close,
+                  double volume, double buy_volume,
+                  int64_t start_time_ns, int64_t end_time_ns,
+                  uint8_t close_reason)
+  {
+    BarEvent ev{};
+    ev.symbol = symbol;
+    ev.barType = static_cast<BarType>(bar_type);
+    ev.barTypeParam = bar_type_param;
+    ev.bar.open = Price::fromDouble(open);
+    ev.bar.high = Price::fromDouble(high);
+    ev.bar.low = Price::fromDouble(low);
+    ev.bar.close = Price::fromDouble(close);
+    ev.bar.volume = Volume::fromDouble(volume);
+    ev.bar.buyVolume = Volume::fromDouble(buy_volume);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{start_time_ns}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{end_time_ns}};
+    ev.bar.reason = static_cast<BarCloseReason>(close_reason);
+    barBus->publish(ev);
   }
 };
 
@@ -3108,6 +3164,39 @@ struct FloxBacktestRunnerImpl
     }
     return runBars(std::move(bars), out);
   }
+
+  int runFullBars(const int64_t* start_ns, const int64_t* end_ns,
+                  const double* open, const double* high, const double* low,
+                  const double* close, const double* volume, uint32_t n,
+                  const char* symbol, uint8_t bar_type, uint64_t bar_type_param,
+                  FloxBacktestStats* out)
+  {
+    uint32_t id = resolveSymbol(symbol);
+    std::vector<BarEvent> events;
+    events.reserve(n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      BarEvent ev{};
+      ev.symbol = id;
+      ev.barType = static_cast<BarType>(bar_type);
+      ev.barTypeParam = bar_type_param;
+      ev.bar.open = Price::fromDouble(open[i]);
+      ev.bar.high = Price::fromDouble(high[i]);
+      ev.bar.low = Price::fromDouble(low[i]);
+      ev.bar.close = Price::fromDouble(close[i]);
+      ev.bar.volume = Volume::fromDouble(volume ? volume[i] : 0.0);
+      ev.bar.startTime = TimePoint{std::chrono::nanoseconds{normalizeTs(start_ns[i])}};
+      ev.bar.endTime = TimePoint{std::chrono::nanoseconds{normalizeTs(end_ns[i])}};
+      ev.bar.reason = BarCloseReason::Threshold;
+      events.push_back(ev);
+    }
+    BacktestResult result = runner->runBars(events);
+    if (out)
+    {
+      fillStats(result.computeStats(), out);
+    }
+    return 1;
+  }
 };
 
 static FloxBacktestRunnerImpl* toBacktestRunner(FloxBacktestRunnerHandle h)
@@ -3167,6 +3256,18 @@ void flox_runner_on_book_snapshot(FloxRunnerHandle runner, uint32_t symbol,
                                    exchange_ts_ns);
 }
 
+void flox_runner_on_bar(FloxRunnerHandle runner, uint32_t symbol,
+                        uint8_t bar_type, uint64_t bar_type_param,
+                        double open, double high, double low, double close,
+                        double volume, double buy_volume,
+                        int64_t start_time_ns, int64_t end_time_ns,
+                        uint8_t close_reason)
+{
+  toRunner(runner)->onBar(symbol, bar_type, bar_type_param,
+                          open, high, low, close, volume, buy_volume,
+                          start_time_ns, end_time_ns, close_reason);
+}
+
 // ============================================================
 // FloxLiveEngine C API
 // ============================================================
@@ -3223,6 +3324,19 @@ void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine,
                                             exchange_ts_ns);
 }
 
+void flox_live_engine_publish_bar(FloxLiveEngineHandle engine,
+                                  uint32_t symbol,
+                                  uint8_t bar_type, uint64_t bar_type_param,
+                                  double open, double high, double low, double close,
+                                  double volume, double buy_volume,
+                                  int64_t start_time_ns, int64_t end_time_ns,
+                                  uint8_t close_reason)
+{
+  toLiveEngine(engine)->publishBar(symbol, bar_type, bar_type_param,
+                                   open, high, low, close, volume, buy_volume,
+                                   start_time_ns, end_time_ns, close_reason);
+}
+
 // ============================================================
 // FloxBacktestRunner C API
 // ============================================================
@@ -3262,4 +3376,23 @@ int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle h,
                                    FloxBacktestStats* out)
 {
   return toBacktestRunner(h)->runOhlcv(ts, close, n, symbol, out);
+}
+
+int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle h,
+                                  const int64_t* start_time_ns,
+                                  const int64_t* end_time_ns,
+                                  const double* open,
+                                  const double* high,
+                                  const double* low,
+                                  const double* close,
+                                  const double* volume,
+                                  uint32_t n,
+                                  const char* symbol,
+                                  uint8_t bar_type,
+                                  uint64_t bar_type_param,
+                                  FloxBacktestStats* out)
+{
+  return toBacktestRunner(h)->runFullBars(start_time_ns, end_time_ns,
+                                          open, high, low, close, volume,
+                                          n, symbol, bar_type, bar_type_param, out);
 }
