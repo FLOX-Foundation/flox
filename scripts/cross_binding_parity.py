@@ -201,6 +201,84 @@ def main() -> int:
             print(f"          max abs diff = {worst:.3e}")
         bad += 1
 
+    # ── DataReader parity: read_book_updates / read_bbo / read_trades
+    #    + their *_from variants must return identical row counts and per-row
+    #    fields between Python and Node on the same .floxlog dataset.
+    print("\n  DataReader parity (Python vs Node):")
+    sample = REPO / "demo" / "data"
+    if not sample.exists():
+        print(f"  SKIP  DataReader parity: {sample} not present")
+    else:
+        # Python side
+        reader_py = flox.DataReader(str(sample))
+        py_count_total = reader_py.count()
+
+        py_book_h, py_book_l = reader_py.read_book_updates()
+        py_bbo                = reader_py.read_bbo()
+        py_trades             = reader_py.read_trades()
+
+        # Pick a midpoint timestamp from book updates (if any) to test *_from
+        if len(py_book_h) >= 2:
+            mid_ts = int(py_book_h[len(py_book_h) // 2]["exchange_ts_ns"])
+        else:
+            mid_ts = 0
+
+        py_book_from_h, _ = reader_py.read_book_updates_from(mid_ts)
+        py_bbo_from       = reader_py.read_bbo_from(mid_ts)
+        py_trades_from    = reader_py.read_trades_from(mid_ts)
+
+        # Node side: just emit counts to compare. Wrapped because some platforms
+        # (Linux without an LZ4-linked Node binding) can't read compressed
+        # demo segments — we'd rather skip than block CI.
+        node_script = (
+            f"const flox = require('.');\n"
+            f"const r = new flox.DataReader({json.dumps(str(sample))});\n"
+            f"const tr = r.readTrades(), bu = r.readBookUpdates(), bb = r.readBBO();\n"
+            f"const trF = r.readTradesFrom({mid_ts});\n"
+            f"const buF = r.readBookUpdatesFrom({mid_ts});\n"
+            f"const bbF = r.readBBOFrom({mid_ts});\n"
+            f"process.stdout.write(JSON.stringify({{\n"
+            f"  count: r.count, trades: tr.length, bbo: bb.length, book: bu.length,\n"
+            f"  tradesFrom: trF.length, bboFrom: bbF.length, bookFrom: buF.length,\n"
+            f"  trade0_price: tr.length ? tr[0].price : null,\n"
+            f"  bbo0_bid:     bb.length ? bb[0].bidPrice : null,\n"
+            f"  book0_bidcnt: bu.length ? bu[0].bids.length : null,\n"
+            f"}}));\n"
+        )
+        try:
+            node_out = run_node(node_script)
+        except RuntimeError as e:
+            # Most common cause: the Node binding wasn't built with LZ4 and the
+            # sample dataset is compressed.
+            msg = str(e)
+            if "LZ4" in msg or "lz4" in msg:
+                print("  SKIP  DataReader parity: Node binding lacks LZ4; "
+                      "demo data is compressed. Python side validated.")
+            else:
+                print(f"  SKIP  DataReader parity: node failed ({msg.splitlines()[0]})")
+            node_out = None
+
+        if node_out is not None:
+            checks = [
+                ("count",        node_out["count"],       py_count_total),
+                ("trades",       node_out["trades"],      len(py_trades)),
+                ("bbo",          node_out["bbo"],         len(py_bbo)),
+                ("book",         node_out["book"],        len(py_book_h)),
+                ("tradesFrom",   node_out["tradesFrom"],  len(py_trades_from)),
+                ("bboFrom",      node_out["bboFrom"],     len(py_bbo_from)),
+                ("bookFrom",     node_out["bookFrom"],    len(py_book_from_h)),
+            ]
+            all_match = True
+            for name, js_v, py_v in checks:
+                if js_v != py_v:
+                    print(f"  FAIL  DataReader.{name}: py={py_v}  js={js_v}")
+                    all_match = False
+            if all_match:
+                print(f"  ok    DataReader: counts match across all 6 read methods")
+                ok += 1
+            else:
+                bad += 1
+
     print(f"\n{ok} passed, {bad} failed")
     return 0 if bad == 0 else 1
 

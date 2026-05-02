@@ -260,8 +260,11 @@ events = reader.read_book_updates()
 | `summary()` | `DatasetSummary` | Dataset summary |
 | `reader_stats()` | `ReaderStats` | Read statistics |
 | `read_trades(max_trades=0)` | `List[TradeRecord]` | Read trades (all if `max_trades=0`) |
+| `read_trades_from(start_ts_ns, max_trades=0)` | `List[TradeRecord]` | Same as `read_trades` starting from `start_ts_ns` |
 | `read_bbo(max_events=0)` | `List[BBO]` | Top of book per book update event |
+| `read_bbo_from(start_ts_ns, max_events=0)` | `List[BBO]` | Same as `read_bbo` starting from `start_ts_ns` |
 | `read_book_updates()` | `List[BookUpdate]` | Full depth per book update event |
+| `read_book_updates_from(start_ts_ns)` | `List[BookUpdate]` | Same as `read_book_updates` starting from `start_ts_ns` |
 
 `DatasetSummary` fields: `first_event_ns`, `last_event_ns`, `total_events`, `segment_count`, `total_bytes`, `duration_seconds`.
 

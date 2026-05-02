@@ -39,8 +39,11 @@ const events = reader.readBookUpdates();
 | `summary()` | `{ firstEventNs, lastEventNs, totalEvents, segmentCount, totalBytes, durationSeconds }` | Dataset summary |
 | `stats()` | `{ filesRead, eventsRead, tradesRead, bookUpdatesRead, bytesRead, crcErrors }` | Read statistics |
 | `readTrades(max?)` | trade record array | Read up to `max` trades (all if omitted) |
+| `readTradesFrom(startTsNs, max?)` | trade record array | Same as `readTrades` starting from `startTsNs` |
 | `readBBO(max?)` | BBO record array | Top of book per book update event |
+| `readBBOFrom(startTsNs, max?)` | BBO record array | Same as `readBBO` starting from `startTsNs` |
 | `readBookUpdates()` | book update array | Full depth: each event includes `bids` and `asks` arrays |
+| `readBookUpdatesFrom(startTsNs)` | book update array | Same as `readBookUpdates` starting from `startTsNs` |
 
 Record shapes:
 

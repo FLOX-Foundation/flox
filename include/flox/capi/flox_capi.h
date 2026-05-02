@@ -1001,6 +1001,34 @@ extern "C"
                                               FloxLevel* levels_out,
                                               uint64_t max_levels);
 
+  // Mid-stream seek variants. Each starts iteration from the first event whose
+  // exchange_ts_ns >= start_ts_ns and otherwise behaves like the matching
+  // non-_from reader. Useful when you keep one reader open and want to pull
+  // batches from arbitrary timestamps without re-opening segments. If
+  // start_ts_ns falls before the dataset's first event, behaves like the
+  // non-_from variant.
+
+  uint64_t flox_data_reader_read_trades_from(FloxDataReaderHandle reader,
+                                             int64_t start_ts_ns,
+                                             FloxTradeRecord* trades_out,
+                                             uint64_t max_trades);
+
+  uint64_t flox_data_reader_read_bbo_from(FloxDataReaderHandle reader,
+                                          int64_t start_ts_ns,
+                                          FloxBBO* bbos_out,
+                                          uint64_t max_events);
+
+  uint64_t flox_data_reader_count_book_updates_from(FloxDataReaderHandle reader,
+                                                    int64_t start_ts_ns,
+                                                    uint64_t* total_levels_out);
+
+  uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle reader,
+                                                   int64_t start_ts_ns,
+                                                   FloxBookUpdateHeader* headers_out,
+                                                   uint64_t max_events,
+                                                   FloxLevel* levels_out,
+                                                   uint64_t max_levels);
+
   // ============================================================
   // DataWriter (extras)
   // ============================================================

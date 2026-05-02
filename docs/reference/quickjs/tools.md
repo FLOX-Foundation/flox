@@ -106,6 +106,11 @@ const trades = reader.readTrades(maxTrades = 0);   // 0 = all
 const bbos = reader.readBBO(maxEvents = 0);
 const events = reader.readBookUpdates();
 
+// Mid-stream seek: start from a given timestamp
+const tradesFrom = reader.readTradesFrom(startTsNs, maxTrades = 0);
+const bbosFrom = reader.readBBOFrom(startTsNs, maxEvents = 0);
+const eventsFrom = reader.readBookUpdatesFrom(startTsNs);
+
 reader.destroy();
 ```
 

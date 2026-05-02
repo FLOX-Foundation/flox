@@ -83,6 +83,14 @@ bbos = reader.read_bbo()
 mids = (bbos['bid_price_raw'] + bbos['ask_price_raw']) / 2 / 1e8
 ```
 
+#### `read_bbo_from(start_ts_ns) -> ndarray`
+
+Same as `read_bbo()` but starts iterating from the first event whose `exchange_ts_ns >= start_ts_ns`.
+
+```python
+bbos = reader.read_bbo_from(start_ts_ns=1704067200_000_000_000)
+```
+
 #### `read_book_updates() -> tuple[ndarray, ndarray]`
 
 Read every book update event with full depth. Returns `(headers, levels)`:
@@ -96,6 +104,14 @@ for h in headers:
     off, nb, na = h['level_offset'], h['bid_count'], h['ask_count']
     bids = levels[off : off + nb]
     asks = levels[off + nb : off + nb + na]
+```
+
+#### `read_book_updates_from(start_ts_ns) -> tuple[ndarray, ndarray]`
+
+Same as `read_book_updates()` but starts iterating from the first event whose `exchange_ts_ns >= start_ts_ns`.
+
+```python
+headers, levels = reader.read_book_updates_from(start_ts_ns=1704067200_000_000_000)
 ```
 
 #### `stats() -> dict`
