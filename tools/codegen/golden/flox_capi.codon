@@ -285,8 +285,16 @@ from C import flox_position_group_prune(cobj)
 # ── risk ──
 from C import flox_risk_manager_create(cobj) -> cobj
 from C import flox_risk_manager_destroy(cobj)
+from C import flox_kill_switch_create(cobj) -> cobj
+from C import flox_kill_switch_destroy(cobj)
+from C import flox_order_validator_create(cobj) -> cobj
+from C import flox_order_validator_destroy(cobj)
 from C import flox_live_engine_set_risk_manager(cobj, cobj)
+from C import flox_live_engine_set_kill_switch(cobj, cobj)
+from C import flox_live_engine_set_order_validator(cobj, cobj)
 from C import flox_runner_set_risk_manager(cobj, cobj)
+from C import flox_runner_set_kill_switch(cobj, cobj)
+from C import flox_runner_set_order_validator(cobj, cobj)
 
 # ── segment ──
 from C import flox_segment_validate(cobj) -> u8

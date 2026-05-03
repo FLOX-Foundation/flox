@@ -1460,6 +1460,58 @@ extern "C"
   void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
 
   // ============================================================
+  // KillSwitch — global halt hook. Fires before OrderValidator and
+  // RiskManager (cheap check first); when `check` returns 0, the signal
+  // is dropped and downstream hooks are skipped.
+  //
+  // Use this for "trading halted, no orders allowed" semantics. The
+  // binding manages the trigger state itself; the C API just asks via
+  // the callback. NULL `check` is a no-op.
+  // ============================================================
+
+  typedef uint8_t (*FloxKillSwitchCheckFn)(void* user_data,
+                                           const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxKillSwitchCheckFn check;
+    void* user_data;
+  } FloxKillSwitchCallbacks;
+
+  typedef void* FloxKillSwitchHandle;
+
+  FLOX_EXPORT(group = "risk")
+  FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks);
+  FLOX_EXPORT(group = "risk")
+  void flox_kill_switch_destroy(FloxKillSwitchHandle ks);
+
+  // ============================================================
+  // OrderValidator — sanity check. Fires after KillSwitch and before
+  // RiskManager. When `validate` returns 0, the signal is dropped and
+  // RiskManager is skipped.
+  //
+  // Use this to catch malformed orders (qty <= 0, missing price on a
+  // limit, etc.) before any business-logic evaluation. NULL `validate`
+  // is a no-op.
+  // ============================================================
+
+  typedef uint8_t (*FloxOrderValidatorValidateFn)(void* user_data,
+                                                  const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxOrderValidatorValidateFn validate;
+    void* user_data;
+  } FloxOrderValidatorCallbacks;
+
+  typedef void* FloxOrderValidatorHandle;
+
+  FLOX_EXPORT(group = "risk")
+  FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks);
+  FLOX_EXPORT(group = "risk")
+  void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1501,6 +1553,15 @@ extern "C"
   FLOX_EXPORT(group = "risk")
   void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine,
                                          FloxRiskManagerHandle rm);
+
+  // Attach (or detach with NULL) the global kill-switch and the per-order
+  // validator. Evaluation order is KillSwitch → OrderValidator → RiskManager.
+  FLOX_EXPORT(group = "risk")
+  void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine,
+                                        FloxKillSwitchHandle ks);
+  FLOX_EXPORT(group = "risk")
+  void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
+                                            FloxOrderValidatorHandle ov);
 
   FLOX_EXPORT(group = "floxliveengine_disruptor")
   void flox_live_engine_start(FloxLiveEngineHandle engine);
@@ -1576,6 +1637,15 @@ extern "C"
   FLOX_EXPORT(group = "risk")
   void flox_runner_set_risk_manager(FloxRunnerHandle runner,
                                     FloxRiskManagerHandle rm);
+
+  // Same shape: attach/detach a kill-switch and an order validator.
+  // Evaluation order on every signal: KillSwitch → OrderValidator → RiskManager.
+  FLOX_EXPORT(group = "risk")
+  void flox_runner_set_kill_switch(FloxRunnerHandle runner,
+                                   FloxKillSwitchHandle ks);
+  FLOX_EXPORT(group = "risk")
+  void flox_runner_set_order_validator(FloxRunnerHandle runner,
+                                       FloxOrderValidatorHandle ov);
 
   FLOX_EXPORT(group = "strategyrunner_synchronous")
   void flox_runner_start(FloxRunnerHandle runner);

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 294 functions, 23 handles, 26 structs, 8 callback typedefs, 2 enums, 38 groups.
+**Surface:** 302 functions, 25 handles, 28 structs, 10 callback typedefs, 2 enums, 38 groups.
 
 ## Opaque handles
 
@@ -28,6 +28,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDataRecorderHandle`
 - `FloxPartitionerHandle`
 - `FloxRiskManagerHandle`
+- `FloxKillSwitchHandle`
+- `FloxOrderValidatorHandle`
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
@@ -57,6 +59,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef const double * (*FloxGraphNodeFn)(void *, FloxIndicatorGraphHandle, uint32_t, size_t *);`
 - `typedef void (*FloxOnSignalCallback)(void *, const FloxSignal *);`
 - `typedef uint8_t (*FloxRiskManagerAllowFn)(void *, const FloxSignal *);`
+- `typedef uint8_t (*FloxKillSwitchCheckFn)(void *, const FloxSignal *);`
+- `typedef uint8_t (*FloxOrderValidatorValidateFn)(void *, const FloxSignal *);`
 
 ## Structs
 
@@ -369,6 +373,20 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `allow` | `FloxRiskManagerAllowFn` |
 | `user_data` | `void *` |
 
+### `FloxKillSwitchCallbacks`
+
+| field | type |
+|---|---|
+| `check` | `FloxKillSwitchCheckFn` |
+| `user_data` | `void *` |
+
+### `FloxOrderValidatorCallbacks`
+
+| field | type |
+|---|---|
+| `validate` | `FloxOrderValidatorValidateFn` |
+| `user_data` | `void *` |
+
 ## Functions
 
 ### additional_bar
@@ -678,8 +696,16 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 - `FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks)`
 - `void flox_risk_manager_destroy(FloxRiskManagerHandle rm)`
+- `FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks)`
+- `void flox_kill_switch_destroy(FloxKillSwitchHandle ks)`
+- `FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks)`
+- `void flox_order_validator_destroy(FloxOrderValidatorHandle ov)`
 - `void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm)`
+- `void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine, FloxKillSwitchHandle ks)`
+- `void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine, FloxOrderValidatorHandle ov)`
 - `void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm)`
+- `void flox_runner_set_kill_switch(FloxRunnerHandle runner, FloxKillSwitchHandle ks)`
+- `void flox_runner_set_order_validator(FloxRunnerHandle runner, FloxOrderValidatorHandle ov)`
 
 ### segment
 

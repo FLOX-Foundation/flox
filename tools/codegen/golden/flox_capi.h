@@ -45,6 +45,8 @@ extern "C"
   typedef void* FloxDataRecorderHandle;
   typedef void* FloxPartitionerHandle;
   typedef void* FloxRiskManagerHandle;
+  typedef void* FloxKillSwitchHandle;
+  typedef void* FloxOrderValidatorHandle;
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
@@ -350,6 +352,8 @@ extern "C"
   typedef const double* (*FloxGraphNodeFn)(void*, FloxIndicatorGraphHandle, uint32_t, size_t*);
   typedef void (*FloxOnSignalCallback)(void*, const FloxSignal*);
   typedef uint8_t (*FloxRiskManagerAllowFn)(void*, const FloxSignal*);
+  typedef uint8_t (*FloxKillSwitchCheckFn)(void*, const FloxSignal*);
+  typedef uint8_t (*FloxOrderValidatorValidateFn)(void*, const FloxSignal*);
 
   // ============================================================
   // Callback bundles
@@ -370,6 +374,18 @@ extern "C"
     FloxRiskManagerAllowFn allow;
     void* user_data;
   } FloxRiskManagerCallbacks;
+
+  typedef struct
+  {
+    FloxKillSwitchCheckFn check;
+    void* user_data;
+  } FloxKillSwitchCallbacks;
+
+  typedef struct
+  {
+    FloxOrderValidatorValidateFn validate;
+    void* user_data;
+  } FloxOrderValidatorCallbacks;
 
   // ============================================================
   // Fixed-point conversion helpers
@@ -881,8 +897,16 @@ extern "C"
 
   FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
   void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
+  FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks);
+  void flox_kill_switch_destroy(FloxKillSwitchHandle ks);
+  FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks);
+  void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
   void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm);
+  void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine, FloxKillSwitchHandle ks);
+  void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine, FloxOrderValidatorHandle ov);
   void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm);
+  void flox_runner_set_kill_switch(FloxRunnerHandle runner, FloxKillSwitchHandle ks);
+  void flox_runner_set_order_validator(FloxRunnerHandle runner, FloxOrderValidatorHandle ov);
 
   // ============================================================
   // Segment
