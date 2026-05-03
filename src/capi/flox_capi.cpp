@@ -2809,16 +2809,35 @@ struct FloxRiskManagerImpl
   FloxRiskManagerCallbacks cb;
 };
 
+// Same shape, different intent. See header docs for the evaluation order.
+struct FloxKillSwitchImpl
+{
+  FloxKillSwitchCallbacks cb;
+};
+
+struct FloxOrderValidatorImpl
+{
+  FloxOrderValidatorCallbacks cb;
+};
+
 class RunnerSignalHandler : public ISignalHandler
 {
  public:
   RunnerSignalHandler(FloxOnSignalCallback cb, void* ud) : _cb(cb), _ud(ud) {}
 
-  // Set or clear the optional pre-trade risk manager. Atomic-relaxed swap;
-  // safe to call from any thread.
+  // Set or clear the optional pre-trade hooks. Atomic acquire/release swap;
+  // safe to call from any thread while consumer threads are active.
   void setRiskManager(FloxRiskManagerImpl* rm) noexcept
   {
     _risk.store(rm, std::memory_order_release);
+  }
+  void setKillSwitch(FloxKillSwitchImpl* ks) noexcept
+  {
+    _kill.store(ks, std::memory_order_release);
+  }
+  void setOrderValidator(FloxOrderValidatorImpl* ov) noexcept
+  {
+    _validator.store(ov, std::memory_order_release);
   }
 
   void onSignal(const Signal& sig) override
@@ -2876,10 +2895,28 @@ class RunnerSignalHandler : public ISignalHandler
         break;
     }
 
-    // Pre-trade risk gate. Drop the signal if the registered risk manager
-    // returns 0; allow if no risk manager is set or it returns non-zero.
-    auto* rm = _risk.load(std::memory_order_acquire);
-    if (rm != nullptr && rm->cb.allow != nullptr)
+    // Pre-trade gates, evaluated in order: KillSwitch → OrderValidator →
+    // RiskManager. Each is optional; an unset hook or a NULL fn pointer
+    // is a no-op (let the signal through). Returning 0 drops the signal
+    // and skips the remaining hooks.
+    if (auto* ks = _kill.load(std::memory_order_acquire);
+        ks != nullptr && ks->cb.check != nullptr)
+    {
+      if (ks->cb.check(ks->cb.user_data, &fs) == 0)
+      {
+        return;
+      }
+    }
+    if (auto* ov = _validator.load(std::memory_order_acquire);
+        ov != nullptr && ov->cb.validate != nullptr)
+    {
+      if (ov->cb.validate(ov->cb.user_data, &fs) == 0)
+      {
+        return;
+      }
+    }
+    if (auto* rm = _risk.load(std::memory_order_acquire);
+        rm != nullptr && rm->cb.allow != nullptr)
     {
       if (rm->cb.allow(rm->cb.user_data, &fs) == 0)
       {
@@ -2894,6 +2931,8 @@ class RunnerSignalHandler : public ISignalHandler
   FloxOnSignalCallback _cb;
   void* _ud;
   std::atomic<FloxRiskManagerImpl*> _risk{nullptr};
+  std::atomic<FloxKillSwitchImpl*> _kill{nullptr};
+  std::atomic<FloxOrderValidatorImpl*> _validator{nullptr};
 };
 
 struct FloxRunnerImpl
@@ -2915,6 +2954,11 @@ struct FloxRunnerImpl
   }
 
   void setRiskManager(FloxRiskManagerImpl* rm) { handler.setRiskManager(rm); }
+  void setKillSwitch(FloxKillSwitchImpl* ks) { handler.setKillSwitch(ks); }
+  void setOrderValidator(FloxOrderValidatorImpl* ov)
+  {
+    handler.setOrderValidator(ov);
+  }
 
   void start()
   {
@@ -3025,10 +3069,12 @@ struct FloxLiveEngineImpl
   std::vector<std::unique_ptr<RunnerSignalHandler>> handlers;
   std::vector<BridgeStrategy*> strategies;
 
-  // Latest risk manager attached to this engine. Stored here (rather than
-  // only on the handlers) so newly-added strategies inherit the existing
-  // setting. Caller owns the FloxRiskManagerImpl; we hold a non-owning ptr.
+  // Latest pre-trade hooks attached to this engine. Stored here (rather
+  // than only on the handlers) so newly-added strategies inherit the
+  // existing setting. Caller owns the *Impl objects; we hold non-owning ptrs.
   std::atomic<FloxRiskManagerImpl*> riskManager{nullptr};
+  std::atomic<FloxKillSwitchImpl*> killSwitch{nullptr};
+  std::atomic<FloxOrderValidatorImpl*> orderValidator{nullptr};
 
   explicit FloxLiveEngineImpl(SymbolRegistry* reg)
       : registry(reg),
@@ -3042,6 +3088,8 @@ struct FloxLiveEngineImpl
   {
     auto h = std::make_unique<RunnerSignalHandler>(cb, ud);
     h->setRiskManager(riskManager.load(std::memory_order_acquire));
+    h->setKillSwitch(killSwitch.load(std::memory_order_acquire));
+    h->setOrderValidator(orderValidator.load(std::memory_order_acquire));
     s->setSignalHandler(h.get());
     handlers.push_back(std::move(h));
     tradeBus->subscribe(s);
@@ -3050,14 +3098,30 @@ struct FloxLiveEngineImpl
     strategies.push_back(s);
   }
 
-  // Update the risk manager on every existing handler and remember it so
-  // that subsequently-added strategies inherit it.
+  // Update the pre-trade hooks on every existing handler and remember the
+  // setting so subsequently-added strategies inherit it.
   void setRiskManager(FloxRiskManagerImpl* rm)
   {
     riskManager.store(rm, std::memory_order_release);
     for (auto& h : handlers)
     {
       h->setRiskManager(rm);
+    }
+  }
+  void setKillSwitch(FloxKillSwitchImpl* ks)
+  {
+    killSwitch.store(ks, std::memory_order_release);
+    for (auto& h : handlers)
+    {
+      h->setKillSwitch(ks);
+    }
+  }
+  void setOrderValidator(FloxOrderValidatorImpl* ov)
+  {
+    orderValidator.store(ov, std::memory_order_release);
+    for (auto& h : handlers)
+    {
+      h->setOrderValidator(ov);
     }
   }
 
@@ -3420,6 +3484,28 @@ void flox_risk_manager_destroy(FloxRiskManagerHandle rm)
   delete static_cast<FloxRiskManagerImpl*>(rm);
 }
 
+FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks)
+{
+  auto* ks = new FloxKillSwitchImpl{callbacks};
+  return static_cast<FloxKillSwitchHandle>(ks);
+}
+
+void flox_kill_switch_destroy(FloxKillSwitchHandle ks)
+{
+  delete static_cast<FloxKillSwitchImpl*>(ks);
+}
+
+FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks)
+{
+  auto* ov = new FloxOrderValidatorImpl{callbacks};
+  return static_cast<FloxOrderValidatorHandle>(ov);
+}
+
+void flox_order_validator_destroy(FloxOrderValidatorHandle ov)
+{
+  delete static_cast<FloxOrderValidatorImpl*>(ov);
+}
+
 FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry,
                                     FloxOnSignalCallback on_signal,
                                     void* user_data)
@@ -3441,6 +3527,17 @@ void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strate
 void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm)
 {
   toRunner(runner)->setRiskManager(static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
+}
+
+void flox_runner_set_kill_switch(FloxRunnerHandle runner, FloxKillSwitchHandle ks)
+{
+  toRunner(runner)->setKillSwitch(static_cast<capi_impl::FloxKillSwitchImpl*>(ks));
+}
+
+void flox_runner_set_order_validator(FloxRunnerHandle runner, FloxOrderValidatorHandle ov)
+{
+  toRunner(runner)->setOrderValidator(
+      static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
 }
 
 void flox_runner_start(FloxRunnerHandle runner)
@@ -3511,6 +3608,19 @@ void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskMana
 {
   toLiveEngine(engine)->setRiskManager(
       static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
+}
+
+void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine, FloxKillSwitchHandle ks)
+{
+  toLiveEngine(engine)->setKillSwitch(
+      static_cast<capi_impl::FloxKillSwitchImpl*>(ks));
+}
+
+void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
+                                          FloxOrderValidatorHandle ov)
+{
+  toLiveEngine(engine)->setOrderValidator(
+      static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
 }
 
 void flox_live_engine_start(FloxLiveEngineHandle engine)

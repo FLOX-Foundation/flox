@@ -160,6 +160,8 @@ flox_indicator_sma|void|const double *|size_t|size_t|double *
 flox_indicator_stochastic|void|const double *|const double *|const double *|size_t|size_t|size_t|double *|double *
 flox_indicator_tema|void|const double *|size_t|size_t|double *
 flox_indicator_vwap|void|const double *|const double *|size_t|size_t|double *
+flox_kill_switch_create|FloxKillSwitchHandle|FloxKillSwitchCallbacks
+flox_kill_switch_destroy|void|FloxKillSwitchHandle
 flox_l3_book_add_order|int32_t|FloxL3BookHandle|uint64_t|double|double|uint8_t
 flox_l3_book_ask_at_price|double|FloxL3BookHandle|double
 flox_l3_book_best_ask|uint8_t|FloxL3BookHandle|double *
@@ -176,6 +178,8 @@ flox_live_engine_destroy|void|FloxLiveEngineHandle
 flox_live_engine_publish_bar|void|FloxLiveEngineHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
 flox_live_engine_publish_book_snapshot|void|FloxLiveEngineHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t|int64_t
 flox_live_engine_publish_trade|void|FloxLiveEngineHandle|uint32_t|double|double|uint8_t|int64_t
+flox_live_engine_set_kill_switch|void|FloxLiveEngineHandle|FloxKillSwitchHandle
+flox_live_engine_set_order_validator|void|FloxLiveEngineHandle|FloxOrderValidatorHandle
 flox_live_engine_set_risk_manager|void|FloxLiveEngineHandle|FloxRiskManagerHandle
 flox_live_engine_start|void|FloxLiveEngineHandle
 flox_live_engine_stop|void|FloxLiveEngineHandle
@@ -201,6 +205,8 @@ flox_order_tracker_on_filled|uint8_t|FloxOrderTrackerHandle|uint64_t|double
 flox_order_tracker_on_submitted|uint8_t|FloxOrderTrackerHandle|uint64_t|uint32_t|uint8_t|double|double
 flox_order_tracker_prune|void|FloxOrderTrackerHandle
 flox_order_tracker_total_count|uint32_t|FloxOrderTrackerHandle
+flox_order_validator_create|FloxOrderValidatorHandle|FloxOrderValidatorCallbacks
+flox_order_validator_destroy|void|FloxOrderValidatorHandle
 flox_partitioner_by_calendar|uint32_t|FloxPartitionerHandle|uint8_t|int64_t|FloxPartition *|uint32_t
 flox_partitioner_by_duration|uint32_t|FloxPartitionerHandle|int64_t|int64_t|FloxPartition *|uint32_t
 flox_partitioner_by_event_count|uint32_t|FloxPartitionerHandle|uint32_t|FloxPartition *|uint32_t
@@ -245,6 +251,8 @@ flox_runner_destroy|void|FloxRunnerHandle
 flox_runner_on_bar|void|FloxRunnerHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
 flox_runner_on_book_snapshot|void|FloxRunnerHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t|int64_t
 flox_runner_on_trade|void|FloxRunnerHandle|uint32_t|double|double|uint8_t|int64_t
+flox_runner_set_kill_switch|void|FloxRunnerHandle|FloxKillSwitchHandle
+flox_runner_set_order_validator|void|FloxRunnerHandle|FloxOrderValidatorHandle
 flox_runner_set_risk_manager|void|FloxRunnerHandle|FloxRiskManagerHandle
 flox_runner_start|void|FloxRunnerHandle
 flox_runner_stop|void|FloxRunnerHandle

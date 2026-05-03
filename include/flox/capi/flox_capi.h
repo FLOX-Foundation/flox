@@ -1177,6 +1177,46 @@ extern "C"
   void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
 
   // ============================================================
+  // KillSwitch — global halt hook. Fires before OrderValidator and
+  // RiskManager. When `check` returns 0, the signal is dropped and
+  // downstream hooks are skipped. NULL `check` is a no-op.
+  // ============================================================
+
+  typedef uint8_t (*FloxKillSwitchCheckFn)(void* user_data,
+                                           const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxKillSwitchCheckFn check;
+    void* user_data;
+  } FloxKillSwitchCallbacks;
+
+  typedef void* FloxKillSwitchHandle;
+
+  FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks);
+  void flox_kill_switch_destroy(FloxKillSwitchHandle ks);
+
+  // ============================================================
+  // OrderValidator — sanity check. Fires after KillSwitch, before
+  // RiskManager. When `validate` returns 0, the signal is dropped and
+  // RiskManager is skipped. NULL `validate` is a no-op.
+  // ============================================================
+
+  typedef uint8_t (*FloxOrderValidatorValidateFn)(void* user_data,
+                                                  const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxOrderValidatorValidateFn validate;
+    void* user_data;
+  } FloxOrderValidatorCallbacks;
+
+  typedef void* FloxOrderValidatorHandle;
+
+  FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks);
+  void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1206,6 +1246,13 @@ extern "C"
   // start(); the engine takes a non-owning reference.
   void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine,
                                          FloxRiskManagerHandle rm);
+
+  // KillSwitch / OrderValidator. Evaluation order on every signal:
+  // KillSwitch → OrderValidator → RiskManager.
+  void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine,
+                                        FloxKillSwitchHandle ks);
+  void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
+                                            FloxOrderValidatorHandle ov);
 
   // Attach a strategy to both TradeBus and BookUpdateBus.
   // on_signal is called from the consumer thread when the strategy emits an order.
@@ -1279,6 +1326,13 @@ extern "C"
   // Same semantics as flox_live_engine_set_risk_manager.
   void flox_runner_set_risk_manager(FloxRunnerHandle runner,
                                     FloxRiskManagerHandle rm);
+
+  // KillSwitch / OrderValidator setters. Evaluation order on every signal:
+  // KillSwitch → OrderValidator → RiskManager.
+  void flox_runner_set_kill_switch(FloxRunnerHandle runner,
+                                   FloxKillSwitchHandle ks);
+  void flox_runner_set_order_validator(FloxRunnerHandle runner,
+                                       FloxOrderValidatorHandle ov);
 
   void flox_runner_start(FloxRunnerHandle runner);
   void flox_runner_stop(FloxRunnerHandle runner);
