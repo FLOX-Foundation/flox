@@ -15,7 +15,7 @@ class ATR:
         ...
     def reset(self) -> None:
         ...
-    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -24,7 +24,7 @@ class ATR:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class AutoCorrelation:
     def __init__(self, window: typing.SupportsInt | typing.SupportsIndex, lag: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -33,7 +33,7 @@ class AutoCorrelation:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -42,12 +42,12 @@ class AutoCorrelation:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class BacktestResult:
     def __init__(self, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001, use_percentage_fee: bool = True, fixed_fee_per_trade: typing.SupportsFloat | typing.SupportsIndex = 0.0, risk_free_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, annualization_factor: typing.SupportsFloat | typing.SupportsIndex = 252.0) -> None:
         ...
-    def equity_curve(self) -> numpy.typing.NDArray[...]:
+    def equity_curve(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Return equity curve as numpy structured array
         """
@@ -61,7 +61,7 @@ class BacktestResult:
         """
         Compute stats as a dict (includes new metrics: streaks, durations, TWR)
         """
-    def trades(self) -> numpy.typing.NDArray[...]:
+    def trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Return trade records as numpy structured array
         """
@@ -163,25 +163,25 @@ class Bollinger:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
         ...
     @property
-    def lower(self) -> typing.Any:
+    def lower(self) -> float | None:
         ...
     @property
-    def middle(self) -> typing.Any:
+    def middle(self) -> float | None:
         ...
     @property
     def ready(self) -> bool:
         ...
     @property
-    def upper(self) -> typing.Any:
+    def upper(self) -> float | None:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class CCI:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex = 20) -> None:
@@ -190,7 +190,7 @@ class CCI:
         ...
     def reset(self) -> None:
         ...
-    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -199,7 +199,7 @@ class CCI:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class CompositeBookMatrix:
     """
@@ -256,7 +256,7 @@ class Correlation:
         ...
     def reset(self) -> None:
         ...
-    def update(self, x: typing.SupportsFloat | typing.SupportsIndex, y: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, x: typing.SupportsFloat | typing.SupportsIndex, y: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -265,7 +265,7 @@ class Correlation:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class DEMA:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -274,7 +274,7 @@ class DEMA:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -283,7 +283,7 @@ class DEMA:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class DataReader:
     def __init__(self, data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None) -> None:
@@ -294,11 +294,11 @@ class DataReader:
         """
         Return the total number of events
         """
-    def read_bbo(self) -> numpy.typing.NDArray[...]:
+    def read_bbo(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Read best bid/ask from every book update as a numpy structured array (PyBBO dtype)
         """
-    def read_bbo_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+    def read_bbo_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Read BBO starting from a given timestamp (nanoseconds)
         """
@@ -310,11 +310,11 @@ class DataReader:
         """
         Read book updates starting from a given timestamp (nanoseconds). Same return shape as read_book_updates().
         """
-    def read_trades(self) -> numpy.typing.NDArray[...]:
+    def read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Read all trades as a numpy structured array (PyTrade dtype)
         """
-    def read_trades_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+    def read_trades_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Read trades starting from a given timestamp (nanoseconds)
         """
@@ -407,7 +407,7 @@ class EMA:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -416,7 +416,7 @@ class EMA:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Engine:
     def __init__(self, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001) -> None:
@@ -518,7 +518,7 @@ class KAMA:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -527,7 +527,7 @@ class KAMA:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Kurtosis:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -536,7 +536,7 @@ class Kurtosis:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -545,7 +545,7 @@ class Kurtosis:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class L3Book:
     def __init__(self) -> None:
@@ -575,25 +575,25 @@ class MACD:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
         ...
     @property
-    def histogram(self) -> typing.Any:
+    def histogram(self) -> float | None:
         ...
     @property
-    def line(self) -> typing.Any:
+    def line(self) -> float | None:
         ...
     @property
     def ready(self) -> bool:
         ...
     @property
-    def signal(self) -> typing.Any:
+    def signal(self) -> float | None:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class MarketProfile:
     """
@@ -726,7 +726,7 @@ class ParkinsonVol:
         ...
     def reset(self) -> None:
         ...
-    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -735,7 +735,7 @@ class ParkinsonVol:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Partitioner:
     def __init__(self, data_dir: str) -> None:
@@ -845,7 +845,7 @@ class RMA:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -854,7 +854,7 @@ class RMA:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class RSI:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -863,7 +863,7 @@ class RSI:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -872,7 +872,7 @@ class RSI:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class RogersSatchellVol:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -881,7 +881,7 @@ class RogersSatchellVol:
         ...
     def reset(self) -> None:
         ...
-    def update(self, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -890,7 +890,7 @@ class RogersSatchellVol:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class RollingZScore:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -899,7 +899,7 @@ class RollingZScore:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -908,7 +908,7 @@ class RollingZScore:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Runner:
     def __init__(self, registry: SymbolRegistry, on_signal: typing.Any, threaded: bool = False) -> None:
@@ -932,7 +932,7 @@ class SMA:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -941,7 +941,7 @@ class SMA:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class ShannonEntropy:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex, bins: typing.SupportsInt | typing.SupportsIndex = 10) -> None:
@@ -950,7 +950,7 @@ class ShannonEntropy:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -959,7 +959,7 @@ class ShannonEntropy:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Signal:
     order_type: str
@@ -1046,7 +1046,7 @@ class SimulatedExecutor:
         ...
     def cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
-    def fills(self) -> numpy.typing.NDArray[...]:
+    def fills(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Get all fills as numpy structured array
         """
@@ -1100,7 +1100,7 @@ class Skewness:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -1109,7 +1109,7 @@ class Skewness:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Slope:
     def __init__(self, length: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -1118,7 +1118,7 @@ class Slope:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -1127,7 +1127,7 @@ class Slope:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Stats:
     def __getitem__(self, arg0: str) -> typing.Any:
@@ -1203,22 +1203,22 @@ class Stochastic:
         ...
     def reset(self) -> None:
         ...
-    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
         ...
     @property
-    def d(self) -> typing.Any:
+    def d(self) -> float | None:
         ...
     @property
-    def k(self) -> typing.Any:
+    def k(self) -> float | None:
         ...
     @property
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class Strategy:
     def __init__(self, symbols: list) -> None:
@@ -1321,7 +1321,7 @@ class Strategy:
     def symbols(self) -> list[int]:
         ...
 class Symbol:
-    def __eq__(self, arg0: Symbol) -> bool:
+    def __eq__(self, arg0: object) -> bool:
         ...
     def __hash__(self) -> int:
         ...
@@ -1413,7 +1413,7 @@ class TEMA:
         ...
     def reset(self) -> None:
         ...
-    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> typing.Any:
+    def update(self, value: typing.SupportsFloat | typing.SupportsIndex) -> float | None:
         ...
     @property
     def count(self) -> int:
@@ -1422,7 +1422,7 @@ class TEMA:
     def ready(self) -> bool:
         ...
     @property
-    def value(self) -> typing.Any:
+    def value(self) -> float | None:
         ...
 class TradeData:
     is_buy: bool
@@ -1486,27 +1486,27 @@ def adf(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], max_lag:
     ...
 def adx(high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], period: typing.SupportsInt | typing.SupportsIndex = 14) -> dict:
     ...
-def aggregate_heikin_ashi_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], interval_seconds: typing.SupportsFloat | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+def aggregate_heikin_ashi_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], interval_seconds: typing.SupportsFloat | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
     """
     Aggregate trades into Heikin-Ashi bars
     """
-def aggregate_range_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], range_size: typing.SupportsFloat | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+def aggregate_range_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], range_size: typing.SupportsFloat | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
     """
     Aggregate trades into range bars
     """
-def aggregate_renko_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], brick_size: typing.SupportsFloat | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+def aggregate_renko_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], brick_size: typing.SupportsFloat | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
     """
     Aggregate trades into renko bars
     """
-def aggregate_tick_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], tick_count: typing.SupportsInt | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+def aggregate_tick_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], tick_count: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
     """
     Aggregate trades into tick bars
     """
-def aggregate_time_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], interval_seconds: typing.SupportsFloat | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+def aggregate_time_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], interval_seconds: typing.SupportsFloat | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
     """
     Aggregate trades into time bars
     """
-def aggregate_volume_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], volume_threshold: typing.SupportsFloat | typing.SupportsIndex) -> numpy.typing.NDArray[...]:
+def aggregate_volume_bars(timestamps: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], is_buy: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8], volume_threshold: typing.SupportsFloat | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
     """
     Aggregate trades into volume bars
     """

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 #include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
@@ -68,20 +69,18 @@ py::array_t<double> computeSingle(const Indicator& ind, contiguous_double input)
   return result;
 }
 
-inline py::object optVal(double v, bool ready)
+// Optional<float> wrapper used by streaming indicator bindings: returns
+// std::nullopt when the indicator is not yet ready (`value()` is NaN).
+// pybind11 maps std::optional<double> to `Optional[float]` in stubs, so
+// the type checker sees the real return shape instead of `Any`.
+inline std::optional<double> optFloat(double v)
 {
-  return ready ? py::cast(v) : py::none();
+  return std::isnan(v) ? std::nullopt : std::optional<double>{v};
 }
 
 // ── Helper templates: bind a C++ indicator class with both compute() and
 // streaming methods (update/value/ready/reset) on the same Python type.
 // One indicator class → one Python type → both APIs on the same instance.
-
-// Optional<float> wrapper: returns None if the streaming value is NaN.
-inline py::object optFloat(double v)
-{
-  return std::isnan(v) ? py::none() : py::cast(v);
-}
 
 template <typename T>
 auto bindSingleIndicator(py::module_& m, const char* name)
@@ -102,7 +101,7 @@ auto bindSingleIndicator(py::module_& m, const char* name)
              std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
              return out;
            })
-      .def("update", [](T& self, double v) -> py::object
+      .def("update", [](T& self, double v) -> std::optional<double>
            { self.update(v); return optFloat(self.value()); }, py::arg("value"))
       .def("reset", &T::reset)
       .def_property_readonly("value", [](const T& self)
@@ -138,7 +137,7 @@ auto bindBarIndicator(py::module_& m, const char* name)
              std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
              return out;
            })
-      .def("update", [](T& self, double high, double low, double close) -> py::object
+      .def("update", [](T& self, double high, double low, double close) -> std::optional<double>
            { self.update(high, low, close); return optFloat(self.value()); }, py::arg("high"), py::arg("low"), py::arg("close"))
       .def("reset", &T::reset)
       .def_property_readonly("value", [](const T& self)
@@ -170,7 +169,7 @@ auto bindHighLowIndicator(py::module_& m, const char* name)
              std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
              return out;
            })
-      .def("update", [](T& self, double high, double low) -> py::object
+      .def("update", [](T& self, double high, double low) -> std::optional<double>
            { self.update(high, low); return optFloat(self.value()); }, py::arg("high"), py::arg("low"))
       .def("reset", &T::reset)
       .def_property_readonly("value", [](const T& self)
@@ -209,7 +208,7 @@ auto bindOhlcIndicator(py::module_& m, const char* name)
              std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
              return out;
            })
-      .def("update", [](T& self, double open, double high, double low, double close) -> py::object
+      .def("update", [](T& self, double open, double high, double low, double close) -> std::optional<double>
            { self.update(open, high, low, close); return optFloat(self.value()); }, py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"))
       .def("reset", &T::reset)
       .def_property_readonly("value", [](const T& self)
@@ -241,7 +240,7 @@ auto bindPairIndicator(py::module_& m, const char* name)
              std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
              return out;
            })
-      .def("update", [](T& self, double x, double y) -> py::object
+      .def("update", [](T& self, double x, double y) -> std::optional<double>
            { self.update(x, y); return optFloat(self.value()); }, py::arg("x"), py::arg("y"))
       .def("reset", &T::reset)
       .def_property_readonly("value", [](const T& self)
@@ -833,7 +832,7 @@ inline void bindIndicators(py::module_& m)
              d["histogram"] = hist;
              return d;
            })
-      .def("update", [](flox::indicator::MACD& self, double v) -> py::object
+      .def("update", [](flox::indicator::MACD& self, double v) -> std::optional<double>
            { self.update(v); return optFloat(self.value()); }, py::arg("value"))
       .def("reset", &flox::indicator::MACD::reset)
       .def_property_readonly("value", [](const flox::indicator::MACD& self)
@@ -870,7 +869,7 @@ inline void bindIndicators(py::module_& m)
              d["lower"] = lower;
              return d;
            })
-      .def("update", [](flox::indicator::Bollinger& self, double v) -> py::object
+      .def("update", [](flox::indicator::Bollinger& self, double v) -> std::optional<double>
            { self.update(v); return optFloat(self.value()); }, py::arg("value"))
       .def("reset", &flox::indicator::Bollinger::reset)
       .def_property_readonly("value", [](const flox::indicator::Bollinger& self)
@@ -908,7 +907,7 @@ inline void bindIndicators(py::module_& m)
              d["d"] = dArr;
              return d;
            })
-      .def("update", [](flox::indicator::Stochastic& self, double high, double low, double close) -> py::object
+      .def("update", [](flox::indicator::Stochastic& self, double high, double low, double close) -> std::optional<double>
            { self.update(high, low, close); return optFloat(self.value()); }, py::arg("high"), py::arg("low"), py::arg("close"))
       .def("reset", &flox::indicator::Stochastic::reset)
       .def_property_readonly("value", [](const flox::indicator::Stochastic& self)

@@ -69,6 +69,38 @@ foreach(opt_file IN LISTS FLOX_PY_OPTIONAL_EXT_STUBS)
   endif()
 endforeach()
 
+# A separate ALL target keeps the build-tree stubs in sync with source
+# even when the .so itself does not need rebuilding (editing only the
+# stubs after `cmake --build` would otherwise leave stale .pyi in the
+# build tree, causing CI's `gen_pyi_stubs.py --check` to compare against
+# an outdated copy).
+set(FLOX_PY_BUILD_STUB_TARGETS "")
+foreach(opt_file IN LISTS FLOX_PY_OPTIONAL_ROOT_STUBS)
+  if(EXISTS ${opt_file})
+    get_filename_component(basename ${opt_file} NAME)
+    set(dst ${CMAKE_CURRENT_BINARY_DIR}/flox_py/${basename})
+    add_custom_command(OUTPUT ${dst}
+      COMMAND ${CMAKE_COMMAND} -E copy ${opt_file} ${dst}
+      DEPENDS ${opt_file}
+    )
+    list(APPEND FLOX_PY_BUILD_STUB_TARGETS ${dst})
+  endif()
+endforeach()
+foreach(opt_file IN LISTS FLOX_PY_OPTIONAL_EXT_STUBS)
+  if(EXISTS ${opt_file})
+    get_filename_component(basename ${opt_file} NAME)
+    set(dst ${CMAKE_CURRENT_BINARY_DIR}/flox_py/_flox_py/${basename})
+    add_custom_command(OUTPUT ${dst}
+      COMMAND ${CMAKE_COMMAND} -E copy ${opt_file} ${dst}
+      DEPENDS ${opt_file}
+    )
+    list(APPEND FLOX_PY_BUILD_STUB_TARGETS ${dst})
+  endif()
+endforeach()
+if(FLOX_PY_BUILD_STUB_TARGETS)
+  add_custom_target(_flox_py_stubs ALL DEPENDS ${FLOX_PY_BUILD_STUB_TARGETS})
+endif()
+
 install(TARGETS _flox_py LIBRARY DESTINATION flox_py COMPONENT python_module)
 install(FILES ${FLOX_PY_REQUIRED_FILES}
         DESTINATION flox_py COMPONENT python_module)

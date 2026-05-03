@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -96,6 +97,38 @@ def sort_import_lines(text: str) -> str:
     return "".join(out)
 
 
+# `numpy.typing.NDArray[X]` annotations where `X` is either `...`
+# (stubgen's placeholder for a type it could not resolve) or `PyExtBar`
+# (a numpy structured-dtype struct that has no Python class) confuse
+# mypy: it reports `Unexpected "..."` / undefined name and silently
+# degrades the surrounding class to `Any`. Rewrite both shapes to a
+# generic structured-array annotation that mypy parses cleanly.
+_NDARRAY_VOID = "numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]"
+_NDARRAY_REWRITES = (
+    ("numpy.typing.NDArray[...]", _NDARRAY_VOID),
+    ("numpy.typing.NDArray[PyExtBar]", _NDARRAY_VOID),
+)
+
+
+def fix_invalid_annotations(text: str) -> str:
+    for old, new in _NDARRAY_REWRITES:
+        text = text.replace(old, new)
+    # pybind11 binds `__eq__(self, other: T)` literally as `T`, but
+    # Python's data model requires `object` (Liskov). mypy flags this as
+    # an override violation. Every dunder eq we've seen is a single-arg
+    # comparator, so widening the parameter to `object` is safe.
+    text = re.sub(
+        r"def __eq__\(self, arg0: \w+\) -> bool:",
+        "def __eq__(self, arg0: object) -> bool:",
+        text,
+    )
+    return text
+
+
+def post_process(text: str) -> str:
+    return fix_invalid_annotations(sort_import_lines(text))
+
+
 def run_stubgen(out_dir: Path) -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{BUILD_PYTHON}{os.pathsep}{env.get('PYTHONPATH', '')}"
@@ -144,7 +177,7 @@ def main() -> int:
             ok = True
             for rel in STUB_FILES:
                 committed = PKG_SRC / rel
-                generated = sort_import_lines((gen_pkg / rel).read_text())
+                generated = post_process((gen_pkg / rel).read_text())
                 current = committed.read_text() if committed.exists() else ""
                 if current != generated:
                     print(
@@ -164,7 +197,7 @@ def main() -> int:
         for rel in STUB_FILES:
             dst = PKG_SRC / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_text(sort_import_lines((gen_pkg / rel).read_text()))
+            dst.write_text(post_process((gen_pkg / rel).read_text()))
             print(
                 f"wrote {dst.relative_to(REPO)} "
                 f"({dst.stat().st_size:,} bytes)"
