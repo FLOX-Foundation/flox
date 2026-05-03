@@ -271,6 +271,7 @@ flox_segment_split_p|void|const char *|const char *|uint8_t|int64_t|uint64_t|voi
 flox_segment_validate|uint8_t|const char *
 flox_segment_validate_full|FloxSegmentValidation|const char *|uint8_t|uint8_t
 flox_segment_validate_full_p|void|const char *|uint8_t|uint8_t|void *
+flox_set_log_callback|void|FloxLogCallback|void *
 flox_stat_bootstrap_ci|void|const double *|size_t|double|uint32_t|double *|double *|double *
 flox_stat_correlation|double|const double *|const double *|size_t
 flox_stat_permutation_test|double|const double *|size_t|const double *|size_t|uint32_t
