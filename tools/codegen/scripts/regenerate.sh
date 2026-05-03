@@ -13,8 +13,10 @@ if [[ ! -x "$PY" ]]; then
 fi
 
 SPEC="$REPO/include/flox/capi/flox_capi_spec.hpp"
+LIVE="$REPO/include/flox/capi/flox_capi.h"
 
-PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-capi  --spec "$SPEC" --out "$TOOL/golden/flox_capi.h"
-PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-codon --spec "$SPEC" --out "$TOOL/golden/flox_capi.codon"
-PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-llms  --spec "$SPEC" --out "$TOOL/golden/flox_capi.md"
-echo "regenerated golden/{flox_capi.h, flox_capi.codon, flox_capi.md}"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-capi    --spec "$SPEC"   --out "$TOOL/golden/flox_capi.h"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-codon   --spec "$SPEC"   --out "$TOOL/golden/flox_capi.codon"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-llms    --spec "$SPEC"   --out "$TOOL/golden/flox_capi.md"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli abi-snapshot --header "$LIVE" --out "$REPO/.api/c-api.snapshot"
+echo "regenerated golden/{flox_capi.h, flox_capi.codon, flox_capi.md} + .api/c-api.snapshot"
