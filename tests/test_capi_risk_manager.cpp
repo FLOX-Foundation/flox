@@ -62,11 +62,17 @@ struct RunnerCtx
   ~RunnerCtx()
   {
     if (runner)
+    {
       flox_runner_destroy(runner);
+    }
     if (strategy)
+    {
       flox_strategy_destroy(strategy);
+    }
     if (registry)
+    {
       flox_registry_destroy(registry);
+    }
   }
 };
 
