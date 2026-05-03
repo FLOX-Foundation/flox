@@ -111,6 +111,10 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
         ("docs/how-to/ci.md", "CI configuration", "Continuous integration setup"),
         ("docs/how-to/contributing.md", "Contributing", "How to contribute"),
     ]),
+    ("Errors", [
+        ("docs/errors/index.md", "Error code reference", "Catalog of FloxError codes, format, and lifecycle"),
+        ("docs/errors/E_SYM_001.md", "E_SYM_001 — Symbol is not registered", "Fix: call Engine.add_symbol() before referencing the symbol"),
+    ]),
     ("Reference: Python", [
         ("docs/reference/python/index.md", "Python reference index", "All Python binding modules"),
         ("docs/reference/python/engine.md", "Engine and Backtest", "Engine + backtest entry points"),

@@ -141,6 +141,10 @@ nav:
       - Integration Flow: explanation/integration-flow.md
       - Indicators: explanation/indicators.md
 
+  - Errors:
+      - errors/index.md
+      - E_SYM_001 - Symbol is not registered: errors/E_SYM_001.md
+
   - Reference:
       - reference/README.md
       - Python:

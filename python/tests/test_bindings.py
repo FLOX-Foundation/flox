@@ -378,6 +378,41 @@ if os.path.exists(csv_path):
 else:
     print(f"  skip Engine (CSV not found: {csv_path})")
 
+# ── FloxError ────────────────────────────────────────────────────────
+
+print("=== FloxError ===")
+
+# The FloxError class is exposed at the top level and inherits from Exception
+# so existing `except Exception` blocks still catch it.
+check(issubclass(flox.FloxError, Exception),
+      "FloxError is an Exception subclass")
+
+# Triggering an "unknown symbol" path via Engine.run on a registry that
+# never saw the requested symbol. We need data to be loaded and the
+# strategy to reference a symbol not in the engine's set. Without a CSV
+# fixture we exercise the code via a SignalBuilder + run path that the
+# engine itself rejects.
+if os.path.exists(csv_path):
+    engine = flox.Engine()
+    engine.load_csv(csv_path)
+    sb = flox.SignalBuilder()
+    sb.buy(0, 1.0, symbol="ETH/USDT-not-registered")
+    try:
+        engine.run(sb)
+    except flox.FloxError as e:
+        check(e.code == "E_SYM_001",
+              f'FloxError.code == "E_SYM_001" (got {e.code!r})')
+        check("not registered" in e.message,
+              f'FloxError.message mentions "not registered"')
+        check(e.help_url.endswith("E_SYM_001/"),
+              f'FloxError.help_url ends with "E_SYM_001/"')
+        check(e.help_url.startswith("https://"),
+              f'FloxError.help_url is an https URL')
+    else:
+        check(False, "engine.run did not raise on unknown symbol")
+else:
+    print(f"  skip FloxError (CSV not found: {csv_path})")
+
 # ── Summary ──────────────────────────────────────────────────────────
 
 print(f"\n{_passed} passed, {_failed} failed")

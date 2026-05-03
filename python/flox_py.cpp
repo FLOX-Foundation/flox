@@ -12,6 +12,7 @@
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/common.h"
+#include "flox/error/flox_error.h"
 #include "graph_bindings.h"
 #include "indicator_bindings.h"
 #include "optimizer_bindings.h"
@@ -468,7 +469,10 @@ class Engine
         auto it = _symbols.find(names[i]);
         if (it == _symbols.end())
         {
-          throw std::invalid_argument("unknown symbol: " + names[i]);
+          throw flox::FloxError("E_SYM_001",
+                                "Symbol '" + names[i] +
+                                    "' is not registered. Add it via "
+                                    "Engine.add_symbol() before referencing it.");
         }
         sigs[i].symbol_id = it->second.id;
       }
@@ -558,7 +562,10 @@ class Engine
     auto it = _symbols.find(symbol);
     if (it == _symbols.end())
     {
-      throw std::invalid_argument("unknown symbol: " + symbol);
+      throw flox::FloxError("E_SYM_001",
+                            "Symbol '" + symbol +
+                                "' is not registered. Add it via "
+                                "Engine.add_symbol() before referencing it.");
     }
     return it->second;
   }
@@ -651,6 +658,34 @@ PYBIND11_MODULE(_flox_py, m)
   m.doc() = "Flox -- Python bindings";
 
   PYBIND11_NUMPY_DTYPE(PyBar, timestamp_ns, open_raw, high_raw, low_raw, close_raw, volume_raw);
+
+  // FloxError — structured exception. New throw sites in C++ raise
+  // flox::FloxError; this translator surfaces them in Python with the
+  // `code`, `message`, `help_url` attributes intact. Pre-existing
+  // std::invalid_argument / std::runtime_error throws keep their default
+  // pybind11 → ValueError / RuntimeError mapping (incremental migration).
+  static py::exception<flox::FloxError> floxError(m, "FloxError");
+  py::register_exception_translator(
+      [](std::exception_ptr p)
+      {
+        try
+        {
+          if (p)
+          {
+            std::rethrow_exception(p);
+          }
+        }
+        catch (const flox::FloxError& e)
+        {
+          PyObject* excTypePtr = floxError.ptr();
+          py::object excType = py::reinterpret_borrow<py::object>(excTypePtr);
+          py::object inst = excType(e.message());
+          inst.attr("code") = e.code();
+          inst.attr("message") = e.message();
+          inst.attr("help_url") = e.helpUrl();
+          PyErr_SetObject(excTypePtr, inst.ptr());
+        }
+      });
 
   // Stats
   py::class_<PyStats>(m, "Stats")
