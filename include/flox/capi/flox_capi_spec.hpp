@@ -1538,6 +1538,67 @@ extern "C"
   void flox_set_log_callback(FloxLogCallback callback, void* user_data);
 
   // ============================================================
+  // PnLTracker — post-emission observer hook.
+  //
+  // Unlike the pre-trade gates (KillSwitch / OrderValidator /
+  // RiskManager) which can DROP a signal, PnLTracker fires **after**
+  // the user's on_signal callback runs. It's an observer; the return
+  // type is void and the signal has already been delivered to the
+  // binding. Use this for shadow-tracking exposure based on emitted
+  // signals — independent of any later fill confirmation from a
+  // broker.
+  //
+  // For real fill-driven P&L, attach the binding's tracker to its
+  // own broker callback path; the C API doesn't surface fill events
+  // beyond the SimulatedExecutor.
+  //
+  // Lifecycle / threading match RiskManager: NULL detaches; atomic
+  // pointer swap is safe with consumer threads active.
+  // ============================================================
+
+  typedef void (*FloxPnLTrackerOnSignalFn)(void* user_data, const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxPnLTrackerOnSignalFn on_signal;
+    void* user_data;
+  } FloxPnLTrackerCallbacks;
+
+  typedef void* FloxPnLTrackerHandle;
+
+  FLOX_EXPORT(group = "metrics")
+  FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks);
+  FLOX_EXPORT(group = "metrics")
+  void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker);
+
+  // ============================================================
+  // StorageSink — persist every emitted signal.
+  //
+  // Same shape and timing as PnLTracker — fires after on_signal,
+  // never blocks. Use this to write each emitted signal to the
+  // binding's storage of choice (DB, append-only log, broker audit
+  // trail).
+  //
+  // The signal pointer is read-only and valid only for the duration
+  // of the callback; copy if retained.
+  // ============================================================
+
+  typedef void (*FloxStorageSinkStoreFn)(void* user_data, const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxStorageSinkStoreFn store;
+    void* user_data;
+  } FloxStorageSinkCallbacks;
+
+  typedef void* FloxStorageSinkHandle;
+
+  FLOX_EXPORT(group = "storage")
+  FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks);
+  FLOX_EXPORT(group = "storage")
+  void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1588,6 +1649,15 @@ extern "C"
   FLOX_EXPORT(group = "risk")
   void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
                                             FloxOrderValidatorHandle ov);
+
+  // Post-emission observers. Fire after on_signal, in the order
+  // PnLTracker → StorageSink. Detach with NULL.
+  FLOX_EXPORT(group = "metrics")
+  void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine,
+                                        FloxPnLTrackerHandle tracker);
+  FLOX_EXPORT(group = "storage")
+  void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine,
+                                         FloxStorageSinkHandle sink);
 
   FLOX_EXPORT(group = "floxliveengine_disruptor")
   void flox_live_engine_start(FloxLiveEngineHandle engine);
@@ -1672,6 +1742,15 @@ extern "C"
   FLOX_EXPORT(group = "risk")
   void flox_runner_set_order_validator(FloxRunnerHandle runner,
                                        FloxOrderValidatorHandle ov);
+
+  // Post-emission observers. Fire after on_signal in the order
+  // PnLTracker → StorageSink.
+  FLOX_EXPORT(group = "metrics")
+  void flox_runner_set_pnl_tracker(FloxRunnerHandle runner,
+                                   FloxPnLTrackerHandle tracker);
+  FLOX_EXPORT(group = "storage")
+  void flox_runner_set_storage_sink(FloxRunnerHandle runner,
+                                    FloxStorageSinkHandle sink);
 
   FLOX_EXPORT(group = "strategyrunner_synchronous")
   void flox_runner_start(FloxRunnerHandle runner);

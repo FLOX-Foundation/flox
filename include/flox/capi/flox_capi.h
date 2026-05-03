@@ -1237,6 +1237,43 @@ extern "C"
   void flox_set_log_callback(FloxLogCallback callback, void* user_data);
 
   // ============================================================
+  // PnLTracker — post-emission observer (fires after on_signal,
+  // never blocks). Attach to a runner / engine to shadow-track
+  // exposure based on emitted signals. NULL detaches.
+  // ============================================================
+
+  typedef void (*FloxPnLTrackerOnSignalFn)(void* user_data, const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxPnLTrackerOnSignalFn on_signal;
+    void* user_data;
+  } FloxPnLTrackerCallbacks;
+
+  typedef void* FloxPnLTrackerHandle;
+
+  FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks);
+  void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker);
+
+  // ============================================================
+  // StorageSink — same shape as PnLTracker; persist every emitted
+  // signal to the binding's storage. Fires after PnLTracker.
+  // ============================================================
+
+  typedef void (*FloxStorageSinkStoreFn)(void* user_data, const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxStorageSinkStoreFn store;
+    void* user_data;
+  } FloxStorageSinkCallbacks;
+
+  typedef void* FloxStorageSinkHandle;
+
+  FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks);
+  void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1273,6 +1310,12 @@ extern "C"
                                         FloxKillSwitchHandle ks);
   void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
                                             FloxOrderValidatorHandle ov);
+
+  // Post-emission observers. PnLTracker → StorageSink, after on_signal.
+  void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine,
+                                        FloxPnLTrackerHandle tracker);
+  void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine,
+                                         FloxStorageSinkHandle sink);
 
   // Attach a strategy to both TradeBus and BookUpdateBus.
   // on_signal is called from the consumer thread when the strategy emits an order.
@@ -1353,6 +1396,12 @@ extern "C"
                                    FloxKillSwitchHandle ks);
   void flox_runner_set_order_validator(FloxRunnerHandle runner,
                                        FloxOrderValidatorHandle ov);
+
+  // Post-emission observers. PnLTracker → StorageSink, after on_signal.
+  void flox_runner_set_pnl_tracker(FloxRunnerHandle runner,
+                                   FloxPnLTrackerHandle tracker);
+  void flox_runner_set_storage_sink(FloxRunnerHandle runner,
+                                    FloxStorageSinkHandle sink);
 
   void flox_runner_start(FloxRunnerHandle runner);
   void flox_runner_stop(FloxRunnerHandle runner);

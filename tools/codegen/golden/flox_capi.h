@@ -47,6 +47,8 @@ extern "C"
   typedef void* FloxRiskManagerHandle;
   typedef void* FloxKillSwitchHandle;
   typedef void* FloxOrderValidatorHandle;
+  typedef void* FloxPnLTrackerHandle;
+  typedef void* FloxStorageSinkHandle;
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
@@ -355,6 +357,8 @@ extern "C"
   typedef uint8_t (*FloxKillSwitchCheckFn)(void*, const FloxSignal*);
   typedef uint8_t (*FloxOrderValidatorValidateFn)(void*, const FloxSignal*);
   typedef void (*FloxLogCallback)(void*, int32_t, const char*);
+  typedef void (*FloxPnLTrackerOnSignalFn)(void*, const FloxSignal*);
+  typedef void (*FloxStorageSinkStoreFn)(void*, const FloxSignal*);
 
   // ============================================================
   // Callback bundles
@@ -387,6 +391,18 @@ extern "C"
     FloxOrderValidatorValidateFn validate;
     void* user_data;
   } FloxOrderValidatorCallbacks;
+
+  typedef struct
+  {
+    FloxPnLTrackerOnSignalFn on_signal;
+    void* user_data;
+  } FloxPnLTrackerCallbacks;
+
+  typedef struct
+  {
+    FloxStorageSinkStoreFn store;
+    void* user_data;
+  } FloxStorageSinkCallbacks;
 
   // ============================================================
   // Fixed-point conversion helpers
@@ -787,6 +803,15 @@ extern "C"
   void flox_market_profile_clear(FloxMarketProfileHandle profile);
 
   // ============================================================
+  // Metrics
+  // ============================================================
+
+  FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks);
+  void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker);
+  void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine, FloxPnLTrackerHandle tracker);
+  void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker);
+
+  // ============================================================
   // Order Book
   // ============================================================
 
@@ -992,6 +1017,15 @@ extern "C"
   double flox_stat_correlation(const double* x, const double* y, size_t len);
   double flox_stat_profit_factor(const double* pnl, size_t len);
   double flox_stat_win_rate(const double* pnl, size_t len);
+
+  // ============================================================
+  // Storage
+  // ============================================================
+
+  FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks);
+  void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
+  void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine, FloxStorageSinkHandle sink);
+  void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle sink);
 
   // ============================================================
   // Strategy Lifecycle

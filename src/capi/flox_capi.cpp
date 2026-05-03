@@ -2822,6 +2822,18 @@ struct FloxOrderValidatorImpl
   FloxOrderValidatorCallbacks cb;
 };
 
+// Post-emission observers. Fire after the user on_signal callback.
+// Never block; return type is void.
+struct FloxPnLTrackerImpl
+{
+  FloxPnLTrackerCallbacks cb;
+};
+
+struct FloxStorageSinkImpl
+{
+  FloxStorageSinkCallbacks cb;
+};
+
 class RunnerSignalHandler : public ISignalHandler
 {
  public:
@@ -2840,6 +2852,14 @@ class RunnerSignalHandler : public ISignalHandler
   void setOrderValidator(FloxOrderValidatorImpl* ov) noexcept
   {
     _validator.store(ov, std::memory_order_release);
+  }
+  void setPnLTracker(FloxPnLTrackerImpl* p) noexcept
+  {
+    _pnl.store(p, std::memory_order_release);
+  }
+  void setStorageSink(FloxStorageSinkImpl* s) noexcept
+  {
+    _sink.store(s, std::memory_order_release);
   }
 
   void onSignal(const Signal& sig) override
@@ -2927,6 +2947,21 @@ class RunnerSignalHandler : public ISignalHandler
     }
 
     _cb(_ud, &fs);
+
+    // Post-emission observers, fired in declared order: PnL → Storage.
+    // Return type is void; observers cannot drop the signal (it's already
+    // been delivered). The user callback runs first so the binding's
+    // hot-path latency isn't affected by observer cost.
+    if (auto* pnl = _pnl.load(std::memory_order_acquire);
+        pnl != nullptr && pnl->cb.on_signal != nullptr)
+    {
+      pnl->cb.on_signal(pnl->cb.user_data, &fs);
+    }
+    if (auto* sink = _sink.load(std::memory_order_acquire);
+        sink != nullptr && sink->cb.store != nullptr)
+    {
+      sink->cb.store(sink->cb.user_data, &fs);
+    }
   }
 
  private:
@@ -2935,6 +2970,8 @@ class RunnerSignalHandler : public ISignalHandler
   std::atomic<FloxRiskManagerImpl*> _risk{nullptr};
   std::atomic<FloxKillSwitchImpl*> _kill{nullptr};
   std::atomic<FloxOrderValidatorImpl*> _validator{nullptr};
+  std::atomic<FloxPnLTrackerImpl*> _pnl{nullptr};
+  std::atomic<FloxStorageSinkImpl*> _sink{nullptr};
 };
 
 struct FloxRunnerImpl
@@ -2961,6 +2998,8 @@ struct FloxRunnerImpl
   {
     handler.setOrderValidator(ov);
   }
+  void setPnLTracker(FloxPnLTrackerImpl* p) { handler.setPnLTracker(p); }
+  void setStorageSink(FloxStorageSinkImpl* s) { handler.setStorageSink(s); }
 
   void start()
   {
@@ -3077,6 +3116,8 @@ struct FloxLiveEngineImpl
   std::atomic<FloxRiskManagerImpl*> riskManager{nullptr};
   std::atomic<FloxKillSwitchImpl*> killSwitch{nullptr};
   std::atomic<FloxOrderValidatorImpl*> orderValidator{nullptr};
+  std::atomic<FloxPnLTrackerImpl*> pnlTracker{nullptr};
+  std::atomic<FloxStorageSinkImpl*> storageSink{nullptr};
 
   explicit FloxLiveEngineImpl(SymbolRegistry* reg)
       : registry(reg),
@@ -3092,6 +3133,8 @@ struct FloxLiveEngineImpl
     h->setRiskManager(riskManager.load(std::memory_order_acquire));
     h->setKillSwitch(killSwitch.load(std::memory_order_acquire));
     h->setOrderValidator(orderValidator.load(std::memory_order_acquire));
+    h->setPnLTracker(pnlTracker.load(std::memory_order_acquire));
+    h->setStorageSink(storageSink.load(std::memory_order_acquire));
     s->setSignalHandler(h.get());
     handlers.push_back(std::move(h));
     tradeBus->subscribe(s);
@@ -3124,6 +3167,22 @@ struct FloxLiveEngineImpl
     for (auto& h : handlers)
     {
       h->setOrderValidator(ov);
+    }
+  }
+  void setPnLTracker(FloxPnLTrackerImpl* p)
+  {
+    pnlTracker.store(p, std::memory_order_release);
+    for (auto& h : handlers)
+    {
+      h->setPnLTracker(p);
+    }
+  }
+  void setStorageSink(FloxStorageSinkImpl* s)
+  {
+    storageSink.store(s, std::memory_order_release);
+    for (auto& h : handlers)
+    {
+      h->setStorageSink(s);
     }
   }
 
@@ -3508,6 +3567,26 @@ void flox_order_validator_destroy(FloxOrderValidatorHandle ov)
   delete static_cast<FloxOrderValidatorImpl*>(ov);
 }
 
+FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks)
+{
+  return static_cast<FloxPnLTrackerHandle>(new FloxPnLTrackerImpl{callbacks});
+}
+
+void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)
+{
+  delete static_cast<FloxPnLTrackerImpl*>(tracker);
+}
+
+FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks)
+{
+  return static_cast<FloxStorageSinkHandle>(new FloxStorageSinkImpl{callbacks});
+}
+
+void flox_storage_sink_destroy(FloxStorageSinkHandle sink)
+{
+  delete static_cast<FloxStorageSinkImpl*>(sink);
+}
+
 // ============================================================
 // Logger callback adapter
 // ============================================================
@@ -3593,6 +3672,18 @@ void flox_runner_set_order_validator(FloxRunnerHandle runner, FloxOrderValidator
       static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
 }
 
+void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker)
+{
+  toRunner(runner)->setPnLTracker(
+      static_cast<capi_impl::FloxPnLTrackerImpl*>(tracker));
+}
+
+void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle sink)
+{
+  toRunner(runner)->setStorageSink(
+      static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
+}
+
 void flox_runner_start(FloxRunnerHandle runner)
 {
   toRunner(runner)->start();
@@ -3674,6 +3765,20 @@ void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
 {
   toLiveEngine(engine)->setOrderValidator(
       static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
+}
+
+void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine,
+                                      FloxPnLTrackerHandle tracker)
+{
+  toLiveEngine(engine)->setPnLTracker(
+      static_cast<capi_impl::FloxPnLTrackerImpl*>(tracker));
+}
+
+void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine,
+                                       FloxStorageSinkHandle sink)
+{
+  toLiveEngine(engine)->setStorageSink(
+      static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
 }
 
 void flox_live_engine_start(FloxLiveEngineHandle engine)

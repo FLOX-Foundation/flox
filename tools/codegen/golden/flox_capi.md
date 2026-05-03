@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 303 functions, 25 handles, 28 structs, 11 callback typedefs, 2 enums, 39 groups.
+**Surface:** 311 functions, 27 handles, 30 structs, 13 callback typedefs, 2 enums, 41 groups.
 
 ## Opaque handles
 
@@ -30,6 +30,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxRiskManagerHandle`
 - `FloxKillSwitchHandle`
 - `FloxOrderValidatorHandle`
+- `FloxPnLTrackerHandle`
+- `FloxStorageSinkHandle`
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
@@ -62,6 +64,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef uint8_t (*FloxKillSwitchCheckFn)(void *, const FloxSignal *);`
 - `typedef uint8_t (*FloxOrderValidatorValidateFn)(void *, const FloxSignal *);`
 - `typedef void (*FloxLogCallback)(void *, int32_t, const char *);`
+- `typedef void (*FloxPnLTrackerOnSignalFn)(void *, const FloxSignal *);`
+- `typedef void (*FloxStorageSinkStoreFn)(void *, const FloxSignal *);`
 
 ## Structs
 
@@ -388,6 +392,20 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `validate` | `FloxOrderValidatorValidateFn` |
 | `user_data` | `void *` |
 
+### `FloxPnLTrackerCallbacks`
+
+| field | type |
+|---|---|
+| `on_signal` | `FloxPnLTrackerOnSignalFn` |
+| `user_data` | `void *` |
+
+### `FloxStorageSinkCallbacks`
+
+| field | type |
+|---|---|
+| `store` | `FloxStorageSinkStoreFn` |
+| `user_data` | `void *` |
+
 ## Functions
 
 ### additional_bar
@@ -622,6 +640,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint32_t flox_market_profile_num_levels(FloxMarketProfileHandle profile)`
 - `void flox_market_profile_clear(FloxMarketProfileHandle profile)`
 
+### metrics
+
+- `FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks)`
+- `void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)`
+- `void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine, FloxPnLTrackerHandle tracker)`
+- `void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker)`
+
 ### order_book
 
 - `FloxBookHandle flox_book_create(double tick_size)`
@@ -760,6 +785,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_stat_correlation(const double * x, const double * y, size_t len)`
 - `double flox_stat_profit_factor(const double * pnl, size_t len)`
 - `double flox_stat_win_rate(const double * pnl, size_t len)`
+
+### storage
+
+- `FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks)`
+- `void flox_storage_sink_destroy(FloxStorageSinkHandle sink)`
+- `void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine, FloxStorageSinkHandle sink)`
+- `void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle sink)`
 
 ### strategy_lifecycle
 
