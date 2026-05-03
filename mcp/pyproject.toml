@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flox-mcp"
+version = "0.1.0"
+authors = [{name = "FLOX Foundation"}]
+description = "Model Context Protocol server for FLOX — gives AI agents grounded access to indicators, error codes, and the C API."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["trading", "backtest", "indicators", "mcp", "ai", "claude", "cursor"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+# Pulling in flox_py is optional: the C-API and error-code tools work
+# from bundled data alone. `list_indicators` and `compute_indicator`
+# need the actual bindings.
+flox = ["flox-py>=0.5"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+flox-mcp = "flox_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/FLOX-Foundation/flox"
+Repository = "https://github.com/FLOX-Foundation/flox"
+Docs = "https://flox-foundation.github.io/flox/"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flox_mcp*"]
+
+[tool.setuptools.package-data]
+flox_mcp = ["data/*.snapshot", "data/errors/*.md"]

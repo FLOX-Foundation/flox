@@ -6,6 +6,7 @@ profiling_results
 .cache
 .clangd
 .venv
+__pycache__
 
 node_modules
 

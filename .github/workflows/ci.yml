@@ -44,6 +44,12 @@ jobs:
       run: python3 scripts/gen_api_index.py --check
     - name: Verify doc snippets follow the --8<-- include pattern
       run: python3 scripts/check_doc_snippets.py
+    - name: Verify flox-mcp bundled data is in sync
+      run: python3 scripts/sync_mcp_data.py --check
+    - name: flox-mcp unit tests
+      run: |
+        python3 -m pip install --break-system-packages pytest
+        python3 -m pytest mcp/tests/ -q
 
   linux-gcc:
     needs: format-check

@@ -115,6 +115,9 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
         ("docs/errors/index.md", "Error code reference", "Catalog of FloxError codes, format, and lifecycle"),
         ("docs/errors/E_SYM_001.md", "E_SYM_001 — Symbol is not registered", "Fix: call Engine.add_symbol() before referencing the symbol"),
     ]),
+    ("AI tooling (MCP)", [
+        ("mcp/README.md", "flox-mcp — Model Context Protocol server", "Local MCP server that gives AI agents grounded access to indicators, error codes, and the C API"),
+    ]),
     ("Reference: Python", [
         ("docs/reference/python/index.md", "Python reference index", "All Python binding modules"),
         ("docs/reference/python/_api_index.md", "Full Python API index", "Auto-generated alphabetical list of every public symbol with signature"),
