@@ -646,7 +646,7 @@ struct PyBar
 };
 #pragma pack(pop)
 
-PYBIND11_MODULE(flox_py, m)
+PYBIND11_MODULE(_flox_py, m)
 {
   m.doc() = "Flox -- Python bindings";
 

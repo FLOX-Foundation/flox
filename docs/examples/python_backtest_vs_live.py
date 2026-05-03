@@ -44,7 +44,7 @@ class SMAStrategy(flox.Strategy):
     def on_trade(self, ctx, trade):
         fv = self.fast.update(trade.price)
         sv = self.slow.update(trade.price)
-        if not self.slow.ready:
+        if fv is None or sv is None or not self.slow.ready:
             return
         if fv > sv and ctx.is_flat():
             self.market_buy(0.01)

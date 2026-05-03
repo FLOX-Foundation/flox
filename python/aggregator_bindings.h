@@ -25,11 +25,11 @@
 
 namespace py = pybind11;
 
-namespace
-{
-
-using namespace flox;
-
+// PyExtBar is the structured numpy dtype returned by the `aggregate_*_bars`
+// helpers. Keeping it at file scope (rather than inside an anonymous
+// namespace) gives the type a stable mangled name so pybind11-stubgen can
+// resolve `py::array_t<PyExtBar>` to `numpy.ndarray[PyExtBar]` instead of
+// `numpy.ndarray[...]` (Any).
 #pragma pack(push, 1)
 struct PyExtBar
 {
@@ -45,6 +45,11 @@ struct PyExtBar
 };
 #pragma pack(pop)
 static_assert(sizeof(PyExtBar) == 72);
+
+namespace
+{
+
+using namespace flox;
 
 inline int64_t toUnixNs(TimePoint tp)
 {

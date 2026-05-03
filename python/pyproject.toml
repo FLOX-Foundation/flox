@@ -25,5 +25,8 @@ Repository = "https://github.com/FLOX-Foundation/flox"
 [tool.scikit-build]
 cmake.args = ["-DFLOX_ENABLE_BACKTEST=ON", "-DFLOX_ENABLE_PYTHON=ON", "-DFLOX_ENABLE_LZ4=ON"]
 cmake.source-dir = ".."
-wheel.packages = []
+# Ship the package directory (pure-Python wrapper, .pyi stubs, py.typed
+# marker). The compiled `_flox_py` extension is copied into this same
+# directory by the python_module install component.
+wheel.packages = ["flox_py"]
 install.components = ["python_module"]
