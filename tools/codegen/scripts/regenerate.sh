@@ -12,7 +12,7 @@ if [[ ! -x "$PY" ]]; then
   bash "$TOOL/setup.sh"
 fi
 
-GOLDEN="$TOOL/golden/slice_capi.h"
+GOLDEN="$TOOL/golden/flox_capi.h"
 SPEC="$REPO/include/flox/capi/flox_capi_spec.hpp"
 
 PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-capi --spec "$SPEC" --out "$GOLDEN"

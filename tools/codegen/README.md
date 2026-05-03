@@ -1,12 +1,13 @@
 # tools/codegen — IDL-driven code generation for the FLOX C API
 
-Generates `flox_capi.h` and (in T014) per-binding stub artifacts (`.pyi`,
-`.d.ts`, Codon, llms.txt) from a single annotated source of truth in
-`include/flox/capi/flox_capi_spec.hpp`.
+Generates `flox_capi.h` and (in a follow-up PR) per-binding stub artifacts
+(`.pyi`, `.d.ts`, Codon, llms.txt) from a single annotated source of truth
+in `include/flox/capi/flox_capi_spec.hpp`.
 
-Status: **prototype slice** (T013). Covers Strategy + Indicator +
-ExecutionContext + supporting infrastructure — 54 functions out of ~290 in
-the live `flox_capi.h`. Coverage expansion lands in T014.
+Status: **full coverage**. Spec covers all 290 functions, 22 handles,
+25 structs, 7 callback typedefs, and 2 enums in the live `flox_capi.h`.
+The CI gate enforces full signature equivalence (`--require-full-coverage`).
+Per-binding emitters land in a follow-up PR.
 
 Design rationale: see `.notes/api-idl-rfc.md`.
 
@@ -40,7 +41,7 @@ tools/codegen/
 │   ├── check_signatures.py       # diff two C headers (sigs only)
 │   └── cli.py                    # python -m flox_codegen.cli ...
 ├── golden/
-│   └── slice_capi.h              # committed reference output
+│   └── flox_capi.h              # committed reference output
 ├── tests/
 │   ├── test_annotation_parser.py
 │   ├── test_extractor.py
@@ -70,7 +71,7 @@ include/flox/capi/
    `flox_codegen.extractor` collects every annotated declaration into an IR
    `Module`.
 
-3. **Emit** walks the IR and produces `golden/slice_capi.h`. Functions are
+3. **Emit** walks the IR and produces `golden/flox_capi.h`. Functions are
    grouped by their `group=` annotation; output ordering and formatting are
    deterministic.
 
@@ -102,7 +103,7 @@ Unknown keys are kept on the IR for emitters to consume.
 
 1. Add an annotated declaration to `flox_capi_spec.hpp`.
 2. Run `tools/codegen/scripts/regenerate.sh`.
-3. Commit `flox_capi_spec.hpp` and `tools/codegen/golden/slice_capi.h`
+3. Commit `flox_capi_spec.hpp` and `tools/codegen/golden/flox_capi.h`
    together. CI will reject drift between them.
 
 ## Adding a new emitter (T014 scope)
@@ -129,7 +130,7 @@ don't know about libclang.
 `.github/workflows/codegen.yml` runs `tools/codegen/scripts/check.sh` on
 every push and PR. Failure modes:
 
-- **Golden drift** — spec edited without regenerating `golden/slice_capi.h`.
+- **Golden drift** — spec edited without regenerating `golden/flox_capi.h`.
   Fix: run `regenerate.sh`, commit.
 - **Signature mismatch** — codegen output disagrees with live `flox_capi.h`
   on a function the spec covers. Fix: align spec or live header.

@@ -95,7 +95,10 @@ def _emit_handles(out: StringIO, handles: List[ir.HandleTypedef]) -> None:
     out.write(_banner("Opaque handles"))
     out.write("\n")
     for h in handles:
-        out.write(f"  typedef void* {h.name};\n")
+        if h.alias_of is None:
+            out.write(f"  typedef void* {h.name};\n")
+        else:
+            out.write(f"  typedef {h.alias_of} {h.name};\n")
 
 
 _ARRAY_SUFFIX_RE = __import__("re").compile(r"^(.*?)(\[[\w\s\*]+\])\s*$")
@@ -141,6 +144,22 @@ def _emit_function_pointers(
         params = ", ".join(p.type for p in fp.params) or "void"
         out.write(f"  typedef {fp.return_type} (*{fp.name})({params});\n")
     out.write("\n")
+
+
+def _emit_enums(out: StringIO, enums: List[ir.Enum]) -> None:
+    if not enums:
+        return
+    out.write(_banner("Enums"))
+    out.write("\n")
+    for enum in enums:
+        out.write("  typedef enum\n")
+        out.write("  {\n")
+        for v in enum.values:
+            if v.value is None:
+                out.write(f"    {v.name},\n")
+            else:
+                out.write(f"    {v.name} = {v.value},\n")
+        out.write(f"  }} {enum.name};\n\n")
 
 
 def _emit_function(out: StringIO, fn: ir.Function, *, indent: str = "  ") -> None:
@@ -245,6 +264,7 @@ def emit(module: ir.Module, *, format: bool = True,
     event_data, bundles = _partition_structs(module.structs, fp_names)
 
     _emit_handles(out, module.handles)
+    _emit_enums(out, module.enums)
     _emit_structs(out, event_data)
     _emit_function_pointers(out, module.function_pointers)
     if bundles:
