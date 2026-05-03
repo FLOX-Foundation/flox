@@ -1,0 +1,765 @@
+# FLOX C API Reference
+
+Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
+
+**Surface:** 290 functions, 22 handles, 25 structs, 7 callback typedefs, 2 enums, 37 groups.
+
+## Opaque handles
+
+All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the matching `_create` / `_destroy` pair.
+
+- `FloxStrategyHandle`
+- `FloxRegistryHandle`
+- `FloxBookHandle`
+- `FloxExecutorHandle`
+- `FloxPositionTrackerHandle`
+- `FloxPositionGroupHandle`
+- `FloxOrderTrackerHandle`
+- `FloxFootprintHandle`
+- `FloxVolumeProfileHandle`
+- `FloxMarketProfileHandle`
+- `FloxCompositeBookHandle`
+- `FloxIndicatorGraphHandle`
+- `FloxStreamingGraphHandle` (alias of `FloxIndicatorGraphHandle`)
+- `FloxL3BookHandle`
+- `FloxDataWriterHandle`
+- `FloxDataReaderHandle`
+- `FloxBacktestResultHandle`
+- `FloxDataRecorderHandle`
+- `FloxPartitionerHandle`
+- `FloxLiveEngineHandle`
+- `FloxRunnerHandle`
+- `FloxBacktestRunnerHandle`
+
+## Enums
+
+### `FloxSlippageModel`
+
+- `FLOX_SLIPPAGE_NONE` = `0`
+- `FLOX_SLIPPAGE_FIXED_TICKS` = `1`
+- `FLOX_SLIPPAGE_FIXED_BPS` = `2`
+- `FLOX_SLIPPAGE_VOLUME_IMPACT` = `3`
+
+### `FloxQueueModel`
+
+- `FLOX_QUEUE_NONE` = `0`
+- `FLOX_QUEUE_TOB` = `1`
+- `FLOX_QUEUE_FULL` = `2`
+
+## Callback typedefs
+
+- `typedef void (*FloxOnTradeCallback)(void *, const FloxSymbolContext *, const FloxTradeData *);`
+- `typedef void (*FloxOnBookCallback)(void *, const FloxSymbolContext *, const FloxBookData *);`
+- `typedef void (*FloxOnBarCallback)(void *, const FloxSymbolContext *, const FloxBarData *);`
+- `typedef void (*FloxOnStartCallback)(void *);`
+- `typedef void (*FloxOnStopCallback)(void *);`
+- `typedef const double * (*FloxGraphNodeFn)(void *, FloxIndicatorGraphHandle, uint32_t, size_t *);`
+- `typedef void (*FloxOnSignalCallback)(void *, const FloxSignal *);`
+
+## Structs
+
+### `FloxTradeData`
+
+| field | type |
+|---|---|
+| `symbol` | `uint32_t` |
+| `price_raw` | `int64_t` |
+| `quantity_raw` | `int64_t` |
+| `is_buy` | `uint8_t` |
+| `exchange_ts_ns` | `int64_t` |
+
+### `FloxBookLevel`
+
+| field | type |
+|---|---|
+| `price_raw` | `int64_t` |
+| `quantity_raw` | `int64_t` |
+
+### `FloxBookSnapshot`
+
+| field | type |
+|---|---|
+| `bid_price_raw` | `int64_t` |
+| `bid_qty_raw` | `int64_t` |
+| `ask_price_raw` | `int64_t` |
+| `ask_qty_raw` | `int64_t` |
+| `mid_raw` | `int64_t` |
+| `spread_raw` | `int64_t` |
+
+### `FloxBookData`
+
+| field | type |
+|---|---|
+| `symbol` | `uint32_t` |
+| `exchange_ts_ns` | `int64_t` |
+| `snapshot` | `FloxBookSnapshot` |
+
+### `FloxBarData`
+
+| field | type |
+|---|---|
+| `symbol` | `uint32_t` |
+| `bar_type` | `uint8_t` |
+| `close_reason` | `uint8_t` |
+| `_pad` | `uint8_t[2]` |
+| `bar_type_param` | `uint64_t` |
+| `open_raw` | `int64_t` |
+| `high_raw` | `int64_t` |
+| `low_raw` | `int64_t` |
+| `close_raw` | `int64_t` |
+| `volume_raw` | `int64_t` |
+| `buy_volume_raw` | `int64_t` |
+| `trade_count_raw` | `int64_t` |
+| `start_time_ns` | `int64_t` |
+| `end_time_ns` | `int64_t` |
+
+### `FloxSymbolContext`
+
+| field | type |
+|---|---|
+| `symbol_id` | `uint32_t` |
+| `position_raw` | `int64_t` |
+| `avg_entry_price_raw` | `int64_t` |
+| `last_trade_price_raw` | `int64_t` |
+| `last_update_ns` | `int64_t` |
+| `book` | `FloxBookSnapshot` |
+
+### `FloxStrategyCallbacks`
+
+| field | type |
+|---|---|
+| `on_trade` | `FloxOnTradeCallback` |
+| `on_book` | `FloxOnBookCallback` |
+| `on_bar` | `FloxOnBarCallback` |
+| `on_start` | `FloxOnStartCallback` |
+| `on_stop` | `FloxOnStopCallback` |
+| `user_data` | `void *` |
+
+### `FloxBar`
+
+| field | type |
+|---|---|
+| `start_time_ns` | `int64_t` |
+| `end_time_ns` | `int64_t` |
+| `open_raw` | `int64_t` |
+| `high_raw` | `int64_t` |
+| `low_raw` | `int64_t` |
+| `close_raw` | `int64_t` |
+| `volume_raw` | `int64_t` |
+| `buy_volume_raw` | `int64_t` |
+| `trade_count` | `uint32_t` |
+
+### `FloxFill`
+
+| field | type |
+|---|---|
+| `order_id` | `uint64_t` |
+| `symbol` | `uint32_t` |
+| `side` | `uint8_t` |
+| `price_raw` | `int64_t` |
+| `quantity_raw` | `int64_t` |
+| `timestamp_ns` | `int64_t` |
+
+### `FloxBacktestStats`
+
+| field | type |
+|---|---|
+| `totalTrades` | `uint64_t` |
+| `winningTrades` | `uint64_t` |
+| `losingTrades` | `uint64_t` |
+| `maxConsecutiveWins` | `uint64_t` |
+| `maxConsecutiveLosses` | `uint64_t` |
+| `initialCapital` | `double` |
+| `finalCapital` | `double` |
+| `totalPnl` | `double` |
+| `totalFees` | `double` |
+| `netPnl` | `double` |
+| `grossProfit` | `double` |
+| `grossLoss` | `double` |
+| `maxDrawdown` | `double` |
+| `maxDrawdownPct` | `double` |
+| `winRate` | `double` |
+| `profitFactor` | `double` |
+| `avgWin` | `double` |
+| `avgLoss` | `double` |
+| `avgWinLossRatio` | `double` |
+| `avgTradeDurationNs` | `double` |
+| `medianTradeDurationNs` | `double` |
+| `maxTradeDurationNs` | `double` |
+| `sharpeRatio` | `double` |
+| `sortinoRatio` | `double` |
+| `calmarRatio` | `double` |
+| `timeWeightedReturn` | `double` |
+| `returnPct` | `double` |
+| `startTimeNs` | `int64_t` |
+| `endTimeNs` | `int64_t` |
+
+### `FloxEquityPoint`
+
+| field | type |
+|---|---|
+| `timestamp_ns` | `int64_t` |
+| `equity` | `double` |
+| `drawdown_pct` | `double` |
+
+### `FloxMergeResult`
+
+| field | type |
+|---|---|
+| `success` | `uint8_t` |
+| `segments_merged` | `uint64_t` |
+| `events_written` | `uint64_t` |
+| `bytes_written` | `uint64_t` |
+
+### `FloxSplitResult`
+
+| field | type |
+|---|---|
+| `success` | `uint8_t` |
+| `segments_created` | `uint32_t` |
+| `events_written` | `uint64_t` |
+
+### `FloxExportResult`
+
+| field | type |
+|---|---|
+| `success` | `uint8_t` |
+| `events_exported` | `uint64_t` |
+| `bytes_written` | `uint64_t` |
+
+### `FloxSegmentValidation`
+
+| field | type |
+|---|---|
+| `valid` | `uint8_t` |
+| `header_valid` | `uint8_t` |
+| `reported_event_count` | `uint64_t` |
+| `actual_event_count` | `uint64_t` |
+| `has_index` | `uint8_t` |
+| `index_valid` | `uint8_t` |
+| `trades_found` | `uint64_t` |
+| `book_updates_found` | `uint64_t` |
+| `crc_errors` | `uint32_t` |
+| `timestamp_anomalies` | `uint32_t` |
+
+### `FloxDatasetValidation`
+
+| field | type |
+|---|---|
+| `valid` | `uint8_t` |
+| `total_segments` | `uint32_t` |
+| `valid_segments` | `uint32_t` |
+| `corrupted_segments` | `uint32_t` |
+| `total_events` | `uint64_t` |
+| `total_bytes` | `uint64_t` |
+| `first_timestamp` | `int64_t` |
+| `last_timestamp` | `int64_t` |
+
+### `FloxDatasetSummary`
+
+| field | type |
+|---|---|
+| `first_event_ns` | `int64_t` |
+| `last_event_ns` | `int64_t` |
+| `total_events` | `uint64_t` |
+| `segment_count` | `uint32_t` |
+| `total_bytes` | `uint64_t` |
+| `duration_seconds` | `double` |
+
+### `FloxReaderStats`
+
+| field | type |
+|---|---|
+| `files_read` | `uint64_t` |
+| `events_read` | `uint64_t` |
+| `trades_read` | `uint64_t` |
+| `book_updates_read` | `uint64_t` |
+| `bytes_read` | `uint64_t` |
+| `crc_errors` | `uint64_t` |
+
+### `FloxTradeRecord`
+
+| field | type |
+|---|---|
+| `exchange_ts_ns` | `int64_t` |
+| `recv_ts_ns` | `int64_t` |
+| `price_raw` | `int64_t` |
+| `qty_raw` | `int64_t` |
+| `trade_id` | `uint64_t` |
+| `symbol_id` | `uint32_t` |
+| `side` | `uint8_t` |
+
+### `FloxBBO`
+
+| field | type |
+|---|---|
+| `exchange_ts_ns` | `int64_t` |
+| `recv_ts_ns` | `int64_t` |
+| `seq` | `int64_t` |
+| `bid_price_raw` | `int64_t` |
+| `bid_qty_raw` | `int64_t` |
+| `ask_price_raw` | `int64_t` |
+| `ask_qty_raw` | `int64_t` |
+| `symbol_id` | `uint32_t` |
+| `event_type` | `uint8_t` |
+
+### `FloxBookUpdateHeader`
+
+| field | type |
+|---|---|
+| `exchange_ts_ns` | `int64_t` |
+| `recv_ts_ns` | `int64_t` |
+| `seq` | `int64_t` |
+| `level_offset` | `uint64_t` |
+| `symbol_id` | `uint32_t` |
+| `bid_count` | `uint16_t` |
+| `ask_count` | `uint16_t` |
+| `event_type` | `uint8_t` |
+
+### `FloxLevel`
+
+| field | type |
+|---|---|
+| `price_raw` | `int64_t` |
+| `qty_raw` | `int64_t` |
+| `side` | `uint8_t` |
+
+### `FloxWriterStats`
+
+| field | type |
+|---|---|
+| `bytes_written` | `uint64_t` |
+| `events_written` | `uint64_t` |
+| `segments_created` | `uint64_t` |
+| `trades_written` | `uint64_t` |
+
+### `FloxPartition`
+
+| field | type |
+|---|---|
+| `partition_id` | `uint32_t` |
+| `from_ns` | `int64_t` |
+| `to_ns` | `int64_t` |
+| `warmup_from_ns` | `int64_t` |
+| `estimated_events` | `uint64_t` |
+| `estimated_bytes` | `uint64_t` |
+
+### `FloxSignal`
+
+| field | type |
+|---|---|
+| `order_id` | `uint64_t` |
+| `symbol` | `uint32_t` |
+| `side` | `uint8_t` |
+| `order_type` | `uint8_t` |
+| `price` | `double` |
+| `quantity` | `double` |
+| `trigger_price` | `double` |
+| `trailing_offset` | `double` |
+| `trailing_bps` | `int32_t` |
+| `new_price` | `double` |
+| `new_quantity` | `double` |
+
+## Functions
+
+### additional_bar
+
+- `uint32_t flox_aggregate_range_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double range_size, FloxBar * bars_out, uint32_t max_bars)`
+- `uint32_t flox_aggregate_renko_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double brick_size, FloxBar * bars_out, uint32_t max_bars)`
+
+### additional_stats
+
+- `double flox_stat_permutation_test(const double * group1, size_t len1, const double * group2, size_t len2, uint32_t num_permutations)`
+- `void flox_stat_bootstrap_ci(const double * data, size_t len, double confidence, uint32_t num_samples, double * lower_out, double * median_out, double * upper_out)`
+
+### backtest_slippage
+
+- `void flox_executor_set_default_slippage(FloxExecutorHandle executor, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
+- `void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
+- `void flox_executor_set_queue_model(FloxExecutorHandle executor, int32_t model, uint32_t depth)`
+- `void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol, double price, double quantity, uint8_t is_buy)`
+- `void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol, double bid_price, double bid_qty, double ask_price, double ask_qty)`
+- `void flox_executor_on_book_snapshot(FloxExecutorHandle executor, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks)`
+- `FloxBacktestResultHandle flox_backtest_result_create(double initial_capital, double fee_rate, uint8_t use_percentage_fee, double fixed_fee_per_trade, double risk_free_rate, double annualization_factor)`
+- `void flox_backtest_result_destroy(FloxBacktestResultHandle result)`
+- `void flox_backtest_result_record_fill(FloxBacktestResultHandle result, uint64_t order_id, uint32_t symbol, uint8_t side, double price, double quantity, int64_t timestamp_ns)`
+- `void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result, FloxExecutorHandle executor)`
+- `void flox_backtest_result_stats(FloxBacktestResultHandle result, FloxBacktestStats * out)`
+- `uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle result, FloxEquityPoint * points_out, uint32_t max_points)`
+- `uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result, const char * path)`
+
+### backtestrunner_replay
+
+- `FloxBacktestRunnerHandle flox_backtest_runner_create(FloxRegistryHandle registry, double fee_rate, double initial_capital)`
+- `void flox_backtest_runner_destroy(FloxBacktestRunnerHandle runner)`
+- `void flox_backtest_runner_set_strategy(FloxBacktestRunnerHandle runner, FloxStrategyHandle strategy)`
+- `int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle runner, const char * path, const char * symbol, FloxBacktestStats * stats_out)`
+- `int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner, const int64_t * timestamps_ns, const double * close_prices, uint32_t n, const char * symbol, FloxBacktestStats * stats_out)`
+- `int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle runner, const int64_t * start_time_ns, const int64_t * end_time_ns, const double * open, const double * high, const double * low, const double * close, const double * volume, uint32_t n, const char * symbol, uint8_t bar_type, uint64_t bar_type_param, FloxBacktestStats * stats_out)`
+
+### bar_aggregation
+
+- `uint32_t flox_aggregate_time_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double interval_seconds, FloxBar * bars_out, uint32_t max_bars)`
+- `uint32_t flox_aggregate_tick_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, uint32_t tick_count, FloxBar * bars_out, uint32_t max_bars)`
+- `uint32_t flox_aggregate_volume_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double volume_threshold, FloxBar * bars_out, uint32_t max_bars)`
+
+### composite_book
+
+- `FloxCompositeBookHandle flox_composite_book_create(void)`
+- `void flox_composite_book_destroy(FloxCompositeBookHandle book)`
+- `uint8_t flox_composite_book_best_bid(FloxCompositeBookHandle book, uint32_t symbol, double * price_out, double * qty_out)`
+- `uint8_t flox_composite_book_best_ask(FloxCompositeBookHandle book, uint32_t symbol, double * price_out, double * qty_out)`
+- `uint8_t flox_composite_book_has_arb(FloxCompositeBookHandle book, uint32_t symbol)`
+- `void flox_composite_book_mark_stale(FloxCompositeBookHandle book, uint32_t exchange, uint32_t symbol)`
+- `void flox_composite_book_check_staleness(FloxCompositeBookHandle book, int64_t now_ns, int64_t threshold_ns)`
+
+### context_queries
+
+- `int64_t flox_position_raw(FloxStrategyHandle s, uint32_t symbol)`
+- `int64_t flox_last_trade_price_raw(FloxStrategyHandle s, uint32_t symbol)`
+- `int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol)`
+- `int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol)`
+- `int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol)`
+- `void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext * out)`
+- `int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id)`
+
+### data_reader
+
+- `FloxDataReaderHandle flox_data_reader_create(const char * data_dir)`
+- `void flox_data_reader_destroy(FloxDataReaderHandle reader)`
+- `uint64_t flox_data_reader_count(FloxDataReaderHandle reader)`
+
+### data_writer
+
+- `FloxDataWriterHandle flox_data_writer_create(const char * output_dir, uint64_t max_segment_mb, uint8_t exchange_id)`
+- `void flox_data_writer_destroy(FloxDataWriterHandle writer)`
+- `uint8_t flox_data_writer_write_trade(FloxDataWriterHandle writer, int64_t exchange_ts_ns, int64_t recv_ts_ns, double price, double qty, uint64_t trade_id, uint32_t symbol_id, uint8_t side)`
+- `void flox_data_writer_flush(FloxDataWriterHandle writer)`
+- `void flox_data_writer_close(FloxDataWriterHandle writer)`
+
+### datareader
+
+- `FloxDataReaderHandle flox_data_reader_create_filtered(const char * data_dir, int64_t from_ns, int64_t to_ns, const uint32_t * symbols, uint32_t num_symbols)`
+- `FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle reader)`
+- `FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle reader)`
+- `uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader, FloxTradeRecord * trades_out, uint64_t max_trades)`
+- `uint64_t flox_data_reader_read_bbo(FloxDataReaderHandle reader, FloxBBO * bbos_out, uint64_t max_events)`
+- `uint64_t flox_data_reader_count_book_updates(FloxDataReaderHandle reader, uint64_t * total_levels_out)`
+- `uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle reader, FloxBookUpdateHeader * headers_out, uint64_t max_events, FloxLevel * levels_out, uint64_t max_levels)`
+- `uint64_t flox_data_reader_read_trades_from(FloxDataReaderHandle reader, int64_t start_ts_ns, FloxTradeRecord * trades_out, uint64_t max_trades)`
+- `uint64_t flox_data_reader_read_bbo_from(FloxDataReaderHandle reader, int64_t start_ts_ns, FloxBBO * bbos_out, uint64_t max_events)`
+- `uint64_t flox_data_reader_count_book_updates_from(FloxDataReaderHandle reader, int64_t start_ts_ns, uint64_t * total_levels_out)`
+- `uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle reader, int64_t start_ts_ns, FloxBookUpdateHeader * headers_out, uint64_t max_events, FloxLevel * levels_out, uint64_t max_levels)`
+
+### datarecorder
+
+- `FloxDataRecorderHandle flox_data_recorder_create(const char * output_dir, const char * exchange_name, uint64_t max_segment_mb)`
+- `void flox_data_recorder_destroy(FloxDataRecorderHandle recorder)`
+- `void flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder, uint32_t symbol_id, const char * name, const char * base, const char * quote, int8_t price_precision, int8_t qty_precision)`
+- `void flox_data_recorder_start(FloxDataRecorderHandle recorder)`
+- `void flox_data_recorder_stop(FloxDataRecorderHandle recorder)`
+- `void flox_data_recorder_flush(FloxDataRecorderHandle recorder)`
+- `uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder)`
+
+### datawriter
+
+- `FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer)`
+
+### executor_fill
+
+- `uint32_t flox_executor_get_fills(FloxExecutorHandle executor, FloxFill * fills_out, uint32_t max_fills)`
+
+### fixed_point
+
+- `int64_t flox_price_from_double(double value)`
+- `double flox_price_to_double(int64_t raw)`
+- `int64_t flox_quantity_from_double(double value)`
+- `double flox_quantity_to_double(int64_t raw)`
+
+### floxliveengine_disruptor
+
+- `FloxLiveEngineHandle flox_live_engine_create(FloxRegistryHandle registry)`
+- `void flox_live_engine_destroy(FloxLiveEngineHandle engine)`
+- `void flox_live_engine_add_strategy(FloxLiveEngineHandle engine, FloxStrategyHandle strategy, FloxOnSignalCallback on_signal, void * user_data)`
+- `void flox_live_engine_start(FloxLiveEngineHandle engine)`
+- `void flox_live_engine_stop(FloxLiveEngineHandle engine)`
+- `void flox_live_engine_publish_trade(FloxLiveEngineHandle engine, uint32_t symbol, double price, double qty, uint8_t is_buy, int64_t exchange_ts_ns)`
+- `void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks, int64_t exchange_ts_ns)`
+- `void flox_live_engine_publish_bar(FloxLiveEngineHandle engine, uint32_t symbol, uint8_t bar_type, uint64_t bar_type_param, double open, double high, double low, double close, double volume, double buy_volume, int64_t start_time_ns, int64_t end_time_ns, uint8_t close_reason)`
+
+### footprint_bar
+
+- `FloxFootprintHandle flox_footprint_create(double tick_size)`
+- `void flox_footprint_destroy(FloxFootprintHandle footprint)`
+- `void flox_footprint_add_trade(FloxFootprintHandle footprint, double price, double quantity, uint8_t is_buy)`
+- `double flox_footprint_total_delta(FloxFootprintHandle footprint)`
+- `double flox_footprint_total_volume(FloxFootprintHandle footprint)`
+- `uint32_t flox_footprint_num_levels(FloxFootprintHandle footprint)`
+- `void flox_footprint_clear(FloxFootprintHandle footprint)`
+
+### heikin_ashi
+
+- `uint32_t flox_aggregate_heikin_ashi_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double interval_seconds, FloxBar * bars_out, uint32_t max_bars)`
+
+### indicator_functions
+
+- `void flox_indicator_ema(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_sma(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_rsi(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_atr(const double * high, const double * low, const double * close, size_t len, size_t period, double * output)`
+- `void flox_indicator_macd(const double * input, size_t len, size_t fast_period, size_t slow_period, size_t signal_period, double * macd_out, double * signal_out, double * hist_out)`
+- `void flox_indicator_bollinger(const double * input, size_t len, size_t period, double multiplier, double * upper, double * middle, double * lower)`
+- `void flox_indicator_rma(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_dema(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_tema(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_kama(const double * input, size_t len, size_t period, size_t fast, size_t slow, double * output)`
+- `void flox_indicator_slope(const double * input, size_t len, size_t length, double * output)`
+- `void flox_indicator_adx(const double * high, const double * low, const double * close, size_t len, size_t period, double * adx_out, double * plus_di_out, double * minus_di_out)`
+- `void flox_indicator_cci(const double * high, const double * low, const double * close, size_t len, size_t period, double * output)`
+- `void flox_indicator_stochastic(const double * high, const double * low, const double * close, size_t len, size_t k_period, size_t d_period, double * k_out, double * d_out)`
+- `void flox_indicator_chop(const double * high, const double * low, const double * close, size_t len, size_t period, double * output)`
+- `void flox_indicator_obv(const double * close, const double * volume, size_t len, double * output)`
+- `void flox_indicator_vwap(const double * close, const double * volume, size_t len, size_t window, double * output)`
+- `void flox_indicator_cvd(const double * open, const double * high, const double * low, const double * close, const double * volume, size_t len, double * output)`
+- `void flox_indicator_skewness(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_kurtosis(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_parkinson_vol(const double * high, const double * low, size_t len, size_t period, double * output)`
+- `void flox_indicator_rogers_satchell_vol(const double * open, const double * high, const double * low, const double * close, size_t len, size_t period, double * output)`
+- `void flox_indicator_rolling_zscore(const double * input, size_t len, size_t period, double * output)`
+- `void flox_indicator_shannon_entropy(const double * input, size_t len, size_t period, size_t bins, double * output)`
+- `void flox_indicator_correlation(const double * x, const double * y, size_t len, size_t period, double * output)`
+- `void flox_indicator_adf(const double * input, size_t len, size_t max_lag, const char * regression, double * test_stat_out, double * p_value_out, size_t * used_lag_out)`
+- `void flox_indicator_autocorrelation(const double * input, size_t len, size_t window, size_t lag, double * output)`
+
+### indicatorgraph
+
+- `FloxIndicatorGraphHandle flox_indicator_graph_create(void)`
+- `void flox_indicator_graph_destroy(FloxIndicatorGraphHandle g)`
+- `void flox_indicator_graph_set_bars(FloxIndicatorGraphHandle g, uint32_t symbol, const double * close, const double * high, const double * low, const double * volume, size_t len)`
+- `void flox_indicator_graph_add_node(FloxIndicatorGraphHandle g, const char * name, const char *const * deps, size_t num_deps, FloxGraphNodeFn fn, void * user_data)`
+- `const double * flox_indicator_graph_require(FloxIndicatorGraphHandle g, uint32_t symbol, const char * name, size_t * len_out)`
+- `const double * flox_indicator_graph_get(FloxIndicatorGraphHandle g, uint32_t symbol, const char * name, size_t * len_out)`
+- `const double * flox_indicator_graph_close(FloxIndicatorGraphHandle g, uint32_t symbol, size_t * len_out)`
+- `const double * flox_indicator_graph_high(FloxIndicatorGraphHandle g, uint32_t symbol, size_t * len_out)`
+- `const double * flox_indicator_graph_low(FloxIndicatorGraphHandle g, uint32_t symbol, size_t * len_out)`
+- `const double * flox_indicator_graph_volume(FloxIndicatorGraphHandle g, uint32_t symbol, size_t * len_out)`
+- `void flox_indicator_graph_invalidate(FloxIndicatorGraphHandle g, uint32_t symbol)`
+- `void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g)`
+- `void flox_indicator_graph_step(FloxIndicatorGraphHandle g, uint32_t symbol, double open, double high, double low, double close, double volume)`
+- `double flox_indicator_graph_current(FloxIndicatorGraphHandle g, uint32_t symbol, const char * name)`
+- `uint32_t flox_indicator_graph_bar_count(FloxIndicatorGraphHandle g, uint32_t symbol)`
+- `void flox_indicator_graph_reset(FloxIndicatorGraphHandle g, uint32_t symbol)`
+- `void flox_indicator_graph_reset_all(FloxIndicatorGraphHandle g)`
+- `FloxStreamingGraphHandle flox_streaming_graph_create(void)`
+- `void flox_streaming_graph_destroy(FloxStreamingGraphHandle sg)`
+- `void flox_streaming_graph_add_node(FloxStreamingGraphHandle sg, const char * name, const char *const * deps, size_t num_deps, FloxGraphNodeFn fn, void * user_data)`
+- `void flox_streaming_graph_step(FloxStreamingGraphHandle sg, uint32_t symbol, double open, double high, double low, double close, double volume)`
+- `double flox_streaming_graph_current(FloxStreamingGraphHandle sg, uint32_t symbol, const char * name)`
+- `uint32_t flox_streaming_graph_bar_count(FloxStreamingGraphHandle sg, uint32_t symbol)`
+- `void flox_streaming_graph_reset(FloxStreamingGraphHandle sg, uint32_t symbol)`
+- `void flox_streaming_graph_reset_all(FloxStreamingGraphHandle sg)`
+- `const double * flox_streaming_graph_close(FloxStreamingGraphHandle sg, uint32_t symbol, size_t * len_out)`
+- `const double * flox_streaming_graph_high(FloxStreamingGraphHandle sg, uint32_t symbol, size_t * len_out)`
+- `const double * flox_streaming_graph_low(FloxStreamingGraphHandle sg, uint32_t symbol, size_t * len_out)`
+- `const double * flox_streaming_graph_volume(FloxStreamingGraphHandle sg, uint32_t symbol, size_t * len_out)`
+
+### l3_order
+
+- `FloxL3BookHandle flox_l3_book_create(void)`
+- `void flox_l3_book_destroy(FloxL3BookHandle book)`
+- `int32_t flox_l3_book_add_order(FloxL3BookHandle book, uint64_t order_id, double price, double quantity, uint8_t side)`
+- `int32_t flox_l3_book_remove_order(FloxL3BookHandle book, uint64_t order_id)`
+- `int32_t flox_l3_book_modify_order(FloxL3BookHandle book, uint64_t order_id, double new_qty)`
+- `uint8_t flox_l3_book_best_bid(FloxL3BookHandle book, double * price_out)`
+- `uint8_t flox_l3_book_best_ask(FloxL3BookHandle book, double * price_out)`
+- `double flox_l3_book_bid_at_price(FloxL3BookHandle book, double price)`
+- `double flox_l3_book_ask_at_price(FloxL3BookHandle book, double price)`
+
+### market_profile
+
+- `FloxMarketProfileHandle flox_market_profile_create(double tick_size, uint32_t period_minutes, int64_t session_start_ns)`
+- `void flox_market_profile_destroy(FloxMarketProfileHandle profile)`
+- `void flox_market_profile_add_trade(FloxMarketProfileHandle profile, int64_t timestamp_ns, double price, double qty, uint8_t is_buy)`
+- `double flox_market_profile_poc(FloxMarketProfileHandle profile)`
+- `double flox_market_profile_vah(FloxMarketProfileHandle profile)`
+- `double flox_market_profile_val(FloxMarketProfileHandle profile)`
+- `double flox_market_profile_ib_high(FloxMarketProfileHandle profile)`
+- `double flox_market_profile_ib_low(FloxMarketProfileHandle profile)`
+- `uint8_t flox_market_profile_is_poor_high(FloxMarketProfileHandle profile)`
+- `uint8_t flox_market_profile_is_poor_low(FloxMarketProfileHandle profile)`
+- `uint32_t flox_market_profile_num_levels(FloxMarketProfileHandle profile)`
+- `void flox_market_profile_clear(FloxMarketProfileHandle profile)`
+
+### order_book
+
+- `FloxBookHandle flox_book_create(double tick_size)`
+- `void flox_book_destroy(FloxBookHandle book)`
+- `void flox_book_apply_snapshot(FloxBookHandle book, const double * bid_prices, const double * bid_qtys, size_t bid_len, const double * ask_prices, const double * ask_qtys, size_t ask_len)`
+- `void flox_book_apply_delta(FloxBookHandle book, const double * bid_prices, const double * bid_qtys, size_t bid_len, const double * ask_prices, const double * ask_qtys, size_t ask_len)`
+- `uint8_t flox_book_best_bid(FloxBookHandle book, double * price_out)`
+- `uint8_t flox_book_best_ask(FloxBookHandle book, double * price_out)`
+- `uint8_t flox_book_mid(FloxBookHandle book, double * price_out)`
+- `uint8_t flox_book_spread(FloxBookHandle book, double * spread_out)`
+- `double flox_book_bid_at_price(FloxBookHandle book, double price)`
+- `double flox_book_ask_at_price(FloxBookHandle book, double price)`
+- `uint8_t flox_book_is_crossed(FloxBookHandle book)`
+- `void flox_book_clear(FloxBookHandle book)`
+- `uint32_t flox_book_get_bids(FloxBookHandle book, double * prices_out, double * qtys_out, uint32_t max_levels)`
+- `uint32_t flox_book_get_asks(FloxBookHandle book, double * prices_out, double * qtys_out, uint32_t max_levels)`
+
+### order_tracker
+
+- `FloxOrderTrackerHandle flox_order_tracker_create(void)`
+- `void flox_order_tracker_destroy(FloxOrderTrackerHandle tracker)`
+- `uint8_t flox_order_tracker_on_submitted(FloxOrderTrackerHandle tracker, uint64_t order_id, uint32_t symbol, uint8_t side, double price, double qty)`
+- `uint8_t flox_order_tracker_on_filled(FloxOrderTrackerHandle tracker, uint64_t order_id, double fill_qty)`
+- `uint8_t flox_order_tracker_on_canceled(FloxOrderTrackerHandle tracker, uint64_t order_id)`
+- `uint8_t flox_order_tracker_is_active(FloxOrderTrackerHandle tracker, uint64_t order_id)`
+- `uint32_t flox_order_tracker_active_count(FloxOrderTrackerHandle tracker)`
+- `uint32_t flox_order_tracker_total_count(FloxOrderTrackerHandle tracker)`
+- `void flox_order_tracker_prune(FloxOrderTrackerHandle tracker)`
+
+### partitioner
+
+- `FloxPartitionerHandle flox_partitioner_create(const char * data_dir)`
+- `void flox_partitioner_destroy(FloxPartitionerHandle partitioner)`
+- `uint32_t flox_partitioner_by_time(FloxPartitionerHandle p, uint32_t num_partitions, int64_t warmup_ns, FloxPartition * partitions_out, uint32_t max_partitions)`
+- `uint32_t flox_partitioner_by_duration(FloxPartitionerHandle p, int64_t duration_ns, int64_t warmup_ns, FloxPartition * partitions_out, uint32_t max_partitions)`
+- `uint32_t flox_partitioner_by_calendar(FloxPartitionerHandle p, uint8_t unit, int64_t warmup_ns, FloxPartition * partitions_out, uint32_t max_partitions)`
+- `uint32_t flox_partitioner_by_symbol(FloxPartitionerHandle p, uint32_t num_partitions, FloxPartition * partitions_out, uint32_t max_partitions)`
+- `uint32_t flox_partitioner_per_symbol(FloxPartitionerHandle p, FloxPartition * partitions_out, uint32_t max_partitions)`
+- `uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle p, uint32_t num_partitions, FloxPartition * partitions_out, uint32_t max_partitions)`
+
+### pointer_out
+
+- `void flox_data_reader_summary_p(FloxDataReaderHandle reader, void * out)`
+- `void flox_data_reader_stats_p(FloxDataReaderHandle reader, void * out)`
+- `void flox_data_writer_stats_p(FloxDataWriterHandle writer, void * out)`
+- `void flox_segment_merge_full_p(const char * input_paths, size_t num_paths, const char * output_dir, const char * output_name, uint8_t sort, void * out)`
+- `void flox_segment_merge_dir_p(const char * input_dir, const char * output_dir, void * out)`
+- `void flox_segment_split_p(const char * input_path, const char * output_dir, uint8_t mode, int64_t time_interval_ns, uint64_t events_per_file, void * out)`
+- `void flox_segment_export_p(const char * input_path, const char * output_path, uint8_t format, int64_t from_ns, int64_t to_ns, const uint32_t * symbols, uint32_t num_symbols, void * out)`
+- `void flox_segment_validate_full_p(const char * path, uint8_t verify_crc, uint8_t verify_timestamps, void * out)`
+- `void flox_dataset_validate_p(const char * data_dir, void * out)`
+
+### position
+
+- `FloxPositionTrackerHandle flox_position_tracker_create(uint8_t cost_basis)`
+- `void flox_position_tracker_destroy(FloxPositionTrackerHandle tracker)`
+- `void flox_position_tracker_on_fill(FloxPositionTrackerHandle tracker, uint32_t symbol, uint8_t side, double price, double quantity)`
+- `double flox_position_tracker_position(FloxPositionTrackerHandle tracker, uint32_t symbol)`
+- `double flox_position_tracker_avg_entry(FloxPositionTrackerHandle tracker, uint32_t symbol)`
+- `double flox_position_tracker_realized_pnl(FloxPositionTrackerHandle tracker, uint32_t symbol)`
+- `double flox_position_tracker_total_pnl(FloxPositionTrackerHandle tracker)`
+
+### position_group
+
+- `FloxPositionGroupHandle flox_position_group_create(void)`
+- `void flox_position_group_destroy(FloxPositionGroupHandle tracker)`
+- `uint64_t flox_position_group_open(FloxPositionGroupHandle tracker, uint64_t order_id, uint32_t symbol, uint8_t side, double price, double qty)`
+- `void flox_position_group_close(FloxPositionGroupHandle tracker, uint64_t position_id, double exit_price)`
+- `void flox_position_group_partial_close(FloxPositionGroupHandle tracker, uint64_t position_id, double qty, double exit_price)`
+- `double flox_position_group_net_position(FloxPositionGroupHandle tracker, uint32_t symbol)`
+- `double flox_position_group_realized_pnl(FloxPositionGroupHandle tracker, uint32_t symbol)`
+- `double flox_position_group_total_pnl(FloxPositionGroupHandle tracker)`
+- `uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol)`
+- `void flox_position_group_prune(FloxPositionGroupHandle tracker)`
+
+### segment
+
+- `uint8_t flox_segment_validate(const char * path)`
+- `uint8_t flox_segment_merge(const char * input_dir, const char * output_path)`
+- `FloxMergeResult flox_segment_merge_full(const char * input_paths, size_t num_paths, const char * output_dir, const char * output_name, uint8_t sort)`
+- `FloxMergeResult flox_segment_merge_dir(const char * input_dir, const char * output_dir)`
+- `FloxSplitResult flox_segment_split(const char * input_path, const char * output_dir, uint8_t mode, int64_t time_interval_ns, uint64_t events_per_file)`
+- `FloxExportResult flox_segment_export(const char * input_path, const char * output_path, uint8_t format, int64_t from_ns, int64_t to_ns, const uint32_t * symbols, uint32_t num_symbols)`
+- `uint8_t flox_segment_recompress(const char * input_path, const char * output_path, uint8_t compression)`
+- `uint64_t flox_segment_extract_symbols(const char * input_path, const char * output_path, const uint32_t * symbols, uint32_t num_symbols)`
+- `uint64_t flox_segment_extract_time_range(const char * input_path, const char * output_path, int64_t from_ns, int64_t to_ns)`
+
+### signal_emission
+
+- `uint64_t flox_emit_market_buy(FloxStrategyHandle s, uint32_t symbol, int64_t qty_raw)`
+- `uint64_t flox_emit_market_sell(FloxStrategyHandle s, uint32_t symbol, int64_t qty_raw)`
+- `uint64_t flox_emit_limit_buy(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw, int64_t qty_raw)`
+- `uint64_t flox_emit_limit_sell(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw, int64_t qty_raw)`
+- `void flox_emit_cancel(FloxStrategyHandle s, uint64_t order_id)`
+- `void flox_emit_cancel_all(FloxStrategyHandle s, uint32_t symbol)`
+- `void flox_emit_modify(FloxStrategyHandle s, uint64_t order_id, int64_t new_price_raw, int64_t new_qty_raw)`
+- `uint64_t flox_emit_stop_market(FloxStrategyHandle s, uint32_t symbol, uint8_t side, int64_t trigger_raw, int64_t qty_raw)`
+- `uint64_t flox_emit_stop_limit(FloxStrategyHandle s, uint32_t symbol, uint8_t side, int64_t trigger_raw, int64_t limit_raw, int64_t qty_raw)`
+- `uint64_t flox_emit_take_profit_market(FloxStrategyHandle s, uint32_t symbol, uint8_t side, int64_t trigger_raw, int64_t qty_raw)`
+- `uint64_t flox_emit_trailing_stop(FloxStrategyHandle s, uint32_t symbol, uint8_t side, int64_t offset_raw, int64_t qty_raw)`
+- `uint64_t flox_emit_trailing_stop_percent(FloxStrategyHandle s, uint32_t symbol, uint8_t side, int32_t callback_bps, int64_t qty_raw)`
+- `uint64_t flox_emit_take_profit_limit(FloxStrategyHandle s, uint32_t symbol, uint8_t side, int64_t trigger_raw, int64_t limit_raw, int64_t qty_raw)`
+- `uint64_t flox_emit_limit_buy_tif(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw, int64_t qty_raw, uint8_t time_in_force)`
+- `uint64_t flox_emit_limit_sell_tif(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw, int64_t qty_raw, uint8_t time_in_force)`
+- `uint64_t flox_emit_close_position(FloxStrategyHandle s, uint32_t symbol)`
+
+### simulated_executor
+
+- `FloxExecutorHandle flox_executor_create(void)`
+- `void flox_executor_destroy(FloxExecutorHandle executor)`
+- `void flox_executor_submit_order(FloxExecutorHandle executor, uint64_t id, uint8_t side, double price, double quantity, uint8_t order_type, uint32_t symbol)`
+- `void flox_executor_cancel_order(FloxExecutorHandle executor, uint64_t order_id)`
+- `void flox_executor_cancel_all(FloxExecutorHandle executor, uint32_t symbol)`
+- `void flox_executor_on_bar(FloxExecutorHandle executor, uint32_t symbol, double close_price)`
+- `void flox_executor_on_trade(FloxExecutorHandle executor, uint32_t symbol, double price, uint8_t is_buy)`
+- `void flox_executor_advance_clock(FloxExecutorHandle executor, int64_t timestamp_ns)`
+- `uint32_t flox_executor_fill_count(FloxExecutorHandle executor)`
+
+### statistics
+
+- `double flox_stat_correlation(const double * x, const double * y, size_t len)`
+- `double flox_stat_profit_factor(const double * pnl, size_t len)`
+- `double flox_stat_win_rate(const double * pnl, size_t len)`
+
+### strategy_lifecycle
+
+- `FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t * symbols, uint32_t num_symbols, FloxRegistryHandle registry, FloxStrategyCallbacks callbacks)`
+- `void flox_strategy_destroy(FloxStrategyHandle strategy)`
+
+### strategyrunner_synchronous
+
+- `FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry, FloxOnSignalCallback on_signal, void * user_data)`
+- `void flox_runner_destroy(FloxRunnerHandle runner)`
+- `void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy)`
+- `void flox_runner_start(FloxRunnerHandle runner)`
+- `void flox_runner_stop(FloxRunnerHandle runner)`
+- `void flox_runner_on_trade(FloxRunnerHandle runner, uint32_t symbol, double price, double qty, uint8_t is_buy, int64_t exchange_ts_ns)`
+- `void flox_runner_on_book_snapshot(FloxRunnerHandle runner, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks, int64_t exchange_ts_ns)`
+- `void flox_runner_on_bar(FloxRunnerHandle runner, uint32_t symbol, uint8_t bar_type, uint64_t bar_type_param, double open, double high, double low, double close, double volume, double buy_volume, int64_t start_time_ns, int64_t end_time_ns, uint8_t close_reason)`
+
+### symbol_registry
+
+- `FloxRegistryHandle flox_registry_create(void)`
+- `void flox_registry_destroy(FloxRegistryHandle registry)`
+- `uint32_t flox_registry_add_symbol(FloxRegistryHandle registry, const char * exchange, const char * name, double tick_size)`
+- `uint8_t flox_registry_get_symbol_id(FloxRegistryHandle registry, const char * exchange, const char * name, uint32_t * id_out)`
+- `uint8_t flox_registry_get_symbol_name(FloxRegistryHandle registry, uint32_t symbol_id, char * exchange_out, size_t exchange_len, char * name_out, size_t name_len)`
+- `uint32_t flox_registry_symbol_count(FloxRegistryHandle registry)`
+
+### targets
+
+- `void flox_target_future_return(const double * close, size_t len, size_t horizon, double * output)`
+- `void flox_target_future_ctc_volatility(const double * close, size_t len, size_t horizon, double * output)`
+- `void flox_target_future_linear_slope(const double * close, size_t len, size_t horizon, double * output)`
+
+### validation
+
+- `FloxSegmentValidation flox_segment_validate_full(const char * path, uint8_t verify_crc, uint8_t verify_timestamps)`
+- `FloxDatasetValidation flox_dataset_validate(const char * data_dir)`
+
+### volume_profile
+
+- `FloxVolumeProfileHandle flox_volume_profile_create(double tick_size)`
+- `void flox_volume_profile_destroy(FloxVolumeProfileHandle profile)`
+- `void flox_volume_profile_add_trade(FloxVolumeProfileHandle profile, double price, double quantity, uint8_t is_buy)`
+- `double flox_volume_profile_poc(FloxVolumeProfileHandle profile)`
+- `double flox_volume_profile_vah(FloxVolumeProfileHandle profile)`
+- `double flox_volume_profile_val(FloxVolumeProfileHandle profile)`
+- `double flox_volume_profile_total_volume(FloxVolumeProfileHandle profile)`
+- `double flox_volume_profile_total_delta(FloxVolumeProfileHandle profile)`
+- `uint32_t flox_volume_profile_num_levels(FloxVolumeProfileHandle profile)`
+- `void flox_volume_profile_clear(FloxVolumeProfileHandle profile)`
+

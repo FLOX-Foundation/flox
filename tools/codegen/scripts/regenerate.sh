@@ -12,8 +12,9 @@ if [[ ! -x "$PY" ]]; then
   bash "$TOOL/setup.sh"
 fi
 
-GOLDEN="$TOOL/golden/flox_capi.h"
 SPEC="$REPO/include/flox/capi/flox_capi_spec.hpp"
 
-PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-capi --spec "$SPEC" --out "$GOLDEN"
-echo "regenerated $GOLDEN"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-capi  --spec "$SPEC" --out "$TOOL/golden/flox_capi.h"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-codon --spec "$SPEC" --out "$TOOL/golden/flox_capi.codon"
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli emit-llms  --spec "$SPEC" --out "$TOOL/golden/flox_capi.md"
+echo "regenerated golden/{flox_capi.h, flox_capi.codon, flox_capi.md}"

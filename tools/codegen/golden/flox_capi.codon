@@ -1,0 +1,372 @@
+# GENERATED — do not edit by hand.
+# Source: include/flox/capi/flox_capi_spec.hpp
+# Tool:   tools/codegen/flox_codegen/emit_codon.py
+#
+# Codon `from C import ...` declarations for the FLOX C API.
+# Re-exported through `codon/flox/<module>.codon` files; this
+# file is the flat reference, not directly imported by user code.
+
+# ── additional_bar ──
+from C import flox_aggregate_range_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+from C import flox_aggregate_renko_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+
+# ── additional_stats ──
+from C import flox_stat_permutation_test(Ptr[float], int, Ptr[float], int, u32) -> float
+from C import flox_stat_bootstrap_ci(Ptr[float], int, float, u32, Ptr[float], Ptr[float], Ptr[float])
+
+# ── backtest_slippage ──
+from C import flox_executor_set_default_slippage(cobj, i32, i32, float, float, float)
+from C import flox_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
+from C import flox_executor_set_queue_model(cobj, i32, u32)
+from C import flox_executor_on_trade_qty(cobj, u32, float, float, u8)
+from C import flox_executor_on_best_levels(cobj, u32, float, float, float, float)
+from C import flox_executor_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32)
+from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
+from C import flox_backtest_result_destroy(cobj)
+from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
+from C import flox_backtest_result_ingest_executor(cobj, cobj)
+from C import flox_backtest_result_stats(cobj, cobj)
+from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
+from C import flox_backtest_result_write_equity_curve_csv(cobj, cobj) -> u8
+
+# ── backtestrunner_replay ──
+from C import flox_backtest_runner_create(cobj, float, float) -> cobj
+from C import flox_backtest_runner_destroy(cobj)
+from C import flox_backtest_runner_set_strategy(cobj, cobj)
+from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, cobj) -> int
+from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, cobj) -> int
+from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64], Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], u32, cobj, u8, u64, cobj) -> int
+
+# ── bar_aggregation ──
+from C import flox_aggregate_time_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+from C import flox_aggregate_tick_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, u32, cobj, u32) -> u32
+from C import flox_aggregate_volume_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+
+# ── composite_book ──
+from C import flox_composite_book_create() -> cobj
+from C import flox_composite_book_destroy(cobj)
+from C import flox_composite_book_best_bid(cobj, u32, Ptr[float], Ptr[float]) -> u8
+from C import flox_composite_book_best_ask(cobj, u32, Ptr[float], Ptr[float]) -> u8
+from C import flox_composite_book_has_arb(cobj, u32) -> u8
+from C import flox_composite_book_mark_stale(cobj, u32, u32)
+from C import flox_composite_book_check_staleness(cobj, i64, i64)
+
+# ── context_queries ──
+from C import flox_position_raw(cobj, u32) -> i64
+from C import flox_last_trade_price_raw(cobj, u32) -> i64
+from C import flox_best_bid_raw(cobj, u32) -> i64
+from C import flox_best_ask_raw(cobj, u32) -> i64
+from C import flox_mid_price_raw(cobj, u32) -> i64
+from C import flox_get_symbol_context(cobj, u32, cobj)
+from C import flox_get_order_status(cobj, u64) -> i32
+
+# ── data_reader ──
+from C import flox_data_reader_create(cobj) -> cobj
+from C import flox_data_reader_destroy(cobj)
+from C import flox_data_reader_count(cobj) -> u64
+
+# ── data_writer ──
+from C import flox_data_writer_create(cobj, u64, u8) -> cobj
+from C import flox_data_writer_destroy(cobj)
+from C import flox_data_writer_write_trade(cobj, i64, i64, float, float, u64, u32, u8) -> u8
+from C import flox_data_writer_flush(cobj)
+from C import flox_data_writer_close(cobj)
+
+# ── datareader ──
+from C import flox_data_reader_create_filtered(cobj, i64, i64, Ptr[u32], u32) -> cobj
+from C import flox_data_reader_summary(cobj) -> cobj
+from C import flox_data_reader_stats(cobj) -> cobj
+from C import flox_data_reader_read_trades(cobj, cobj, u64) -> u64
+from C import flox_data_reader_read_bbo(cobj, cobj, u64) -> u64
+from C import flox_data_reader_count_book_updates(cobj, Ptr[u64]) -> u64
+from C import flox_data_reader_read_book_updates(cobj, cobj, u64, cobj, u64) -> u64
+from C import flox_data_reader_read_trades_from(cobj, i64, cobj, u64) -> u64
+from C import flox_data_reader_read_bbo_from(cobj, i64, cobj, u64) -> u64
+from C import flox_data_reader_count_book_updates_from(cobj, i64, Ptr[u64]) -> u64
+from C import flox_data_reader_read_book_updates_from(cobj, i64, cobj, u64, cobj, u64) -> u64
+
+# ── datarecorder ──
+from C import flox_data_recorder_create(cobj, cobj, u64) -> cobj
+from C import flox_data_recorder_destroy(cobj)
+from C import flox_data_recorder_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
+from C import flox_data_recorder_start(cobj)
+from C import flox_data_recorder_stop(cobj)
+from C import flox_data_recorder_flush(cobj)
+from C import flox_data_recorder_is_recording(cobj) -> u8
+
+# ── datawriter ──
+from C import flox_data_writer_stats(cobj) -> cobj
+
+# ── executor_fill ──
+from C import flox_executor_get_fills(cobj, cobj, u32) -> u32
+
+# ── fixed_point ──
+from C import flox_price_from_double(float) -> i64
+from C import flox_price_to_double(i64) -> float
+from C import flox_quantity_from_double(float) -> i64
+from C import flox_quantity_to_double(i64) -> float
+
+# ── floxliveengine_disruptor ──
+from C import flox_live_engine_create(cobj) -> cobj
+from C import flox_live_engine_destroy(cobj)
+from C import flox_live_engine_add_strategy(cobj, cobj, cobj, cobj)
+from C import flox_live_engine_start(cobj)
+from C import flox_live_engine_stop(cobj)
+from C import flox_live_engine_publish_trade(cobj, u32, float, float, u8, i64)
+from C import flox_live_engine_publish_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32, i64)
+from C import flox_live_engine_publish_bar(cobj, u32, u8, u64, float, float, float, float, float, float, i64, i64, u8)
+
+# ── footprint_bar ──
+from C import flox_footprint_create(float) -> cobj
+from C import flox_footprint_destroy(cobj)
+from C import flox_footprint_add_trade(cobj, float, float, u8)
+from C import flox_footprint_total_delta(cobj) -> float
+from C import flox_footprint_total_volume(cobj) -> float
+from C import flox_footprint_num_levels(cobj) -> u32
+from C import flox_footprint_clear(cobj)
+
+# ── heikin_ashi ──
+from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
+
+# ── indicator_functions ──
+from C import flox_indicator_ema(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_sma(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_rsi(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_atr(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_macd(Ptr[float], int, int, int, int, Ptr[float], Ptr[float], Ptr[float])
+from C import flox_indicator_bollinger(Ptr[float], int, int, float, Ptr[float], Ptr[float], Ptr[float])
+from C import flox_indicator_rma(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_dema(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_tema(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_kama(Ptr[float], int, int, int, int, Ptr[float])
+from C import flox_indicator_slope(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_adx(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float], Ptr[float], Ptr[float])
+from C import flox_indicator_cci(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_stochastic(Ptr[float], Ptr[float], Ptr[float], int, int, int, Ptr[float], Ptr[float])
+from C import flox_indicator_chop(Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_obv(Ptr[float], Ptr[float], int, Ptr[float])
+from C import flox_indicator_vwap(Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_cvd(Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], int, Ptr[float])
+from C import flox_indicator_skewness(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_kurtosis(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_parkinson_vol(Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_rogers_satchell_vol(Ptr[float], Ptr[float], Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_rolling_zscore(Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_shannon_entropy(Ptr[float], int, int, int, Ptr[float])
+from C import flox_indicator_correlation(Ptr[float], Ptr[float], int, int, Ptr[float])
+from C import flox_indicator_adf(Ptr[float], int, int, cobj, Ptr[float], Ptr[float], Ptr[int])
+from C import flox_indicator_autocorrelation(Ptr[float], int, int, int, Ptr[float])
+
+# ── indicatorgraph ──
+from C import flox_indicator_graph_create() -> cobj
+from C import flox_indicator_graph_destroy(cobj)
+from C import flox_indicator_graph_set_bars(cobj, u32, Ptr[float], Ptr[float], Ptr[float], Ptr[float], int)
+from C import flox_indicator_graph_add_node(cobj, cobj, Ptr[cobj], int, cobj, cobj)
+from C import flox_indicator_graph_require(cobj, u32, cobj, Ptr[int]) -> Ptr[float]
+from C import flox_indicator_graph_get(cobj, u32, cobj, Ptr[int]) -> Ptr[float]
+from C import flox_indicator_graph_close(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_indicator_graph_high(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_indicator_graph_low(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_indicator_graph_volume(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_indicator_graph_invalidate(cobj, u32)
+from C import flox_indicator_graph_invalidate_all(cobj)
+from C import flox_indicator_graph_step(cobj, u32, float, float, float, float, float)
+from C import flox_indicator_graph_current(cobj, u32, cobj) -> float
+from C import flox_indicator_graph_bar_count(cobj, u32) -> u32
+from C import flox_indicator_graph_reset(cobj, u32)
+from C import flox_indicator_graph_reset_all(cobj)
+from C import flox_streaming_graph_create() -> cobj
+from C import flox_streaming_graph_destroy(cobj)
+from C import flox_streaming_graph_add_node(cobj, cobj, Ptr[cobj], int, cobj, cobj)
+from C import flox_streaming_graph_step(cobj, u32, float, float, float, float, float)
+from C import flox_streaming_graph_current(cobj, u32, cobj) -> float
+from C import flox_streaming_graph_bar_count(cobj, u32) -> u32
+from C import flox_streaming_graph_reset(cobj, u32)
+from C import flox_streaming_graph_reset_all(cobj)
+from C import flox_streaming_graph_close(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_streaming_graph_high(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_streaming_graph_low(cobj, u32, Ptr[int]) -> Ptr[float]
+from C import flox_streaming_graph_volume(cobj, u32, Ptr[int]) -> Ptr[float]
+
+# ── l3_order ──
+from C import flox_l3_book_create() -> cobj
+from C import flox_l3_book_destroy(cobj)
+from C import flox_l3_book_add_order(cobj, u64, float, float, u8) -> i32
+from C import flox_l3_book_remove_order(cobj, u64) -> i32
+from C import flox_l3_book_modify_order(cobj, u64, float) -> i32
+from C import flox_l3_book_best_bid(cobj, Ptr[float]) -> u8
+from C import flox_l3_book_best_ask(cobj, Ptr[float]) -> u8
+from C import flox_l3_book_bid_at_price(cobj, float) -> float
+from C import flox_l3_book_ask_at_price(cobj, float) -> float
+
+# ── market_profile ──
+from C import flox_market_profile_create(float, u32, i64) -> cobj
+from C import flox_market_profile_destroy(cobj)
+from C import flox_market_profile_add_trade(cobj, i64, float, float, u8)
+from C import flox_market_profile_poc(cobj) -> float
+from C import flox_market_profile_vah(cobj) -> float
+from C import flox_market_profile_val(cobj) -> float
+from C import flox_market_profile_ib_high(cobj) -> float
+from C import flox_market_profile_ib_low(cobj) -> float
+from C import flox_market_profile_is_poor_high(cobj) -> u8
+from C import flox_market_profile_is_poor_low(cobj) -> u8
+from C import flox_market_profile_num_levels(cobj) -> u32
+from C import flox_market_profile_clear(cobj)
+
+# ── order_book ──
+from C import flox_book_create(float) -> cobj
+from C import flox_book_destroy(cobj)
+from C import flox_book_apply_snapshot(cobj, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int)
+from C import flox_book_apply_delta(cobj, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int)
+from C import flox_book_best_bid(cobj, Ptr[float]) -> u8
+from C import flox_book_best_ask(cobj, Ptr[float]) -> u8
+from C import flox_book_mid(cobj, Ptr[float]) -> u8
+from C import flox_book_spread(cobj, Ptr[float]) -> u8
+from C import flox_book_bid_at_price(cobj, float) -> float
+from C import flox_book_ask_at_price(cobj, float) -> float
+from C import flox_book_is_crossed(cobj) -> u8
+from C import flox_book_clear(cobj)
+from C import flox_book_get_bids(cobj, Ptr[float], Ptr[float], u32) -> u32
+from C import flox_book_get_asks(cobj, Ptr[float], Ptr[float], u32) -> u32
+
+# ── order_tracker ──
+from C import flox_order_tracker_create() -> cobj
+from C import flox_order_tracker_destroy(cobj)
+from C import flox_order_tracker_on_submitted(cobj, u64, u32, u8, float, float) -> u8
+from C import flox_order_tracker_on_filled(cobj, u64, float) -> u8
+from C import flox_order_tracker_on_canceled(cobj, u64) -> u8
+from C import flox_order_tracker_is_active(cobj, u64) -> u8
+from C import flox_order_tracker_active_count(cobj) -> u32
+from C import flox_order_tracker_total_count(cobj) -> u32
+from C import flox_order_tracker_prune(cobj)
+
+# ── partitioner ──
+from C import flox_partitioner_create(cobj) -> cobj
+from C import flox_partitioner_destroy(cobj)
+from C import flox_partitioner_by_time(cobj, u32, i64, cobj, u32) -> u32
+from C import flox_partitioner_by_duration(cobj, i64, i64, cobj, u32) -> u32
+from C import flox_partitioner_by_calendar(cobj, u8, i64, cobj, u32) -> u32
+from C import flox_partitioner_by_symbol(cobj, u32, cobj, u32) -> u32
+from C import flox_partitioner_per_symbol(cobj, cobj, u32) -> u32
+from C import flox_partitioner_by_event_count(cobj, u32, cobj, u32) -> u32
+
+# ── pointer_out ──
+from C import flox_data_reader_summary_p(cobj, cobj)
+from C import flox_data_reader_stats_p(cobj, cobj)
+from C import flox_data_writer_stats_p(cobj, cobj)
+from C import flox_segment_merge_full_p(cobj, int, cobj, cobj, u8, cobj)
+from C import flox_segment_merge_dir_p(cobj, cobj, cobj)
+from C import flox_segment_split_p(cobj, cobj, u8, i64, u64, cobj)
+from C import flox_segment_export_p(cobj, cobj, u8, i64, i64, Ptr[u32], u32, cobj)
+from C import flox_segment_validate_full_p(cobj, u8, u8, cobj)
+from C import flox_dataset_validate_p(cobj, cobj)
+
+# ── position ──
+from C import flox_position_tracker_create(u8) -> cobj
+from C import flox_position_tracker_destroy(cobj)
+from C import flox_position_tracker_on_fill(cobj, u32, u8, float, float)
+from C import flox_position_tracker_position(cobj, u32) -> float
+from C import flox_position_tracker_avg_entry(cobj, u32) -> float
+from C import flox_position_tracker_realized_pnl(cobj, u32) -> float
+from C import flox_position_tracker_total_pnl(cobj) -> float
+
+# ── position_group ──
+from C import flox_position_group_create() -> cobj
+from C import flox_position_group_destroy(cobj)
+from C import flox_position_group_open(cobj, u64, u32, u8, float, float) -> u64
+from C import flox_position_group_close(cobj, u64, float)
+from C import flox_position_group_partial_close(cobj, u64, float, float)
+from C import flox_position_group_net_position(cobj, u32) -> float
+from C import flox_position_group_realized_pnl(cobj, u32) -> float
+from C import flox_position_group_total_pnl(cobj) -> float
+from C import flox_position_group_open_count(cobj, u32) -> u32
+from C import flox_position_group_prune(cobj)
+
+# ── segment ──
+from C import flox_segment_validate(cobj) -> u8
+from C import flox_segment_merge(cobj, cobj) -> u8
+from C import flox_segment_merge_full(cobj, int, cobj, cobj, u8) -> cobj
+from C import flox_segment_merge_dir(cobj, cobj) -> cobj
+from C import flox_segment_split(cobj, cobj, u8, i64, u64) -> cobj
+from C import flox_segment_export(cobj, cobj, u8, i64, i64, Ptr[u32], u32) -> cobj
+from C import flox_segment_recompress(cobj, cobj, u8) -> u8
+from C import flox_segment_extract_symbols(cobj, cobj, Ptr[u32], u32) -> u64
+from C import flox_segment_extract_time_range(cobj, cobj, i64, i64) -> u64
+
+# ── signal_emission ──
+from C import flox_emit_market_buy(cobj, u32, i64) -> u64
+from C import flox_emit_market_sell(cobj, u32, i64) -> u64
+from C import flox_emit_limit_buy(cobj, u32, i64, i64) -> u64
+from C import flox_emit_limit_sell(cobj, u32, i64, i64) -> u64
+from C import flox_emit_cancel(cobj, u64)
+from C import flox_emit_cancel_all(cobj, u32)
+from C import flox_emit_modify(cobj, u64, i64, i64)
+from C import flox_emit_stop_market(cobj, u32, u8, i64, i64) -> u64
+from C import flox_emit_stop_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import flox_emit_take_profit_market(cobj, u32, u8, i64, i64) -> u64
+from C import flox_emit_trailing_stop(cobj, u32, u8, i64, i64) -> u64
+from C import flox_emit_trailing_stop_percent(cobj, u32, u8, i32, i64) -> u64
+from C import flox_emit_take_profit_limit(cobj, u32, u8, i64, i64, i64) -> u64
+from C import flox_emit_limit_buy_tif(cobj, u32, i64, i64, u8) -> u64
+from C import flox_emit_limit_sell_tif(cobj, u32, i64, i64, u8) -> u64
+from C import flox_emit_close_position(cobj, u32) -> u64
+
+# ── simulated_executor ──
+from C import flox_executor_create() -> cobj
+from C import flox_executor_destroy(cobj)
+from C import flox_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import flox_executor_cancel_order(cobj, u64)
+from C import flox_executor_cancel_all(cobj, u32)
+from C import flox_executor_on_bar(cobj, u32, float)
+from C import flox_executor_on_trade(cobj, u32, float, u8)
+from C import flox_executor_advance_clock(cobj, i64)
+from C import flox_executor_fill_count(cobj) -> u32
+
+# ── statistics ──
+from C import flox_stat_correlation(Ptr[float], Ptr[float], int) -> float
+from C import flox_stat_profit_factor(Ptr[float], int) -> float
+from C import flox_stat_win_rate(Ptr[float], int) -> float
+
+# ── strategy_lifecycle ──
+from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import flox_strategy_destroy(cobj)
+
+# ── strategyrunner_synchronous ──
+from C import flox_runner_create(cobj, cobj, cobj) -> cobj
+from C import flox_runner_destroy(cobj)
+from C import flox_runner_add_strategy(cobj, cobj)
+from C import flox_runner_start(cobj)
+from C import flox_runner_stop(cobj)
+from C import flox_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import flox_runner_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32, i64)
+from C import flox_runner_on_bar(cobj, u32, u8, u64, float, float, float, float, float, float, i64, i64, u8)
+
+# ── symbol_registry ──
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import flox_registry_get_symbol_id(cobj, cobj, cobj, Ptr[u32]) -> u8
+from C import flox_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
+from C import flox_registry_symbol_count(cobj) -> u32
+
+# ── targets ──
+from C import flox_target_future_return(Ptr[float], int, int, Ptr[float])
+from C import flox_target_future_ctc_volatility(Ptr[float], int, int, Ptr[float])
+from C import flox_target_future_linear_slope(Ptr[float], int, int, Ptr[float])
+
+# ── validation ──
+from C import flox_segment_validate_full(cobj, u8, u8) -> cobj
+from C import flox_dataset_validate(cobj) -> cobj
+
+# ── volume_profile ──
+from C import flox_volume_profile_create(float) -> cobj
+from C import flox_volume_profile_destroy(cobj)
+from C import flox_volume_profile_add_trade(cobj, float, float, u8)
+from C import flox_volume_profile_poc(cobj) -> float
+from C import flox_volume_profile_vah(cobj) -> float
+from C import flox_volume_profile_val(cobj) -> float
+from C import flox_volume_profile_total_volume(cobj) -> float
+from C import flox_volume_profile_total_delta(cobj) -> float
+from C import flox_volume_profile_num_levels(cobj) -> u32
+from C import flox_volume_profile_clear(cobj)
+

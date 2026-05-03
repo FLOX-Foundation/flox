@@ -1,13 +1,22 @@
 # tools/codegen — IDL-driven code generation for the FLOX C API
 
-Generates `flox_capi.h` and (in a follow-up PR) per-binding stub artifacts
-(`.pyi`, `.d.ts`, Codon, llms.txt) from a single annotated source of truth
-in `include/flox/capi/flox_capi_spec.hpp`.
+Generates `flox_capi.h`, Codon `from C import` declarations, and a Markdown
+C-API reference for AI agents from a single annotated source of truth in
+`include/flox/capi/flox_capi_spec.hpp`.
 
-Status: **full coverage**. Spec covers all 290 functions, 22 handles,
-25 structs, 7 callback typedefs, and 2 enums in the live `flox_capi.h`.
-The CI gate enforces full signature equivalence (`--require-full-coverage`).
-Per-binding emitters land in a follow-up PR.
+Status: **full coverage** + three emitters
+(`emit-capi`, `emit-codon`, `emit-llms`). Spec covers all 290 functions,
+22 handles, 25 structs, 7 callback typedefs, and 2 enums in the live
+`flox_capi.h`. The CI gate enforces full signature equivalence
+(`--require-full-coverage`) and committed-vs-fresh equality across all
+three golden artifacts.
+
+The pybind11 (Python) and NAPI (Node) bindings expose richer
+language-native APIs and are not yet codegen-driven; their stubs
+(`.pyi`, `.d.ts`) still come from binding-side tooling
+(`scripts/gen_pyi_stubs.py`, hand-written `node/index.d.ts`). Codegen
+focuses on FFI consumers that mirror the C surface 1:1 — Codon, QuickJS,
+Rust FFI, Go cgo, Python ctypes.
 
 Design rationale: see `.notes/api-idl-rfc.md`.
 
