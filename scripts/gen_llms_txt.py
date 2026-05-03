@@ -113,7 +113,11 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
     ]),
     ("Errors", [
         ("docs/errors/index.md", "Error code reference", "Catalog of FloxError codes, format, and lifecycle"),
+        ("docs/errors/E_DATA_001.md", "E_DATA_001 — Engine has no data loaded", "Fix: call Engine.load_csv() / load_ohlcv() before querying"),
+        ("docs/errors/E_KEY_001.md", "E_KEY_001 — Missing required column", "Fix: ensure OHLCV dict has open/high/low/close/volume + ts (or timestamp)"),
+        ("docs/errors/E_LEN_001.md", "E_LEN_001 — Mismatched array lengths", "Fix: align inputs to the same length before parallel-array calls"),
         ("docs/errors/E_SYM_001.md", "E_SYM_001 — Symbol is not registered", "Fix: call Engine.add_symbol() before referencing the symbol"),
+        ("docs/errors/E_TIME_001.md", "E_TIME_001 — Unknown interval unit", "Fix: use one of s/m/h/d (e.g. '5m', '1h')"),
     ]),
     ("AI tooling (MCP)", [
         ("mcp/README.md", "flox-mcp — Model Context Protocol server", "Local MCP server that gives AI agents grounded access to indicators, error codes, and the C API"),

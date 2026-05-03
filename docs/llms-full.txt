@@ -7271,7 +7271,11 @@ code is allocated.
 
 | Code           | Message                                                       |
 |----------------|---------------------------------------------------------------|
-| [`E_SYM_001`](E_SYM_001.md) | Symbol is not registered                       |
+| [`E_DATA_001`](E_DATA_001.md) | Engine has no data loaded                    |
+| [`E_KEY_001`](E_KEY_001.md)   | Missing required column in OHLCV input       |
+| [`E_LEN_001`](E_LEN_001.md)   | Mismatched array lengths                     |
+| [`E_SYM_001`](E_SYM_001.md)   | Symbol is not registered                     |
+| [`E_TIME_001`](E_TIME_001.md) | Unknown interval unit                        |
 
 ## How to add a new code
 
@@ -7301,6 +7305,193 @@ title: Symbol is not registered
 severity: error
 since: 0.1.0
 ---
+```
+
+------------------------------------------------------------------------------
+# Source: docs/errors/E_DATA_001.md
+# URL: https://flox-foundation.github.io/flox/errors/E_DATA_001/
+------------------------------------------------------------------------------
+
+---
+code: E_DATA_001
+title: Engine has no data loaded
+severity: error
+since: 0.1.0
+---
+
+# E_DATA_001 — Engine has no data loaded
+
+A method that needs OHLCV bars (`Engine.bar_count()`, `Engine.close()`,
+`Engine.run()`, etc.) was called before any data-loading method
+(`load_csv` / `load_ohlcv` / `load_df`) succeeded.
+
+## How to fix
+
+Load data **before** querying it.
+
+```python
+import flox
+
+eng = flox.Engine()
+eng.load_csv("btcusdt_1m.csv")        # ← required first
+print(eng.bar_count(), eng.close()[-1])
+```
+
+## Common causes
+
+- Calling `eng.run(sb)` immediately after constructing the Engine.
+  Engines start empty; load first.
+- A previous `load_*` call **raised** (e.g. file not found,
+  malformed CSV) and the loaded state stayed empty.
+  Inspect the exception — don't swallow it.
+- Re-using an Engine across symbols and forgetting to load each.
+
+## Diagnosing
+
+```python
+try:
+    eng.bar_count()
+except flox.FloxError as e:
+    if e.code == "E_DATA_001":
+        print(f"loaded symbols: {sorted(eng.symbols())}")
+        print(f"hint: call eng.load_csv(...) or eng.load_ohlcv(...)")
+```
+
+------------------------------------------------------------------------------
+# Source: docs/errors/E_KEY_001.md
+# URL: https://flox-foundation.github.io/flox/errors/E_KEY_001/
+------------------------------------------------------------------------------
+
+---
+code: E_KEY_001
+title: Missing required column in OHLCV input
+severity: error
+since: 0.1.0
+---
+
+# E_KEY_001 — Missing required column in OHLCV input
+
+A method that accepts a dict of NumPy arrays (`Engine.load_ohlcv(dict)`,
+similar paths) was given a dict missing one of the required columns.
+
+## Required keys
+
+- `open`, `high`, `low`, `close`, `volume` — `float64` arrays.
+- `ts` **or** `timestamp` — `int64` array of nanoseconds (or seconds —
+  auto-normalized; smaller magnitudes are scaled up).
+
+All arrays must be the same length.
+
+## How to fix
+
+Make sure the dict has every required column.
+
+```python
+import numpy as np
+import flox
+
+eng = flox.Engine()
+eng.load_ohlcv({
+    "ts":     np.array([1700000000_000_000_000, ...], dtype=np.int64),
+    "open":   np.array([60000.0, ...], dtype=np.float64),
+    "high":   np.array([60100.0, ...], dtype=np.float64),
+    "low":    np.array([59900.0, ...], dtype=np.float64),
+    "close":  np.array([60050.0, ...], dtype=np.float64),
+    "volume": np.array([12.5, ...],   dtype=np.float64),
+})
+```
+
+## Common causes
+
+- Pulling from a DataFrame and dropping the timestamp column on accident:
+  ```python
+  d = df[["open", "high", "low", "close", "volume"]].to_dict("series")
+  eng.load_ohlcv(d)   # ← missing ts; raises E_KEY_001
+  ```
+  Fix: include `ts` in the column list.
+- Using `time` or `t` as the timestamp column name. Only `ts` and
+  `timestamp` are recognized.
+- Passing a single OHLC bar instead of arrays — the API expects
+  vectorized input.
+
+## Diagnosing
+
+The exception message tells you which key is missing:
+
+```python
+try:
+    eng.load_ohlcv(d)
+except flox.FloxError as e:
+    if e.code == "E_KEY_001":
+        print(f"got: {sorted(d.keys())}")
+        print(f"missing: {e.message}")
+```
+
+------------------------------------------------------------------------------
+# Source: docs/errors/E_LEN_001.md
+# URL: https://flox-foundation.github.io/flox/errors/E_LEN_001/
+------------------------------------------------------------------------------
+
+---
+code: E_LEN_001
+title: Mismatched array lengths
+severity: error
+since: 0.1.0
+---
+
+# E_LEN_001 — Mismatched array lengths
+
+A function that takes parallel arrays (e.g. `flox.permutation_test(x, y)`,
+`flox.bootstrap_ci(...)`) was given inputs of different lengths.
+
+## How to fix
+
+Make the arrays the same length before calling.
+
+```python
+import numpy as np
+import flox
+
+x = np.array([1.0, 2.0, 3.0])
+y = np.array([4.0, 5.0])           # ← different length, raises E_LEN_001
+
+# Common fix: trim to min length, or align on a join key.
+n = min(len(x), len(y))
+flox.permutation_test(x[:n], y[:n])  # ✅
+```
+
+## Common causes
+
+- Slicing two series with overlapping but non-equal date ranges.
+- One input came from `Engine.close()` and the other from a vendor
+  that has more / fewer bars (gaps, holidays, weekends).
+- Forgetting to drop NaN tail/head from one of the arrays after
+  applying a windowed indicator.
+
+## Diagnosing
+
+The exception message includes both sizes:
+
+```python
+try:
+    flox.permutation_test(x, y)
+except flox.FloxError as e:
+    if e.code == "E_LEN_001":
+        print(e.message)   # "Got x.size=3, y.size=2."
+```
+
+If the inputs come from different sources, align them first by
+timestamp:
+
+```python
+import pandas as pd
+df = pd.merge(
+    pd.DataFrame({"ts": ts_x, "x": x}),
+    pd.DataFrame({"ts": ts_y, "y": y}),
+    on="ts",
+    how="inner",
+)
+flox.permutation_test(df["x"].to_numpy(), df["y"].to_numpy())
 ```
 
 ------------------------------------------------------------------------------
@@ -7379,6 +7570,66 @@ try:
 except flox.FloxError as e:
     print(f"{e.code}: {e.message}")
     print(f"registered: {sorted(eng.symbols())}")
+```
+
+------------------------------------------------------------------------------
+# Source: docs/errors/E_TIME_001.md
+# URL: https://flox-foundation.github.io/flox/errors/E_TIME_001/
+------------------------------------------------------------------------------
+
+---
+code: E_TIME_001
+title: Unknown interval unit
+severity: error
+since: 0.1.0
+---
+
+# E_TIME_001 — Unknown interval unit
+
+`Engine.resample(interval)` (and similar interval-accepting methods)
+was given a string with an unrecognized unit suffix.
+
+## Recognized formats
+
+`"<n><unit>"` where `n` is an integer and `unit` is one of:
+
+| Unit | Meaning |
+|------|---------|
+| `s`  | seconds |
+| `m`  | minutes |
+| `h`  | hours   |
+| `d`  | days    |
+
+Examples: `"30s"`, `"5m"`, `"1h"`, `"4h"`, `"1d"`.
+
+## How to fix
+
+Use one of the recognized unit suffixes.
+
+```python
+eng.resample("5m")    # 5 minutes  ✅
+eng.resample("1h")    # 1 hour     ✅
+eng.resample("1d")    # 1 day      ✅
+eng.resample("5min")  # ❌ raises E_TIME_001 — use "5m"
+eng.resample("4hr")   # ❌ raises E_TIME_001 — use "4h"
+```
+
+## Common causes
+
+- Pandas-style suffixes (`min`, `hr`, `H`, `T`) — FLOX uses single-letter
+  units only.
+- ISO-8601 durations (`PT5M`) — not supported.
+- Trailing whitespace or capital letters: `"1H"` is not the same as
+  `"1h"`. Match is case-sensitive.
+
+## Diagnosing
+
+```python
+try:
+    eng.resample(user_input)
+except flox.FloxError as e:
+    if e.code == "E_TIME_001":
+        print("Try one of: 1s, 30s, 1m, 5m, 1h, 4h, 1d")
 ```
 
 ==============================================================================

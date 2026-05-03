@@ -76,7 +76,11 @@ Documentation is grouped below by Diátaxis category — pick the section matchi
 ## Errors
 
 - [Error code reference](https://flox-foundation.github.io/flox/errors/): Catalog of FloxError codes, format, and lifecycle
+- [E_DATA_001 — Engine has no data loaded](https://flox-foundation.github.io/flox/errors/E_DATA_001/): Fix: call Engine.load_csv() / load_ohlcv() before querying
+- [E_KEY_001 — Missing required column](https://flox-foundation.github.io/flox/errors/E_KEY_001/): Fix: ensure OHLCV dict has open/high/low/close/volume + ts (or timestamp)
+- [E_LEN_001 — Mismatched array lengths](https://flox-foundation.github.io/flox/errors/E_LEN_001/): Fix: align inputs to the same length before parallel-array calls
 - [E_SYM_001 — Symbol is not registered](https://flox-foundation.github.io/flox/errors/E_SYM_001/): Fix: call Engine.add_symbol() before referencing the symbol
+- [E_TIME_001 — Unknown interval unit](https://flox-foundation.github.io/flox/errors/E_TIME_001/): Fix: use one of s/m/h/d (e.g. '5m', '1h')
 
 ## AI tooling (MCP)
 

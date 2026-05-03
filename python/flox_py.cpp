@@ -337,7 +337,11 @@ class Engine
     {
       if (!d.contains(key))
       {
-        throw std::invalid_argument(std::string("missing key: ") + key);
+        throw flox::FloxError(
+            "E_KEY_001",
+            std::string("Missing required column '") + key +
+                "' in OHLCV dict. Expected keys: open, high, low, close, "
+                "volume, and one of {ts, timestamp}.");
       }
       return d[key].cast<contiguous_f64>();
     };
@@ -353,7 +357,11 @@ class Engine
     }
     if (timestamps.size() == 0)
     {
-      throw std::invalid_argument("missing key: ts or timestamp");
+      throw flox::FloxError(
+          "E_KEY_001",
+          "Missing timestamp column in OHLCV dict. Provide either "
+          "'ts' or 'timestamp' as int64 nanoseconds (or seconds, "
+          "auto-normalized).");
     }
 
     std::string sym = symbol.empty() ? "default" : symbol;
@@ -555,7 +563,10 @@ class Engine
     {
       if (_insertOrder.empty())
       {
-        throw std::runtime_error("no data loaded");
+        throw flox::FloxError(
+            "E_DATA_001",
+            "Engine has no data loaded. Call load_csv(), load_ohlcv(), or "
+            "load_df() before accessing bars or running a backtest.");
       }
       return _symbols.at(_insertOrder.front());
     }
@@ -631,7 +642,11 @@ class Engine
     {
       return val * 86'400'000'000'000LL;
     }
-    throw std::invalid_argument("unknown interval unit: " + unit);
+    throw flox::FloxError(
+        "E_TIME_001",
+        std::string("Unknown interval unit '") + unit +
+            "'. Use one of: 's' (seconds), 'm' (minutes), 'h' (hours), "
+            "'d' (days). Examples: '1m', '5m', '1h', '1d'.");
   }
 
   BacktestConfig _config;

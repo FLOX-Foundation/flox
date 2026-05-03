@@ -29,7 +29,11 @@ code is allocated.
 
 | Code           | Message                                                       |
 |----------------|---------------------------------------------------------------|
-| [`E_SYM_001`](E_SYM_001.md) | Symbol is not registered                       |
+| [`E_DATA_001`](E_DATA_001.md) | Engine has no data loaded                    |
+| [`E_KEY_001`](E_KEY_001.md)   | Missing required column in OHLCV input       |
+| [`E_LEN_001`](E_LEN_001.md)   | Mismatched array lengths                     |
+| [`E_SYM_001`](E_SYM_001.md)   | Symbol is not registered                     |
+| [`E_TIME_001`](E_TIME_001.md) | Unknown interval unit                        |
 
 ## How to add a new code
 

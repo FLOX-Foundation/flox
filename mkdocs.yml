@@ -143,7 +143,11 @@ nav:
 
   - Errors:
       - errors/index.md
+      - E_DATA_001 - Engine has no data loaded: errors/E_DATA_001.md
+      - E_KEY_001 - Missing required column: errors/E_KEY_001.md
+      - E_LEN_001 - Mismatched array lengths: errors/E_LEN_001.md
       - E_SYM_001 - Symbol is not registered: errors/E_SYM_001.md
+      - E_TIME_001 - Unknown interval unit: errors/E_TIME_001.md
 
   - Reference:
       - reference/README.md
