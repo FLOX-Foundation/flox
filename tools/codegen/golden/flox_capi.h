@@ -49,6 +49,7 @@ extern "C"
   typedef void* FloxOrderValidatorHandle;
   typedef void* FloxPnLTrackerHandle;
   typedef void* FloxStorageSinkHandle;
+  typedef void* FloxMarketDataRecorderHandle;
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
@@ -359,6 +360,9 @@ extern "C"
   typedef void (*FloxLogCallback)(void*, int32_t, const char*);
   typedef void (*FloxPnLTrackerOnSignalFn)(void*, const FloxSignal*);
   typedef void (*FloxStorageSinkStoreFn)(void*, const FloxSignal*);
+  typedef void (*FloxRecorderOnTradeFn)(void*, const FloxTradeData*);
+  typedef void (*FloxRecorderOnBookUpdateFn)(void*, uint32_t, uint8_t, const FloxBookLevel*, uint32_t, const FloxBookLevel*, uint32_t, int64_t);
+  typedef void (*FloxRecorderLifecycleFn)(void*);
 
   // ============================================================
   // Callback bundles
@@ -403,6 +407,15 @@ extern "C"
     FloxStorageSinkStoreFn store;
     void* user_data;
   } FloxStorageSinkCallbacks;
+
+  typedef struct
+  {
+    FloxRecorderOnTradeFn on_trade;
+    FloxRecorderOnBookUpdateFn on_book_update;
+    FloxRecorderLifecycleFn on_start;
+    FloxRecorderLifecycleFn on_stop;
+    void* user_data;
+  } FloxMarketDataRecorderCallbacks;
 
   // ============================================================
   // Fixed-point conversion helpers
@@ -922,6 +935,17 @@ extern "C"
   double flox_position_group_total_pnl(FloxPositionGroupHandle tracker);
   uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol);
   void flox_position_group_prune(FloxPositionGroupHandle tracker);
+
+  // ============================================================
+  // Recorder
+  // ============================================================
+
+  FloxMarketDataRecorderHandle flox_market_data_recorder_create(FloxMarketDataRecorderCallbacks callbacks);
+  void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
+  void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
+                                                 FloxMarketDataRecorderHandle recorder);
+  void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
+                                            FloxMarketDataRecorderHandle recorder);
 
   // ============================================================
   // Risk
