@@ -42,6 +42,8 @@ jobs:
       run: python3 scripts/check_error_codes.py
     - name: Verify Python API index is in sync with .pyi
       run: python3 scripts/gen_api_index.py --check
+    - name: Verify doc snippets follow the --8<-- include pattern
+      run: python3 scripts/check_doc_snippets.py
 
   linux-gcc:
     needs: format-check
