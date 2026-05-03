@@ -117,6 +117,7 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
     ]),
     ("Reference: Python", [
         ("docs/reference/python/index.md", "Python reference index", "All Python binding modules"),
+        ("docs/reference/python/_api_index.md", "Full Python API index", "Auto-generated alphabetical list of every public symbol with signature"),
         ("docs/reference/python/engine.md", "Engine and Backtest", "Engine + backtest entry points"),
         ("docs/reference/python/strategy.md", "Strategy class", "Base Strategy from Python"),
         ("docs/reference/python/indicators.md", "Indicators", "Indicator wrappers"),
