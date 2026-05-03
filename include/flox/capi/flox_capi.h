@@ -1217,6 +1217,26 @@ extern "C"
   void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
 
   // ============================================================
+  // Logger — process-wide log redirection callback.
+  //
+  // FLOX_LOG_INFO / WARN / ERROR macros normally write to stderr via
+  // the bundled ConsoleLogger. Setting a callback here redirects every
+  // subsequent log call to the binding's language-native logger.
+  //
+  // `level`: 0 = Info, 1 = Warn, 2 = Error.
+  // `msg`:   null-terminated UTF-8 string; valid only for the duration
+  //          of the callback. Copy if retained.
+  //
+  // Single global setter — pass NULL to restore the default ConsoleLogger.
+  // Thread-safe: callbacks may fire from any consumer thread, so the
+  // user-supplied callback must itself be thread-safe.
+  // ============================================================
+
+  typedef void (*FloxLogCallback)(void* user_data, int32_t level, const char* msg);
+
+  void flox_set_log_callback(FloxLogCallback callback, void* user_data);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.

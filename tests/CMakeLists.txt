@@ -88,6 +88,23 @@ if(FLOX_ENABLE_CAPI)
   target_link_libraries(test_capi_risk_manager PRIVATE flox_capi)
   add_flox_test(test_capi_kill_switch)
   target_link_libraries(test_capi_kill_switch PRIVATE flox_capi)
+  # test_capi_logger needs to share a single ILogger global with flox_capi.
+  # If we use add_flox_test, the test exe links the static `flox` library
+  # alongside flox_capi.dylib (which itself statically embeds `flox`) —
+  # two copies of g_logger, so flox_set_log_callback in the dylib doesn't
+  # affect FLOX_LOG_* calls compiled into the test exe. Build manually to
+  # link only flox_capi (which exports every symbol the test reaches).
+  add_executable(test_capi_logger test_capi_logger.cpp)
+  target_compile_definitions(test_capi_logger PRIVATE FLOX_UNIT_TEST)
+  target_link_libraries(test_capi_logger
+    PRIVATE flox_capi
+    GTest::gtest
+    GTest::gtest_main
+  )
+  if(TARGET Threads::Threads)
+    target_link_libraries(test_capi_logger PRIVATE Threads::Threads)
+  endif()
+  add_test(NAME test_capi_logger COMMAND test_capi_logger)
   if(FLOX_ENABLE_BACKTEST)
     add_flox_test(test_capi_backtest)
     target_link_libraries(test_capi_backtest PRIVATE flox_capi)

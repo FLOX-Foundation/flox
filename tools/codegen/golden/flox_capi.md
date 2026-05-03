@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 302 functions, 25 handles, 28 structs, 10 callback typedefs, 2 enums, 38 groups.
+**Surface:** 303 functions, 25 handles, 28 structs, 11 callback typedefs, 2 enums, 39 groups.
 
 ## Opaque handles
 
@@ -61,6 +61,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef uint8_t (*FloxRiskManagerAllowFn)(void *, const FloxSignal *);`
 - `typedef uint8_t (*FloxKillSwitchCheckFn)(void *, const FloxSignal *);`
 - `typedef uint8_t (*FloxOrderValidatorValidateFn)(void *, const FloxSignal *);`
+- `typedef void (*FloxLogCallback)(void *, int32_t, const char *);`
 
 ## Structs
 
@@ -601,6 +602,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_l3_book_best_ask(FloxL3BookHandle book, double * price_out)`
 - `double flox_l3_book_bid_at_price(FloxL3BookHandle book, double price)`
 - `double flox_l3_book_ask_at_price(FloxL3BookHandle book, double price)`
+
+### logger
+
+- `void flox_set_log_callback(FloxLogCallback callback, void * user_data)`
 
 ### market_profile
 

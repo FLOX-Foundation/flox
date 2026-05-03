@@ -10,6 +10,8 @@
 #include "flox/capi/flox_capi.h"
 #include "flox/capi/bridge_strategy.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/log/abstract_logger.h"
+#include "flox/log/log_stream.h"
 
 #include "flox/aggregator/bar.h"
 #include "flox/aggregator/policies/tick_bar_policy.h"
@@ -3504,6 +3506,57 @@ FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks
 void flox_order_validator_destroy(FloxOrderValidatorHandle ov)
 {
   delete static_cast<FloxOrderValidatorImpl*>(ov);
+}
+
+// ============================================================
+// Logger callback adapter
+// ============================================================
+
+namespace
+{
+
+class CapiCallbackLogger : public flox::ILogger
+{
+ public:
+  CapiCallbackLogger(FloxLogCallback cb, void* ud) : _cb(cb), _ud(ud) {}
+
+  void info(std::string_view msg) override { dispatch(0, msg); }
+  void warn(std::string_view msg) override { dispatch(1, msg); }
+  void error(std::string_view msg) override { dispatch(2, msg); }
+
+ private:
+  void dispatch(int32_t level, std::string_view msg)
+  {
+    // string_view is not guaranteed null-terminated; the C callback expects
+    // const char*. Construct a std::string for the call duration.
+    std::string s(msg);
+    _cb(_ud, level, s.c_str());
+  }
+
+  FloxLogCallback _cb;
+  void* _ud;
+};
+
+// Owned by the C API; outlives the registered call. Reset via
+// flox_set_log_callback(NULL, ...).
+std::unique_ptr<CapiCallbackLogger> g_capiLogger;
+
+}  // namespace
+
+void flox_set_log_callback(FloxLogCallback callback, void* user_data)
+{
+  if (callback == nullptr)
+  {
+    flox::setGlobalLogger(nullptr);
+    g_capiLogger.reset();
+    return;
+  }
+  auto next = std::make_unique<CapiCallbackLogger>(callback, user_data);
+  flox::setGlobalLogger(next.get());
+  // Replace AFTER swapping the pointer so concurrent log calls never see
+  // a dangling adapter. If two flox_set_log_callback calls race, the loser
+  // simply destroys its adapter without ever being installed.
+  g_capiLogger = std::move(next);
 }
 
 FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry,
