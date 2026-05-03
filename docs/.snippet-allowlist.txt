@@ -1,0 +1,70 @@
+# Doc files allowed to contain inline (non-`--8<--`) code snippets.
+# Format: <path>  # rationale
+#
+# This file grandfathers existing reference / tutorial pages whose
+# snippets haven't yet been extracted into runnable files. New
+# tutorials and how-tos must use the `--8<--` snippet inclusion pattern
+# (see scripts/check_doc_snippets.py for the rule). To migrate a page
+# OFF this list:
+#
+#   1. Extract the inline snippet to docs/examples/<name>.<ext>
+#   2. Wire the file into CI (.github/workflows/ci.yml has a
+#      "Run Python example" / "Run Node.js example" pattern).
+#   3. Replace the inline block with `--8<-- "examples/<name>.<ext>"`.
+#   4. Remove the file from this list.
+
+# Bindings overview docs — illustrative snippets across multiple paths.
+docs/bindings/codon.md         # multi-script overview, abstract patterns
+docs/bindings/javascript.md    # embedded JS examples, mostly conceptual
+docs/bindings/node.md          # multi-API overview
+docs/bindings/python.md        # multi-API overview
+
+# Error code reference — fix recipes shown across language tabs; runnable
+# end-to-end equivalents live in docs/examples/.
+docs/errors/E_SYM_001.md       # cross-language fix-recipe tabs
+
+# Reference: Python — narrative API docs with inline snippets that mirror
+# the curated examples. The full alphabetical surface is in _api_index.md
+# (auto-generated from .pyi).
+docs/reference/python/aggregators.md
+docs/reference/python/backtest.md
+docs/reference/python/books.md
+docs/reference/python/engine.md
+docs/reference/python/indicators.md
+docs/reference/python/optimizer.md
+docs/reference/python/positions.md
+docs/reference/python/profiles.md
+docs/reference/python/replay.md
+docs/reference/python/segment_ops.md
+docs/reference/python/strategy.md
+
+# Reference: Node — narrative API docs.
+docs/reference/node/backtest.md
+docs/reference/node/books.md
+docs/reference/node/data.md
+docs/reference/node/indicators.md
+docs/reference/node/positions.md
+docs/reference/node/profiles.md
+docs/reference/node/strategy.md
+
+# Reference: Codon — narrative API docs.
+docs/reference/codon/backtest.md
+docs/reference/codon/index.md
+docs/reference/codon/indicators.md
+docs/reference/codon/runner.md
+docs/reference/codon/strategy.md
+docs/reference/codon/tools.md
+docs/reference/codon/types.md
+
+# Reference: QuickJS — narrative API docs.
+docs/reference/quickjs/backtest.md
+docs/reference/quickjs/indicators.md
+docs/reference/quickjs/strategy.md
+docs/reference/quickjs/tools.md
+
+# Quickstart tutorials — first-time-user snippets that walk through setup
+# step-by-step. Migrating these is a follow-up effort (each step needs
+# its own runnable file under docs/examples/snippets/).
+docs/tutorials/codon-strategy.md
+docs/tutorials/node-quickstart.md
+docs/tutorials/python-quickstart.md
