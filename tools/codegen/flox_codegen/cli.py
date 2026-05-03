@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import check_signatures, emit_capi, extractor
+from . import check_signatures, emit_capi, emit_codon, emit_llms, extractor
 
 
 def _cmd_emit_capi(args: argparse.Namespace) -> int:
@@ -34,6 +34,30 @@ def _cmd_emit_capi(args: argparse.Namespace) -> int:
         out.write_text(text)
         print(f"wrote {out} ({len(module.functions)} functions, "
               f"{len(module.handles)} handles, {len(module.structs)} structs)")
+    return 0
+
+
+def _emit_to_path(text: str, out: str, kind: str, count: int) -> None:
+    if out == "-":
+        sys.stdout.write(text)
+    else:
+        out_path = Path(out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text)
+        print(f"wrote {out_path} ({count} functions, {kind})")
+
+
+def _cmd_emit_codon(args: argparse.Namespace) -> int:
+    module = extractor.parse_spec(Path(args.spec))
+    text = emit_codon.emit(module)
+    _emit_to_path(text, args.out, "codon FFI", len(module.functions))
+    return 0
+
+
+def _cmd_emit_llms(args: argparse.Namespace) -> int:
+    module = extractor.parse_spec(Path(args.spec))
+    text = emit_llms.emit(module)
+    _emit_to_path(text, args.out, "llms reference", len(module.functions))
     return 0
 
 
@@ -109,6 +133,20 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("--no-format", action="store_true",
                     help="Skip the clang-format post-pass (debugging only).")
     pe.set_defaults(func=_cmd_emit_capi)
+
+    pco = sub.add_parser("emit-codon",
+                         help="Generate Codon `from C import` declarations.")
+    pco.add_argument("--spec", required=True)
+    pco.add_argument("--out", required=True,
+                     help="Output path (use '-' for stdout)")
+    pco.set_defaults(func=_cmd_emit_codon)
+
+    pll = sub.add_parser("emit-llms",
+                         help="Generate Markdown C-API reference for AI agents.")
+    pll.add_argument("--spec", required=True)
+    pll.add_argument("--out", required=True,
+                     help="Output path (use '-' for stdout)")
+    pll.set_defaults(func=_cmd_emit_llms)
 
     pc = sub.add_parser("check", help="Diff signatures across two C headers.")
     pc.add_argument("--expected", required=True,

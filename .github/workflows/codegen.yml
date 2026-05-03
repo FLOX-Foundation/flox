@@ -25,18 +25,23 @@ jobs:
           # discovery; ubuntu-latest ships it. clang-format is needed by
           # emit_capi for format-stable output.
 
-      - name: Verify codegen output matches spec
+      - name: Verify all generated artifacts match the spec
         env:
           PYTHONPATH: tools/codegen
         run: |
-          python -m flox_codegen.cli emit-capi \
-            --spec include/flox/capi/flox_capi_spec.hpp \
-            --out /tmp/flox_capi.h
-          if ! diff -u tools/codegen/golden/flox_capi.h /tmp/flox_capi.h; then
-            echo "::error::tools/codegen/golden/flox_capi.h is out of date"
-            echo "Run: bash tools/codegen/scripts/regenerate.sh"
-            exit 1
-          fi
+          set -euo pipefail
+          for pair in "emit-capi:flox_capi.h" "emit-codon:flox_capi.codon" "emit-llms:flox_capi.md"; do
+            sub="${pair%%:*}"
+            file="${pair#*:}"
+            python -m flox_codegen.cli "$sub" \
+              --spec include/flox/capi/flox_capi_spec.hpp \
+              --out "/tmp/$file"
+            if ! diff -u "tools/codegen/golden/$file" "/tmp/$file"; then
+              echo "::error::tools/codegen/golden/$file is out of date"
+              echo "Run: bash tools/codegen/scripts/regenerate.sh"
+              exit 1
+            fi
+          done
 
       - name: Verify full-coverage signature equivalence with live flox_capi.h
         env:
