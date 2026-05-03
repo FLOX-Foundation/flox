@@ -176,6 +176,7 @@ flox_live_engine_destroy|void|FloxLiveEngineHandle
 flox_live_engine_publish_bar|void|FloxLiveEngineHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
 flox_live_engine_publish_book_snapshot|void|FloxLiveEngineHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t|int64_t
 flox_live_engine_publish_trade|void|FloxLiveEngineHandle|uint32_t|double|double|uint8_t|int64_t
+flox_live_engine_set_risk_manager|void|FloxLiveEngineHandle|FloxRiskManagerHandle
 flox_live_engine_start|void|FloxLiveEngineHandle
 flox_live_engine_stop|void|FloxLiveEngineHandle
 flox_market_profile_add_trade|void|FloxMarketProfileHandle|int64_t|double|double|uint8_t
@@ -236,12 +237,15 @@ flox_registry_destroy|void|FloxRegistryHandle
 flox_registry_get_symbol_id|uint8_t|FloxRegistryHandle|const char *|const char *|uint32_t *
 flox_registry_get_symbol_name|uint8_t|FloxRegistryHandle|uint32_t|char *|size_t|char *|size_t
 flox_registry_symbol_count|uint32_t|FloxRegistryHandle
+flox_risk_manager_create|FloxRiskManagerHandle|FloxRiskManagerCallbacks
+flox_risk_manager_destroy|void|FloxRiskManagerHandle
 flox_runner_add_strategy|void|FloxRunnerHandle|FloxStrategyHandle
 flox_runner_create|FloxRunnerHandle|FloxRegistryHandle|FloxOnSignalCallback|void *
 flox_runner_destroy|void|FloxRunnerHandle
 flox_runner_on_bar|void|FloxRunnerHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
 flox_runner_on_book_snapshot|void|FloxRunnerHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t|int64_t
 flox_runner_on_trade|void|FloxRunnerHandle|uint32_t|double|double|uint8_t|int64_t
+flox_runner_set_risk_manager|void|FloxRunnerHandle|FloxRiskManagerHandle
 flox_runner_start|void|FloxRunnerHandle
 flox_runner_stop|void|FloxRunnerHandle
 flox_segment_export|FloxExportResult|const char *|const char *|uint8_t|int64_t|int64_t|const uint32_t *|uint32_t

@@ -282,6 +282,12 @@ from C import flox_position_group_total_pnl(cobj) -> float
 from C import flox_position_group_open_count(cobj, u32) -> u32
 from C import flox_position_group_prune(cobj)
 
+# ── risk ──
+from C import flox_risk_manager_create(cobj) -> cobj
+from C import flox_risk_manager_destroy(cobj)
+from C import flox_live_engine_set_risk_manager(cobj, cobj)
+from C import flox_runner_set_risk_manager(cobj, cobj)
+
 # ── segment ──
 from C import flox_segment_validate(cobj) -> u8
 from C import flox_segment_merge(cobj, cobj) -> u8

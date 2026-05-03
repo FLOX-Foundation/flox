@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 290 functions, 22 handles, 25 structs, 7 callback typedefs, 2 enums, 37 groups.
+**Surface:** 294 functions, 23 handles, 26 structs, 8 callback typedefs, 2 enums, 38 groups.
 
 ## Opaque handles
 
@@ -27,6 +27,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxBacktestResultHandle`
 - `FloxDataRecorderHandle`
 - `FloxPartitionerHandle`
+- `FloxRiskManagerHandle`
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
@@ -55,6 +56,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxOnStopCallback)(void *);`
 - `typedef const double * (*FloxGraphNodeFn)(void *, FloxIndicatorGraphHandle, uint32_t, size_t *);`
 - `typedef void (*FloxOnSignalCallback)(void *, const FloxSignal *);`
+- `typedef uint8_t (*FloxRiskManagerAllowFn)(void *, const FloxSignal *);`
 
 ## Structs
 
@@ -360,6 +362,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `new_price` | `double` |
 | `new_quantity` | `double` |
 
+### `FloxRiskManagerCallbacks`
+
+| field | type |
+|---|---|
+| `allow` | `FloxRiskManagerAllowFn` |
+| `user_data` | `void *` |
+
 ## Functions
 
 ### additional_bar
@@ -664,6 +673,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_position_group_total_pnl(FloxPositionGroupHandle tracker)`
 - `uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol)`
 - `void flox_position_group_prune(FloxPositionGroupHandle tracker)`
+
+### risk
+
+- `FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks)`
+- `void flox_risk_manager_destroy(FloxRiskManagerHandle rm)`
+- `void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm)`
+- `void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm)`
 
 ### segment
 

@@ -2800,10 +2800,26 @@ void flox_dataset_validate_p(const char* data_dir, void* out)
 namespace capi_impl
 {
 
+// FloxRiskManagerImpl — non-owning callback bundle. Outlives any runner /
+// engine it's attached to (caller manages destruction). Thread-safe to
+// invoke from multiple consumer threads concurrently as long as the user-
+// supplied callback is itself thread-safe.
+struct FloxRiskManagerImpl
+{
+  FloxRiskManagerCallbacks cb;
+};
+
 class RunnerSignalHandler : public ISignalHandler
 {
  public:
   RunnerSignalHandler(FloxOnSignalCallback cb, void* ud) : _cb(cb), _ud(ud) {}
+
+  // Set or clear the optional pre-trade risk manager. Atomic-relaxed swap;
+  // safe to call from any thread.
+  void setRiskManager(FloxRiskManagerImpl* rm) noexcept
+  {
+    _risk.store(rm, std::memory_order_release);
+  }
 
   void onSignal(const Signal& sig) override
   {
@@ -2859,12 +2875,25 @@ class RunnerSignalHandler : public ISignalHandler
         fs.order_type = 0;
         break;
     }
+
+    // Pre-trade risk gate. Drop the signal if the registered risk manager
+    // returns 0; allow if no risk manager is set or it returns non-zero.
+    auto* rm = _risk.load(std::memory_order_acquire);
+    if (rm != nullptr && rm->cb.allow != nullptr)
+    {
+      if (rm->cb.allow(rm->cb.user_data, &fs) == 0)
+      {
+        return;
+      }
+    }
+
     _cb(_ud, &fs);
   }
 
  private:
   FloxOnSignalCallback _cb;
   void* _ud;
+  std::atomic<FloxRiskManagerImpl*> _risk{nullptr};
 };
 
 struct FloxRunnerImpl
@@ -2884,6 +2913,8 @@ struct FloxRunnerImpl
     s->setSignalHandler(&handler);
     strategies.push_back(s);
   }
+
+  void setRiskManager(FloxRiskManagerImpl* rm) { handler.setRiskManager(rm); }
 
   void start()
   {
@@ -2994,6 +3025,11 @@ struct FloxLiveEngineImpl
   std::vector<std::unique_ptr<RunnerSignalHandler>> handlers;
   std::vector<BridgeStrategy*> strategies;
 
+  // Latest risk manager attached to this engine. Stored here (rather than
+  // only on the handlers) so newly-added strategies inherit the existing
+  // setting. Caller owns the FloxRiskManagerImpl; we hold a non-owning ptr.
+  std::atomic<FloxRiskManagerImpl*> riskManager{nullptr};
+
   explicit FloxLiveEngineImpl(SymbolRegistry* reg)
       : registry(reg),
         tradeBus(std::make_unique<TradeBus>()),
@@ -3005,12 +3041,24 @@ struct FloxLiveEngineImpl
   void addStrategy(BridgeStrategy* s, FloxOnSignalCallback cb, void* ud)
   {
     auto h = std::make_unique<RunnerSignalHandler>(cb, ud);
+    h->setRiskManager(riskManager.load(std::memory_order_acquire));
     s->setSignalHandler(h.get());
     handlers.push_back(std::move(h));
     tradeBus->subscribe(s);
     bookBus->subscribe(s);
     barBus->subscribe(s);
     strategies.push_back(s);
+  }
+
+  // Update the risk manager on every existing handler and remember it so
+  // that subsequently-added strategies inherit it.
+  void setRiskManager(FloxRiskManagerImpl* rm)
+  {
+    riskManager.store(rm, std::memory_order_release);
+    for (auto& h : handlers)
+    {
+      h->setRiskManager(rm);
+    }
   }
 
   void start()
@@ -3357,6 +3405,21 @@ static FloxBacktestRunnerImpl* toBacktestRunner(FloxBacktestRunnerHandle h)
 
 using namespace capi_impl;
 
+// ============================================================
+// FloxRiskManager C API
+// ============================================================
+
+FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks)
+{
+  auto* rm = new FloxRiskManagerImpl{callbacks};
+  return static_cast<FloxRiskManagerHandle>(rm);
+}
+
+void flox_risk_manager_destroy(FloxRiskManagerHandle rm)
+{
+  delete static_cast<FloxRiskManagerImpl*>(rm);
+}
+
 FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry,
                                     FloxOnSignalCallback on_signal,
                                     void* user_data)
@@ -3373,6 +3436,11 @@ void flox_runner_destroy(FloxRunnerHandle runner)
 void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy)
 {
   toRunner(runner)->addStrategy(toStrategy(strategy));
+}
+
+void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm)
+{
+  toRunner(runner)->setRiskManager(static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
 }
 
 void flox_runner_start(FloxRunnerHandle runner)
@@ -3437,6 +3505,12 @@ void flox_live_engine_add_strategy(FloxLiveEngineHandle engine,
                                    void* user_data)
 {
   toLiveEngine(engine)->addStrategy(toStrategy(strategy), on_signal, user_data);
+}
+
+void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm)
+{
+  toLiveEngine(engine)->setRiskManager(
+      static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
 }
 
 void flox_live_engine_start(FloxLiveEngineHandle engine)
