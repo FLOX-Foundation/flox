@@ -8,6 +8,7 @@ SortIncludes: true
 IncludeBlocks: Preserve
 NamespaceIndentation: None
 PointerAlignment: Left
+DerivePointerAlignment: false
 AllowShortIfStatementsOnASingleLine: false
 SpacesInContainerLiterals: false
 ReflowComments: false

@@ -67,7 +67,9 @@ TEST(BacktestMetrics, ConsecutiveStreaks)
 
   // Pattern: W W W L L W L (max wins=3, max losses=2)
   const double pairs[][2] = {
-      {100, 110}, {100, 105}, {100, 102},  // 3 wins
+      {100, 110},
+      {100, 105},
+      {100, 102},  // 3 wins
       {100, 95},
       {100, 99},   // 2 losses
       {100, 101},  // 1 win

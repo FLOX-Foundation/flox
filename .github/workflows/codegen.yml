@@ -1,0 +1,52 @@
+name: codegen
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  codegen-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install codegen deps
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends clang-format
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet -r tools/codegen/requirements.txt
+          python -m pip install --quiet pytest
+          # The libclang PyPI package ships its own libclang shared lib, so we
+          # don't need apt clang. clang (CLI) is needed for system-include-path
+          # discovery; ubuntu-latest ships it. clang-format is needed by
+          # emit_capi for format-stable output.
+
+      - name: Verify codegen output matches spec
+        env:
+          PYTHONPATH: tools/codegen
+        run: |
+          python -m flox_codegen.cli emit-capi \
+            --spec include/flox/capi/flox_capi_spec.hpp \
+            --out /tmp/slice_capi.h
+          if ! diff -u tools/codegen/golden/slice_capi.h /tmp/slice_capi.h; then
+            echo "::error::tools/codegen/golden/slice_capi.h is out of date"
+            echo "Run: bash tools/codegen/scripts/regenerate.sh"
+            exit 1
+          fi
+
+      - name: Verify signatures match live flox_capi.h
+        env:
+          PYTHONPATH: tools/codegen
+        run: |
+          python -m flox_codegen.cli check \
+            --expected include/flox/capi/flox_capi.h \
+            --actual tools/codegen/golden/slice_capi.h
+
+      - name: Run codegen unit tests
+        env:
+          PYTHONPATH: tools/codegen
+        run: python -m pytest tools/codegen/tests/ -v
