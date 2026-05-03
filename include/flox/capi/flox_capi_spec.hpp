@@ -25,7 +25,6 @@ extern "C"
 {
 #endif
 
-
   // ============================================================
   // Opaque handles
   // ============================================================
@@ -1599,6 +1598,51 @@ extern "C"
   void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
 
   // ============================================================
+  // MarketDataRecorder — receive every market data event fed into the
+  // engine, for custom recording (CSV, parquet, custom binary).
+  //
+  // Companion to the concrete C API recorder (flox_data_recorder_*
+  // already defined for the in-tree binary log writer); this hook lets a
+  // binding implement IMarketDataRecorder in the host language.
+  //
+  // Callbacks fire on every published trade and book update — synchronously
+  // for the runner, on the consumer thread for the live engine.
+  // on_start / on_stop fire on engine.start() / engine.stop() while the
+  // recorder is attached. Any callback may be NULL (no-op).
+  //
+  // The trade / book pointers and book level arrays are valid only for the
+  // duration of the callback; copy if retained.
+  // ============================================================
+
+  typedef void (*FloxRecorderOnTradeFn)(void* user_data, const FloxTradeData* trade);
+  typedef void (*FloxRecorderOnBookUpdateFn)(void* user_data,
+                                             uint32_t symbol,
+                                             uint8_t is_snapshot,
+                                             const FloxBookLevel* bids,
+                                             uint32_t n_bids,
+                                             const FloxBookLevel* asks,
+                                             uint32_t n_asks,
+                                             int64_t exchange_ts_ns);
+  typedef void (*FloxRecorderLifecycleFn)(void* user_data);
+
+  typedef struct
+  {
+    FloxRecorderOnTradeFn on_trade;
+    FloxRecorderOnBookUpdateFn on_book_update;
+    FloxRecorderLifecycleFn on_start;
+    FloxRecorderLifecycleFn on_stop;
+    void* user_data;
+  } FloxMarketDataRecorderCallbacks;
+
+  typedef void* FloxMarketDataRecorderHandle;
+
+  FLOX_EXPORT(group = "recorder")
+  FloxMarketDataRecorderHandle
+  flox_market_data_recorder_create(FloxMarketDataRecorderCallbacks callbacks);
+  FLOX_EXPORT(group = "recorder")
+  void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1658,6 +1702,13 @@ extern "C"
   FLOX_EXPORT(group = "storage")
   void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine,
                                          FloxStorageSinkHandle sink);
+
+  // Attach (or detach with NULL) a market data recorder. Fires on every
+  // published trade and book update; on_start / on_stop fire on engine
+  // start/stop while attached.
+  FLOX_EXPORT(group = "recorder")
+  void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
+                                                 FloxMarketDataRecorderHandle recorder);
 
   FLOX_EXPORT(group = "floxliveengine_disruptor")
   void flox_live_engine_start(FloxLiveEngineHandle engine);
@@ -1751,6 +1802,14 @@ extern "C"
   FLOX_EXPORT(group = "storage")
   void flox_runner_set_storage_sink(FloxRunnerHandle runner,
                                     FloxStorageSinkHandle sink);
+
+  // Attach (or detach with NULL) a market data recorder. on_trade and
+  // on_book_update fire synchronously from flox_runner_on_trade /
+  // flox_runner_on_book_snapshot. on_start / on_stop fire on runner
+  // start/stop.
+  FLOX_EXPORT(group = "recorder")
+  void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
+                                            FloxMarketDataRecorderHandle recorder);
 
   FLOX_EXPORT(group = "strategyrunner_synchronous")
   void flox_runner_start(FloxRunnerHandle runner);
@@ -1850,7 +1909,6 @@ extern "C"
                                     uint8_t bar_type,
                                     uint64_t bar_type_param,
                                     FloxBacktestStats* stats_out);
-
 
 #ifdef __cplusplus
 }

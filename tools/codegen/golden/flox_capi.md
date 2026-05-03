@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 311 functions, 27 handles, 30 structs, 13 callback typedefs, 2 enums, 41 groups.
+**Surface:** 315 functions, 28 handles, 31 structs, 16 callback typedefs, 2 enums, 42 groups.
 
 ## Opaque handles
 
@@ -32,6 +32,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxOrderValidatorHandle`
 - `FloxPnLTrackerHandle`
 - `FloxStorageSinkHandle`
+- `FloxMarketDataRecorderHandle`
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
@@ -66,6 +67,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxLogCallback)(void *, int32_t, const char *);`
 - `typedef void (*FloxPnLTrackerOnSignalFn)(void *, const FloxSignal *);`
 - `typedef void (*FloxStorageSinkStoreFn)(void *, const FloxSignal *);`
+- `typedef void (*FloxRecorderOnTradeFn)(void *, const FloxTradeData *);`
+- `typedef void (*FloxRecorderOnBookUpdateFn)(void *, uint32_t, uint8_t, const FloxBookLevel *, uint32_t, const FloxBookLevel *, uint32_t, int64_t);`
+- `typedef void (*FloxRecorderLifecycleFn)(void *);`
 
 ## Structs
 
@@ -406,6 +410,16 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `store` | `FloxStorageSinkStoreFn` |
 | `user_data` | `void *` |
 
+### `FloxMarketDataRecorderCallbacks`
+
+| field | type |
+|---|---|
+| `on_trade` | `FloxRecorderOnTradeFn` |
+| `on_book_update` | `FloxRecorderOnBookUpdateFn` |
+| `on_start` | `FloxRecorderLifecycleFn` |
+| `on_stop` | `FloxRecorderLifecycleFn` |
+| `user_data` | `void *` |
+
 ## Functions
 
 ### additional_bar
@@ -721,6 +735,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_position_group_total_pnl(FloxPositionGroupHandle tracker)`
 - `uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol)`
 - `void flox_position_group_prune(FloxPositionGroupHandle tracker)`
+
+### recorder
+
+- `FloxMarketDataRecorderHandle flox_market_data_recorder_create(FloxMarketDataRecorderCallbacks callbacks)`
+- `void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)`
+- `void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine, FloxMarketDataRecorderHandle recorder)`
+- `void flox_runner_set_market_data_recorder(FloxRunnerHandle runner, FloxMarketDataRecorderHandle recorder)`
 
 ### risk
 

@@ -2834,6 +2834,11 @@ struct FloxStorageSinkImpl
   FloxStorageSinkCallbacks cb;
 };
 
+struct FloxMarketDataRecorderImpl
+{
+  FloxMarketDataRecorderCallbacks cb;
+};
+
 class RunnerSignalHandler : public ISignalHandler
 {
  public:
@@ -2981,6 +2986,12 @@ struct FloxRunnerImpl
   std::vector<BridgeStrategy*> strategies;
   std::pmr::unsynchronized_pool_resource pool;
 
+  // Optional market data recorder hook. Owned by caller; non-owning ptr.
+  std::atomic<FloxMarketDataRecorderImpl*> recorder{nullptr};
+  // Tracks whether on_start has fired without a matching on_stop, so that
+  // attaching mid-run or detaching emits the right lifecycle callback.
+  std::atomic<bool> recorderRunning{false};
+
   FloxRunnerImpl(SymbolRegistry* reg, FloxOnSignalCallback cb, void* ud)
       : registry(reg), handler(cb, ud)
   {
@@ -3001,16 +3012,47 @@ struct FloxRunnerImpl
   void setPnLTracker(FloxPnLTrackerImpl* p) { handler.setPnLTracker(p); }
   void setStorageSink(FloxStorageSinkImpl* s) { handler.setStorageSink(s); }
 
+  // Attach / detach a market data recorder. If the runner is already started
+  // (recorderRunning == true), fire on_stop on the outgoing recorder and
+  // on_start on the incoming one so the lifecycle stays balanced.
+  void setMarketDataRecorder(FloxMarketDataRecorderImpl* r)
+  {
+    auto* prev = recorder.exchange(r, std::memory_order_acq_rel);
+    if (recorderRunning.load(std::memory_order_acquire))
+    {
+      if (prev != nullptr && prev->cb.on_stop != nullptr)
+      {
+        prev->cb.on_stop(prev->cb.user_data);
+      }
+      if (r != nullptr && r->cb.on_start != nullptr)
+      {
+        r->cb.on_start(r->cb.user_data);
+      }
+    }
+  }
+
   void start()
   {
     for (auto* s : strategies)
     {
       s->start();
     }
+    recorderRunning.store(true, std::memory_order_release);
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_start != nullptr)
+    {
+      r->cb.on_start(r->cb.user_data);
+    }
   }
 
   void stop()
   {
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_stop != nullptr)
+    {
+      r->cb.on_stop(r->cb.user_data);
+    }
+    recorderRunning.store(false, std::memory_order_release);
     for (auto* s : strategies)
     {
       s->stop();
@@ -3032,6 +3074,18 @@ struct FloxRunnerImpl
     for (auto* s : strategies)
     {
       s->onTrade(ev);
+    }
+
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_trade != nullptr)
+    {
+      FloxTradeData td{};
+      td.symbol = symbol;
+      td.price_raw = trade.price.raw();
+      td.quantity_raw = trade.quantity.raw();
+      td.is_buy = is_buy ? 1 : 0;
+      td.exchange_ts_ns = ts_ns;
+      r->cb.on_trade(r->cb.user_data, &td);
     }
   }
 
@@ -3059,6 +3113,42 @@ struct FloxRunnerImpl
     for (auto* s : strategies)
     {
       s->onBookUpdate(ev);
+    }
+
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_book_update != nullptr)
+    {
+      // Re-pack levels into FloxBookLevel for the C ABI. Stack buffers up
+      // to a small threshold; heap-fall back for deep books.
+      constexpr uint32_t kStackLevels = 64;
+      FloxBookLevel stackBids[kStackLevels];
+      FloxBookLevel stackAsks[kStackLevels];
+      std::vector<FloxBookLevel> heapBids;
+      std::vector<FloxBookLevel> heapAsks;
+      FloxBookLevel* bidPtr = stackBids;
+      FloxBookLevel* askPtr = stackAsks;
+      if (n_bids > kStackLevels)
+      {
+        heapBids.resize(n_bids);
+        bidPtr = heapBids.data();
+      }
+      if (n_asks > kStackLevels)
+      {
+        heapAsks.resize(n_asks);
+        askPtr = heapAsks.data();
+      }
+      for (uint32_t i = 0; i < n_bids; ++i)
+      {
+        bidPtr[i].price_raw = ev.update.bids[i].price.raw();
+        bidPtr[i].quantity_raw = ev.update.bids[i].quantity.raw();
+      }
+      for (uint32_t i = 0; i < n_asks; ++i)
+      {
+        askPtr[i].price_raw = ev.update.asks[i].price.raw();
+        askPtr[i].quantity_raw = ev.update.asks[i].quantity.raw();
+      }
+      r->cb.on_book_update(r->cb.user_data, symbol, /*is_snapshot=*/1u,
+                           bidPtr, n_bids, askPtr, n_asks, ts_ns);
     }
   }
 
@@ -3118,6 +3208,8 @@ struct FloxLiveEngineImpl
   std::atomic<FloxOrderValidatorImpl*> orderValidator{nullptr};
   std::atomic<FloxPnLTrackerImpl*> pnlTracker{nullptr};
   std::atomic<FloxStorageSinkImpl*> storageSink{nullptr};
+  std::atomic<FloxMarketDataRecorderImpl*> recorder{nullptr};
+  std::atomic<bool> recorderRunning{false};
 
   explicit FloxLiveEngineImpl(SymbolRegistry* reg)
       : registry(reg),
@@ -3186,6 +3278,24 @@ struct FloxLiveEngineImpl
     }
   }
 
+  // Attach / detach a market data recorder. Lifecycle (on_start/on_stop)
+  // is balanced against engine.start()/stop(), mirroring runner semantics.
+  void setMarketDataRecorder(FloxMarketDataRecorderImpl* r)
+  {
+    auto* prev = recorder.exchange(r, std::memory_order_acq_rel);
+    if (recorderRunning.load(std::memory_order_acquire))
+    {
+      if (prev != nullptr && prev->cb.on_stop != nullptr)
+      {
+        prev->cb.on_stop(prev->cb.user_data);
+      }
+      if (r != nullptr && r->cb.on_start != nullptr)
+      {
+        r->cb.on_start(r->cb.user_data);
+      }
+    }
+  }
+
   void start()
   {
     tradeBus->start();
@@ -3195,10 +3305,22 @@ struct FloxLiveEngineImpl
     {
       s->start();
     }
+    recorderRunning.store(true, std::memory_order_release);
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_start != nullptr)
+    {
+      r->cb.on_start(r->cb.user_data);
+    }
   }
 
   void stop()
   {
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_stop != nullptr)
+    {
+      r->cb.on_stop(r->cb.user_data);
+    }
+    recorderRunning.store(false, std::memory_order_release);
     for (auto* s : strategies)
     {
       s->stop();
@@ -3217,6 +3339,22 @@ struct FloxLiveEngineImpl
     ev.trade.isBuy = is_buy;
     ev.trade.exchangeTsNs = UnixNanos(ts_ns);
     tradeBus->publish(ev);
+
+    // Recorder runs on the publisher thread (caller), before publish
+    // becomes visible to consumer-side strategies. This mirrors "the
+    // engine is being fed this event"; consumer-side timing isn't part
+    // of the recorder contract.
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_trade != nullptr)
+    {
+      FloxTradeData td{};
+      td.symbol = symbol;
+      td.price_raw = ev.trade.price.raw();
+      td.quantity_raw = ev.trade.quantity.raw();
+      td.is_buy = is_buy ? 1 : 0;
+      td.exchange_ts_ns = ts_ns;
+      r->cb.on_trade(r->cb.user_data, &td);
+    }
   }
 
   void publishBookSnapshot(uint32_t symbol,
@@ -3245,6 +3383,42 @@ struct FloxLiveEngineImpl
       ev->update.asks.push_back({Price::fromDouble(ask_prices[i]),
                                  Quantity::fromDouble(ask_qtys[i])});
     }
+
+    // Mirror to recorder before publish — see publishTrade comment.
+    if (auto* r = recorder.load(std::memory_order_acquire);
+        r != nullptr && r->cb.on_book_update != nullptr)
+    {
+      constexpr uint32_t kStackLevels = 64;
+      FloxBookLevel stackBids[kStackLevels];
+      FloxBookLevel stackAsks[kStackLevels];
+      std::vector<FloxBookLevel> heapBids;
+      std::vector<FloxBookLevel> heapAsks;
+      FloxBookLevel* bidPtr = stackBids;
+      FloxBookLevel* askPtr = stackAsks;
+      if (n_bids > kStackLevels)
+      {
+        heapBids.resize(n_bids);
+        bidPtr = heapBids.data();
+      }
+      if (n_asks > kStackLevels)
+      {
+        heapAsks.resize(n_asks);
+        askPtr = heapAsks.data();
+      }
+      for (uint32_t i = 0; i < n_bids; ++i)
+      {
+        bidPtr[i].price_raw = ev->update.bids[i].price.raw();
+        bidPtr[i].quantity_raw = ev->update.bids[i].quantity.raw();
+      }
+      for (uint32_t i = 0; i < n_asks; ++i)
+      {
+        askPtr[i].price_raw = ev->update.asks[i].price.raw();
+        askPtr[i].quantity_raw = ev->update.asks[i].quantity.raw();
+      }
+      r->cb.on_book_update(r->cb.user_data, symbol, /*is_snapshot=*/1u,
+                           bidPtr, n_bids, askPtr, n_asks, ts_ns);
+    }
+
     bookBus->publish(std::move(evOpt.value()));
   }
 
@@ -3587,6 +3761,18 @@ void flox_storage_sink_destroy(FloxStorageSinkHandle sink)
   delete static_cast<FloxStorageSinkImpl*>(sink);
 }
 
+FloxMarketDataRecorderHandle flox_market_data_recorder_create(
+    FloxMarketDataRecorderCallbacks callbacks)
+{
+  return static_cast<FloxMarketDataRecorderHandle>(
+      new FloxMarketDataRecorderImpl{callbacks});
+}
+
+void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)
+{
+  delete static_cast<FloxMarketDataRecorderImpl*>(recorder);
+}
+
 // ============================================================
 // Logger callback adapter
 // ============================================================
@@ -3684,6 +3870,13 @@ void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle
       static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
 }
 
+void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
+                                          FloxMarketDataRecorderHandle recorder)
+{
+  toRunner(runner)->setMarketDataRecorder(
+      static_cast<capi_impl::FloxMarketDataRecorderImpl*>(recorder));
+}
+
 void flox_runner_start(FloxRunnerHandle runner)
 {
   toRunner(runner)->start();
@@ -3779,6 +3972,13 @@ void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine,
 {
   toLiveEngine(engine)->setStorageSink(
       static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
+}
+
+void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
+                                               FloxMarketDataRecorderHandle recorder)
+{
+  toLiveEngine(engine)->setMarketDataRecorder(
+      static_cast<capi_impl::FloxMarketDataRecorderImpl*>(recorder));
 }
 
 void flox_live_engine_start(FloxLiveEngineHandle engine)

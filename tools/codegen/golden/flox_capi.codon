@@ -291,6 +291,12 @@ from C import flox_position_group_total_pnl(cobj) -> float
 from C import flox_position_group_open_count(cobj, u32) -> u32
 from C import flox_position_group_prune(cobj)
 
+# ── recorder ──
+from C import flox_market_data_recorder_create(cobj) -> cobj
+from C import flox_market_data_recorder_destroy(cobj)
+from C import flox_live_engine_set_market_data_recorder(cobj, cobj)
+from C import flox_runner_set_market_data_recorder(cobj, cobj)
+
 # ── risk ──
 from C import flox_risk_manager_create(cobj) -> cobj
 from C import flox_risk_manager_destroy(cobj)
