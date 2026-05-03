@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,7 +32,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PKG_SRC = REPO / "python" / "flox_py"
-BUILD_PYTHON = REPO / "build" / "python"
+# Override with FLOX_PY_BUILD_DIR=path/to/python when the .so lives
+# outside the default `build/python` (e.g. a per-Python-version build).
+BUILD_PYTHON = Path(os.environ.get("FLOX_PY_BUILD_DIR", REPO / "build" / "python"))
 
 # Stub layout produced by stubgen for our package:
 #   flox_py/__init__.pyi               wrapper that re-exports symbols
@@ -66,6 +67,33 @@ def ensure_module_importable() -> None:
         __import__("flox_py")
     except ImportError as e:
         sys.exit(f"error: cannot import flox_py from {BUILD_PYTHON}: {e}")
+
+
+def sort_import_lines(text: str) -> str:
+    """Sort consecutive `from ... import ...` lines alphabetically.
+
+    pybind11 module-attribute insertion order is not stable across
+    platforms (macOS vs Linux) — `dir()` reflects that, and stubgen's
+    output reflects `dir()`. Sorting the import block makes the stub
+    deterministic so the CI sync gate doesn't fire on platform drift.
+    """
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    block: list[str] = []
+
+    def flush() -> None:
+        if block:
+            out.extend(sorted(block, key=str.lower))
+            block.clear()
+
+    for line in lines:
+        if line.startswith("from ") and " import " in line:
+            block.append(line)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return "".join(out)
 
 
 def run_stubgen(out_dir: Path) -> None:
@@ -116,7 +144,7 @@ def main() -> int:
             ok = True
             for rel in STUB_FILES:
                 committed = PKG_SRC / rel
-                generated = (gen_pkg / rel).read_text()
+                generated = sort_import_lines((gen_pkg / rel).read_text())
                 current = committed.read_text() if committed.exists() else ""
                 if current != generated:
                     print(
@@ -136,7 +164,7 @@ def main() -> int:
         for rel in STUB_FILES:
             dst = PKG_SRC / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(gen_pkg / rel, dst)
+            dst.write_text(sort_import_lines((gen_pkg / rel).read_text()))
             print(
                 f"wrote {dst.relative_to(REPO)} "
                 f"({dst.stat().st_size:,} bytes)"
