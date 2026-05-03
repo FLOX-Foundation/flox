@@ -216,6 +216,12 @@ from C import flox_market_profile_is_poor_low(cobj) -> u8
 from C import flox_market_profile_num_levels(cobj) -> u32
 from C import flox_market_profile_clear(cobj)
 
+# ── metrics ──
+from C import flox_pnl_tracker_create(cobj) -> cobj
+from C import flox_pnl_tracker_destroy(cobj)
+from C import flox_live_engine_set_pnl_tracker(cobj, cobj)
+from C import flox_runner_set_pnl_tracker(cobj, cobj)
+
 # ── order_book ──
 from C import flox_book_create(float) -> cobj
 from C import flox_book_destroy(cobj)
@@ -343,6 +349,12 @@ from C import flox_executor_fill_count(cobj) -> u32
 from C import flox_stat_correlation(Ptr[float], Ptr[float], int) -> float
 from C import flox_stat_profit_factor(Ptr[float], int) -> float
 from C import flox_stat_win_rate(Ptr[float], int) -> float
+
+# ── storage ──
+from C import flox_storage_sink_create(cobj) -> cobj
+from C import flox_storage_sink_destroy(cobj)
+from C import flox_live_engine_set_storage_sink(cobj, cobj)
+from C import flox_runner_set_storage_sink(cobj, cobj)
 
 # ── strategy_lifecycle ──
 from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj

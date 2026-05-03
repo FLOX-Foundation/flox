@@ -180,7 +180,9 @@ flox_live_engine_publish_book_snapshot|void|FloxLiveEngineHandle|uint32_t|const 
 flox_live_engine_publish_trade|void|FloxLiveEngineHandle|uint32_t|double|double|uint8_t|int64_t
 flox_live_engine_set_kill_switch|void|FloxLiveEngineHandle|FloxKillSwitchHandle
 flox_live_engine_set_order_validator|void|FloxLiveEngineHandle|FloxOrderValidatorHandle
+flox_live_engine_set_pnl_tracker|void|FloxLiveEngineHandle|FloxPnLTrackerHandle
 flox_live_engine_set_risk_manager|void|FloxLiveEngineHandle|FloxRiskManagerHandle
+flox_live_engine_set_storage_sink|void|FloxLiveEngineHandle|FloxStorageSinkHandle
 flox_live_engine_start|void|FloxLiveEngineHandle
 flox_live_engine_stop|void|FloxLiveEngineHandle
 flox_market_profile_add_trade|void|FloxMarketProfileHandle|int64_t|double|double|uint8_t
@@ -215,6 +217,8 @@ flox_partitioner_by_time|uint32_t|FloxPartitionerHandle|uint32_t|int64_t|FloxPar
 flox_partitioner_create|FloxPartitionerHandle|const char *
 flox_partitioner_destroy|void|FloxPartitionerHandle
 flox_partitioner_per_symbol|uint32_t|FloxPartitionerHandle|FloxPartition *|uint32_t
+flox_pnl_tracker_create|FloxPnLTrackerHandle|FloxPnLTrackerCallbacks
+flox_pnl_tracker_destroy|void|FloxPnLTrackerHandle
 flox_position_group_close|void|FloxPositionGroupHandle|uint64_t|double
 flox_position_group_create|FloxPositionGroupHandle
 flox_position_group_destroy|void|FloxPositionGroupHandle
@@ -253,7 +257,9 @@ flox_runner_on_book_snapshot|void|FloxRunnerHandle|uint32_t|const double *|const
 flox_runner_on_trade|void|FloxRunnerHandle|uint32_t|double|double|uint8_t|int64_t
 flox_runner_set_kill_switch|void|FloxRunnerHandle|FloxKillSwitchHandle
 flox_runner_set_order_validator|void|FloxRunnerHandle|FloxOrderValidatorHandle
+flox_runner_set_pnl_tracker|void|FloxRunnerHandle|FloxPnLTrackerHandle
 flox_runner_set_risk_manager|void|FloxRunnerHandle|FloxRiskManagerHandle
+flox_runner_set_storage_sink|void|FloxRunnerHandle|FloxStorageSinkHandle
 flox_runner_start|void|FloxRunnerHandle
 flox_runner_stop|void|FloxRunnerHandle
 flox_segment_export|FloxExportResult|const char *|const char *|uint8_t|int64_t|int64_t|const uint32_t *|uint32_t
@@ -277,6 +283,8 @@ flox_stat_correlation|double|const double *|const double *|size_t
 flox_stat_permutation_test|double|const double *|size_t|const double *|size_t|uint32_t
 flox_stat_profit_factor|double|const double *|size_t
 flox_stat_win_rate|double|const double *|size_t
+flox_storage_sink_create|FloxStorageSinkHandle|FloxStorageSinkCallbacks
+flox_storage_sink_destroy|void|FloxStorageSinkHandle
 flox_strategy_create|FloxStrategyHandle|uint32_t|const uint32_t *|uint32_t|FloxRegistryHandle|FloxStrategyCallbacks
 flox_strategy_destroy|void|FloxStrategyHandle
 flox_streaming_graph_add_node|void|FloxStreamingGraphHandle|const char *|const char *const *|size_t|FloxGraphNodeFn|void *
