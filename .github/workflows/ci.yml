@@ -54,7 +54,7 @@ jobs:
         sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 python3-dev python3-pip
 
     - name: Install Python packages
-      run: python3 -m pip install --break-system-packages pybind11 numpy
+      run: python3 -m pip install --break-system-packages pybind11 numpy pybind11-stubgen mypy
 
     - name: Install Codon
       env:
@@ -124,6 +124,15 @@ jobs:
 
     - name: Verify Python bindings
       run: PYTHONPATH=build/python python3 python/tests/test_bindings.py
+
+    - name: Verify .pyi stubs are in sync with the binding
+      run: python3 scripts/gen_pyi_stubs.py --check
+
+    - name: Type-check Python examples against .pyi stubs
+      run: PYTHONPATH=build/python python3 -m mypy --ignore-missing-imports
+        docs/examples/python_backtest_vs_live.py
+        docs/examples/python_multi_symbol.py
+        docs/examples/python_ccxt_live.py
 
     - name: Run Python example
       run: PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
