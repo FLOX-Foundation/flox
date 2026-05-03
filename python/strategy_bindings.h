@@ -17,6 +17,7 @@
 #include "flox/capi/bridge_strategy.h"
 #include "flox/capi/flox_capi.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/error/flox_error.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/util/memory/pool.h"
@@ -517,7 +518,11 @@ class PyStrategyBase
     {
       return it->second;
     }
-    throw std::invalid_argument("Unknown symbol: " + symbol.value());
+    throw flox::FloxError(
+        "E_SYM_001",
+        "Symbol '" + symbol.value() +
+            "' is not registered. Add it via Engine.add_symbol() "
+            "before referencing it.");
   }
 
   uint32_t _resolve(std::optional<uint32_t> symbol) const

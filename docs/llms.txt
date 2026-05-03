@@ -73,6 +73,11 @@ Documentation is grouped below by Diátaxis category — pick the section matchi
 - [CI configuration](https://flox-foundation.github.io/flox/how-to/ci/): Continuous integration setup
 - [Contributing](https://flox-foundation.github.io/flox/how-to/contributing/): How to contribute
 
+## Errors
+
+- [Error code reference](https://flox-foundation.github.io/flox/errors/): Catalog of FloxError codes, format, and lifecycle
+- [E_SYM_001 — Symbol is not registered](https://flox-foundation.github.io/flox/errors/E_SYM_001/): Fix: call Engine.add_symbol() before referencing the symbol
+
 ## Reference: Python
 
 - [Python reference index](https://flox-foundation.github.io/flox/reference/python/): All Python binding modules
