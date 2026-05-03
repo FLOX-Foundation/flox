@@ -907,7 +907,11 @@ inline void registerIndicators(Napi::Env env, Napi::Object exports)
   exports.Set("shannon_entropy", Napi::Function::New(env, batch_shannon_entropy));
   exports.Set("parkinson_vol", Napi::Function::New(env, batch_parkinson_vol));
   exports.Set("rogers_satchell_vol", Napi::Function::New(env, batch_rogers_satchell_vol));
-  exports.Set("correlation", Napi::Function::New(env, batch_correlation));
+  // Rolling correlation: stat name `correlation` is reserved for the
+  // single-number Pearson helper in stats.h (which loaded last and
+  // shadowed this entry). Exposed under `rollingCorrelation` so both
+  // are reachable.
+  exports.Set("rollingCorrelation", Napi::Function::New(env, batch_correlation));
   exports.Set("adf", Napi::Function::New(env, batch_adf));
   exports.Set("autocorrelation", Napi::Function::New(env, batch_autocorrelation));
 

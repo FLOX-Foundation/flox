@@ -475,6 +475,8 @@ export function kurtosis(input: Float64Array, period: number): Float64Array;
 export function rolling_zscore(input: Float64Array, period: number): Float64Array;
 export function shannon_entropy(input: Float64Array, period: number, bins: number): Float64Array;
 export function autocorrelation(input: Float64Array, window: number, lag: number): Float64Array;
+/** Rolling Pearson correlation over a moving `period` window. */
+export function rollingCorrelation(x: Float64Array, y: Float64Array, period: number): Float64Array;
 export function adf(input: Float64Array, lag: number): number;
 export function chop(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
 export function atr(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
@@ -700,9 +702,8 @@ export class FootprintBar {
 // ── Statistics ────────────────────────────────────────────────────────
 
 /**
- * Pearson correlation. NB: this name shadows the indicator-package
- * `correlation(x, y, period)` — both are registered as `flox.correlation`
- * and the stats version (last-loaded) wins at runtime.
+ * Pearson correlation coefficient over the entire pair of arrays.
+ * For a rolling correlation see {@link rollingCorrelation}.
  */
 export function correlation(x: Float64Array, y: Float64Array): number;
 export function profitFactor(pnl: Float64Array): number;
@@ -861,29 +862,116 @@ export class Partitioner {
 
 // ── Segment-level data operations ─────────────────────────────────────
 
+/** Result of `validate(path)` (full single-segment validation). */
+export interface SegmentValidationResult {
+  valid: boolean;
+  headerValid: boolean;
+  reportedEventCount: number;
+  actualEventCount: number;
+  hasIndex: boolean;
+  indexValid: boolean;
+  tradesFound: number;
+  bookUpdatesFound: number;
+  crcErrors: number;
+  timestampAnomalies: number;
+}
+
+/** Result of `validateDataset(dir)`. */
+export interface DatasetValidationResult {
+  valid: boolean;
+  totalSegments: number;
+  validSegments: number;
+  corruptedSegments: number;
+  totalEvents: number;
+  totalBytes: number;
+  firstTimestamp: number;
+  lastTimestamp: number;
+}
+
+/** Result of `mergeDir(dir, outputPath)`. */
+export interface MergeDirResult {
+  success: boolean;
+  segmentsMerged: number;
+  eventsWritten: number;
+  bytesWritten: number;
+}
+
+/** Result of `split(inputPath, outputDir, ...)`. */
+export interface SplitResult {
+  success: boolean;
+  segmentsCreated: number;
+  eventsWritten: number;
+}
+
+/** Result of `exportData(inputPath, outputPath, ...)`. */
+export interface ExportResult {
+  success: boolean;
+  eventsExported: number;
+  bytesWritten: number;
+}
+
+/** Mode for `split`. `time` = by duration ns, `event_count` = by event count, `size` = by bytes, `symbol` = by symbol id. */
+export type SplitMode = "time" | "event_count" | "size" | "symbol";
+
+/** Output format for `exportData`. `binary` (raw segments), `json`, `jsonlines`. */
+export type ExportFormat = "binary" | "json" | "jsonlines";
+
+/** Compression codec for `recompress`. `lz4` is the default. */
+export type RecompressCodec = "lz4" | "none";
+
+/** Boolean header-only validity check. */
+export function validateSegment(path: string): boolean;
+/** Full validation: walks every record, checks CRC, indexes, ordering. */
+export function validate(path: string): SegmentValidationResult;
+/** Recursive dataset validation across all segments under `dir`. */
+export function validateDataset(dir: string): DatasetValidationResult;
+/** Concatenate one or more input segments into a single output. */
+export function mergeSegments(inputPath: string, outputPath: string): boolean;
+/** Merge every segment under a directory into one output. */
+export function mergeDir(dir: string, outputPath: string): MergeDirResult;
 /**
- * The `validate*`, `merge*`, `split`, `exportData`, `recompress`,
- * `extract*`, `inspect` helpers are thin wrappers around the C++
- * segment-ops library. Inputs and outputs are paths plus a few options
- * passed via plain objects; full-shape typing of every option bag is
- * deferred to a future refactor (W6 research tooling).
+ * Split an input segment by `mode`. `splitArg` interpretation:
+ *   - `mode="time"`           → nanoseconds per slice (default 3,600,000,000,000 = 1h)
+ *   - `mode="event_count"`    → events per slice
+ *   - `mode="size"`           → bytes per slice
+ *   - `mode="symbol"`         → ignored (one slice per distinct symbol id)
+ *
+ * `bufferSize` controls the writer buffer in events (default 1,000,000).
  */
-export function validateSegment(path: string): unknown;
-export function validate(path: string): unknown;
-export function validateDataset(dir: string): unknown;
-export function mergeSegments(inputPaths: string[], outputPath: string): unknown;
-export function mergeDir(dir: string, outputPath: string): unknown;
-export function split(inputPath: string, outputDir: string, options?: object): unknown;
-export function exportData(inputPath: string, outputPath: string, options?: object): unknown;
-export function recompress(inputPath: string, outputPath: string, options?: object): unknown;
-export function extractSymbols(inputPath: string, outputPath: string, symbols: string[]): unknown;
+export function split(
+  inputPath: string,
+  outputDir: string,
+  mode?: SplitMode,
+  splitArg?: number | bigint,
+  bufferSize?: number | bigint,
+): SplitResult;
+/**
+ * Export a segment to JSON / JSON-Lines / re-encoded binary, optionally
+ * filtered by `[fromNs, toNs]` (pass 0 for "all").
+ */
+export function exportData(
+  inputPath: string,
+  outputPath: string,
+  format?: ExportFormat,
+  fromNs?: number | bigint,
+  toNs?: number | bigint,
+): ExportResult;
+/** Re-write a segment with a different compression codec. */
+export function recompress(inputPath: string, outputPath: string, codec?: RecompressCodec): boolean;
+/**
+ * Filter a segment to a subset of symbol ids; `symbols` is a `Uint32Array`
+ * of numeric ids (NOT names). Returns the number of events written.
+ */
+export function extractSymbols(inputPath: string, outputPath: string, symbols: Uint32Array): number;
+/** Filter a segment to events within `[fromNs, toNs]`. Returns events written. */
 export function extractTimeRange(
   inputPath: string,
   outputPath: string,
   fromNs: number | bigint,
   toNs: number | bigint,
-): unknown;
-export function inspect(path: string): unknown;
+): number;
+/** Quick summary of a segment (same shape as `DataReader.summary()`). */
+export function inspect(path: string): DataReaderSummary;
 
 // ── Indicator graphs ──────────────────────────────────────────────────
 

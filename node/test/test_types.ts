@@ -428,18 +428,37 @@ void part.bySymbol(2);
 void part.perSymbol();
 void part.byEventCount(4);
 
-// ── Segment ops (typed loosely as `unknown` — see d.ts note) ──────────
-void flox.validateSegment("/tmp/x");
-void flox.validate("/tmp/x");
-void flox.validateDataset("/tmp/x");
-void flox.mergeSegments(["/tmp/a"], "/tmp/b");
-void flox.mergeDir("/tmp/a", "/tmp/b");
-void flox.split("/tmp/a", "/tmp/b");
-void flox.exportData("/tmp/a", "/tmp/b");
-void flox.recompress("/tmp/a", "/tmp/b");
-void flox.extractSymbols("/tmp/a", "/tmp/b", ["BTCUSDT"]);
-void flox.extractTimeRange("/tmp/a", "/tmp/b", 0n, 1n);
-void flox.inspect("/tmp/x");
+// ── Segment ops ──────────────────────────────────────────────────────
+const _vsOk: boolean = flox.validateSegment("/tmp/x");
+void _vsOk;
+const valRes = flox.validate("/tmp/x");
+void valRes.headerValid;
+void valRes.tradesFound;
+const dsRes = flox.validateDataset("/tmp/x");
+void dsRes.totalSegments;
+void dsRes.firstTimestamp;
+const _msOk: boolean = flox.mergeSegments("/tmp/a", "/tmp/b");
+void _msOk;
+const mdRes = flox.mergeDir("/tmp/a", "/tmp/b");
+void mdRes.segmentsMerged;
+const splitRes = flox.split("/tmp/a", "/tmp/b", "time", 3_600_000_000_000n, 1_000_000);
+void splitRes.segmentsCreated;
+const exRes = flox.exportData("/tmp/a", "/tmp/b", "json", 0n, 0n);
+void exRes.eventsExported;
+const _rcOk: boolean = flox.recompress("/tmp/a", "/tmp/b", "lz4");
+void _rcOk;
+const _esCount: number = flox.extractSymbols(
+  "/tmp/a",
+  "/tmp/b",
+  new Uint32Array([1, 2, 3]),
+);
+void _esCount;
+const _etCount: number = flox.extractTimeRange("/tmp/a", "/tmp/b", 0n, 1n);
+void _etCount;
+const insp = flox.inspect("/tmp/x");
+void insp.totalEvents;
+void insp.durationSeconds;
+void flox.rollingCorrelation(arr, arr, 20);
 
 // ── Indicator graphs ──────────────────────────────────────────────────
 const ig = new IndicatorGraph();
