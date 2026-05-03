@@ -44,6 +44,7 @@ extern "C"
   typedef void* FloxBacktestResultHandle;
   typedef void* FloxDataRecorderHandle;
   typedef void* FloxPartitionerHandle;
+  typedef void* FloxRiskManagerHandle;
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
@@ -348,6 +349,7 @@ extern "C"
   typedef void (*FloxOnStopCallback)(void*);
   typedef const double* (*FloxGraphNodeFn)(void*, FloxIndicatorGraphHandle, uint32_t, size_t*);
   typedef void (*FloxOnSignalCallback)(void*, const FloxSignal*);
+  typedef uint8_t (*FloxRiskManagerAllowFn)(void*, const FloxSignal*);
 
   // ============================================================
   // Callback bundles
@@ -362,6 +364,12 @@ extern "C"
     FloxOnStopCallback on_stop;
     void* user_data;
   } FloxStrategyCallbacks;
+
+  typedef struct
+  {
+    FloxRiskManagerAllowFn allow;
+    void* user_data;
+  } FloxRiskManagerCallbacks;
 
   // ============================================================
   // Fixed-point conversion helpers
@@ -866,6 +874,15 @@ extern "C"
   double flox_position_group_total_pnl(FloxPositionGroupHandle tracker);
   uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol);
   void flox_position_group_prune(FloxPositionGroupHandle tracker);
+
+  // ============================================================
+  // Risk
+  // ============================================================
+
+  FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
+  void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
+  void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm);
+  void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm);
 
   // ============================================================
   // Segment

@@ -1147,6 +1147,36 @@ extern "C"
   typedef void (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);
 
   // ============================================================
+  // RiskManager — pre-trade hook callable from runner / live engine.
+  //
+  // The `allow` callback is invoked synchronously on every signal a
+  // strategy emits, *before* the user's on_signal callback fires. Returning
+  // 0 (deny) drops the signal entirely; returning 1 (allow) lets it
+  // propagate. Use this to enforce risk limits, kill switches, or
+  // jurisdiction-specific rules without modifying the strategy itself.
+  //
+  // Lifecycle: created via flox_risk_manager_create, attached to a
+  // runner/engine via flox_runner_set_risk_manager /
+  // flox_live_engine_set_risk_manager (NULL to detach), destroyed via
+  // flox_risk_manager_destroy. The handle may be shared across multiple
+  // runners/engines; the caller owns destruction.
+  // ============================================================
+
+  typedef uint8_t (*FloxRiskManagerAllowFn)(void* user_data,
+                                            const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxRiskManagerAllowFn allow;
+    void* user_data;
+  } FloxRiskManagerCallbacks;
+
+  typedef void* FloxRiskManagerHandle;
+
+  FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
+  void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1169,6 +1199,13 @@ extern "C"
 
   FloxLiveEngineHandle flox_live_engine_create(FloxRegistryHandle registry);
   void flox_live_engine_destroy(FloxLiveEngineHandle engine);
+
+  // Attach (or detach with rm = NULL) a risk manager to this engine. The
+  // risk manager's `allow` callback fires on every signal before it reaches
+  // the user-supplied on_signal callback. Safe to call before or after
+  // start(); the engine takes a non-owning reference.
+  void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine,
+                                         FloxRiskManagerHandle rm);
 
   // Attach a strategy to both TradeBus and BookUpdateBus.
   // on_signal is called from the consumer thread when the strategy emits an order.
@@ -1237,6 +1274,11 @@ extern "C"
   // Attach a strategy (created via flox_strategy_create) to the runner.
   // The runner does NOT take ownership; call flox_strategy_destroy separately.
   void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy);
+
+  // Attach (or detach with rm = NULL) a risk manager to this runner.
+  // Same semantics as flox_live_engine_set_risk_manager.
+  void flox_runner_set_risk_manager(FloxRunnerHandle runner,
+                                    FloxRiskManagerHandle rm);
 
   void flox_runner_start(FloxRunnerHandle runner);
   void flox_runner_stop(FloxRunnerHandle runner);

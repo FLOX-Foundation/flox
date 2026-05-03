@@ -1424,6 +1424,42 @@ extern "C"
   typedef void (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);
 
   // ============================================================
+  // RiskManager — pre-trade hook callable from runner / live engine.
+  //
+  // The `allow` callback is invoked synchronously on every signal a
+  // strategy emits, *before* the user's on_signal callback fires. Returning
+  // 0 (deny) drops the signal entirely; returning 1 (allow) lets it
+  // propagate. Use this to enforce risk limits, kill switches, or
+  // jurisdiction-specific rules without modifying the strategy itself.
+  //
+  // The signal pointer passed to `allow` aliases the same FloxSignal that
+  // would otherwise be delivered to on_signal — fields are read-only;
+  // mutations are not propagated.
+  //
+  // Lifecycle: created via flox_risk_manager_create, attached to a
+  // runner/engine via flox_runner_set_risk_manager /
+  // flox_live_engine_set_risk_manager (NULL to detach), destroyed via
+  // flox_risk_manager_destroy. The handle may be shared across multiple
+  // runners/engines; the caller owns destruction.
+  // ============================================================
+
+  typedef uint8_t (*FloxRiskManagerAllowFn)(void* user_data,
+                                            const FloxSignal* signal);
+
+  typedef struct
+  {
+    FloxRiskManagerAllowFn allow;
+    void* user_data;
+  } FloxRiskManagerCallbacks;
+
+  typedef void* FloxRiskManagerHandle;
+
+  FLOX_EXPORT(group = "risk")
+  FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
+  FLOX_EXPORT(group = "risk")
+  void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1457,6 +1493,14 @@ extern "C"
                                      FloxStrategyHandle strategy,
                                      FloxOnSignalCallback on_signal,
                                      void* user_data);
+
+  // Attach (or detach with rm = NULL) a risk manager to this engine.
+  // The risk manager's `allow` callback fires on every signal before
+  // it reaches the user-supplied on_signal callback. Safe to call before
+  // or after start(); the engine takes a non-owning reference.
+  FLOX_EXPORT(group = "risk")
+  void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine,
+                                         FloxRiskManagerHandle rm);
 
   FLOX_EXPORT(group = "floxliveengine_disruptor")
   void flox_live_engine_start(FloxLiveEngineHandle engine);
@@ -1525,6 +1569,13 @@ extern "C"
   // The runner does NOT take ownership; call flox_strategy_destroy separately.
   FLOX_EXPORT(group = "strategyrunner_synchronous")
   void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy);
+
+  // Attach (or detach with rm = NULL) a risk manager to this runner.
+  // Same semantics as flox_live_engine_set_risk_manager — the `allow`
+  // callback fires synchronously on every signal before on_signal does.
+  FLOX_EXPORT(group = "risk")
+  void flox_runner_set_risk_manager(FloxRunnerHandle runner,
+                                    FloxRiskManagerHandle rm);
 
   FLOX_EXPORT(group = "strategyrunner_synchronous")
   void flox_runner_start(FloxRunnerHandle runner);
