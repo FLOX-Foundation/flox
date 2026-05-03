@@ -1,23 +1,27 @@
 """IR → flox_capi.h emitter.
 
 Produces a C header with the same conventions as the existing hand-written
-include/flox/capi/flox_capi.h. Conventions encoded here:
+include/flox/capi/flox_capi.h:
 
 - Wrapped in `extern "C" { ... }` under `#ifdef __cplusplus`.
 - Two-space indent inside the extern block.
-- Section banners with the `group=` annotation as the title (snake_case →
-  Title Case).
-- Order: handles → structs → function-pointer typedefs → grouped functions.
-- 80-col soft wrap on long parameter lists (matching the .h style — first
-  line at the function name, continuation lines aligned to the open paren).
+- Section banners with the `group=` annotation as the title.
+- Order: handles → event-data structs → fnptr typedefs → callback bundles
+  → grouped functions.
 
-Output is byte-deterministic: the same IR always produces the same bytes,
-so CI can diff committed golden against fresh codegen.
+Output is run through `clang-format` (with the repo's `.clang-format` config)
+when the binary is available, so committed golden output is byte-stable
+under FLOX's format gate. When clang-format is missing, raw emitter output
+is returned with a single trailing newline — the unit tests cover both
+paths.
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 from io import StringIO
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 from . import ir
 
@@ -200,12 +204,39 @@ def _partition_structs(
     return event_data, bundles
 
 
-def emit(module: ir.Module) -> str:
+def _run_clang_format(text: str, *, style_file: Optional[Path] = None) -> str:
+    """Pipe `text` through clang-format. Returns input unchanged on missing tool.
+
+    `style_file` should point at an existing `.clang-format` config; passes the
+    enclosing directory to `clang-format -style=file -assume-filename=...`.
+    Errors from clang-format propagate (broken config is a real bug — better to
+    fail loudly than ship malformed output).
+    """
+    binary = shutil.which("clang-format")
+    if binary is None:
+        return text
+
+    args = [binary, "-style=file"]
+    if style_file is not None:
+        args += ["-assume-filename", str(style_file)]
+    else:
+        args += ["-assume-filename", "flox_capi.h"]
+
+    proc = subprocess.run(
+        args, input=text, capture_output=True, text=True, check=True
+    )
+    return proc.stdout
+
+
+def emit(module: ir.Module, *, format: bool = True,
+         style_file: Optional[Path] = None) -> str:
     """Render `module` as a complete C header string.
 
     Order: handles → event-data structs → function-pointer typedefs →
     callback-bundle structs → functions. The chain mirrors the dependency
     graph: event data → fnptr (uses event data) → callback bundle (uses fnptr).
+
+    When `format=True` (the default), pipe the output through clang-format.
     """
     out = StringIO()
     out.write(HEADER_PROLOGUE)
@@ -229,4 +260,8 @@ def emit(module: ir.Module) -> str:
         out.write("\n")
 
     out.write(HEADER_EPILOGUE)
-    return out.getvalue()
+    text = out.getvalue()
+
+    if format:
+        text = _run_clang_format(text, style_file=style_file)
+    return text

@@ -19,7 +19,13 @@ from . import check_signatures, emit_capi, extractor
 
 def _cmd_emit_capi(args: argparse.Namespace) -> int:
     module = extractor.parse_spec(Path(args.spec))
-    text = emit_capi.emit(module)
+    # Anchor clang-format on the repo's .clang-format by passing a path
+    # adjacent to it as the assume-filename hint. clang-format walks up from
+    # there to find the style config.
+    style_anchor = Path(args.spec).resolve()
+    text = emit_capi.emit(
+        module, format=not args.no_format, style_file=style_anchor
+    )
     if args.out == "-":
         sys.stdout.write(text)
     else:
@@ -100,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Path to flox_capi_spec.hpp")
     pe.add_argument("--out", required=True,
                     help="Output path (use '-' for stdout)")
+    pe.add_argument("--no-format", action="store_true",
+                    help="Skip the clang-format post-pass (debugging only).")
     pe.set_defaults(func=_cmd_emit_capi)
 
     pc = sub.add_parser("check", help="Diff signatures across two C headers.")

@@ -16,12 +16,14 @@ jobs:
 
       - name: Install codegen deps
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends clang-format
           python -m pip install --quiet --upgrade pip
           python -m pip install --quiet -r tools/codegen/requirements.txt
           python -m pip install --quiet pytest
-          # The libclang PyPI package ships its own libclang shared lib, so
-          # we don't need apt clang. We do still need clang (the CLI) for
-          # system-include-path discovery; ubuntu-latest ships it.
+          # The libclang PyPI package ships its own libclang shared lib, so we
+          # don't need apt clang. clang (CLI) is needed for system-include-path
+          # discovery; ubuntu-latest ships it. clang-format is needed by
+          # emit_capi for format-stable output.
 
       - name: Verify codegen output matches spec
         env:
