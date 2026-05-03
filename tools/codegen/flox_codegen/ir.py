@@ -48,9 +48,15 @@ class Struct:
 
 @dataclass(frozen=True)
 class HandleTypedef:
-    """typedef void* FloxXHandle — opaque-handle declaration."""
+    """typedef void* FloxXHandle — opaque-handle declaration.
 
-    name: str  # e.g. "FloxStrategyHandle"
+    `alias_of` is non-None when this declaration is a typedef alias of an
+    earlier handle (e.g. `typedef FloxIndicatorGraphHandle FloxStreamingGraphHandle`).
+    Aliases emit as `typedef <alias_of> <name>;` rather than `typedef void* <name>`.
+    """
+
+    name: str
+    alias_of: Optional[str] = None  # e.g. "FloxStrategyHandle"
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,20 @@ class FunctionPointerTypedef:
     params: Tuple[Param, ...]
 
 
+@dataclass(frozen=True)
+class EnumValue:
+    name: str
+    value: Optional[int] = None  # None means "let C compiler auto-assign"
+
+
+@dataclass(frozen=True)
+class Enum:
+    """typedef enum { ... } FloxFooKind — C-style enum bound to a typedef."""
+
+    name: str
+    values: Tuple[EnumValue, ...]
+
+
 @dataclass
 class Module:
     """The full IR — every emitter consumes one Module instance."""
@@ -69,6 +89,7 @@ class Module:
     handles: List[HandleTypedef] = field(default_factory=list)
     structs: List[Struct] = field(default_factory=list)
     function_pointers: List[FunctionPointerTypedef] = field(default_factory=list)
+    enums: List[Enum] = field(default_factory=list)
     functions: List[Function] = field(default_factory=list)
 
     def functions_by_group(self) -> Dict[str, List[Function]]:

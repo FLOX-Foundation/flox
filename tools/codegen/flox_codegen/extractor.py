@@ -261,6 +261,7 @@ def _walk_module(tu_cursor, *, spec_path: Path) -> ir.Module:
     seen_handles: set = set()
     seen_structs: set = set()
     seen_fnptrs: set = set()
+    seen_enums: set = set()
     seen_functions: set = set()
 
     K = clang.cindex.CursorKind
@@ -291,7 +292,13 @@ def _walk_module(tu_cursor, *, spec_path: Path) -> ir.Module:
             if underlying == "void *" and name not in seen_handles:
                 seen_handles.add(name)
                 mod.handles.append(ir.HandleTypedef(name=name))
-            elif underlying.startswith("void (*)") or " (*)(" in underlying:
+            elif underlying in seen_handles and name not in seen_handles:
+                # `typedef FloxFooHandle FloxBarHandle;` — alias to an earlier
+                # opaque handle; carry the original name through so the emitter
+                # writes a `typedef <orig> <name>` line.
+                seen_handles.add(name)
+                mod.handles.append(ir.HandleTypedef(name=name, alias_of=underlying))
+            elif underlying.startswith("void (*)") or "(*)(" in underlying:
                 if name not in seen_fnptrs:
                     seen_fnptrs.add(name)
                     # Re-extract via the pointee-function decl if libclang
@@ -313,6 +320,26 @@ def _walk_module(tu_cursor, *, spec_path: Path) -> ir.Module:
                 # `typedef struct {...} FooT;` — handled via the inline RECORD
                 # decl below; nothing to do here.
                 pass
+            return
+
+        # typedef enum { ... } FloxFooKind — both anonymous body + typedef name
+        # come through as one ENUM_DECL whose spelling is the typedef name.
+        if cursor.kind == K.ENUM_DECL:
+            name = cursor.spelling
+            if not name or name in seen_enums:
+                return
+            seen_enums.add(name)
+            values: List[ir.EnumValue] = []
+            for child in cursor.get_children():
+                if child.kind == K.ENUM_CONSTANT_DECL:
+                    # libclang exposes enum_value as int (signed) or unsigned;
+                    # we treat the signed reading as canonical for C enums.
+                    try:
+                        ev: Optional[int] = int(child.enum_value)
+                    except Exception:
+                        ev = None
+                    values.append(ir.EnumValue(name=child.spelling, value=ev))
+            mod.enums.append(ir.Enum(name=name, values=tuple(values)))
             return
 
         # Anonymous struct -> typedef.

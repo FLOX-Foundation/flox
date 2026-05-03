@@ -31,20 +31,21 @@ jobs:
         run: |
           python -m flox_codegen.cli emit-capi \
             --spec include/flox/capi/flox_capi_spec.hpp \
-            --out /tmp/slice_capi.h
-          if ! diff -u tools/codegen/golden/slice_capi.h /tmp/slice_capi.h; then
-            echo "::error::tools/codegen/golden/slice_capi.h is out of date"
+            --out /tmp/flox_capi.h
+          if ! diff -u tools/codegen/golden/flox_capi.h /tmp/flox_capi.h; then
+            echo "::error::tools/codegen/golden/flox_capi.h is out of date"
             echo "Run: bash tools/codegen/scripts/regenerate.sh"
             exit 1
           fi
 
-      - name: Verify signatures match live flox_capi.h
+      - name: Verify full-coverage signature equivalence with live flox_capi.h
         env:
           PYTHONPATH: tools/codegen
         run: |
           python -m flox_codegen.cli check \
             --expected include/flox/capi/flox_capi.h \
-            --actual tools/codegen/golden/slice_capi.h
+            --actual tools/codegen/golden/flox_capi.h \
+            --require-full-coverage
 
       - name: Run codegen unit tests
         env:

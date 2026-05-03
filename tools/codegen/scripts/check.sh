@@ -18,7 +18,7 @@ if [[ ! -x "$PY" ]]; then
   exit 2
 fi
 
-GOLDEN="$TOOL/golden/slice_capi.h"
+GOLDEN="$TOOL/golden/flox_capi.h"
 SPEC="$REPO/include/flox/capi/flox_capi_spec.hpp"
 LIVE="$REPO/include/flox/capi/flox_capi.h"
 
@@ -34,7 +34,8 @@ rm -f "$GOLDEN.tmp"
 
 PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli check \
   --expected "$LIVE" \
-  --actual "$GOLDEN"
+  --actual "$GOLDEN" \
+  --require-full-coverage
 
 PYTHONPATH="$TOOL" "$PY" -m pytest "$TOOL/tests/" -q
 
