@@ -10,3 +10,5 @@ profiling_results
 node_modules
 
 compile_commands.json
+
+.notes/
