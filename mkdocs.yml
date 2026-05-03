@@ -149,6 +149,7 @@ nav:
       - reference/README.md
       - Python:
           - reference/python/index.md
+          - "Full API index": reference/python/_api_index.md
           - Engine & Backtest: reference/python/engine.md
           - Indicators: reference/python/indicators.md
           - Aggregators: reference/python/aggregators.md

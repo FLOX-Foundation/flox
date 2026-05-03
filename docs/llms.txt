@@ -81,6 +81,7 @@ Documentation is grouped below by Diátaxis category — pick the section matchi
 ## Reference: Python
 
 - [Python reference index](https://flox-foundation.github.io/flox/reference/python/): All Python binding modules
+- [Full Python API index](https://flox-foundation.github.io/flox/reference/python/_api_index/): Auto-generated alphabetical list of every public symbol with signature
 - [Engine and Backtest](https://flox-foundation.github.io/flox/reference/python/engine/): Engine + backtest entry points
 - [Strategy class](https://flox-foundation.github.io/flox/reference/python/strategy/): Base Strategy from Python
 - [Indicators](https://flox-foundation.github.io/flox/reference/python/indicators/): Indicator wrappers
