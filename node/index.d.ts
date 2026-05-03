@@ -1,0 +1,1046 @@
+// TypeScript definitions for @flox-foundation/flox.
+//
+// Hand-written from the N-API binding in node/src/. Kept in sync with the
+// C++ surface by:
+//   - scripts/check_dts_exports.py   (source-level: every `exports.Set("X", ...)`
+//                                     in node/src/*.h has a matching declaration)
+//   - node/test/test_types.ts        (signature-level: tsc --noEmit)
+// Both run in CI (linux-gcc job).
+
+// ── Common types ──────────────────────────────────────────────────────
+
+/** Side of an order or trade. */
+export type Side = "buy" | "sell";
+
+/** Order type accepted by the executors. */
+export type OrderType =
+  | "market"
+  | "limit"
+  | "stop_market"
+  | "stop_limit"
+  | "trailing_stop";
+
+/** Slippage model name accepted by `SimulatedExecutor.setDefaultSlippage`. */
+export type SlippageModel =
+  | "none"
+  | "fixed_ticks"
+  | "fixed_bps"
+  | "volume_impact";
+
+/** Limit-order queue model name accepted by `SimulatedExecutor.setQueueModel`. */
+export type QueueModel = "none" | "tob" | "full";
+
+/** Position cost-basis mode accepted by `PositionTracker`. */
+export type PositionMode = 0 | 1;
+
+/** OHLCV bar emitted by the C++ aggregators / fed via `Runner.onBar`. */
+export interface BarData {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  buyVolume: number;
+  startTimeNs: number;
+  endTimeNs: number;
+  /** 0=Time, 1=Tick, 2=Volume, 3=Range, 4=Renko, 5=HeikinAshi. */
+  barType: number;
+  /** Interval / threshold for the active bar policy. */
+  barTypeParam: number;
+  /** 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. */
+  closeReason: number;
+}
+
+/** Per-symbol live context passed to strategy callbacks. */
+export interface SymbolContext {
+  position: number;
+  symbolId: number;
+  lastTradePrice: number;
+  bestBid: number;
+  bestAsk: number;
+  midPrice: number;
+}
+
+/** Trade tick passed to `onTrade`. */
+export interface TradeData {
+  price: number;
+  qty: number;
+  isBuy: boolean;
+  side: Side;
+  timestampNs: bigint;
+}
+
+/** Order-emission helper passed as the third arg to strategy callbacks. */
+export interface EmitMethods {
+  marketBuy(qty: number): void;
+  marketSell(qty: number): void;
+  limitBuy(price: number, qty: number): void;
+  limitSell(price: number, qty: number): void;
+  cancel(orderId: number): void;
+  closePosition(): void;
+}
+
+/** Backtest signal emitted by `Runner` / collected by `SimulatedExecutor`. */
+export interface Signal {
+  side: Side;
+  quantity: number;
+  /** 0 for market orders. */
+  price: number;
+  orderType: OrderType;
+  orderId: number;
+}
+
+/** User-supplied strategy object. All callbacks are optional. */
+export interface Strategy {
+  /** Symbols this strategy subscribes to. */
+  symbols?: ReadonlyArray<Symbol | number>;
+  onStart?(): void;
+  onStop?(): void;
+  onTrade?(ctx: SymbolContext, trade: TradeData, emit: EmitMethods): void;
+  onBookUpdate?(ctx: SymbolContext, emit: EmitMethods): void;
+  onBar?(ctx: SymbolContext, bar: BarData, emit: EmitMethods): void;
+}
+
+/** Stats returned by `BacktestRunner.runCsv` / `runOhlcv` and `BacktestResult.stats()`. */
+export interface BacktestStats {
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  initialCapital: number;
+  finalCapital: number;
+  netPnl: number;
+  totalPnl: number;
+  totalFees: number;
+  grossProfit: number;
+  grossLoss: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  profitFactor: number;
+  avgWin: number;
+  avgLoss: number;
+  sharpe: number;
+  sortino: number;
+  calmar: number;
+  returnPct: number;
+}
+
+// ── Symbol & registry ─────────────────────────────────────────────────
+
+/** Result of `SymbolRegistry.addSymbol`. Coerces to its numeric `id`. */
+export interface Symbol {
+  readonly id: number;
+  readonly name: string;
+  readonly exchange: string;
+  readonly tickSize: number;
+  toString(): string;
+  valueOf(): number;
+}
+
+export class SymbolRegistry {
+  constructor();
+  addSymbol(exchange: string, name: string, tickSize: number): Symbol;
+  symbolCount(): number;
+}
+
+// ── Runner ────────────────────────────────────────────────────────────
+
+export class Runner {
+  /** `threaded=true` runs callbacks on a background C++ Disruptor thread. */
+  constructor(
+    registry: SymbolRegistry,
+    onSignal: (sig: Signal) => void,
+    threaded?: boolean,
+  );
+  addStrategy(strategy: Strategy): void;
+  start(): void;
+  stop(): void;
+  onTrade(
+    symbol: Symbol | number,
+    price: number,
+    qty: number,
+    isBuy: boolean,
+    timestampNs: number | bigint,
+  ): void;
+  onBookSnapshot(
+    symbol: Symbol | number,
+    bidPrices: Float64Array,
+    bidQtys: Float64Array,
+    askPrices: Float64Array,
+    askQtys: Float64Array,
+    timestampNs: number | bigint,
+  ): void;
+  onBar(symbol: Symbol | number, bar: Partial<BarData> & Pick<BarData, "open" | "high" | "low" | "close">): void;
+}
+
+// ── Backtest ──────────────────────────────────────────────────────────
+
+export class Engine {
+  constructor(registry: SymbolRegistry);
+  loadCsv(path: string, symbol: string): void;
+  loadOhlcv(
+    timestamps: Float64Array,
+    opens: Float64Array,
+    highs: Float64Array,
+    lows: Float64Array,
+    closes: Float64Array,
+    volumes: Float64Array,
+    symbol: string,
+  ): void;
+  resample(intervalSeconds: number): void;
+  /** Run a callback strategy or replay a `SignalBuilder`. */
+  run(strategyOrSignals: Strategy | SignalBuilder): BacktestStats;
+  barCount(): number;
+  ts(): Float64Array;
+  open(): Float64Array;
+  high(): Float64Array;
+  low(): Float64Array;
+  close(): Float64Array;
+  volume(): Float64Array;
+  readonly symbols: string[];
+}
+
+export class SignalBuilder {
+  constructor();
+  buy(index: number): void;
+  sell(index: number): void;
+  limitBuy(index: number, price: number): void;
+  limitSell(index: number, price: number): void;
+  clear(): void;
+  readonly length: number;
+}
+
+export class BacktestRunner {
+  constructor(registry: SymbolRegistry, feeRate: number, initialCapital: number);
+  setStrategy(strategy: Strategy): void;
+  runCsv(path: string, symbol: string): BacktestStats;
+  runOhlcv(timestamps: Float64Array, closes: Float64Array, symbol: string): BacktestStats;
+}
+
+export class SimulatedExecutor {
+  constructor();
+  submitOrder(
+    id: number,
+    side: Side,
+    price: number,
+    qty: number,
+    type: OrderType,
+    symbol: number,
+  ): void;
+  cancelOrder(orderId: number): void;
+  cancelAll(symbol: number): void;
+  onBar(symbol: number, closePrice: number): void;
+  onTrade(symbol: number, price: number, isBuy: boolean): void;
+  advanceClock(timestampNs: number | bigint): void;
+  setDefaultSlippage(
+    model: SlippageModel | number,
+    ticks: number,
+    tickSize: number,
+    bps: number,
+    impactCoeff: number,
+  ): void;
+  setQueueModel(model: QueueModel | number, depth: number): void;
+  readonly fillCount: number;
+}
+
+export class BacktestResult {
+  constructor(initialCapital: number, feeRate: number);
+  recordFill(
+    orderId: number,
+    symbol: number,
+    side: Side,
+    price: number,
+    qty: number,
+    timestampNs: number | bigint,
+  ): void;
+  ingestExecutor(executor: SimulatedExecutor): void;
+  stats(): BacktestStats;
+}
+
+// ── Streaming indicators ──────────────────────────────────────────────
+
+interface StreamingSingleInput {
+  /** Returns the current value (or null until warmed up). */
+  update(value: number): number | null;
+  /** Current value (NaN until warmed up). */
+  readonly value: number;
+  /** True once `update` has been called enough times to produce a value. */
+  readonly ready: boolean;
+  /** Reset state but keep configuration. */
+  reset(): void;
+  /** Batch convenience: apply `update` over an array, returning the values. */
+  compute(input: Float64Array): Float64Array;
+}
+
+export class SMA implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class EMA implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class RMA implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class RSI implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class DEMA implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class TEMA implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class KAMA implements StreamingSingleInput {
+  constructor(period: number, fast?: number, slow?: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class Slope implements StreamingSingleInput {
+  constructor(length: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class Skewness implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class Kurtosis implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class RollingZScore implements StreamingSingleInput {
+  constructor(period: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class ShannonEntropy {
+  constructor(period: number, bins: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+export class AutoCorrelation {
+  constructor(window: number, lag: number);
+  update(value: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): Float64Array;
+}
+
+/** Streaming OHLC indicator: `update(high, low, close)`. */
+export class ATR {
+  constructor(period: number);
+  update(high: number, low: number, close: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(high: Float64Array, low: Float64Array, close: Float64Array): Float64Array;
+}
+export class CCI {
+  constructor(period: number);
+  update(high: number, low: number, close: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(high: Float64Array, low: Float64Array, close: Float64Array): Float64Array;
+}
+export class Stochastic {
+  constructor(kPeriod: number, dPeriod?: number);
+  update(high: number, low: number, close: number): { k: number | null; d: number | null };
+  readonly k: number;
+  readonly d: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(
+    high: Float64Array,
+    low: Float64Array,
+    close: Float64Array,
+  ): { k: Float64Array; d: Float64Array };
+}
+export class ParkinsonVol {
+  constructor(period: number);
+  update(high: number, low: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(high: Float64Array, low: Float64Array): Float64Array;
+}
+export class RogersSatchellVol {
+  constructor(period: number);
+  update(open: number, high: number, low: number, close: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(
+    open: Float64Array,
+    high: Float64Array,
+    low: Float64Array,
+    close: Float64Array,
+  ): Float64Array;
+}
+export class Correlation {
+  constructor(period: number);
+  update(x: number, y: number): number | null;
+  readonly value: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(x: Float64Array, y: Float64Array): Float64Array;
+}
+
+/** Multi-output: MACD line/signal/histogram. */
+export class MACD {
+  constructor(fast?: number, slow?: number, signal?: number);
+  update(value: number): { line: number | null; signal: number | null; histogram: number | null };
+  readonly line: number;
+  readonly signal: number;
+  readonly histogram: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): { line: Float64Array; signal: Float64Array; histogram: Float64Array };
+}
+/** Multi-output: Bollinger upper/middle/lower bands. */
+export class Bollinger {
+  constructor(period: number, stdDev?: number);
+  update(value: number): { upper: number | null; middle: number | null; lower: number | null };
+  readonly upper: number;
+  readonly middle: number;
+  readonly lower: number;
+  readonly ready: boolean;
+  reset(): void;
+  compute(input: Float64Array): { upper: Float64Array; middle: Float64Array; lower: Float64Array };
+}
+
+// ── Batch indicator functions ─────────────────────────────────────────
+
+export function sma(input: Float64Array, period: number): Float64Array;
+export function ema(input: Float64Array, period: number): Float64Array;
+export function rma(input: Float64Array, period: number): Float64Array;
+export function rsi(input: Float64Array, period: number): Float64Array;
+export function dema(input: Float64Array, period: number): Float64Array;
+export function tema(input: Float64Array, period: number): Float64Array;
+export function kama(input: Float64Array, period: number, fast?: number, slow?: number): Float64Array;
+export function slope(input: Float64Array, length: number): Float64Array;
+export function skewness(input: Float64Array, period: number): Float64Array;
+export function kurtosis(input: Float64Array, period: number): Float64Array;
+export function rolling_zscore(input: Float64Array, period: number): Float64Array;
+export function shannon_entropy(input: Float64Array, period: number, bins: number): Float64Array;
+export function autocorrelation(input: Float64Array, window: number, lag: number): Float64Array;
+/** Rolling Pearson correlation over a moving `period` window. */
+export function rollingCorrelation(x: Float64Array, y: Float64Array, period: number): Float64Array;
+export function adf(input: Float64Array, lag: number): number;
+export function chop(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
+export function atr(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
+export function cci(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
+export function parkinson_vol(high: Float64Array, low: Float64Array, period: number): Float64Array;
+export function rogers_satchell_vol(
+  open: Float64Array,
+  high: Float64Array,
+  low: Float64Array,
+  close: Float64Array,
+  period: number,
+): Float64Array;
+export function adx(
+  high: Float64Array,
+  low: Float64Array,
+  close: Float64Array,
+  period: number,
+): { adx: Float64Array; plusDi: Float64Array; minusDi: Float64Array };
+export function bollinger(
+  input: Float64Array,
+  period: number,
+  stdDev: number,
+): { upper: Float64Array; middle: Float64Array; lower: Float64Array };
+export function macd(
+  input: Float64Array,
+  fast: number,
+  slow: number,
+  signal: number,
+): { line: Float64Array; signal: Float64Array; histogram: Float64Array };
+export function stochastic(
+  high: Float64Array,
+  low: Float64Array,
+  close: Float64Array,
+  kPeriod: number,
+  dPeriod: number,
+): { k: Float64Array; d: Float64Array };
+export function obv(close: Float64Array, volume: Float64Array): Float64Array;
+export function vwap(close: Float64Array, volume: Float64Array, window: number): Float64Array;
+export function cvd(
+  open: Float64Array,
+  high: Float64Array,
+  low: Float64Array,
+  close: Float64Array,
+  volume: Float64Array,
+): Float64Array;
+/** Returns the list of indicator names (used by the catalog generator). */
+export function list_indicators(): string[];
+
+// ── Bar aggregation ───────────────────────────────────────────────────
+
+/** A single aggregated bar emitted by `aggregate*` helpers. */
+export interface AggregatedBar {
+  startTimeNs: number;
+  endTimeNs: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  buyVolume: number;
+  tradeCount: number;
+}
+
+export function aggregateTimeBars(
+  timestamps: Float64Array,
+  prices: Float64Array,
+  quantities: Float64Array,
+  isBuy: Uint8Array,
+  intervalSeconds: number,
+): AggregatedBar[];
+export function aggregateTickBars(
+  timestamps: Float64Array,
+  prices: Float64Array,
+  quantities: Float64Array,
+  isBuy: Uint8Array,
+  tickCount: number,
+): AggregatedBar[];
+export function aggregateVolumeBars(
+  timestamps: Float64Array,
+  prices: Float64Array,
+  quantities: Float64Array,
+  isBuy: Uint8Array,
+  threshold: number,
+): AggregatedBar[];
+export function aggregateRangeBars(
+  timestamps: Float64Array,
+  prices: Float64Array,
+  quantities: Float64Array,
+  isBuy: Uint8Array,
+  rangeSize: number,
+): AggregatedBar[];
+export function aggregateRenkoBars(
+  timestamps: Float64Array,
+  prices: Float64Array,
+  quantities: Float64Array,
+  isBuy: Uint8Array,
+  brickSize: number,
+): AggregatedBar[];
+export function aggregateHeikinAshiBars(
+  timestamps: Float64Array,
+  prices: Float64Array,
+  quantities: Float64Array,
+  isBuy: Uint8Array,
+  intervalSeconds: number,
+): AggregatedBar[];
+
+// ── Order books ───────────────────────────────────────────────────────
+
+export class OrderBook {
+  constructor(tickSize: number);
+  applySnapshot(
+    bidPrices: Float64Array,
+    bidQtys: Float64Array,
+    askPrices: Float64Array,
+    askQtys: Float64Array,
+  ): void;
+  applyDelta(
+    bidPrices: Float64Array,
+    bidQtys: Float64Array,
+    askPrices: Float64Array,
+    askQtys: Float64Array,
+  ): void;
+  bestBid(): number | null;
+  bestAsk(): number | null;
+  mid(): number | null;
+  spread(): number | null;
+  getBids(n: number): Array<[number, number]>;
+  getAsks(n: number): Array<[number, number]>;
+  isCrossed(): boolean;
+  clear(): void;
+}
+
+export class L3Book {
+  constructor();
+  /** Returns 0 on success. */
+  addOrder(orderId: number, price: number, qty: number, side: Side): number;
+  removeOrder(orderId: number): number;
+  modifyOrder(orderId: number, newQty: number): number;
+  bestBid(): number | null;
+  bestAsk(): number | null;
+  bidAtPrice(price: number): number;
+  askAtPrice(price: number): number;
+}
+
+export class CompositeBookMatrix {
+  constructor();
+  bestBid(symbol: number): { price: number; qty: number } | null;
+  bestAsk(symbol: number): { price: number; qty: number } | null;
+  hasArbitrage(symbol: number): boolean;
+  markStale(exchange: number, symbol: number): void;
+  checkStaleness(nowNs: number | bigint, thresholdNs: number | bigint): void;
+}
+
+// ── Position / order tracking ─────────────────────────────────────────
+
+export class PositionTracker {
+  constructor(mode?: PositionMode);
+  onFill(symbol: number, side: Side, price: number, qty: number): void;
+  position(symbol: number): number;
+  avgEntryPrice(symbol: number): number;
+  realizedPnl(symbol: number): number;
+  totalRealizedPnl(): number;
+}
+
+export class PositionGroupTracker {
+  constructor();
+  /** Returns position ID. */
+  openPosition(orderId: number, symbol: number, side: Side, price: number, qty: number): number;
+  closePosition(positionId: number, exitPrice: number): void;
+  partialClose(positionId: number, qty: number, exitPrice: number): void;
+  netPosition(symbol: number): number;
+  realizedPnl(symbol: number): number;
+  totalRealizedPnl(): number;
+  openCount(symbol: number): number;
+  prune(): void;
+}
+
+export class OrderTracker {
+  constructor();
+  onSubmitted(orderId: number, symbol: number, side: Side, price: number, qty: number): boolean;
+  onFilled(orderId: number, fillQty: number): boolean;
+  onCanceled(orderId: number): boolean;
+  isActive(orderId: number): boolean;
+  readonly activeCount: number;
+  readonly totalCount: number;
+  prune(): void;
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────
+
+export class VolumeProfile {
+  constructor(tickSize: number);
+  addTrade(price: number, qty: number, isBuy: boolean): void;
+  poc(): number;
+  valueAreaHigh(): number;
+  valueAreaLow(): number;
+  totalVolume(): number;
+  clear(): void;
+}
+
+export class MarketProfile {
+  constructor(tickSize: number, periodMinutes: number, sessionStartNs: number | bigint);
+  addTrade(timestampNs: number | bigint, price: number, qty: number, isBuy: boolean): void;
+  poc(): number;
+  valueAreaHigh(): number;
+  valueAreaLow(): number;
+  initialBalanceHigh(): number;
+  initialBalanceLow(): number;
+  isPoorHigh(): boolean;
+  isPoorLow(): boolean;
+  clear(): void;
+}
+
+export class FootprintBar {
+  constructor(tickSize: number);
+  addTrade(price: number, qty: number, isBuy: boolean): void;
+  totalDelta(): number;
+  totalVolume(): number;
+  readonly numLevels: number;
+  clear(): void;
+}
+
+// ── Statistics ────────────────────────────────────────────────────────
+
+/**
+ * Pearson correlation coefficient over the entire pair of arrays.
+ * For a rolling correlation see {@link rollingCorrelation}.
+ */
+export function correlation(x: Float64Array, y: Float64Array): number;
+export function profitFactor(pnl: Float64Array): number;
+export function winRate(pnl: Float64Array): number;
+export function bootstrapCI(
+  data: Float64Array,
+  confidence?: number,
+  samples?: number,
+): { lower: number; median: number; upper: number };
+export function permutationTest(
+  group1: Float64Array,
+  group2: Float64Array,
+  samples?: number,
+): number;
+export function barReturns(
+  longSignals: Int8Array,
+  shortSignals: Int8Array,
+  logReturns: Float64Array,
+): Float64Array;
+export function tradePnl(
+  longSignals: Int8Array,
+  shortSignals: Int8Array,
+  logReturns: Float64Array,
+): Float64Array;
+
+// ── Data I/O ──────────────────────────────────────────────────────────
+
+export interface TradeRecord {
+  exchangeTsNs: number;
+  recvTsNs: number;
+  price: number;
+  qty: number;
+  tradeId: number;
+  symbolId: number;
+  side: Side;
+}
+
+export interface BboRecord {
+  exchangeTsNs: number;
+  recvTsNs: number;
+  seq: number;
+  symbolId: number;
+  /** 2 = snapshot, 3 = delta. */
+  eventType: number;
+  bidPrice: number;
+  bidQty: number;
+  askPrice: number;
+  askQty: number;
+}
+
+export interface BookLevel {
+  price: number;
+  qty: number;
+}
+
+export interface BookUpdateRecord {
+  exchangeTsNs: number;
+  recvTsNs: number;
+  seq: number;
+  symbolId: number;
+  eventType: number;
+  bids: BookLevel[];
+  asks: BookLevel[];
+}
+
+export interface DataWriterStats {
+  bytesWritten: number;
+  eventsWritten: number;
+  segmentsCreated: number;
+  tradesWritten: number;
+}
+
+export interface DataReaderSummary {
+  firstEventNs: number;
+  lastEventNs: number;
+  totalEvents: number;
+  segmentCount: number;
+  totalBytes: number;
+  durationSeconds: number;
+}
+
+export interface DataReaderStats {
+  filesRead: number;
+  eventsRead: number;
+  tradesRead: number;
+  bookUpdatesRead: number;
+  bytesRead: number;
+  crcErrors: number;
+}
+
+export class DataWriter {
+  constructor(outputDir: string, maxSegmentMb?: number, exchangeId?: number);
+  writeTrade(
+    exchangeTsNs: number | bigint,
+    recvTsNs: number | bigint,
+    price: number,
+    qty: number,
+    tradeId: number,
+    symbolId: number,
+    side: Side,
+  ): boolean;
+  flush(): void;
+  close(): void;
+  stats(): DataWriterStats;
+}
+
+export class DataReader {
+  /** `fromNs` / `toNs` accept either number or bigint; pass bigint for true ns precision. */
+  constructor(dataDir: string, fromNs?: number | bigint, toNs?: number | bigint);
+  readonly count: number;
+  summary(): DataReaderSummary;
+  stats(): DataReaderStats;
+  readTrades(max?: number): TradeRecord[];
+  readTradesFrom(startTsNs: number | bigint, max?: number): TradeRecord[];
+  readBBO(max?: number): BboRecord[];
+  readBBOFrom(startTsNs: number | bigint, max?: number): BboRecord[];
+  readBookUpdates(): BookUpdateRecord[];
+  readBookUpdatesFrom(startTsNs: number | bigint): BookUpdateRecord[];
+}
+
+export class DataRecorder {
+  constructor(outputDir: string, exchangeName?: string, maxSegmentMb?: number);
+  addSymbol(
+    symbolId: number,
+    name: string,
+    base?: string,
+    quote?: string,
+    pricePrecision?: number,
+    qtyPrecision?: number,
+  ): void;
+  start(): void;
+  stop(): void;
+  flush(): void;
+  readonly isRecording: boolean;
+}
+
+export interface Partition {
+  partitionId: number;
+  fromNs: number;
+  toNs: number;
+  warmupFromNs: number;
+  estimatedEvents: number;
+  estimatedBytes: number;
+}
+
+export class Partitioner {
+  constructor(dataDir: string);
+  byTime(numPartitions: number, warmupNs: number | bigint): Partition[];
+  byDuration(durationNs: number | bigint, warmupNs: number | bigint): Partition[];
+  /** `unit`: 0=day, 1=week, 2=month. */
+  byCalendar(unit: 0 | 1 | 2, warmupNs: number | bigint): Partition[];
+  bySymbol(numPartitions: number): Partition[];
+  perSymbol(): Partition[];
+  byEventCount(numPartitions: number): Partition[];
+}
+
+// ── Segment-level data operations ─────────────────────────────────────
+
+/** Result of `validate(path)` (full single-segment validation). */
+export interface SegmentValidationResult {
+  valid: boolean;
+  headerValid: boolean;
+  reportedEventCount: number;
+  actualEventCount: number;
+  hasIndex: boolean;
+  indexValid: boolean;
+  tradesFound: number;
+  bookUpdatesFound: number;
+  crcErrors: number;
+  timestampAnomalies: number;
+}
+
+/** Result of `validateDataset(dir)`. */
+export interface DatasetValidationResult {
+  valid: boolean;
+  totalSegments: number;
+  validSegments: number;
+  corruptedSegments: number;
+  totalEvents: number;
+  totalBytes: number;
+  firstTimestamp: number;
+  lastTimestamp: number;
+}
+
+/** Result of `mergeDir(dir, outputPath)`. */
+export interface MergeDirResult {
+  success: boolean;
+  segmentsMerged: number;
+  eventsWritten: number;
+  bytesWritten: number;
+}
+
+/** Result of `split(inputPath, outputDir, ...)`. */
+export interface SplitResult {
+  success: boolean;
+  segmentsCreated: number;
+  eventsWritten: number;
+}
+
+/** Result of `exportData(inputPath, outputPath, ...)`. */
+export interface ExportResult {
+  success: boolean;
+  eventsExported: number;
+  bytesWritten: number;
+}
+
+/** Mode for `split`. `time` = by duration ns, `event_count` = by event count, `size` = by bytes, `symbol` = by symbol id. */
+export type SplitMode = "time" | "event_count" | "size" | "symbol";
+
+/** Output format for `exportData`. `binary` (raw segments), `json`, `jsonlines`. */
+export type ExportFormat = "binary" | "json" | "jsonlines";
+
+/** Compression codec for `recompress`. `lz4` is the default. */
+export type RecompressCodec = "lz4" | "none";
+
+/** Boolean header-only validity check. */
+export function validateSegment(path: string): boolean;
+/** Full validation: walks every record, checks CRC, indexes, ordering. */
+export function validate(path: string): SegmentValidationResult;
+/** Recursive dataset validation across all segments under `dir`. */
+export function validateDataset(dir: string): DatasetValidationResult;
+/** Concatenate one or more input segments into a single output. */
+export function mergeSegments(inputPath: string, outputPath: string): boolean;
+/** Merge every segment under a directory into one output. */
+export function mergeDir(dir: string, outputPath: string): MergeDirResult;
+/**
+ * Split an input segment by `mode`. `splitArg` interpretation:
+ *   - `mode="time"`           → nanoseconds per slice (default 3,600,000,000,000 = 1h)
+ *   - `mode="event_count"`    → events per slice
+ *   - `mode="size"`           → bytes per slice
+ *   - `mode="symbol"`         → ignored (one slice per distinct symbol id)
+ *
+ * `bufferSize` controls the writer buffer in events (default 1,000,000).
+ */
+export function split(
+  inputPath: string,
+  outputDir: string,
+  mode?: SplitMode,
+  splitArg?: number | bigint,
+  bufferSize?: number | bigint,
+): SplitResult;
+/**
+ * Export a segment to JSON / JSON-Lines / re-encoded binary, optionally
+ * filtered by `[fromNs, toNs]` (pass 0 for "all").
+ */
+export function exportData(
+  inputPath: string,
+  outputPath: string,
+  format?: ExportFormat,
+  fromNs?: number | bigint,
+  toNs?: number | bigint,
+): ExportResult;
+/** Re-write a segment with a different compression codec. */
+export function recompress(inputPath: string, outputPath: string, codec?: RecompressCodec): boolean;
+/**
+ * Filter a segment to a subset of symbol ids; `symbols` is a `Uint32Array`
+ * of numeric ids (NOT names). Returns the number of events written.
+ */
+export function extractSymbols(inputPath: string, outputPath: string, symbols: Uint32Array): number;
+/** Filter a segment to events within `[fromNs, toNs]`. Returns events written. */
+export function extractTimeRange(
+  inputPath: string,
+  outputPath: string,
+  fromNs: number | bigint,
+  toNs: number | bigint,
+): number;
+/** Quick summary of a segment (same shape as `DataReader.summary()`). */
+export function inspect(path: string): DataReaderSummary;
+
+// ── Indicator graphs ──────────────────────────────────────────────────
+
+/**
+ * Node compute callback: receives the graph instance and the current symbol
+ * id, returns this bar's value. Use `graph.get(node, sym)` / `graph.close(sym)`
+ * etc. inside the callback.
+ */
+export type IndicatorGraphCompute = (
+  graph: IndicatorGraph | StreamingIndicatorGraph,
+  symbolId: number,
+) => number | Float64Array | number[];
+
+export class IndicatorGraph {
+  constructor();
+  setBars(
+    symbol: number,
+    close: Float64Array,
+    high: Float64Array,
+    low: Float64Array,
+    volume: Float64Array,
+  ): void;
+  /** Returns the node id. `dependencies` are previously-added node ids. */
+  addNode(name: string, dependencies: number[], compute: IndicatorGraphCompute): number;
+  require(node: number): void;
+  get(node: number, symbol: number): Float64Array;
+  close(symbol: number): Float64Array;
+  high(symbol: number): Float64Array;
+  low(symbol: number): Float64Array;
+  volume(symbol: number): Float64Array;
+  invalidate(node: number): void;
+  invalidateAll(): void;
+}
+
+export class StreamingIndicatorGraph {
+  constructor();
+  addNode(name: string, dependencies: number[], compute: IndicatorGraphCompute): number;
+  step(symbol: number, close: number, high?: number, low?: number, volume?: number): void;
+  current(symbol: number, name: string): number;
+  barCount(symbol: number): number;
+  reset(symbol: number): void;
+  resetAll(): void;
+  close(symbol: number): Float64Array;
+  high(symbol: number): Float64Array;
+  low(symbol: number): Float64Array;
+  volume(symbol: number): Float64Array;
+}
+
+// ── Forward-looking labels (research-only) ────────────────────────────
+
+export namespace targets {
+  /** Future return over `horizon` bars. */
+  function future_return(input: Float64Array, horizon: number): Float64Array;
+  /** Realized close-to-close volatility over `horizon` bars. */
+  function future_ctc_volatility(input: Float64Array, horizon: number): Float64Array;
+  /** Linear-fit slope over `horizon` bars. */
+  function future_linear_slope(input: Float64Array, horizon: number): Float64Array;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────
+
+export const SLIPPAGE_NONE: number;
+export const SLIPPAGE_FIXED_TICKS: number;
+export const SLIPPAGE_FIXED_BPS: number;
+export const SLIPPAGE_VOLUME_IMPACT: number;
+
+export const QUEUE_NONE: number;
+export const QUEUE_TOB: number;
+export const QUEUE_FULL: number;
+
+export const POSITION_FIFO: 0;
+export const POSITION_AVG_COST: 1;

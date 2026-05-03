@@ -25,7 +25,9 @@ const adx  = flox.adx(hi, lo, cl, 14);           // { adx, plusDi, minusDi }
 
 **Statistical** — `(input, period)`:
 
-`skewness`, `kurtosis`, `rolling_zscore`, `shannon_entropy(input, period, bins)`, `correlation(x, y, period)`
+`skewness`, `kurtosis`, `rolling_zscore`, `shannon_entropy(input, period, bins)`, `rollingCorrelation(x, y, period)`
+
+`flox.correlation(x, y)` (no `period`) is the single-number Pearson coefficient — see [Statistics](profiles.md#statistics).
 
 **Volume:**
 

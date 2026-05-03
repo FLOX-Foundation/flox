@@ -3,13 +3,16 @@
   "version": "0.5.6",
   "description": "Node.js bindings for the FLOX trading engine",
   "main": "index.js",
+  "types": "index.d.ts",
   "files": [
     "index.js",
+    "index.d.ts",
     "prebuilds/"
   ],
   "scripts": {
     "build": "cmake-js compile",
-    "rebuild": "cmake-js rebuild"
+    "rebuild": "cmake-js rebuild",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "keywords": [
     "trading",
@@ -24,6 +27,7 @@
   },
   "devDependencies": {
     "cmake-js": "^7.3.0",
-    "node-addon-api": "^8.3.1"
+    "node-addon-api": "^8.3.1",
+    "typescript": "^6.0.3"
   }
 }

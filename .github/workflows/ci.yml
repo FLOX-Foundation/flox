@@ -36,6 +36,8 @@ jobs:
         fi
     - name: Verify llms.txt and llms-full.txt are in sync with docs/
       run: python3 scripts/gen_llms_txt.py --check
+    - name: Verify node/index.d.ts exports match the C++ binding
+      run: python3 scripts/check_dts_exports.py
 
   linux-gcc:
     needs: format-check
@@ -111,6 +113,10 @@ jobs:
         CXX: g++-14
         CC: gcc-14
       run: npm install && npm run build
+
+    - name: Type-check node/index.d.ts
+      working-directory: node
+      run: npm run typecheck
 
     - name: Run tests
       run: ctest --output-on-failure --test-dir build

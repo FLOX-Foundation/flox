@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "Node10",
+    "ignoreDeprecations": "6.0",
+    "esModuleInterop": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "lib": ["ES2020"],
+    "types": []
+  },
+  "include": ["index.d.ts", "test/test_types.ts"]
+}
