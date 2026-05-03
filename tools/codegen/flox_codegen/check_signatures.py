@@ -6,10 +6,16 @@ what codegen would produce).
 
 Equivalence is structural:
 - function name
-- canonical return type
+- return type
 - parameter count
-- parameter canonical types (names ignored — different headers use different
+- parameter types (names ignored — different headers use different
   param names freely)
+
+Type comparison preserves typedef names (`int64_t`, `size_t`,
+`FloxStrategyHandle`) rather than canonicalizing through them. That keeps
+the comparison platform-invariant: macOS resolves `int64_t` to `long long`
+and Linux x86_64 resolves it to `long`, but both just say `int64_t` when
+we read the spelling without forcing canonical resolution.
 
 Functions present in `expected` but missing from `actual` are reported as
 errors. Functions in `actual` but not `expected` are reported as warnings
@@ -18,11 +24,23 @@ during the prototype phase).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
 from . import extractor
+
+
+def _normalize_type(spelling: str) -> str:
+    """Collapse runs of whitespace; trim leading/trailing space.
+
+    Different libclang versions / hosts spell the same C type with subtly
+    different whitespace (`const double*` vs `const double *` vs
+    `const  double  *`); normalizing turns them all into a single
+    canonical form.
+    """
+    return re.sub(r"\s+", " ", spelling).strip()
 
 
 @dataclass(frozen=True)
@@ -64,10 +82,12 @@ def _index_header(path: Path, *, include_dirs: Iterable[Path] = ()) -> Dict[str,
                 visit(ch)
             return
         if c.kind == K.FUNCTION_DECL:
-            params = tuple(arg.type.get_canonical().spelling for arg in c.get_arguments())
+            params = tuple(
+                _normalize_type(arg.type.spelling) for arg in c.get_arguments()
+            )
             sig = FuncSig(
                 name=c.spelling,
-                return_type=c.result_type.get_canonical().spelling,
+                return_type=_normalize_type(c.result_type.spelling),
                 param_types=params,
             )
             out[c.spelling] = sig

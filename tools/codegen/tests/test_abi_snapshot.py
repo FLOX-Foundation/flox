@@ -114,4 +114,6 @@ def test_from_header_returns_funcsigs(tmp_path):
     )
     sigs = abi_snapshot.from_header(h)
     assert set(sigs) == {"flox_x", "flox_y"}
-    assert sigs["flox_x"].return_type == "int"  # canonical: int == int32_t
+    # We preserve typedef names (so `int32_t` stays `int32_t`) instead of
+    # canonicalizing to platform-specific underlying types.
+    assert sigs["flox_x"].return_type == "int32_t"
