@@ -236,12 +236,14 @@ Rogers-Satchell OHLC volatility estimator. Unbiased with drift, suitable for tre
 result = flox.rogers_satchell_vol(opens, highs, lows, closes, period=20)
 ```
 
-### `correlation(x, y, period) -> ndarray`
+### `rolling_correlation(x, y, period) -> ndarray`
 
 Rolling Pearson correlation between two series. NaN if either series is constant within the window.
 
+`flox.correlation(x, y)` (no `period`) is the single-number Pearson coefficient — see [Optimizer](optimizer.md#correlation).
+
 ```python
-result = flox.correlation(closes_btc, closes_eth, period=20)
+result = flox.rolling_correlation(closes_btc, closes_eth, period=20)
 ```
 
 ---

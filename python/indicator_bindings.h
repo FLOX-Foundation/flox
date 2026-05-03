@@ -761,8 +761,11 @@ inline void bindIndicators(py::module_& m)
       },
       py::arg("input"), py::arg("window"), py::arg("lag"));
 
+  // Renamed from "correlation" to free that name for the single-number
+  // Pearson helper in optimizer_bindings.h, which loaded after this and
+  // was silently shadowing the rolling indicator. Both are now reachable.
   m.def(
-      "correlation",
+      "rolling_correlation",
       [](contiguous_double x, contiguous_double y, size_t period) -> py::array_t<double>
       {
         size_t n = x.request().shape[0];
