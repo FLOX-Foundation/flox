@@ -16,6 +16,13 @@
 namespace flox
 {
 
+// Replace the global logger for the rest of this process. NULL resets to
+// the default `ConsoleLogger`. The pointer is non-owning; the caller owns
+// the lifetime of the supplied ILogger and must outlive any concurrent
+// FLOX_LOG_* call. Atomic acquire/release: safe to swap with consumer
+// threads active.
+void setGlobalLogger(ILogger* logger);
+
 class LogStream
 {
  public:

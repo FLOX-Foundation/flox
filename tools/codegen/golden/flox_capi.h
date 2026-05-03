@@ -354,6 +354,7 @@ extern "C"
   typedef uint8_t (*FloxRiskManagerAllowFn)(void*, const FloxSignal*);
   typedef uint8_t (*FloxKillSwitchCheckFn)(void*, const FloxSignal*);
   typedef uint8_t (*FloxOrderValidatorValidateFn)(void*, const FloxSignal*);
+  typedef void (*FloxLogCallback)(void*, int32_t, const char*);
 
   // ============================================================
   // Callback bundles
@@ -759,6 +760,12 @@ extern "C"
   uint8_t flox_l3_book_best_ask(FloxL3BookHandle book, double* price_out);
   double flox_l3_book_bid_at_price(FloxL3BookHandle book, double price);
   double flox_l3_book_ask_at_price(FloxL3BookHandle book, double price);
+
+  // ============================================================
+  // Logger
+  // ============================================================
+
+  void flox_set_log_callback(FloxLogCallback callback, void* user_data);
 
   // ============================================================
   // Market Profile

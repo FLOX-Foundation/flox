@@ -199,6 +199,9 @@ from C import flox_l3_book_best_ask(cobj, Ptr[float]) -> u8
 from C import flox_l3_book_bid_at_price(cobj, float) -> float
 from C import flox_l3_book_ask_at_price(cobj, float) -> float
 
+# ── logger ──
+from C import flox_set_log_callback(cobj, cobj)
+
 # ── market_profile ──
 from C import flox_market_profile_create(float, u32, i64) -> cobj
 from C import flox_market_profile_destroy(cobj)
