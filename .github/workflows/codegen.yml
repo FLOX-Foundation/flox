@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # ABI gate scans recent commit messages for `BREAKING:`. Need full
+          # history (or at least the PR's commits) to do that.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -51,6 +55,31 @@ jobs:
             --expected include/flox/capi/flox_capi.h \
             --actual tools/codegen/golden/flox_capi.h \
             --require-full-coverage
+
+      - name: ABI snapshot diff
+        env:
+          PYTHONPATH: tools/codegen
+        run: |
+          set -euo pipefail
+          # If a commit on this branch carries `BREAKING:` in its message,
+          # accept ABI breaks. Otherwise, breaks fail the gate.
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            base="origin/${GITHUB_BASE_REF}"
+            range="$base..HEAD"
+          else
+            range="HEAD~10..HEAD"
+          fi
+          if git log --pretty=%B "$range" 2>/dev/null | grep -qE '^[[:space:]]*BREAKING:'; then
+            echo "Found BREAKING: in commit messages — allowing ABI break."
+            python -m flox_codegen.cli abi-diff \
+              --snapshot .api/c-api.snapshot \
+              --header include/flox/capi/flox_capi.h \
+              --allow-breaking
+          else
+            python -m flox_codegen.cli abi-diff \
+              --snapshot .api/c-api.snapshot \
+              --header include/flox/capi/flox_capi.h
+          fi
 
       - name: Run codegen unit tests
         env:

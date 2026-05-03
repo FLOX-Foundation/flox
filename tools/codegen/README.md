@@ -139,20 +139,36 @@ don't know about libclang.
 `.github/workflows/codegen.yml` runs `tools/codegen/scripts/check.sh` on
 every push and PR. Failure modes:
 
-- **Golden drift** — spec edited without regenerating `golden/flox_capi.h`.
+- **Golden drift** — spec edited without regenerating one of
+  `golden/flox_capi.h`, `golden/flox_capi.codon`, or `golden/flox_capi.md`.
   Fix: run `regenerate.sh`, commit.
 - **Signature mismatch** — codegen output disagrees with live `flox_capi.h`
-  on a function the spec covers. Fix: align spec or live header.
+  on a function the spec covers (full coverage required). Fix: align spec
+  or live header.
+- **ABI break** — a function was removed from the live `flox_capi.h` or
+  its signature changed, and no commit on the PR carries `BREAKING:` in
+  its message. Fix: include `BREAKING:` in a commit message and refresh
+  `.api/c-api.snapshot` via `tools/codegen/scripts/regenerate.sh`.
 - **Tests** — anything in `tools/codegen/tests/` fails.
 
-The `--require-full-coverage` flag is **off** during the slice prototype.
-T014 will turn it on once the spec covers the full live header.
+## ABI snapshot
 
-## Known limitations (resolved in T014)
+`.api/c-api.snapshot` is a deterministic, human-readable serialization
+of the C API surface
+(`name|return_type|param_type_1|...`, sorted by name). CI re-derives a
+fresh snapshot from the current `flox_capi.h` and diffs against the
+committed file:
 
-- Only `flox_capi.h` is emitted; `.pyi`, `.d.ts`, Codon, and llms.txt
-  emitters land in T014.
-- The slice is intentionally minimal — see the RFC for the full target list.
+- **Added function** — non-breaking; logged and allowed.
+- **Removed or shape-changed function** — breaking; fails CI unless a
+  commit on the PR carries `BREAKING:` at the start of its subject line.
+
+The intent is that an FFI consumer pinning a specific `flox_capi.h`
+version can rely on every later release whose `BREAKING:` count hasn't
+ticked still being a drop-in replacement.
+
+## Known limitations
+
 - libclang version is locked via the `libclang` PyPI package's pinned
   version (`requirements.txt`); CI installs from the same pin.
 - Templates (e.g. `IndicatorGraph`, `MultiTimeframeAggregator`) are not yet

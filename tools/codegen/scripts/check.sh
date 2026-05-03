@@ -44,6 +44,10 @@ PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli check \
   --actual "$TOOL/golden/flox_capi.h" \
   --require-full-coverage
 
+PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli abi-diff \
+  --snapshot "$REPO/.api/c-api.snapshot" \
+  --header "$LIVE"
+
 PYTHONPATH="$TOOL" "$PY" -m pytest "$TOOL/tests/" -q
 
 echo "codegen check OK"

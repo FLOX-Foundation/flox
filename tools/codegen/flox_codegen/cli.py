@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import check_signatures, emit_capi, emit_codon, emit_llms, extractor
+from . import abi_snapshot, check_signatures, emit_capi, emit_codon, emit_llms, extractor
 
 
 def _cmd_emit_capi(args: argparse.Namespace) -> int:
@@ -58,6 +58,68 @@ def _cmd_emit_llms(args: argparse.Namespace) -> int:
     module = extractor.parse_spec(Path(args.spec))
     text = emit_llms.emit(module)
     _emit_to_path(text, args.out, "llms reference", len(module.functions))
+    return 0
+
+
+def _cmd_abi_snapshot(args: argparse.Namespace) -> int:
+    """Read a C header, write its ABI snapshot to a file (or stdout)."""
+    sigs = abi_snapshot.from_header(Path(args.header))
+    text = abi_snapshot.render(sigs)
+    if args.out == "-":
+        sys.stdout.write(text)
+    else:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text)
+        print(f"wrote {out_path} ({len(sigs)} functions)")
+    return 0
+
+
+def _cmd_abi_diff(args: argparse.Namespace) -> int:
+    """Compare a committed snapshot file vs a freshly-derived one.
+
+    Exits 0 when the diff is non-breaking (added functions only) or has no
+    changes; exits 1 when functions were removed or had their signature
+    changed without the `--allow-breaking` flag.
+    """
+    old = abi_snapshot.parse(Path(args.snapshot).read_text())
+    new = abi_snapshot.from_header(Path(args.header))
+
+    d = abi_snapshot.diff(old, new)
+
+    if d.added:
+        print(f"added: {len(d.added)} functions")
+        for n in d.added:
+            print(f"  + {n}")
+    if d.changed:
+        print(f"changed: {len(d.changed)} functions (BREAKING)")
+        for n in d.changed:
+            o = old[n]
+            x = new[n]
+            print(f"  ~ {n}")
+            print(f"      old: {o.return_type} {n}({', '.join(o.param_types)})")
+            print(f"      new: {x.return_type} {n}({', '.join(x.param_types)})")
+    if d.removed:
+        print(f"removed: {len(d.removed)} functions (BREAKING)")
+        for n in d.removed:
+            o = old[n]
+            print(f"  - {n}: was {o.return_type} {n}({', '.join(o.param_types)})")
+
+    if abi_snapshot.is_breaking(d):
+        if args.allow_breaking:
+            print("breaking changes acknowledged via --allow-breaking; allowing.")
+            return 0
+        print(
+            "::error::ABI break detected. If intentional, include "
+            "'BREAKING:' in the commit message and re-run with "
+            "--allow-breaking, then update .api/c-api.snapshot via "
+            "`tools/codegen/scripts/regenerate.sh`.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not d.added and not d.changed and not d.removed:
+        print("ABI snapshot in sync.")
     return 0
 
 
@@ -147,6 +209,25 @@ def build_parser() -> argparse.ArgumentParser:
     pll.add_argument("--out", required=True,
                      help="Output path (use '-' for stdout)")
     pll.set_defaults(func=_cmd_emit_llms)
+
+    pas = sub.add_parser("abi-snapshot",
+                         help="Write an ABI snapshot from a C header.")
+    pas.add_argument("--header", required=True,
+                     help="Source C header (e.g. include/flox/capi/flox_capi.h)")
+    pas.add_argument("--out", required=True,
+                     help="Output snapshot path (use '-' for stdout)")
+    pas.set_defaults(func=_cmd_abi_snapshot)
+
+    pad = sub.add_parser("abi-diff",
+                         help="Diff a committed snapshot vs a fresh one.")
+    pad.add_argument("--snapshot", required=True,
+                     help="Committed snapshot path")
+    pad.add_argument("--header", required=True,
+                     help="C header to derive the fresh snapshot from")
+    pad.add_argument("--allow-breaking", action="store_true",
+                     help=("Allow breaking changes (used by CI when the commit "
+                           "message contains BREAKING:)."))
+    pad.set_defaults(func=_cmd_abi_diff)
 
     pc = sub.add_parser("check", help="Diff signatures across two C headers.")
     pc.add_argument("--expected", required=True,
