@@ -1310,6 +1310,60 @@ extern "C"
   void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
 
   // ============================================================
+  // ReplaySource — binding-side market data event source for backtests.
+  //
+  // Bindings provide a custom event reader. The engine pulls events by
+  // calling `next` repeatedly until it returns 0. For book events, the
+  // binding sets `bids` / `asks` to point at its own buffer; pointers
+  // must remain valid until the next `next` call.
+  // ============================================================
+
+  // Tagged event: 1=Trade, 2=BookSnapshot, 3=BookDelta. Matches
+  // flox::replay::EventType.
+  typedef struct
+  {
+    uint8_t type;
+    uint8_t _pad[3];
+    int64_t timestamp_ns;
+
+    // Trade payload — valid only when type == 1.
+    uint32_t trade_symbol;
+    uint8_t trade_is_buy;
+    uint8_t _pad2[3];
+    int64_t trade_price_raw;
+    int64_t trade_quantity_raw;
+
+    // Book payload — valid when type == 2 or 3.
+    uint32_t book_symbol;
+    uint32_t n_bids;
+    uint32_t n_asks;
+    uint32_t _pad3;
+    const FloxBookLevel* bids;
+    const FloxBookLevel* asks;
+  } FloxReplayEvent;
+
+  typedef uint8_t (*FloxReplaySourceNextFn)(void* user_data, FloxReplayEvent* event_out);
+  typedef uint8_t (*FloxReplaySourceSeekFn)(void* user_data, int64_t timestamp_ns);
+  typedef void (*FloxReplaySourceLifecycleFn)(void* user_data);
+
+  typedef struct
+  {
+    FloxReplaySourceLifecycleFn on_start;
+    FloxReplaySourceLifecycleFn on_stop;
+    FloxReplaySourceSeekFn seek_to;
+    FloxReplaySourceNextFn next;
+    void* user_data;
+  } FloxReplaySourceCallbacks;
+
+  typedef void* FloxReplaySourceHandle;
+
+  FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks);
+  void flox_replay_source_destroy(FloxReplaySourceHandle source);
+
+  // Convenience: forward a seek to the binding's seek_to callback.
+  uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1539,6 +1593,13 @@ extern "C"
                                     uint8_t bar_type,
                                     uint64_t bar_type_param,
                                     FloxBacktestStats* stats_out);
+
+  // Run a backtest pulling events from a binding-supplied replay source.
+  // Fires source.on_start before reading and source.on_stop after the
+  // runner has drained the stream. Returns 1 on success, 0 on error.
+  int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
+                                             FloxReplaySourceHandle source,
+                                             FloxBacktestStats* stats_out);
 
 #ifdef __cplusplus
 }

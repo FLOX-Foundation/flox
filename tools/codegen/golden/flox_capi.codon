@@ -36,6 +36,7 @@ from C import flox_backtest_runner_set_strategy(cobj, cobj)
 from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, cobj) -> int
 from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, cobj) -> int
 from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64], Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], u32, cobj, u8, u64, cobj) -> int
+from C import flox_backtest_runner_run_replay_source(cobj, cobj, cobj) -> int
 
 # ── bar_aggregation ──
 from C import flox_aggregate_time_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
@@ -296,6 +297,11 @@ from C import flox_market_data_recorder_create(cobj) -> cobj
 from C import flox_market_data_recorder_destroy(cobj)
 from C import flox_live_engine_set_market_data_recorder(cobj, cobj)
 from C import flox_runner_set_market_data_recorder(cobj, cobj)
+
+# ── replay ──
+from C import flox_replay_source_create(cobj) -> cobj
+from C import flox_replay_source_destroy(cobj)
+from C import flox_replay_source_seek_to(cobj, i64) -> u8
 
 # ── risk ──
 from C import flox_risk_manager_create(cobj) -> cobj

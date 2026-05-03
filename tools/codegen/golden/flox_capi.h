@@ -50,6 +50,7 @@ extern "C"
   typedef void* FloxPnLTrackerHandle;
   typedef void* FloxStorageSinkHandle;
   typedef void* FloxMarketDataRecorderHandle;
+  typedef void* FloxReplaySourceHandle;
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
@@ -343,6 +344,24 @@ extern "C"
     double new_quantity;
   } FloxSignal;
 
+  typedef struct
+  {
+    uint8_t type;
+    uint8_t _pad[3];
+    int64_t timestamp_ns;
+    uint32_t trade_symbol;
+    uint8_t trade_is_buy;
+    uint8_t _pad2[3];
+    int64_t trade_price_raw;
+    int64_t trade_quantity_raw;
+    uint32_t book_symbol;
+    uint32_t n_bids;
+    uint32_t n_asks;
+    uint32_t _pad3;
+    const FloxBookLevel* bids;
+    const FloxBookLevel* asks;
+  } FloxReplayEvent;
+
   // ============================================================
   // Callback function pointer types
   // ============================================================
@@ -363,6 +382,9 @@ extern "C"
   typedef void (*FloxRecorderOnTradeFn)(void*, const FloxTradeData*);
   typedef void (*FloxRecorderOnBookUpdateFn)(void*, uint32_t, uint8_t, const FloxBookLevel*, uint32_t, const FloxBookLevel*, uint32_t, int64_t);
   typedef void (*FloxRecorderLifecycleFn)(void*);
+  typedef uint8_t (*FloxReplaySourceNextFn)(void*, FloxReplayEvent*);
+  typedef uint8_t (*FloxReplaySourceSeekFn)(void*, int64_t);
+  typedef void (*FloxReplaySourceLifecycleFn)(void*);
 
   // ============================================================
   // Callback bundles
@@ -416,6 +438,15 @@ extern "C"
     FloxRecorderLifecycleFn on_stop;
     void* user_data;
   } FloxMarketDataRecorderCallbacks;
+
+  typedef struct
+  {
+    FloxReplaySourceLifecycleFn on_start;
+    FloxReplaySourceLifecycleFn on_stop;
+    FloxReplaySourceSeekFn seek_to;
+    FloxReplaySourceNextFn next;
+    void* user_data;
+  } FloxReplaySourceCallbacks;
 
   // ============================================================
   // Fixed-point conversion helpers
@@ -502,6 +533,9 @@ extern "C"
                                     const double* volume, uint32_t n, const char* symbol,
                                     uint8_t bar_type, uint64_t bar_type_param,
                                     FloxBacktestStats* stats_out);
+  int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
+                                             FloxReplaySourceHandle source,
+                                             FloxBacktestStats* stats_out);
 
   // ============================================================
   // Bar Aggregation
@@ -946,6 +980,14 @@ extern "C"
                                                  FloxMarketDataRecorderHandle recorder);
   void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
                                             FloxMarketDataRecorderHandle recorder);
+
+  // ============================================================
+  // Replay
+  // ============================================================
+
+  FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks);
+  void flox_replay_source_destroy(FloxReplaySourceHandle source);
+  uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns);
 
   // ============================================================
   // Risk

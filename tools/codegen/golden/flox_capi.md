@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 315 functions, 28 handles, 31 structs, 16 callback typedefs, 2 enums, 42 groups.
+**Surface:** 319 functions, 29 handles, 33 structs, 19 callback typedefs, 2 enums, 43 groups.
 
 ## Opaque handles
 
@@ -33,6 +33,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxPnLTrackerHandle`
 - `FloxStorageSinkHandle`
 - `FloxMarketDataRecorderHandle`
+- `FloxReplaySourceHandle`
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
@@ -70,6 +71,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxRecorderOnTradeFn)(void *, const FloxTradeData *);`
 - `typedef void (*FloxRecorderOnBookUpdateFn)(void *, uint32_t, uint8_t, const FloxBookLevel *, uint32_t, const FloxBookLevel *, uint32_t, int64_t);`
 - `typedef void (*FloxRecorderLifecycleFn)(void *);`
+- `typedef uint8_t (*FloxReplaySourceNextFn)(void *, FloxReplayEvent *);`
+- `typedef uint8_t (*FloxReplaySourceSeekFn)(void *, int64_t);`
+- `typedef void (*FloxReplaySourceLifecycleFn)(void *);`
 
 ## Structs
 
@@ -420,6 +424,35 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `on_stop` | `FloxRecorderLifecycleFn` |
 | `user_data` | `void *` |
 
+### `FloxReplayEvent`
+
+| field | type |
+|---|---|
+| `type` | `uint8_t` |
+| `_pad` | `uint8_t[3]` |
+| `timestamp_ns` | `int64_t` |
+| `trade_symbol` | `uint32_t` |
+| `trade_is_buy` | `uint8_t` |
+| `_pad2` | `uint8_t[3]` |
+| `trade_price_raw` | `int64_t` |
+| `trade_quantity_raw` | `int64_t` |
+| `book_symbol` | `uint32_t` |
+| `n_bids` | `uint32_t` |
+| `n_asks` | `uint32_t` |
+| `_pad3` | `uint32_t` |
+| `bids` | `const FloxBookLevel *` |
+| `asks` | `const FloxBookLevel *` |
+
+### `FloxReplaySourceCallbacks`
+
+| field | type |
+|---|---|
+| `on_start` | `FloxReplaySourceLifecycleFn` |
+| `on_stop` | `FloxReplaySourceLifecycleFn` |
+| `seek_to` | `FloxReplaySourceSeekFn` |
+| `next` | `FloxReplaySourceNextFn` |
+| `user_data` | `void *` |
+
 ## Functions
 
 ### additional_bar
@@ -456,6 +489,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle runner, const char * path, const char * symbol, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner, const int64_t * timestamps_ns, const double * close_prices, uint32_t n, const char * symbol, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle runner, const int64_t * start_time_ns, const int64_t * end_time_ns, const double * open, const double * high, const double * low, const double * close, const double * volume, uint32_t n, const char * symbol, uint8_t bar_type, uint64_t bar_type_param, FloxBacktestStats * stats_out)`
+- `int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner, FloxReplaySourceHandle source, FloxBacktestStats * stats_out)`
 
 ### bar_aggregation
 
@@ -742,6 +776,12 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)`
 - `void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine, FloxMarketDataRecorderHandle recorder)`
 - `void flox_runner_set_market_data_recorder(FloxRunnerHandle runner, FloxMarketDataRecorderHandle recorder)`
+
+### replay
+
+- `FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks)`
+- `void flox_replay_source_destroy(FloxReplaySourceHandle source)`
+- `uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns)`
 
 ### risk
 
