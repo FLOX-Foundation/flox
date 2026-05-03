@@ -78,6 +78,10 @@ Documentation is grouped below by Diátaxis category — pick the section matchi
 - [Error code reference](https://flox-foundation.github.io/flox/errors/): Catalog of FloxError codes, format, and lifecycle
 - [E_SYM_001 — Symbol is not registered](https://flox-foundation.github.io/flox/errors/E_SYM_001/): Fix: call Engine.add_symbol() before referencing the symbol
 
+## AI tooling (MCP)
+
+- [flox-mcp — Model Context Protocol server](https://flox-foundation.github.io/flox/mcp/): Local MCP server that gives AI agents grounded access to indicators, error codes, and the C API
+
 ## Reference: Python
 
 - [Python reference index](https://flox-foundation.github.io/flox/reference/python/): All Python binding modules
