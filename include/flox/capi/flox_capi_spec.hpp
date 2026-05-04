@@ -1643,6 +1643,75 @@ extern "C"
   void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
 
   // ============================================================
+  // ReplaySource — binding-side market data event source.
+  //
+  // Bindings provide a custom event reader (e.g. exchange-specific
+  // archive format, S3-streamed segments) that BacktestRunner pulls
+  // events from. The engine drives playback by repeatedly calling
+  // `next` until it returns 0.
+  //
+  // Event shape: `next` populates a FloxReplayEvent describing one
+  // event (Trade, BookSnapshot, or BookDelta). For book events, the
+  // binding sets `bids` / `asks` to point at its own buffer; the
+  // pointers must remain valid until the next `next` call. The engine
+  // copies the levels it needs before invoking the callback again.
+  // ============================================================
+
+  // 1=Trade, 2=BookSnapshot, 3=BookDelta. Matches flox::replay::EventType.
+  typedef struct
+  {
+    uint8_t type;
+    uint8_t _pad[3];
+    int64_t timestamp_ns;
+
+    // Trade payload — valid only when type == 1.
+    uint32_t trade_symbol;
+    uint8_t trade_is_buy;
+    uint8_t _pad2[3];
+    int64_t trade_price_raw;
+    int64_t trade_quantity_raw;
+
+    // Book payload — valid when type == 2 or 3.
+    uint32_t book_symbol;
+    uint32_t n_bids;
+    uint32_t n_asks;
+    uint32_t _pad3;
+    // Pointers owned by the binding; must remain valid for the duration
+    // of the engine's processing of this event (until the next `next`
+    // call returns).
+    const FloxBookLevel* bids;
+    const FloxBookLevel* asks;
+  } FloxReplayEvent;
+
+  // Yield the next event. Return 1 if an event was produced (event_out
+  // populated), 0 if the source is exhausted.
+  typedef uint8_t (*FloxReplaySourceNextFn)(void* user_data, FloxReplayEvent* event_out);
+  // Seek to a timestamp. Return 1 if the seek succeeded, 0 otherwise.
+  typedef uint8_t (*FloxReplaySourceSeekFn)(void* user_data, int64_t timestamp_ns);
+  typedef void (*FloxReplaySourceLifecycleFn)(void* user_data);
+
+  typedef struct
+  {
+    FloxReplaySourceLifecycleFn on_start;
+    FloxReplaySourceLifecycleFn on_stop;
+    FloxReplaySourceSeekFn seek_to;
+    FloxReplaySourceNextFn next;
+    void* user_data;
+  } FloxReplaySourceCallbacks;
+
+  typedef void* FloxReplaySourceHandle;
+
+  FLOX_EXPORT(group = "replay")
+  FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks);
+  FLOX_EXPORT(group = "replay")
+  void flox_replay_source_destroy(FloxReplaySourceHandle source);
+
+  // Seek the underlying source to a timestamp. Returns 1 on success.
+  // Convenience wrapper that forwards to the binding's seek_to callback.
+  FLOX_EXPORT(group = "replay")
+  uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1909,6 +1978,14 @@ extern "C"
                                     uint8_t bar_type,
                                     uint64_t bar_type_param,
                                     FloxBacktestStats* stats_out);
+
+  // Run a backtest pulling events from a binding-supplied replay source.
+  // Fires source.on_start before reading, source.on_stop after the runner
+  // has drained the stream. Returns 1 on success, 0 on error.
+  FLOX_EXPORT(group = "backtestrunner_replay")
+  int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
+                                             FloxReplaySourceHandle source,
+                                             FloxBacktestStats* stats_out);
 
 #ifdef __cplusplus
 }

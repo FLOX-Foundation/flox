@@ -92,6 +92,8 @@ if(FLOX_ENABLE_CAPI)
   target_link_libraries(test_capi_observers PRIVATE flox_capi)
   add_flox_test(test_capi_market_data_recorder)
   target_link_libraries(test_capi_market_data_recorder PRIVATE flox_capi)
+  add_flox_test(test_capi_replay_source)
+  target_link_libraries(test_capi_replay_source PRIVATE flox_capi)
   # test_capi_logger needs to share a single ILogger global with flox_capi.
   # If we use add_flox_test, the test exe links the static `flox` library
   # alongside flox_capi.dylib (which itself statically embeds `flox`) —

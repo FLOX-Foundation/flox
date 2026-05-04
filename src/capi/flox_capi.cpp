@@ -2839,6 +2839,108 @@ struct FloxMarketDataRecorderImpl
   FloxMarketDataRecorderCallbacks cb;
 };
 
+struct FloxReplaySourceImpl
+{
+  FloxReplaySourceCallbacks cb;
+};
+
+// Adapter that exposes a binding's FloxReplaySourceCallbacks as a
+// flox::replay::IMultiSegmentReader so BacktestRunner can drive it via
+// the existing forEach contract.
+class CapiReplaySourceReader : public flox::replay::IMultiSegmentReader
+{
+ public:
+  explicit CapiReplaySourceReader(FloxReplaySourceImpl* source) : _source(source) {}
+
+  uint64_t forEach(EventCallback callback) override
+  {
+    if (_source == nullptr || _source->cb.next == nullptr)
+    {
+      return 0;
+    }
+    uint64_t count = 0;
+    FloxReplayEvent ev{};
+    while (_source->cb.next(_source->cb.user_data, &ev) != 0)
+    {
+      flox::replay::ReplayEvent re;
+      re.timestamp_ns = ev.timestamp_ns;
+      switch (ev.type)
+      {
+        case 1:  // Trade
+        {
+          re.type = flox::replay::EventType::Trade;
+          re.trade.exchange_ts_ns = ev.timestamp_ns;
+          re.trade.recv_ts_ns = ev.timestamp_ns;
+          re.trade.price_raw = ev.trade_price_raw;
+          re.trade.qty_raw = ev.trade_quantity_raw;
+          re.trade.symbol_id = ev.trade_symbol;
+          re.trade.side = ev.trade_is_buy ? 0u : 1u;
+          break;
+        }
+        case 2:  // BookSnapshot
+        case 3:  // BookDelta
+        {
+          re.type = (ev.type == 2) ? flox::replay::EventType::BookSnapshot
+                                   : flox::replay::EventType::BookDelta;
+          re.book_header.exchange_ts_ns = ev.timestamp_ns;
+          re.book_header.recv_ts_ns = ev.timestamp_ns;
+          re.book_header.symbol_id = ev.book_symbol;
+          re.book_header.bid_count = static_cast<uint16_t>(ev.n_bids);
+          re.book_header.ask_count = static_cast<uint16_t>(ev.n_asks);
+          re.book_header.type = static_cast<uint8_t>(re.type);
+          re.bids.clear();
+          re.asks.clear();
+          re.bids.reserve(ev.n_bids);
+          re.asks.reserve(ev.n_asks);
+          for (uint32_t i = 0; i < ev.n_bids; ++i)
+          {
+            flox::replay::BookLevel lvl{};
+            lvl.price_raw = ev.bids[i].price_raw;
+            lvl.qty_raw = ev.bids[i].quantity_raw;
+            re.bids.push_back(lvl);
+          }
+          for (uint32_t i = 0; i < ev.n_asks; ++i)
+          {
+            flox::replay::BookLevel lvl{};
+            lvl.price_raw = ev.asks[i].price_raw;
+            lvl.qty_raw = ev.asks[i].quantity_raw;
+            re.asks.push_back(lvl);
+          }
+          break;
+        }
+        default:
+          // Unknown event type — skip without aborting playback.
+          continue;
+      }
+      ++count;
+      if (!callback(re))
+      {
+        break;
+      }
+    }
+    return count;
+  }
+
+  uint64_t forEachFrom(int64_t start_ts_ns, EventCallback callback) override
+  {
+    if (_source != nullptr && _source->cb.seek_to != nullptr)
+    {
+      _source->cb.seek_to(_source->cb.user_data, start_ts_ns);
+    }
+    return forEach(std::move(callback));
+  }
+
+  const std::vector<flox::replay::SegmentInfo>& segments() const override
+  {
+    return _empty_segments;
+  }
+  uint64_t totalEvents() const override { return 0; }
+
+ private:
+  FloxReplaySourceImpl* _source;
+  std::vector<flox::replay::SegmentInfo> _empty_segments;
+};
+
 class RunnerSignalHandler : public ISignalHandler
 {
  public:
@@ -3693,6 +3795,29 @@ struct FloxBacktestRunnerImpl
     }
     return 1;
   }
+
+  int runReplaySource(FloxReplaySourceImpl* source, FloxBacktestStats* out)
+  {
+    if (source == nullptr)
+    {
+      return 0;
+    }
+    if (source->cb.on_start != nullptr)
+    {
+      source->cb.on_start(source->cb.user_data);
+    }
+    CapiReplaySourceReader reader(source);
+    BacktestResult result = runner->run(reader);
+    if (source->cb.on_stop != nullptr)
+    {
+      source->cb.on_stop(source->cb.user_data);
+    }
+    if (out)
+    {
+      fillStats(result.computeStats(), out);
+    }
+    return 1;
+  }
 };
 
 static FloxBacktestRunnerImpl* toBacktestRunner(FloxBacktestRunnerHandle h)
@@ -3771,6 +3896,27 @@ FloxMarketDataRecorderHandle flox_market_data_recorder_create(
 void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)
 {
   delete static_cast<FloxMarketDataRecorderImpl*>(recorder);
+}
+
+FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks)
+{
+  return static_cast<FloxReplaySourceHandle>(
+      new FloxReplaySourceImpl{callbacks});
+}
+
+void flox_replay_source_destroy(FloxReplaySourceHandle source)
+{
+  delete static_cast<FloxReplaySourceImpl*>(source);
+}
+
+uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns)
+{
+  auto* s = static_cast<FloxReplaySourceImpl*>(source);
+  if (s == nullptr || s->cb.seek_to == nullptr)
+  {
+    return 0;
+  }
+  return s->cb.seek_to(s->cb.user_data, timestamp_ns);
 }
 
 // ============================================================
@@ -4086,4 +4232,12 @@ int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle h,
   return toBacktestRunner(h)->runFullBars(start_time_ns, end_time_ns,
                                           open, high, low, close, volume,
                                           n, symbol, bar_type, bar_type_param, out);
+}
+
+int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle h,
+                                           FloxReplaySourceHandle source,
+                                           FloxBacktestStats* out)
+{
+  return toBacktestRunner(h)->runReplaySource(
+      static_cast<capi_impl::FloxReplaySourceImpl*>(source), out);
 }
