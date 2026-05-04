@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 319 functions, 29 handles, 33 structs, 19 callback typedefs, 2 enums, 43 groups.
+**Surface:** 328 functions, 31 handles, 37 structs, 31 callback typedefs, 2 enums, 44 groups.
 
 ## Opaque handles
 
@@ -11,7 +11,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxStrategyHandle`
 - `FloxRegistryHandle`
 - `FloxBookHandle`
-- `FloxExecutorHandle`
+- `FloxSimulatedExecutorHandle`
 - `FloxPositionTrackerHandle`
 - `FloxPositionGroupHandle`
 - `FloxOrderTrackerHandle`
@@ -34,6 +34,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxStorageSinkHandle`
 - `FloxMarketDataRecorderHandle`
 - `FloxReplaySourceHandle`
+- `FloxExecutionListenerHandle`
+- `FloxExecutorHandle`
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
@@ -74,6 +76,18 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef uint8_t (*FloxReplaySourceNextFn)(void *, FloxReplayEvent *);`
 - `typedef uint8_t (*FloxReplaySourceSeekFn)(void *, int64_t);`
 - `typedef void (*FloxReplaySourceLifecycleFn)(void *);`
+- `typedef void (*FloxExecListenerOnOrderFn)(void *, const FloxOrder *);`
+- `typedef void (*FloxExecListenerOnPartialFillFn)(void *, const FloxOrder *, int64_t);`
+- `typedef void (*FloxExecListenerOnRejectedFn)(void *, const FloxOrder *, const char *);`
+- `typedef void (*FloxExecListenerOnReplacedFn)(void *, const FloxOrder *, const FloxOrder *);`
+- `typedef void (*FloxExecListenerOnTrailingUpdateFn)(void *, const FloxOrder *, int64_t);`
+- `typedef void (*FloxExecutorSubmitFn)(void *, const FloxOrder *);`
+- `typedef void (*FloxExecutorCancelFn)(void *, uint64_t);`
+- `typedef void (*FloxExecutorCancelAllFn)(void *, uint32_t);`
+- `typedef void (*FloxExecutorReplaceFn)(void *, uint64_t, const FloxOrder *);`
+- `typedef void (*FloxExecutorSubmitOCOFn)(void *, const FloxOrder *, const FloxOrder *);`
+- `typedef void (*FloxExecutorCapabilitiesFn)(void *, FloxExchangeCapabilities *);`
+- `typedef void (*FloxExecutorLifecycleFn)(void *);`
 
 ## Structs
 
@@ -453,6 +467,79 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `next` | `FloxReplaySourceNextFn` |
 | `user_data` | `void *` |
 
+### `FloxOrder`
+
+| field | type |
+|---|---|
+| `id` | `uint64_t` |
+| `client_order_id` | `uint64_t` |
+| `symbol` | `uint32_t` |
+| `strategy_id` | `uint16_t` |
+| `order_tag` | `uint16_t` |
+| `side` | `uint8_t` |
+| `type` | `uint8_t` |
+| `time_in_force` | `uint8_t` |
+| `flags` | `uint8_t` |
+| `price_raw` | `int64_t` |
+| `quantity_raw` | `int64_t` |
+| `filled_quantity_raw` | `int64_t` |
+| `trigger_price_raw` | `int64_t` |
+| `trailing_offset_raw` | `int64_t` |
+| `created_at_ns` | `int64_t` |
+| `exchange_ts_ns` | `int64_t` |
+
+### `FloxExecutionListenerCallbacks`
+
+| field | type |
+|---|---|
+| `on_submitted` | `FloxExecListenerOnOrderFn` |
+| `on_accepted` | `FloxExecListenerOnOrderFn` |
+| `on_partially_filled` | `FloxExecListenerOnPartialFillFn` |
+| `on_filled` | `FloxExecListenerOnOrderFn` |
+| `on_pending_cancel` | `FloxExecListenerOnOrderFn` |
+| `on_canceled` | `FloxExecListenerOnOrderFn` |
+| `on_expired` | `FloxExecListenerOnOrderFn` |
+| `on_rejected` | `FloxExecListenerOnRejectedFn` |
+| `on_replaced` | `FloxExecListenerOnReplacedFn` |
+| `on_pending_trigger` | `FloxExecListenerOnOrderFn` |
+| `on_triggered` | `FloxExecListenerOnOrderFn` |
+| `on_trailing_stop_updated` | `FloxExecListenerOnTrailingUpdateFn` |
+| `user_data` | `void *` |
+
+### `FloxExchangeCapabilities`
+
+| field | type |
+|---|---|
+| `supports_stop_market` | `uint8_t` |
+| `supports_stop_limit` | `uint8_t` |
+| `supports_take_profit_market` | `uint8_t` |
+| `supports_take_profit_limit` | `uint8_t` |
+| `supports_trailing_stop` | `uint8_t` |
+| `supports_iceberg` | `uint8_t` |
+| `supports_oco` | `uint8_t` |
+| `supports_gtc` | `uint8_t` |
+| `supports_ioc` | `uint8_t` |
+| `supports_fok` | `uint8_t` |
+| `supports_gtd` | `uint8_t` |
+| `supports_post_only` | `uint8_t` |
+| `supports_reduce_only` | `uint8_t` |
+| `supports_close_position` | `uint8_t` |
+| `_pad` | `uint8_t[2]` |
+
+### `FloxExecutorCallbacks`
+
+| field | type |
+|---|---|
+| `submit` | `FloxExecutorSubmitFn` |
+| `cancel` | `FloxExecutorCancelFn` |
+| `cancel_all` | `FloxExecutorCancelAllFn` |
+| `replace` | `FloxExecutorReplaceFn` |
+| `submit_oco` | `FloxExecutorSubmitOCOFn` |
+| `capabilities` | `FloxExecutorCapabilitiesFn` |
+| `on_start` | `FloxExecutorLifecycleFn` |
+| `on_stop` | `FloxExecutorLifecycleFn` |
+| `user_data` | `void *` |
+
 ## Functions
 
 ### additional_bar
@@ -467,16 +554,16 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 ### backtest_slippage
 
-- `void flox_executor_set_default_slippage(FloxExecutorHandle executor, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
-- `void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
-- `void flox_executor_set_queue_model(FloxExecutorHandle executor, int32_t model, uint32_t depth)`
-- `void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol, double price, double quantity, uint8_t is_buy)`
-- `void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol, double bid_price, double bid_qty, double ask_price, double ask_qty)`
-- `void flox_executor_on_book_snapshot(FloxExecutorHandle executor, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks)`
+- `void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle executor, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
+- `void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor, uint32_t symbol, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
+- `void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model, uint32_t depth)`
+- `void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol, double price, double quantity, uint8_t is_buy)`
+- `void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle executor, uint32_t symbol, double bid_price, double bid_qty, double ask_price, double ask_qty)`
+- `void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle executor, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks)`
 - `FloxBacktestResultHandle flox_backtest_result_create(double initial_capital, double fee_rate, uint8_t use_percentage_fee, double fixed_fee_per_trade, double risk_free_rate, double annualization_factor)`
 - `void flox_backtest_result_destroy(FloxBacktestResultHandle result)`
 - `void flox_backtest_result_record_fill(FloxBacktestResultHandle result, uint64_t order_id, uint32_t symbol, uint8_t side, double price, double quantity, int64_t timestamp_ns)`
-- `void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result, FloxExecutorHandle executor)`
+- `void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result, FloxSimulatedExecutorHandle executor)`
 - `void flox_backtest_result_stats(FloxBacktestResultHandle result, FloxBacktestStats * out)`
 - `uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle result, FloxEquityPoint * points_out, uint32_t max_points)`
 - `uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result, const char * path)`
@@ -559,9 +646,21 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 - `FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer)`
 
+### execution
+
+- `FloxExecutionListenerHandle flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks)`
+- `void flox_execution_listener_destroy(FloxExecutionListenerHandle listener)`
+- `FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks)`
+- `void flox_executor_destroy(FloxExecutorHandle executor)`
+- `void flox_executor_get_capabilities(FloxExecutorHandle executor, FloxExchangeCapabilities * caps_out)`
+- `void flox_live_engine_set_executor(FloxLiveEngineHandle engine, FloxExecutorHandle executor)`
+- `void flox_runner_set_executor(FloxRunnerHandle runner, FloxExecutorHandle executor)`
+- `void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle runner, FloxExecutionListenerHandle listener)`
+- `void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner, FloxExecutorHandle executor)`
+
 ### executor_fill
 
-- `uint32_t flox_executor_get_fills(FloxExecutorHandle executor, FloxFill * fills_out, uint32_t max_fills)`
+- `uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle executor, FloxFill * fills_out, uint32_t max_fills)`
 
 ### fixed_point
 
@@ -831,15 +930,15 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 ### simulated_executor
 
-- `FloxExecutorHandle flox_executor_create(void)`
-- `void flox_executor_destroy(FloxExecutorHandle executor)`
-- `void flox_executor_submit_order(FloxExecutorHandle executor, uint64_t id, uint8_t side, double price, double quantity, uint8_t order_type, uint32_t symbol)`
-- `void flox_executor_cancel_order(FloxExecutorHandle executor, uint64_t order_id)`
-- `void flox_executor_cancel_all(FloxExecutorHandle executor, uint32_t symbol)`
-- `void flox_executor_on_bar(FloxExecutorHandle executor, uint32_t symbol, double close_price)`
-- `void flox_executor_on_trade(FloxExecutorHandle executor, uint32_t symbol, double price, uint8_t is_buy)`
-- `void flox_executor_advance_clock(FloxExecutorHandle executor, int64_t timestamp_ns)`
-- `uint32_t flox_executor_fill_count(FloxExecutorHandle executor)`
+- `FloxSimulatedExecutorHandle flox_simulated_executor_create(void)`
+- `void flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor)`
+- `void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor, uint64_t id, uint8_t side, double price, double quantity, uint8_t order_type, uint32_t symbol)`
+- `void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id)`
+- `void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol)`
+- `void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol, double close_price)`
+- `void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol, double price, uint8_t is_buy)`
+- `void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor, int64_t timestamp_ns)`
+- `uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle executor)`
 
 ### statistics
 

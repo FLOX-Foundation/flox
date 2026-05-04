@@ -453,6 +453,11 @@ void BacktestRunner::onSignal(const Signal& signal)
   ++_signalCount;
   _signalEmitted = true;
 
+  // Route to custom executor if attached, else to the built-in simulator.
+  IOrderExecutor& exec = (_customExecutor != nullptr)
+                             ? *_customExecutor
+                             : static_cast<IOrderExecutor&>(_executor);
+
   switch (signal.type)
   {
     case SignalType::Market:
@@ -462,18 +467,18 @@ void BacktestRunner::onSignal(const Signal& signal)
     case SignalType::TakeProfitMarket:
     case SignalType::TakeProfitLimit:
     case SignalType::TrailingStop:
-      _executor.submitOrder(signalToOrder(signal));
+      exec.submitOrder(signalToOrder(signal));
       break;
     case SignalType::Cancel:
-      _executor.cancelOrder(signal.orderId);
+      exec.cancelOrder(signal.orderId);
       break;
     case SignalType::CancelAll:
-      _executor.cancelAllOrders(signal.symbol);
+      exec.cancelAllOrders(signal.symbol);
       break;
     case SignalType::Modify:
     {
       Order newOrder{.id = _nextOrderId++, .price = signal.newPrice, .quantity = signal.newQuantity};
-      _executor.replaceOrder(signal.orderId, newOrder);
+      exec.replaceOrder(signal.orderId, newOrder);
       break;
     }
     case SignalType::OCO:
@@ -493,7 +498,7 @@ void BacktestRunner::onSignal(const Signal& signal)
                    .flags = {.reduceOnly = signal.reduceOnly, .postOnly = signal.postOnly}};
 
       OCOParams params{.order1 = order1, .order2 = order2};
-      _executor.submitOCO(params);
+      exec.submitOCO(params);
       break;
     }
   }

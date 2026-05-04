@@ -15,6 +15,7 @@
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/execution/abstract_execution_listener.h"
+#include "flox/execution/abstract_executor.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/strategy/abstract_signal_handler.h"
 #include "flox/strategy/strategy.h"
@@ -95,6 +96,17 @@ class BacktestRunner : public ISignalHandler
   void addMarketDataSubscriber(IMarketDataSubscriber* subscriber);
   void addExecutionListener(IOrderExecutionListener* listener);
 
+  /// Replace the built-in SimulatedExecutor with a binding-supplied
+  /// IOrderExecutor. When set, all signals (submit / cancel / replace /
+  /// OCO / cancelAll) are routed to the custom executor instead of the
+  /// built-in simulator. The simulator is left intact for matching live
+  /// data into BacktestResult; the custom executor is responsible for
+  /// reporting fills via its own ExecutionListener path. Pass nullptr
+  /// to revert to the simulated executor.
+  /// Caller retains ownership; the runner does not delete the executor.
+  void setExecutor(IOrderExecutor* executor) noexcept { _customExecutor = executor; }
+  IOrderExecutor* customExecutor() const noexcept { return _customExecutor; }
+
   // ========== Non-interactive mode ==========
 
   /// Run backtest synchronously from start to end
@@ -163,6 +175,9 @@ class BacktestRunner : public ISignalHandler
   BacktestConfig _config;
   SimulatedClock _clock;
   SimulatedExecutor _executor;
+  // Optional binding-supplied executor. When non-null, signals are routed
+  // here instead of to the built-in SimulatedExecutor.
+  IOrderExecutor* _customExecutor{nullptr};
   IStrategy* _strategy{nullptr};
   std::vector<IMarketDataSubscriber*> _marketDataSubscribers;
   std::vector<IOrderExecutionListener*> _executionListeners;
