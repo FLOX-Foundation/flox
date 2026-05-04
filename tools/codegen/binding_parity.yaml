@@ -215,65 +215,53 @@ groups:
 
   risk:
     pybind11:
-      status: allowlist
-      reason: "RiskManager / KillSwitch / OrderValidator hooks (T015/T016/T012) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+      status: required
+      classes: [RiskManager, KillSwitch, OrderValidator]
     napi:
       status: allowlist
-      reason: "Same as pybind11 — NAPI wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred — Python is the priority language. Tracked: W2-T013."
     codon: { status: required }
 
   metrics:
-    pybind11:
-      status: allowlist
-      reason: "PnLTracker hook (T018) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    pybind11: { status: required, classes: [PnLTracker] }
     napi:
       status: allowlist
-      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred — Python first. Tracked: W2-T013."
     codon: { status: required }
 
   storage:
-    pybind11:
-      status: allowlist
-      reason: "StorageSink hook (T019) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    pybind11: { status: required, classes: [StorageSink] }
     napi:
       status: allowlist
-      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred. Tracked: W2-T013."
     codon: { status: required }
 
   recorder:
-    pybind11:
-      status: allowlist
-      reason: "MarketDataRecorder hook (T020, distinct from concrete `datarecorder` group). pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    pybind11: { status: required, classes: [MarketDataRecorderHook] }
     napi:
       status: allowlist
-      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred. Tracked: W2-T013."
     codon: { status: required }
 
   replay:
-    pybind11:
-      status: allowlist
-      reason: "ReplaySource hook (T021) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    pybind11: { status: required, classes: [ReplaySource] }
     napi:
       status: allowlist
-      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred. Tracked: W2-T013."
     codon: { status: required }
 
   execution:
-    pybind11:
-      status: allowlist
-      reason: "Executor + ExecutionListener hooks (T023) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    pybind11: { status: required, classes: [Executor, ExecutionListener] }
     napi:
       status: allowlist
-      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred. Tracked: W2-T013."
     codon: { status: required }
 
   logger:
-    pybind11:
-      status: allowlist
-      reason: "flox_set_log_callback (T017) — pybind11 wrapper not added. Tracked: W2 add-binding-parity-for-hooks."
+    pybind11: { status: required, functions: [set_log_callback] }
     napi:
       status: allowlist
-      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+      reason: "NAPI wrapper deferred. Tracked: W2-T013."
     codon: { status: required }
 
   # ── Internal helpers — not user-facing in pybind11/napi ───────────────

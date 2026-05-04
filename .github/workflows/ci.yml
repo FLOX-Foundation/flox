@@ -7,6 +7,14 @@ on:
     # Weekly affinity tests - Sunday at 3:00 UTC
     - cron: '0 3 * * 0'
 
+# Fast-fail: a new push to the same branch / PR cancels the in-progress run.
+# Build jobs (linux-*, macos, windows-*, sanitizers) depend on the quick
+# format-check + verify-docs-current jobs, so a docs / format failure no
+# longer leaves the multi-OS matrix burning cycles for ~10 minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   format-check:
     runs-on: ubuntu-latest
@@ -56,7 +64,7 @@ jobs:
         python3 -m pytest mcp/tests/ -q
 
   linux-gcc:
-    needs: format-check
+    needs: [format-check, verify-docs-current]
     runs-on: ubuntu-24.04
 
     steps:
@@ -147,6 +155,9 @@ jobs:
     - name: Verify Python bindings
       run: PYTHONPATH=build/python python3 python/tests/test_bindings.py
 
+    - name: Verify Python extension hooks
+      run: PYTHONPATH=build/python python3 python/tests/test_hooks.py
+
     - name: Verify .pyi stubs are in sync with the binding
       run: python3 scripts/gen_pyi_stubs.py --check
 
@@ -207,7 +218,7 @@ jobs:
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
   linux-clang:
-    needs: format-check
+    needs: [format-check, verify-docs-current]
     runs-on: ubuntu-24.04
 
     steps:
@@ -274,7 +285,7 @@ jobs:
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
   sanitizers:
-    needs: format-check
+    needs: [format-check, verify-docs-current]
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -329,7 +340,7 @@ jobs:
       run: ./build/demo/flox_demo
 
   macos:
-    needs: format-check
+    needs: [format-check, verify-docs-current]
     runs-on: macos-latest
 
     steps:
@@ -380,7 +391,7 @@ jobs:
       run: ./build/demo/flox_demo
 
   windows-msvc:
-    needs: format-check
+    needs: [format-check, verify-docs-current]
     runs-on: windows-latest
 
     steps:
@@ -419,7 +430,7 @@ jobs:
       run: .\build\demo\flox_demo.exe
 
   windows-clang-cl:
-    needs: format-check
+    needs: [format-check, verify-docs-current]
     runs-on: windows-latest
 
     steps:
