@@ -1140,29 +1140,29 @@ static JSValue js_executor_submit(JSContext* ctx, JSValueConst, int, JSValueCons
 {
   auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
   flox_simulated_executor_submit_order(h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
-                             static_cast<uint8_t>(toUint32(ctx, argv[2])),
-                             toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
-                             static_cast<uint8_t>(toUint32(ctx, argv[5])),
-                             toUint32(ctx, argv[6]));
+                                       static_cast<uint8_t>(toUint32(ctx, argv[2])),
+                                       toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
+                                       static_cast<uint8_t>(toUint32(ctx, argv[5])),
+                                       toUint32(ctx, argv[6]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-                       toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
+                                 toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_trade(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_trade(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-                         toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
-                         static_cast<uint8_t>(toUint32(ctx, argv[3])));
+                                   toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                                   static_cast<uint8_t>(toUint32(ctx, argv[3])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_advance(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_advance_clock(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-                              toInt64(ctx, argv[1]));
+                                        toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_fill_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -1195,26 +1195,26 @@ static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
 {
   flox_simulated_executor_set_queue_model(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-                                static_cast<int32_t>(toInt64(ctx, argv[1])),
-                                toUint32(ctx, argv[2]));
+                                          static_cast<int32_t>(toInt64(ctx, argv[1])),
+                                          toUint32(ctx, argv[2]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
   flox_simulated_executor_on_trade_qty(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-                             toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
-                             toDouble(ctx, argv[3]),
-                             static_cast<uint8_t>(toUint32(ctx, argv[4])));
+                                       toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                                       toDouble(ctx, argv[3]),
+                                       static_cast<uint8_t>(toUint32(ctx, argv[4])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_best_levels(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
   flox_simulated_executor_on_best_levels(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
-                               toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
-                               toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
-                               toDouble(ctx, argv[5]));
+                                         toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                                         toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
+                                         toDouble(ctx, argv[5]));
   return JS_UNDEFINED;
 }
 
