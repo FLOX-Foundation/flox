@@ -141,6 +141,15 @@ nav:
       - Integration Flow: explanation/integration-flow.md
       - Indicators: explanation/indicators.md
 
+  - Contributing:
+      - contributors/index.md
+      - Binding architecture: contributors/architecture-overview.md
+      - Adding a C ABI export: contributors/adding-a-c-api-export.md
+      - Extension hook pattern: contributors/extension-hook-pattern.md
+      - Cross-binding parity gate: contributors/parity-gate.md
+      - CI pipeline: contributors/ci-pipeline.md
+      - Binding architecture RFC: contributors/binding-architecture-rfc.md
+
   - Errors:
       - errors/index.md
       - E_SYM_001 - Symbol is not registered: errors/E_SYM_001.md
