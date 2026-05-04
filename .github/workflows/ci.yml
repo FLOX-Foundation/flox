@@ -38,6 +38,10 @@ jobs:
       run: python3 scripts/gen_llms_txt.py --check
     - name: Verify node/index.d.ts exports match the C++ binding
       run: python3 scripts/check_dts_exports.py
+    - name: Verify cross-binding parity (pybind11/napi/codon)
+      run: |
+        pip install pyyaml
+        python3 scripts/check_binding_parity.py
     - name: Verify error codes have docs and pages aren't stale
       run: python3 scripts/check_error_codes.py
     - name: Verify Python API index is in sync with .pyi
