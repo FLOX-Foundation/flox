@@ -21,6 +21,8 @@
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/util/memory/pool.h"
+#include "hook_bindings.h"
+#include "types_bindings.h"
 
 #include <atomic>
 #include <cctype>
@@ -43,16 +45,7 @@ namespace
 
 using namespace flox;
 
-struct PyTradeData
-{
-  uint32_t symbol;
-  std::string symbol_name;
-  double price;
-  double quantity;
-  bool is_buy;
-  std::string side;
-  int64_t timestamp_ns;
-};
+// PyTradeData lives in types_bindings.h (shared with hook_bindings.h).
 
 struct PyBarData
 {
@@ -562,45 +555,7 @@ class PyStrategyTrampoline : public PyStrategyBase
   void on_stop() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_stop); }
 };
 
-// ──────────────────────────────────────────────────────────────────────
-// PySignal — Python-friendly representation of an emitted order signal
-// ──────────────────────────────────────────────────────────────────────
-
-struct PySignal
-{
-  uint64_t order_id{0};
-  uint32_t symbol{0};
-  std::string side;        // "buy" or "sell"
-  std::string order_type;  // "market", "limit", "stop_market", ...
-  double price{0.0};
-  double quantity{0.0};
-  double trigger_price{0.0};
-  double trailing_offset{0.0};
-  int32_t trailing_bps{0};
-  double new_price{0.0};
-  double new_quantity{0.0};
-};
-
-inline PySignal pySignalFromC(const FloxSignal* s)
-{
-  static constexpr const char* kOrderTypes[] = {
-      "market", "limit", "stop_market", "stop_limit",
-      "tp_market", "tp_limit", "trailing_stop",
-      "cancel", "cancel_all", "modify"};
-  PySignal ps{};
-  ps.order_id = s->order_id;
-  ps.symbol = s->symbol;
-  ps.side = s->side == 0 ? "buy" : "sell";
-  ps.order_type = s->order_type < 10 ? kOrderTypes[s->order_type] : "unknown";
-  ps.price = s->price;
-  ps.quantity = s->quantity;
-  ps.trigger_price = s->trigger_price;
-  ps.trailing_offset = s->trailing_offset;
-  ps.trailing_bps = s->trailing_bps;
-  ps.new_price = s->new_price;
-  ps.new_quantity = s->new_quantity;
-  return ps;
-}
+// PySignal + pySignalFromC live in types_bindings.h (shared with hook_bindings.h).
 
 // ──────────────────────────────────────────────────────────────────────
 // PyStrategyHost — owns a BridgeStrategy, wires Python callbacks.
@@ -803,6 +758,104 @@ class PyStrategyRunner
   void start() { flox_runner_start(_runner); }
   void stop() { flox_runner_stop(_runner); }
 
+  void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
+  {
+    _pnl_owner.reset();
+    if (tracker)
+    {
+      _pnl_owner = std::make_unique<flox_py::PyPnLTrackerOwner>(std::move(tracker));
+      flox_runner_set_pnl_tracker(_runner, _pnl_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_pnl_tracker(_runner, nullptr);
+    }
+  }
+
+  void set_storage_sink(std::shared_ptr<flox_py::PyStorageSink> sink)
+  {
+    _storage_owner.reset();
+    if (sink)
+    {
+      _storage_owner = std::make_unique<flox_py::PyStorageSinkOwner>(std::move(sink));
+      flox_runner_set_storage_sink(_runner, _storage_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_storage_sink(_runner, nullptr);
+    }
+  }
+
+  void set_risk_manager(std::shared_ptr<flox_py::PyRiskManager> rm)
+  {
+    _risk_owner.reset();
+    if (rm)
+    {
+      _risk_owner = std::make_unique<flox_py::PyRiskManagerOwner>(std::move(rm));
+      flox_runner_set_risk_manager(_runner, _risk_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_risk_manager(_runner, nullptr);
+    }
+  }
+
+  void set_kill_switch(std::shared_ptr<flox_py::PyKillSwitch> ks)
+  {
+    _kill_owner.reset();
+    if (ks)
+    {
+      _kill_owner = std::make_unique<flox_py::PyKillSwitchOwner>(std::move(ks));
+      flox_runner_set_kill_switch(_runner, _kill_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_kill_switch(_runner, nullptr);
+    }
+  }
+
+  void set_order_validator(std::shared_ptr<flox_py::PyOrderValidator> ov)
+  {
+    _validator_owner.reset();
+    if (ov)
+    {
+      _validator_owner = std::make_unique<flox_py::PyOrderValidatorOwner>(std::move(ov));
+      flox_runner_set_order_validator(_runner, _validator_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_order_validator(_runner, nullptr);
+    }
+  }
+
+  void set_market_data_recorder(std::shared_ptr<flox_py::PyMarketDataRecorderHook> rec)
+  {
+    _recorder_owner.reset();
+    if (rec)
+    {
+      _recorder_owner = std::make_unique<flox_py::PyMarketDataRecorderHookOwner>(std::move(rec));
+      flox_runner_set_market_data_recorder(_runner, _recorder_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_market_data_recorder(_runner, nullptr);
+    }
+  }
+
+  void set_executor(std::shared_ptr<flox_py::PyExecutor> exec)
+  {
+    _executor_owner.reset();
+    if (exec)
+    {
+      _executor_owner = std::make_unique<flox_py::PyExecutorOwner>(std::move(exec));
+      flox_runner_set_executor(_runner, _executor_owner->handle());
+    }
+    else
+    {
+      flox_runner_set_executor(_runner, nullptr);
+    }
+  }
+
   void on_trade(uint32_t symbol, double price, double qty,
                 bool is_buy, int64_t ts_ns)
   {
@@ -842,6 +895,16 @@ class PyStrategyRunner
   FloxRunnerHandle _runner{nullptr};
   py::object _on_signal;
   std::vector<std::unique_ptr<PyStrategyHost>> _hosts;
+
+  // Hook owners — keep the Owner alive while the runner holds a non-owning
+  // FloxXxxHandle. Reset on detach (set_xxx(None)) or on destruction.
+  std::unique_ptr<flox_py::PyPnLTrackerOwner> _pnl_owner;
+  std::unique_ptr<flox_py::PyStorageSinkOwner> _storage_owner;
+  std::unique_ptr<flox_py::PyRiskManagerOwner> _risk_owner;
+  std::unique_ptr<flox_py::PyKillSwitchOwner> _kill_owner;
+  std::unique_ptr<flox_py::PyOrderValidatorOwner> _validator_owner;
+  std::unique_ptr<flox_py::PyMarketDataRecorderHookOwner> _recorder_owner;
+  std::unique_ptr<flox_py::PyExecutorOwner> _executor_owner;
 
   static void signalCallback(void* ud, const FloxSignal* sig)
   {
@@ -927,11 +990,116 @@ class PyLiveEngine
                                  start_time_ns, end_time_ns, close_reason);
   }
 
+  void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
+  {
+    _pnl_owner.reset();
+    if (tracker)
+    {
+      _pnl_owner = std::make_unique<flox_py::PyPnLTrackerOwner>(std::move(tracker));
+      flox_live_engine_set_pnl_tracker(_engine, _pnl_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_pnl_tracker(_engine, nullptr);
+    }
+  }
+
+  void set_storage_sink(std::shared_ptr<flox_py::PyStorageSink> sink)
+  {
+    _storage_owner.reset();
+    if (sink)
+    {
+      _storage_owner = std::make_unique<flox_py::PyStorageSinkOwner>(std::move(sink));
+      flox_live_engine_set_storage_sink(_engine, _storage_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_storage_sink(_engine, nullptr);
+    }
+  }
+
+  void set_risk_manager(std::shared_ptr<flox_py::PyRiskManager> rm)
+  {
+    _risk_owner.reset();
+    if (rm)
+    {
+      _risk_owner = std::make_unique<flox_py::PyRiskManagerOwner>(std::move(rm));
+      flox_live_engine_set_risk_manager(_engine, _risk_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_risk_manager(_engine, nullptr);
+    }
+  }
+
+  void set_kill_switch(std::shared_ptr<flox_py::PyKillSwitch> ks)
+  {
+    _kill_owner.reset();
+    if (ks)
+    {
+      _kill_owner = std::make_unique<flox_py::PyKillSwitchOwner>(std::move(ks));
+      flox_live_engine_set_kill_switch(_engine, _kill_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_kill_switch(_engine, nullptr);
+    }
+  }
+
+  void set_order_validator(std::shared_ptr<flox_py::PyOrderValidator> ov)
+  {
+    _validator_owner.reset();
+    if (ov)
+    {
+      _validator_owner = std::make_unique<flox_py::PyOrderValidatorOwner>(std::move(ov));
+      flox_live_engine_set_order_validator(_engine, _validator_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_order_validator(_engine, nullptr);
+    }
+  }
+
+  void set_market_data_recorder(std::shared_ptr<flox_py::PyMarketDataRecorderHook> rec)
+  {
+    _recorder_owner.reset();
+    if (rec)
+    {
+      _recorder_owner = std::make_unique<flox_py::PyMarketDataRecorderHookOwner>(std::move(rec));
+      flox_live_engine_set_market_data_recorder(_engine, _recorder_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_market_data_recorder(_engine, nullptr);
+    }
+  }
+
+  void set_executor(std::shared_ptr<flox_py::PyExecutor> exec)
+  {
+    _executor_owner.reset();
+    if (exec)
+    {
+      _executor_owner = std::make_unique<flox_py::PyExecutorOwner>(std::move(exec));
+      flox_live_engine_set_executor(_engine, _executor_owner->handle());
+    }
+    else
+    {
+      flox_live_engine_set_executor(_engine, nullptr);
+    }
+  }
+
  private:
   SymbolRegistry* _reg;
   FloxLiveEngineHandle _engine{nullptr};
   py::object _on_signal;
   std::vector<std::unique_ptr<PyStrategyHost>> _hosts;
+  std::unique_ptr<flox_py::PyPnLTrackerOwner> _pnl_owner;
+  std::unique_ptr<flox_py::PyStorageSinkOwner> _storage_owner;
+  std::unique_ptr<flox_py::PyRiskManagerOwner> _risk_owner;
+  std::unique_ptr<flox_py::PyKillSwitchOwner> _kill_owner;
+  std::unique_ptr<flox_py::PyOrderValidatorOwner> _validator_owner;
+  std::unique_ptr<flox_py::PyMarketDataRecorderHookOwner> _recorder_owner;
+  std::unique_ptr<flox_py::PyExecutorOwner> _executor_owner;
 
   static void signalCallback(void* ud, const FloxSignal* sig)
   {
@@ -1003,6 +1171,27 @@ class PyRunner
       _sync->stop();
     }
   }
+
+#define _PYRUNNER_SET_HOOK(NAME, TYPE)                 \
+  void set_##NAME(std::shared_ptr<flox_py::TYPE> hook) \
+  {                                                    \
+    if (_live)                                         \
+    {                                                  \
+      _live->set_##NAME(std::move(hook));              \
+    }                                                  \
+    else                                               \
+    {                                                  \
+      _sync->set_##NAME(std::move(hook));              \
+    }                                                  \
+  }
+  _PYRUNNER_SET_HOOK(pnl_tracker, PyPnLTracker)
+  _PYRUNNER_SET_HOOK(storage_sink, PyStorageSink)
+  _PYRUNNER_SET_HOOK(risk_manager, PyRiskManager)
+  _PYRUNNER_SET_HOOK(kill_switch, PyKillSwitch)
+  _PYRUNNER_SET_HOOK(order_validator, PyOrderValidator)
+  _PYRUNNER_SET_HOOK(market_data_recorder, PyMarketDataRecorderHook)
+  _PYRUNNER_SET_HOOK(executor, PyExecutor)
+#undef _PYRUNNER_SET_HOOK
 
   void on_trade(uint32_t symbol, double price, double qty,
                 bool is_buy, int64_t ts_ns)
@@ -1159,6 +1348,34 @@ class PyBacktestRunner
     _runner->setStrategy(_host->bridge.get());
   }
 
+  void set_executor(std::shared_ptr<flox_py::PyExecutor> exec)
+  {
+    if (exec)
+    {
+      _executor_adapter =
+          std::make_unique<flox_py::cxx_adapters::PyExecutorCxxAdapter>(std::move(exec));
+      _runner->setExecutor(_executor_adapter.get());
+    }
+    else
+    {
+      _runner->setExecutor(nullptr);
+      _executor_adapter.reset();
+    }
+  }
+
+  void add_execution_listener(std::shared_ptr<flox_py::PyExecutionListener> listener)
+  {
+    if (!listener)
+    {
+      return;
+    }
+    auto id = static_cast<flox::SubscriberId>(_listener_adapters.size() + 1);
+    auto adapter = std::make_unique<flox_py::cxx_adapters::PyExecutionListenerCxxAdapter>(
+        id, std::move(listener));
+    _runner->addExecutionListener(adapter.get());
+    _listener_adapters.push_back(std::move(adapter));
+  }
+
   py::object run_csv(const std::string& path, const std::string& symbol = "")
   {
     std::string sym = symbol.empty() ? inferSymbol(path) : symbol;
@@ -1262,6 +1479,12 @@ class PyBacktestRunner
   SymbolRegistry* _reg;
   std::unique_ptr<BacktestRunner> _runner;
   std::unique_ptr<PyStrategyHost> _host;
+  // C++ adapters bridging Python hooks → flox::IOrderExecutor /
+  // IOrderExecutionListener used by BacktestRunner directly (without
+  // going through the C ABI).
+  std::unique_ptr<flox_py::cxx_adapters::PyExecutorCxxAdapter> _executor_adapter;
+  std::vector<std::unique_ptr<flox_py::cxx_adapters::PyExecutionListenerCxxAdapter>>
+      _listener_adapters;
 
   uint32_t resolveSymbol(const std::string& sym)
   {
@@ -1588,6 +1811,145 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("new_price", &PySignal::new_price)
       .def_readwrite("new_quantity", &PySignal::new_quantity);
 
+  // ── Extension-hook base classes (users subclass these) ──────────────
+
+  py::class_<flox_py::PyPnLTracker, flox_py::PyPnLTrackerTrampoline,
+             std::shared_ptr<flox_py::PyPnLTracker>>(m, "PnLTracker")
+      .def(py::init<>())
+      .def("on_signal", &flox_py::PyPnLTracker::on_signal, py::arg("signal"));
+
+  py::class_<flox_py::PyStorageSink, flox_py::PyStorageSinkTrampoline,
+             std::shared_ptr<flox_py::PyStorageSink>>(m, "StorageSink")
+      .def(py::init<>())
+      .def("store", &flox_py::PyStorageSink::store, py::arg("signal"));
+
+  py::class_<flox_py::PyRiskManager, flox_py::PyRiskManagerTrampoline,
+             std::shared_ptr<flox_py::PyRiskManager>>(m, "RiskManager")
+      .def(py::init<>())
+      .def("allow", &flox_py::PyRiskManager::allow, py::arg("signal"));
+
+  py::class_<flox_py::PyKillSwitch, flox_py::PyKillSwitchTrampoline,
+             std::shared_ptr<flox_py::PyKillSwitch>>(m, "KillSwitch")
+      .def(py::init<>())
+      .def("check", &flox_py::PyKillSwitch::check, py::arg("signal"));
+
+  py::class_<flox_py::PyOrderValidator, flox_py::PyOrderValidatorTrampoline,
+             std::shared_ptr<flox_py::PyOrderValidator>>(m, "OrderValidator")
+      .def(py::init<>())
+      .def("validate", &flox_py::PyOrderValidator::validate, py::arg("signal"));
+
+  py::class_<flox_py::PyMarketDataRecorderHook,
+             flox_py::PyMarketDataRecorderHookTrampoline,
+             std::shared_ptr<flox_py::PyMarketDataRecorderHook>>(
+      m, "MarketDataRecorderHook")
+      .def(py::init<>())
+      .def("on_trade", &flox_py::PyMarketDataRecorderHook::on_trade)
+      .def("on_book_update", &flox_py::PyMarketDataRecorderHook::on_book_update,
+           py::arg("symbol"), py::arg("is_snapshot"), py::arg("bids"),
+           py::arg("asks"), py::arg("ts_ns"))
+      .def("on_start", &flox_py::PyMarketDataRecorderHook::on_start)
+      .def("on_stop", &flox_py::PyMarketDataRecorderHook::on_stop);
+
+  py::class_<flox_py::PyReplayEvent>(m, "ReplayEvent")
+      .def(py::init<>())
+      .def_readwrite("type", &flox_py::PyReplayEvent::type)
+      .def_readwrite("timestamp_ns", &flox_py::PyReplayEvent::timestamp_ns)
+      .def_readwrite("trade_symbol", &flox_py::PyReplayEvent::trade_symbol)
+      .def_readwrite("trade_is_buy", &flox_py::PyReplayEvent::trade_is_buy)
+      .def_readwrite("trade_price", &flox_py::PyReplayEvent::trade_price)
+      .def_readwrite("trade_quantity", &flox_py::PyReplayEvent::trade_quantity)
+      .def_readwrite("book_symbol", &flox_py::PyReplayEvent::book_symbol)
+      .def_readwrite("bids", &flox_py::PyReplayEvent::bids)
+      .def_readwrite("asks", &flox_py::PyReplayEvent::asks);
+
+  py::class_<flox_py::PyReplaySource, flox_py::PyReplaySourceTrampoline,
+             std::shared_ptr<flox_py::PyReplaySource>>(m, "ReplaySource")
+      .def(py::init<>())
+      .def("on_start", &flox_py::PyReplaySource::on_start)
+      .def("on_stop", &flox_py::PyReplaySource::on_stop)
+      .def("seek_to", &flox_py::PyReplaySource::seek_to, py::arg("ts_ns"))
+      .def("next", &flox_py::PyReplaySource::next);
+
+  py::class_<flox_py::PyOrder>(m, "Order")
+      .def(py::init<>())
+      .def_readwrite("id", &flox_py::PyOrder::id)
+      .def_readwrite("client_order_id", &flox_py::PyOrder::client_order_id)
+      .def_readwrite("symbol", &flox_py::PyOrder::symbol)
+      .def_readwrite("strategy_id", &flox_py::PyOrder::strategy_id)
+      .def_readwrite("order_tag", &flox_py::PyOrder::order_tag)
+      .def_readwrite("side", &flox_py::PyOrder::side)
+      .def_readwrite("order_type", &flox_py::PyOrder::order_type)
+      .def_readwrite("time_in_force", &flox_py::PyOrder::time_in_force)
+      .def_readwrite("reduce_only", &flox_py::PyOrder::reduce_only)
+      .def_readwrite("post_only", &flox_py::PyOrder::post_only)
+      .def_readwrite("close_position", &flox_py::PyOrder::close_position)
+      .def_readwrite("price", &flox_py::PyOrder::price)
+      .def_readwrite("quantity", &flox_py::PyOrder::quantity)
+      .def_readwrite("filled_quantity", &flox_py::PyOrder::filled_quantity)
+      .def_readwrite("trigger_price", &flox_py::PyOrder::trigger_price)
+      .def_readwrite("trailing_offset", &flox_py::PyOrder::trailing_offset)
+      .def_readwrite("created_at_ns", &flox_py::PyOrder::created_at_ns)
+      .def_readwrite("exchange_ts_ns", &flox_py::PyOrder::exchange_ts_ns);
+
+  py::class_<flox_py::PyExchangeCapabilities>(m, "ExchangeCapabilities")
+      .def(py::init<>())
+      .def_readwrite("stop_market", &flox_py::PyExchangeCapabilities::stop_market)
+      .def_readwrite("stop_limit", &flox_py::PyExchangeCapabilities::stop_limit)
+      .def_readwrite("take_profit_market",
+                     &flox_py::PyExchangeCapabilities::take_profit_market)
+      .def_readwrite("take_profit_limit",
+                     &flox_py::PyExchangeCapabilities::take_profit_limit)
+      .def_readwrite("trailing_stop", &flox_py::PyExchangeCapabilities::trailing_stop)
+      .def_readwrite("iceberg", &flox_py::PyExchangeCapabilities::iceberg)
+      .def_readwrite("oco", &flox_py::PyExchangeCapabilities::oco)
+      .def_readwrite("gtc", &flox_py::PyExchangeCapabilities::gtc)
+      .def_readwrite("ioc", &flox_py::PyExchangeCapabilities::ioc)
+      .def_readwrite("fok", &flox_py::PyExchangeCapabilities::fok)
+      .def_readwrite("gtd", &flox_py::PyExchangeCapabilities::gtd)
+      .def_readwrite("post_only", &flox_py::PyExchangeCapabilities::post_only)
+      .def_readwrite("reduce_only", &flox_py::PyExchangeCapabilities::reduce_only)
+      .def_readwrite("close_position", &flox_py::PyExchangeCapabilities::close_position);
+
+  py::class_<flox_py::PyExecutor, flox_py::PyExecutorTrampoline,
+             std::shared_ptr<flox_py::PyExecutor>>(m, "Executor")
+      .def(py::init<>())
+      .def("submit", &flox_py::PyExecutor::submit, py::arg("order"))
+      .def("cancel", &flox_py::PyExecutor::cancel, py::arg("order_id"))
+      .def("cancel_all", &flox_py::PyExecutor::cancel_all, py::arg("symbol"))
+      .def("replace", &flox_py::PyExecutor::replace, py::arg("old_order_id"),
+           py::arg("new_order"))
+      .def("submit_oco", &flox_py::PyExecutor::submit_oco, py::arg("order1"),
+           py::arg("order2"))
+      .def("capabilities", &flox_py::PyExecutor::capabilities)
+      .def("on_start", &flox_py::PyExecutor::on_start)
+      .def("on_stop", &flox_py::PyExecutor::on_stop);
+
+  py::class_<flox_py::PyExecutionListener, flox_py::PyExecutionListenerTrampoline,
+             std::shared_ptr<flox_py::PyExecutionListener>>(m, "ExecutionListener")
+      .def(py::init<>())
+      .def("on_submitted", &flox_py::PyExecutionListener::on_submitted)
+      .def("on_accepted", &flox_py::PyExecutionListener::on_accepted)
+      .def("on_partially_filled", &flox_py::PyExecutionListener::on_partially_filled,
+           py::arg("order"), py::arg("fill_qty"))
+      .def("on_filled", &flox_py::PyExecutionListener::on_filled)
+      .def("on_pending_cancel", &flox_py::PyExecutionListener::on_pending_cancel)
+      .def("on_canceled", &flox_py::PyExecutionListener::on_canceled)
+      .def("on_expired", &flox_py::PyExecutionListener::on_expired)
+      .def("on_rejected", &flox_py::PyExecutionListener::on_rejected,
+           py::arg("order"), py::arg("reason"))
+      .def("on_replaced", &flox_py::PyExecutionListener::on_replaced,
+           py::arg("old_order"), py::arg("new_order"))
+      .def("on_pending_trigger", &flox_py::PyExecutionListener::on_pending_trigger)
+      .def("on_triggered", &flox_py::PyExecutionListener::on_triggered)
+      .def("on_trailing_stop_updated",
+           &flox_py::PyExecutionListener::on_trailing_stop_updated,
+           py::arg("order"), py::arg("new_trigger"));
+
+  m.def("set_log_callback", &flox_py::setPythonLogCallback, py::arg("callback"),
+        "Install a Python callable as the global log sink. Pass None to "
+        "detach. Callable receives (level: int, msg: str); level: 0=info, "
+        "1=warn, 2=error.");
+
   py::class_<PyRunner>(m, "Runner")
       .def(py::init([](SymbolRegistry* reg, py::object on_signal, bool threaded)
                     { return std::make_unique<PyRunner>(reg, std::move(on_signal), threaded); }),
@@ -1597,6 +1959,20 @@ inline void bindStrategy(py::module_& m)
            py::keep_alive<1, 2>())
       .def("start", &PyRunner::start)
       .def("stop", &PyRunner::stop)
+      .def("set_pnl_tracker", &PyRunner::set_pnl_tracker, py::arg("tracker"),
+           py::keep_alive<1, 2>())
+      .def("set_storage_sink", &PyRunner::set_storage_sink, py::arg("sink"),
+           py::keep_alive<1, 2>())
+      .def("set_risk_manager", &PyRunner::set_risk_manager, py::arg("rm"),
+           py::keep_alive<1, 2>())
+      .def("set_kill_switch", &PyRunner::set_kill_switch, py::arg("ks"),
+           py::keep_alive<1, 2>())
+      .def("set_order_validator", &PyRunner::set_order_validator, py::arg("ov"),
+           py::keep_alive<1, 2>())
+      .def("set_market_data_recorder", &PyRunner::set_market_data_recorder,
+           py::arg("recorder"), py::keep_alive<1, 2>())
+      .def("set_executor", &PyRunner::set_executor, py::arg("executor"),
+           py::keep_alive<1, 2>())
       .def("on_trade", [](PyRunner& r, py::object sym, double price, double qty, bool is_buy, int64_t ts_ns)
            { r.on_trade(symId(sym), price, qty, is_buy, ts_ns); }, py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("is_buy"), py::arg("ts_ns") = 0)
       .def("on_book_snapshot", [](PyRunner& r, py::object sym, const std::vector<double>& bp, const std::vector<double>& bq, const std::vector<double>& ap, const std::vector<double>& aq, int64_t ts_ns)
@@ -1614,6 +1990,10 @@ inline void bindStrategy(py::module_& m)
            py::keep_alive<1, 2>())
       .def("set_strategy", &PyBacktestRunner::set_strategy, py::arg("strategy"),
            py::keep_alive<1, 2>())
+      .def("set_executor", &PyBacktestRunner::set_executor, py::arg("executor"),
+           py::keep_alive<1, 2>())
+      .def("add_execution_listener", &PyBacktestRunner::add_execution_listener,
+           py::arg("listener"), py::keep_alive<1, 2>())
       .def("run_csv", &PyBacktestRunner::run_csv,
            py::arg("path"), py::arg("symbol") = "")
       .def("run_ohlcv", &PyBacktestRunner::run_ohlcv,
