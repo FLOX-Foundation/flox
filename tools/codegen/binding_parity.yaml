@@ -1,0 +1,304 @@
+## Cross-binding parity manifest.
+##
+## Declares, per IDL group (`FLOX_EXPORT(group = "X")` in
+## include/flox/capi/flox_capi_spec.hpp), which language bindings are
+## expected to expose what. Verified by `scripts/check_binding_parity.py`
+## (run in CI as part of the verify-docs-current job).
+##
+## Each group has up to four binding entries: pybind11, napi, codon, quickjs.
+## Allowed status values:
+##   required          binding must expose the listed `classes` / `functions`
+##   not_applicable    group is internal helpers / never user-facing here
+##   allowlist         known gap; must include a `reason` (link a tracker task)
+##
+## When a new IDL group is added, add a top-level entry here or CI fails.
+##
+## Codon coverage is asserted via the auto-generated golden file — every
+## group that emits exports ends up there, so codon defaults to `required`
+## with no class/function listing.
+
+groups:
+  # ── Existing user-facing classes ──────────────────────────────────────
+
+  symbol_registry:
+    pybind11: { status: required, classes: [SymbolRegistry] }
+    napi: { status: required, classes: [SymbolRegistry] }
+    codon: { status: required }
+
+  strategy_lifecycle:
+    pybind11: { status: required, classes: [Strategy] }
+    napi: { status: required, classes: [SignalBuilder] }
+    codon: { status: required }
+
+  signal_emission:
+    pybind11: { status: required, classes: [Signal, SignalBuilder] }
+    napi: { status: required, classes: [SignalBuilder] }
+    codon: { status: required }
+
+  strategyrunner_synchronous:
+    pybind11: { status: required, classes: [Runner] }
+    napi: { status: required, classes: [Runner] }
+    codon: { status: required }
+
+  floxliveengine_disruptor:
+    pybind11: { status: required, classes: [Engine] }
+    napi: { status: required, classes: [Engine] }
+    codon: { status: required }
+
+  backtestrunner_replay:
+    pybind11: { status: required, classes: [BacktestRunner] }
+    napi: { status: required, classes: [BacktestRunner] }
+    codon: { status: required }
+
+  backtest_slippage:
+    pybind11: { status: required, classes: [SimulatedExecutor, BacktestResult] }
+    napi: { status: required, classes: [SimulatedExecutor, BacktestResult] }
+    codon: { status: required }
+
+  simulated_executor:
+    pybind11: { status: required, classes: [SimulatedExecutor] }
+    napi: { status: required, classes: [SimulatedExecutor] }
+    codon: { status: required }
+
+  order_book:
+    pybind11: { status: required, classes: [OrderBook] }
+    napi: { status: required, classes: [OrderBook] }
+    codon: { status: required }
+
+  l3_order:
+    pybind11: { status: required, classes: [L3Book] }
+    napi: { status: required, classes: [L3Book] }
+    codon: { status: required }
+
+  composite_book:
+    pybind11: { status: required, classes: [CompositeBookMatrix] }
+    napi: { status: required, classes: [CompositeBookMatrix] }
+    codon: { status: required }
+
+  order_tracker:
+    pybind11: { status: required, classes: [OrderTracker] }
+    napi: { status: required, classes: [OrderTracker] }
+    codon: { status: required }
+
+  position:
+    pybind11: { status: required, classes: [PositionTracker] }
+    napi: { status: required, classes: [PositionTracker] }
+    codon: { status: required }
+
+  position_group:
+    pybind11: { status: required, classes: [PositionGroupTracker] }
+    napi: { status: required, classes: [PositionGroupTracker] }
+    codon: { status: required }
+
+  indicatorgraph:
+    pybind11: { status: required, classes: [IndicatorGraph] }
+    napi: { status: required, classes: [IndicatorGraph, StreamingIndicatorGraph] }
+    codon: { status: required }
+
+  market_profile:
+    pybind11: { status: required, classes: [MarketProfile] }
+    napi: { status: required, classes: [MarketProfile] }
+    codon: { status: required }
+
+  volume_profile:
+    pybind11: { status: required, classes: [VolumeProfile] }
+    napi: { status: required, classes: [VolumeProfile] }
+    codon: { status: required }
+
+  footprint_bar:
+    pybind11: { status: required, classes: [FootprintBar] }
+    napi: { status: required, classes: [FootprintBar] }
+    codon: { status: required }
+
+  datarecorder:
+    pybind11: { status: required, classes: [DataRecorder] }
+    napi: { status: required, classes: [DataRecorder] }
+    codon: { status: required }
+
+  data_reader:
+    pybind11: { status: required, classes: [DataReader] }
+    napi: { status: required, classes: [DataReader] }
+    codon: { status: required }
+
+  datareader:
+    pybind11: { status: required, classes: [DataReader] }
+    napi: { status: required, classes: [DataReader] }
+    codon: { status: required }
+
+  data_writer:
+    pybind11: { status: required, classes: [DataWriter] }
+    napi: { status: required, classes: [DataWriter] }
+    codon: { status: required }
+
+  datawriter:
+    pybind11: { status: required, classes: [DataWriter] }
+    napi: { status: required, classes: [DataWriter] }
+    codon: { status: required }
+
+  partitioner:
+    pybind11: { status: required, classes: [Partitioner] }
+    napi: { status: required, classes: [Partitioner] }
+    codon: { status: required }
+
+  segment:
+    pybind11: { status: required, classes: [Partitioner] }
+    napi: { status: required, classes: [Partitioner] }
+    codon: { status: required }
+
+  # ── Function-shaped groups (module-level helpers, no class) ───────────
+
+  bar_aggregation:
+    pybind11:
+      status: required
+      functions: [aggregate_time_bars, aggregate_tick_bars, aggregate_volume_bars]
+    napi:
+      status: required
+      functions: [aggregateTimeBars, aggregateTickBars, aggregateVolumeBars]
+    codon: { status: required }
+
+  additional_bar:
+    pybind11:
+      status: required
+      functions: [aggregate_range_bars, aggregate_renko_bars]
+    napi:
+      status: required
+      functions: [aggregateRangeBars, aggregateRenkoBars]
+    codon: { status: required }
+
+  heikin_ashi:
+    pybind11:
+      status: required
+      functions: [aggregate_heikin_ashi_bars]
+    napi:
+      status: required
+      functions: [aggregateHeikinAshiBars]
+    codon: { status: required }
+
+  additional_stats:
+    pybind11:
+      status: required
+      functions: [permutation_test, bootstrap_ci]
+    napi:
+      status: allowlist
+      reason: "stats functions exposed via Stats class (has permutationTest / bootstrapCi methods); function-style not declared. Cosmetic gap; tracked under 'expand napi stats surface'."
+    codon: { status: required }
+
+  statistics:
+    pybind11:
+      status: required
+      functions: [trade_pnl, win_rate, profit_factor]
+    napi:
+      status: allowlist
+      reason: "stats fns currently on Stats class (has tradePnl / winRate / profitFactor methods)."
+    codon: { status: required }
+
+  indicator_functions:
+    pybind11:
+      status: required
+      functions: [sma, ema, rsi, macd, atr]
+    napi:
+      status: required
+      functions: [sma, ema, rsi, macd, atr]
+    codon: { status: required }
+
+  targets:
+    pybind11:
+      status: allowlist
+      reason: "exposed as `targets` submodule (see flox_py/_flox_py/targets.pyi); submodule-style is not currently inspected by the parity gate."
+    napi:
+      status: allowlist
+      reason: "targets surfaced via Stats / Engine helpers; submodule shape differs from python."
+    codon: { status: required }
+
+  # ── New hooks (added in this & previous sessions, NOT yet in pybind11/napi) ──
+  # Followup tracked in trackers; gate forces explicit acknowledgement.
+
+  risk:
+    pybind11:
+      status: allowlist
+      reason: "RiskManager / KillSwitch / OrderValidator hooks (T015/T016/T012) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11 — NAPI wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  metrics:
+    pybind11:
+      status: allowlist
+      reason: "PnLTracker hook (T018) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  storage:
+    pybind11:
+      status: allowlist
+      reason: "StorageSink hook (T019) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  recorder:
+    pybind11:
+      status: allowlist
+      reason: "MarketDataRecorder hook (T020, distinct from concrete `datarecorder` group). pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  replay:
+    pybind11:
+      status: allowlist
+      reason: "ReplaySource hook (T021) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  execution:
+    pybind11:
+      status: allowlist
+      reason: "Executor + ExecutionListener hooks (T023) — pybind11 wrapper deferred. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  logger:
+    pybind11:
+      status: allowlist
+      reason: "flox_set_log_callback (T017) — pybind11 wrapper not added. Tracked: W2 add-binding-parity-for-hooks."
+    napi:
+      status: allowlist
+      reason: "Same as pybind11. Tracked: W2 add-binding-parity-for-hooks."
+    codon: { status: required }
+
+  # ── Internal helpers — not user-facing in pybind11/napi ───────────────
+
+  fixed_point:
+    pybind11: { status: not_applicable }  # exposed via Price.toDouble() etc on classes
+    napi: { status: not_applicable }
+    codon: { status: required }
+
+  pointer_out:
+    pybind11: { status: not_applicable }  # internal output-pointer helpers
+    napi: { status: not_applicable }
+    codon: { status: required }
+
+  validation:
+    pybind11: { status: not_applicable }  # input validation, used internally
+    napi: { status: not_applicable }
+    codon: { status: required }
+
+  context_queries:
+    pybind11: { status: not_applicable }  # surfaced via SymbolContext class
+    napi: { status: not_applicable }
+    codon: { status: required }
+
+  executor_fill:
+    pybind11: { status: not_applicable }  # fills accessed via SimulatedExecutor.fills()
+    napi: { status: not_applicable }
+    codon: { status: required }
