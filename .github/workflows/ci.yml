@@ -205,6 +205,10 @@ jobs:
       run: |
         cd node && node test/test_bindings.js
 
+    - name: Verify Node.js extension hooks
+      run: |
+        cd node && node test/test_hooks.js
+
     - name: Cross-binding parity (Python ↔ Node, same C++ math)
       run: PYTHONPATH=build/python python3 scripts/cross_binding_parity.py
 

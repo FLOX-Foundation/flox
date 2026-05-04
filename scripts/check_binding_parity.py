@@ -102,14 +102,17 @@ def scan_pyi(path: Path) -> tuple[set[str], set[str]]:
 
 
 def scan_dts(path: Path) -> tuple[set[str], set[str]]:
-    """Return (classes, top-level functions) declared in the .d.ts file."""
+    """Return (classes-and-interfaces, top-level functions) declared in
+    the .d.ts file. NAPI hooks are typically modelled as `interface` (a
+    plain object with named method properties) rather than `class`, so
+    we accept both for the parity gate."""
     if not path.exists():
         return set(), set()
     classes, funcs = set(), set()
     for line in path.read_text().splitlines():
-        m = re.match(r"^export\s+class\s+([A-Za-z_][A-Za-z_0-9]*)", line)
+        m = re.match(r"^export\s+(class|interface)\s+([A-Za-z_][A-Za-z_0-9]*)", line)
         if m:
-            classes.add(m.group(1))
+            classes.add(m.group(2))
             continue
         m = re.match(r"^export\s+function\s+([A-Za-z_][A-Za-z_0-9]*)", line)
         if m:

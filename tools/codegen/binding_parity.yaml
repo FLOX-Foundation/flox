@@ -218,50 +218,38 @@ groups:
       status: required
       classes: [RiskManager, KillSwitch, OrderValidator]
     napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred — Python is the priority language. Tracked: W2-T013."
+      status: required
+      classes: [RiskManager, KillSwitch, OrderValidator]
     codon: { status: required }
 
   metrics:
     pybind11: { status: required, classes: [PnLTracker] }
-    napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred — Python first. Tracked: W2-T013."
+    napi: { status: required, classes: [PnLTracker] }
     codon: { status: required }
 
   storage:
     pybind11: { status: required, classes: [StorageSink] }
-    napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred. Tracked: W2-T013."
+    napi: { status: required, classes: [StorageSink] }
     codon: { status: required }
 
   recorder:
     pybind11: { status: required, classes: [MarketDataRecorderHook] }
-    napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred. Tracked: W2-T013."
+    napi: { status: required, classes: [MarketDataRecorderHook] }
     codon: { status: required }
 
   replay:
     pybind11: { status: required, classes: [ReplaySource] }
-    napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred. Tracked: W2-T013."
+    napi: { status: required, classes: [ReplaySource] }
     codon: { status: required }
 
   execution:
     pybind11: { status: required, classes: [Executor, ExecutionListener] }
-    napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred. Tracked: W2-T013."
+    napi: { status: required, classes: [Executor, ExecutionListener] }
     codon: { status: required }
 
   logger:
     pybind11: { status: required, functions: [set_log_callback] }
-    napi:
-      status: allowlist
-      reason: "NAPI wrapper deferred. Tracked: W2-T013."
+    napi: { status: required, functions: [setLogCallback] }
     codon: { status: required }
 
   # ── Internal helpers — not user-facing in pybind11/napi ───────────────
