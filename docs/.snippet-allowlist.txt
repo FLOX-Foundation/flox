@@ -68,3 +68,10 @@ docs/reference/quickjs/tools.md
 docs/tutorials/codon-strategy.md
 docs/tutorials/node-quickstart.md
 docs/tutorials/python-quickstart.md
+
+# Contributor docs — code blocks are pattern templates / pseudocode
+# (e.g. "your hook trampoline looks like X"), not runnable snippets.
+# Extracting them as runnable files would obscure the structural
+# point being illustrated.
+docs/contributors/adding-a-c-api-export.md
+docs/contributors/extension-hook-pattern.md
