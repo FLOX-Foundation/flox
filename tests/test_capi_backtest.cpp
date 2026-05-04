@@ -16,29 +16,29 @@
 
 TEST(CapiBacktest, SlippageFixedBps)
 {
-  auto exec = flox_executor_create();
-  flox_executor_set_default_slippage(exec, FLOX_SLIPPAGE_FIXED_BPS, 0, 0.0, 100.0, 0.0);
-  flox_executor_on_best_levels(exec, 1, 100.0, 10.0, 100.0, 10.0);
-  flox_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0, /*type=market=*/1, 1);
-  ASSERT_EQ(flox_executor_fill_count(exec), 1u);
-  flox_executor_destroy(exec);
+  auto exec = flox_simulated_executor_create();
+  flox_simulated_executor_set_default_slippage(exec, FLOX_SLIPPAGE_FIXED_BPS, 0, 0.0, 100.0, 0.0);
+  flox_simulated_executor_on_best_levels(exec, 1, 100.0, 10.0, 100.0, 10.0);
+  flox_simulated_executor_submit_order(exec, /*id=*/1, /*side=buy=*/0, 0.0, 1.0, /*type=market=*/1, 1);
+  ASSERT_EQ(flox_simulated_executor_fill_count(exec), 1u);
+  flox_simulated_executor_destroy(exec);
 }
 
 TEST(CapiBacktest, QueueFillOnTradeAhead)
 {
-  auto exec = flox_executor_create();
-  flox_executor_set_queue_model(exec, FLOX_QUEUE_TOB, 1);
+  auto exec = flox_simulated_executor_create();
+  flox_simulated_executor_set_queue_model(exec, FLOX_QUEUE_TOB, 1);
 
   // Best ask at 101, no bids. Buy limit at 99 sits behind everyone else's
   // bid-side queue of size 0 (fresh level), waiting for a sell print at 99.
-  flox_executor_on_best_levels(exec, 1, 99.0, 0.0, 101.0, 5.0);
+  flox_simulated_executor_on_best_levels(exec, 1, 99.0, 0.0, 101.0, 5.0);
 
-  flox_executor_submit_order(exec, 42, /*buy=*/0, 99.0, 2.0, /*type=limit=*/0, 1);
-  EXPECT_EQ(flox_executor_fill_count(exec), 0u);
+  flox_simulated_executor_submit_order(exec, 42, /*buy=*/0, 99.0, 2.0, /*type=limit=*/0, 1);
+  EXPECT_EQ(flox_simulated_executor_fill_count(exec), 0u);
 
-  flox_executor_on_trade_qty(exec, 1, 99.0, 2.0, /*is_buy=*/0);
-  EXPECT_EQ(flox_executor_fill_count(exec), 1u);
-  flox_executor_destroy(exec);
+  flox_simulated_executor_on_trade_qty(exec, 1, 99.0, 2.0, /*is_buy=*/0);
+  EXPECT_EQ(flox_simulated_executor_fill_count(exec), 1u);
+  flox_simulated_executor_destroy(exec);
 }
 
 TEST(CapiBacktest, ResultStatsAndEquityCurve)

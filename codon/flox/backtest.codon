@@ -5,20 +5,20 @@
 #
 # Handles are heap-allocated by the C API. Call .close() when done to free them.
 
-from C import flox_executor_create() -> cobj
-from C import flox_executor_destroy(cobj)
-from C import flox_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
-from C import flox_executor_cancel_order(cobj, u64)
-from C import flox_executor_cancel_all(cobj, u32)
-from C import flox_executor_on_bar(cobj, u32, float)
-from C import flox_executor_on_trade(cobj, u32, float, u8)
-from C import flox_executor_on_trade_qty(cobj, u32, float, float, u8)
-from C import flox_executor_on_best_levels(cobj, u32, float, float, float, float)
-from C import flox_executor_advance_clock(cobj, i64)
-from C import flox_executor_fill_count(cobj) -> u32
-from C import flox_executor_set_default_slippage(cobj, i32, i32, float, float, float)
-from C import flox_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
-from C import flox_executor_set_queue_model(cobj, i32, u32)
+from C import flox_simulated_executor_create() -> cobj
+from C import flox_simulated_executor_destroy(cobj)
+from C import flox_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import flox_simulated_executor_cancel_order(cobj, u64)
+from C import flox_simulated_executor_cancel_all(cobj, u32)
+from C import flox_simulated_executor_on_bar(cobj, u32, float)
+from C import flox_simulated_executor_on_trade(cobj, u32, float, u8)
+from C import flox_simulated_executor_on_trade_qty(cobj, u32, float, float, u8)
+from C import flox_simulated_executor_on_best_levels(cobj, u32, float, float, float, float)
+from C import flox_simulated_executor_advance_clock(cobj, i64)
+from C import flox_simulated_executor_fill_count(cobj) -> u32
+from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
+from C import flox_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
+from C import flox_simulated_executor_set_queue_model(cobj, i32, u32)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
@@ -87,11 +87,11 @@ class SimulatedExecutor:
     _handle: cobj
 
     def __init__(self):
-        self._handle = flox_executor_create()
+        self._handle = flox_simulated_executor_create()
 
     def close(self):
         if self._handle != cobj():
-            flox_executor_destroy(self._handle)
+            flox_simulated_executor_destroy(self._handle)
             self._handle = cobj()
 
     def submit_order(self, id: int, side: str, price: float, quantity: float,
@@ -110,54 +110,54 @@ class SimulatedExecutor:
             t = 5
         elif order_type == "trailing_stop":
             t = 6
-        flox_executor_submit_order(self._handle, u64(id), side_u, price, quantity,
+        flox_simulated_executor_submit_order(self._handle, u64(id), side_u, price, quantity,
                                    u8(t), u32(symbol))
 
     def cancel_order(self, order_id: int):
-        flox_executor_cancel_order(self._handle, u64(order_id))
+        flox_simulated_executor_cancel_order(self._handle, u64(order_id))
 
     def cancel_all(self, symbol: int):
-        flox_executor_cancel_all(self._handle, u32(symbol))
+        flox_simulated_executor_cancel_all(self._handle, u32(symbol))
 
     def on_bar(self, symbol: int, close_price: float):
-        flox_executor_on_bar(self._handle, u32(symbol), close_price)
+        flox_simulated_executor_on_bar(self._handle, u32(symbol), close_price)
 
     def on_trade(self, symbol: int, price: float, is_buy: bool):
-        flox_executor_on_trade(self._handle, u32(symbol), price,
+        flox_simulated_executor_on_trade(self._handle, u32(symbol), price,
                                u8(1 if is_buy else 0))
 
     def on_trade_qty(self, symbol: int, price: float, quantity: float, is_buy: bool):
-        flox_executor_on_trade_qty(self._handle, u32(symbol), price, quantity,
+        flox_simulated_executor_on_trade_qty(self._handle, u32(symbol), price, quantity,
                                    u8(1 if is_buy else 0))
 
     def on_best_levels(self, symbol: int, bid_price: float, bid_qty: float,
                        ask_price: float, ask_qty: float):
-        flox_executor_on_best_levels(self._handle, u32(symbol), bid_price, bid_qty,
+        flox_simulated_executor_on_best_levels(self._handle, u32(symbol), bid_price, bid_qty,
                                      ask_price, ask_qty)
 
     def advance_clock(self, timestamp_ns: int):
-        flox_executor_advance_clock(self._handle, i64(timestamp_ns))
+        flox_simulated_executor_advance_clock(self._handle, i64(timestamp_ns))
 
     def set_default_slippage(self, model: int, ticks: int = 0,
                              tick_size: float = 0.0, bps: float = 0.0,
                              impact_coeff: float = 0.0):
-        flox_executor_set_default_slippage(self._handle, i32(model), i32(ticks),
+        flox_simulated_executor_set_default_slippage(self._handle, i32(model), i32(ticks),
                                            tick_size, bps, impact_coeff)
 
     def set_symbol_slippage(self, symbol: int, model: int, ticks: int = 0,
                             tick_size: float = 0.0, bps: float = 0.0,
                             impact_coeff: float = 0.0):
-        flox_executor_set_symbol_slippage(self._handle, u32(symbol), i32(model),
+        flox_simulated_executor_set_symbol_slippage(self._handle, u32(symbol), i32(model),
                                           i32(ticks), tick_size, bps, impact_coeff)
 
     def set_queue_model(self, model: int, depth: int = 1):
-        flox_executor_set_queue_model(self._handle, i32(model), u32(depth))
+        flox_simulated_executor_set_queue_model(self._handle, i32(model), u32(depth))
 
     def handle(self) -> cobj:
         return self._handle
 
     def fill_count(self) -> int:
-        return int(flox_executor_fill_count(self._handle))
+        return int(flox_simulated_executor_fill_count(self._handle))
 
 
 class BacktestResult:

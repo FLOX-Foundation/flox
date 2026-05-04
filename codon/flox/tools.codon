@@ -14,15 +14,15 @@ from C import flox_book_spread(cobj, Ptr[f64]) -> u8
 from C import flox_book_is_crossed(cobj) -> u8
 from C import flox_book_clear(cobj)
 
-from C import flox_executor_create() -> cobj
-from C import flox_executor_destroy(cobj)
-from C import flox_executor_submit_order(cobj, u64, u8, f64, f64, u8, u32)
-from C import flox_executor_cancel_order(cobj, u64)
-from C import flox_executor_cancel_all(cobj, u32)
-from C import flox_executor_on_bar(cobj, u32, f64)
-from C import flox_executor_on_trade(cobj, u32, f64, u8)
-from C import flox_executor_advance_clock(cobj, i64)
-from C import flox_executor_fill_count(cobj) -> u32
+from C import flox_simulated_executor_create() -> cobj
+from C import flox_simulated_executor_destroy(cobj)
+from C import flox_simulated_executor_submit_order(cobj, u64, u8, f64, f64, u8, u32)
+from C import flox_simulated_executor_cancel_order(cobj, u64)
+from C import flox_simulated_executor_cancel_all(cobj, u32)
+from C import flox_simulated_executor_on_bar(cobj, u32, f64)
+from C import flox_simulated_executor_on_trade(cobj, u32, f64, u8)
+from C import flox_simulated_executor_advance_clock(cobj, i64)
+from C import flox_simulated_executor_fill_count(cobj) -> u32
 
 from C import flox_position_tracker_create(u8) -> cobj
 from C import flox_position_tracker_destroy(cobj)
@@ -238,33 +238,33 @@ class SimulatedExecutor:
     _h: cobj
 
     def __init__(self):
-        self._h = flox_executor_create()
+        self._h = flox_simulated_executor_create()
 
     def submit_order(self, order_id: int, side: str, price: float,
                      qty: float, order_type: int = 0, symbol: int = 1):
         s = u8(0) if side == "buy" else u8(1)
-        flox_executor_submit_order(self._h, u64(order_id), s, price, qty,
+        flox_simulated_executor_submit_order(self._h, u64(order_id), s, price, qty,
                                    u8(order_type), u32(symbol))
 
     def cancel_order(self, order_id: int):
-        flox_executor_cancel_order(self._h, u64(order_id))
+        flox_simulated_executor_cancel_order(self._h, u64(order_id))
 
     def cancel_all(self, symbol: int):
-        flox_executor_cancel_all(self._h, u32(symbol))
+        flox_simulated_executor_cancel_all(self._h, u32(symbol))
 
     def on_bar(self, symbol: int, close_price: float):
-        flox_executor_on_bar(self._h, u32(symbol), close_price)
+        flox_simulated_executor_on_bar(self._h, u32(symbol), close_price)
 
     def on_trade(self, symbol: int, price: float, is_buy: bool):
-        flox_executor_on_trade(self._h, u32(symbol), price,
+        flox_simulated_executor_on_trade(self._h, u32(symbol), price,
                                u8(1) if is_buy else u8(0))
 
     def advance_clock(self, timestamp_ns: int):
-        flox_executor_advance_clock(self._h, i64(timestamp_ns))
+        flox_simulated_executor_advance_clock(self._h, i64(timestamp_ns))
 
     @property
     def fill_count(self) -> int:
-        return int(flox_executor_fill_count(self._h))
+        return int(flox_simulated_executor_fill_count(self._h))
 
 
 class PositionTracker:

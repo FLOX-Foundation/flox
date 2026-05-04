@@ -10,16 +10,18 @@ flox_aggregate_volume_bars|uint32_t|const int64_t *|const double *|const double 
 flox_backtest_result_create|FloxBacktestResultHandle|double|double|uint8_t|double|double|double
 flox_backtest_result_destroy|void|FloxBacktestResultHandle
 flox_backtest_result_equity_curve|uint32_t|FloxBacktestResultHandle|FloxEquityPoint *|uint32_t
-flox_backtest_result_ingest_executor|void|FloxBacktestResultHandle|FloxExecutorHandle
+flox_backtest_result_ingest_executor|void|FloxBacktestResultHandle|FloxSimulatedExecutorHandle
 flox_backtest_result_record_fill|void|FloxBacktestResultHandle|uint64_t|uint32_t|uint8_t|double|double|int64_t
 flox_backtest_result_stats|void|FloxBacktestResultHandle|FloxBacktestStats *
 flox_backtest_result_write_equity_curve_csv|uint8_t|FloxBacktestResultHandle|const char *
+flox_backtest_runner_add_execution_listener|void|FloxBacktestRunnerHandle|FloxExecutionListenerHandle
 flox_backtest_runner_create|FloxBacktestRunnerHandle|FloxRegistryHandle|double|double
 flox_backtest_runner_destroy|void|FloxBacktestRunnerHandle
 flox_backtest_runner_run_bars|int|FloxBacktestRunnerHandle|const int64_t *|const int64_t *|const double *|const double *|const double *|const double *|const double *|uint32_t|const char *|uint8_t|uint64_t|FloxBacktestStats *
 flox_backtest_runner_run_csv|int|FloxBacktestRunnerHandle|const char *|const char *|FloxBacktestStats *
 flox_backtest_runner_run_ohlcv|int|FloxBacktestRunnerHandle|const int64_t *|const double *|uint32_t|const char *|FloxBacktestStats *
 flox_backtest_runner_run_replay_source|int|FloxBacktestRunnerHandle|FloxReplaySourceHandle|FloxBacktestStats *
+flox_backtest_runner_set_executor|void|FloxBacktestRunnerHandle|FloxExecutorHandle
 flox_backtest_runner_set_strategy|void|FloxBacktestRunnerHandle|FloxStrategyHandle
 flox_best_ask_raw|int64_t|FloxStrategyHandle|uint32_t
 flox_best_bid_raw|int64_t|FloxStrategyHandle|uint32_t
@@ -92,22 +94,11 @@ flox_emit_take_profit_limit|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int64_t
 flox_emit_take_profit_market|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int64_t|int64_t
 flox_emit_trailing_stop|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int64_t|int64_t
 flox_emit_trailing_stop_percent|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int32_t|int64_t
-flox_executor_advance_clock|void|FloxExecutorHandle|int64_t
-flox_executor_cancel_all|void|FloxExecutorHandle|uint32_t
-flox_executor_cancel_order|void|FloxExecutorHandle|uint64_t
-flox_executor_create|FloxExecutorHandle
+flox_execution_listener_create|FloxExecutionListenerHandle|FloxExecutionListenerCallbacks
+flox_execution_listener_destroy|void|FloxExecutionListenerHandle
+flox_executor_create|FloxExecutorHandle|FloxExecutorCallbacks
 flox_executor_destroy|void|FloxExecutorHandle
-flox_executor_fill_count|uint32_t|FloxExecutorHandle
-flox_executor_get_fills|uint32_t|FloxExecutorHandle|FloxFill *|uint32_t
-flox_executor_on_bar|void|FloxExecutorHandle|uint32_t|double
-flox_executor_on_best_levels|void|FloxExecutorHandle|uint32_t|double|double|double|double
-flox_executor_on_book_snapshot|void|FloxExecutorHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t
-flox_executor_on_trade|void|FloxExecutorHandle|uint32_t|double|uint8_t
-flox_executor_on_trade_qty|void|FloxExecutorHandle|uint32_t|double|double|uint8_t
-flox_executor_set_default_slippage|void|FloxExecutorHandle|int32_t|int32_t|double|double|double
-flox_executor_set_queue_model|void|FloxExecutorHandle|int32_t|uint32_t
-flox_executor_set_symbol_slippage|void|FloxExecutorHandle|uint32_t|int32_t|int32_t|double|double|double
-flox_executor_submit_order|void|FloxExecutorHandle|uint64_t|uint8_t|double|double|uint8_t|uint32_t
+flox_executor_get_capabilities|void|FloxExecutorHandle|FloxExchangeCapabilities *
 flox_footprint_add_trade|void|FloxFootprintHandle|double|double|uint8_t
 flox_footprint_clear|void|FloxFootprintHandle
 flox_footprint_create|FloxFootprintHandle|double
@@ -179,6 +170,7 @@ flox_live_engine_destroy|void|FloxLiveEngineHandle
 flox_live_engine_publish_bar|void|FloxLiveEngineHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
 flox_live_engine_publish_book_snapshot|void|FloxLiveEngineHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t|int64_t
 flox_live_engine_publish_trade|void|FloxLiveEngineHandle|uint32_t|double|double|uint8_t|int64_t
+flox_live_engine_set_executor|void|FloxLiveEngineHandle|FloxExecutorHandle
 flox_live_engine_set_kill_switch|void|FloxLiveEngineHandle|FloxKillSwitchHandle
 flox_live_engine_set_market_data_recorder|void|FloxLiveEngineHandle|FloxMarketDataRecorderHandle
 flox_live_engine_set_order_validator|void|FloxLiveEngineHandle|FloxOrderValidatorHandle
@@ -262,6 +254,7 @@ flox_runner_destroy|void|FloxRunnerHandle
 flox_runner_on_bar|void|FloxRunnerHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
 flox_runner_on_book_snapshot|void|FloxRunnerHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t|int64_t
 flox_runner_on_trade|void|FloxRunnerHandle|uint32_t|double|double|uint8_t|int64_t
+flox_runner_set_executor|void|FloxRunnerHandle|FloxExecutorHandle
 flox_runner_set_kill_switch|void|FloxRunnerHandle|FloxKillSwitchHandle
 flox_runner_set_market_data_recorder|void|FloxRunnerHandle|FloxMarketDataRecorderHandle
 flox_runner_set_order_validator|void|FloxRunnerHandle|FloxOrderValidatorHandle
@@ -286,6 +279,22 @@ flox_segment_validate|uint8_t|const char *
 flox_segment_validate_full|FloxSegmentValidation|const char *|uint8_t|uint8_t
 flox_segment_validate_full_p|void|const char *|uint8_t|uint8_t|void *
 flox_set_log_callback|void|FloxLogCallback|void *
+flox_simulated_executor_advance_clock|void|FloxSimulatedExecutorHandle|int64_t
+flox_simulated_executor_cancel_all|void|FloxSimulatedExecutorHandle|uint32_t
+flox_simulated_executor_cancel_order|void|FloxSimulatedExecutorHandle|uint64_t
+flox_simulated_executor_create|FloxSimulatedExecutorHandle
+flox_simulated_executor_destroy|void|FloxSimulatedExecutorHandle
+flox_simulated_executor_fill_count|uint32_t|FloxSimulatedExecutorHandle
+flox_simulated_executor_get_fills|uint32_t|FloxSimulatedExecutorHandle|FloxFill *|uint32_t
+flox_simulated_executor_on_bar|void|FloxSimulatedExecutorHandle|uint32_t|double
+flox_simulated_executor_on_best_levels|void|FloxSimulatedExecutorHandle|uint32_t|double|double|double|double
+flox_simulated_executor_on_book_snapshot|void|FloxSimulatedExecutorHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t
+flox_simulated_executor_on_trade|void|FloxSimulatedExecutorHandle|uint32_t|double|uint8_t
+flox_simulated_executor_on_trade_qty|void|FloxSimulatedExecutorHandle|uint32_t|double|double|uint8_t
+flox_simulated_executor_set_default_slippage|void|FloxSimulatedExecutorHandle|int32_t|int32_t|double|double|double
+flox_simulated_executor_set_queue_model|void|FloxSimulatedExecutorHandle|int32_t|uint32_t
+flox_simulated_executor_set_symbol_slippage|void|FloxSimulatedExecutorHandle|uint32_t|int32_t|int32_t|double|double|double
+flox_simulated_executor_submit_order|void|FloxSimulatedExecutorHandle|uint64_t|uint8_t|double|double|uint8_t|uint32_t
 flox_stat_bootstrap_ci|void|const double *|size_t|double|uint32_t|double *|double *|double *
 flox_stat_correlation|double|const double *|const double *|size_t
 flox_stat_permutation_test|double|const double *|size_t|const double *|size_t|uint32_t

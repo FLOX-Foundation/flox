@@ -59,15 +59,15 @@ TEST(CapiBookTest, CreateAndQuery)
 
 TEST(CapiExecutorTest, SubmitAndFill)
 {
-  FloxExecutorHandle exec = flox_executor_create();
+  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
   ASSERT_NE(exec, nullptr);
 
-  flox_executor_submit_order(exec, 1, 0, 100.0, 1.0, 0, 1);
-  flox_executor_on_bar(exec, 1, 100.0);
+  flox_simulated_executor_submit_order(exec, 1, 0, 100.0, 1.0, 0, 1);
+  flox_simulated_executor_on_bar(exec, 1, 100.0);
 
-  EXPECT_GE(flox_executor_fill_count(exec), 0u);
+  EXPECT_GE(flox_simulated_executor_fill_count(exec), 0u);
 
-  flox_executor_destroy(exec);
+  flox_simulated_executor_destroy(exec);
 }
 
 // ============================================================

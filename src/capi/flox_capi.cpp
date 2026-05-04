@@ -72,6 +72,10 @@
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/book/l3/l3_order_book.h"
+#include "flox/execution/abstract_execution_listener.h"
+#include "flox/execution/abstract_executor.h"
+#include "flox/execution/exchange_capabilities.h"
+#include "flox/execution/order.h"
 #include "flox/execution/order_tracker.h"
 #include "flox/position/position_group.h"
 #include "flox/position/position_tracker.h"
@@ -1030,27 +1034,27 @@ void flox_book_clear(FloxBookHandle h)
 // Simulated executor
 // ============================================================
 
-struct FloxExecutorImpl
+struct FloxSimulatedExecutorImpl
 {
   SimulatedClock clock;
   SimulatedExecutor executor;
-  FloxExecutorImpl() : executor(clock) {}
+  FloxSimulatedExecutorImpl() : executor(clock) {}
 };
 
-FloxExecutorHandle flox_executor_create(void)
+FloxSimulatedExecutorHandle flox_simulated_executor_create(void)
 {
-  return new FloxExecutorImpl();
+  return new FloxSimulatedExecutorImpl();
 }
 
-void flox_executor_destroy(FloxExecutorHandle executor)
+void flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor)
 {
-  delete static_cast<FloxExecutorImpl*>(executor);
+  delete static_cast<FloxSimulatedExecutorImpl*>(executor);
 }
 
-void flox_executor_submit_order(FloxExecutorHandle h, uint64_t id, uint8_t side, double price,
-                                double quantity, uint8_t order_type, uint32_t symbol)
+void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle h, uint64_t id, uint8_t side, double price,
+                                          double quantity, uint8_t order_type, uint32_t symbol)
 {
-  auto* impl = static_cast<FloxExecutorImpl*>(h);
+  auto* impl = static_cast<FloxSimulatedExecutorImpl*>(h);
   Order order{};
   order.id = id;
   order.side = side == 0 ? Side::BUY : Side::SELL;
@@ -1061,35 +1065,35 @@ void flox_executor_submit_order(FloxExecutorHandle h, uint64_t id, uint8_t side,
   impl->executor.submitOrder(order);
 }
 
-void flox_executor_cancel_order(FloxExecutorHandle h, uint64_t order_id)
+void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.cancelOrder(order_id);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);
 }
 
-void flox_executor_cancel_all(FloxExecutorHandle h, uint32_t symbol)
+void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle h, uint32_t symbol)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.cancelAllOrders(symbol);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelAllOrders(symbol);
 }
 
-void flox_executor_on_bar(FloxExecutorHandle h, uint32_t symbol, double close_price)
+void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle h, uint32_t symbol, double close_price)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.onBar(symbol, Price::fromDouble(close_price));
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(symbol, Price::fromDouble(close_price));
 }
 
-void flox_executor_on_trade(FloxExecutorHandle h, uint32_t symbol, double price, uint8_t is_buy)
+void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle h, uint32_t symbol, double price, uint8_t is_buy)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.onTrade(symbol, Price::fromDouble(price),
-                                                      is_buy != 0);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onTrade(symbol, Price::fromDouble(price),
+                                                               is_buy != 0);
 }
 
-void flox_executor_advance_clock(FloxExecutorHandle h, int64_t timestamp_ns)
+void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle h, int64_t timestamp_ns)
 {
-  static_cast<FloxExecutorImpl*>(h)->clock.advanceTo(timestamp_ns);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->clock.advanceTo(timestamp_ns);
 }
 
-uint32_t flox_executor_fill_count(FloxExecutorHandle h)
+uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle h)
 {
-  return static_cast<uint32_t>(static_cast<FloxExecutorImpl*>(h)->executor.fills().size());
+  return static_cast<uint32_t>(static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fills().size());
 }
 
 // ============================================================
@@ -1633,9 +1637,9 @@ void flox_composite_book_check_staleness(FloxCompositeBookHandle h, int64_t now_
 // Executor fill access
 // ============================================================
 
-uint32_t flox_executor_get_fills(FloxExecutorHandle h, FloxFill* fills_out, uint32_t max_fills)
+uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle h, FloxFill* fills_out, uint32_t max_fills)
 {
-  auto& fills = static_cast<FloxExecutorImpl*>(h)->executor.fills();
+  auto& fills = static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fills();
   uint32_t count = static_cast<uint32_t>(std::min(fills.size(), static_cast<size_t>(max_fills)));
   for (uint32_t i = 0; i < count; i++)
   {
@@ -1951,49 +1955,49 @@ SlippageProfile makeSlippageProfile(int32_t model, int32_t ticks, double tick_si
 }
 }  // namespace
 
-void flox_executor_set_default_slippage(FloxExecutorHandle h, int32_t model, int32_t ticks,
-                                        double tick_size, double bps, double impact_coeff)
+void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle h, int32_t model, int32_t ticks,
+                                                  double tick_size, double bps, double impact_coeff)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.setDefaultSlippage(
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setDefaultSlippage(
       makeSlippageProfile(model, ticks, tick_size, bps, impact_coeff));
 }
 
-void flox_executor_set_symbol_slippage(FloxExecutorHandle h, uint32_t symbol, int32_t model,
-                                       int32_t ticks, double tick_size, double bps,
-                                       double impact_coeff)
+void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle h, uint32_t symbol, int32_t model,
+                                                 int32_t ticks, double tick_size, double bps,
+                                                 double impact_coeff)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.setSymbolSlippage(
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSymbolSlippage(
       symbol, makeSlippageProfile(model, ticks, tick_size, bps, impact_coeff));
 }
 
-void flox_executor_set_queue_model(FloxExecutorHandle h, int32_t model, uint32_t depth)
+void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle h, int32_t model, uint32_t depth)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.setQueueModel(
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setQueueModel(
       static_cast<QueueModel>(model), depth);
 }
 
-void flox_executor_on_trade_qty(FloxExecutorHandle h, uint32_t symbol, double price,
-                                double quantity, uint8_t is_buy)
+void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle h, uint32_t symbol, double price,
+                                          double quantity, uint8_t is_buy)
 {
-  static_cast<FloxExecutorImpl*>(h)->executor.onTrade(
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onTrade(
       symbol, Price::fromDouble(price), Quantity::fromDouble(quantity), is_buy != 0);
 }
 
-void flox_executor_on_best_levels(FloxExecutorHandle h, uint32_t symbol, double bid_price,
-                                  double bid_qty, double ask_price, double ask_qty)
+void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle h, uint32_t symbol, double bid_price,
+                                            double bid_qty, double ask_price, double ask_qty)
 {
   std::pmr::monotonic_buffer_resource pool(512);
   std::pmr::vector<BookLevel> bids(&pool);
   std::pmr::vector<BookLevel> asks(&pool);
   bids.emplace_back(Price::fromDouble(bid_price), Quantity::fromDouble(bid_qty));
   asks.emplace_back(Price::fromDouble(ask_price), Quantity::fromDouble(ask_qty));
-  static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
 }
 
-void flox_executor_on_book_snapshot(FloxExecutorHandle h, uint32_t symbol,
-                                    const double* bid_prices, const double* bid_qtys,
-                                    uint32_t n_bids, const double* ask_prices,
-                                    const double* ask_qtys, uint32_t n_asks)
+void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle h, uint32_t symbol,
+                                              const double* bid_prices, const double* bid_qtys,
+                                              uint32_t n_bids, const double* ask_prices,
+                                              const double* ask_qtys, uint32_t n_asks)
 {
   std::pmr::monotonic_buffer_resource pool(1024);
   std::pmr::vector<BookLevel> bids(&pool);
@@ -2008,7 +2012,7 @@ void flox_executor_on_book_snapshot(FloxExecutorHandle h, uint32_t symbol,
   {
     asks.emplace_back(Price::fromDouble(ask_prices[i]), Quantity::fromDouble(ask_qtys[i]));
   }
-  static_cast<FloxExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
 }
 
 struct FloxBacktestResultImpl
@@ -2054,10 +2058,10 @@ void flox_backtest_result_record_fill(FloxBacktestResultHandle h, uint64_t order
   static_cast<FloxBacktestResultImpl*>(h)->result->recordFill(fill);
 }
 
-void flox_backtest_result_ingest_executor(FloxBacktestResultHandle h, FloxExecutorHandle eh)
+void flox_backtest_result_ingest_executor(FloxBacktestResultHandle h, FloxSimulatedExecutorHandle eh)
 {
   auto* impl = static_cast<FloxBacktestResultImpl*>(h);
-  for (const auto& fill : static_cast<FloxExecutorImpl*>(eh)->executor.fills())
+  for (const auto& fill : static_cast<FloxSimulatedExecutorImpl*>(eh)->executor.fills())
   {
     impl->result->recordFill(fill);
   }
@@ -2844,6 +2848,283 @@ struct FloxReplaySourceImpl
   FloxReplaySourceCallbacks cb;
 };
 
+// Pack a flox::Order into the ABI-stable FloxOrder for binding callbacks.
+inline FloxOrder packOrder(const flox::Order& o) noexcept
+{
+  FloxOrder fo{};
+  fo.id = o.id;
+  fo.client_order_id = o.clientOrderId;
+  fo.symbol = o.symbol;
+  fo.strategy_id = o.strategyId;
+  fo.order_tag = o.orderTag;
+  fo.side = (o.side == flox::Side::BUY) ? 0u : 1u;
+  fo.type = static_cast<uint8_t>(o.type);
+  fo.time_in_force = static_cast<uint8_t>(o.timeInForce);
+  // Pack ExecutionFlags bit-by-bit for ABI stability.
+  uint8_t flags = 0;
+  flags |= (o.flags.reduceOnly ? 0x01 : 0);
+  flags |= (o.flags.closePosition ? 0x02 : 0);
+  flags |= (o.flags.postOnly ? 0x04 : 0);
+  flags |= static_cast<uint8_t>((o.flags.holdSide & 0x03) << 3);
+  fo.flags = flags;
+  fo.price_raw = o.price.raw();
+  fo.quantity_raw = o.quantity.raw();
+  fo.filled_quantity_raw = o.filledQuantity.raw();
+  fo.trigger_price_raw = o.triggerPrice.raw();
+  fo.trailing_offset_raw = o.trailingOffset.raw();
+  fo.created_at_ns = o.createdAt.time_since_epoch().count();
+  fo.exchange_ts_ns = o.exchangeTimestamp.has_value()
+                          ? o.exchangeTimestamp->time_since_epoch().count()
+                          : 0;
+  return fo;
+}
+
+struct FloxExecutionListenerImpl
+{
+  FloxExecutionListenerCallbacks cb;
+};
+
+// Adapter that exposes a binding's FloxExecutionListenerCallbacks as a
+// flox::IOrderExecutionListener — pluggable into BacktestRunner.
+class CapiExecutionListener : public flox::IOrderExecutionListener
+{
+ public:
+  CapiExecutionListener(flox::SubscriberId id, FloxExecutionListenerImpl* impl)
+      : flox::IOrderExecutionListener(id), _impl(impl)
+  {
+  }
+
+  void onOrderSubmitted(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_submitted)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_submitted(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderAccepted(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_accepted)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_accepted(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderPartiallyFilled(const flox::Order& o, flox::Quantity q) override
+  {
+    if (_impl && _impl->cb.on_partially_filled)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_partially_filled(_impl->cb.user_data, &fo, q.raw());
+    }
+  }
+  void onOrderFilled(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_filled)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_filled(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderPendingCancel(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_pending_cancel)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_pending_cancel(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderCanceled(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_canceled)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_canceled(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderExpired(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_expired)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_expired(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderRejected(const flox::Order& o, const std::string& reason) override
+  {
+    if (_impl && _impl->cb.on_rejected)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_rejected(_impl->cb.user_data, &fo, reason.c_str());
+    }
+  }
+  void onOrderReplaced(const flox::Order& oldOrder, const flox::Order& newOrder) override
+  {
+    if (_impl && _impl->cb.on_replaced)
+    {
+      auto fo_old = packOrder(oldOrder);
+      auto fo_new = packOrder(newOrder);
+      _impl->cb.on_replaced(_impl->cb.user_data, &fo_old, &fo_new);
+    }
+  }
+  void onOrderPendingTrigger(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_pending_trigger)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_pending_trigger(_impl->cb.user_data, &fo);
+    }
+  }
+  void onOrderTriggered(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.on_triggered)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_triggered(_impl->cb.user_data, &fo);
+    }
+  }
+  void onTrailingStopUpdated(const flox::Order& o, flox::Price newTrigger) override
+  {
+    if (_impl && _impl->cb.on_trailing_stop_updated)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_trailing_stop_updated(_impl->cb.user_data, &fo, newTrigger.raw());
+    }
+  }
+
+ private:
+  FloxExecutionListenerImpl* _impl;
+};
+
+// Unpack an ABI-stable FloxOrder back into a flox::Order. Used by the
+// CapiExecutor adapter when reconstructing orders for the binding's
+// submit / replace / OCO callbacks (engine-side already constructs an
+// Order from a Signal; we round-trip it through FloxOrder for the C ABI).
+inline flox::Order unpackOrder(const FloxOrder& fo) noexcept
+{
+  flox::Order o{};
+  o.id = fo.id;
+  o.clientOrderId = fo.client_order_id;
+  o.symbol = fo.symbol;
+  o.strategyId = fo.strategy_id;
+  o.orderTag = fo.order_tag;
+  o.side = (fo.side == 0) ? flox::Side::BUY : flox::Side::SELL;
+  o.type = static_cast<flox::OrderType>(fo.type);
+  o.timeInForce = static_cast<flox::TimeInForce>(fo.time_in_force);
+  o.flags.reduceOnly = (fo.flags & 0x01) ? 1 : 0;
+  o.flags.closePosition = (fo.flags & 0x02) ? 1 : 0;
+  o.flags.postOnly = (fo.flags & 0x04) ? 1 : 0;
+  o.flags.holdSide = static_cast<uint8_t>((fo.flags >> 3) & 0x03);
+  o.price = flox::Price::fromRaw(fo.price_raw);
+  o.quantity = flox::Quantity::fromRaw(fo.quantity_raw);
+  o.filledQuantity = flox::Quantity::fromRaw(fo.filled_quantity_raw);
+  o.triggerPrice = flox::Price::fromRaw(fo.trigger_price_raw);
+  o.trailingOffset = flox::Price::fromRaw(fo.trailing_offset_raw);
+  o.createdAt = flox::TimePoint{std::chrono::nanoseconds{fo.created_at_ns}};
+  if (fo.exchange_ts_ns != 0)
+  {
+    o.exchangeTimestamp = flox::TimePoint{std::chrono::nanoseconds{fo.exchange_ts_ns}};
+  }
+  return o;
+}
+
+struct FloxExecutorImpl
+{
+  FloxExecutorCallbacks cb;
+};
+
+// Adapter that exposes a binding's FloxExecutorCallbacks as a
+// flox::IOrderExecutor — pluggable into BacktestRunner via setExecutor()
+// and into FloxLiveEngineImpl's executor slot.
+class CapiExecutor : public flox::IOrderExecutor
+{
+ public:
+  explicit CapiExecutor(FloxExecutorImpl* impl) : _impl(impl) {}
+
+  void start() override
+  {
+    if (_impl && _impl->cb.on_start)
+    {
+      _impl->cb.on_start(_impl->cb.user_data);
+    }
+  }
+  void stop() override
+  {
+    if (_impl && _impl->cb.on_stop)
+    {
+      _impl->cb.on_stop(_impl->cb.user_data);
+    }
+  }
+
+  void submitOrder(const flox::Order& o) override
+  {
+    if (_impl && _impl->cb.submit)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.submit(_impl->cb.user_data, &fo);
+    }
+  }
+  void cancelOrder(flox::OrderId orderId) override
+  {
+    if (_impl && _impl->cb.cancel)
+    {
+      _impl->cb.cancel(_impl->cb.user_data, static_cast<uint64_t>(orderId));
+    }
+  }
+  void cancelAllOrders(flox::SymbolId symbol) override
+  {
+    if (_impl && _impl->cb.cancel_all)
+    {
+      _impl->cb.cancel_all(_impl->cb.user_data, static_cast<uint32_t>(symbol));
+    }
+  }
+  void replaceOrder(flox::OrderId oldId, const flox::Order& newOrder) override
+  {
+    if (_impl && _impl->cb.replace)
+    {
+      auto fo = packOrder(newOrder);
+      _impl->cb.replace(_impl->cb.user_data, static_cast<uint64_t>(oldId), &fo);
+    }
+  }
+  void submitOCO(const flox::OCOParams& params) override
+  {
+    if (_impl && _impl->cb.submit_oco)
+    {
+      auto fo1 = packOrder(params.order1);
+      auto fo2 = packOrder(params.order2);
+      _impl->cb.submit_oco(_impl->cb.user_data, &fo1, &fo2);
+    }
+  }
+  flox::ExchangeCapabilities capabilities() const override
+  {
+    if (_impl == nullptr || _impl->cb.capabilities == nullptr)
+    {
+      return flox::ExchangeCapabilities{};
+    }
+    FloxExchangeCapabilities cc{};
+    _impl->cb.capabilities(_impl->cb.user_data, &cc);
+    flox::ExchangeCapabilities out{};
+    out.supportsStopMarket = (cc.supports_stop_market != 0);
+    out.supportsStopLimit = (cc.supports_stop_limit != 0);
+    out.supportsTakeProfitMarket = (cc.supports_take_profit_market != 0);
+    out.supportsTakeProfitLimit = (cc.supports_take_profit_limit != 0);
+    out.supportsTrailingStop = (cc.supports_trailing_stop != 0);
+    out.supportsIceberg = (cc.supports_iceberg != 0);
+    out.supportsOCO = (cc.supports_oco != 0);
+    out.supportsGTC = (cc.supports_gtc != 0);
+    out.supportsIOC = (cc.supports_ioc != 0);
+    out.supportsFOK = (cc.supports_fok != 0);
+    out.supportsGTD = (cc.supports_gtd != 0);
+    out.supportsPostOnly = (cc.supports_post_only != 0);
+    out.supportsReduceOnly = (cc.supports_reduce_only != 0);
+    out.supportsClosePosition = (cc.supports_close_position != 0);
+    return out;
+  }
+
+ private:
+  FloxExecutorImpl* _impl;
+};
+
 // Adapter that exposes a binding's FloxReplaySourceCallbacks as a
 // flox::replay::IMultiSegmentReader so BacktestRunner can drive it via
 // the existing forEach contract.
@@ -2941,6 +3222,56 @@ class CapiReplaySourceReader : public flox::replay::IMultiSegmentReader
   std::vector<flox::replay::SegmentInfo> _empty_segments;
 };
 
+// Build a FloxOrder from a Signal for the binding-side executor hook.
+// Maps SignalType → OrderType for the order types that turn into orders;
+// flow-control signals (Cancel/CancelAll/Modify/OCO) don't go through
+// this path because they call cancel/replace/submit_oco on the executor.
+inline FloxOrder signalToFloxOrder(const Signal& sig) noexcept
+{
+  FloxOrder fo{};
+  fo.id = sig.orderId;
+  fo.symbol = sig.symbol;
+  fo.side = (sig.side == Side::BUY) ? 0 : 1;
+  fo.time_in_force = static_cast<uint8_t>(sig.timeInForce);
+  uint8_t flags = 0;
+  flags |= (sig.reduceOnly ? 0x01 : 0);
+  flags |= (sig.postOnly ? 0x04 : 0);
+  fo.flags = flags;
+  fo.price_raw = sig.price.raw();
+  fo.quantity_raw = sig.quantity.raw();
+  fo.trigger_price_raw = sig.triggerPrice.raw();
+  fo.trailing_offset_raw = sig.trailingOffset.raw();
+
+  switch (sig.type)
+  {
+    case SignalType::Market:
+      fo.type = static_cast<uint8_t>(OrderType::MARKET);
+      break;
+    case SignalType::Limit:
+      fo.type = static_cast<uint8_t>(OrderType::LIMIT);
+      break;
+    case SignalType::StopMarket:
+      fo.type = static_cast<uint8_t>(OrderType::STOP_MARKET);
+      break;
+    case SignalType::StopLimit:
+      fo.type = static_cast<uint8_t>(OrderType::STOP_LIMIT);
+      break;
+    case SignalType::TakeProfitMarket:
+      fo.type = static_cast<uint8_t>(OrderType::TAKE_PROFIT_MARKET);
+      break;
+    case SignalType::TakeProfitLimit:
+      fo.type = static_cast<uint8_t>(OrderType::TAKE_PROFIT_LIMIT);
+      break;
+    case SignalType::TrailingStop:
+      fo.type = static_cast<uint8_t>(OrderType::TRAILING_STOP);
+      break;
+    default:
+      fo.type = static_cast<uint8_t>(OrderType::MARKET);
+      break;
+  }
+  return fo;
+}
+
 class RunnerSignalHandler : public ISignalHandler
 {
  public:
@@ -2967,6 +3298,10 @@ class RunnerSignalHandler : public ISignalHandler
   void setStorageSink(FloxStorageSinkImpl* s) noexcept
   {
     _sink.store(s, std::memory_order_release);
+  }
+  void setExecutor(FloxExecutorImpl* e) noexcept
+  {
+    _executor.store(e, std::memory_order_release);
   }
 
   void onSignal(const Signal& sig) override
@@ -3055,6 +3390,67 @@ class RunnerSignalHandler : public ISignalHandler
 
     _cb(_ud, &fs);
 
+    // Binding-supplied executor — alternative path for order routing.
+    // Runs after the user on_signal so existing on_signal-based wiring
+    // (where the user submits orders directly) keeps working unchanged.
+    // If a user has both an executor and on_signal-based submission, the
+    // order will be sent twice — that's the user's responsibility.
+    if (auto* exec = _executor.load(std::memory_order_acquire);
+        exec != nullptr)
+    {
+      switch (sig.type)
+      {
+        case SignalType::Market:
+        case SignalType::Limit:
+        case SignalType::StopMarket:
+        case SignalType::StopLimit:
+        case SignalType::TakeProfitMarket:
+        case SignalType::TakeProfitLimit:
+        case SignalType::TrailingStop:
+          if (exec->cb.submit != nullptr)
+          {
+            FloxOrder fo = signalToFloxOrder(sig);
+            exec->cb.submit(exec->cb.user_data, &fo);
+          }
+          break;
+        case SignalType::Cancel:
+          if (exec->cb.cancel != nullptr)
+          {
+            exec->cb.cancel(exec->cb.user_data, sig.orderId);
+          }
+          break;
+        case SignalType::CancelAll:
+          if (exec->cb.cancel_all != nullptr)
+          {
+            exec->cb.cancel_all(exec->cb.user_data, sig.symbol);
+          }
+          break;
+        case SignalType::Modify:
+          if (exec->cb.replace != nullptr)
+          {
+            FloxOrder fo{};
+            fo.id = sig.orderId;
+            fo.symbol = sig.symbol;
+            fo.side = (sig.side == Side::BUY) ? 0 : 1;
+            fo.type = static_cast<uint8_t>(OrderType::LIMIT);
+            fo.price_raw = sig.newPrice.raw();
+            fo.quantity_raw = sig.newQuantity.raw();
+            exec->cb.replace(exec->cb.user_data, sig.orderId, &fo);
+          }
+          break;
+        case SignalType::OCO:
+          if (exec->cb.submit_oco != nullptr)
+          {
+            FloxOrder fo1 = signalToFloxOrder(sig);
+            fo1.type = static_cast<uint8_t>(OrderType::LIMIT);
+            FloxOrder fo2 = fo1;
+            fo2.price_raw = sig.triggerPrice.raw();
+            exec->cb.submit_oco(exec->cb.user_data, &fo1, &fo2);
+          }
+          break;
+      }
+    }
+
     // Post-emission observers, fired in declared order: PnL → Storage.
     // Return type is void; observers cannot drop the signal (it's already
     // been delivered). The user callback runs first so the binding's
@@ -3079,6 +3475,7 @@ class RunnerSignalHandler : public ISignalHandler
   std::atomic<FloxOrderValidatorImpl*> _validator{nullptr};
   std::atomic<FloxPnLTrackerImpl*> _pnl{nullptr};
   std::atomic<FloxStorageSinkImpl*> _sink{nullptr};
+  std::atomic<FloxExecutorImpl*> _executor{nullptr};
 };
 
 struct FloxRunnerImpl
@@ -3093,6 +3490,10 @@ struct FloxRunnerImpl
   // Tracks whether on_start has fired without a matching on_stop, so that
   // attaching mid-run or detaching emits the right lifecycle callback.
   std::atomic<bool> recorderRunning{false};
+
+  // Optional binding-supplied executor. Same lifecycle pattern as recorder.
+  std::atomic<FloxExecutorImpl*> executor{nullptr};
+  std::atomic<bool> executorRunning{false};
 
   FloxRunnerImpl(SymbolRegistry* reg, FloxOnSignalCallback cb, void* ud)
       : registry(reg), handler(cb, ud)
@@ -3113,6 +3514,27 @@ struct FloxRunnerImpl
   }
   void setPnLTracker(FloxPnLTrackerImpl* p) { handler.setPnLTracker(p); }
   void setStorageSink(FloxStorageSinkImpl* s) { handler.setStorageSink(s); }
+
+  // Attach / detach a binding-supplied executor. Lifecycle (on_start /
+  // on_stop) is balanced against runner start/stop, with hot-swap
+  // semantics so attach-while-running and detach fire the lifecycle
+  // callbacks correctly.
+  void setExecutor(FloxExecutorImpl* e)
+  {
+    auto* prev = executor.exchange(e, std::memory_order_acq_rel);
+    handler.setExecutor(e);
+    if (executorRunning.load(std::memory_order_acquire))
+    {
+      if (prev != nullptr && prev->cb.on_stop != nullptr)
+      {
+        prev->cb.on_stop(prev->cb.user_data);
+      }
+      if (e != nullptr && e->cb.on_start != nullptr)
+      {
+        e->cb.on_start(e->cb.user_data);
+      }
+    }
+  }
 
   // Attach / detach a market data recorder. If the runner is already started
   // (recorderRunning == true), fire on_stop on the outgoing recorder and
@@ -3145,10 +3567,22 @@ struct FloxRunnerImpl
     {
       r->cb.on_start(r->cb.user_data);
     }
+    executorRunning.store(true, std::memory_order_release);
+    if (auto* e = executor.load(std::memory_order_acquire);
+        e != nullptr && e->cb.on_start != nullptr)
+    {
+      e->cb.on_start(e->cb.user_data);
+    }
   }
 
   void stop()
   {
+    if (auto* e = executor.load(std::memory_order_acquire);
+        e != nullptr && e->cb.on_stop != nullptr)
+    {
+      e->cb.on_stop(e->cb.user_data);
+    }
+    executorRunning.store(false, std::memory_order_release);
     if (auto* r = recorder.load(std::memory_order_acquire);
         r != nullptr && r->cb.on_stop != nullptr)
     {
@@ -3312,6 +3746,8 @@ struct FloxLiveEngineImpl
   std::atomic<FloxStorageSinkImpl*> storageSink{nullptr};
   std::atomic<FloxMarketDataRecorderImpl*> recorder{nullptr};
   std::atomic<bool> recorderRunning{false};
+  std::atomic<FloxExecutorImpl*> executor{nullptr};
+  std::atomic<bool> executorRunning{false};
 
   explicit FloxLiveEngineImpl(SymbolRegistry* reg)
       : registry(reg),
@@ -3329,6 +3765,7 @@ struct FloxLiveEngineImpl
     h->setOrderValidator(orderValidator.load(std::memory_order_acquire));
     h->setPnLTracker(pnlTracker.load(std::memory_order_acquire));
     h->setStorageSink(storageSink.load(std::memory_order_acquire));
+    h->setExecutor(executor.load(std::memory_order_acquire));
     s->setSignalHandler(h.get());
     handlers.push_back(std::move(h));
     tradeBus->subscribe(s);
@@ -3398,6 +3835,30 @@ struct FloxLiveEngineImpl
     }
   }
 
+  // Attach / detach a binding-supplied executor. Updates every existing
+  // signal handler (each strategy has its own) and remembers the setting
+  // so subsequently-added strategies inherit it. Lifecycle balanced
+  // against engine.start()/stop().
+  void setExecutor(FloxExecutorImpl* e)
+  {
+    auto* prev = executor.exchange(e, std::memory_order_acq_rel);
+    for (auto& h : handlers)
+    {
+      h->setExecutor(e);
+    }
+    if (executorRunning.load(std::memory_order_acquire))
+    {
+      if (prev != nullptr && prev->cb.on_stop != nullptr)
+      {
+        prev->cb.on_stop(prev->cb.user_data);
+      }
+      if (e != nullptr && e->cb.on_start != nullptr)
+      {
+        e->cb.on_start(e->cb.user_data);
+      }
+    }
+  }
+
   void start()
   {
     tradeBus->start();
@@ -3413,10 +3874,22 @@ struct FloxLiveEngineImpl
     {
       r->cb.on_start(r->cb.user_data);
     }
+    executorRunning.store(true, std::memory_order_release);
+    if (auto* e = executor.load(std::memory_order_acquire);
+        e != nullptr && e->cb.on_start != nullptr)
+    {
+      e->cb.on_start(e->cb.user_data);
+    }
   }
 
   void stop()
   {
+    if (auto* e = executor.load(std::memory_order_acquire);
+        e != nullptr && e->cb.on_stop != nullptr)
+    {
+      e->cb.on_stop(e->cb.user_data);
+    }
+    executorRunning.store(false, std::memory_order_release);
     if (auto* r = recorder.load(std::memory_order_acquire);
         r != nullptr && r->cb.on_stop != nullptr)
     {
@@ -3629,6 +4102,12 @@ struct FloxBacktestRunnerImpl
 {
   SymbolRegistry* registry;
   std::unique_ptr<BacktestRunner> runner;
+  // Adapters created when bindings register execution listeners. Owned
+  // here so they outlive the listener registration on the runner.
+  std::vector<std::unique_ptr<CapiExecutionListener>> executionListenerAdapters;
+  // Adapter for the binding-supplied executor. Owned so it outlives the
+  // runner's non-owning pointer. Replaced on every set call.
+  std::unique_ptr<CapiExecutor> executorAdapter;
 
   explicit FloxBacktestRunnerImpl(SymbolRegistry* reg, double feeRate, double initialCapital)
       : registry(reg)
@@ -3638,6 +4117,30 @@ struct FloxBacktestRunnerImpl
     cfg.initialCapital = initialCapital;
     cfg.usePercentageFee = true;
     runner = std::make_unique<BacktestRunner>(cfg);
+  }
+
+  void addExecutionListener(FloxExecutionListenerImpl* impl)
+  {
+    if (impl == nullptr)
+    {
+      return;
+    }
+    auto id = static_cast<flox::SubscriberId>(executionListenerAdapters.size() + 1);
+    auto adapter = std::make_unique<CapiExecutionListener>(id, impl);
+    runner->addExecutionListener(adapter.get());
+    executionListenerAdapters.push_back(std::move(adapter));
+  }
+
+  void setExecutor(FloxExecutorImpl* impl)
+  {
+    if (impl == nullptr)
+    {
+      runner->setExecutor(nullptr);
+      executorAdapter.reset();
+      return;
+    }
+    executorAdapter = std::make_unique<CapiExecutor>(impl);
+    runner->setExecutor(executorAdapter.get());
   }
 
   void setStrategy(BridgeStrategy* bridge)
@@ -3919,6 +4422,44 @@ uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timest
   return s->cb.seek_to(s->cb.user_data, timestamp_ns);
 }
 
+FloxExecutionListenerHandle
+flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks)
+{
+  return static_cast<FloxExecutionListenerHandle>(
+      new FloxExecutionListenerImpl{callbacks});
+}
+
+void flox_execution_listener_destroy(FloxExecutionListenerHandle listener)
+{
+  delete static_cast<FloxExecutionListenerImpl*>(listener);
+}
+
+FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks)
+{
+  return static_cast<FloxExecutorHandle>(new FloxExecutorImpl{callbacks});
+}
+
+void flox_executor_destroy(FloxExecutorHandle executor)
+{
+  delete static_cast<FloxExecutorImpl*>(executor);
+}
+
+void flox_executor_get_capabilities(FloxExecutorHandle executor,
+                                    FloxExchangeCapabilities* caps_out)
+{
+  if (caps_out == nullptr)
+  {
+    return;
+  }
+  *caps_out = FloxExchangeCapabilities{};
+  auto* impl = static_cast<FloxExecutorImpl*>(executor);
+  if (impl == nullptr || impl->cb.capabilities == nullptr)
+  {
+    return;
+  }
+  impl->cb.capabilities(impl->cb.user_data, caps_out);
+}
+
 // ============================================================
 // Logger callback adapter
 // ============================================================
@@ -4014,6 +4555,12 @@ void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle
 {
   toRunner(runner)->setStorageSink(
       static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
+}
+
+void flox_runner_set_executor(FloxRunnerHandle runner, FloxExecutorHandle executor)
+{
+  toRunner(runner)->setExecutor(
+      static_cast<capi_impl::FloxExecutorImpl*>(executor));
 }
 
 void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
@@ -4125,6 +4672,13 @@ void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
 {
   toLiveEngine(engine)->setMarketDataRecorder(
       static_cast<capi_impl::FloxMarketDataRecorderImpl*>(recorder));
+}
+
+void flox_live_engine_set_executor(FloxLiveEngineHandle engine,
+                                   FloxExecutorHandle executor)
+{
+  toLiveEngine(engine)->setExecutor(
+      static_cast<capi_impl::FloxExecutorImpl*>(executor));
 }
 
 void flox_live_engine_start(FloxLiveEngineHandle engine)
@@ -4240,4 +4794,18 @@ int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle h,
 {
   return toBacktestRunner(h)->runReplaySource(
       static_cast<capi_impl::FloxReplaySourceImpl*>(source), out);
+}
+
+void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle h,
+                                                 FloxExecutionListenerHandle listener)
+{
+  toBacktestRunner(h)->addExecutionListener(
+      static_cast<capi_impl::FloxExecutionListenerImpl*>(listener));
+}
+
+void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle h,
+                                       FloxExecutorHandle executor)
+{
+  toBacktestRunner(h)->setExecutor(
+      static_cast<capi_impl::FloxExecutorImpl*>(executor));
 }

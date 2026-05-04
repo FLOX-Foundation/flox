@@ -45,7 +45,7 @@ Queue simulation requires trade quantities. Use the overload `onTrade(symbol, pr
 
 In Python: call `executor.on_trade_qty(symbol, price, quantity, is_buy)`.
 
-In C API: `flox_executor_on_trade_qty(executor, symbol, price, quantity, is_buy)`.
+In C API: `flox_simulated_executor_on_trade_qty(executor, symbol, price, quantity, is_buy)`.
 
 In JavaScript: `executor.onTradeQty(symbol, price, quantity, isBuy)`.
 

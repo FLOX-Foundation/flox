@@ -28,7 +28,7 @@ extern "C"
   typedef void* FloxStrategyHandle;
   typedef void* FloxRegistryHandle;
   typedef void* FloxBookHandle;
-  typedef void* FloxExecutorHandle;
+  typedef void* FloxSimulatedExecutorHandle;
   typedef void* FloxPositionTrackerHandle;
   typedef void* FloxPositionGroupHandle;
   typedef void* FloxOrderTrackerHandle;
@@ -51,6 +51,8 @@ extern "C"
   typedef void* FloxStorageSinkHandle;
   typedef void* FloxMarketDataRecorderHandle;
   typedef void* FloxReplaySourceHandle;
+  typedef void* FloxExecutionListenerHandle;
+  typedef void* FloxExecutorHandle;
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
@@ -362,6 +364,45 @@ extern "C"
     const FloxBookLevel* asks;
   } FloxReplayEvent;
 
+  typedef struct
+  {
+    uint64_t id;
+    uint64_t client_order_id;
+    uint32_t symbol;
+    uint16_t strategy_id;
+    uint16_t order_tag;
+    uint8_t side;
+    uint8_t type;
+    uint8_t time_in_force;
+    uint8_t flags;
+    int64_t price_raw;
+    int64_t quantity_raw;
+    int64_t filled_quantity_raw;
+    int64_t trigger_price_raw;
+    int64_t trailing_offset_raw;
+    int64_t created_at_ns;
+    int64_t exchange_ts_ns;
+  } FloxOrder;
+
+  typedef struct
+  {
+    uint8_t supports_stop_market;
+    uint8_t supports_stop_limit;
+    uint8_t supports_take_profit_market;
+    uint8_t supports_take_profit_limit;
+    uint8_t supports_trailing_stop;
+    uint8_t supports_iceberg;
+    uint8_t supports_oco;
+    uint8_t supports_gtc;
+    uint8_t supports_ioc;
+    uint8_t supports_fok;
+    uint8_t supports_gtd;
+    uint8_t supports_post_only;
+    uint8_t supports_reduce_only;
+    uint8_t supports_close_position;
+    uint8_t _pad[2];
+  } FloxExchangeCapabilities;
+
   // ============================================================
   // Callback function pointer types
   // ============================================================
@@ -385,6 +426,18 @@ extern "C"
   typedef uint8_t (*FloxReplaySourceNextFn)(void*, FloxReplayEvent*);
   typedef uint8_t (*FloxReplaySourceSeekFn)(void*, int64_t);
   typedef void (*FloxReplaySourceLifecycleFn)(void*);
+  typedef void (*FloxExecListenerOnOrderFn)(void*, const FloxOrder*);
+  typedef void (*FloxExecListenerOnPartialFillFn)(void*, const FloxOrder*, int64_t);
+  typedef void (*FloxExecListenerOnRejectedFn)(void*, const FloxOrder*, const char*);
+  typedef void (*FloxExecListenerOnReplacedFn)(void*, const FloxOrder*, const FloxOrder*);
+  typedef void (*FloxExecListenerOnTrailingUpdateFn)(void*, const FloxOrder*, int64_t);
+  typedef void (*FloxExecutorSubmitFn)(void*, const FloxOrder*);
+  typedef void (*FloxExecutorCancelFn)(void*, uint64_t);
+  typedef void (*FloxExecutorCancelAllFn)(void*, uint32_t);
+  typedef void (*FloxExecutorReplaceFn)(void*, uint64_t, const FloxOrder*);
+  typedef void (*FloxExecutorSubmitOCOFn)(void*, const FloxOrder*, const FloxOrder*);
+  typedef void (*FloxExecutorCapabilitiesFn)(void*, FloxExchangeCapabilities*);
+  typedef void (*FloxExecutorLifecycleFn)(void*);
 
   // ============================================================
   // Callback bundles
@@ -448,6 +501,36 @@ extern "C"
     void* user_data;
   } FloxReplaySourceCallbacks;
 
+  typedef struct
+  {
+    FloxExecListenerOnOrderFn on_submitted;
+    FloxExecListenerOnOrderFn on_accepted;
+    FloxExecListenerOnPartialFillFn on_partially_filled;
+    FloxExecListenerOnOrderFn on_filled;
+    FloxExecListenerOnOrderFn on_pending_cancel;
+    FloxExecListenerOnOrderFn on_canceled;
+    FloxExecListenerOnOrderFn on_expired;
+    FloxExecListenerOnRejectedFn on_rejected;
+    FloxExecListenerOnReplacedFn on_replaced;
+    FloxExecListenerOnOrderFn on_pending_trigger;
+    FloxExecListenerOnOrderFn on_triggered;
+    FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
+    void* user_data;
+  } FloxExecutionListenerCallbacks;
+
+  typedef struct
+  {
+    FloxExecutorSubmitFn submit;
+    FloxExecutorCancelFn cancel;
+    FloxExecutorCancelAllFn cancel_all;
+    FloxExecutorReplaceFn replace;
+    FloxExecutorSubmitOCOFn submit_oco;
+    FloxExecutorCapabilitiesFn capabilities;
+    FloxExecutorLifecycleFn on_start;
+    FloxExecutorLifecycleFn on_stop;
+    void* user_data;
+  } FloxExecutorCallbacks;
+
   // ============================================================
   // Fixed-point conversion helpers
   // ============================================================
@@ -482,20 +565,24 @@ extern "C"
   // Backtest Slippage
   // ============================================================
 
-  void flox_executor_set_default_slippage(FloxExecutorHandle executor, int32_t model, int32_t ticks,
-                                          double tick_size, double bps, double impact_coeff);
-  void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol, int32_t model,
-                                         int32_t ticks, double tick_size, double bps,
-                                         double impact_coeff);
-  void flox_executor_set_queue_model(FloxExecutorHandle executor, int32_t model, uint32_t depth);
-  void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol, double price,
-                                  double quantity, uint8_t is_buy);
-  void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol, double bid_price,
-                                    double bid_qty, double ask_price, double ask_qty);
-  void flox_executor_on_book_snapshot(FloxExecutorHandle executor, uint32_t symbol,
-                                      const double* bid_prices, const double* bid_qtys,
-                                      uint32_t n_bids, const double* ask_prices,
-                                      const double* ask_qtys, uint32_t n_asks);
+  void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle executor,
+                                                    int32_t model, int32_t ticks, double tick_size,
+                                                    double bps, double impact_coeff);
+  void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor,
+                                                   uint32_t symbol, int32_t model, int32_t ticks,
+                                                   double tick_size, double bps, double impact_coeff);
+  void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model,
+                                               uint32_t depth);
+  void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                            double price, double quantity, uint8_t is_buy);
+  void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                              double bid_price, double bid_qty, double ask_price,
+                                              double ask_qty);
+  void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle executor,
+                                                uint32_t symbol, const double* bid_prices,
+                                                const double* bid_qtys, uint32_t n_bids,
+                                                const double* ask_prices, const double* ask_qtys,
+                                                uint32_t n_asks);
   FloxBacktestResultHandle flox_backtest_result_create(double initial_capital, double fee_rate,
                                                        uint8_t use_percentage_fee,
                                                        double fixed_fee_per_trade,
@@ -506,7 +593,7 @@ extern "C"
                                         uint32_t symbol, uint8_t side, double price, double quantity,
                                         int64_t timestamp_ns);
   void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result,
-                                            FloxExecutorHandle executor);
+                                            FloxSimulatedExecutorHandle executor);
   void flox_backtest_result_stats(FloxBacktestResultHandle result, FloxBacktestStats* out);
   uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle result,
                                              FloxEquityPoint* points_out, uint32_t max_points);
@@ -653,11 +740,28 @@ extern "C"
   FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer);
 
   // ============================================================
+  // Execution
+  // ============================================================
+
+  FloxExecutionListenerHandle flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks);
+  void flox_execution_listener_destroy(FloxExecutionListenerHandle listener);
+  FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks);
+  void flox_executor_destroy(FloxExecutorHandle executor);
+  void flox_executor_get_capabilities(FloxExecutorHandle executor,
+                                      FloxExchangeCapabilities* caps_out);
+  void flox_live_engine_set_executor(FloxLiveEngineHandle engine, FloxExecutorHandle executor);
+  void flox_runner_set_executor(FloxRunnerHandle runner, FloxExecutorHandle executor);
+  void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle runner,
+                                                   FloxExecutionListenerHandle listener);
+  void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner,
+                                         FloxExecutorHandle executor);
+
+  // ============================================================
   // Executor Fill
   // ============================================================
 
-  uint32_t flox_executor_get_fills(FloxExecutorHandle executor, FloxFill* fills_out,
-                                   uint32_t max_fills);
+  uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle executor,
+                                             FloxFill* fills_out, uint32_t max_fills);
 
   // ============================================================
   // Floxliveengine Disruptor
@@ -1064,17 +1168,20 @@ extern "C"
   // Simulated Executor
   // ============================================================
 
-  FloxExecutorHandle flox_executor_create(void);
-  void flox_executor_destroy(FloxExecutorHandle executor);
-  void flox_executor_submit_order(FloxExecutorHandle executor, uint64_t id, uint8_t side,
-                                  double price, double quantity, uint8_t order_type, uint32_t symbol);
-  void flox_executor_cancel_order(FloxExecutorHandle executor, uint64_t order_id);
-  void flox_executor_cancel_all(FloxExecutorHandle executor, uint32_t symbol);
-  void flox_executor_on_bar(FloxExecutorHandle executor, uint32_t symbol, double close_price);
-  void flox_executor_on_trade(FloxExecutorHandle executor, uint32_t symbol, double price,
-                              uint8_t is_buy);
-  void flox_executor_advance_clock(FloxExecutorHandle executor, int64_t timestamp_ns);
-  uint32_t flox_executor_fill_count(FloxExecutorHandle executor);
+  FloxSimulatedExecutorHandle flox_simulated_executor_create(void);
+  void flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor, uint64_t id,
+                                            uint8_t side, double price, double quantity,
+                                            uint8_t order_type, uint32_t symbol);
+  void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
+  void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
+  void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                      double close_price);
+  void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                        double price, uint8_t is_buy);
+  void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor,
+                                             int64_t timestamp_ns);
+  uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle executor);
 
   // ============================================================
   // Statistics

@@ -24,7 +24,7 @@ extern "C"
   typedef void* FloxStrategyHandle;
   typedef void* FloxRegistryHandle;
   typedef void* FloxBookHandle;
-  typedef void* FloxExecutorHandle;
+  typedef void* FloxSimulatedExecutorHandle;
   typedef void* FloxPositionTrackerHandle;
   typedef void* FloxPositionGroupHandle;
   typedef void* FloxOrderTrackerHandle;
@@ -410,18 +410,18 @@ extern "C"
   // Simulated executor (backtesting)
   // ============================================================
 
-  FloxExecutorHandle flox_executor_create(void);
-  void flox_executor_destroy(FloxExecutorHandle executor);
-  void flox_executor_submit_order(FloxExecutorHandle executor, uint64_t id, uint8_t side,
-                                  double price, double quantity, uint8_t order_type,
-                                  uint32_t symbol);
-  void flox_executor_cancel_order(FloxExecutorHandle executor, uint64_t order_id);
-  void flox_executor_cancel_all(FloxExecutorHandle executor, uint32_t symbol);
-  void flox_executor_on_bar(FloxExecutorHandle executor, uint32_t symbol, double close_price);
-  void flox_executor_on_trade(FloxExecutorHandle executor, uint32_t symbol, double price,
-                              uint8_t is_buy);
-  void flox_executor_advance_clock(FloxExecutorHandle executor, int64_t timestamp_ns);
-  uint32_t flox_executor_fill_count(FloxExecutorHandle executor);
+  FloxSimulatedExecutorHandle flox_simulated_executor_create(void);
+  void flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor, uint64_t id, uint8_t side,
+                                            double price, double quantity, uint8_t order_type,
+                                            uint32_t symbol);
+  void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
+  void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
+  void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol, double close_price);
+  void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol, double price,
+                                        uint8_t is_buy);
+  void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor, int64_t timestamp_ns);
+  uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle executor);
 
   // ============================================================
   // Bar aggregation
@@ -593,8 +593,8 @@ extern "C"
     int64_t timestamp_ns;
   } FloxFill;
 
-  uint32_t flox_executor_get_fills(FloxExecutorHandle executor, FloxFill* fills_out,
-                                   uint32_t max_fills);
+  uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle executor, FloxFill* fills_out,
+                                             uint32_t max_fills);
 
   // ============================================================
   // Additional bar aggregation
@@ -707,36 +707,36 @@ extern "C"
   // a per-symbol override is set. `tick_size` is the venue tick size in
   // price units (e.g. 0.01 for 1-cent ticks); pass 0.0 to fall back to one
   // raw price unit.
-  void flox_executor_set_default_slippage(FloxExecutorHandle executor,
-                                          int32_t model, int32_t ticks,
-                                          double tick_size, double bps,
-                                          double impact_coeff);
-  void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol,
-                                         int32_t model, int32_t ticks,
-                                         double tick_size, double bps,
-                                         double impact_coeff);
+  void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle executor,
+                                                    int32_t model, int32_t ticks,
+                                                    double tick_size, double bps,
+                                                    double impact_coeff);
+  void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                                   int32_t model, int32_t ticks,
+                                                   double tick_size, double bps,
+                                                   double impact_coeff);
 
   // Configure queue simulation for limit orders.
-  void flox_executor_set_queue_model(FloxExecutorHandle executor, int32_t model,
-                                     uint32_t depth);
+  void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model,
+                                               uint32_t depth);
 
   // Feed a trade with quantity (enables queue-fill simulation for limit orders).
-  void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol,
-                                  double price, double quantity, uint8_t is_buy);
+  void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                            double price, double quantity, uint8_t is_buy);
 
   // Feed a top-of-book snapshot (both best bid and best ask in one call).
   // For multi-level updates, build a BookUpdate on the C++ side; the C API
   // intentionally does not expose a stateful per-side helper because that
   // makes it too easy to accidentally clear the opposite side.
-  void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol,
-                                    double bid_price, double bid_qty, double ask_price,
-                                    double ask_qty);
+  void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                              double bid_price, double bid_qty, double ask_price,
+                                              double ask_qty);
 
   // Feed a full L2 snapshot with parallel bid/ask arrays.
-  void flox_executor_on_book_snapshot(FloxExecutorHandle executor, uint32_t symbol,
-                                      const double* bid_prices, const double* bid_qtys,
-                                      uint32_t n_bids, const double* ask_prices,
-                                      const double* ask_qtys, uint32_t n_asks);
+  void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                                const double* bid_prices, const double* bid_qtys,
+                                                uint32_t n_bids, const double* ask_prices,
+                                                const double* ask_qtys, uint32_t n_asks);
 
   // BacktestResult handle: aggregates fills into trades + stats + equity curve.
   typedef void* FloxBacktestResultHandle;
@@ -756,7 +756,7 @@ extern "C"
 
   // Drain all fills from a SimulatedExecutor into a BacktestResult in FIFO order.
   void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result,
-                                            FloxExecutorHandle executor);
+                                            FloxSimulatedExecutorHandle executor);
 
   typedef struct
   {
@@ -1364,6 +1364,143 @@ extern "C"
   uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns);
 
   // ============================================================
+  // ExecutionListener — observe order lifecycle events.
+  //
+  // Bindings register callbacks that fire as orders move through the
+  // execution path (submitted → accepted → filled / canceled / rejected
+  // / etc.). Used as a backtest observer (SimulatedExecutor inside
+  // BacktestRunner emits these) or a live-broker fill surface.
+  //
+  // The order pointer is read-only and valid only for the duration of
+  // the callback; copy fields you need to retain. Any callback may be
+  // NULL (no-op).
+  // ============================================================
+
+  typedef struct
+  {
+    uint64_t id;
+    uint64_t client_order_id;
+    uint32_t symbol;
+    uint16_t strategy_id;
+    uint16_t order_tag;
+    uint8_t side;           // 0=BUY, 1=SELL
+    uint8_t type;           // OrderType enum
+    uint8_t time_in_force;  // TimeInForce enum
+    uint8_t flags;          // ExecutionFlags packed bits
+    int64_t price_raw;
+    int64_t quantity_raw;
+    int64_t filled_quantity_raw;
+    int64_t trigger_price_raw;
+    int64_t trailing_offset_raw;
+    int64_t created_at_ns;
+    int64_t exchange_ts_ns;
+  } FloxOrder;
+
+  typedef void (*FloxExecListenerOnOrderFn)(void* user_data, const FloxOrder* order);
+  typedef void (*FloxExecListenerOnPartialFillFn)(void* user_data,
+                                                  const FloxOrder* order,
+                                                  int64_t fill_quantity_raw);
+  typedef void (*FloxExecListenerOnRejectedFn)(void* user_data,
+                                               const FloxOrder* order,
+                                               const char* reason);
+  typedef void (*FloxExecListenerOnReplacedFn)(void* user_data,
+                                               const FloxOrder* old_order,
+                                               const FloxOrder* new_order);
+  typedef void (*FloxExecListenerOnTrailingUpdateFn)(void* user_data,
+                                                     const FloxOrder* order,
+                                                     int64_t new_trigger_price_raw);
+
+  typedef struct
+  {
+    FloxExecListenerOnOrderFn on_submitted;
+    FloxExecListenerOnOrderFn on_accepted;
+    FloxExecListenerOnPartialFillFn on_partially_filled;
+    FloxExecListenerOnOrderFn on_filled;
+    FloxExecListenerOnOrderFn on_pending_cancel;
+    FloxExecListenerOnOrderFn on_canceled;
+    FloxExecListenerOnOrderFn on_expired;
+    FloxExecListenerOnRejectedFn on_rejected;
+    FloxExecListenerOnReplacedFn on_replaced;
+    FloxExecListenerOnOrderFn on_pending_trigger;
+    FloxExecListenerOnOrderFn on_triggered;
+    FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
+    void* user_data;
+  } FloxExecutionListenerCallbacks;
+
+  typedef void* FloxExecutionListenerHandle;
+
+  FloxExecutionListenerHandle
+  flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks);
+  void flox_execution_listener_destroy(FloxExecutionListenerHandle listener);
+
+  // ============================================================
+  // Executor — binding-supplied IOrderExecutor.
+  //
+  // Bindings provide an executor that places, cancels, replaces and
+  // OCO-submits orders on a real broker (or on a custom simulator). The
+  // engine routes every signal through this executor instead of the
+  // built-in SimulatedExecutor when one is attached.
+  //
+  // The concrete in-process SimulatedExecutor is exposed separately
+  // as flox_simulated_executor_*.
+  // ============================================================
+
+  typedef struct
+  {
+    uint8_t supports_stop_market;
+    uint8_t supports_stop_limit;
+    uint8_t supports_take_profit_market;
+    uint8_t supports_take_profit_limit;
+    uint8_t supports_trailing_stop;
+    uint8_t supports_iceberg;
+    uint8_t supports_oco;
+    uint8_t supports_gtc;
+    uint8_t supports_ioc;
+    uint8_t supports_fok;
+    uint8_t supports_gtd;
+    uint8_t supports_post_only;
+    uint8_t supports_reduce_only;
+    uint8_t supports_close_position;
+    uint8_t _pad[2];
+  } FloxExchangeCapabilities;
+
+  typedef void (*FloxExecutorSubmitFn)(void* user_data, const FloxOrder* order);
+  typedef void (*FloxExecutorCancelFn)(void* user_data, uint64_t order_id);
+  typedef void (*FloxExecutorCancelAllFn)(void* user_data, uint32_t symbol);
+  typedef void (*FloxExecutorReplaceFn)(void* user_data,
+                                        uint64_t old_order_id,
+                                        const FloxOrder* new_order);
+  typedef void (*FloxExecutorSubmitOCOFn)(void* user_data,
+                                          const FloxOrder* order1,
+                                          const FloxOrder* order2);
+  typedef void (*FloxExecutorCapabilitiesFn)(void* user_data,
+                                             FloxExchangeCapabilities* caps_out);
+  typedef void (*FloxExecutorLifecycleFn)(void* user_data);
+
+  typedef struct
+  {
+    FloxExecutorSubmitFn submit;
+    FloxExecutorCancelFn cancel;
+    FloxExecutorCancelAllFn cancel_all;
+    FloxExecutorReplaceFn replace;
+    FloxExecutorSubmitOCOFn submit_oco;
+    FloxExecutorCapabilitiesFn capabilities;
+    FloxExecutorLifecycleFn on_start;
+    FloxExecutorLifecycleFn on_stop;
+    void* user_data;
+  } FloxExecutorCallbacks;
+
+  typedef void* FloxExecutorHandle;
+
+  FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks);
+  void flox_executor_destroy(FloxExecutorHandle executor);
+
+  // Query the executor's reported capabilities. Forwards to the binding's
+  // capabilities() callback. caps_out is zeroed if no callback registered.
+  void flox_executor_get_capabilities(FloxExecutorHandle executor,
+                                      FloxExchangeCapabilities* caps_out);
+
+  // ============================================================
   // FloxLiveEngine — Disruptor-based live trading engine.
   //
   // Uses real EventBus (SPSC ring buffer / Disruptor) internally.
@@ -1412,6 +1549,14 @@ extern "C"
   // start/stop while attached.
   void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
                                                  FloxMarketDataRecorderHandle recorder);
+
+  // Attach (or detach with NULL) a binding-supplied executor. When set,
+  // emitted signals are forwarded to the executor (submit / cancel /
+  // replace / cancel_all / submit_oco) instead of relying on the user's
+  // on_signal callback to route orders. on_start / on_stop fire balanced
+  // against engine start/stop.
+  void flox_live_engine_set_executor(FloxLiveEngineHandle engine,
+                                     FloxExecutorHandle executor);
 
   // Attach a strategy to both TradeBus and BookUpdateBus.
   // on_signal is called from the consumer thread when the strategy emits an order.
@@ -1505,6 +1650,13 @@ extern "C"
   // start/stop.
   void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
                                             FloxMarketDataRecorderHandle recorder);
+
+  // Attach (or detach with NULL) a binding-supplied executor. When set,
+  // emitted signals are forwarded to the executor in addition to the
+  // user's on_signal callback. on_start / on_stop fire balanced against
+  // runner start/stop.
+  void flox_runner_set_executor(FloxRunnerHandle runner,
+                                FloxExecutorHandle executor);
 
   void flox_runner_start(FloxRunnerHandle runner);
   void flox_runner_stop(FloxRunnerHandle runner);
@@ -1600,6 +1752,17 @@ extern "C"
   int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
                                              FloxReplaySourceHandle source,
                                              FloxBacktestStats* stats_out);
+
+  // Attach a binding-side execution listener to BacktestRunner. Multiple
+  // listeners may be attached. Caller retains ownership of the listener.
+  void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle runner,
+                                                   FloxExecutionListenerHandle listener);
+
+  // Attach (or detach with NULL) a binding-supplied executor. When set,
+  // emitted signals are routed to the executor instead of the built-in
+  // SimulatedExecutor.
+  void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner,
+                                         FloxExecutorHandle executor);
 
 #ifdef __cplusplus
 }

@@ -25,15 +25,15 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   }
 
   SimulatedExecutorWrap(const Napi::CallbackInfo& info)
-      : Napi::ObjectWrap<SimulatedExecutorWrap>(info), _h(flox_executor_create()) {}
+      : Napi::ObjectWrap<SimulatedExecutorWrap>(info), _h(flox_simulated_executor_create()) {}
   ~SimulatedExecutorWrap()
   {
     if (_h)
     {
-      flox_executor_destroy(_h);
+      flox_simulated_executor_destroy(_h);
     }
   }
-  FloxExecutorHandle handle() const { return _h; }
+  FloxSimulatedExecutorHandle handle() const { return _h; }
 
  private:
   void SubmitOrder(const Napi::CallbackInfo& info)
@@ -50,13 +50,13 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     {
       t = 1;
     }
-    flox_executor_submit_order(_h, id, s, price, qty, t, sym);
+    flox_simulated_executor_submit_order(_h, id, s, price, qty, t, sym);
   }
-  void CancelOrder(const Napi::CallbackInfo& info) { flox_executor_cancel_order(_h, info[0].As<Napi::Number>().Int64Value()); }
-  void CancelAll(const Napi::CallbackInfo& info) { flox_executor_cancel_all(_h, info[0].As<Napi::Number>().Uint32Value()); }
-  void OnBar(const Napi::CallbackInfo& info) { flox_executor_on_bar(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue()); }
-  void OnTrade(const Napi::CallbackInfo& info) { flox_executor_on_trade(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
-  void AdvanceClock(const Napi::CallbackInfo& info) { flox_executor_advance_clock(_h, info[0].As<Napi::Number>().Int64Value()); }
+  void CancelOrder(const Napi::CallbackInfo& info) { flox_simulated_executor_cancel_order(_h, info[0].As<Napi::Number>().Int64Value()); }
+  void CancelAll(const Napi::CallbackInfo& info) { flox_simulated_executor_cancel_all(_h, info[0].As<Napi::Number>().Uint32Value()); }
+  void OnBar(const Napi::CallbackInfo& info) { flox_simulated_executor_on_bar(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue()); }
+  void OnTrade(const Napi::CallbackInfo& info) { flox_simulated_executor_on_trade(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
+  void AdvanceClock(const Napi::CallbackInfo& info) { flox_simulated_executor_advance_clock(_h, info[0].As<Napi::Number>().Int64Value()); }
   void SetDefaultSlippage(const Napi::CallbackInfo& info)
   {
     std::string model = info[0].As<Napi::String>().Utf8Value();
@@ -77,7 +77,7 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     double tickSize = info.Length() > 2 ? info[2].As<Napi::Number>().DoubleValue() : 0.0;
     double bps = info.Length() > 3 ? info[3].As<Napi::Number>().DoubleValue() : 0.0;
     double impact = info.Length() > 4 ? info[4].As<Napi::Number>().DoubleValue() : 0.0;
-    flox_executor_set_default_slippage(_h, m, ticks, tickSize, bps, impact);
+    flox_simulated_executor_set_default_slippage(_h, m, ticks, tickSize, bps, impact);
   }
   void SetQueueModel(const Napi::CallbackInfo& info)
   {
@@ -92,10 +92,10 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
       m = 2;
     }
     uint32_t depth = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
-    flox_executor_set_queue_model(_h, m, depth);
+    flox_simulated_executor_set_queue_model(_h, m, depth);
   }
-  Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_executor_fill_count(_h)); }
-  FloxExecutorHandle _h;
+  Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
+  FloxSimulatedExecutorHandle _h;
 };
 
 class BacktestResultWrap : public Napi::ObjectWrap<BacktestResultWrap>

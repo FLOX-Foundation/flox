@@ -15,12 +15,12 @@ from C import flox_stat_permutation_test(Ptr[float], int, Ptr[float], int, u32) 
 from C import flox_stat_bootstrap_ci(Ptr[float], int, float, u32, Ptr[float], Ptr[float], Ptr[float])
 
 # ── backtest_slippage ──
-from C import flox_executor_set_default_slippage(cobj, i32, i32, float, float, float)
-from C import flox_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
-from C import flox_executor_set_queue_model(cobj, i32, u32)
-from C import flox_executor_on_trade_qty(cobj, u32, float, float, u8)
-from C import flox_executor_on_best_levels(cobj, u32, float, float, float, float)
-from C import flox_executor_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32)
+from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
+from C import flox_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
+from C import flox_simulated_executor_set_queue_model(cobj, i32, u32)
+from C import flox_simulated_executor_on_trade_qty(cobj, u32, float, float, u8)
+from C import flox_simulated_executor_on_best_levels(cobj, u32, float, float, float, float)
+from C import flox_simulated_executor_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u32, Ptr[float], Ptr[float], u32)
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
@@ -98,8 +98,19 @@ from C import flox_data_recorder_is_recording(cobj) -> u8
 # ── datawriter ──
 from C import flox_data_writer_stats(cobj) -> cobj
 
+# ── execution ──
+from C import flox_execution_listener_create(cobj) -> cobj
+from C import flox_execution_listener_destroy(cobj)
+from C import flox_executor_create(cobj) -> cobj
+from C import flox_executor_destroy(cobj)
+from C import flox_executor_get_capabilities(cobj, cobj)
+from C import flox_live_engine_set_executor(cobj, cobj)
+from C import flox_runner_set_executor(cobj, cobj)
+from C import flox_backtest_runner_add_execution_listener(cobj, cobj)
+from C import flox_backtest_runner_set_executor(cobj, cobj)
+
 # ── executor_fill ──
-from C import flox_executor_get_fills(cobj, cobj, u32) -> u32
+from C import flox_simulated_executor_get_fills(cobj, cobj, u32) -> u32
 
 # ── fixed_point ──
 from C import flox_price_from_double(float) -> i64
@@ -347,15 +358,15 @@ from C import flox_emit_limit_sell_tif(cobj, u32, i64, i64, u8) -> u64
 from C import flox_emit_close_position(cobj, u32) -> u64
 
 # ── simulated_executor ──
-from C import flox_executor_create() -> cobj
-from C import flox_executor_destroy(cobj)
-from C import flox_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
-from C import flox_executor_cancel_order(cobj, u64)
-from C import flox_executor_cancel_all(cobj, u32)
-from C import flox_executor_on_bar(cobj, u32, float)
-from C import flox_executor_on_trade(cobj, u32, float, u8)
-from C import flox_executor_advance_clock(cobj, i64)
-from C import flox_executor_fill_count(cobj) -> u32
+from C import flox_simulated_executor_create() -> cobj
+from C import flox_simulated_executor_destroy(cobj)
+from C import flox_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import flox_simulated_executor_cancel_order(cobj, u64)
+from C import flox_simulated_executor_cancel_all(cobj, u32)
+from C import flox_simulated_executor_on_bar(cobj, u32, float)
+from C import flox_simulated_executor_on_trade(cobj, u32, float, u8)
+from C import flox_simulated_executor_advance_clock(cobj, i64)
+from C import flox_simulated_executor_fill_count(cobj) -> u32
 
 # ── statistics ──
 from C import flox_stat_correlation(Ptr[float], Ptr[float], int) -> float

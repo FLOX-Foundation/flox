@@ -1129,53 +1129,53 @@ static JSValue js_book_apply_delta(JSContext* ctx, JSValueConst, int, JSValueCon
 
 static JSValue js_executor_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
-  return createHandleObject(ctx, flox_executor_create());
+  return createHandleObject(ctx, flox_simulated_executor_create());
 }
 static JSValue js_executor_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_executor_destroy(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])));
+  flox_simulated_executor_destroy(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_submit(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  auto h = static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0]));
-  flox_executor_submit_order(h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
-                             static_cast<uint8_t>(toUint32(ctx, argv[2])),
-                             toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
-                             static_cast<uint8_t>(toUint32(ctx, argv[5])),
-                             toUint32(ctx, argv[6]));
+  auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
+  flox_simulated_executor_submit_order(h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
+                                       static_cast<uint8_t>(toUint32(ctx, argv[2])),
+                                       toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
+                                       static_cast<uint8_t>(toUint32(ctx, argv[5])),
+                                       toUint32(ctx, argv[6]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_executor_on_bar(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                       toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
+  flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                                 toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_trade(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_executor_on_trade(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                         toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
-                         static_cast<uint8_t>(toUint32(ctx, argv[3])));
+  flox_simulated_executor_on_trade(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                                   toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                                   static_cast<uint8_t>(toUint32(ctx, argv[3])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_advance(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  flox_executor_advance_clock(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                              toInt64(ctx, argv[1]));
+  flox_simulated_executor_advance_clock(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                                        toInt64(ctx, argv[1]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_fill_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   return JS_NewUint32(
-      ctx, flox_executor_fill_count(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0]))));
+      ctx, flox_simulated_executor_fill_count(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]))));
 }
 
 static JSValue js_executor_set_default_slippage(JSContext* ctx, JSValueConst, int,
                                                 JSValueConst* argv)
 {
-  flox_executor_set_default_slippage(
-      static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
+  flox_simulated_executor_set_default_slippage(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
       static_cast<int32_t>(toInt64(ctx, argv[1])),
       static_cast<int32_t>(toInt64(ctx, argv[2])), toDouble(ctx, argv[3]),
       toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
@@ -1184,8 +1184,8 @@ static JSValue js_executor_set_default_slippage(JSContext* ctx, JSValueConst, in
 static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
 {
-  flox_executor_set_symbol_slippage(
-      static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
+  flox_simulated_executor_set_symbol_slippage(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), toUint32(ctx, argv[1]),
       static_cast<int32_t>(toInt64(ctx, argv[2])),
       static_cast<int32_t>(toInt64(ctx, argv[3])), toDouble(ctx, argv[4]),
       toDouble(ctx, argv[5]), toDouble(ctx, argv[6]));
@@ -1194,27 +1194,27 @@ static JSValue js_executor_set_symbol_slippage(JSContext* ctx, JSValueConst, int
 static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
 {
-  flox_executor_set_queue_model(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                                static_cast<int32_t>(toInt64(ctx, argv[1])),
-                                toUint32(ctx, argv[2]));
+  flox_simulated_executor_set_queue_model(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                                          static_cast<int32_t>(toInt64(ctx, argv[1])),
+                                          toUint32(ctx, argv[2]));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
-  flox_executor_on_trade_qty(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                             toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
-                             toDouble(ctx, argv[3]),
-                             static_cast<uint8_t>(toUint32(ctx, argv[4])));
+  flox_simulated_executor_on_trade_qty(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                                       toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                                       toDouble(ctx, argv[3]),
+                                       static_cast<uint8_t>(toUint32(ctx, argv[4])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_best_levels(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  flox_executor_on_best_levels(static_cast<FloxExecutorHandle>(getHandle(ctx, argv[0])),
-                               toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
-                               toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
-                               toDouble(ctx, argv[5]));
+  flox_simulated_executor_on_best_levels(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                                         toUint32(ctx, argv[1]), toDouble(ctx, argv[2]),
+                                         toDouble(ctx, argv[3]), toDouble(ctx, argv[4]),
+                                         toDouble(ctx, argv[5]));
   return JS_UNDEFINED;
 }
 
@@ -1249,7 +1249,7 @@ static JSValue js_backtest_result_ingest(JSContext* ctx, JSValueConst, int,
 {
   flox_backtest_result_ingest_executor(
       static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])),
-      static_cast<FloxExecutorHandle>(getHandle(ctx, argv[1])));
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[1])));
   return JS_UNDEFINED;
 }
 static JSValue js_backtest_result_stats(JSContext* ctx, JSValueConst, int,
@@ -2747,20 +2747,20 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_book_is_crossed", js_book_is_crossed, 1);
 
   // Executor
-  addGlobalFunc(ctx, "__flox_executor_create", js_executor_create, 0);
-  addGlobalFunc(ctx, "__flox_executor_destroy", js_executor_destroy, 1);
-  addGlobalFunc(ctx, "__flox_executor_submit", js_executor_submit, 7);
-  addGlobalFunc(ctx, "__flox_executor_on_bar", js_executor_on_bar, 3);
-  addGlobalFunc(ctx, "__flox_executor_on_trade", js_executor_on_trade, 4);
-  addGlobalFunc(ctx, "__flox_executor_advance_clock", js_executor_advance, 2);
-  addGlobalFunc(ctx, "__flox_executor_fill_count", js_executor_fill_count, 1);
-  addGlobalFunc(ctx, "__flox_executor_set_default_slippage",
+  addGlobalFunc(ctx, "__flox_simulated_executor_create", js_executor_create, 0);
+  addGlobalFunc(ctx, "__flox_simulated_executor_destroy", js_executor_destroy, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_submit", js_executor_submit, 7);
+  addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
+  addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_fill_count", js_executor_fill_count, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_default_slippage",
                 js_executor_set_default_slippage, 6);
-  addGlobalFunc(ctx, "__flox_executor_set_symbol_slippage",
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_symbol_slippage",
                 js_executor_set_symbol_slippage, 7);
-  addGlobalFunc(ctx, "__flox_executor_set_queue_model", js_executor_set_queue_model, 3);
-  addGlobalFunc(ctx, "__flox_executor_on_trade_qty", js_executor_on_trade_qty, 5);
-  addGlobalFunc(ctx, "__flox_executor_on_best_levels", js_executor_on_best_levels, 6);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_model", js_executor_set_queue_model, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
+  addGlobalFunc(ctx, "__flox_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
 
   // Backtest result
   addGlobalFunc(ctx, "__flox_backtest_result_create", js_backtest_result_create, 6);

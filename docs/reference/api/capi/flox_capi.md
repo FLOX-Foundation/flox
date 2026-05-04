@@ -17,7 +17,7 @@ typedef void* FloxRunnerHandle;
 typedef void* FloxLiveEngineHandle;
 typedef void* FloxBacktestRunnerHandle;
 typedef void* FloxBacktestResultHandle;
-typedef void* FloxExecutorHandle;
+typedef void* FloxSimulatedExecutorHandle;
 typedef void* FloxBookHandle;
 typedef void* FloxL3BookHandle;
 typedef void* FloxCompositeBookHandle;
@@ -361,34 +361,34 @@ All return `OrderId` (`uint64_t`), 0 on failure. `cancel` and `modify` return vo
 Used in backtesting to fill orders from simulated market data.
 
 ```c
-FloxExecutorHandle flox_executor_create(void);
-void               flox_executor_destroy(FloxExecutorHandle executor);
+FloxSimulatedExecutorHandle flox_simulated_executor_create(void);
+void               flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor);
 
-void flox_executor_submit_order(FloxExecutorHandle executor,
+void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor,
                                 uint64_t id, uint8_t side, double price,
                                 double quantity, uint8_t order_type, uint32_t symbol);
-void flox_executor_cancel_order(FloxExecutorHandle executor, uint64_t order_id);
-void flox_executor_cancel_all(FloxExecutorHandle executor, uint32_t symbol);
+void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
+void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
 
 // Feed market data
-void flox_executor_on_bar(FloxExecutorHandle executor, uint32_t symbol, double close_price);
-void flox_executor_on_trade(FloxExecutorHandle executor, uint32_t symbol,
+void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol, double close_price);
+void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                             double price, uint8_t is_buy);
-void flox_executor_on_trade_qty(FloxExecutorHandle executor, uint32_t symbol,
+void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                 double price, double quantity, uint8_t is_buy);
-void flox_executor_on_best_levels(FloxExecutorHandle executor, uint32_t symbol,
+void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                   double bid_price, double bid_qty,
                                   double ask_price, double ask_qty);
-void flox_executor_on_book_snapshot(FloxExecutorHandle executor, uint32_t symbol,
+void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                     const double* bid_prices, const double* bid_qtys,
                                     uint32_t n_bids,
                                     const double* ask_prices, const double* ask_qtys,
                                     uint32_t n_asks);
-void flox_executor_advance_clock(FloxExecutorHandle executor, int64_t timestamp_ns);
+void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor, int64_t timestamp_ns);
 
 // Fills
-uint32_t flox_executor_fill_count(FloxExecutorHandle executor);
-uint32_t flox_executor_get_fills(FloxExecutorHandle executor,
+uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle executor);
+uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle executor,
                                  FloxFill* fills_out, uint32_t max_fills);
 ```
 
@@ -402,11 +402,11 @@ typedef enum {
     FLOX_SLIPPAGE_VOLUME_IMPACT = 3
 } FloxSlippageModel;
 
-void flox_executor_set_default_slippage(FloxExecutorHandle executor,
+void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle executor,
                                         int32_t model, int32_t ticks,
                                         double tick_size, double bps,
                                         double impact_coeff);
-void flox_executor_set_symbol_slippage(FloxExecutorHandle executor, uint32_t symbol,
+void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                        int32_t model, int32_t ticks,
                                        double tick_size, double bps,
                                        double impact_coeff);
@@ -421,7 +421,7 @@ typedef enum {
     FLOX_QUEUE_FULL = 2
 } FloxQueueModel;
 
-void flox_executor_set_queue_model(FloxExecutorHandle executor,
+void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor,
                                    int32_t model, uint32_t depth);
 ```
 
@@ -444,7 +444,7 @@ void flox_backtest_result_record_fill(FloxBacktestResultHandle result,
                                       uint64_t order_id, uint32_t symbol, uint8_t side,
                                       double price, double quantity, int64_t timestamp_ns);
 void flox_backtest_result_ingest_executor(FloxBacktestResultHandle result,
-                                          FloxExecutorHandle executor);
+                                          FloxSimulatedExecutorHandle executor);
 
 void     flox_backtest_result_stats(FloxBacktestResultHandle result, FloxBacktestStats* out);
 uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle result,

@@ -51,7 +51,7 @@ exec.setSymbolSlippage(kBtcUsd,
 | Language | Entry point |
 |----------|-------------|
 | Python | `SimulatedExecutor.set_default_slippage(model, ticks, tick_size, bps, impact_coeff)` / `set_symbol_slippage(symbol, ...)` |
-| C API | `flox_executor_set_default_slippage(exec, model, ticks, tick_size, bps, impact)` |
+| C API | `flox_simulated_executor_set_default_slippage(exec, model, ticks, tick_size, bps, impact)` |
 | Codon | `SimulatedExecutor.set_default_slippage(model, ticks, tick_size, bps, impact_coeff)` |
 | JavaScript | `executor.setDefaultSlippage("fixed_bps", 0, 0, 5.0, 0)` |
 
