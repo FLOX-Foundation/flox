@@ -101,6 +101,154 @@ export interface Strategy {
   onBar?(ctx: SymbolContext, bar: BarData, emit: EmitMethods): void;
 }
 
+// ── Extension hooks ──────────────────────────────────────────────────
+//
+// All hooks are plain JS objects. Pass to `runner.set<Hook>(obj)` /
+// `backtestRunner.set<Hook>(obj)`. Pass `null` to detach.
+
+/** Order snapshot delivered to ExecutionListener / Executor callbacks. */
+export interface Order {
+  id: number;
+  clientOrderId: number;
+  symbol: number;
+  strategyId: number;
+  orderTag: number;
+  side: Side;
+  orderType: OrderType | "tp_market" | "tp_limit" | "iceberg";
+  timeInForce: "gtc" | "ioc" | "fok" | "gtd" | "post_only" | "unknown";
+  reduceOnly: boolean;
+  postOnly: boolean;
+  closePosition: boolean;
+  price: number;
+  quantity: number;
+  filledQuantity: number;
+  triggerPrice: number;
+  trailingOffset: number;
+  createdAtNs: number;
+  exchangeTsNs: number;
+}
+
+/** Returned by `Executor.capabilities()` — what the venue supports. */
+export interface ExchangeCapabilities {
+  stopMarket?: boolean;
+  stopLimit?: boolean;
+  takeProfitMarket?: boolean;
+  takeProfitLimit?: boolean;
+  trailingStop?: boolean;
+  iceberg?: boolean;
+  oco?: boolean;
+  gtc?: boolean;
+  ioc?: boolean;
+  fok?: boolean;
+  gtd?: boolean;
+  postOnly?: boolean;
+  reduceOnly?: boolean;
+  closePosition?: boolean;
+}
+
+/** Post-emission observer of every signal. Fires from a Node background
+ *  thread for live engine; from the JS thread for sync runner. */
+export interface PnLTracker {
+  onSignal?(signal: Signal): void;
+}
+
+/** Persist every emitted signal (DB, audit log, etc.). */
+export interface StorageSink {
+  store?(signal: Signal): void;
+}
+
+/** Pre-trade gate: return false to drop. Sync only — engine reads the
+ *  return value inline, so this can't be used with `threaded: true`. */
+export interface RiskManager {
+  allow?(signal: Signal): boolean;
+}
+
+/** Pre-trade gate; halts trading when `check` returns false. Sync only. */
+export interface KillSwitch {
+  check?(signal: Signal): boolean;
+}
+
+/** Pre-trade gate; rejects signals that fail validation. Sync only. */
+export interface OrderValidator {
+  validate?(signal: Signal): boolean;
+}
+
+/** Receives every market-data event fed into the engine, for custom
+ *  recording (CSV, parquet, custom binary). */
+export interface MarketDataRecorderHook {
+  onTrade?(trade: TradeData): void;
+  /** `bids` / `asks` are arrays of `[price, quantity]` pairs. */
+  onBookUpdate?(
+    symbol: number,
+    isSnapshot: boolean,
+    bids: ReadonlyArray<readonly [number, number]>,
+    asks: ReadonlyArray<readonly [number, number]>,
+    timestampNs: number
+  ): void;
+  onStart?(): void;
+  onStop?(): void;
+}
+
+/** A binding-supplied event source for `BacktestRunner.runReplaySource`.
+ *  `next()` is called repeatedly; return `null` when the stream ends. */
+export interface ReplayEvent {
+  type: "trade" | "book_snapshot" | "book_delta";
+  timestampNs: number;
+  // Trade payload (when type === "trade")
+  tradeSymbol?: number;
+  tradeIsBuy?: boolean;
+  tradePrice?: number;
+  tradeQuantity?: number;
+  // Book payload (when type === "book_snapshot" | "book_delta")
+  bookSymbol?: number;
+  bids?: ReadonlyArray<readonly [number, number]>;
+  asks?: ReadonlyArray<readonly [number, number]>;
+}
+
+export interface ReplaySource {
+  onStart?(): void;
+  onStop?(): void;
+  seekTo?(timestampNs: number): boolean;
+  next?(): ReplayEvent | null | undefined;
+}
+
+/** Replaces the built-in SimulatedExecutor with a binding-supplied one
+ *  (real broker, paper-trading bridge, custom simulator). Sync only —
+ *  `capabilities()` is queried inline by the engine. */
+export interface Executor {
+  submit?(order: Order): void;
+  cancel?(orderId: number): void;
+  cancelAll?(symbol: number): void;
+  replace?(oldOrderId: number, newOrder: Order): void;
+  submitOco?(order1: Order, order2: Order): void;
+  capabilities?(): ExchangeCapabilities;
+  onStart?(): void;
+  onStop?(): void;
+}
+
+/** Observes order lifecycle from SimulatedExecutor / live broker fills. */
+export interface ExecutionListener {
+  onSubmitted?(order: Order): void;
+  onAccepted?(order: Order): void;
+  onPartiallyFilled?(order: Order, fillQuantity: number): void;
+  onFilled?(order: Order): void;
+  onPendingCancel?(order: Order): void;
+  onCanceled?(order: Order): void;
+  onExpired?(order: Order): void;
+  onRejected?(order: Order, reason: string): void;
+  onReplaced?(oldOrder: Order, newOrder: Order): void;
+  onPendingTrigger?(order: Order): void;
+  onTriggered?(order: Order): void;
+  onTrailingStopUpdated?(order: Order, newTriggerPrice: number): void;
+}
+
+/** Install a Node callable as the global FLOX log sink. Pass null to
+ *  detach. Receives `(level: number, msg: string)`; level: 0=info,
+ *  1=warn, 2=error. */
+export function setLogCallback(
+  callback: ((level: number, msg: string) => void) | null
+): void;
+
 /** Stats returned by `BacktestRunner.runCsv` / `runOhlcv` and `BacktestResult.stats()`. */
 export interface BacktestStats {
   totalTrades: number;
@@ -171,6 +319,19 @@ export class Runner {
     timestampNs: number | bigint,
   ): void;
   onBar(symbol: Symbol | number, bar: Partial<BarData> & Pick<BarData, "open" | "high" | "low" | "close">): void;
+
+  // ── Hook setters ──
+  setPnlTracker(tracker: PnLTracker | null): void;
+  setStorageSink(sink: StorageSink | null): void;
+  /** Sync only — RiskManager.allow is read inline. Throws if `threaded`. */
+  setRiskManager(rm: RiskManager | null): void;
+  /** Sync only — KillSwitch.check is read inline. */
+  setKillSwitch(ks: KillSwitch | null): void;
+  /** Sync only — OrderValidator.validate is read inline. */
+  setOrderValidator(ov: OrderValidator | null): void;
+  setMarketDataRecorder(recorder: MarketDataRecorderHook | null): void;
+  /** Sync only — Executor.capabilities() is read inline. */
+  setExecutor(executor: Executor | null): void;
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────
@@ -215,6 +376,11 @@ export class BacktestRunner {
   setStrategy(strategy: Strategy): void;
   runCsv(path: string, symbol: string): BacktestStats;
   runOhlcv(timestamps: Float64Array, closes: Float64Array, symbol: string): BacktestStats;
+  /** Replace the built-in SimulatedExecutor with a binding-supplied one. */
+  setExecutor(executor: Executor | null): void;
+  /** Attach a listener for order lifecycle events. Multiple listeners
+   *  may be attached; each fires for every order event. */
+  addExecutionListener(listener: ExecutionListener): void;
 }
 
 export class SimulatedExecutor {

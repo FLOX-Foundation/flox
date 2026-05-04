@@ -7,6 +7,7 @@
 #include "flox/capi/bridge_strategy.h"
 #include "flox/capi/flox_capi.h"
 #include "flox/engine/symbol_registry.h"
+#include "hooks.h"
 
 #include <memory>
 #include <string>
@@ -814,13 +815,16 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
  public:
   static Napi::Object Init(Napi::Env env)
   {
-    return DefineClass(env, "BacktestRunner",
-                       {
-                           InstanceMethod("setStrategy", &BacktestRunnerNode::setStrategy),
-                           InstanceMethod("runCsv", &BacktestRunnerNode::runCsv),
-                           InstanceMethod("runOhlcv", &BacktestRunnerNode::runOhlcv),
-                           InstanceMethod("runBars", &BacktestRunnerNode::runBars),
-                       });
+    return DefineClass(
+        env, "BacktestRunner",
+        {
+            InstanceMethod("setStrategy", &BacktestRunnerNode::setStrategy),
+            InstanceMethod("runCsv", &BacktestRunnerNode::runCsv),
+            InstanceMethod("runOhlcv", &BacktestRunnerNode::runOhlcv),
+            InstanceMethod("runBars", &BacktestRunnerNode::runBars),
+            InstanceMethod("setExecutor", &BacktestRunnerNode::setExecutor),
+            InstanceMethod("addExecutionListener", &BacktestRunnerNode::addExecutionListener),
+        });
   }
 
   // new BacktestRunner(registry, feeRate, initialCapital)
@@ -952,6 +956,39 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
     obj.Set("profitFactor", Napi::Number::New(env, s.profitFactor));
     return obj;
   }
+
+  // ── Hook setters ────────────────────────────────────────────────────
+
+  std::unique_ptr<flox_node::ExecutorHost> _executor_host;
+  std::vector<std::unique_ptr<flox_node::ExecutionListenerHost>> _listener_hosts;
+
+  Napi::Value setExecutor(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      flox_backtest_runner_set_executor(_handle, nullptr);
+      _executor_host.reset();
+      return env.Undefined();
+    }
+    _executor_host = std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>());
+    flox_backtest_runner_set_executor(_handle, _executor_host->handle);
+    return env.Undefined();
+  }
+
+  Napi::Value addExecutionListener(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || !info[0].IsObject())
+    {
+      return env.Undefined();
+    }
+    auto host =
+        std::make_unique<flox_node::ExecutionListenerHost>(env, info[0].As<Napi::Object>());
+    flox_backtest_runner_add_execution_listener(_handle, host->handle);
+    _listener_hosts.push_back(std::move(host));
+    return env.Undefined();
+  }
 };
 
 // ──────────────────────────────────────────────────────────────
@@ -966,15 +1003,23 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
  public:
   static Napi::Object Init(Napi::Env env)
   {
-    return DefineClass(env, "Runner",
-                       {
-                           InstanceMethod("addStrategy", &RunnerNode::addStrategy),
-                           InstanceMethod("start", &RunnerNode::start),
-                           InstanceMethod("stop", &RunnerNode::stop),
-                           InstanceMethod("onTrade", &RunnerNode::onTrade),
-                           InstanceMethod("onBookSnapshot", &RunnerNode::onBookSnapshot),
-                           InstanceMethod("onBar", &RunnerNode::onBar),
-                       });
+    return DefineClass(
+        env, "Runner",
+        {
+            InstanceMethod("addStrategy", &RunnerNode::addStrategy),
+            InstanceMethod("start", &RunnerNode::start),
+            InstanceMethod("stop", &RunnerNode::stop),
+            InstanceMethod("onTrade", &RunnerNode::onTrade),
+            InstanceMethod("onBookSnapshot", &RunnerNode::onBookSnapshot),
+            InstanceMethod("onBar", &RunnerNode::onBar),
+            InstanceMethod("setPnlTracker", &RunnerNode::setPnlTracker),
+            InstanceMethod("setStorageSink", &RunnerNode::setStorageSink),
+            InstanceMethod("setRiskManager", &RunnerNode::setRiskManager),
+            InstanceMethod("setKillSwitch", &RunnerNode::setKillSwitch),
+            InstanceMethod("setOrderValidator", &RunnerNode::setOrderValidator),
+            InstanceMethod("setMarketDataRecorder", &RunnerNode::setMarketDataRecorder),
+            InstanceMethod("setExecutor", &RunnerNode::setExecutor),
+        });
   }
 
   RunnerNode(const Napi::CallbackInfo& info)
@@ -1204,6 +1249,219 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
                                 {
       fn.Call({signalToJs(env, s)});
       delete s; });
+  }
+
+  // ── Hook setters ────────────────────────────────────────────────────
+  //
+  // Each setX accepts either a plain JS object with named callbacks or
+  // null/undefined to detach. The host is owned here and torn down on
+  // detach / runner destruction so the C ABI handle is always valid
+  // while the engine holds a reference.
+
+  std::unique_ptr<flox_node::PnLTrackerHost> _pnl_host;
+  std::unique_ptr<flox_node::StorageSinkHost> _storage_host;
+  std::unique_ptr<flox_node::RiskManagerHost> _risk_host;
+  std::unique_ptr<flox_node::KillSwitchHost> _kill_host;
+  std::unique_ptr<flox_node::OrderValidatorHost> _validator_host;
+  std::unique_ptr<flox_node::MarketDataRecorderHookHost> _recorder_host;
+  std::unique_ptr<flox_node::ExecutorHost> _executor_host;
+
+  Napi::Value setPnlTracker(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _pnl_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_pnl_tracker(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_pnl_tracker(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _pnl_host = std::make_unique<flox_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_pnl_tracker(_runner, _pnl_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_pnl_tracker(_engine, _pnl_host->handle);
+    }
+    return env.Undefined();
+  }
+
+  Napi::Value setStorageSink(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _storage_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_storage_sink(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_storage_sink(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _storage_host = std::make_unique<flox_node::StorageSinkHost>(env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_storage_sink(_runner, _storage_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_storage_sink(_engine, _storage_host->handle);
+    }
+    return env.Undefined();
+  }
+
+  Napi::Value setRiskManager(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _risk_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_risk_manager(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_risk_manager(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_risk_manager(_runner, _risk_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_risk_manager(_engine, _risk_host->handle);
+    }
+    return env.Undefined();
+  }
+
+  Napi::Value setKillSwitch(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _kill_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_kill_switch(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_kill_switch(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_kill_switch(_runner, _kill_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_kill_switch(_engine, _kill_host->handle);
+    }
+    return env.Undefined();
+  }
+
+  Napi::Value setOrderValidator(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _validator_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_order_validator(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_order_validator(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _validator_host =
+        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_order_validator(_runner, _validator_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_order_validator(_engine, _validator_host->handle);
+    }
+    return env.Undefined();
+  }
+
+  Napi::Value setMarketDataRecorder(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _recorder_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_market_data_recorder(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_market_data_recorder(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _recorder_host = std::make_unique<flox_node::MarketDataRecorderHookHost>(
+        env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_market_data_recorder(_runner, _recorder_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_market_data_recorder(_engine, _recorder_host->handle);
+    }
+    return env.Undefined();
+  }
+
+  Napi::Value setExecutor(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _executor_host.reset();
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_executor(_runner, nullptr);
+      }
+      else
+      {
+        flox_live_engine_set_executor(_engine, nullptr);
+      }
+      return env.Undefined();
+    }
+    _executor_host = std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>());
+    if (_mode == Mode::Sync)
+    {
+      flox_runner_set_executor(_runner, _executor_host->handle);
+    }
+    else
+    {
+      flox_live_engine_set_executor(_engine, _executor_host->handle);
+    }
+    return env.Undefined();
   }
 };
 
