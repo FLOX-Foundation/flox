@@ -7,6 +7,9 @@
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/common.h"
+#include "flox/error/flox_error.h"
+
+#include "error_translator.h"
 
 #include <algorithm>
 #include <cctype>
@@ -66,7 +69,10 @@ inline std::vector<OhlcvBar> parseCsv(const std::string& path)
   std::ifstream file(path);
   if (!file.is_open())
   {
-    throw std::runtime_error("cannot open: " + path);
+    throw flox::FloxError(
+        "E_IO_001",
+        "Cannot open file: '" + path +
+            "'. Check the path is correct and the file is readable.");
   }
 
   std::vector<OhlcvBar> bars;
@@ -360,46 +366,57 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
     return buf;
   }
 
-  void LoadCsv(const Napi::CallbackInfo& info)
+  Napi::Value LoadCsv(const Napi::CallbackInfo& info)
   {
-    std::string path = info[0].As<Napi::String>().Utf8Value();
-    std::string sym = (info.Length() > 1 && info[1].IsString()) ? info[1].As<Napi::String>().Utf8Value() : inferSymbol(path);
-    getOrCreate(sym).bars = parseCsv(path);
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
+      std::string path = info[0].As<Napi::String>().Utf8Value();
+      std::string sym = (info.Length() > 1 && info[1].IsString()) ? info[1].As<Napi::String>().Utf8Value() : inferSymbol(path);
+      getOrCreate(sym).bars = parseCsv(path);
+      return info.Env().Undefined(); });
   }
 
-  void LoadOhlcv(const Napi::CallbackInfo& info)
+  Napi::Value LoadOhlcv(const Napi::CallbackInfo& info)
   {
-    auto obj = info[0].As<Napi::Object>();
-    std::string sym = (info.Length() > 1 && info[1].IsString()) ? info[1].As<Napi::String>().Utf8Value() : "default";
-    auto ts = obj.Get("ts").As<Napi::Float64Array>();
-    auto op = obj.Get("open").As<Napi::Float64Array>();
-    auto hi = obj.Get("high").As<Napi::Float64Array>();
-    auto lo = obj.Get("low").As<Napi::Float64Array>();
-    auto cl = obj.Get("close").As<Napi::Float64Array>();
-    auto vo = obj.Get("volume").As<Napi::Float64Array>();
-    size_t n = ts.ElementLength();
-    auto& sd = getOrCreate(sym);
-    sd.bars.resize(n);
-    for (size_t i = 0; i < n; ++i)
-    {
-      sd.bars[i] = {normalizeTs(static_cast<int64_t>(ts[i])),
-                    Price::fromDouble(op[i]).raw(), Price::fromDouble(hi[i]).raw(),
-                    Price::fromDouble(lo[i]).raw(), Price::fromDouble(cl[i]).raw(),
-                    Volume::fromDouble(vo[i]).raw()};
-    }
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
+      auto obj = info[0].As<Napi::Object>();
+      std::string sym = (info.Length() > 1 && info[1].IsString()) ? info[1].As<Napi::String>().Utf8Value() : "default";
+      auto ts = obj.Get("ts").As<Napi::Float64Array>();
+      auto op = obj.Get("open").As<Napi::Float64Array>();
+      auto hi = obj.Get("high").As<Napi::Float64Array>();
+      auto lo = obj.Get("low").As<Napi::Float64Array>();
+      auto cl = obj.Get("close").As<Napi::Float64Array>();
+      auto vo = obj.Get("volume").As<Napi::Float64Array>();
+      size_t n = ts.ElementLength();
+      auto& sd = getOrCreate(sym);
+      sd.bars.resize(n);
+      for (size_t i = 0; i < n; ++i)
+      {
+        sd.bars[i] = {normalizeTs(static_cast<int64_t>(ts[i])),
+                      Price::fromDouble(op[i]).raw(), Price::fromDouble(hi[i]).raw(),
+                      Price::fromDouble(lo[i]).raw(), Price::fromDouble(cl[i]).raw(),
+                      Volume::fromDouble(vo[i]).raw()};
+      }
+      return info.Env().Undefined(); });
   }
 
-  void Resample(const Napi::CallbackInfo& info)
+  Napi::Value Resample(const Napi::CallbackInfo& info)
   {
-    std::string src = info[0].As<Napi::String>().Utf8Value();
-    std::string dst = info[1].As<Napi::String>().Utf8Value();
-    std::string interval = info[2].As<Napi::String>().Utf8Value();
-    auto it = _syms.find(src);
-    if (it == _syms.end())
-    {
-      throw std::invalid_argument("unknown symbol: " + src);
-    }
-    getOrCreate(dst).bars = resampleBars(it->second.bars, parseInterval(interval));
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
+      std::string src = info[0].As<Napi::String>().Utf8Value();
+      std::string dst = info[1].As<Napi::String>().Utf8Value();
+      std::string interval = info[2].As<Napi::String>().Utf8Value();
+      auto it = _syms.find(src);
+      if (it == _syms.end())
+      {
+        throw flox::FloxError(
+            "E_SYM_001",
+            "Symbol '" + src + "' is not loaded. Call loadCsv / loadOhlcv first.");
+      }
+      getOrCreate(dst).bars = resampleBars(it->second.bars, parseInterval(interval));
+      return info.Env().Undefined(); });
   }
 
   Napi::Value Run(const Napi::CallbackInfo& info)

@@ -4,6 +4,7 @@
 
 #include <napi.h>
 
+#include "error_translator.h"
 #include "flox/capi/bridge_strategy.h"
 #include "flox/capi/flox_capi.h"
 #include "flox/engine/symbol_registry.h"
@@ -874,34 +875,38 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
   // runner.runCsv(path, symbol) → stats object
   Napi::Value runCsv(const Napi::CallbackInfo& info)
   {
-    std::string path = info[0].As<Napi::String>().Utf8Value();
-    std::string symbol = info[1].As<Napi::String>().Utf8Value();
-    FloxBacktestStats s{};
-    int ok = flox_backtest_runner_run_csv(_handle, path.c_str(), symbol.c_str(), &s);
-    if (!ok)
-    {
-      return info.Env().Null();
-    }
-    return statsToJs(info.Env(), s);
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
+      std::string path = info[0].As<Napi::String>().Utf8Value();
+      std::string symbol = info[1].As<Napi::String>().Utf8Value();
+      FloxBacktestStats s{};
+      int ok = flox_backtest_runner_run_csv(_handle, path.c_str(), symbol.c_str(), &s);
+      if (!ok)
+      {
+        return info.Env().Null();
+      }
+      return statsToJs(info.Env(), s); });
   }
 
   // runner.runOhlcv(tsArray, closeArray, symbol) → stats object
   Napi::Value runOhlcv(const Napi::CallbackInfo& info)
   {
-    auto tsArr = info[0].As<Napi::BigInt64Array>();
-    auto closeArr = info[1].As<Napi::Float64Array>();
-    std::string symbol = info[2].As<Napi::String>().Utf8Value();
-    uint32_t n = static_cast<uint32_t>(tsArr.ElementLength());
-    FloxBacktestStats s{};
-    int ok = flox_backtest_runner_run_ohlcv(_handle,
-                                            reinterpret_cast<const int64_t*>(tsArr.Data()),
-                                            closeArr.Data(),
-                                            n, symbol.c_str(), &s);
-    if (!ok)
-    {
-      return info.Env().Null();
-    }
-    return statsToJs(info.Env(), s);
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
+      auto tsArr = info[0].As<Napi::BigInt64Array>();
+      auto closeArr = info[1].As<Napi::Float64Array>();
+      std::string symbol = info[2].As<Napi::String>().Utf8Value();
+      uint32_t n = static_cast<uint32_t>(tsArr.ElementLength());
+      FloxBacktestStats s{};
+      int ok = flox_backtest_runner_run_ohlcv(_handle,
+                                              reinterpret_cast<const int64_t*>(tsArr.Data()),
+                                              closeArr.Data(),
+                                              n, symbol.c_str(), &s);
+      if (!ok)
+      {
+        return info.Env().Null();
+      }
+      return statsToJs(info.Env(), s); });
   }
 
   // runner.runBars(startNs, endNs, open, high, low, close, volume,
@@ -909,31 +914,33 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
   // All arrays are typed (BigInt64Array for ts, Float64Array for OHLCV).
   Napi::Value runBars(const Napi::CallbackInfo& info)
   {
-    auto startNs = info[0].As<Napi::BigInt64Array>();
-    auto endNs = info[1].As<Napi::BigInt64Array>();
-    auto openA = info[2].As<Napi::Float64Array>();
-    auto highA = info[3].As<Napi::Float64Array>();
-    auto lowA = info[4].As<Napi::Float64Array>();
-    auto closeA = info[5].As<Napi::Float64Array>();
-    auto volA = info[6].As<Napi::Float64Array>();
-    std::string symbol = info[7].As<Napi::String>().Utf8Value();
-    uint8_t barType = info.Length() > 8 ? static_cast<uint8_t>(info[8].As<Napi::Number>().Uint32Value()) : 0;
-    uint64_t barTypeParam = info.Length() > 9
-                                ? static_cast<uint64_t>(info[9].As<Napi::Number>().Int64Value())
-                                : 0;
-    uint32_t n = static_cast<uint32_t>(startNs.ElementLength());
-    FloxBacktestStats s{};
-    int ok = flox_backtest_runner_run_bars(
-        _handle,
-        reinterpret_cast<const int64_t*>(startNs.Data()),
-        reinterpret_cast<const int64_t*>(endNs.Data()),
-        openA.Data(), highA.Data(), lowA.Data(), closeA.Data(), volA.Data(),
-        n, symbol.c_str(), barType, barTypeParam, &s);
-    if (!ok)
-    {
-      return info.Env().Null();
-    }
-    return statsToJs(info.Env(), s);
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
+      auto startNs = info[0].As<Napi::BigInt64Array>();
+      auto endNs = info[1].As<Napi::BigInt64Array>();
+      auto openA = info[2].As<Napi::Float64Array>();
+      auto highA = info[3].As<Napi::Float64Array>();
+      auto lowA = info[4].As<Napi::Float64Array>();
+      auto closeA = info[5].As<Napi::Float64Array>();
+      auto volA = info[6].As<Napi::Float64Array>();
+      std::string symbol = info[7].As<Napi::String>().Utf8Value();
+      uint8_t barType = info.Length() > 8 ? static_cast<uint8_t>(info[8].As<Napi::Number>().Uint32Value()) : 0;
+      uint64_t barTypeParam = info.Length() > 9
+                                  ? static_cast<uint64_t>(info[9].As<Napi::Number>().Int64Value())
+                                  : 0;
+      uint32_t n = static_cast<uint32_t>(startNs.ElementLength());
+      FloxBacktestStats s{};
+      int ok = flox_backtest_runner_run_bars(
+          _handle,
+          reinterpret_cast<const int64_t*>(startNs.Data()),
+          reinterpret_cast<const int64_t*>(endNs.Data()),
+          openA.Data(), highA.Data(), lowA.Data(), closeA.Data(), volA.Data(),
+          n, symbol.c_str(), barType, barTypeParam, &s);
+      if (!ok)
+      {
+        return info.Env().Null();
+      }
+      return statsToJs(info.Env(), s); });
   }
 
   static Napi::Object statsToJs(Napi::Env env, const FloxBacktestStats& s)
