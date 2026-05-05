@@ -24,7 +24,7 @@ DATA_CSV = os.environ.get("__PROJECT_ENV__", DEFAULT_CSV)
 
 
 registry = flox.SymbolRegistry()
-btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+btc = registry.add_symbol("exchange", "BTCUSDT", tick_size=0.01)
 
 
 class __PROJECT_SLUG___strategy(flox.Strategy):

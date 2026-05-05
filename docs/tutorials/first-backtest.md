@@ -24,7 +24,7 @@ cd my-strategy
 ```
 
 `flox new` writes `main.py`, `requirements.txt`, a README, and a
-`data/btcusdt_sample.csv` with 500 real Binance BTC/USDT 1-minute bars
+`data/btcusdt_sample.csv` with 500 real BTC/USDT 1-minute bars
 (`timestamp,open,high,low,close,volume`). The default template is
 `research`: a single-file SMA(10/30) crossover.
 
