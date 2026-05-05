@@ -1,6 +1,6 @@
 # Connect FLOX to a CCXT exchange
 
-`flox_py.ccxt.CcxtBroker` wraps a [ccxt.pro](https://github.com/ccxt/ccxt/wiki/ccxt.pro) exchange and gives a strategy a single entry point for both market data (trades, L2 books, order updates) and order routing. The strategy's `self.market_buy(...)` / `self.limit_sell(...)` / `self.stop_market(...)` calls translate into real `create_*_order` calls on the underlying exchange.
+`flox_py.ccxt.CcxtBroker` wraps a [ccxt.pro](https://github.com/ccxt/ccxt/wiki/ccxt.pro) exchange. Market data flows in (trades, L2 books, order updates) and orders flow out (`self.market_buy(...)`, `self.limit_sell(...)`, `self.stop_market(...)` from inside the strategy translate into `create_*_order` calls on the exchange).
 
 ## Install
 
@@ -54,7 +54,7 @@ async def main():
 asyncio.run(main())
 ```
 
-`add_symbol` calls `exchange.load_markets()` once and reads tick size from the market metadata, so the strategy never hard-codes one. `add_strategy` attaches to the broker's internal `Runner`. The runner's signal callback is wired through to `_place_order` — calling `self.market_buy(...)` from inside the strategy results in a real ccxt order placement.
+`add_symbol` calls `exchange.load_markets()` once and reads tick size from `markets[sym]["precision"]["price"]`. `add_strategy` attaches to the broker's internal `Runner`. The runner's signal callback is wired to `_handle_signal`, which dispatches to a per-order-type method (`_place_market`, `_place_limit`, `_place_stop_market`, ...). Calling `self.market_buy(...)` inside the strategy ends up calling `exchange.create_market_buy_order(...)`.
 
 ## Lifecycle
 
@@ -93,15 +93,15 @@ When a strategy emits a signal (via `self.market_buy(...)` etc.), the broker's s
 | `CANCEL_ALL`                | `cancel_order` for every tracked id on the symbol                                 |
 | `MODIFY`                    | `edit_order(ccxt_id, sym, "limit", side, new_qty, new_price)`                     |
 
-Stop / take-profit / trailing parameters vary across exchanges. The broker uses ccxt's unified-API defaults; if a particular exchange needs a different params shape (e.g. Binance futures `stopPrice` vs. `triggerPrice`), subclass and override `_place_stop_market` / `_place_trailing` / etc.
+Stop, take-profit, and trailing parameter shapes differ across exchanges. The broker uses ccxt's unified-API defaults. If your exchange wants a different params dict (Binance futures uses `triggerPrice` instead of `stopPrice`, OKX uses `triggerPx`), subclass and override `_place_stop_market`, `_place_trailing`, etc.
 
-Anything not in the table above goes through `on_error` as `UnsupportedOrderType` — the order is dropped, not silently routed somewhere unexpected.
+Order types outside the table dispatch to `on_error(sym, UnsupportedOrderType(...))`. The exchange call is skipped.
 
 ## Position reconciliation
 
-Before streams start, `run(reconcile=True)` (the default) calls `fetch_balance()` and `fetch_positions()`. For each non-zero position whose symbol is registered in the broker, the strategy's `on_initial_position(ccxt_sym, qty, avg_price)` callback is invoked. Strategies that don't define the method are skipped.
+`run(reconcile=True)` (default) calls `fetch_balance()` and `fetch_positions()` before streams start. For each non-zero position on a registered symbol the broker calls `strategy.on_initial_position(ccxt_sym, qty, avg_price)`. If the strategy has no such method the position is just logged.
 
-`fetch_positions` is a derivatives concept — for spot exchanges ccxt raises `NotSupported`, which the broker treats as "no positions" rather than fail.
+`fetch_positions` is a derivatives concept. Spot exchanges raise `NotSupported`; the broker swallows it and proceeds with an empty position list.
 
 ## Backoff
 
@@ -133,8 +133,8 @@ class BybitBroker(CcxtBroker):
 
 ## Multi-exchange
 
-Instantiate one broker per exchange. Strategies attached to one broker only see that exchange's market data — there is no cross-broker symbol id sharing.
+Instantiate one broker per exchange. A strategy attached to one broker only sees that exchange's market data; symbol ids are scoped to the broker that registered them.
 
 ## Runnable example
 
-A complete script lives at [`docs/examples/python_ccxt_live.py`](../examples/python-ccxt-live.md): SMA(10/30) on `BTC/USDT` connected to Binance public WebSocket, no API key needed.
+A complete script lives at [`docs/examples/python_ccxt_live.py`](../examples/python-ccxt-live.md): SMA(10/30) on `BTC/USDT` against Binance's public WebSocket. Runs in dry-run mode by default; set `FLOX_LIVE=1` plus `BINANCE_API_KEY` / `BINANCE_SECRET` to actually place sandbox orders.

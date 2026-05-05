@@ -1,11 +1,10 @@
 """CCXT live broker for FLOX.
 
-``CcxtBroker`` wraps a ``ccxt.pro`` exchange and gives a strategy a
-single entry point for both market data (trades, L2 books, order
-updates) and order routing. The strategy's ``self.market_buy(...)`` /
-``self.limit_sell(...)`` / ``self.stop_market(...)`` / etc. calls
-translate into real ``create_*_order`` calls on the underlying ccxt
-exchange.
+``CcxtBroker`` wraps a ``ccxt.pro`` exchange. Market data flows in
+(trades, L2 books, order updates), orders flow out
+(``self.market_buy(...)``, ``self.limit_sell(...)``,
+``self.stop_market(...)`` from inside the strategy translate into
+``create_*_order`` calls on the exchange).
 
 Quick start
 -----------
@@ -44,27 +43,25 @@ What the broker does
 --------------------
 
 - ``add_symbol(ccxt_sym)`` calls ``exchange.load_markets()`` once and
-  pulls ``precision.price`` from the market metadata to register the
-  symbol in an internal ``flox.SymbolRegistry`` with the right tick
-  size. The strategy never has to hard-code a tick.
+  reads ``markets[sym]["precision"]["price"]`` to register the symbol
+  in an internal ``flox.SymbolRegistry`` with the right tick size.
 - ``add_strategy(strategy)`` attaches the strategy to an internal
   ``flox.Runner``. The runner's signal callback is wired to
-  ``_place_order``, so emitting a signal from inside the strategy
-  results in an actual ccxt order placement.
+  ``_handle_signal``; emitting a signal from inside the strategy ends
+  up in a ``create_*_order`` call on the exchange.
 - ``run(streams=...)`` spawns one asyncio task per (symbol × stream)
   pair. ``"trades"`` and ``"book"`` forward into ``runner.on_trade`` /
-  ``runner.on_book_snapshot``. ``"orders"`` calls a per-strategy
-  ``on_order_update(ccxt_sym, status, filled, avg_price)`` callback if
-  the strategy defines one.
+  ``runner.on_book_snapshot``. ``"orders"`` dispatches to
+  ``strategy.on_order_update(ccxt_sym, status, filled, avg_price)``
+  when the strategy defines that method.
 - Before streams start, the broker calls ``fetch_balance()`` and
-  ``fetch_positions()`` and dispatches a per-strategy
-  ``on_initial_position(ccxt_sym, qty, avg_price)`` callback for any
-  open position. Strategies that don't define the method are skipped.
-- Stream errors are caught, reported via ``on_error``, and retried
-  with exponential backoff (configurable via
-  ``retry_initial_delay`` / ``retry_max_delay`` / ``retry_multiplier``).
-  The delay resets to ``retry_initial_delay`` after each successful
-  yield.
+  ``fetch_positions()`` and dispatches
+  ``strategy.on_initial_position(ccxt_sym, qty, avg_price)`` for any
+  open position. Strategies without that method see only the log line.
+- Stream errors are reported via ``on_error`` and retried with
+  exponential backoff (configurable via ``retry_initial_delay``,
+  ``retry_max_delay``, ``retry_multiplier``). Delay resets to
+  ``retry_initial_delay`` after each successful yield.
 
 Order types
 -----------
@@ -84,13 +81,14 @@ Mapped to ccxt's unified ``create_order`` API:
   ``CANCEL_ALL``              → ``cancel_order`` for every tracked id on this symbol
   ``MODIFY``                  → ``edit_order(...)``
 
-Stop / take-profit / trailing semantics vary by exchange (Binance,
-Bybit, OKX all use slightly different ``params`` keys). The mappings
-above are the unified-API defaults. If a particular exchange needs
-different params, override ``_place_order`` in a subclass.
+Stop, take-profit, and trailing param shapes differ across
+exchanges (Binance futures: ``triggerPrice``; OKX: ``triggerPx``;
+Bybit: ``triggerBy``). The mappings above are ccxt's unified-API
+defaults. To customise per exchange, subclass and override the
+relevant ``_place_*`` method.
 
-Anything not in the table above is reported through ``on_error`` as
-``UnsupportedOrderType``.
+Order types outside the table dispatch to ``on_error`` as
+``UnsupportedOrderType``. The exchange call is skipped.
 """
 
 from __future__ import annotations
@@ -713,8 +711,8 @@ class CcxtBroker:
         """Fetch balance / positions, dispatch to strategy callbacks.
 
         Both calls are best-effort. ``fetch_positions`` is a derivatives
-        concept — for spot-only exchanges ccxt raises ``NotSupported``,
-        which we treat as "no positions" rather than fail.
+        concept; spot-only exchanges raise ``NotSupported``, which the
+        broker swallows and proceeds with an empty position list.
         """
         try:
             await self.exchange.fetch_balance()
