@@ -22,6 +22,9 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/FLOX-Foundation/flox"
 
+[project.scripts]
+flox = "flox_py.cli:main"
+
 [tool.scikit-build]
 cmake.args = ["-DFLOX_ENABLE_BACKTEST=ON", "-DFLOX_ENABLE_PYTHON=ON", "-DFLOX_ENABLE_LZ4=ON"]
 cmake.source-dir = ".."

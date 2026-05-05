@@ -34,6 +34,7 @@ set_target_properties(_flox_py PROPERTIES
 # needs as input — is not blocked on them existing.
 set(FLOX_PY_REQUIRED_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/__init__.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/cli.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/py.typed
 )
 set(FLOX_PY_OPTIONAL_ROOT_STUBS
@@ -49,6 +50,9 @@ add_custom_command(TARGET _flox_py POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     ${FLOX_PY_REQUIRED_FILES}
     ${CMAKE_CURRENT_BINARY_DIR}/flox_py/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/templates
+    ${CMAKE_CURRENT_BINARY_DIR}/flox_py/templates
 )
 foreach(opt_file IN LISTS FLOX_PY_OPTIONAL_ROOT_STUBS)
   if(EXISTS ${opt_file})
@@ -104,6 +108,12 @@ endif()
 install(TARGETS _flox_py LIBRARY DESTINATION flox_py COMPONENT python_module)
 install(FILES ${FLOX_PY_REQUIRED_FILES}
         DESTINATION flox_py COMPONENT python_module)
+# Bundled `flox new` templates. Shipped as data alongside the package
+# so `flox new <project>` works after `pip install flox-py`. Walked at
+# runtime by flox_py.cli via importlib.resources.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/templates/
+        DESTINATION flox_py/templates
+        COMPONENT python_module)
 foreach(opt_file IN LISTS FLOX_PY_OPTIONAL_ROOT_STUBS)
   if(EXISTS ${opt_file})
     install(FILES ${opt_file} DESTINATION flox_py COMPONENT python_module)

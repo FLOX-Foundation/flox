@@ -108,6 +108,7 @@ nav:
   - How-To Guides:
       - how-to/README.md
       - Strategy & Backtest:
+          - Scaffold a Project (flox new): how-to/flox-new.md
           - Strategy Classes: how-to/strategy-classes.md
           - Backtesting: how-to/backtest.md
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md

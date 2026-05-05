@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+env/
+.env
+.ipynb_checkpoints/
+.DS_Store
+
+# Local data + outputs
+data/
+*.csv
+*.parquet
+*.feather
+*.log
+runs/
+results/
