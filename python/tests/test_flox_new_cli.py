@@ -53,6 +53,14 @@ class FloxNewCliTests(unittest.TestCase):
         self.assertTrue((proj / "main.py").exists())
         self.assertTrue((proj / "requirements.txt").exists())
         self.assertTrue((proj / "README.md").exists())
+        # Bundled sample CSV must come along — the template's main.py
+        # reads it as the default DATA_CSV path.
+        sample = proj / "data" / "btcusdt_sample.csv"
+        self.assertTrue(sample.exists(),
+                        f"expected bundled sample CSV at {sample}")
+        with sample.open() as f:
+            header = f.readline().strip()
+        self.assertEqual(header, "timestamp,open,high,low,close,volume")
 
     def test_placeholder_substitution(self) -> None:
         rc = cli.main(["new", "Hedge-Bot"])
@@ -61,8 +69,11 @@ class FloxNewCliTests(unittest.TestCase):
         self.assertIn("Hedge-Bot", main_py)
         self.assertIn("hedge_bot_strategy", main_py,
                       "slug substitution should produce hedge_bot_strategy")
+        self.assertIn("HEDGE_BOT_DATA", main_py,
+                      "env placeholder should produce HEDGE_BOT_DATA")
         self.assertNotIn("__PROJECT_NAME__", main_py)
         self.assertNotIn("__PROJECT_SLUG__", main_py)
+        self.assertNotIn("__PROJECT_ENV__", main_py)
 
     def test_unknown_template_errors(self) -> None:
         err = io.StringIO()

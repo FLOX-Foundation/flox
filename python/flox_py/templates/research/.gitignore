@@ -7,11 +7,13 @@ env/
 .ipynb_checkpoints/
 .DS_Store
 
-# Local data + outputs
-data/
-*.csv
+# Local data + outputs. The bundled sample CSV stays in git so a fresh
+# clone runs end-to-end; replace it with your own data and add yours
+# to .gitignore as needed.
 *.parquet
 *.feather
 *.log
 runs/
 results/
+data/*.csv
+!data/btcusdt_sample.csv
