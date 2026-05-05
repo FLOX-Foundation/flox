@@ -115,6 +115,37 @@ class FloxNewCliTests(unittest.TestCase):
         self.assertEqual(cli._slug("a strategy 2"), "a_strategy_2")
         self.assertEqual(cli._slug("___"), "project")
 
+    def test_templates_lists_live(self) -> None:
+        names = cli._list_templates()
+        self.assertIn("live", names,
+                      f"expected 'live' template, got {names!r}")
+
+    def test_live_template_layout(self) -> None:
+        rc = cli.main(["new", "MyBot", "--template", "live"])
+        self.assertEqual(rc, 0)
+        proj = self.tmp / "MyBot"
+        for f in ("main.py", "config.py", "config.toml.example",
+                  "requirements.txt", "README.md", ".gitignore"):
+            self.assertTrue((proj / f).exists(),
+                            f"live template should ship {f}")
+        # Ensure the example config does NOT carry secrets and that
+        # the scaffolded project's actual config.toml is absent (only
+        # the example is in git; the runtime file is created by the
+        # user from the example).
+        self.assertFalse((proj / "config.toml").exists())
+
+    def test_live_template_substitutes_prefix_without_data_suffix(self) -> None:
+        rc = cli.main(["new", "Live-Bot", "--template", "live"])
+        self.assertEqual(rc, 0)
+        cfg = (self.tmp / "Live-Bot" / "config.py").read_text()
+        # Prefix is upper-cased slug WITHOUT the "_DATA" suffix.
+        self.assertIn("LIVE_BOT", cfg)
+        self.assertNotIn("LIVE_BOT_DATA", cfg)
+        self.assertNotIn("__PROJECT_NAME__", cfg)
+        self.assertNotIn("__PROJECT_PREFIX__", cfg)
+        self.assertNotIn("__PROJECT_ENV__", cfg)
+        self.assertNotIn("__PROJECT_SLUG__", cfg)
+
 
 if __name__ == "__main__":
     unittest.main()

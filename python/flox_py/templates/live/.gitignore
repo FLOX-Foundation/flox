@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+env/
+.env
+.ipynb_checkpoints/
+.DS_Store
+
+# Local config carries secrets — never commit. Only the .example
+# template lives in version control.
+config.toml
+
+# Logs and runtime artefacts.
+*.log
+runs/
+results/
