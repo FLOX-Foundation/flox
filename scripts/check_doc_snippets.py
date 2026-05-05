@@ -115,6 +115,15 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--quiet", action="store_true",
                    help="suppress per-file stats; only print failures")
+    p.add_argument("--min-includes", type=int, default=None, metavar="N",
+                   help=("ratchet floor: fail if the count of `--8<--` "
+                         "include blocks falls below N. The repo tracks "
+                         "the canonical floor in CI; raising it after a "
+                         "migration is a normal PR change."))
+    p.add_argument("--min-coverage-pct", type=int, default=None, metavar="PCT",
+                   help=("ratchet floor: fail if the coverage percentage "
+                         "(includes / total blocks) falls below PCT. "
+                         "Pair with --min-includes for absolute + ratio."))
     args = p.parse_args(argv)
 
     allowlist = _load_allowlist(ALLOWLIST_PATH)
@@ -167,12 +176,31 @@ def main(argv=None) -> int:
         for path in stale_allowlist:
             print(f"  {path}", file=sys.stderr)
 
+    coverage_pct = (total_via_include * 100 // total_blocks
+                    if total_blocks else 0)
+
+    if args.min_includes is not None and total_via_include < args.min_includes:
+        rc = 1
+        print(f"::error::snippet ratchet regressed: only "
+              f"{total_via_include} `--8<--` includes, floor is "
+              f"{args.min_includes}. Either restore the missing include "
+              f"or migrate another inline snippet to bring the count "
+              f"back above the floor.",
+              file=sys.stderr)
+
+    if args.min_coverage_pct is not None and coverage_pct < args.min_coverage_pct:
+        rc = 1
+        print(f"::error::snippet coverage dropped to {coverage_pct}% — "
+              f"floor is {args.min_coverage_pct}%. Migrate inline snippets "
+              f"to runnable `--8<--` includes to restore.",
+              file=sys.stderr)
+
     if not args.quiet:
         print(
             f"Scanned {len(files_with_blocks)} doc files: "
             f"{total_blocks} typed code blocks, "
             f"{total_via_include} via --8<-- include "
-            f"({total_via_include * 100 // total_blocks if total_blocks else 0}% tested)."
+            f"({coverage_pct}% tested)."
         )
         if rc == 0:
             print("OK: no inline-snippet violations.")
