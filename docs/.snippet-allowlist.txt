@@ -82,3 +82,7 @@ docs/tutorials/python-quickstart.md
 # point being illustrated.
 docs/contributors/adding-a-c-api-export.md
 docs/contributors/extension-hook-pattern.md
+
+# How-to: CCXT adapter — quickstart contains illustrative snippets;
+# the runnable end-to-end example lives in docs/examples/python_ccxt_live.py.
+docs/how-to/ccxt-adapter.md
