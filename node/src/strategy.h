@@ -950,7 +950,8 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
   //                           drawdownPct: Float64Array }
   Napi::Value equityCurve(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value {
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
       auto env = info.Env();
       FloxBacktestResultHandle res = flox_backtest_runner_take_result(_handle);
       if (!res) {
@@ -976,8 +977,7 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
       obj.Set("timestampNs", tsArr);
       obj.Set("equity", eqArr);
       obj.Set("drawdownPct", ddArr);
-      return obj;
-    });
+      return obj; });
   }
 
   // runner.trades() → { symbol: Uint32Array, side: Uint8Array,
@@ -985,7 +985,8 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
   //                     entryTimeNs/exitTimeNs: BigInt64Array }
   Napi::Value trades(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value {
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
       auto env = info.Env();
       FloxBacktestResultHandle res = flox_backtest_runner_take_result(_handle);
       if (!res) {
@@ -1029,8 +1030,7 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
       obj.Set("fee", feeArr);
       obj.Set("entryTimeNs", etsArr);
       obj.Set("exitTimeNs", xtsArr);
-      return obj;
-    });
+      return obj; });
   }
 
   static Napi::Object statsToJs(Napi::Env env, const FloxBacktestStats& s)
