@@ -7,6 +7,32 @@
 //   - node/test/test_types.ts        (signature-level: tsc --noEmit)
 // Both run in CI (linux-gcc job).
 
+// ── Errors ────────────────────────────────────────────────────────────
+
+/**
+ * Structured FLOX error. Thrown by Engine / BacktestRunner / etc. when
+ * a stable error code is appropriate. Compatible with `instanceof Error`.
+ *
+ * The `code` follows the convention `E_<DOMAIN>_<NNN>` (e.g. `E_IO_001`,
+ * `E_RUN_002`). The `helpUrl` points to the canonical fix-recipe page on
+ * the FLOX docs site.
+ *
+ * Example:
+ *
+ * ```js
+ * try {
+ *   engine.loadCsv("missing.csv", "BTC");
+ * } catch (e) {
+ *   if (e.code === "E_IO_001") console.log(`see ${e.helpUrl}`);
+ *   throw e;
+ * }
+ * ```
+ */
+export interface FloxError extends Error {
+  readonly code: string;
+  readonly helpUrl: string;
+}
+
 // ── Common types ──────────────────────────────────────────────────────
 
 /** Side of an order or trade. */
