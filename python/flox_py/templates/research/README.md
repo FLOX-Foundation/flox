@@ -32,6 +32,8 @@ __PROJECT_ENV__=/path/to/btcusdt_1h.csv python main.py
 
 - `main.py` — single-file entry point. Edit the `__PROJECT_SLUG___strategy`
   class to change indicators and signal logic.
+- `main.ipynb` — Jupyter variant of the same strategy, split into cells
+  for interactive iteration. Open with `jupyter lab main.ipynb`.
 - `requirements.txt` — `flox-py` plus numpy for offline analysis.
 - `data/btcusdt_sample.csv` — 500 BTC/USDT 1m bars.
   Replace or delete once you have your own data.

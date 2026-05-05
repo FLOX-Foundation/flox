@@ -51,6 +51,7 @@ class FloxNewCliTests(unittest.TestCase):
         self.assertEqual(rc, 0, out.getvalue())
         proj = self.tmp / "alpha"
         self.assertTrue((proj / "main.py").exists())
+        self.assertTrue((proj / "main.ipynb").exists())
         self.assertTrue((proj / "requirements.txt").exists())
         self.assertTrue((proj / "README.md").exists())
         # Bundled sample CSV must come along — the template's main.py
@@ -61,6 +62,24 @@ class FloxNewCliTests(unittest.TestCase):
         with sample.open() as f:
             header = f.readline().strip()
         self.assertEqual(header, "timestamp,open,high,low,close,volume")
+
+    def test_notebook_parses_and_is_substituted(self) -> None:
+        import json
+        rc = cli.main(["new", "Hedge-Bot"])
+        self.assertEqual(rc, 0)
+        nb_path = self.tmp / "Hedge-Bot" / "main.ipynb"
+        with nb_path.open() as f:
+            nb = json.load(f)
+        self.assertEqual(nb.get("nbformat"), 4)
+        self.assertGreater(len(nb.get("cells", [])), 0)
+        joined = "".join("".join(c.get("source", []))
+                         for c in nb["cells"])
+        self.assertIn("Hedge-Bot", joined)
+        self.assertIn("hedge_bot_strategy", joined)
+        self.assertIn("HEDGE_BOT_DATA", joined)
+        self.assertNotIn("__PROJECT_NAME__", joined)
+        self.assertNotIn("__PROJECT_SLUG__", joined)
+        self.assertNotIn("__PROJECT_ENV__", joined)
 
     def test_placeholder_substitution(self) -> None:
         rc = cli.main(["new", "Hedge-Bot"])
