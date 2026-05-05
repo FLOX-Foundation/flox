@@ -9,27 +9,39 @@ pip install -r requirements.txt
 python main.py
 ```
 
-By default `main.py` runs the bundled SMA(10/30) crossover against a
-synthetic price path. To run it as a backtest, point it at a CSV with
-columns `timestamp_ms,price,qty,is_buyer_maker`:
+`main.py` runs an SMA(10/30) backtest on the bundled
+`data/btcusdt_sample.csv` (500 real BTC 1m bars). Output:
+
+```
+backtest on btcusdt_sample.csv
+  return : -1.2103%
+  trades : 187  win=66.3%
+  sharpe : -4.5746
+  max DD : 1.5030%
+  net PnL: -121.0296
+```
+
+To run on your own data, set the env var to a CSV with columns
+`timestamp,open,high,low,close,volume`:
 
 ```bash
-__PROJECT_ENV__=/path/to/btcusdt_1m.csv python main.py
+__PROJECT_ENV__=/path/to/btcusdt_1h.csv python main.py
 ```
 
 ## Layout
 
 - `main.py` — single-file entry point. Edit the `__PROJECT_SLUG___strategy`
   class to change indicators and signal logic.
-- `requirements.txt` — minimal pin: `flox-py` plus numpy for offline
-  analysis.
+- `requirements.txt` — `flox-py` plus numpy for offline analysis.
+- `data/btcusdt_sample.csv` — 500 BTC/USDT 1m bars from Binance.
+  Replace or delete once you have your own data.
 
 ## Next steps
 
 - Swap the SMA crossover for your own indicator stack
   (`flox.SMA`, `flox.EMA`, `flox.ADX`, `flox.ATR`, ...).
-- Wire a live data feed via `flox_py.ccxt.CcxtFeed` to drive the same
-  strategy class against an exchange WebSocket.
-- Run sweeps via `flox.Optimizer` to grid-search parameters.
+- Run the same strategy class against a live exchange via
+  `flox_py.ccxt.CcxtBroker`.
+- Parameter sweep via `flox.Optimizer`.
 
 See https://flox-foundation.github.io/flox/ for the full reference.
