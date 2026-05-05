@@ -17,15 +17,15 @@ flox templates                            # list available templates
 directory and copies the chosen template into it. Two placeholders are
 substituted in every text file:
 
-| Placeholder         | Replaced with                           |
-|---------------------|-----------------------------------------|
-| `__PROJECT_NAME__`  | The name you passed (verbatim).         |
-| `__PROJECT_SLUG__`  | A snake_case slug derived from the name. |
+| Placeholder           | Replaced with                                          |
+|-----------------------|--------------------------------------------------------|
+| `__PROJECT_NAME__`    | The name you passed (verbatim).                        |
+| `__PROJECT_SLUG__`    | A snake_case slug derived from the name.               |
+| `__PROJECT_PREFIX__`  | The slug, upper-cased — used as a generic env-var prefix. |
+| `__PROJECT_ENV__`     | `<PREFIX>_DATA` — used by the research template's CSV-path env var. |
 
-For example, `flox new Hedge-Bot` produces files where
-`__PROJECT_NAME__` becomes `Hedge-Bot` and `__PROJECT_SLUG__` becomes
-`hedge_bot`. The slug is safe to use as a Python identifier, env var
-prefix, or directory name.
+For example, `flox new Hedge-Bot` substitutes `Hedge-Bot`, `hedge_bot`,
+`HEDGE_BOT`, and `HEDGE_BOT_DATA` respectively.
 
 ## Templates
 
@@ -54,6 +54,30 @@ The strategy class itself is the same shape as in
 SMA crossover with your own logic, the same file runs identically
 under [backtest](backtest.md), [grid search](grid-search.md), and live
 data feeds.
+
+### `live`
+
+Live-trading scaffold built on `CcxtBroker`. Ships with:
+
+- `main.py` — strategy + asyncio entry point with graceful SIGINT / SIGTERM shutdown.
+- `config.py` — Pydantic config model with validation.
+- `config.toml.example` — copy to `config.toml` and edit.
+- `requirements.txt` — `flox-py`, `ccxt`, `pydantic`, `tomli` (for Python 3.10).
+
+Defaults are conservative: `dry_run = true`, `sandbox = true`. Orders
+are logged but not sent until you set `FLOX_LIVE=1` plus
+`<PREFIX>_API_KEY` / `<PREFIX>_SECRET` env vars. See the template's
+README for the full sequence and the [CCXT how-to](ccxt-adapter.md)
+for the exchange wiring.
+
+```bash
+flox new my-bot --template=live
+cd my-bot
+pip install -r requirements.txt
+cp config.toml.example config.toml
+python main.py                    # dry-run
+FLOX_LIVE=1 python main.py        # live (sandbox by default)
+```
 
 ## Why a CLI scaffolder?
 

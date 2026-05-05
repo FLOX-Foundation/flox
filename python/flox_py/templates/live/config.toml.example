@@ -1,0 +1,37 @@
+# __PROJECT_NAME__ live trading config.
+#
+# Copy this file to `config.toml` and edit. `config.toml` is gitignored
+# so secrets do not leak.
+#
+# To go live:
+#   1. Set `dry_run = false` AND `sandbox = false` (testnet first!)
+#   2. Export __PROJECT_PREFIX___API_KEY, __PROJECT_PREFIX___SECRET in your shell
+#   3. Run `FLOX_LIVE=1 python main.py`
+#
+# Without FLOX_LIVE=1 the script always runs in dry-run mode regardless
+# of this file.
+
+# ── Exchange ──────────────────────────────────────────────────────────
+exchange = "binance"
+sandbox  = true              # testnet — flip to false only after verifying
+env_prefix = "__PROJECT_PREFIX__"
+
+# ── Trading control ───────────────────────────────────────────────────
+dry_run             = true   # log orders, do not send (FLOX_LIVE=1 overrides)
+symbols             = ["BTC/USDT"]
+streams             = ["trades", "orders"]
+book_depth          = 20
+reconcile_positions = true
+
+# ── Strategy params ───────────────────────────────────────────────────
+fast_period = 10
+slow_period = 30
+order_qty   = 0.001
+
+# ── Backoff (CcxtBroker) ──────────────────────────────────────────────
+retry_initial_delay = 1.0
+retry_max_delay     = 60.0
+retry_multiplier    = 2.0
+
+# ── Observability ─────────────────────────────────────────────────────
+log_level = "INFO"

@@ -16,9 +16,11 @@ Usage::
 
 Each template is a directory under ``flox_py/templates/<name>/`` shipped
 with the wheel. ``flox new`` copies the directory verbatim, then
-substitutes ``__PROJECT_NAME__``, ``__PROJECT_SLUG__``, and
-``__PROJECT_ENV__`` placeholders (the env-var prefix is the upper-cased
-slug suffixed with ``_DATA``).
+substitutes ``__PROJECT_NAME__``, ``__PROJECT_SLUG__``,
+``__PROJECT_PREFIX__`` (upper-cased slug — used as a generic env-var
+prefix, e.g. ``MYBOT``), and ``__PROJECT_ENV__``
+(``<PREFIX>_DATA`` — used by the research template for the CSV path
+env var).
 """
 
 from __future__ import annotations
@@ -100,9 +102,11 @@ def _copy_template(template: str, dest: Path, project_name: str) -> int:
                 except UnicodeDecodeError:
                     child_target.write_bytes(child.read_bytes())
                     continue
+                upper = slug.upper()
                 text = text.replace("__PROJECT_NAME__", project_name)
                 text = text.replace("__PROJECT_SLUG__", slug)
-                text = text.replace("__PROJECT_ENV__", slug.upper() + "_DATA")
+                text = text.replace("__PROJECT_PREFIX__", upper)
+                text = text.replace("__PROJECT_ENV__", upper + "_DATA")
                 child_target.write_text(text)
 
     _walk(src_root, dest)
