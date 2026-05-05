@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 328 functions, 31 handles, 37 structs, 31 callback typedefs, 2 enums, 44 groups.
+**Surface:** 330 functions, 31 handles, 38 structs, 31 callback typedefs, 2 enums, 44 groups.
 
 ## Opaque handles
 
@@ -234,6 +234,20 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `timestamp_ns` | `int64_t` |
 | `equity` | `double` |
 | `drawdown_pct` | `double` |
+
+### `FloxBacktestTrade`
+
+| field | type |
+|---|---|
+| `symbol` | `uint32_t` |
+| `side` | `uint8_t` |
+| `entry_price` | `double` |
+| `exit_price` | `double` |
+| `quantity` | `double` |
+| `entry_time_ns` | `int64_t` |
+| `exit_time_ns` | `int64_t` |
+| `pnl` | `double` |
+| `fee` | `double` |
 
 ### `FloxMergeResult`
 
@@ -567,6 +581,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_backtest_result_stats(FloxBacktestResultHandle result, FloxBacktestStats * out)`
 - `uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle result, FloxEquityPoint * points_out, uint32_t max_points)`
 - `uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result, const char * path)`
+- `uint32_t flox_backtest_result_trades(FloxBacktestResultHandle result, FloxBacktestTrade * trades_out, uint32_t max_trades)`
 
 ### backtestrunner_replay
 
@@ -577,6 +592,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner, const int64_t * timestamps_ns, const double * close_prices, uint32_t n, const char * symbol, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle runner, const int64_t * start_time_ns, const int64_t * end_time_ns, const double * open, const double * high, const double * low, const double * close, const double * volume, uint32_t n, const char * symbol, uint8_t bar_type, uint64_t bar_type_param, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner, FloxReplaySourceHandle source, FloxBacktestStats * stats_out)`
+- `FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle runner)`
 
 ### bar_aggregation
 

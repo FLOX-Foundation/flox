@@ -2133,6 +2133,32 @@ uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle h, 
   return static_cast<FloxBacktestResultImpl*>(h)->result->writeEquityCurveCsv(path) ? 1 : 0;
 }
 
+uint32_t flox_backtest_result_trades(FloxBacktestResultHandle h, FloxBacktestTrade* out,
+                                     uint32_t max_trades)
+{
+  const auto& trades = static_cast<FloxBacktestResultImpl*>(h)->result->trades();
+  const uint32_t total = static_cast<uint32_t>(trades.size());
+  if (!out)
+  {
+    return total;
+  }
+  const uint32_t n = (total < max_trades) ? total : max_trades;
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    const auto& t = trades[i];
+    out[i].symbol = static_cast<uint32_t>(t.symbol);
+    out[i].side = static_cast<uint8_t>(t.side);
+    out[i].entry_price = t.entryPrice.toDouble();
+    out[i].exit_price = t.exitPrice.toDouble();
+    out[i].quantity = t.quantity.toDouble();
+    out[i].entry_time_ns = static_cast<int64_t>(t.entryTimeNs);
+    out[i].exit_time_ns = static_cast<int64_t>(t.exitTimeNs);
+    out[i].pnl = t.pnl.toDouble();
+    out[i].fee = t.fee.toDouble();
+  }
+  return n;
+}
+
 // ============================================================
 // Segment operations (full API)
 // ============================================================
@@ -4108,6 +4134,10 @@ struct FloxBacktestRunnerImpl
   // Adapter for the binding-supplied executor. Owned so it outlives the
   // runner's non-owning pointer. Replaced on every set call.
   std::unique_ptr<CapiExecutor> executorAdapter;
+  // Most recent BacktestResult, kept after each run_* call so bindings
+  // can fetch the equity curve / trades without re-running the
+  // backtest. Replaced on every run.
+  std::optional<BacktestResult> lastResult;
 
   explicit FloxBacktestRunnerImpl(SymbolRegistry* reg, double feeRate, double initialCapital)
       : registry(reg)
@@ -4218,6 +4248,7 @@ struct FloxBacktestRunnerImpl
     {
       fillStats(result.computeStats(), out);
     }
+    lastResult = std::move(result);
     return 1;
   }
 
@@ -4296,6 +4327,7 @@ struct FloxBacktestRunnerImpl
     {
       fillStats(result.computeStats(), out);
     }
+    lastResult = std::move(result);
     return 1;
   }
 
@@ -4319,6 +4351,7 @@ struct FloxBacktestRunnerImpl
     {
       fillStats(result.computeStats(), out);
     }
+    lastResult = std::move(result);
     return 1;
   }
 };
@@ -4794,6 +4827,19 @@ int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle h,
 {
   return toBacktestRunner(h)->runReplaySource(
       static_cast<capi_impl::FloxReplaySourceImpl*>(source), out);
+}
+
+FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle h)
+{
+  auto* impl = toBacktestRunner(h);
+  if (!impl->lastResult.has_value())
+  {
+    return nullptr;
+  }
+  auto* out = new FloxBacktestResultImpl();
+  out->config = impl->lastResult->config();
+  out->result = std::make_unique<BacktestResult>(*impl->lastResult);
+  return static_cast<FloxBacktestResultHandle>(out);
 }
 
 void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle h,

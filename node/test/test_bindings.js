@@ -282,6 +282,65 @@ if (fs.existsSync(csvPath)) {
   console.log(`  skip Engine (CSV not found: ${csvPath})`);
 }
 
+// ── BacktestRunner accessors ──────────────────────────────────────────
+
+console.log('=== BacktestRunner equityCurve / trades ===');
+
+const btCsv = path.join(__dirname, '..', '..',
+                        'python', 'flox_py', 'templates', 'research',
+                        'data', 'btcusdt_sample.csv');
+if (fs.existsSync(btCsv)) {
+  const reg2 = new flox.SymbolRegistry();
+  const btc2 = reg2.addSymbol('exchange', 'BTCUSDT', 0.01);
+
+  const fast = new flox.SMA(10);
+  const slow = new flox.SMA(30);
+
+  const strat = {
+    symbols: [Number(btc2)],
+    onTrade(ctx, t, emit) {
+      const f = fast.update(t.price);
+      const s = slow.update(t.price);
+      if (f === null || s === null) return;
+      if (f > s && ctx.position === 0) emit.marketBuy(0.01);
+      else if (f < s && ctx.position === 0) emit.marketSell(0.01);
+    },
+  };
+
+  const bt = new flox.BacktestRunner(reg2, 0.0004, 10000);
+  bt.setStrategy(strat);
+  const stats = bt.runCsv(btCsv, 'BTCUSDT');
+  check(stats !== null && stats.totalTrades > 0,
+        `BacktestRunner produced trades (got ${stats && stats.totalTrades})`);
+
+  const eq = bt.equityCurve();
+  check(eq && eq.equity instanceof Float64Array,
+        'equityCurve.equity is Float64Array');
+  check(eq.timestampNs instanceof BigInt64Array,
+        'equityCurve.timestampNs is BigInt64Array');
+  check(eq.equity.length === stats.totalTrades,
+        `equity length === totalTrades (${eq.equity.length} vs ${stats.totalTrades})`);
+
+  const tr = bt.trades();
+  check(tr && tr.pnl instanceof Float64Array,
+        'trades.pnl is Float64Array');
+  check(tr.symbol instanceof Uint32Array && tr.side instanceof Uint8Array,
+        'trades.symbol is Uint32Array, side is Uint8Array');
+  check(tr.pnl.length === stats.totalTrades,
+        `trades length === totalTrades (${tr.pnl.length} vs ${stats.totalTrades})`);
+
+  const fresh = new flox.BacktestRunner(reg2, 0.0004, 10000);
+  let threwFresh = false;
+  try {
+    fresh.equityCurve();
+  } catch (e) {
+    threwFresh = (e && e.code === 'E_RUN_002');
+  }
+  check(threwFresh, 'equityCurve before run throws FloxError E_RUN_002');
+} else {
+  console.log(`  skip BacktestRunner accessors (CSV not found: ${btCsv})`);
+}
+
 // ── Summary ───────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed`);

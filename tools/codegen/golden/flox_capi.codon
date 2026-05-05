@@ -28,6 +28,7 @@ from C import flox_backtest_result_ingest_executor(cobj, cobj)
 from C import flox_backtest_result_stats(cobj, cobj)
 from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
 from C import flox_backtest_result_write_equity_curve_csv(cobj, cobj) -> u8
+from C import flox_backtest_result_trades(cobj, cobj, u32) -> u32
 
 # ── backtestrunner_replay ──
 from C import flox_backtest_runner_create(cobj, float, float) -> cobj
@@ -37,6 +38,7 @@ from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, cobj) -> int
 from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, cobj) -> int
 from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64], Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], u32, cobj, u8, u64, cobj) -> int
 from C import flox_backtest_runner_run_replay_source(cobj, cobj, cobj) -> int
+from C import flox_backtest_runner_take_result(cobj) -> cobj
 
 # ── bar_aggregation ──
 from C import flox_aggregate_time_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32

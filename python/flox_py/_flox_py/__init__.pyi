@@ -74,6 +74,10 @@ class BacktestRunner:
         ...
     def add_execution_listener(self, listener: ExecutionListener) -> None:
         ...
+    def equity_curve(self) -> typing.Any:
+        """
+        Return the equity curve from the most recent run as a dict of numpy arrays (timestamp_ns, equity, drawdown_pct).
+        """
     def run_bars(self, start_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], end_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], open: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], volume: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str = '', bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0) -> typing.Any:
         ...
     def run_csv(self, path: str, symbol: str = '') -> typing.Any:
@@ -84,6 +88,10 @@ class BacktestRunner:
         ...
     def set_strategy(self, strategy: Strategy) -> None:
         ...
+    def trades(self) -> typing.Any:
+        """
+        Return closed trades from the most recent run as a dict of numpy arrays (symbol, side, entry_price, exit_price, quantity, pnl, fee, entry_time_ns, exit_time_ns).
+        """
 class BarData:
     symbol_name: str
     def __init__(self) -> None:

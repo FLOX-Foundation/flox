@@ -11,6 +11,8 @@ Usage::
     flox new <project-name> --template=indicator-library
     flox new <project-name> --here              # scaffold into the current dir
     flox templates                              # list available templates
+    flox report <stats.json>                    # render an HTML backtest report
+    flox report <stats.json> -o report.html --equity equity.json --trades trades.json
 
 Each template is a directory under ``flox_py/templates/<name>/`` shipped
 with the wheel. ``flox new`` copies the directory verbatim, then
@@ -142,6 +144,49 @@ def cmd_templates(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    import json
+    from . import report as report_mod
+
+    try:
+        with open(args.stats) as f:
+            stats = json.load(f)
+    except OSError as e:
+        print(f"flox report: cannot read stats file '{args.stats}': {e}",
+              file=sys.stderr)
+        return 1
+
+    equity = None
+    if args.equity:
+        try:
+            with open(args.equity) as f:
+                equity = json.load(f)
+        except OSError as e:
+            print(f"flox report: cannot read equity file: {e}", file=sys.stderr)
+            return 1
+
+    trades = None
+    if args.trades:
+        try:
+            with open(args.trades) as f:
+                trades = json.load(f)
+        except OSError as e:
+            print(f"flox report: cannot read trades file: {e}", file=sys.stderr)
+            return 1
+
+    out = Path(args.output)
+    report_mod.write_html(
+        out,
+        stats=stats,
+        equity_curve=equity,
+        trades=trades,
+        title=args.title or "FLOX backtest report",
+        subtitle=args.subtitle or "",
+    )
+    print(f"wrote {out}")
+    return 0
+
+
 # ── Argparse setup ─────────────────────────────────────────────────────
 
 
@@ -168,6 +213,27 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_t = sub.add_parser("templates", help="List available templates.")
     p_t.set_defaults(handler=cmd_templates)
+
+    p_r = sub.add_parser("report", help="Render a backtest stats JSON to HTML.")
+    p_r.add_argument("stats", help="path to a JSON file with backtest stats")
+    p_r.add_argument(
+        "-o", "--output", default="report.html",
+        help="output HTML path (default: report.html)",
+    )
+    p_r.add_argument(
+        "--equity",
+        help="optional path to a JSON dump of the equity curve "
+             "(keys: timestamp_ns, equity, drawdown_pct)",
+    )
+    p_r.add_argument(
+        "--trades",
+        help="optional path to a JSON dump of trades "
+             "(keys: symbol, side, entry_price, exit_price, quantity, pnl, "
+             "fee, entry_time_ns, exit_time_ns)",
+    )
+    p_r.add_argument("--title", default=None, help="report title")
+    p_r.add_argument("--subtitle", default=None, help="subtitle")
+    p_r.set_defaults(handler=cmd_report)
 
     return p
 
