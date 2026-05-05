@@ -1,47 +1,46 @@
 # 60 seconds to your first backtest
 
-This tutorial gets you from zero to a running SMA crossover backtest in
-under a minute. Four commands, no C++ build, no boilerplate.
+This walks through getting a backtest running starting from a clean
+Python install. Four commands.
 
 ## Prerequisites
 
 - Python 3.10+
 - `pip` on `PATH`
 
-## 1. Install (15 s)
+## 1. Install
 
 ```bash
 pip install flox-py
 ```
 
-`flox-py` ships a precompiled C++ engine plus the `flox` console script.
+The wheel includes the compiled C++ engine and a `flox` console script.
 
-## 2. Scaffold a project (5 s)
+## 2. Scaffold a project
 
 ```bash
 flox new my-strategy
 cd my-strategy
 ```
 
-`flox new` creates a directory with `main.py`, `requirements.txt`, and
-a README. The default template is `research`: a single-file SMA(10/30)
-crossover on BTCUSDT.
+This writes `main.py`, `requirements.txt`, and a README. The default
+template is `research`: a single-file SMA(10/30) crossover on BTCUSDT.
 
-## 3. Install template deps (10 s)
+## 3. Install template deps
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Just `flox-py` and `numpy`.
+`flox-py` and `numpy`.
 
-## 4. Run it (5 s)
+## 4. Run it
 
 ```bash
 python main.py
 ```
 
-You should see:
+Output:
 
 ```
   (set MY_STRATEGY_DATA=<csv> for backtest mode)
@@ -51,15 +50,19 @@ You should see:
   signals: 31
 ```
 
-That's a live-mode run against a synthetic price path — handy for the
-very first sanity check. To switch to a real backtest, point the env
-var at a CSV with columns `timestamp_ms,price,qty,is_buyer_maker`:
+That run uses a synthetic price path — there is no executor wired, so
+positions stay flat and the strategy keeps emitting buys. It's a
+smoke test, not a strategy evaluation.
+
+For a real backtest, point the env var at a CSV with columns
+`timestamp_ms,price,qty,is_buyer_maker`:
 
 ```bash
 MY_STRATEGY_DATA=/path/to/btcusdt_1m.csv python main.py
 ```
 
-…and you'll get an actual return / Sharpe / drawdown report:
+That branch runs through `BacktestRunner`, which has a simulated
+executor, and prints a summary:
 
 ```
 -- backtest -------------------------------------------------
@@ -69,12 +72,9 @@ MY_STRATEGY_DATA=/path/to/btcusdt_1m.csv python main.py
   max DD : -3.2100%
 ```
 
-Total elapsed: **~35 seconds** if the `pip install` is cached, **~60
-seconds** on a clean environment.
+## The strategy class
 
-## What just happened?
-
-`main.py` is a single file you edit:
+`main.py` is one file. The class you edit:
 
 ```python
 class my_strategy_strategy(flox.Strategy):
@@ -89,16 +89,14 @@ class my_strategy_strategy(flox.Strategy):
             self.market_sell(0.01)
 ```
 
-The same class drives both the synthetic live run and the CSV backtest
-because the engine model is identical in both modes — see
-[strategy classes](../how-to/strategy-classes.md) for why.
+Same class runs under both `Runner` (the synthetic mode above) and
+`BacktestRunner`. See [strategy classes](../how-to/strategy-classes.md).
 
 ## Next steps
 
-- Replace the SMA crossover with your own indicators (see
-  [Indicator Graph](../how-to/indicator-graph.md)).
-- Run a parameter sweep with [Grid Search](../how-to/grid-search.md).
-- Wire a live exchange feed using
+- Replace the SMA crossover with your own indicators
+  ([Indicator Graph](../how-to/indicator-graph.md)).
+- Parameter sweep via [Grid Search](../how-to/grid-search.md).
+- Wire a live exchange feed:
   [`docs/examples/python_ccxt_live.py`](../examples/python-ccxt-live.md).
-- Read the [Python quickstart](python-quickstart.md) for the
-  longer, hand-built version of the same flow.
+- The longer hand-built version: [Python quickstart](python-quickstart.md).
