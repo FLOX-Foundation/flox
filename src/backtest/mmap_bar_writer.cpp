@@ -9,6 +9,8 @@
 
 #include "flox/backtest/mmap_bar_writer.h"
 
+#include "flox/error/flox_error.h"
+
 #include <stdexcept>
 
 namespace flox
@@ -80,7 +82,10 @@ void MmapBarWriter::flush()
     std::ofstream outFile(filename, std::ios::binary | std::ios::trunc);
     if (!outFile)
     {
-      throw std::runtime_error("Failed to open file for writing: " + filename.string());
+      throw flox::FloxError(
+          "E_IO_002",
+          "Cannot open file for writing: '" + filename.string() +
+              "'. Check the directory exists and is writable.");
     }
 
     uint64_t count = existingBars.size();
@@ -127,7 +132,10 @@ void MmapBarWriter::writeBars(TimeframeId tf, std::span<const Bar> bars)
   std::ofstream outFile(filename, std::ios::binary | std::ios::trunc);
   if (!outFile)
   {
-    throw std::runtime_error("Failed to open file for writing: " + filename.string());
+    throw flox::FloxError(
+        "E_IO_002",
+        "Cannot open file for writing: '" + filename.string() +
+            "'. Check the directory exists and is writable.");
   }
 
   uint64_t count = bars.size();
@@ -139,7 +147,10 @@ std::filesystem::path MmapBarWriter::makeFilename(TimeframeId tf) const
 {
   if (tf.type != BarType::Time)
   {
-    throw std::runtime_error("MmapBarWriter currently only supports time-based bars");
+    throw flox::FloxError(
+        "E_BACKTEST_001",
+        "MmapBarWriter currently only supports time-based bars. "
+        "Aggregate to a fixed time interval before writing.");
   }
 
   auto seconds = tf.param / 1'000'000'000ULL;
@@ -175,7 +186,9 @@ void MmapBarWriter::writeMetadata()
 
   if (!file)
   {
-    throw std::runtime_error("Failed to open metadata file: " + metadataPath.string());
+    throw flox::FloxError(
+        "E_IO_002",
+        "Cannot open metadata file for writing: '" + metadataPath.string() + "'.");
   }
 
   for (const auto& [key, value] : _metadata)

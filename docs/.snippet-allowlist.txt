@@ -22,6 +22,13 @@ docs/bindings/python.md        # multi-API overview
 # Error code reference — fix recipes shown across language tabs; runnable
 # end-to-end equivalents live in docs/examples/.
 docs/errors/E_SYM_001.md       # cross-language fix-recipe tabs
+# Other error pages use `=== "Python"` admonition tabs with indented
+# fences, which the snippet-lint regex doesn't see as top-level
+# inline blocks — no allowlist entry needed.
+# Pages with non-indented fences for cross-language fix recipes:
+docs/errors/E_KEY_001.md       # has plain ```python fence
+docs/errors/E_RUN_002.md       # has plain ```python fence
+docs/errors/E_DATA_001.md      # has plain ```python fence
 
 # Reference: Python — narrative API docs with inline snippets that mirror
 # the curated examples. The full alphabetical surface is in _api_index.md

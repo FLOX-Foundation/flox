@@ -71,7 +71,10 @@ static std::vector<OhlcvBar> parseCsv(const std::string& path)
   std::ifstream file(path);
   if (!file.is_open())
   {
-    throw std::runtime_error("cannot open: " + path);
+    throw flox::FloxError(
+        "E_IO_001",
+        "Cannot open file: '" + path +
+            "'. Check the path is correct and the file is readable.");
   }
 
   std::vector<OhlcvBar> bars;
@@ -337,7 +340,11 @@ class Engine
     {
       if (!d.contains(key))
       {
-        throw std::invalid_argument(std::string("missing key: ") + key);
+        throw flox::FloxError(
+            "E_KEY_001",
+            std::string("Required key '") + key +
+                "' is missing from the OHLCV dict. Expected keys: "
+                "'ts' (or 'timestamp'), 'open', 'high', 'low', 'close', 'volume'.");
       }
       return d[key].cast<contiguous_f64>();
     };
@@ -353,7 +360,10 @@ class Engine
     }
     if (timestamps.size() == 0)
     {
-      throw std::invalid_argument("missing key: ts or timestamp");
+      throw flox::FloxError(
+          "E_KEY_001",
+          "OHLCV dict is missing both 'ts' and 'timestamp' keys. "
+          "Provide one of them as an int64 array of nanosecond timestamps.");
     }
 
     std::string sym = symbol.empty() ? "default" : symbol;
@@ -555,7 +565,10 @@ class Engine
     {
       if (_insertOrder.empty())
       {
-        throw std::runtime_error("no data loaded");
+        throw flox::FloxError(
+            "E_RUN_002",
+            "No market data has been loaded into the engine. Call "
+            "Engine.load_csv(...) or load_ohlcv(...) before run().");
       }
       return _symbols.at(_insertOrder.front());
     }
@@ -631,7 +644,11 @@ class Engine
     {
       return val * 86'400'000'000'000LL;
     }
-    throw std::invalid_argument("unknown interval unit: " + unit);
+    throw flox::FloxError(
+        "E_TIME_001",
+        "Unknown interval unit '" + unit +
+            "'. Expected one of: 's', 'm', 'h', 'd' "
+            "(seconds, minutes, hours, days).");
   }
 
   BacktestConfig _config;

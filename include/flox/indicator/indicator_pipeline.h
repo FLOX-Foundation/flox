@@ -12,6 +12,7 @@
 
 #include "flox/aggregator/bar.h"
 #include "flox/common.h"
+#include "flox/error/flox_error.h"
 
 namespace flox::indicator
 {
@@ -94,13 +95,19 @@ class IndicatorGraph
     auto nodeIt = _nodes.find(name);
     if (nodeIt == _nodes.end())
     {
-      throw std::logic_error("unknown node: " + name);
+      throw flox::FloxError(
+          "E_GRAPH_001",
+          "Indicator graph: unknown node '" + name +
+              "'. Make sure every dependency is added with add_node() before use.");
     }
 
     auto cycleKey = CacheKey{symbol, name};
     if (_computing.count(cycleKey))
     {
-      throw std::logic_error("circular dependency: " + name);
+      throw flox::FloxError(
+          "E_GRAPH_002",
+          "Indicator graph: circular dependency at '" + name +
+              "'. A node depends on itself transitively; break the cycle.");
     }
     _computing.insert(cycleKey);
 

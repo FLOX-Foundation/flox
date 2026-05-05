@@ -4,7 +4,9 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+
 #include <pybind11/stl.h>
+#include "flox/error/flox_error.h"
 
 #include "flox/common.h"
 #include "flox/replay/binary_format_v1.h"
@@ -138,8 +140,10 @@ inline WriterConfig makeWriterConfig(const std::string& outputDir, uint64_t maxS
   }
   else
   {
-    throw std::invalid_argument("Unknown compression type: '" + compression +
-                                "' (expected 'none' or 'lz4')");
+    throw flox::FloxError(
+        "E_INPUT_001",
+        "Unknown compression type: '" + compression +
+            "'. Expected 'none' or 'lz4'.");
   }
 
   return cfg;
@@ -499,7 +503,9 @@ class PyDataWriter
         symbolIds.size() != static_cast<py::ssize_t>(n) ||
         sides.size() != static_cast<py::ssize_t>(n))
     {
-      throw std::invalid_argument("All arrays must have the same length");
+      throw flox::FloxError(
+          "E_LEN_001",
+          "All input arrays must have the same length.");
     }
 
     const auto* ets = exchangeTsNs.data();

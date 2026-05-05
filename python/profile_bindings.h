@@ -4,7 +4,9 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+
 #include <pybind11/stl.h>
+#include "flox/error/flox_error.h"
 
 #include <chrono>
 
@@ -49,7 +51,9 @@ class PyFootprintBar
     if (quantities.size() != static_cast<py::ssize_t>(n) ||
         isBuy.size() != static_cast<py::ssize_t>(n))
     {
-      throw std::invalid_argument("prices, quantities, and is_buy must have the same length");
+      throw flox::FloxError(
+          "E_LEN_001",
+          "prices, quantities, and is_buy arrays must have the same length.");
     }
 
     const auto* px = prices.data();
@@ -135,7 +139,9 @@ class PyVolumeProfile
     if (quantities.size() != static_cast<py::ssize_t>(n) ||
         isBuy.size() != static_cast<py::ssize_t>(n))
     {
-      throw std::invalid_argument("prices, quantities, and is_buy must have the same length");
+      throw flox::FloxError(
+          "E_LEN_001",
+          "prices, quantities, and is_buy arrays must have the same length.");
     }
 
     const auto* px = prices.data();
@@ -219,8 +225,9 @@ class PyMarketProfile
         quantities.size() != static_cast<py::ssize_t>(n) ||
         isBuy.size() != static_cast<py::ssize_t>(n))
     {
-      throw std::invalid_argument(
-          "timestamps, prices, quantities, and is_buy must have the same length");
+      throw flox::FloxError(
+          "E_LEN_001",
+          "timestamps, prices, quantities, and is_buy arrays must have the same length.");
     }
 
     const auto* ts = timestampsNs.data();
