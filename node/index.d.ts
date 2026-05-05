@@ -397,6 +397,30 @@ export class SignalBuilder {
   readonly length: number;
 }
 
+/** Equity curve from the most recent run, returned by
+ *  `BacktestRunner.equityCurve()`. Arrays are aligned: `equity[i]` and
+ *  `drawdownPct[i]` correspond to `timestampNs[i]`. */
+export interface EquityCurve {
+  timestampNs: BigInt64Array;
+  equity: Float64Array;
+  drawdownPct: Float64Array;
+}
+
+/** Closed trades from the most recent run, returned by
+ *  `BacktestRunner.trades()`. Arrays are aligned by row index.
+ *  `side`: 0 = long (buy entry, sell exit), 1 = short. */
+export interface BacktestTrades {
+  symbol: Uint32Array;
+  side: Uint8Array;
+  entryPrice: Float64Array;
+  exitPrice: Float64Array;
+  quantity: Float64Array;
+  pnl: Float64Array;
+  fee: Float64Array;
+  entryTimeNs: BigInt64Array;
+  exitTimeNs: BigInt64Array;
+}
+
 export class BacktestRunner {
   constructor(registry: SymbolRegistry, feeRate: number, initialCapital: number);
   setStrategy(strategy: Strategy): void;
@@ -407,6 +431,12 @@ export class BacktestRunner {
   /** Attach a listener for order lifecycle events. Multiple listeners
    *  may be attached; each fires for every order event. */
   addExecutionListener(listener: ExecutionListener): void;
+  /** Equity curve from the most recent run. Throws FloxError(E_RUN_002)
+   *  if no run has completed. */
+  equityCurve(): EquityCurve;
+  /** Closed trades from the most recent run. Throws FloxError(E_RUN_002)
+   *  if no run has completed. */
+  trades(): BacktestTrades;
 }
 
 export class SimulatedExecutor {

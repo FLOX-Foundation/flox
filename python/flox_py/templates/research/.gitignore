@@ -15,5 +15,6 @@ env/
 *.log
 runs/
 results/
+report.html
 data/*.csv
 !data/btcusdt_sample.csv

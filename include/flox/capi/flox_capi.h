@@ -815,6 +815,29 @@ extern "C"
   uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result,
                                                       const char* path);
 
+  // Closed-trade record from a backtest. side: 0 = long (buy entry,
+  // sell exit), 1 = short (sell entry, buy exit). Times are in
+  // nanoseconds since epoch. Distinct from FloxTradeRecord (datareader),
+  // which carries raw trade events from market data.
+  typedef struct
+  {
+    uint32_t symbol;
+    uint8_t side;
+    double entry_price;
+    double exit_price;
+    double quantity;
+    int64_t entry_time_ns;
+    int64_t exit_time_ns;
+    double pnl;
+    double fee;
+  } FloxBacktestTrade;
+
+  // Returns total available trades. If trades_out is non-NULL, writes up to
+  // max_trades entries and returns the number written.
+  uint32_t flox_backtest_result_trades(FloxBacktestResultHandle result,
+                                       FloxBacktestTrade* trades_out,
+                                       uint32_t max_trades);
+
   // ============================================================
   // Segment operations (full API)
   // ============================================================
@@ -1752,6 +1775,14 @@ extern "C"
   int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
                                              FloxReplaySourceHandle source,
                                              FloxBacktestStats* stats_out);
+
+  // Returns a NEW BacktestResult handle that owns a copy of the runner's
+  // last completed result, or NULL if no run has happened yet. Caller
+  // takes ownership and must free with flox_backtest_result_destroy().
+  // Stable across subsequent runs of the same runner — each run
+  // overwrites the runner's internal copy, but already-taken handles
+  // stay valid until destroyed.
+  FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle runner);
 
   // Attach a binding-side execution listener to BacktestRunner. Multiple
   // listeners may be attached. Caller retains ownership of the listener.

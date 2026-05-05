@@ -1478,6 +1478,87 @@ class PyBacktestRunner
     d["sharpe"] = stats.sharpeRatio;
     d["sortino"] = stats.sortinoRatio;
     d["return_pct"] = stats.returnPct;
+    _lastResult = std::move(result);
+    return d;
+  }
+
+ public:
+  // Most recent BacktestResult, kept after each run_* call so equity
+  // curve / trades stay accessible without re-running. Replaced on
+  // every run; cleared if no run has happened.
+  py::object equity_curve()
+  {
+    if (!_lastResult.has_value())
+    {
+      throw flox::FloxError(
+          "E_RUN_002",
+          "BacktestRunner.equity_curve() called before any run_* completed.");
+    }
+    const auto& curve = _lastResult->equityCurve();
+    py::array_t<int64_t> ts(curve.size());
+    py::array_t<double> eq(curve.size());
+    py::array_t<double> dd(curve.size());
+    auto pts = ts.mutable_unchecked<1>();
+    auto peq = eq.mutable_unchecked<1>();
+    auto pdd = dd.mutable_unchecked<1>();
+    for (size_t i = 0; i < curve.size(); ++i)
+    {
+      pts(i) = static_cast<int64_t>(curve[i].timestampNs);
+      peq(i) = curve[i].equity;
+      pdd(i) = curve[i].drawdownPct;
+    }
+    py::dict d;
+    d["timestamp_ns"] = ts;
+    d["equity"] = eq;
+    d["drawdown_pct"] = dd;
+    return d;
+  }
+
+  py::object trades()
+  {
+    if (!_lastResult.has_value())
+    {
+      throw flox::FloxError(
+          "E_RUN_002",
+          "BacktestRunner.trades() called before any run_* completed.");
+    }
+    const auto& tr = _lastResult->trades();
+    const size_t n = tr.size();
+    py::array_t<uint32_t> sym(n);
+    py::array_t<uint8_t> side(n);
+    py::array_t<double> ep(n), xp(n), qty(n), pnl(n), fee(n);
+    py::array_t<int64_t> ets(n), xts(n);
+    auto a_sym = sym.mutable_unchecked<1>();
+    auto a_side = side.mutable_unchecked<1>();
+    auto a_ep = ep.mutable_unchecked<1>();
+    auto a_xp = xp.mutable_unchecked<1>();
+    auto a_qty = qty.mutable_unchecked<1>();
+    auto a_pnl = pnl.mutable_unchecked<1>();
+    auto a_fee = fee.mutable_unchecked<1>();
+    auto a_ets = ets.mutable_unchecked<1>();
+    auto a_xts = xts.mutable_unchecked<1>();
+    for (size_t i = 0; i < n; ++i)
+    {
+      a_sym(i) = static_cast<uint32_t>(tr[i].symbol);
+      a_side(i) = static_cast<uint8_t>(tr[i].side);
+      a_ep(i) = tr[i].entryPrice.toDouble();
+      a_xp(i) = tr[i].exitPrice.toDouble();
+      a_qty(i) = tr[i].quantity.toDouble();
+      a_pnl(i) = tr[i].pnl.toDouble();
+      a_fee(i) = tr[i].fee.toDouble();
+      a_ets(i) = static_cast<int64_t>(tr[i].entryTimeNs);
+      a_xts(i) = static_cast<int64_t>(tr[i].exitTimeNs);
+    }
+    py::dict d;
+    d["symbol"] = sym;
+    d["side"] = side;
+    d["entry_price"] = ep;
+    d["exit_price"] = xp;
+    d["quantity"] = qty;
+    d["pnl"] = pnl;
+    d["fee"] = fee;
+    d["entry_time_ns"] = ets;
+    d["exit_time_ns"] = xts;
     return d;
   }
 
@@ -1485,6 +1566,7 @@ class PyBacktestRunner
   SymbolRegistry* _reg;
   std::unique_ptr<BacktestRunner> _runner;
   std::unique_ptr<PyStrategyHost> _host;
+  std::optional<BacktestResult> _lastResult;
   // C++ adapters bridging Python hooks → flox::IOrderExecutor /
   // IOrderExecutionListener used by BacktestRunner directly (without
   // going through the C ABI).
@@ -1547,6 +1629,7 @@ class PyBacktestRunner
     d["sharpe"] = stats.sharpeRatio;
     d["sortino"] = stats.sortinoRatio;
     d["return_pct"] = stats.returnPct;
+    _lastResult = std::move(result);
     return d;
   }
 
@@ -2021,5 +2104,12 @@ inline void bindStrategy(py::module_& m)
            py::arg("volume"),
            py::arg("symbol") = "",
            py::arg("bar_type") = 0,
-           py::arg("bar_type_param") = 0);
+           py::arg("bar_type_param") = 0)
+      .def("equity_curve", &PyBacktestRunner::equity_curve,
+           "Return the equity curve from the most recent run as a dict of "
+           "numpy arrays (timestamp_ns, equity, drawdown_pct).")
+      .def("trades", &PyBacktestRunner::trades,
+           "Return closed trades from the most recent run as a dict of numpy "
+           "arrays (symbol, side, entry_price, exit_price, quantity, pnl, "
+           "fee, entry_time_ns, exit_time_ns).");
 }

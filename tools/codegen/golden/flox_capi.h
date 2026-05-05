@@ -204,6 +204,19 @@ extern "C"
 
   typedef struct
   {
+    uint32_t symbol;
+    uint8_t side;
+    double entry_price;
+    double exit_price;
+    double quantity;
+    int64_t entry_time_ns;
+    int64_t exit_time_ns;
+    double pnl;
+    double fee;
+  } FloxBacktestTrade;
+
+  typedef struct
+  {
     uint8_t success;
     uint64_t segments_merged;
     uint64_t events_written;
@@ -599,6 +612,8 @@ extern "C"
                                              FloxEquityPoint* points_out, uint32_t max_points);
   uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle result,
                                                       const char* path);
+  uint32_t flox_backtest_result_trades(FloxBacktestResultHandle result,
+                                       FloxBacktestTrade* trades_out, uint32_t max_trades);
 
   // ============================================================
   // Backtestrunner Replay
@@ -623,6 +638,7 @@ extern "C"
   int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
                                              FloxReplaySourceHandle source,
                                              FloxBacktestStats* stats_out);
+  FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle runner);
 
   // ============================================================
   // Bar Aggregation

@@ -825,6 +825,8 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
             InstanceMethod("runBars", &BacktestRunnerNode::runBars),
             InstanceMethod("setExecutor", &BacktestRunnerNode::setExecutor),
             InstanceMethod("addExecutionListener", &BacktestRunnerNode::addExecutionListener),
+            InstanceMethod("equityCurve", &BacktestRunnerNode::equityCurve),
+            InstanceMethod("trades", &BacktestRunnerNode::trades),
         });
   }
 
@@ -941,6 +943,94 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
         return info.Env().Null();
       }
       return statsToJs(info.Env(), s); });
+  }
+
+  // runner.equityCurve() → { timestampNs: BigInt64Array,
+  //                           equity: Float64Array,
+  //                           drawdownPct: Float64Array }
+  Napi::Value equityCurve(const Napi::CallbackInfo& info)
+  {
+    return tryFlox(info.Env(), [&]() -> Napi::Value {
+      auto env = info.Env();
+      FloxBacktestResultHandle res = flox_backtest_runner_take_result(_handle);
+      if (!res) {
+        throw flox::FloxError(
+            "E_RUN_002",
+            "BacktestRunner.equityCurve() called before any run* completed.");
+      }
+      const uint32_t total = flox_backtest_result_equity_curve(res, nullptr, 0);
+      std::vector<FloxEquityPoint> buf(total);
+      if (total > 0) {
+        flox_backtest_result_equity_curve(res, buf.data(), total);
+      }
+      auto tsArr = Napi::BigInt64Array::New(env, total);
+      auto eqArr = Napi::Float64Array::New(env, total);
+      auto ddArr = Napi::Float64Array::New(env, total);
+      for (uint32_t i = 0; i < total; ++i) {
+        tsArr.Data()[i] = buf[i].timestamp_ns;
+        eqArr.Data()[i] = buf[i].equity;
+        ddArr.Data()[i] = buf[i].drawdown_pct;
+      }
+      flox_backtest_result_destroy(res);
+      auto obj = Napi::Object::New(env);
+      obj.Set("timestampNs", tsArr);
+      obj.Set("equity", eqArr);
+      obj.Set("drawdownPct", ddArr);
+      return obj;
+    });
+  }
+
+  // runner.trades() → { symbol: Uint32Array, side: Uint8Array,
+  //                     entryPrice/exitPrice/quantity/pnl/fee: Float64Array,
+  //                     entryTimeNs/exitTimeNs: BigInt64Array }
+  Napi::Value trades(const Napi::CallbackInfo& info)
+  {
+    return tryFlox(info.Env(), [&]() -> Napi::Value {
+      auto env = info.Env();
+      FloxBacktestResultHandle res = flox_backtest_runner_take_result(_handle);
+      if (!res) {
+        throw flox::FloxError(
+            "E_RUN_002",
+            "BacktestRunner.trades() called before any run* completed.");
+      }
+      const uint32_t total = flox_backtest_result_trades(res, nullptr, 0);
+      std::vector<FloxBacktestTrade> buf(total);
+      if (total > 0) {
+        flox_backtest_result_trades(res, buf.data(), total);
+      }
+      auto symArr = Napi::Uint32Array::New(env, total);
+      auto sideArr = Napi::Uint8Array::New(env, total);
+      auto epArr = Napi::Float64Array::New(env, total);
+      auto xpArr = Napi::Float64Array::New(env, total);
+      auto qtyArr = Napi::Float64Array::New(env, total);
+      auto pnlArr = Napi::Float64Array::New(env, total);
+      auto feeArr = Napi::Float64Array::New(env, total);
+      auto etsArr = Napi::BigInt64Array::New(env, total);
+      auto xtsArr = Napi::BigInt64Array::New(env, total);
+      for (uint32_t i = 0; i < total; ++i) {
+        symArr.Data()[i] = buf[i].symbol;
+        sideArr.Data()[i] = buf[i].side;
+        epArr.Data()[i] = buf[i].entry_price;
+        xpArr.Data()[i] = buf[i].exit_price;
+        qtyArr.Data()[i] = buf[i].quantity;
+        pnlArr.Data()[i] = buf[i].pnl;
+        feeArr.Data()[i] = buf[i].fee;
+        etsArr.Data()[i] = buf[i].entry_time_ns;
+        xtsArr.Data()[i] = buf[i].exit_time_ns;
+      }
+      flox_backtest_result_destroy(res);
+      auto obj = Napi::Object::New(env);
+      obj.Set("symbol", symArr);
+      obj.Set("side", sideArr);
+      obj.Set("entryPrice", epArr);
+      obj.Set("exitPrice", xpArr);
+      obj.Set("quantity", qtyArr);
+      obj.Set("pnl", pnlArr);
+      obj.Set("fee", feeArr);
+      obj.Set("entryTimeNs", etsArr);
+      obj.Set("exitTimeNs", xtsArr);
+      return obj;
+    });
   }
 
   static Napi::Object statsToJs(Napi::Env env, const FloxBacktestStats& s)

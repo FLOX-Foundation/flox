@@ -413,6 +413,67 @@ if os.path.exists(csv_path):
 else:
     print(f"  skip FloxError (CSV not found: {csv_path})")
 
+# ── BacktestRunner accessors ─────────────────────────────────────────
+
+print("=== BacktestRunner equity_curve / trades ===")
+
+bt_csv = os.path.join(os.path.dirname(__file__), '..',
+                      'flox_py', 'templates', 'research',
+                      'data', 'btcusdt_sample.csv')
+if os.path.exists(bt_csv):
+    reg2 = flox.SymbolRegistry()
+    btc2 = reg2.add_symbol("exchange", "BTCUSDT", 0.01)
+
+    class _SMA(flox.Strategy):
+        def __init__(self, syms):
+            super().__init__(syms)
+            self.fast = flox.SMA(10)
+            self.slow = flox.SMA(30)
+
+        def on_trade(self, ctx, t):
+            f = self.fast.update(t.price)
+            s = self.slow.update(t.price)
+            if f is None or s is None:
+                return
+            if f > s and ctx.is_flat():
+                self.market_buy(0.01)
+            elif f < s and ctx.is_flat():
+                self.market_sell(0.01)
+
+    bt = flox.BacktestRunner(reg2, fee_rate=0.0004, initial_capital=10_000)
+    bt.set_strategy(_SMA([btc2]))
+    stats = bt.run_csv(bt_csv, symbol="BTCUSDT")
+    check(stats["total_trades"] > 0,
+          f"BacktestRunner produced trades (got {stats['total_trades']})")
+
+    eq = bt.equity_curve()
+    check("timestamp_ns" in eq and "equity" in eq and "drawdown_pct" in eq,
+          "equity_curve() returns dict with expected keys")
+    check(len(eq["equity"]) == stats["total_trades"],
+          f"equity points = total_trades (got {len(eq['equity'])} vs "
+          f"{stats['total_trades']})")
+    check(eq["equity"].dtype == np.float64,
+          "equity is float64 numpy array")
+
+    tr = bt.trades()
+    expected = ["symbol", "side", "entry_price", "exit_price",
+                "quantity", "pnl", "fee", "entry_time_ns", "exit_time_ns"]
+    check(all(k in tr for k in expected),
+          f"trades() returns dict with all expected keys")
+    check(len(tr["pnl"]) == stats["total_trades"],
+          f"trades count = total_trades (got {len(tr['pnl'])} vs "
+          f"{stats['total_trades']})")
+
+    fresh = flox.BacktestRunner(reg2, fee_rate=0.0004, initial_capital=10_000)
+    try:
+        fresh.equity_curve()
+        check(False, "equity_curve() before run should raise")
+    except flox.FloxError as e:
+        check(e.code == "E_RUN_002",
+              f"equity_curve before run → FloxError E_RUN_002 (got {e.code!r})")
+else:
+    print(f"  skip BacktestRunner accessors (CSV not found: {bt_csv})")
+
 # ── Summary ──────────────────────────────────────────────────────────
 
 print(f"\n{_passed} passed, {_failed} failed")

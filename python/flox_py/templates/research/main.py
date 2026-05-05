@@ -66,6 +66,20 @@ def main() -> None:
     print(f"  max DD : {stats['max_drawdown_pct']:.4f}%")
     print(f"  net PnL: {stats['net_pnl']:.4f}")
 
+    # Render an HTML report next to main.py with the equity curve and
+    # the trades table. Open it in a browser to inspect.
+    from flox_py.report import write_html
+
+    out = write_html(
+        os.path.join(HERE, "report.html"),
+        stats=stats,
+        equity_curve=bt.equity_curve(),
+        trades=bt.trades(),
+        title="__PROJECT_NAME__ backtest",
+        subtitle=f"SMA(10/30) on {os.path.basename(DATA_CSV)}",
+    )
+    print(f"  report : {out}")
+
 
 if __name__ == "__main__":
     main()

@@ -91,3 +91,8 @@ docs/contributors/extension-hook-pattern.md
 # How-to: CCXT adapter — quickstart contains illustrative snippets;
 # the runnable end-to-end example lives in docs/examples/python_ccxt_live.py.
 docs/how-to/ccxt-adapter.md
+
+# How-to: HTML report — single illustrative end-to-end snippet shows the
+# pattern. The runnable equivalent is the bundled research template's
+# main.py which the CLI test scaffolds.
+docs/how-to/backtest-html-report.md

@@ -66,6 +66,10 @@ from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64],
                                               Ptr[float], Ptr[float], Ptr[float],
                                               Ptr[float], Ptr[float],
                                               u32, cobj, u8, u64, Ptr[i64]) -> i32
+from C import flox_backtest_runner_take_result(cobj) -> cobj
+from C import flox_backtest_result_destroy(cobj)
+from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
+from C import flox_backtest_result_trades(cobj, cobj, u32) -> u32
 
 from C import flox_price_to_double(i64) -> float
 from C import flox_quantity_to_double(i64) -> float
@@ -356,3 +360,83 @@ class BacktestRunner:
         if ok == i32(0):
             raise ValueError("BacktestRunner.run_bars failed")
         return self._parse_stats(buf)
+
+    def equity_curve(self) -> Tuple[List[int], List[float], List[float]]:
+        """Equity curve from the most recent run.
+
+        Returns ``(timestamps_ns, equity, drawdown_pct)`` lists, all of
+        the same length. Raises if no run has completed.
+        """
+        result = flox_backtest_runner_take_result(self._handle)
+        if result == cobj():
+            raise ValueError("BacktestRunner.equity_curve called before any run_*")
+        n = int(flox_backtest_result_equity_curve(result, cobj(), u32(0)))
+        # FloxEquityPoint = { i64, f64, f64 } = 24 bytes; allocate as i64 buf.
+        # 3 i64-slots per point.
+        ts_list: List[int] = []
+        eq_list: List[float] = []
+        dd_list: List[float] = []
+        if n > 0:
+            buf = [i64(0)] * (n * 3)
+            flox_backtest_result_equity_curve(result,
+                                              cobj(buf.arr.ptr), u32(n))
+            ip = Ptr[i64](buf.arr.ptr)
+            fp = Ptr[f64](buf.arr.ptr)
+            for i in range(n):
+                ts_list.append(int(ip[i * 3]))
+                eq_list.append(float(fp[i * 3 + 1]))
+                dd_list.append(float(fp[i * 3 + 2]))
+        flox_backtest_result_destroy(result)
+        return (ts_list, eq_list, dd_list)
+
+    def trades(self) -> Tuple[List[int], List[int], List[float], List[float],
+                              List[float], List[float], List[float],
+                              List[int], List[int]]:
+        """Closed trades from the most recent run.
+
+        Returns ``(symbol, side, entry_price, exit_price, quantity, pnl,
+        fee, entry_time_ns, exit_time_ns)`` parallel lists. ``side`` is
+        0 for long, 1 for short.
+        """
+        result = flox_backtest_runner_take_result(self._handle)
+        if result == cobj():
+            raise ValueError("BacktestRunner.trades called before any run_*")
+        n = int(flox_backtest_result_trades(result, cobj(), u32(0)))
+        sym_l: List[int] = []
+        side_l: List[int] = []
+        ep_l: List[float] = []
+        xp_l: List[float] = []
+        qty_l: List[float] = []
+        pnl_l: List[float] = []
+        fee_l: List[float] = []
+        ets_l: List[int] = []
+        xts_l: List[int] = []
+        if n > 0:
+            # FloxBacktestTrade is 8-byte aligned; layout in i64 slots:
+            # [0] uint32 sym | uint8 side | padding (8 bytes total)
+            # [1] entry_price (f64)
+            # [2] exit_price  (f64)
+            # [3] quantity    (f64)
+            # [4] entry_ts_ns (i64)
+            # [5] exit_ts_ns  (i64)
+            # [6] pnl         (f64)
+            # [7] fee         (f64)
+            buf = [i64(0)] * (n * 8)
+            flox_backtest_result_trades(result, cobj(buf.arr.ptr), u32(n))
+            ip = Ptr[i64](buf.arr.ptr)
+            fp = Ptr[f64](buf.arr.ptr)
+            u32p = Ptr[u32](buf.arr.ptr)
+            u8p = Ptr[u8](buf.arr.ptr)
+            for i in range(n):
+                base_byte = i * 64  # 8 i64 slots = 64 bytes
+                sym_l.append(int(u32p[i * 16]))         # uint32 at offset 0 (i*64 / 4)
+                side_l.append(int(u8p[i * 64 + 4]))     # uint8 at offset 4
+                ep_l.append(float(fp[i * 8 + 1]))
+                xp_l.append(float(fp[i * 8 + 2]))
+                qty_l.append(float(fp[i * 8 + 3]))
+                ets_l.append(int(ip[i * 8 + 4]))
+                xts_l.append(int(ip[i * 8 + 5]))
+                pnl_l.append(float(fp[i * 8 + 6]))
+                fee_l.append(float(fp[i * 8 + 7]))
+        flox_backtest_result_destroy(result)
+        return (sym_l, side_l, ep_l, xp_l, qty_l, pnl_l, fee_l, ets_l, xts_l)
