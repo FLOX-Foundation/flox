@@ -166,6 +166,9 @@ jobs:
     - name: Verify flox new CLI scaffolder
       run: PYTHONPATH=build/python python3 python/tests/test_flox_new_cli.py
 
+    - name: Verify Python CCXT adapter (mock-based)
+      run: PYTHONPATH=build/python python3 python/tests/test_ccxt_adapter.py
+
     - name: Verify .pyi stubs are in sync with the binding
       run: python3 scripts/gen_pyi_stubs.py --check
 
