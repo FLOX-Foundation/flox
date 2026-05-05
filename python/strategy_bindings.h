@@ -1418,14 +1418,20 @@ class PyBacktestRunner
   {
     if (!_host)
     {
-      throw std::runtime_error("call set_strategy() before run");
+      throw flox::FloxError(
+          "E_RUN_001",
+          "BacktestRunner.run_bars() called before set_strategy(). "
+          "Attach a strategy with set_strategy(MyStrategy()) first.");
     }
     std::string sym = symbol.empty() ? "default" : symbol;
     auto id = resolveSymbol(sym);
     const auto n = start_ns.size();
     if (end_ns.size() != n || open.size() != n || high.size() != n || low.size() != n || close.size() != n || volume.size() != n)
     {
-      throw std::invalid_argument("run_bars: all arrays must have the same length");
+      throw flox::FloxError(
+          "E_LEN_001",
+          "run_bars: all arrays (start_time_ns, end_time_ns, open, high, "
+          "low, close, volume) must have the same length.");
     }
     auto ps = start_ns.unchecked<1>();
     auto pe = end_ns.unchecked<1>();
@@ -1500,7 +1506,12 @@ class PyBacktestRunner
           return info.id;
         }
       }
-      throw std::invalid_argument("Symbol not registered: " + sym);
+      throw flox::FloxError(
+          "E_SYM_001",
+          "Symbol '" + sym +
+              "' is not registered. Register it via "
+              "BacktestRunner.set_strategy(...) or by calling "
+              "Engine.add_symbol() before running.");
     }
     return *opt;
   }
@@ -1509,7 +1520,10 @@ class PyBacktestRunner
   {
     if (!_host)
     {
-      throw std::runtime_error("call set_strategy() before run");
+      throw flox::FloxError(
+          "E_RUN_001",
+          "BacktestRunner.run_*() called before set_strategy(). "
+          "Attach a strategy with set_strategy(MyStrategy()) first.");
     }
     OhlcvBacktestReader reader(std::move(bars));
     BacktestResult result = _runner->run(reader);
@@ -1541,7 +1555,10 @@ class PyBacktestRunner
     std::ifstream f(path);
     if (!f.is_open())
     {
-      throw std::runtime_error("cannot open: " + path);
+      throw flox::FloxError(
+          "E_IO_001",
+          "Cannot open file: '" + path +
+              "'. Check the path is correct and the file is readable.");
     }
     std::vector<OhlcvBacktestReader::Bar> bars;
     std::string line;

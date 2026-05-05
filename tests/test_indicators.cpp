@@ -25,6 +25,8 @@
 #include "flox/indicator/stochastic.h"
 #include "flox/indicator/vwap.h"
 
+#include "flox/error/flox_error.h"
+
 #include <gtest/gtest.h>
 #include <cmath>
 #include <vector>
@@ -727,7 +729,7 @@ TEST(IndicatorGraph, CircularDependencyThrows)
             { return std::vector<double>{}; });
   g.addNode("b", {"a"}, [](IndicatorGraph&, SymbolId)
             { return std::vector<double>{}; });
-  EXPECT_THROW(g.require(0, "a"), std::logic_error);
+  EXPECT_THROW(g.require(0, "a"), flox::FloxError);
 }
 
 TEST(IndicatorGraph, CacheInvalidation)

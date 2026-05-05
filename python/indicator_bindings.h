@@ -2,7 +2,9 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+
 #include <pybind11/stl.h>
+#include "flox/error/flox_error.h"
 
 #include <algorithm>
 #include <cmath>
@@ -45,7 +47,7 @@ inline void checkSameSize(size_t a, size_t b, const char* msg)
 {
   if (a != b)
   {
-    throw std::invalid_argument(msg);
+    throw flox::FloxError("E_LEN_001", msg);
   }
 }
 

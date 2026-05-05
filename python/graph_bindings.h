@@ -2,7 +2,9 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+
 #include <pybind11/stl.h>
+#include "flox/error/flox_error.h"
 
 #include <cstring>
 #include <optional>
@@ -48,7 +50,9 @@ class PyIndicatorGraph
       auto b = high->request();
       if (static_cast<size_t>(b.shape[0]) != n)
       {
-        throw std::invalid_argument("set_bars: high must match close length");
+        throw flox::FloxError(
+            "E_LEN_001",
+            "set_bars: 'high' array must have the same length as 'close'.");
       }
       h = static_cast<const double*>(b.ptr);
     }
@@ -57,7 +61,9 @@ class PyIndicatorGraph
       auto b = low->request();
       if (static_cast<size_t>(b.shape[0]) != n)
       {
-        throw std::invalid_argument("set_bars: low must match close length");
+        throw flox::FloxError(
+            "E_LEN_001",
+            "set_bars: 'low' array must have the same length as 'close'.");
       }
       l = static_cast<const double*>(b.ptr);
     }
@@ -66,7 +72,9 @@ class PyIndicatorGraph
       auto b = volume->request();
       if (static_cast<size_t>(b.shape[0]) != n)
       {
-        throw std::invalid_argument("set_bars: volume must match close length");
+        throw flox::FloxError(
+            "E_LEN_001",
+            "set_bars: 'volume' array must have the same length as 'close'.");
       }
       v = static_cast<const double*>(b.ptr);
     }

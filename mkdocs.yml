@@ -192,7 +192,24 @@ nav:
       - C API: reference/api/capi/flox_capi.md
       - Errors:
           - errors/index.md
-          - E_SYM_001 - Symbol is not registered: errors/E_SYM_001.md
+          - "E_SYM_001 — Symbol is not registered": errors/E_SYM_001.md
+          - "E_RUN_001 — Backtest run before set_strategy()": errors/E_RUN_001.md
+          - "E_RUN_002 — No data loaded": errors/E_RUN_002.md
+          - "E_LEN_001 — Array length mismatch": errors/E_LEN_001.md
+          - "E_LEN_002 — Empty input array": errors/E_LEN_002.md
+          - "E_IO_001 — Cannot open file (read)": errors/E_IO_001.md
+          - "E_IO_002 — Cannot open file (write)": errors/E_IO_002.md
+          - "E_KEY_001 — Required key missing": errors/E_KEY_001.md
+          - "E_TIME_001 — Unknown interval unit": errors/E_TIME_001.md
+          - "E_INPUT_001 — Unknown compression type": errors/E_INPUT_001.md
+          - "E_GRAPH_001 — Unknown indicator graph node": errors/E_GRAPH_001.md
+          - "E_GRAPH_002 — Circular dependency in indicator graph": errors/E_GRAPH_002.md
+          - "E_ADF_001 — ADF: invalid regression mode": errors/E_ADF_001.md
+          - "E_ADF_002 — ADF: input too short": errors/E_ADF_002.md
+          - "E_ADF_003 — ADF: NaN in input": errors/E_ADF_003.md
+          - "E_ADF_004 — ADF: singular regression": errors/E_ADF_004.md
+          - "E_BACKTEST_001 — Bar type unsupported by writer": errors/E_BACKTEST_001.md
+          - "E_DATA_001 — Bar data not found": errors/E_DATA_001.md
       - Core (C++ internals):
           - reference/api/README.md
           - Common: reference/api/common.md

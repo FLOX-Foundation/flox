@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "flox/error/flox_error.h"
+
 namespace flox::indicator
 {
 
@@ -55,7 +57,9 @@ inline AdfRegression parseAdfRegression(const std::string& s)
   {
     return AdfRegression::ConstantTrend;
   }
-  throw std::invalid_argument("adf: regression must be one of: \"n\", \"c\", \"ct\"");
+  throw flox::FloxError(
+      "E_ADF_001",
+      "adf: regression must be one of \"n\", \"c\", or \"ct\".");
 }
 
 struct AdfResult
@@ -128,7 +132,9 @@ inline OlsFit olsFit(const std::vector<double>& X, size_t n, size_t k,
     }
     if (best < 1e-14)
     {
-      throw std::runtime_error("adf: singular regression matrix");
+      throw flox::FloxError(
+          "E_ADF_004",
+          "adf: singular regression matrix; input may be constant or degenerate.");
     }
     if (pivot != col)
     {
@@ -326,13 +332,17 @@ inline AdfResult adf(std::span<const double> x, size_t max_lag,
 {
   if (x.size() < 4)
   {
-    throw std::invalid_argument("adf: input too short (need at least 4 observations)");
+    throw flox::FloxError(
+        "E_ADF_002",
+        "adf: input too short; need at least 4 observations.");
   }
   for (double v : x)
   {
     if (std::isnan(v))
     {
-      throw std::invalid_argument("adf: input contains NaN");
+      throw flox::FloxError(
+          "E_ADF_003",
+          "adf: input array contains NaN values; clean the series before testing.");
     }
   }
 
@@ -370,7 +380,9 @@ inline AdfResult adf(std::span<const double> x, size_t max_lag,
 
   if (!found)
   {
-    throw std::invalid_argument("adf: input too short for the requested max_lag and regression");
+    throw flox::FloxError(
+        "E_ADF_002",
+        "adf: input too short for the requested max_lag and regression.");
   }
 
   // t-statistic for the y[t-1] coefficient.
@@ -378,7 +390,9 @@ inline AdfResult adf(std::span<const double> x, size_t max_lag,
   double sigma2 = bestFit.rss / static_cast<double>(bestFit.n - bestFit.k);
   if (sigma2 <= 0.0 || bestFit.covDiag[bestBetaIdx] <= 0.0)
   {
-    throw std::runtime_error("adf: degenerate regression");
+    throw flox::FloxError(
+        "E_ADF_004",
+        "adf: degenerate regression — input may be constant or numerically unstable.");
   }
   double se = std::sqrt(sigma2 * bestFit.covDiag[bestBetaIdx]);
   double tau = beta / se;

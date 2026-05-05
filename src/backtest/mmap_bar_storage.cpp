@@ -9,6 +9,8 @@
 
 #include "flox/backtest/mmap_bar_storage.h"
 
+#include "flox/error/flox_error.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -29,7 +31,10 @@ MmapBarStorage::MmapBarStorage(const std::filesystem::path& symbolDir) : _symbol
 {
   if (!std::filesystem::exists(symbolDir))
   {
-    throw std::runtime_error("Symbol directory not found: " + symbolDir.string());
+    throw flox::FloxError(
+        "E_DATA_001",
+        "Symbol bar data directory not found: '" + symbolDir.string() +
+            "'. Run a recorder over the dataset first or check the data root.");
   }
 
   for (const auto& entry : std::filesystem::directory_iterator(symbolDir))
@@ -67,7 +72,10 @@ MmapBarStorage::MmapBarStorage(const std::filesystem::path& symbolDir) : _symbol
 
   if (_files.empty())
   {
-    throw std::runtime_error("No bars_*.bin files found in: " + symbolDir.string());
+    throw flox::FloxError(
+        "E_DATA_001",
+        "No bar files (bars_*.bin) found in: '" + symbolDir.string() +
+            "'. The directory exists but contains no time-based bar data.");
   }
 }
 

@@ -5,6 +5,8 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
+#include "flox/error/flox_error.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -153,7 +155,9 @@ inline void bindOptimizer(py::module_& m)
       {
         if (x.size() != y.size())
         {
-          throw std::invalid_argument("x and y must have the same length");
+          throw flox::FloxError(
+              "E_LEN_001",
+              "x and y arrays must have the same length.");
         }
         auto* xp = x.data();
         auto* yp = y.data();
@@ -177,7 +181,9 @@ inline void bindOptimizer(py::module_& m)
         size_t n = data.size();
         if (n == 0)
         {
-          throw std::invalid_argument("data must not be empty");
+          throw flox::FloxError(
+              "E_LEN_002",
+              "Input array must not be empty.");
         }
 
         std::tuple<double, double, double> result;
