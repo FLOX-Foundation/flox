@@ -20,7 +20,7 @@ import flox_py as flox
 # Replace with your own CSV (timestamp_ms,price,qty,is_buyer_maker).
 # An empty path triggers the synthetic price path below — handy for
 # the very first run before you wire up real data.
-DATA_CSV = os.environ.get("__PROJECT_SLUG___DATA", "")
+DATA_CSV = os.environ.get("__PROJECT_ENV__", "")
 
 
 registry = flox.SymbolRegistry()
@@ -90,5 +90,5 @@ if __name__ == "__main__":
     if DATA_CSV and os.path.exists(DATA_CSV):
         run_backtest()
     else:
-        print(f"  (set __PROJECT_SLUG___DATA=<csv> for backtest mode)")
+        print(f"  (set __PROJECT_ENV__=<csv> for backtest mode)")
         run_synthetic()

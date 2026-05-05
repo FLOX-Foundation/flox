@@ -78,6 +78,7 @@ nav:
 
   - Tutorials:
       - tutorials/README.md
+      - 60 seconds to first backtest: tutorials/60-seconds.md
       - Python quickstart: tutorials/python-quickstart.md
       - Node.js quickstart: tutorials/node-quickstart.md
       - Codon quickstart: tutorials/codon-strategy.md

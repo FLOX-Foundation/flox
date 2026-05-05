@@ -14,7 +14,7 @@ synthetic price path. To run it as a backtest, point it at a CSV with
 columns `timestamp_ms,price,qty,is_buyer_maker`:
 
 ```bash
-__PROJECT_SLUG___DATA=/path/to/btcusdt_1m.csv python main.py
+__PROJECT_ENV__=/path/to/btcusdt_1m.csv python main.py
 ```
 
 ## Layout

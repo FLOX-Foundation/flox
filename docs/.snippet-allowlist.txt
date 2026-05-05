@@ -75,6 +75,11 @@ docs/reference/quickjs/tools.md
 docs/tutorials/codon-strategy.md
 docs/tutorials/node-quickstart.md
 docs/tutorials/python-quickstart.md
+# 60-second tutorial mirrors the substituted output of the bundled
+# `research` template (already covered by python/tests/test_flox_new_cli.py)
+# — extracting it as a separate runnable would just duplicate the
+# template body. The CLI test asserts the file content this snippet shows.
+docs/tutorials/60-seconds.md
 
 # Contributor docs — code blocks are pattern templates / pseudocode
 # (e.g. "your hook trampoline looks like X"), not runnable snippets.

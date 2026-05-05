@@ -61,8 +61,11 @@ class FloxNewCliTests(unittest.TestCase):
         self.assertIn("Hedge-Bot", main_py)
         self.assertIn("hedge_bot_strategy", main_py,
                       "slug substitution should produce hedge_bot_strategy")
+        self.assertIn("HEDGE_BOT_DATA", main_py,
+                      "env placeholder should produce HEDGE_BOT_DATA")
         self.assertNotIn("__PROJECT_NAME__", main_py)
         self.assertNotIn("__PROJECT_SLUG__", main_py)
+        self.assertNotIn("__PROJECT_ENV__", main_py)
 
     def test_unknown_template_errors(self) -> None:
         err = io.StringIO()
