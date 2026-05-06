@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "__PROJECT_SLUG__"
+version = "0.1.0"
+description = "Custom indicator library for FLOX strategies."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "your name" }]
+keywords = ["flox", "indicator", "trading", "quant"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = ["flox-py>=0.5.6"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+  "pytest-cov>=4",
+  "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://example.com/__PROJECT_SLUG__"
+Issues = "https://example.com/__PROJECT_SLUG__/issues"
+
+# Plugin entry point — strategies that depend on this package can
+# either `from __PROJECT_SLUG__ import ZLEMA` directly, OR they can
+# discover indicators via the entry-point group, which lets
+# `flox.list_indicators()` (host-side helper) enumerate registered
+# third-party indicators alongside the built-in ones.
+[project.entry-points."flox.indicators"]
+zlema = "__PROJECT_SLUG__.zlema:ZLEMA"
+
+[tool.hatch.build.targets.wheel]
+packages = ["__PROJECT_SLUG__"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/__PROJECT_SLUG__",
+  "/tests",
+  "/examples",
+  "/README.md",
+  "/pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

@@ -146,6 +146,95 @@ class FloxNewCliTests(unittest.TestCase):
         self.assertNotIn("__PROJECT_ENV__", cfg)
         self.assertNotIn("__PROJECT_SLUG__", cfg)
 
+    # ── indicator-library template ────────────────────────────────
+
+    def test_templates_lists_indicator_library(self) -> None:
+        names = cli._list_templates()
+        self.assertIn("indicator-library", names,
+                      f"expected 'indicator-library', got {names!r}")
+
+    def test_indicator_library_layout(self) -> None:
+        rc = cli.main(["new", "my-indicators",
+                       "--template", "indicator-library"])
+        self.assertEqual(rc, 0)
+        proj = self.tmp / "my-indicators"
+        for f in ("pyproject.toml", "README.md", ".gitignore"):
+            self.assertTrue((proj / f).exists(),
+                            f"indicator-library should ship {f}")
+        # Package directory was named __PROJECT_SLUG__ in the template;
+        # path substitution must rename it to my_indicators/.
+        pkg = proj / "my_indicators"
+        self.assertTrue(pkg.is_dir(),
+                        f"package dir should be {pkg}, listing: "
+                        f"{sorted(p.name for p in proj.iterdir())}")
+        self.assertTrue((pkg / "__init__.py").exists())
+        self.assertTrue((pkg / "zlema.py").exists())
+        # tests with bundled CSV.
+        sample = proj / "tests" / "data" / "btcusdt_sample.csv"
+        self.assertTrue(sample.exists())
+        with sample.open() as f:
+            self.assertEqual(f.readline().strip(),
+                             "timestamp,open,high,low,close,volume")
+        self.assertTrue((proj / "tests" / "test_zlema.py").exists())
+        self.assertTrue((proj / "examples" / "use_in_strategy.py").exists())
+        self.assertTrue(
+            (proj / ".github" / "workflows" / "ci.yml").exists())
+
+    def test_indicator_library_substitutions_in_paths_and_content(self) -> None:
+        rc = cli.main(["new", "Hedge-Indicators",
+                       "--template", "indicator-library"])
+        self.assertEqual(rc, 0)
+        proj = self.tmp / "Hedge-Indicators"
+        # Path substitution: package directory uses the snake-case slug.
+        self.assertTrue((proj / "hedge_indicators" / "__init__.py").exists())
+        # No leftover placeholders anywhere.
+        for p in proj.rglob("*"):
+            if p.is_file():
+                self.assertNotIn("__PROJECT_NAME__", p.name)
+                self.assertNotIn("__PROJECT_SLUG__", p.name)
+                try:
+                    txt = p.read_text()
+                except UnicodeDecodeError:
+                    continue
+                self.assertNotIn("__PROJECT_NAME__", txt,
+                                 f"unsubstituted name in {p}")
+                self.assertNotIn("__PROJECT_SLUG__", txt,
+                                 f"unsubstituted slug in {p}")
+                self.assertNotIn("__PROJECT_PREFIX__", txt,
+                                 f"unsubstituted prefix in {p}")
+                self.assertNotIn("__PROJECT_ENV__", txt,
+                                 f"unsubstituted env in {p}")
+        # pyproject.toml carries the slug as the package name and as
+        # an entry-point target.
+        toml = (proj / "pyproject.toml").read_text()
+        self.assertIn('name = "hedge_indicators"', toml)
+        self.assertIn("hedge_indicators.zlema:ZLEMA", toml)
+        # README mentions the project & slug forms.
+        readme = (proj / "README.md").read_text()
+        self.assertIn("Hedge-Indicators", readme)
+        self.assertIn("hedge_indicators", readme)
+
+    def test_indicator_library_zlema_module_imports_and_runs(self) -> None:
+        """Scaffolded ZLEMA must be import-and-run-able as standalone code."""
+        import importlib.util
+
+        rc = cli.main(["new", "my-indicators",
+                       "--template", "indicator-library"])
+        self.assertEqual(rc, 0)
+        zlema_path = self.tmp / "my-indicators" / "my_indicators" / "zlema.py"
+        spec = importlib.util.spec_from_file_location(
+            "_scaffolded_zlema", zlema_path)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        z = mod.ZLEMA(period=10)
+        self.assertFalse(z.ready)
+        # Feed enough samples to clear warmup (period + lag).
+        for price in [100.0 + i * 0.5 for i in range(40)]:
+            z.update(price)
+        self.assertTrue(z.ready)
+        self.assertIsNotNone(z.value)
+
 
 if __name__ == "__main__":
     unittest.main()
