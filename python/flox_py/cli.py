@@ -21,6 +21,11 @@ substitutes ``__PROJECT_NAME__``, ``__PROJECT_SLUG__``,
 prefix, e.g. ``MYBOT``), and ``__PROJECT_ENV__``
 (``<PREFIX>_DATA`` — used by the research template for the CSV path
 env var).
+
+Substitution applies to file *contents* AND to file/directory
+*names* — the indicator-library template ships its package directory
+as ``__PROJECT_SLUG__/`` so it lands at e.g. ``my_indicators/`` for
+``flox new my-indicators``.
 """
 
 from __future__ import annotations
@@ -86,10 +91,20 @@ def _copy_template(template: str, dest: Path, project_name: str) -> int:
 
     dest.mkdir(parents=True, exist_ok=True)
     slug = _slug(project_name)
+    upper = slug.upper()
+
+    def _subst(s: str) -> str:
+        return (s.replace("__PROJECT_NAME__", project_name)
+                 .replace("__PROJECT_SLUG__", slug)
+                 .replace("__PROJECT_PREFIX__", upper)
+                 .replace("__PROJECT_ENV__", upper + "_DATA"))
 
     def _walk(node, target: Path) -> None:
         for child in node.iterdir():
-            child_target = target / child.name
+            # Substitute placeholders in file/directory names too — the
+            # indicator-library template ships its package directory as
+            # `__PROJECT_SLUG__/` which becomes e.g. `my_indicators/`.
+            child_target = target / _subst(child.name)
             if child.is_dir():
                 child_target.mkdir(exist_ok=True)
                 _walk(child, child_target)
@@ -102,12 +117,7 @@ def _copy_template(template: str, dest: Path, project_name: str) -> int:
                 except UnicodeDecodeError:
                     child_target.write_bytes(child.read_bytes())
                     continue
-                upper = slug.upper()
-                text = text.replace("__PROJECT_NAME__", project_name)
-                text = text.replace("__PROJECT_SLUG__", slug)
-                text = text.replace("__PROJECT_PREFIX__", upper)
-                text = text.replace("__PROJECT_ENV__", upper + "_DATA")
-                child_target.write_text(text)
+                child_target.write_text(_subst(text))
 
     _walk(src_root, dest)
     return 0
@@ -133,8 +143,13 @@ def cmd_new(args: argparse.Namespace) -> int:
     print()
     print("next steps:")
     print(f"  cd {dest.relative_to(Path.cwd()) if not args.here else '.'}")
-    print(f"  pip install -r requirements.txt")
-    print(f"  python main.py")
+    if template == "indicator-library":
+        print('  pip install -e ".[dev]"')
+        print(f"  pytest")
+        print(f"  python examples/use_in_strategy.py")
+    else:
+        print(f"  pip install -r requirements.txt")
+        print(f"  python main.py")
     return 0
 
 

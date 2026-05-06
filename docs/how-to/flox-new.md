@@ -27,6 +27,11 @@ substituted in every text file:
 For example, `flox new Hedge-Bot` substitutes `Hedge-Bot`, `hedge_bot`,
 `HEDGE_BOT`, and `HEDGE_BOT_DATA` respectively.
 
+Substitution applies to file *contents* and to file/directory *names*.
+The `indicator-library` template uses this to ship its package
+directory as `__PROJECT_SLUG__/`, which becomes e.g. `hedge_bot/` in
+the scaffolded project.
+
 ## Templates
 
 ### `research` (default)
@@ -78,6 +83,50 @@ cp config.toml.example config.toml
 python main.py                    # dry-run
 FLOX_LIVE=1 python main.py        # live (sandbox by default)
 ```
+
+### `indicator-library`
+
+Standalone Python package shipping one or more streaming indicators
+that other FLOX projects can `pip install`. Ships with:
+
+- `<slug>/` — package directory (e.g. `my_indicators/`). Holds one
+  module per indicator and re-exports them from `__init__.py`.
+- `<slug>/zlema.py` — sample indicator (Zero-Lag EMA). Replace or add
+  to it.
+- `tests/` — pytest suite with the same bundled BTC/USDT 1m CSV the
+  `research` template uses, so the tests run end-to-end out of the box.
+- `examples/use_in_strategy.py` — backtest using the indicator inside
+  a `flox.Strategy`.
+- `pyproject.toml` — `hatchling` build, `flox-py` runtime dep, `[dev]`
+  extras (`pytest`, `ruff`). Includes a `[project.entry-points."flox.indicators"]`
+  table so the library can be discovered alongside built-ins.
+- `.github/workflows/ci.yml` — runs lint + tests on push (Python 3.10/3.11/3.12).
+
+```bash
+flox new my-indicators --template=indicator-library
+cd my-indicators
+pip install -e ".[dev]"
+pytest                           # runs the bundled test suite
+python examples/use_in_strategy.py
+```
+
+Publish flow (after editing `pyproject.toml` author/URLs and bumping
+the version):
+
+```bash
+pip install build twine
+python -m build                  # produces dist/*.whl + dist/*.tar.gz
+twine upload --repository testpypi dist/*   # smoke-test on TestPyPI first
+twine upload dist/*              # promote to PyPI
+```
+
+Once installed, downstream projects can `from my_indicators import ZLEMA`
+and use it inside any `flox.Strategy` exactly like a built-in
+`flox.SMA` or `flox.EMA`.
+
+The streaming indicator contract — `update(price) -> float | None`,
+`ready`, `value`, `reset()` — matches the FLOX built-ins, so swapping
+your indicator into an existing strategy is a single import change.
 
 ## Why a CLI scaffolder?
 
