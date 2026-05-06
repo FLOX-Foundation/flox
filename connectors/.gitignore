@@ -1,0 +1,12 @@
+/build/
+/CMakeFiles/
+/cmake-build-*/
+/*.o
+/*.a
+/*.so
+/*.log
+
+.cache
+.vscode
+
+build

@@ -551,3 +551,33 @@ jobs:
 
     - name: Run benchmarks
       run: ./scripts/run-benchmarks.sh build/benchmarks
+
+  connectors-build:
+    needs: [format-check, verify-docs-current]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 \
+                                libssl-dev zlib1g-dev libcurl4-openssl-dev
+
+    # Network deps (ixwebsocket, simdjson) come in via FetchContent
+    # at configure time. Polymarket Rust FFI is opt-OUT here so the
+    # job doesn't need a Rust toolchain.
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_BUILD_CONNECTORS=ON \
+              -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF
+
+    - name: Build connectors target
+      run: cmake --build build --target flox-connectors -j$(nproc)
+
+    - name: Verify static archive exists
+      run: test -f build/connectors/libflox-connectors.a

@@ -148,6 +148,7 @@ nav:
       - Memory Model: explanation/memory-model.md
       - Integration Flow: explanation/integration-flow.md
       - Indicators: explanation/indicators.md
+      - Connectors: explanation/connectors.md
       - Contributing:
           - contributors/index.md
           - Binding architecture: contributors/architecture-overview.md

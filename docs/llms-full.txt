@@ -125,6 +125,7 @@ Pick your language:
 | Zero-allocation hot path | Pre-allocated pools, no heap allocation in market data callbacks |
 | CPU affinity support | Pin threads to isolated cores |
 | Multi-exchange trading | [CEX coordination](reference/api/cex/composite_book_matrix.md) with aggregation and smart routing |
+| Native connectors | [Bybit / Bitget / Hyperliquid / Polymarket](explanation/connectors.md) under `connectors/`, opt-in via `-DFLOX_BUILD_CONNECTORS=ON` |
 | Binary replay system | Record live data, replay for backtesting |
 | Backtest analytics | [Grid search](how-to/grid-search.md), [walk-forward](how-to/walk-forward.md), [heatmap](how-to/heatmap.md), [White's reality check](how-to/whites-reality-check.md), [MLflow logging](how-to/mlflow.md) |
 | Multi-language bindings | Python, Node.js, Codon, JavaScript, C API |

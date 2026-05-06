@@ -1,0 +1,54 @@
+[package]
+name = "polymarket_executor"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "polymarket_executor"
+crate-type = ["staticlib", "cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# Polymarket official SDK
+polymarket-client-sdk = { version = "0.4.0", features = ["clob"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full", "net", "rt-multi-thread"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Ethereum - disable default rustls-tls, we'll handle TLS ourselves
+alloy = { version = "1", default-features = false, features = ["std", "signers", "signer-local"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Decimal
+rust_decimal = "1"
+
+# Crypto
+k256 = "0.13"
+
+# FFI
+libc = "0.2"
+
+# Direct HTTP (for benchmarking/optimization)
+# Use native-tls to avoid ring (ring fails on macOS ARM64 CI)
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls", "http2"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
