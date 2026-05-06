@@ -44,4 +44,10 @@ where = ["."]
 include = ["flox_mcp*"]
 
 [tool.setuptools.package-data]
-flox_mcp = ["data/*.snapshot", "data/errors/*.md"]
+flox_mcp = [
+    "data/*.snapshot",
+    "data/*.json",
+    "data/*.sqlite",
+    "data/errors/*.md",
+    "data/templates/strategy/*/*.tmpl",
+]

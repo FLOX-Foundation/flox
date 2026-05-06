@@ -9,7 +9,17 @@ import mcp.server.stdio
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from .tools import capi, errors, events, indicators, strategy
+from .tools import (
+    capi,
+    docs_search as docs_search_tool,
+    errors,
+    events,
+    examples,
+    indicators,
+    lookup,
+    scaffold,
+    strategy,
+)
 
 log = logging.getLogger("flox-mcp")
 
@@ -137,6 +147,178 @@ def build_server() -> Server:
                     },
                 },
             ),
+            Tool(
+                name="lookup_symbol",
+                description=(
+                    "Resolve a FLOX symbol across every binding (C-API, "
+                    "Python, Node, Codon). Returns the local name, kind, "
+                    "and signature for each binding that exports it. Use "
+                    "this whenever the user names a struct, function, or "
+                    "indicator and you need to know what it's called in "
+                    "*their* language — never guess at the cross-language "
+                    "spelling. Accepts any spelling the user knows "
+                    "('FloxBarData', 'BarData', 'flox_indicator_ema', 'ema', "
+                    "'Ema'). Filter to one language with the `language` arg "
+                    "if the user is writing in a specific binding."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description":
+                                "Symbol name in any binding's spelling. "
+                                "Case-sensitive; common transformations "
+                                "(Flox prefix, flox_indicator_ prefix) are "
+                                "tried automatically.",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Optional binding filter. One of: capi, "
+                                "python, node, codon, quickjs.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="list_bindings",
+                description=(
+                    "Enumerate the public exports of one FLOX binding "
+                    "surface (C-API / Python / Node / Codon / QuickJS). "
+                    "Use this when the user asks 'what does the {Python|"
+                    "Node|Codon} binding expose?' or when they want to "
+                    "browse a binding before picking a symbol. Substring "
+                    "filter is case-insensitive."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["language"],
+                    "properties": {
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Binding surface. One of: capi, python, "
+                                "node, codon, quickjs.",
+                        },
+                        "filter": {
+                            "type": "string",
+                            "description":
+                                "Optional substring filter on symbol name.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description":
+                                "Max entries to return. Default 50.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_example",
+                description=(
+                    "Return canonical FLOX example code for a topic, "
+                    "filtered optionally by language. Use this when the "
+                    "user asks 'show me how to {backtest|connect to "
+                    "ccxt|wire an indicator}' BEFORE writing fresh code "
+                    "from memory — the bundled examples are CI-validated, "
+                    "your generated code is not. Topics: strategy, "
+                    "connector, indicator, event-handler, risk, backtest. "
+                    "Languages: python, node, codon, cpp."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["topic"],
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description":
+                                "Topic. One of: strategy, connector, "
+                                "indicator, event-handler, risk, backtest.",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Optional language filter. One of: python, "
+                                "node, codon, cpp.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="scaffold_strategy",
+                description=(
+                    "Return a starter FLOX strategy class (Python or Node) "
+                    "that compiles and passes `validate_strategy`. Use this "
+                    "as the *first* thing you write when the user asks to "
+                    "'build a new strategy' — start from this canonical "
+                    "shell, then edit the indicator + signal logic, instead "
+                    "of writing the FLOX bookkeeping (constructor, hook "
+                    "names, signal builder) from memory. Three kinds: "
+                    "bar-driven (TA on bar close), trade-driven (tick-by-"
+                    "tick), hybrid (both). Codon / QuickJS templates are "
+                    "tracked as a follow-up."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "language": {
+                            "type": "string",
+                            "description":
+                                "Target language. python or node. "
+                                "Default: python.",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description":
+                                "Strategy shape. One of: bar-driven, "
+                                "trade-driven, hybrid. Default: bar-driven.",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description":
+                                "Class name for the generated strategy. "
+                                "Must be a valid identifier. Default: "
+                                "MyStrategy.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="docs_search",
+                description=(
+                    "Top-k full-text search over the FLOX documentation "
+                    "(how-to guides, reference pages, tutorials, error "
+                    "codes, bindings overviews, explanations). Use this "
+                    "to ground answers about FLOX behavior, configuration, "
+                    "or APIs in the actual docs instead of relying on "
+                    "training data — call it whenever the user asks 'how "
+                    "do I X' / 'what does Y do' / 'where is Z documented'. "
+                    "The index is built from a strict allowlist; private "
+                    "tracker / strategy / author files are NEVER indexed."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description":
+                                "Free-text query. Phrases like \"walk "
+                                "forward\" are treated as one phrase. "
+                                "Plain word lists work too; the tool "
+                                "quotes them automatically.",
+                        },
+                        "k": {
+                            "type": "integer",
+                            "description":
+                                "Number of results to return (1..25). "
+                                "Default 5.",
+                        },
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -157,6 +339,33 @@ def build_server() -> Server:
                 text = events.explain_event(
                     type_name=arguments.get("type_name"),
                     event=arguments.get("event"),
+                )
+            elif name == "lookup_symbol":
+                text = lookup.lookup_symbol(
+                    name=arguments["name"],
+                    language=arguments.get("language"),
+                )
+            elif name == "list_bindings":
+                text = lookup.list_bindings(
+                    language=arguments["language"],
+                    filter=arguments.get("filter"),
+                    limit=arguments.get("limit", 50),
+                )
+            elif name == "get_example":
+                text = examples.get_example(
+                    topic=arguments["topic"],
+                    language=arguments.get("language"),
+                )
+            elif name == "scaffold_strategy":
+                text = scaffold.scaffold_strategy(
+                    language=arguments.get("language", "python"),
+                    kind=arguments.get("kind", "bar-driven"),
+                    name=arguments.get("name", "MyStrategy"),
+                )
+            elif name == "docs_search":
+                text = docs_search_tool.docs_search(
+                    query=arguments["query"],
+                    k=arguments.get("k", 5),
                 )
             else:
                 text = f"unknown tool: {name}"

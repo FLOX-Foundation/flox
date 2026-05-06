@@ -1,0 +1,33 @@
+/**
+ * ${name} — hybrid strategy.
+ *
+ * Bar-level trend filter plus tick-level entry timing. Bar trend
+ * gates direction; tick momentum picks the entry instant.
+ */
+import { SignalBuilder, EMA } from '@flox-foundation/flox';
+
+export class ${name} {
+  constructor({ barPeriod = 20, tickPeriod = 5 } = {}) {
+    this.barEma = new EMA(barPeriod);
+    this.tickEma = new EMA(tickPeriod);
+    this.barTrend = 0;
+  }
+
+  onBar(ctx, bar) {
+    const v = this.barEma.update(bar.close);
+    if (v === null) return;
+    this.barTrend = bar.close > v ? 1 : -1;
+  }
+
+  onTrade(ctx, trade) {
+    const f = this.tickEma.update(trade.price);
+    if (f === null || this.barTrend === 0) return;
+    const builder = new SignalBuilder();
+    if (this.barTrend > 0 && trade.price > f && ctx.isFlat()) {
+      builder.marketBuy(0.01);
+    } else if (this.barTrend < 0 && ctx.isLong()) {
+      builder.marketSell(0.01);
+    }
+    return builder.build();
+  }
+}

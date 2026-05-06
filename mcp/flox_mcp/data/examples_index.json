@@ -1,0 +1,54 @@
+{
+  "examples": [
+    {
+      "language": "codon",
+      "path": "docs/examples/codon_backtest_vs_live.codon",
+      "sha256": "e6fae33cb4ec3a4369d03eedfe7d805c1c342b158e5cd1108fbfa9ca2d4aa824",
+      "size_bytes": 4681,
+      "topic": "backtest"
+    },
+    {
+      "language": "codon",
+      "path": "docs/examples/codon_full_backtest.codon",
+      "sha256": "88fa29c78cfd6b8b956326b252add86f676f23e9c315e7edd2f81e210010682b",
+      "size_bytes": 7319,
+      "topic": "backtest"
+    },
+    {
+      "language": "cpp",
+      "path": "docs/examples/cpp_sma_backtest.cpp",
+      "sha256": "3e5b755e49c680626ab439f2e467c8aa962eab398659a868872052d13ec2a239",
+      "size_bytes": 3435,
+      "topic": "backtest"
+    },
+    {
+      "language": "node",
+      "path": "docs/examples/node_backtest_vs_live.js",
+      "sha256": "2e17ebdcf86b75abe388c8c7ee968fc3a6a5cd7b38940fd82e2e6721dfee4048",
+      "size_bytes": 4342,
+      "topic": "backtest"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_backtest_vs_live.py",
+      "sha256": "cb05e43ec51c349c1f57588657faf9dcf6ff29ba27d6467282144f8d32024c6c",
+      "size_bytes": 4592,
+      "topic": "backtest"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_ccxt_live.py",
+      "sha256": "686b9e5e410edc5d496dfafa7c382ee4b337b7ac25e60df5caed62e49a10db2a",
+      "size_bytes": 3042,
+      "topic": "connector"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_multi_symbol.py",
+      "sha256": "524c3c289215c0404ad7dcc2919ff8d2bb6ebb608954588c20fdcf97dd1f7b21",
+      "size_bytes": 3285,
+      "topic": "strategy"
+    }
+  ],
+  "version": 1
+}
