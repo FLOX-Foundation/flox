@@ -17,6 +17,7 @@ from .tools import (
     examples,
     indicators,
     lookup,
+    runtime,
     scaffold,
     strategy,
 )
@@ -286,6 +287,118 @@ def build_server() -> Server:
                 },
             ),
             Tool(
+                name="run_backtest",
+                description=(
+                    "Run a Python FLOX strategy against a CSV dataset "
+                    "in a sandboxed subprocess (rlimits on CPU / memory "
+                    "/ output size + a wall-clock timeout). Use this "
+                    "when the user asks 'try this strategy on my data' "
+                    "or 'does this code actually work'. Treat as MVP "
+                    "sandbox: it caps resources but does NOT isolate "
+                    "the filesystem or network — never aim it at "
+                    "untrusted code outside a developer's own machine. "
+                    "Returns the backtest stats dict as JSON plus any "
+                    "stdout the strategy printed."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["strategy_code", "dataset_path"],
+                    "properties": {
+                        "strategy_code": {
+                            "type": "string",
+                            "description":
+                                "Python source defining a `flox.Strategy` "
+                                "subclass at module level. The worker also "
+                                "accepts a top-level `STRATEGY = MyStrategy` "
+                                "assignment as the entry point.",
+                        },
+                        "dataset_path": {
+                            "type": "string",
+                            "description":
+                                "Absolute path to a CSV dataset on disk. "
+                                "Capped at 64 MiB.",
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description":
+                                "Symbol name to register before the run. "
+                                "Default: BTCUSDT.",
+                        },
+                        "wall_timeout_s": {
+                            "type": "integer",
+                            "description":
+                                "Wall-clock timeout in seconds. Default 60.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="compute_indicator",
+                description=(
+                    "Run a single FLOX indicator over a list of floats "
+                    "and return the output. Use this to sanity-check "
+                    "an indicator's behaviour on a small price array "
+                    "BEFORE wiring it into a strategy — especially when "
+                    "the indicator has window / period / smoothing "
+                    "parameters whose effect isn't obvious from the "
+                    "name. Input is capped at 1 MiB. Requires the "
+                    "optional `flox-py` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["name", "data"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description":
+                                "Indicator name in flox_py — case "
+                                "either matches the class (`EMA`, "
+                                "`RSI`, `Bollinger`) or the function "
+                                "(`ema`, `rsi`, `vwap`).",
+                        },
+                        "data": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description":
+                                "Input series (e.g. close prices). "
+                                "Up to 125k samples.",
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="suggest_indicator",
+                description=(
+                    "Recommend FLOX indicators for an English description "
+                    "of the user's intent ('trend filter', 'momentum "
+                    "oscillator', 'volatility band', 'mean revert', "
+                    "'regime test'). Use this when the user describes "
+                    "what they want without naming an indicator — the "
+                    "tool maps phrasing to a ranked shortlist of real "
+                    "FLOX indicators. Pure keyword heuristic; no LLM "
+                    "call. Always confirm shape with `list_indicators` "
+                    "after picking one."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["description"],
+                    "properties": {
+                        "description": {
+                            "type": "string",
+                            "description":
+                                "Free-text description of what kind of "
+                                "indicator the user wants.",
+                        },
+                        "k": {
+                            "type": "integer",
+                            "description":
+                                "How many candidates to return. Default 3.",
+                        },
+                    },
+                },
+            ),
+            Tool(
                 name="docs_search",
                 description=(
                     "Top-k full-text search over the FLOX documentation "
@@ -366,6 +479,31 @@ def build_server() -> Server:
                 text = docs_search_tool.docs_search(
                     query=arguments["query"],
                     k=arguments.get("k", 5),
+                )
+            elif name == "run_backtest":
+                text = runtime.run_backtest(
+                    strategy_code=arguments["strategy_code"],
+                    dataset_path=arguments["dataset_path"],
+                    symbol=arguments.get("symbol", "BTCUSDT"),
+                    wall_timeout_s=arguments.get(
+                        "wall_timeout_s", runtime.DEFAULT_WALL_TIMEOUT_S),
+                )
+            elif name == "compute_indicator":
+                # Strip protocol-meta keys before forwarding kwargs to
+                # the indicator constructor / function.
+                indicator_kwargs = {
+                    k: v for k, v in arguments.items()
+                    if k not in ("name", "data")
+                }
+                text = runtime.compute_indicator(
+                    name=arguments["name"],
+                    data=arguments["data"],
+                    **indicator_kwargs,
+                )
+            elif name == "suggest_indicator":
+                text = runtime.suggest_indicator(
+                    description=arguments["description"],
+                    k=arguments.get("k", 3),
                 )
             else:
                 text = f"unknown tool: {name}"

@@ -7497,10 +7497,9 @@ hosting; nothing leaves the machine.
 | `get_example` | Code from `docs/examples/` matching a topic (strategy, connector, indicator, event-handler, risk, backtest), optionally filtered by language. |
 | `scaffold_strategy` | Starter strategy class for Python or Node. Three kinds: bar-driven, trade-driven, hybrid. The Python output goes through `ast.parse` + `validate_strategy`; the Node output goes through `node --check`. CI fails if either breaks, so templates can't quietly rot. |
 | `docs_search` | Top-k FTS5 search over the docs. The index is built from an allowlist of roots; private trackers and `CLAUDE.md` are not in that allowlist. |
-
-Future tools (sandboxed runtime) tracked in
-[W2-T012](../.notes/tracks/W2-ai-dx/T012-mcp-follow-up-tools-run-backtest-sandbox.md):
-`run_backtest`, `compute_indicator`, `suggest_indicator`.
+| `run_backtest` | Run a Python strategy against a CSV dataset in a sandboxed subprocess. Caps CPU, memory, and output size; wall-clock timeout. **MVP sandbox** — caps resources but does not isolate filesystem or network. Treat the same way as any untrusted Python; use nsjail / firejail / Docker for production. |
+| `compute_indicator` | Run one FLOX indicator over a list of floats. Accepts class-form (`EMA`) or function-form (`ema`) names and forwards extra kwargs to the constructor. Input capped at 1 MiB. Needs `flox-py` installed (`pip install "flox-mcp[flox]"`). |
+| `suggest_indicator` | Map an English description ('trend filter', 'momentum oscillator', 'volatility band', 'mean revert', 'regime test') to a ranked shortlist of FLOX indicators. Pure keyword heuristic — no LLM call. Always confirm the chosen indicator with `list_indicators` before using it. |
 
 ## Install
 
