@@ -1,5 +1,6 @@
-build
-build-*
+/build/
+/build-*/
+node/build/
 site
 profiling_results
 

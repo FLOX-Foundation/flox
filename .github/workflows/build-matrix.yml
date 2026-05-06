@@ -1,0 +1,120 @@
+name: Build matrix
+
+# Configures + builds FLOX in nine flag combinations on ubuntu-24.04.
+# Each row exercises one option (or a small combination) in isolation
+# so a default-OFF assumption can't silently rot. The matrix runs only
+# after the quick format check passes; it cancels in progress on rapid
+# pushes.
+#
+# This complements ci.yml — the latter handles the platform matrix
+# (linux-clang/-gcc, macos, windows-msvc/-clang-cl) for the canonical
+# "everything ON" build. build-matrix.yml is about flag isolation, not
+# platform coverage.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: build-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install clang-format
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends clang-format
+    - name: Check formatting
+      run: ./scripts/check-format.sh
+
+  matrix:
+    needs: format-check
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimal-core
+            flags: ""
+            needs_gtest: false
+            needs_pybind: false
+          - name: tests-only
+            flags: "-DFLOX_BUILD_TESTS=ON"
+            needs_gtest: true
+            needs_pybind: false
+          - name: python-only
+            flags: "-DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON"
+            needs_gtest: false
+            needs_pybind: true
+          - name: capi-only
+            flags: "-DFLOX_BUILD_CAPI=ON"
+            needs_gtest: false
+            needs_pybind: false
+          - name: codon-only
+            flags: "-DFLOX_BUILD_CODON=ON -DFLOX_BUILD_CAPI=ON"
+            needs_gtest: false
+            needs_pybind: false
+          - name: quickjs-only
+            flags: "-DFLOX_BUILD_QUICKJS=ON -DFLOX_BUILD_CAPI=ON"
+            needs_gtest: false
+            needs_pybind: false
+          - name: connectors-bybit-only
+            flags: "-DFLOX_BUILD_CONNECTORS=ON -DFLOX_CONNECTORS=bybit -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF"
+            needs_gtest: false
+            needs_pybind: false
+          - name: production-typical
+            flags: "-DFLOX_BUILD_PYTHON=ON -DFLOX_BUILD_CONNECTORS=ON -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF -DFLOX_ENABLE_BACKTEST=ON -DFLOX_ENABLE_LZ4=ON"
+            needs_gtest: false
+            needs_pybind: true
+          - name: legacy-alias
+            # Confirms the FLOX_ENABLE_* aliases still flip their
+            # FLOX_BUILD_* counterparts (one warning per legacy use).
+            flags: "-DFLOX_ENABLE_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON"
+            needs_gtest: false
+            needs_pybind: true
+    name: ${{ matrix.name }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          cmake ninja-build g++-14 \
+          libssl-dev zlib1g-dev libcurl4-openssl-dev liblz4-dev \
+          python3-dev python3-pip
+
+    - name: Install GoogleTest
+      if: matrix.needs_gtest
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_INSTALL_PREFIX=$HOME/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
+
+    - name: Install pybind11 + numpy
+      if: matrix.needs_pybind
+      run: python3 -m pip install --break-system-packages pybind11 numpy
+
+    - name: Resolve pybind11_DIR
+      if: matrix.needs_pybind
+      run: |
+        echo "pybind11_DIR=$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')" >> $GITHUB_ENV
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
+              ${{ matrix.flags }}
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
