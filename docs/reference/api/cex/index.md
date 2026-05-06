@@ -113,7 +113,7 @@ Benchmark results (Intel Core i7, Release build):
 Run the CEX demo to see all components in action:
 
 ```bash
-./build/external/flox-connectors/external/flox/demo/cex_demo
+./build/demo/cex_demo
 ```
 
 The demo demonstrates:

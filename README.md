@@ -34,7 +34,7 @@ See [the package README](./mcp/README.md) for setup and the full tool list.
 
 ## Connectors
 
-The open-source community connector implementations are maintained in [flox-connectors](https://github.com/FLOX-Foundation/flox-connectors).
+Native exchange connectors (Bybit, Bitget, Hyperliquid, Polymarket) live under [`connectors/`](./connectors/) and build with `-DFLOX_BUILD_CONNECTORS=ON`. The flag defaults to OFF so a backtest-only or research build doesn't pay the dependency cost. See the [connectors README](./connectors/README.md) for adapter notes and the optional Polymarket Rust toolchain step.
 
 ## Commercial Services
 

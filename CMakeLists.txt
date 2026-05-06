@@ -217,6 +217,16 @@ if (FLOX_ENABLE_QUICKJS)
   add_subdirectory(src/quickjs)
 endif()
 
+# Native exchange connectors (Bybit, Bitget, Hyperliquid, Polymarket).
+# OFF by default so a backtest-only or research build doesn't pay the
+# dependency cost (OpenSSL/CURL/zlib + ixwebsocket/simdjson via
+# FetchContent). See connectors/CMakeLists.txt for the per-connector
+# wiring.
+option(FLOX_BUILD_CONNECTORS "Build native exchange connectors module" OFF)
+if (FLOX_BUILD_CONNECTORS)
+  add_subdirectory(connectors)
+endif()
+
 target_include_directories(flox PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>

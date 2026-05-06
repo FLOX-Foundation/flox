@@ -1,97 +1,85 @@
-[![CI](https://github.com/flox-foundation/flox-connectors/actions/workflows/ci.yml/badge.svg)](https://github.com/flox-foundation/flox-connectors/actions)
+# Connectors
 
-# flox-connectors
+Native exchange connectors for the FLOX engine.
 
-Open-source exchange connectors for the **Flox** engine.
+Adapters in this directory:
 
-Available adapters:
-
-* **Bybit V5 WebSocket + REST executor**
-* **Bitget V2 WebSocket + classic account REST executor**
-* **Hyperliquid WebSocket + REST executor (must use utils/hl_signerd.py as a signing daemon)**
-* **Polymarket WebSocket + Rust FFI executor**
-
-## Dependencies
-
-* C++23 compiler, CMake ≥ 3.20  
-* **Submodules** (fetched with `--recurse-submodules`):  
-  * [Flox](https://github.com/eeiaao/flox) – core engine interfaces  
-  * [simdjson](https://github.com/simdjson/simdjson) – JSON parsing  
-  * [IXWebSocket](https://github.com/machinezone/IXWebSocket) – TLS WebSocket client  
-* System libs: OpenSSL, Zlib, pthread, curl
-* For Hyperliquid connector:
-  * python3
-  * [hyperliquid-python-sdk](https://github.com/hyperliquid-dex/hyperliquid-python-sdk) (install via `pip install git+https://github.com/hyperliquid-dex/hyperliquid-python-sdk.git`)
-* For Polymarket connector:
-  * Rust toolchain (cargo)
-
-Clone with:
-
-```bash
-git clone --recurse-submodules https://github.com/eeiaao/flox-connectors.git
-```
+- **Bybit V5** — WebSocket + REST executor.
+- **Bitget V2** — WebSocket + classic account REST executor.
+- **Hyperliquid** — WebSocket + REST executor (uses `utils/hl_signerd.py` as the signing daemon).
+- **Polymarket** — WebSocket + Rust FFI executor.
 
 ## Build
 
+The connectors are part of the FLOX repo and are built when the parent project is configured with `-DFLOX_BUILD_CONNECTORS=ON`. The static library exposes the target `flox::connectors` (alias of `flox-connectors`).
+
 ```bash
-mkdir build && cd build
-cmake -DBUILD_TESTS=OFF ..    # set to ON to compile GoogleTest units
-cmake --build . -j
+cmake -B build -DFLOX_BUILD_CONNECTORS=ON
+cmake --build build --target flox-connectors
 ```
 
-The static library exports the target **`flox::flox-connectors`**, ready for `add_subdirectory` or `find_package`.
+`ixwebsocket` and `simdjson` come in via FetchContent at configure time, so a fresh clone needs no submodules. System dependencies: OpenSSL, zlib, libcurl. The Polymarket executor additionally needs the Rust toolchain (cargo); pass `-DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF` to skip it.
 
-## Polymarket Configuration
+## Tests
 
-The Polymarket connector requires a **proxy wallet** setup for trading. You need:
+The integration tests under `tests/` connect to live exchange endpoints, so they are not part of the default ctest run. To build them:
 
-1. **Private Key** (`privateKey`) - Hex-encoded private key of your trading wallet (with or without `0x` prefix)
-2. **Funder Wallet** (`funderWallet`) - Address of the proxy/funder wallet that holds USDC allowance (with `0x` prefix)
+```bash
+cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
+                -DFLOX_ENABLE_TESTS=ON \
+                -DFLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON
+cmake --build build
+```
 
-### Setting up a Proxy Wallet
+To register them with `ctest` (still requires network access at runtime):
 
-1. Go to [polymarket.com](https://polymarket.com) and connect your wallet
-2. Enable trading - this creates a proxy wallet on Polygon
-3. Deposit USDC to fund your proxy wallet
-4. Find your proxy wallet address in account settings or via the API
+```bash
+cmake -B build ... -DFLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON
+```
 
-### Example Usage
+## Hyperliquid signing daemon
+
+Hyperliquid orders are signed via a small Python daemon that wraps the official [`hyperliquid-python-sdk`](https://github.com/hyperliquid-dex/hyperliquid-python-sdk):
+
+```bash
+pip install git+https://github.com/hyperliquid-dex/hyperliquid-python-sdk.git
+python3 connectors/utils/hl_signerd.py
+```
+
+The C++ executor talks to it over a local socket; see `hyperliquid_order_executor.h` for the protocol.
+
+## Polymarket configuration
+
+Polymarket trading requires a proxy-wallet setup:
+
+1. Connect a wallet at <https://polymarket.com> and enable trading. This creates a proxy wallet on Polygon.
+2. Deposit USDC to fund the proxy wallet.
+3. Note the proxy wallet address (account settings or API).
+
+Pass the trading wallet's private key and the proxy wallet address into `PolymarketOrderExecutor`:
 
 ```cpp
 #include <flox-connectors/polymarket/polymarket_order_executor.h>
 
 flox::PolymarketOrderExecutor executor(
-    "0xYOUR_PRIVATE_KEY_HEX",           // Trading wallet private key
-    "0xYOUR_PROXY_WALLET_ADDRESS",       // Funder/proxy wallet address
+    "0xYOUR_PRIVATE_KEY_HEX",      // trading wallet private key
+    "0xYOUR_PROXY_WALLET_ADDRESS", // proxy / funder wallet
     logger
 );
 
 if (executor.init()) {
-    executor.warmup();                   // Pre-establish TLS connections
-    executor.prefetch(tokenId);          // Cache token metadata
-
-    auto result = executor.buy(tokenId, Volume::fromDouble(10.0));  // Buy $10 worth
+    executor.warmup();
+    executor.prefetch(tokenId);
+    auto result = executor.buy(tokenId, Volume::fromDouble(10.0));
 }
 ```
 
-### Environment Variables (recommended)
+Recommended: keep credentials in env vars (`PM_PRIVATE_KEY`, `PM_FUNDER_WALLET`) rather than in source.
 
-Store credentials securely:
+## License
 
-```bash
-export PM_PRIVATE_KEY="0x..."
-export PM_FUNDER_WALLET="0x..."
-```
-
-## Contributing
-
-Contributions are welcome! Please follow the project's `.clang-format` style and keep pull requests focused.
-
-## Commercial Services
-
-For commercial support, enterprise connectors, and custom development services, visit [floxlabs.dev](https://floxlabs.dev)
+MIT — same as FLOX.
 
 ## Disclaimer
 
-This software is provided “as is”, without warranty of any kind.
-The authors are not affiliated with Bybit or any other exchange and are not responsible for financial losses or regulatory issues arising from the use of this code. Use at your own risk and ensure compliance with each venue’s terms of service.
+The authors are not affiliated with any exchange listed above and accept no responsibility for trading losses or regulatory issues arising from use of this code. Comply with each venue's terms of service.

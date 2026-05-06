@@ -1,81 +1,88 @@
-cmake_minimum_required(VERSION 3.20)
-project(flox-connectors LANGUAGES CXX VERSION 0.1.0)
+# connectors/CMakeLists.txt
+#
+# Built by the parent flox project when -DFLOX_BUILD_CONNECTORS=ON.
+# Pulls ixwebsocket and simdjson via FetchContent so the consuming
+# repo doesn't have to manage submodules.
+#
+# The static library still uses the historical name `flox-connectors`
+# (with `flox::connectors` alias) so that source files imported with
+# the original include layout (`#include "flox-connectors/..."`)
+# resolve unchanged.
 
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+include(FetchContent)
 
-option(ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
+find_package(OpenSSL REQUIRED)
+find_package(ZLIB    REQUIRED)
+find_package(CURL    REQUIRED)
 
-if(ENABLE_DEV_SETUP)
-  message(STATUS "Developer setup enabled")
-
-  set(PRECOMMIT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/scripts/pre-commit")
-  set(PRECOMMIT_DST "${CMAKE_CURRENT_SOURCE_DIR}/.git/hooks/pre-commit")
-
-  if(EXISTS "${PRECOMMIT_SRC}")
-    execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${PRECOMMIT_SRC}" "${PRECOMMIT_DST}")
-    execute_process(COMMAND chmod +x "${PRECOMMIT_DST}")
-    message(STATUS "Installed pre-commit hook to .git/hooks")
-  else()
-    message(WARNING "pre-commit script not found at ${PRECOMMIT_SRC}")
-  endif()
-endif()
-
-find_package(OpenSSL  REQUIRED)
-find_package(ZLIB     REQUIRED)
-find_package(CURL     REQUIRED)
+# ── Network deps via FetchContent ────────────────────────────────────
+#
+# Pinned to the SHAs the standalone flox-connectors repo used as
+# submodules. Refresh together if either upstream changes shape.
 
 set(USE_TLS      ON  CACHE BOOL "Enable TLS support in ixwebsocket" FORCE)
 set(USE_OPEN_SSL ON  CACHE BOOL "Use OpenSSL backend"               FORCE)
 set(USE_ZLIB     ON  CACHE BOOL "Use zlib in ixwebsocket"           FORCE)
 
-add_subdirectory(external/flox)
-add_subdirectory(external/simdjson)
-add_subdirectory(external/ixwebsocket)
+FetchContent_Declare(
+  ixwebsocket
+  GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+  GIT_TAG        a89718b50c54dfeaa3e1386b94b189864ef4acff
+)
+FetchContent_MakeAvailable(ixwebsocket)
 
-# Polymarket Order Executor (Rust FFI)
-option(FLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR "Enable Polymarket order executor" ON)
+FetchContent_Declare(
+  simdjson
+  GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+  GIT_TAG        0c0ce1bd48baa0677dc7c0945ea7cd1e8b52b297
+)
+FetchContent_MakeAvailable(simdjson)
+
+# ── Polymarket Order Executor (Rust FFI, optional) ──────────────────
+
+option(FLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR
+       "Enable Polymarket order executor (requires Rust toolchain)" ON)
 set(POLYMARKET_FFI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/polymarket/ffi")
 
-# Build Rust library if cargo is available
 find_program(CARGO_EXECUTABLE cargo)
 if(FLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR AND CARGO_EXECUTABLE)
-  # Build into CMAKE_BINARY_DIR to keep source clean
   set(POLYMARKET_FFI_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
-  set(POLYMARKET_FFI_LIB "${POLYMARKET_FFI_TARGET_DIR}/release/libpolymarket_executor.a")
+  set(POLYMARKET_FFI_LIB
+      "${POLYMARKET_FFI_TARGET_DIR}/release/libpolymarket_executor.a")
 
-  # Custom command to build Rust library
   add_custom_command(
     OUTPUT ${POLYMARKET_FFI_LIB}
-    COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${POLYMARKET_FFI_TARGET_DIR}
+    COMMAND ${CMAKE_COMMAND} -E env
+            CARGO_TARGET_DIR=${POLYMARKET_FFI_TARGET_DIR}
             ${CARGO_EXECUTABLE} build --release
     WORKING_DIRECTORY ${POLYMARKET_FFI_DIR}
     COMMENT "Building Polymarket FFI executor..."
     VERBATIM
   )
-
   add_custom_target(polymarket_ffi_executor DEPENDS ${POLYMARKET_FFI_LIB})
 
   set(FLOX_POLYMARKET_EXECUTOR_AVAILABLE TRUE)
   message(STATUS "Polymarket Order Executor: ENABLED (Rust)")
 elseif(FLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR)
-  message(WARNING "cargo not found - Polymarket order executor will be disabled")
+  message(WARNING
+    "cargo not found — Polymarket order executor will be disabled. "
+    "Install rustup or pass -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF "
+    "to silence this warning.")
   set(FLOX_POLYMARKET_EXECUTOR_AVAILABLE FALSE)
 else()
   set(FLOX_POLYMARKET_EXECUTOR_AVAILABLE FALSE)
 endif()
 
-file(GLOB_RECURSE FLOX_CONNECTORS_SRC CONFIGURE_DEPENDS src/*.cpp)
+# ── Library ──────────────────────────────────────────────────────────
 
-# Exclude order executor if Rust not available
+file(GLOB_RECURSE FLOX_CONNECTORS_SRC CONFIGURE_DEPENDS src/*.cpp)
 if(NOT FLOX_POLYMARKET_EXECUTOR_AVAILABLE)
-  list(FILTER FLOX_CONNECTORS_SRC EXCLUDE REGEX ".*polymarket_order_executor\\.cpp$")
+  list(FILTER FLOX_CONNECTORS_SRC
+       EXCLUDE REGEX ".*polymarket_order_executor\\.cpp$")
 endif()
 
 add_library(flox-connectors STATIC ${FLOX_CONNECTORS_SRC})
+add_library(flox::connectors ALIAS flox-connectors)
 
 if(WIN32)
   target_compile_definitions(flox-connectors PRIVATE NOMINMAX)
@@ -86,9 +93,9 @@ target_include_directories(flox-connectors
           $<INSTALL_INTERFACE:include>
 )
 
-# Add Polymarket FFI link if available
 if(FLOX_POLYMARKET_EXECUTOR_AVAILABLE)
-  target_compile_definitions(flox-connectors PUBLIC FLOX_POLYMARKET_ORDER_EXECUTOR_ENABLED=1)
+  target_compile_definitions(flox-connectors
+    PUBLIC FLOX_POLYMARKET_ORDER_EXECUTOR_ENABLED=1)
   add_dependencies(flox-connectors polymarket_ffi_executor)
 endif()
 
@@ -101,10 +108,11 @@ target_link_libraries(flox-connectors
           $<$<NOT:$<PLATFORM_ID:Windows>>:pthread>
 )
 
-# Link Polymarket FFI library if available
 if(FLOX_POLYMARKET_EXECUTOR_AVAILABLE)
   target_link_libraries(flox-connectors PUBLIC ${POLYMARKET_FFI_LIB} dl)
 endif()
+
+# ── Install ──────────────────────────────────────────────────────────
 
 include(GNUInstallDirs)
 
@@ -121,9 +129,17 @@ install(EXPORT flox-connectorsTargets
         FILE flox-connectors-config.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/flox-connectors)
 
-option(FLOX_CONNECTORS_BUILD_TESTS "Build connectors tests" OFF)
-if(FLOX_CONNECTORS_BUILD_TESTS)
-    enable_testing()
-    add_subdirectory(external/googletest)
-    add_subdirectory(tests)
+# ── Tests ────────────────────────────────────────────────────────────
+#
+# Built only when the parent enables tests AND the user explicitly
+# opts in to the integration suite (it hits live exchange endpoints
+# and needs network + credentials). Without
+# FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON the test binaries are not
+# generated and `ctest` still runs only the core suite.
+
+option(FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS
+       "Build connector integration tests (require network access)" OFF)
+
+if(FLOX_ENABLE_TESTS AND FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS)
+  add_subdirectory(tests)
 endif()
