@@ -96,3 +96,13 @@ docs/how-to/ccxt-adapter.md
 # pattern. The runnable equivalent is the bundled research template's
 # main.py which the CLI test scaffolds.
 docs/how-to/backtest-html-report.md
+
+# How-to: walk-forward — illustrative end-to-end snippet across
+# language tabs. Runnable equivalents covered by test_walk_forward.py
+# and node/test/test_bindings.js.
+docs/how-to/walk-forward.md
+
+# How-to: grid-search — both the original BacktestOptimizer template
+# example and the new type-erased GridSearch class snippet. Type-erased
+# variant is covered by test_grid_search.py + node/test/test_bindings.js.
+docs/how-to/grid-search.md

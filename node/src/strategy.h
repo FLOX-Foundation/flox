@@ -1562,11 +1562,23 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   }
 };
 
+inline void registerStrategy(Napi::Env env, Napi::Object exports);
+
+}  // namespace node_flox
+
+#include "grid_search.h"
+#include "walk_forward.h"
+
+namespace node_flox
+{
+
 inline void registerStrategy(Napi::Env env, Napi::Object exports)
 {
   exports.Set("SymbolRegistry", SymbolRegistryNode::Init(env));
   exports.Set("Runner", RunnerNode::Init(env));
   exports.Set("BacktestRunner", BacktestRunnerNode::Init(env));
+  exports.Set("WalkForwardRunner", WalkForwardRunnerNode::Init(env));
+  exports.Set("GridSearch", GridSearchNode::Init(env));
 }
 
 }  // namespace node_flox

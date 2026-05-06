@@ -71,6 +71,20 @@ from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
 from C import flox_backtest_result_trades(cobj, cobj, u32) -> u32
 
+# Walk-forward + grid search C ABI (W6-T007 / W6-T002).
+# Low-level imports; typed Codon wrappers are TODO. The C signatures
+# match what the engine exposes — advanced users can call them through
+# this module directly with @dataclass mirrors of FloxWalkForwardConfig
+# / FloxWalkForwardFold / FloxBacktestStats.
+from C import flox_walk_forward_run_csv(cobj, cobj, cobj, float, float,
+                                          cobj, cobj, cobj, cobj, u32) -> u32
+from C import flox_grid_search_create() -> cobj
+from C import flox_grid_search_destroy(cobj)
+from C import flox_grid_search_add_axis(cobj, Ptr[float], u32)
+from C import flox_grid_search_total(cobj) -> u64
+from C import flox_grid_search_params_for_index(cobj, u64, Ptr[float], u32) -> u32
+from C import flox_grid_search_run(cobj, cobj, cobj, cobj, u32) -> u64
+
 from C import flox_price_to_double(i64) -> float
 from C import flox_quantity_to_double(i64) -> float
 from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj

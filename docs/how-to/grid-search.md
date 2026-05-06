@@ -147,8 +147,76 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
 4. **Realistic costs** — include slippage and exchange fees
 5. **Statistical significance** — bootstrap CI / permutation tests separate luck from edge
 
+## Type-erased `GridSearch` class (Python / Node / Codon)
+
+The template-based `BacktestOptimizer<ParamsT, GridT>` shown above is C++-only. For the language bindings, FLOX exposes a type-erased `GridSearch` class that takes axes of `double` values and a factory callback. Last axis varies fastest (row-major flatten).
+
+### Python
+
+```python
+import flox_py as flox
+
+reg = flox.SymbolRegistry()
+btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
+
+
+def factory(params):
+    fast, slow = int(params[0]), int(params[1])
+    if fast >= slow:
+        return {"sharpe": 0.0, "return_pct": 0.0, "total_trades": 0}
+
+    class _S(flox.Strategy):
+        def __init__(self, syms):
+            super().__init__(syms)
+            self.fast = flox.SMA(fast)
+            self.slow = flox.SMA(slow)
+        def on_trade(self, ctx, t):
+            f = self.fast.update(t.price); s = self.slow.update(t.price)
+            if f is None or s is None or not self.slow.ready: return
+            if f > s and ctx.is_flat(): self.market_buy(0.01)
+            elif f < s and ctx.is_flat(): self.market_sell(0.01)
+
+    bt = flox.BacktestRunner(reg, 0.0004, 10_000)
+    bt.set_strategy(_S([btc]))
+    return bt.run_csv("data/btcusdt_sample.csv", symbol="BTCUSDT")
+
+
+gs = flox.GridSearch()
+gs.add_axis([5.0, 10.0, 20.0])
+gs.add_axis([30.0, 50.0, 100.0])
+gs.set_factory(factory)
+for r in gs.run():
+    fast, slow = r["params"]
+    s = r["stats"]
+    print(f"fast={int(fast):3d} slow={int(slow):3d}: "
+          f"return={s['return_pct']:+.4f}% sharpe={s['sharpe']:+.4f}")
+```
+
+The factory takes `list[float]` and returns the same dict shape as `BacktestRunner.run_csv`.
+
+### Node
+
+```js
+const gs = new flox.GridSearch();
+gs.addAxis([5, 10, 20]);
+gs.addAxis([30, 50, 100]);
+gs.setFactory((params) => {
+  // ... return camelCase BacktestStats: { returnPct, sharpeRatio, totalTrades, ... }
+});
+const results = gs.run();  // [{index, params, stats}, ...]
+```
+
+### Pairs with walk-forward
+
+Compose with [walk-forward](walk-forward.md): run a `GridSearch` on each fold's train slice, pick the best params by your criterion, evaluate on test. The two primitives stay separate so the choice of "best" stays opinionated to the caller (sharpe vs. profit factor vs. drawdown-aware).
+
+### Limitations
+
+The current backend runs combinations sequentially. Multi-process / Ray Tune backends are W6-T002 / W6-T003 follow-ups. Result list is unsorted — sort or filter on the caller side.
+
 ## See also
 
 - [Backtesting](./backtest.md)
+- [Walk-forward](./walk-forward.md)
 - [Optimization stats reference (C++)](../reference/api/backtest/optimization_stats.md)
 - [Python optimizer reference](../reference/python/optimizer.md)

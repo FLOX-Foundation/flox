@@ -139,6 +139,14 @@ from C import flox_footprint_total_volume(cobj) -> float
 from C import flox_footprint_num_levels(cobj) -> u32
 from C import flox_footprint_clear(cobj)
 
+# ── grid_search ──
+from C import flox_grid_search_create() -> cobj
+from C import flox_grid_search_destroy(cobj)
+from C import flox_grid_search_add_axis(cobj, Ptr[float], u32)
+from C import flox_grid_search_total(cobj) -> u64
+from C import flox_grid_search_params_for_index(cobj, u64, Ptr[float], u32) -> u32
+from C import flox_grid_search_run(cobj, cobj, cobj, cobj, u32) -> u64
+
 # ── heikin_ashi ──
 from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
 
@@ -423,4 +431,7 @@ from C import flox_volume_profile_total_volume(cobj) -> float
 from C import flox_volume_profile_total_delta(cobj) -> float
 from C import flox_volume_profile_num_levels(cobj) -> u32
 from C import flox_volume_profile_clear(cobj)
+
+# ── walk_forward ──
+from C import flox_walk_forward_run_csv(cobj, cobj, cobj, float, float, cobj, cobj, cobj, cobj, u32) -> u32
 

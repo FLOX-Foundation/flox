@@ -30,6 +30,7 @@ code is allocated.
 | Code           | Message                                                       |
 |----------------|---------------------------------------------------------------|
 | [`E_SYM_001`](E_SYM_001.md) | Symbol is not registered                       |
+| [`E_RUN_003`](E_RUN_003.md) | Invalid factory return value (GridSearch)      |
 
 ## How to add a new code
 

@@ -1795,6 +1795,72 @@ extern "C"
   void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner,
                                          FloxExecutorHandle executor);
 
+  // ============================================================
+  // Walk-forward (W6-T007 / T008)
+  // ============================================================
+
+  typedef struct
+  {
+    uint8_t mode;
+    uint64_t train_size;
+    uint64_t test_size;
+    uint64_t step;
+    uint64_t min_train_size;
+  } FloxWalkForwardConfig;
+
+  typedef struct
+  {
+    uint64_t fold_index;
+    uint64_t train_start_bar;
+    uint64_t train_end_bar;
+    uint64_t test_start_bar;
+    uint64_t test_end_bar;
+    int64_t train_start_ns;
+    int64_t train_end_ns;
+    int64_t test_start_ns;
+    int64_t test_end_ns;
+    FloxBacktestStats train_stats;
+    FloxBacktestStats test_stats;
+  } FloxWalkForwardFold;
+
+  typedef FloxStrategyHandle (*FloxWalkForwardFactoryFn)(
+      void* user_data, uint64_t fold_index);
+
+  uint32_t flox_walk_forward_run_csv(FloxRegistryHandle registry,
+                                     const char* csv_path, const char* symbol,
+                                     double fee_rate, double initial_capital,
+                                     const FloxWalkForwardConfig* cfg,
+                                     FloxWalkForwardFactoryFn factory,
+                                     void* user_data,
+                                     FloxWalkForwardFold* folds_out,
+                                     uint32_t max_folds);
+
+  // ============================================================
+  // Grid search (W6-T002 sequential)
+  // ============================================================
+
+  typedef void* FloxGridSearchHandle;
+
+  typedef int (*FloxGridSearchFactoryFn)(
+      void* user_data, uint64_t param_index,
+      const double* params, uint32_t num_params,
+      FloxBacktestStats* out_stats);
+
+  FloxGridSearchHandle flox_grid_search_create();
+  void flox_grid_search_destroy(FloxGridSearchHandle gs);
+  void flox_grid_search_add_axis(FloxGridSearchHandle gs,
+                                 const double* values, uint32_t num_values);
+  uint64_t flox_grid_search_total(FloxGridSearchHandle gs);
+  uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs,
+                                             uint64_t index,
+                                             double* params_out,
+                                             uint32_t max_params);
+  uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
+                                FloxGridSearchFactoryFn factory,
+                                void* user_data,
+                                FloxBacktestStats* stats_out,
+                                uint32_t max_results);
+
 #ifdef __cplusplus
 }
 #endif
