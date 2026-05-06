@@ -30,6 +30,7 @@
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/ohlcv_replay_source.h"
 #include "flox/report/heatmap_html.h"
+#include "flox/stats/whites_reality_check.h"
 
 #include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
@@ -1919,6 +1920,27 @@ void flox_stat_bootstrap_ci(const double* data, size_t len, double confidence,
   *lower_out = means[lo];
   *median_out = means[mid];
   *upper_out = means[std::min(hi, static_cast<size_t>(num_samples - 1))];
+}
+
+void flox_stat_whites_reality_check(const double* returns, size_t num_strategies,
+                                    size_t num_periods, uint32_t num_bootstrap,
+                                    double avg_block_size, double* p_value_out,
+                                    double* best_stat_out, int32_t* best_index_out)
+{
+  auto result = flox::stats::whitesRealityCheck(
+      returns, num_strategies, num_periods, num_bootstrap, avg_block_size);
+  if (p_value_out)
+  {
+    *p_value_out = result.pValue;
+  }
+  if (best_stat_out)
+  {
+    *best_stat_out = result.bestStat;
+  }
+  if (best_index_out)
+  {
+    *best_index_out = result.bestIndex;
+  }
 }
 
 // ============================================================

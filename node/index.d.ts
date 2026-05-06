@@ -993,6 +993,28 @@ export function permutationTest(
   group2: Float64Array,
   samples?: number,
 ): number;
+/**
+ * White's reality check (Stationary Bootstrap).
+ *
+ * Tests whether the best-performing strategy among `numStrategies`
+ * candidates is significantly better than zero, after correcting for
+ * the multiple-comparison bias from picking the best.
+ *
+ * `returns` is a flat row-major matrix of EXCESS returns (each
+ * strategy's series concatenated): length must be at least
+ * `numStrategies * numPeriods`. The caller is responsible for
+ * subtracting any benchmark.
+ *
+ * `avgBlockSize` controls the stationary-bootstrap mean block length;
+ * `0` (default) uses `sqrt(numPeriods)`.
+ */
+export function whitesRealityCheck(
+  returns: Float64Array,
+  numStrategies: number,
+  numPeriods: number,
+  numBootstrap?: number,
+  avgBlockSize?: number,
+): { p_value: number; best_stat: number; best_index: number };
 export function barReturns(
   longSignals: Int8Array,
   shortSignals: Int8Array,

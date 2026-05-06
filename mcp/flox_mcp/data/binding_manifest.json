@@ -1538,6 +1538,11 @@
           "name": "flox_stat_profit_factor"
         },
         {
+          "group": "additional_stats",
+          "kind": "function",
+          "name": "flox_stat_whites_reality_check"
+        },
+        {
           "group": "statistics",
           "kind": "function",
           "name": "flox_stat_win_rate"
@@ -3275,6 +3280,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_stat_whites_reality_check"
+        },
+        {
+          "kind": "function",
           "name": "flox_stat_win_rate"
         },
         {
@@ -3955,6 +3964,10 @@
         },
         {
           "kind": "function",
+          "name": "whitesRealityCheck"
+        },
+        {
+          "kind": "function",
           "name": "winRate"
         }
       ]
@@ -4435,6 +4448,10 @@
         },
         {
           "kind": "function",
+          "name": "whites_reality_check"
+        },
+        {
+          "kind": "function",
           "name": "win_rate"
         }
       ]
@@ -4473,7 +4490,8 @@
     "additional_stats": {
       "capi_functions": [
         "flox_stat_bootstrap_ci",
-        "flox_stat_permutation_test"
+        "flox_stat_permutation_test",
+        "flox_stat_whites_reality_check"
       ],
       "codon": {
         "present": true,
@@ -4481,15 +4499,19 @@
       },
       "napi": {
         "classes": [],
-        "functions": [],
-        "reason": "stats functions exposed via Stats class (has permutationTest / bootstrapCi methods); function-style not declared. Cosmetic gap; tracked under 'expand napi stats surface'.",
-        "status": "allowlist"
+        "functions": [
+          "bootstrapCI",
+          "permutationTest",
+          "whitesRealityCheck"
+        ],
+        "status": "required"
       },
       "pybind11": {
         "classes": [],
         "functions": [
           "permutation_test",
-          "bootstrap_ci"
+          "bootstrap_ci",
+          "whites_reality_check"
         ],
         "status": "required"
       }

@@ -462,5 +462,57 @@ console.log('=== flox.report.heatmapHtml ===');
   check(threwUneven, 'uneven rows raise');
 }
 
+// ── White's reality check ─────────────────────────────────────────────
+
+console.log("=== flox.whitesRealityCheck ===");
+{
+  // (K, T) returns matrix flat in row-major order — one signal-bearing
+  // strategy and the rest noise.
+  const K = 5;
+  const T = 252;
+  const SIGNAL_K = 2;
+  const flat = new Float64Array(K * T);
+  const g = gaussian(2026);
+  for (let k = 0; k < K; ++k) {
+    for (let t = 0; t < T; ++t) {
+      flat[k * T + t] = g() * 0.01 + (k === SIGNAL_K ? 0.005 : 0.0);
+    }
+  }
+
+  const out = flox.whitesRealityCheck(flat, K, T, 2000, 0.0);
+  check(typeof out.p_value === "number", `p_value is a number (${out.p_value})`);
+  check(out.p_value >= 0 && out.p_value <= 1,
+        `p_value in [0,1] (${out.p_value})`);
+  check(out.best_index === SIGNAL_K,
+        `best_index picks signal strategy (got ${out.best_index})`);
+  check(out.best_stat > 0, `best_stat > 0 (${out.best_stat})`);
+  check(out.p_value < 0.10,
+        `signal strategy is detected (p=${out.p_value})`);
+
+  // Pure noise: every strategy is N(0, 0.01). With K=5 and T=252,
+  // the best of 5 noise means is roughly 1.2σ ≈ 0.00075, which can
+  // *occasionally* trip a p < 0.05 even though there is no signal.
+  // Average across multiple seeds so the assertion is stable.
+  let pSum = 0;
+  let pRuns = 0;
+  for (const noiseSeed of [2027, 2031, 2039, 2053, 2063]) {
+    const noise = new Float64Array(K * T);
+    const ng = gaussian(noiseSeed);
+    for (let i = 0; i < noise.length; ++i) noise[i] = ng() * 0.01;
+    const noiseOut = flox.whitesRealityCheck(noise, K, T, 1500, 0.0);
+    pSum += noiseOut.p_value;
+    pRuns++;
+  }
+  const meanNoiseP = pSum / pRuns;
+  check(meanNoiseP > 0.20,
+        `pure noise mean p-value > 0.20 across 5 seeds (got ${meanNoiseP.toFixed(3)})`);
+
+  // Determinism — the C ABI uses a fixed seed (42 on the C++ side).
+  const a = flox.whitesRealityCheck(flat, K, T, 1000, 5.0);
+  const b = flox.whitesRealityCheck(flat, K, T, 1000, 5.0);
+  check(a.p_value === b.p_value,
+        `same inputs are deterministic (${a.p_value} vs ${b.p_value})`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

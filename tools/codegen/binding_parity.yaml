@@ -196,10 +196,10 @@ groups:
   additional_stats:
     pybind11:
       status: required
-      functions: [permutation_test, bootstrap_ci]
+      functions: [permutation_test, bootstrap_ci, whites_reality_check]
     napi:
-      status: allowlist
-      reason: "stats functions exposed via Stats class (has permutationTest / bootstrapCi methods); function-style not declared. Cosmetic gap; tracked under 'expand napi stats surface'."
+      status: required
+      functions: [bootstrapCI, permutationTest, whitesRealityCheck]
     codon: { status: required }
 
   statistics:

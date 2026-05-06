@@ -115,3 +115,8 @@ docs/how-to/heatmap.md
 # How-to: log a backtest to MLflow — illustrative end-to-end snippets.
 # log_backtest / log_to_mlflow API covered by python/tests/test_mlflow.py.
 docs/how-to/mlflow.md
+
+# How-to: White's reality check — cross-language illustrative snippets.
+# whites_reality_check covered by python/tests/test_whites_reality_check.py
+# and the whitesRealityCheck section in node/test/test_bindings.js.
+docs/how-to/whites-reality-check.md
