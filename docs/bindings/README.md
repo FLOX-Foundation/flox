@@ -19,3 +19,17 @@ Codon has nearly identical syntax to Python but compiles to native code. Start w
 The embedded JS binding runs QuickJS inside the C++ process — no separate Node.js runtime. Useful for scripted rules and backtesting where spinning up an external runtime isn't practical.
 
 For other languages, use the C API.
+
+## AI-agent companion
+
+[`flox-mcp`](https://pypi.org/project/flox-mcp/) is a Model Context
+Protocol server. AI coding agents (Cursor, Claude Code, Cline) spawn
+it locally and ask it about FLOX before generating code. It exposes
+tools that resolve a symbol across bindings (`lookup_symbol`),
+enumerate one binding's exports (`list_bindings`), return a starter
+strategy class that parses + validates (`scaffold_strategy`), pull
+example code from the docs corpus (`get_example`), and search the
+docs (`docs_search`). The package version is bumped in lockstep with
+flox-py and the npm package, so the agent's view of the surface
+matches what you installed. Setup is in
+[the package README](https://github.com/FLOX-Foundation/flox/tree/main/mcp).

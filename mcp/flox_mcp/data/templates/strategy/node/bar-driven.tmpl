@@ -1,0 +1,27 @@
+/**
+ * ${name} — bar-driven strategy.
+ *
+ * Reacts on each finished bar (`onBar`); ignores tick events. Most
+ * classical TA fits here.
+ */
+import { SignalBuilder, SMA } from '@flox-foundation/flox';
+
+export class ${name} {
+  constructor({ fast = 10, slow = 30 } = {}) {
+    this.fast = new SMA(fast);
+    this.slow = new SMA(slow);
+  }
+
+  onBar(ctx, bar) {
+    const f = this.fast.update(bar.close);
+    const s = this.slow.update(bar.close);
+    if (f === null || s === null) return;
+    const builder = new SignalBuilder();
+    if (f > s && ctx.isFlat()) {
+      builder.marketBuy(0.01);
+    } else if (f < s && ctx.isLong()) {
+      builder.marketSell(0.01);
+    }
+    return builder.build();
+  }
+}

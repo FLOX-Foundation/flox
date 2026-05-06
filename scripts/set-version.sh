@@ -3,6 +3,8 @@
 #   - root CMakeLists.txt   (flox C++ core)
 #   - python/pyproject.toml (flox-py PyPI package)
 #   - node/package.json     (@flox-foundation/flox npm package)
+#   - mcp/pyproject.toml    (flox-mcp PyPI package — bundled IR / docs index
+#                            must track the binding versions users install)
 #
 # Usage: scripts/set-version.sh <version>
 #        scripts/set-version.sh 0.5.3
@@ -39,7 +41,15 @@ node -e "
   fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
 "
 
+# 4. mcp/pyproject.toml — flox-mcp ships bundled IR / docs / examples
+#    snapshots that mirror the just-built flox-py / flox-node surface.
+#    Lockstep version means an installed `flox-mcp x.y.z` was built off
+#    the same source tree as the matching `flox-py` / npm package, so
+#    bundled data can never describe a surface the user doesn't have.
+perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/mcp/pyproject.toml"
+
 echo "Set version to ${VERSION} in:"
-echo "  CMakeLists.txt  ($(grep -E '^project\(flox VERSION' "$ROOT/CMakeLists.txt"))"
-echo "  pyproject.toml  ($(grep -E '^version = ' "$ROOT/python/pyproject.toml"))"
-echo "  package.json    (\"version\": \"$(node -e "console.log(require('$ROOT/node/package.json').version)")\")"
+echo "  CMakeLists.txt   ($(grep -E '^project\(flox VERSION' "$ROOT/CMakeLists.txt"))"
+echo "  python/pyproject ($(grep -E '^version = ' "$ROOT/python/pyproject.toml"))"
+echo "  node/package     (\"version\": \"$(node -e "console.log(require('$ROOT/node/package.json').version)")\")"
+echo "  mcp/pyproject    ($(grep -E '^version = ' "$ROOT/mcp/pyproject.toml"))"

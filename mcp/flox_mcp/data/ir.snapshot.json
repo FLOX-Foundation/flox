@@ -1,0 +1,8583 @@
+{
+  "enums": [
+    {
+      "name": "FloxQueueModel",
+      "values": [
+        {
+          "name": "FLOX_QUEUE_NONE",
+          "value": 0
+        },
+        {
+          "name": "FLOX_QUEUE_TOB",
+          "value": 1
+        },
+        {
+          "name": "FLOX_QUEUE_FULL",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "name": "FloxSlippageModel",
+      "values": [
+        {
+          "name": "FLOX_SLIPPAGE_NONE",
+          "value": 0
+        },
+        {
+          "name": "FLOX_SLIPPAGE_FIXED_TICKS",
+          "value": 1
+        },
+        {
+          "name": "FLOX_SLIPPAGE_FIXED_BPS",
+          "value": 2
+        },
+        {
+          "name": "FLOX_SLIPPAGE_VOLUME_IMPACT",
+          "value": 3
+        }
+      ]
+    }
+  ],
+  "function_pointers": [
+    {
+      "name": "FloxExecListenerOnOrderFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecListenerOnPartialFillFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecListenerOnRejectedFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecListenerOnReplacedFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecListenerOnTrailingUpdateFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorCancelAllFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorCancelFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorCapabilitiesFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "FloxExchangeCapabilities *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorLifecycleFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorReplaceFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "uint64_t"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorSubmitFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecutorSubmitOCOFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxGraphNodeFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "",
+          "type": "uint32_t"
+        },
+        {
+          "name": "",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "name": "FloxGridSearchFactoryFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "uint64_t"
+        },
+        {
+          "name": "",
+          "type": "const double *"
+        },
+        {
+          "name": "",
+          "type": "uint32_t"
+        },
+        {
+          "name": "",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "int"
+    },
+    {
+      "name": "FloxKillSwitchCheckFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSignal *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "name": "FloxLogCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "int32_t"
+        },
+        {
+          "name": "",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnBarCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxBarData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnBookCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxBookData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnSignalCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSignal *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnStartCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnStopCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnTradeCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxTradeData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOrderValidatorValidateFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSignal *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "name": "FloxPnLTrackerOnSignalFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSignal *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxRecorderLifecycleFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxRecorderOnBookUpdateFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "uint32_t"
+        },
+        {
+          "name": "",
+          "type": "uint8_t"
+        },
+        {
+          "name": "",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "",
+          "type": "uint32_t"
+        },
+        {
+          "name": "",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "",
+          "type": "uint32_t"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxRecorderOnTradeFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxTradeData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxReplaySourceLifecycleFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxReplaySourceNextFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "FloxReplayEvent *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "name": "FloxReplaySourceSeekFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "name": "FloxRiskManagerAllowFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSignal *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "name": "FloxStorageSinkStoreFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSignal *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxWalkForwardFactoryFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxStrategyHandle"
+    }
+  ],
+  "functions": [
+    {
+      "group": "heikin_ashi",
+      "name": "flox_aggregate_heikin_ashi_bars",
+      "params": [
+        {
+          "name": "timestamps",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "prices",
+          "type": "const double *"
+        },
+        {
+          "name": "quantities",
+          "type": "const double *"
+        },
+        {
+          "name": "is_buy",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "interval_seconds",
+          "type": "double"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "additional_bar",
+      "name": "flox_aggregate_range_bars",
+      "params": [
+        {
+          "name": "timestamps",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "prices",
+          "type": "const double *"
+        },
+        {
+          "name": "quantities",
+          "type": "const double *"
+        },
+        {
+          "name": "is_buy",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "range_size",
+          "type": "double"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "additional_bar",
+      "name": "flox_aggregate_renko_bars",
+      "params": [
+        {
+          "name": "timestamps",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "prices",
+          "type": "const double *"
+        },
+        {
+          "name": "quantities",
+          "type": "const double *"
+        },
+        {
+          "name": "is_buy",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "brick_size",
+          "type": "double"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "bar_aggregation",
+      "name": "flox_aggregate_tick_bars",
+      "params": [
+        {
+          "name": "timestamps",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "prices",
+          "type": "const double *"
+        },
+        {
+          "name": "quantities",
+          "type": "const double *"
+        },
+        {
+          "name": "is_buy",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "tick_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "bar_aggregation",
+      "name": "flox_aggregate_time_bars",
+      "params": [
+        {
+          "name": "timestamps",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "prices",
+          "type": "const double *"
+        },
+        {
+          "name": "quantities",
+          "type": "const double *"
+        },
+        {
+          "name": "is_buy",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "interval_seconds",
+          "type": "double"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "bar_aggregation",
+      "name": "flox_aggregate_volume_bars",
+      "params": [
+        {
+          "name": "timestamps",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "prices",
+          "type": "const double *"
+        },
+        {
+          "name": "quantities",
+          "type": "const double *"
+        },
+        {
+          "name": "is_buy",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "volume_threshold",
+          "type": "double"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_create",
+      "params": [
+        {
+          "name": "initial_capital",
+          "type": "double"
+        },
+        {
+          "name": "fee_rate",
+          "type": "double"
+        },
+        {
+          "name": "use_percentage_fee",
+          "type": "uint8_t"
+        },
+        {
+          "name": "fixed_fee_per_trade",
+          "type": "double"
+        },
+        {
+          "name": "risk_free_rate",
+          "type": "double"
+        },
+        {
+          "name": "annualization_factor",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxBacktestResultHandle"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_destroy",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_equity_curve",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        },
+        {
+          "name": "points_out",
+          "type": "FloxEquityPoint *"
+        },
+        {
+          "name": "max_points",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_ingest_executor",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        },
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_record_fill",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_stats",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_trades",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        },
+        {
+          "name": "trades_out",
+          "type": "FloxBacktestTrade *"
+        },
+        {
+          "name": "max_trades",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_backtest_result_write_equity_curve_csv",
+      "params": [
+        {
+          "name": "result",
+          "type": "FloxBacktestResultHandle"
+        },
+        {
+          "name": "path",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "execution",
+      "name": "flox_backtest_runner_add_execution_listener",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "listener",
+          "type": "FloxExecutionListenerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_create",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "fee_rate",
+          "type": "double"
+        },
+        {
+          "name": "initial_capital",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxBacktestRunnerHandle"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_destroy",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_run_bars",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "start_time_ns",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "end_time_ns",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "open",
+          "type": "const double *"
+        },
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "volume",
+          "type": "const double *"
+        },
+        {
+          "name": "n",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbol",
+          "type": "const char *"
+        },
+        {
+          "name": "bar_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "bar_type_param",
+          "type": "uint64_t"
+        },
+        {
+          "name": "stats_out",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "int"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_run_csv",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "path",
+          "type": "const char *"
+        },
+        {
+          "name": "symbol",
+          "type": "const char *"
+        },
+        {
+          "name": "stats_out",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "int"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_run_ohlcv",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "timestamps_ns",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "close_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "n",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbol",
+          "type": "const char *"
+        },
+        {
+          "name": "stats_out",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "int"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_run_replay_source",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "source",
+          "type": "FloxReplaySourceHandle"
+        },
+        {
+          "name": "stats_out",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "int"
+    },
+    {
+      "group": "execution",
+      "name": "flox_backtest_runner_set_executor",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "executor",
+          "type": "FloxExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_set_strategy",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "strategy",
+          "type": "FloxStrategyHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_take_result",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        }
+      ],
+      "return_type": "FloxBacktestResultHandle"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_best_ask_raw",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_best_bid_raw",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_apply_delta",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_len",
+          "type": "size_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_apply_snapshot",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_len",
+          "type": "size_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_ask_at_price",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_best_ask",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_best_bid",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_bid_at_price",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_clear",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_create",
+      "params": [
+        {
+          "name": "tick_size",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxBookHandle"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_destroy",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_get_asks",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "prices_out",
+          "type": "double *"
+        },
+        {
+          "name": "qtys_out",
+          "type": "double *"
+        },
+        {
+          "name": "max_levels",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_get_bids",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "prices_out",
+          "type": "double *"
+        },
+        {
+          "name": "qtys_out",
+          "type": "double *"
+        },
+        {
+          "name": "max_levels",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_is_crossed",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_mid",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_book",
+      "name": "flox_book_spread",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxBookHandle"
+        },
+        {
+          "name": "spread_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_best_ask",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        },
+        {
+          "name": "qty_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_best_bid",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        },
+        {
+          "name": "qty_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_check_staleness",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "threshold_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_create",
+      "params": [],
+      "return_type": "FloxCompositeBookHandle"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_destroy",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_has_arb",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_mark_stale",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "exchange",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "data_reader",
+      "name": "flox_data_reader_count",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_count_book_updates",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "total_levels_out",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_count_book_updates_from",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "start_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "total_levels_out",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "data_reader",
+      "name": "flox_data_reader_create",
+      "params": [
+        {
+          "name": "data_dir",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxDataReaderHandle"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_create_filtered",
+      "params": [
+        {
+          "name": "data_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxDataReaderHandle"
+    },
+    {
+      "group": "data_reader",
+      "name": "flox_data_reader_destroy",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_read_bbo",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "bbos_out",
+          "type": "FloxBBO *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_read_bbo_from",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "start_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "bbos_out",
+          "type": "FloxBBO *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_read_book_updates",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "headers_out",
+          "type": "FloxBookUpdateHeader *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "levels_out",
+          "type": "FloxLevel *"
+        },
+        {
+          "name": "max_levels",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_read_book_updates_from",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "start_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "headers_out",
+          "type": "FloxBookUpdateHeader *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "levels_out",
+          "type": "FloxLevel *"
+        },
+        {
+          "name": "max_levels",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_read_trades",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "trades_out",
+          "type": "FloxTradeRecord *"
+        },
+        {
+          "name": "max_trades",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_read_trades_from",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "start_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "trades_out",
+          "type": "FloxTradeRecord *"
+        },
+        {
+          "name": "max_trades",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_stats",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        }
+      ],
+      "return_type": "FloxReaderStats"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_data_reader_stats_p",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datareader",
+      "name": "flox_data_reader_summary",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        }
+      ],
+      "return_type": "FloxDatasetSummary"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_data_reader_summary_p",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_add_symbol",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxDataRecorderHandle"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "base",
+          "type": "const char *"
+        },
+        {
+          "name": "quote",
+          "type": "const char *"
+        },
+        {
+          "name": "price_precision",
+          "type": "int8_t"
+        },
+        {
+          "name": "qty_precision",
+          "type": "int8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_create",
+      "params": [
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "exchange_name",
+          "type": "const char *"
+        },
+        {
+          "name": "max_segment_mb",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxDataRecorderHandle"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_destroy",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_flush",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_is_recording",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxDataRecorderHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_start",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datarecorder",
+      "name": "flox_data_recorder_stop",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "data_writer",
+      "name": "flox_data_writer_close",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "data_writer",
+      "name": "flox_data_writer_create",
+      "params": [
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "max_segment_mb",
+          "type": "uint64_t"
+        },
+        {
+          "name": "exchange_id",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxDataWriterHandle"
+    },
+    {
+      "group": "data_writer",
+      "name": "flox_data_writer_destroy",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "data_writer",
+      "name": "flox_data_writer_flush",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "datawriter",
+      "name": "flox_data_writer_stats",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        }
+      ],
+      "return_type": "FloxWriterStats"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_data_writer_stats_p",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "data_writer",
+      "name": "flox_data_writer_write_trade",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "recv_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "trade_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "validation",
+      "name": "flox_dataset_validate",
+      "params": [
+        {
+          "name": "data_dir",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxDatasetValidation"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_dataset_validate_p",
+      "params": [
+        {
+          "name": "data_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_cancel",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_cancel_all",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_close_position",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_limit_buy",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_limit_buy_tif",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "time_in_force",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_limit_sell",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_limit_sell_tif",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "time_in_force",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_market_buy",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_market_sell",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_modify",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "new_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "new_qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_stop_limit",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "trigger_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "limit_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_stop_market",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "trigger_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_take_profit_limit",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "trigger_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "limit_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_take_profit_market",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "trigger_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_trailing_stop",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "offset_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "signal_emission",
+      "name": "flox_emit_trailing_stop_percent",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "callback_bps",
+          "type": "int32_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "execution",
+      "name": "flox_execution_listener_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxExecutionListenerCallbacks"
+        }
+      ],
+      "return_type": "FloxExecutionListenerHandle"
+    },
+    {
+      "group": "execution",
+      "name": "flox_execution_listener_destroy",
+      "params": [
+        {
+          "name": "listener",
+          "type": "FloxExecutionListenerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution",
+      "name": "flox_executor_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxExecutorCallbacks"
+        }
+      ],
+      "return_type": "FloxExecutorHandle"
+    },
+    {
+      "group": "execution",
+      "name": "flox_executor_destroy",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution",
+      "name": "flox_executor_get_capabilities",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxExecutorHandle"
+        },
+        {
+          "name": "caps_out",
+          "type": "FloxExchangeCapabilities *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_add_trade",
+      "params": [
+        {
+          "name": "footprint",
+          "type": "FloxFootprintHandle"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_clear",
+      "params": [
+        {
+          "name": "footprint",
+          "type": "FloxFootprintHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_create",
+      "params": [
+        {
+          "name": "tick_size",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxFootprintHandle"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_destroy",
+      "params": [
+        {
+          "name": "footprint",
+          "type": "FloxFootprintHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_num_levels",
+      "params": [
+        {
+          "name": "footprint",
+          "type": "FloxFootprintHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_total_delta",
+      "params": [
+        {
+          "name": "footprint",
+          "type": "FloxFootprintHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "footprint_bar",
+      "name": "flox_footprint_total_volume",
+      "params": [
+        {
+          "name": "footprint",
+          "type": "FloxFootprintHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_get_order_status",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "int32_t"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_get_symbol_context",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "out",
+          "type": "FloxSymbolContext *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "grid_search",
+      "name": "flox_grid_search_add_axis",
+      "params": [
+        {
+          "name": "gs",
+          "type": "FloxGridSearchHandle"
+        },
+        {
+          "name": "values",
+          "type": "const double *"
+        },
+        {
+          "name": "num_values",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "grid_search",
+      "name": "flox_grid_search_create",
+      "params": [],
+      "return_type": "FloxGridSearchHandle"
+    },
+    {
+      "group": "grid_search",
+      "name": "flox_grid_search_destroy",
+      "params": [
+        {
+          "name": "gs",
+          "type": "FloxGridSearchHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "grid_search",
+      "name": "flox_grid_search_params_for_index",
+      "params": [
+        {
+          "name": "gs",
+          "type": "FloxGridSearchHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "params_out",
+          "type": "double *"
+        },
+        {
+          "name": "max_params",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "grid_search",
+      "name": "flox_grid_search_run",
+      "params": [
+        {
+          "name": "gs",
+          "type": "FloxGridSearchHandle"
+        },
+        {
+          "name": "factory",
+          "type": "FloxGridSearchFactoryFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        },
+        {
+          "name": "stats_out",
+          "type": "FloxBacktestStats *"
+        },
+        {
+          "name": "max_results",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "grid_search",
+      "name": "flox_grid_search_total",
+      "params": [
+        {
+          "name": "gs",
+          "type": "FloxGridSearchHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_adf",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "max_lag",
+          "type": "size_t"
+        },
+        {
+          "name": "regression",
+          "type": "const char *"
+        },
+        {
+          "name": "test_stat_out",
+          "type": "double *"
+        },
+        {
+          "name": "p_value_out",
+          "type": "double *"
+        },
+        {
+          "name": "used_lag_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_adx",
+      "params": [
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "adx_out",
+          "type": "double *"
+        },
+        {
+          "name": "plus_di_out",
+          "type": "double *"
+        },
+        {
+          "name": "minus_di_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_atr",
+      "params": [
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_autocorrelation",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "window",
+          "type": "size_t"
+        },
+        {
+          "name": "lag",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_bollinger",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "multiplier",
+          "type": "double"
+        },
+        {
+          "name": "upper",
+          "type": "double *"
+        },
+        {
+          "name": "middle",
+          "type": "double *"
+        },
+        {
+          "name": "lower",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_cci",
+      "params": [
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_chop",
+      "params": [
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_correlation",
+      "params": [
+        {
+          "name": "x",
+          "type": "const double *"
+        },
+        {
+          "name": "y",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_cvd",
+      "params": [
+        {
+          "name": "open",
+          "type": "const double *"
+        },
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "volume",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_dema",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_ema",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_add_node",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "deps",
+          "type": "const char *const *"
+        },
+        {
+          "name": "num_deps",
+          "type": "size_t"
+        },
+        {
+          "name": "fn",
+          "type": "FloxGraphNodeFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_bar_count",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_close",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_create",
+      "params": [],
+      "return_type": "FloxIndicatorGraphHandle"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_current",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_destroy",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_get",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_high",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_invalidate",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_invalidate_all",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_low",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_require",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_reset",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_reset_all",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_set_bars",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "volume",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_step",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "open",
+          "type": "double"
+        },
+        {
+          "name": "high",
+          "type": "double"
+        },
+        {
+          "name": "low",
+          "type": "double"
+        },
+        {
+          "name": "close",
+          "type": "double"
+        },
+        {
+          "name": "volume",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_indicator_graph_volume",
+      "params": [
+        {
+          "name": "g",
+          "type": "FloxIndicatorGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_kama",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "fast",
+          "type": "size_t"
+        },
+        {
+          "name": "slow",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_kurtosis",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_macd",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "fast_period",
+          "type": "size_t"
+        },
+        {
+          "name": "slow_period",
+          "type": "size_t"
+        },
+        {
+          "name": "signal_period",
+          "type": "size_t"
+        },
+        {
+          "name": "macd_out",
+          "type": "double *"
+        },
+        {
+          "name": "signal_out",
+          "type": "double *"
+        },
+        {
+          "name": "hist_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_obv",
+      "params": [
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "volume",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_parkinson_vol",
+      "params": [
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_rma",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_rogers_satchell_vol",
+      "params": [
+        {
+          "name": "open",
+          "type": "const double *"
+        },
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_rolling_zscore",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_rsi",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_shannon_entropy",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "bins",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_skewness",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_slope",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "length",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_sma",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_stochastic",
+      "params": [
+        {
+          "name": "high",
+          "type": "const double *"
+        },
+        {
+          "name": "low",
+          "type": "const double *"
+        },
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "k_period",
+          "type": "size_t"
+        },
+        {
+          "name": "d_period",
+          "type": "size_t"
+        },
+        {
+          "name": "k_out",
+          "type": "double *"
+        },
+        {
+          "name": "d_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_tema",
+      "params": [
+        {
+          "name": "input",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "period",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicator_functions",
+      "name": "flox_indicator_vwap",
+      "params": [
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "volume",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "window",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_kill_switch_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxKillSwitchCallbacks"
+        }
+      ],
+      "return_type": "FloxKillSwitchHandle"
+    },
+    {
+      "group": "risk",
+      "name": "flox_kill_switch_destroy",
+      "params": [
+        {
+          "name": "ks",
+          "type": "FloxKillSwitchHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_add_order",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "int32_t"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_ask_at_price",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_best_ask",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_best_bid",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "price_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_bid_at_price",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_create",
+      "params": [],
+      "return_type": "FloxL3BookHandle"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_destroy",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_modify_order",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "new_qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "int32_t"
+    },
+    {
+      "group": "l3_order",
+      "name": "flox_l3_book_remove_order",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxL3BookHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "int32_t"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_last_trade_price_raw",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_add_strategy",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "strategy",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "on_signal",
+          "type": "FloxOnSignalCallback"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_create",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        }
+      ],
+      "return_type": "FloxLiveEngineHandle"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_destroy",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_publish_bar",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bar_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "bar_type_param",
+          "type": "uint64_t"
+        },
+        {
+          "name": "open",
+          "type": "double"
+        },
+        {
+          "name": "high",
+          "type": "double"
+        },
+        {
+          "name": "low",
+          "type": "double"
+        },
+        {
+          "name": "close",
+          "type": "double"
+        },
+        {
+          "name": "volume",
+          "type": "double"
+        },
+        {
+          "name": "buy_volume",
+          "type": "double"
+        },
+        {
+          "name": "start_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "end_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "close_reason",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_publish_book_snapshot",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "n_bids",
+          "type": "uint32_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "n_asks",
+          "type": "uint32_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_publish_trade",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution",
+      "name": "flox_live_engine_set_executor",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "executor",
+          "type": "FloxExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_live_engine_set_kill_switch",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "ks",
+          "type": "FloxKillSwitchHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "recorder",
+      "name": "flox_live_engine_set_market_data_recorder",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "recorder",
+          "type": "FloxMarketDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_live_engine_set_order_validator",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "ov",
+          "type": "FloxOrderValidatorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "metrics",
+      "name": "flox_live_engine_set_pnl_tracker",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "tracker",
+          "type": "FloxPnLTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_live_engine_set_risk_manager",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "rm",
+          "type": "FloxRiskManagerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "storage",
+      "name": "flox_live_engine_set_storage_sink",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        },
+        {
+          "name": "sink",
+          "type": "FloxStorageSinkHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_start",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxliveengine_disruptor",
+      "name": "flox_live_engine_stop",
+      "params": [
+        {
+          "name": "engine",
+          "type": "FloxLiveEngineHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "recorder",
+      "name": "flox_market_data_recorder_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxMarketDataRecorderCallbacks"
+        }
+      ],
+      "return_type": "FloxMarketDataRecorderHandle"
+    },
+    {
+      "group": "recorder",
+      "name": "flox_market_data_recorder_destroy",
+      "params": [
+        {
+          "name": "recorder",
+          "type": "FloxMarketDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_add_trade",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_clear",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_create",
+      "params": [
+        {
+          "name": "tick_size",
+          "type": "double"
+        },
+        {
+          "name": "period_minutes",
+          "type": "uint32_t"
+        },
+        {
+          "name": "session_start_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "FloxMarketProfileHandle"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_destroy",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_ib_high",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_ib_low",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_is_poor_high",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_is_poor_low",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_num_levels",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_poc",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_vah",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "market_profile",
+      "name": "flox_market_profile_val",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxMarketProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_mid_price_raw",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_active_count",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_create",
+      "params": [],
+      "return_type": "FloxOrderTrackerHandle"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_destroy",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_is_active",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_on_canceled",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_on_filled",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "fill_qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_on_submitted",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_prune",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_tracker",
+      "name": "flox_order_tracker_total_count",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxOrderTrackerHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "risk",
+      "name": "flox_order_validator_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxOrderValidatorCallbacks"
+        }
+      ],
+      "return_type": "FloxOrderValidatorHandle"
+    },
+    {
+      "group": "risk",
+      "name": "flox_order_validator_destroy",
+      "params": [
+        {
+          "name": "ov",
+          "type": "FloxOrderValidatorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_by_calendar",
+      "params": [
+        {
+          "name": "p",
+          "type": "FloxPartitionerHandle"
+        },
+        {
+          "name": "unit",
+          "type": "uint8_t"
+        },
+        {
+          "name": "warmup_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "partitions_out",
+          "type": "FloxPartition *"
+        },
+        {
+          "name": "max_partitions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_by_duration",
+      "params": [
+        {
+          "name": "p",
+          "type": "FloxPartitionerHandle"
+        },
+        {
+          "name": "duration_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "warmup_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "partitions_out",
+          "type": "FloxPartition *"
+        },
+        {
+          "name": "max_partitions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_by_event_count",
+      "params": [
+        {
+          "name": "p",
+          "type": "FloxPartitionerHandle"
+        },
+        {
+          "name": "num_partitions",
+          "type": "uint32_t"
+        },
+        {
+          "name": "partitions_out",
+          "type": "FloxPartition *"
+        },
+        {
+          "name": "max_partitions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_by_symbol",
+      "params": [
+        {
+          "name": "p",
+          "type": "FloxPartitionerHandle"
+        },
+        {
+          "name": "num_partitions",
+          "type": "uint32_t"
+        },
+        {
+          "name": "partitions_out",
+          "type": "FloxPartition *"
+        },
+        {
+          "name": "max_partitions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_by_time",
+      "params": [
+        {
+          "name": "p",
+          "type": "FloxPartitionerHandle"
+        },
+        {
+          "name": "num_partitions",
+          "type": "uint32_t"
+        },
+        {
+          "name": "warmup_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "partitions_out",
+          "type": "FloxPartition *"
+        },
+        {
+          "name": "max_partitions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_create",
+      "params": [
+        {
+          "name": "data_dir",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxPartitionerHandle"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_destroy",
+      "params": [
+        {
+          "name": "partitioner",
+          "type": "FloxPartitionerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "partitioner",
+      "name": "flox_partitioner_per_symbol",
+      "params": [
+        {
+          "name": "p",
+          "type": "FloxPartitionerHandle"
+        },
+        {
+          "name": "partitions_out",
+          "type": "FloxPartition *"
+        },
+        {
+          "name": "max_partitions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "metrics",
+      "name": "flox_pnl_tracker_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxPnLTrackerCallbacks"
+        }
+      ],
+      "return_type": "FloxPnLTrackerHandle"
+    },
+    {
+      "group": "metrics",
+      "name": "flox_pnl_tracker_destroy",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPnLTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_close",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        },
+        {
+          "name": "position_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "exit_price",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_create",
+      "params": [],
+      "return_type": "FloxPositionGroupHandle"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_destroy",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_net_position",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_open",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_open_count",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_partial_close",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        },
+        {
+          "name": "position_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "exit_price",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_prune",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_realized_pnl",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "position_group",
+      "name": "flox_position_group_total_pnl",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionGroupHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_position_raw",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_avg_entry",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionTrackerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_create",
+      "params": [
+        {
+          "name": "cost_basis",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxPositionTrackerHandle"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_destroy",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_on_fill",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionTrackerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_position",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionTrackerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_realized_pnl",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionTrackerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "position",
+      "name": "flox_position_tracker_total_pnl",
+      "params": [
+        {
+          "name": "tracker",
+          "type": "FloxPositionTrackerHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "fixed_point",
+      "name": "flox_price_from_double",
+      "params": [
+        {
+          "name": "value",
+          "type": "double"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "fixed_point",
+      "name": "flox_price_to_double",
+      "params": [
+        {
+          "name": "raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "fixed_point",
+      "name": "flox_quantity_from_double",
+      "params": [
+        {
+          "name": "value",
+          "type": "double"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "fixed_point",
+      "name": "flox_quantity_to_double",
+      "params": [
+        {
+          "name": "raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "symbol_registry",
+      "name": "flox_registry_add_symbol",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "exchange",
+          "type": "const char *"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "tick_size",
+          "type": "double"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "symbol_registry",
+      "name": "flox_registry_create",
+      "params": [],
+      "return_type": "FloxRegistryHandle"
+    },
+    {
+      "group": "symbol_registry",
+      "name": "flox_registry_destroy",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "symbol_registry",
+      "name": "flox_registry_get_symbol_id",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "exchange",
+          "type": "const char *"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "id_out",
+          "type": "uint32_t *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "symbol_registry",
+      "name": "flox_registry_get_symbol_name",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "exchange_out",
+          "type": "char *"
+        },
+        {
+          "name": "exchange_len",
+          "type": "size_t"
+        },
+        {
+          "name": "name_out",
+          "type": "char *"
+        },
+        {
+          "name": "name_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "symbol_registry",
+      "name": "flox_registry_symbol_count",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "heatmap",
+      "name": "flox_render_heatmap_html",
+      "params": [
+        {
+          "name": "data",
+          "type": "const FloxHeatmapData *"
+        },
+        {
+          "name": "out_buf",
+          "type": "char *"
+        },
+        {
+          "name": "max_size",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "replay",
+      "name": "flox_replay_source_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxReplaySourceCallbacks"
+        }
+      ],
+      "return_type": "FloxReplaySourceHandle"
+    },
+    {
+      "group": "replay",
+      "name": "flox_replay_source_destroy",
+      "params": [
+        {
+          "name": "source",
+          "type": "FloxReplaySourceHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "replay",
+      "name": "flox_replay_source_seek_to",
+      "params": [
+        {
+          "name": "source",
+          "type": "FloxReplaySourceHandle"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "risk",
+      "name": "flox_risk_manager_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxRiskManagerCallbacks"
+        }
+      ],
+      "return_type": "FloxRiskManagerHandle"
+    },
+    {
+      "group": "risk",
+      "name": "flox_risk_manager_destroy",
+      "params": [
+        {
+          "name": "rm",
+          "type": "FloxRiskManagerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_add_strategy",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "strategy",
+          "type": "FloxStrategyHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_create",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "on_signal",
+          "type": "FloxOnSignalCallback"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "return_type": "FloxRunnerHandle"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_destroy",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_on_bar",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bar_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "bar_type_param",
+          "type": "uint64_t"
+        },
+        {
+          "name": "open",
+          "type": "double"
+        },
+        {
+          "name": "high",
+          "type": "double"
+        },
+        {
+          "name": "low",
+          "type": "double"
+        },
+        {
+          "name": "close",
+          "type": "double"
+        },
+        {
+          "name": "volume",
+          "type": "double"
+        },
+        {
+          "name": "buy_volume",
+          "type": "double"
+        },
+        {
+          "name": "start_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "end_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "close_reason",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_on_book_snapshot",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "n_bids",
+          "type": "uint32_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "n_asks",
+          "type": "uint32_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_on_trade",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution",
+      "name": "flox_runner_set_executor",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "executor",
+          "type": "FloxExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_runner_set_kill_switch",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "ks",
+          "type": "FloxKillSwitchHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "recorder",
+      "name": "flox_runner_set_market_data_recorder",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "recorder",
+          "type": "FloxMarketDataRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_runner_set_order_validator",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "ov",
+          "type": "FloxOrderValidatorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "metrics",
+      "name": "flox_runner_set_pnl_tracker",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "tracker",
+          "type": "FloxPnLTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "risk",
+      "name": "flox_runner_set_risk_manager",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "rm",
+          "type": "FloxRiskManagerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "storage",
+      "name": "flox_runner_set_storage_sink",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "sink",
+          "type": "FloxStorageSinkHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_start",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategyrunner_synchronous",
+      "name": "flox_runner_stop",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_export",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_path",
+          "type": "const char *"
+        },
+        {
+          "name": "format",
+          "type": "uint8_t"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxExportResult"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_segment_export_p",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_path",
+          "type": "const char *"
+        },
+        {
+          "name": "format",
+          "type": "uint8_t"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_extract_symbols",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_path",
+          "type": "const char *"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_extract_time_range",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_path",
+          "type": "const char *"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_merge",
+      "params": [
+        {
+          "name": "input_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "output_path",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_merge_dir",
+      "params": [
+        {
+          "name": "input_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxMergeResult"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_segment_merge_dir_p",
+      "params": [
+        {
+          "name": "input_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_merge_full",
+      "params": [
+        {
+          "name": "input_paths",
+          "type": "const char *"
+        },
+        {
+          "name": "num_paths",
+          "type": "size_t"
+        },
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "output_name",
+          "type": "const char *"
+        },
+        {
+          "name": "sort",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxMergeResult"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_segment_merge_full_p",
+      "params": [
+        {
+          "name": "input_paths",
+          "type": "const char *"
+        },
+        {
+          "name": "num_paths",
+          "type": "size_t"
+        },
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "output_name",
+          "type": "const char *"
+        },
+        {
+          "name": "sort",
+          "type": "uint8_t"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_recompress",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_path",
+          "type": "const char *"
+        },
+        {
+          "name": "compression",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_split",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "mode",
+          "type": "uint8_t"
+        },
+        {
+          "name": "time_interval_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "events_per_file",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxSplitResult"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_segment_split_p",
+      "params": [
+        {
+          "name": "input_path",
+          "type": "const char *"
+        },
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "mode",
+          "type": "uint8_t"
+        },
+        {
+          "name": "time_interval_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "events_per_file",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "segment",
+      "name": "flox_segment_validate",
+      "params": [
+        {
+          "name": "path",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "validation",
+      "name": "flox_segment_validate_full",
+      "params": [
+        {
+          "name": "path",
+          "type": "const char *"
+        },
+        {
+          "name": "verify_crc",
+          "type": "uint8_t"
+        },
+        {
+          "name": "verify_timestamps",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxSegmentValidation"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_segment_validate_full_p",
+      "params": [
+        {
+          "name": "path",
+          "type": "const char *"
+        },
+        {
+          "name": "verify_crc",
+          "type": "uint8_t"
+        },
+        {
+          "name": "verify_timestamps",
+          "type": "uint8_t"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "logger",
+      "name": "flox_set_log_callback",
+      "params": [
+        {
+          "name": "callback",
+          "type": "FloxLogCallback"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_advance_clock",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_cancel_all",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_cancel_order",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_create",
+      "params": [],
+      "return_type": "FloxSimulatedExecutorHandle"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_destroy",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_fill_count",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "executor_fill",
+      "name": "flox_simulated_executor_get_fills",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "fills_out",
+          "type": "FloxFill *"
+        },
+        {
+          "name": "max_fills",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_on_bar",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "close_price",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_on_best_levels",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_price",
+          "type": "double"
+        },
+        {
+          "name": "bid_qty",
+          "type": "double"
+        },
+        {
+          "name": "ask_price",
+          "type": "double"
+        },
+        {
+          "name": "ask_qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_on_book_snapshot",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "n_bids",
+          "type": "uint32_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "n_asks",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_on_trade",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_on_trade_qty",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_default_slippage",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "model",
+          "type": "int32_t"
+        },
+        {
+          "name": "ticks",
+          "type": "int32_t"
+        },
+        {
+          "name": "tick_size",
+          "type": "double"
+        },
+        {
+          "name": "bps",
+          "type": "double"
+        },
+        {
+          "name": "impact_coeff",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_queue_model",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "model",
+          "type": "int32_t"
+        },
+        {
+          "name": "depth",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_symbol_slippage",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "model",
+          "type": "int32_t"
+        },
+        {
+          "name": "ticks",
+          "type": "int32_t"
+        },
+        {
+          "name": "tick_size",
+          "type": "double"
+        },
+        {
+          "name": "bps",
+          "type": "double"
+        },
+        {
+          "name": "impact_coeff",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_submit_order",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "order_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "additional_stats",
+      "name": "flox_stat_bootstrap_ci",
+      "params": [
+        {
+          "name": "data",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "confidence",
+          "type": "double"
+        },
+        {
+          "name": "num_samples",
+          "type": "uint32_t"
+        },
+        {
+          "name": "lower_out",
+          "type": "double *"
+        },
+        {
+          "name": "median_out",
+          "type": "double *"
+        },
+        {
+          "name": "upper_out",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "statistics",
+      "name": "flox_stat_correlation",
+      "params": [
+        {
+          "name": "x",
+          "type": "const double *"
+        },
+        {
+          "name": "y",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "additional_stats",
+      "name": "flox_stat_permutation_test",
+      "params": [
+        {
+          "name": "group1",
+          "type": "const double *"
+        },
+        {
+          "name": "len1",
+          "type": "size_t"
+        },
+        {
+          "name": "group2",
+          "type": "const double *"
+        },
+        {
+          "name": "len2",
+          "type": "size_t"
+        },
+        {
+          "name": "num_permutations",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "statistics",
+      "name": "flox_stat_profit_factor",
+      "params": [
+        {
+          "name": "pnl",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "statistics",
+      "name": "flox_stat_win_rate",
+      "params": [
+        {
+          "name": "pnl",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "storage",
+      "name": "flox_storage_sink_create",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "FloxStorageSinkCallbacks"
+        }
+      ],
+      "return_type": "FloxStorageSinkHandle"
+    },
+    {
+      "group": "storage",
+      "name": "flox_storage_sink_destroy",
+      "params": [
+        {
+          "name": "sink",
+          "type": "FloxStorageSinkHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategy_lifecycle",
+      "name": "flox_strategy_create",
+      "params": [
+        {
+          "name": "id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        },
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "callbacks",
+          "type": "FloxStrategyCallbacks"
+        }
+      ],
+      "return_type": "FloxStrategyHandle"
+    },
+    {
+      "group": "strategy_lifecycle",
+      "name": "flox_strategy_destroy",
+      "params": [
+        {
+          "name": "strategy",
+          "type": "FloxStrategyHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_add_node",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "deps",
+          "type": "const char *const *"
+        },
+        {
+          "name": "num_deps",
+          "type": "size_t"
+        },
+        {
+          "name": "fn",
+          "type": "FloxGraphNodeFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_bar_count",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_close",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_create",
+      "params": [],
+      "return_type": "FloxStreamingGraphHandle"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_current",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_destroy",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_high",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_low",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_reset",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_reset_all",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_step",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "open",
+          "type": "double"
+        },
+        {
+          "name": "high",
+          "type": "double"
+        },
+        {
+          "name": "low",
+          "type": "double"
+        },
+        {
+          "name": "close",
+          "type": "double"
+        },
+        {
+          "name": "volume",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "indicatorgraph",
+      "name": "flox_streaming_graph_volume",
+      "params": [
+        {
+          "name": "sg",
+          "type": "FloxStreamingGraphHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "len_out",
+          "type": "size_t *"
+        }
+      ],
+      "return_type": "const double *"
+    },
+    {
+      "group": "targets",
+      "name": "flox_target_future_ctc_volatility",
+      "params": [
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "horizon",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "targets",
+      "name": "flox_target_future_linear_slope",
+      "params": [
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "horizon",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "targets",
+      "name": "flox_target_future_return",
+      "params": [
+        {
+          "name": "close",
+          "type": "const double *"
+        },
+        {
+          "name": "len",
+          "type": "size_t"
+        },
+        {
+          "name": "horizon",
+          "type": "size_t"
+        },
+        {
+          "name": "output",
+          "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_add_trade",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_clear",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_create",
+      "params": [
+        {
+          "name": "tick_size",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxVolumeProfileHandle"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_destroy",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_num_levels",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_poc",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_total_delta",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_total_volume",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_vah",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "volume_profile",
+      "name": "flox_volume_profile_val",
+      "params": [
+        {
+          "name": "profile",
+          "type": "FloxVolumeProfileHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "walk_forward",
+      "name": "flox_walk_forward_run_csv",
+      "params": [
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "csv_path",
+          "type": "const char *"
+        },
+        {
+          "name": "symbol",
+          "type": "const char *"
+        },
+        {
+          "name": "fee_rate",
+          "type": "double"
+        },
+        {
+          "name": "initial_capital",
+          "type": "double"
+        },
+        {
+          "name": "cfg",
+          "type": "const FloxWalkForwardConfig *"
+        },
+        {
+          "name": "factory",
+          "type": "FloxWalkForwardFactoryFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        },
+        {
+          "name": "folds_out",
+          "type": "FloxWalkForwardFold *"
+        },
+        {
+          "name": "max_folds",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    }
+  ],
+  "structs": [
+    {
+      "fields": [
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "recv_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "seq",
+          "type": "int64_t"
+        },
+        {
+          "name": "bid_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "bid_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ask_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ask_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "event_type",
+          "type": "uint8_t"
+        }
+      ],
+      "name": "FloxBBO"
+    },
+    {
+      "fields": [
+        {
+          "name": "totalTrades",
+          "type": "uint64_t"
+        },
+        {
+          "name": "winningTrades",
+          "type": "uint64_t"
+        },
+        {
+          "name": "losingTrades",
+          "type": "uint64_t"
+        },
+        {
+          "name": "maxConsecutiveWins",
+          "type": "uint64_t"
+        },
+        {
+          "name": "maxConsecutiveLosses",
+          "type": "uint64_t"
+        },
+        {
+          "name": "initialCapital",
+          "type": "double"
+        },
+        {
+          "name": "finalCapital",
+          "type": "double"
+        },
+        {
+          "name": "totalPnl",
+          "type": "double"
+        },
+        {
+          "name": "totalFees",
+          "type": "double"
+        },
+        {
+          "name": "netPnl",
+          "type": "double"
+        },
+        {
+          "name": "grossProfit",
+          "type": "double"
+        },
+        {
+          "name": "grossLoss",
+          "type": "double"
+        },
+        {
+          "name": "maxDrawdown",
+          "type": "double"
+        },
+        {
+          "name": "maxDrawdownPct",
+          "type": "double"
+        },
+        {
+          "name": "winRate",
+          "type": "double"
+        },
+        {
+          "name": "profitFactor",
+          "type": "double"
+        },
+        {
+          "name": "avgWin",
+          "type": "double"
+        },
+        {
+          "name": "avgLoss",
+          "type": "double"
+        },
+        {
+          "name": "avgWinLossRatio",
+          "type": "double"
+        },
+        {
+          "name": "avgTradeDurationNs",
+          "type": "double"
+        },
+        {
+          "name": "medianTradeDurationNs",
+          "type": "double"
+        },
+        {
+          "name": "maxTradeDurationNs",
+          "type": "double"
+        },
+        {
+          "name": "sharpeRatio",
+          "type": "double"
+        },
+        {
+          "name": "sortinoRatio",
+          "type": "double"
+        },
+        {
+          "name": "calmarRatio",
+          "type": "double"
+        },
+        {
+          "name": "timeWeightedReturn",
+          "type": "double"
+        },
+        {
+          "name": "returnPct",
+          "type": "double"
+        },
+        {
+          "name": "startTimeNs",
+          "type": "int64_t"
+        },
+        {
+          "name": "endTimeNs",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxBacktestStats"
+    },
+    {
+      "fields": [
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "entry_price",
+          "type": "double"
+        },
+        {
+          "name": "exit_price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "entry_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "exit_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "pnl",
+          "type": "double"
+        },
+        {
+          "name": "fee",
+          "type": "double"
+        }
+      ],
+      "name": "FloxBacktestTrade"
+    },
+    {
+      "fields": [
+        {
+          "name": "start_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "end_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "open_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "high_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "low_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "close_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "volume_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "buy_volume_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "trade_count",
+          "type": "uint32_t"
+        }
+      ],
+      "name": "FloxBar"
+    },
+    {
+      "fields": [
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bar_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "close_reason",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad",
+          "type": "uint8_t[2]"
+        },
+        {
+          "name": "bar_type_param",
+          "type": "uint64_t"
+        },
+        {
+          "name": "open_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "high_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "low_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "close_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "volume_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "buy_volume_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "trade_count_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "start_time_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "end_time_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxBarData"
+    },
+    {
+      "fields": [
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "snapshot",
+          "type": "FloxBookSnapshot"
+        }
+      ],
+      "name": "FloxBookData"
+    },
+    {
+      "fields": [
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "quantity_raw",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxBookLevel"
+    },
+    {
+      "fields": [
+        {
+          "name": "bid_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "bid_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ask_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ask_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "mid_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "spread_raw",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxBookSnapshot"
+    },
+    {
+      "fields": [
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "recv_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "seq",
+          "type": "int64_t"
+        },
+        {
+          "name": "level_offset",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_count",
+          "type": "uint16_t"
+        },
+        {
+          "name": "ask_count",
+          "type": "uint16_t"
+        },
+        {
+          "name": "event_type",
+          "type": "uint8_t"
+        }
+      ],
+      "name": "FloxBookUpdateHeader"
+    },
+    {
+      "fields": [
+        {
+          "name": "first_event_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_event_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "total_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "segment_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "total_bytes",
+          "type": "uint64_t"
+        },
+        {
+          "name": "duration_seconds",
+          "type": "double"
+        }
+      ],
+      "name": "FloxDatasetSummary"
+    },
+    {
+      "fields": [
+        {
+          "name": "valid",
+          "type": "uint8_t"
+        },
+        {
+          "name": "total_segments",
+          "type": "uint32_t"
+        },
+        {
+          "name": "valid_segments",
+          "type": "uint32_t"
+        },
+        {
+          "name": "corrupted_segments",
+          "type": "uint32_t"
+        },
+        {
+          "name": "total_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "total_bytes",
+          "type": "uint64_t"
+        },
+        {
+          "name": "first_timestamp",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_timestamp",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxDatasetValidation"
+    },
+    {
+      "fields": [
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "equity",
+          "type": "double"
+        },
+        {
+          "name": "drawdown_pct",
+          "type": "double"
+        }
+      ],
+      "name": "FloxEquityPoint"
+    },
+    {
+      "fields": [
+        {
+          "name": "supports_stop_market",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_stop_limit",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_take_profit_market",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_take_profit_limit",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_trailing_stop",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_iceberg",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_oco",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_gtc",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_ioc",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_fok",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_gtd",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_post_only",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_reduce_only",
+          "type": "uint8_t"
+        },
+        {
+          "name": "supports_close_position",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad",
+          "type": "uint8_t[2]"
+        }
+      ],
+      "name": "FloxExchangeCapabilities"
+    },
+    {
+      "fields": [
+        {
+          "name": "on_submitted",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_accepted",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_partially_filled",
+          "type": "FloxExecListenerOnPartialFillFn"
+        },
+        {
+          "name": "on_filled",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_pending_cancel",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_canceled",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_expired",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_rejected",
+          "type": "FloxExecListenerOnRejectedFn"
+        },
+        {
+          "name": "on_replaced",
+          "type": "FloxExecListenerOnReplacedFn"
+        },
+        {
+          "name": "on_pending_trigger",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_triggered",
+          "type": "FloxExecListenerOnOrderFn"
+        },
+        {
+          "name": "on_trailing_stop_updated",
+          "type": "FloxExecListenerOnTrailingUpdateFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxExecutionListenerCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "submit",
+          "type": "FloxExecutorSubmitFn"
+        },
+        {
+          "name": "cancel",
+          "type": "FloxExecutorCancelFn"
+        },
+        {
+          "name": "cancel_all",
+          "type": "FloxExecutorCancelAllFn"
+        },
+        {
+          "name": "replace",
+          "type": "FloxExecutorReplaceFn"
+        },
+        {
+          "name": "submit_oco",
+          "type": "FloxExecutorSubmitOCOFn"
+        },
+        {
+          "name": "capabilities",
+          "type": "FloxExecutorCapabilitiesFn"
+        },
+        {
+          "name": "on_start",
+          "type": "FloxExecutorLifecycleFn"
+        },
+        {
+          "name": "on_stop",
+          "type": "FloxExecutorLifecycleFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxExecutorCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "success",
+          "type": "uint8_t"
+        },
+        {
+          "name": "events_exported",
+          "type": "uint64_t"
+        },
+        {
+          "name": "bytes_written",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxExportResult"
+    },
+    {
+      "fields": [
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "quantity_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxFill"
+    },
+    {
+      "fields": [
+        {
+          "name": "z",
+          "type": "const double *"
+        },
+        {
+          "name": "rows",
+          "type": "uint32_t"
+        },
+        {
+          "name": "cols",
+          "type": "uint32_t"
+        },
+        {
+          "name": "row_labels",
+          "type": "const char *const *"
+        },
+        {
+          "name": "num_row_labels",
+          "type": "uint32_t"
+        },
+        {
+          "name": "col_labels",
+          "type": "const char *const *"
+        },
+        {
+          "name": "num_col_labels",
+          "type": "uint32_t"
+        },
+        {
+          "name": "title",
+          "type": "const char *"
+        },
+        {
+          "name": "x_axis_name",
+          "type": "const char *"
+        },
+        {
+          "name": "y_axis_name",
+          "type": "const char *"
+        },
+        {
+          "name": "metric_name",
+          "type": "const char *"
+        }
+      ],
+      "name": "FloxHeatmapData"
+    },
+    {
+      "fields": [
+        {
+          "name": "check",
+          "type": "FloxKillSwitchCheckFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxKillSwitchCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        }
+      ],
+      "name": "FloxLevel"
+    },
+    {
+      "fields": [
+        {
+          "name": "on_trade",
+          "type": "FloxRecorderOnTradeFn"
+        },
+        {
+          "name": "on_book_update",
+          "type": "FloxRecorderOnBookUpdateFn"
+        },
+        {
+          "name": "on_start",
+          "type": "FloxRecorderLifecycleFn"
+        },
+        {
+          "name": "on_stop",
+          "type": "FloxRecorderLifecycleFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxMarketDataRecorderCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "success",
+          "type": "uint8_t"
+        },
+        {
+          "name": "segments_merged",
+          "type": "uint64_t"
+        },
+        {
+          "name": "events_written",
+          "type": "uint64_t"
+        },
+        {
+          "name": "bytes_written",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxMergeResult"
+    },
+    {
+      "fields": [
+        {
+          "name": "id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "client_order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "strategy_id",
+          "type": "uint16_t"
+        },
+        {
+          "name": "order_tag",
+          "type": "uint16_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "time_in_force",
+          "type": "uint8_t"
+        },
+        {
+          "name": "flags",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "quantity_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "filled_quantity_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "trigger_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "trailing_offset_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "created_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxOrder"
+    },
+    {
+      "fields": [
+        {
+          "name": "validate",
+          "type": "FloxOrderValidatorValidateFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxOrderValidatorCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "partition_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "warmup_from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "estimated_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "estimated_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxPartition"
+    },
+    {
+      "fields": [
+        {
+          "name": "on_signal",
+          "type": "FloxPnLTrackerOnSignalFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxPnLTrackerCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "files_read",
+          "type": "uint64_t"
+        },
+        {
+          "name": "events_read",
+          "type": "uint64_t"
+        },
+        {
+          "name": "trades_read",
+          "type": "uint64_t"
+        },
+        {
+          "name": "book_updates_read",
+          "type": "uint64_t"
+        },
+        {
+          "name": "bytes_read",
+          "type": "uint64_t"
+        },
+        {
+          "name": "crc_errors",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxReaderStats"
+    },
+    {
+      "fields": [
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad",
+          "type": "uint8_t[3]"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "trade_symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "trade_is_buy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad2",
+          "type": "uint8_t[3]"
+        },
+        {
+          "name": "trade_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "trade_quantity_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "book_symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "n_bids",
+          "type": "uint32_t"
+        },
+        {
+          "name": "n_asks",
+          "type": "uint32_t"
+        },
+        {
+          "name": "_pad3",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bids",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "asks",
+          "type": "const FloxBookLevel *"
+        }
+      ],
+      "name": "FloxReplayEvent"
+    },
+    {
+      "fields": [
+        {
+          "name": "on_start",
+          "type": "FloxReplaySourceLifecycleFn"
+        },
+        {
+          "name": "on_stop",
+          "type": "FloxReplaySourceLifecycleFn"
+        },
+        {
+          "name": "seek_to",
+          "type": "FloxReplaySourceSeekFn"
+        },
+        {
+          "name": "next",
+          "type": "FloxReplaySourceNextFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxReplaySourceCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "allow",
+          "type": "FloxRiskManagerAllowFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxRiskManagerCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "valid",
+          "type": "uint8_t"
+        },
+        {
+          "name": "header_valid",
+          "type": "uint8_t"
+        },
+        {
+          "name": "reported_event_count",
+          "type": "uint64_t"
+        },
+        {
+          "name": "actual_event_count",
+          "type": "uint64_t"
+        },
+        {
+          "name": "has_index",
+          "type": "uint8_t"
+        },
+        {
+          "name": "index_valid",
+          "type": "uint8_t"
+        },
+        {
+          "name": "trades_found",
+          "type": "uint64_t"
+        },
+        {
+          "name": "book_updates_found",
+          "type": "uint64_t"
+        },
+        {
+          "name": "crc_errors",
+          "type": "uint32_t"
+        },
+        {
+          "name": "timestamp_anomalies",
+          "type": "uint32_t"
+        }
+      ],
+      "name": "FloxSegmentValidation"
+    },
+    {
+      "fields": [
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "order_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "trigger_price",
+          "type": "double"
+        },
+        {
+          "name": "trailing_offset",
+          "type": "double"
+        },
+        {
+          "name": "trailing_bps",
+          "type": "int32_t"
+        },
+        {
+          "name": "new_price",
+          "type": "double"
+        },
+        {
+          "name": "new_quantity",
+          "type": "double"
+        }
+      ],
+      "name": "FloxSignal"
+    },
+    {
+      "fields": [
+        {
+          "name": "success",
+          "type": "uint8_t"
+        },
+        {
+          "name": "segments_created",
+          "type": "uint32_t"
+        },
+        {
+          "name": "events_written",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxSplitResult"
+    },
+    {
+      "fields": [
+        {
+          "name": "store",
+          "type": "FloxStorageSinkStoreFn"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxStorageSinkCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "on_trade",
+          "type": "FloxOnTradeCallback"
+        },
+        {
+          "name": "on_book",
+          "type": "FloxOnBookCallback"
+        },
+        {
+          "name": "on_bar",
+          "type": "FloxOnBarCallback"
+        },
+        {
+          "name": "on_start",
+          "type": "FloxOnStartCallback"
+        },
+        {
+          "name": "on_stop",
+          "type": "FloxOnStopCallback"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        }
+      ],
+      "name": "FloxStrategyCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "position_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "avg_entry_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_trade_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_update_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "book",
+          "type": "FloxBookSnapshot"
+        }
+      ],
+      "name": "FloxSymbolContext"
+    },
+    {
+      "fields": [
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "quantity_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "is_buy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxTradeData"
+    },
+    {
+      "fields": [
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "recv_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "trade_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        }
+      ],
+      "name": "FloxTradeRecord"
+    },
+    {
+      "fields": [
+        {
+          "name": "mode",
+          "type": "uint8_t"
+        },
+        {
+          "name": "train_size",
+          "type": "uint64_t"
+        },
+        {
+          "name": "test_size",
+          "type": "uint64_t"
+        },
+        {
+          "name": "step",
+          "type": "uint64_t"
+        },
+        {
+          "name": "min_train_size",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxWalkForwardConfig"
+    },
+    {
+      "fields": [
+        {
+          "name": "fold_index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "train_start_bar",
+          "type": "uint64_t"
+        },
+        {
+          "name": "train_end_bar",
+          "type": "uint64_t"
+        },
+        {
+          "name": "test_start_bar",
+          "type": "uint64_t"
+        },
+        {
+          "name": "test_end_bar",
+          "type": "uint64_t"
+        },
+        {
+          "name": "train_start_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "train_end_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "test_start_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "test_end_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "train_stats",
+          "type": "FloxBacktestStats"
+        },
+        {
+          "name": "test_stats",
+          "type": "FloxBacktestStats"
+        }
+      ],
+      "name": "FloxWalkForwardFold"
+    },
+    {
+      "fields": [
+        {
+          "name": "bytes_written",
+          "type": "uint64_t"
+        },
+        {
+          "name": "events_written",
+          "type": "uint64_t"
+        },
+        {
+          "name": "segments_created",
+          "type": "uint64_t"
+        },
+        {
+          "name": "trades_written",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxWriterStats"
+    }
+  ],
+  "typedefs": [
+    {
+      "name": "FloxBacktestResultHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxBacktestRunnerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxBookHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxCompositeBookHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxDataReaderHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxDataRecorderHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxDataWriterHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxExecutionListenerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxExecutorHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxFootprintHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxGridSearchHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxIndicatorGraphHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxKillSwitchHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxL3BookHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxLiveEngineHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxMarketDataRecorderHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxMarketProfileHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxOrderTrackerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxOrderValidatorHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPartitionerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPnLTrackerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPositionGroupHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPositionTrackerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxRegistryHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxReplaySourceHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxRiskManagerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxRunnerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxSimulatedExecutorHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxStorageSinkHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxStrategyHandle",
+      "target": "void*"
+    },
+    {
+      "alias_of": "FloxIndicatorGraphHandle",
+      "name": "FloxStreamingGraphHandle"
+    },
+    {
+      "name": "FloxVolumeProfileHandle",
+      "target": "void*"
+    }
+  ],
+  "version": 1
+}

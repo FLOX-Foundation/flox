@@ -17,9 +17,15 @@ hosting; nothing leaves the machine.
 | `list_capi_functions` | Search the FLOX C-API surface from the committed ABI snapshot. Returns `name + return type + parameter types`. |
 | `validate_strategy` | Static-analysis check on Python strategy code: AST parses, expected hooks present, no `eval`/`exec`. |
 | `explain_event` | Describe the fields of a FLOX event struct (`FloxTradeData`, `FloxBookData`, `FloxBarData`, `FloxSymbolContext`, `FloxSignal`). Accepts a struct name or a raw event dict. |
+| `lookup_symbol` | Take any binding-local spelling (`FloxBarData`, `BarData`, `flox_indicator_ema`, `ema`) and return what the symbol is called in C-API, Python, Node, and Codon. |
+| `list_bindings` | Enumerate the exports of one binding (capi, python, node, codon, quickjs). Substring filter and limit. |
+| `get_example` | Code from `docs/examples/` matching a topic (strategy, connector, indicator, event-handler, risk, backtest), optionally filtered by language. |
+| `scaffold_strategy` | Starter strategy class for Python or Node. Three kinds: bar-driven, trade-driven, hybrid. The Python output goes through `ast.parse` + `validate_strategy`; the Node output goes through `node --check`. CI fails if either breaks, so templates can't quietly rot. |
+| `docs_search` | Top-k FTS5 search over the docs. The index is built from an allowlist of roots; private trackers and `CLAUDE.md` are not in that allowlist. |
 
-Future tools tracked in [W2-T004](../.notes/tracks/W2-ai-dx/T004-mcp-server.md):
-`run_backtest` (sandbox), `compute_indicator`, `suggest_indicator`.
+Future tools (sandboxed runtime) tracked in
+[W2-T012](../.notes/tracks/W2-ai-dx/T012-mcp-follow-up-tools-run-backtest-sandbox.md):
+`run_backtest`, `compute_indicator`, `suggest_indicator`.
 
 ## Install
 
@@ -77,14 +83,36 @@ python ../scripts/sync_mcp_data.py
 
 ## Bundled data
 
-The package ships read-only copies of:
+Read-only copies in the wheel:
 
-- `.api/c-api.snapshot` → `flox_mcp/data/c-api.snapshot`
-- `docs/errors/E_*.md` → `flox_mcp/data/errors/`
+- `flox_mcp/data/c-api.snapshot` — copy of `.api/c-api.snapshot`.
+- `flox_mcp/data/errors/E_*.md` — copies of `docs/errors/E_*.md`.
+- `flox_mcp/data/ir.snapshot.json` — IR (functions, structs, enums,
+  typedefs, function pointers) pulled from the IDL spec via libclang.
+  Versioned schema.
+- `flox_mcp/data/binding_manifest.json` — per-binding symbol map keyed
+  by IDL group. Built from `binding_parity.yaml` plus scans of
+  `flox_py/_flox_py/__init__.pyi`, `node/index.d.ts`, and the codon
+  golden file.
+- `flox_mcp/data/examples_index.json` — index of `docs/examples/`
+  (path, language, topic, sha256).
+- `flox_mcp/data/docs.fts.sqlite` — SQLite FTS5 index over six doc
+  roots: `bindings`, `how-to`, `tutorials`, `reference`, `explanation`,
+  `errors`. Anything outside that list is skipped at index build time.
+  Private trackers and `CLAUDE.md` are not in the allowlist.
+- `flox_mcp/data/templates/strategy/{python,node}/{bar,trade,hybrid}-driven.tmpl`
+  — strategy scaffolds rendered by `scaffold_strategy`.
 
-`scripts/sync_mcp_data.py --check` runs in CI; if a copy diverges from
-its canonical source, CI fails. To update after editing the canonical
-source: run the script without `--check` and commit the diff.
+`scripts/sync_mcp_data.py --check` runs in CI. Any drift between a
+bundled copy and its canonical source fails the build. To update
+after editing a canonical source: run the script without `--check`
+and commit the diff.
+
+The `flox-mcp` package version is bumped in lockstep with `flox-py`
+and `@flox-foundation/flox` by `scripts/set-version.sh`. An installed
+`flox-mcp x.y.z` was built from the same source tree as the matching
+flox-py / npm release, so what the agent sees lines up with what the
+developer has installed.
 
 ## Scope notes
 

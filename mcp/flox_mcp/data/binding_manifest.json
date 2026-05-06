@@ -1,0 +1,5822 @@
+{
+  "bindings": {
+    "capi": {
+      "symbols": [
+        {
+          "group": "heikin_ashi",
+          "kind": "function",
+          "name": "flox_aggregate_heikin_ashi_bars"
+        },
+        {
+          "group": "additional_bar",
+          "kind": "function",
+          "name": "flox_aggregate_range_bars"
+        },
+        {
+          "group": "additional_bar",
+          "kind": "function",
+          "name": "flox_aggregate_renko_bars"
+        },
+        {
+          "group": "bar_aggregation",
+          "kind": "function",
+          "name": "flox_aggregate_tick_bars"
+        },
+        {
+          "group": "bar_aggregation",
+          "kind": "function",
+          "name": "flox_aggregate_time_bars"
+        },
+        {
+          "group": "bar_aggregation",
+          "kind": "function",
+          "name": "flox_aggregate_volume_bars"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_create"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_destroy"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_equity_curve"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_ingest_executor"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_record_fill"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_stats"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_trades"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_backtest_result_write_equity_curve_csv"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_backtest_runner_add_execution_listener"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_create"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_destroy"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_run_bars"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_run_csv"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_run_ohlcv"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_run_replay_source"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_backtest_runner_set_executor"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_set_strategy"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_take_result"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_best_ask_raw"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_best_bid_raw"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_apply_delta"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_apply_snapshot"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_ask_at_price"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_best_ask"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_best_bid"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_bid_at_price"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_clear"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_create"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_destroy"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_get_asks"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_get_bids"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_is_crossed"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_mid"
+        },
+        {
+          "group": "order_book",
+          "kind": "function",
+          "name": "flox_book_spread"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_best_ask"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_best_bid"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_check_staleness"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_create"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_destroy"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_has_arb"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_mark_stale"
+        },
+        {
+          "group": "data_reader",
+          "kind": "function",
+          "name": "flox_data_reader_count"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_count_book_updates"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_count_book_updates_from"
+        },
+        {
+          "group": "data_reader",
+          "kind": "function",
+          "name": "flox_data_reader_create"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_create_filtered"
+        },
+        {
+          "group": "data_reader",
+          "kind": "function",
+          "name": "flox_data_reader_destroy"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_read_bbo"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_read_bbo_from"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_read_book_updates"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_read_book_updates_from"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_read_trades"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_read_trades_from"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_stats"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_data_reader_stats_p"
+        },
+        {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_summary"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_data_reader_summary_p"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_add_symbol"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_create"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_destroy"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_flush"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_is_recording"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_start"
+        },
+        {
+          "group": "datarecorder",
+          "kind": "function",
+          "name": "flox_data_recorder_stop"
+        },
+        {
+          "group": "data_writer",
+          "kind": "function",
+          "name": "flox_data_writer_close"
+        },
+        {
+          "group": "data_writer",
+          "kind": "function",
+          "name": "flox_data_writer_create"
+        },
+        {
+          "group": "data_writer",
+          "kind": "function",
+          "name": "flox_data_writer_destroy"
+        },
+        {
+          "group": "data_writer",
+          "kind": "function",
+          "name": "flox_data_writer_flush"
+        },
+        {
+          "group": "datawriter",
+          "kind": "function",
+          "name": "flox_data_writer_stats"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_data_writer_stats_p"
+        },
+        {
+          "group": "data_writer",
+          "kind": "function",
+          "name": "flox_data_writer_write_trade"
+        },
+        {
+          "group": "validation",
+          "kind": "function",
+          "name": "flox_dataset_validate"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_dataset_validate_p"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_cancel"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_cancel_all"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_close_position"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_limit_buy"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_limit_buy_tif"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_limit_sell"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_limit_sell_tif"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_market_buy"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_market_sell"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_modify"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_stop_limit"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_stop_market"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_take_profit_limit"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_take_profit_market"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_trailing_stop"
+        },
+        {
+          "group": "signal_emission",
+          "kind": "function",
+          "name": "flox_emit_trailing_stop_percent"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_execution_listener_create"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_execution_listener_destroy"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_executor_create"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_executor_destroy"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_executor_get_capabilities"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_add_trade"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_clear"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_create"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_destroy"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_num_levels"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_total_delta"
+        },
+        {
+          "group": "footprint_bar",
+          "kind": "function",
+          "name": "flox_footprint_total_volume"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_get_order_status"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_get_symbol_context"
+        },
+        {
+          "group": "grid_search",
+          "kind": "function",
+          "name": "flox_grid_search_add_axis"
+        },
+        {
+          "group": "grid_search",
+          "kind": "function",
+          "name": "flox_grid_search_create"
+        },
+        {
+          "group": "grid_search",
+          "kind": "function",
+          "name": "flox_grid_search_destroy"
+        },
+        {
+          "group": "grid_search",
+          "kind": "function",
+          "name": "flox_grid_search_params_for_index"
+        },
+        {
+          "group": "grid_search",
+          "kind": "function",
+          "name": "flox_grid_search_run"
+        },
+        {
+          "group": "grid_search",
+          "kind": "function",
+          "name": "flox_grid_search_total"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_adf"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_adx"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_atr"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_autocorrelation"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_bollinger"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_cci"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_chop"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_correlation"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_cvd"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_dema"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_ema"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_add_node"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_bar_count"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_close"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_create"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_current"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_destroy"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_get"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_high"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_invalidate"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_invalidate_all"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_low"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_require"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_reset"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_reset_all"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_set_bars"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_step"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_indicator_graph_volume"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_kama"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_kurtosis"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_macd"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_obv"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_parkinson_vol"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_rma"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_rogers_satchell_vol"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_rolling_zscore"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_rsi"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_shannon_entropy"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_skewness"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_slope"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_sma"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_stochastic"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_tema"
+        },
+        {
+          "group": "indicator_functions",
+          "kind": "function",
+          "name": "flox_indicator_vwap"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_kill_switch_create"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_kill_switch_destroy"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_add_order"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_ask_at_price"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_best_ask"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_best_bid"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_bid_at_price"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_create"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_destroy"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_modify_order"
+        },
+        {
+          "group": "l3_order",
+          "kind": "function",
+          "name": "flox_l3_book_remove_order"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_last_trade_price_raw"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_add_strategy"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_create"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_destroy"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_publish_bar"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_publish_book_snapshot"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_publish_trade"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_live_engine_set_executor"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_live_engine_set_kill_switch"
+        },
+        {
+          "group": "recorder",
+          "kind": "function",
+          "name": "flox_live_engine_set_market_data_recorder"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_live_engine_set_order_validator"
+        },
+        {
+          "group": "metrics",
+          "kind": "function",
+          "name": "flox_live_engine_set_pnl_tracker"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_live_engine_set_risk_manager"
+        },
+        {
+          "group": "storage",
+          "kind": "function",
+          "name": "flox_live_engine_set_storage_sink"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_start"
+        },
+        {
+          "group": "floxliveengine_disruptor",
+          "kind": "function",
+          "name": "flox_live_engine_stop"
+        },
+        {
+          "group": "recorder",
+          "kind": "function",
+          "name": "flox_market_data_recorder_create"
+        },
+        {
+          "group": "recorder",
+          "kind": "function",
+          "name": "flox_market_data_recorder_destroy"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_add_trade"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_clear"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_create"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_destroy"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_ib_high"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_ib_low"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_is_poor_high"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_is_poor_low"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_num_levels"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_poc"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_vah"
+        },
+        {
+          "group": "market_profile",
+          "kind": "function",
+          "name": "flox_market_profile_val"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_mid_price_raw"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_active_count"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_create"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_destroy"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_is_active"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_on_canceled"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_on_filled"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_on_submitted"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_prune"
+        },
+        {
+          "group": "order_tracker",
+          "kind": "function",
+          "name": "flox_order_tracker_total_count"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_order_validator_create"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_order_validator_destroy"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_by_calendar"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_by_duration"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_by_event_count"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_by_symbol"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_by_time"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_create"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_destroy"
+        },
+        {
+          "group": "partitioner",
+          "kind": "function",
+          "name": "flox_partitioner_per_symbol"
+        },
+        {
+          "group": "metrics",
+          "kind": "function",
+          "name": "flox_pnl_tracker_create"
+        },
+        {
+          "group": "metrics",
+          "kind": "function",
+          "name": "flox_pnl_tracker_destroy"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_close"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_create"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_destroy"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_net_position"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_open"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_open_count"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_partial_close"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_prune"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_realized_pnl"
+        },
+        {
+          "group": "position_group",
+          "kind": "function",
+          "name": "flox_position_group_total_pnl"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_position_raw"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_avg_entry"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_create"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_destroy"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_on_fill"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_position"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_realized_pnl"
+        },
+        {
+          "group": "position",
+          "kind": "function",
+          "name": "flox_position_tracker_total_pnl"
+        },
+        {
+          "group": "fixed_point",
+          "kind": "function",
+          "name": "flox_price_from_double"
+        },
+        {
+          "group": "fixed_point",
+          "kind": "function",
+          "name": "flox_price_to_double"
+        },
+        {
+          "group": "fixed_point",
+          "kind": "function",
+          "name": "flox_quantity_from_double"
+        },
+        {
+          "group": "fixed_point",
+          "kind": "function",
+          "name": "flox_quantity_to_double"
+        },
+        {
+          "group": "symbol_registry",
+          "kind": "function",
+          "name": "flox_registry_add_symbol"
+        },
+        {
+          "group": "symbol_registry",
+          "kind": "function",
+          "name": "flox_registry_create"
+        },
+        {
+          "group": "symbol_registry",
+          "kind": "function",
+          "name": "flox_registry_destroy"
+        },
+        {
+          "group": "symbol_registry",
+          "kind": "function",
+          "name": "flox_registry_get_symbol_id"
+        },
+        {
+          "group": "symbol_registry",
+          "kind": "function",
+          "name": "flox_registry_get_symbol_name"
+        },
+        {
+          "group": "symbol_registry",
+          "kind": "function",
+          "name": "flox_registry_symbol_count"
+        },
+        {
+          "group": "heatmap",
+          "kind": "function",
+          "name": "flox_render_heatmap_html"
+        },
+        {
+          "group": "replay",
+          "kind": "function",
+          "name": "flox_replay_source_create"
+        },
+        {
+          "group": "replay",
+          "kind": "function",
+          "name": "flox_replay_source_destroy"
+        },
+        {
+          "group": "replay",
+          "kind": "function",
+          "name": "flox_replay_source_seek_to"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_risk_manager_create"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_risk_manager_destroy"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_add_strategy"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_create"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_destroy"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_on_bar"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_on_book_snapshot"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_on_trade"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_runner_set_executor"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_runner_set_kill_switch"
+        },
+        {
+          "group": "recorder",
+          "kind": "function",
+          "name": "flox_runner_set_market_data_recorder"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_runner_set_order_validator"
+        },
+        {
+          "group": "metrics",
+          "kind": "function",
+          "name": "flox_runner_set_pnl_tracker"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_runner_set_risk_manager"
+        },
+        {
+          "group": "storage",
+          "kind": "function",
+          "name": "flox_runner_set_storage_sink"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_start"
+        },
+        {
+          "group": "strategyrunner_synchronous",
+          "kind": "function",
+          "name": "flox_runner_stop"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_export"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_segment_export_p"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_extract_symbols"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_extract_time_range"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_merge"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_merge_dir"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_segment_merge_dir_p"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_merge_full"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_segment_merge_full_p"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_recompress"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_split"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_segment_split_p"
+        },
+        {
+          "group": "segment",
+          "kind": "function",
+          "name": "flox_segment_validate"
+        },
+        {
+          "group": "validation",
+          "kind": "function",
+          "name": "flox_segment_validate_full"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_segment_validate_full_p"
+        },
+        {
+          "group": "logger",
+          "kind": "function",
+          "name": "flox_set_log_callback"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_advance_clock"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_cancel_all"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_cancel_order"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_create"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_destroy"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_fill_count"
+        },
+        {
+          "group": "executor_fill",
+          "kind": "function",
+          "name": "flox_simulated_executor_get_fills"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_bar"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_best_levels"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_book_snapshot"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_trade"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_default_slippage"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_queue_model"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_symbol_slippage"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_order"
+        },
+        {
+          "group": "additional_stats",
+          "kind": "function",
+          "name": "flox_stat_bootstrap_ci"
+        },
+        {
+          "group": "statistics",
+          "kind": "function",
+          "name": "flox_stat_correlation"
+        },
+        {
+          "group": "additional_stats",
+          "kind": "function",
+          "name": "flox_stat_permutation_test"
+        },
+        {
+          "group": "statistics",
+          "kind": "function",
+          "name": "flox_stat_profit_factor"
+        },
+        {
+          "group": "statistics",
+          "kind": "function",
+          "name": "flox_stat_win_rate"
+        },
+        {
+          "group": "storage",
+          "kind": "function",
+          "name": "flox_storage_sink_create"
+        },
+        {
+          "group": "storage",
+          "kind": "function",
+          "name": "flox_storage_sink_destroy"
+        },
+        {
+          "group": "strategy_lifecycle",
+          "kind": "function",
+          "name": "flox_strategy_create"
+        },
+        {
+          "group": "strategy_lifecycle",
+          "kind": "function",
+          "name": "flox_strategy_destroy"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_add_node"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_bar_count"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_close"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_create"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_current"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_destroy"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_high"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_low"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_reset"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_reset_all"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_step"
+        },
+        {
+          "group": "indicatorgraph",
+          "kind": "function",
+          "name": "flox_streaming_graph_volume"
+        },
+        {
+          "group": "targets",
+          "kind": "function",
+          "name": "flox_target_future_ctc_volatility"
+        },
+        {
+          "group": "targets",
+          "kind": "function",
+          "name": "flox_target_future_linear_slope"
+        },
+        {
+          "group": "targets",
+          "kind": "function",
+          "name": "flox_target_future_return"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_add_trade"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_clear"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_create"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_destroy"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_num_levels"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_poc"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_total_delta"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_total_volume"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_vah"
+        },
+        {
+          "group": "volume_profile",
+          "kind": "function",
+          "name": "flox_volume_profile_val"
+        },
+        {
+          "group": "walk_forward",
+          "kind": "function",
+          "name": "flox_walk_forward_run_csv"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBBO"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBacktestStats"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBacktestTrade"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBar"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBarData"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBookData"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBookLevel"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBookSnapshot"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxBookUpdateHeader"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxDatasetSummary"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxDatasetValidation"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxEquityPoint"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxExchangeCapabilities"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxExecutionListenerCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxExecutorCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxExportResult"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxFill"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxHeatmapData"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxKillSwitchCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxLevel"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxMarketDataRecorderCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxMergeResult"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxOrder"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxOrderValidatorCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxPartition"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxPnLTrackerCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxReaderStats"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxReplayEvent"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxReplaySourceCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxRiskManagerCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxSegmentValidation"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxSignal"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxSplitResult"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxStorageSinkCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxStrategyCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxSymbolContext"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxTradeData"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxTradeRecord"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxWalkForwardConfig"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxWalkForwardFold"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxWriterStats"
+        },
+        {
+          "kind": "enum",
+          "name": "FloxQueueModel"
+        },
+        {
+          "kind": "enum",
+          "name": "FloxSlippageModel"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxBacktestResultHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxBacktestRunnerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxBookHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxCompositeBookHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxDataReaderHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxDataRecorderHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxDataWriterHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxExecutionListenerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxExecutorHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxFootprintHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxGridSearchHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxIndicatorGraphHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxKillSwitchHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxL3BookHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxLiveEngineHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxMarketDataRecorderHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxMarketProfileHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxOrderTrackerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxOrderValidatorHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxPartitionerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxPnLTrackerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxPositionGroupHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxPositionTrackerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxRegistryHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxReplaySourceHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxRiskManagerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxRunnerHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxStorageSinkHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxStrategyHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxStreamingGraphHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxVolumeProfileHandle"
+        }
+      ]
+    },
+    "codon": {
+      "groups_present": [
+        "additional_bar",
+        "additional_stats",
+        "backtest_slippage",
+        "backtestrunner_replay",
+        "bar_aggregation",
+        "composite_book",
+        "context_queries",
+        "data_reader",
+        "data_writer",
+        "datareader",
+        "datarecorder",
+        "datawriter",
+        "execution",
+        "executor_fill",
+        "fixed_point",
+        "floxliveengine_disruptor",
+        "footprint_bar",
+        "grid_search",
+        "heatmap",
+        "heikin_ashi",
+        "indicator_functions",
+        "indicatorgraph",
+        "l3_order",
+        "logger",
+        "market_profile",
+        "metrics",
+        "order_book",
+        "order_tracker",
+        "partitioner",
+        "pointer_out",
+        "position",
+        "position_group",
+        "recorder",
+        "replay",
+        "risk",
+        "segment",
+        "signal_emission",
+        "simulated_executor",
+        "statistics",
+        "storage",
+        "strategy_lifecycle",
+        "strategyrunner_synchronous",
+        "symbol_registry",
+        "targets",
+        "validation",
+        "volume_profile",
+        "walk_forward"
+      ],
+      "symbols": [
+        {
+          "kind": "function",
+          "name": "flox_aggregate_heikin_ashi_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_aggregate_range_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_aggregate_renko_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_aggregate_tick_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_aggregate_time_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_aggregate_volume_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_equity_curve"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_ingest_executor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_record_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_stats"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_trades"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_result_write_equity_curve_csv"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_add_execution_listener"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_run_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_run_csv"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_run_ohlcv"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_run_replay_source"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_set_executor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_set_strategy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_take_result"
+        },
+        {
+          "kind": "function",
+          "name": "flox_best_ask_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_best_bid_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_apply_delta"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_apply_snapshot"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_ask_at_price"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_best_ask"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_best_bid"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_bid_at_price"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_clear"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_get_asks"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_get_bids"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_is_crossed"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_mid"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_spread"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_best_ask"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_best_bid"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_check_staleness"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_has_arb"
+        },
+        {
+          "kind": "function",
+          "name": "flox_composite_book_mark_stale"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_count_book_updates"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_count_book_updates_from"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_create_filtered"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_read_bbo"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_read_bbo_from"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_read_book_updates"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_read_book_updates_from"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_read_trades"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_read_trades_from"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_stats"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_stats_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_summary"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_summary_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_add_symbol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_flush"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_is_recording"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_start"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_recorder_stop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_flush"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_stats"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_stats_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_write_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_dataset_validate"
+        },
+        {
+          "kind": "function",
+          "name": "flox_dataset_validate_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_cancel"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_cancel_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_close_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_limit_buy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_limit_buy_tif"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_limit_sell"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_limit_sell_tif"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_market_buy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_market_sell"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_modify"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_stop_limit"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_stop_market"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_take_profit_limit"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_take_profit_market"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_trailing_stop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_emit_trailing_stop_percent"
+        },
+        {
+          "kind": "function",
+          "name": "flox_execution_listener_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_execution_listener_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_executor_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_executor_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_executor_get_capabilities"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_add_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_clear"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_num_levels"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_total_delta"
+        },
+        {
+          "kind": "function",
+          "name": "flox_footprint_total_volume"
+        },
+        {
+          "kind": "function",
+          "name": "flox_get_order_status"
+        },
+        {
+          "kind": "function",
+          "name": "flox_get_symbol_context"
+        },
+        {
+          "kind": "function",
+          "name": "flox_grid_search_add_axis"
+        },
+        {
+          "kind": "function",
+          "name": "flox_grid_search_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_grid_search_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_grid_search_params_for_index"
+        },
+        {
+          "kind": "function",
+          "name": "flox_grid_search_run"
+        },
+        {
+          "kind": "function",
+          "name": "flox_grid_search_total"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_adf"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_adx"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_atr"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_autocorrelation"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_bollinger"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_cci"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_chop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_correlation"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_cvd"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_dema"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_ema"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_add_node"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_bar_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_current"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_get"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_high"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_invalidate"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_invalidate_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_low"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_require"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_reset"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_reset_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_set_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_step"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_graph_volume"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_kama"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_kurtosis"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_macd"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_obv"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_parkinson_vol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_rma"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_rogers_satchell_vol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_rolling_zscore"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_rsi"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_shannon_entropy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_skewness"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_slope"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_sma"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_stochastic"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_tema"
+        },
+        {
+          "kind": "function",
+          "name": "flox_indicator_vwap"
+        },
+        {
+          "kind": "function",
+          "name": "flox_kill_switch_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_kill_switch_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_add_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_ask_at_price"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_best_ask"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_best_bid"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_bid_at_price"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_modify_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_l3_book_remove_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_last_trade_price_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_add_strategy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_publish_bar"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_publish_book_snapshot"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_publish_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_executor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_kill_switch"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_market_data_recorder"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_order_validator"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_pnl_tracker"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_risk_manager"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_set_storage_sink"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_start"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_engine_stop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_data_recorder_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_data_recorder_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_add_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_clear"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_ib_high"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_ib_low"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_is_poor_high"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_is_poor_low"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_num_levels"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_poc"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_vah"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_profile_val"
+        },
+        {
+          "kind": "function",
+          "name": "flox_mid_price_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_active_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_is_active"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_on_canceled"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_on_filled"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_on_submitted"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_prune"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_tracker_total_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_validator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_validator_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_by_calendar"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_by_duration"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_by_event_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_by_symbol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_by_time"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_partitioner_per_symbol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pnl_tracker_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pnl_tracker_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_net_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_open"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_open_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_partial_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_prune"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_realized_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_group_total_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_avg_entry"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_on_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_realized_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "flox_position_tracker_total_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "flox_price_from_double"
+        },
+        {
+          "kind": "function",
+          "name": "flox_price_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "flox_quantity_from_double"
+        },
+        {
+          "kind": "function",
+          "name": "flox_quantity_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "flox_registry_add_symbol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_registry_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_registry_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_registry_get_symbol_id"
+        },
+        {
+          "kind": "function",
+          "name": "flox_registry_get_symbol_name"
+        },
+        {
+          "kind": "function",
+          "name": "flox_registry_symbol_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_render_heatmap_html"
+        },
+        {
+          "kind": "function",
+          "name": "flox_replay_source_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_replay_source_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_replay_source_seek_to"
+        },
+        {
+          "kind": "function",
+          "name": "flox_risk_manager_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_risk_manager_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_add_strategy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_on_bar"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_on_book_snapshot"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_on_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_executor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_kill_switch"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_market_data_recorder"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_order_validator"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_pnl_tracker"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_risk_manager"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_storage_sink"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_start"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_stop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_export"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_export_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_extract_symbols"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_extract_time_range"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_merge"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_merge_dir"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_merge_dir_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_merge_full"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_merge_full_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_recompress"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_split"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_split_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_validate"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_validate_full"
+        },
+        {
+          "kind": "function",
+          "name": "flox_segment_validate_full_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_set_log_callback"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_advance_clock"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_cancel_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_cancel_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_fill_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_get_fills"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_on_bar"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_on_best_levels"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_on_book_snapshot"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_on_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_default_slippage"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_queue_model"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_symbol_slippage"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_stat_bootstrap_ci"
+        },
+        {
+          "kind": "function",
+          "name": "flox_stat_correlation"
+        },
+        {
+          "kind": "function",
+          "name": "flox_stat_permutation_test"
+        },
+        {
+          "kind": "function",
+          "name": "flox_stat_profit_factor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_stat_win_rate"
+        },
+        {
+          "kind": "function",
+          "name": "flox_storage_sink_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_storage_sink_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_add_node"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_bar_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_current"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_high"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_low"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_reset"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_reset_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_step"
+        },
+        {
+          "kind": "function",
+          "name": "flox_streaming_graph_volume"
+        },
+        {
+          "kind": "function",
+          "name": "flox_target_future_ctc_volatility"
+        },
+        {
+          "kind": "function",
+          "name": "flox_target_future_linear_slope"
+        },
+        {
+          "kind": "function",
+          "name": "flox_target_future_return"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_add_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_clear"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_num_levels"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_poc"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_total_delta"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_total_volume"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_vah"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_profile_val"
+        },
+        {
+          "kind": "function",
+          "name": "flox_walk_forward_run_csv"
+        }
+      ]
+    },
+    "napi": {
+      "symbols": [
+        {
+          "kind": "class",
+          "name": "ATR"
+        },
+        {
+          "kind": "class",
+          "name": "AggregatedBar"
+        },
+        {
+          "kind": "class",
+          "name": "AutoCorrelation"
+        },
+        {
+          "kind": "class",
+          "name": "BacktestResult"
+        },
+        {
+          "kind": "class",
+          "name": "BacktestRunner"
+        },
+        {
+          "kind": "class",
+          "name": "BacktestStats"
+        },
+        {
+          "kind": "class",
+          "name": "BacktestTrades"
+        },
+        {
+          "kind": "class",
+          "name": "BarData"
+        },
+        {
+          "kind": "class",
+          "name": "BboRecord"
+        },
+        {
+          "kind": "class",
+          "name": "Bollinger"
+        },
+        {
+          "kind": "class",
+          "name": "BookLevel"
+        },
+        {
+          "kind": "class",
+          "name": "BookUpdateRecord"
+        },
+        {
+          "kind": "class",
+          "name": "CCI"
+        },
+        {
+          "kind": "class",
+          "name": "CompositeBookMatrix"
+        },
+        {
+          "kind": "class",
+          "name": "Correlation"
+        },
+        {
+          "kind": "class",
+          "name": "DEMA"
+        },
+        {
+          "kind": "class",
+          "name": "DataReader"
+        },
+        {
+          "kind": "class",
+          "name": "DataReaderStats"
+        },
+        {
+          "kind": "class",
+          "name": "DataReaderSummary"
+        },
+        {
+          "kind": "class",
+          "name": "DataRecorder"
+        },
+        {
+          "kind": "class",
+          "name": "DataWriter"
+        },
+        {
+          "kind": "class",
+          "name": "DataWriterStats"
+        },
+        {
+          "kind": "class",
+          "name": "DatasetValidationResult"
+        },
+        {
+          "kind": "class",
+          "name": "EMA"
+        },
+        {
+          "kind": "class",
+          "name": "EmitMethods"
+        },
+        {
+          "kind": "class",
+          "name": "Engine"
+        },
+        {
+          "kind": "class",
+          "name": "EquityCurve"
+        },
+        {
+          "kind": "class",
+          "name": "ExchangeCapabilities"
+        },
+        {
+          "kind": "class",
+          "name": "ExecutionListener"
+        },
+        {
+          "kind": "class",
+          "name": "Executor"
+        },
+        {
+          "kind": "class",
+          "name": "ExportResult"
+        },
+        {
+          "kind": "class",
+          "name": "FloxError"
+        },
+        {
+          "kind": "class",
+          "name": "FootprintBar"
+        },
+        {
+          "kind": "class",
+          "name": "GridSearch"
+        },
+        {
+          "kind": "class",
+          "name": "GridSearchResult"
+        },
+        {
+          "kind": "class",
+          "name": "HeatmapOptions"
+        },
+        {
+          "kind": "class",
+          "name": "IndicatorGraph"
+        },
+        {
+          "kind": "class",
+          "name": "KAMA"
+        },
+        {
+          "kind": "class",
+          "name": "KillSwitch"
+        },
+        {
+          "kind": "class",
+          "name": "Kurtosis"
+        },
+        {
+          "kind": "class",
+          "name": "L3Book"
+        },
+        {
+          "kind": "class",
+          "name": "MACD"
+        },
+        {
+          "kind": "class",
+          "name": "MarketDataRecorderHook"
+        },
+        {
+          "kind": "class",
+          "name": "MarketProfile"
+        },
+        {
+          "kind": "class",
+          "name": "MergeDirResult"
+        },
+        {
+          "kind": "class",
+          "name": "Order"
+        },
+        {
+          "kind": "class",
+          "name": "OrderBook"
+        },
+        {
+          "kind": "class",
+          "name": "OrderTracker"
+        },
+        {
+          "kind": "class",
+          "name": "OrderValidator"
+        },
+        {
+          "kind": "class",
+          "name": "ParkinsonVol"
+        },
+        {
+          "kind": "class",
+          "name": "Partition"
+        },
+        {
+          "kind": "class",
+          "name": "Partitioner"
+        },
+        {
+          "kind": "class",
+          "name": "PnLTracker"
+        },
+        {
+          "kind": "class",
+          "name": "PositionGroupTracker"
+        },
+        {
+          "kind": "class",
+          "name": "PositionTracker"
+        },
+        {
+          "kind": "class",
+          "name": "RMA"
+        },
+        {
+          "kind": "class",
+          "name": "RSI"
+        },
+        {
+          "kind": "class",
+          "name": "ReplayEvent"
+        },
+        {
+          "kind": "class",
+          "name": "ReplaySource"
+        },
+        {
+          "kind": "class",
+          "name": "RiskManager"
+        },
+        {
+          "kind": "class",
+          "name": "RogersSatchellVol"
+        },
+        {
+          "kind": "class",
+          "name": "RollingZScore"
+        },
+        {
+          "kind": "class",
+          "name": "Runner"
+        },
+        {
+          "kind": "class",
+          "name": "SMA"
+        },
+        {
+          "kind": "class",
+          "name": "SegmentValidationResult"
+        },
+        {
+          "kind": "class",
+          "name": "ShannonEntropy"
+        },
+        {
+          "kind": "class",
+          "name": "Signal"
+        },
+        {
+          "kind": "class",
+          "name": "SignalBuilder"
+        },
+        {
+          "kind": "class",
+          "name": "SimulatedExecutor"
+        },
+        {
+          "kind": "class",
+          "name": "Skewness"
+        },
+        {
+          "kind": "class",
+          "name": "Slope"
+        },
+        {
+          "kind": "class",
+          "name": "SplitResult"
+        },
+        {
+          "kind": "class",
+          "name": "Stochastic"
+        },
+        {
+          "kind": "class",
+          "name": "StorageSink"
+        },
+        {
+          "kind": "class",
+          "name": "Strategy"
+        },
+        {
+          "kind": "class",
+          "name": "StreamingIndicatorGraph"
+        },
+        {
+          "kind": "class",
+          "name": "Symbol"
+        },
+        {
+          "kind": "class",
+          "name": "SymbolContext"
+        },
+        {
+          "kind": "class",
+          "name": "SymbolRegistry"
+        },
+        {
+          "kind": "class",
+          "name": "TEMA"
+        },
+        {
+          "kind": "class",
+          "name": "TradeData"
+        },
+        {
+          "kind": "class",
+          "name": "TradeRecord"
+        },
+        {
+          "kind": "class",
+          "name": "VolumeProfile"
+        },
+        {
+          "kind": "class",
+          "name": "WalkForwardConfig"
+        },
+        {
+          "kind": "class",
+          "name": "WalkForwardFold"
+        },
+        {
+          "kind": "class",
+          "name": "WalkForwardRunner"
+        },
+        {
+          "kind": "function",
+          "name": "adf"
+        },
+        {
+          "kind": "function",
+          "name": "adx"
+        },
+        {
+          "kind": "function",
+          "name": "aggregateHeikinAshiBars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregateRangeBars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregateRenkoBars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregateTickBars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregateTimeBars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregateVolumeBars"
+        },
+        {
+          "kind": "function",
+          "name": "atr"
+        },
+        {
+          "kind": "function",
+          "name": "autocorrelation"
+        },
+        {
+          "kind": "function",
+          "name": "barReturns"
+        },
+        {
+          "kind": "function",
+          "name": "bollinger"
+        },
+        {
+          "kind": "function",
+          "name": "bootstrapCI"
+        },
+        {
+          "kind": "function",
+          "name": "cci"
+        },
+        {
+          "kind": "function",
+          "name": "chop"
+        },
+        {
+          "kind": "function",
+          "name": "correlation"
+        },
+        {
+          "kind": "function",
+          "name": "cvd"
+        },
+        {
+          "kind": "function",
+          "name": "dema"
+        },
+        {
+          "kind": "function",
+          "name": "ema"
+        },
+        {
+          "kind": "function",
+          "name": "exportData"
+        },
+        {
+          "kind": "function",
+          "name": "extractSymbols"
+        },
+        {
+          "kind": "function",
+          "name": "extractTimeRange"
+        },
+        {
+          "kind": "function",
+          "name": "inspect"
+        },
+        {
+          "kind": "function",
+          "name": "kama"
+        },
+        {
+          "kind": "function",
+          "name": "kurtosis"
+        },
+        {
+          "kind": "function",
+          "name": "list_indicators"
+        },
+        {
+          "kind": "function",
+          "name": "macd"
+        },
+        {
+          "kind": "function",
+          "name": "mergeDir"
+        },
+        {
+          "kind": "function",
+          "name": "mergeSegments"
+        },
+        {
+          "kind": "function",
+          "name": "obv"
+        },
+        {
+          "kind": "function",
+          "name": "parkinson_vol"
+        },
+        {
+          "kind": "function",
+          "name": "permutationTest"
+        },
+        {
+          "kind": "function",
+          "name": "profitFactor"
+        },
+        {
+          "kind": "function",
+          "name": "recompress"
+        },
+        {
+          "kind": "function",
+          "name": "rma"
+        },
+        {
+          "kind": "function",
+          "name": "rogers_satchell_vol"
+        },
+        {
+          "kind": "function",
+          "name": "rollingCorrelation"
+        },
+        {
+          "kind": "function",
+          "name": "rolling_zscore"
+        },
+        {
+          "kind": "function",
+          "name": "rsi"
+        },
+        {
+          "kind": "function",
+          "name": "setLogCallback"
+        },
+        {
+          "kind": "function",
+          "name": "shannon_entropy"
+        },
+        {
+          "kind": "function",
+          "name": "skewness"
+        },
+        {
+          "kind": "function",
+          "name": "slope"
+        },
+        {
+          "kind": "function",
+          "name": "sma"
+        },
+        {
+          "kind": "function",
+          "name": "split"
+        },
+        {
+          "kind": "function",
+          "name": "stochastic"
+        },
+        {
+          "kind": "function",
+          "name": "tema"
+        },
+        {
+          "kind": "function",
+          "name": "tradePnl"
+        },
+        {
+          "kind": "function",
+          "name": "validate"
+        },
+        {
+          "kind": "function",
+          "name": "validateDataset"
+        },
+        {
+          "kind": "function",
+          "name": "validateSegment"
+        },
+        {
+          "kind": "function",
+          "name": "vwap"
+        },
+        {
+          "kind": "function",
+          "name": "winRate"
+        }
+      ]
+    },
+    "pybind11": {
+      "symbols": [
+        {
+          "kind": "class",
+          "name": "ATR"
+        },
+        {
+          "kind": "class",
+          "name": "AutoCorrelation"
+        },
+        {
+          "kind": "class",
+          "name": "BacktestResult"
+        },
+        {
+          "kind": "class",
+          "name": "BacktestRunner"
+        },
+        {
+          "kind": "class",
+          "name": "BarData"
+        },
+        {
+          "kind": "class",
+          "name": "Bollinger"
+        },
+        {
+          "kind": "class",
+          "name": "CCI"
+        },
+        {
+          "kind": "class",
+          "name": "CompositeBookMatrix"
+        },
+        {
+          "kind": "class",
+          "name": "Correlation"
+        },
+        {
+          "kind": "class",
+          "name": "DEMA"
+        },
+        {
+          "kind": "class",
+          "name": "DataReader"
+        },
+        {
+          "kind": "class",
+          "name": "DataRecorder"
+        },
+        {
+          "kind": "class",
+          "name": "DataWriter"
+        },
+        {
+          "kind": "class",
+          "name": "EMA"
+        },
+        {
+          "kind": "class",
+          "name": "Engine"
+        },
+        {
+          "kind": "class",
+          "name": "ExchangeCapabilities"
+        },
+        {
+          "kind": "class",
+          "name": "ExecutionListener"
+        },
+        {
+          "kind": "class",
+          "name": "Executor"
+        },
+        {
+          "kind": "class",
+          "name": "FloxError"
+        },
+        {
+          "kind": "class",
+          "name": "FootprintBar"
+        },
+        {
+          "kind": "class",
+          "name": "GridSearch"
+        },
+        {
+          "kind": "class",
+          "name": "IndicatorGraph"
+        },
+        {
+          "kind": "class",
+          "name": "KAMA"
+        },
+        {
+          "kind": "class",
+          "name": "KillSwitch"
+        },
+        {
+          "kind": "class",
+          "name": "Kurtosis"
+        },
+        {
+          "kind": "class",
+          "name": "L3Book"
+        },
+        {
+          "kind": "class",
+          "name": "MACD"
+        },
+        {
+          "kind": "class",
+          "name": "MarketDataRecorderHook"
+        },
+        {
+          "kind": "class",
+          "name": "MarketProfile"
+        },
+        {
+          "kind": "class",
+          "name": "Order"
+        },
+        {
+          "kind": "class",
+          "name": "OrderBook"
+        },
+        {
+          "kind": "class",
+          "name": "OrderTracker"
+        },
+        {
+          "kind": "class",
+          "name": "OrderValidator"
+        },
+        {
+          "kind": "class",
+          "name": "ParkinsonVol"
+        },
+        {
+          "kind": "class",
+          "name": "Partitioner"
+        },
+        {
+          "kind": "class",
+          "name": "PnLTracker"
+        },
+        {
+          "kind": "class",
+          "name": "PositionGroupTracker"
+        },
+        {
+          "kind": "class",
+          "name": "PositionTracker"
+        },
+        {
+          "kind": "class",
+          "name": "RMA"
+        },
+        {
+          "kind": "class",
+          "name": "RSI"
+        },
+        {
+          "kind": "class",
+          "name": "ReplayEvent"
+        },
+        {
+          "kind": "class",
+          "name": "ReplaySource"
+        },
+        {
+          "kind": "class",
+          "name": "RiskManager"
+        },
+        {
+          "kind": "class",
+          "name": "RogersSatchellVol"
+        },
+        {
+          "kind": "class",
+          "name": "RollingZScore"
+        },
+        {
+          "kind": "class",
+          "name": "Runner"
+        },
+        {
+          "kind": "class",
+          "name": "SMA"
+        },
+        {
+          "kind": "class",
+          "name": "ShannonEntropy"
+        },
+        {
+          "kind": "class",
+          "name": "Signal"
+        },
+        {
+          "kind": "class",
+          "name": "SignalBuilder"
+        },
+        {
+          "kind": "class",
+          "name": "SimulatedExecutor"
+        },
+        {
+          "kind": "class",
+          "name": "Skewness"
+        },
+        {
+          "kind": "class",
+          "name": "Slope"
+        },
+        {
+          "kind": "class",
+          "name": "Stats"
+        },
+        {
+          "kind": "class",
+          "name": "Stochastic"
+        },
+        {
+          "kind": "class",
+          "name": "StorageSink"
+        },
+        {
+          "kind": "class",
+          "name": "Strategy"
+        },
+        {
+          "kind": "class",
+          "name": "Symbol"
+        },
+        {
+          "kind": "class",
+          "name": "SymbolContext"
+        },
+        {
+          "kind": "class",
+          "name": "SymbolRegistry"
+        },
+        {
+          "kind": "class",
+          "name": "TEMA"
+        },
+        {
+          "kind": "class",
+          "name": "TradeData"
+        },
+        {
+          "kind": "class",
+          "name": "VolumeProfile"
+        },
+        {
+          "kind": "class",
+          "name": "WalkForwardRunner"
+        },
+        {
+          "kind": "function",
+          "name": "adf"
+        },
+        {
+          "kind": "function",
+          "name": "adx"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_heikin_ashi_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_range_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_renko_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_tick_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_time_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_volume_bars"
+        },
+        {
+          "kind": "function",
+          "name": "atr"
+        },
+        {
+          "kind": "function",
+          "name": "autocorrelation"
+        },
+        {
+          "kind": "function",
+          "name": "bar_returns"
+        },
+        {
+          "kind": "function",
+          "name": "bollinger"
+        },
+        {
+          "kind": "function",
+          "name": "bootstrap_ci"
+        },
+        {
+          "kind": "function",
+          "name": "cci"
+        },
+        {
+          "kind": "function",
+          "name": "chop"
+        },
+        {
+          "kind": "function",
+          "name": "correlation"
+        },
+        {
+          "kind": "function",
+          "name": "cvd"
+        },
+        {
+          "kind": "function",
+          "name": "dema"
+        },
+        {
+          "kind": "function",
+          "name": "ema"
+        },
+        {
+          "kind": "function",
+          "name": "export_data"
+        },
+        {
+          "kind": "function",
+          "name": "extract_symbols"
+        },
+        {
+          "kind": "function",
+          "name": "extract_time_range"
+        },
+        {
+          "kind": "function",
+          "name": "inspect"
+        },
+        {
+          "kind": "function",
+          "name": "kama"
+        },
+        {
+          "kind": "function",
+          "name": "kurtosis"
+        },
+        {
+          "kind": "function",
+          "name": "list_indicators"
+        },
+        {
+          "kind": "function",
+          "name": "macd"
+        },
+        {
+          "kind": "function",
+          "name": "merge"
+        },
+        {
+          "kind": "function",
+          "name": "merge_dir"
+        },
+        {
+          "kind": "function",
+          "name": "obv"
+        },
+        {
+          "kind": "function",
+          "name": "parkinson_vol"
+        },
+        {
+          "kind": "function",
+          "name": "permutation_test"
+        },
+        {
+          "kind": "function",
+          "name": "prices_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "profit_factor"
+        },
+        {
+          "kind": "function",
+          "name": "quantities_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "recompress"
+        },
+        {
+          "kind": "function",
+          "name": "rma"
+        },
+        {
+          "kind": "function",
+          "name": "rogers_satchell_vol"
+        },
+        {
+          "kind": "function",
+          "name": "rolling_correlation"
+        },
+        {
+          "kind": "function",
+          "name": "rolling_zscore"
+        },
+        {
+          "kind": "function",
+          "name": "rsi"
+        },
+        {
+          "kind": "function",
+          "name": "set_log_callback"
+        },
+        {
+          "kind": "function",
+          "name": "shannon_entropy"
+        },
+        {
+          "kind": "function",
+          "name": "skewness"
+        },
+        {
+          "kind": "function",
+          "name": "slope"
+        },
+        {
+          "kind": "function",
+          "name": "sma"
+        },
+        {
+          "kind": "function",
+          "name": "split"
+        },
+        {
+          "kind": "function",
+          "name": "stochastic"
+        },
+        {
+          "kind": "function",
+          "name": "tema"
+        },
+        {
+          "kind": "function",
+          "name": "trade_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "validate"
+        },
+        {
+          "kind": "function",
+          "name": "validate_dataset"
+        },
+        {
+          "kind": "function",
+          "name": "volumes_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "vwap"
+        },
+        {
+          "kind": "function",
+          "name": "win_rate"
+        }
+      ]
+    },
+    "quickjs": {
+      "symbols": []
+    }
+  },
+  "groups": {
+    "additional_bar": {
+      "capi_functions": [
+        "flox_aggregate_range_bars",
+        "flox_aggregate_renko_bars"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "aggregateRangeBars",
+          "aggregateRenkoBars"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "aggregate_range_bars",
+          "aggregate_renko_bars"
+        ],
+        "status": "required"
+      }
+    },
+    "additional_stats": {
+      "capi_functions": [
+        "flox_stat_bootstrap_ci",
+        "flox_stat_permutation_test"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "reason": "stats functions exposed via Stats class (has permutationTest / bootstrapCi methods); function-style not declared. Cosmetic gap; tracked under 'expand napi stats surface'.",
+        "status": "allowlist"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "permutation_test",
+          "bootstrap_ci"
+        ],
+        "status": "required"
+      }
+    },
+    "backtest_slippage": {
+      "capi_functions": [
+        "flox_backtest_result_create",
+        "flox_backtest_result_destroy",
+        "flox_backtest_result_equity_curve",
+        "flox_backtest_result_ingest_executor",
+        "flox_backtest_result_record_fill",
+        "flox_backtest_result_stats",
+        "flox_backtest_result_trades",
+        "flox_backtest_result_write_equity_curve_csv",
+        "flox_simulated_executor_on_best_levels",
+        "flox_simulated_executor_on_book_snapshot",
+        "flox_simulated_executor_on_trade_qty",
+        "flox_simulated_executor_set_default_slippage",
+        "flox_simulated_executor_set_queue_model",
+        "flox_simulated_executor_set_symbol_slippage"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "SimulatedExecutor",
+          "BacktestResult"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "SimulatedExecutor",
+          "BacktestResult"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "backtestrunner_replay": {
+      "capi_functions": [
+        "flox_backtest_runner_create",
+        "flox_backtest_runner_destroy",
+        "flox_backtest_runner_run_bars",
+        "flox_backtest_runner_run_csv",
+        "flox_backtest_runner_run_ohlcv",
+        "flox_backtest_runner_run_replay_source",
+        "flox_backtest_runner_set_strategy",
+        "flox_backtest_runner_take_result"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "BacktestRunner"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "BacktestRunner"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "bar_aggregation": {
+      "capi_functions": [
+        "flox_aggregate_tick_bars",
+        "flox_aggregate_time_bars",
+        "flox_aggregate_volume_bars"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "aggregateTimeBars",
+          "aggregateTickBars",
+          "aggregateVolumeBars"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "aggregate_time_bars",
+          "aggregate_tick_bars",
+          "aggregate_volume_bars"
+        ],
+        "status": "required"
+      }
+    },
+    "composite_book": {
+      "capi_functions": [
+        "flox_composite_book_best_ask",
+        "flox_composite_book_best_bid",
+        "flox_composite_book_check_staleness",
+        "flox_composite_book_create",
+        "flox_composite_book_destroy",
+        "flox_composite_book_has_arb",
+        "flox_composite_book_mark_stale"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "CompositeBookMatrix"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "CompositeBookMatrix"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "context_queries": {
+      "capi_functions": [
+        "flox_best_ask_raw",
+        "flox_best_bid_raw",
+        "flox_get_order_status",
+        "flox_get_symbol_context",
+        "flox_last_trade_price_raw",
+        "flox_mid_price_raw",
+        "flox_position_raw"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      }
+    },
+    "data_reader": {
+      "capi_functions": [
+        "flox_data_reader_count",
+        "flox_data_reader_create",
+        "flox_data_reader_destroy"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "DataReader"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "DataReader"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "data_writer": {
+      "capi_functions": [
+        "flox_data_writer_close",
+        "flox_data_writer_create",
+        "flox_data_writer_destroy",
+        "flox_data_writer_flush",
+        "flox_data_writer_write_trade"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "DataWriter"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "DataWriter"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "datareader": {
+      "capi_functions": [
+        "flox_data_reader_count_book_updates",
+        "flox_data_reader_count_book_updates_from",
+        "flox_data_reader_create_filtered",
+        "flox_data_reader_read_bbo",
+        "flox_data_reader_read_bbo_from",
+        "flox_data_reader_read_book_updates",
+        "flox_data_reader_read_book_updates_from",
+        "flox_data_reader_read_trades",
+        "flox_data_reader_read_trades_from",
+        "flox_data_reader_stats",
+        "flox_data_reader_summary"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "DataReader"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "DataReader"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "datarecorder": {
+      "capi_functions": [
+        "flox_data_recorder_add_symbol",
+        "flox_data_recorder_create",
+        "flox_data_recorder_destroy",
+        "flox_data_recorder_flush",
+        "flox_data_recorder_is_recording",
+        "flox_data_recorder_start",
+        "flox_data_recorder_stop"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "DataRecorder"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "DataRecorder"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "datawriter": {
+      "capi_functions": [
+        "flox_data_writer_stats"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "DataWriter"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "DataWriter"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "execution": {
+      "capi_functions": [
+        "flox_backtest_runner_add_execution_listener",
+        "flox_backtest_runner_set_executor",
+        "flox_execution_listener_create",
+        "flox_execution_listener_destroy",
+        "flox_executor_create",
+        "flox_executor_destroy",
+        "flox_executor_get_capabilities",
+        "flox_live_engine_set_executor",
+        "flox_runner_set_executor"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Executor",
+          "ExecutionListener"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Executor",
+          "ExecutionListener"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "executor_fill": {
+      "capi_functions": [
+        "flox_simulated_executor_get_fills"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      }
+    },
+    "fixed_point": {
+      "capi_functions": [
+        "flox_price_from_double",
+        "flox_price_to_double",
+        "flox_quantity_from_double",
+        "flox_quantity_to_double"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      }
+    },
+    "floxliveengine_disruptor": {
+      "capi_functions": [
+        "flox_live_engine_add_strategy",
+        "flox_live_engine_create",
+        "flox_live_engine_destroy",
+        "flox_live_engine_publish_bar",
+        "flox_live_engine_publish_book_snapshot",
+        "flox_live_engine_publish_trade",
+        "flox_live_engine_start",
+        "flox_live_engine_stop"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Engine"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Engine"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "footprint_bar": {
+      "capi_functions": [
+        "flox_footprint_add_trade",
+        "flox_footprint_clear",
+        "flox_footprint_create",
+        "flox_footprint_destroy",
+        "flox_footprint_num_levels",
+        "flox_footprint_total_delta",
+        "flox_footprint_total_volume"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "FootprintBar"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "FootprintBar"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "grid_search": {
+      "capi_functions": [
+        "flox_grid_search_add_axis",
+        "flox_grid_search_create",
+        "flox_grid_search_destroy",
+        "flox_grid_search_params_for_index",
+        "flox_grid_search_run",
+        "flox_grid_search_total"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "GridSearch"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "GridSearch"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "heatmap": {
+      "capi_functions": [
+        "flox_render_heatmap_html"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "reason": "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked under W6-T004 follow-up if dts shape needs flattening.",
+        "status": "allowlist"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "reason": "exposed via flox_py.report.heatmap_html / write_heatmap (pure-Python wrappers around the C ABI's flox_render_heatmap_html); also reachable via flox_py._flox_py._heatmap submodule. Submodule shape is not currently inspected by the parity gate.",
+        "status": "allowlist"
+      }
+    },
+    "heikin_ashi": {
+      "capi_functions": [
+        "flox_aggregate_heikin_ashi_bars"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "aggregateHeikinAshiBars"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "aggregate_heikin_ashi_bars"
+        ],
+        "status": "required"
+      }
+    },
+    "indicator_functions": {
+      "capi_functions": [
+        "flox_indicator_adf",
+        "flox_indicator_adx",
+        "flox_indicator_atr",
+        "flox_indicator_autocorrelation",
+        "flox_indicator_bollinger",
+        "flox_indicator_cci",
+        "flox_indicator_chop",
+        "flox_indicator_correlation",
+        "flox_indicator_cvd",
+        "flox_indicator_dema",
+        "flox_indicator_ema",
+        "flox_indicator_kama",
+        "flox_indicator_kurtosis",
+        "flox_indicator_macd",
+        "flox_indicator_obv",
+        "flox_indicator_parkinson_vol",
+        "flox_indicator_rma",
+        "flox_indicator_rogers_satchell_vol",
+        "flox_indicator_rolling_zscore",
+        "flox_indicator_rsi",
+        "flox_indicator_shannon_entropy",
+        "flox_indicator_skewness",
+        "flox_indicator_slope",
+        "flox_indicator_sma",
+        "flox_indicator_stochastic",
+        "flox_indicator_tema",
+        "flox_indicator_vwap"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "sma",
+          "ema",
+          "rsi",
+          "macd",
+          "atr"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "sma",
+          "ema",
+          "rsi",
+          "macd",
+          "atr"
+        ],
+        "status": "required"
+      }
+    },
+    "indicatorgraph": {
+      "capi_functions": [
+        "flox_indicator_graph_add_node",
+        "flox_indicator_graph_bar_count",
+        "flox_indicator_graph_close",
+        "flox_indicator_graph_create",
+        "flox_indicator_graph_current",
+        "flox_indicator_graph_destroy",
+        "flox_indicator_graph_get",
+        "flox_indicator_graph_high",
+        "flox_indicator_graph_invalidate",
+        "flox_indicator_graph_invalidate_all",
+        "flox_indicator_graph_low",
+        "flox_indicator_graph_require",
+        "flox_indicator_graph_reset",
+        "flox_indicator_graph_reset_all",
+        "flox_indicator_graph_set_bars",
+        "flox_indicator_graph_step",
+        "flox_indicator_graph_volume",
+        "flox_streaming_graph_add_node",
+        "flox_streaming_graph_bar_count",
+        "flox_streaming_graph_close",
+        "flox_streaming_graph_create",
+        "flox_streaming_graph_current",
+        "flox_streaming_graph_destroy",
+        "flox_streaming_graph_high",
+        "flox_streaming_graph_low",
+        "flox_streaming_graph_reset",
+        "flox_streaming_graph_reset_all",
+        "flox_streaming_graph_step",
+        "flox_streaming_graph_volume"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "IndicatorGraph",
+          "StreamingIndicatorGraph"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "IndicatorGraph"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "l3_order": {
+      "capi_functions": [
+        "flox_l3_book_add_order",
+        "flox_l3_book_ask_at_price",
+        "flox_l3_book_best_ask",
+        "flox_l3_book_best_bid",
+        "flox_l3_book_bid_at_price",
+        "flox_l3_book_create",
+        "flox_l3_book_destroy",
+        "flox_l3_book_modify_order",
+        "flox_l3_book_remove_order"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "L3Book"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "L3Book"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "logger": {
+      "capi_functions": [
+        "flox_set_log_callback"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "setLogCallback"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "set_log_callback"
+        ],
+        "status": "required"
+      }
+    },
+    "market_profile": {
+      "capi_functions": [
+        "flox_market_profile_add_trade",
+        "flox_market_profile_clear",
+        "flox_market_profile_create",
+        "flox_market_profile_destroy",
+        "flox_market_profile_ib_high",
+        "flox_market_profile_ib_low",
+        "flox_market_profile_is_poor_high",
+        "flox_market_profile_is_poor_low",
+        "flox_market_profile_num_levels",
+        "flox_market_profile_poc",
+        "flox_market_profile_vah",
+        "flox_market_profile_val"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "MarketProfile"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "MarketProfile"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "metrics": {
+      "capi_functions": [
+        "flox_live_engine_set_pnl_tracker",
+        "flox_pnl_tracker_create",
+        "flox_pnl_tracker_destroy",
+        "flox_runner_set_pnl_tracker"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "PnLTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "PnLTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "order_book": {
+      "capi_functions": [
+        "flox_book_apply_delta",
+        "flox_book_apply_snapshot",
+        "flox_book_ask_at_price",
+        "flox_book_best_ask",
+        "flox_book_best_bid",
+        "flox_book_bid_at_price",
+        "flox_book_clear",
+        "flox_book_create",
+        "flox_book_destroy",
+        "flox_book_get_asks",
+        "flox_book_get_bids",
+        "flox_book_is_crossed",
+        "flox_book_mid",
+        "flox_book_spread"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "OrderBook"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "OrderBook"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "order_tracker": {
+      "capi_functions": [
+        "flox_order_tracker_active_count",
+        "flox_order_tracker_create",
+        "flox_order_tracker_destroy",
+        "flox_order_tracker_is_active",
+        "flox_order_tracker_on_canceled",
+        "flox_order_tracker_on_filled",
+        "flox_order_tracker_on_submitted",
+        "flox_order_tracker_prune",
+        "flox_order_tracker_total_count"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "OrderTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "OrderTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "partitioner": {
+      "capi_functions": [
+        "flox_partitioner_by_calendar",
+        "flox_partitioner_by_duration",
+        "flox_partitioner_by_event_count",
+        "flox_partitioner_by_symbol",
+        "flox_partitioner_by_time",
+        "flox_partitioner_create",
+        "flox_partitioner_destroy",
+        "flox_partitioner_per_symbol"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Partitioner"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Partitioner"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "pointer_out": {
+      "capi_functions": [
+        "flox_data_reader_stats_p",
+        "flox_data_reader_summary_p",
+        "flox_data_writer_stats_p",
+        "flox_dataset_validate_p",
+        "flox_segment_export_p",
+        "flox_segment_merge_dir_p",
+        "flox_segment_merge_full_p",
+        "flox_segment_split_p",
+        "flox_segment_validate_full_p"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      }
+    },
+    "position": {
+      "capi_functions": [
+        "flox_position_tracker_avg_entry",
+        "flox_position_tracker_create",
+        "flox_position_tracker_destroy",
+        "flox_position_tracker_on_fill",
+        "flox_position_tracker_position",
+        "flox_position_tracker_realized_pnl",
+        "flox_position_tracker_total_pnl"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "PositionTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "PositionTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "position_group": {
+      "capi_functions": [
+        "flox_position_group_close",
+        "flox_position_group_create",
+        "flox_position_group_destroy",
+        "flox_position_group_net_position",
+        "flox_position_group_open",
+        "flox_position_group_open_count",
+        "flox_position_group_partial_close",
+        "flox_position_group_prune",
+        "flox_position_group_realized_pnl",
+        "flox_position_group_total_pnl"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "PositionGroupTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "PositionGroupTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "recorder": {
+      "capi_functions": [
+        "flox_live_engine_set_market_data_recorder",
+        "flox_market_data_recorder_create",
+        "flox_market_data_recorder_destroy",
+        "flox_runner_set_market_data_recorder"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "MarketDataRecorderHook"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "MarketDataRecorderHook"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "replay": {
+      "capi_functions": [
+        "flox_replay_source_create",
+        "flox_replay_source_destroy",
+        "flox_replay_source_seek_to"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "ReplaySource"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "ReplaySource"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "risk": {
+      "capi_functions": [
+        "flox_kill_switch_create",
+        "flox_kill_switch_destroy",
+        "flox_live_engine_set_kill_switch",
+        "flox_live_engine_set_order_validator",
+        "flox_live_engine_set_risk_manager",
+        "flox_order_validator_create",
+        "flox_order_validator_destroy",
+        "flox_risk_manager_create",
+        "flox_risk_manager_destroy",
+        "flox_runner_set_kill_switch",
+        "flox_runner_set_order_validator",
+        "flox_runner_set_risk_manager"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "RiskManager",
+          "KillSwitch",
+          "OrderValidator"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "RiskManager",
+          "KillSwitch",
+          "OrderValidator"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "segment": {
+      "capi_functions": [
+        "flox_segment_export",
+        "flox_segment_extract_symbols",
+        "flox_segment_extract_time_range",
+        "flox_segment_merge",
+        "flox_segment_merge_dir",
+        "flox_segment_merge_full",
+        "flox_segment_recompress",
+        "flox_segment_split",
+        "flox_segment_validate"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Partitioner"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Partitioner"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "signal_emission": {
+      "capi_functions": [
+        "flox_emit_cancel",
+        "flox_emit_cancel_all",
+        "flox_emit_close_position",
+        "flox_emit_limit_buy",
+        "flox_emit_limit_buy_tif",
+        "flox_emit_limit_sell",
+        "flox_emit_limit_sell_tif",
+        "flox_emit_market_buy",
+        "flox_emit_market_sell",
+        "flox_emit_modify",
+        "flox_emit_stop_limit",
+        "flox_emit_stop_market",
+        "flox_emit_take_profit_limit",
+        "flox_emit_take_profit_market",
+        "flox_emit_trailing_stop",
+        "flox_emit_trailing_stop_percent"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "SignalBuilder"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Signal",
+          "SignalBuilder"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "simulated_executor": {
+      "capi_functions": [
+        "flox_simulated_executor_advance_clock",
+        "flox_simulated_executor_cancel_all",
+        "flox_simulated_executor_cancel_order",
+        "flox_simulated_executor_create",
+        "flox_simulated_executor_destroy",
+        "flox_simulated_executor_fill_count",
+        "flox_simulated_executor_on_bar",
+        "flox_simulated_executor_on_trade",
+        "flox_simulated_executor_submit_order"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "SimulatedExecutor"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "SimulatedExecutor"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "statistics": {
+      "capi_functions": [
+        "flox_stat_correlation",
+        "flox_stat_profit_factor",
+        "flox_stat_win_rate"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "reason": "stats fns currently on Stats class (has tradePnl / winRate / profitFactor methods).",
+        "status": "allowlist"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "trade_pnl",
+          "win_rate",
+          "profit_factor"
+        ],
+        "status": "required"
+      }
+    },
+    "storage": {
+      "capi_functions": [
+        "flox_live_engine_set_storage_sink",
+        "flox_runner_set_storage_sink",
+        "flox_storage_sink_create",
+        "flox_storage_sink_destroy"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "StorageSink"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "StorageSink"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "strategy_lifecycle": {
+      "capi_functions": [
+        "flox_strategy_create",
+        "flox_strategy_destroy"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "SignalBuilder"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Strategy"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "strategyrunner_synchronous": {
+      "capi_functions": [
+        "flox_runner_add_strategy",
+        "flox_runner_create",
+        "flox_runner_destroy",
+        "flox_runner_on_bar",
+        "flox_runner_on_book_snapshot",
+        "flox_runner_on_trade",
+        "flox_runner_start",
+        "flox_runner_stop"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Runner"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Runner"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "symbol_registry": {
+      "capi_functions": [
+        "flox_registry_add_symbol",
+        "flox_registry_create",
+        "flox_registry_destroy",
+        "flox_registry_get_symbol_id",
+        "flox_registry_get_symbol_name",
+        "flox_registry_symbol_count"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "SymbolRegistry"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "SymbolRegistry"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "targets": {
+      "capi_functions": [
+        "flox_target_future_ctc_volatility",
+        "flox_target_future_linear_slope",
+        "flox_target_future_return"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "reason": "targets surfaced via Stats / Engine helpers; submodule shape differs from python.",
+        "status": "allowlist"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "reason": "exposed as `targets` submodule (see flox_py/_flox_py/targets.pyi); submodule-style is not currently inspected by the parity gate.",
+        "status": "allowlist"
+      }
+    },
+    "validation": {
+      "capi_functions": [
+        "flox_dataset_validate",
+        "flox_segment_validate_full"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      }
+    },
+    "volume_profile": {
+      "capi_functions": [
+        "flox_volume_profile_add_trade",
+        "flox_volume_profile_clear",
+        "flox_volume_profile_create",
+        "flox_volume_profile_destroy",
+        "flox_volume_profile_num_levels",
+        "flox_volume_profile_poc",
+        "flox_volume_profile_total_delta",
+        "flox_volume_profile_total_volume",
+        "flox_volume_profile_vah",
+        "flox_volume_profile_val"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "VolumeProfile"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "VolumeProfile"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "walk_forward": {
+      "capi_functions": [
+        "flox_walk_forward_run_csv"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "WalkForwardRunner"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "WalkForwardRunner"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    }
+  },
+  "version": 1
+}

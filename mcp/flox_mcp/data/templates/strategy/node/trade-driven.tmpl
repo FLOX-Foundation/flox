@@ -1,0 +1,28 @@
+/**
+ * ${name} — trade-driven strategy.
+ *
+ * Reacts on every print (`onTrade`); ignores bars. Use this when the
+ * signal cares about microstructure or sub-bar latency.
+ */
+import { SignalBuilder, EMA } from '@flox-foundation/flox';
+
+export class ${name} {
+  constructor({ period = 20 } = {}) {
+    this.ema = new EMA(period);
+    this.lastSignal = 0;
+  }
+
+  onTrade(ctx, trade) {
+    const v = this.ema.update(trade.price);
+    if (v === null) return;
+    const builder = new SignalBuilder();
+    if (trade.price > v && this.lastSignal !== 1 && ctx.isFlat()) {
+      builder.marketBuy(0.01);
+      this.lastSignal = 1;
+    } else if (trade.price < v && this.lastSignal !== -1 && ctx.isLong()) {
+      builder.marketSell(0.01);
+      this.lastSignal = -1;
+    }
+    return builder.build();
+  }
+}

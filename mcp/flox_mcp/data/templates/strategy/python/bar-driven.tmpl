@@ -1,0 +1,26 @@
+"""${name} — bar-driven strategy.
+
+Receives one ``on_bar`` per finished bar; ignores tick/trade events.
+Use this kind when your signal is computed at bar close (most
+classical TA).
+"""
+from __future__ import annotations
+
+import flox_py as flox
+
+
+class ${name}(flox.Strategy):
+    def __init__(self, symbols, *, fast: int = 10, slow: int = 30):
+        super().__init__(symbols)
+        self.fast = flox.SMA(fast)
+        self.slow = flox.SMA(slow)
+
+    def on_bar(self, ctx, bar):
+        f = self.fast.update(bar.close)
+        s = self.slow.update(bar.close)
+        if f is None or s is None:
+            return
+        if f > s and ctx.is_flat():
+            self.market_buy(0.01)
+        elif f < s and ctx.is_long():
+            self.market_sell(0.01)
