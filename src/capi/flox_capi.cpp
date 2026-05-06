@@ -20,6 +20,9 @@
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/backtest_runner.h"
+#include "flox/backtest/grid_search.h"
+#include "flox/backtest/walk_forward.h"
+#include "flox/replay/ohlcv_replay_source.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/book/events/book_update_event.h"
@@ -4854,4 +4857,295 @@ void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle h,
 {
   toBacktestRunner(h)->setExecutor(
       static_cast<capi_impl::FloxExecutorImpl*>(executor));
+}
+
+// ============================================================
+// Walk-forward (W6-T007 / T008)
+// ============================================================
+
+namespace
+{
+
+uint32_t resolveSymbolId(SymbolRegistry* reg, const char* symbol)
+{
+  if (!symbol || symbol[0] == '\0')
+  {
+    auto all = reg->getAllSymbols();
+    return all.empty() ? 0 : all.front().id;
+  }
+  for (const auto& info : reg->getAllSymbols())
+  {
+    if (info.symbol == symbol)
+    {
+      return info.id;
+    }
+  }
+  return 0;
+}
+
+int64_t normalizeWfTs(int64_t t)
+{
+  if (t < static_cast<int64_t>(1e12))
+  {
+    return t * 1'000'000'000LL;
+  }
+  if (t < static_cast<int64_t>(1e15))
+  {
+    return t * 1'000'000LL;
+  }
+  if (t < static_cast<int64_t>(1e18))
+  {
+    return t * 1'000LL;
+  }
+  return t;
+}
+
+std::vector<OhlcvReplaySource::Bar> loadOhlcvBarsCsv(const char* path,
+                                                     uint32_t symbolId)
+{
+  std::vector<OhlcvReplaySource::Bar> out;
+  std::ifstream f(path);
+  if (!f.is_open())
+  {
+    return out;
+  }
+  std::string line;
+  std::getline(f, line);  // header
+  while (std::getline(f, line))
+  {
+    if (line.empty())
+    {
+      continue;
+    }
+    std::istringstream ss(line);
+    std::string tok;
+    std::getline(ss, tok, ',');
+    int64_t ts = normalizeWfTs(std::stoll(tok));
+    std::getline(ss, tok, ',');  // open
+    std::getline(ss, tok, ',');  // high
+    std::getline(ss, tok, ',');  // low
+    std::getline(ss, tok, ',');
+    double c = std::stod(tok);
+    OhlcvReplaySource::Bar bar;
+    bar.ts_ns = ts;
+    bar.price_raw = Price::fromDouble(c).raw();
+    bar.symbol_id = symbolId;
+    out.push_back(bar);
+  }
+  return out;
+}
+
+void fillStatsStruct(const BacktestStats& s, FloxBacktestStats* out)
+{
+  out->totalTrades = s.totalTrades;
+  out->winningTrades = s.winningTrades;
+  out->losingTrades = s.losingTrades;
+  out->maxConsecutiveWins = s.maxConsecutiveWins;
+  out->maxConsecutiveLosses = s.maxConsecutiveLosses;
+  out->initialCapital = s.initialCapital;
+  out->finalCapital = s.finalCapital;
+  out->totalPnl = s.totalPnl;
+  out->totalFees = s.totalFees;
+  out->netPnl = s.netPnl;
+  out->grossProfit = s.grossProfit;
+  out->grossLoss = s.grossLoss;
+  out->maxDrawdown = s.maxDrawdown;
+  out->maxDrawdownPct = s.maxDrawdownPct;
+  out->winRate = s.winRate;
+  out->profitFactor = s.profitFactor;
+  out->avgWin = s.avgWin;
+  out->avgLoss = s.avgLoss;
+  out->avgWinLossRatio = s.avgWinLossRatio;
+  out->avgTradeDurationNs = s.avgTradeDurationNs;
+  out->medianTradeDurationNs = s.medianTradeDurationNs;
+  out->maxTradeDurationNs = s.maxTradeDurationNs;
+  out->sharpeRatio = s.sharpeRatio;
+  out->sortinoRatio = s.sortinoRatio;
+  out->calmarRatio = s.calmarRatio;
+  out->timeWeightedReturn = s.timeWeightedReturn;
+  out->returnPct = s.returnPct;
+  out->startTimeNs = static_cast<int64_t>(s.startTimeNs);
+  out->endTimeNs = static_cast<int64_t>(s.endTimeNs);
+}
+
+}  // namespace
+
+uint32_t flox_walk_forward_run_csv(FloxRegistryHandle reg_handle,
+                                   const char* csv_path, const char* symbol,
+                                   double fee_rate, double initial_capital,
+                                   const FloxWalkForwardConfig* cfg,
+                                   FloxWalkForwardFactoryFn factory,
+                                   void* user_data,
+                                   FloxWalkForwardFold* folds_out,
+                                   uint32_t max_folds)
+{
+  if (!cfg || !csv_path || !factory)
+  {
+    return 0;
+  }
+  SymbolRegistry* reg = toRegistry(reg_handle);
+  uint32_t symId = resolveSymbolId(reg, symbol);
+  std::vector<OhlcvReplaySource::Bar> bars = loadOhlcvBarsCsv(csv_path, symId);
+  if (bars.empty())
+  {
+    return 0;
+  }
+
+  BacktestConfig bcfg{};
+  bcfg.feeRate = fee_rate;
+  bcfg.initialCapital = initial_capital;
+  bcfg.usePercentageFee = true;
+
+  WalkForwardConfig wcfg{};
+  wcfg.mode = (cfg->mode == 0) ? WalkForwardMode::Anchored
+                               : WalkForwardMode::Sliding;
+  wcfg.trainSize = cfg->train_size;
+  wcfg.testSize = cfg->test_size;
+  wcfg.step = cfg->step;
+  wcfg.minTrainSize = cfg->min_train_size;
+
+  // If the caller only wants a count, compute it from the config + bar
+  // count without invoking the factory or running anything. This lets
+  // bindings size the output buffer cheaply.
+  if (!folds_out || max_folds == 0)
+  {
+    const uint64_t n = static_cast<uint64_t>(bars.size());
+    const uint64_t step = wcfg.step == 0 ? wcfg.testSize : wcfg.step;
+    if (wcfg.testSize == 0 || step == 0)
+    {
+      return 0;
+    }
+    if (wcfg.mode == WalkForwardMode::Anchored)
+    {
+      const uint64_t firstSplit =
+          wcfg.minTrainSize > 0 ? wcfg.minTrainSize : wcfg.testSize;
+      if (firstSplit + wcfg.testSize > n)
+      {
+        return 0;
+      }
+      return static_cast<uint32_t>(
+          (n - firstSplit - wcfg.testSize) / step + 1);
+    }
+    if (wcfg.trainSize + wcfg.testSize > n)
+    {
+      return 0;
+    }
+    return static_cast<uint32_t>(
+        (n - wcfg.trainSize - wcfg.testSize) / step + 1);
+  }
+
+  WalkForwardRunner wfr(bcfg, wcfg);
+  wfr.setStrategyFactory([factory, user_data](std::size_t foldIdx) -> IStrategy*
+                         {
+                           FloxStrategyHandle h = factory(user_data, foldIdx);
+                           return reinterpret_cast<BridgeStrategy*>(h);
+                         });
+
+  auto folds = wfr.run(bars);
+  const uint32_t total = static_cast<uint32_t>(folds.size());
+  const uint32_t n = (total < max_folds) ? total : max_folds;
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    const auto& f = folds[i];
+    folds_out[i].fold_index = f.foldIndex;
+    folds_out[i].train_start_bar = f.trainStartBar;
+    folds_out[i].train_end_bar = f.trainEndBar;
+    folds_out[i].test_start_bar = f.testStartBar;
+    folds_out[i].test_end_bar = f.testEndBar;
+    folds_out[i].train_start_ns = static_cast<int64_t>(f.trainStartNs);
+    folds_out[i].train_end_ns = static_cast<int64_t>(f.trainEndNs);
+    folds_out[i].test_start_ns = static_cast<int64_t>(f.testStartNs);
+    folds_out[i].test_end_ns = static_cast<int64_t>(f.testEndNs);
+    fillStatsStruct(f.trainStats, &folds_out[i].train_stats);
+    fillStatsStruct(f.testStats, &folds_out[i].test_stats);
+  }
+  return n;
+}
+
+// ============================================================
+// Grid search (W6-T002 sequential)
+// ============================================================
+
+struct FloxGridSearchImpl
+{
+  GridSearch core;
+};
+
+FloxGridSearchHandle flox_grid_search_create()
+{
+  return static_cast<FloxGridSearchHandle>(new FloxGridSearchImpl());
+}
+
+void flox_grid_search_destroy(FloxGridSearchHandle gs)
+{
+  delete static_cast<FloxGridSearchImpl*>(gs);
+}
+
+void flox_grid_search_add_axis(FloxGridSearchHandle gs,
+                               const double* values, uint32_t num_values)
+{
+  if (!gs || !values)
+  {
+    return;
+  }
+  std::vector<double> v(values, values + num_values);
+  static_cast<FloxGridSearchImpl*>(gs)->core.addAxis(std::move(v));
+}
+
+uint64_t flox_grid_search_total(FloxGridSearchHandle gs)
+{
+  return gs ? static_cast<FloxGridSearchImpl*>(gs)->core.totalCombinations() : 0;
+}
+
+uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs,
+                                           uint64_t index,
+                                           double* params_out,
+                                           uint32_t max_params)
+{
+  if (!gs)
+  {
+    return 0;
+  }
+  auto p = static_cast<FloxGridSearchImpl*>(gs)->core.paramsForIndex(index);
+  if (!params_out)
+  {
+    return static_cast<uint32_t>(p.size());
+  }
+  const uint32_t n = std::min(static_cast<uint32_t>(p.size()), max_params);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    params_out[i] = p[i];
+  }
+  return n;
+}
+
+uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
+                              FloxGridSearchFactoryFn factory,
+                              void* user_data,
+                              FloxBacktestStats* stats_out,
+                              uint32_t max_results)
+{
+  if (!gs || !factory)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<FloxGridSearchImpl*>(gs);
+  const uint64_t total = impl->core.totalCombinations();
+  if (!stats_out)
+  {
+    return total;
+  }
+  // Run sequentially via direct calls to factory; we don't go through
+  // GridSearch::run because the factory expects a C-side stats fill,
+  // not a BacktestResult.
+  const uint64_t n = std::min<uint64_t>(total, max_results);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    auto params = impl->core.paramsForIndex(i);
+    FloxBacktestStats s{};
+    factory(user_data, i, params.data(),
+            static_cast<uint32_t>(params.size()), &s);
+    stats_out[i] = s;
+  }
+  return n;
 }

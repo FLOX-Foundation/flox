@@ -56,6 +56,7 @@ extern "C"
   typedef void* FloxLiveEngineHandle;
   typedef void* FloxRunnerHandle;
   typedef void* FloxBacktestRunnerHandle;
+  typedef void* FloxGridSearchHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -416,6 +417,30 @@ extern "C"
     uint8_t _pad[2];
   } FloxExchangeCapabilities;
 
+  typedef struct
+  {
+    uint8_t mode;
+    uint64_t train_size;
+    uint64_t test_size;
+    uint64_t step;
+    uint64_t min_train_size;
+  } FloxWalkForwardConfig;
+
+  typedef struct
+  {
+    uint64_t fold_index;
+    uint64_t train_start_bar;
+    uint64_t train_end_bar;
+    uint64_t test_start_bar;
+    uint64_t test_end_bar;
+    int64_t train_start_ns;
+    int64_t train_end_ns;
+    int64_t test_start_ns;
+    int64_t test_end_ns;
+    FloxBacktestStats train_stats;
+    FloxBacktestStats test_stats;
+  } FloxWalkForwardFold;
+
   // ============================================================
   // Callback function pointer types
   // ============================================================
@@ -451,6 +476,8 @@ extern "C"
   typedef void (*FloxExecutorSubmitOCOFn)(void*, const FloxOrder*, const FloxOrder*);
   typedef void (*FloxExecutorCapabilitiesFn)(void*, FloxExchangeCapabilities*);
   typedef void (*FloxExecutorLifecycleFn)(void*);
+  typedef FloxStrategyHandle (*FloxWalkForwardFactoryFn)(void*, uint64_t);
+  typedef int (*FloxGridSearchFactoryFn)(void*, uint64_t, const double*, uint32_t, FloxBacktestStats*);
 
   // ============================================================
   // Callback bundles
@@ -813,6 +840,20 @@ extern "C"
   double flox_footprint_total_volume(FloxFootprintHandle footprint);
   uint32_t flox_footprint_num_levels(FloxFootprintHandle footprint);
   void flox_footprint_clear(FloxFootprintHandle footprint);
+
+  // ============================================================
+  // Grid Search
+  // ============================================================
+
+  FloxGridSearchHandle flox_grid_search_create(void);
+  void flox_grid_search_destroy(FloxGridSearchHandle gs);
+  void flox_grid_search_add_axis(FloxGridSearchHandle gs, const double* values, uint32_t num_values);
+  uint64_t flox_grid_search_total(FloxGridSearchHandle gs);
+  uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs, uint64_t index,
+                                             double* params_out, uint32_t max_params);
+  uint64_t flox_grid_search_run(FloxGridSearchHandle gs, FloxGridSearchFactoryFn factory,
+                                void* user_data, FloxBacktestStats* stats_out,
+                                uint32_t max_results);
 
   // ============================================================
   // Heikin Ashi
@@ -1294,6 +1335,16 @@ extern "C"
   double flox_volume_profile_total_delta(FloxVolumeProfileHandle profile);
   uint32_t flox_volume_profile_num_levels(FloxVolumeProfileHandle profile);
   void flox_volume_profile_clear(FloxVolumeProfileHandle profile);
+
+  // ============================================================
+  // Walk Forward
+  // ============================================================
+
+  uint32_t flox_walk_forward_run_csv(FloxRegistryHandle registry, const char* csv_path,
+                                     const char* symbol, double fee_rate, double initial_capital,
+                                     const FloxWalkForwardConfig* cfg,
+                                     FloxWalkForwardFactoryFn factory, void* user_data,
+                                     FloxWalkForwardFold* folds_out, uint32_t max_folds);
 
 #ifdef __cplusplus
 }

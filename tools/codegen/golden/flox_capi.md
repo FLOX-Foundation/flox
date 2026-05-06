@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 330 functions, 31 handles, 38 structs, 31 callback typedefs, 2 enums, 44 groups.
+**Surface:** 337 functions, 32 handles, 40 structs, 33 callback typedefs, 2 enums, 46 groups.
 
 ## Opaque handles
 
@@ -39,6 +39,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxLiveEngineHandle`
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
+- `FloxGridSearchHandle`
 
 ## Enums
 
@@ -88,6 +89,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxExecutorSubmitOCOFn)(void *, const FloxOrder *, const FloxOrder *);`
 - `typedef void (*FloxExecutorCapabilitiesFn)(void *, FloxExchangeCapabilities *);`
 - `typedef void (*FloxExecutorLifecycleFn)(void *);`
+- `typedef FloxStrategyHandle (*FloxWalkForwardFactoryFn)(void *, uint64_t);`
+- `typedef int (*FloxGridSearchFactoryFn)(void *, uint64_t, const double *, uint32_t, FloxBacktestStats *);`
 
 ## Structs
 
@@ -554,6 +557,32 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `on_stop` | `FloxExecutorLifecycleFn` |
 | `user_data` | `void *` |
 
+### `FloxWalkForwardConfig`
+
+| field | type |
+|---|---|
+| `mode` | `uint8_t` |
+| `train_size` | `uint64_t` |
+| `test_size` | `uint64_t` |
+| `step` | `uint64_t` |
+| `min_train_size` | `uint64_t` |
+
+### `FloxWalkForwardFold`
+
+| field | type |
+|---|---|
+| `fold_index` | `uint64_t` |
+| `train_start_bar` | `uint64_t` |
+| `train_end_bar` | `uint64_t` |
+| `test_start_bar` | `uint64_t` |
+| `test_end_bar` | `uint64_t` |
+| `train_start_ns` | `int64_t` |
+| `train_end_ns` | `int64_t` |
+| `test_start_ns` | `int64_t` |
+| `test_end_ns` | `int64_t` |
+| `train_stats` | `FloxBacktestStats` |
+| `test_stats` | `FloxBacktestStats` |
+
 ## Functions
 
 ### additional_bar
@@ -705,6 +734,15 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_footprint_total_volume(FloxFootprintHandle footprint)`
 - `uint32_t flox_footprint_num_levels(FloxFootprintHandle footprint)`
 - `void flox_footprint_clear(FloxFootprintHandle footprint)`
+
+### grid_search
+
+- `FloxGridSearchHandle flox_grid_search_create(void)`
+- `void flox_grid_search_destroy(FloxGridSearchHandle gs)`
+- `void flox_grid_search_add_axis(FloxGridSearchHandle gs, const double * values, uint32_t num_values)`
+- `uint64_t flox_grid_search_total(FloxGridSearchHandle gs)`
+- `uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs, uint64_t index, double * params_out, uint32_t max_params)`
+- `uint64_t flox_grid_search_run(FloxGridSearchHandle gs, FloxGridSearchFactoryFn factory, void * user_data, FloxBacktestStats * stats_out, uint32_t max_results)`
 
 ### heikin_ashi
 
@@ -1017,4 +1055,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_volume_profile_total_delta(FloxVolumeProfileHandle profile)`
 - `uint32_t flox_volume_profile_num_levels(FloxVolumeProfileHandle profile)`
 - `void flox_volume_profile_clear(FloxVolumeProfileHandle profile)`
+
+### walk_forward
+
+- `uint32_t flox_walk_forward_run_csv(FloxRegistryHandle registry, const char * csv_path, const char * symbol, double fee_rate, double initial_capital, const FloxWalkForwardConfig * cfg, FloxWalkForwardFactoryFn factory, void * user_data, FloxWalkForwardFold * folds_out, uint32_t max_folds)`
 

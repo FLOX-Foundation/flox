@@ -341,6 +341,95 @@ if (fs.existsSync(btCsv)) {
   console.log(`  skip BacktestRunner accessors (CSV not found: ${btCsv})`);
 }
 
+// ── WalkForwardRunner ─────────────────────────────────────────────────
+
+console.log('=== WalkForwardRunner ===');
+
+const wfCsv = path.join(__dirname, '..', '..',
+                        'python', 'flox_py', 'templates', 'research',
+                        'data', 'btcusdt_sample.csv');
+if (fs.existsSync(wfCsv)) {
+  const reg3 = new flox.SymbolRegistry();
+  const btc3 = reg3.addSymbol('exchange', 'BTCUSDT', 0.01);
+  const wfr = new flox.WalkForwardRunner(reg3, 0.0004, 10000, {
+    mode: 'anchored', testSize: 100, step: 100, minTrainSize: 100,
+  });
+  wfr.setStrategyFactory(() => {
+    const fast = new flox.SMA(10);
+    const slow = new flox.SMA(30);
+    return {
+      symbols: [Number(btc3)],
+      onTrade(ctx, t, emit) {
+        const f = fast.update(t.price);
+        const s = slow.update(t.price);
+        if (f === null || s === null || !slow.ready) return;
+        if (f > s && ctx.position === 0) emit.marketBuy(0.01);
+        else if (f < s && ctx.position === 0) emit.marketSell(0.01);
+      },
+    };
+  });
+  const folds = wfr.runCsv(wfCsv, 'BTCUSDT');
+  check(folds.length === 4, `walk-forward fold count == 4 (got ${folds.length})`);
+  check(folds.every(f => f.trainStartBar === 0),
+        'anchored: every fold trains from bar 0');
+  check(folds[0].trainEndBar === 100,
+        `first fold train end == 100 (got ${folds[0].trainEndBar})`);
+  check(typeof folds[0].trainStartNs === 'bigint',
+        'trainStartNs is bigint');
+  check(folds[0].trainStats.totalTrades > 0,
+        `fold 0 train produced trades (got ${folds[0].trainStats.totalTrades})`);
+
+  const wfr2 = new flox.WalkForwardRunner(reg3, 0.0004, 10000, {
+    mode: 'sliding', trainSize: 200, testSize: 100, step: 100,
+  });
+  wfr2.setStrategyFactory(() => {
+    const fast = new flox.SMA(10), slow = new flox.SMA(30);
+    return {
+      symbols: [Number(btc3)],
+      onTrade(ctx, t, emit) {
+        const f = fast.update(t.price), s = slow.update(t.price);
+        if (f === null || s === null || !slow.ready) return;
+        if (f > s && ctx.position === 0) emit.marketBuy(0.01);
+        else if (f < s && ctx.position === 0) emit.marketSell(0.01);
+      },
+    };
+  });
+  const sFolds = wfr2.runCsv(wfCsv, 'BTCUSDT');
+  check(sFolds.length === 3, `sliding fold count == 3 (got ${sFolds.length})`);
+  check(sFolds.every(f => f.trainEndBar - f.trainStartBar === 200),
+        'sliding: train window is constant 200 bars');
+} else {
+  console.log(`  skip WalkForwardRunner (CSV not found: ${wfCsv})`);
+}
+
+// ── GridSearch ────────────────────────────────────────────────────────
+
+console.log('=== GridSearch ===');
+
+{
+  const gs = new flox.GridSearch();
+  gs.addAxis([1, 2, 3]);
+  gs.addAxis([10, 20]);
+  check(gs.total() === 6, `grid total == 6 (got ${gs.total()})`);
+  const p0 = gs.paramsForIndex(0);
+  const p1 = gs.paramsForIndex(1);
+  const p2 = gs.paramsForIndex(2);
+  check(p0[0] === 1 && p0[1] === 10, `idx 0 = [1,10] (got ${p0})`);
+  check(p1[0] === 1 && p1[1] === 20, `idx 1 = [1,20] (got ${p1})`);
+  check(p2[0] === 2 && p2[1] === 10, `idx 2 = [2,10] (got ${p2})`);
+
+  const seen = [];
+  gs.setFactory((params) => {
+    seen.push(params.slice());
+    return { sharpeRatio: params[0] + params[1], returnPct: 0, totalTrades: 0 };
+  });
+  const results = gs.run();
+  check(results.length === 6, `run produced 6 results (got ${results.length})`);
+  check(seen.length === 6, `factory called 6 times (got ${seen.length})`);
+  check(Math.abs(results[5].stats.sharpeRatio - 23) < 1e-9,
+        `last result sharpe == 23 (got ${results[5].stats.sharpeRatio})`);
+}
+
 // ── Summary ───────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed`);

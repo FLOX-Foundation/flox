@@ -421,6 +421,59 @@ export interface BacktestTrades {
   exitTimeNs: BigInt64Array;
 }
 
+/** Walk-forward fold metadata + train/test stats. */
+export interface WalkForwardFold {
+  foldIndex: number;
+  trainStartBar: number;
+  trainEndBar: number;
+  testStartBar: number;
+  testEndBar: number;
+  trainStartNs: bigint;
+  trainEndNs: bigint;
+  testStartNs: bigint;
+  testEndNs: bigint;
+  trainStats: BacktestStats;
+  testStats: BacktestStats;
+}
+
+/** Walk-forward configuration. `mode = 'anchored'`: train window
+ *  expands from bar 0. `mode = 'sliding'`: fixed-size train window
+ *  slides forward. */
+export interface WalkForwardConfig {
+  mode: 'anchored' | 'sliding';
+  trainSize?: number;
+  testSize: number;
+  step?: number;
+  minTrainSize?: number;
+}
+
+export class WalkForwardRunner {
+  constructor(registry: SymbolRegistry, feeRate: number,
+              initialCapital: number, config: WalkForwardConfig);
+  /** Factory called twice per fold (train, then test) to build a
+   *  fresh strategy object. */
+  setStrategyFactory(factory: (foldIndex: number) => Strategy): void;
+  runCsv(path: string, symbol: string): WalkForwardFold[];
+}
+
+/** Result row from `GridSearch.run()`. */
+export interface GridSearchResult {
+  index: number;
+  params: number[];
+  stats: BacktestStats;
+}
+
+/** Type-erased grid search over numeric parameter axes. The last axis
+ *  varies fastest. */
+export class GridSearch {
+  constructor();
+  addAxis(values: number[]): void;
+  setFactory(factory: (params: number[]) => BacktestStats): void;
+  total(): number;
+  paramsForIndex(index: number): number[];
+  run(): GridSearchResult[];
+}
+
 export class BacktestRunner {
   constructor(registry: SymbolRegistry, feeRate: number, initialCapital: number);
   setStrategy(strategy: Strategy): void;

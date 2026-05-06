@@ -55,6 +55,16 @@ groups:
     napi: { status: required, classes: [SimulatedExecutor, BacktestResult] }
     codon: { status: required }
 
+  walk_forward:
+    pybind11: { status: required, classes: [WalkForwardRunner] }
+    napi: { status: required, classes: [WalkForwardRunner] }
+    codon: { status: required }
+
+  grid_search:
+    pybind11: { status: required, classes: [GridSearch] }
+    napi: { status: required, classes: [GridSearch] }
+    codon: { status: required }
+
   simulated_executor:
     pybind11: { status: required, classes: [SimulatedExecutor] }
     napi: { status: required, classes: [SimulatedExecutor] }

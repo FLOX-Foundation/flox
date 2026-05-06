@@ -14,6 +14,7 @@
 #include "flox/common.h"
 #include "flox/error/flox_error.h"
 #include "graph_bindings.h"
+#include "grid_search_bindings.h"
 #include "indicator_bindings.h"
 #include "optimizer_bindings.h"
 #include "position_bindings.h"
@@ -22,6 +23,7 @@
 #include "segment_ops_bindings.h"
 #include "strategy_bindings.h"
 #include "target_bindings.h"
+#include "walk_forward_bindings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -773,6 +775,8 @@ PYBIND11_MODULE(_flox_py, m)
   bindReplay(m);
   bindSegmentOps(m);
   bindBacktest(m);
+  flox_py::bindWalkForward(m);
+  flox_py::bindGridSearch(m);
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);

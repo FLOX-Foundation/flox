@@ -117,6 +117,7 @@ nav:
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
           - Interactive Backtest: how-to/interactive-backtest.md
           - Grid Search: how-to/grid-search.md
+          - Walk-forward: how-to/walk-forward.md
           - Advanced Orders: how-to/advanced-orders.md
           - Multi-Exchange Trading: how-to/multi-exchange-trading.md
       - Indicators & Aggregation:

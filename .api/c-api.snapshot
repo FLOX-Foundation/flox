@@ -110,6 +110,12 @@ flox_footprint_total_delta|double|FloxFootprintHandle
 flox_footprint_total_volume|double|FloxFootprintHandle
 flox_get_order_status|int32_t|FloxStrategyHandle|uint64_t
 flox_get_symbol_context|void|FloxStrategyHandle|uint32_t|FloxSymbolContext *
+flox_grid_search_add_axis|void|FloxGridSearchHandle|const double *|uint32_t
+flox_grid_search_create|FloxGridSearchHandle
+flox_grid_search_destroy|void|FloxGridSearchHandle
+flox_grid_search_params_for_index|uint32_t|FloxGridSearchHandle|uint64_t|double *|uint32_t
+flox_grid_search_run|uint64_t|FloxGridSearchHandle|FloxGridSearchFactoryFn|void *|FloxBacktestStats *|uint32_t
+flox_grid_search_total|uint64_t|FloxGridSearchHandle
 flox_indicator_adf|void|const double *|size_t|size_t|const char *|double *|double *|size_t *
 flox_indicator_adx|void|const double *|const double *|const double *|size_t|size_t|double *|double *|double *
 flox_indicator_atr|void|const double *|const double *|const double *|size_t|size_t|double *
@@ -331,3 +337,4 @@ flox_volume_profile_total_delta|double|FloxVolumeProfileHandle
 flox_volume_profile_total_volume|double|FloxVolumeProfileHandle
 flox_volume_profile_vah|double|FloxVolumeProfileHandle
 flox_volume_profile_val|double|FloxVolumeProfileHandle
+flox_walk_forward_run_csv|uint32_t|FloxRegistryHandle|const char *|const char *|double|double|const FloxWalkForwardConfig *|FloxWalkForwardFactoryFn|void *|FloxWalkForwardFold *|uint32_t

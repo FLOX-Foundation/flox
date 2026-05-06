@@ -2211,6 +2211,104 @@ extern "C"
   void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner,
                                          FloxExecutorHandle executor);
 
+  // ============================================================
+  // Walk-forward (W6-T007 / T008)
+  // ============================================================
+  //
+  // Anchored mode: train [0, t]; test [t, t + test_size]; t advances
+  // by `step`. min_train_size sets the first split.
+  // Sliding mode: train [t, t + train_size]; test [t + train_size,
+  // t + train_size + test_size]; t advances by `step`.
+  typedef struct
+  {
+    uint8_t mode;            // 0 = Anchored, 1 = Sliding
+    uint64_t train_size;     // sliding mode only (bars)
+    uint64_t test_size;      // bars per test window
+    uint64_t step;           // 0 → defaults to test_size
+    uint64_t min_train_size; // anchored mode only (bars before first fold)
+  } FloxWalkForwardConfig;
+
+  typedef struct
+  {
+    uint64_t fold_index;
+    uint64_t train_start_bar;
+    uint64_t train_end_bar;
+    uint64_t test_start_bar;
+    uint64_t test_end_bar;
+    int64_t train_start_ns;
+    int64_t train_end_ns;
+    int64_t test_start_ns;
+    int64_t test_end_ns;
+    FloxBacktestStats train_stats;
+    FloxBacktestStats test_stats;
+  } FloxWalkForwardFold;
+
+  // Per-fold strategy factory. Called twice per fold (once for train,
+  // once for test). Caller (binding) returns a fresh strategy handle
+  // each call; the handle ownership stays with the caller — the
+  // engine does not destroy it.
+  typedef FloxStrategyHandle (*FloxWalkForwardFactoryFn)(
+      void* user_data, uint64_t fold_index);
+
+  // Run walk-forward over a CSV. Returns the total fold count.
+  // If folds_out is NULL, computes the total without running anything;
+  // pass max_folds = total in a second call to fill the buffer.
+  FLOX_EXPORT(group = "walk_forward")
+  uint32_t flox_walk_forward_run_csv(FloxRegistryHandle registry,
+                                     const char* csv_path, const char* symbol,
+                                     double fee_rate, double initial_capital,
+                                     const FloxWalkForwardConfig* cfg,
+                                     FloxWalkForwardFactoryFn factory,
+                                     void* user_data,
+                                     FloxWalkForwardFold* folds_out,
+                                     uint32_t max_folds);
+
+  // ============================================================
+  // Grid search (W6-T002 sequential)
+  // ============================================================
+  //
+  // Type-erased over vector<double> params. Each axis carries a list
+  // of values; total combinations = product of axis lengths. Last axis
+  // varies fastest (row-major flatten).
+  typedef void* FloxGridSearchHandle;
+
+  // Factory: caller fills out_stats from a backtest run on `params`.
+  // Returns 1 if stats are valid, 0 to leave the slot zero-filled.
+  typedef int (*FloxGridSearchFactoryFn)(
+      void* user_data, uint64_t param_index,
+      const double* params, uint32_t num_params,
+      FloxBacktestStats* out_stats);
+
+  FLOX_EXPORT(group = "grid_search")
+  FloxGridSearchHandle flox_grid_search_create();
+
+  FLOX_EXPORT(group = "grid_search")
+  void flox_grid_search_destroy(FloxGridSearchHandle gs);
+
+  FLOX_EXPORT(group = "grid_search")
+  void flox_grid_search_add_axis(FloxGridSearchHandle gs,
+                                 const double* values, uint32_t num_values);
+
+  FLOX_EXPORT(group = "grid_search")
+  uint64_t flox_grid_search_total(FloxGridSearchHandle gs);
+
+  // Decode a flat index into (params_out[0..num_axes]). Returns the
+  // number of axes (== params written), or 0 on bad index.
+  FLOX_EXPORT(group = "grid_search")
+  uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs,
+                                             uint64_t index,
+                                             double* params_out,
+                                             uint32_t max_params);
+
+  // Run sequentially. Returns total combinations. If stats_out is NULL,
+  // computes total without invoking the factory.
+  FLOX_EXPORT(group = "grid_search")
+  uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
+                                FloxGridSearchFactoryFn factory,
+                                void* user_data,
+                                FloxBacktestStats* stats_out,
+                                uint32_t max_results);
+
 #ifdef __cplusplus
 }
 #endif
