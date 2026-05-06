@@ -206,6 +206,7 @@ nav:
           - "E_RUN_003 — Invalid factory return value": errors/E_RUN_003.md
           - "E_LEN_001 — Array length mismatch": errors/E_LEN_001.md
           - "E_LEN_002 — Empty input array": errors/E_LEN_002.md
+          - "E_LEN_003 — Wrong array dimensionality": errors/E_LEN_003.md
           - "E_IO_001 — Cannot open file (read)": errors/E_IO_001.md
           - "E_IO_002 — Cannot open file (write)": errors/E_IO_002.md
           - "E_KEY_001 — Required key missing": errors/E_KEY_001.md

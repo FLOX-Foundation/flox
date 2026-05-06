@@ -83,7 +83,7 @@ inline Napi::Value stat_whites_reality_check(const Napi::CallbackInfo& info)
   double bestStat = 0.0;
   int32_t bestIndex = -1;
   flox_stat_whites_reality_check(returns.Data(), K, T, numBootstrap, avgBlock,
-                                  &pValue, &bestStat, &bestIndex);
+                                 &pValue, &bestStat, &bestIndex);
   auto o = Napi::Object::New(info.Env());
   o.Set("p_value", pValue);
   o.Set("best_stat", bestStat);
