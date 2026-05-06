@@ -128,15 +128,15 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')" \
-              -DFLOX_ENABLE_TESTS=ON \
-              -DFLOX_ENABLE_BENCHMARKS=ON \
-              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=ON \
+              -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_BACKTEST=ON \
-              -DFLOX_ENABLE_CAPI=ON \
-              -DFLOX_ENABLE_PYTHON=ON \
-              -DFLOX_ENABLE_CODON=ON \
-              -DFLOX_ENABLE_QUICKJS=ON
+              -DFLOX_BUILD_CAPI=ON \
+              -DFLOX_BUILD_PYTHON=ON \
+              -DFLOX_BUILD_CODON=ON \
+              -DFLOX_BUILD_QUICKJS=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -289,12 +289,12 @@ jobs:
               -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
-              -DFLOX_ENABLE_TESTS=ON \
-              -DFLOX_ENABLE_BENCHMARKS=ON \
-              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=ON \
+              -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_BACKTEST=ON \
-              -DFLOX_ENABLE_CAPI=ON
+              -DFLOX_BUILD_CAPI=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -342,9 +342,9 @@ jobs:
               -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
               -DCMAKE_BUILD_TYPE=Debug \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
-              -DFLOX_ENABLE_TESTS=ON \
-              -DFLOX_ENABLE_BENCHMARKS=OFF \
-              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=OFF \
+              -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_BACKTEST=ON
 
@@ -399,9 +399,9 @@ jobs:
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
               -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
               -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
-              -DFLOX_ENABLE_TESTS=ON \
-              -DFLOX_ENABLE_BENCHMARKS=ON \
-              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=ON \
+              -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_BACKTEST=ON
 
@@ -438,9 +438,9 @@ jobs:
         cmake -B build -G Ninja `
               -DCMAKE_BUILD_TYPE=Release `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-              -DFLOX_ENABLE_TESTS=ON `
-              -DFLOX_ENABLE_BENCHMARKS=ON `
-              -DFLOX_ENABLE_DEMO=ON `
+              -DFLOX_BUILD_TESTS=ON `
+              -DFLOX_BUILD_BENCHMARKS=ON `
+              -DFLOX_BUILD_DEMO=ON `
               -DFLOX_ENABLE_LZ4=ON `
               -DFLOX_ENABLE_BACKTEST=ON
 
@@ -479,9 +479,9 @@ jobs:
               -DCMAKE_CXX_COMPILER=clang-cl `
               -DCMAKE_BUILD_TYPE=Release `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-              -DFLOX_ENABLE_TESTS=ON `
-              -DFLOX_ENABLE_BENCHMARKS=ON `
-              -DFLOX_ENABLE_DEMO=ON `
+              -DFLOX_BUILD_TESTS=ON `
+              -DFLOX_BUILD_BENCHMARKS=ON `
+              -DFLOX_BUILD_DEMO=ON `
               -DFLOX_ENABLE_LZ4=ON `
               -DFLOX_ENABLE_BACKTEST=ON
 
@@ -533,9 +533,9 @@ jobs:
               -DCMAKE_CXX_COMPILER=g++-14 \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
-              -DFLOX_ENABLE_TESTS=ON \
-              -DFLOX_ENABLE_BENCHMARKS=ON \
-              -DFLOX_ENABLE_DEMO=ON \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=ON \
+              -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
               -DFLOX_ENABLE_CPU_AFFINITY=ON \
               -DFLOX_ENABLE_BACKTEST=ON

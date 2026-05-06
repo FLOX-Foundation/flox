@@ -42,13 +42,13 @@ The trade-off: every push that touches connectors runs the full flox CI. The `co
 
 ## Tests
 
-Connector tests are *integration* tests — they connect to real exchange WebSocket endpoints. Building them is gated by both `FLOX_ENABLE_TESTS=ON` and `FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON`; running them via `ctest` requires the further `FLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON`. The default flox CI build skips them entirely.
+Connector tests are *integration* tests — they connect to real exchange WebSocket endpoints. Building them is gated by both `FLOX_BUILD_TESTS=ON` and `FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON`; running them via `ctest` requires the further `FLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON`. The default flox CI build skips them entirely.
 
 To build them locally:
 
 ```bash
 cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
-                -DFLOX_ENABLE_TESTS=ON \
+                -DFLOX_BUILD_TESTS=ON \
                 -DFLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON
 cmake --build build
 ```

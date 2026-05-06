@@ -167,52 +167,89 @@ if (FLOX_ENABLE_TRACY)
   target_compile_definitions(${FLOX} PUBLIC FLOX_ENABLE_TRACY=1)
 endif()
 
-option(FLOX_ENABLE_BENCHMARKS "Enable benchmarks" OFF)
-if (FLOX_ENABLE_BENCHMARKS)
+# ──────────────────────────────────────────────────────────────────────
+# Build artefacts (FLOX_BUILD_*)
+#
+# Naming convention: FLOX_BUILD_* gates optional build outputs (binding
+# wheels, demo binary, tools, tests, benchmarks, connectors); FLOX_ENABLE_*
+# gates capabilities of the core library (backtest module, LZ4, Tracy,
+# CPU affinity).
+#
+# The eight FLOX_BUILD_* options below were renamed from FLOX_ENABLE_*
+# in W9-T002. The deprecated names continue to work as aliases for one
+# release cycle — passing -DFLOX_ENABLE_PYTHON=ON still flips
+# FLOX_BUILD_PYTHON, with a warning. See docs/build/feature-flags.md.
+# ──────────────────────────────────────────────────────────────────────
+
+# Deprecation aliases: copy each old FLOX_ENABLE_<X> to FLOX_BUILD_<X>
+# when the new form was not set explicitly. Emits a one-line warning
+# per legacy use so downstream caches notice and migrate.
+macro(_flox_deprecate_enable_to_build name)
+  if(DEFINED FLOX_ENABLE_${name} AND NOT DEFINED FLOX_BUILD_${name})
+    message(WARNING
+      "FLOX_ENABLE_${name} is deprecated; use FLOX_BUILD_${name}. "
+      "The legacy name will be removed in a future release.")
+    set(FLOX_BUILD_${name} ${FLOX_ENABLE_${name}})
+  endif()
+endmacro()
+
+foreach(_flox_renamed BENCHMARKS TESTS DEMO TOOLS PYTHON CAPI CODON QUICKJS)
+  _flox_deprecate_enable_to_build(${_flox_renamed})
+endforeach()
+
+option(FLOX_BUILD_BENCHMARKS "Build benchmarks" OFF)
+if (FLOX_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
 
 
-option(FLOX_ENABLE_TESTS "Enable tests" OFF)
-if (FLOX_ENABLE_TESTS)
+option(FLOX_BUILD_TESTS "Build tests" OFF)
+if (FLOX_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
 
-option(FLOX_ENABLE_DEMO "Build demo application" OFF)
-if (FLOX_ENABLE_DEMO)
+option(FLOX_BUILD_DEMO "Build demo application" OFF)
+if (FLOX_BUILD_DEMO)
   add_subdirectory(demo)
 endif()
 
-option(FLOX_ENABLE_TOOLS "Build command-line tools" OFF)
-if (FLOX_ENABLE_TOOLS)
+option(FLOX_BUILD_TOOLS "Build command-line tools" OFF)
+if (FLOX_BUILD_TOOLS)
   add_subdirectory(tools)
 endif()
 
-option(FLOX_ENABLE_PYTHON "Build Python bindings" OFF)
-if (FLOX_ENABLE_PYTHON)
+option(FLOX_BUILD_PYTHON "Build Python bindings" OFF)
+if (FLOX_BUILD_PYTHON)
   add_subdirectory(python)
 endif()
 
-option(FLOX_ENABLE_CAPI "Build C API shared library" OFF)
-if (FLOX_ENABLE_CAPI)
+# FLOX_BUILD_NODE is an explicit flag for parity with the other
+# binding artefacts. The Node addon is built out-of-tree by
+# `npm run build` — this flag exists for documentation completeness
+# and so the CI matrix can reference it uniformly. CMake itself does
+# not invoke npm.
+option(FLOX_BUILD_NODE "Build Node.js bindings (out-of-tree via npm)" OFF)
+
+option(FLOX_BUILD_CAPI "Build C API shared library" OFF)
+if (FLOX_BUILD_CAPI)
   # Static lib must be PIC to link into the shared CAPI lib
   set_target_properties(${FLOX} PROPERTIES POSITION_INDEPENDENT_CODE ON)
   add_subdirectory(src/capi)
 endif()
 
-option(FLOX_ENABLE_CODON "Build Codon strategy support" OFF)
-if (FLOX_ENABLE_CODON)
-  if (NOT FLOX_ENABLE_CAPI)
-    message(FATAL_ERROR "FLOX_ENABLE_CODON requires FLOX_ENABLE_CAPI=ON")
+option(FLOX_BUILD_CODON "Build Codon strategy support" OFF)
+if (FLOX_BUILD_CODON)
+  if (NOT FLOX_BUILD_CAPI)
+    message(FATAL_ERROR "FLOX_BUILD_CODON requires FLOX_BUILD_CAPI=ON")
   endif()
   add_subdirectory(codon)
 endif()
 
-option(FLOX_ENABLE_QUICKJS "Build QuickJS JavaScript strategy support" OFF)
-if (FLOX_ENABLE_QUICKJS)
-  if (NOT FLOX_ENABLE_CAPI)
-    message(FATAL_ERROR "FLOX_ENABLE_QUICKJS requires FLOX_ENABLE_CAPI=ON")
+option(FLOX_BUILD_QUICKJS "Build QuickJS JavaScript strategy support" OFF)
+if (FLOX_BUILD_QUICKJS)
+  if (NOT FLOX_BUILD_CAPI)
+    message(FATAL_ERROR "FLOX_BUILD_QUICKJS requires FLOX_BUILD_CAPI=ON")
   endif()
   add_subdirectory(src/quickjs)
 endif()
@@ -223,6 +260,15 @@ endif()
 # FetchContent). See connectors/CMakeLists.txt for the per-connector
 # wiring.
 option(FLOX_BUILD_CONNECTORS "Build native exchange connectors module" OFF)
+
+# Subset of connectors to build when FLOX_BUILD_CONNECTORS=ON. Empty
+# string (the default) means "all venues currently in connectors/src/".
+# Validation lives in connectors/CMakeLists.txt; a configure-time
+# error fires when an unknown name is requested.
+set(FLOX_CONNECTORS "" CACHE STRING
+    "Semicolon-separated list of venues to build under \
+connectors/src/<name>/; empty = all available")
+
 if (FLOX_BUILD_CONNECTORS)
   add_subdirectory(connectors)
 endif()

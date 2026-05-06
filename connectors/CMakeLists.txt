@@ -75,11 +75,59 @@ endif()
 
 # ── Library ──────────────────────────────────────────────────────────
 
-file(GLOB_RECURSE FLOX_CONNECTORS_SRC CONFIGURE_DEPENDS src/*.cpp)
+# Available venues are inferred from the immediate subdirectories of
+# `src/` that contain at least one .cpp. The `FLOX_CONNECTORS` cache
+# variable (defined by the parent) optionally narrows the build to a
+# subset; empty value means "all".
+file(GLOB _flox_connectors_venue_dirs
+     LIST_DIRECTORIES true CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
+set(_flox_connectors_available "")
+foreach(d IN LISTS _flox_connectors_venue_dirs)
+  if(IS_DIRECTORY "${d}")
+    get_filename_component(_name "${d}" NAME)
+    list(APPEND _flox_connectors_available "${_name}")
+  endif()
+endforeach()
+list(SORT _flox_connectors_available)
+
+if(FLOX_CONNECTORS STREQUAL "")
+  set(_flox_connectors_selected "${_flox_connectors_available}")
+else()
+  set(_flox_connectors_selected "${FLOX_CONNECTORS}")
+  foreach(_v IN LISTS _flox_connectors_selected)
+    if(NOT _v IN_LIST _flox_connectors_available)
+      message(FATAL_ERROR
+        "FLOX_CONNECTORS includes unknown venue '${_v}'. "
+        "Available: ${_flox_connectors_available}.")
+    endif()
+  endforeach()
+endif()
+
+set(FLOX_CONNECTORS_SRC "")
+foreach(_venue IN LISTS _flox_connectors_selected)
+  file(GLOB_RECURSE _venue_src CONFIGURE_DEPENDS
+       ${CMAKE_CURRENT_SOURCE_DIR}/src/${_venue}/*.cpp)
+  list(APPEND FLOX_CONNECTORS_SRC ${_venue_src})
+endforeach()
+# `execution/` and `net/` are shared infrastructure; always include them
+# unless explicitly excluded as a venue (they're not exchange names but
+# share the src/ directory layout).
+foreach(_shared execution net)
+  if(NOT _shared IN_LIST _flox_connectors_selected
+     AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/${_shared}")
+    file(GLOB_RECURSE _shared_src CONFIGURE_DEPENDS
+         ${CMAKE_CURRENT_SOURCE_DIR}/src/${_shared}/*.cpp)
+    list(APPEND FLOX_CONNECTORS_SRC ${_shared_src})
+  endif()
+endforeach()
+
 if(NOT FLOX_POLYMARKET_EXECUTOR_AVAILABLE)
   list(FILTER FLOX_CONNECTORS_SRC
        EXCLUDE REGEX ".*polymarket_order_executor\\.cpp$")
 endif()
+
+message(STATUS "Connectors: building ${_flox_connectors_selected}")
 
 add_library(flox-connectors STATIC ${FLOX_CONNECTORS_SRC})
 add_library(flox::connectors ALIAS flox-connectors)
@@ -140,6 +188,6 @@ install(EXPORT flox-connectorsTargets
 option(FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS
        "Build connector integration tests (require network access)" OFF)
 
-if(FLOX_ENABLE_TESTS AND FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS)
+if(FLOX_BUILD_TESTS AND FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS)
   add_subdirectory(tests)
 endif()

@@ -26,7 +26,7 @@ The integration tests under `tests/` connect to live exchange endpoints, so they
 
 ```bash
 cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
-                -DFLOX_ENABLE_TESTS=ON \
+                -DFLOX_BUILD_TESTS=ON \
                 -DFLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON
 cmake --build build
 ```
