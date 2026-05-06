@@ -111,3 +111,7 @@ docs/how-to/grid-search.md
 # Engine renderer covered by python/tests/test_heatmap.py and the
 # heatmap section in node/test/test_bindings.js.
 docs/how-to/heatmap.md
+
+# How-to: log a backtest to MLflow — illustrative end-to-end snippets.
+# log_backtest / log_to_mlflow API covered by python/tests/test_mlflow.py.
+docs/how-to/mlflow.md
