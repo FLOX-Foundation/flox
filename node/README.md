@@ -45,6 +45,32 @@ runner.start();
 // runner.stop()
 ```
 
+## Backtest analytics
+
+```javascript
+// Walk-forward
+const wf = new flox.WalkForwardRunner(registry, {
+  mode: 'anchored', trainPeriods: 180, testPeriods: 30,
+});
+const folds = wf.run(strategyFactory, 'data.csv', 'BTCUSDT');
+
+// Grid search
+const grid = new flox.GridSearch(registry, params => buildStrategy(params));
+grid.addAxis('fast', [5, 10, 20]);
+grid.addAxis('slow', [30, 50, 100]);
+const results = grid.run('data.csv', 'BTCUSDT');
+
+// HTML heatmap (e.g. for the grid above)
+const html = flox.report.heatmapHtml(matrix, {
+  rowLabels: ['fast=5', 'fast=10', 'fast=20'],
+  colLabels: ['slow=30', 'slow=50', 'slow=100'],
+  metricName: 'Sharpe',
+});
+
+// White's reality check — significance test for the best of K strategies
+const wrc = flox.whitesRealityCheck(flatReturns, K, T, 10000);
+```
+
 ## Docs
 
 Full API reference: https://flox-foundation.github.io/flox/reference/node/

@@ -8,6 +8,17 @@ Python bindings for the [FLOX](https://github.com/FLOX-Foundation/flox) trading 
 pip install flox-py
 ```
 
+## Scaffold a new project
+
+```bash
+flox new my-strategy                            # research scaffold (default)
+flox new my-bot --template=live                 # live trading via CcxtBroker
+flox new my-indicators --template=indicator-library   # publishable indicator package
+flox templates                                  # list templates
+```
+
+`flox new` ships with the wheel; see [`docs/how-to/flox-new.md`](https://flox-foundation.github.io/flox/how-to/flox-new/) for what each template lays down.
+
 ## Quick Start
 
 ```python
@@ -145,6 +156,12 @@ bt.set_strategy(MyStrategy([btc]))
 
 stats = bt.run_csv("data.csv")             # auto-detects symbol from registry
 stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
+
+equity = bt.equity_curve()   # list of {timestamp_ns, equity, drawdown_pct}
+trades = bt.trades()         # per-trade detail
+
+from flox_py.report import write_html
+write_html("report.html", stats=stats, equity_curve=equity, trades=trades)
 ```
 
 ### Stats dict
@@ -157,6 +174,35 @@ stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
 | `win_rate` | Winning trade fraction |
 | `sharpe` | Annualized Sharpe ratio |
 | `max_drawdown_pct` | Peak-to-trough drawdown (%) |
+
+### Walk-forward and grid search
+
+```python
+wf = flox.WalkForwardRunner(registry, mode="anchored",
+                            train_periods=180, test_periods=30)
+folds = wf.run(strategy_factory, dataset_path="data.csv", symbol="BTCUSDT")
+
+grid = flox.GridSearch(registry, factory=lambda p: build_strategy(*p))
+grid.add_axis("fast", [5, 10, 20])
+grid.add_axis("slow", [30, 50, 100])
+results = grid.run("data.csv", symbol="BTCUSDT")
+```
+
+Render a heatmap with `flox_py.report.heatmap_html(...)` /
+`write_heatmap(...)`. Run a multiple-comparison-aware significance
+test with `flox.whites_reality_check(returns, num_bootstrap=10_000)`.
+
+### MLflow
+
+```python
+from flox_py import mlflow as flox_mlflow
+
+flox_mlflow.log_backtest(stats, equity_curve=equity, trades=trades,
+                          params={"fast": 10, "slow": 30},
+                          run_name="sma-2025-01")
+```
+
+`mlflow` is optional — install with `pip install mlflow`.
 
 ## Modules
 

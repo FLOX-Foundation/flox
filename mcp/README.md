@@ -117,12 +117,17 @@ developer has installed.
 
 - The server is **local**. No network calls. AI clients spawn it as a
   child process and talk via stdio.
-- All tools are **read-only** today. `validate_strategy` parses but does
-  not execute. `run_backtest` (when added) will sandbox via subprocess
-  + resource limits.
-- The snapshot used by `list_capi_functions` is the same `.api/c-api.snapshot`
-  enforced by the codegen ABI gate; AI agents see exactly what FLOX
-  ships.
+- Most tools are read-only data lookups. The two that execute code —
+  `compute_indicator` and `run_backtest` — run in-process / in a
+  resource-limited subprocess respectively. `run_backtest` is an MVP
+  sandbox: it caps CPU, memory, and output size, but does NOT isolate
+  filesystem or network. Wrap with nsjail / firejail / Docker for any
+  deployment that takes untrusted input.
+- The snapshot used by `list_capi_functions` is the same
+  `.api/c-api.snapshot` enforced by the codegen ABI gate; the IR
+  snapshot used by `lookup_symbol` / `list_bindings` is regenerated
+  from the same IDL spec on every release. So the agent's view of
+  the surface tracks what FLOX actually ships.
 
 ## License
 

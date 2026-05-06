@@ -2,23 +2,57 @@
 
 Solve specific problems. Assumes you know the basics.
 
-## Available Guides
+## Project setup
 
 | Guide | Problem |
 |-------|---------|
-| [Bar Aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
+| [Scaffold a project (`flox new`)](flox-new.md) | Bootstrap research / live / indicator-library projects from a template |
+| [Strategy classes](strategy-classes.md) | Structure strategy code idiomatically |
+| [CCXT adapter](ccxt-adapter.md) | Connect to an exchange via the CCXT bridge |
+
+## Backtesting and analysis
+
+| Guide | Problem |
+|-------|---------|
 | [Backtesting](backtest.md) | Run strategy backtests on historical data |
-| [Grid Search](grid-search.md) | Find optimal strategy parameters |
-| [CPU Affinity](cpu-affinity.md) | Pin threads to isolated cores for lower latency |
-| [Custom Connector](custom-connector.md) | Connect to a new exchange |
-| [Custom Bar Policy](custom-bar-policy.md) | Create custom bar aggregation policies |
-| [Advanced Orders](advanced-orders.md) | Use stop-loss, take-profit, brackets |
-| [Multi-Exchange Trading](multi-exchange-trading.md) | Trade across multiple exchanges with aggregation and routing |
-| [Optimize Performance](optimize-performance.md) | Tune for minimum latency |
+| [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
+| [HTML report](backtest-html-report.md) | Render an equity curve + trade table to one HTML file |
+| [Interactive backtest](interactive-backtest.md) | Inspect state mid-run from a notebook |
+| [Grid search](grid-search.md) | Sweep parameters over a backtest |
+| [Walk-forward](walk-forward.md) | Out-of-sample validation with rolling / anchored folds |
+| [Heatmap](heatmap.md) | SVG heatmap from a 2D parameter sweep |
+| [White's reality check](whites-reality-check.md) | Multiple-comparison-aware significance test |
+| [Log to MLflow](mlflow.md) | Send a backtest run + artifacts into an MLflow tracking server |
+
+## Live trading
+
+| Guide | Problem |
+|-------|---------|
+| [Advanced orders](advanced-orders.md) | Stop-loss, take-profit, brackets |
+| [Multi-exchange trading](multi-exchange-trading.md) | Aggregate books and route across venues |
+
+## Indicators and aggregation
+
+| Guide | Problem |
+|-------|---------|
+| [Add an indicator](add-an-indicator.md) | Wire a custom indicator into a strategy |
+| [Indicator graph](indicator-graph.md) | Compose indicators into a DAG |
+| [Multi-symbol indicators](multi-symbol-indicators.md) | One indicator across many symbols |
+| [Bar aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
+| [Custom bar policy](custom-bar-policy.md) | Hand-roll a new bar aggregation rule |
+| [Volume profile](use-volume-profile.md) | Build a volume profile from trades |
+
+## Performance and project
+
+| Guide | Problem |
+|-------|---------|
+| [Optimize performance](optimize-performance.md) | Tune for minimum latency |
+| [CPU affinity](cpu-affinity.md) | Pin threads to isolated cores |
 | [Configuration](configuration.md) | Runtime configuration options |
-| [CI Configuration](ci.md) | Understand the CI pipeline |
+| [CI configuration](ci.md) | Understand the CI pipeline |
+| [Custom connector](custom-connector.md) | Add a new exchange to the connector tree |
 | [Contributing](contributing.md) | Contribute to FLOX development |
 
 ## Prerequisites
 
-These guides assume you've completed the [Tutorials](../tutorials/README.md) and understand basic FLOX concepts.
+These guides assume you've worked through the [tutorials](../tutorials/README.md) and understand the core FLOX concepts.
