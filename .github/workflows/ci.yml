@@ -62,7 +62,12 @@ jobs:
         # snippets — never lower it.
         python3 scripts/check_doc_snippets.py --min-includes 6
     - name: Verify flox-mcp bundled data is in sync
-      run: python3 scripts/sync_mcp_data.py --check
+      run: |
+        # IR snapshot is built from the IDL via libclang, plus the
+        # binding manifest reads binding_parity.yaml — both deps need
+        # to be present in this job for --check to run end-to-end.
+        python3 -m pip install --break-system-packages libclang pyyaml
+        python3 scripts/sync_mcp_data.py --check
     - name: flox-mcp unit tests
       run: |
         python3 -m pip install --break-system-packages pytest
