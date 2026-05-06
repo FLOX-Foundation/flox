@@ -251,6 +251,7 @@ flox_registry_destroy|void|FloxRegistryHandle
 flox_registry_get_symbol_id|uint8_t|FloxRegistryHandle|const char *|const char *|uint32_t *
 flox_registry_get_symbol_name|uint8_t|FloxRegistryHandle|uint32_t|char *|size_t|char *|size_t
 flox_registry_symbol_count|uint32_t|FloxRegistryHandle
+flox_render_heatmap_html|uint64_t|const FloxHeatmapData *|char *|uint64_t
 flox_replay_source_create|FloxReplaySourceHandle|FloxReplaySourceCallbacks
 flox_replay_source_destroy|void|FloxReplaySourceHandle
 flox_replay_source_seek_to|uint8_t|FloxReplaySourceHandle|int64_t

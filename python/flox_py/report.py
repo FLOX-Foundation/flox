@@ -374,6 +374,59 @@ def write_html(
     return out
 
 
+def heatmap_html(
+    z,
+    *,
+    row_labels=None,
+    col_labels=None,
+    title: str = "",
+    x_axis_name: str = "",
+    y_axis_name: str = "",
+    metric_name: str = "",
+) -> str:
+    """Render a heatmap of a 2D array as a self-contained HTML string.
+
+    The render lives in C++ (``flox::report::renderHeatmapHtml``) and is
+    shared with the Node and Codon bindings, so all three languages
+    produce byte-identical output for the same input. Inline SVG only —
+    no external assets, no scripts beyond ``<title>`` tooltips.
+
+    ``z`` is row-major (list of lists, or any 2D iterable). Row and
+    column labels are optional; when omitted, numeric indices are used.
+    """
+    from flox_py._flox_py import _heatmap  # type: ignore[attr-defined]
+
+    rows = [list(map(float, r)) for r in z]
+    return _heatmap.heatmap_html(
+        rows,
+        list(row_labels) if row_labels is not None else [],
+        list(col_labels) if col_labels is not None else [],
+        title, x_axis_name, y_axis_name, metric_name,
+    )
+
+
+def write_heatmap(
+    output_path: str | Path,
+    z,
+    *,
+    row_labels=None,
+    col_labels=None,
+    title: str = "",
+    x_axis_name: str = "",
+    y_axis_name: str = "",
+    metric_name: str = "",
+) -> Path:
+    """Render :func:`heatmap_html` and write it to ``output_path``."""
+    out = Path(output_path)
+    out.write_text(heatmap_html(
+        z,
+        row_labels=row_labels, col_labels=col_labels,
+        title=title, x_axis_name=x_axis_name,
+        y_axis_name=y_axis_name, metric_name=metric_name,
+    ))
+    return out
+
+
 def _load_json(path: str | Path) -> Any:
     with open(path) as f:
         return json.load(f)

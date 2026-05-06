@@ -2309,6 +2309,36 @@ extern "C"
                                 FloxBacktestStats* stats_out,
                                 uint32_t max_results);
 
+  // ============================================================
+  // Heatmap rendering (W6-T004)
+  // ============================================================
+  //
+  // z is row-major (length = rows * cols). row_labels / col_labels
+  // are arrays of NUL-terminated strings; pass NULL (with the count
+  // set to 0) to fall back to numeric indices.
+  //
+  // Two-call size-first pattern: pass NULL out_buf to get the byte
+  // count, then allocate and call again. Returns the total size of
+  // the rendered HTML in bytes (NOT including a NUL terminator).
+  typedef struct
+  {
+    const double* z;
+    uint32_t rows;
+    uint32_t cols;
+    const char* const* row_labels;
+    uint32_t num_row_labels;
+    const char* const* col_labels;
+    uint32_t num_col_labels;
+    const char* title;        // may be NULL
+    const char* x_axis_name;  // may be NULL
+    const char* y_axis_name;  // may be NULL
+    const char* metric_name;  // may be NULL
+  } FloxHeatmapData;
+
+  FLOX_EXPORT(group = "heatmap")
+  uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
+                                    char* out_buf, uint64_t max_size);
+
 #ifdef __cplusplus
 }
 #endif

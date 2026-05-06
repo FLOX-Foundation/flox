@@ -29,6 +29,7 @@
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/ohlcv_replay_source.h"
+#include "flox/report/heatmap_html.h"
 
 #include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
@@ -5147,4 +5148,64 @@ uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
     stats_out[i] = s;
   }
   return n;
+}
+
+// ============================================================
+// Heatmap rendering (W6-T004)
+// ============================================================
+
+uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
+                                  char* out_buf, uint64_t max_size)
+{
+  if (!data || data->z == nullptr || data->rows == 0 || data->cols == 0)
+  {
+    return 0;
+  }
+  flox::report::HeatmapData hd;
+  const std::size_t n = static_cast<std::size_t>(data->rows) * data->cols;
+  hd.z.assign(data->z, data->z + n);
+  hd.rows = data->rows;
+  hd.cols = data->cols;
+  if (data->row_labels && data->num_row_labels > 0)
+  {
+    hd.rowLabels.reserve(data->num_row_labels);
+    for (uint32_t i = 0; i < data->num_row_labels; ++i)
+    {
+      hd.rowLabels.emplace_back(data->row_labels[i] ? data->row_labels[i] : "");
+    }
+  }
+  if (data->col_labels && data->num_col_labels > 0)
+  {
+    hd.colLabels.reserve(data->num_col_labels);
+    for (uint32_t i = 0; i < data->num_col_labels; ++i)
+    {
+      hd.colLabels.emplace_back(data->col_labels[i] ? data->col_labels[i] : "");
+    }
+  }
+  if (data->title)
+  {
+    hd.title = data->title;
+  }
+  if (data->x_axis_name)
+  {
+    hd.xAxisName = data->x_axis_name;
+  }
+  if (data->y_axis_name)
+  {
+    hd.yAxisName = data->y_axis_name;
+  }
+  if (data->metric_name)
+  {
+    hd.metricName = data->metric_name;
+  }
+
+  std::string html = flox::report::renderHeatmapHtml(hd);
+  const uint64_t total = static_cast<uint64_t>(html.size());
+  if (!out_buf)
+  {
+    return total;
+  }
+  const uint64_t to_copy = (total < max_size) ? total : max_size;
+  std::memcpy(out_buf, html.data(), to_copy);
+  return total;
 }

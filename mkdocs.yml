@@ -114,6 +114,7 @@ nav:
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md
+          - Heatmap rendering: how-to/heatmap.md
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
           - Interactive Backtest: how-to/interactive-backtest.md
           - Grid Search: how-to/grid-search.md

@@ -441,6 +441,21 @@ extern "C"
     FloxBacktestStats test_stats;
   } FloxWalkForwardFold;
 
+  typedef struct
+  {
+    const double* z;
+    uint32_t rows;
+    uint32_t cols;
+    const char* const* row_labels;
+    uint32_t num_row_labels;
+    const char* const* col_labels;
+    uint32_t num_col_labels;
+    const char* title;
+    const char* x_axis_name;
+    const char* y_axis_name;
+    const char* metric_name;
+  } FloxHeatmapData;
+
   // ============================================================
   // Callback function pointer types
   // ============================================================
@@ -854,6 +869,12 @@ extern "C"
   uint64_t flox_grid_search_run(FloxGridSearchHandle gs, FloxGridSearchFactoryFn factory,
                                 void* user_data, FloxBacktestStats* stats_out,
                                 uint32_t max_results);
+
+  // ============================================================
+  // Heatmap
+  // ============================================================
+
+  uint64_t flox_render_heatmap_html(const FloxHeatmapData* data, char* out_buf, uint64_t max_size);
 
   // ============================================================
   // Heikin Ashi
