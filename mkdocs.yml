@@ -200,6 +200,7 @@ nav:
           - "E_SYM_001 — Symbol is not registered": errors/E_SYM_001.md
           - "E_RUN_001 — Backtest run before set_strategy()": errors/E_RUN_001.md
           - "E_RUN_002 — No data loaded": errors/E_RUN_002.md
+          - "E_RUN_003 — Invalid factory return value": errors/E_RUN_003.md
           - "E_LEN_001 — Array length mismatch": errors/E_LEN_001.md
           - "E_LEN_002 — Empty input array": errors/E_LEN_002.md
           - "E_IO_001 — Cannot open file (read)": errors/E_IO_001.md

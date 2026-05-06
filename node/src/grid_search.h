@@ -39,7 +39,8 @@ inline int gridSearchFactoryThunk(void* user_data, uint64_t param_index,
   }
   auto obj = result.As<Napi::Object>();
   // Map snake_case keys (BacktestRunner.runCsv stats) into the C struct.
-  auto getNum = [&](const char* key) -> double {
+  auto getNum = [&](const char* key) -> double
+  {
     auto v = obj.Get(key);
     return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : 0.0;
   };
@@ -139,7 +140,8 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
 
   Napi::Value run(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value {
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
       auto env = info.Env();
       if (_factory.IsEmpty())
       {
@@ -180,8 +182,7 @@ class GridSearchNode : public Napi::ObjectWrap<GridSearchNode>
         o.Set("stats", statsToJsObj(env, stats[i]));
         results[i] = o;
       }
-      return results;
-    });
+      return results; });
   }
 };
 

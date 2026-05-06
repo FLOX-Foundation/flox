@@ -21,14 +21,14 @@
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/backtest_runner.h"
 #include "flox/backtest/grid_search.h"
-#include "flox/backtest/walk_forward.h"
-#include "flox/replay/ohlcv_replay_source.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
+#include "flox/backtest/walk_forward.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/nlevel_order_book.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/ohlcv_replay_source.h"
 
 #include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
@@ -5038,8 +5038,7 @@ uint32_t flox_walk_forward_run_csv(FloxRegistryHandle reg_handle,
   wfr.setStrategyFactory([factory, user_data](std::size_t foldIdx) -> IStrategy*
                          {
                            FloxStrategyHandle h = factory(user_data, foldIdx);
-                           return reinterpret_cast<BridgeStrategy*>(h);
-                         });
+                           return reinterpret_cast<BridgeStrategy*>(h); });
 
   auto folds = wfr.run(bars);
   const uint32_t total = static_cast<uint32_t>(folds.size());

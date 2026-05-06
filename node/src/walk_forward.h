@@ -138,7 +138,8 @@ class WalkForwardRunnerNode
 
   Napi::Value runCsv(const Napi::CallbackInfo& info)
   {
-    return tryFlox(info.Env(), [&]() -> Napi::Value {
+    return tryFlox(info.Env(), [&]() -> Napi::Value
+                   {
       auto env = info.Env();
       if (_factory.IsEmpty())
       {
@@ -187,8 +188,7 @@ class WalkForwardRunnerNode
         o.Set("testStats", statsToJsObj(env, f.test_stats));
         arr[i] = o;
       }
-      return arr;
-    });
+      return arr; });
   }
 };
 
