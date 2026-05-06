@@ -23,12 +23,13 @@ For other languages, use the C API.
 ## AI-agent companion
 
 [`flox-mcp`](https://pypi.org/project/flox-mcp/) is a Model Context
-Protocol server that gives AI coding agents (Cursor, Claude Code,
-Cline) grounded access to every binding's surface — `lookup_symbol`
-resolves a name across C-API / Python / Node / Codon, `list_bindings`
-enumerates a binding's exports, `scaffold_strategy` returns a starter
-class that compiles + validates, `get_example` pulls canonical code
-by topic, `docs_search` runs FTS over these docs. Version tracks the
-binding wheels in lockstep, so what an agent sees matches what you
-installed. See [the package README](https://github.com/FLOX-Foundation/flox/tree/main/mcp)
-for setup instructions.
+Protocol server. AI coding agents (Cursor, Claude Code, Cline) spawn
+it locally and ask it about FLOX before generating code. It exposes
+tools that resolve a symbol across bindings (`lookup_symbol`),
+enumerate one binding's exports (`list_bindings`), return a starter
+strategy class that parses + validates (`scaffold_strategy`), pull
+example code from the docs corpus (`get_example`), and search the
+docs (`docs_search`). The package version is bumped in lockstep with
+flox-py and the npm package, so the agent's view of the surface
+matches what you installed. Setup is in
+[the package README](https://github.com/FLOX-Foundation/flox/tree/main/mcp).

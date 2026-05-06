@@ -216,6 +216,46 @@ def _sync_binary(name: str, dst: Path, build_to_path, drifts: List[str], *, chec
     dst.write_bytes(new)
 
 
+def _docs_fts_rows(path: Path) -> List[tuple]:
+    """Return (path, title, body) rows from a docs FTS sqlite file,
+    sorted by path. Used by --check because the FTS5 binary layout is
+    not byte-stable across libsqlite versions; the row set is."""
+    if not path.exists():
+        return []
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return sorted(
+            conn.execute("SELECT path, title, body FROM docs").fetchall()
+        )
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def _sync_docs_fts(dst: Path, drifts: List[str], *, check_only: bool) -> None:
+    """FTS5 specific sync: row-set equality, not byte equality.
+
+    Different libsqlite versions emit slightly different on-disk segment
+    layouts for the same logical content, so a strict bytes compare
+    breaks any time the runner's sqlite differs from the developer's.
+    The semantically-meaningful contract is "same (path, title, body)
+    rows in the same order" — we check that.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / dst.name
+        _build_docs_fts(tmp)
+        new_rows = _docs_fts_rows(tmp)
+        new_bytes = tmp.read_bytes()
+    if dst.exists() and _docs_fts_rows(dst) == new_rows:
+        return
+    if check_only:
+        drifts.append(str(dst.relative_to(REPO_ROOT)))
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(new_bytes)
+
+
 def _copy_if_different(src: Path, dst: Path, *, check_only: bool) -> bool:
     if not src.exists():
         return True
@@ -269,9 +309,8 @@ def main(argv=None) -> int:
     _sync_text("examples_index.json", DST_EXAMPLES, _build_examples_json,
                drifts, check_only=args.check)
 
-    # 4. Docs FTS5 index (binary).
-    _sync_binary("docs.fts.sqlite", DST_FTS, _build_docs_fts,
-                 drifts, check_only=args.check)
+    # 4. Docs FTS5 index — content-equal (row set), not byte-equal.
+    _sync_docs_fts(DST_FTS, drifts, check_only=args.check)
 
     # 5. Bundle budget. Reported (not enforced) on --check; enforced on
     # write so an over-budget commit fails locally before it lands.
