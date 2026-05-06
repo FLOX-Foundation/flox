@@ -22,6 +22,16 @@ Documentation is available at [flox-foundation.github.io/flox](https://flox-foun
 
 All bindings expose the same strategy API, indicators, order books, backtesting, and data I/O. The C API is the integration point for adding support for any other language.
 
+## AI companion
+
+`flox-mcp` is a Model Context Protocol server that gives AI coding agents (Cursor, Claude Code, Cline) grounded access to the FLOX surface — symbol lookups across bindings, scaffolders, indicator and backtest tools, full-text doc search.
+
+```bash
+pip install flox-mcp
+```
+
+See [the package README](./mcp/README.md) for setup and the full tool list.
+
 ## Connectors
 
 The open-source community connector implementations are maintained in [flox-connectors](https://github.com/FLOX-Foundation/flox-connectors).

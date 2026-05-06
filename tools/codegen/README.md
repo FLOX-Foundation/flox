@@ -1,24 +1,24 @@
 # tools/codegen — IDL-driven code generation for the FLOX C API
 
-Generates `flox_capi.h`, Codon `from C import` declarations, and a Markdown
-C-API reference for AI agents from a single annotated source of truth in
+Generates `flox_capi.h`, Codon `from C import` declarations, a Markdown
+C-API reference for AI agents, and the IR / binding-manifest snapshots
+that `flox-mcp` ships, all from a single annotated source of truth in
 `include/flox/capi/flox_capi_spec.hpp`.
 
-Status: **full coverage** + three emitters
-(`emit-capi`, `emit-codon`, `emit-llms`). Spec covers all 290 functions,
-22 handles, 25 structs, 7 callback typedefs, and 2 enums in the live
+Status: **full coverage** + three header emitters (`emit-capi`,
+`emit-codon`, `emit-llms`) plus `flox_codegen.manifest` for the
+flox-mcp data bundle. The spec covers ~340 functions, ~32 handles,
+~41 structs, ~33 callback typedefs, and 2 enums in the live
 `flox_capi.h`. The CI gate enforces full signature equivalence
-(`--require-full-coverage`) and committed-vs-fresh equality across all
-three golden artifacts.
+(`--require-full-coverage`) and committed-vs-fresh equality across
+all three golden artifacts and the bundled MCP data.
 
 The pybind11 (Python) and NAPI (Node) bindings expose richer
-language-native APIs and are not yet codegen-driven; their stubs
-(`.pyi`, `.d.ts`) still come from binding-side tooling
+language-native APIs and are not codegen-driven; their stubs
+(`.pyi`, `.d.ts`) come from binding-side tooling
 (`scripts/gen_pyi_stubs.py`, hand-written `node/index.d.ts`). Codegen
-focuses on FFI consumers that mirror the C surface 1:1 — Codon, QuickJS,
-Rust FFI, Go cgo, Python ctypes.
-
-Design rationale: see `.notes/api-idl-rfc.md`.
+focuses on FFI consumers that mirror the C surface 1:1 — Codon,
+QuickJS, Rust FFI, Go cgo, Python ctypes.
 
 ## Quick start
 
@@ -47,14 +47,23 @@ tools/codegen/
 │   ├── ir.py                     # IR dataclasses (Module, Function, ...)
 │   ├── extractor.py              # libclang AST → IR
 │   ├── emit_capi.py              # IR → flox_capi.h text
+│   ├── emit_codon.py             # IR → Codon `from C import` block
+│   ├── emit_llms.py              # IR → Markdown reference
+│   ├── manifest.py               # IR → flox-mcp data bundles (JSON)
+│   ├── abi_snapshot.py           # extract / diff `.api/c-api.snapshot`
 │   ├── check_signatures.py       # diff two C headers (sigs only)
 │   └── cli.py                    # python -m flox_codegen.cli ...
 ├── golden/
-│   └── flox_capi.h              # committed reference output
+│   ├── flox_capi.h               # committed C header
+│   ├── flox_capi.codon           # committed Codon FFI block
+│   └── flox_capi.md              # committed Markdown reference
 ├── tests/
 │   ├── test_annotation_parser.py
 │   ├── test_extractor.py
 │   ├── test_emit_capi.py
+│   ├── test_emit_codon.py
+│   ├── test_emit_llms.py
+│   ├── test_abi_snapshot.py
 │   └── test_check_signatures.py
 └── .venv/                        # gitignored
 
@@ -115,10 +124,10 @@ Unknown keys are kept on the IR for emitters to consume.
 3. Commit `flox_capi_spec.hpp` and `tools/codegen/golden/flox_capi.h`
    together. CI will reject drift between them.
 
-## Adding a new emitter (T014 scope)
+## Adding a new emitter
 
-Each emitter consumes the same `ir.Module` and produces a single artifact.
-Drop a new file under `flox_codegen/`:
+Each emitter consumes the same `ir.Module` and produces a single
+artifact. Drop a new file under `flox_codegen/`:
 
 ```python
 # emit_pyi.py
@@ -131,8 +140,13 @@ def emit(module: ir.Module) -> str:
     return "\n".join(out)
 ```
 
-Wire it in `cli.py` as a new subcommand. The IR is the contract — emitters
-don't know about libclang.
+Wire it in `cli.py` as a new subcommand. The IR is the contract —
+emitters don't know about libclang.
+
+`flox_codegen.manifest` is a slightly different shape: rather than
+emitting one text artifact, it produces JSON dicts (IR snapshot,
+binding manifest, examples index) that `scripts/sync_mcp_data.py`
+ships into the flox-mcp wheel.
 
 ## CI gate
 
@@ -171,6 +185,6 @@ ticked still being a drop-in replacement.
 
 - libclang version is locked via the `libclang` PyPI package's pinned
   version (`requirements.txt`); CI installs from the same pin.
-- Templates (e.g. `IndicatorGraph`, `MultiTimeframeAggregator`) are not yet
-  reachable through the spec — they require an explicit instantiation
-  convention, deferred to T014.
+- Templates (`IndicatorGraph`, `MultiTimeframeAggregator`) are exposed
+  through hand-written wrappers rather than templated codegen — the
+  IDL keeps a flat C-shaped surface on purpose.

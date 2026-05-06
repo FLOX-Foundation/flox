@@ -109,10 +109,11 @@ Pick your language:
 | Lock-free event delivery | Disruptor-style ring buffers, busy-spin consumers |
 | Zero-allocation hot path | Pre-allocated pools, no heap allocation in market data callbacks |
 | CPU affinity support | Pin threads to isolated cores |
-| Multi-exchange trading | [CEX coordination](reference/api/cex/index.md) with aggregation and smart routing |
+| Multi-exchange trading | [CEX coordination](reference/api/cex/composite_book_matrix.md) with aggregation and smart routing |
 | Binary replay system | Record live data, replay for backtesting |
-| Grid search optimization | Parallel parameter optimization with mmap-based bar storage |
+| Backtest analytics | [Grid search](how-to/grid-search.md), [walk-forward](how-to/walk-forward.md), [heatmap](how-to/heatmap.md), [White's reality check](how-to/whites-reality-check.md), [MLflow logging](how-to/mlflow.md) |
 | Multi-language bindings | Python, Node.js, Codon, JavaScript, C API |
+| AI companion | [`flox-mcp`](https://github.com/FLOX-Foundation/flox/tree/main/mcp) — Model Context Protocol server for Cursor / Claude Code / Cline |
 | Type-safe primitives | Strong types for Price, Quantity, SymbolId |
 | Modular architecture | Use only what you need |
 

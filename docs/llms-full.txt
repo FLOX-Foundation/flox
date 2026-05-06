@@ -124,10 +124,11 @@ Pick your language:
 | Lock-free event delivery | Disruptor-style ring buffers, busy-spin consumers |
 | Zero-allocation hot path | Pre-allocated pools, no heap allocation in market data callbacks |
 | CPU affinity support | Pin threads to isolated cores |
-| Multi-exchange trading | [CEX coordination](reference/api/cex/index.md) with aggregation and smart routing |
+| Multi-exchange trading | [CEX coordination](reference/api/cex/composite_book_matrix.md) with aggregation and smart routing |
 | Binary replay system | Record live data, replay for backtesting |
-| Grid search optimization | Parallel parameter optimization with mmap-based bar storage |
+| Backtest analytics | [Grid search](how-to/grid-search.md), [walk-forward](how-to/walk-forward.md), [heatmap](how-to/heatmap.md), [White's reality check](how-to/whites-reality-check.md), [MLflow logging](how-to/mlflow.md) |
 | Multi-language bindings | Python, Node.js, Codon, JavaScript, C API |
+| AI companion | [`flox-mcp`](https://github.com/FLOX-Foundation/flox/tree/main/mcp) — Model Context Protocol server for Cursor / Claude Code / Cline |
 | Type-safe primitives | Strong types for Price, Quantity, SymbolId |
 | Modular architecture | Use only what you need |
 
@@ -1273,6 +1274,7 @@ After your language quickstart, work through these. They cover the same concepts
 
 | Tutorial | What You'll Learn |
 |----------|-------------------|
+| [Your first FLOX backtest](first-backtest.md) | Three commands from a clean Python env to a working backtest |
 | [First Strategy](first-strategy.md) | Write a simple trading strategy |
 | [Multi-Timeframe Strategy](multi-timeframe-strategy.md) | Build strategies using multiple bar timeframes |
 | [Recording Data](recording-data.md) | Capture live market data to disk |
@@ -1282,10 +1284,11 @@ After your language quickstart, work through these. They cover the same concepts
 ## Recommended order
 
 1. **Quickstart** for your language — verify your environment works
-2. **First Strategy** — understand the core programming model
-3. **Multi-Timeframe Strategy** — work with multiple bar timeframes
-4. **Recording Data** — set up market data capture
-5. **Backtesting** — test strategies against historical data
+2. **Your first FLOX backtest** — fastest path to a result on real BTC data
+3. **First Strategy** — understand the core programming model
+4. **Multi-Timeframe Strategy** — work with multiple bar timeframes
+5. **Recording Data** — set up market data capture
+6. **Backtesting** — test strategies against historical data
 
 After completing these tutorials, move on to [How-To Guides](../how-to/README.md) for specific tasks or [Explanation](../explanation/README.md) for deeper understanding.
 
@@ -3170,26 +3173,60 @@ The Python and Node.js versions of the same crossover live in:
 
 Solve specific problems. Assumes you know the basics.
 
-## Available Guides
+## Project setup
 
 | Guide | Problem |
 |-------|---------|
-| [Bar Aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
+| [Scaffold a project (`flox new`)](flox-new.md) | Bootstrap research / live / indicator-library projects from a template |
+| [Strategy classes](strategy-classes.md) | Structure strategy code idiomatically |
+| [CCXT adapter](ccxt-adapter.md) | Connect to an exchange via the CCXT bridge |
+
+## Backtesting and analysis
+
+| Guide | Problem |
+|-------|---------|
 | [Backtesting](backtest.md) | Run strategy backtests on historical data |
-| [Grid Search](grid-search.md) | Find optimal strategy parameters |
-| [CPU Affinity](cpu-affinity.md) | Pin threads to isolated cores for lower latency |
-| [Custom Connector](custom-connector.md) | Connect to a new exchange |
-| [Custom Bar Policy](custom-bar-policy.md) | Create custom bar aggregation policies |
-| [Advanced Orders](advanced-orders.md) | Use stop-loss, take-profit, brackets |
-| [Multi-Exchange Trading](multi-exchange-trading.md) | Trade across multiple exchanges with aggregation and routing |
-| [Optimize Performance](optimize-performance.md) | Tune for minimum latency |
+| [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
+| [HTML report](backtest-html-report.md) | Render an equity curve + trade table to one HTML file |
+| [Interactive backtest](interactive-backtest.md) | Inspect state mid-run from a notebook |
+| [Grid search](grid-search.md) | Sweep parameters over a backtest |
+| [Walk-forward](walk-forward.md) | Out-of-sample validation with rolling / anchored folds |
+| [Heatmap](heatmap.md) | SVG heatmap from a 2D parameter sweep |
+| [White's reality check](whites-reality-check.md) | Multiple-comparison-aware significance test |
+| [Log to MLflow](mlflow.md) | Send a backtest run + artifacts into an MLflow tracking server |
+
+## Live trading
+
+| Guide | Problem |
+|-------|---------|
+| [Advanced orders](advanced-orders.md) | Stop-loss, take-profit, brackets |
+| [Multi-exchange trading](multi-exchange-trading.md) | Aggregate books and route across venues |
+
+## Indicators and aggregation
+
+| Guide | Problem |
+|-------|---------|
+| [Add an indicator](add-an-indicator.md) | Wire a custom indicator into a strategy |
+| [Indicator graph](indicator-graph.md) | Compose indicators into a DAG |
+| [Multi-symbol indicators](multi-symbol-indicators.md) | One indicator across many symbols |
+| [Bar aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
+| [Custom bar policy](custom-bar-policy.md) | Hand-roll a new bar aggregation rule |
+| [Volume profile](use-volume-profile.md) | Build a volume profile from trades |
+
+## Performance and project
+
+| Guide | Problem |
+|-------|---------|
+| [Optimize performance](optimize-performance.md) | Tune for minimum latency |
+| [CPU affinity](cpu-affinity.md) | Pin threads to isolated cores |
 | [Configuration](configuration.md) | Runtime configuration options |
-| [CI Configuration](ci.md) | Understand the CI pipeline |
+| [CI configuration](ci.md) | Understand the CI pipeline |
+| [Custom connector](custom-connector.md) | Add a new exchange to the connector tree |
 | [Contributing](contributing.md) | Contribute to FLOX development |
 
 ## Prerequisites
 
-These guides assume you've completed the [Tutorials](../tutorials/README.md) and understand basic FLOX concepts.
+These guides assume you've worked through the [tutorials](../tutorials/README.md) and understand the core FLOX concepts.
 
 ------------------------------------------------------------------------------
 # Source: docs/how-to/strategy-classes.md
@@ -7592,12 +7629,17 @@ developer has installed.
 
 - The server is **local**. No network calls. AI clients spawn it as a
   child process and talk via stdio.
-- All tools are **read-only** today. `validate_strategy` parses but does
-  not execute. `run_backtest` (when added) will sandbox via subprocess
-  + resource limits.
-- The snapshot used by `list_capi_functions` is the same `.api/c-api.snapshot`
-  enforced by the codegen ABI gate; AI agents see exactly what FLOX
-  ships.
+- Most tools are read-only data lookups. The two that execute code —
+  `compute_indicator` and `run_backtest` — run in-process / in a
+  resource-limited subprocess respectively. `run_backtest` is an MVP
+  sandbox: it caps CPU, memory, and output size, but does NOT isolate
+  filesystem or network. Wrap with nsjail / firejail / Docker for any
+  deployment that takes untrusted input.
+- The snapshot used by `list_capi_functions` is the same
+  `.api/c-api.snapshot` enforced by the codegen ABI gate; the IR
+  snapshot used by `lookup_symbol` / `list_bindings` is regenerated
+  from the same IDL spec on every release. So the agent's view of
+  the surface tracks what FLOX actually ships.
 
 ## License
 
