@@ -147,6 +147,9 @@ from C import flox_grid_search_total(cobj) -> u64
 from C import flox_grid_search_params_for_index(cobj, u64, Ptr[float], u32) -> u32
 from C import flox_grid_search_run(cobj, cobj, cobj, cobj, u32) -> u64
 
+# ── heatmap ──
+from C import flox_render_heatmap_html(cobj, cobj, u64) -> u64
+
 # ── heikin_ashi ──
 from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
 

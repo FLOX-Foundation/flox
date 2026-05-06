@@ -432,5 +432,35 @@ console.log('=== GridSearch ===');
 
 // ── Summary ───────────────────────────────────────────────────────────
 
+// ── Heatmap renderer ──────────────────────────────────────────────────
+
+console.log('=== flox.report.heatmapHtml ===');
+{
+  const z = [[0.5, -0.3, 1.2], [0.8, 1.1, -1.4]];
+  const html = flox.report.heatmapHtml(z, {
+    rowLabels: ['fast=5', 'fast=10'],
+    colLabels: ['slow=20', 'slow=30', 'slow=50'],
+    title: 'Sweep',
+    xAxisName: 'slow period',
+    yAxisName: 'fast period',
+    metricName: 'Sharpe',
+  });
+  check(html.length > 500, `heatmap html non-empty (${html.length} bytes)`);
+  check(html.includes('<svg'), 'heatmap contains <svg>');
+  check(html.includes('Sweep'), 'heatmap contains title');
+  check(html.includes('fast=5'), 'heatmap contains row labels');
+  check(html.includes('slow=30'), 'heatmap contains col labels');
+  check(html.includes('Sharpe'), 'heatmap contains metric name');
+  check(!html.includes('<script src='), 'heatmap has no external scripts');
+
+  let threwEmpty = false;
+  try { flox.report.heatmapHtml([]); } catch (e) { threwEmpty = true; }
+  check(threwEmpty, 'empty z raises');
+
+  let threwUneven = false;
+  try { flox.report.heatmapHtml([[1, 2], [3]]); } catch (e) { threwUneven = true; }
+  check(threwUneven, 'uneven rows raise');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

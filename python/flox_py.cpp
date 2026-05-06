@@ -15,6 +15,7 @@
 #include "flox/error/flox_error.h"
 #include "graph_bindings.h"
 #include "grid_search_bindings.h"
+#include "heatmap_bindings.h"
 #include "indicator_bindings.h"
 #include "optimizer_bindings.h"
 #include "position_bindings.h"
@@ -777,6 +778,7 @@ PYBIND11_MODULE(_flox_py, m)
   bindBacktest(m);
   flox_py::bindWalkForward(m);
   flox_py::bindGridSearch(m);
+  flox_py::bindHeatmap(m);
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);

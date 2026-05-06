@@ -1319,3 +1319,23 @@ export const QUEUE_FULL: number;
 
 export const POSITION_FIFO: 0;
 export const POSITION_AVG_COST: 1;
+
+// ── Heatmap renderer ──────────────────────────────────────────────────
+
+export interface HeatmapOptions {
+  rowLabels?: ReadonlyArray<string>;
+  colLabels?: ReadonlyArray<string>;
+  title?: string;
+  xAxisName?: string;
+  yAxisName?: string;
+  metricName?: string;
+}
+
+export const report: {
+  /** Render a 2D matrix as a self-contained HTML page with an
+   *  inline-SVG heatmap. `z` is row-major: z[row][col]. Output is
+   *  byte-identical to the Python / Codon binding for the same input
+   *  (renderer lives in C++). */
+  heatmapHtml(z: ReadonlyArray<ReadonlyArray<number>>,
+              opts?: HeatmapOptions): string;
+};

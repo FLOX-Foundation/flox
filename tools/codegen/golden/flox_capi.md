@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 337 functions, 32 handles, 40 structs, 33 callback typedefs, 2 enums, 46 groups.
+**Surface:** 338 functions, 32 handles, 41 structs, 33 callback typedefs, 2 enums, 47 groups.
 
 ## Opaque handles
 
@@ -583,6 +583,22 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `train_stats` | `FloxBacktestStats` |
 | `test_stats` | `FloxBacktestStats` |
 
+### `FloxHeatmapData`
+
+| field | type |
+|---|---|
+| `z` | `const double *` |
+| `rows` | `uint32_t` |
+| `cols` | `uint32_t` |
+| `row_labels` | `const char *const *` |
+| `num_row_labels` | `uint32_t` |
+| `col_labels` | `const char *const *` |
+| `num_col_labels` | `uint32_t` |
+| `title` | `const char *` |
+| `x_axis_name` | `const char *` |
+| `y_axis_name` | `const char *` |
+| `metric_name` | `const char *` |
+
 ## Functions
 
 ### additional_bar
@@ -743,6 +759,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint64_t flox_grid_search_total(FloxGridSearchHandle gs)`
 - `uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs, uint64_t index, double * params_out, uint32_t max_params)`
 - `uint64_t flox_grid_search_run(FloxGridSearchHandle gs, FloxGridSearchFactoryFn factory, void * user_data, FloxBacktestStats * stats_out, uint32_t max_results)`
+
+### heatmap
+
+- `uint64_t flox_render_heatmap_html(const FloxHeatmapData * data, char * out_buf, uint64_t max_size)`
 
 ### heikin_ashi
 

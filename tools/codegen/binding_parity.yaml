@@ -65,6 +65,15 @@ groups:
     napi: { status: required, classes: [GridSearch] }
     codon: { status: required }
 
+  heatmap:
+    pybind11:
+      status: allowlist
+      reason: "exposed via flox_py.report.heatmap_html / write_heatmap (pure-Python wrappers around the C ABI's flox_render_heatmap_html); also reachable via flox_py._flox_py._heatmap submodule. Submodule shape is not currently inspected by the parity gate."
+    napi:
+      status: allowlist
+      reason: "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked under W6-T004 follow-up if dts shape needs flattening."
+    codon: { status: required }
+
   simulated_executor:
     pybind11: { status: required, classes: [SimulatedExecutor] }
     napi: { status: required, classes: [SimulatedExecutor] }
