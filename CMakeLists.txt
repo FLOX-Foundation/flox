@@ -235,6 +235,15 @@ option(FLOX_BUILD_CAPI "Build C API shared library" OFF)
 if (FLOX_BUILD_CAPI)
   # Static lib must be PIC to link into the shared CAPI lib
   set_target_properties(${FLOX} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  # The C API exposes the full FLOX surface — including the
+  # backtest module — so the shared library has to link against
+  # backtest_*.cpp. Auto-enable BACKTEST when it isn't already on.
+  if(NOT FLOX_ENABLE_BACKTEST)
+    message(STATUS "FLOX_BUILD_CAPI=ON implies FLOX_ENABLE_BACKTEST=ON; enabling.")
+    set(FLOX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
+    file(GLOB BACKTEST_SRC_FILES src/backtest/*.cpp)
+    target_sources(${FLOX} PRIVATE ${BACKTEST_SRC_FILES})
+  endif()
   add_subdirectory(src/capi)
 endif()
 
