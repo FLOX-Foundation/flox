@@ -119,6 +119,7 @@ nav:
           - Interactive Backtest: how-to/interactive-backtest.md
           - Grid Search: how-to/grid-search.md
           - Walk-forward: how-to/walk-forward.md
+          - White's reality check: how-to/whites-reality-check.md
           - Log to MLflow: how-to/mlflow.md
           - Advanced Orders: how-to/advanced-orders.md
           - Multi-Exchange Trading: how-to/multi-exchange-trading.md

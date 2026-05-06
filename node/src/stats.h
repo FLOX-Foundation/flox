@@ -53,6 +53,44 @@ inline Napi::Value stat_permutation_test(const Napi::CallbackInfo& info)
   return Napi::Number::New(info.Env(), flox_stat_permutation_test(g1.Data(), g1.ElementLength(), g2.Data(), g2.ElementLength(), n));
 }
 
+// White's reality check.
+//
+// Args (positional):
+//   0: returns Float64Array — flat row-major K*T matrix of EXCESS returns
+//      (each strategy's series concatenated; caller is responsible for
+//      benchmark adjustment).
+//   1: numStrategies (number)
+//   2: numPeriods (number)
+//   3: numBootstrap (number, optional, default 10000)
+//   4: avgBlockSize (number, optional, default 0 → auto sqrt(T))
+//
+// Returns: { p_value: number, best_stat: number, best_index: number }.
+inline Napi::Value stat_whites_reality_check(const Napi::CallbackInfo& info)
+{
+  auto returns = info[0].As<Napi::Float64Array>();
+  size_t K = info[1].As<Napi::Number>().Uint32Value();
+  size_t T = info[2].As<Napi::Number>().Uint32Value();
+  uint32_t numBootstrap = info.Length() > 3 ? info[3].As<Napi::Number>().Uint32Value() : 10000u;
+  double avgBlock = info.Length() > 4 ? info[4].As<Napi::Number>().DoubleValue() : 0.0;
+  if (returns.ElementLength() < K * T)
+  {
+    Napi::TypeError::New(info.Env(),
+                         "returns array shorter than K*T")
+        .ThrowAsJavaScriptException();
+    return info.Env().Undefined();
+  }
+  double pValue = 1.0;
+  double bestStat = 0.0;
+  int32_t bestIndex = -1;
+  flox_stat_whites_reality_check(returns.Data(), K, T, numBootstrap, avgBlock,
+                                  &pValue, &bestStat, &bestIndex);
+  auto o = Napi::Object::New(info.Env());
+  o.Set("p_value", pValue);
+  o.Set("best_stat", bestStat);
+  o.Set("best_index", bestIndex);
+  return o;
+}
+
 inline Napi::Value stat_bar_returns(const Napi::CallbackInfo& info)
 {
   auto sl = info[0].As<Napi::Int8Array>();
@@ -113,6 +151,7 @@ inline void registerStats(Napi::Env env, Napi::Object exports)
   exports.Set("winRate", Napi::Function::New(env, stat_win_rate));
   exports.Set("bootstrapCI", Napi::Function::New(env, stat_bootstrap_ci));
   exports.Set("permutationTest", Napi::Function::New(env, stat_permutation_test));
+  exports.Set("whitesRealityCheck", Napi::Function::New(env, stat_whites_reality_check));
   exports.Set("barReturns", Napi::Function::New(env, stat_bar_returns));
   exports.Set("tradePnl", Napi::Function::New(env, stat_trade_pnl));
 }

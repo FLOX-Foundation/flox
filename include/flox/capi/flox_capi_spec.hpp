@@ -892,6 +892,11 @@ extern "C"
   void flox_stat_bootstrap_ci(const double* data, size_t len, double confidence,
                               uint32_t num_samples, double* lower_out, double* median_out,
                               double* upper_out);
+  FLOX_EXPORT(group = "additional_stats")
+  void flox_stat_whites_reality_check(const double* returns, size_t num_strategies,
+                                      size_t num_periods, uint32_t num_bootstrap,
+                                      double avg_block_size, double* p_value_out,
+                                      double* best_stat_out, int32_t* best_index_out);
 
   // ============================================================
   // Segment operations

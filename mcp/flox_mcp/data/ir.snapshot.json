@@ -6510,6 +6510,45 @@
       "return_type": "double"
     },
     {
+      "group": "additional_stats",
+      "name": "flox_stat_whites_reality_check",
+      "params": [
+        {
+          "name": "returns",
+          "type": "const double *"
+        },
+        {
+          "name": "num_strategies",
+          "type": "size_t"
+        },
+        {
+          "name": "num_periods",
+          "type": "size_t"
+        },
+        {
+          "name": "num_bootstrap",
+          "type": "uint32_t"
+        },
+        {
+          "name": "avg_block_size",
+          "type": "double"
+        },
+        {
+          "name": "p_value_out",
+          "type": "double *"
+        },
+        {
+          "name": "best_stat_out",
+          "type": "double *"
+        },
+        {
+          "name": "best_index_out",
+          "type": "int32_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "statistics",
       "name": "flox_stat_win_rate",
       "params": [

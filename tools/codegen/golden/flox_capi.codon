@@ -13,6 +13,7 @@ from C import flox_aggregate_renko_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8
 # ── additional_stats ──
 from C import flox_stat_permutation_test(Ptr[float], int, Ptr[float], int, u32) -> float
 from C import flox_stat_bootstrap_ci(Ptr[float], int, float, u32, Ptr[float], Ptr[float], Ptr[float])
+from C import flox_stat_whites_reality_check(Ptr[float], int, int, u32, float, Ptr[float], Ptr[float], Ptr[i32])
 
 # ── backtest_slippage ──
 from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)

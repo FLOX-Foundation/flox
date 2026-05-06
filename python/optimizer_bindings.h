@@ -6,6 +6,7 @@
 #include <pybind11/pybind11.h>
 
 #include "flox/error/flox_error.h"
+#include "flox/stats/whites_reality_check.h"
 
 #include <algorithm>
 #include <cmath>
@@ -195,4 +196,45 @@ inline void bindOptimizer(py::module_& m)
       },
       "Bootstrap confidence interval, returns (lower, median, upper)",
       py::arg("data"), py::arg("confidence") = 0.95, py::arg("num_samples") = 10000);
+
+  m.def(
+      "whites_reality_check",
+      [](py::array_t<double, py::array::c_style | py::array::forcecast> returns,
+         uint32_t numBootstrap, double avgBlockSize, uint64_t seed)
+      {
+        if (returns.ndim() != 2)
+        {
+          throw flox::FloxError(
+              "E_LEN_003",
+              "returns must be a 2D array (strategies x periods).");
+        }
+        const auto K = static_cast<size_t>(returns.shape(0));
+        const auto T = static_cast<size_t>(returns.shape(1));
+        if (K == 0 || T == 0)
+        {
+          throw flox::FloxError(
+              "E_LEN_002",
+              "returns matrix must not be empty.");
+        }
+        const double* data = returns.data();
+
+        flox::stats::WhitesRealityCheckResult res{};
+        {
+          py::gil_scoped_release release;
+          res = flox::stats::whitesRealityCheck(
+              data, K, T, numBootstrap, avgBlockSize, seed);
+        }
+        py::dict out;
+        out["p_value"] = res.pValue;
+        out["best_stat"] = res.bestStat;
+        out["best_index"] = res.bestIndex;
+        return out;
+      },
+      "White's reality check (Stationary Bootstrap). Tests whether the\n"
+      "best-performing strategy among K candidates is significantly better\n"
+      "than zero after multiple-comparison correction. The caller passes\n"
+      "EXCESS returns (relative to a benchmark) shaped (K, T). Returns\n"
+      "{p_value, best_stat, best_index}.",
+      py::arg("returns"), py::arg("num_bootstrap") = 10000u,
+      py::arg("avg_block_size") = 0.0, py::arg("seed") = 42u);
 }

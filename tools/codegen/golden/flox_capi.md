@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 338 functions, 32 handles, 41 structs, 33 callback typedefs, 2 enums, 47 groups.
+**Surface:** 339 functions, 32 handles, 41 structs, 33 callback typedefs, 2 enums, 47 groups.
 
 ## Opaque handles
 
@@ -610,6 +610,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 - `double flox_stat_permutation_test(const double * group1, size_t len1, const double * group2, size_t len2, uint32_t num_permutations)`
 - `void flox_stat_bootstrap_ci(const double * data, size_t len, double confidence, uint32_t num_samples, double * lower_out, double * median_out, double * upper_out)`
+- `void flox_stat_whites_reality_check(const double * returns, size_t num_strategies, size_t num_periods, uint32_t num_bootstrap, double avg_block_size, double * p_value_out, double * best_stat_out, int32_t * best_index_out)`
 
 ### backtest_slippage
 
