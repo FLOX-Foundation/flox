@@ -157,3 +157,7 @@ docs/how-to/mcp-live-analytics.md
 # How-to: lookahead detector — code samples are short illustrative
 # bug-vs-clean snippets used as test fixtures inside test_lookahead.py.
 docs/how-to/lookahead-detector.md
+
+# How-to: portfolio risk — illustrative aggregator setup; the public
+# surface is exercised by python/tests/test_portfolio_risk.py.
+docs/how-to/portfolio-risk.md
