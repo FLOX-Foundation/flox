@@ -40,6 +40,7 @@ Solve specific problems. Assumes you know the basics.
 | [Portfolio-level risk aggregator](portfolio-risk.md) | Combine PnL and exposure across N strategies; portfolio-level kill switch on drawdown / loss / gross / concentration |
 | [Backtest with latency](backtest-with-latency.md) | Add feed / order / fill latency samples to a backtest for HFT-grade fill realism |
 | [Execution algorithms](execution-algorithms.md) | TWAP / VWAP / Iceberg / POV slicers that work on top of any executor |
+| [RL environment](rl-environment.md) | Gymnasium-compatible env over a flox tape for training RL agents |
 
 ## Indicators and aggregation
 

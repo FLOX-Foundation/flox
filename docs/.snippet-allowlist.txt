@@ -169,3 +169,8 @@ docs/how-to/backtest-with-latency.md
 # How-to: execution algorithms — illustrative wiring patterns; the
 # public surface is exercised by python/tests/test_execution_algos.py.
 docs/how-to/execution-algorithms.md
+
+# How-to: RL environment — illustrative training loop and reward
+# customization snippets; the public surface is exercised by
+# python/tests/test_rl_env.py.
+docs/how-to/rl-environment.md
