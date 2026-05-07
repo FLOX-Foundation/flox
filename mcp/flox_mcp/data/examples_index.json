@@ -48,6 +48,13 @@
       "sha256": "524c3c289215c0404ad7dcc2919ff8d2bb6ebb608954588c20fdcf97dd1f7b21",
       "size_bytes": 3285,
       "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_tape_roundtrip.py",
+      "sha256": "1d2bcbc67df849e9de564d524db885d1a72397fe55d599942e2756ccb9b1acf8",
+      "size_bytes": 2446,
+      "topic": "strategy"
     }
   ],
   "version": 1

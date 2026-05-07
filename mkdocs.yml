@@ -116,6 +116,7 @@ nav:
           - Backtest HTML report: how-to/backtest-html-report.md
           - Heatmap rendering: how-to/heatmap.md
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
+          - Record and replay market data: how-to/tape-record.md
           - Interactive Backtest: how-to/interactive-backtest.md
           - Grid Search: how-to/grid-search.md
           - Walk-forward: how-to/walk-forward.md

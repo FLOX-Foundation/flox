@@ -201,6 +201,7 @@ class CcxtBroker:
     _registry: Any = field(default=None, init=False, repr=False)
     _runner: Any = field(default=None, init=False, repr=False)
     _strategies: list = field(default_factory=list, init=False, repr=False)
+    _market_data_recorder: Any = field(default=None, init=False, repr=False)
     _sym_to_ccxt: dict = field(default_factory=dict, init=False, repr=False)
     _ccxt_to_sym: dict = field(default_factory=dict, init=False, repr=False)
     _flox_to_ccxt_order: dict = field(default_factory=dict, init=False, repr=False)
@@ -322,6 +323,17 @@ class CcxtBroker:
         """Queue a strategy to attach when ``run()`` starts the runner."""
         self._strategies.append(strategy)
 
+    def set_market_data_recorder(self, recorder: Any) -> None:
+        """Attach a ``MarketDataRecorderHook`` subclass to capture
+        every trade / book update flowing through the broker.
+
+        The recorder is wired into the internal ``Runner`` when
+        ``run()`` starts. Used by ``flox tape record`` to dump live
+        feeds to a ``.floxlog`` directory; downstream code can pass
+        any subclass that implements the hook interface.
+        """
+        self._market_data_recorder = recorder
+
     # ── Run loop ──────────────────────────────────────────────────────
 
     async def run(
@@ -355,6 +367,8 @@ class CcxtBroker:
         self._runner = flox_py.Runner(self._registry, on_signal=self._on_signal)
         for strat in self._strategies:
             self._runner.add_strategy(strat)
+        if self._market_data_recorder is not None:
+            self._runner.set_market_data_recorder(self._market_data_recorder)
         self._runner.start()
 
         self._loop = asyncio.get_running_loop()

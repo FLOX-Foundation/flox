@@ -36,7 +36,7 @@ import shutil
 import sys
 from importlib import resources
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 
 # ── Template helpers ───────────────────────────────────────────────────
@@ -206,6 +206,158 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+# ── tape command handlers ─────────────────────────────────────────────
+
+
+_DURATION_UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+
+
+def _parse_duration(s: str) -> float:
+    """`'60s'` → 60.0, `'5m'` → 300.0, `'1h'` → 3600.0. Bare digits = seconds."""
+    if not s:
+        raise ValueError("empty duration")
+    if s[-1].lower() in _DURATION_UNITS:
+        return float(s[:-1]) * _DURATION_UNITS[s[-1].lower()]
+    return float(s)
+
+
+def _normalize_ccxt_symbol(sym: str) -> str:
+    """Allow either 'BTCUSDT' or 'BTC/USDT' on the CLI; pass through to ccxt
+    in its preferred slash form."""
+    if "/" in sym:
+        return sym
+    # Heuristic split for the common quote currencies. Anything else
+    # the user can pass with a slash explicitly.
+    for quote in ("USDT", "USDC", "BUSD", "USD", "BTC", "ETH"):
+        if sym.endswith(quote) and len(sym) > len(quote):
+            return f"{sym[: -len(quote)]}/{quote}"
+    return sym
+
+
+def cmd_tape_record(args: argparse.Namespace) -> int:
+    import asyncio
+    import signal
+
+    from . import tape as tape_mod
+
+    duration = _parse_duration(args.duration) if args.duration else None
+    ccxt_sym = _normalize_ccxt_symbol(args.symbol)
+    out = Path(args.output).expanduser().resolve()
+
+    print(f"flox tape record: {args.exchange} {ccxt_sym} → {out}")
+    if duration is not None:
+        print(f"  duration: {args.duration} ({duration:.0f}s)")
+    else:
+        print("  duration: until SIGINT")
+
+    try:
+        from .ccxt import CcxtBroker
+    except Exception as exc:  # pragma: no cover — ccxt is an optional dep
+        print(f"flox tape record: ccxt-side helpers unavailable: {exc}",
+              file=sys.stderr)
+        return 1
+
+    recorder = tape_mod.make_recorder_hook(
+        out, max_segment_mb=args.max_segment_mb,
+    )
+
+    async def _run() -> int:
+        broker = CcxtBroker(
+            exchange_id=args.exchange,
+            sandbox=args.testnet,
+        )
+        async with broker:
+            await broker.add_symbol(ccxt_sym)
+            broker.set_market_data_recorder(recorder)
+            run_task = asyncio.create_task(
+                broker.run(streams=("trades",), reconcile=False)
+            )
+
+            stop_event = asyncio.Event()
+            loop = asyncio.get_running_loop()
+
+            def _stop(*_args: Any) -> None:
+                stop_event.set()
+
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                try:
+                    loop.add_signal_handler(sig, _stop)
+                except (NotImplementedError, RuntimeError):
+                    pass  # Windows / non-main thread
+
+            try:
+                if duration is not None:
+                    await asyncio.wait_for(stop_event.wait(), timeout=duration)
+                else:
+                    await stop_event.wait()
+            except asyncio.TimeoutError:
+                pass
+            finally:
+                run_task.cancel()
+                try:
+                    await run_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                recorder.close()
+
+        s = recorder.stats
+        print(f"  trades written : {s.trades_written}")
+        if s.book_updates_skipped:
+            print(f"  book updates   : {s.book_updates_skipped} skipped "
+                  f"(book write API not yet exposed; trades only in v1)")
+        if s.error:
+            print(f"  ERROR          : {s.error}", file=sys.stderr)
+            return 1
+        return 0
+
+    return asyncio.run(_run())
+
+
+def cmd_tape_inspect(args: argparse.Namespace) -> int:
+    from . import tape as tape_mod
+
+    p = Path(args.path).expanduser().resolve()
+    if not p.exists():
+        print(f"flox tape inspect: path not found: {p}", file=sys.stderr)
+        return 1
+    stats = tape_mod.inspect_tape(p)
+    print(f"flox tape inspect: {stats.path}")
+    print(f"  trades       : {stats.trade_count}")
+    if stats.trade_count > 0:
+        span_ns = stats.last_ts_ns - stats.first_ts_ns
+        print(f"  first ts (ns): {stats.first_ts_ns}")
+        print(f"  last  ts (ns): {stats.last_ts_ns}")
+        print(f"  span         : {span_ns / 1e9:.3f}s")
+        print(f"  symbols      : {stats.symbol_ids}")
+    return 0
+
+
+def cmd_tape_replay(args: argparse.Namespace) -> int:
+    from . import tape as tape_mod
+
+    p = Path(args.path).expanduser().resolve()
+    if not p.exists():
+        print(f"flox tape replay: path not found: {p}", file=sys.stderr)
+        return 1
+
+    counter = [0]
+    limit = args.limit
+
+    def _on_trade(ts_ns: int, sym_id: int, price: float,
+                  qty: float, side: int) -> None:
+        counter[0] += 1
+        if limit is not None and counter[0] >= limit:
+            raise StopIteration  # stops the loop cleanly via inner try
+
+    try:
+        n = tape_mod.replay_tape(p, on_trade=_on_trade)
+    except StopIteration:
+        n = counter[0]
+    print(f"flox tape replay: dispatched {counter[0]} trade(s) "
+          f"from {p} (tape contains {n} total)")
+    return 0
+
+
 # ── Argparse setup ─────────────────────────────────────────────────────
 
 
@@ -253,6 +405,58 @@ def _build_parser() -> argparse.ArgumentParser:
     p_r.add_argument("--title", default=None, help="report title")
     p_r.add_argument("--subtitle", default=None, help="subtitle")
     p_r.set_defaults(handler=cmd_report)
+
+    # ── tape ───────────────────────────────────────────────────────
+    p_tape = sub.add_parser(
+        "tape",
+        help="Record / replay / inspect deterministic .floxlog tapes.",
+    )
+    tape_sub = p_tape.add_subparsers(dest="tape_command", required=True)
+
+    p_rec = tape_sub.add_parser(
+        "record",
+        help="Stream a CCXT exchange feed into a .floxlog directory.",
+    )
+    p_rec.add_argument("exchange",
+                       help="CCXT exchange id (e.g. 'bybit', 'bitget').")
+    p_rec.add_argument("symbol",
+                       help="Symbol in CCXT spelling (e.g. 'BTC/USDT' or 'BTCUSDT').")
+    p_rec.add_argument(
+        "--duration", default=None,
+        help="Stop after this much wall time (e.g. '60s', '5m', '1h'). "
+             "Default: run until SIGINT.",
+    )
+    p_rec.add_argument(
+        "--output", "-o", required=True,
+        help="Output directory for the .floxlog segments + metadata.",
+    )
+    p_rec.add_argument(
+        "--max-segment-mb", type=int, default=256,
+        help="Rotate to a new segment after this many MB (default: 256).",
+    )
+    p_rec.add_argument(
+        "--testnet", action="store_true",
+        help="Use the exchange's testnet/sandbox endpoint.",
+    )
+    p_rec.set_defaults(handler=cmd_tape_record)
+
+    p_rep = tape_sub.add_parser(
+        "replay",
+        help="Replay a recorded tape — by default print summary stats.",
+    )
+    p_rep.add_argument("path", help="Path to the .floxlog directory.")
+    p_rep.add_argument(
+        "--limit", type=int, default=None,
+        help="Stop after dispatching this many trades (debugging aid).",
+    )
+    p_rep.set_defaults(handler=cmd_tape_replay)
+
+    p_ins = tape_sub.add_parser(
+        "inspect",
+        help="Print summary stats (event count, time range, symbols) for a tape.",
+    )
+    p_ins.add_argument("path", help="Path to the .floxlog directory.")
+    p_ins.set_defaults(handler=cmd_tape_inspect)
 
     return p
 

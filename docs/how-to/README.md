@@ -16,6 +16,7 @@ Solve specific problems. Assumes you know the basics.
 |-------|---------|
 | [Backtesting](backtest.md) | Run strategy backtests on historical data |
 | [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
+| [Record and replay tapes](tape-record.md) | Capture live market data to `.floxlog`, replay deterministically |
 | [HTML report](backtest-html-report.md) | Render an equity curve + trade table to one HTML file |
 | [Interactive backtest](interactive-backtest.md) | Inspect state mid-run from a notebook |
 | [Grid search](grid-search.md) | Sweep parameters over a backtest |

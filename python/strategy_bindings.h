@@ -1785,7 +1785,8 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("quantity", &PyTradeData::quantity)
       .def_readwrite("is_buy", &PyTradeData::is_buy)
       .def_readwrite("side", &PyTradeData::side)
-      .def_readwrite("timestamp_ns", &PyTradeData::timestamp_ns);
+      .def_readwrite("timestamp_ns", &PyTradeData::timestamp_ns)
+      .def_readwrite("exchange_ts_ns", &PyTradeData::exchange_ts_ns);
 
   py::class_<PyBarData>(m, "BarData")
       .def(py::init<>())
