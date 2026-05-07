@@ -17,6 +17,7 @@ from .tools import (
     examples,
     indicators,
     lookup,
+    positions,
     runtime,
     scaffold,
     strategy,
@@ -432,6 +433,111 @@ def build_server() -> Server:
                     },
                 },
             ),
+            Tool(
+                name="get_positions",
+                description=(
+                    "Read positions from a running flox engine via its "
+                    "runtime state snapshot. Use this when the user asks "
+                    "'what's in my positions' / 'show me the BTC position' "
+                    "/ 'is strategy X long or short'. Returns a JSON object "
+                    "{snapshot_age_ms, data:[{account, strategy, symbol_id, "
+                    "symbol_name, qty, avg_price, unrealized_pnl}, ...]}. "
+                    "Snapshot path is FLOX_RUNTIME_STATE env var or the "
+                    "passed `state_path`; the user app is responsible for "
+                    "writing the snapshot. Read-only — never modifies state."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description": "Filter to one account.",
+                        },
+                        "strategy": {
+                            "type": "string",
+                            "description": "Filter to one strategy.",
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path (defaults to "
+                                "FLOX_RUNTIME_STATE or "
+                                "/tmp/flox-runtime-state.json).",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_open_orders",
+                description=(
+                    "Read in-flight orders from the runtime state snapshot. "
+                    "Use this for 'what orders are pending' / 'do I have "
+                    "anything sitting on Bybit'. Optional substring filter "
+                    "matches against symbol_name or strategy. Read-only."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "filter": {
+                            "type": "string",
+                            "description":
+                                "Case-insensitive substring matched "
+                                "against symbol_name or strategy.",
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_pnl",
+                description=(
+                    "Read PnL totals plus per-strategy breakdown from the "
+                    "runtime state snapshot. Use this for 'what's my PnL' / "
+                    "'how is strategy X doing today'. Returns realized + "
+                    "unrealized + fees per strategy. Read-only."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "strategy": {
+                            "type": "string",
+                            "description":
+                                "Filter the per-strategy breakdown to "
+                                "one row; total still reflects the full "
+                                "snapshot.",
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_kill_switch",
+                description=(
+                    "Read kill-switch state from the runtime state snapshot. "
+                    "Returns {active, reason, since_ns}. Use this for 'is "
+                    "trading halted' / 'why was the kill switch tripped'. "
+                    "Read-only — flipping the switch is a Phase 2 mutating "
+                    "tool that is not in this build."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "state_path": {
+                            "type": "string",
+                            "description":
+                                "Override snapshot path.",
+                        },
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -504,6 +610,26 @@ def build_server() -> Server:
                 text = runtime.suggest_indicator(
                     description=arguments["description"],
                     k=arguments.get("k", 3),
+                )
+            elif name == "get_positions":
+                text = positions.get_positions(
+                    account=arguments.get("account"),
+                    strategy=arguments.get("strategy"),
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "get_open_orders":
+                text = positions.get_open_orders(
+                    filter=arguments.get("filter"),
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "get_pnl":
+                text = positions.get_pnl(
+                    strategy=arguments.get("strategy"),
+                    state_path=arguments.get("state_path"),
+                )
+            elif name == "get_kill_switch":
+                text = positions.get_kill_switch(
+                    state_path=arguments.get("state_path"),
                 )
             else:
                 text = f"unknown tool: {name}"

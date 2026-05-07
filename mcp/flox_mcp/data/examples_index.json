@@ -31,8 +31,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_backtest_vs_live.py",
-      "sha256": "cb05e43ec51c349c1f57588657faf9dcf6ff29ba27d6467282144f8d32024c6c",
-      "size_bytes": 4592,
+      "sha256": "add890b38b0eeea214d4df8fcf792bbafcb1852c9907fccaf6d7505428f3f817",
+      "size_bytes": 4611,
       "topic": "backtest"
     },
     {

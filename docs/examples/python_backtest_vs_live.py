@@ -75,7 +75,7 @@ print(f"  Net PnL  : {stats['net_pnl']:.4f}")
 
 print("\n── Runner (live, sync) ───────────────────────────────────────────")
 
-signals_received = []
+signals_received: list[flox.Signal] = []
 
 def on_signal(sig: flox.Signal):
     signals_received.append(sig)
