@@ -120,3 +120,9 @@ docs/how-to/mlflow.md
 # whites_reality_check covered by python/tests/test_whites_reality_check.py
 # and the whitesRealityCheck section in node/test/test_bindings.js.
 docs/how-to/whites-reality-check.md
+
+# How-to: MCP runtime inspection — illustrative `write_snapshot` pattern
+# (the function takes hook instances by name; not standalone runnable
+# without a real engine setup). Tools themselves are tested via
+# mcp/tests/test_positions.py.
+docs/how-to/mcp-runtime-inspection.md
