@@ -142,3 +142,8 @@ docs/how-to/paper-trading.md
 # How-to: reproducibility bundles — illustrative strategy class plus
 # CLI usage. Runnable surface tested by python/tests/test_bundle.py.
 docs/how-to/reproducibility-bundles.md
+
+# How-to: MCP control plane — illustrative ControlServer setup plus
+# the operator approval CLI snippet. Server contract is exercised by
+# python/tests/test_control_server.py end-to-end against an HTTP server.
+docs/how-to/mcp-control-plane.md

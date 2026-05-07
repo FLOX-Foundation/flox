@@ -11,6 +11,7 @@ from mcp.types import TextContent, Tool
 
 from .tools import (
     capi,
+    control,
     docs_search as docs_search_tool,
     errors,
     events,
@@ -524,8 +525,7 @@ def build_server() -> Server:
                     "Read kill-switch state from the runtime state snapshot. "
                     "Returns {active, reason, since_ns}. Use this for 'is "
                     "trading halted' / 'why was the kill switch tripped'. "
-                    "Read-only — flipping the switch is a Phase 2 mutating "
-                    "tool that is not in this build."
+                    "Read-only — to flip the switch use set_kill_switch."
                 ),
                 inputSchema={
                     "type": "object",
@@ -535,6 +535,138 @@ def build_server() -> Server:
                             "description":
                                 "Override snapshot path.",
                         },
+                    },
+                },
+            ),
+            Tool(
+                name="place_order",
+                description=(
+                    "Place an order through the user's running flox engine. "
+                    "Talks HTTP to the local ControlServer the user app "
+                    "embeds; reads URL + bearer token from FLOX_CONTROL_URL "
+                    "and FLOX_CONTROL_TOKEN. Default dry_run=true; the "
+                    "server simulates acceptance without dispatching to the "
+                    "executor. live tier additionally requires an "
+                    "approve_token issued out of band by the operator. Use "
+                    "this for manual hedges or operator-driven order entry."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["account", "symbol", "side", "qty"],
+                    "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account to place against. paper-prefixed "
+                                "names are allowed in paper scope; live "
+                                "scope is required for any other.",
+                        },
+                        "symbol": {"type": "integer"},
+                        "side": {"type": "string", "enum": ["buy", "sell"]},
+                        "qty": {"type": "number"},
+                        "type": {
+                            "type": "string",
+                            "enum": ["market", "limit"],
+                            "description": "Default market.",
+                        },
+                        "price": {
+                            "type": "number",
+                            "description":
+                                "Required for limit orders; ignored for market.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description":
+                                "Free-text annotation recorded in the audit log.",
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description":
+                                "Default true. Set false to actually dispatch.",
+                        },
+                        "approve_token": {
+                            "type": "string",
+                            "description":
+                                "Required for live scope. One-shot token "
+                                "issued by ControlServer.issue_approval().",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="cancel_order",
+                description=(
+                    "Cancel one open order by id. Talks HTTP to the local "
+                    "ControlServer. Default dry_run=true. Useful for "
+                    "operator-driven cleanup or panic stop."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["order_id"],
+                    "properties": {
+                        "order_id": {"type": "integer"},
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            Tool(
+                name="cancel_all",
+                description=(
+                    "Cancel every open order, optionally filtered by symbol. "
+                    "Default dry_run=true. The most common 'panic stop' "
+                    "primitive after set_kill_switch."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "integer",
+                            "description":
+                                "0 (default) cancels across all symbols.",
+                        },
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            Tool(
+                name="flatten_positions",
+                description=(
+                    "Close every open position with opposite-side market "
+                    "orders, optionally filtered by symbol. Default "
+                    "dry_run=true. Use for 'close everything' operator "
+                    "actions or end-of-day flatten."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "integer",
+                            "description":
+                                "Restrict to one symbol; omit to flatten all.",
+                        },
+                        "dry_run": {"type": "boolean"},
+                    },
+                },
+            ),
+            Tool(
+                name="set_kill_switch",
+                description=(
+                    "Set the engine's kill-switch state. active=true halts "
+                    "all trading; active=false resumes. Default dry_run=true; "
+                    "explicit dry_run=false applies the change. Use for "
+                    "emergency halt and for resuming after manual review."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["active"],
+                    "properties": {
+                        "active": {"type": "boolean"},
+                        "reason": {
+                            "type": "string",
+                            "description":
+                                "Free-text annotation recorded in the audit log.",
+                        },
+                        "dry_run": {"type": "boolean"},
                     },
                 },
             ),
@@ -630,6 +762,39 @@ def build_server() -> Server:
             elif name == "get_kill_switch":
                 text = positions.get_kill_switch(
                     state_path=arguments.get("state_path"),
+                )
+            elif name == "place_order":
+                text = control.place_order(
+                    account=arguments["account"],
+                    symbol=int(arguments["symbol"]),
+                    side=arguments["side"],
+                    qty=float(arguments["qty"]),
+                    type=arguments.get("type", "market"),
+                    price=float(arguments.get("price", 0.0)),
+                    reason=arguments.get("reason", ""),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                    approve_token=arguments.get("approve_token"),
+                )
+            elif name == "cancel_order":
+                text = control.cancel_order(
+                    order_id=int(arguments["order_id"]),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "cancel_all":
+                text = control.cancel_all(
+                    symbol=int(arguments.get("symbol", 0)),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "flatten_positions":
+                text = control.flatten_positions(
+                    symbol=arguments.get("symbol"),
+                    dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "set_kill_switch":
+                text = control.set_kill_switch(
+                    active=bool(arguments["active"]),
+                    reason=arguments.get("reason", ""),
+                    dry_run=bool(arguments.get("dry_run", True)),
                 )
             else:
                 text = f"unknown tool: {name}"
