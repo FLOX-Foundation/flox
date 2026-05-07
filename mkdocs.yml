@@ -132,6 +132,7 @@ nav:
           - Lookahead-bias detector: how-to/lookahead-detector.md
           - Portfolio risk aggregator: how-to/portfolio-risk.md
           - Backtest with latency: how-to/backtest-with-latency.md
+          - Execution algorithms: how-to/execution-algorithms.md
       - Indicators & Aggregation:
           - Indicator Graph: how-to/indicator-graph.md
           - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
