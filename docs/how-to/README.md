@@ -36,6 +36,7 @@ Solve specific problems. Assumes you know the basics.
 | [Reproducibility bundles](reproducibility-bundles.md) | Pack strategy + tape + expected output into a single tarball; replay byte-for-byte |
 | [Control a running engine over MCP](mcp-control-plane.md) | Send place / cancel / flatten / kill-switch from an AI client over a token-scoped HTTP control plane |
 | [Live engine analytics over MCP](mcp-live-analytics.md) | Read-only introspection of a running engine: list strategies, walk causal chains, replay-with-overrides |
+| [Lookahead-bias detector](lookahead-detector.md) | Static-analysis lint that flags `.shift(-N)`, forward-index arithmetic, future-named attributes |
 
 ## Indicators and aggregation
 

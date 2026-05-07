@@ -18,6 +18,7 @@ from .tools import (
     events,
     examples,
     indicators,
+    lookahead as lookahead_tool,
     lookup,
     positions,
     runtime,
@@ -813,6 +814,30 @@ def build_server() -> Server:
                     },
                 },
             ),
+            Tool(
+                name="validate_strategy_no_lookahead",
+                description=(
+                    "Static-analysis check for the most common backtest "
+                    "bug: lookahead bias. Walks the strategy code's AST "
+                    "and flags negative .shift(N), forward-index "
+                    "arithmetic like df.iloc[i+1], open-upper slices "
+                    "inside per-bar callbacks, and attribute names that "
+                    "look future-dated (next_*, future_*, lookahead_*). "
+                    "Heuristic, not a proof — false negatives are "
+                    "possible. Run before trusting any backtest result."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description":
+                                "Python source of the strategy module / class.",
+                        },
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -976,6 +1001,10 @@ def build_server() -> Server:
                     param_overrides=arguments["param_overrides"],
                     from_ts_ns=arguments.get("from_ts_ns"),
                     to_ts_ns=arguments.get("to_ts_ns"),
+                )
+            elif name == "validate_strategy_no_lookahead":
+                text = lookahead_tool.validate_strategy_no_lookahead(
+                    arguments["code"],
                 )
             else:
                 text = f"unknown tool: {name}"
