@@ -131,6 +131,7 @@ nav:
           - Live analytics over MCP: how-to/mcp-live-analytics.md
           - Lookahead-bias detector: how-to/lookahead-detector.md
           - Portfolio risk aggregator: how-to/portfolio-risk.md
+          - Backtest with latency: how-to/backtest-with-latency.md
       - Indicators & Aggregation:
           - Indicator Graph: how-to/indicator-graph.md
           - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md

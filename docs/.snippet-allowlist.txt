@@ -161,3 +161,7 @@ docs/how-to/lookahead-detector.md
 # How-to: portfolio risk — illustrative aggregator setup; the public
 # surface is exercised by python/tests/test_portfolio_risk.py.
 docs/how-to/portfolio-risk.md
+
+# How-to: backtest with latency — illustrative wiring patterns;
+# the public surface is exercised by python/tests/test_latency_models.py.
+docs/how-to/backtest-with-latency.md
