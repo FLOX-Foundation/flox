@@ -189,6 +189,9 @@ jobs:
     - name: Verify lookahead-bias detector (static AST analysis)
       run: PYTHONPATH=build/python python3 python/tests/test_lookahead.py
 
+    - name: Verify flox tape diff CLI
+      run: PYTHONPATH=build/python python3 python/tests/test_tape_diff.py
+
     - name: Replay-equivalence CI gate (W2-T017)
       run: python3 scripts/replay_equivalence_gate.py
 

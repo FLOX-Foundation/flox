@@ -43,6 +43,18 @@ flox tape inspect ./tapes/bybit-btc-2026-05-07
 
 Prints trade count, first and last exchange timestamp, and the symbols seen. Useful as a smoke check after a recording session.
 
+## Diff two tapes
+
+```bash
+flox tape diff ./tapes/run-a ./tapes/run-b
+```
+
+Compares two `.floxlog` directories trade-by-trade on `(exchange_ts_ns, symbol_id, price_raw, qty_raw, side)`. Exits 0 when equal, 1 on divergence, with the first divergent index plus a sample of mismatched rows printed to stderr.
+
+`--ts-tolerance-ns N` lets timestamps drift by up to `N` nanoseconds before flagging. Useful when comparing two live captures that share content but came through different recv paths. `--max-mismatches K` caps how many divergent rows are recorded; the rest are summarized by count. `--json` emits the full diff structure for CI scripting.
+
+The most common reason to run this: the replay-equivalence gate failed and you want to know exactly which trades shifted between the captured reference and what the engine produces today.
+
 ## Replay a tape
 
 ```bash
