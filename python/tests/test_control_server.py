@@ -361,5 +361,165 @@ class ConfigValidationTests(unittest.TestCase):
             )
 
 
+class AnalyticsTests(_BaseServerTest):
+    def setUp(self) -> None:
+        # Wire analytics-side accessors before starting; _BaseServerTest
+        # constructs the server in its own setUp, so override here.
+        from flox_py.event_log import EventLog
+
+        self.event_log = EventLog(capacity=100)
+        self.executor = _FakeExecutor()
+        self.kill_switch = _FakeKillSwitch()
+        self.audit_path = Path(tempfile.mkdtemp()) / "audit.jsonl"
+        self.server = control_server.ControlServer(
+            tokens={
+                "read-token": "read",
+                "paper-token": "paper",
+                "live-token": "live",
+            },
+            executor=self.executor,
+            kill_switch=self.kill_switch,
+            host="127.0.0.1",
+            port=0,
+            audit_sink=self.audit_path,
+            rate_limits={
+                "orders": (100.0, 100.0),
+                "cancels": (100.0, 100.0),
+                "kill": (100.0, 100.0),
+            },
+            strategies=lambda: [
+                {"name": "ema-trend", "status": "running", "symbols": [1]},
+                {"name": "kijun", "status": "paused", "symbols": [2]},
+            ],
+            strategy_state_provider=lambda name: {
+                "params": {"period": 21},
+                "position": 0.5,
+            } if name == "ema-trend" else None,
+            indicator_provider=lambda strategy, name: [
+                {"name": "ema_21", "value": 67432.10},
+                {"name": "rsi_14", "value": 55.4},
+            ] if strategy == "ema-trend" else [],
+            event_log=self.event_log,
+            replay_callback=lambda args: {
+                "trade_count": 100,
+                "fill_count": 1,
+                "param_overrides_received": dict(args.get("param_overrides") or {}),
+            },
+        )
+        self.server.start()
+        self.server.port = self.server._http.server_address[1]
+
+    def test_list_strategies(self) -> None:
+        status, body = _post(
+            self.server.url, "/list_strategies", {}, token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["data"]), 2)
+        self.assertEqual(body["data"][0]["name"], "ema-trend")
+
+    def test_get_strategy_state_returns_state(self) -> None:
+        status, body = _post(
+            self.server.url, "/get_strategy_state",
+            {"name": "ema-trend"},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["state"]["params"]["period"], 21)
+
+    def test_get_strategy_state_unknown_returns_none(self) -> None:
+        status, body = _post(
+            self.server.url, "/get_strategy_state",
+            {"name": "nonexistent"},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertIsNone(body["state"])
+
+    def test_get_indicator_values(self) -> None:
+        status, body = _post(
+            self.server.url, "/get_indicator_values",
+            {"strategy": "ema-trend"},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["data"]), 2)
+        names = {d["name"] for d in body["data"]}
+        self.assertEqual(names, {"ema_21", "rsi_14"})
+
+    def test_get_event_log_returns_records(self) -> None:
+        self.event_log.emit("signal", strategy="ema-trend", payload={"side": "buy"})
+        self.event_log.emit("order", strategy="ema-trend", payload={"id": 1})
+        status, body = _post(
+            self.server.url, "/get_event_log",
+            {"strategy": "ema-trend"},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["data"]), 2)
+
+    def test_explain_decision_walks_causal_chain(self) -> None:
+        root = self.event_log.emit("trade")
+        sig = self.event_log.emit("signal", causal_parent_id=root.event_id)
+        order = self.event_log.emit("order", causal_parent_id=sig.event_id)
+        status, body = _post(
+            self.server.url, "/explain_decision",
+            {"event_id": order.event_id},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        types = [r["type"] for r in body["chain"]]
+        self.assertEqual(types, ["order", "signal", "trade"])
+
+    def test_replay_window_invokes_callback(self) -> None:
+        status, body = _post(
+            self.server.url, "/replay_window",
+            {"from_ts_ns": 1, "to_ts_ns": 100,
+             "param_overrides": {"period": 50}},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"]["trade_count"], 100)
+        self.assertEqual(
+            body["data"]["param_overrides_received"], {"period": 50}
+        )
+
+    def test_whatif_invokes_same_callback(self) -> None:
+        status, body = _post(
+            self.server.url, "/whatif",
+            {"strategy": "ema-trend",
+             "param_overrides": {"period": 50}},
+            token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            body["data"]["param_overrides_received"], {"period": 50}
+        )
+
+    def test_analytics_accept_read_scope(self) -> None:
+        status, _ = _post(
+            self.server.url, "/list_strategies", {}, token="read-token",
+        )
+        self.assertEqual(status, 200)
+
+    def test_get_strategy_state_requires_name(self) -> None:
+        status, body = _post(
+            self.server.url, "/get_strategy_state", {}, token="read-token",
+        )
+        self.assertEqual(status, 400)
+
+
+class UnconfiguredAnalyticsTests(_BaseServerTest):
+    """When the user did not pass analytics accessors, the endpoints
+    must still answer cleanly with a `note` instead of crashing."""
+
+    def test_list_strategies_with_no_accessor_is_empty(self) -> None:
+        status, body = _post(
+            self.server.url, "/list_strategies", {}, token="read-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"], [])
+        self.assertIn("note", body)
+
+
 if __name__ == "__main__":
     unittest.main()

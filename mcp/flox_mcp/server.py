@@ -10,6 +10,7 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from .tools import (
+    analytics,
     capi,
     control,
     docs_search as docs_search_tool,
@@ -670,6 +671,148 @@ def build_server() -> Server:
                     },
                 },
             ),
+            # ── Live analytics (read-only) ────────────────────────
+            Tool(
+                name="list_strategies",
+                description=(
+                    "List the strategies the running flox engine knows "
+                    "about, with name, status, and the symbols each one "
+                    "subscribes to. Read-only. Use when the user asks "
+                    "'what's running' / 'which strategies are active'."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_strategy_state",
+                description=(
+                    "Return one strategy's current state as a JSON dict — "
+                    "params, position view, last decisions. Read-only. Use "
+                    "when the user asks 'what does strategy X think right "
+                    "now' / 'show me state for ema-trend'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "name": {"type": "string"},
+                    },
+                },
+            ),
+            Tool(
+                name="get_indicator_values",
+                description=(
+                    "Return the live values of indicators inside a strategy. "
+                    "Optional name filter narrows to one indicator. "
+                    "Read-only. Use for 'what's the EMA reading' / 'is the "
+                    "RSI overbought now'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["strategy"],
+                    "properties": {
+                        "strategy": {"type": "string"},
+                        "name": {
+                            "type": "string",
+                            "description": "Optional: filter to one indicator.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="get_event_log",
+                description=(
+                    "Query the engine event log (signals emitted, orders "
+                    "placed, fills received, risk checks). Filters AND-"
+                    "compose. Read-only. Use for 'what happened in the "
+                    "last 5 minutes' / 'show me all the signals from "
+                    "ema-trend'. Default limit 100."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "strategy": {"type": "string"},
+                        "type": {
+                            "type": "string",
+                            "description":
+                                "Event type filter (e.g. 'signal', "
+                                "'order', 'fill', 'risk_check').",
+                        },
+                        "from_ts_ns": {"type": "integer"},
+                        "to_ts_ns": {"type": "integer"},
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max records to return. Default 100.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="explain_decision",
+                description=(
+                    "Walk an event's causal-parent chain back toward the "
+                    "root. Returns the chain in order from the requested "
+                    "event to its root. Use when the user asks 'why did "
+                    "this fill happen' / 'trace the cause of order 42' — "
+                    "the chain shows which signal produced the order, "
+                    "which event triggered the signal, etc."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["event_id"],
+                    "properties": {
+                        "event_id": {"type": "string"},
+                        "max_depth": {
+                            "type": "integer",
+                            "description":
+                                "Stop walking after this many parents. Default 32.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="replay_window",
+                description=(
+                    "Run a sandbox replay over a time window. The engine "
+                    "side decides what 'replay' means: typical setups "
+                    "use the bundled tape primitives to drive a "
+                    "SimulatedExecutor over a tape slice. Read-only "
+                    "(sandbox-only mutations). Use for 'replay the last "
+                    "hour' / 'rerun this period in sandbox'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "from_ts_ns": {"type": "integer"},
+                        "to_ts_ns": {"type": "integer"},
+                        "strategy": {"type": "string"},
+                        "param_overrides": {
+                            "type": "object",
+                            "description":
+                                "Optional dict of strategy params to "
+                                "swap before the replay.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="whatif",
+                description=(
+                    "Counterfactual replay: same as replay_window plus "
+                    "a strategy-name filter and required param_overrides. "
+                    "Use for 'what if EMA period was 50 instead of 21' / "
+                    "'show me the PnL if I had used a wider stop'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["strategy", "param_overrides"],
+                    "properties": {
+                        "strategy": {"type": "string"},
+                        "param_overrides": {"type": "object"},
+                        "from_ts_ns": {"type": "integer"},
+                        "to_ts_ns": {"type": "integer"},
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -795,6 +938,44 @@ def build_server() -> Server:
                     active=bool(arguments["active"]),
                     reason=arguments.get("reason", ""),
                     dry_run=bool(arguments.get("dry_run", True)),
+                )
+            elif name == "list_strategies":
+                text = analytics.list_strategies()
+            elif name == "get_strategy_state":
+                text = analytics.get_strategy_state(
+                    name=arguments["name"],
+                )
+            elif name == "get_indicator_values":
+                text = analytics.get_indicator_values(
+                    strategy=arguments["strategy"],
+                    name=arguments.get("name"),
+                )
+            elif name == "get_event_log":
+                text = analytics.get_event_log(
+                    strategy=arguments.get("strategy"),
+                    type=arguments.get("type"),
+                    from_ts_ns=arguments.get("from_ts_ns"),
+                    to_ts_ns=arguments.get("to_ts_ns"),
+                    limit=int(arguments.get("limit", 100)),
+                )
+            elif name == "explain_decision":
+                text = analytics.explain_decision(
+                    event_id=arguments["event_id"],
+                    max_depth=int(arguments.get("max_depth", 32)),
+                )
+            elif name == "replay_window":
+                text = analytics.replay_window(
+                    from_ts_ns=arguments.get("from_ts_ns"),
+                    to_ts_ns=arguments.get("to_ts_ns"),
+                    strategy=arguments.get("strategy"),
+                    param_overrides=arguments.get("param_overrides"),
+                )
+            elif name == "whatif":
+                text = analytics.whatif(
+                    strategy=arguments["strategy"],
+                    param_overrides=arguments["param_overrides"],
+                    from_ts_ns=arguments.get("from_ts_ns"),
+                    to_ts_ns=arguments.get("to_ts_ns"),
                 )
             else:
                 text = f"unknown tool: {name}"

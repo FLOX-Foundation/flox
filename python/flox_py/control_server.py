@@ -239,13 +239,35 @@ class ControlServer:
     expose. ``kill_switch`` must support ``set(active: bool, reason:
     str | None)`` and ``state() -> dict``; the bundled Python
     ``KillSwitch`` hook works directly. ``positions`` and ``runner``
-    are optional, used by ``flatten_positions``."""
+    are optional, used by ``flatten_positions``.
+
+    Live analytics inputs (all optional, all read-only):
+
+    * ``strategies`` — callable returning an iterable of dicts with
+      at minimum ``name``, ``status``, and ``symbols``. Powers
+      ``list_strategies``.
+    * ``strategy_state_provider`` — callable ``name → dict`` returning
+      a strategy's current state. Powers ``get_strategy_state``.
+    * ``indicator_provider`` — callable ``(strategy, name?) → list
+      of dict`` returning indicator values for a strategy. Powers
+      ``get_indicator_values``.
+    * ``event_log`` — an :class:`flox_py.event_log.EventLog` instance.
+      Powers ``get_event_log`` and ``explain_decision``.
+    * ``replay_callback`` — callable ``(args: dict) → dict`` that
+      runs a sandbox replay window with the supplied params. Powers
+      ``replay_window`` and ``whatif``.
+    """
 
     tokens: Mapping[str, str]  # token-string → scope
     executor: Any = None
     kill_switch: Any = None
     positions: Any = None
     runner: Any = None
+    strategies: Any = None
+    strategy_state_provider: Any = None
+    indicator_provider: Any = None
+    event_log: Any = None
+    replay_callback: Any = None
     host: str = "127.0.0.1"
     port: int = 8765
     audit_sink: Optional[Path] = None
@@ -488,16 +510,117 @@ class ControlServer:
     def handle_health(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": True, "scope": caller.scope, "url": self.url}
 
+    # ── Analytics (all read-only, all scopes allowed) ────────────
+
+    def _require_any_scope(self, caller: _Caller) -> None:
+        # Every authenticated caller may read; the auth check has
+        # already happened upstream of this method.
+        if caller.scope not in VALID_SCOPES:
+            raise ScopeForbidden(f"unknown scope {caller.scope!r}")
+
+    def handle_list_strategies(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        self._require_any_scope(caller)
+        if self.strategies is None:
+            return {"data": [], "note": "no strategies accessor configured"}
+        try:
+            rows = list(self.strategies())
+        except TypeError:
+            rows = list(self.strategies)
+        return {"data": [dict(r) for r in rows]}
+
+    def handle_get_strategy_state(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        self._require_any_scope(caller)
+        name = str(args.get("name") or "")
+        if not name:
+            raise ControlServerError("get_strategy_state requires name")
+        if self.strategy_state_provider is None:
+            return {"name": name, "state": None,
+                    "note": "no strategy_state_provider configured"}
+        state = self.strategy_state_provider(name)
+        if state is None:
+            return {"name": name, "state": None,
+                    "note": "strategy not found or has no state"}
+        return {"name": name, "state": dict(state)}
+
+    def handle_get_indicator_values(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        self._require_any_scope(caller)
+        strategy = str(args.get("strategy") or "")
+        if not strategy:
+            raise ControlServerError("get_indicator_values requires strategy")
+        name = args.get("name")  # optional filter
+        if self.indicator_provider is None:
+            return {"strategy": strategy, "data": [],
+                    "note": "no indicator_provider configured"}
+        rows = list(self.indicator_provider(strategy, name))
+        return {"strategy": strategy, "data": [dict(r) for r in rows]}
+
+    def handle_get_event_log(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        self._require_any_scope(caller)
+        if self.event_log is None:
+            return {"data": [], "note": "no event_log configured"}
+        records = self.event_log.query(
+            strategy=args.get("strategy"),
+            type=args.get("type"),
+            from_ts_ns=args.get("from_ts_ns"),
+            to_ts_ns=args.get("to_ts_ns"),
+            limit=args.get("limit", 100),
+        )
+        return {"data": [r.to_dict() for r in records]}
+
+    def handle_explain_decision(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        self._require_any_scope(caller)
+        event_id = str(args.get("event_id") or "")
+        if not event_id:
+            raise ControlServerError("explain_decision requires event_id")
+        if self.event_log is None:
+            return {"event_id": event_id, "chain": [],
+                    "note": "no event_log configured"}
+        chain = self.event_log.trace(
+            event_id, max_depth=int(args.get("max_depth", 32)),
+        )
+        if not chain:
+            return {"event_id": event_id, "chain": [],
+                    "note": "event_id not found"}
+        return {"event_id": event_id,
+                "chain": [r.to_dict() for r in chain]}
+
+    def handle_replay_window(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        self._require_any_scope(caller)
+        if self.replay_callback is None:
+            return {"data": None,
+                    "note": "no replay_callback configured"}
+        try:
+            result = self.replay_callback(args)
+        except Exception as exc:
+            raise ControlServerError(
+                f"replay_window failed: {type(exc).__name__}: {exc}"
+            )
+        return {"data": dict(result)}
+
+    def handle_whatif(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
+        # Same callback as replay_window; the param overrides live in
+        # the args dict and the user-side callback applies them.
+        return self.handle_replay_window(caller, args)
+
 
 # ── HTTP wiring ──────────────────────────────────────────────────────
 
 
 _OP_MAP = {
+    # mutating
     "/place_order": ("place_order", "handle_place_order"),
     "/cancel_order": ("cancel_order", "handle_cancel_order"),
     "/cancel_all": ("cancel_all", "handle_cancel_all"),
     "/flatten_positions": ("flatten_positions", "handle_flatten_positions"),
     "/set_kill_switch": ("set_kill_switch", "handle_set_kill_switch"),
+    # analytics (read-only)
+    "/list_strategies": ("list_strategies", "handle_list_strategies"),
+    "/get_strategy_state": ("get_strategy_state", "handle_get_strategy_state"),
+    "/get_indicator_values": ("get_indicator_values", "handle_get_indicator_values"),
+    "/get_event_log": ("get_event_log", "handle_get_event_log"),
+    "/explain_decision": ("explain_decision", "handle_explain_decision"),
+    "/replay_window": ("replay_window", "handle_replay_window"),
+    "/whatif": ("whatif", "handle_whatif"),
 }
 
 

@@ -42,6 +42,7 @@ set(FLOX_PY_REQUIRED_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/paper.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/bundle.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/control_server.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/event_log.py
 )
 set(FLOX_PY_OPTIONAL_ROOT_STUBS
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/__init__.pyi
