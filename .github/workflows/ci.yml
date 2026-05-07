@@ -183,6 +183,9 @@ jobs:
     - name: Verify ControlServer (HTTP control plane + auth + audit + rate limits)
       run: PYTHONPATH=build/python python3 python/tests/test_control_server.py
 
+    - name: Verify EventLog (in-memory ring buffer for live analytics)
+      run: PYTHONPATH=build/python python3 python/tests/test_event_log.py
+
     - name: Replay-equivalence CI gate (W2-T017)
       run: python3 scripts/replay_equivalence_gate.py
 

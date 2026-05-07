@@ -147,3 +147,9 @@ docs/how-to/reproducibility-bundles.md
 # the operator approval CLI snippet. Server contract is exercised by
 # python/tests/test_control_server.py end-to-end against an HTTP server.
 docs/how-to/mcp-control-plane.md
+
+# How-to: MCP live analytics — illustrative ControlServer wiring with
+# the analytics providers plus event-log emit pattern. Server contract
+# is exercised by python/tests/test_control_server.py and
+# python/tests/test_event_log.py end-to-end.
+docs/how-to/mcp-live-analytics.md
