@@ -153,6 +153,7 @@ nav:
       - Integration Flow: explanation/integration-flow.md
       - Indicators: explanation/indicators.md
       - Connectors: explanation/connectors.md
+      - Replay-equivalence gate: explanation/replay-equivalence-gate.md
       - Build feature flags: build/feature-flags.md
       - Contributing:
           - contributors/index.md

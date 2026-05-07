@@ -180,6 +180,9 @@ jobs:
     - name: Verify reproducibility bundle (flox bundle pack/replay/validate)
       run: PYTHONPATH=build/python python3 python/tests/test_bundle.py
 
+    - name: Replay-equivalence CI gate (W2-T017)
+      run: python3 scripts/replay_equivalence_gate.py
+
     - name: Verify Python CCXT adapter (mock-based)
       run: PYTHONPATH=build/python python3 python/tests/test_ccxt_adapter.py
 

@@ -15117,6 +15117,7 @@ Understand concepts and design decisions behind FLOX. These pages are language-a
 | [Memory Model](memory-model.md) | Zero-allocation event delivery (system-level, C++ internals) |
 | [Integration Flow](integration-flow.md) | End-to-end data flow through the system |
 | [Indicators](indicators.md) | What each indicator measures and when to use it |
+| [Replay-equivalence gate](replay-equivalence-gate.md) | The CI check that defends deterministic backtest replay |
 
 ## When to read these
 
