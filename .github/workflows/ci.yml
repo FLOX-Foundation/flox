@@ -177,6 +177,9 @@ jobs:
     - name: Verify PaperBroker (sandbox / paper trading mode)
       run: PYTHONPATH=build/python python3 python/tests/test_paper.py
 
+    - name: Verify reproducibility bundle (flox bundle pack/replay/validate)
+      run: PYTHONPATH=build/python python3 python/tests/test_bundle.py
+
     - name: Verify Python CCXT adapter (mock-based)
       run: PYTHONPATH=build/python python3 python/tests/test_ccxt_adapter.py
 

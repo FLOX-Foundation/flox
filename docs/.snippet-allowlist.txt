@@ -138,3 +138,7 @@ docs/how-to/tape-record.md
 # patterns; the full runnable end-to-end is exercised by
 # python/tests/test_paper.py against the same code path.
 docs/how-to/paper-trading.md
+
+# How-to: reproducibility bundles — illustrative strategy class plus
+# CLI usage. Runnable surface tested by python/tests/test_bundle.py.
+docs/how-to/reproducibility-bundles.md

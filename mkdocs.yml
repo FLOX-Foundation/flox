@@ -126,6 +126,7 @@ nav:
           - Multi-Exchange Trading: how-to/multi-exchange-trading.md
           - Inspect engine over MCP: how-to/mcp-runtime-inspection.md
           - Paper trading: how-to/paper-trading.md
+          - Reproducibility bundles: how-to/reproducibility-bundles.md
       - Indicators & Aggregation:
           - Indicator Graph: how-to/indicator-graph.md
           - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
