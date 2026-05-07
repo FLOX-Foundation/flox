@@ -171,6 +171,9 @@ jobs:
     - name: Verify flox new CLI scaffolder
       run: PYTHONPATH=build/python python3 python/tests/test_flox_new_cli.py
 
+    - name: Verify flox tape CLI (record / replay / inspect)
+      run: PYTHONPATH=build/python python3 python/tests/test_tape_cli.py
+
     - name: Verify Python CCXT adapter (mock-based)
       run: PYTHONPATH=build/python python3 python/tests/test_ccxt_adapter.py
 
@@ -182,6 +185,7 @@ jobs:
         docs/examples/python_backtest_vs_live.py
         docs/examples/python_multi_symbol.py
         docs/examples/python_ccxt_live.py
+        docs/examples/python_tape_roundtrip.py
 
     # Pyright is what Cursor / Pylance / VSCode actually run; mypy and
     # pyright sometimes disagree, and the AI-DX goal is the editor
@@ -195,6 +199,9 @@ jobs:
 
     - name: Run Python example
       run: PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
+
+    - name: Run Python tape round-trip example
+      run: PYTHONPATH=build/python python3 docs/examples/python_tape_roundtrip.py
 
     - name: Verify Codon binaries
       run: |
