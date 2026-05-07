@@ -111,6 +111,7 @@ nav:
       - Strategy & Backtest:
           - Scaffold a Project (flox new): how-to/flox-new.md
           - Strategy Classes: how-to/strategy-classes.md
+          - TypeScript strategy authoring: how-to/typescript-strategy-authoring.md
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md

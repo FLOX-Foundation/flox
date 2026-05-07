@@ -8,6 +8,7 @@ Solve specific problems. Assumes you know the basics.
 |-------|---------|
 | [Scaffold a project (`flox new`)](flox-new.md) | Bootstrap research / live / indicator-library projects from a template |
 | [Strategy classes](strategy-classes.md) | Structure strategy code idiomatically |
+| [TypeScript strategy authoring](typescript-strategy-authoring.md) | Write strategies as TS classes with `@strategy` / `@onTrade` decorators |
 | [CCXT adapter](ccxt-adapter.md) | Connect to an exchange via the CCXT bridge |
 
 ## Backtesting and analysis

@@ -174,3 +174,8 @@ docs/how-to/execution-algorithms.md
 # customization snippets; the public surface is exercised by
 # python/tests/test_rl_env.py.
 docs/how-to/rl-environment.md
+
+# How-to: TypeScript strategy authoring. Illustrative class example;
+# the runtime compile-and-run path is exercised by
+# node/test/test_authoring.ts.
+docs/how-to/typescript-strategy-authoring.md

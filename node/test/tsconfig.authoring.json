@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "Node10",
+    "ignoreDeprecations": "6.0",
+    "esModuleInterop": true,
+    "declaration": false,
+    "sourceMap": false,
+    "rootDir": "./",
+    "outDir": "../.test-build",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["test_authoring.ts"]
+}

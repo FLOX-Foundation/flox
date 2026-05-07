@@ -269,6 +269,13 @@ jobs:
       run: |
         cd node && node test/test_flox_error.js
 
+    - name: Verify Node.js TypeScript authoring layer
+      run: |
+        cd node
+        npx tsc -p authoring/tsconfig.json
+        npx tsc -p test/tsconfig.authoring.json
+        node .test-build/test_authoring.js
+
     - name: Cross-binding parity (Python ↔ Node, same C++ math)
       run: PYTHONPATH=build/python python3 scripts/cross_binding_parity.py
 
