@@ -39,6 +39,7 @@ set(FLOX_PY_REQUIRED_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/ccxt.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/report.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/tape.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/paper.py
 )
 set(FLOX_PY_OPTIONAL_ROOT_STUBS
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/__init__.pyi

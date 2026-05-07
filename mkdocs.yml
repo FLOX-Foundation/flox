@@ -125,6 +125,7 @@ nav:
           - Advanced Orders: how-to/advanced-orders.md
           - Multi-Exchange Trading: how-to/multi-exchange-trading.md
           - Inspect engine over MCP: how-to/mcp-runtime-inspection.md
+          - Paper trading: how-to/paper-trading.md
       - Indicators & Aggregation:
           - Indicator Graph: how-to/indicator-graph.md
           - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
