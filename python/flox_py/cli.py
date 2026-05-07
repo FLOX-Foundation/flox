@@ -361,6 +361,39 @@ def cmd_bundle_validate(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_tape_diff(args: argparse.Namespace) -> int:
+    from . import tape as tape_mod
+
+    left = Path(args.left).expanduser()
+    right = Path(args.right).expanduser()
+    if not left.is_dir() or not right.is_dir():
+        print(f"flox tape diff: both paths must be .floxlog directories",
+              file=sys.stderr)
+        return 2
+    diff = tape_mod.diff_tapes(
+        left, right,
+        max_mismatches=int(args.max_mismatches),
+        field_tolerance_ns=int(args.ts_tolerance_ns),
+    )
+    if args.json:
+        import json as _json
+        print(_json.dumps(diff.to_dict(), indent=2, sort_keys=True))
+    else:
+        if diff.equal:
+            print(f"flox tape diff: EQUAL "
+                  f"({diff.left_count} trade(s) on each side)")
+        else:
+            print(f"flox tape diff: DIVERGENCE")
+            print(f"  left:  {diff.left_path}  trades={diff.left_count}")
+            print(f"  right: {diff.right_path}  trades={diff.right_count}")
+            print(f"  first_divergence_index: {diff.first_divergence_index}")
+            for m in diff.mismatches[:10]:
+                print(f"  [{m['index']}] left={m['left']} right={m['right']}")
+            if len(diff.mismatches) > 10:
+                print(f"  ... {len(diff.mismatches) - 10} more recorded mismatches")
+    return 0 if diff.equal else 1
+
+
 def cmd_lint_lookahead(args: argparse.Namespace) -> int:
     from . import lookahead as lookahead_mod
 
@@ -528,6 +561,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_ins.add_argument("path", help="Path to the .floxlog directory.")
     p_ins.set_defaults(handler=cmd_tape_inspect)
+
+    p_diff = tape_sub.add_parser(
+        "diff",
+        help="Compare two .floxlog directories trade-by-trade. "
+             "Exits 0 when equal, 1 when tapes diverge.",
+    )
+    p_diff.add_argument("left", help="Path to the first .floxlog directory.")
+    p_diff.add_argument("right", help="Path to the second .floxlog directory.")
+    p_diff.add_argument(
+        "--max-mismatches", type=int, default=16,
+        help="Stop recording per-trade mismatches after this many. Default 16.",
+    )
+    p_diff.add_argument(
+        "--ts-tolerance-ns", type=int, default=0,
+        help="Allow this much jitter on exchange_ts_ns when comparing. Default 0.",
+    )
+    p_diff.add_argument(
+        "--json", action="store_true",
+        help="Emit the diff as JSON instead of human-readable lines.",
+    )
+    p_diff.set_defaults(handler=cmd_tape_diff)
 
     # ── bundle ─────────────────────────────────────────────────────
     p_bundle = sub.add_parser(

@@ -179,10 +179,116 @@ def replay_tape(
     return n
 
 
+@dataclass
+class TapeDiff:
+    """Result of :func:`diff_tapes`. ``equal`` is true when both tapes
+    have the same trade count and every paired record matches."""
+
+    left_path: str
+    right_path: str
+    left_count: int
+    right_count: int
+    first_divergence_index: Optional[int]
+    mismatches: List[dict] = field(default_factory=list)
+    equal: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "left_path": self.left_path,
+            "right_path": self.right_path,
+            "left_count": self.left_count,
+            "right_count": self.right_count,
+            "first_divergence_index": self.first_divergence_index,
+            "mismatches": list(self.mismatches),
+            "equal": self.equal,
+        }
+
+
+def diff_tapes(
+    left: str | Path,
+    right: str | Path,
+    *,
+    max_mismatches: int = 16,
+    field_tolerance_ns: int = 0,
+) -> TapeDiff:
+    """Compare two ``.floxlog`` directories trade by trade. Returns
+    ``equal=True`` when both have the same count and every paired
+    record matches on ``(exchange_ts_ns, symbol_id, price_raw,
+    qty_raw, side)``. ``field_tolerance_ns`` allows a non-zero
+    timestamp jitter — useful when comparing live captures whose
+    record-side wallclock can differ across runs.
+
+    The first ``max_mismatches`` divergences are recorded; the rest
+    are summarized by count. Pass a high value if you need the full
+    list."""
+    import flox_py
+    import numpy as np
+
+    left = Path(left).expanduser()
+    right = Path(right).expanduser()
+
+    lt = flox_py.DataReader(str(left)).read_trades()
+    rt = flox_py.DataReader(str(right)).read_trades()
+
+    diff = TapeDiff(
+        left_path=str(left),
+        right_path=str(right),
+        left_count=int(lt.size),
+        right_count=int(rt.size),
+        first_divergence_index=None,
+    )
+
+    n = min(int(lt.size), int(rt.size))
+    for i in range(n):
+        l_row = lt[i]
+        r_row = rt[i]
+        ts_ok = abs(int(l_row["exchange_ts_ns"]) - int(r_row["exchange_ts_ns"])) <= field_tolerance_ns
+        same = (
+            ts_ok
+            and int(l_row["symbol_id"]) == int(r_row["symbol_id"])
+            and int(l_row["price_raw"]) == int(r_row["price_raw"])
+            and int(l_row["qty_raw"]) == int(r_row["qty_raw"])
+            and int(l_row["side"]) == int(r_row["side"])
+        )
+        if not same:
+            if diff.first_divergence_index is None:
+                diff.first_divergence_index = i
+            if len(diff.mismatches) < max_mismatches:
+                diff.mismatches.append({
+                    "index": i,
+                    "left": {
+                        "exchange_ts_ns": int(l_row["exchange_ts_ns"]),
+                        "symbol_id": int(l_row["symbol_id"]),
+                        "price_raw": int(l_row["price_raw"]),
+                        "qty_raw": int(l_row["qty_raw"]),
+                        "side": int(l_row["side"]),
+                    },
+                    "right": {
+                        "exchange_ts_ns": int(r_row["exchange_ts_ns"]),
+                        "symbol_id": int(r_row["symbol_id"]),
+                        "price_raw": int(r_row["price_raw"]),
+                        "qty_raw": int(r_row["qty_raw"]),
+                        "side": int(r_row["side"]),
+                    },
+                })
+
+    if diff.left_count != diff.right_count and diff.first_divergence_index is None:
+        # Same prefix, one tape extends past the other.
+        diff.first_divergence_index = n
+
+    diff.equal = (
+        diff.left_count == diff.right_count
+        and diff.first_divergence_index is None
+    )
+    return diff
+
+
 __all__ = [
     "TapeRecorderStats",
     "TapeStats",
+    "TapeDiff",
     "make_recorder_hook",
     "inspect_tape",
     "replay_tape",
+    "diff_tapes",
 ]
