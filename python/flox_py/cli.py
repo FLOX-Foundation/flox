@@ -313,6 +313,54 @@ def cmd_tape_record(args: argparse.Namespace) -> int:
     return asyncio.run(_run())
 
 
+def cmd_bundle_pack(args: argparse.Namespace) -> int:
+    from . import bundle as bundle_mod
+
+    cfg = {
+        "slippage_model": args.slippage_model,
+        "slippage_params": {"bps": float(args.slippage_bps)} if args.slippage_model == "fixed_bps" else {},
+    }
+    out = bundle_mod.pack_bundle(
+        strategy=Path(args.strategy),
+        tape=Path(args.tape),
+        output=Path(args.output),
+        config=cfg,
+        symbol_name=args.symbol_name,
+        exchange=args.exchange,
+        tick_size=float(args.tick_size),
+    )
+    print(f"flox bundle pack: wrote {out}")
+    return 0
+
+
+def cmd_bundle_replay(args: argparse.Namespace) -> int:
+    from . import bundle as bundle_mod
+
+    res = bundle_mod.replay_bundle(Path(args.path))
+    print(f"flox bundle replay: {args.path}")
+    print(f"  flox_version:           {res.manifest.get('flox_version')}")
+    print(f"  bundle_format_version:  {res.manifest.get('bundle_format_version')}")
+    print(f"  trade_count actual:     {res.actual['trade_count']}")
+    print(f"  fill_count actual:      {res.actual['fill_count']}")
+    print(f"  total_filled actual:    {res.actual['total_filled_quantity']}")
+    print(f"  trade_count expected:   {res.expected['trade_count']}")
+    print(f"  fill_count expected:    {res.expected['fill_count']}")
+    return 0
+
+
+def cmd_bundle_validate(args: argparse.Namespace) -> int:
+    from . import bundle as bundle_mod
+
+    res = bundle_mod.validate_bundle(Path(args.path))
+    if res.matches:
+        print(f"flox bundle validate: OK ({args.path}) — actual matches expected")
+        return 0
+    print(f"flox bundle validate: DIVERGENCE ({args.path})", file=sys.stderr)
+    for d in res.diff:
+        print(f"  {d}", file=sys.stderr)
+    return 1
+
+
 def cmd_tape_inspect(args: argparse.Namespace) -> int:
     from . import tape as tape_mod
 
@@ -457,6 +505,68 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_ins.add_argument("path", help="Path to the .floxlog directory.")
     p_ins.set_defaults(handler=cmd_tape_inspect)
+
+    # ── bundle ─────────────────────────────────────────────────────
+    p_bundle = sub.add_parser(
+        "bundle",
+        help="Pack / replay / validate a reproducibility bundle "
+             "(strategy + tape + expected output).",
+    )
+    bundle_sub = p_bundle.add_subparsers(dest="bundle_command", required=True)
+
+    p_pack = bundle_sub.add_parser(
+        "pack",
+        help="Build a bundle from a strategy file + tape directory.",
+    )
+    p_pack.add_argument(
+        "--strategy", required=True,
+        help="Path to a .py file containing one flox.Strategy subclass.",
+    )
+    p_pack.add_argument(
+        "--tape", required=True,
+        help="Path to a .floxlog directory the strategy will replay against.",
+    )
+    p_pack.add_argument(
+        "--output", "-o", required=True,
+        help="Bundle output path (.tar).",
+    )
+    p_pack.add_argument(
+        "--symbol-name", default="BTCUSDT",
+        help="Symbol name to register (default: BTCUSDT).",
+    )
+    p_pack.add_argument(
+        "--exchange", default="bundle",
+        help="Exchange tag for the symbol (default: bundle).",
+    )
+    p_pack.add_argument(
+        "--tick-size", type=float, default=0.01,
+        help="Tick size for the symbol (default: 0.01).",
+    )
+    p_pack.add_argument(
+        "--slippage-model", default="none",
+        choices=("none", "fixed_ticks", "fixed_bps", "volume_impact"),
+        help="Slippage model for the simulator (default: none).",
+    )
+    p_pack.add_argument(
+        "--slippage-bps", type=float, default=0.0,
+        help="Slippage in basis points (used when slippage-model=fixed_bps).",
+    )
+    p_pack.set_defaults(handler=cmd_bundle_pack)
+
+    p_replay = bundle_sub.add_parser(
+        "replay",
+        help="Extract a bundle, replay the strategy, print actual vs expected.",
+    )
+    p_replay.add_argument("path", help="Path to the bundle .tar file.")
+    p_replay.set_defaults(handler=cmd_bundle_replay)
+
+    p_validate = bundle_sub.add_parser(
+        "validate",
+        help="Replay a bundle and assert the output is byte-equal to expected. "
+             "Exit 0 on match, 1 on divergence (with diff printed).",
+    )
+    p_validate.add_argument("path", help="Path to the bundle .tar file.")
+    p_validate.set_defaults(handler=cmd_bundle_validate)
 
     return p
 

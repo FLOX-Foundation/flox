@@ -33,6 +33,7 @@ Solve specific problems. Assumes you know the basics.
 | [Multi-exchange trading](multi-exchange-trading.md) | Aggregate books and route across venues |
 | [Inspect a running engine over MCP](mcp-runtime-inspection.md) | Read positions / PnL / kill-switch from a running engine via an AI client |
 | [Paper trading](paper-trading.md) | Drive a strategy off live data but route orders to a simulator |
+| [Reproducibility bundles](reproducibility-bundles.md) | Pack strategy + tape + expected output into a single tarball; replay byte-for-byte |
 
 ## Indicators and aggregation
 
