@@ -1207,6 +1207,8 @@ Market Profile (TPO) aggregator. Tracks price activity across time periods.
 - *attr* `is_buy: bool`
 - *attr* `side: str`
 - *attr* `symbol_name: str`
+- *property* `exchange_ts_ns: int`
+- *property* `exchange_ts_ns: None`
 - *property* `price: float`
 - *property* `price: None`
 - *property* `quantity: float`
