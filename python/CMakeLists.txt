@@ -47,6 +47,7 @@ set(FLOX_PY_REQUIRED_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/portfolio_risk.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/latency_models.py
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/execution_algos.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/rl_env.py
 )
 set(FLOX_PY_OPTIONAL_ROOT_STUBS
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/__init__.pyi
