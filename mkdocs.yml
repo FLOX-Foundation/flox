@@ -129,6 +129,7 @@ nav:
           - Reproducibility bundles: how-to/reproducibility-bundles.md
           - Control engine over MCP: how-to/mcp-control-plane.md
           - Live analytics over MCP: how-to/mcp-live-analytics.md
+          - Lookahead-bias detector: how-to/lookahead-detector.md
       - Indicators & Aggregation:
           - Indicator Graph: how-to/indicator-graph.md
           - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md

@@ -153,3 +153,7 @@ docs/how-to/mcp-control-plane.md
 # is exercised by python/tests/test_control_server.py and
 # python/tests/test_event_log.py end-to-end.
 docs/how-to/mcp-live-analytics.md
+
+# How-to: lookahead detector — code samples are short illustrative
+# bug-vs-clean snippets used as test fixtures inside test_lookahead.py.
+docs/how-to/lookahead-detector.md

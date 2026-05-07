@@ -361,6 +361,29 @@ def cmd_bundle_validate(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_lint_lookahead(args: argparse.Namespace) -> int:
+    from . import lookahead as lookahead_mod
+
+    p = Path(args.path).expanduser()
+    if not p.is_file():
+        print(f"flox lint lookahead: file not found: {p}", file=sys.stderr)
+        return 2
+    report = lookahead_mod.analyze_path(p)
+    if args.json:
+        import json as _json
+        print(_json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        if report.ok:
+            print(f"flox lint lookahead: OK ({p}); no patterns flagged")
+        else:
+            print(f"flox lint lookahead: {len(report.findings)} finding(s) in {p}")
+            for f in report.findings:
+                print(f"  {f.line}:{f.col} [{f.rule}] {f.message}")
+                if f.snippet:
+                    print(f"      {f.snippet}")
+    return 0 if report.ok else 1
+
+
 def cmd_tape_inspect(args: argparse.Namespace) -> int:
     from . import tape as tape_mod
 
@@ -567,6 +590,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_validate.add_argument("path", help="Path to the bundle .tar file.")
     p_validate.set_defaults(handler=cmd_bundle_validate)
+
+    # ── lint (lookahead) ────────────────────────────────────────────
+    p_lint = sub.add_parser(
+        "lint",
+        help="Static-analysis lints over strategy code.",
+    )
+    lint_sub = p_lint.add_subparsers(dest="lint_command", required=True)
+
+    p_lookahead = lint_sub.add_parser(
+        "lookahead",
+        help="Detect common lookahead-bias patterns "
+             "(.shift(-N), forward index arithmetic, open-upper "
+             "slices in per-bar callbacks, future-named attributes).",
+    )
+    p_lookahead.add_argument("path", help="Path to the strategy .py file.")
+    p_lookahead.add_argument(
+        "--json", action="store_true",
+        help="Emit findings as JSON instead of human-readable lines.",
+    )
+    p_lookahead.set_defaults(handler=cmd_lint_lookahead)
 
     return p
 

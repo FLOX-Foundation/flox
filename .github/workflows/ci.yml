@@ -186,6 +186,9 @@ jobs:
     - name: Verify EventLog (in-memory ring buffer for live analytics)
       run: PYTHONPATH=build/python python3 python/tests/test_event_log.py
 
+    - name: Verify lookahead-bias detector (static AST analysis)
+      run: PYTHONPATH=build/python python3 python/tests/test_lookahead.py
+
     - name: Replay-equivalence CI gate (W2-T017)
       run: python3 scripts/replay_equivalence_gate.py
 
