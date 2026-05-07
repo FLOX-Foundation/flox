@@ -165,3 +165,7 @@ docs/how-to/portfolio-risk.md
 # How-to: backtest with latency — illustrative wiring patterns;
 # the public surface is exercised by python/tests/test_latency_models.py.
 docs/how-to/backtest-with-latency.md
+
+# How-to: execution algorithms — illustrative wiring patterns; the
+# public surface is exercised by python/tests/test_execution_algos.py.
+docs/how-to/execution-algorithms.md

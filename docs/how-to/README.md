@@ -39,6 +39,7 @@ Solve specific problems. Assumes you know the basics.
 | [Lookahead-bias detector](lookahead-detector.md) | Static-analysis lint that flags `.shift(-N)`, forward-index arithmetic, future-named attributes |
 | [Portfolio-level risk aggregator](portfolio-risk.md) | Combine PnL and exposure across N strategies; portfolio-level kill switch on drawdown / loss / gross / concentration |
 | [Backtest with latency](backtest-with-latency.md) | Add feed / order / fill latency samples to a backtest for HFT-grade fill realism |
+| [Execution algorithms](execution-algorithms.md) | TWAP / VWAP / Iceberg / POV slicers that work on top of any executor |
 
 ## Indicators and aggregation
 

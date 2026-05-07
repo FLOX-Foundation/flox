@@ -198,6 +198,9 @@ jobs:
     - name: Verify latency models
       run: PYTHONPATH=build/python python3 python/tests/test_latency_models.py
 
+    - name: Verify execution algorithms
+      run: PYTHONPATH=build/python python3 python/tests/test_execution_algos.py
+
     - name: Replay-equivalence CI gate (W2-T017)
       run: python3 scripts/replay_equivalence_gate.py
 
