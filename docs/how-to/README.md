@@ -32,6 +32,7 @@ Solve specific problems. Assumes you know the basics.
 | [Advanced orders](advanced-orders.md) | Stop-loss, take-profit, brackets |
 | [Multi-exchange trading](multi-exchange-trading.md) | Aggregate books and route across venues |
 | [Inspect a running engine over MCP](mcp-runtime-inspection.md) | Read positions / PnL / kill-switch from a running engine via an AI client |
+| [Paper trading](paper-trading.md) | Drive a strategy off live data but route orders to a simulator |
 
 ## Indicators and aggregation
 

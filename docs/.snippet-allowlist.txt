@@ -133,3 +133,8 @@ docs/how-to/mcp-runtime-inspection.md
 # docs/examples/python_tape_roundtrip.py and is referenced via --8<--;
 # inline blocks are pedagogical scaffolds, not standalone runnable.
 docs/how-to/tape-record.md
+
+# How-to: paper trading — illustrative quick-start and ccxt-feed
+# patterns; the full runnable end-to-end is exercised by
+# python/tests/test_paper.py against the same code path.
+docs/how-to/paper-trading.md
