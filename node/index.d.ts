@@ -1548,3 +1548,100 @@ export class PortfolioRiskAggregator {
   drawdownPct(): number;
   killSwitchActive(): boolean;
 }
+
+// ── Execution algorithms (TWAP / VWAP / Iceberg / POV) ────────────────
+
+export interface ExecChildOrder {
+  orderId: number;
+  timestampNs: number;
+  qty: number;
+  price: number;
+  type: "market" | "limit";
+}
+
+interface ExecAlgoCommon {
+  targetQty: number;
+  side: Side;
+  symbol?: number;
+  type?: OrderType;
+  limitPrice?: number;
+}
+
+export interface TWAPOptions extends ExecAlgoCommon {
+  durationNs: number;
+  sliceCount: number;
+  startTimeNs: number;
+}
+
+export interface VWAPOptions extends ExecAlgoCommon {
+  /** Array of [timestampNs, volume] rows ordered by time. */
+  volumeCurve: ReadonlyArray<[number, number]>;
+}
+
+export interface IcebergOptions extends ExecAlgoCommon {
+  visibleQty: number;
+}
+
+export interface POVOptions extends ExecAlgoCommon {
+  participationRate: number;
+  minSliceQty?: number;
+}
+
+interface ExecAlgo {
+  /** Drive the state machine forward and return any newly emitted
+   *  child orders. The engine clears its pending buffer before
+   *  returning so the next `step` only yields fresh entries. */
+  step(nowNs: number): ReadonlyArray<ExecChildOrder>;
+  /** User reports a fill on a previously emitted child order. */
+  reportFill(qty: number): void;
+  /** POV-only. Reports observed market volume. No-op for other algos. */
+  observeVolume(qty: number): void;
+  submittedQty(): number;
+  filledQty(): number;
+  remainingQty(): number;
+  isDone(): boolean;
+}
+
+export class TWAPExecutor implements ExecAlgo {
+  constructor(opts: TWAPOptions);
+  step(nowNs: number): ReadonlyArray<ExecChildOrder>;
+  reportFill(qty: number): void;
+  observeVolume(qty: number): void;
+  submittedQty(): number;
+  filledQty(): number;
+  remainingQty(): number;
+  isDone(): boolean;
+}
+
+export class VWAPExecutor implements ExecAlgo {
+  constructor(opts: VWAPOptions);
+  step(nowNs: number): ReadonlyArray<ExecChildOrder>;
+  reportFill(qty: number): void;
+  observeVolume(qty: number): void;
+  submittedQty(): number;
+  filledQty(): number;
+  remainingQty(): number;
+  isDone(): boolean;
+}
+
+export class IcebergExecutor implements ExecAlgo {
+  constructor(opts: IcebergOptions);
+  step(nowNs: number): ReadonlyArray<ExecChildOrder>;
+  reportFill(qty: number): void;
+  observeVolume(qty: number): void;
+  submittedQty(): number;
+  filledQty(): number;
+  remainingQty(): number;
+  isDone(): boolean;
+}
+
+export class POVExecutor implements ExecAlgo {
+  constructor(opts: POVOptions);
+  step(nowNs: number): ReadonlyArray<ExecChildOrder>;
+  reportFill(qty: number): void;
+  observeVolume(qty: number): void;
+  submittedQty(): number;
+  filledQty(): number;
+  remainingQty(): number;
+  isDone(): boolean;
+}

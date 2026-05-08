@@ -478,6 +478,86 @@
           "name": "flox_emit_trailing_stop_percent"
         },
         {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_clear_pending"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_destroy"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_filled_qty"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_iceberg_create"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_is_done"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_observe_volume"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_pending_at"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_pending_count"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_pov_create"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_remaining_qty"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_report_fill"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_step"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_submitted_qty"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_target_qty"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_twap_create"
+        },
+        {
+          "group": "execution_algos",
+          "kind": "function",
+          "name": "flox_exec_vwap_create"
+        },
+        {
           "group": "execution",
           "kind": "function",
           "name": "flox_execution_listener_create"
@@ -1915,6 +1995,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxExecChildOrder"
+        },
+        {
+          "kind": "struct",
           "name": "FloxExecutionListenerCallbacks"
         },
         {
@@ -2083,6 +2167,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxExecAlgoHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxExecutionListenerHandle"
         },
         {
@@ -2210,6 +2298,7 @@
         "datarecorder",
         "datawriter",
         "execution",
+        "execution_algos",
         "executor_fill",
         "fixed_point",
         "floxliveengine_disruptor",
@@ -2628,6 +2717,70 @@
         {
           "kind": "function",
           "name": "flox_emit_trailing_stop_percent"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_clear_pending"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_filled_qty"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_iceberg_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_is_done"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_observe_volume"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_pending_at"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_pending_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_pov_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_remaining_qty"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_report_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_step"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_submitted_qty"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_target_qty"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_twap_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_exec_vwap_create"
         },
         {
           "kind": "function",
@@ -3867,6 +4020,10 @@
         },
         {
           "kind": "class",
+          "name": "ExecChildOrder"
+        },
+        {
+          "kind": "class",
           "name": "ExecutionListener"
         },
         {
@@ -3912,6 +4069,14 @@
         {
           "kind": "class",
           "name": "HeatmapOptions"
+        },
+        {
+          "kind": "class",
+          "name": "IcebergExecutor"
+        },
+        {
+          "kind": "class",
+          "name": "IcebergOptions"
         },
         {
           "kind": "class",
@@ -3972,6 +4137,14 @@
         {
           "kind": "class",
           "name": "OrderValidator"
+        },
+        {
+          "kind": "class",
+          "name": "POVExecutor"
+        },
+        {
+          "kind": "class",
+          "name": "POVOptions"
         },
         {
           "kind": "class",
@@ -4123,6 +4296,14 @@
         },
         {
           "kind": "class",
+          "name": "TWAPExecutor"
+        },
+        {
+          "kind": "class",
+          "name": "TWAPOptions"
+        },
+        {
+          "kind": "class",
           "name": "TapeDiffMismatch"
         },
         {
@@ -4144,6 +4325,14 @@
         {
           "kind": "class",
           "name": "TradeRecord"
+        },
+        {
+          "kind": "class",
+          "name": "VWAPExecutor"
+        },
+        {
+          "kind": "class",
+          "name": "VWAPOptions"
         },
         {
           "kind": "class",
@@ -4667,11 +4856,39 @@
         },
         {
           "kind": "class",
+          "name": "_ExecOrderType"
+        },
+        {
+          "kind": "class",
+          "name": "_ExecSide"
+        },
+        {
+          "kind": "class",
+          "name": "_ExecutionAlgoBase"
+        },
+        {
+          "kind": "class",
+          "name": "_IcebergExecutorNative"
+        },
+        {
+          "kind": "class",
+          "name": "_POVExecutorNative"
+        },
+        {
+          "kind": "class",
           "name": "_PortfolioRiskAggregator"
         },
         {
           "kind": "class",
           "name": "_PortfolioRiskRules"
+        },
+        {
+          "kind": "class",
+          "name": "_TWAPExecutorNative"
+        },
+        {
+          "kind": "class",
+          "name": "_VWAPExecutorNative"
         },
         {
           "kind": "function",
@@ -5282,6 +5499,46 @@
         ],
         "functions": [],
         "status": "required"
+      }
+    },
+    "execution_algos": {
+      "capi_functions": [
+        "flox_exec_clear_pending",
+        "flox_exec_destroy",
+        "flox_exec_filled_qty",
+        "flox_exec_iceberg_create",
+        "flox_exec_is_done",
+        "flox_exec_observe_volume",
+        "flox_exec_pending_at",
+        "flox_exec_pending_count",
+        "flox_exec_pov_create",
+        "flox_exec_remaining_qty",
+        "flox_exec_report_fill",
+        "flox_exec_step",
+        "flox_exec_submitted_qty",
+        "flox_exec_target_qty",
+        "flox_exec_twap_create",
+        "flox_exec_vwap_create"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "TWAPExecutor",
+          "VWAPExecutor",
+          "IcebergExecutor",
+          "POVExecutor"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "reason": "public flox_py.execution_algos.{TWAP,VWAP,Iceberg,POV}Executor classes wrap the compiled _TWAPExecutorNative / _VWAPExecutorNative / _IcebergExecutorNative / _POVExecutorNative symbols. The pure-Python facade preserves the existing dataclass-friendly step(now_ns, executor) interface that ships through the user's Executor.",
+        "status": "allowlist"
       }
     },
     "executor_fill": {

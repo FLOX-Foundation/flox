@@ -2586,6 +2586,100 @@ extern "C"
   FLOX_EXPORT(group = "portfolio_risk")
   uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle);
 
+  // ============================================================
+  // Execution algorithms (TWAP / VWAP / Iceberg / POV)
+  // ============================================================
+  //
+  // Each algo is a state machine. The caller drives it with `step`
+  // and reads any newly emitted child orders via the `pending_*`
+  // accessors, then dispatches them to its own executor and calls
+  // `clear_pending` before the next step. Iceberg gates the next
+  // slice on `report_fill`. POV uses `observe_volume` to track
+  // market activity.
+
+  typedef void* FloxExecAlgoHandle;
+
+  typedef struct
+  {
+    uint64_t order_id;
+    int64_t timestamp_ns;
+    double qty;
+    double price;
+    uint8_t type;  // 0 = market, 1 = limit
+  } FloxExecChildOrder;
+
+  // side: 0 = buy, 1 = sell. type: 0 = market, 1 = limit.
+  // limit_price is ignored for market orders.
+
+  FLOX_EXPORT(group = "execution_algos")
+  FloxExecAlgoHandle flox_exec_twap_create(double target_qty, uint8_t side,
+                                           uint32_t symbol, uint8_t type,
+                                           double limit_price,
+                                           int64_t duration_ns,
+                                           uint32_t slice_count,
+                                           int64_t start_time_ns);
+
+  // volume_curve_ts and volume_curve_vol must be parallel arrays of
+  // length n. ts in nanoseconds, vol must be non-negative; total
+  // volume across the curve must be positive.
+  FLOX_EXPORT(group = "execution_algos")
+  FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t side,
+                                           uint32_t symbol, uint8_t type,
+                                           double limit_price,
+                                           const int64_t* volume_curve_ts,
+                                           const double* volume_curve_vol,
+                                           size_t n);
+
+  FLOX_EXPORT(group = "execution_algos")
+  FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_t side,
+                                              uint32_t symbol, uint8_t type,
+                                              double limit_price,
+                                              double visible_qty);
+
+  FLOX_EXPORT(group = "execution_algos")
+  FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t side,
+                                          uint32_t symbol, uint8_t type,
+                                          double limit_price,
+                                          double participation_rate,
+                                          double min_slice_qty);
+
+  FLOX_EXPORT(group = "execution_algos")
+  void flox_exec_destroy(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  void flox_exec_step(FloxExecAlgoHandle handle, int64_t now_ns);
+
+  FLOX_EXPORT(group = "execution_algos")
+  void flox_exec_report_fill(FloxExecAlgoHandle handle, double qty);
+
+  FLOX_EXPORT(group = "execution_algos")
+  void flox_exec_observe_volume(FloxExecAlgoHandle handle, double qty);
+
+  FLOX_EXPORT(group = "execution_algos")
+  size_t flox_exec_pending_count(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index,
+                                FloxExecChildOrder* out);
+
+  FLOX_EXPORT(group = "execution_algos")
+  void flox_exec_clear_pending(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  double flox_exec_target_qty(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  double flox_exec_submitted_qty(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  double flox_exec_filled_qty(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  double flox_exec_remaining_qty(FloxExecAlgoHandle handle);
+
+  FLOX_EXPORT(group = "execution_algos")
+  uint8_t flox_exec_is_done(FloxExecAlgoHandle handle);
+
 #ifdef __cplusplus
 }
 #endif

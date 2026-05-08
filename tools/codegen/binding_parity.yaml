@@ -324,3 +324,12 @@ groups:
       status: required
       classes: [PortfolioRiskAggregator]
     codon: { status: required }
+
+  execution_algos:
+    pybind11:
+      status: allowlist
+      reason: "public flox_py.execution_algos.{TWAP,VWAP,Iceberg,POV}Executor classes wrap the compiled _TWAPExecutorNative / _VWAPExecutorNative / _IcebergExecutorNative / _POVExecutorNative symbols. The pure-Python facade preserves the existing dataclass-friendly step(now_ns, executor) interface that ships through the user's Executor."
+    napi:
+      status: required
+      classes: [TWAPExecutor, VWAPExecutor, IcebergExecutor, POVExecutor]
+    codon: { status: required }

@@ -1,8 +1,6 @@
 # Execution algorithms (TWAP / VWAP / Iceberg / POV)
 
-A strategy emits a target intent ("buy 1.0 BTC over the next hour" or "sell into 5 percent of market volume"). The execution algorithm turns that intent into a stream of child orders. flox ships four composable algos that speak the same minimal `submit_order` contract; pass any object that implements that signature and the same code runs in backtest and in live.
-
-These are Python-side primitives. The C++ engine has the same `ExecutionListener` hook surface, so cross-binding parity for the algo classes themselves is a Phase 2 follow-up.
+A strategy emits a target intent ("buy 1.0 BTC over the next hour" or "sell into 5 percent of market volume"). The execution algorithm turns that intent into a stream of child orders. flox ships four composable algos. They live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface: `step(now_ns)` drives the state machine and yields any newly emitted child orders, the user dispatches them through whichever executor is running, and `report_fill(qty)` (plus `observe_volume(qty)` for POV) feeds state back so the next step makes the right decision.
 
 ## When to reach for which algo
 
@@ -17,31 +15,69 @@ All four track `target_qty`, `submitted_qty`, `filled_qty`, and `remaining_qty`.
 
 ## Quick start
 
-```python
-import flox_py as flox
-from flox_py.execution_algos import TWAPExecutor
+=== "Python"
 
-sim = flox.SimulatedExecutor()
+    ```python
+    import flox_py as flox
+    from flox_py.execution_algos import TWAPExecutor
 
-twap = TWAPExecutor(
-    target_qty=10.0,
-    side="buy",
-    symbol=1,
-    duration_ns=3_600_000_000_000,  # 1 hour
-    slice_count=12,
-    start_time_ns=now_ns,
-)
+    sim = flox.SimulatedExecutor()
 
-# In your tick / timer loop:
-def on_tick(now_ns):
-    twap.step(now_ns, sim)
-    if twap.is_done():
-        print(f"submitted {twap.submitted_qty}, filled {twap.filled_qty}")
+    twap = TWAPExecutor(
+        target_qty=10.0, side="buy", symbol=1,
+        duration_ns=3_600_000_000_000,
+        slice_count=12, start_time_ns=now_ns,
+    )
 
-# When the simulator (or your live broker) reports a fill, feed it back:
-def on_fill(qty):
-    twap.report_fill(qty)
-```
+    def on_tick(now_ns):
+        twap.step(now_ns, sim)
+        if twap.is_done():
+            print(twap.submitted_qty, twap.filled_qty)
+
+    def on_fill(qty):
+        twap.report_fill(qty)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const flox = require('@flox-foundation/flox');
+
+    const twap = new flox.TWAPExecutor({
+      targetQty: 10, side: 'buy', symbol: 1,
+      durationNs: 3_600_000_000_000,
+      sliceCount: 12, startTimeNs: nowNs,
+    });
+
+    function onTick(nowNs) {
+      const children = twap.step(nowNs);
+      for (const c of children) sim.submitOrder(c.orderId, 'buy', c.price, c.qty);
+      if (twap.isDone()) console.log(twap.submittedQty(), twap.filledQty());
+    }
+
+    function onFill(qty) { twap.reportFill(qty); }
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.execution_algos import TWAPExecutor, SIDE_BUY, TYPE_MARKET
+
+    twap = TWAPExecutor(10.0, SIDE_BUY, 1,
+                        3_600_000_000_000, 12, 0,
+                        TYPE_MARKET, 0.0)
+    n = twap.step(now_ns)
+    ```
+
+=== "QuickJS"
+
+    ```javascript
+    var twap = new flox.TWAPExecutor({
+        targetQty: 10, side: 'buy', symbol: 1,
+        durationNs: 3600000000000, sliceCount: 12, startTimeNs: 0,
+    });
+    var children = twap.step(nowNs);
+    ```
 
 The same pattern works for the other three algos. The only differences are the constructor arguments and what each one needs to know to make its decisions.
 

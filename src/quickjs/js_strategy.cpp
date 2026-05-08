@@ -502,6 +502,74 @@ void FloxJsStrategy::loadStdlib()
         return __flox_tape_diff(left, right, opts || {});
       },
 
+      // Execution algos: TWAP / VWAP / Iceberg / POV. The user
+      // drives `step(nowNs)` and dispatches the returned child
+      // orders to its own executor.
+      TWAPExecutor: class {
+        constructor(opts) {
+          var o = opts || {};
+          this._h = __flox_exec_twap_create(
+            o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
+            (o.type === 'limit') ? 1 : 0, o.limitPrice || 0,
+            o.durationNs, o.sliceCount, o.startTimeNs);
+        }
+        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
+        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
+        submittedQty() { return __flox_exec_submitted_qty(this._h); }
+        filledQty() { return __flox_exec_filled_qty(this._h); }
+        remainingQty() { return __flox_exec_remaining_qty(this._h); }
+        isDone() { return __flox_exec_is_done(this._h); }
+      },
+      VWAPExecutor: class {
+        constructor(opts) {
+          var o = opts || {};
+          this._h = __flox_exec_vwap_create(
+            o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
+            (o.type === 'limit') ? 1 : 0, o.limitPrice || 0,
+            o.volumeCurve || []);
+        }
+        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
+        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
+        submittedQty() { return __flox_exec_submitted_qty(this._h); }
+        filledQty() { return __flox_exec_filled_qty(this._h); }
+        remainingQty() { return __flox_exec_remaining_qty(this._h); }
+        isDone() { return __flox_exec_is_done(this._h); }
+      },
+      IcebergExecutor: class {
+        constructor(opts) {
+          var o = opts || {};
+          this._h = __flox_exec_iceberg_create(
+            o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
+            (o.type === 'limit') ? 1 : 0, o.limitPrice || 0, o.visibleQty);
+        }
+        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
+        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
+        submittedQty() { return __flox_exec_submitted_qty(this._h); }
+        filledQty() { return __flox_exec_filled_qty(this._h); }
+        remainingQty() { return __flox_exec_remaining_qty(this._h); }
+        isDone() { return __flox_exec_is_done(this._h); }
+      },
+      POVExecutor: class {
+        constructor(opts) {
+          var o = opts || {};
+          this._h = __flox_exec_pov_create(
+            o.targetQty, (o.side === 'sell') ? 1 : 0, o.symbol || 0,
+            (o.type === 'limit') ? 1 : 0, o.limitPrice || 0,
+            o.participationRate, o.minSliceQty || 0);
+        }
+        destroy() { if (this._h) { __flox_exec_destroy(this._h); this._h = null; } }
+        step(nowNs) { return __flox_exec_step(this._h, nowNs); }
+        reportFill(qty) { __flox_exec_report_fill(this._h, qty); }
+        observeVolume(qty) { __flox_exec_observe_volume(this._h, qty); }
+        submittedQty() { return __flox_exec_submitted_qty(this._h); }
+        filledQty() { return __flox_exec_filled_qty(this._h); }
+        remainingQty() { return __flox_exec_remaining_qty(this._h); }
+        isDone() { return __flox_exec_is_done(this._h); }
+      },
+
       // Portfolio risk aggregator. C ABI handle-based; JS class
       // wraps the lifecycle.
       PortfolioRiskAggregator: class {

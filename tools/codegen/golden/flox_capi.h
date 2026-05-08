@@ -60,6 +60,7 @@ extern "C"
   typedef void* FloxLatencyModelHandle;
   typedef void* FloxTapeDiffHandle;
   typedef void* FloxPortfolioRiskHandle;
+  typedef void* FloxExecAlgoHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -512,6 +513,15 @@ extern "C"
     const char* detail;
   } FloxBreach;
 
+  typedef struct
+  {
+    uint64_t order_id;
+    int64_t timestamp_ns;
+    double qty;
+    double price;
+    uint8_t type;
+  } FloxExecChildOrder;
+
   // ============================================================
   // Callback function pointer types
   // ============================================================
@@ -873,6 +883,35 @@ extern "C"
                                                    FloxExecutionListenerHandle listener);
   void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner,
                                          FloxExecutorHandle executor);
+
+  // ============================================================
+  // Execution Algos
+  // ============================================================
+
+  FloxExecAlgoHandle flox_exec_twap_create(double target_qty, uint8_t side, uint32_t symbol,
+                                           uint8_t type, double limit_price, int64_t duration_ns,
+                                           uint32_t slice_count, int64_t start_time_ns);
+  FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t side, uint32_t symbol,
+                                           uint8_t type, double limit_price,
+                                           const int64_t* volume_curve_ts,
+                                           const double* volume_curve_vol, size_t n);
+  FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_t side, uint32_t symbol,
+                                              uint8_t type, double limit_price, double visible_qty);
+  FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t side, uint32_t symbol,
+                                          uint8_t type, double limit_price,
+                                          double participation_rate, double min_slice_qty);
+  void flox_exec_destroy(FloxExecAlgoHandle handle);
+  void flox_exec_step(FloxExecAlgoHandle handle, int64_t now_ns);
+  void flox_exec_report_fill(FloxExecAlgoHandle handle, double qty);
+  void flox_exec_observe_volume(FloxExecAlgoHandle handle, double qty);
+  size_t flox_exec_pending_count(FloxExecAlgoHandle handle);
+  uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index, FloxExecChildOrder* out);
+  void flox_exec_clear_pending(FloxExecAlgoHandle handle);
+  double flox_exec_target_qty(FloxExecAlgoHandle handle);
+  double flox_exec_submitted_qty(FloxExecAlgoHandle handle);
+  double flox_exec_filled_qty(FloxExecAlgoHandle handle);
+  double flox_exec_remaining_qty(FloxExecAlgoHandle handle);
+  uint8_t flox_exec_is_done(FloxExecAlgoHandle handle);
 
   // ============================================================
   // Executor Fill

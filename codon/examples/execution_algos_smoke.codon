@@ -1,0 +1,42 @@
+# Smoke test: execution algos compile + drive the C API.
+
+from flox.execution_algos import (
+    TWAPExecutor, IcebergExecutor, POVExecutor,
+    SIDE_BUY, TYPE_MARKET, TYPE_LIMIT,
+)
+
+# TWAP
+twap = TWAPExecutor(100.0, SIDE_BUY, 1, 10000, 5, 0, TYPE_MARKET, 0.0)
+n1 = twap.step(0)
+print("ok  TWAP first step emits", n1)
+twap.step(2000)
+twap.step(10000)
+if twap.is_done():
+    print("ok  TWAP completes by end of duration")
+else:
+    print("FAIL TWAP not done")
+twap.destroy()
+
+# Iceberg
+ice = IcebergExecutor(50.0, SIDE_BUY, 1, 10.0, TYPE_LIMIT, 100.0)
+ice.step(0)
+ice.step(1)
+ice.report_fill(10.0)
+n3 = ice.step(2)
+if n3 == 1:
+    print("ok  Iceberg refills once child filled")
+else:
+    print("FAIL Iceberg refill count =", n3)
+ice.destroy()
+
+# POV
+pov = POVExecutor(100.0, SIDE_BUY, 1, 0.10, 1.0, TYPE_MARKET, 0.0)
+pov.observe_volume(50.0)
+n4 = pov.step(1)
+if n4 == 1:
+    print("ok  POV slices on observed volume")
+else:
+    print("FAIL POV slice count =", n4)
+pov.destroy()
+
+print("done")

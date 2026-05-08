@@ -256,6 +256,8 @@ jobs:
           ./build/codon/codon_tape_diff_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_portfolio_risk_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_execution_algos_smoke
 
     - name: Verify QuickJS runner
       run: |
@@ -265,6 +267,7 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/latency_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/tape_diff_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/portfolio_risk_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
 
     - name: Verify Node.js bindings
       run: |
@@ -281,6 +284,10 @@ jobs:
     - name: Verify Node.js portfolio risk aggregator
       run: |
         cd node && node test/test_portfolio_risk.js
+
+    - name: Verify Node.js execution algorithms
+      run: |
+        cd node && node test/test_execution_algos.js
 
     - name: Verify Node.js extension hooks
       run: |

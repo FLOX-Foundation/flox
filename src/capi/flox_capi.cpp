@@ -27,6 +27,7 @@
 #include "flox/backtest/walk_forward.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/nlevel_order_book.h"
+#include "flox/execution/algos.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/ohlcv_replay_source.h"
@@ -5669,4 +5670,192 @@ extern "C" uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle,
 extern "C" uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle)
 {
   return handle ? asPortfolio(handle)->snapshot().accounts.size() : 0;
+}
+
+// ── Execution algorithms ──────────────────────────────────────────
+
+namespace
+{
+flox::execution::ExecutionAlgo* asAlgo(FloxExecAlgoHandle h)
+{
+  return static_cast<flox::execution::ExecutionAlgo*>(h);
+}
+}  // namespace
+
+extern "C" FloxExecAlgoHandle flox_exec_twap_create(double target_qty, uint8_t side,
+                                                    uint32_t symbol, uint8_t type,
+                                                    double limit_price,
+                                                    int64_t duration_ns,
+                                                    uint32_t slice_count,
+                                                    int64_t start_time_ns)
+{
+  try
+  {
+    return new flox::execution::TWAPExecutor(
+        target_qty,
+        static_cast<flox::execution::Side>(side),
+        symbol,
+        static_cast<flox::execution::OrderType>(type),
+        limit_price,
+        duration_ns, slice_count, start_time_ns);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t side,
+                                                    uint32_t symbol, uint8_t type,
+                                                    double limit_price,
+                                                    const int64_t* volume_curve_ts,
+                                                    const double* volume_curve_vol,
+                                                    size_t n)
+{
+  try
+  {
+    std::vector<std::pair<int64_t, double>> curve;
+    curve.reserve(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+      curve.emplace_back(volume_curve_ts[i], volume_curve_vol[i]);
+    }
+    return new flox::execution::VWAPExecutor(
+        target_qty,
+        static_cast<flox::execution::Side>(side),
+        symbol,
+        static_cast<flox::execution::OrderType>(type),
+        limit_price,
+        std::move(curve));
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_t side,
+                                                       uint32_t symbol, uint8_t type,
+                                                       double limit_price,
+                                                       double visible_qty)
+{
+  try
+  {
+    return new flox::execution::IcebergExecutor(
+        target_qty,
+        static_cast<flox::execution::Side>(side),
+        symbol,
+        static_cast<flox::execution::OrderType>(type),
+        limit_price, visible_qty);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t side,
+                                                   uint32_t symbol, uint8_t type,
+                                                   double limit_price,
+                                                   double participation_rate,
+                                                   double min_slice_qty)
+{
+  try
+  {
+    return new flox::execution::POVExecutor(
+        target_qty,
+        static_cast<flox::execution::Side>(side),
+        symbol,
+        static_cast<flox::execution::OrderType>(type),
+        limit_price, participation_rate, min_slice_qty);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_exec_destroy(FloxExecAlgoHandle handle) { delete asAlgo(handle); }
+
+extern "C" void flox_exec_step(FloxExecAlgoHandle handle, int64_t now_ns)
+{
+  if (handle)
+  {
+    asAlgo(handle)->step(now_ns);
+  }
+}
+
+extern "C" void flox_exec_report_fill(FloxExecAlgoHandle handle, double qty)
+{
+  if (handle)
+  {
+    asAlgo(handle)->reportFill(qty);
+  }
+}
+
+extern "C" void flox_exec_observe_volume(FloxExecAlgoHandle handle, double qty)
+{
+  if (handle)
+  {
+    asAlgo(handle)->observeVolume(qty);
+  }
+}
+
+extern "C" size_t flox_exec_pending_count(FloxExecAlgoHandle handle)
+{
+  return handle ? asAlgo(handle)->pending().size() : 0;
+}
+
+extern "C" uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index,
+                                        FloxExecChildOrder* out)
+{
+  if (!handle || !out)
+  {
+    return 0;
+  }
+  const auto& p = asAlgo(handle)->pending();
+  if (index >= p.size())
+  {
+    return 0;
+  }
+  const auto& c = p[index];
+  out->order_id = c.order_id;
+  out->timestamp_ns = c.timestamp_ns;
+  out->qty = c.qty;
+  out->price = c.price;
+  out->type = static_cast<uint8_t>(c.type);
+  return 1;
+}
+
+extern "C" void flox_exec_clear_pending(FloxExecAlgoHandle handle)
+{
+  if (handle)
+  {
+    asAlgo(handle)->clearPending();
+  }
+}
+
+extern "C" double flox_exec_target_qty(FloxExecAlgoHandle handle)
+{
+  return handle ? asAlgo(handle)->targetQty() : 0.0;
+}
+
+extern "C" double flox_exec_submitted_qty(FloxExecAlgoHandle handle)
+{
+  return handle ? asAlgo(handle)->submittedQty() : 0.0;
+}
+
+extern "C" double flox_exec_filled_qty(FloxExecAlgoHandle handle)
+{
+  return handle ? asAlgo(handle)->filledQty() : 0.0;
+}
+
+extern "C" double flox_exec_remaining_qty(FloxExecAlgoHandle handle)
+{
+  return handle ? asAlgo(handle)->remainingQty() : 0.0;
+}
+
+extern "C" uint8_t flox_exec_is_done(FloxExecAlgoHandle handle)
+{
+  return (handle && asAlgo(handle)->isDone()) ? 1 : 0;
 }

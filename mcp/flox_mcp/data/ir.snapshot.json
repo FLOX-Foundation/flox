@@ -2493,6 +2493,302 @@
       "return_type": "uint64_t"
     },
     {
+      "group": "execution_algos",
+      "name": "flox_exec_clear_pending",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_destroy",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_filled_qty",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_iceberg_create",
+      "params": [
+        {
+          "name": "target_qty",
+          "type": "double"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "limit_price",
+          "type": "double"
+        },
+        {
+          "name": "visible_qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxExecAlgoHandle"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_is_done",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_observe_volume",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_pending_at",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        },
+        {
+          "name": "index",
+          "type": "size_t"
+        },
+        {
+          "name": "out",
+          "type": "FloxExecChildOrder *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_pending_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "size_t"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_pov_create",
+      "params": [
+        {
+          "name": "target_qty",
+          "type": "double"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "limit_price",
+          "type": "double"
+        },
+        {
+          "name": "participation_rate",
+          "type": "double"
+        },
+        {
+          "name": "min_slice_qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxExecAlgoHandle"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_remaining_qty",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_report_fill",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_step",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_submitted_qty",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_target_qty",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxExecAlgoHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_twap_create",
+      "params": [
+        {
+          "name": "target_qty",
+          "type": "double"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "limit_price",
+          "type": "double"
+        },
+        {
+          "name": "duration_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "slice_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "start_time_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "FloxExecAlgoHandle"
+    },
+    {
+      "group": "execution_algos",
+      "name": "flox_exec_vwap_create",
+      "params": [
+        {
+          "name": "target_qty",
+          "type": "double"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "limit_price",
+          "type": "double"
+        },
+        {
+          "name": "volume_curve_ts",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "volume_curve_vol",
+          "type": "const double *"
+        },
+        {
+          "name": "n",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "FloxExecAlgoHandle"
+    },
+    {
       "group": "execution",
       "name": "flox_execution_listener_create",
       "params": [
@@ -8151,6 +8447,31 @@
     {
       "fields": [
         {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "timestamp_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        }
+      ],
+      "name": "FloxExecChildOrder"
+    },
+    {
+      "fields": [
+        {
           "name": "on_submitted",
           "type": "FloxExecListenerOnOrderFn"
         },
@@ -9157,6 +9478,10 @@
     },
     {
       "name": "FloxDataWriterHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxExecAlgoHandle",
       "target": "void*"
     },
     {
