@@ -115,6 +115,7 @@ nav:
           - Strategy hot-reload: how-to/strategy-hot-reload.md
           - Delta book compression: how-to/delta-book-compression.md
           - Record a strategy run as .floxrun: how-to/floxrun.md
+          - Capture a strategy run automatically: how-to/floxrun-auto-capture.md
           - Inspect a tape and run in the replay viewer: how-to/replay-viewer.md
           - Read multi-timeframe context from a strategy: how-to/multi-tf-context.md
           - Compose multi-symbol multi-TF entry conditions: how-to/composite-conditions.md

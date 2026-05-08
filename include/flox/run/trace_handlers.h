@@ -1,0 +1,265 @@
+/*
+ * Flox Engine
+ * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
+ * Copyright (c) 2025 FLOX Foundation
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
+#pragma once
+
+#include "flox/execution/abstract_execution_listener.h"
+#include "flox/run/trace_recorder.h"
+#include "flox/strategy/abstract_signal_handler.h"
+#include "flox/strategy/signal.h"
+
+#include <atomic>
+#include <cstdint>
+
+namespace flox::run
+{
+
+/**
+ * Thin `ISignalHandler` wrapper that forwards to the inner handler and
+ * writes every emitted signal into a `TraceRecorder`.
+ *
+ * Usage: attach this in front of the strategy's normal signal handler
+ * during the strategy's wiring so signals get captured automatically.
+ *
+ * The recorder pointer is held by raw pointer; the caller owns its
+ * lifetime and must keep it alive for as long as the handler is in
+ * use. Setting it to `nullptr` disables capture without losing the
+ * inner handler.
+ */
+class TraceSignalHandler : public ISignalHandler
+{
+ public:
+  TraceSignalHandler(ISignalHandler* inner, TraceRecorder* recorder)
+      : _inner(inner), _recorder(recorder) {}
+
+  void setRecorder(TraceRecorder* rec) noexcept { _recorder = rec; }
+  TraceRecorder* recorder() const noexcept { return _recorder; }
+
+  void setFeedTsNs(int64_t ts) noexcept { _feed_ts_ns.store(ts, std::memory_order_relaxed); }
+
+  void onSignal(const Signal& signal) override
+  {
+    if (_recorder)
+    {
+      SignalView view;
+      view.run_ts_ns = nowNs();
+      view.feed_ts_ns = _feed_ts_ns.load(std::memory_order_relaxed);
+      view.signal_id = static_cast<uint32_t>(signal.orderId);
+      view.flags = encodeFlags(signal);
+      view.strength_raw = 0;
+      view.symbol_ids = {static_cast<uint32_t>(signal.symbol)};
+      view.name = signalTypeName(signal.type);
+      _recorder->writeSignal(view);
+    }
+    if (_inner)
+    {
+      _inner->onSignal(signal);
+    }
+  }
+
+ private:
+  ISignalHandler* _inner;
+  TraceRecorder* _recorder;
+  std::atomic<int64_t> _feed_ts_ns{0};
+
+  static int64_t nowNs() noexcept
+  {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+  }
+
+  static uint32_t encodeFlags(const Signal& s) noexcept
+  {
+    uint32_t f = 0;
+    switch (s.type)
+    {
+      case SignalType::Market:
+      case SignalType::Limit:
+      case SignalType::StopMarket:
+      case SignalType::StopLimit:
+      case SignalType::TakeProfitMarket:
+      case SignalType::TakeProfitLimit:
+      case SignalType::TrailingStop:
+        f |= SignalFlags::Enter;
+        break;
+      case SignalType::Cancel:
+      case SignalType::CancelAll:
+        f |= SignalFlags::Exit;
+        break;
+      default:
+        break;
+    }
+    return f;
+  }
+
+  static const char* signalTypeName(SignalType t) noexcept
+  {
+    switch (t)
+    {
+      case SignalType::Market:
+        return "market";
+      case SignalType::Limit:
+        return "limit";
+      case SignalType::Cancel:
+        return "cancel";
+      case SignalType::CancelAll:
+        return "cancel_all";
+      case SignalType::Modify:
+        return "modify";
+      case SignalType::StopMarket:
+        return "stop_market";
+      case SignalType::StopLimit:
+        return "stop_limit";
+      case SignalType::TakeProfitMarket:
+        return "take_profit_market";
+      case SignalType::TakeProfitLimit:
+        return "take_profit_limit";
+      case SignalType::TrailingStop:
+        return "trailing_stop";
+      default:
+        return "unknown";
+    }
+  }
+};
+
+/**
+ * `IOrderExecutionListener` wrapper that captures order lifecycle
+ * events (submit / ack / partial fill / fill / cancel / reject /
+ * expire) into a `TraceRecorder`. The inner listener is still called
+ * if non-null, so attaching the trace listener does not displace
+ * existing behavior.
+ */
+class TraceExecutionListener : public IOrderExecutionListener
+{
+ public:
+  TraceExecutionListener(SubscriberId id, IOrderExecutionListener* inner,
+                         TraceRecorder* recorder)
+      : IOrderExecutionListener(id), _inner(inner), _recorder(recorder) {}
+
+  void setRecorder(TraceRecorder* rec) noexcept { _recorder = rec; }
+  void setFeedTsNs(int64_t ts) noexcept { _feed_ts_ns.store(ts, std::memory_order_relaxed); }
+
+  void onOrderSubmitted(const Order& o) override
+  {
+    writeOrderEvent(o, OrderEventKind::Submit);
+    if (_inner)
+    {
+      _inner->onOrderSubmitted(o);
+    }
+  }
+  void onOrderAccepted(const Order& o) override
+  {
+    writeOrderEvent(o, OrderEventKind::Ack);
+    if (_inner)
+    {
+      _inner->onOrderAccepted(o);
+    }
+  }
+  void onOrderPartiallyFilled(const Order& o, Quantity q) override
+  {
+    writeFill(o, q);
+    if (_inner)
+    {
+      _inner->onOrderPartiallyFilled(o, q);
+    }
+  }
+  void onOrderFilled(const Order& o) override
+  {
+    writeFill(o, o.quantity);
+    if (_inner)
+    {
+      _inner->onOrderFilled(o);
+    }
+  }
+  void onOrderCanceled(const Order& o) override
+  {
+    writeOrderEvent(o, OrderEventKind::Cancel);
+    if (_inner)
+    {
+      _inner->onOrderCanceled(o);
+    }
+  }
+  void onOrderRejected(const Order& o, const std::string& reason) override
+  {
+    writeOrderEvent(o, OrderEventKind::Reject, reason);
+    if (_inner)
+    {
+      _inner->onOrderRejected(o, reason);
+    }
+  }
+  void onOrderExpired(const Order& o) override
+  {
+    writeOrderEvent(o, OrderEventKind::Expire);
+    if (_inner)
+    {
+      _inner->onOrderExpired(o);
+    }
+  }
+
+ private:
+  IOrderExecutionListener* _inner;
+  TraceRecorder* _recorder;
+  std::atomic<int64_t> _feed_ts_ns{0};
+
+  static int64_t nowNs() noexcept
+  {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+  }
+
+  void writeOrderEvent(const Order& o, OrderEventKind kind,
+                       const std::string& reason = "")
+  {
+    if (!_recorder)
+    {
+      return;
+    }
+    OrderEventView e;
+    e.run_ts_ns = nowNs();
+    e.feed_ts_ns = _feed_ts_ns.load(std::memory_order_relaxed);
+    e.order_id = static_cast<uint64_t>(o.id);
+    e.parent_signal_id = 0;
+    e.price_raw = o.price.raw();
+    e.qty_raw = o.quantity.raw();
+    e.symbol_id = o.symbol;
+    e.event_kind = kind;
+    e.side = (o.side == Side::BUY) ? 0 : 1;
+    e.order_type = static_cast<uint8_t>(o.type);
+    e.flags = 0;
+    if (!reason.empty())
+    {
+      e.reason = reason;
+    }
+    _recorder->writeOrderEvent(e);
+  }
+
+  void writeFill(const Order& o, Quantity q)
+  {
+    if (!_recorder)
+    {
+      return;
+    }
+    FillView f;
+    f.run_ts_ns = nowNs();
+    f.feed_ts_ns = _feed_ts_ns.load(std::memory_order_relaxed);
+    f.order_id = static_cast<uint64_t>(o.id);
+    f.fill_id = static_cast<uint64_t>(o.id);
+    f.price_raw = o.price.raw();
+    f.qty_raw = q.raw();
+    f.fee_raw = 0;
+    f.symbol_id = o.symbol;
+    f.side = (o.side == Side::BUY) ? 0 : 1;
+    f.liquidity = FillLiquidity::Unknown;
+    _recorder->writeFill(f);
+  }
+};
+
+}  // namespace flox::run

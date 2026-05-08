@@ -3193,6 +3193,7 @@ Solve specific problems. Assumes you know the basics.
 | [Record and replay tapes](tape-record.md) | Capture live market data to `.floxlog`, replay deterministically |
 | [Delta book compression](delta-book-compression.md) | Shrink L2 tapes 10-30x by emitting only the changed levels |
 | [Record a strategy run as `.floxrun`](floxrun.md) | Capture signals, orders, and fills as a per-run trace alongside the tape |
+| [Capture a strategy run automatically with `.floxrun`](floxrun-auto-capture.md) | `TraceSignalHandler` + `TraceExecutionListener` adapters; no per-strategy instrumentation |
 | [Inspect a tape and run in the replay viewer](replay-viewer.md) | Single-page UI for scrubbing through a captured tape and strategy trace |
 | [HTML report](backtest-html-report.md) | Render an equity curve + trade table to one HTML file |
 | [Interactive backtest](interactive-backtest.md) | Inspect state mid-run from a notebook |
