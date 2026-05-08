@@ -3567,6 +3567,14 @@
         },
         {
           "kind": "class",
+          "name": "ConstantLatency"
+        },
+        {
+          "kind": "class",
+          "name": "ConstantLatencyOptions"
+        },
+        {
+          "kind": "class",
           "name": "Correlation"
         },
         {
@@ -3611,6 +3619,14 @@
         },
         {
           "kind": "class",
+          "name": "EmpiricalLatency"
+        },
+        {
+          "kind": "class",
+          "name": "EmpiricalLatencyOptions"
+        },
+        {
+          "kind": "class",
           "name": "Engine"
         },
         {
@@ -3631,6 +3647,14 @@
         },
         {
           "kind": "class",
+          "name": "ExponentialLatency"
+        },
+        {
+          "kind": "class",
+          "name": "ExponentialLatencyOptions"
+        },
+        {
+          "kind": "class",
           "name": "ExportResult"
         },
         {
@@ -3640,6 +3664,14 @@
         {
           "kind": "class",
           "name": "FootprintBar"
+        },
+        {
+          "kind": "class",
+          "name": "GaussianLatency"
+        },
+        {
+          "kind": "class",
+          "name": "GaussianLatencyOptions"
         },
         {
           "kind": "class",
@@ -3672,6 +3704,14 @@
         {
           "kind": "class",
           "name": "L3Book"
+        },
+        {
+          "kind": "class",
+          "name": "LatencyModel"
+        },
+        {
+          "kind": "class",
+          "name": "LatencySample"
         },
         {
           "kind": "class",
@@ -4107,6 +4147,10 @@
         },
         {
           "kind": "class",
+          "name": "ConstantLatency"
+        },
+        {
+          "kind": "class",
           "name": "Correlation"
         },
         {
@@ -4131,6 +4175,10 @@
         },
         {
           "kind": "class",
+          "name": "EmpiricalLatency"
+        },
+        {
+          "kind": "class",
           "name": "Engine"
         },
         {
@@ -4147,11 +4195,19 @@
         },
         {
           "kind": "class",
+          "name": "ExponentialLatency"
+        },
+        {
+          "kind": "class",
           "name": "FloxError"
         },
         {
           "kind": "class",
           "name": "FootprintBar"
+        },
+        {
+          "kind": "class",
+          "name": "GaussianLatency"
         },
         {
           "kind": "class",
@@ -4176,6 +4232,14 @@
         {
           "kind": "class",
           "name": "L3Book"
+        },
+        {
+          "kind": "class",
+          "name": "LatencyModel"
+        },
+        {
+          "kind": "class",
+          "name": "LatencySample"
         },
         {
           "kind": "class",
@@ -5243,6 +5307,45 @@
       "pybind11": {
         "classes": [
           "L3Book"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "latency_models": {
+      "capi_functions": [
+        "flox_latency_constant_create",
+        "flox_latency_destroy",
+        "flox_latency_empirical_create",
+        "flox_latency_exponential_create",
+        "flox_latency_feed_delay",
+        "flox_latency_fill_delay",
+        "flox_latency_gaussian_create",
+        "flox_latency_order_delay",
+        "flox_latency_reset",
+        "flox_latency_sample"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "ConstantLatency",
+          "GaussianLatency",
+          "ExponentialLatency",
+          "EmpiricalLatency"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "LatencyModel",
+          "ConstantLatency",
+          "GaussianLatency",
+          "ExponentialLatency",
+          "EmpiricalLatency"
         ],
         "functions": [],
         "status": "required"

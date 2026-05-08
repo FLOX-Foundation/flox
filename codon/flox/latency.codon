@@ -1,0 +1,110 @@
+# flox/latency.codon -- Latency models for backtest realism.
+#
+# Each model wraps a FloxLatencyModelHandle through the C API. Phase 1
+# is a sampling primitive: feed_delay / order_delay / fill_delay /
+# sample / reset.
+
+from C import flox_latency_constant_create(int, int, int) -> cobj
+from C import flox_latency_gaussian_create(f64, f64, f64, f64, f64, f64, int) -> cobj
+from C import flox_latency_exponential_create(f64, f64, f64, int) -> cobj
+from C import flox_latency_empirical_create(Ptr[int], int, Ptr[int], int, Ptr[int], int, int) -> cobj
+from C import flox_latency_destroy(cobj)
+from C import flox_latency_feed_delay(cobj) -> int
+from C import flox_latency_order_delay(cobj) -> int
+from C import flox_latency_fill_delay(cobj) -> int
+from C import flox_latency_reset(cobj, int)
+
+
+@dataclass
+class LatencySample:
+    feed_ns: int
+    order_ns: int
+    fill_ns: int
+
+
+class ConstantLatency:
+    _h: cobj
+
+    def __init__(self, feed_ns: int = 0, order_ns: int = 0, fill_ns: int = 0):
+        self._h = flox_latency_constant_create(feed_ns, order_ns, fill_ns)
+
+    def feed_delay(self) -> int: return flox_latency_feed_delay(self._h)
+    def order_delay(self) -> int: return flox_latency_order_delay(self._h)
+    def fill_delay(self) -> int: return flox_latency_fill_delay(self._h)
+    def sample(self) -> LatencySample:
+        return LatencySample(self.feed_delay(), self.order_delay(), self.fill_delay())
+    def reset(self, seed: int = 0): flox_latency_reset(self._h, seed)
+    def destroy(self):
+        if self._h:
+            flox_latency_destroy(self._h)
+            self._h = cobj()
+
+
+class GaussianLatency:
+    _h: cobj
+
+    def __init__(self, feed_mean_ns: float = 0.0, feed_stddev_ns: float = 0.0,
+                 order_mean_ns: float = 0.0, order_stddev_ns: float = 0.0,
+                 fill_mean_ns: float = 0.0, fill_stddev_ns: float = 0.0,
+                 seed: int = 0):
+        self._h = flox_latency_gaussian_create(feed_mean_ns, feed_stddev_ns,
+                                               order_mean_ns, order_stddev_ns,
+                                               fill_mean_ns, fill_stddev_ns,
+                                               seed)
+
+    def feed_delay(self) -> int: return flox_latency_feed_delay(self._h)
+    def order_delay(self) -> int: return flox_latency_order_delay(self._h)
+    def fill_delay(self) -> int: return flox_latency_fill_delay(self._h)
+    def sample(self) -> LatencySample:
+        return LatencySample(self.feed_delay(), self.order_delay(), self.fill_delay())
+    def reset(self, seed: int = 0): flox_latency_reset(self._h, seed)
+    def destroy(self):
+        if self._h:
+            flox_latency_destroy(self._h)
+            self._h = cobj()
+
+
+class ExponentialLatency:
+    _h: cobj
+
+    def __init__(self, feed_mean_ns: float = 0.0, order_mean_ns: float = 0.0,
+                 fill_mean_ns: float = 0.0, seed: int = 0):
+        self._h = flox_latency_exponential_create(feed_mean_ns, order_mean_ns,
+                                                  fill_mean_ns, seed)
+
+    def feed_delay(self) -> int: return flox_latency_feed_delay(self._h)
+    def order_delay(self) -> int: return flox_latency_order_delay(self._h)
+    def fill_delay(self) -> int: return flox_latency_fill_delay(self._h)
+    def sample(self) -> LatencySample:
+        return LatencySample(self.feed_delay(), self.order_delay(), self.fill_delay())
+    def reset(self, seed: int = 0): flox_latency_reset(self._h, seed)
+    def destroy(self):
+        if self._h:
+            flox_latency_destroy(self._h)
+            self._h = cobj()
+
+
+class EmpiricalLatency:
+    _h: cobj
+
+    def __init__(self, feed_samples: List[int], order_samples: List[int],
+                 fill_samples: List[int], seed: int = 0):
+        feed_ptr = feed_samples.arr.ptr if len(feed_samples) > 0 else Ptr[int]()
+        order_ptr = order_samples.arr.ptr if len(order_samples) > 0 else Ptr[int]()
+        fill_ptr = fill_samples.arr.ptr if len(fill_samples) > 0 else Ptr[int]()
+        self._h = flox_latency_empirical_create(
+            feed_ptr, len(feed_samples),
+            order_ptr, len(order_samples),
+            fill_ptr, len(fill_samples),
+            seed)
+
+    def feed_delay(self) -> int: return flox_latency_feed_delay(self._h)
+    def order_delay(self) -> int: return flox_latency_order_delay(self._h)
+    def fill_delay(self) -> int: return flox_latency_fill_delay(self._h)
+    def sample(self) -> LatencySample:
+        return LatencySample(self.feed_delay(), self.order_delay(), self.fill_delay())
+    def reset(self, seed: int = 0): flox_latency_reset(self._h, seed)
+    def destroy(self):
+        if self._h:
+            flox_latency_destroy(self._h)
+            self._h = cobj()

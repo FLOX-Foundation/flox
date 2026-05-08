@@ -1,0 +1,64 @@
+# Smoke test: latency models compile + sample against the C API.
+
+from flox.latency import (
+    ConstantLatency, GaussianLatency, ExponentialLatency, EmpiricalLatency,
+)
+
+
+def assert_eq(actual: int, expected: int, msg: str):
+    if actual != expected:
+        print("FAIL:", msg, "expected=", expected, "actual=", actual)
+    else:
+        print("ok ", msg)
+
+
+c = ConstantLatency(100, 200, 300)
+assert_eq(c.feed_delay(), 100, "constant feed_delay")
+assert_eq(c.order_delay(), 200, "constant order_delay")
+assert_eq(c.fill_delay(), 300, "constant fill_delay")
+s = c.sample()
+assert_eq(s.feed_ns, 100, "sample feed_ns")
+c.destroy()
+
+
+g = GaussianLatency(feed_mean_ns=1000.0, feed_stddev_ns=200.0, seed=42)
+a = g.feed_delay()
+g.reset(42)
+b = g.feed_delay()
+if a == b:
+    print("ok  gaussian reproducible under reset(seed)")
+else:
+    print("FAIL: gaussian not reproducible (a=", a, "b=", b, ")")
+g.destroy()
+
+
+e = ExponentialLatency(feed_mean_ns=500.0, seed=7)
+all_non_neg = True
+for _ in range(50):
+    if e.feed_delay() < 0:
+        all_non_neg = False
+        break
+if all_non_neg:
+    print("ok  exponential samples non-negative")
+else:
+    print("FAIL: exponential produced negative sample")
+e.destroy()
+
+
+empty_list: List[int] = []
+emp = EmpiricalLatency([10, 20, 30], empty_list, empty_list, 0)
+all_in_set = True
+for _ in range(30):
+    v = emp.feed_delay()
+    if v != 10 and v != 20 and v != 30:
+        all_in_set = False
+        break
+if all_in_set:
+    print("ok  empirical draws subset of input")
+else:
+    print("FAIL: empirical produced unexpected sample")
+assert_eq(emp.order_delay(), 0, "empirical order_delay (no samples)")
+emp.destroy()
+
+
+print("done")
