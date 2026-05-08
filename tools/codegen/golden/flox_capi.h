@@ -58,6 +58,7 @@ extern "C"
   typedef void* FloxBacktestRunnerHandle;
   typedef void* FloxGridSearchHandle;
   typedef void* FloxLatencyModelHandle;
+  typedef void* FloxTapeDiffHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -463,6 +464,22 @@ extern "C"
     int64_t order_ns;
     int64_t fill_ns;
   } FloxLatencySample;
+
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t price_raw;
+    int64_t qty_raw;
+    uint32_t symbol_id;
+    uint8_t side;
+  } FloxTapeDiffTrade;
+
+  typedef struct
+  {
+    uint64_t index;
+    FloxTapeDiffTrade left;
+    FloxTapeDiffTrade right;
+  } FloxTapeDiffMismatch;
 
   // ============================================================
   // Callback function pointer types
@@ -1359,6 +1376,21 @@ extern "C"
                                         char* exchange_out, size_t exchange_len, char* name_out,
                                         size_t name_len);
   uint32_t flox_registry_symbol_count(FloxRegistryHandle registry);
+
+  // ============================================================
+  // Tape Diff
+  // ============================================================
+
+  FloxTapeDiffHandle flox_tape_diff_create(const char* left_path, const char* right_path,
+                                           uint32_t max_mismatches, int64_t field_tolerance_ns);
+  void flox_tape_diff_destroy(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_left_count(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_right_count(FloxTapeDiffHandle handle);
+  uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle, uint64_t* out_index);
+  uint8_t flox_tape_diff_equal(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_mismatch_count(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle, FloxTapeDiffMismatch* out,
+                                          uint64_t max_entries);
 
   // ============================================================
   // Targets

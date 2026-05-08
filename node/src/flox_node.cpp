@@ -16,6 +16,7 @@
 #include "profiles.h"
 #include "stats.h"
 #include "strategy.h"
+#include "tape_diff.h"
 #include "targets.h"
 
 Napi::Object Init(Napi::Env env, Napi::Object exports)
@@ -34,6 +35,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerGraph(env, exports);
   node_flox::registerHeatmap(env, exports);
   node_flox::registerLatency(env, exports);
+  node_flox::registerTapeDiff(env, exports);
   flox_node::registerHooks(env, exports);
   return exports;
 }

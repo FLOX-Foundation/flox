@@ -56,3 +56,6 @@ add_codon_executable(codon_streaming_graph_smoke
 
 add_codon_executable(codon_latency_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/latency_smoke.codon)
+
+add_codon_executable(codon_tape_diff_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/tape_diff_smoke.codon)

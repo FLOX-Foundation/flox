@@ -30,6 +30,7 @@
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/ohlcv_replay_source.h"
+#include "flox/replay/tape_diff.h"
 #include "flox/report/heatmap_html.h"
 #include "flox/stats/whites_reality_check.h"
 
@@ -99,6 +100,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <memory_resource>
@@ -5352,4 +5354,120 @@ extern "C" void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed)
   {
     asLatency(model)->reset(seed);
   }
+}
+
+// ── Tape diff ─────────────────────────────────────────────────────
+
+namespace
+{
+flox::replay::TapeDiffResult* asDiff(FloxTapeDiffHandle h)
+{
+  return static_cast<flox::replay::TapeDiffResult*>(h);
+}
+}  // namespace
+
+extern "C" FloxTapeDiffHandle flox_tape_diff_create(const char* left_path,
+                                                    const char* right_path,
+                                                    uint32_t max_mismatches,
+                                                    int64_t field_tolerance_ns)
+{
+  if (!left_path || !right_path)
+  {
+    return nullptr;
+  }
+  if (!std::filesystem::is_directory(left_path) ||
+      !std::filesystem::is_directory(right_path))
+  {
+    return nullptr;
+  }
+  try
+  {
+    flox::replay::TapeDiffOptions opts;
+    opts.max_mismatches = max_mismatches;
+    opts.field_tolerance_ns = field_tolerance_ns;
+    auto* result = new flox::replay::TapeDiffResult(
+        flox::replay::diffTapes(left_path, right_path, opts));
+    return result;
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_tape_diff_destroy(FloxTapeDiffHandle handle)
+{
+  delete asDiff(handle);
+}
+
+extern "C" uint64_t flox_tape_diff_left_count(FloxTapeDiffHandle handle)
+{
+  return handle ? asDiff(handle)->left_count : 0;
+}
+
+extern "C" uint64_t flox_tape_diff_right_count(FloxTapeDiffHandle handle)
+{
+  return handle ? asDiff(handle)->right_count : 0;
+}
+
+extern "C" uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle,
+                                                   uint64_t* out_index)
+{
+  if (!handle)
+  {
+    return 0;
+  }
+  auto& r = *asDiff(handle);
+  if (!r.first_divergence_index.has_value())
+  {
+    return 0;
+  }
+  if (out_index)
+  {
+    *out_index = *r.first_divergence_index;
+  }
+  return 1;
+}
+
+extern "C" uint8_t flox_tape_diff_equal(FloxTapeDiffHandle handle)
+{
+  return (handle && asDiff(handle)->equal) ? 1 : 0;
+}
+
+extern "C" uint64_t flox_tape_diff_mismatch_count(FloxTapeDiffHandle handle)
+{
+  return handle ? asDiff(handle)->mismatches.size() : 0;
+}
+
+extern "C" uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle,
+                                                   FloxTapeDiffMismatch* out,
+                                                   uint64_t max_entries)
+{
+  if (!handle)
+  {
+    return 0;
+  }
+  auto& r = *asDiff(handle);
+  const uint64_t total = r.mismatches.size();
+  if (!out)
+  {
+    return total;
+  }
+  const uint64_t to_copy = std::min<uint64_t>(total, max_entries);
+  for (uint64_t i = 0; i < to_copy; ++i)
+  {
+    const auto& m = r.mismatches[i];
+    out[i].index = m.index;
+    out[i].left.exchange_ts_ns = m.left.exchange_ts_ns;
+    out[i].left.price_raw = m.left.price_raw;
+    out[i].left.qty_raw = m.left.qty_raw;
+    out[i].left.symbol_id = m.left.symbol_id;
+    out[i].left.side = m.left.side;
+    out[i].right.exchange_ts_ns = m.right.exchange_ts_ns;
+    out[i].right.price_raw = m.right.price_raw;
+    out[i].right.qty_raw = m.right.qty_raw;
+    out[i].right.symbol_id = m.right.symbol_id;
+    out[i].right.side = m.right.side;
+  }
+  return to_copy;
 }

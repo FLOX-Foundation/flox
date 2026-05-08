@@ -260,9 +260,12 @@ void FloxJsStrategy::loadStdlib()
         this._h = __flox_dw_create(dir, maxSegmentSize || 0, compression || 0);
       }
       destroy() { __flox_dw_destroy(this._h); }
-      writeTrade(symbolId, timestampNs, exchangeNs, price, qty, isBuy, tradeId, sequenceNo) {
-        __flox_dw_write_trade(this._h, symbolId, timestampNs, exchangeNs,
-                              price, qty, isBuy ? 1 : 0, tradeId || 0, sequenceNo || 0);
+      // C ABI order: (exchange_ts_ns, recv_ts_ns, price, qty, trade_id,
+      // symbol_id, side). The JS surface keeps the same shape.
+      writeTrade(timestampNs, exchangeNs, price, qty, tradeId, symbolId, isBuy) {
+        __flox_dw_write_trade(this._h, timestampNs, exchangeNs,
+                              price, qty, tradeId || 0,
+                              symbolId, isBuy ? 0 : 1);
       }
       flush() { __flox_dw_flush(this._h); }
       close() { __flox_dw_close(this._h); }
@@ -492,6 +495,12 @@ void FloxJsStrategy::loadStdlib()
       GaussianLatency: GaussianLatency,
       ExponentialLatency: ExponentialLatency,
       EmpiricalLatency: EmpiricalLatency,
+
+      // Tape diff: replay-equivalence localization. Returns an object
+      // matching the Python TapeDiff dataclass shape.
+      tapeDiff: function(left, right, opts) {
+        return __flox_tape_diff(left, right, opts || {});
+      },
 
       IndicatorGraph: class {
         constructor() {

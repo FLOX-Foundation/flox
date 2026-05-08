@@ -24,6 +24,7 @@
 #include "replay_bindings.h"
 #include "segment_ops_bindings.h"
 #include "strategy_bindings.h"
+#include "tape_diff_bindings.h"
 #include "target_bindings.h"
 #include "walk_forward_bindings.h"
 
@@ -781,6 +782,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindGridSearch(m);
   flox_py::bindHeatmap(m);
   flox_py::bindLatencyModels(m);
+  flox_py::bindTapeDiff(m);
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);

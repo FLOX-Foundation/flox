@@ -2412,6 +2412,70 @@ extern "C"
   FLOX_EXPORT(group = "latency_models")
   void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed);
 
+  // ============================================================
+  // Tape diff (replay-equivalence localization)
+  // ============================================================
+  //
+  // Walks two .floxlog directories trade-by-trade and produces a
+  // structured result the binding can render. The handle owns the
+  // result vector; copy fields out via the accessors and free with
+  // flox_tape_diff_destroy. NULL on read failure.
+
+  typedef void* FloxTapeDiffHandle;
+
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t price_raw;
+    int64_t qty_raw;
+    uint32_t symbol_id;
+    uint8_t side;
+  } FloxTapeDiffTrade;
+
+  typedef struct
+  {
+    uint64_t index;
+    FloxTapeDiffTrade left;
+    FloxTapeDiffTrade right;
+  } FloxTapeDiffMismatch;
+
+  // max_mismatches=0 means "no cap"; field_tolerance_ns=0 means "exact".
+  FLOX_EXPORT(group = "tape_diff")
+  FloxTapeDiffHandle flox_tape_diff_create(const char* left_path,
+                                           const char* right_path,
+                                           uint32_t max_mismatches,
+                                           int64_t field_tolerance_ns);
+
+  FLOX_EXPORT(group = "tape_diff")
+  void flox_tape_diff_destroy(FloxTapeDiffHandle handle);
+
+  FLOX_EXPORT(group = "tape_diff")
+  uint64_t flox_tape_diff_left_count(FloxTapeDiffHandle handle);
+
+  FLOX_EXPORT(group = "tape_diff")
+  uint64_t flox_tape_diff_right_count(FloxTapeDiffHandle handle);
+
+  // Returns 1 and writes *out_index on present, 0 if there is no
+  // divergence (tapes are equal).
+  FLOX_EXPORT(group = "tape_diff")
+  uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle,
+                                          uint64_t* out_index);
+
+  FLOX_EXPORT(group = "tape_diff")
+  uint8_t flox_tape_diff_equal(FloxTapeDiffHandle handle);
+
+  FLOX_EXPORT(group = "tape_diff")
+  uint64_t flox_tape_diff_mismatch_count(FloxTapeDiffHandle handle);
+
+  // Two-call size pattern: pass NULL out to learn the count, then
+  // allocate and pass a buffer big enough for at least
+  // flox_tape_diff_mismatch_count entries. Writes
+  // min(count, max_entries) entries and returns the number written.
+  FLOX_EXPORT(group = "tape_diff")
+  uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle,
+                                          FloxTapeDiffMismatch* out,
+                                          uint64_t max_entries);
+
 #ifdef __cplusplus
 }
 #endif
