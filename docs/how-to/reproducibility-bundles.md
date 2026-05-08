@@ -18,8 +18,15 @@ bundle.tar
 ├── tape/                  # the W14 tape this run drove against
 │   ├── manifest.json
 │   └── trades-*.bin
-└── expected_output.json   # fill sequence, totals, trade count
+├── expected_output.json   # fill sequence, totals, trade count (legacy JSON summary)
+└── expected.floxrun/      # per-run trace: signals, orders, fills (W14-T008)
+    ├── manifest.json
+    ├── signals-*.bin
+    ├── orders-*.bin
+    └── fills-*.bin
 ```
+
+Bundles produced before W14-T008 contain only `expected_output.json`. The replay path falls back to JSON-only diff for those; new bundles ship both, so a reader can do richer signal / order / fill comparisons against the bundled trace.
 
 ## Pack
 

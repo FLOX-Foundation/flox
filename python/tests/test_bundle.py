@@ -92,6 +92,13 @@ class BundlePackTests(unittest.TestCase):
         self.assertIn("config/params.json", names)
         self.assertIn("expected_output.json", names)
         self.assertTrue(any(n.startswith("tape/") for n in names))
+        # W14-T008: every fresh bundle now also ships an
+        # expected.floxrun directory alongside the legacy JSON.
+        self.assertTrue(
+            any(n.startswith("expected.floxrun/") or n == "expected.floxrun"
+                for n in names),
+            f"missing expected.floxrun in bundle entries: {sorted(names)}",
+        )
 
     def test_pack_manifest_contains_required_fields(self) -> None:
         strat = _write_strategy(self.work)
