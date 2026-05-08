@@ -146,8 +146,8 @@ scrubber.addEventListener('input', () => {
 });
 
 let renderScheduled = false;
+let lastBookmarkAt = 0;
 store.subscribe((s) => {
-  // Update controls reflecting state.
   playpause.textContent = s.playing ? 'Pause' : 'Play';
   const span = s.ts_max - s.ts_min;
   const cursor_off = s.cursor_ns - s.ts_min;
@@ -156,8 +156,14 @@ store.subscribe((s) => {
     scrubber.value = String(Math.round(frac * 1000));
   }
   cursorEl.textContent = s.cursor_ns.toString();
-  writeBookmark(s);
-  // Coalesce view re-renders.
+  // Throttle URL hash writes. history.replaceState at 60fps is one of
+  // the biggest playback-time costs; 4 Hz is plenty for a shareable
+  // bookmark and the user gets the final value on pause.
+  const now = performance.now();
+  if (!s.playing || now - lastBookmarkAt > 250) {
+    writeBookmark(s);
+    lastBookmarkAt = now;
+  }
   if (!renderScheduled) {
     renderScheduled = true;
     requestAnimationFrame(() => {

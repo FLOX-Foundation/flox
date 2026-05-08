@@ -13,10 +13,24 @@ const fmtTs = (ns: bigint) => {
 };
 const fmtNum = (n: number, dp = 2) => n.toFixed(dp);
 
+// Cache the most recent render fingerprint per view so we skip the
+// expensive part (innerHTML / canvas redraw) when the visible slice
+// has not changed since the previous frame. The price chart cursor
+// line is the one element that does need to redraw every frame, so
+// renderPriceChart bypasses this cache.
+let lastTradesSig = '';
+let lastSignalsSig = '';
+let lastOrdersSig = '';
+let lastOrderbookSig = '';
+let lastEquitySig = '';
+
 export function renderTrades(state: ViewerState) {
   const el = document.getElementById('view-trades')!;
   const empty = document.querySelector<HTMLElement>('.emptystate[data-for="trades"]')!;
   const trades = tapeSlice(state).filter((e) => e.type === 'trade').slice(-100);
+  const sig = `${state.tape.length}|${trades.length}|${trades[trades.length - 1]?.ts_ns ?? ''}`;
+  if (sig === lastTradesSig) return;
+  lastTradesSig = sig;
   if (trades.length === 0 && state.tape.length === 0) {
     empty.hidden = false;
     empty.textContent = 'No `.floxlog` loaded. Drop one to see trades.';
@@ -55,6 +69,9 @@ export function renderOrderbook(state: ViewerState) {
   // deltas after it.
   const tape = tapeSlice(state);
   const bookEvents = tape.filter((e) => e.type === 'book_snapshot' || e.type === 'book_delta');
+  const sig = `${state.tape.length}|${bookEvents.length}|${bookEvents[bookEvents.length - 1]?.ts_ns ?? ''}|${w}x${h}`;
+  if (sig === lastOrderbookSig) return;
+  lastOrderbookSig = sig;
   if (bookEvents.length === 0) {
     empty.hidden = false;
     empty.textContent = state.tape.length === 0
@@ -130,7 +147,11 @@ export function renderSignals(state: ViewerState) {
     el.innerHTML = '';
     return;
   }
-  const sigs = signalsSlice(state).slice(-50).reverse();
+  const sigsAll = signalsSlice(state);
+  const sig = `${state.run.signals.length}|${sigsAll.length}|${sigsAll[sigsAll.length - 1]?.run_ts_ns ?? ''}`;
+  if (sig === lastSignalsSig) return;
+  lastSignalsSig = sig;
+  const sigs = sigsAll.slice(-50).reverse();
   empty.hidden = true;
   el.innerHTML = sigs.map((s) => `
     <div class="signal-card">
@@ -151,8 +172,13 @@ export function renderOrders(state: ViewerState) {
     el.innerHTML = '';
     return;
   }
-  const orders = ordersSlice(state).slice(-50).reverse();
-  const fills = fillsSlice(state);
+  const ordersAll = ordersSlice(state);
+  const fillsAll = fillsSlice(state);
+  const sig = `${state.run.orders.length}|${ordersAll.length}|${fillsAll.length}|${ordersAll[ordersAll.length - 1]?.run_ts_ns ?? ''}|${fillsAll[fillsAll.length - 1]?.run_ts_ns ?? ''}`;
+  if (sig === lastOrdersSig) return;
+  lastOrdersSig = sig;
+  const orders = ordersAll.slice(-50).reverse();
+  const fills = fillsAll;
   const fillsByOrder = new Map<string, number>();
   for (const f of fills) {
     const k = f.order_id.toString();
@@ -190,6 +216,9 @@ export function renderEquity(state: ViewerState) {
     return;
   }
   const fills = fillsSlice(state);
+  const sig = `${state.run.fills.length}|${fills.length}|${fills[fills.length - 1]?.run_ts_ns ?? ''}|${w}x${h}`;
+  if (sig === lastEquitySig) return;
+  lastEquitySig = sig;
   if (fills.length === 0) {
     empty.hidden = false;
     empty.textContent = 'No fills yet at this cursor.';
@@ -247,6 +276,13 @@ interface ChartContext {
 }
 let priceChartCtx: ChartContext | null = null;
 let priceChartWired = false;
+
+// Offscreen canvas holding everything that does not move when the
+// cursor moves: grid, line, trade dots, signal bands, fill triangles.
+// We blit it onto the visible canvas every frame and only paint the
+// cursor on top in real time.
+let priceChartStaticCanvas: HTMLCanvasElement | null = null;
+let lastPriceStaticSig = '';
 
 function wirePriceChart(canvas: HTMLCanvasElement, tooltip: HTMLElement) {
   if (priceChartWired) return;
@@ -342,22 +378,19 @@ export function renderPriceChart(state: ViewerState) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  // Pull every trade in the loaded tape (not just up-to-cursor) so the
-  // chart shape stays stable while scrubbing; the cursor draws as a
-  // vertical line on top.
   const trades: Trade[] = state.tape.filter((e): e is Trade => e.type === 'trade');
   if (trades.length === 0) {
     empty.hidden = false;
     empty.textContent = state.tape.length === 0
       ? 'No `.floxlog` loaded. Drop one to see the price chart.'
       : 'Tape has no trades.';
+    priceChartCtx = null;
     return;
   }
   empty.hidden = true;
 
   const t0 = state.ts_min;
   const tN = state.ts_max;
-  const tSpan = Math.max(1, Number(tN - t0));
   let minP = Infinity, maxP = -Infinity;
   for (const t of trades) {
     if (t.price < minP) minP = t.price;
@@ -365,98 +398,111 @@ export function renderPriceChart(state: ViewerState) {
   }
   const padP = Math.max(1e-9, (maxP - minP) * 0.08);
   minP -= padP; maxP += padP;
-  const pSpan = Math.max(1e-9, maxP - minP);
 
   const padL = 56, padR = 12, padT = 10, padB = 22;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
-  const xOf = (ts: bigint) => padL + (Number(ts - t0) / tSpan) * plotW;
-  const yOf = (price: number) => padT + (1 - (price - minP) / pSpan) * plotH;
   priceChartCtx = { trades, t0, tN, padL, padT, plotW, plotH, minP, maxP };
 
-  // Grid + axis labels.
-  ctx.strokeStyle = '#eef0f4';
-  ctx.lineWidth = 1;
-  ctx.fillStyle = '#9ca3af';
-  ctx.font = '10px ui-monospace, monospace';
-  ctx.textBaseline = 'middle';
-  for (let i = 0; i <= 4; i++) {
-    const y = padT + (i / 4) * plotH;
-    ctx.beginPath();
-    ctx.moveTo(padL, y);
-    ctx.lineTo(w - padR, y);
-    ctx.stroke();
-    const p = maxP - (i / 4) * pSpan;
-    ctx.fillText(p.toFixed(2), 6, y);
+  const sigCount = state.run ? state.run.signals.length : 0;
+  const fillCount = state.run ? state.run.fills.length : 0;
+  const sigKey = `${trades.length}|${sigCount}|${fillCount}|${w}x${h}|${minP}|${maxP}`;
+  if (sigKey !== lastPriceStaticSig) {
+    lastPriceStaticSig = sigKey;
+    if (!priceChartStaticCanvas) priceChartStaticCanvas = document.createElement('canvas');
+    priceChartStaticCanvas.width = w * dpr;
+    priceChartStaticCanvas.height = h * dpr;
+    const sctx = priceChartStaticCanvas.getContext('2d')!;
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sctx.clearRect(0, 0, w, h);
+    paintPriceStatic(sctx, w, h, trades, state, t0, tN, padL, padT, plotW, plotH, minP, maxP);
   }
 
-  // Trade-line.
-  ctx.strokeStyle = '#138caf';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  trades.forEach((t, i) => {
-    const x = xOf(t.ts_ns), y = yOf(t.price);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  // Trade dots, colored by side.
-  for (const t of trades) {
-    ctx.fillStyle = t.side === 'buy' ? 'rgba(33, 161, 101, 0.55)' : 'rgba(214, 70, 75, 0.55)';
-    ctx.beginPath();
-    ctx.arc(xOf(t.ts_ns), yOf(t.price), 1.6, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Signal markers: vertical band + label.
-  const sigs = state.run ? state.run.signals : [];
-  ctx.font = '10px ui-monospace, monospace';
-  for (const s of sigs) {
-    if (s.run_ts_ns < t0 || s.run_ts_ns > tN) continue;
-    const x = xOf(s.run_ts_ns);
-    const isExit = (s.flags & 0x02) !== 0;
-    ctx.strokeStyle = isExit ? 'rgba(214, 70, 75, 0.5)' : 'rgba(33, 161, 101, 0.5)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath();
-    ctx.moveTo(x, padT);
-    ctx.lineTo(x, h - padB);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = isExit ? '#d6464b' : '#21a165';
-    ctx.fillText(s.name, x + 3, padT + 8);
-  }
-
-  // Fill markers: triangle pointing into the trade direction.
-  const fills = state.run ? state.run.fills : [];
-  for (const f of fills) {
-    if (f.run_ts_ns < t0 || f.run_ts_ns > tN) continue;
-    const x = xOf(f.run_ts_ns);
-    const y = yOf(f.price);
-    ctx.fillStyle = f.side === 0 ? '#21a165' : '#d6464b';
-    ctx.beginPath();
-    if (f.side === 0) {
-      ctx.moveTo(x, y - 6);
-      ctx.lineTo(x - 4, y);
-      ctx.lineTo(x + 4, y);
-    } else {
-      ctx.moveTo(x, y + 6);
-      ctx.lineTo(x - 4, y);
-      ctx.lineTo(x + 4, y);
-    }
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // Cursor line.
+  if (priceChartStaticCanvas) ctx.drawImage(priceChartStaticCanvas, 0, 0, w, h);
   if (state.cursor_ns >= t0 && state.cursor_ns <= tN) {
-    const cx = xOf(state.cursor_ns);
+    const tSpan = Math.max(1, Number(tN - t0));
+    const cx = padL + (Number(state.cursor_ns - t0) / tSpan) * plotW;
     ctx.strokeStyle = 'rgba(26, 35, 50, 0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(cx, padT);
     ctx.lineTo(cx, h - padB);
     ctx.stroke();
+  }
+}
+
+function paintPriceStatic(target: CanvasRenderingContext2D, w: number, h: number,
+                           trades: Trade[], state: ViewerState,
+                           t0: bigint, tN: bigint,
+                           padL: number, padT: number, plotW: number, plotH: number,
+                           minP: number, maxP: number) {
+  const tSpan = Math.max(1, Number(tN - t0));
+  const pSpan = Math.max(1e-9, maxP - minP);
+  const xOf = (ts: bigint) => padL + (Number(ts - t0) / tSpan) * plotW;
+  const yOf = (price: number) => padT + (1 - (price - minP) / pSpan) * plotH;
+  target.strokeStyle = '#eef0f4';
+  target.lineWidth = 1;
+  target.fillStyle = '#9ca3af';
+  target.font = '10px ui-monospace, monospace';
+  target.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (i / 4) * plotH;
+    target.beginPath();
+    target.moveTo(padL, y);
+    target.lineTo(w - 12, y);
+    target.stroke();
+    const p = maxP - (i / 4) * pSpan;
+    target.fillText(p.toFixed(2), 6, y);
+  }
+  target.strokeStyle = '#138caf';
+  target.lineWidth = 1.2;
+  target.beginPath();
+  trades.forEach((t, i) => {
+    const x = xOf(t.ts_ns), y = yOf(t.price);
+    if (i === 0) target.moveTo(x, y); else target.lineTo(x, y);
+  });
+  target.stroke();
+  for (const t of trades) {
+    target.fillStyle = t.side === 'buy' ? 'rgba(33, 161, 101, 0.55)' : 'rgba(214, 70, 75, 0.55)';
+    target.beginPath();
+    target.arc(xOf(t.ts_ns), yOf(t.price), 1.6, 0, Math.PI * 2);
+    target.fill();
+  }
+  const sigs = state.run ? state.run.signals : [];
+  target.font = '10px ui-monospace, monospace';
+  for (const s of sigs) {
+    if (s.run_ts_ns < t0 || s.run_ts_ns > tN) continue;
+    const x = xOf(s.run_ts_ns);
+    const isExit = (s.flags & 0x02) !== 0;
+    target.strokeStyle = isExit ? 'rgba(214, 70, 75, 0.5)' : 'rgba(33, 161, 101, 0.5)';
+    target.lineWidth = 1;
+    target.setLineDash([3, 3]);
+    target.beginPath();
+    target.moveTo(x, padT);
+    target.lineTo(x, h - 22);
+    target.stroke();
+    target.setLineDash([]);
+    target.fillStyle = isExit ? '#d6464b' : '#21a165';
+    target.fillText(s.name, x + 3, padT + 8);
+  }
+  const fills = state.run ? state.run.fills : [];
+  for (const f of fills) {
+    if (f.run_ts_ns < t0 || f.run_ts_ns > tN) continue;
+    const x = xOf(f.run_ts_ns);
+    const y = yOf(f.price);
+    target.fillStyle = f.side === 0 ? '#21a165' : '#d6464b';
+    target.beginPath();
+    if (f.side === 0) {
+      target.moveTo(x, y - 6);
+      target.lineTo(x - 4, y);
+      target.lineTo(x + 4, y);
+    } else {
+      target.moveTo(x, y + 6);
+      target.lineTo(x - 4, y);
+      target.lineTo(x + 4, y);
+    }
+    target.closePath();
+    target.fill();
   }
 }
 
