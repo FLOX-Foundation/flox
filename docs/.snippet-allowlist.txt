@@ -193,3 +193,7 @@ docs/how-to/multi-tf-context.md
 # DSL examples for `when(...)`/`ema`/`rsi` composition; runtime path
 # exercised by python/tests/test_composite_conditions.py.
 docs/how-to/composite-conditions.md
+
+# How-to: Submit a multi-leg order group. Illustrative API examples;
+# runtime path exercised by python/tests/test_order_group.py.
+docs/how-to/multi-leg-order-group.md
