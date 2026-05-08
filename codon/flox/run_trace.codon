@@ -1,0 +1,150 @@
+# flox/run_trace.codon -- .floxrun strategy-trace recorder + reader.
+#
+# Wraps the C ABI handles. The recorder writes signal / order-event /
+# fill records; the reader reports per-kind counts. Per-record
+# accessors are exposed only for the headline numeric fields. Variable
+# payloads (signal name, payload bytes, order reason) round-trip
+# faithfully on disk; the Python and Node bindings expose them.
+
+from C import flox_run_recorder_create(cobj, cobj, cobj, int) -> cobj
+from C import flox_run_recorder_destroy(cobj)
+from C import flox_run_recorder_add_tape_ref(cobj, cobj, cobj, int, int)
+from C import flox_run_recorder_set_run_ended_ns(cobj, int)
+from C import flox_run_recorder_write_signal(cobj, int, int, u32, u32, int, cobj, int, cobj, int, cobj, int)
+from C import flox_run_recorder_write_order_event(cobj, int, int, int, int, int, int, u32, u8, u8, u8, u32, cobj, int)
+from C import flox_run_recorder_write_fill(cobj, int, int, int, int, int, int, int, u32, u8, u8)
+from C import flox_run_recorder_close(cobj)
+from C import flox_run_reader_open(cobj) -> cobj
+from C import flox_run_reader_close(cobj)
+from C import flox_run_reader_run_started_ns(cobj) -> int
+from C import flox_run_reader_run_ended_ns(cobj) -> int
+from C import flox_run_reader_signal_count(cobj) -> int
+from C import flox_run_reader_order_event_count(cobj) -> int
+from C import flox_run_reader_fill_count(cobj) -> int
+
+
+def _cstr(s: str) -> Ptr[byte]:
+    n = len(s)
+    buf = Ptr[byte](n + 1)
+    for i in range(n):
+        buf[i] = byte(int(s.ptr[i]))
+    buf[n] = byte(0)
+    return buf
+
+
+def _u32_array(values: List[int]) -> Ptr[byte]:
+    n = len(values)
+    buf = Ptr[byte](n * 4)
+    p = Ptr[u32](buf)
+    for i in range(n):
+        p[i] = u32(values[i])
+    return buf
+
+
+SIGNAL_FLAG_ENTER = 1
+SIGNAL_FLAG_EXIT = 2
+SIGNAL_FLAG_REBALANCE = 4
+
+ORDER_FLAG_POST_ONLY = 1
+ORDER_FLAG_REDUCE_ONLY = 2
+ORDER_FLAG_IOC = 4
+
+ORDER_KIND_SUBMIT = 1
+ORDER_KIND_CANCEL = 2
+ORDER_KIND_MODIFY = 3
+ORDER_KIND_ACK = 4
+ORDER_KIND_REJECT = 5
+ORDER_KIND_EXPIRE = 6
+
+LIQUIDITY_UNKNOWN = 0
+LIQUIDITY_MAKER = 1
+LIQUIDITY_TAKER = 2
+
+
+@dataclass
+class TraceCounts:
+    signals: int
+    orders: int
+    fills: int
+
+
+class TraceRecorder:
+    _h: cobj
+
+    def __init__(self, path: str, strategy_id: str = "",
+                 strategy_hash: str = "", run_started_ns: int = 0):
+        self._h = flox_run_recorder_create(_cstr(path), _cstr(strategy_id),
+                                            _cstr(strategy_hash), run_started_ns)
+
+    def add_tape_ref(self, path: str, content_hash: str = "",
+                     first_event_ns: int = 0, last_event_ns: int = 0):
+        flox_run_recorder_add_tape_ref(self._h, _cstr(path), _cstr(content_hash),
+                                        first_event_ns, last_event_ns)
+
+    def set_run_ended_ns(self, ns: int):
+        flox_run_recorder_set_run_ended_ns(self._h, ns)
+
+    def write_signal(self, run_ts_ns: int, name: str = "",
+                     symbol_ids: List[int] = [], feed_ts_ns: int = 0,
+                     signal_id: int = 0, flags: int = 0,
+                     strength_raw: int = 0, payload: str = ""):
+        name_buf = _cstr(name) if len(name) > 0 else cobj()
+        sids_buf = _u32_array(symbol_ids) if len(symbol_ids) > 0 else cobj()
+        payload_buf = _cstr(payload) if len(payload) > 0 else cobj()
+        flox_run_recorder_write_signal(self._h, run_ts_ns, feed_ts_ns,
+                                         u32(signal_id), u32(flags), strength_raw,
+                                         name_buf, len(name),
+                                         sids_buf, len(symbol_ids),
+                                         payload_buf, len(payload))
+
+    def write_order_event(self, run_ts_ns: int, order_id: int,
+                          event_kind: int = 1, side: int = 0,
+                          order_type: int = 0, symbol_id: int = 0,
+                          parent_signal_id: int = 0, price_raw: int = 0,
+                          qty_raw: int = 0, flags: int = 0,
+                          reason: str = "", feed_ts_ns: int = 0):
+        reason_buf = _cstr(reason) if len(reason) > 0 else cobj()
+        flox_run_recorder_write_order_event(self._h, run_ts_ns, feed_ts_ns,
+                                              order_id, parent_signal_id,
+                                              price_raw, qty_raw,
+                                              u32(symbol_id), u8(event_kind),
+                                              u8(side), u8(order_type),
+                                              u32(flags), reason_buf, len(reason))
+
+    def write_fill(self, run_ts_ns: int, order_id: int, fill_id: int,
+                   price_raw: int, qty_raw: int,
+                   fee_raw: int = 0, symbol_id: int = 0,
+                   side: int = 0, liquidity: int = 0,
+                   feed_ts_ns: int = 0):
+        flox_run_recorder_write_fill(self._h, run_ts_ns, feed_ts_ns,
+                                       order_id, fill_id, price_raw, qty_raw,
+                                       fee_raw, u32(symbol_id), u8(side),
+                                       u8(liquidity))
+
+    def close(self):
+        flox_run_recorder_close(self._h)
+
+
+class TraceReader:
+    _h: cobj
+
+    def __init__(self, path: str):
+        self._h = flox_run_reader_open(_cstr(path))
+
+    def run_started_ns(self) -> int:
+        return flox_run_reader_run_started_ns(self._h)
+
+    def run_ended_ns(self) -> int:
+        return flox_run_reader_run_ended_ns(self._h)
+
+    def counts(self) -> TraceCounts:
+        return TraceCounts(
+            signals=flox_run_reader_signal_count(self._h),
+            orders=flox_run_reader_order_event_count(self._h),
+            fills=flox_run_reader_fill_count(self._h),
+        )
+
+    def close(self):
+        if self._h != cobj():
+            flox_run_reader_close(self._h)
+            self._h = cobj()

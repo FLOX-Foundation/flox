@@ -33,6 +33,7 @@ file(GLOB_RECURSE SRC_FILES
     src/replay/*.cpp
     src/report/*.cpp
     src/risk/*.cpp
+    src/run/*.cpp
 )
 
 option(FLOX_ENABLE_BACKTEST "Enable backtest module" OFF)

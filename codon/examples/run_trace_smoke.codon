@@ -1,0 +1,57 @@
+# Round-trip smoke for the .floxrun bindings under Codon.
+
+from flox.run_trace import (TraceRecorder, TraceReader,
+                            SIGNAL_FLAG_ENTER, ORDER_FLAG_POST_ONLY,
+                            ORDER_KIND_SUBMIT, LIQUIDITY_MAKER)
+
+import os
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def run():
+    path = "/tmp/flox_run_codon_smoke"
+    os.system("rm -rf " + path)
+
+    rec = TraceRecorder(path, strategy_id="codon-smoke",
+                        strategy_hash="sha256:test",
+                        run_started_ns=1700000000000000000)
+    rec.add_tape_ref("BTCUSDT.floxlog", "sha256:abc",
+                     1700000000000000000, 1700000000500000000)
+    rec.write_signal(1700000000100000000, name="ratio-cross",
+                     symbol_ids=[1, 2], feed_ts_ns=1700000000099000000,
+                     signal_id=42, flags=SIGNAL_FLAG_ENTER,
+                     strength_raw=75000000,
+                     payload='{"src":"ETH","dst":"BTC"}')
+    rec.write_order_event(1700000000200000000, order_id=7,
+                          event_kind=ORDER_KIND_SUBMIT, side=0,
+                          order_type=1, symbol_id=1,
+                          parent_signal_id=42, price_raw=5000000000000,
+                          qty_raw=100000000, flags=ORDER_FLAG_POST_ONLY,
+                          feed_ts_ns=1700000000099000000)
+    rec.write_fill(1700000000300000000, order_id=7, fill_id=12345,
+                   price_raw=5000000000000, qty_raw=100000000,
+                   fee_raw=50000, symbol_id=1, side=0,
+                   liquidity=LIQUIDITY_MAKER,
+                   feed_ts_ns=1700000000250000000)
+    rec.set_run_ended_ns(1700000000400000000)
+    rec.close()
+
+    reader = TraceReader(path)
+    check("run started ns", reader.run_started_ns() == 1700000000000000000)
+    check("run ended ns", reader.run_ended_ns() == 1700000000400000000)
+    counts = reader.counts()
+    check("signal count", counts.signals == 1)
+    check("order count", counts.orders == 1)
+    check("fill count", counts.fills == 1)
+    reader.close()
+    os.system("rm -rf " + path)
+    print("codon run-trace smoke ok")
+
+
+run()

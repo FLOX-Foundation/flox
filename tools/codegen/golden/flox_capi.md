@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 401 functions, 38 handles, 48 structs, 33 callback typedefs, 2 enums, 52 groups.
+**Surface:** 427 functions, 40 handles, 48 structs, 33 callback typedefs, 2 enums, 53 groups.
 
 ## Opaque handles
 
@@ -46,6 +46,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxExecAlgoHandle`
 - `FloxDeltaBookEncoderHandle`
 - `FloxDeltaBookReplayerHandle`
+- `FloxRunRecorderHandle`
+- `FloxRunReaderHandle`
 
 ## Enums
 
@@ -851,6 +853,35 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_live_engine_publish_trade(FloxLiveEngineHandle engine, uint32_t symbol, double price, double qty, uint8_t is_buy, int64_t exchange_ts_ns)`
 - `void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks, int64_t exchange_ts_ns)`
 - `void flox_live_engine_publish_bar(FloxLiveEngineHandle engine, uint32_t symbol, uint8_t bar_type, uint64_t bar_type_param, double open, double high, double low, double close, double volume, double buy_volume, int64_t start_time_ns, int64_t end_time_ns, uint8_t close_reason)`
+
+### floxrun
+
+- `FloxRunRecorderHandle flox_run_recorder_create(const char * path, const char * strategy_id, const char * strategy_hash, int64_t run_started_ns)`
+- `void flox_run_recorder_destroy(FloxRunRecorderHandle handle)`
+- `void flox_run_recorder_add_tape_ref(FloxRunRecorderHandle handle, const char * path, const char * content_hash, int64_t first_event_ns, int64_t last_event_ns)`
+- `void flox_run_recorder_set_run_ended_ns(FloxRunRecorderHandle handle, int64_t ns)`
+- `void flox_run_recorder_write_signal(FloxRunRecorderHandle handle, int64_t run_ts_ns, int64_t feed_ts_ns, uint32_t signal_id, uint32_t flags, int64_t strength_raw, const char * name, size_t name_len, const uint32_t * symbol_ids, size_t symbol_count, const uint8_t * payload, size_t payload_len)`
+- `void flox_run_recorder_write_order_event(FloxRunRecorderHandle handle, int64_t run_ts_ns, int64_t feed_ts_ns, uint64_t order_id, uint64_t parent_signal_id, int64_t price_raw, int64_t qty_raw, uint32_t symbol_id, uint8_t event_kind, uint8_t side, uint8_t order_type, uint32_t flags, const char * reason, size_t reason_len)`
+- `void flox_run_recorder_write_fill(FloxRunRecorderHandle handle, int64_t run_ts_ns, int64_t feed_ts_ns, uint64_t order_id, uint64_t fill_id, int64_t price_raw, int64_t qty_raw, int64_t fee_raw, uint32_t symbol_id, uint8_t side, uint8_t liquidity)`
+- `void flox_run_recorder_close(FloxRunRecorderHandle handle)`
+- `FloxRunReaderHandle flox_run_reader_open(const char * path)`
+- `void flox_run_reader_close(FloxRunReaderHandle handle)`
+- `uint64_t flox_run_reader_strategy_id(FloxRunReaderHandle handle, char * out, uint64_t max_bytes)`
+- `uint64_t flox_run_reader_strategy_hash(FloxRunReaderHandle handle, char * out, uint64_t max_bytes)`
+- `int64_t flox_run_reader_run_started_ns(FloxRunReaderHandle handle)`
+- `int64_t flox_run_reader_run_ended_ns(FloxRunReaderHandle handle)`
+- `uint64_t flox_run_reader_tape_ref_count(FloxRunReaderHandle handle)`
+- `uint64_t flox_run_reader_tape_ref_path(FloxRunReaderHandle handle, uint64_t index, char * out, uint64_t max_bytes)`
+- `uint64_t flox_run_reader_signal_count(FloxRunReaderHandle handle)`
+- `uint64_t flox_run_reader_order_event_count(FloxRunReaderHandle handle)`
+- `uint64_t flox_run_reader_fill_count(FloxRunReaderHandle handle)`
+- `void flox_run_reader_signal_header(FloxRunReaderHandle handle, uint64_t index, int64_t * out_run_ts, int64_t * out_feed_ts, uint32_t * out_signal_id, uint32_t * out_flags, int64_t * out_strength_raw, uint64_t * out_name_len, uint64_t * out_symbol_count, uint64_t * out_payload_len)`
+- `uint64_t flox_run_reader_signal_name(FloxRunReaderHandle handle, uint64_t index, char * out, uint64_t max_bytes)`
+- `uint64_t flox_run_reader_signal_symbol_ids(FloxRunReaderHandle handle, uint64_t index, uint32_t * out, uint64_t max_entries)`
+- `uint64_t flox_run_reader_signal_payload(FloxRunReaderHandle handle, uint64_t index, uint8_t * out, uint64_t max_bytes)`
+- `void flox_run_reader_order_event_header(FloxRunReaderHandle handle, uint64_t index, int64_t * out_run_ts, int64_t * out_feed_ts, uint64_t * out_order_id, uint64_t * out_parent_signal_id, int64_t * out_price_raw, int64_t * out_qty_raw, uint32_t * out_symbol_id, uint8_t * out_event_kind, uint8_t * out_side, uint8_t * out_order_type, uint32_t * out_flags, uint64_t * out_reason_len)`
+- `uint64_t flox_run_reader_order_event_reason(FloxRunReaderHandle handle, uint64_t index, char * out, uint64_t max_bytes)`
+- `void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index, int64_t * out_run_ts, int64_t * out_feed_ts, uint64_t * out_order_id, uint64_t * out_fill_id, int64_t * out_price_raw, int64_t * out_qty_raw, int64_t * out_fee_raw, uint32_t * out_symbol_id, uint8_t * out_side, uint8_t * out_liquidity)`
 
 ### footprint_bar
 

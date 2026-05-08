@@ -1,0 +1,227 @@
+# Record a strategy run as `.floxrun`
+
+A `.floxlog` tape holds what the exchange sent. A `.floxrun` directory holds what the strategy did with it: the signals, order events, and fills it produced. The two formats live next to each other so a viewer or a diff tool can line them up on one timeline.
+
+This page covers the write-then-read loop. Format details live in the [floxrun spec](../spec/floxrun.md).
+
+## When to write a `.floxrun`
+
+- During a backtest, so the viewer can scrub through signals and orders alongside the input tape.
+- During paper trading, so a post-run diff confirms the strategy did what its expected output says it should.
+- During live trading, when you want a structured trace separate from the engine log.
+- Inside a `flox bundle pack` artifact as the canonical "expected output". The bundle CLI integration is a follow-up task; today the recorder takes any path.
+
+## Quick start
+
+=== "Python"
+
+    ```python
+    from flox_py._flox_py import (
+        FillLiquidity, OrderEventKind, TapeRef, TraceReader, TraceRecorder,
+    )
+
+    rec = TraceRecorder(
+        path="run.floxrun",
+        strategy_id="ratio-cross",
+        strategy_hash="sha256:abc",
+        run_started_ns=1_700_000_000_000_000_000,
+        tape_refs=[TapeRef("BTCUSDT.floxlog", "sha256:def", 0, 0)],
+    )
+    rec.write_signal(
+        run_ts_ns=1_700_000_000_100_000_000,
+        signal_id=42,
+        name="ratio-cross",
+        symbol_ids=[1, 2],
+        payload=b'{"src":"ETH","dst":"BTC"}',
+    )
+    rec.write_order_event(
+        run_ts_ns=1_700_000_000_200_000_000,
+        order_id=7,
+        parent_signal_id=42,
+        symbol_id=1,
+        event_kind=OrderEventKind.SUBMIT,
+        side=0,
+        order_type=1,
+        price_raw=5_000_000_000_000,
+        qty_raw=100_000_000,
+    )
+    rec.write_fill(
+        run_ts_ns=1_700_000_000_300_000_000,
+        order_id=7,
+        fill_id=12345,
+        price_raw=5_000_000_000_000,
+        qty_raw=100_000_000,
+        liquidity=FillLiquidity.MAKER,
+    )
+    rec.close()
+
+    reader = TraceReader("run.floxrun")
+    print(reader.strategy_id, len(reader.read_all_signals()))
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const { TraceRecorder, TraceReader } = require('@flox-foundation/flox');
+
+    const rec = new TraceRecorder({
+      path: 'run.floxrun',
+      strategyId: 'ratio-cross',
+      runStartedNs: 1_700_000_000_000_000_000,
+    });
+    rec.addTapeRef({ path: 'BTCUSDT.floxlog', contentHash: 'sha256:def' });
+    rec.writeSignal({
+      runTsNs: 1_700_000_000_100_000_000,
+      signalId: 42,
+      name: 'ratio-cross',
+      symbolIds: [1, 2],
+      payload: Buffer.from('{"src":"ETH","dst":"BTC"}'),
+    });
+    rec.writeOrderEvent({
+      runTsNs: 1_700_000_000_200_000_000,
+      orderId: 7,
+      parentSignalId: 42,
+      symbolId: 1,
+      eventKind: 1,
+      side: 0,
+      orderType: 1,
+      priceRaw: 5_000_000_000_000,
+      qtyRaw: 100_000_000,
+    });
+    rec.writeFill({
+      runTsNs: 1_700_000_000_300_000_000,
+      orderId: 7,
+      fillId: 12345,
+      priceRaw: 5_000_000_000_000,
+      qtyRaw: 100_000_000,
+      liquidity: 1,
+    });
+    rec.close();
+
+    const reader = new TraceReader('run.floxrun');
+    console.log(reader.strategyId(), reader.readAllSignals().length);
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.run_trace import TraceRecorder, TraceReader, ORDER_KIND_SUBMIT, LIQUIDITY_MAKER
+
+    rec = TraceRecorder("run.floxrun", strategy_id="ratio-cross",
+                        run_started_ns=1700000000000000000)
+    rec.add_tape_ref("BTCUSDT.floxlog", "sha256:def")
+    rec.write_signal(1700000000100000000, name="ratio-cross",
+                     symbol_ids=[1, 2], signal_id=42,
+                     payload='{"src":"ETH","dst":"BTC"}')
+    rec.write_order_event(1700000000200000000, order_id=7,
+                          parent_signal_id=42, symbol_id=1,
+                          event_kind=ORDER_KIND_SUBMIT,
+                          price_raw=5000000000000, qty_raw=100000000)
+    rec.write_fill(1700000000300000000, order_id=7, fill_id=12345,
+                   price_raw=5000000000000, qty_raw=100000000,
+                   liquidity=LIQUIDITY_MAKER)
+    rec.close()
+
+    reader = TraceReader("run.floxrun")
+    print(reader.counts().signals)
+    ```
+
+=== "QuickJS"
+
+    ```javascript
+    var rec = new flox.TraceRecorder({
+      path: 'run.floxrun',
+      strategyId: 'ratio-cross',
+      runStartedNs: 1700000000000000000,
+    });
+    rec.addTapeRef({ path: 'BTCUSDT.floxlog' });
+    rec.writeSignal({
+      runTsNs: 1700000000100000000,
+      signalId: 42,
+      name: 'ratio-cross',
+      symbolIds: [1, 2],
+      payload: '{"src":"ETH","dst":"BTC"}',
+    });
+    rec.writeOrderEvent({
+      runTsNs: 1700000000200000000,
+      orderId: 7,
+      parentSignalId: 42,
+      symbolId: 1,
+      eventKind: 1,
+      priceRaw: 5000000000000,
+      qtyRaw: 100000000,
+    });
+    rec.writeFill({
+      runTsNs: 1700000000300000000,
+      orderId: 7,
+      fillId: 12345,
+      priceRaw: 5000000000000,
+      qtyRaw: 100000000,
+      liquidity: 1,
+    });
+    rec.close();
+
+    var reader = new flox.TraceReader('run.floxrun');
+    console.log(reader.readAllSignals().length);
+    ```
+
+## Multi-symbol decisions
+
+A signal can carry several symbol ids. A pair-trade signal that goes long ETH and short BTC lists both:
+
+```python
+rec.write_signal(
+    run_ts_ns=now_ns,
+    name="pair-rotate",
+    symbol_ids=[btc_id, eth_id],
+    flags=flox_py._flox_py.SIGNAL_FLAG_REBALANCE,
+    payload=b'{"target_ratio": 0.5}',
+)
+```
+
+This is why `.floxrun` does not live inside `.floxlog`. A tape captures one feed for one symbol; writing a cross-symbol decision into one of those tapes would lie about its scope. The trace lists the symbols a signal touches; each tape stays scoped to its own feed.
+
+## Aligning trace events with tape events
+
+Every record carries two timestamps:
+
+- `run_ts_ns` is wall-clock when the strategy emitted the event.
+- `feed_ts_ns` is the tape event timestamp that triggered the decision.
+
+To line up a trace against the tape that produced it, merge on `feed_ts_ns`. To inspect strategy behavior on its own wall clock (latency between feed event and decision, for instance), order by `run_ts_ns`. A diff tool comparing two runs against the same tape uses `feed_ts_ns` as the alignment key.
+
+If a record was not triggered by a specific tape event (a periodic rebalance, a manual order from a control plane), set `feed_ts_ns = 0`.
+
+## Reading back
+
+The reader returns parsed records in chronological order. If a run never wrote a given record kind, its accessor returns an empty list; the format does not require every segment file to exist.
+
+```python
+reader = TraceReader("run.floxrun")
+print("strategy:", reader.strategy_id)
+print("tapes:", [t["path"] for t in reader.tape_refs])
+for s in reader.read_all_signals():
+    print(s["run_ts_ns"], s["name"], s["symbol_ids"])
+for e in reader.read_all_order_events():
+    print(e["run_ts_ns"], e["order_id"], e["event_kind"])
+for f in reader.read_all_fills():
+    print(f["run_ts_ns"], f["order_id"], f["price_raw"], f["qty_raw"])
+```
+
+## What is in a `.floxrun` directory
+
+```
+run.floxrun/
+├── manifest.json         strategy id, hash, tape refs, segment index
+├── signals-000000.bin    SignalRecord frames
+├── orders-000000.bin     OrderEventRecord frames
+└── fills-000000.bin      FillRecord frames
+```
+
+`manifest.json` is JSON; the segment files are little-endian binary with the same `FrameHeader` and CRC layout as `.floxlog`. Segment files only exist for kinds the recorder actually wrote; an empty run produces only `manifest.json`.
+
+## See also
+
+- [floxrun spec v1.0](../spec/floxrun.md). Wire layout, manifest schema, frame types.
+- [floxlog spec v1.0](../spec/floxlog.md). The companion market-data format.
+- [Record and replay tapes](tape-record.md). The CLI surface for the input side.

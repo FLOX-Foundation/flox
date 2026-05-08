@@ -526,6 +526,34 @@ void FloxJsStrategy::loadStdlib()
         }
       },
 
+      // .floxrun strategy-trace recorder + reader.
+      TraceRecorder: class {
+        constructor(opts) {
+          this._h = __flox_run_recorder_create(opts || {});
+        }
+        destroy() {
+          if (this._h) { __flox_run_recorder_destroy(this._h); this._h = null; }
+        }
+        addTapeRef(opts) { __flox_run_recorder_add_tape_ref(this._h, opts || {}); }
+        setRunEndedNs(ns) { __flox_run_recorder_set_run_ended_ns(this._h, ns); }
+        writeSignal(opts) { __flox_run_recorder_write_signal(this._h, opts); }
+        writeOrderEvent(opts) { __flox_run_recorder_write_order_event(this._h, opts); }
+        writeFill(opts) { __flox_run_recorder_write_fill(this._h, opts); }
+        close() { __flox_run_recorder_close(this._h); }
+      },
+      TraceReader: class {
+        constructor(path) { this._h = __flox_run_reader_open(path); }
+        destroy() {
+          if (this._h) { __flox_run_reader_close(this._h); this._h = null; }
+        }
+        strategyId() { return __flox_run_reader_strategy_id(this._h); }
+        runStartedNs() { return __flox_run_reader_run_started_ns(this._h); }
+        runEndedNs() { return __flox_run_reader_run_ended_ns(this._h); }
+        readAllSignals() { return __flox_run_reader_signals(this._h); }
+        readAllOrderEvents() { return __flox_run_reader_orders(this._h); }
+        readAllFills() { return __flox_run_reader_fills(this._h); }
+      },
+
       // Execution algos: TWAP / VWAP / Iceberg / POV. The user
       // drives `step(nowNs)` and dispatches the returned child
       // orders to its own executor.

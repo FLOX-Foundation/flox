@@ -1521,6 +1521,483 @@ static JSValue js_delta_book_replayer_apply(JSContext* ctx, JSValueConst, int ar
 }
 
 // ============================================================
+// .floxrun trace recorder / reader bindings
+// ============================================================
+
+static std::vector<uint32_t> readU32Array(JSContext* ctx, JSValueConst arr)
+{
+  std::vector<uint32_t> out;
+  if (!JS_IsArray(ctx, arr))
+  {
+    return out;
+  }
+  uint32_t len = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, arr, "length");
+  JS_ToUint32(ctx, &len, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  out.reserve(len);
+  for (uint32_t i = 0; i < len; ++i)
+  {
+    JSValue v = JS_GetPropertyUint32(ctx, arr, i);
+    uint32_t n = 0;
+    JS_ToUint32(ctx, &n, v);
+    JS_FreeValue(ctx, v);
+    out.push_back(n);
+  }
+  return out;
+}
+
+static JSValue u32VecToJs(JSContext* ctx, const std::vector<uint32_t>& v)
+{
+  JSValue out = JS_NewArray(ctx);
+  for (size_t i = 0; i < v.size(); ++i)
+  {
+    JS_SetPropertyUint32(ctx, out, static_cast<uint32_t>(i),
+                         JS_NewUint32(ctx, v[i]));
+  }
+  return out;
+}
+
+static JSValue js_run_recorder_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 1)
+  {
+    return JS_ThrowTypeError(ctx, "TraceRecorder: need options object");
+  }
+  auto getStr = [&](const char* key, const char* dflt = "") -> std::string
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[0], key);
+    if (JS_IsUndefined(v) || JS_IsNull(v))
+    {
+      JS_FreeValue(ctx, v);
+      return dflt;
+    }
+    const char* s = JS_ToCString(ctx, v);
+    std::string out = s ? s : "";
+    if (s)
+    {
+      JS_FreeCString(ctx, s);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  auto getI64 = [&](const char* key, int64_t dflt = 0) -> int64_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[0], key);
+    int64_t out = dflt;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToInt64(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  std::string path = getStr("path");
+  std::string sid = getStr("strategyId");
+  std::string shash = getStr("strategyHash");
+  int64_t started = getI64("runStartedNs");
+  auto h = flox_run_recorder_create(path.c_str(), sid.c_str(), shash.c_str(), started);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "TraceRecorder: construction failed");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_run_recorder_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_run_recorder_destroy(static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_recorder_add_tape_ref(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2)
+  {
+    return JS_ThrowTypeError(ctx, "addTapeRef(handle, opts)");
+  }
+  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto getStr = [&](const char* key) -> std::string
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[1], key);
+    if (JS_IsUndefined(v) || JS_IsNull(v))
+    {
+      JS_FreeValue(ctx, v);
+      return "";
+    }
+    const char* s = JS_ToCString(ctx, v);
+    std::string out = s ? s : "";
+    if (s)
+    {
+      JS_FreeCString(ctx, s);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  auto getI64 = [&](const char* key) -> int64_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[1], key);
+    int64_t out = 0;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToInt64(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  std::string path = getStr("path");
+  std::string ch = getStr("contentHash");
+  flox_run_recorder_add_tape_ref(h, path.c_str(), ch.c_str(), getI64("firstEventNs"),
+                                 getI64("lastEventNs"));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_recorder_set_run_ended_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  flox_run_recorder_set_run_ended_ns(h, toInt64(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2)
+  {
+    return JS_ThrowTypeError(ctx, "writeSignal(handle, opts)");
+  }
+  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto opts = argv[1];
+  auto getI64 = [&](const char* k, int64_t d = 0) -> int64_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, k);
+    int64_t out = d;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToInt64(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  auto getU32 = [&](const char* k, uint32_t d = 0) -> uint32_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, k);
+    uint32_t out = d;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToUint32(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  int64_t run_ts = getI64("runTsNs");
+  int64_t feed_ts = getI64("feedTsNs");
+  uint32_t signal_id = getU32("signalId");
+  uint32_t flags = getU32("flags");
+  int64_t strength = getI64("strengthRaw");
+  std::string name;
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, "name");
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      const char* s = JS_ToCString(ctx, v);
+      if (s)
+      {
+        name = s;
+        JS_FreeCString(ctx, s);
+      }
+    }
+    JS_FreeValue(ctx, v);
+  }
+  std::vector<uint32_t> sids;
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, "symbolIds");
+    if (JS_IsArray(ctx, v))
+    {
+      sids = readU32Array(ctx, v);
+    }
+    JS_FreeValue(ctx, v);
+  }
+  std::vector<uint8_t> payload;
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, "payload");
+    if (JS_IsString(v))
+    {
+      const char* s = JS_ToCString(ctx, v);
+      if (s)
+      {
+        payload.assign(s, s + std::strlen(s));
+        JS_FreeCString(ctx, s);
+      }
+    }
+    JS_FreeValue(ctx, v);
+  }
+  flox_run_recorder_write_signal(h, run_ts, feed_ts, signal_id, flags, strength,
+                                 name.empty() ? nullptr : name.data(), name.size(),
+                                 sids.empty() ? nullptr : sids.data(), sids.size(),
+                                 payload.empty() ? nullptr : payload.data(), payload.size());
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_recorder_write_order_event(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2)
+  {
+    return JS_ThrowTypeError(ctx, "writeOrderEvent(handle, opts)");
+  }
+  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto opts = argv[1];
+  auto getI64 = [&](const char* k, int64_t d = 0) -> int64_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, k);
+    int64_t out = d;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToInt64(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  auto getU32 = [&](const char* k, uint32_t d = 0) -> uint32_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, k);
+    uint32_t out = d;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToUint32(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  std::string reason;
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, "reason");
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      const char* s = JS_ToCString(ctx, v);
+      if (s)
+      {
+        reason = s;
+        JS_FreeCString(ctx, s);
+      }
+    }
+    JS_FreeValue(ctx, v);
+  }
+  flox_run_recorder_write_order_event(h, getI64("runTsNs"), getI64("feedTsNs"),
+                                      static_cast<uint64_t>(getI64("orderId")),
+                                      static_cast<uint64_t>(getI64("parentSignalId")),
+                                      getI64("priceRaw"), getI64("qtyRaw"),
+                                      getU32("symbolId"),
+                                      static_cast<uint8_t>(getU32("eventKind", 1)),
+                                      static_cast<uint8_t>(getU32("side")),
+                                      static_cast<uint8_t>(getU32("orderType")),
+                                      getU32("flags"),
+                                      reason.empty() ? nullptr : reason.data(), reason.size());
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_recorder_write_fill(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2)
+  {
+    return JS_ThrowTypeError(ctx, "writeFill(handle, opts)");
+  }
+  auto h = static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0]));
+  auto opts = argv[1];
+  auto getI64 = [&](const char* k, int64_t d = 0) -> int64_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, k);
+    int64_t out = d;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToInt64(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  auto getU32 = [&](const char* k, uint32_t d = 0) -> uint32_t
+  {
+    JSValue v = JS_GetPropertyStr(ctx, opts, k);
+    uint32_t out = d;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v))
+    {
+      JS_ToUint32(ctx, &out, v);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  flox_run_recorder_write_fill(h, getI64("runTsNs"), getI64("feedTsNs"),
+                               static_cast<uint64_t>(getI64("orderId")),
+                               static_cast<uint64_t>(getI64("fillId")),
+                               getI64("priceRaw"), getI64("qtyRaw"), getI64("feeRaw"),
+                               getU32("symbolId"),
+                               static_cast<uint8_t>(getU32("side")),
+                               static_cast<uint8_t>(getU32("liquidity")));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_recorder_close(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_run_recorder_close(static_cast<FloxRunRecorderHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_reader_open(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 1)
+  {
+    return JS_ThrowTypeError(ctx, "TraceReader(path)");
+  }
+  const char* path = JS_ToCString(ctx, argv[0]);
+  auto h = flox_run_reader_open(path ? path : "");
+  if (path)
+  {
+    JS_FreeCString(ctx, path);
+  }
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "TraceReader: cannot open path");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_run_reader_close(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_run_reader_close(static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_run_reader_strategy_id(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = flox_run_reader_strategy_id(h, nullptr, 0);
+  std::string out(n, '\0');
+  if (n)
+  {
+    flox_run_reader_strategy_id(h, out.data(), n);
+  }
+  return JS_NewStringLen(ctx, out.data(), out.size());
+}
+
+static JSValue js_run_reader_run_started_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
+  return JS_NewInt64(ctx, flox_run_reader_run_started_ns(h));
+}
+
+static JSValue js_run_reader_run_ended_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
+  return JS_NewInt64(ctx, flox_run_reader_run_ended_ns(h));
+}
+
+static JSValue js_run_reader_signals(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = flox_run_reader_signal_count(h);
+  JSValue out = JS_NewArray(ctx);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    int64_t run_ts = 0, feed_ts = 0, strength = 0;
+    uint32_t sid = 0, flags = 0;
+    uint64_t name_len = 0, sym_count = 0, payload_len = 0;
+    flox_run_reader_signal_header(h, i, &run_ts, &feed_ts, &sid, &flags, &strength, &name_len,
+                                  &sym_count, &payload_len);
+    std::string name(name_len, '\0');
+    if (name_len)
+    {
+      flox_run_reader_signal_name(h, i, name.data(), name_len);
+    }
+    std::vector<uint32_t> sids(sym_count);
+    if (sym_count)
+    {
+      flox_run_reader_signal_symbol_ids(h, i, sids.data(), sym_count);
+    }
+    std::vector<uint8_t> payload(payload_len);
+    if (payload_len)
+    {
+      flox_run_reader_signal_payload(h, i, payload.data(), payload_len);
+    }
+    JSValue rec = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewInt64(ctx, run_ts));
+    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewInt64(ctx, feed_ts));
+    JS_SetPropertyStr(ctx, rec, "signalId", JS_NewUint32(ctx, sid));
+    JS_SetPropertyStr(ctx, rec, "flags", JS_NewUint32(ctx, flags));
+    JS_SetPropertyStr(ctx, rec, "strengthRaw", JS_NewInt64(ctx, strength));
+    JS_SetPropertyStr(ctx, rec, "name", JS_NewStringLen(ctx, name.data(), name.size()));
+    JS_SetPropertyStr(ctx, rec, "symbolIds", u32VecToJs(ctx, sids));
+    JS_SetPropertyStr(ctx, rec, "payload",
+                      JS_NewStringLen(ctx, reinterpret_cast<const char*>(payload.data()),
+                                      payload.size()));
+    JS_SetPropertyUint32(ctx, out, static_cast<uint32_t>(i), rec);
+  }
+  return out;
+}
+
+static JSValue js_run_reader_orders(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = flox_run_reader_order_event_count(h);
+  JSValue out = JS_NewArray(ctx);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    int64_t run_ts = 0, feed_ts = 0, price = 0, qty = 0;
+    uint64_t oid = 0, pid = 0, reason_len = 0;
+    uint32_t sid = 0, flags = 0;
+    uint8_t kind = 0, side = 0, otype = 0;
+    flox_run_reader_order_event_header(h, i, &run_ts, &feed_ts, &oid, &pid, &price, &qty, &sid,
+                                       &kind, &side, &otype, &flags, &reason_len);
+    std::string reason(reason_len, '\0');
+    if (reason_len)
+    {
+      flox_run_reader_order_event_reason(h, i, reason.data(), reason_len);
+    }
+    JSValue rec = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewInt64(ctx, run_ts));
+    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewInt64(ctx, feed_ts));
+    JS_SetPropertyStr(ctx, rec, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(oid)));
+    JS_SetPropertyStr(ctx, rec, "parentSignalId", JS_NewInt64(ctx, static_cast<int64_t>(pid)));
+    JS_SetPropertyStr(ctx, rec, "priceRaw", JS_NewInt64(ctx, price));
+    JS_SetPropertyStr(ctx, rec, "qtyRaw", JS_NewInt64(ctx, qty));
+    JS_SetPropertyStr(ctx, rec, "symbolId", JS_NewUint32(ctx, sid));
+    JS_SetPropertyStr(ctx, rec, "eventKind", JS_NewUint32(ctx, kind));
+    JS_SetPropertyStr(ctx, rec, "side", JS_NewUint32(ctx, side));
+    JS_SetPropertyStr(ctx, rec, "orderType", JS_NewUint32(ctx, otype));
+    JS_SetPropertyStr(ctx, rec, "flags", JS_NewUint32(ctx, flags));
+    JS_SetPropertyStr(ctx, rec, "reason", JS_NewStringLen(ctx, reason.data(), reason.size()));
+    JS_SetPropertyUint32(ctx, out, static_cast<uint32_t>(i), rec);
+  }
+  return out;
+}
+
+static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
+  uint64_t n = flox_run_reader_fill_count(h);
+  JSValue out = JS_NewArray(ctx);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    int64_t run_ts = 0, feed_ts = 0, price = 0, qty = 0, fee = 0;
+    uint64_t oid = 0, fid = 0;
+    uint32_t sid = 0;
+    uint8_t side = 0, liq = 0;
+    flox_run_reader_fill(h, i, &run_ts, &feed_ts, &oid, &fid, &price, &qty, &fee, &sid, &side, &liq);
+    JSValue rec = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewInt64(ctx, run_ts));
+    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewInt64(ctx, feed_ts));
+    JS_SetPropertyStr(ctx, rec, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(oid)));
+    JS_SetPropertyStr(ctx, rec, "fillId", JS_NewInt64(ctx, static_cast<int64_t>(fid)));
+    JS_SetPropertyStr(ctx, rec, "priceRaw", JS_NewInt64(ctx, price));
+    JS_SetPropertyStr(ctx, rec, "qtyRaw", JS_NewInt64(ctx, qty));
+    JS_SetPropertyStr(ctx, rec, "feeRaw", JS_NewInt64(ctx, fee));
+    JS_SetPropertyStr(ctx, rec, "symbolId", JS_NewUint32(ctx, sid));
+    JS_SetPropertyStr(ctx, rec, "side", JS_NewUint32(ctx, side));
+    JS_SetPropertyStr(ctx, rec, "liquidity", JS_NewUint32(ctx, liq));
+    JS_SetPropertyUint32(ctx, out, static_cast<uint32_t>(i), rec);
+  }
+  return out;
+}
+
+// ============================================================
 // Tape diff bindings (replay-equivalence localization)
 // ============================================================
 
@@ -3536,6 +4013,23 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_delta_book_replayer_create", js_delta_book_replayer_create, 0);
   addGlobalFunc(ctx, "__flox_delta_book_replayer_destroy", js_delta_book_replayer_destroy, 1);
   addGlobalFunc(ctx, "__flox_delta_book_replayer_apply", js_delta_book_replayer_apply, 5);
+
+  addGlobalFunc(ctx, "__flox_run_recorder_create", js_run_recorder_create, 1);
+  addGlobalFunc(ctx, "__flox_run_recorder_destroy", js_run_recorder_destroy, 1);
+  addGlobalFunc(ctx, "__flox_run_recorder_add_tape_ref", js_run_recorder_add_tape_ref, 2);
+  addGlobalFunc(ctx, "__flox_run_recorder_set_run_ended_ns", js_run_recorder_set_run_ended_ns, 2);
+  addGlobalFunc(ctx, "__flox_run_recorder_write_signal", js_run_recorder_write_signal, 2);
+  addGlobalFunc(ctx, "__flox_run_recorder_write_order_event", js_run_recorder_write_order_event, 2);
+  addGlobalFunc(ctx, "__flox_run_recorder_write_fill", js_run_recorder_write_fill, 2);
+  addGlobalFunc(ctx, "__flox_run_recorder_close", js_run_recorder_close, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_open", js_run_reader_open, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_close", js_run_reader_close, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_strategy_id", js_run_reader_strategy_id, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_run_started_ns", js_run_reader_run_started_ns, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_run_ended_ns", js_run_reader_run_ended_ns, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_signals", js_run_reader_signals, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_orders", js_run_reader_orders, 1);
+  addGlobalFunc(ctx, "__flox_run_reader_fills", js_run_reader_fills, 1);
 
   // Tape diff
   addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);

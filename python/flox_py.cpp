@@ -25,6 +25,7 @@
 #include "position_bindings.h"
 #include "profile_bindings.h"
 #include "replay_bindings.h"
+#include "run_trace_bindings.h"
 #include "segment_ops_bindings.h"
 #include "strategy_bindings.h"
 #include "tape_diff_bindings.h"
@@ -789,6 +790,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindPortfolioRisk(m);
   flox_py::bindExecutionAlgos(m);
   flox_py::bindDeltaBook(m);
+  flox_py::bindRunTrace(m);
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);

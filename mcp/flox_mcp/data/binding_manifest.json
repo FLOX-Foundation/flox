@@ -1548,6 +1548,136 @@
           "name": "flox_risk_manager_destroy"
         },
         {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_close"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_fill"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_fill_count"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_open"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_order_event_count"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_order_event_header"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_order_event_reason"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_run_ended_ns"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_run_started_ns"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_signal_count"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_signal_header"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_signal_name"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_signal_payload"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_signal_symbol_ids"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_strategy_hash"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_strategy_id"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_tape_ref_count"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_reader_tape_ref_path"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_add_tape_ref"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_close"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_create"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_destroy"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_set_run_ended_ns"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_write_fill"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_write_order_event"
+        },
+        {
+          "group": "floxrun",
+          "kind": "function",
+          "name": "flox_run_recorder_write_signal"
+        },
+        {
           "group": "strategyrunner_synchronous",
           "kind": "function",
           "name": "flox_runner_add_strategy"
@@ -2333,6 +2463,14 @@
         },
         {
           "kind": "handle",
+          "name": "FloxRunReaderHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxRunRecorderHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxRunnerHandle"
         },
         {
@@ -2381,6 +2519,7 @@
         "executor_fill",
         "fixed_point",
         "floxliveengine_disruptor",
+        "floxrun",
         "footprint_bar",
         "grid_search",
         "heatmap",
@@ -3655,6 +3794,110 @@
         },
         {
           "kind": "function",
+          "name": "flox_run_reader_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_fill_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_open"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_order_event_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_order_event_header"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_order_event_reason"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_run_ended_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_run_started_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_signal_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_signal_header"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_signal_name"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_signal_payload"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_signal_symbol_ids"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_strategy_hash"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_strategy_id"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_tape_ref_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_reader_tape_ref_path"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_add_tape_ref"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_close"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_set_run_ended_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_write_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_write_order_event"
+        },
+        {
+          "kind": "function",
+          "name": "flox_run_recorder_write_signal"
+        },
+        {
+          "kind": "function",
           "name": "flox_runner_add_strategy"
         },
         {
@@ -4479,6 +4722,46 @@
         },
         {
           "kind": "class",
+          "name": "TraceFillInput"
+        },
+        {
+          "kind": "class",
+          "name": "TraceFillRecord"
+        },
+        {
+          "kind": "class",
+          "name": "TraceOrderEventInput"
+        },
+        {
+          "kind": "class",
+          "name": "TraceOrderEventRecord"
+        },
+        {
+          "kind": "class",
+          "name": "TraceReader"
+        },
+        {
+          "kind": "class",
+          "name": "TraceRecorder"
+        },
+        {
+          "kind": "class",
+          "name": "TraceRecorderOptions"
+        },
+        {
+          "kind": "class",
+          "name": "TraceSignalInput"
+        },
+        {
+          "kind": "class",
+          "name": "TraceSignalRecord"
+        },
+        {
+          "kind": "class",
+          "name": "TraceTapeRefInput"
+        },
+        {
+          "kind": "class",
           "name": "TradeData"
         },
         {
@@ -4827,6 +5110,10 @@
         },
         {
           "kind": "class",
+          "name": "FillLiquidity"
+        },
+        {
+          "kind": "class",
           "name": "FloxError"
         },
         {
@@ -4888,6 +5175,10 @@
         {
           "kind": "class",
           "name": "OrderBook"
+        },
+        {
+          "kind": "class",
+          "name": "OrderEventKind"
         },
         {
           "kind": "class",
@@ -5008,6 +5299,18 @@
         {
           "kind": "class",
           "name": "TEMA"
+        },
+        {
+          "kind": "class",
+          "name": "TapeRef"
+        },
+        {
+          "kind": "class",
+          "name": "TraceReader"
+        },
+        {
+          "kind": "class",
+          "name": "TraceRecorder"
         },
         {
           "kind": "class",
@@ -5811,6 +6114,56 @@
       "pybind11": {
         "classes": [
           "Engine"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "floxrun": {
+      "capi_functions": [
+        "flox_run_reader_close",
+        "flox_run_reader_fill",
+        "flox_run_reader_fill_count",
+        "flox_run_reader_open",
+        "flox_run_reader_order_event_count",
+        "flox_run_reader_order_event_header",
+        "flox_run_reader_order_event_reason",
+        "flox_run_reader_run_ended_ns",
+        "flox_run_reader_run_started_ns",
+        "flox_run_reader_signal_count",
+        "flox_run_reader_signal_header",
+        "flox_run_reader_signal_name",
+        "flox_run_reader_signal_payload",
+        "flox_run_reader_signal_symbol_ids",
+        "flox_run_reader_strategy_hash",
+        "flox_run_reader_strategy_id",
+        "flox_run_reader_tape_ref_count",
+        "flox_run_reader_tape_ref_path",
+        "flox_run_recorder_add_tape_ref",
+        "flox_run_recorder_close",
+        "flox_run_recorder_create",
+        "flox_run_recorder_destroy",
+        "flox_run_recorder_set_run_ended_ns",
+        "flox_run_recorder_write_fill",
+        "flox_run_recorder_write_order_event",
+        "flox_run_recorder_write_signal"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "TraceRecorder",
+          "TraceReader"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "TraceRecorder",
+          "TraceReader"
         ],
         "functions": [],
         "status": "required"

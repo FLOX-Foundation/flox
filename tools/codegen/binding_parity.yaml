@@ -342,3 +342,12 @@ groups:
       status: required
       classes: [DeltaBookEncoder, DeltaBookReplayer]
     codon: { status: required }
+
+  floxrun:
+    pybind11:
+      status: required
+      classes: [TraceRecorder, TraceReader]
+    napi:
+      status: required
+      classes: [TraceRecorder, TraceReader]
+    codon: { status: required }

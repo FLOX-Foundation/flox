@@ -114,6 +114,7 @@ nav:
           - TypeScript strategy authoring: how-to/typescript-strategy-authoring.md
           - Strategy hot-reload: how-to/strategy-hot-reload.md
           - Delta book compression: how-to/delta-book-compression.md
+          - Record a strategy run as .floxrun: how-to/floxrun.md
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md
@@ -177,6 +178,7 @@ nav:
   - Specifications:
       - spec/README.md
       - "floxlog tape format v1.0": spec/floxlog.md
+      - "floxrun strategy-trace format v1.0": spec/floxrun.md
 
   - Reference:
       - reference/README.md
