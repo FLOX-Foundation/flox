@@ -197,3 +197,7 @@ docs/how-to/composite-conditions.md
 # How-to: Submit a multi-leg order group. Illustrative API examples;
 # runtime path exercised by python/tests/test_order_group.py.
 docs/how-to/multi-leg-order-group.md
+
+# How-to: Wait for multiple feeds with staleness budget. Illustrative
+# API examples; runtime path exercised by python/tests/test_feed_clock.py.
+docs/how-to/multi-feed-clock.md
