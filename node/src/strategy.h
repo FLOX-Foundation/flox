@@ -299,6 +299,52 @@ struct NodeStrategyHost
         h->bridge->publicEmitClosePosition(sym);
         return i.Env().Undefined(); }, "closePosition", this));
 
+    // Multi-TF alignment helpers: read the per-(symbol, timeframe)
+    // ring of the most recent closed bars without bookkeeping in
+    // user code. `lastClosedBar(symbolId, barType, param)` returns
+    // the most recent or `null`; `lastNClosedBars(...)` returns up
+    // to `n` bars oldest first.
+    auto buildBar = [](Napi::Env env, const Bar& b)
+    {
+      auto o = Napi::Object::New(env);
+      o.Set("open", Napi::Number::New(env, b.open.toDouble()));
+      o.Set("high", Napi::Number::New(env, b.high.toDouble()));
+      o.Set("low", Napi::Number::New(env, b.low.toDouble()));
+      o.Set("close", Napi::Number::New(env, b.close.toDouble()));
+      o.Set("volume", Napi::Number::New(env, b.volume.toDouble()));
+      o.Set("startNs", Napi::Number::New(env, static_cast<double>(b.startTime.time_since_epoch().count())));
+      o.Set("endNs", Napi::Number::New(env, static_cast<double>(b.endTime.time_since_epoch().count())));
+      return o;
+    };
+    em.Set("lastClosedBar", Napi::Function::New(env_, [buildBar](const Napi::CallbackInfo& i) -> Napi::Value
+                                                {
+        auto* h = static_cast<NodeStrategyHost*>(i.Data());
+        uint32_t sym = symId(i[0]);
+        uint8_t bt = i[1].As<Napi::Number>().Uint32Value();
+        uint64_t param = static_cast<uint64_t>(i[2].As<Napi::Number>().Int64Value());
+        auto bar = h->bridge->lastClosedBar(sym, static_cast<BarType>(bt), param);
+        if (!bar){ return i.Env().Null();
+}
+        return buildBar(i.Env(), *bar); }, "lastClosedBar", this));
+    em.Set("lastNClosedBars", Napi::Function::New(env_, [buildBar](const Napi::CallbackInfo& i) -> Napi::Value
+                                                  {
+        auto* h = static_cast<NodeStrategyHost*>(i.Data());
+        uint32_t sym = symId(i[0]);
+        uint8_t bt = i[1].As<Napi::Number>().Uint32Value();
+        uint64_t param = static_cast<uint64_t>(i[2].As<Napi::Number>().Int64Value());
+        size_t n = static_cast<size_t>(i[3].As<Napi::Number>().Uint32Value());
+        auto bars = h->bridge->lastNClosedBars(sym, static_cast<BarType>(bt), param, n);
+        Napi::Array out = Napi::Array::New(i.Env(), bars.size());
+        for (size_t k = 0; k < bars.size(); ++k){ out.Set(static_cast<uint32_t>(k), buildBar(i.Env(), bars[k]));
+}
+        return out; }, "lastNClosedBars", this));
+    em.Set("setBarRingCapacity", Napi::Function::New(env_, [](const Napi::CallbackInfo& i) -> Napi::Value
+                                                     {
+        auto* h = static_cast<NodeStrategyHost*>(i.Data());
+        size_t n = static_cast<size_t>(i[0].As<Napi::Number>().Uint32Value());
+        h->bridge->setBarRingCapacity(n);
+        return i.Env().Undefined(); }, "setBarRingCapacity", this));
+
     (void)defaultSym;
     emitter = Napi::Persistent(em);
     emitter.SuppressDestruct();

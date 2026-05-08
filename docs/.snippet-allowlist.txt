@@ -182,3 +182,9 @@ docs/how-to/typescript-strategy-authoring.md
 # quickjs/examples/run_trace_smoke.js, and codon/examples/run_trace_smoke.codon.
 docs/how-to/floxrun.md
 
+
+# How-to: Read multi-timeframe context from a strategy. Illustrative
+# Python + Node API examples for `last_closed_bar` / `last_n_closed_bars`;
+# the binding path is exercised by tests/test_multi_tf_alignment.cpp
+# and python/tests/test_multi_tf_alignment.py.
+docs/how-to/multi-tf-context.md
