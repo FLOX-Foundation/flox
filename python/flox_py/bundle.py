@@ -44,6 +44,7 @@ from typing import Any, Dict, List, Optional
 BUNDLE_FORMAT_VERSION = 1
 _MANIFEST_NAME = "manifest.json"
 _EXPECTED_OUTPUT_NAME = "expected_output.json"
+_EXPECTED_FLOXRUN_DIR = "expected.floxrun"
 _STRATEGY_DIR = "strategy"
 _CONFIG_DIR = "config"
 _TAPE_DIR = "tape"
@@ -127,6 +128,7 @@ def _run_strategy_against_tape(
     tick_size: float = 0.01,
     slippage_model: str = "none",
     slippage_params: Optional[Dict[str, float]] = None,
+    floxrun_out: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Replay the trades in ``tape_path`` through the strategy at
     ``strategy_path`` using a SimulatedExecutor with the given
@@ -152,6 +154,27 @@ def _run_strategy_against_tape(
 
     next_id = [1]
 
+    # Optional .floxrun capture. When `floxrun_out` is set we mirror
+    # every signal / order / fill into a TraceRecorder so the bundle
+    # can ship the per-run trace alongside the legacy JSON summary.
+    rec: Any = None
+    submitted_orders: Dict[int, Dict[str, Any]] = {}
+    if floxrun_out is not None:
+        try:
+            from flox_py._flox_py import (
+                FillLiquidity, OrderEventKind, TraceRecorder,
+            )
+            rec = TraceRecorder(
+                path=str(floxrun_out),
+                strategy_id=strategy_path.stem,
+                strategy_hash=_sha256_file(strategy_path)[:16],
+                run_started_ns=time.time_ns(),
+            )
+        except Exception as e:
+            import sys as _sys
+            print(f"flox bundle: TraceRecorder unavailable: {e!r}", file=_sys.stderr)
+            rec = None
+
     def on_signal(sig: Any) -> None:
         order_type = (getattr(sig, "order_type", "") or "").lower()
         if order_type not in ("market", "limit"):
@@ -161,13 +184,31 @@ def _run_strategy_against_tape(
         if oid == 0:
             oid = next_id[0]
             next_id[0] += 1
+        price = float(getattr(sig, "price", 0.0))
+        qty = float(getattr(sig, "quantity", 0.0))
         sim.submit_order(
-            oid, side,
-            float(getattr(sig, "price", 0.0)),
-            float(getattr(sig, "quantity", 0.0)),
-            type=order_type,
-            symbol=int(sym),
+            oid, side, price, qty,
+            type=order_type, symbol=int(sym),
         )
+        if rec is not None:
+            try:
+                from flox_py._flox_py import OrderEventKind
+                ts = time.time_ns()
+                rec.write_signal(
+                    run_ts_ns=ts, signal_id=oid, name=order_type,
+                    symbol_ids=[int(sym)],
+                )
+                rec.write_order_event(
+                    run_ts_ns=ts, order_id=oid, parent_signal_id=oid,
+                    symbol_id=int(sym),
+                    event_kind=OrderEventKind.SUBMIT,
+                    side=0 if side == "buy" else 1,
+                    order_type=1 if order_type == "limit" else 0,
+                    price_raw=int(price * 1e8), qty_raw=int(qty * 1e8),
+                )
+                submitted_orders[oid] = {"side": side, "symbol": int(sym)}
+            except Exception:
+                pass
 
     runner = flox_py.Runner(registry, on_signal=on_signal)
     try:
@@ -189,6 +230,26 @@ def _run_strategy_against_tape(
 
     fills = sim.fills_list()
     total_qty = sum(float(f["quantity"]) for f in fills)
+
+    if rec is not None:
+        try:
+            from flox_py._flox_py import FillLiquidity
+            ts = time.time_ns()
+            for f in fills:
+                rec.write_fill(
+                    run_ts_ns=ts,
+                    order_id=int(f.get("order_id", 0) or 0),
+                    fill_id=int(f.get("order_id", 0) or 0),
+                    price_raw=int(float(f["price"]) * 1e8),
+                    qty_raw=int(float(f["quantity"]) * 1e8),
+                    symbol_id=int(f["symbol"]),
+                    side=0 if str(f["side"]).lower() == "buy" else 1,
+                    liquidity=FillLiquidity.TAKER,
+                )
+            rec.set_run_ended_ns(time.time_ns())
+            rec.close()
+        except Exception:
+            pass
     # Order IDs are intentionally omitted: the runner assigns them
     # from a process-wide counter, so they are not stable across runs
     # in the same process. The pair (symbol, side, price, quantity)
@@ -238,6 +299,7 @@ def pack_bundle(
     slippage_model = str(cfg.get("slippage_model", "none"))
     slippage_params = dict(cfg.get("slippage_params", {}))
 
+    floxrun_dir = Path(tempfile.mkdtemp(prefix="flox-bundle-floxrun-")) / "expected.floxrun"
     expected = _run_strategy_against_tape(
         strategy, tape,
         symbol_name=symbol_name,
@@ -245,6 +307,7 @@ def pack_bundle(
         tick_size=tick_size,
         slippage_model=slippage_model,
         slippage_params=slippage_params,
+        floxrun_out=floxrun_dir,
     )
 
     manifest = {
@@ -281,11 +344,17 @@ def pack_bundle(
         # tape (as a directory tree)
         tf.add(str(tape), arcname=_TAPE_DIR)
 
-        # expected output
+        # expected output (legacy JSON summary, kept for back-compat)
         e_bytes = json.dumps(expected, indent=2, sort_keys=True).encode("utf-8")
         info = tarfile.TarInfo(_EXPECTED_OUTPUT_NAME)
         info.size = len(e_bytes)
         tf.addfile(info, io.BytesIO(e_bytes))
+
+        # expected output (.floxrun directory, new in W14-T008).
+        # Bundles produced before this change have no `.floxrun/`
+        # entry; `replay_bundle` falls back to JSON-only diff for those.
+        if floxrun_dir.is_dir():
+            tf.add(str(floxrun_dir), arcname=_EXPECTED_FLOXRUN_DIR)
 
     return output
 
@@ -344,6 +413,13 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
         strat_path = work / _STRATEGY_DIR / strat_name
         tape_path = work / _TAPE_DIR
 
+        # Capture a fresh `.floxrun` from the replay so we can diff
+        # signal / order / fill counts against the bundled expected
+        # trace. Bundles produced before W14-T008 have no
+        # `expected.floxrun/`; we still produce a fresh one for the
+        # actual side and the comparison degrades to "expected has
+        # no .floxrun, skipping that diff dimension".
+        actual_floxrun = work / "actual.floxrun"
         actual = _run_strategy_against_tape(
             strat_path, tape_path,
             symbol_name=manifest.get("symbol_name", "BTCUSDT"),
@@ -351,7 +427,28 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
             tick_size=float(manifest.get("tick_size", 0.01)),
             slippage_model=manifest.get("slippage_model", "none"),
             slippage_params=manifest.get("slippage_params") or {},
+            floxrun_out=actual_floxrun,
         )
+
+        expected_floxrun = work / _EXPECTED_FLOXRUN_DIR
+        actual["floxrun_present"] = actual_floxrun.is_dir()
+        expected["floxrun_present"] = expected_floxrun.is_dir()
+        if expected_floxrun.is_dir() and actual_floxrun.is_dir():
+            try:
+                from flox_py._flox_py import TraceReader
+                a_reader = TraceReader(str(actual_floxrun))
+                e_reader = TraceReader(str(expected_floxrun))
+                actual["floxrun_signal_count"] = len(a_reader.read_all_signals())
+                actual["floxrun_order_count"] = len(a_reader.read_all_order_events())
+                actual["floxrun_fill_count"] = len(a_reader.read_all_fills())
+                expected["floxrun_signal_count"] = len(e_reader.read_all_signals())
+                expected["floxrun_order_count"] = len(e_reader.read_all_order_events())
+                expected["floxrun_fill_count"] = len(e_reader.read_all_fills())
+            except Exception:
+                # Reader missing or corrupt: silently skip the
+                # floxrun diff; the JSON diff still runs.
+                pass
+
         return BundleResult(
             actual=actual,
             expected=expected,
