@@ -17,6 +17,10 @@ static const char* const TARGETS_JS =
 #include "js_stdlib_targets.inc"
     ;
 
+static const char* const LATENCY_JS =
+#include "js_stdlib_latency.inc"
+    ;
+
 namespace flox
 {
 
@@ -65,6 +69,10 @@ void FloxJsStrategy::loadStdlib()
   if (!_engine.eval(TARGETS_JS, "flox/targets.js"))
   {
     throw std::runtime_error("Failed to load targets.js: " + _engine.getErrorMessage());
+  }
+  if (!_engine.eval(LATENCY_JS, "flox/latency.js"))
+  {
+    throw std::runtime_error("Failed to load latency.js: " + _engine.getErrorMessage());
   }
 
   // Create flox global object with register() and batch indicators
@@ -478,6 +486,12 @@ void FloxJsStrategy::loadStdlib()
 
       // Forward-looking labels (research-only). See flox/targets.js.
       targets: __floxTargets,
+
+      // Latency models (Phase 1 sampling primitive). See flox/latency.js.
+      ConstantLatency: ConstantLatency,
+      GaussianLatency: GaussianLatency,
+      ExponentialLatency: ExponentialLatency,
+      EmpiricalLatency: EmpiricalLatency,
 
       IndicatorGraph: class {
         constructor() {

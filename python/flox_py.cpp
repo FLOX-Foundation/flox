@@ -17,6 +17,7 @@
 #include "grid_search_bindings.h"
 #include "heatmap_bindings.h"
 #include "indicator_bindings.h"
+#include "latency_bindings.h"
 #include "optimizer_bindings.h"
 #include "position_bindings.h"
 #include "profile_bindings.h"
@@ -779,6 +780,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindWalkForward(m);
   flox_py::bindGridSearch(m);
   flox_py::bindHeatmap(m);
+  flox_py::bindLatencyModels(m);
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);

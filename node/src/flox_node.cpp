@@ -11,6 +11,7 @@
 #include "heatmap.h"
 #include "hooks.h"
 #include "indicators.h"
+#include "latency.h"
 #include "positions.h"
 #include "profiles.h"
 #include "stats.h"
@@ -32,6 +33,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerTargets(env, exports);
   node_flox::registerGraph(env, exports);
   node_flox::registerHeatmap(env, exports);
+  node_flox::registerLatency(env, exports);
   flox_node::registerHooks(env, exports);
   return exports;
 }

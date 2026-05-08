@@ -250,16 +250,23 @@ jobs:
           ./build/codon/codon_full_backtest
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_latency_smoke
 
     - name: Verify QuickJS runner
       run: |
         test -f build/src/quickjs/flox_js_runner
         ./build/src/quickjs/flox_js_runner quickjs/examples/sma_crossover.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/backtest_sma.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/latency_smoke.js
 
     - name: Verify Node.js bindings
       run: |
         cd node && node test/test_bindings.js
+
+    - name: Verify Node.js latency models
+      run: |
+        cd node && node test/test_latency.js
 
     - name: Verify Node.js extension hooks
       run: |

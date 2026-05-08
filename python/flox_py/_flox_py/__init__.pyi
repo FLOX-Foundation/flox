@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'EMA', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'FloxError', 'FootprintBar', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -262,6 +262,12 @@ class CompositeBookMatrix:
         """
         Feed a book update from an exchange
         """
+class ConstantLatency(LatencyModel):
+    """
+    Returns the same nanoseconds every call. Useful as a baseline.
+    """
+    def __init__(self, feed_ns: typing.SupportsInt | typing.SupportsIndex = 0, order_ns: typing.SupportsInt | typing.SupportsIndex = 0, fill_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
 class Correlation:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -431,6 +437,12 @@ class EMA:
     @property
     def value(self) -> float | None:
         ...
+class EmpiricalLatency(LatencyModel):
+    """
+    Resample with replacement from observed values. Pass three lists of measured latencies (one per component).
+    """
+    def __init__(self, feed_samples: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = [], order_samples: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = [], fill_samples: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = [], seed: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
 class Engine:
     def __init__(self, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001) -> None:
         ...
@@ -524,6 +536,12 @@ class Executor:
         ...
     def submit_oco(self, order1: Order, order2: Order) -> None:
         ...
+class ExponentialLatency(LatencyModel):
+    """
+    Exponential per component, parameterised by mean. Heavy right tail by default.
+    """
+    def __init__(self, feed_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, order_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, fill_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, seed: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
 class FloxError(Exception):
     pass
 class FootprintBar:
@@ -551,6 +569,12 @@ class FootprintBar:
     def total_delta(self) -> float:
         ...
     def total_volume(self) -> float:
+        ...
+class GaussianLatency(LatencyModel):
+    """
+    Independent normal samples per component, clamped to non-negative. Stddev <= 0 collapses the component to a deterministic mean.
+    """
+    def __init__(self, feed_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, feed_stddev_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, order_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, order_stddev_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, fill_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, fill_stddev_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, seed: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
 class GridSearch:
     def __init__(self) -> None:
@@ -669,6 +693,56 @@ class L3Book:
     def modify_order(self, order_id: typing.SupportsInt | typing.SupportsIndex, new_quantity: typing.SupportsFloat | typing.SupportsIndex) -> str:
         ...
     def remove_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> str:
+        ...
+class LatencyModel:
+    """
+    Abstract sampler. Subclasses implement feed_delay / order_delay / fill_delay returning non-negative nanoseconds.
+    """
+    def __init__(self) -> None:
+        ...
+    def feed_delay(self) -> int:
+        ...
+    def fill_delay(self) -> int:
+        ...
+    def order_delay(self) -> int:
+        ...
+    def reset(self, seed: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        """
+        Re-seed the underlying RNG. No-op for deterministic models.
+        """
+    def sample(self) -> LatencySample:
+        """
+        Composite draw. Returns a LatencySample.
+        """
+class LatencySample:
+    """
+    One draw from a LatencyModel covering feed, order, and fill in non-negative nanoseconds.
+    """
+    @typing.overload
+    def __init__(self) -> None:
+        ...
+    @typing.overload
+    def __init__(self, feed_ns: typing.SupportsInt | typing.SupportsIndex = 0, order_ns: typing.SupportsInt | typing.SupportsIndex = 0, fill_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
+    def to_dict(self) -> dict:
+        ...
+    @property
+    def feed_ns(self) -> int:
+        ...
+    @feed_ns.setter
+    def feed_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def fill_ns(self) -> int:
+        ...
+    @fill_ns.setter
+    def fill_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def order_ns(self) -> int:
+        ...
+    @order_ns.setter
+    def order_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
 class MACD:
     def __init__(self, fast: typing.SupportsInt | typing.SupportsIndex = 12, slow: typing.SupportsInt | typing.SupportsIndex = 26, signal: typing.SupportsInt | typing.SupportsIndex = 9) -> None:

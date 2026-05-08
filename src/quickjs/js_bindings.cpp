@@ -1380,6 +1380,130 @@ static JSValue js_pos_total_pnl(JSContext* ctx, JSValueConst, int, JSValueConst*
 }
 
 // ============================================================
+// Latency model bindings
+// ============================================================
+
+static JSValue js_lat_constant_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  int64_t feed = (argc > 0) ? toInt64(ctx, argv[0]) : 0;
+  int64_t order = (argc > 1) ? toInt64(ctx, argv[1]) : 0;
+  int64_t fill = (argc > 2) ? toInt64(ctx, argv[2]) : 0;
+  FloxLatencyModelHandle h = flox_latency_constant_create(feed, order, fill);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "ConstantLatency: feed/order/fill must be non-negative");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_lat_gaussian_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  double fm = (argc > 0) ? toDouble(ctx, argv[0]) : 0.0;
+  double fs = (argc > 1) ? toDouble(ctx, argv[1]) : 0.0;
+  double om = (argc > 2) ? toDouble(ctx, argv[2]) : 0.0;
+  double os = (argc > 3) ? toDouble(ctx, argv[3]) : 0.0;
+  double lm = (argc > 4) ? toDouble(ctx, argv[4]) : 0.0;
+  double ls = (argc > 5) ? toDouble(ctx, argv[5]) : 0.0;
+  uint64_t seed = (argc > 6) ? static_cast<uint64_t>(toInt64(ctx, argv[6])) : 0;
+  FloxLatencyModelHandle h = flox_latency_gaussian_create(fm, fs, om, os, lm, ls, seed);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "GaussianLatency: means and stddevs must be non-negative");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_lat_exponential_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  double fm = (argc > 0) ? toDouble(ctx, argv[0]) : 0.0;
+  double om = (argc > 1) ? toDouble(ctx, argv[1]) : 0.0;
+  double lm = (argc > 2) ? toDouble(ctx, argv[2]) : 0.0;
+  uint64_t seed = (argc > 3) ? static_cast<uint64_t>(toInt64(ctx, argv[3])) : 0;
+  FloxLatencyModelHandle h = flox_latency_exponential_create(fm, om, lm, seed);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "ExponentialLatency: means must be non-negative");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static std::vector<int64_t> readJsInt64Array(JSContext* ctx, JSValueConst arr)
+{
+  std::vector<int64_t> out;
+  if (!JS_IsArray(ctx, arr))
+  {
+    return out;
+  }
+  uint32_t len = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, arr, "length");
+  JS_ToUint32(ctx, &len, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  out.reserve(len);
+  for (uint32_t i = 0; i < len; ++i)
+  {
+    JSValue v = JS_GetPropertyUint32(ctx, arr, i);
+    out.push_back(toInt64(ctx, v));
+    JS_FreeValue(ctx, v);
+  }
+  return out;
+}
+
+static JSValue js_lat_empirical_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  std::vector<int64_t> feed = (argc > 0) ? readJsInt64Array(ctx, argv[0]) : std::vector<int64_t>{};
+  std::vector<int64_t> order = (argc > 1) ? readJsInt64Array(ctx, argv[1]) : std::vector<int64_t>{};
+  std::vector<int64_t> fill = (argc > 2) ? readJsInt64Array(ctx, argv[2]) : std::vector<int64_t>{};
+  uint64_t seed = (argc > 3) ? static_cast<uint64_t>(toInt64(ctx, argv[3])) : 0;
+  FloxLatencyModelHandle h = flox_latency_empirical_create(
+      feed.empty() ? nullptr : feed.data(), feed.size(),
+      order.empty() ? nullptr : order.data(), order.size(),
+      fill.empty() ? nullptr : fill.data(), fill.size(),
+      seed);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "EmpiricalLatency: provide non-empty samples and non-negative values");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_lat_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_latency_destroy(static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_lat_feed_delay(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, flox_latency_feed_delay(
+                              static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_lat_order_delay(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, flox_latency_order_delay(
+                              static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_lat_fill_delay(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, flox_latency_fill_delay(
+                              static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_lat_sample(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  FloxLatencySample s{};
+  flox_latency_sample(static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0])), &s);
+  JSValue obj = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, obj, "feedNs", JS_NewInt64(ctx, s.feed_ns));
+  JS_SetPropertyStr(ctx, obj, "orderNs", JS_NewInt64(ctx, s.order_ns));
+  JS_SetPropertyStr(ctx, obj, "fillNs", JS_NewInt64(ctx, s.fill_ns));
+  return obj;
+}
+static JSValue js_lat_reset(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  uint64_t seed = (argc > 1) ? static_cast<uint64_t>(toInt64(ctx, argv[1])) : 0;
+  flox_latency_reset(static_cast<FloxLatencyModelHandle>(getHandle(ctx, argv[0])), seed);
+  return JS_UNDEFINED;
+}
+
+// ============================================================
 // Volume profile bindings
 // ============================================================
 
@@ -2781,6 +2905,18 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_pos_avg_entry", js_pos_avg_entry, 2);
   addGlobalFunc(ctx, "__flox_pos_pnl", js_pos_pnl, 2);
   addGlobalFunc(ctx, "__flox_pos_total_pnl", js_pos_total_pnl, 1);
+
+  // Latency models (Phase 1 sampling primitive)
+  addGlobalFunc(ctx, "__flox_lat_constant_create", js_lat_constant_create, 3);
+  addGlobalFunc(ctx, "__flox_lat_gaussian_create", js_lat_gaussian_create, 7);
+  addGlobalFunc(ctx, "__flox_lat_exponential_create", js_lat_exponential_create, 4);
+  addGlobalFunc(ctx, "__flox_lat_empirical_create", js_lat_empirical_create, 4);
+  addGlobalFunc(ctx, "__flox_lat_destroy", js_lat_destroy, 1);
+  addGlobalFunc(ctx, "__flox_lat_feed_delay", js_lat_feed_delay, 1);
+  addGlobalFunc(ctx, "__flox_lat_order_delay", js_lat_order_delay, 1);
+  addGlobalFunc(ctx, "__flox_lat_fill_delay", js_lat_fill_delay, 1);
+  addGlobalFunc(ctx, "__flox_lat_sample", js_lat_sample, 1);
+  addGlobalFunc(ctx, "__flox_lat_reset", js_lat_reset, 2);
 
   // Volume profile
   addGlobalFunc(ctx, "__flox_vprofile_create", js_vprofile_create, 1);

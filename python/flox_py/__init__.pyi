@@ -32,6 +32,7 @@ from flox_py._flox_py import CCI
 from flox_py._flox_py import cci
 from flox_py._flox_py import chop
 from flox_py._flox_py import CompositeBookMatrix
+from flox_py._flox_py import ConstantLatency
 from flox_py._flox_py import Correlation
 from flox_py._flox_py import correlation
 from flox_py._flox_py import cvd
@@ -42,15 +43,18 @@ from flox_py._flox_py import DEMA
 from flox_py._flox_py import dema
 from flox_py._flox_py import EMA
 from flox_py._flox_py import ema
+from flox_py._flox_py import EmpiricalLatency
 from flox_py._flox_py import Engine
 from flox_py._flox_py import ExchangeCapabilities
 from flox_py._flox_py import ExecutionListener
 from flox_py._flox_py import Executor
+from flox_py._flox_py import ExponentialLatency
 from flox_py._flox_py import export_data
 from flox_py._flox_py import extract_symbols
 from flox_py._flox_py import extract_time_range
 from flox_py._flox_py import FloxError
 from flox_py._flox_py import FootprintBar
+from flox_py._flox_py import GaussianLatency
 from flox_py._flox_py import GridSearch
 from flox_py._flox_py import IndicatorGraph
 from flox_py._flox_py import IndicatorGraph as StreamingIndicatorGraph
@@ -61,6 +65,8 @@ from flox_py._flox_py import KillSwitch
 from flox_py._flox_py import Kurtosis
 from flox_py._flox_py import kurtosis
 from flox_py._flox_py import L3Book
+from flox_py._flox_py import LatencyModel
+from flox_py._flox_py import LatencySample
 from flox_py._flox_py import list_indicators
 from flox_py._flox_py import MACD
 from flox_py._flox_py import macd
@@ -131,7 +137,7 @@ from flox_py._flox_py import vwap
 from flox_py._flox_py import WalkForwardRunner
 from flox_py._flox_py import whites_reality_check
 from flox_py._flox_py import win_rate
-__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'EMA', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'FloxError', 'FootprintBar', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 PRICE_SCALE: int = 100000000
 QUANTITY_SCALE: int = 100000000
 QUEUE_FULL: int = 2

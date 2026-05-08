@@ -1361,3 +1361,89 @@ export const report: {
   heatmapHtml(z: ReadonlyArray<ReadonlyArray<number>>,
               opts?: HeatmapOptions): string;
 };
+
+// ── Latency models (Phase 1 sampling primitive) ───────────────────────
+
+/** One draw from a latency model. All values are non-negative ns. */
+export interface LatencySample {
+  feedNs: number;
+  orderNs: number;
+  fillNs: number;
+}
+
+/** Common surface implemented by every concrete latency model. */
+export interface LatencyModel {
+  feedDelay(): number;
+  orderDelay(): number;
+  fillDelay(): number;
+  sample(): LatencySample;
+  /** Re-seed the underlying RNG. No-op for deterministic models. */
+  reset(seed?: number): void;
+}
+
+export interface ConstantLatencyOptions {
+  feedNs?: number;
+  orderNs?: number;
+  fillNs?: number;
+}
+export interface GaussianLatencyOptions {
+  feedMeanNs?: number;
+  feedStddevNs?: number;
+  orderMeanNs?: number;
+  orderStddevNs?: number;
+  fillMeanNs?: number;
+  fillStddevNs?: number;
+  seed?: number;
+}
+export interface ExponentialLatencyOptions {
+  feedMeanNs?: number;
+  orderMeanNs?: number;
+  fillMeanNs?: number;
+  seed?: number;
+}
+export interface EmpiricalLatencyOptions {
+  feedSamples?: ReadonlyArray<number>;
+  orderSamples?: ReadonlyArray<number>;
+  fillSamples?: ReadonlyArray<number>;
+  seed?: number;
+}
+
+/** Returns the same nanoseconds every call. */
+export class ConstantLatency implements LatencyModel {
+  constructor(opts?: ConstantLatencyOptions);
+  feedDelay(): number;
+  orderDelay(): number;
+  fillDelay(): number;
+  sample(): LatencySample;
+  reset(seed?: number): void;
+}
+
+/** Independent normal samples per component, clamped to non-negative. */
+export class GaussianLatency implements LatencyModel {
+  constructor(opts?: GaussianLatencyOptions);
+  feedDelay(): number;
+  orderDelay(): number;
+  fillDelay(): number;
+  sample(): LatencySample;
+  reset(seed?: number): void;
+}
+
+/** Exponential per component, parameterised by mean. */
+export class ExponentialLatency implements LatencyModel {
+  constructor(opts?: ExponentialLatencyOptions);
+  feedDelay(): number;
+  orderDelay(): number;
+  fillDelay(): number;
+  sample(): LatencySample;
+  reset(seed?: number): void;
+}
+
+/** Resample with replacement from observed values. */
+export class EmpiricalLatency implements LatencyModel {
+  constructor(opts?: EmpiricalLatencyOptions);
+  feedDelay(): number;
+  orderDelay(): number;
+  fillDelay(): number;
+  sample(): LatencySample;
+  reset(seed?: number): void;
+}

@@ -297,3 +297,12 @@ groups:
     pybind11: { status: not_applicable }  # fills accessed via SimulatedExecutor.fills()
     napi: { status: not_applicable }
     codon: { status: required }
+
+  latency_models:
+    pybind11:
+      status: required
+      classes: [LatencyModel, ConstantLatency, GaussianLatency, ExponentialLatency, EmpiricalLatency]
+    napi:
+      status: required
+      classes: [ConstantLatency, GaussianLatency, ExponentialLatency, EmpiricalLatency]
+    codon: { status: required }
