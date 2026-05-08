@@ -112,6 +112,24 @@ from C import flox_runner_set_executor(cobj, cobj)
 from C import flox_backtest_runner_add_execution_listener(cobj, cobj)
 from C import flox_backtest_runner_set_executor(cobj, cobj)
 
+# ── execution_algos ──
+from C import flox_exec_twap_create(float, u8, u32, u8, float, i64, u32, i64) -> cobj
+from C import flox_exec_vwap_create(float, u8, u32, u8, float, Ptr[i64], Ptr[float], int) -> cobj
+from C import flox_exec_iceberg_create(float, u8, u32, u8, float, float) -> cobj
+from C import flox_exec_pov_create(float, u8, u32, u8, float, float, float) -> cobj
+from C import flox_exec_destroy(cobj)
+from C import flox_exec_step(cobj, i64)
+from C import flox_exec_report_fill(cobj, float)
+from C import flox_exec_observe_volume(cobj, float)
+from C import flox_exec_pending_count(cobj) -> int
+from C import flox_exec_pending_at(cobj, int, cobj) -> u8
+from C import flox_exec_clear_pending(cobj)
+from C import flox_exec_target_qty(cobj) -> float
+from C import flox_exec_submitted_qty(cobj) -> float
+from C import flox_exec_filled_qty(cobj) -> float
+from C import flox_exec_remaining_qty(cobj) -> float
+from C import flox_exec_is_done(cobj) -> u8
+
 # ── executor_fill ──
 from C import flox_simulated_executor_get_fills(cobj, cobj, u32) -> u32
 

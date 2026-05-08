@@ -1,0 +1,123 @@
+# flox/execution_algos.codon -- TWAP / VWAP / Iceberg / POV slicers.
+#
+# Wraps the C ABI handles. step(now_ns) drives the engine and reads
+# the count of newly emitted child orders, then clears the engine
+# buffer. Codon uses int sentinels for side/type to keep the FFI
+# call sites simple (0 = buy / market, 1 = sell / limit).
+
+from C import flox_exec_twap_create(f64, u8, u32, u8, f64, int, u32, int) -> cobj
+from C import flox_exec_iceberg_create(f64, u8, u32, u8, f64, f64) -> cobj
+from C import flox_exec_pov_create(f64, u8, u32, u8, f64, f64, f64) -> cobj
+from C import flox_exec_destroy(cobj)
+from C import flox_exec_step(cobj, int)
+from C import flox_exec_report_fill(cobj, f64)
+from C import flox_exec_observe_volume(cobj, f64)
+from C import flox_exec_pending_count(cobj) -> int
+from C import flox_exec_clear_pending(cobj)
+from C import flox_exec_submitted_qty(cobj) -> f64
+from C import flox_exec_filled_qty(cobj) -> f64
+from C import flox_exec_remaining_qty(cobj) -> f64
+from C import flox_exec_is_done(cobj) -> u8
+
+
+SIDE_BUY: int = 0
+SIDE_SELL: int = 1
+TYPE_MARKET: int = 0
+TYPE_LIMIT: int = 1
+
+
+class TWAPExecutor:
+    _h: cobj
+
+    def __init__(self, target_qty: float, side_byte: int, symbol: int,
+                 duration_ns: int, slice_count: int, start_time_ns: int,
+                 type_byte: int, limit_price: float):
+        self._h = flox_exec_twap_create(target_qty, u8(side_byte),
+                                        u32(symbol), u8(type_byte),
+                                        limit_price, duration_ns,
+                                        u32(slice_count), start_time_ns)
+
+    def step(self, now_ns: int) -> int:
+        flox_exec_step(self._h, now_ns)
+        n = flox_exec_pending_count(self._h)
+        flox_exec_clear_pending(self._h)
+        return n
+
+    def report_fill(self, qty: float):
+        flox_exec_report_fill(self._h, qty)
+
+    def submitted_qty(self) -> float:
+        return flox_exec_submitted_qty(self._h)
+
+    def remaining_qty(self) -> float:
+        return flox_exec_remaining_qty(self._h)
+
+    def is_done(self) -> bool:
+        return int(flox_exec_is_done(self._h)) != 0
+
+    def destroy(self):
+        if self._h:
+            flox_exec_destroy(self._h)
+            self._h = cobj()
+
+
+class IcebergExecutor:
+    _h: cobj
+
+    def __init__(self, target_qty: float, side_byte: int, symbol: int,
+                 visible_qty: float, type_byte: int, limit_price: float):
+        self._h = flox_exec_iceberg_create(target_qty, u8(side_byte),
+                                           u32(symbol), u8(type_byte),
+                                           limit_price, visible_qty)
+
+    def step(self, now_ns: int) -> int:
+        flox_exec_step(self._h, now_ns)
+        n = flox_exec_pending_count(self._h)
+        flox_exec_clear_pending(self._h)
+        return n
+
+    def report_fill(self, qty: float):
+        flox_exec_report_fill(self._h, qty)
+
+    def submitted_qty(self) -> float:
+        return flox_exec_submitted_qty(self._h)
+
+    def is_done(self) -> bool:
+        return int(flox_exec_is_done(self._h)) != 0
+
+    def destroy(self):
+        if self._h:
+            flox_exec_destroy(self._h)
+            self._h = cobj()
+
+
+class POVExecutor:
+    _h: cobj
+
+    def __init__(self, target_qty: float, side_byte: int, symbol: int,
+                 participation_rate: float, min_slice_qty: float,
+                 type_byte: int, limit_price: float):
+        self._h = flox_exec_pov_create(target_qty, u8(side_byte),
+                                       u32(symbol), u8(type_byte),
+                                       limit_price, participation_rate,
+                                       min_slice_qty)
+
+    def step(self, now_ns: int) -> int:
+        flox_exec_step(self._h, now_ns)
+        n = flox_exec_pending_count(self._h)
+        flox_exec_clear_pending(self._h)
+        return n
+
+    def observe_volume(self, qty: float):
+        flox_exec_observe_volume(self._h, qty)
+
+    def submitted_qty(self) -> float:
+        return flox_exec_submitted_qty(self._h)
+
+    def is_done(self) -> bool:
+        return int(flox_exec_is_done(self._h)) != 0
+
+    def destroy(self):
+        if self._h:
+            flox_exec_destroy(self._h)
+            self._h = cobj()

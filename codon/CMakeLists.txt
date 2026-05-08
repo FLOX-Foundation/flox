@@ -62,3 +62,6 @@ add_codon_executable(codon_tape_diff_smoke
 
 add_codon_executable(codon_portfolio_risk_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/portfolio_risk_smoke.codon)
+
+add_codon_executable(codon_execution_algos_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/execution_algos_smoke.codon)

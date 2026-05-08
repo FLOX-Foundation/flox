@@ -7,6 +7,7 @@
 #include "books.h"
 #include "data_ops.h"
 #include "engine.h"
+#include "execution_algos.h"
 #include "graph.h"
 #include "heatmap.h"
 #include "hooks.h"
@@ -35,6 +36,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerTargets(env, exports);
   node_flox::registerGraph(env, exports);
   node_flox::registerHeatmap(env, exports);
+  node_flox::registerExecutionAlgos(env, exports);
   node_flox::registerLatency(env, exports);
   node_flox::registerPortfolioRisk(env, exports);
   node_flox::registerTapeDiff(env, exports);

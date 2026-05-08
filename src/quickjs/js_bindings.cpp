@@ -1486,6 +1486,200 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
 }
 
 // ============================================================
+// Execution algorithm bindings (TWAP / VWAP / Iceberg / POV)
+// ============================================================
+
+static JSValue js_exec_twap_create(JSContext* ctx, JSValueConst, int argc,
+                                   JSValueConst* argv)
+{
+  if (argc < 8)
+  {
+    return JS_ThrowTypeError(ctx, "twap_create: need 8 args");
+  }
+  double target_qty;
+  JS_ToFloat64(ctx, &target_qty, argv[0]);
+  uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  uint32_t symbol = toUint32(ctx, argv[2]);
+  uint8_t type = static_cast<uint8_t>(toUint32(ctx, argv[3]));
+  double limit_price;
+  JS_ToFloat64(ctx, &limit_price, argv[4]);
+  int64_t duration_ns = toInt64(ctx, argv[5]);
+  uint32_t slice_count = toUint32(ctx, argv[6]);
+  int64_t start_time_ns = toInt64(ctx, argv[7]);
+  auto h = flox_exec_twap_create(target_qty, side, symbol, type, limit_price,
+                                 duration_ns, slice_count, start_time_ns);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "twap_create: invalid args");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_exec_vwap_create(JSContext* ctx, JSValueConst, int argc,
+                                   JSValueConst* argv)
+{
+  if (argc < 6)
+  {
+    return JS_ThrowTypeError(ctx, "vwap_create: need 6 args");
+  }
+  double target_qty;
+  JS_ToFloat64(ctx, &target_qty, argv[0]);
+  uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  uint32_t symbol = toUint32(ctx, argv[2]);
+  uint8_t type = static_cast<uint8_t>(toUint32(ctx, argv[3]));
+  double limit_price;
+  JS_ToFloat64(ctx, &limit_price, argv[4]);
+  std::vector<int64_t> ts;
+  std::vector<double> vol;
+  JSValue lenVal = JS_GetPropertyStr(ctx, argv[5], "length");
+  uint32_t len = 0;
+  JS_ToUint32(ctx, &len, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  for (uint32_t i = 0; i < len; ++i)
+  {
+    JSValue row = JS_GetPropertyUint32(ctx, argv[5], i);
+    JSValue tsv = JS_GetPropertyUint32(ctx, row, 0);
+    JSValue volv = JS_GetPropertyUint32(ctx, row, 1);
+    ts.push_back(toInt64(ctx, tsv));
+    double v;
+    JS_ToFloat64(ctx, &v, volv);
+    vol.push_back(v);
+    JS_FreeValue(ctx, tsv);
+    JS_FreeValue(ctx, volv);
+    JS_FreeValue(ctx, row);
+  }
+  auto h = flox_exec_vwap_create(target_qty, side, symbol, type, limit_price,
+                                 ts.empty() ? nullptr : ts.data(),
+                                 vol.empty() ? nullptr : vol.data(),
+                                 ts.size());
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "vwap_create: invalid args");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_exec_iceberg_create(JSContext* ctx, JSValueConst, int argc,
+                                      JSValueConst* argv)
+{
+  if (argc < 6)
+  {
+    return JS_ThrowTypeError(ctx, "iceberg_create: need 6 args");
+  }
+  double target_qty;
+  JS_ToFloat64(ctx, &target_qty, argv[0]);
+  uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  uint32_t symbol = toUint32(ctx, argv[2]);
+  uint8_t type = static_cast<uint8_t>(toUint32(ctx, argv[3]));
+  double limit_price, visible_qty;
+  JS_ToFloat64(ctx, &limit_price, argv[4]);
+  JS_ToFloat64(ctx, &visible_qty, argv[5]);
+  auto h = flox_exec_iceberg_create(target_qty, side, symbol, type, limit_price,
+                                    visible_qty);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "iceberg_create: invalid args");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_exec_pov_create(JSContext* ctx, JSValueConst, int argc,
+                                  JSValueConst* argv)
+{
+  if (argc < 7)
+  {
+    return JS_ThrowTypeError(ctx, "pov_create: need 7 args");
+  }
+  double target_qty;
+  JS_ToFloat64(ctx, &target_qty, argv[0]);
+  uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  uint32_t symbol = toUint32(ctx, argv[2]);
+  uint8_t type = static_cast<uint8_t>(toUint32(ctx, argv[3]));
+  double limit_price, rate, min_slice;
+  JS_ToFloat64(ctx, &limit_price, argv[4]);
+  JS_ToFloat64(ctx, &rate, argv[5]);
+  JS_ToFloat64(ctx, &min_slice, argv[6]);
+  auto h = flox_exec_pov_create(target_qty, side, symbol, type, limit_price, rate,
+                                min_slice);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "pov_create: invalid args");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_exec_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_exec_destroy(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_exec_step(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]));
+  flox_exec_step(h, toInt64(ctx, argv[1]));
+  size_t n = flox_exec_pending_count(h);
+  JSValue arr = JS_NewArray(ctx);
+  for (size_t i = 0; i < n; ++i)
+  {
+    FloxExecChildOrder c{};
+    if (flox_exec_pending_at(h, i, &c))
+    {
+      JSValue o = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, o, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(c.order_id)));
+      JS_SetPropertyStr(ctx, o, "timestampNs", JS_NewInt64(ctx, c.timestamp_ns));
+      JS_SetPropertyStr(ctx, o, "qty", JS_NewFloat64(ctx, c.qty));
+      JS_SetPropertyStr(ctx, o, "price", JS_NewFloat64(ctx, c.price));
+      JS_SetPropertyStr(ctx, o, "type",
+                        JS_NewString(ctx, c.type == 1 ? "limit" : "market"));
+      JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
+    }
+  }
+  flox_exec_clear_pending(h);
+  return arr;
+}
+
+static JSValue js_exec_report_fill(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  double q;
+  JS_ToFloat64(ctx, &q, argv[1]);
+  flox_exec_report_fill(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0])), q);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_exec_observe_volume(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  double q;
+  JS_ToFloat64(ctx, &q, argv[1]);
+  flox_exec_observe_volume(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0])), q);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_exec_submitted_qty(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_exec_submitted_qty(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))));
+}
+
+static JSValue js_exec_filled_qty(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_exec_filled_qty(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))));
+}
+
+static JSValue js_exec_remaining_qty(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_exec_remaining_qty(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))));
+}
+
+static JSValue js_exec_is_done(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewBool(
+      ctx, flox_exec_is_done(static_cast<FloxExecAlgoHandle>(getHandle(ctx, argv[0]))) != 0);
+}
+
+// ============================================================
 // Portfolio risk aggregator bindings
 // ============================================================
 
@@ -3196,6 +3390,20 @@ void registerFloxBindings(JSContext* ctx)
 
   // Tape diff
   addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);
+
+  // Execution algos (TWAP / VWAP / Iceberg / POV)
+  addGlobalFunc(ctx, "__flox_exec_twap_create", js_exec_twap_create, 8);
+  addGlobalFunc(ctx, "__flox_exec_vwap_create", js_exec_vwap_create, 6);
+  addGlobalFunc(ctx, "__flox_exec_iceberg_create", js_exec_iceberg_create, 6);
+  addGlobalFunc(ctx, "__flox_exec_pov_create", js_exec_pov_create, 7);
+  addGlobalFunc(ctx, "__flox_exec_destroy", js_exec_destroy, 1);
+  addGlobalFunc(ctx, "__flox_exec_step", js_exec_step, 2);
+  addGlobalFunc(ctx, "__flox_exec_report_fill", js_exec_report_fill, 2);
+  addGlobalFunc(ctx, "__flox_exec_observe_volume", js_exec_observe_volume, 2);
+  addGlobalFunc(ctx, "__flox_exec_submitted_qty", js_exec_submitted_qty, 1);
+  addGlobalFunc(ctx, "__flox_exec_filled_qty", js_exec_filled_qty, 1);
+  addGlobalFunc(ctx, "__flox_exec_remaining_qty", js_exec_remaining_qty, 1);
+  addGlobalFunc(ctx, "__flox_exec_is_done", js_exec_is_done, 1);
 
   // Portfolio risk aggregator
   addGlobalFunc(ctx, "__flox_portfolio_risk_create", js_portfolio_risk_create, 2);

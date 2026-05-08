@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 371 functions, 35 handles, 47 structs, 33 callback typedefs, 2 enums, 50 groups.
+**Surface:** 387 functions, 36 handles, 48 structs, 33 callback typedefs, 2 enums, 51 groups.
 
 ## Opaque handles
 
@@ -43,6 +43,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxLatencyModelHandle`
 - `FloxTapeDiffHandle`
 - `FloxPortfolioRiskHandle`
+- `FloxExecAlgoHandle`
 
 ## Enums
 
@@ -661,6 +662,16 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `limit` | `double` |
 | `detail` | `const char *` |
 
+### `FloxExecChildOrder`
+
+| field | type |
+|---|---|
+| `order_id` | `uint64_t` |
+| `timestamp_ns` | `int64_t` |
+| `qty` | `double` |
+| `price` | `double` |
+| `type` | `uint8_t` |
+
 ## Functions
 
 ### additional_bar
@@ -781,6 +792,25 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_runner_set_executor(FloxRunnerHandle runner, FloxExecutorHandle executor)`
 - `void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle runner, FloxExecutionListenerHandle listener)`
 - `void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner, FloxExecutorHandle executor)`
+
+### execution_algos
+
+- `FloxExecAlgoHandle flox_exec_twap_create(double target_qty, uint8_t side, uint32_t symbol, uint8_t type, double limit_price, int64_t duration_ns, uint32_t slice_count, int64_t start_time_ns)`
+- `FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t side, uint32_t symbol, uint8_t type, double limit_price, const int64_t * volume_curve_ts, const double * volume_curve_vol, size_t n)`
+- `FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_t side, uint32_t symbol, uint8_t type, double limit_price, double visible_qty)`
+- `FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t side, uint32_t symbol, uint8_t type, double limit_price, double participation_rate, double min_slice_qty)`
+- `void flox_exec_destroy(FloxExecAlgoHandle handle)`
+- `void flox_exec_step(FloxExecAlgoHandle handle, int64_t now_ns)`
+- `void flox_exec_report_fill(FloxExecAlgoHandle handle, double qty)`
+- `void flox_exec_observe_volume(FloxExecAlgoHandle handle, double qty)`
+- `size_t flox_exec_pending_count(FloxExecAlgoHandle handle)`
+- `uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index, FloxExecChildOrder * out)`
+- `void flox_exec_clear_pending(FloxExecAlgoHandle handle)`
+- `double flox_exec_target_qty(FloxExecAlgoHandle handle)`
+- `double flox_exec_submitted_qty(FloxExecAlgoHandle handle)`
+- `double flox_exec_filled_qty(FloxExecAlgoHandle handle)`
+- `double flox_exec_remaining_qty(FloxExecAlgoHandle handle)`
+- `uint8_t flox_exec_is_done(FloxExecAlgoHandle handle)`
 
 ### executor_fill
 
