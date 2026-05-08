@@ -2117,6 +2117,248 @@
       "return_type": "void"
     },
     {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_copy_asks",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookEncoderHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxBookLevel *"
+        },
+        {
+          "name": "max_entries",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_copy_bids",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookEncoderHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxBookLevel *"
+        },
+        {
+          "name": "max_entries",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_create",
+      "params": [
+        {
+          "name": "anchor_every",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxDeltaBookEncoderHandle"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_destroy",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookEncoderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_encode",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookEncoderHandle"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bids",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "bid_count",
+          "type": "size_t"
+        },
+        {
+          "name": "asks",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "ask_count",
+          "type": "size_t"
+        },
+        {
+          "name": "out_is_delta",
+          "type": "uint8_t *"
+        },
+        {
+          "name": "out_bid_count",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_ask_count",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_reset",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookEncoderHandle"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_encoder_reset_all",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookEncoderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_replayer_apply",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookReplayerHandle"
+        },
+        {
+          "name": "type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bids",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "bid_count",
+          "type": "size_t"
+        },
+        {
+          "name": "asks",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "ask_count",
+          "type": "size_t"
+        },
+        {
+          "name": "out_bid_count",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_ask_count",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_replayer_copy_asks",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookReplayerHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxBookLevel *"
+        },
+        {
+          "name": "max_entries",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_replayer_copy_bids",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookReplayerHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxBookLevel *"
+        },
+        {
+          "name": "max_entries",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_replayer_create",
+      "params": [],
+      "return_type": "FloxDeltaBookReplayerHandle"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_replayer_destroy",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookReplayerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "delta_book",
+      "name": "flox_delta_book_replayer_reset",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxDeltaBookReplayerHandle"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "signal_emission",
       "name": "flox_emit_cancel",
       "params": [
@@ -9493,6 +9735,14 @@
     },
     {
       "name": "FloxDataWriterHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxDeltaBookEncoderHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxDeltaBookReplayerHandle",
       "target": "void*"
     },
     {

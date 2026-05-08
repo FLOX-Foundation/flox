@@ -65,3 +65,6 @@ add_codon_executable(codon_portfolio_risk_smoke
 
 add_codon_executable(codon_execution_algos_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/execution_algos_smoke.codon)
+
+add_codon_executable(codon_delta_book_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/delta_book_smoke.codon)

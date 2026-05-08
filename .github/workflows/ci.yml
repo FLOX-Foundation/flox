@@ -204,6 +204,9 @@ jobs:
     - name: Verify strategy hot-reload
       run: PYTHONPATH=build/python python3 python/tests/test_strategy_hot_reload.py
 
+    - name: Verify delta book compression
+      run: PYTHONPATH=build/python python3 python/tests/test_delta_book.py
+
     - name: Verify RL environment
       run: PYTHONPATH=build/python python3 python/tests/test_rl_env.py
 
@@ -261,6 +264,8 @@ jobs:
           ./build/codon/codon_portfolio_risk_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_execution_algos_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_delta_book_smoke
 
     - name: Verify QuickJS runner
       run: |
@@ -271,6 +276,7 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/tape_diff_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/portfolio_risk_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/delta_book_smoke.js
 
     - name: Verify Node.js bindings
       run: |
@@ -295,6 +301,10 @@ jobs:
     - name: Verify Node.js strategy hot-reload
       run: |
         cd node && node test/test_hot_reload.js
+
+    - name: Verify Node.js delta book compression
+      run: |
+        cd node && node test/test_delta_book.js
 
     - name: Verify Node.js extension hooks
       run: |

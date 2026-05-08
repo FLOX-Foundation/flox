@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 388 functions, 36 handles, 48 structs, 33 callback typedefs, 2 enums, 51 groups.
+**Surface:** 401 functions, 38 handles, 48 structs, 33 callback typedefs, 2 enums, 52 groups.
 
 ## Opaque handles
 
@@ -44,6 +44,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxTapeDiffHandle`
 - `FloxPortfolioRiskHandle`
 - `FloxExecAlgoHandle`
+- `FloxDeltaBookEncoderHandle`
+- `FloxDeltaBookReplayerHandle`
 
 ## Enums
 
@@ -780,6 +782,22 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 ### datawriter
 
 - `FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer)`
+
+### delta_book
+
+- `FloxDeltaBookEncoderHandle flox_delta_book_encoder_create(uint32_t anchor_every)`
+- `void flox_delta_book_encoder_destroy(FloxDeltaBookEncoderHandle handle)`
+- `void flox_delta_book_encoder_reset(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id)`
+- `void flox_delta_book_encoder_reset_all(FloxDeltaBookEncoderHandle handle)`
+- `void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id, const FloxBookLevel * bids, size_t bid_count, const FloxBookLevel * asks, size_t ask_count, uint8_t * out_is_delta, uint64_t * out_bid_count, uint64_t * out_ask_count)`
+- `uint64_t flox_delta_book_encoder_copy_bids(FloxDeltaBookEncoderHandle handle, FloxBookLevel * out, uint64_t max_entries)`
+- `uint64_t flox_delta_book_encoder_copy_asks(FloxDeltaBookEncoderHandle handle, FloxBookLevel * out, uint64_t max_entries)`
+- `FloxDeltaBookReplayerHandle flox_delta_book_replayer_create(void)`
+- `void flox_delta_book_replayer_destroy(FloxDeltaBookReplayerHandle handle)`
+- `void flox_delta_book_replayer_reset(FloxDeltaBookReplayerHandle handle, uint32_t symbol_id)`
+- `void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle, uint8_t type, uint32_t symbol_id, const FloxBookLevel * bids, size_t bid_count, const FloxBookLevel * asks, size_t ask_count, uint64_t * out_bid_count, uint64_t * out_ask_count)`
+- `uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle, FloxBookLevel * out, uint64_t max_entries)`
+- `uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle, FloxBookLevel * out, uint64_t max_entries)`
 
 ### execution
 

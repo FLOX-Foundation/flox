@@ -61,6 +61,8 @@ extern "C"
   typedef void* FloxTapeDiffHandle;
   typedef void* FloxPortfolioRiskHandle;
   typedef void* FloxExecAlgoHandle;
+  typedef void* FloxDeltaBookEncoderHandle;
+  typedef void* FloxDeltaBookReplayerHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -866,6 +868,35 @@ extern "C"
   // ============================================================
 
   FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer);
+
+  // ============================================================
+  // Delta Book
+  // ============================================================
+
+  FloxDeltaBookEncoderHandle flox_delta_book_encoder_create(uint32_t anchor_every);
+  void flox_delta_book_encoder_destroy(FloxDeltaBookEncoderHandle handle);
+  void flox_delta_book_encoder_reset(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id);
+  void flox_delta_book_encoder_reset_all(FloxDeltaBookEncoderHandle handle);
+  void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id,
+                                      const FloxBookLevel* bids, size_t bid_count,
+                                      const FloxBookLevel* asks, size_t ask_count,
+                                      uint8_t* out_is_delta, uint64_t* out_bid_count,
+                                      uint64_t* out_ask_count);
+  uint64_t flox_delta_book_encoder_copy_bids(FloxDeltaBookEncoderHandle handle, FloxBookLevel* out,
+                                             uint64_t max_entries);
+  uint64_t flox_delta_book_encoder_copy_asks(FloxDeltaBookEncoderHandle handle, FloxBookLevel* out,
+                                             uint64_t max_entries);
+  FloxDeltaBookReplayerHandle flox_delta_book_replayer_create(void);
+  void flox_delta_book_replayer_destroy(FloxDeltaBookReplayerHandle handle);
+  void flox_delta_book_replayer_reset(FloxDeltaBookReplayerHandle handle, uint32_t symbol_id);
+  void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle, uint8_t type,
+                                      uint32_t symbol_id, const FloxBookLevel* bids,
+                                      size_t bid_count, const FloxBookLevel* asks, size_t ask_count,
+                                      uint64_t* out_bid_count, uint64_t* out_ask_count);
+  uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle,
+                                              FloxBookLevel* out, uint64_t max_entries);
+  uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle,
+                                              FloxBookLevel* out, uint64_t max_entries);
 
   // ============================================================
   // Execution

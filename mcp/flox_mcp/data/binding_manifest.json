@@ -398,6 +398,71 @@
           "name": "flox_dataset_validate_p"
         },
         {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_copy_asks"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_copy_bids"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_create"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_destroy"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_encode"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_reset"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_encoder_reset_all"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_replayer_apply"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_replayer_copy_asks"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_replayer_copy_bids"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_replayer_create"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_replayer_destroy"
+        },
+        {
+          "group": "delta_book",
+          "kind": "function",
+          "name": "flox_delta_book_replayer_reset"
+        },
+        {
           "group": "signal_emission",
           "kind": "function",
           "name": "flox_emit_cancel"
@@ -2172,6 +2237,14 @@
         },
         {
           "kind": "handle",
+          "name": "FloxDeltaBookEncoderHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxDeltaBookReplayerHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxExecAlgoHandle"
         },
         {
@@ -2302,6 +2375,7 @@
         "datareader",
         "datarecorder",
         "datawriter",
+        "delta_book",
         "execution",
         "execution_algos",
         "executor_fill",
@@ -2658,6 +2732,58 @@
         {
           "kind": "function",
           "name": "flox_dataset_validate_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_copy_asks"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_copy_bids"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_encode"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_reset"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_encoder_reset_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_replayer_apply"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_replayer_copy_asks"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_replayer_copy_bids"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_replayer_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_replayer_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_delta_book_replayer_reset"
         },
         {
           "kind": "function",
@@ -4001,6 +4127,30 @@
         },
         {
           "kind": "class",
+          "name": "DeltaBookEncodeResult"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookEncoder"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookEncoderOptions"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookLevel"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookReplayer"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookSnapshot"
+        },
+        {
+          "kind": "class",
           "name": "EMA"
         },
         {
@@ -4638,6 +4788,14 @@
         {
           "kind": "class",
           "name": "DataWriter"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookEncoder"
+        },
+        {
+          "kind": "class",
+          "name": "DeltaBookReplayer"
         },
         {
           "kind": "class",
@@ -5472,6 +5630,43 @@
       "pybind11": {
         "classes": [
           "DataWriter"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "delta_book": {
+      "capi_functions": [
+        "flox_delta_book_encoder_copy_asks",
+        "flox_delta_book_encoder_copy_bids",
+        "flox_delta_book_encoder_create",
+        "flox_delta_book_encoder_destroy",
+        "flox_delta_book_encoder_encode",
+        "flox_delta_book_encoder_reset",
+        "flox_delta_book_encoder_reset_all",
+        "flox_delta_book_replayer_apply",
+        "flox_delta_book_replayer_copy_asks",
+        "flox_delta_book_replayer_copy_bids",
+        "flox_delta_book_replayer_create",
+        "flox_delta_book_replayer_destroy",
+        "flox_delta_book_replayer_reset"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "DeltaBookEncoder",
+          "DeltaBookReplayer"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "DeltaBookEncoder",
+          "DeltaBookReplayer"
         ],
         "functions": [],
         "status": "required"

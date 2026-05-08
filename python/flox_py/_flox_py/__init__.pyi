@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -419,6 +419,34 @@ class DataWriter:
         """
         Write trades from numpy arrays (vectorized). Returns number of trades written.
         """
+class DeltaBookEncoder:
+    """
+    Encode a stream of L2 snapshots as anchor snapshots plus deltas. anchor_every=0 emits snapshots only; the existing tape format stores either type, so callers can safely persist the output.
+    """
+    def __init__(self, anchor_every: typing.SupportsInt | typing.SupportsIndex = 100) -> None:
+        ...
+    def encode(self, symbol_id: typing.SupportsInt | typing.SupportsIndex, bids: list, asks: list) -> dict:
+        """
+        Feed the encoder a full snapshot. Returns a dict with is_delta / bids / asks. The bids and asks lists carry BookLevel-shaped dicts with price_raw + qty_raw.
+        """
+    def reset(self, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def reset_all(self) -> None:
+        ...
+class DeltaBookReplayer:
+    """
+    Reverse of DeltaBookEncoder. Maintains current book state per symbol; given a stream of (type, bids, asks) tuples returns the reconstructed full snapshot at each step.
+    """
+    def __init__(self) -> None:
+        ...
+    def apply(self, type: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, bids: list, asks: list) -> dict:
+        """
+        Apply one event. type=0 snapshot, type=1 delta. Returns the reconstructed full snapshot for the symbol.
+        """
+    def reset(self, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def reset_all(self) -> None:
+        ...
 class EMA:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...

@@ -1651,3 +1651,49 @@ export class POVExecutor implements ExecAlgo {
   remainingQty(): number;
   isDone(): boolean;
 }
+
+// ── Delta book compression ────────────────────────────────────────────
+
+export interface DeltaBookLevel {
+  priceRaw: number;
+  qtyRaw: number;
+}
+
+export interface DeltaBookEncodeResult {
+  /** false when the encoder emits a full anchor snapshot, true for
+   *  a delta against the previous state. */
+  isDelta: boolean;
+  bids: ReadonlyArray<DeltaBookLevel>;
+  asks: ReadonlyArray<DeltaBookLevel>;
+}
+
+export interface DeltaBookSnapshot {
+  bids: ReadonlyArray<DeltaBookLevel>;
+  asks: ReadonlyArray<DeltaBookLevel>;
+}
+
+export interface DeltaBookEncoderOptions {
+  /** Cadence of full-snapshot anchors. 0 means snapshot-only.
+   *  Default 100. */
+  anchorEvery?: number;
+}
+
+/** Encode a stream of L2 snapshots as anchor snapshots plus deltas. */
+export class DeltaBookEncoder {
+  constructor(opts?: DeltaBookEncoderOptions);
+  encode(symbolId: number, bids: ReadonlyArray<DeltaBookLevel>,
+         asks: ReadonlyArray<DeltaBookLevel>): DeltaBookEncodeResult;
+  reset(symbolId: number): void;
+  resetAll(): void;
+}
+
+/** Reverse of DeltaBookEncoder. Reconstructs full snapshots from a
+ *  stream of (type, bids, asks) events. type=0 snapshot, type=1 delta. */
+export class DeltaBookReplayer {
+  constructor();
+  apply(type: number, symbolId: number,
+        bids: ReadonlyArray<DeltaBookLevel>,
+        asks: ReadonlyArray<DeltaBookLevel>): DeltaBookSnapshot;
+  reset(symbolId: number): void;
+  resetAll(): void;
+}

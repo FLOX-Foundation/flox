@@ -502,6 +502,30 @@ void FloxJsStrategy::loadStdlib()
         return __flox_tape_diff(left, right, opts || {});
       },
 
+      // Delta book compression: encode L2 snapshots as anchor +
+      // delta events, replay them back into reconstructed snapshots.
+      DeltaBookEncoder: class {
+        constructor(opts) {
+          var o = opts || {};
+          this._h = __flox_delta_book_encoder_create(o.anchorEvery || 100);
+        }
+        destroy() {
+          if (this._h) { __flox_delta_book_encoder_destroy(this._h); this._h = null; }
+        }
+        encode(symbolId, bids, asks) {
+          return __flox_delta_book_encoder_encode(this._h, symbolId, bids || [], asks || []);
+        }
+      },
+      DeltaBookReplayer: class {
+        constructor() { this._h = __flox_delta_book_replayer_create(); }
+        destroy() {
+          if (this._h) { __flox_delta_book_replayer_destroy(this._h); this._h = null; }
+        }
+        apply(type, symbolId, bids, asks) {
+          return __flox_delta_book_replayer_apply(this._h, type, symbolId, bids || [], asks || []);
+        }
+      },
+
       // Execution algos: TWAP / VWAP / Iceberg / POV. The user
       // drives `step(nowNs)` and dispatches the returned child
       // orders to its own executor.

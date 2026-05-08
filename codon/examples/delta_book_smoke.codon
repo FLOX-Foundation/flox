@@ -1,0 +1,34 @@
+# Smoke test: delta book encoder + replayer compile + drive the C API.
+
+from flox.delta_book import DeltaBookEncoder, DeltaBookReplayer
+
+enc = DeltaBookEncoder(100)
+
+first = enc.encode(1, [10000, 9999], [10, 5], [10001], [8])
+if not first.is_delta and first.bid_count == 2 and first.ask_count == 1:
+    print("ok  first event is a snapshot with full level set")
+else:
+    print("FAIL first event:", first.is_delta, first.bid_count, first.ask_count)
+
+second = enc.encode(1, [10000], [12], [10001, 10002], [8, 3])
+if second.is_delta:
+    print("ok  second event is a delta")
+else:
+    print("FAIL second event should be delta")
+
+rep = DeltaBookReplayer()
+snap1 = rep.apply(0, 1, [10000, 9999], [10, 5], [10001], [8])
+if snap1.bid_count == 2 and snap1.ask_count == 1:
+    print("ok  replayer reconstructs initial snapshot")
+else:
+    print("FAIL replayer initial:", snap1.bid_count, snap1.ask_count)
+
+snap2 = rep.apply(1, 1, [10000], [12], [10001, 10002], [8, 3])
+if snap2.bid_count == 1 and snap2.ask_count == 2:
+    print("ok  replayer applies delta correctly")
+else:
+    print("FAIL replayer delta:", snap2.bid_count, snap2.ask_count)
+
+enc.destroy()
+rep.destroy()
+print("done")

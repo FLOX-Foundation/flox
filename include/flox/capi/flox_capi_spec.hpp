@@ -2690,6 +2690,96 @@ extern "C"
   FLOX_EXPORT(group = "execution_algos")
   uint8_t flox_exec_is_done(FloxExecAlgoHandle handle);
 
+  // ============================================================
+  // Delta book compression (tape format)
+  // ============================================================
+  //
+  // Encodes a stream of L2 snapshots into anchor snapshots plus
+  // deltas. The on-disk format already supports both event types
+  // through BookRecordHeader.type (0 = snapshot, 1 = delta). This
+  // surface is the state-keeping layer that decides what to emit
+  // per call.
+  //
+  // Convention in a delta payload: a level with qty_raw == 0 means
+  // "remove this price level"; a level with qty_raw > 0 means "set
+  // this price level to this quantity".
+
+  typedef void* FloxDeltaBookEncoderHandle;
+  typedef void* FloxDeltaBookReplayerHandle;
+
+  // anchor_every controls cadence: every N events the encoder emits
+  // a full snapshot regardless of diff size, so a reader can seek
+  // and replay forward. 0 means "always anchor" (snapshot-only,
+  // i.e. the existing writer behaviour).
+  FLOX_EXPORT(group = "delta_book")
+  FloxDeltaBookEncoderHandle flox_delta_book_encoder_create(uint32_t anchor_every);
+
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_encoder_destroy(FloxDeltaBookEncoderHandle handle);
+
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_encoder_reset(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id);
+
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_encoder_reset_all(FloxDeltaBookEncoderHandle handle);
+
+  // Feed a full snapshot. After the call:
+  //   *out_is_delta -> 0 if the encoder emits an anchor snapshot,
+  //                    1 if it emits a delta.
+  //   *out_bid_count / *out_ask_count -> number of BookLevel entries
+  //   the caller can then pull via flox_delta_book_encoder_copy_*.
+  // Buffers are owned by the encoder and remain valid until the next
+  // encode() on the same symbol.
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle,
+                                       uint32_t symbol_id,
+                                       const FloxBookLevel* bids, size_t bid_count,
+                                       const FloxBookLevel* asks, size_t ask_count,
+                                       uint8_t* out_is_delta,
+                                       uint64_t* out_bid_count,
+                                       uint64_t* out_ask_count);
+
+  // Copy the most recent encode() output into caller-allocated
+  // buffers. Returns the number of entries written, capped at
+  // max_entries.
+  FLOX_EXPORT(group = "delta_book")
+  uint64_t flox_delta_book_encoder_copy_bids(FloxDeltaBookEncoderHandle handle,
+                                              FloxBookLevel* out, uint64_t max_entries);
+
+  FLOX_EXPORT(group = "delta_book")
+  uint64_t flox_delta_book_encoder_copy_asks(FloxDeltaBookEncoderHandle handle,
+                                              FloxBookLevel* out, uint64_t max_entries);
+
+  // Replayer: takes the events back and reconstructs full
+  // snapshots per symbol.
+  FLOX_EXPORT(group = "delta_book")
+  FloxDeltaBookReplayerHandle flox_delta_book_replayer_create(void);
+
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_replayer_destroy(FloxDeltaBookReplayerHandle handle);
+
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_replayer_reset(FloxDeltaBookReplayerHandle handle, uint32_t symbol_id);
+
+  // Apply one event (type=0 snapshot, type=1 delta) and write the
+  // resulting per-side counts into *out_bid_count / *out_ask_count.
+  // Pull the levels via copy_bids / copy_asks.
+  FLOX_EXPORT(group = "delta_book")
+  void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle,
+                                       uint8_t type, uint32_t symbol_id,
+                                       const FloxBookLevel* bids, size_t bid_count,
+                                       const FloxBookLevel* asks, size_t ask_count,
+                                       uint64_t* out_bid_count,
+                                       uint64_t* out_ask_count);
+
+  FLOX_EXPORT(group = "delta_book")
+  uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle,
+                                               FloxBookLevel* out, uint64_t max_entries);
+
+  FLOX_EXPORT(group = "delta_book")
+  uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle,
+                                               FloxBookLevel* out, uint64_t max_entries);
+
 #ifdef __cplusplus
 }
 #endif
