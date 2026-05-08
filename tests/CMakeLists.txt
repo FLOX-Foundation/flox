@@ -60,6 +60,9 @@ add_flox_test(test_run_trace)
 # Multi-TF alignment helpers
 add_flox_test(test_multi_tf_alignment)
 
+# Run-trace adapter handlers (.floxrun auto-capture)
+add_flox_test(test_trace_handlers)
+
 add_flox_test(test_multi_symbol_strategy)
 
 add_flox_test(test_position_aggregator)
