@@ -1,19 +1,19 @@
 # Add latency to a backtest
 
-Per-trade fills in flox today work in instant mode: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. It is unrealistic for market-making, latency arbitrage, and any HFT-style work where the gap between event arrival, decision, and round-trip to the exchange determines whether a fill happens at all.
+Per-trade fills in flox work in instant mode by default: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
 
-Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface: `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification). Phase 1 is the sampling primitive; the user app applies samples to its own timestamps before feeding orders into `SimulatedExecutor`. Phase 2 will plumb the primitive into the engine automatically through `BacktestConfig.latency`.
+Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification). Phase 1 is the sampling primitive. The user app applies samples to its own timestamps before submitting orders to `SimulatedExecutor`. Phase 2 will plumb the primitive into the engine through `BacktestConfig.latency` so one knob controls every fill path.
 
 ## The four models
 
 | Model | Use when |
 |---|---|
-| `ConstantLatency` | Baseline. Adds a fixed delay to each component. Good for "what if my round-trip were always 5ms" experiments. |
+| `ConstantLatency` | Baseline. A fixed delay per component. Good for "what if my round-trip were always 5ms" experiments. |
 | `GaussianLatency` | Symmetric jitter around a mean. Good for stable links with a tight measured standard deviation. |
-| `ExponentialLatency` | Heavy right tail. The default for network-bound latency where the histogram is one-sided. |
-| `EmpiricalLatency` | Resample with replacement from observed values. The right model when you have a recording of live latencies and want backtest realism that matches the distribution shape, including bimodality. |
+| `ExponentialLatency` | Heavy right tail. Default for network-bound latency where the histogram is one-sided. |
+| `EmpiricalLatency` | Resample with replacement from observed values. Use this when you have a recording of live latencies and want backtest realism that matches the distribution shape, including bimodality. |
 
-Every model implements `feed_delay() / order_delay() / fill_delay()` returning non-negative nanoseconds, plus a convenience `sample()` that bundles all three.
+Every model implements `feed_delay() / order_delay() / fill_delay()` returning non-negative nanoseconds, plus a `sample()` that bundles all three.
 
 ## Quick start
 
@@ -74,11 +74,11 @@ Every model implements `feed_delay() / order_delay() / fill_delay()` returning n
     console.log(s.feedNs, s.orderNs, s.fillNs);
     ```
 
-Pass `seed` whenever you need reproducible runs. Reset the model with `reset(seed)` to replay the same sequence.
+Pass `seed` for reproducible runs. `reset(seed)` replays the same sequence.
 
 ## Applying samples in your backtest loop
 
-Phase 1 leaves integration to the user app. Typical pattern around a `SimulatedExecutor`:
+Phase 1 leaves integration to the user app. Around a `SimulatedExecutor` the pattern is:
 
 === "Python"
 
@@ -117,7 +117,7 @@ Phase 1 leaves integration to the user app. Typical pattern around a `SimulatedE
     }
     ```
 
-The pattern is the same in every binding: pull a sample, add the relevant component to a timestamp, feed the simulator the delayed value.
+Same shape in every binding: pull a sample, add the right component to the relevant timestamp, hand the delayed value to the simulator.
 
 ## Calibrating from a recording
 
@@ -147,23 +147,23 @@ If you have measured latencies from a live run, hand the arrays to `EmpiricalLat
     });
     ```
 
-Sampling is uniform with replacement, so the resulting distribution shape matches the recording exactly (no smoothing, no kernel density estimate). For a smoothed distribution, fit a parametric model and use `GaussianLatency` or `ExponentialLatency` instead.
+Sampling is uniform with replacement. The resulting distribution shape matches the recording exactly, no smoothing or kernel density estimate. For a smoothed distribution, fit a parametric model and use `GaussianLatency` or `ExponentialLatency` instead.
 
 ## When to skip latency entirely
 
-For bar-driven strategies on minute-or-larger timeframes, latency rarely affects backtest results. Instant mode is the right default. Pull this module in when:
+For bar-driven strategies on minute-or-larger timeframes, latency rarely changes backtest results. Instant mode is the right default. Reach for this module when:
 
-- You are doing market making and round-trip determines whether you even get a fill.
-- You are testing a latency-arbitrage strategy where the round-trip dependency is the entire point.
-- You have a live recording that diverges from the instant-mode backtest and you want to localize whether the gap is latency-driven.
+- You are market-making and round-trip determines whether you get a fill at all.
+- You are testing a latency-arbitrage strategy where round-trip is the whole point.
+- A live recording diverges from the instant-mode backtest and you want to localize whether the gap is latency-driven.
 
 ## What is not here yet (Phase 2)
 
-- Engine-level integration through `BacktestConfig.latency`. Today the user app applies samples manually; Phase 2 plumbs the primitive into `SimulatedExecutor` so a single knob controls every fill path.
-- Per-symbol calibration. Phase 1 is global per-component.
+- Engine-level integration through `BacktestConfig.latency`. Today the user app applies samples manually; Phase 2 wires the primitive into `SimulatedExecutor` so one knob controls every fill path.
+- Per-symbol calibration. Phase 1 is global per component.
 
 ## See also
 
-- [Backtest with realistic fills](backtest-realistic-fills.md). Slippage and queue position, the companion knobs that already plug into `SimulatedExecutor`.
+- [Backtest with realistic fills](backtest-realistic-fills.md). Slippage and queue position, the companion knobs already wired into `SimulatedExecutor`.
 - [Reproducibility bundles](reproducibility-bundles.md). Seed the latency model from the bundle's manifest to make the draws part of the reproducibility contract.
-- [Replay-equivalence gate](../explanation/replay-equivalence-gate.md). Latency-aware backtests should still be reproducible; seed deterministically and the gate keeps holding.
+- [Replay-equivalence gate](../explanation/replay-equivalence-gate.md). Seed deterministically and the gate keeps holding even with latency on.
