@@ -51,6 +51,25 @@ A node returns `nan` for `.value()` when it does not yet have the bars it needs.
 
 The DSL is pure Python and re-evaluates lazily on every `.value()` call. For multi-symbol multi-TF strategies that fire at the rate the engine dispatches bars (per minute, per hour) this is comfortably fast. For per-tick high-frequency code paths, push the comparison logic into the strategy class directly.
 
+## Indicator-grid sugar
+
+When the same indicator runs on every symbol × timeframe slot, declare the cross-product in one shot:
+
+```python
+from flox_py.composite import grid, TIME_BARS
+
+H4 = 14_400_000_000_000
+M5 = 300_000_000_000
+
+self.ema50 = grid(self, [btc_id, eth_id], [H4, M5]).ema(50)
+self.ema50[(btc_id, H4)].value()
+for (sym, bt, param), ind in self.ema50:
+    if ind.is_ready():
+        ...
+```
+
+Each cell is a regular `_Indicator` and slots straight into the comparison / boolean operators. Timeframes can be plain integers (treated as Time-bar interval in nanoseconds) or `(bar_type, param)` tuples for tick / volume / range bars.
+
 ## See also
 
 - [Multi-TF context helpers](multi-tf-context.md). The `last_closed_bar` / `last_n_closed_bars` accessors the DSL is built on.

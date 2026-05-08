@@ -213,3 +213,79 @@ class _Not(_Condition):
         self._inner = inner
     def is_ready(self) -> bool: return self._inner.is_ready()
     def value(self) -> bool: return not bool(self._inner.value())
+
+
+# ---------------------------------------------------------------------------
+# Indicator-grid sugar: instantiate the same indicator across a cross-product
+# of symbols and timeframes in one declaration.
+# ---------------------------------------------------------------------------
+
+class _IndicatorGrid:
+    """Dict-like view over a (symbol_id, timeframe) → indicator cross-product.
+
+    Use either `grid[(symbol, param)]` or `grid[symbol, param]` to look up
+    a single cell. Iterate to walk every cell.
+    """
+
+    def __init__(self, cells: dict) -> None:
+        self._cells = cells  # (symbol, bar_type, param) -> _Indicator
+
+    def __getitem__(self, key):
+        # Accept (symbol, param) sugar by defaulting bar_type to TIME_BARS.
+        if isinstance(key, tuple) and len(key) == 2:
+            symbol, param = key
+            return self._cells[(symbol, TIME_BARS, param)]
+        if isinstance(key, tuple) and len(key) == 3:
+            return self._cells[key]
+        raise KeyError(f"unrecognized key shape: {key!r}")
+
+    def __iter__(self):
+        for k, v in self._cells.items():
+            yield k, v
+
+    def __len__(self) -> int:
+        return len(self._cells)
+
+
+class _GridBuilder:
+    """Returned by `grid(strategy, symbols, timeframes)`. Each indicator
+    method on it (`sma`, `ema`, `rsi`, `close`) instantiates one
+    `_Indicator` per (symbol, timeframe) cell and bundles them in
+    a dict-like grid."""
+
+    def __init__(self, strategy, symbols, timeframes) -> None:
+        self._s = strategy
+        self._symbols = list(symbols)
+        # Each timeframe may be either an int (interpreted as a Time-bar
+        # interval in nanoseconds) or a `(bar_type, param)` tuple.
+        self._tfs: list = []
+        for tf in timeframes:
+            if isinstance(tf, tuple):
+                self._tfs.append((int(tf[0]), int(tf[1])))
+            else:
+                self._tfs.append((TIME_BARS, int(tf)))
+
+    def _build(self, period: int, kind: str) -> _IndicatorGrid:
+        cells = {}
+        for sym in self._symbols:
+            for bt, param in self._tfs:
+                cells[(sym, bt, param)] = _Indicator(self._s, sym, bt, param, period, kind)
+        return _IndicatorGrid(cells)
+
+    def sma(self, period: int) -> _IndicatorGrid: return self._build(period, "sma")
+    def ema(self, period: int) -> _IndicatorGrid: return self._build(period, "ema")
+    def rsi(self, period: int) -> _IndicatorGrid: return self._build(period, "rsi")
+    def close(self) -> _IndicatorGrid: return self._build(1, "close")
+
+
+def grid(strategy, symbols, timeframes) -> _GridBuilder:
+    """Returns a builder for a cross-product indicator grid.
+
+    Example::
+
+        ema50 = grid(self, [BTC, ETH], [H4_NS, M5_NS]).ema(50)
+        ema50[(BTC, H4_NS)].value()
+        for (sym, bt, param), ind in ema50:
+            ...
+    """
+    return _GridBuilder(strategy, symbols, timeframes)
