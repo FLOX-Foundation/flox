@@ -89,10 +89,9 @@ inline void bindExecutionAlgos(py::module_& m)
   py::class_<VWAPExecutor, ExecutionAlgo>(m, "_VWAPExecutorNative")
       .def(py::init([](double target_qty, ExecSide side,
                        std::vector<std::pair<int64_t, double>> curve,
-                       uint32_t symbol, ExecOrderType type, double limit_price) {
-             return std::make_unique<VWAPExecutor>(target_qty, side, symbol, type,
-                                                   limit_price, std::move(curve));
-           }),
+                       uint32_t symbol, ExecOrderType type, double limit_price)
+                    { return std::make_unique<VWAPExecutor>(target_qty, side, symbol, type,
+                                                            limit_price, std::move(curve)); }),
            py::arg("target_qty"), py::arg("side"),
            py::arg("volume_curve"),
            py::arg("symbol") = 0,
@@ -101,10 +100,9 @@ inline void bindExecutionAlgos(py::module_& m)
 
   py::class_<IcebergExecutor, ExecutionAlgo>(m, "_IcebergExecutorNative")
       .def(py::init([](double target_qty, ExecSide side, double visible_qty,
-                       uint32_t symbol, ExecOrderType type, double limit_price) {
-             return std::make_unique<IcebergExecutor>(target_qty, side, symbol, type,
-                                                      limit_price, visible_qty);
-           }),
+                       uint32_t symbol, ExecOrderType type, double limit_price)
+                    { return std::make_unique<IcebergExecutor>(target_qty, side, symbol, type,
+                                                               limit_price, visible_qty); }),
            py::arg("target_qty"), py::arg("side"),
            py::arg("visible_qty"),
            py::arg("symbol") = 0,
@@ -114,11 +112,10 @@ inline void bindExecutionAlgos(py::module_& m)
   py::class_<POVExecutor, ExecutionAlgo>(m, "_POVExecutorNative")
       .def(py::init([](double target_qty, ExecSide side, double participation_rate,
                        uint32_t symbol, ExecOrderType type, double limit_price,
-                       double min_slice_qty) {
-             return std::make_unique<POVExecutor>(target_qty, side, symbol, type,
-                                                  limit_price, participation_rate,
-                                                  min_slice_qty);
-           }),
+                       double min_slice_qty)
+                    { return std::make_unique<POVExecutor>(target_qty, side, symbol, type,
+                                                           limit_price, participation_rate,
+                                                           min_slice_qty); }),
            py::arg("target_qty"), py::arg("side"),
            py::arg("participation_rate"),
            py::arg("symbol") = 0,
