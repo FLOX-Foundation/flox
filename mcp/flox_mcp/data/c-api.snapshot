@@ -80,6 +80,19 @@ flox_data_writer_stats_p|void|FloxDataWriterHandle|void *
 flox_data_writer_write_trade|uint8_t|FloxDataWriterHandle|int64_t|int64_t|double|double|uint64_t|uint32_t|uint8_t
 flox_dataset_validate|FloxDatasetValidation|const char *
 flox_dataset_validate_p|void|const char *|void *
+flox_delta_book_encoder_copy_asks|uint64_t|FloxDeltaBookEncoderHandle|FloxBookLevel *|uint64_t
+flox_delta_book_encoder_copy_bids|uint64_t|FloxDeltaBookEncoderHandle|FloxBookLevel *|uint64_t
+flox_delta_book_encoder_create|FloxDeltaBookEncoderHandle|uint32_t
+flox_delta_book_encoder_destroy|void|FloxDeltaBookEncoderHandle
+flox_delta_book_encoder_encode|void|FloxDeltaBookEncoderHandle|uint32_t|const FloxBookLevel *|size_t|const FloxBookLevel *|size_t|uint8_t *|uint64_t *|uint64_t *
+flox_delta_book_encoder_reset|void|FloxDeltaBookEncoderHandle|uint32_t
+flox_delta_book_encoder_reset_all|void|FloxDeltaBookEncoderHandle
+flox_delta_book_replayer_apply|void|FloxDeltaBookReplayerHandle|uint8_t|uint32_t|const FloxBookLevel *|size_t|const FloxBookLevel *|size_t|uint64_t *|uint64_t *
+flox_delta_book_replayer_copy_asks|uint64_t|FloxDeltaBookReplayerHandle|FloxBookLevel *|uint64_t
+flox_delta_book_replayer_copy_bids|uint64_t|FloxDeltaBookReplayerHandle|FloxBookLevel *|uint64_t
+flox_delta_book_replayer_create|FloxDeltaBookReplayerHandle
+flox_delta_book_replayer_destroy|void|FloxDeltaBookReplayerHandle
+flox_delta_book_replayer_reset|void|FloxDeltaBookReplayerHandle|uint32_t
 flox_emit_cancel|void|FloxStrategyHandle|uint64_t
 flox_emit_cancel_all|void|FloxStrategyHandle|uint32_t
 flox_emit_close_position|uint64_t|FloxStrategyHandle|uint32_t

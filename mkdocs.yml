@@ -113,6 +113,7 @@ nav:
           - Strategy Classes: how-to/strategy-classes.md
           - TypeScript strategy authoring: how-to/typescript-strategy-authoring.md
           - Strategy hot-reload: how-to/strategy-hot-reload.md
+          - Delta book compression: how-to/delta-book-compression.md
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md

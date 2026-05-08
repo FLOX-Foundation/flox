@@ -333,3 +333,12 @@ groups:
       status: required
       classes: [TWAPExecutor, VWAPExecutor, IcebergExecutor, POVExecutor]
     codon: { status: required }
+
+  delta_book:
+    pybind11:
+      status: required
+      classes: [DeltaBookEncoder, DeltaBookReplayer]
+    napi:
+      status: required
+      classes: [DeltaBookEncoder, DeltaBookReplayer]
+    codon: { status: required }

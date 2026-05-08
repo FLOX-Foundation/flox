@@ -1380,6 +1380,147 @@ static JSValue js_pos_total_pnl(JSContext* ctx, JSValueConst, int, JSValueConst*
 }
 
 // ============================================================
+// Delta book compression bindings
+// ============================================================
+
+static std::vector<FloxBookLevel> readDeltaBookLevels(JSContext* ctx, JSValueConst arr)
+{
+  std::vector<FloxBookLevel> out;
+  if (!JS_IsArray(ctx, arr))
+  {
+    return out;
+  }
+  uint32_t len = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, arr, "length");
+  JS_ToUint32(ctx, &len, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  out.reserve(len);
+  for (uint32_t i = 0; i < len; ++i)
+  {
+    JSValue entry = JS_GetPropertyUint32(ctx, arr, i);
+    FloxBookLevel l{};
+    JSValue p = JS_GetPropertyStr(ctx, entry, "priceRaw");
+    JSValue q = JS_GetPropertyStr(ctx, entry, "qtyRaw");
+    l.price_raw = toInt64(ctx, p);
+    l.quantity_raw = toInt64(ctx, q);
+    JS_FreeValue(ctx, p);
+    JS_FreeValue(ctx, q);
+    JS_FreeValue(ctx, entry);
+    out.push_back(l);
+  }
+  return out;
+}
+
+static JSValue deltaBookLevelsToJs(JSContext* ctx, const std::vector<FloxBookLevel>& levels)
+{
+  JSValue arr = JS_NewArray(ctx);
+  for (size_t i = 0; i < levels.size(); ++i)
+  {
+    JSValue o = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, o, "priceRaw", JS_NewInt64(ctx, levels[i].price_raw));
+    JS_SetPropertyStr(ctx, o, "qtyRaw", JS_NewInt64(ctx, levels[i].quantity_raw));
+    JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
+  }
+  return arr;
+}
+
+static JSValue js_delta_book_encoder_create(JSContext* ctx, JSValueConst, int argc,
+                                            JSValueConst* argv)
+{
+  uint32_t anchor_every = (argc > 0) ? toUint32(ctx, argv[0]) : 100;
+  auto h = flox_delta_book_encoder_create(anchor_every);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "DeltaBookEncoder: construction failed");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_delta_book_encoder_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_delta_book_encoder_destroy(
+      static_cast<FloxDeltaBookEncoderHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_delta_book_encoder_encode(JSContext* ctx, JSValueConst, int argc,
+                                            JSValueConst* argv)
+{
+  if (argc < 4)
+  {
+    return JS_ThrowTypeError(ctx, "encode(handle, symbol, bids, asks)");
+  }
+  auto h = static_cast<FloxDeltaBookEncoderHandle>(getHandle(ctx, argv[0]));
+  uint32_t sym = toUint32(ctx, argv[1]);
+  auto bids = readDeltaBookLevels(ctx, argv[2]);
+  auto asks = readDeltaBookLevels(ctx, argv[3]);
+  uint8_t is_delta = 0;
+  uint64_t bcnt = 0, acnt = 0;
+  flox_delta_book_encoder_encode(h, sym,
+                                 bids.empty() ? nullptr : bids.data(), bids.size(),
+                                 asks.empty() ? nullptr : asks.data(), asks.size(),
+                                 &is_delta, &bcnt, &acnt);
+  std::vector<FloxBookLevel> out_bids(bcnt), out_asks(acnt);
+  if (bcnt)
+  {
+    flox_delta_book_encoder_copy_bids(h, out_bids.data(), bcnt);
+  }
+  if (acnt)
+  {
+    flox_delta_book_encoder_copy_asks(h, out_asks.data(), acnt);
+  }
+  JSValue out = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, out, "isDelta", JS_NewBool(ctx, is_delta != 0));
+  JS_SetPropertyStr(ctx, out, "bids", deltaBookLevelsToJs(ctx, out_bids));
+  JS_SetPropertyStr(ctx, out, "asks", deltaBookLevelsToJs(ctx, out_asks));
+  return out;
+}
+
+static JSValue js_delta_book_replayer_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_delta_book_replayer_create());
+}
+
+static JSValue js_delta_book_replayer_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_delta_book_replayer_destroy(
+      static_cast<FloxDeltaBookReplayerHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_delta_book_replayer_apply(JSContext* ctx, JSValueConst, int argc,
+                                            JSValueConst* argv)
+{
+  if (argc < 5)
+  {
+    return JS_ThrowTypeError(ctx, "apply(handle, type, symbol, bids, asks)");
+  }
+  auto h = static_cast<FloxDeltaBookReplayerHandle>(getHandle(ctx, argv[0]));
+  uint8_t type = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  uint32_t sym = toUint32(ctx, argv[2]);
+  auto bids = readDeltaBookLevels(ctx, argv[3]);
+  auto asks = readDeltaBookLevels(ctx, argv[4]);
+  uint64_t bcnt = 0, acnt = 0;
+  flox_delta_book_replayer_apply(h, type, sym,
+                                 bids.empty() ? nullptr : bids.data(), bids.size(),
+                                 asks.empty() ? nullptr : asks.data(), asks.size(),
+                                 &bcnt, &acnt);
+  std::vector<FloxBookLevel> out_bids(bcnt), out_asks(acnt);
+  if (bcnt)
+  {
+    flox_delta_book_replayer_copy_bids(h, out_bids.data(), bcnt);
+  }
+  if (acnt)
+  {
+    flox_delta_book_replayer_copy_asks(h, out_asks.data(), acnt);
+  }
+  JSValue out = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, out, "bids", deltaBookLevelsToJs(ctx, out_bids));
+  JS_SetPropertyStr(ctx, out, "asks", deltaBookLevelsToJs(ctx, out_asks));
+  return out;
+}
+
+// ============================================================
 // Tape diff bindings (replay-equivalence localization)
 // ============================================================
 
@@ -3387,6 +3528,14 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_pos_avg_entry", js_pos_avg_entry, 2);
   addGlobalFunc(ctx, "__flox_pos_pnl", js_pos_pnl, 2);
   addGlobalFunc(ctx, "__flox_pos_total_pnl", js_pos_total_pnl, 1);
+
+  // Delta book compression
+  addGlobalFunc(ctx, "__flox_delta_book_encoder_create", js_delta_book_encoder_create, 1);
+  addGlobalFunc(ctx, "__flox_delta_book_encoder_destroy", js_delta_book_encoder_destroy, 1);
+  addGlobalFunc(ctx, "__flox_delta_book_encoder_encode", js_delta_book_encoder_encode, 4);
+  addGlobalFunc(ctx, "__flox_delta_book_replayer_create", js_delta_book_replayer_create, 0);
+  addGlobalFunc(ctx, "__flox_delta_book_replayer_destroy", js_delta_book_replayer_destroy, 1);
+  addGlobalFunc(ctx, "__flox_delta_book_replayer_apply", js_delta_book_replayer_apply, 5);
 
   // Tape diff
   addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);

@@ -30,6 +30,7 @@
 #include "flox/execution/algos.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/delta_book.h"
 #include "flox/replay/ohlcv_replay_source.h"
 #include "flox/replay/tape_diff.h"
 #include "flox/report/heatmap_html.h"
@@ -5867,4 +5868,232 @@ extern "C" double flox_exec_remaining_qty(FloxExecAlgoHandle handle)
 extern "C" uint8_t flox_exec_is_done(FloxExecAlgoHandle handle)
 {
   return (handle && asAlgo(handle)->isDone()) ? 1 : 0;
+}
+
+// ── Delta book compression ────────────────────────────────────────
+
+namespace
+{
+flox::replay::DeltaBookEncoder* asEncoder(FloxDeltaBookEncoderHandle h)
+{
+  return static_cast<flox::replay::DeltaBookEncoder*>(h);
+}
+flox::replay::DeltaBookReplayer* asReplayer(FloxDeltaBookReplayerHandle h)
+{
+  return static_cast<flox::replay::DeltaBookReplayer*>(h);
+}
+
+std::vector<flox::replay::BookLevel> toLevels(const FloxBookLevel* arr, size_t n)
+{
+  std::vector<flox::replay::BookLevel> out(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    out[i].price_raw = arr[i].price_raw;
+    out[i].qty_raw = arr[i].quantity_raw;
+  }
+  return out;
+}
+
+uint64_t copyLevelsTo(const std::vector<flox::replay::BookLevel>& src,
+                      FloxBookLevel* out, uint64_t max_entries)
+{
+  const uint64_t n = std::min<uint64_t>(src.size(), max_entries);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    out[i].price_raw = src[i].price_raw;
+    out[i].quantity_raw = src[i].qty_raw;
+  }
+  return n;
+}
+
+// Per-handle scratch for last encode/replay output. The C ABI returns
+// counts plus a follow-up copy() call, matching the pattern used by
+// flox_tape_diff and flox_portfolio_risk for variable-length data.
+struct EncoderScratch
+{
+  std::vector<flox::replay::BookLevel> bids;
+  std::vector<flox::replay::BookLevel> asks;
+};
+
+thread_local std::map<FloxDeltaBookEncoderHandle, EncoderScratch> g_encoder_scratch;
+thread_local std::map<FloxDeltaBookReplayerHandle, EncoderScratch> g_replayer_scratch;
+}  // namespace
+
+extern "C" FloxDeltaBookEncoderHandle flox_delta_book_encoder_create(uint32_t anchor_every)
+{
+  try
+  {
+    return new flox::replay::DeltaBookEncoder(anchor_every);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_delta_book_encoder_destroy(FloxDeltaBookEncoderHandle handle)
+{
+  g_encoder_scratch.erase(handle);
+  delete asEncoder(handle);
+}
+
+extern "C" void flox_delta_book_encoder_reset(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id)
+{
+  if (handle)
+  {
+    asEncoder(handle)->reset(symbol_id);
+  }
+}
+
+extern "C" void flox_delta_book_encoder_reset_all(FloxDeltaBookEncoderHandle handle)
+{
+  if (handle)
+  {
+    asEncoder(handle)->resetAll();
+  }
+}
+
+extern "C" void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle,
+                                               uint32_t symbol_id,
+                                               const FloxBookLevel* bids, size_t bid_count,
+                                               const FloxBookLevel* asks, size_t ask_count,
+                                               uint8_t* out_is_delta,
+                                               uint64_t* out_bid_count,
+                                               uint64_t* out_ask_count)
+{
+  if (!handle)
+  {
+    return;
+  }
+  auto bids_in = toLevels(bids, bid_count);
+  auto asks_in = toLevels(asks, ask_count);
+  auto result = asEncoder(handle)->encode(symbol_id, bids_in, asks_in);
+  auto& scratch = g_encoder_scratch[handle];
+  scratch.bids = std::move(result.bids);
+  scratch.asks = std::move(result.asks);
+  if (out_is_delta)
+  {
+    *out_is_delta = result.is_delta ? 1 : 0;
+  }
+  if (out_bid_count)
+  {
+    *out_bid_count = scratch.bids.size();
+  }
+  if (out_ask_count)
+  {
+    *out_ask_count = scratch.asks.size();
+  }
+}
+
+extern "C" uint64_t flox_delta_book_encoder_copy_bids(FloxDeltaBookEncoderHandle handle,
+                                                      FloxBookLevel* out, uint64_t max_entries)
+{
+  if (!handle || !out)
+  {
+    return 0;
+  }
+  auto it = g_encoder_scratch.find(handle);
+  if (it == g_encoder_scratch.end())
+  {
+    return 0;
+  }
+  return copyLevelsTo(it->second.bids, out, max_entries);
+}
+
+extern "C" uint64_t flox_delta_book_encoder_copy_asks(FloxDeltaBookEncoderHandle handle,
+                                                      FloxBookLevel* out, uint64_t max_entries)
+{
+  if (!handle || !out)
+  {
+    return 0;
+  }
+  auto it = g_encoder_scratch.find(handle);
+  if (it == g_encoder_scratch.end())
+  {
+    return 0;
+  }
+  return copyLevelsTo(it->second.asks, out, max_entries);
+}
+
+extern "C" FloxDeltaBookReplayerHandle flox_delta_book_replayer_create(void)
+{
+  try
+  {
+    return new flox::replay::DeltaBookReplayer();
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_delta_book_replayer_destroy(FloxDeltaBookReplayerHandle handle)
+{
+  g_replayer_scratch.erase(handle);
+  delete asReplayer(handle);
+}
+
+extern "C" void flox_delta_book_replayer_reset(FloxDeltaBookReplayerHandle handle, uint32_t symbol_id)
+{
+  if (handle)
+  {
+    asReplayer(handle)->reset(symbol_id);
+  }
+}
+
+extern "C" void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle,
+                                               uint8_t type, uint32_t symbol_id,
+                                               const FloxBookLevel* bids, size_t bid_count,
+                                               const FloxBookLevel* asks, size_t ask_count,
+                                               uint64_t* out_bid_count,
+                                               uint64_t* out_ask_count)
+{
+  if (!handle)
+  {
+    return;
+  }
+  auto bids_in = toLevels(bids, bid_count);
+  auto asks_in = toLevels(asks, ask_count);
+  auto snap = asReplayer(handle)->apply(type, symbol_id, bids_in, asks_in);
+  auto& scratch = g_replayer_scratch[handle];
+  scratch.bids = std::move(snap.bids);
+  scratch.asks = std::move(snap.asks);
+  if (out_bid_count)
+  {
+    *out_bid_count = scratch.bids.size();
+  }
+  if (out_ask_count)
+  {
+    *out_ask_count = scratch.asks.size();
+  }
+}
+
+extern "C" uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle,
+                                                       FloxBookLevel* out, uint64_t max_entries)
+{
+  if (!handle || !out)
+  {
+    return 0;
+  }
+  auto it = g_replayer_scratch.find(handle);
+  if (it == g_replayer_scratch.end())
+  {
+    return 0;
+  }
+  return copyLevelsTo(it->second.bids, out, max_entries);
+}
+
+extern "C" uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle,
+                                                       FloxBookLevel* out, uint64_t max_entries)
+{
+  if (!handle || !out)
+  {
+    return 0;
+  }
+  auto it = g_replayer_scratch.find(handle);
+  if (it == g_replayer_scratch.end())
+  {
+    return 0;
+  }
+  return copyLevelsTo(it->second.asks, out, max_entries);
 }

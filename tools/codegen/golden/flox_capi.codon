@@ -101,6 +101,21 @@ from C import flox_data_recorder_is_recording(cobj) -> u8
 # ── datawriter ──
 from C import flox_data_writer_stats(cobj) -> cobj
 
+# ── delta_book ──
+from C import flox_delta_book_encoder_create(u32) -> cobj
+from C import flox_delta_book_encoder_destroy(cobj)
+from C import flox_delta_book_encoder_reset(cobj, u32)
+from C import flox_delta_book_encoder_reset_all(cobj)
+from C import flox_delta_book_encoder_encode(cobj, u32, cobj, int, cobj, int, Ptr[u8], Ptr[u64], Ptr[u64])
+from C import flox_delta_book_encoder_copy_bids(cobj, cobj, u64) -> u64
+from C import flox_delta_book_encoder_copy_asks(cobj, cobj, u64) -> u64
+from C import flox_delta_book_replayer_create() -> cobj
+from C import flox_delta_book_replayer_destroy(cobj)
+from C import flox_delta_book_replayer_reset(cobj, u32)
+from C import flox_delta_book_replayer_apply(cobj, u8, u32, cobj, int, cobj, int, Ptr[u64], Ptr[u64])
+from C import flox_delta_book_replayer_copy_bids(cobj, cobj, u64) -> u64
+from C import flox_delta_book_replayer_copy_asks(cobj, cobj, u64) -> u64
+
 # ── execution ──
 from C import flox_execution_listener_create(cobj) -> cobj
 from C import flox_execution_listener_destroy(cobj)

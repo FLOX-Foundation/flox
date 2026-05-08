@@ -1,0 +1,103 @@
+# flox/delta_book.codon -- L2 delta book encoder + replayer.
+#
+# Wraps the C ABI handles. Codon exposes the headline encode/apply
+# entrypoints and reports the output level counts; per-level
+# extraction is left to the Python and Node bindings, where the
+# struct layout is easier to mirror.
+
+from C import flox_delta_book_encoder_create(u32) -> cobj
+from C import flox_delta_book_encoder_destroy(cobj)
+from C import flox_delta_book_encoder_reset(cobj, u32)
+from C import flox_delta_book_encoder_reset_all(cobj)
+from C import flox_delta_book_encoder_encode(cobj, u32, cobj, int, cobj, int, Ptr[byte], Ptr[int], Ptr[int])
+from C import flox_delta_book_replayer_create() -> cobj
+from C import flox_delta_book_replayer_destroy(cobj)
+from C import flox_delta_book_replayer_reset(cobj, u32)
+from C import flox_delta_book_replayer_apply(cobj, u8, u32, cobj, int, cobj, int, Ptr[int], Ptr[int])
+
+
+@dataclass
+class DeltaBookEncodeSummary:
+    is_delta: bool
+    bid_count: int
+    ask_count: int
+
+
+@dataclass
+class DeltaBookReplaySummary:
+    bid_count: int
+    ask_count: int
+
+
+# Each FloxBookLevel is two int64 (price_raw, quantity_raw) -- 16 bytes.
+def _build_levels_buffer(prices: List[int], qtys: List[int]) -> Ptr[byte]:
+    n = len(prices)
+    buf = Ptr[byte](n * 16)
+    for i in range(n):
+        Ptr[int](buf + i * 16)[0] = prices[i]
+        Ptr[int](buf + i * 16 + 8)[0] = qtys[i]
+    return buf
+
+
+class DeltaBookEncoder:
+    _h: cobj
+
+    def __init__(self, anchor_every: int = 100):
+        self._h = flox_delta_book_encoder_create(u32(anchor_every))
+
+    def encode(self, symbol_id: int,
+               bid_prices: List[int], bid_qtys: List[int],
+               ask_prices: List[int], ask_qtys: List[int]) -> DeltaBookEncodeSummary:
+        bids = _build_levels_buffer(bid_prices, bid_qtys)
+        asks = _build_levels_buffer(ask_prices, ask_qtys)
+        is_delta_buf = Ptr[byte](1)
+        bcnt = Ptr[int](1)
+        acnt = Ptr[int](1)
+        flox_delta_book_encoder_encode(self._h, u32(symbol_id),
+                                       cobj(bids), len(bid_prices),
+                                       cobj(asks), len(ask_prices),
+                                       is_delta_buf, bcnt, acnt)
+        return DeltaBookEncodeSummary(
+            is_delta=int(is_delta_buf[0]) != 0,
+            bid_count=bcnt[0],
+            ask_count=acnt[0],
+        )
+
+    def reset(self, symbol_id: int):
+        flox_delta_book_encoder_reset(self._h, u32(symbol_id))
+
+    def reset_all(self):
+        flox_delta_book_encoder_reset_all(self._h)
+
+    def destroy(self):
+        if self._h:
+            flox_delta_book_encoder_destroy(self._h)
+            self._h = cobj()
+
+
+class DeltaBookReplayer:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_delta_book_replayer_create()
+
+    def apply(self, type_byte: int, symbol_id: int,
+              bid_prices: List[int], bid_qtys: List[int],
+              ask_prices: List[int], ask_qtys: List[int]) -> DeltaBookReplaySummary:
+        bids = _build_levels_buffer(bid_prices, bid_qtys)
+        asks = _build_levels_buffer(ask_prices, ask_qtys)
+        bcnt = Ptr[int](1)
+        acnt = Ptr[int](1)
+        flox_delta_book_replayer_apply(self._h, u8(type_byte), u32(symbol_id),
+                                       cobj(bids), len(bid_prices),
+                                       cobj(asks), len(ask_prices),
+                                       bcnt, acnt)
+        return DeltaBookReplaySummary(bid_count=bcnt[0], ask_count=acnt[0])
+
+    def reset(self, symbol_id: int):
+        flox_delta_book_replayer_reset(self._h, u32(symbol_id))
+
+    def destroy(self):
+        if self._h:
+            flox_delta_book_replayer_destroy(self._h)
+            self._h = cobj()
