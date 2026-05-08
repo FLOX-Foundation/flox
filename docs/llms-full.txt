@@ -3229,6 +3229,7 @@ Solve specific problems. Assumes you know the basics.
 | [Read multi-timeframe context from a strategy](multi-tf-context.md) | `last_closed_bar(symbol, tf)` + `last_n_closed_bars(...)` ring helpers |
 | [Compose multi-symbol multi-TF entry conditions declaratively](composite-conditions.md) | `when(self, btc, H4).ema(50) > when(self, btc, H4).ema(200)` composable DSL |
 | [Submit a multi-leg order group](multi-leg-order-group.md) | Bundle pair-trade / basket legs under one `parent_signal_id` with status + cancel |
+| [Wait for multiple feeds with a known staleness budget](multi-feed-clock.md) | `MultiFeedClock` with WaitForAll / FireOnAny / LeaderFollower policies |
 | [Bar aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
 | [Custom bar policy](custom-bar-policy.md) | Hand-roll a new bar aggregation rule |
 | [Volume profile](use-volume-profile.md) | Build a volume profile from trades |

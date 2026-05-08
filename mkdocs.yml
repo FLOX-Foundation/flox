@@ -119,6 +119,7 @@ nav:
           - Read multi-timeframe context from a strategy: how-to/multi-tf-context.md
           - Compose multi-symbol multi-TF entry conditions: how-to/composite-conditions.md
           - Submit a multi-leg order group: how-to/multi-leg-order-group.md
+          - Wait for multiple feeds with staleness budget: how-to/multi-feed-clock.md
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md
