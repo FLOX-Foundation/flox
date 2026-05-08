@@ -63,6 +63,9 @@ add_flox_test(test_multi_tf_alignment)
 # Run-trace adapter handlers (.floxrun auto-capture)
 add_flox_test(test_trace_handlers)
 
+# Bar-close ordering on tied timestamps
+add_flox_test(test_bar_close_ordering)
+
 add_flox_test(test_multi_symbol_strategy)
 
 add_flox_test(test_position_aggregator)
