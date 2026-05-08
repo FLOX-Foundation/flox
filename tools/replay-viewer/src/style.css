@@ -1,0 +1,274 @@
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f8fa;
+  --bg-grad-start: #f8fafb;
+  --bg-grad-end: #e8eef2;
+  --panel: #ffffff;
+  --panel-tint: #f0f7fa;
+  --border: #eef0f4;
+  --border-strong: #c5dfe8;
+  --text: #1a2332;
+  --text-muted: #6b7280;
+  --text-fade: #9ca3af;
+  --accent: #138caf;
+  --accent-soft: #e1eff5;
+  --bid: #21a165;
+  --bid-bg: rgba(33, 161, 101, 0.12);
+  --ask: #d6464b;
+  --ask-bg: rgba(214, 70, 75, 0.12);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  background: linear-gradient(145deg, var(--bg-grad-start) 0%, #eef3f6 50%, var(--bg-grad-end) 100%);
+  color: var(--text);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  height: 100%;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 1px 0 rgba(19, 140, 175, 0.04);
+}
+.brand {
+  font-weight: 600;
+  color: #1a2332;
+  letter-spacing: -0.01em;
+}
+.status { color: var(--text-muted); font-size: 12px; }
+
+.dropzone {
+  margin: 18px;
+  padding: 36px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  text-align: center;
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgba(19, 140, 175, 0.04);
+}
+.dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--panel-tint);
+}
+.dropzone p { margin: 0 0 14px 0; color: var(--text-muted); }
+.dropzone input[type="file"] { color: var(--text-muted); }
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.controls button, .controls select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.controls button:hover, .controls select:hover {
+  background: var(--panel-tint);
+  border-color: var(--border-strong);
+}
+.controls input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.controls #cursor {
+  color: var(--text-muted);
+  font-family: ui-monospace, monospace;
+  min-width: 200px;
+  text-align: right;
+  font-size: 11px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 220px 1fr 1fr 1fr;
+  gap: 14px;
+  padding: 14px;
+  height: calc(100vh - 110px);
+}
+.view {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(19, 140, 175, 0.04);
+}
+.view h3 {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.view canvas, .view > div:not(.emptystate) {
+  flex: 1;
+  min-height: 0;
+  overflow: scroll;
+  scrollbar-gutter: stable;
+}
+.view canvas { width: 100%; height: 100%; overflow: hidden; scrollbar-gutter: auto; }
+
+/* Visible-overflow indicator: fade-out gradient at the bottom + a
+ * chevron, attached to the section so it does not scroll with the
+ * content. Renders regardless of OS scrollbar prefs (macOS overlay
+ * mode hides native scrollbars from screenshots and from users with
+ * "Show scrollbars: When scrolling" set; this affordance does not). */
+.view.has-overflow::after {
+  content: "▾";
+  position: absolute;
+  bottom: 4px;
+  right: 18px;
+  color: var(--accent);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 2;
+  background: var(--panel);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  text-align: center;
+  line-height: 16px;
+  border: 1px solid var(--border);
+}
+.view.has-overflow::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 1px;
+  height: 18px;
+  background: linear-gradient(to bottom, transparent, var(--panel) 75%);
+  pointer-events: none;
+  border-radius: 0 0 9px 9px;
+  z-index: 1;
+}
+
+/* Always-visible scrollbars, with palette-matched chrome. The styles
+ * here both reserve space (`scrollbar-gutter: stable`) and make the
+ * scrollbar visible on Chromium / macOS by switching out of the
+ * overlay default via `::-webkit-scrollbar` styling. */
+* {
+  scrollbar-color: var(--border-strong) var(--bg-soft);
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: var(--bg-soft);
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-soft);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--bg-soft);
+  min-height: 24px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+::-webkit-scrollbar-corner {
+  background: var(--bg-soft);
+}
+
+.view[data-view="price"] { grid-column: 1 / 3; grid-row: 1 / 2; }
+.view[data-view="orderbook"] { grid-column: 1 / 2; grid-row: 2 / 4; }
+.view[data-view="trades"] { grid-column: 2 / 3; grid-row: 2 / 3; }
+.view[data-view="signals"] { grid-column: 2 / 3; grid-row: 3 / 4; }
+.view[data-view="orders"] { grid-column: 1 / 2; grid-row: 4 / 5; }
+.view[data-view="equity"] { grid-column: 2 / 3; grid-row: 4 / 5; }
+
+.emptystate {
+  position: absolute;
+  inset: 36px 14px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-fade);
+  font-style: italic;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 90px 50px 80px 1fr;
+  gap: 8px;
+  padding: 3px 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+.row.bid { color: var(--bid); }
+.row.ask { color: var(--ask); }
+.row .ts { color: var(--text-fade); }
+
+.signal-card, .order-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  background: var(--bg-soft);
+}
+.signal-card .name, .order-card .id {
+  font-weight: 600;
+  color: var(--accent);
+}
+.signal-card .ts, .order-card .ts {
+  color: var(--text-fade);
+  margin-right: 6px;
+}
+
+.view[data-view="price"] canvas {
+  cursor: crosshair;
+}
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(19, 140, 175, 0.10);
+  z-index: 10;
+  white-space: nowrap;
+}
+.chart-tooltip .ts { color: var(--text-fade); display: block; font-size: 10px; }
+.chart-tooltip .side-buy { color: var(--bid); font-weight: 600; }
+.chart-tooltip .side-sell { color: var(--ask); font-weight: 600; }

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+public/
+tsconfig.tsbuildinfo
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts

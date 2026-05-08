@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>flox replay viewer</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">flox replay viewer</div>
+      <div class="status" id="status">drop a .floxlog or .floxrun directory, or a bundle .tar</div>
+    </header>
+    <section class="dropzone" id="dropzone">
+      <p>Drop files here, or pick:</p>
+      <input type="file" id="filepicker" multiple webkitdirectory />
+    </section>
+    <section class="controls" id="controls" hidden>
+      <button id="playpause">Play</button>
+      <select id="speed">
+        <option value="1">1x</option>
+        <option value="5">5x</option>
+        <option value="25">25x</option>
+        <option value="100">100x</option>
+      </select>
+      <input type="range" id="scrubber" min="0" max="1000" value="0" />
+      <span id="cursor">--</span>
+    </section>
+    <main class="grid" id="views" hidden>
+      <section class="view" data-view="price">
+        <h3>Price chart with trades and signals</h3>
+        <canvas id="view-price"></canvas>
+        <div class="chart-tooltip" id="price-tooltip" hidden></div>
+        <div class="emptystate" data-for="price" hidden></div>
+      </section>
+      <section class="view" data-view="orderbook">
+        <h3>Order book heatmap</h3>
+        <canvas id="view-orderbook"></canvas>
+        <div class="emptystate" data-for="orderbook" hidden></div>
+      </section>
+      <section class="view" data-view="trades">
+        <h3>Trades</h3>
+        <div id="view-trades"></div>
+        <div class="emptystate" data-for="trades" hidden></div>
+      </section>
+      <section class="view" data-view="signals">
+        <h3>Strategy signals</h3>
+        <div id="view-signals"></div>
+        <div class="emptystate" data-for="signals" hidden>
+          No `.floxrun` loaded. Drop one to see strategy decisions.
+        </div>
+      </section>
+      <section class="view" data-view="orders">
+        <h3>Orders timeline</h3>
+        <div id="view-orders"></div>
+        <div class="emptystate" data-for="orders" hidden>
+          No `.floxrun` loaded. Drop one to see orders + fills.
+        </div>
+      </section>
+      <section class="view" data-view="equity">
+        <h3>Equity curve</h3>
+        <canvas id="view-equity"></canvas>
+        <div class="emptystate" data-for="equity" hidden>
+          No `.floxrun` loaded. PnL derives from orders + fills.
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
