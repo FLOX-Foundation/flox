@@ -1,0 +1,41 @@
+# Smoke test: portfolio risk aggregator compiles + drives the C API.
+
+from flox.portfolio_risk import (
+    PortfolioRiskAggregator, RiskRules, StrategyFields,
+)
+
+rules = RiskRules(0.20, 10000.0, 50000.0, 0.80)
+agg = PortfolioRiskAggregator(rules, True, True, True, True, 100000.0)
+
+if agg.kill_switch_active():
+    print("FAIL: fresh aggregator has kill switch active")
+else:
+    print("ok  fresh aggregator: kill switch off")
+
+fields = StrategyFields(120.0, -30.0, -5.0, 5000.0, 4500.0, 12)
+agg.update("ema", fields, 0x3F)
+
+s = agg.summary()
+if abs(s.total_daily_pnl - 85.0) < 1e-9:
+    print("ok  daily PnL aggregates")
+else:
+    print("FAIL daily PnL =", s.total_daily_pnl)
+
+if s.account_count == 1:
+    print("ok  account_count = 1 after update")
+else:
+    print("FAIL account_count =", s.account_count)
+
+# Trip drawdown.
+loss_rules = RiskRules(0.10, 0.0, 0.0, 0.0)
+loss_agg = PortfolioRiskAggregator(loss_rules, True, False, False, False, 100000.0)
+loss_fields = StrategyFields(-20000.0, 0.0, 0.0, 0.0, 0.0, 0)
+loss_agg.update("s1", loss_fields, 0x3F)
+if loss_agg.kill_switch_active():
+    print("ok  drawdown breach trips kill switch")
+else:
+    print("FAIL drawdown breach did not trip")
+
+agg.destroy()
+loss_agg.destroy()
+print("done")

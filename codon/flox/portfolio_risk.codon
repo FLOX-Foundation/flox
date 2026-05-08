@@ -1,0 +1,145 @@
+# flox/portfolio_risk.codon -- Cross-strategy risk aggregator.
+#
+# Wraps the C ABI handle. Exposes the headline summary (totals plus
+# kill-switch) plus update / check_order / reset. Per-account / per
+# breach enumeration uses the breach_at accessor for the most recent
+# snapshot.
+
+from C import flox_portfolio_risk_create(cobj, f64) -> cobj
+from C import flox_portfolio_risk_destroy(cobj)
+from C import flox_portfolio_risk_update(cobj, cobj, cobj, u8)
+from C import flox_portfolio_risk_remove(cobj, cobj)
+from C import flox_portfolio_risk_reset_kill_switch(cobj)
+from C import flox_portfolio_risk_check_order(cobj, cobj, f64, cobj, cobj) -> u8
+from C import flox_portfolio_risk_total_daily_pnl(cobj) -> f64
+from C import flox_portfolio_risk_total_gross_exposure(cobj) -> f64
+from C import flox_portfolio_risk_current_equity(cobj) -> f64
+from C import flox_portfolio_risk_drawdown_pct(cobj) -> f64
+from C import flox_portfolio_risk_kill_switch_active(cobj) -> u8
+from C import flox_portfolio_risk_breach_count(cobj) -> int
+from C import flox_portfolio_risk_account_count(cobj) -> int
+
+
+@dataclass
+class RiskRules:
+    max_drawdown_pct: float
+    max_daily_loss: float
+    max_gross_exposure: float
+    max_concentration_pct: float
+
+
+@dataclass
+class PortfolioSummary:
+    total_daily_pnl: float
+    total_gross_exposure: float
+    current_equity: float
+    drawdown_pct: float
+    kill_switch_active: bool
+    breach_count: int
+    account_count: int
+
+
+# Layout-compatible buffers we push to the C ABI. Each numeric is 8
+# bytes; flag bytes are written via Ptr[byte] mutation.
+def _build_rules_struct(rules: RiskRules, has_drawdown: bool, has_loss: bool,
+                        has_gross: bool, has_conc: bool) -> Ptr[byte]:
+    # Struct layout matches FloxPortfolioRiskRules.
+    # 4 (uint8 + 7 pad align) + 8 (double) groups, 4 of them = 64 bytes
+    # in C. Codon uses Ptr[byte] with manual offsets.
+    buf = Ptr[byte](64)
+    # Initialise all bytes to 0.
+    for i in range(64):
+        buf[i] = byte(0)
+
+    # has_max_drawdown_pct at offset 0
+    buf[0] = byte(1 if has_drawdown else 0)
+    # max_drawdown_pct at offset 8
+    Ptr[f64](buf + 8)[0] = rules.max_drawdown_pct
+
+    # has_max_daily_loss at offset 16
+    buf[16] = byte(1 if has_loss else 0)
+    Ptr[f64](buf + 24)[0] = rules.max_daily_loss
+
+    # has_max_gross_exposure at offset 32
+    buf[32] = byte(1 if has_gross else 0)
+    Ptr[f64](buf + 40)[0] = rules.max_gross_exposure
+
+    # has_max_concentration_pct at offset 48
+    buf[48] = byte(1 if has_conc else 0)
+    Ptr[f64](buf + 56)[0] = rules.max_concentration_pct
+
+    return buf
+
+
+@dataclass
+class StrategyFields:
+    realized_pnl: float
+    unrealized_pnl: float
+    fees: float
+    gross_exposure: float
+    net_exposure: float
+    trade_count: int
+
+
+def _build_fields_struct(f: StrategyFields) -> Ptr[byte]:
+    # FloxStrategyAccountFields: 5 doubles + 1 uint64 = 48 bytes.
+    buf = Ptr[byte](48)
+    Ptr[f64](buf + 0)[0] = f.realized_pnl
+    Ptr[f64](buf + 8)[0] = f.unrealized_pnl
+    Ptr[f64](buf + 16)[0] = f.fees
+    Ptr[f64](buf + 24)[0] = f.gross_exposure
+    Ptr[f64](buf + 32)[0] = f.net_exposure
+    Ptr[int](buf + 40)[0] = f.trade_count
+    return buf
+
+
+class PortfolioRiskAggregator:
+    _h: cobj
+
+    def __init__(self, rules: RiskRules, has_drawdown: bool, has_loss: bool,
+                 has_gross: bool, has_conc: bool, initial_equity: float):
+        rules_buf = _build_rules_struct(rules, has_drawdown, has_loss,
+                                        has_gross, has_conc)
+        self._h = flox_portfolio_risk_create(cobj(rules_buf), initial_equity)
+
+    def update(self, name: str, fields: StrategyFields, field_mask: int):
+        buf = _build_fields_struct(fields)
+        flox_portfolio_risk_update(self._h, name.c_str(), cobj(buf),
+                                   u8(field_mask))
+
+    def remove(self, name: str):
+        flox_portfolio_risk_remove(self._h, name.c_str())
+
+    def reset_kill_switch(self):
+        flox_portfolio_risk_reset_kill_switch(self._h)
+
+    def total_daily_pnl(self) -> float:
+        return flox_portfolio_risk_total_daily_pnl(self._h)
+
+    def total_gross_exposure(self) -> float:
+        return flox_portfolio_risk_total_gross_exposure(self._h)
+
+    def current_equity(self) -> float:
+        return flox_portfolio_risk_current_equity(self._h)
+
+    def drawdown_pct(self) -> float:
+        return flox_portfolio_risk_drawdown_pct(self._h)
+
+    def kill_switch_active(self) -> bool:
+        return int(flox_portfolio_risk_kill_switch_active(self._h)) != 0
+
+    def summary(self) -> PortfolioSummary:
+        return PortfolioSummary(
+            total_daily_pnl=self.total_daily_pnl(),
+            total_gross_exposure=self.total_gross_exposure(),
+            current_equity=self.current_equity(),
+            drawdown_pct=self.drawdown_pct(),
+            kill_switch_active=self.kill_switch_active(),
+            breach_count=flox_portfolio_risk_breach_count(self._h),
+            account_count=flox_portfolio_risk_account_count(self._h),
+        )
+
+    def destroy(self):
+        if self._h:
+            flox_portfolio_risk_destroy(self._h)
+            self._h = cobj()

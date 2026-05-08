@@ -1975,6 +1975,62 @@ extern "C"
                                           FloxTapeDiffMismatch* out,
                                           uint64_t max_entries);
 
+  // ============================================================
+  // Portfolio risk aggregator
+  // ============================================================
+
+  typedef void* FloxPortfolioRiskHandle;
+
+  typedef struct
+  {
+    uint8_t has_max_drawdown_pct;
+    double max_drawdown_pct;
+    uint8_t has_max_daily_loss;
+    double max_daily_loss;
+    uint8_t has_max_gross_exposure;
+    double max_gross_exposure;
+    uint8_t has_max_concentration_pct;
+    double max_concentration_pct;
+  } FloxPortfolioRiskRules;
+
+  typedef struct
+  {
+    double realized_pnl;
+    double unrealized_pnl;
+    double fees;
+    double gross_exposure;
+    double net_exposure;
+    uint64_t trade_count;
+  } FloxStrategyAccountFields;
+
+  typedef struct
+  {
+    const char* rule;
+    double value;
+    double limit;
+    const char* detail;
+  } FloxBreach;
+
+  FloxPortfolioRiskHandle flox_portfolio_risk_create(const FloxPortfolioRiskRules* rules,
+                                                     double initial_equity);
+  void flox_portfolio_risk_destroy(FloxPortfolioRiskHandle handle);
+  void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle, const char* name,
+                                  const FloxStrategyAccountFields* fields, uint8_t field_mask);
+  void flox_portfolio_risk_remove(FloxPortfolioRiskHandle handle, const char* name);
+  void flox_portfolio_risk_reset_kill_switch(FloxPortfolioRiskHandle handle);
+  uint8_t flox_portfolio_risk_check_order(FloxPortfolioRiskHandle handle,
+                                          const char* strategy, double notional,
+                                          const char* side, FloxBreach* out_breach);
+  double flox_portfolio_risk_total_daily_pnl(FloxPortfolioRiskHandle handle);
+  double flox_portfolio_risk_total_gross_exposure(FloxPortfolioRiskHandle handle);
+  double flox_portfolio_risk_current_equity(FloxPortfolioRiskHandle handle);
+  double flox_portfolio_risk_drawdown_pct(FloxPortfolioRiskHandle handle);
+  uint8_t flox_portfolio_risk_kill_switch_active(FloxPortfolioRiskHandle handle);
+  uint64_t flox_portfolio_risk_breach_count(FloxPortfolioRiskHandle handle);
+  uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle, uint64_t index,
+                                        FloxBreach* out);
+  uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle);
+
 #ifdef __cplusplus
 }
 #endif

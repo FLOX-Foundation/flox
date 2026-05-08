@@ -5068,6 +5068,204 @@
       "return_type": "void"
     },
     {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_account_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_breach_at",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "FloxBreach *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_breach_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_check_order",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        },
+        {
+          "name": "strategy",
+          "type": "const char *"
+        },
+        {
+          "name": "notional",
+          "type": "double"
+        },
+        {
+          "name": "side",
+          "type": "const char *"
+        },
+        {
+          "name": "out_breach",
+          "type": "FloxBreach *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_create",
+      "params": [
+        {
+          "name": "rules",
+          "type": "const FloxPortfolioRiskRules *"
+        },
+        {
+          "name": "initial_equity",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxPortfolioRiskHandle"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_current_equity",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_destroy",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_drawdown_pct",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_kill_switch_active",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_remove",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_reset_kill_switch",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_total_daily_pnl",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_total_gross_exposure",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "portfolio_risk",
+      "name": "flox_portfolio_risk_update",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxPortfolioRiskHandle"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "fields",
+          "type": "const FloxStrategyAccountFields *"
+        },
+        {
+          "name": "field_mask",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "position_group",
       "name": "flox_position_group_close",
       "params": [
@@ -7784,6 +7982,27 @@
     {
       "fields": [
         {
+          "name": "rule",
+          "type": "const char *"
+        },
+        {
+          "name": "value",
+          "type": "double"
+        },
+        {
+          "name": "limit",
+          "type": "double"
+        },
+        {
+          "name": "detail",
+          "type": "const char *"
+        }
+      ],
+      "name": "FloxBreach"
+    },
+    {
+      "fields": [
+        {
           "name": "first_event_ns",
           "type": "int64_t"
         },
@@ -8342,6 +8561,43 @@
     {
       "fields": [
         {
+          "name": "has_max_drawdown_pct",
+          "type": "uint8_t"
+        },
+        {
+          "name": "max_drawdown_pct",
+          "type": "double"
+        },
+        {
+          "name": "has_max_daily_loss",
+          "type": "uint8_t"
+        },
+        {
+          "name": "max_daily_loss",
+          "type": "double"
+        },
+        {
+          "name": "has_max_gross_exposure",
+          "type": "uint8_t"
+        },
+        {
+          "name": "max_gross_exposure",
+          "type": "double"
+        },
+        {
+          "name": "has_max_concentration_pct",
+          "type": "uint8_t"
+        },
+        {
+          "name": "max_concentration_pct",
+          "type": "double"
+        }
+      ],
+      "name": "FloxPortfolioRiskRules"
+    },
+    {
+      "fields": [
+        {
           "name": "files_read",
           "type": "uint64_t"
         },
@@ -8590,6 +8846,35 @@
         }
       ],
       "name": "FloxStorageSinkCallbacks"
+    },
+    {
+      "fields": [
+        {
+          "name": "realized_pnl",
+          "type": "double"
+        },
+        {
+          "name": "unrealized_pnl",
+          "type": "double"
+        },
+        {
+          "name": "fees",
+          "type": "double"
+        },
+        {
+          "name": "gross_exposure",
+          "type": "double"
+        },
+        {
+          "name": "net_exposure",
+          "type": "double"
+        },
+        {
+          "name": "trade_count",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxStrategyAccountFields"
     },
     {
       "fields": [
@@ -8932,6 +9217,10 @@
     },
     {
       "name": "FloxPnLTrackerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPortfolioRiskHandle",
       "target": "void*"
     },
     {

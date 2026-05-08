@@ -1,48 +1,93 @@
 # Aggregate risk across strategies
 
-Per-strategy daily-loss limits are common in trading frameworks. Portfolio-level caps that span strategies and accounts are commercial-only or homegrown. `flox_py.portfolio_risk` is the open-source reference implementation: a single-process, in-memory aggregator that combines PnL and exposure across N registered strategies, applies portfolio-level rules, and trips a kill switch when any rule is breached.
+Per-strategy daily-loss limits are common in trading frameworks. Portfolio-level caps that span strategies and accounts are commercial-only or homegrown. flox ships an open-source reference implementation in the C++ engine: a single-process, in-memory aggregator that combines PnL and exposure across N registered strategies, applies portfolio-level rules, and trips a kill switch when any rule is breached. Every binding (Python, Node, Codon, QuickJS) drives the same engine state through the C ABI.
 
-Multi-process aggregation through shared state is a Phase 2 concern. The API stays the same when that backend lands; nothing about how you call this changes.
+Multi-process aggregation through shared state is a Phase 2 concern. The public API stays the same when that backend lands.
 
 ## Quick start
 
-```python
-from flox_py.portfolio_risk import (
-    PortfolioRiskAggregator,
-    RiskRules,
-)
+=== "Python"
 
-aggregator = PortfolioRiskAggregator(
-    rules=RiskRules(
-        max_drawdown_pct=0.20,
-        max_daily_loss=10_000,
-        max_gross_exposure=500_000,
-        max_concentration_pct=0.40,
-    ),
-    initial_equity=100_000,
-    on_breach=my_kill_switch.activate,
-)
+    ```python
+    from flox_py.portfolio_risk import (
+        PortfolioRiskAggregator, RiskRules,
+    )
 
-# As each strategy reports its daily PnL and exposure:
-aggregator.update(
-    "ema-trend",
-    realized_pnl=120.0,
-    unrealized_pnl=-30.0,
-    fees=-2.50,
-    gross_exposure=5_000.0,
-    net_exposure=4_500.0,
-    trade_count=12,
-)
+    aggregator = PortfolioRiskAggregator(
+        rules=RiskRules(
+            max_drawdown_pct=0.20,
+            max_daily_loss=10_000,
+            max_gross_exposure=500_000,
+            max_concentration_pct=0.40,
+        ),
+        initial_equity=100_000,
+        on_breach=my_kill_switch.activate,
+    )
 
-# Pre-trade gating from inside a RiskManager hook:
-breach = aggregator.check_order(
-    strategy="ema-trend",
-    notional=2_500.0,
-    side="buy",
-)
-if breach is not None:
-    reject_order(breach.detail)
-```
+    aggregator.update(
+        "ema-trend",
+        realized_pnl=120.0, unrealized_pnl=-30.0, fees=-2.50,
+        gross_exposure=5_000.0, net_exposure=4_500.0, trade_count=12,
+    )
+
+    breach = aggregator.check_order(
+        strategy="ema-trend", notional=2_500.0, side="buy",
+    )
+    if breach is not None:
+        reject_order(breach.detail)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const flox = require('@flox-foundation/flox');
+
+    const aggregator = new flox.PortfolioRiskAggregator({
+      rules: {
+        maxDrawdownPct: 0.20,
+        maxDailyLoss: 10_000,
+        maxGrossExposure: 500_000,
+        maxConcentrationPct: 0.40,
+      },
+      initialEquity: 100_000,
+    });
+
+    aggregator.update('ema-trend', {
+      realizedPnl: 120, unrealizedPnl: -30, fees: -2.50,
+      grossExposure: 5_000, netExposure: 4_500, tradeCount: 12,
+    });
+
+    const breach = aggregator.checkOrder('ema-trend', 2_500, 'buy');
+    if (breach !== null) rejectOrder(breach.detail);
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.portfolio_risk import (
+        PortfolioRiskAggregator, RiskRules, StrategyFields,
+    )
+
+    rules = RiskRules(0.20, 10000.0, 500000.0, 0.40)
+    agg = PortfolioRiskAggregator(rules, True, True, True, True, 100000.0)
+
+    f = StrategyFields(120.0, -30.0, -2.5, 5000.0, 4500.0, 12)
+    agg.update("ema-trend", f, 0x3F)
+    summary = agg.summary()
+    ```
+
+=== "QuickJS"
+
+    ```javascript
+    var agg = new flox.PortfolioRiskAggregator({
+      rules: { maxDrawdownPct: 0.20, maxDailyLoss: 10000 },
+      initialEquity: 100000,
+    });
+    agg.update('ema-trend', {
+      realizedPnl: 120, unrealizedPnl: -30, fees: -2.5,
+      grossExposure: 5000, tradeCount: 12,
+    });
+    ```
 
 ## The four rules
 

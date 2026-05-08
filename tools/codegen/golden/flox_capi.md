@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 357 functions, 34 handles, 44 structs, 33 callback typedefs, 2 enums, 49 groups.
+**Surface:** 371 functions, 35 handles, 47 structs, 33 callback typedefs, 2 enums, 50 groups.
 
 ## Opaque handles
 
@@ -42,6 +42,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxGridSearchHandle`
 - `FloxLatencyModelHandle`
 - `FloxTapeDiffHandle`
+- `FloxPortfolioRiskHandle`
 
 ## Enums
 
@@ -627,6 +628,39 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `left` | `FloxTapeDiffTrade` |
 | `right` | `FloxTapeDiffTrade` |
 
+### `FloxPortfolioRiskRules`
+
+| field | type |
+|---|---|
+| `has_max_drawdown_pct` | `uint8_t` |
+| `max_drawdown_pct` | `double` |
+| `has_max_daily_loss` | `uint8_t` |
+| `max_daily_loss` | `double` |
+| `has_max_gross_exposure` | `uint8_t` |
+| `max_gross_exposure` | `double` |
+| `has_max_concentration_pct` | `uint8_t` |
+| `max_concentration_pct` | `double` |
+
+### `FloxStrategyAccountFields`
+
+| field | type |
+|---|---|
+| `realized_pnl` | `double` |
+| `unrealized_pnl` | `double` |
+| `fees` | `double` |
+| `gross_exposure` | `double` |
+| `net_exposure` | `double` |
+| `trade_count` | `uint64_t` |
+
+### `FloxBreach`
+
+| field | type |
+|---|---|
+| `rule` | `const char *` |
+| `value` | `double` |
+| `limit` | `double` |
+| `detail` | `const char *` |
+
 ## Functions
 
 ### additional_bar
@@ -961,6 +995,23 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_segment_export_p(const char * input_path, const char * output_path, uint8_t format, int64_t from_ns, int64_t to_ns, const uint32_t * symbols, uint32_t num_symbols, void * out)`
 - `void flox_segment_validate_full_p(const char * path, uint8_t verify_crc, uint8_t verify_timestamps, void * out)`
 - `void flox_dataset_validate_p(const char * data_dir, void * out)`
+
+### portfolio_risk
+
+- `FloxPortfolioRiskHandle flox_portfolio_risk_create(const FloxPortfolioRiskRules * rules, double initial_equity)`
+- `void flox_portfolio_risk_destroy(FloxPortfolioRiskHandle handle)`
+- `void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle, const char * name, const FloxStrategyAccountFields * fields, uint8_t field_mask)`
+- `void flox_portfolio_risk_remove(FloxPortfolioRiskHandle handle, const char * name)`
+- `void flox_portfolio_risk_reset_kill_switch(FloxPortfolioRiskHandle handle)`
+- `uint8_t flox_portfolio_risk_check_order(FloxPortfolioRiskHandle handle, const char * strategy, double notional, const char * side, FloxBreach * out_breach)`
+- `double flox_portfolio_risk_total_daily_pnl(FloxPortfolioRiskHandle handle)`
+- `double flox_portfolio_risk_total_gross_exposure(FloxPortfolioRiskHandle handle)`
+- `double flox_portfolio_risk_current_equity(FloxPortfolioRiskHandle handle)`
+- `double flox_portfolio_risk_drawdown_pct(FloxPortfolioRiskHandle handle)`
+- `uint8_t flox_portfolio_risk_kill_switch_active(FloxPortfolioRiskHandle handle)`
+- `uint64_t flox_portfolio_risk_breach_count(FloxPortfolioRiskHandle handle)`
+- `uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle, uint64_t index, FloxBreach * out)`
+- `uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle)`
 
 ### position
 
