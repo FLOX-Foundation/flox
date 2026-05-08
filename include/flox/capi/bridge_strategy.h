@@ -13,6 +13,9 @@
 #include "flox/capi/flox_capi.h"
 #include "flox/strategy/strategy.h"
 
+#include <atomic>
+#include <memory>
+
 namespace flox
 {
 
@@ -21,25 +24,58 @@ class BridgeStrategy : public Strategy
  public:
   BridgeStrategy(SubscriberId id, std::vector<SymbolId> symbols, const SymbolRegistry& registry,
                  FloxStrategyCallbacks callbacks)
-      : Strategy(id, std::move(symbols), registry), _cb(callbacks), _registry(&registry)
+      : Strategy(id, std::move(symbols), registry),
+        _cb(new FloxStrategyCallbacks(callbacks)),
+        _registry(&registry)
   {
+  }
+
+  ~BridgeStrategy()
+  {
+    delete _cb.load(std::memory_order_acquire);
+  }
+
+  // Atomically replace the callback set. In-flight dispatches see
+  // either the old or the new callback set; the struct is never
+  // torn. State carry-over happens through the on_stop / on_start
+  // contract: on_stop fires on the old user_data before the swap,
+  // on_start on the new user_data after.
+  //
+  // Old callback structs are intentionally leaked. Hot-reload is
+  // rare; ~56 bytes per swap is preferable to wiring an
+  // epoch-based reclaimer for a feature that fires once an hour.
+  void replaceCallbacks(FloxStrategyCallbacks newCb)
+  {
+    FloxStrategyCallbacks* old = _cb.load(std::memory_order_acquire);
+    if (old && old->on_stop)
+    {
+      old->on_stop(old->user_data);
+    }
+    auto* next = new FloxStrategyCallbacks(newCb);
+    _cb.store(next, std::memory_order_release);
+    if (newCb.on_start)
+    {
+      newCb.on_start(newCb.user_data);
+    }
   }
 
   const SymbolRegistry& registry() const { return *_registry; }
 
   void start() override
   {
-    if (_cb.on_start)
+    auto cb = _cb.load(std::memory_order_acquire);
+    if (cb && cb->on_start)
     {
-      _cb.on_start(_cb.user_data);
+      cb->on_start(cb->user_data);
     }
   }
 
   void stop() override
   {
-    if (_cb.on_stop)
+    auto cb = _cb.load(std::memory_order_acquire);
+    if (cb && cb->on_stop)
     {
-      _cb.on_stop(_cb.user_data);
+      cb->on_stop(cb->user_data);
     }
   }
 
@@ -126,7 +162,8 @@ class BridgeStrategy : public Strategy
  protected:
   void onSymbolTrade(SymbolContext& c, const TradeEvent& ev) override
   {
-    if (!_cb.on_trade)
+    auto* cb = _cb.load(std::memory_order_acquire);
+    if (!cb || !cb->on_trade)
     {
       return;
     }
@@ -139,12 +176,13 @@ class BridgeStrategy : public Strategy
     ftrade.is_buy = ev.trade.isBuy ? 1 : 0;
     ftrade.exchange_ts_ns = static_cast<int64_t>(ev.trade.exchangeTsNs);
 
-    _cb.on_trade(_cb.user_data, &fctx, &ftrade);
+    cb->on_trade(cb->user_data, &fctx, &ftrade);
   }
 
   void onSymbolBook(SymbolContext& c, const BookUpdateEvent& ev) override
   {
-    if (!_cb.on_book)
+    auto* cb = _cb.load(std::memory_order_acquire);
+    if (!cb || !cb->on_book)
     {
       return;
     }
@@ -155,12 +193,13 @@ class BridgeStrategy : public Strategy
     fbook.exchange_ts_ns = static_cast<int64_t>(ev.update.exchangeTsNs);
     fbook.snapshot = toBookSnapshot(c);
 
-    _cb.on_book(_cb.user_data, &fctx, &fbook);
+    cb->on_book(cb->user_data, &fctx, &fbook);
   }
 
   void onSymbolBar(SymbolContext& c, const BarEvent& ev) override
   {
-    if (!_cb.on_bar)
+    auto* cb = _cb.load(std::memory_order_acquire);
+    if (!cb || !cb->on_bar)
     {
       return;
     }
@@ -181,7 +220,7 @@ class BridgeStrategy : public Strategy
     fbar.start_time_ns = ev.bar.startTime.time_since_epoch().count();
     fbar.end_time_ns = ev.bar.endTime.time_since_epoch().count();
 
-    _cb.on_bar(_cb.user_data, &fctx, &fbar);
+    cb->on_bar(cb->user_data, &fctx, &fbar);
   }
 
  private:
@@ -226,7 +265,7 @@ class BridgeStrategy : public Strategy
     return fctx;
   }
 
-  FloxStrategyCallbacks _cb;
+  std::atomic<FloxStrategyCallbacks*> _cb;
   const SymbolRegistry* _registry;
 };
 

@@ -565,9 +565,52 @@ class PyStrategyTrampoline : public PyStrategyBase
 
 struct PyStrategyHost
 {
-  PyStrategyBase* strategy;
+  std::atomic<PyStrategyBase*> strategy;
   std::unique_ptr<BridgeStrategy> bridge;
   bool with_gil;
+
+  // Atomically swap the user-facing strategy. Old strategy.on_stop
+  // fires before the swap, new strategy.on_start fires after. Bus
+  // subscriptions, in-flight orders, and the bridge's internal
+  // state survive untouched.
+  void replace_strategy(PyStrategyBase* new_strat)
+  {
+    PyStrategyBase* old = strategy.load(std::memory_order_acquire);
+    auto fire_lifecycle = [this](PyStrategyBase* s, bool start)
+    {
+      if (!s)
+      {
+        return;
+      }
+      if (with_gil)
+      {
+        py::gil_scoped_acquire gil;
+        if (start)
+        {
+          s->on_start();
+        }
+        else
+        {
+          s->on_stop();
+        }
+      }
+      else
+      {
+        if (start)
+        {
+          s->on_start();
+        }
+        else
+        {
+          s->on_stop();
+        }
+      }
+    };
+    fire_lifecycle(old, false);
+    new_strat->_initBridge(bridge.get());
+    strategy.store(new_strat, std::memory_order_release);
+    fire_lifecycle(new_strat, true);
+  }
 
   PyStrategyHost(PyStrategyBase* strat, SymbolRegistry* reg,
                  uint32_t id, bool with_gil_)
@@ -610,7 +653,7 @@ struct PyStrategyHost
       pt.side = pt.is_buy ? "buy" : "sell";
       pt.timestamp_ns = trade->exchange_ts_ns;
 
-      self->strategy->on_trade(pc, pt);
+      self->strategy.load(std::memory_order_acquire)->on_trade(pc, pt);
     };
     if (self->with_gil)
     {
@@ -636,7 +679,7 @@ struct PyStrategyHost
       pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
       pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
       pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
-      self->strategy->on_book_update(pc);
+      self->strategy.load(std::memory_order_acquire)->on_book_update(pc);
     };
     if (self->with_gil)
     {
@@ -677,7 +720,7 @@ struct PyStrategyHost
       pb.end_time_ns = bar->end_time_ns;
       pb.close_reason = bar->close_reason;
 
-      self->strategy->on_bar(pc, pb);
+      self->strategy.load(std::memory_order_acquire)->on_bar(pc, pb);
     };
     if (self->with_gil)
     {
@@ -696,11 +739,11 @@ struct PyStrategyHost
     if (self->with_gil)
     {
       py::gil_scoped_acquire gil;
-      self->strategy->on_start();
+      self->strategy.load(std::memory_order_acquire)->on_start();
     }
     else
     {
-      self->strategy->on_start();
+      self->strategy.load(std::memory_order_acquire)->on_start();
     }
   }
 
@@ -710,11 +753,11 @@ struct PyStrategyHost
     if (self->with_gil)
     {
       py::gil_scoped_acquire gil;
-      self->strategy->on_stop();
+      self->strategy.load(std::memory_order_acquire)->on_stop();
     }
     else
     {
-      self->strategy->on_stop();
+      self->strategy.load(std::memory_order_acquire)->on_stop();
     }
   }
 };
@@ -753,6 +796,16 @@ class PyStrategyRunner
     flox_runner_add_strategy(_runner,
                              static_cast<FloxStrategyHandle>(host->bridge.get()));
     _hosts.push_back(std::move(host));
+  }
+
+  void replace_strategy(uint32_t index, PyStrategyBase* new_strat)
+  {
+    if (index >= _hosts.size())
+    {
+      throw flox::FloxError("E_VAL_002",
+                            "replace_strategy: index out of range");
+    }
+    _hosts[index]->replace_strategy(new_strat);
   }
 
   void start() { flox_runner_start(_runner); }
@@ -950,6 +1003,16 @@ class PyLiveEngine
     _hosts.push_back(std::move(host));
   }
 
+  void replace_strategy(uint32_t index, PyStrategyBase* new_strat)
+  {
+    if (index >= _hosts.size())
+    {
+      throw flox::FloxError("E_VAL_002",
+                            "replace_strategy: index out of range");
+    }
+    _hosts[index]->replace_strategy(new_strat);
+  }
+
   void start() { flox_live_engine_start(_engine); }
   void stop()
   {
@@ -1145,6 +1208,18 @@ class PyRunner
     else
     {
       _sync->add_strategy(strat);
+    }
+  }
+
+  void replace_strategy(uint32_t index, PyStrategyBase* new_strat)
+  {
+    if (_live)
+    {
+      _live->replace_strategy(index, new_strat);
+    }
+    else
+    {
+      _sync->replace_strategy(index, new_strat);
     }
   }
 
@@ -2058,6 +2133,12 @@ inline void bindStrategy(py::module_& m)
            py::keep_alive<1, 2>())
       .def("add_strategy", &PyRunner::add_strategy, py::arg("strategy"),
            py::keep_alive<1, 2>())
+      .def("replace_strategy", &PyRunner::replace_strategy,
+           py::arg("index"), py::arg("strategy"), py::keep_alive<1, 3>(),
+           "Atomically swap the strategy instance at `index` for a new "
+           "one. The old strategy's on_stop fires, the bridge's "
+           "internal state survives, the new strategy's on_start fires "
+           "afterwards. WebSocket / gRPC connections are unaffected.")
       .def("start", &PyRunner::start)
       .def("stop", &PyRunner::stop)
       .def("set_pnl_tracker", &PyRunner::set_pnl_tracker, py::arg("tracker"),

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 387 functions, 36 handles, 48 structs, 33 callback typedefs, 2 enums, 51 groups.
+**Surface:** 388 functions, 36 handles, 48 structs, 33 callback typedefs, 2 enums, 51 groups.
 
 ## Opaque handles
 
@@ -1154,6 +1154,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 - `FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t * symbols, uint32_t num_symbols, FloxRegistryHandle registry, FloxStrategyCallbacks callbacks)`
 - `void flox_strategy_destroy(FloxStrategyHandle strategy)`
+- `void flox_strategy_replace_callbacks(FloxStrategyHandle strategy, FloxStrategyCallbacks callbacks)`
 
 ### strategyrunner_synchronous
 

@@ -178,6 +178,38 @@ struct NodeStrategyHost
     }
   }
 
+  // Replace the strategy's callbacks with those from a new strategy
+  // object. Bridge subscriptions, in-flight orders, and connector
+  // sessions stay intact. The caller must invoke this on the V8
+  // thread; concurrent dispatch from a TSFN consumer would race on
+  // the FunctionReference fields.
+  void replaceStrategy(Napi::Object new_strategy_obj)
+  {
+    auto get = [&](const char* name) -> Napi::FunctionReference
+    {
+      auto val = new_strategy_obj.Get(name);
+      if (val.IsFunction())
+      {
+        return Napi::Persistent(val.As<Napi::Function>());
+      }
+      return {};
+    };
+
+    if (on_stop_fn)
+    {
+      on_stop_fn.Call({});
+    }
+    on_trade_fn = get("onTrade");
+    on_book_fn = get("onBookUpdate");
+    on_bar_fn = get("onBar");
+    on_start_fn = get("onStart");
+    on_stop_fn = get("onStop");
+    if (on_start_fn)
+    {
+      on_start_fn.Call({});
+    }
+  }
+
   NodeStrategyHost(Napi::Env env_, Napi::Object strategy_obj,
                    SymbolRegistry* reg, uint32_t id,
                    const std::vector<uint32_t>& syms_)
@@ -482,6 +514,7 @@ class StrategyRunnerNode : public Napi::ObjectWrap<StrategyRunnerNode>
     return DefineClass(env, "StrategyRunner",
                        {
                            InstanceMethod("addStrategy", &StrategyRunnerNode::addStrategy),
+                           InstanceMethod("replaceStrategy", &StrategyRunnerNode::replaceStrategy),
                            InstanceMethod("start", &StrategyRunnerNode::start),
                            InstanceMethod("stop", &StrategyRunnerNode::stop),
                            InstanceMethod("onTrade", &StrategyRunnerNode::onTrade),
@@ -538,6 +571,28 @@ class StrategyRunnerNode : public Napi::ObjectWrap<StrategyRunnerNode>
     flox_runner_add_strategy(_runner,
                              static_cast<FloxStrategyHandle>(host->bridge.get()));
     _hosts.push_back(std::move(host));
+    return env.Undefined();
+  }
+
+  Napi::Value replaceStrategy(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsObject())
+    {
+      Napi::TypeError::New(env, "replaceStrategy(index, newStrategy) expected")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
+    if (idx >= _hosts.size())
+    {
+      auto err = Napi::Error::New(env, "replaceStrategy: index out of range");
+      err.Value().Set("code", Napi::String::New(env, "E_VAL_002"));
+      err.Value().Set("name", Napi::String::New(env, "FloxError"));
+      err.ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    _hosts[idx]->replaceStrategy(info[1].As<Napi::Object>());
     return env.Undefined();
   }
 
@@ -647,6 +702,7 @@ class LiveEngineNode : public Napi::ObjectWrap<LiveEngineNode>
     return DefineClass(env, "LiveEngine",
                        {
                            InstanceMethod("addStrategy", &LiveEngineNode::addStrategy),
+                           InstanceMethod("replaceStrategy", &LiveEngineNode::replaceStrategy),
                            InstanceMethod("start", &LiveEngineNode::start),
                            InstanceMethod("stop", &LiveEngineNode::stop),
                            InstanceMethod("publishTrade", &LiveEngineNode::publishTrade),
@@ -711,6 +767,28 @@ class LiveEngineNode : public Napi::ObjectWrap<LiveEngineNode>
                                   static_cast<FloxStrategyHandle>(host->bridge.get()),
                                   &LiveEngineNode::signalCb, this);
     _hosts.push_back(std::move(host));
+    return env.Undefined();
+  }
+
+  Napi::Value replaceStrategy(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsObject())
+    {
+      Napi::TypeError::New(env, "replaceStrategy(index, newStrategy) expected")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
+    if (idx >= _hosts.size())
+    {
+      auto err = Napi::Error::New(env, "replaceStrategy: index out of range");
+      err.Value().Set("code", Napi::String::New(env, "E_VAL_002"));
+      err.Value().Set("name", Napi::String::New(env, "FloxError"));
+      err.ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    _hosts[idx]->replaceStrategy(info[1].As<Napi::Object>());
     return env.Undefined();
   }
 
@@ -1104,6 +1182,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
         env, "Runner",
         {
             InstanceMethod("addStrategy", &RunnerNode::addStrategy),
+            InstanceMethod("replaceStrategy", &RunnerNode::replaceStrategy),
             InstanceMethod("start", &RunnerNode::start),
             InstanceMethod("stop", &RunnerNode::stop),
             InstanceMethod("onTrade", &RunnerNode::onTrade),
@@ -1211,6 +1290,28 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
                                static_cast<FloxStrategyHandle>(host->bridge.get()));
     }
     _hosts.push_back(std::move(host));
+    return env.Undefined();
+  }
+
+  Napi::Value replaceStrategy(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsObject())
+    {
+      Napi::TypeError::New(env, "replaceStrategy(index, newStrategy) expected")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
+    if (idx >= _hosts.size())
+    {
+      auto err = Napi::Error::New(env, "replaceStrategy: index out of range");
+      err.Value().Set("code", Napi::String::New(env, "E_VAL_002"));
+      err.Value().Set("name", Napi::String::New(env, "FloxError"));
+      err.ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    _hosts[idx]->replaceStrategy(info[1].As<Napi::Object>());
     return env.Undefined();
   }
 

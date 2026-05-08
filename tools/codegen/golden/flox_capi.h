@@ -1434,6 +1434,7 @@ extern "C"
                                           uint32_t num_symbols, FloxRegistryHandle registry,
                                           FloxStrategyCallbacks callbacks);
   void flox_strategy_destroy(FloxStrategyHandle strategy);
+  void flox_strategy_replace_callbacks(FloxStrategyHandle strategy, FloxStrategyCallbacks callbacks);
 
   // ============================================================
   // Strategyrunner Synchronous

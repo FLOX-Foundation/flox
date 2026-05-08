@@ -201,6 +201,9 @@ jobs:
     - name: Verify execution algorithms
       run: PYTHONPATH=build/python python3 python/tests/test_execution_algos.py
 
+    - name: Verify strategy hot-reload
+      run: PYTHONPATH=build/python python3 python/tests/test_strategy_hot_reload.py
+
     - name: Verify RL environment
       run: PYTHONPATH=build/python python3 python/tests/test_rl_env.py
 
@@ -288,6 +291,10 @@ jobs:
     - name: Verify Node.js execution algorithms
       run: |
         cd node && node test/test_execution_algos.js
+
+    - name: Verify Node.js strategy hot-reload
+      run: |
+        cd node && node test/test_hot_reload.js
 
     - name: Verify Node.js extension hooks
       run: |

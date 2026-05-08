@@ -442,6 +442,7 @@ from C import flox_runner_set_storage_sink(cobj, cobj)
 # ── strategy_lifecycle ──
 from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
 from C import flox_strategy_destroy(cobj)
+from C import flox_strategy_replace_callbacks(cobj, cobj)
 
 # ── strategyrunner_synchronous ──
 from C import flox_runner_create(cobj, cobj, cobj) -> cobj

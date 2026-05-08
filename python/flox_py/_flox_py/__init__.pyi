@@ -1262,6 +1262,10 @@ class Runner:
         ...
     def on_trade(self, symbol: typing.Any, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
+    def replace_strategy(self, index: typing.SupportsInt | typing.SupportsIndex, strategy: Strategy) -> None:
+        """
+        Atomically swap the strategy instance at `index` for a new one. The old strategy's on_stop fires, the bridge's internal state survives, the new strategy's on_start fires afterwards. WebSocket / gRPC connections are unaffected.
+        """
     def set_executor(self, executor: Executor) -> None:
         ...
     def set_kill_switch(self, ks: KillSwitch) -> None:
