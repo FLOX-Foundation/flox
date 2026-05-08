@@ -4,6 +4,7 @@
 
 import type { ViewerState } from '../state.ts';
 import { tapeSlice, signalsSlice, ordersSlice, fillsSlice } from '../state.ts';
+import type { Trade } from '../parsers/floxlog.ts';
 
 const fmtTs = (ns: bigint) => {
   const ms = Number(ns / 1_000_000n);
@@ -229,6 +230,234 @@ export function renderEquity(state: ViewerState) {
   ctx.font = '10px ui-monospace, monospace';
   ctx.fillText(`min ${minEq.toFixed(2)}`, 8, h - 4);
   ctx.fillText(`max ${maxEq.toFixed(2)}`, 8, 12);
+}
+
+// Cached chart geometry from the most recent render. Mouse handlers
+// read this to convert pointer position back into a tape timestamp.
+interface ChartContext {
+  trades: Trade[];
+  t0: bigint;
+  tN: bigint;
+  padL: number;
+  padT: number;
+  plotW: number;
+  plotH: number;
+  minP: number;
+  maxP: number;
+}
+let priceChartCtx: ChartContext | null = null;
+let priceChartWired = false;
+
+function wirePriceChart(canvas: HTMLCanvasElement, tooltip: HTMLElement) {
+  if (priceChartWired) return;
+  priceChartWired = true;
+
+  const xToTs = (x: number): bigint | null => {
+    const c = priceChartCtx;
+    if (!c) return null;
+    const tSpan = Number(c.tN - c.t0);
+    const frac = (x - c.padL) / c.plotW;
+    if (!Number.isFinite(frac) || frac < 0 || frac > 1) return null;
+    return c.t0 + BigInt(Math.round(frac * tSpan));
+  };
+
+  const nearestTrade = (ts: bigint): Trade | null => {
+    const c = priceChartCtx;
+    if (!c || c.trades.length === 0) return null;
+    let lo = 0, hi = c.trades.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (c.trades[mid].ts_ns < ts) lo = mid + 1; else hi = mid;
+    }
+    const candidates = [c.trades[lo - 1], c.trades[lo]].filter(Boolean) as Trade[];
+    let best = candidates[0];
+    for (const t of candidates) {
+      if (t.ts_ns > ts ? t.ts_ns - ts : ts - t.ts_ns) {
+        const da = t.ts_ns > ts ? t.ts_ns - ts : ts - t.ts_ns;
+        const db = best.ts_ns > ts ? best.ts_ns - ts : ts - best.ts_ns;
+        if (da < db) best = t;
+      }
+    }
+    return best;
+  };
+
+  const fmtTs = (ns: bigint) =>
+    new Date(Number(ns / 1_000_000n)).toISOString().slice(11, 23);
+
+  canvas.addEventListener('mousemove', (ev) => {
+    const c = priceChartCtx;
+    if (!c) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+    if (x < c.padL || x > c.padL + c.plotW || y < c.padT || y > c.padT + c.plotH) {
+      tooltip.hidden = true;
+      return;
+    }
+    const ts = xToTs(x);
+    if (ts === null) {
+      tooltip.hidden = true;
+      return;
+    }
+    const t = nearestTrade(ts);
+    if (!t) {
+      tooltip.hidden = true;
+      return;
+    }
+    const sideClass = t.side === 'buy' ? 'side-buy' : 'side-sell';
+    tooltip.innerHTML =
+      `<span class="ts">${fmtTs(t.ts_ns)}</span>` +
+      `<span class="${sideClass}">${t.side}</span> ` +
+      `${t.price.toFixed(2)} × ${t.qty.toFixed(4)}`;
+    tooltip.hidden = false;
+    // Position above-right of the cursor; clamp to canvas.
+    const tipX = Math.min(x + 12, canvas.clientWidth - tooltip.offsetWidth - 4);
+    const tipY = Math.max(y - tooltip.offsetHeight - 8, 4);
+    tooltip.style.left = `${tipX}px`;
+    tooltip.style.top = `${tipY}px`;
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.hidden = true; });
+  canvas.addEventListener('click', (ev) => {
+    const rect = canvas.getBoundingClientRect();
+    const ts = xToTs(ev.clientX - rect.left);
+    if (ts !== null) {
+      canvas.dispatchEvent(new CustomEvent('viewer-seek', {
+        detail: { ts }, bubbles: true,
+      }));
+    }
+  });
+}
+
+export function renderPriceChart(state: ViewerState) {
+  const canvas = document.getElementById('view-price') as HTMLCanvasElement;
+  const tooltip = document.getElementById('price-tooltip') as HTMLElement;
+  const empty = document.querySelector<HTMLElement>('.emptystate[data-for="price"]')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  wirePriceChart(canvas, tooltip);
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  // Pull every trade in the loaded tape (not just up-to-cursor) so the
+  // chart shape stays stable while scrubbing; the cursor draws as a
+  // vertical line on top.
+  const trades: Trade[] = state.tape.filter((e): e is Trade => e.type === 'trade');
+  if (trades.length === 0) {
+    empty.hidden = false;
+    empty.textContent = state.tape.length === 0
+      ? 'No `.floxlog` loaded. Drop one to see the price chart.'
+      : 'Tape has no trades.';
+    return;
+  }
+  empty.hidden = true;
+
+  const t0 = state.ts_min;
+  const tN = state.ts_max;
+  const tSpan = Math.max(1, Number(tN - t0));
+  let minP = Infinity, maxP = -Infinity;
+  for (const t of trades) {
+    if (t.price < minP) minP = t.price;
+    if (t.price > maxP) maxP = t.price;
+  }
+  const padP = Math.max(1e-9, (maxP - minP) * 0.08);
+  minP -= padP; maxP += padP;
+  const pSpan = Math.max(1e-9, maxP - minP);
+
+  const padL = 56, padR = 12, padT = 10, padB = 22;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const xOf = (ts: bigint) => padL + (Number(ts - t0) / tSpan) * plotW;
+  const yOf = (price: number) => padT + (1 - (price - minP) / pSpan) * plotH;
+  priceChartCtx = { trades, t0, tN, padL, padT, plotW, plotH, minP, maxP };
+
+  // Grid + axis labels.
+  ctx.strokeStyle = '#eef0f4';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (i / 4) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(w - padR, y);
+    ctx.stroke();
+    const p = maxP - (i / 4) * pSpan;
+    ctx.fillText(p.toFixed(2), 6, y);
+  }
+
+  // Trade-line.
+  ctx.strokeStyle = '#138caf';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  trades.forEach((t, i) => {
+    const x = xOf(t.ts_ns), y = yOf(t.price);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Trade dots, colored by side.
+  for (const t of trades) {
+    ctx.fillStyle = t.side === 'buy' ? 'rgba(33, 161, 101, 0.55)' : 'rgba(214, 70, 75, 0.55)';
+    ctx.beginPath();
+    ctx.arc(xOf(t.ts_ns), yOf(t.price), 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Signal markers: vertical band + label.
+  const sigs = state.run ? state.run.signals : [];
+  ctx.font = '10px ui-monospace, monospace';
+  for (const s of sigs) {
+    if (s.run_ts_ns < t0 || s.run_ts_ns > tN) continue;
+    const x = xOf(s.run_ts_ns);
+    const isExit = (s.flags & 0x02) !== 0;
+    ctx.strokeStyle = isExit ? 'rgba(214, 70, 75, 0.5)' : 'rgba(33, 161, 101, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, h - padB);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = isExit ? '#d6464b' : '#21a165';
+    ctx.fillText(s.name, x + 3, padT + 8);
+  }
+
+  // Fill markers: triangle pointing into the trade direction.
+  const fills = state.run ? state.run.fills : [];
+  for (const f of fills) {
+    if (f.run_ts_ns < t0 || f.run_ts_ns > tN) continue;
+    const x = xOf(f.run_ts_ns);
+    const y = yOf(f.price);
+    ctx.fillStyle = f.side === 0 ? '#21a165' : '#d6464b';
+    ctx.beginPath();
+    if (f.side === 0) {
+      ctx.moveTo(x, y - 6);
+      ctx.lineTo(x - 4, y);
+      ctx.lineTo(x + 4, y);
+    } else {
+      ctx.moveTo(x, y + 6);
+      ctx.lineTo(x - 4, y);
+      ctx.lineTo(x + 4, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Cursor line.
+  if (state.cursor_ns >= t0 && state.cursor_ns <= tN) {
+    const cx = xOf(state.cursor_ns);
+    ctx.strokeStyle = 'rgba(26, 35, 50, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, padT);
+    ctx.lineTo(cx, h - padB);
+    ctx.stroke();
+  }
 }
 
 function escapeHtml(s: string): string {

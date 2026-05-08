@@ -9,6 +9,7 @@ import {
   renderSignals,
   renderOrders,
   renderEquity,
+  renderPriceChart,
 } from './views/index.ts';
 
 const store = new Store();
@@ -162,6 +163,7 @@ store.subscribe((s) => {
     requestAnimationFrame(() => {
       renderScheduled = false;
       const cur = store.get();
+      renderPriceChart(cur);
       renderTrades(cur);
       renderOrderbook(cur);
       renderSignals(cur);
@@ -204,6 +206,11 @@ async function tryAutoload() {
   if (collected.length > 0) await loadFiles(collected);
 }
 tryAutoload();
+
+document.addEventListener('viewer-seek', (e) => {
+  const ts = (e as CustomEvent<{ ts: bigint }>).detail?.ts;
+  if (typeof ts === 'bigint') store.setCursor(ts);
+});
 
 window.addEventListener('hashchange', () => {
   const bookmark = readBookmark();

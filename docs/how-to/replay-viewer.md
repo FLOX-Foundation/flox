@@ -6,8 +6,9 @@ It is a static HTML build with no backend, no auth, and no live data path. The w
 
 ## What you see
 
-Five views on one page:
+Six views on one page:
 
+- **Price chart with trades and signals.** Top banner. Trade-line (price over time) plus per-trade dots colored by side, vertical dashed bands at signal timestamps with names, triangles where fills landed, and a vertical cursor line. Hover a point to see a tooltip with the nearest trade's timestamp, side, price, and qty. Click anywhere on the chart to seek the cursor to that timestamp.
 - **Order book heatmap.** Bid / ask depth at the cursor, reconstructed from the latest snapshot plus deltas. Reads `.floxlog` book frames.
 - **Trades.** Tail of the most recent trades up to the cursor. Reads `.floxlog` trade frames.
 - **Strategy signals.** Cards listing each `SignalRecord` from the run trace, with name, symbol ids, and payload. Reads `.floxrun`.
@@ -71,6 +72,7 @@ A capture with no book frames (the default `flox tape record` shape today) shows
 - One tape and one run at a time. Multi-symbol runs are fine; multi-tape side-by-side is not in this MVP.
 - The order-book view limits to the top fifteen levels per side.
 - Equity is a simple cash + last-price-marked-position computation. Realistic backtest equity (with mark-to-market on the tape clock) belongs in the backtest reports, not here.
+- Price-chart interactivity is hover-tooltip plus click-to-seek only. No zoom, no pan, no drag-select range. Add as follow-ups if a real workload demands them.
 
 ## See also
 

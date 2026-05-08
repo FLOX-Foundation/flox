@@ -101,7 +101,7 @@ html, body {
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-rows: 220px 1fr 1fr 1fr;
   gap: 14px;
   padding: 14px;
   height: calc(100vh - 110px);
@@ -128,11 +128,12 @@ html, body {
 .view canvas, .view > div:not(.emptystate) { flex: 1; min-height: 0; overflow: auto; }
 .view canvas { width: 100%; height: 100%; }
 
-.view[data-view="orderbook"] { grid-column: 1 / 2; grid-row: 1 / 3; }
-.view[data-view="trades"] { grid-column: 2 / 3; grid-row: 1 / 2; }
-.view[data-view="signals"] { grid-column: 2 / 3; grid-row: 2 / 3; }
-.view[data-view="orders"] { grid-column: 1 / 2; grid-row: 3 / 4; }
-.view[data-view="equity"] { grid-column: 2 / 3; grid-row: 3 / 4; }
+.view[data-view="price"] { grid-column: 1 / 3; grid-row: 1 / 2; }
+.view[data-view="orderbook"] { grid-column: 1 / 2; grid-row: 2 / 4; }
+.view[data-view="trades"] { grid-column: 2 / 3; grid-row: 2 / 3; }
+.view[data-view="signals"] { grid-column: 2 / 3; grid-row: 3 / 4; }
+.view[data-view="orders"] { grid-column: 1 / 2; grid-row: 4 / 5; }
+.view[data-view="equity"] { grid-column: 2 / 3; grid-row: 4 / 5; }
 
 .emptystate {
   position: absolute;
@@ -181,3 +182,24 @@ html, body {
   color: var(--text-fade);
   margin-right: 6px;
 }
+
+.view[data-view="price"] canvas {
+  cursor: crosshair;
+}
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(19, 140, 175, 0.10);
+  z-index: 10;
+  white-space: nowrap;
+}
+.chart-tooltip .ts { color: var(--text-fade); display: block; font-size: 10px; }
+.chart-tooltip .side-buy { color: var(--bid); font-weight: 600; }
+.chart-tooltip .side-sell { color: var(--ask); font-weight: 600; }

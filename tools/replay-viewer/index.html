@@ -27,6 +27,12 @@
       <span id="cursor">--</span>
     </section>
     <main class="grid" id="views" hidden>
+      <section class="view" data-view="price">
+        <h3>Price chart with trades and signals</h3>
+        <canvas id="view-price"></canvas>
+        <div class="chart-tooltip" id="price-tooltip" hidden></div>
+        <div class="emptystate" data-for="price" hidden></div>
+      </section>
       <section class="view" data-view="orderbook">
         <h3>Order book heatmap</h3>
         <canvas id="view-orderbook"></canvas>
