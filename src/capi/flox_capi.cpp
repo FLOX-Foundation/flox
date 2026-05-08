@@ -5244,8 +5244,8 @@ flox::LatencyModel* asLatency(FloxLatencyModelHandle h)
 }  // namespace
 
 extern "C" FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns,
-                                                                int64_t order_ns,
-                                                                int64_t fill_ns)
+                                                               int64_t order_ns,
+                                                               int64_t fill_ns)
 {
   try
   {
@@ -5258,12 +5258,12 @@ extern "C" FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns,
 }
 
 extern "C" FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_ns,
-                                                                double feed_stddev_ns,
-                                                                double order_mean_ns,
-                                                                double order_stddev_ns,
-                                                                double fill_mean_ns,
-                                                                double fill_stddev_ns,
-                                                                uint64_t seed)
+                                                               double feed_stddev_ns,
+                                                               double order_mean_ns,
+                                                               double order_stddev_ns,
+                                                               double fill_mean_ns,
+                                                               double fill_stddev_ns,
+                                                               uint64_t seed)
 {
   try
   {
@@ -5278,9 +5278,9 @@ extern "C" FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_
 }
 
 extern "C" FloxLatencyModelHandle flox_latency_exponential_create(double feed_mean_ns,
-                                                                   double order_mean_ns,
-                                                                   double fill_mean_ns,
-                                                                   uint64_t seed)
+                                                                  double order_mean_ns,
+                                                                  double fill_mean_ns,
+                                                                  uint64_t seed)
 {
   try
   {
@@ -5293,12 +5293,12 @@ extern "C" FloxLatencyModelHandle flox_latency_exponential_create(double feed_me
 }
 
 extern "C" FloxLatencyModelHandle flox_latency_empirical_create(const int64_t* feed_samples,
-                                                                 size_t feed_count,
-                                                                 const int64_t* order_samples,
-                                                                 size_t order_count,
-                                                                 const int64_t* fill_samples,
-                                                                 size_t fill_count,
-                                                                 uint64_t seed)
+                                                                size_t feed_count,
+                                                                const int64_t* order_samples,
+                                                                size_t order_count,
+                                                                const int64_t* fill_samples,
+                                                                size_t fill_count,
+                                                                uint64_t seed)
 {
   try
   {
@@ -5336,7 +5336,10 @@ extern "C" int64_t flox_latency_fill_delay(FloxLatencyModelHandle model)
 
 extern "C" void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample* out)
 {
-  if (!model || !out) return;
+  if (!model || !out)
+  {
+    return;
+  }
   flox::LatencySample s = asLatency(model)->sample();
   out->feed_ns = s.feed_ns;
   out->order_ns = s.order_ns;
@@ -5345,5 +5348,8 @@ extern "C" void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySam
 
 extern "C" void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed)
 {
-  if (model) asLatency(model)->reset(seed);
+  if (model)
+  {
+    asLatency(model)->reset(seed);
+  }
 }

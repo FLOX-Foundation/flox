@@ -99,7 +99,10 @@ ExponentialLatency::ExponentialLatency(double feed_mean_ns, double order_mean_ns
 
 int64_t ExponentialLatency::draw(double mean)
 {
-  if (mean <= 0.0) return 0;
+  if (mean <= 0.0)
+  {
+    return 0;
+  }
   std::exponential_distribution<double> dist(1.0 / mean);
   double v = dist(_rng);
   return std::max<int64_t>(0, static_cast<int64_t>(v));
@@ -139,7 +142,10 @@ EmpiricalLatency::EmpiricalLatency(std::vector<int64_t> feed_samples,
 
 int64_t EmpiricalLatency::draw(const std::vector<int64_t>& samples)
 {
-  if (samples.empty()) return 0;
+  if (samples.empty())
+  {
+    return 0;
+  }
   std::uniform_int_distribution<size_t> dist(0, samples.size() - 1);
   return std::max<int64_t>(0, samples[dist(_rng)]);
 }

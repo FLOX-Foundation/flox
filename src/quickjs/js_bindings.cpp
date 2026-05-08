@@ -1389,7 +1389,10 @@ static JSValue js_lat_constant_create(JSContext* ctx, JSValueConst, int argc, JS
   int64_t order = (argc > 1) ? toInt64(ctx, argv[1]) : 0;
   int64_t fill = (argc > 2) ? toInt64(ctx, argv[2]) : 0;
   FloxLatencyModelHandle h = flox_latency_constant_create(feed, order, fill);
-  if (!h) return JS_ThrowTypeError(ctx, "ConstantLatency: feed/order/fill must be non-negative");
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "ConstantLatency: feed/order/fill must be non-negative");
+  }
   return createHandleObject(ctx, h);
 }
 
@@ -1403,7 +1406,10 @@ static JSValue js_lat_gaussian_create(JSContext* ctx, JSValueConst, int argc, JS
   double ls = (argc > 5) ? toDouble(ctx, argv[5]) : 0.0;
   uint64_t seed = (argc > 6) ? static_cast<uint64_t>(toInt64(ctx, argv[6])) : 0;
   FloxLatencyModelHandle h = flox_latency_gaussian_create(fm, fs, om, os, lm, ls, seed);
-  if (!h) return JS_ThrowTypeError(ctx, "GaussianLatency: means and stddevs must be non-negative");
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "GaussianLatency: means and stddevs must be non-negative");
+  }
   return createHandleObject(ctx, h);
 }
 
@@ -1414,14 +1420,20 @@ static JSValue js_lat_exponential_create(JSContext* ctx, JSValueConst, int argc,
   double lm = (argc > 2) ? toDouble(ctx, argv[2]) : 0.0;
   uint64_t seed = (argc > 3) ? static_cast<uint64_t>(toInt64(ctx, argv[3])) : 0;
   FloxLatencyModelHandle h = flox_latency_exponential_create(fm, om, lm, seed);
-  if (!h) return JS_ThrowTypeError(ctx, "ExponentialLatency: means must be non-negative");
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "ExponentialLatency: means must be non-negative");
+  }
   return createHandleObject(ctx, h);
 }
 
 static std::vector<int64_t> readJsInt64Array(JSContext* ctx, JSValueConst arr)
 {
   std::vector<int64_t> out;
-  if (!JS_IsArray(ctx, arr)) return out;
+  if (!JS_IsArray(ctx, arr))
+  {
+    return out;
+  }
   uint32_t len = 0;
   JSValue lenVal = JS_GetPropertyStr(ctx, arr, "length");
   JS_ToUint32(ctx, &len, lenVal);
@@ -1447,7 +1459,10 @@ static JSValue js_lat_empirical_create(JSContext* ctx, JSValueConst, int argc, J
       order.empty() ? nullptr : order.data(), order.size(),
       fill.empty() ? nullptr : fill.data(), fill.size(),
       seed);
-  if (!h) return JS_ThrowTypeError(ctx, "EmpiricalLatency: provide non-empty samples and non-negative values");
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "EmpiricalLatency: provide non-empty samples and non-negative values");
+  }
   return createHandleObject(ctx, h);
 }
 

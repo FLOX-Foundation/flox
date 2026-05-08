@@ -33,7 +33,10 @@ inline Napi::Value sampleToObject(Napi::Env env, const FloxLatencySample& s)
 inline std::vector<int64_t> readInt64Array(const Napi::Value& v)
 {
   std::vector<int64_t> out;
-  if (!v.IsArray()) return out;
+  if (!v.IsArray())
+  {
+    return out;
+  }
   Napi::Array arr = v.As<Napi::Array>();
   out.reserve(arr.Length());
   for (uint32_t i = 0; i < arr.Length(); ++i)
@@ -63,45 +66,45 @@ inline double getDouble(const Napi::Object& o, const char* key, double fallback)
 
 }  // namespace detail
 
-#define FLOX_LATENCY_INSTANCE_METHODS(Cls)                                                  \
-  Napi::Value FeedDelay(const Napi::CallbackInfo& info)                                     \
-  {                                                                                         \
-    return Napi::Number::New(info.Env(),                                                    \
-                             static_cast<double>(flox_latency_feed_delay(_h)));             \
-  }                                                                                         \
-  Napi::Value OrderDelay(const Napi::CallbackInfo& info)                                    \
-  {                                                                                         \
-    return Napi::Number::New(info.Env(),                                                    \
-                             static_cast<double>(flox_latency_order_delay(_h)));            \
-  }                                                                                         \
-  Napi::Value FillDelay(const Napi::CallbackInfo& info)                                     \
-  {                                                                                         \
-    return Napi::Number::New(info.Env(),                                                    \
-                             static_cast<double>(flox_latency_fill_delay(_h)));             \
-  }                                                                                         \
-  Napi::Value Sample(const Napi::CallbackInfo& info)                                        \
-  {                                                                                         \
-    FloxLatencySample s{};                                                                  \
-    flox_latency_sample(_h, &s);                                                            \
-    return detail::sampleToObject(info.Env(), s);                                           \
-  }                                                                                         \
-  void Reset(const Napi::CallbackInfo& info)                                                \
-  {                                                                                         \
-    uint64_t seed = 0;                                                                      \
-    if (info.Length() > 0 && info[0].IsNumber())                                            \
-    {                                                                                       \
-      seed = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());                \
-    }                                                                                       \
-    flox_latency_reset(_h, seed);                                                           \
-  }                                                                                         \
-  static Napi::Function InitClass(Napi::Env env, const char* name)                          \
-  {                                                                                         \
-    return DefineClass(env, name,                                                           \
-                       {InstanceMethod("feedDelay", &Cls::FeedDelay),                       \
-                        InstanceMethod("orderDelay", &Cls::OrderDelay),                     \
-                        InstanceMethod("fillDelay", &Cls::FillDelay),                       \
-                        InstanceMethod("sample", &Cls::Sample),                             \
-                        InstanceMethod("reset", &Cls::Reset)});                             \
+#define FLOX_LATENCY_INSTANCE_METHODS(Cls)                                       \
+  Napi::Value FeedDelay(const Napi::CallbackInfo& info)                          \
+  {                                                                              \
+    return Napi::Number::New(info.Env(),                                         \
+                             static_cast<double>(flox_latency_feed_delay(_h)));  \
+  }                                                                              \
+  Napi::Value OrderDelay(const Napi::CallbackInfo& info)                         \
+  {                                                                              \
+    return Napi::Number::New(info.Env(),                                         \
+                             static_cast<double>(flox_latency_order_delay(_h))); \
+  }                                                                              \
+  Napi::Value FillDelay(const Napi::CallbackInfo& info)                          \
+  {                                                                              \
+    return Napi::Number::New(info.Env(),                                         \
+                             static_cast<double>(flox_latency_fill_delay(_h)));  \
+  }                                                                              \
+  Napi::Value Sample(const Napi::CallbackInfo& info)                             \
+  {                                                                              \
+    FloxLatencySample s{};                                                       \
+    flox_latency_sample(_h, &s);                                                 \
+    return detail::sampleToObject(info.Env(), s);                                \
+  }                                                                              \
+  void Reset(const Napi::CallbackInfo& info)                                     \
+  {                                                                              \
+    uint64_t seed = 0;                                                           \
+    if (info.Length() > 0 && info[0].IsNumber())                                 \
+    {                                                                            \
+      seed = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());     \
+    }                                                                            \
+    flox_latency_reset(_h, seed);                                                \
+  }                                                                              \
+  static Napi::Function InitClass(Napi::Env env, const char* name)               \
+  {                                                                              \
+    return DefineClass(env, name,                                                \
+                       {InstanceMethod("feedDelay", &Cls::FeedDelay),            \
+                        InstanceMethod("orderDelay", &Cls::OrderDelay),          \
+                        InstanceMethod("fillDelay", &Cls::FillDelay),            \
+                        InstanceMethod("sample", &Cls::Sample),                  \
+                        InstanceMethod("reset", &Cls::Reset)});                  \
   }
 
 class ConstantLatencyWrap : public Napi::ObjectWrap<ConstantLatencyWrap>
@@ -122,7 +125,7 @@ class ConstantLatencyWrap : public Napi::ObjectWrap<ConstantLatencyWrap>
     if (!_h)
     {
       auto err = Napi::Error::New(info.Env(),
-          "ConstantLatency: feedNs/orderNs/fillNs must be non-negative.");
+                                  "ConstantLatency: feedNs/orderNs/fillNs must be non-negative.");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
       err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
       throw err;
@@ -130,7 +133,10 @@ class ConstantLatencyWrap : public Napi::ObjectWrap<ConstantLatencyWrap>
   }
   ~ConstantLatencyWrap()
   {
-    if (_h) flox_latency_destroy(_h);
+    if (_h)
+    {
+      flox_latency_destroy(_h);
+    }
   }
   FLOX_LATENCY_INSTANCE_METHODS(ConstantLatencyWrap)
 
@@ -161,7 +167,7 @@ class GaussianLatencyWrap : public Napi::ObjectWrap<GaussianLatencyWrap>
     if (!_h)
     {
       auto err = Napi::Error::New(info.Env(),
-          "GaussianLatency: means and stddevs must be non-negative.");
+                                  "GaussianLatency: means and stddevs must be non-negative.");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
       err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
       throw err;
@@ -169,7 +175,10 @@ class GaussianLatencyWrap : public Napi::ObjectWrap<GaussianLatencyWrap>
   }
   ~GaussianLatencyWrap()
   {
-    if (_h) flox_latency_destroy(_h);
+    if (_h)
+    {
+      flox_latency_destroy(_h);
+    }
   }
   FLOX_LATENCY_INSTANCE_METHODS(GaussianLatencyWrap)
 
@@ -197,7 +206,7 @@ class ExponentialLatencyWrap : public Napi::ObjectWrap<ExponentialLatencyWrap>
     if (!_h)
     {
       auto err = Napi::Error::New(info.Env(),
-          "ExponentialLatency: means must be non-negative.");
+                                  "ExponentialLatency: means must be non-negative.");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
       err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
       throw err;
@@ -205,7 +214,10 @@ class ExponentialLatencyWrap : public Napi::ObjectWrap<ExponentialLatencyWrap>
   }
   ~ExponentialLatencyWrap()
   {
-    if (_h) flox_latency_destroy(_h);
+    if (_h)
+    {
+      flox_latency_destroy(_h);
+    }
   }
   FLOX_LATENCY_INSTANCE_METHODS(ExponentialLatencyWrap)
 
@@ -224,9 +236,18 @@ class EmpiricalLatencyWrap : public Napi::ObjectWrap<EmpiricalLatencyWrap>
     if (info.Length() > 0 && info[0].IsObject())
     {
       auto opts = info[0].As<Napi::Object>();
-      if (opts.Has("feedSamples")) feed = detail::readInt64Array(opts.Get("feedSamples"));
-      if (opts.Has("orderSamples")) order = detail::readInt64Array(opts.Get("orderSamples"));
-      if (opts.Has("fillSamples")) fill = detail::readInt64Array(opts.Get("fillSamples"));
+      if (opts.Has("feedSamples"))
+      {
+        feed = detail::readInt64Array(opts.Get("feedSamples"));
+      }
+      if (opts.Has("orderSamples"))
+      {
+        order = detail::readInt64Array(opts.Get("orderSamples"));
+      }
+      if (opts.Has("fillSamples"))
+      {
+        fill = detail::readInt64Array(opts.Get("fillSamples"));
+      }
       seed = static_cast<uint64_t>(detail::getInt64(opts, "seed", 0));
     }
     _h = flox_latency_empirical_create(
@@ -237,8 +258,8 @@ class EmpiricalLatencyWrap : public Napi::ObjectWrap<EmpiricalLatencyWrap>
     if (!_h)
     {
       auto err = Napi::Error::New(info.Env(),
-          "EmpiricalLatency: provide at least one non-empty samples array; "
-          "all values must be non-negative.");
+                                  "EmpiricalLatency: provide at least one non-empty samples array; "
+                                  "all values must be non-negative.");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
       err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
       throw err;
@@ -246,7 +267,10 @@ class EmpiricalLatencyWrap : public Napi::ObjectWrap<EmpiricalLatencyWrap>
   }
   ~EmpiricalLatencyWrap()
   {
-    if (_h) flox_latency_destroy(_h);
+    if (_h)
+    {
+      flox_latency_destroy(_h);
+    }
   }
   FLOX_LATENCY_INSTANCE_METHODS(EmpiricalLatencyWrap)
 

@@ -25,8 +25,8 @@ namespace flox_py
 inline void bindLatencyModels(py::module_& m)
 {
   py::class_<flox::LatencySample>(m, "LatencySample",
-      "One draw from a LatencyModel covering feed, order, and fill in "
-      "non-negative nanoseconds.")
+                                  "One draw from a LatencyModel covering feed, order, and fill in "
+                                  "non-negative nanoseconds.")
       .def(py::init<>())
       .def(py::init([](int64_t feed_ns, int64_t order_ns, int64_t fill_ns)
                     {
@@ -74,8 +74,8 @@ inline void bindLatencyModels(py::module_& m)
 
   py::class_<flox::LatencyModel, PyLatencyModel,
              std::shared_ptr<flox::LatencyModel>>(m, "LatencyModel",
-      "Abstract sampler. Subclasses implement feed_delay / order_delay "
-      "/ fill_delay returning non-negative nanoseconds.")
+                                                  "Abstract sampler. Subclasses implement feed_delay / order_delay "
+                                                  "/ fill_delay returning non-negative nanoseconds.")
       .def(py::init<>())
       .def("feed_delay", &flox::LatencyModel::feedDelay)
       .def("order_delay", &flox::LatencyModel::orderDelay)
@@ -87,7 +87,7 @@ inline void bindLatencyModels(py::module_& m)
 
   py::class_<flox::ConstantLatency, flox::LatencyModel,
              std::shared_ptr<flox::ConstantLatency>>(m, "ConstantLatency",
-      "Returns the same nanoseconds every call. Useful as a baseline.")
+                                                     "Returns the same nanoseconds every call. Useful as a baseline.")
       .def(py::init<int64_t, int64_t, int64_t>(),
            py::arg("feed_ns") = 0,
            py::arg("order_ns") = 0,
@@ -95,9 +95,9 @@ inline void bindLatencyModels(py::module_& m)
 
   py::class_<flox::GaussianLatency, flox::LatencyModel,
              std::shared_ptr<flox::GaussianLatency>>(m, "GaussianLatency",
-      "Independent normal samples per component, clamped to "
-      "non-negative. Stddev <= 0 collapses the component to a "
-      "deterministic mean.")
+                                                     "Independent normal samples per component, clamped to "
+                                                     "non-negative. Stddev <= 0 collapses the component to a "
+                                                     "deterministic mean.")
       .def(py::init<double, double, double, double, double, double, uint64_t>(),
            py::arg("feed_mean_ns") = 0.0,
            py::arg("feed_stddev_ns") = 0.0,
@@ -109,8 +109,8 @@ inline void bindLatencyModels(py::module_& m)
 
   py::class_<flox::ExponentialLatency, flox::LatencyModel,
              std::shared_ptr<flox::ExponentialLatency>>(m, "ExponentialLatency",
-      "Exponential per component, parameterised by mean. Heavy right "
-      "tail by default.")
+                                                        "Exponential per component, parameterised by mean. Heavy right "
+                                                        "tail by default.")
       .def(py::init<double, double, double, uint64_t>(),
            py::arg("feed_mean_ns") = 0.0,
            py::arg("order_mean_ns") = 0.0,
@@ -119,8 +119,8 @@ inline void bindLatencyModels(py::module_& m)
 
   py::class_<flox::EmpiricalLatency, flox::LatencyModel,
              std::shared_ptr<flox::EmpiricalLatency>>(m, "EmpiricalLatency",
-      "Resample with replacement from observed values. Pass three "
-      "lists of measured latencies (one per component).")
+                                                      "Resample with replacement from observed values. Pass three "
+                                                      "lists of measured latencies (one per component).")
       .def(py::init<std::vector<int64_t>, std::vector<int64_t>,
                     std::vector<int64_t>, uint64_t>(),
            py::arg("feed_samples") = std::vector<int64_t>{},
