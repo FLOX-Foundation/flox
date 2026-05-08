@@ -54,6 +54,7 @@ from flox_py._flox_py import ExponentialLatency
 from flox_py._flox_py import export_data
 from flox_py._flox_py import extract_symbols
 from flox_py._flox_py import extract_time_range
+from flox_py._flox_py import FillLiquidity
 from flox_py._flox_py import FloxError
 from flox_py._flox_py import FootprintBar
 from flox_py._flox_py import GaussianLatency
@@ -79,6 +80,7 @@ from flox_py._flox_py import merge_dir
 from flox_py._flox_py import obv
 from flox_py._flox_py import Order
 from flox_py._flox_py import OrderBook
+from flox_py._flox_py import OrderEventKind
 from flox_py._flox_py import OrderTracker
 from flox_py._flox_py import OrderValidator
 from flox_py._flox_py import parkinson_vol
@@ -126,9 +128,12 @@ from flox_py._flox_py import Strategy
 from flox_py._flox_py import Symbol
 from flox_py._flox_py import SymbolContext
 from flox_py._flox_py import SymbolRegistry
+from flox_py._flox_py import TapeRef
 from flox_py._flox_py import targets
 from flox_py._flox_py import TEMA
 from flox_py._flox_py import tema
+from flox_py._flox_py import TraceReader
+from flox_py._flox_py import TraceRecorder
 from flox_py._flox_py import trade_pnl
 from flox_py._flox_py import TradeData
 from flox_py._flox_py import validate
@@ -139,12 +144,18 @@ from flox_py._flox_py import vwap
 from flox_py._flox_py import WalkForwardRunner
 from flox_py._flox_py import whites_reality_check
 from flox_py._flox_py import win_rate
-__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventKind', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+ORDER_FLAG_IOC: int = 4
+ORDER_FLAG_POST_ONLY: int = 1
+ORDER_FLAG_REDUCE_ONLY: int = 2
 PRICE_SCALE: int = 100000000
 QUANTITY_SCALE: int = 100000000
 QUEUE_FULL: int = 2
 QUEUE_NONE: int = 0
 QUEUE_TOB: int = 1
+SIGNAL_FLAG_ENTER: int = 1
+SIGNAL_FLAG_EXIT: int = 2
+SIGNAL_FLAG_REBALANCE: int = 4
 SLIPPAGE_FIXED_BPS: int = 2
 SLIPPAGE_FIXED_TICKS: int = 1
 SLIPPAGE_NONE: int = 0

@@ -54,6 +54,9 @@ add_flox_test(test_binary_log)
 add_flox_test(test_market_data_recorder)
 add_flox_test(test_replay_connector)
 
+# Run-trace tests (.floxrun)
+add_flox_test(test_run_trace)
+
 add_flox_test(test_multi_symbol_strategy)
 
 add_flox_test(test_position_aggregator)

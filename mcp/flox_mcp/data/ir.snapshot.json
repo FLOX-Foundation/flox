@@ -6308,6 +6308,668 @@
       "return_type": "void"
     },
     {
+      "group": "floxrun",
+      "name": "flox_run_reader_close",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_fill",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out_run_ts",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_feed_ts",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_order_id",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_fill_id",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_price_raw",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_qty_raw",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_fee_raw",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_symbol_id",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "out_side",
+          "type": "uint8_t *"
+        },
+        {
+          "name": "out_liquidity",
+          "type": "uint8_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_fill_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_open",
+      "params": [
+        {
+          "name": "path",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxRunReaderHandle"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_order_event_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_order_event_header",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out_run_ts",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_feed_ts",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_order_id",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_parent_signal_id",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_price_raw",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_qty_raw",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_symbol_id",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "out_event_kind",
+          "type": "uint8_t *"
+        },
+        {
+          "name": "out_side",
+          "type": "uint8_t *"
+        },
+        {
+          "name": "out_order_type",
+          "type": "uint8_t *"
+        },
+        {
+          "name": "out_flags",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "out_reason_len",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_order_event_reason",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "max_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_run_ended_ns",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_run_started_ns",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_signal_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_signal_header",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out_run_ts",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_feed_ts",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_signal_id",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "out_flags",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "out_strength_raw",
+          "type": "int64_t *"
+        },
+        {
+          "name": "out_name_len",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_symbol_count",
+          "type": "uint64_t *"
+        },
+        {
+          "name": "out_payload_len",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_signal_name",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "max_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_signal_payload",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "uint8_t *"
+        },
+        {
+          "name": "max_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_signal_symbol_ids",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "max_entries",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_strategy_hash",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "max_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_strategy_id",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "max_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_tape_ref_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_reader_tape_ref_path",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunReaderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "max_bytes",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_add_tape_ref",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        },
+        {
+          "name": "path",
+          "type": "const char *"
+        },
+        {
+          "name": "content_hash",
+          "type": "const char *"
+        },
+        {
+          "name": "first_event_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_event_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_close",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_create",
+      "params": [
+        {
+          "name": "path",
+          "type": "const char *"
+        },
+        {
+          "name": "strategy_id",
+          "type": "const char *"
+        },
+        {
+          "name": "strategy_hash",
+          "type": "const char *"
+        },
+        {
+          "name": "run_started_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "FloxRunRecorderHandle"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_destroy",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_set_run_ended_ns",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        },
+        {
+          "name": "ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_write_fill",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        },
+        {
+          "name": "run_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "feed_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "fill_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "fee_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "liquidity",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_write_order_event",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        },
+        {
+          "name": "run_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "feed_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "parent_signal_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "event_kind",
+          "type": "uint8_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "order_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "flags",
+          "type": "uint32_t"
+        },
+        {
+          "name": "reason",
+          "type": "const char *"
+        },
+        {
+          "name": "reason_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "floxrun",
+      "name": "flox_run_recorder_write_signal",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxRunRecorderHandle"
+        },
+        {
+          "name": "run_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "feed_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "signal_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "flags",
+          "type": "uint32_t"
+        },
+        {
+          "name": "strength_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "name_len",
+          "type": "size_t"
+        },
+        {
+          "name": "symbol_ids",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_count",
+          "type": "size_t"
+        },
+        {
+          "name": "payload",
+          "type": "const uint8_t *"
+        },
+        {
+          "name": "payload_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "strategyrunner_synchronous",
       "name": "flox_runner_add_strategy",
       "params": [
@@ -9831,6 +10493,14 @@
     },
     {
       "name": "FloxRiskManagerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxRunReaderHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxRunRecorderHandle",
       "target": "void*"
     },
     {

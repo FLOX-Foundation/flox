@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'Order', 'OrderBook', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventKind', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -570,6 +570,46 @@ class ExponentialLatency(LatencyModel):
     """
     def __init__(self, feed_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, order_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, fill_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, seed: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
+class FillLiquidity:
+    """
+    Members:
+    
+      UNKNOWN
+    
+      MAKER
+    
+      TAKER
+    """
+    MAKER: typing.ClassVar[FillLiquidity]  # value = <FillLiquidity.MAKER: 1>
+    TAKER: typing.ClassVar[FillLiquidity]  # value = <FillLiquidity.TAKER: 2>
+    UNKNOWN: typing.ClassVar[FillLiquidity]  # value = <FillLiquidity.UNKNOWN: 0>
+    __members__: typing.ClassVar[dict[str, FillLiquidity]]  # value = {'UNKNOWN': <FillLiquidity.UNKNOWN: 0>, 'MAKER': <FillLiquidity.MAKER: 1>, 'TAKER': <FillLiquidity.TAKER: 2>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
 class FloxError(Exception):
     pass
 class FootprintBar:
@@ -976,6 +1016,55 @@ class OrderBook:
         """
         Bid-ask spread or None
         """
+class OrderEventKind:
+    """
+    Members:
+    
+      SUBMIT
+    
+      CANCEL
+    
+      MODIFY
+    
+      ACK
+    
+      REJECT
+    
+      EXPIRE
+    """
+    ACK: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.ACK: 4>
+    CANCEL: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.CANCEL: 2>
+    EXPIRE: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.EXPIRE: 6>
+    MODIFY: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.MODIFY: 3>
+    REJECT: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.REJECT: 5>
+    SUBMIT: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.SUBMIT: 1>
+    __members__: typing.ClassVar[dict[str, OrderEventKind]]  # value = {'SUBMIT': <OrderEventKind.SUBMIT: 1>, 'CANCEL': <OrderEventKind.CANCEL: 2>, 'MODIFY': <OrderEventKind.MODIFY: 3>, 'ACK': <OrderEventKind.ACK: 4>, 'REJECT': <OrderEventKind.REJECT: 5>, 'EXPIRE': <OrderEventKind.EXPIRE: 6>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
 class OrderTracker:
     def __init__(self) -> None:
         ...
@@ -1816,6 +1905,64 @@ class TEMA:
     @property
     def value(self) -> float | None:
         ...
+class TapeRef:
+    content_hash: str
+    path: str
+    @typing.overload
+    def __init__(self) -> None:
+        ...
+    @typing.overload
+    def __init__(self, path: str, content_hash: str = '', first_event_ns: typing.SupportsInt | typing.SupportsIndex = 0, last_event_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
+    @property
+    def first_event_ns(self) -> int:
+        ...
+    @first_event_ns.setter
+    def first_event_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def last_event_ns(self) -> int:
+        ...
+    @last_event_ns.setter
+    def last_event_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+class TraceReader:
+    def __init__(self, path: str) -> None:
+        ...
+    def read_all_fills(self) -> list:
+        ...
+    def read_all_order_events(self) -> list:
+        ...
+    def read_all_signals(self) -> list:
+        ...
+    @property
+    def run_ended_ns(self) -> int:
+        ...
+    @property
+    def run_started_ns(self) -> int:
+        ...
+    @property
+    def strategy_hash(self) -> str:
+        ...
+    @property
+    def strategy_id(self) -> str:
+        ...
+    @property
+    def tape_refs(self) -> list:
+        ...
+class TraceRecorder:
+    def __init__(self, path: str, strategy_id: str = '', strategy_hash: str = '', run_started_ns: typing.SupportsInt | typing.SupportsIndex = 0, tape_refs: collections.abc.Sequence[TapeRef] = []) -> None:
+        ...
+    def close(self) -> None:
+        ...
+    def set_run_ended_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def write_fill(self, run_ts_ns: typing.SupportsInt | typing.SupportsIndex, feed_ts_ns: typing.SupportsInt | typing.SupportsIndex = 0, order_id: typing.SupportsInt | typing.SupportsIndex = 0, fill_id: typing.SupportsInt | typing.SupportsIndex = 0, price_raw: typing.SupportsInt | typing.SupportsIndex = 0, qty_raw: typing.SupportsInt | typing.SupportsIndex = 0, fee_raw: typing.SupportsInt | typing.SupportsIndex = 0, symbol_id: typing.SupportsInt | typing.SupportsIndex = 0, side: typing.SupportsInt | typing.SupportsIndex = 0, liquidity: FillLiquidity = ...) -> None:
+        ...
+    def write_order_event(self, run_ts_ns: typing.SupportsInt | typing.SupportsIndex, feed_ts_ns: typing.SupportsInt | typing.SupportsIndex = 0, order_id: typing.SupportsInt | typing.SupportsIndex = 0, parent_signal_id: typing.SupportsInt | typing.SupportsIndex = 0, price_raw: typing.SupportsInt | typing.SupportsIndex = 0, qty_raw: typing.SupportsInt | typing.SupportsIndex = 0, symbol_id: typing.SupportsInt | typing.SupportsIndex = 0, event_kind: OrderEventKind = ..., side: typing.SupportsInt | typing.SupportsIndex = 0, order_type: typing.SupportsInt | typing.SupportsIndex = 0, flags: typing.SupportsInt | typing.SupportsIndex = 0, reason: str = '') -> None:
+        ...
+    def write_signal(self, run_ts_ns: typing.SupportsInt | typing.SupportsIndex, feed_ts_ns: typing.SupportsInt | typing.SupportsIndex = 0, signal_id: typing.SupportsInt | typing.SupportsIndex = 0, flags: typing.SupportsInt | typing.SupportsIndex = 0, strength_raw: typing.SupportsInt | typing.SupportsIndex = 0, name: str = '', symbol_ids: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = [], payload: bytes = b'') -> None:
+        ...
 class TradeData:
     is_buy: bool
     side: str
@@ -2200,11 +2347,17 @@ def whites_reality_check(returns: typing.Annotated[numpy.typing.ArrayLike, numpy
     """
 def win_rate(trade_pnls: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> float:
     ...
+ORDER_FLAG_IOC: int = 4
+ORDER_FLAG_POST_ONLY: int = 1
+ORDER_FLAG_REDUCE_ONLY: int = 2
 PRICE_SCALE: int = 100000000
 QUANTITY_SCALE: int = 100000000
 QUEUE_FULL: int = 2
 QUEUE_NONE: int = 0
 QUEUE_TOB: int = 1
+SIGNAL_FLAG_ENTER: int = 1
+SIGNAL_FLAG_EXIT: int = 2
+SIGNAL_FLAG_REBALANCE: int = 4
 SLIPPAGE_FIXED_BPS: int = 2
 SLIPPAGE_FIXED_TICKS: int = 1
 SLIPPAGE_NONE: int = 0

@@ -68,3 +68,6 @@ add_codon_executable(codon_execution_algos_smoke
 
 add_codon_executable(codon_delta_book_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/delta_book_smoke.codon)
+
+add_codon_executable(codon_run_trace_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/run_trace_smoke.codon)

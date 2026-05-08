@@ -175,3 +175,9 @@ docs/how-to/rl-environment.md
 # the runtime compile-and-run path is exercised by
 # node/test/test_authoring.ts.
 docs/how-to/typescript-strategy-authoring.md
+
+# How-to: Record a strategy run as .floxrun. Illustrative recorder /
+# reader usage across four bindings; the round-trip path is exercised
+# by python/tests/test_run_trace.py, node/test/test_run_trace.js,
+# quickjs/examples/run_trace_smoke.js, and codon/examples/run_trace_smoke.codon.
+docs/how-to/floxrun.md

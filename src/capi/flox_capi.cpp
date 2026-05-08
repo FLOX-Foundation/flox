@@ -35,6 +35,8 @@
 #include "flox/replay/tape_diff.h"
 #include "flox/report/heatmap_html.h"
 #include "flox/risk/portfolio_risk.h"
+#include "flox/run/trace_reader.h"
+#include "flox/run/trace_recorder.h"
 #include "flox/stats/whites_reality_check.h"
 
 #include "flox/indicator/adf.h"
@@ -6096,4 +6098,516 @@ extern "C" uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHand
     return 0;
   }
   return copyLevelsTo(it->second.asks, out, max_entries);
+}
+
+// ============================================================
+// Strategy run trace (.floxrun) — implementation
+// ============================================================
+
+namespace
+{
+
+inline flox::run::TraceRecorder* asRecorder(FloxRunRecorderHandle h)
+{
+  return static_cast<flox::run::TraceRecorder*>(h);
+}
+
+struct RunReaderState
+{
+  std::unique_ptr<flox::run::TraceReader> reader;
+  std::vector<flox::run::OwnedSignal> signals;
+  std::vector<flox::run::OwnedOrderEvent> orders;
+  std::vector<flox::run::FillRecord> fills;
+};
+
+inline RunReaderState* asReader(FloxRunReaderHandle h)
+{
+  return static_cast<RunReaderState*>(h);
+}
+
+uint64_t copyStringTo(const std::string& src, char* out, uint64_t max_bytes)
+{
+  if (out == nullptr || max_bytes == 0)
+  {
+    return src.size();
+  }
+  uint64_t n = std::min(static_cast<uint64_t>(src.size()), max_bytes);
+  std::memcpy(out, src.data(), n);
+  return n;
+}
+
+}  // namespace
+
+extern "C" FloxRunRecorderHandle flox_run_recorder_create(const char* path,
+                                                          const char* strategy_id,
+                                                          const char* strategy_hash,
+                                                          int64_t run_started_ns)
+{
+  if (path == nullptr)
+  {
+    return nullptr;
+  }
+  flox::run::TraceRecorderOptions opts;
+  opts.strategy_id = strategy_id ? strategy_id : "";
+  opts.strategy_hash = strategy_hash ? strategy_hash : "";
+  opts.run_started_ns = run_started_ns;
+  try
+  {
+    return new flox::run::TraceRecorder(path, std::move(opts));
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_run_recorder_destroy(FloxRunRecorderHandle handle)
+{
+  delete asRecorder(handle);
+}
+
+extern "C" void flox_run_recorder_add_tape_ref(FloxRunRecorderHandle handle,
+                                               const char* path,
+                                               const char* content_hash,
+                                               int64_t first_event_ns,
+                                               int64_t last_event_ns)
+{
+  auto* rec = asRecorder(handle);
+  if (rec == nullptr || path == nullptr)
+  {
+    return;
+  }
+  flox::run::TapeRef ref;
+  ref.path = path;
+  ref.content_hash = content_hash ? content_hash : "";
+  ref.first_event_ns = first_event_ns;
+  ref.last_event_ns = last_event_ns;
+  rec->addTapeRef(std::move(ref));
+}
+
+extern "C" void flox_run_recorder_set_run_ended_ns(FloxRunRecorderHandle handle, int64_t ns)
+{
+  if (auto* rec = asRecorder(handle))
+  {
+    rec->setRunEndedNs(ns);
+  }
+}
+
+extern "C" void flox_run_recorder_write_signal(FloxRunRecorderHandle handle,
+                                               int64_t run_ts_ns, int64_t feed_ts_ns,
+                                               uint32_t signal_id, uint32_t flags,
+                                               int64_t strength_raw,
+                                               const char* name, size_t name_len,
+                                               const uint32_t* symbol_ids, size_t symbol_count,
+                                               const uint8_t* payload, size_t payload_len)
+{
+  auto* rec = asRecorder(handle);
+  if (rec == nullptr)
+  {
+    return;
+  }
+  flox::run::SignalView s;
+  s.run_ts_ns = run_ts_ns;
+  s.feed_ts_ns = feed_ts_ns;
+  s.signal_id = signal_id;
+  s.flags = flags;
+  s.strength_raw = strength_raw;
+  if (name && name_len > 0)
+  {
+    s.name = std::string_view(name, name_len);
+  }
+  if (symbol_ids && symbol_count > 0)
+  {
+    s.symbol_ids.assign(symbol_ids, symbol_ids + symbol_count);
+  }
+  if (payload && payload_len > 0)
+  {
+    s.payload = std::string_view(reinterpret_cast<const char*>(payload), payload_len);
+  }
+  rec->writeSignal(s);
+}
+
+extern "C" void flox_run_recorder_write_order_event(FloxRunRecorderHandle handle,
+                                                    int64_t run_ts_ns, int64_t feed_ts_ns,
+                                                    uint64_t order_id, uint64_t parent_signal_id,
+                                                    int64_t price_raw, int64_t qty_raw,
+                                                    uint32_t symbol_id, uint8_t event_kind,
+                                                    uint8_t side, uint8_t order_type,
+                                                    uint32_t flags,
+                                                    const char* reason, size_t reason_len)
+{
+  auto* rec = asRecorder(handle);
+  if (rec == nullptr)
+  {
+    return;
+  }
+  flox::run::OrderEventView e;
+  e.run_ts_ns = run_ts_ns;
+  e.feed_ts_ns = feed_ts_ns;
+  e.order_id = order_id;
+  e.parent_signal_id = parent_signal_id;
+  e.price_raw = price_raw;
+  e.qty_raw = qty_raw;
+  e.symbol_id = symbol_id;
+  e.event_kind = static_cast<flox::run::OrderEventKind>(event_kind);
+  e.side = side;
+  e.order_type = order_type;
+  e.flags = flags;
+  if (reason && reason_len > 0)
+  {
+    e.reason = std::string_view(reason, reason_len);
+  }
+  rec->writeOrderEvent(e);
+}
+
+extern "C" void flox_run_recorder_write_fill(FloxRunRecorderHandle handle,
+                                             int64_t run_ts_ns, int64_t feed_ts_ns,
+                                             uint64_t order_id, uint64_t fill_id,
+                                             int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
+                                             uint32_t symbol_id, uint8_t side, uint8_t liquidity)
+{
+  auto* rec = asRecorder(handle);
+  if (rec == nullptr)
+  {
+    return;
+  }
+  flox::run::FillView f;
+  f.run_ts_ns = run_ts_ns;
+  f.feed_ts_ns = feed_ts_ns;
+  f.order_id = order_id;
+  f.fill_id = fill_id;
+  f.price_raw = price_raw;
+  f.qty_raw = qty_raw;
+  f.fee_raw = fee_raw;
+  f.symbol_id = symbol_id;
+  f.side = side;
+  f.liquidity = static_cast<flox::run::FillLiquidity>(liquidity);
+  rec->writeFill(f);
+}
+
+extern "C" void flox_run_recorder_close(FloxRunRecorderHandle handle)
+{
+  if (auto* rec = asRecorder(handle))
+  {
+    rec->close();
+  }
+}
+
+extern "C" FloxRunReaderHandle flox_run_reader_open(const char* path)
+{
+  if (path == nullptr)
+  {
+    return nullptr;
+  }
+  try
+  {
+    auto state = std::make_unique<RunReaderState>();
+    state->reader = std::make_unique<flox::run::TraceReader>(path);
+    state->signals = state->reader->readAllSignals();
+    state->orders = state->reader->readAllOrderEvents();
+    state->fills = state->reader->readAllFills();
+    return state.release();
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_run_reader_close(FloxRunReaderHandle handle)
+{
+  delete asReader(handle);
+}
+
+extern "C" uint64_t flox_run_reader_strategy_id(FloxRunReaderHandle handle, char* out, uint64_t max_bytes)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr)
+  {
+    return 0;
+  }
+  return copyStringTo(state->reader->manifest().strategy_id, out, max_bytes);
+}
+
+extern "C" uint64_t flox_run_reader_strategy_hash(FloxRunReaderHandle handle, char* out, uint64_t max_bytes)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr)
+  {
+    return 0;
+  }
+  return copyStringTo(state->reader->manifest().strategy_hash, out, max_bytes);
+}
+
+extern "C" int64_t flox_run_reader_run_started_ns(FloxRunReaderHandle handle)
+{
+  auto* state = asReader(handle);
+  return state ? state->reader->manifest().run_started_ns : 0;
+}
+
+extern "C" int64_t flox_run_reader_run_ended_ns(FloxRunReaderHandle handle)
+{
+  auto* state = asReader(handle);
+  return state ? state->reader->manifest().run_ended_ns : 0;
+}
+
+extern "C" uint64_t flox_run_reader_tape_ref_count(FloxRunReaderHandle handle)
+{
+  auto* state = asReader(handle);
+  return state ? state->reader->manifest().tape_refs.size() : 0;
+}
+
+extern "C" uint64_t flox_run_reader_tape_ref_path(FloxRunReaderHandle handle, uint64_t index, char* out, uint64_t max_bytes)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr)
+  {
+    return 0;
+  }
+  const auto& refs = state->reader->manifest().tape_refs;
+  if (index >= refs.size())
+  {
+    return 0;
+  }
+  return copyStringTo(refs[index].path, out, max_bytes);
+}
+
+extern "C" uint64_t flox_run_reader_signal_count(FloxRunReaderHandle handle)
+{
+  auto* state = asReader(handle);
+  return state ? state->signals.size() : 0;
+}
+
+extern "C" uint64_t flox_run_reader_order_event_count(FloxRunReaderHandle handle)
+{
+  auto* state = asReader(handle);
+  return state ? state->orders.size() : 0;
+}
+
+extern "C" uint64_t flox_run_reader_fill_count(FloxRunReaderHandle handle)
+{
+  auto* state = asReader(handle);
+  return state ? state->fills.size() : 0;
+}
+
+extern "C" void flox_run_reader_signal_header(FloxRunReaderHandle handle, uint64_t index,
+                                              int64_t* out_run_ts, int64_t* out_feed_ts,
+                                              uint32_t* out_signal_id, uint32_t* out_flags,
+                                              int64_t* out_strength_raw,
+                                              uint64_t* out_name_len, uint64_t* out_symbol_count,
+                                              uint64_t* out_payload_len)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->signals.size())
+  {
+    return;
+  }
+  const auto& s = state->signals[index];
+  if (out_run_ts)
+  {
+    *out_run_ts = s.run_ts_ns;
+  }
+  if (out_feed_ts)
+  {
+    *out_feed_ts = s.feed_ts_ns;
+  }
+  if (out_signal_id)
+  {
+    *out_signal_id = s.signal_id;
+  }
+  if (out_flags)
+  {
+    *out_flags = s.flags;
+  }
+  if (out_strength_raw)
+  {
+    *out_strength_raw = s.strength_raw;
+  }
+  if (out_name_len)
+  {
+    *out_name_len = s.name.size();
+  }
+  if (out_symbol_count)
+  {
+    *out_symbol_count = s.symbol_ids.size();
+  }
+  if (out_payload_len)
+  {
+    *out_payload_len = s.payload.size();
+  }
+}
+
+extern "C" uint64_t flox_run_reader_signal_name(FloxRunReaderHandle handle, uint64_t index, char* out, uint64_t max_bytes)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->signals.size())
+  {
+    return 0;
+  }
+  return copyStringTo(state->signals[index].name, out, max_bytes);
+}
+
+extern "C" uint64_t flox_run_reader_signal_symbol_ids(FloxRunReaderHandle handle, uint64_t index, uint32_t* out, uint64_t max_entries)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->signals.size())
+  {
+    return 0;
+  }
+  const auto& ids = state->signals[index].symbol_ids;
+  if (out == nullptr || max_entries == 0)
+  {
+    return ids.size();
+  }
+  uint64_t n = std::min(static_cast<uint64_t>(ids.size()), max_entries);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    out[i] = ids[i];
+  }
+  return n;
+}
+
+extern "C" uint64_t flox_run_reader_signal_payload(FloxRunReaderHandle handle, uint64_t index, uint8_t* out, uint64_t max_bytes)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->signals.size())
+  {
+    return 0;
+  }
+  const auto& p = state->signals[index].payload;
+  if (out == nullptr || max_bytes == 0)
+  {
+    return p.size();
+  }
+  uint64_t n = std::min(static_cast<uint64_t>(p.size()), max_bytes);
+  std::memcpy(out, p.data(), n);
+  return n;
+}
+
+extern "C" void flox_run_reader_order_event_header(FloxRunReaderHandle handle, uint64_t index,
+                                                   int64_t* out_run_ts, int64_t* out_feed_ts,
+                                                   uint64_t* out_order_id, uint64_t* out_parent_signal_id,
+                                                   int64_t* out_price_raw, int64_t* out_qty_raw,
+                                                   uint32_t* out_symbol_id, uint8_t* out_event_kind,
+                                                   uint8_t* out_side, uint8_t* out_order_type,
+                                                   uint32_t* out_flags, uint64_t* out_reason_len)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->orders.size())
+  {
+    return;
+  }
+  const auto& e = state->orders[index];
+  if (out_run_ts)
+  {
+    *out_run_ts = e.run_ts_ns;
+  }
+  if (out_feed_ts)
+  {
+    *out_feed_ts = e.feed_ts_ns;
+  }
+  if (out_order_id)
+  {
+    *out_order_id = e.order_id;
+  }
+  if (out_parent_signal_id)
+  {
+    *out_parent_signal_id = e.parent_signal_id;
+  }
+  if (out_price_raw)
+  {
+    *out_price_raw = e.price_raw;
+  }
+  if (out_qty_raw)
+  {
+    *out_qty_raw = e.qty_raw;
+  }
+  if (out_symbol_id)
+  {
+    *out_symbol_id = e.symbol_id;
+  }
+  if (out_event_kind)
+  {
+    *out_event_kind = static_cast<uint8_t>(e.event_kind);
+  }
+  if (out_side)
+  {
+    *out_side = e.side;
+  }
+  if (out_order_type)
+  {
+    *out_order_type = e.order_type;
+  }
+  if (out_flags)
+  {
+    *out_flags = e.flags;
+  }
+  if (out_reason_len)
+  {
+    *out_reason_len = e.reason.size();
+  }
+}
+
+extern "C" uint64_t flox_run_reader_order_event_reason(FloxRunReaderHandle handle, uint64_t index, char* out, uint64_t max_bytes)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->orders.size())
+  {
+    return 0;
+  }
+  return copyStringTo(state->orders[index].reason, out, max_bytes);
+}
+
+extern "C" void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index,
+                                     int64_t* out_run_ts, int64_t* out_feed_ts,
+                                     uint64_t* out_order_id, uint64_t* out_fill_id,
+                                     int64_t* out_price_raw, int64_t* out_qty_raw, int64_t* out_fee_raw,
+                                     uint32_t* out_symbol_id, uint8_t* out_side, uint8_t* out_liquidity)
+{
+  auto* state = asReader(handle);
+  if (state == nullptr || index >= state->fills.size())
+  {
+    return;
+  }
+  const auto& f = state->fills[index];
+  if (out_run_ts)
+  {
+    *out_run_ts = f.run_ts_ns;
+  }
+  if (out_feed_ts)
+  {
+    *out_feed_ts = f.feed_ts_ns;
+  }
+  if (out_order_id)
+  {
+    *out_order_id = f.order_id;
+  }
+  if (out_fill_id)
+  {
+    *out_fill_id = f.fill_id;
+  }
+  if (out_price_raw)
+  {
+    *out_price_raw = f.price_raw;
+  }
+  if (out_qty_raw)
+  {
+    *out_qty_raw = f.qty_raw;
+  }
+  if (out_fee_raw)
+  {
+    *out_fee_raw = f.fee_raw;
+  }
+  if (out_symbol_id)
+  {
+    *out_symbol_id = f.symbol_id;
+  }
+  if (out_side)
+  {
+    *out_side = f.side;
+  }
+  if (out_liquidity)
+  {
+    *out_liquidity = f.liquidity;
+  }
 }

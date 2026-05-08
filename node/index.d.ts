@@ -1697,3 +1697,124 @@ export class DeltaBookReplayer {
   reset(symbolId: number): void;
   resetAll(): void;
 }
+
+// ---------------------------------------------------------------------------
+// .floxrun strategy-trace recorder + reader.
+// ---------------------------------------------------------------------------
+
+export interface TraceRecorderOptions {
+  path: string;
+  strategyId?: string;
+  strategyHash?: string;
+  runStartedNs?: number;
+}
+
+export interface TraceTapeRefInput {
+  path: string;
+  contentHash?: string;
+  firstEventNs?: number;
+  lastEventNs?: number;
+}
+
+export interface TraceSignalInput {
+  runTsNs: number;
+  feedTsNs?: number;
+  signalId?: number;
+  flags?: number;
+  strengthRaw?: number;
+  name?: string;
+  symbolIds?: ReadonlyArray<number>;
+  payload?: Buffer | string;
+}
+
+export interface TraceOrderEventInput {
+  runTsNs: number;
+  feedTsNs?: number;
+  orderId?: number;
+  parentSignalId?: number;
+  priceRaw?: number;
+  qtyRaw?: number;
+  symbolId?: number;
+  eventKind?: number;
+  side?: number;
+  orderType?: number;
+  flags?: number;
+  reason?: string;
+}
+
+export interface TraceFillInput {
+  runTsNs: number;
+  feedTsNs?: number;
+  orderId?: number;
+  fillId?: number;
+  priceRaw?: number;
+  qtyRaw?: number;
+  feeRaw?: number;
+  symbolId?: number;
+  side?: number;
+  liquidity?: number;
+}
+
+export interface TraceSignalRecord {
+  runTsNs: number;
+  feedTsNs: number;
+  signalId: number;
+  flags: number;
+  strengthRaw: number;
+  name: string;
+  symbolIds: number[];
+  payload: Buffer;
+}
+
+export interface TraceOrderEventRecord {
+  runTsNs: number;
+  feedTsNs: number;
+  orderId: number;
+  parentSignalId: number;
+  priceRaw: number;
+  qtyRaw: number;
+  symbolId: number;
+  eventKind: number;
+  side: number;
+  orderType: number;
+  flags: number;
+  reason: string;
+}
+
+export interface TraceFillRecord {
+  runTsNs: number;
+  feedTsNs: number;
+  orderId: number;
+  fillId: number;
+  priceRaw: number;
+  qtyRaw: number;
+  feeRaw: number;
+  symbolId: number;
+  side: number;
+  liquidity: number;
+}
+
+/** Writes signals, order events, and fills into a `.floxrun` directory. */
+export class TraceRecorder {
+  constructor(opts: TraceRecorderOptions);
+  addTapeRef(opts: TraceTapeRefInput): void;
+  setRunEndedNs(ns: number): void;
+  writeSignal(opts: TraceSignalInput): void;
+  writeOrderEvent(opts: TraceOrderEventInput): void;
+  writeFill(opts: TraceFillInput): void;
+  close(): void;
+}
+
+/** Reads back a `.floxrun` directory written by TraceRecorder. */
+export class TraceReader {
+  constructor(path: string);
+  strategyId(): string;
+  strategyHash(): string;
+  runStartedNs(): number;
+  runEndedNs(): number;
+  tapeRefs(): Array<{ path: string }>;
+  readAllSignals(): TraceSignalRecord[];
+  readAllOrderEvents(): TraceOrderEventRecord[];
+  readAllFills(): TraceFillRecord[];
+  close(): void;
+}
