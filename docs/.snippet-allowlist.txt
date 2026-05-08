@@ -188,3 +188,8 @@ docs/how-to/floxrun.md
 # the binding path is exercised by tests/test_multi_tf_alignment.cpp
 # and python/tests/test_multi_tf_alignment.py.
 docs/how-to/multi-tf-context.md
+
+# How-to: Compose multi-symbol multi-TF entry conditions. Illustrative
+# DSL examples for `when(...)`/`ema`/`rsi` composition; runtime path
+# exercised by python/tests/test_composite_conditions.py.
+docs/how-to/composite-conditions.md
