@@ -462,6 +462,92 @@ def cmd_tape_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tape_view(args: argparse.Namespace) -> int:
+    """Serve the static replay viewer locally with the requested tape /
+    run directory pre-staged, then open a browser."""
+    import http.server
+    import socketserver
+    import threading
+    import webbrowser
+    import shutil as _shutil
+
+    pkg_dir = Path(__file__).resolve().parent
+    # Look up the bundled viewer SPA. It is shipped under
+    # `flox_py/data/replay-viewer/dist/` for installed wheels and falls
+    # back to the in-repo source build during development.
+    candidates = [
+        pkg_dir / "data" / "replay-viewer",
+        pkg_dir.parent.parent / "tools" / "replay-viewer" / "dist",
+    ]
+    viewer_root = next((c for c in candidates if c.exists()), None)
+    if viewer_root is None:
+        print("flox tape view: viewer build not found. Run "
+              "`cd tools/replay-viewer && npm install && npm run build` "
+              "first, or install a published wheel.", file=sys.stderr)
+        return 1
+
+    tape_path: Optional[Path] = None
+    run_path: Optional[Path] = None
+    for raw in args.paths:
+        p = Path(raw).expanduser().resolve()
+        if not p.exists():
+            print(f"flox tape view: path not found: {p}", file=sys.stderr)
+            return 1
+        suffix = p.suffix.lower()
+        if suffix == ".floxlog" or any(p.glob("*.floxlog")):
+            tape_path = p
+        elif suffix == ".floxrun":
+            run_path = p
+        else:
+            print(f"flox tape view: cannot tell artifact kind from {p}",
+                  file=sys.stderr)
+            return 1
+
+    # Stage a copy of the artifacts inside a temp serve root so the
+    # viewer can fetch them without same-origin gymnastics.
+    import tempfile
+    work = Path(tempfile.mkdtemp(prefix="flox-view-"))
+    serve_root = work / "site"
+    _shutil.copytree(viewer_root, serve_root)
+    fixtures = serve_root / "fixture-cli"
+    fixtures.mkdir()
+    if tape_path is not None:
+        _shutil.copytree(tape_path, fixtures / "tape")
+    if run_path is not None:
+        _shutil.copytree(run_path, fixtures / "run")
+
+    port = args.port
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *_a, **_kw):  # quiet
+            return
+
+    Handler.directory = str(serve_root)  # type: ignore[attr-defined]
+
+    httpd = socketserver.TCPServer(("127.0.0.1", port),
+                                    lambda *a, **kw: Handler(*a,
+                                                              directory=str(serve_root),
+                                                              **kw))
+    url = f"http://127.0.0.1:{port}/"
+    if tape_path is not None or run_path is not None:
+        url += "?autoload=fixture-cli"
+
+    def _serve() -> None:
+        httpd.serve_forever()
+
+    t = threading.Thread(target=_serve, daemon=True)
+    t.start()
+    print(f"flox tape view: serving {serve_root} at {url}")
+    if not args.no_open:
+        webbrowser.open(url)
+    print("ctrl+c to stop")
+    try:
+        t.join()
+    except KeyboardInterrupt:
+        httpd.shutdown()
+    return 0
+
+
 # ── Argparse setup ─────────────────────────────────────────────────────
 
 
@@ -561,6 +647,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_ins.add_argument("path", help="Path to the .floxlog directory.")
     p_ins.set_defaults(handler=cmd_tape_inspect)
+
+    p_view = tape_sub.add_parser(
+        "view",
+        help="Open the replay viewer in a browser, pre-loaded with the "
+             "given .floxlog and / or .floxrun directory.",
+    )
+    p_view.add_argument("paths", nargs="+",
+                        help="One or two paths: a .floxlog directory, a "
+                             ".floxrun directory, or both.")
+    p_view.add_argument("--port", type=int, default=8765,
+                        help="Local port to serve the viewer on (default 8765).")
+    p_view.add_argument("--no-open", action="store_true",
+                        help="Do not auto-open a browser tab; just print the URL.")
+    p_view.set_defaults(handler=cmd_tape_view)
 
     p_diff = tape_sub.add_parser(
         "diff",
