@@ -55,6 +55,7 @@ Solve specific problems. Assumes you know the basics.
 | [Indicator graph](indicator-graph.md) | Compose indicators into a DAG |
 | [Multi-symbol indicators](multi-symbol-indicators.md) | One indicator across many symbols |
 | [Read multi-timeframe context from a strategy](multi-tf-context.md) | `last_closed_bar(symbol, tf)` + `last_n_closed_bars(...)` ring helpers |
+| [Compose multi-symbol multi-TF entry conditions declaratively](composite-conditions.md) | `when(self, btc, H4).ema(50) > when(self, btc, H4).ema(200)` composable DSL |
 | [Bar aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
 | [Custom bar policy](custom-bar-policy.md) | Hand-roll a new bar aggregation rule |
 | [Volume profile](use-volume-profile.md) | Build a volume profile from trades |
