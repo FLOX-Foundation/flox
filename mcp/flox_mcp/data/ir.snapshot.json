@@ -4042,6 +4042,192 @@
       "return_type": "int64_t"
     },
     {
+      "group": "latency_models",
+      "name": "flox_latency_constant_create",
+      "params": [
+        {
+          "name": "feed_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "order_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "fill_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "FloxLatencyModelHandle"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_destroy",
+      "params": [
+        {
+          "name": "model",
+          "type": "FloxLatencyModelHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_empirical_create",
+      "params": [
+        {
+          "name": "feed_samples",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "feed_count",
+          "type": "size_t"
+        },
+        {
+          "name": "order_samples",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "order_count",
+          "type": "size_t"
+        },
+        {
+          "name": "fill_samples",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "fill_count",
+          "type": "size_t"
+        },
+        {
+          "name": "seed",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxLatencyModelHandle"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_exponential_create",
+      "params": [
+        {
+          "name": "feed_mean_ns",
+          "type": "double"
+        },
+        {
+          "name": "order_mean_ns",
+          "type": "double"
+        },
+        {
+          "name": "fill_mean_ns",
+          "type": "double"
+        },
+        {
+          "name": "seed",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxLatencyModelHandle"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_feed_delay",
+      "params": [
+        {
+          "name": "model",
+          "type": "FloxLatencyModelHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_fill_delay",
+      "params": [
+        {
+          "name": "model",
+          "type": "FloxLatencyModelHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_gaussian_create",
+      "params": [
+        {
+          "name": "feed_mean_ns",
+          "type": "double"
+        },
+        {
+          "name": "feed_stddev_ns",
+          "type": "double"
+        },
+        {
+          "name": "order_mean_ns",
+          "type": "double"
+        },
+        {
+          "name": "order_stddev_ns",
+          "type": "double"
+        },
+        {
+          "name": "fill_mean_ns",
+          "type": "double"
+        },
+        {
+          "name": "fill_stddev_ns",
+          "type": "double"
+        },
+        {
+          "name": "seed",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxLatencyModelHandle"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_order_delay",
+      "params": [
+        {
+          "name": "model",
+          "type": "FloxLatencyModelHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_reset",
+      "params": [
+        {
+          "name": "model",
+          "type": "FloxLatencyModelHandle"
+        },
+        {
+          "name": "seed",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "latency_models",
+      "name": "flox_latency_sample",
+      "params": [
+        {
+          "name": "model",
+          "type": "FloxLatencyModelHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxLatencySample *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "floxliveengine_disruptor",
       "name": "flox_live_engine_add_strategy",
       "params": [
@@ -7840,6 +8026,23 @@
     {
       "fields": [
         {
+          "name": "feed_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "order_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "fill_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxLatencySample"
+    },
+    {
+      "fields": [
+        {
           "name": "price_raw",
           "type": "int64_t"
         },
@@ -8543,6 +8746,10 @@
     },
     {
       "name": "FloxL3BookHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxLatencyModelHandle",
       "target": "void*"
     },
     {

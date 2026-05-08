@@ -1887,6 +1887,58 @@ extern "C"
   uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
                                     char* out_buf, uint64_t max_size);
 
+  // ============================================================
+  // Latency models (sampling primitive for backtest realism)
+  // ============================================================
+  //
+  // Each model is created via a typed factory and queried through the
+  // shared flox_latency_* accessors. Construction returns NULL on
+  // invalid input (negative means/stddevs, empty empirical inputs).
+  // All delays are non-negative nanoseconds.
+
+  typedef void* FloxLatencyModelHandle;
+
+  typedef struct
+  {
+    int64_t feed_ns;
+    int64_t order_ns;
+    int64_t fill_ns;
+  } FloxLatencySample;
+
+  FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns,
+                                                      int64_t order_ns,
+                                                      int64_t fill_ns);
+
+  FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_ns,
+                                                      double feed_stddev_ns,
+                                                      double order_mean_ns,
+                                                      double order_stddev_ns,
+                                                      double fill_mean_ns,
+                                                      double fill_stddev_ns,
+                                                      uint64_t seed);
+
+  FloxLatencyModelHandle flox_latency_exponential_create(double feed_mean_ns,
+                                                         double order_mean_ns,
+                                                         double fill_mean_ns,
+                                                         uint64_t seed);
+
+  // Each samples array is copied; pass NULL with count 0 if a
+  // component should always return 0.
+  FloxLatencyModelHandle flox_latency_empirical_create(const int64_t* feed_samples,
+                                                       size_t feed_count,
+                                                       const int64_t* order_samples,
+                                                       size_t order_count,
+                                                       const int64_t* fill_samples,
+                                                       size_t fill_count,
+                                                       uint64_t seed);
+
+  void flox_latency_destroy(FloxLatencyModelHandle model);
+  int64_t flox_latency_feed_delay(FloxLatencyModelHandle model);
+  int64_t flox_latency_order_delay(FloxLatencyModelHandle model);
+  int64_t flox_latency_fill_delay(FloxLatencyModelHandle model);
+  void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample* out);
+  void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed);
+
 #ifdef __cplusplus
 }
 #endif

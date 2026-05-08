@@ -858,6 +858,56 @@
           "name": "flox_last_trade_price_raw"
         },
         {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_constant_create"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_destroy"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_empirical_create"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_exponential_create"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_feed_delay"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_fill_delay"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_gaussian_create"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_order_delay"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_reset"
+        },
+        {
+          "group": "latency_models",
+          "kind": "function",
+          "name": "flox_latency_sample"
+        },
+        {
           "group": "floxliveengine_disruptor",
           "kind": "function",
           "name": "flox_live_engine_add_strategy"
@@ -1775,6 +1825,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxLatencySample"
+        },
+        {
+          "kind": "struct",
           "name": "FloxLevel"
         },
         {
@@ -1927,6 +1981,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxLatencyModelHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxLiveEngineHandle"
         },
         {
@@ -2024,6 +2082,7 @@
         "indicator_functions",
         "indicatorgraph",
         "l3_order",
+        "latency_models",
         "logger",
         "market_profile",
         "metrics",
@@ -2733,6 +2792,46 @@
         {
           "kind": "function",
           "name": "flox_last_trade_price_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_constant_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_empirical_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_exponential_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_feed_delay"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_fill_delay"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_gaussian_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_order_delay"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_reset"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_sample"
         },
         {
           "kind": "function",

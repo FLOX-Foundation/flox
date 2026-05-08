@@ -225,6 +225,18 @@ from C import flox_l3_book_best_ask(cobj, Ptr[float]) -> u8
 from C import flox_l3_book_bid_at_price(cobj, float) -> float
 from C import flox_l3_book_ask_at_price(cobj, float) -> float
 
+# ── latency_models ──
+from C import flox_latency_constant_create(i64, i64, i64) -> cobj
+from C import flox_latency_gaussian_create(float, float, float, float, float, float, u64) -> cobj
+from C import flox_latency_exponential_create(float, float, float, u64) -> cobj
+from C import flox_latency_empirical_create(Ptr[i64], int, Ptr[i64], int, Ptr[i64], int, u64) -> cobj
+from C import flox_latency_destroy(cobj)
+from C import flox_latency_feed_delay(cobj) -> i64
+from C import flox_latency_order_delay(cobj) -> i64
+from C import flox_latency_fill_delay(cobj) -> i64
+from C import flox_latency_sample(cobj, cobj)
+from C import flox_latency_reset(cobj, u64)
+
 # ── logger ──
 from C import flox_set_log_callback(cobj, cobj)
 

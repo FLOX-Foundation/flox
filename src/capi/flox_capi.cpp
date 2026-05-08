@@ -21,6 +21,7 @@
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/backtest_runner.h"
 #include "flox/backtest/grid_search.h"
+#include "flox/backtest/latency_model.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/backtest/walk_forward.h"
@@ -5230,4 +5231,119 @@ uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
   const uint64_t to_copy = (total < max_size) ? total : max_size;
   std::memcpy(out_buf, html.data(), to_copy);
   return total;
+}
+
+// ── Latency models ────────────────────────────────────────────────
+
+namespace
+{
+flox::LatencyModel* asLatency(FloxLatencyModelHandle h)
+{
+  return static_cast<flox::LatencyModel*>(h);
+}
+}  // namespace
+
+extern "C" FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns,
+                                                                int64_t order_ns,
+                                                                int64_t fill_ns)
+{
+  try
+  {
+    return new flox::ConstantLatency(feed_ns, order_ns, fill_ns);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_ns,
+                                                                double feed_stddev_ns,
+                                                                double order_mean_ns,
+                                                                double order_stddev_ns,
+                                                                double fill_mean_ns,
+                                                                double fill_stddev_ns,
+                                                                uint64_t seed)
+{
+  try
+  {
+    return new flox::GaussianLatency(feed_mean_ns, feed_stddev_ns,
+                                     order_mean_ns, order_stddev_ns,
+                                     fill_mean_ns, fill_stddev_ns, seed);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxLatencyModelHandle flox_latency_exponential_create(double feed_mean_ns,
+                                                                   double order_mean_ns,
+                                                                   double fill_mean_ns,
+                                                                   uint64_t seed)
+{
+  try
+  {
+    return new flox::ExponentialLatency(feed_mean_ns, order_mean_ns, fill_mean_ns, seed);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxLatencyModelHandle flox_latency_empirical_create(const int64_t* feed_samples,
+                                                                 size_t feed_count,
+                                                                 const int64_t* order_samples,
+                                                                 size_t order_count,
+                                                                 const int64_t* fill_samples,
+                                                                 size_t fill_count,
+                                                                 uint64_t seed)
+{
+  try
+  {
+    std::vector<int64_t> feed(feed_samples, feed_samples + feed_count);
+    std::vector<int64_t> order(order_samples, order_samples + order_count);
+    std::vector<int64_t> fill(fill_samples, fill_samples + fill_count);
+    return new flox::EmpiricalLatency(std::move(feed), std::move(order),
+                                      std::move(fill), seed);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_latency_destroy(FloxLatencyModelHandle model)
+{
+  delete asLatency(model);
+}
+
+extern "C" int64_t flox_latency_feed_delay(FloxLatencyModelHandle model)
+{
+  return model ? asLatency(model)->feedDelay() : 0;
+}
+
+extern "C" int64_t flox_latency_order_delay(FloxLatencyModelHandle model)
+{
+  return model ? asLatency(model)->orderDelay() : 0;
+}
+
+extern "C" int64_t flox_latency_fill_delay(FloxLatencyModelHandle model)
+{
+  return model ? asLatency(model)->fillDelay() : 0;
+}
+
+extern "C" void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample* out)
+{
+  if (!model || !out) return;
+  flox::LatencySample s = asLatency(model)->sample();
+  out->feed_ns = s.feed_ns;
+  out->order_ns = s.order_ns;
+  out->fill_ns = s.fill_ns;
+}
+
+extern "C" void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed)
+{
+  if (model) asLatency(model)->reset(seed);
 }

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 339 functions, 32 handles, 41 structs, 33 callback typedefs, 2 enums, 47 groups.
+**Surface:** 349 functions, 33 handles, 42 structs, 33 callback typedefs, 2 enums, 48 groups.
 
 ## Opaque handles
 
@@ -40,6 +40,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxRunnerHandle`
 - `FloxBacktestRunnerHandle`
 - `FloxGridSearchHandle`
+- `FloxLatencyModelHandle`
 
 ## Enums
 
@@ -599,6 +600,14 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `y_axis_name` | `const char *` |
 | `metric_name` | `const char *` |
 
+### `FloxLatencySample`
+
+| field | type |
+|---|---|
+| `feed_ns` | `int64_t` |
+| `order_ns` | `int64_t` |
+| `fill_ns` | `int64_t` |
+
 ## Functions
 
 ### additional_bar
@@ -842,6 +851,19 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_l3_book_best_ask(FloxL3BookHandle book, double * price_out)`
 - `double flox_l3_book_bid_at_price(FloxL3BookHandle book, double price)`
 - `double flox_l3_book_ask_at_price(FloxL3BookHandle book, double price)`
+
+### latency_models
+
+- `FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns, int64_t order_ns, int64_t fill_ns)`
+- `FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_ns, double feed_stddev_ns, double order_mean_ns, double order_stddev_ns, double fill_mean_ns, double fill_stddev_ns, uint64_t seed)`
+- `FloxLatencyModelHandle flox_latency_exponential_create(double feed_mean_ns, double order_mean_ns, double fill_mean_ns, uint64_t seed)`
+- `FloxLatencyModelHandle flox_latency_empirical_create(const int64_t * feed_samples, size_t feed_count, const int64_t * order_samples, size_t order_count, const int64_t * fill_samples, size_t fill_count, uint64_t seed)`
+- `void flox_latency_destroy(FloxLatencyModelHandle model)`
+- `int64_t flox_latency_feed_delay(FloxLatencyModelHandle model)`
+- `int64_t flox_latency_order_delay(FloxLatencyModelHandle model)`
+- `int64_t flox_latency_fill_delay(FloxLatencyModelHandle model)`
+- `void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample * out)`
+- `void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed)`
 
 ### logger
 
