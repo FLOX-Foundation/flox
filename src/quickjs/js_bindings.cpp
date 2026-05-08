@@ -1486,6 +1486,188 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
 }
 
 // ============================================================
+// Portfolio risk aggregator bindings
+// ============================================================
+
+static JSValue js_portfolio_risk_create(JSContext* ctx, JSValueConst, int argc,
+                                        JSValueConst* argv)
+{
+  FloxPortfolioRiskRules rules{};
+  double initial_equity = 0.0;
+  auto readOpt = [&](JSValueConst obj, const char* key, uint8_t& has, double& v)
+  {
+    JSValue val = JS_GetPropertyStr(ctx, obj, key);
+    if (!JS_IsUndefined(val) && !JS_IsNull(val))
+    {
+      has = 1;
+      JS_ToFloat64(ctx, &v, val);
+    }
+    JS_FreeValue(ctx, val);
+  };
+  if (argc > 0 && JS_IsObject(argv[0]))
+  {
+    readOpt(argv[0], "maxDrawdownPct", rules.has_max_drawdown_pct, rules.max_drawdown_pct);
+    readOpt(argv[0], "maxDailyLoss", rules.has_max_daily_loss, rules.max_daily_loss);
+    readOpt(argv[0], "maxGrossExposure", rules.has_max_gross_exposure, rules.max_gross_exposure);
+    readOpt(argv[0], "maxConcentrationPct", rules.has_max_concentration_pct, rules.max_concentration_pct);
+  }
+  if (argc > 1)
+  {
+    JS_ToFloat64(ctx, &initial_equity, argv[1]);
+  }
+  FloxPortfolioRiskHandle h = flox_portfolio_risk_create(&rules, initial_equity);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "PortfolioRiskAggregator: construction failed");
+  }
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_portfolio_risk_destroy(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  flox_portfolio_risk_destroy(static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_portfolio_risk_update(JSContext* ctx, JSValueConst, int argc,
+                                        JSValueConst* argv)
+{
+  if (argc < 3)
+  {
+    return JS_ThrowTypeError(ctx, "update(handle, name, fields)");
+  }
+  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  if (!name)
+  {
+    return JS_ThrowTypeError(ctx, "update: name must be a string");
+  }
+  FloxStrategyAccountFields f{};
+  uint8_t mask = 0;
+  auto putDouble = [&](const char* key, uint8_t bit, double& out)
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[2], key);
+    if (!JS_IsUndefined(v))
+    {
+      JS_ToFloat64(ctx, &out, v);
+      mask |= bit;
+    }
+    JS_FreeValue(ctx, v);
+  };
+  auto putInt = [&](const char* key, uint8_t bit, uint64_t& out)
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[2], key);
+    if (!JS_IsUndefined(v))
+    {
+      int64_t tmp = 0;
+      JS_ToInt64(ctx, &tmp, v);
+      out = static_cast<uint64_t>(tmp);
+      mask |= bit;
+    }
+    JS_FreeValue(ctx, v);
+  };
+  putDouble("realizedPnl", 1u << 0, f.realized_pnl);
+  putDouble("unrealizedPnl", 1u << 1, f.unrealized_pnl);
+  putDouble("fees", 1u << 2, f.fees);
+  putDouble("grossExposure", 1u << 3, f.gross_exposure);
+  putDouble("netExposure", 1u << 4, f.net_exposure);
+  putInt("tradeCount", 1u << 5, f.trade_count);
+  flox_portfolio_risk_update(h, name, &f, mask);
+  JS_FreeCString(ctx, name);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_portfolio_risk_remove(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  if (name)
+  {
+    flox_portfolio_risk_remove(h, name);
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
+
+static JSValue js_portfolio_risk_reset_kill_switch(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  flox_portfolio_risk_reset_kill_switch(
+      static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue breachToJsObject(JSContext* ctx, const FloxBreach& b)
+{
+  JSValue o = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, o, "rule", JS_NewString(ctx, b.rule ? b.rule : ""));
+  JS_SetPropertyStr(ctx, o, "value", JS_NewFloat64(ctx, b.value));
+  JS_SetPropertyStr(ctx, o, "limit", JS_NewFloat64(ctx, b.limit));
+  JS_SetPropertyStr(ctx, o, "detail", JS_NewString(ctx, b.detail ? b.detail : ""));
+  return o;
+}
+
+static JSValue js_portfolio_risk_check_order(JSContext* ctx, JSValueConst, int argc,
+                                             JSValueConst* argv)
+{
+  if (argc < 4)
+  {
+    return JS_ThrowTypeError(ctx, "checkOrder(handle, strategy, notional, side)");
+  }
+  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  const char* strat = JS_ToCString(ctx, argv[1]);
+  double notional = 0.0;
+  JS_ToFloat64(ctx, &notional, argv[2]);
+  const char* side = JS_ToCString(ctx, argv[3]);
+  FloxBreach b{};
+  uint8_t hit = flox_portfolio_risk_check_order(h, strat ? strat : "",
+                                                notional, side ? side : "", &b);
+  JSValue out = hit ? breachToJsObject(ctx, b) : JS_NULL;
+  if (strat)
+  {
+    JS_FreeCString(ctx, strat);
+  }
+  if (side)
+  {
+    JS_FreeCString(ctx, side);
+  }
+  return out;
+}
+
+static JSValue js_portfolio_risk_snapshot(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
+  JSValue o = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, o, "totalDailyPnl",
+                    JS_NewFloat64(ctx, flox_portfolio_risk_total_daily_pnl(h)));
+  JS_SetPropertyStr(ctx, o, "totalGrossExposure",
+                    JS_NewFloat64(ctx, flox_portfolio_risk_total_gross_exposure(h)));
+  JS_SetPropertyStr(ctx, o, "currentEquity",
+                    JS_NewFloat64(ctx, flox_portfolio_risk_current_equity(h)));
+  JS_SetPropertyStr(ctx, o, "drawdownPct",
+                    JS_NewFloat64(ctx, flox_portfolio_risk_drawdown_pct(h)));
+  JS_SetPropertyStr(ctx, o, "killSwitchActive",
+                    JS_NewBool(ctx, flox_portfolio_risk_kill_switch_active(h) != 0));
+  const uint64_t bn = flox_portfolio_risk_breach_count(h);
+  JSValue arr = JS_NewArray(ctx);
+  for (uint64_t i = 0; i < bn; ++i)
+  {
+    FloxBreach b{};
+    if (flox_portfolio_risk_breach_at(h, i, &b))
+    {
+      JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), breachToJsObject(ctx, b));
+    }
+  }
+  JS_SetPropertyStr(ctx, o, "breaches", arr);
+  JS_SetPropertyStr(ctx, o, "accountCount",
+                    JS_NewInt64(ctx, static_cast<int64_t>(flox_portfolio_risk_account_count(h))));
+  return o;
+}
+
+// ============================================================
 // Latency model bindings
 // ============================================================
 
@@ -3014,6 +3196,15 @@ void registerFloxBindings(JSContext* ctx)
 
   // Tape diff
   addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);
+
+  // Portfolio risk aggregator
+  addGlobalFunc(ctx, "__flox_portfolio_risk_create", js_portfolio_risk_create, 2);
+  addGlobalFunc(ctx, "__flox_portfolio_risk_destroy", js_portfolio_risk_destroy, 1);
+  addGlobalFunc(ctx, "__flox_portfolio_risk_update", js_portfolio_risk_update, 3);
+  addGlobalFunc(ctx, "__flox_portfolio_risk_remove", js_portfolio_risk_remove, 2);
+  addGlobalFunc(ctx, "__flox_portfolio_risk_reset", js_portfolio_risk_reset_kill_switch, 1);
+  addGlobalFunc(ctx, "__flox_portfolio_risk_check_order", js_portfolio_risk_check_order, 4);
+  addGlobalFunc(ctx, "__flox_portfolio_risk_snapshot", js_portfolio_risk_snapshot, 1);
 
   // Latency models (Phase 1 sampling primitive)
   addGlobalFunc(ctx, "__flox_lat_constant_create", js_lat_constant_create, 3);

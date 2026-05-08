@@ -32,6 +32,7 @@
 #include "flox/replay/ohlcv_replay_source.h"
 #include "flox/replay/tape_diff.h"
 #include "flox/report/heatmap_html.h"
+#include "flox/risk/portfolio_risk.h"
 #include "flox/stats/whites_reality_check.h"
 
 #include "flox/indicator/adf.h"
@@ -5470,4 +5471,202 @@ extern "C" uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle,
     out[i].right.side = m.right.side;
   }
   return to_copy;
+}
+
+// ── Portfolio risk aggregator ─────────────────────────────────────
+
+namespace
+{
+flox::risk::PortfolioRiskAggregator* asPortfolio(FloxPortfolioRiskHandle h)
+{
+  return static_cast<flox::risk::PortfolioRiskAggregator*>(h);
+}
+
+flox::risk::RiskRules unpackRules(const FloxPortfolioRiskRules* r)
+{
+  flox::risk::RiskRules out;
+  if (!r)
+  {
+    return out;
+  }
+  if (r->has_max_drawdown_pct)
+  {
+    out.max_drawdown_pct = r->max_drawdown_pct;
+  }
+  if (r->has_max_daily_loss)
+  {
+    out.max_daily_loss = r->max_daily_loss;
+  }
+  if (r->has_max_gross_exposure)
+  {
+    out.max_gross_exposure = r->max_gross_exposure;
+  }
+  if (r->has_max_concentration_pct)
+  {
+    out.max_concentration_pct = r->max_concentration_pct;
+  }
+  return out;
+}
+}  // namespace
+
+extern "C" FloxPortfolioRiskHandle flox_portfolio_risk_create(
+    const FloxPortfolioRiskRules* rules, double initial_equity)
+{
+  try
+  {
+    return new flox::risk::PortfolioRiskAggregator(unpackRules(rules), initial_equity);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" void flox_portfolio_risk_destroy(FloxPortfolioRiskHandle handle)
+{
+  delete asPortfolio(handle);
+}
+
+extern "C" void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle,
+                                           const char* name,
+                                           const FloxStrategyAccountFields* fields,
+                                           uint8_t field_mask)
+{
+  if (!handle || !name || !fields)
+  {
+    return;
+  }
+  flox::risk::StrategyAccount row;
+  row.name = name;
+  row.realized_pnl = fields->realized_pnl;
+  row.unrealized_pnl = fields->unrealized_pnl;
+  row.fees = fields->fees;
+  row.gross_exposure = fields->gross_exposure;
+  row.net_exposure = fields->net_exposure;
+  row.trade_count = fields->trade_count;
+  asPortfolio(handle)->update(name, row, field_mask);
+}
+
+extern "C" void flox_portfolio_risk_remove(FloxPortfolioRiskHandle handle, const char* name)
+{
+  if (!handle || !name)
+  {
+    return;
+  }
+  asPortfolio(handle)->remove(name);
+}
+
+extern "C" void flox_portfolio_risk_reset_kill_switch(FloxPortfolioRiskHandle handle)
+{
+  if (handle)
+  {
+    asPortfolio(handle)->resetKillSwitch();
+  }
+}
+
+namespace
+{
+// Per-handle scratch storage for FloxBreach string lifetime. Held by
+// the C ABI shim; re-populated on every call that surfaces a Breach
+// to the caller. Matches the documented invalidation contract.
+struct PortfolioBreachScratch
+{
+  std::vector<flox::risk::Breach> breaches;
+};
+
+thread_local std::map<FloxPortfolioRiskHandle, PortfolioBreachScratch> g_breach_scratch;
+
+void writeBreach(FloxBreach* out, const flox::risk::Breach& b)
+{
+  if (!out)
+  {
+    return;
+  }
+  out->rule = b.rule.c_str();
+  out->value = b.value;
+  out->limit = b.limit;
+  out->detail = b.detail.c_str();
+}
+}  // namespace
+
+extern "C" uint8_t flox_portfolio_risk_check_order(FloxPortfolioRiskHandle handle,
+                                                   const char* strategy, double notional,
+                                                   const char* side, FloxBreach* out_breach)
+{
+  if (!handle)
+  {
+    return 0;
+  }
+  auto opt = asPortfolio(handle)->checkOrder(strategy ? strategy : "",
+                                             notional, side ? side : "");
+  if (!opt.has_value())
+  {
+    return 0;
+  }
+  auto& scratch = g_breach_scratch[handle];
+  scratch.breaches = {*opt};
+  writeBreach(out_breach, scratch.breaches.front());
+  return 1;
+}
+
+extern "C" double flox_portfolio_risk_total_daily_pnl(FloxPortfolioRiskHandle handle)
+{
+  return handle ? asPortfolio(handle)->snapshot().total_daily_pnl : 0.0;
+}
+
+extern "C" double flox_portfolio_risk_total_gross_exposure(FloxPortfolioRiskHandle handle)
+{
+  return handle ? asPortfolio(handle)->snapshot().total_gross_exposure : 0.0;
+}
+
+extern "C" double flox_portfolio_risk_current_equity(FloxPortfolioRiskHandle handle)
+{
+  return handle ? asPortfolio(handle)->snapshot().current_equity : 0.0;
+}
+
+extern "C" double flox_portfolio_risk_drawdown_pct(FloxPortfolioRiskHandle handle)
+{
+  return handle ? asPortfolio(handle)->snapshot().drawdown_pct : 0.0;
+}
+
+extern "C" uint8_t flox_portfolio_risk_kill_switch_active(FloxPortfolioRiskHandle handle)
+{
+  return (handle && asPortfolio(handle)->snapshot().kill_switch_active) ? 1 : 0;
+}
+
+extern "C" uint64_t flox_portfolio_risk_breach_count(FloxPortfolioRiskHandle handle)
+{
+  if (!handle)
+  {
+    return 0;
+  }
+  auto snap = asPortfolio(handle)->snapshot();
+  auto& scratch = g_breach_scratch[handle];
+  scratch.breaches = std::move(snap.active_breaches);
+  return scratch.breaches.size();
+}
+
+extern "C" uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle,
+                                                 uint64_t index, FloxBreach* out)
+{
+  if (!handle || !out)
+  {
+    return 0;
+  }
+  auto it = g_breach_scratch.find(handle);
+  if (it == g_breach_scratch.end())
+  {
+    return 0;
+  }
+  if (index >= it->second.breaches.size())
+  {
+    return 0;
+  }
+  writeBreach(out, it->second.breaches[index]);
+  return 1;
+}
+
+extern "C" uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle)
+{
+  return handle ? asPortfolio(handle)->snapshot().accounts.size() : 0;
 }

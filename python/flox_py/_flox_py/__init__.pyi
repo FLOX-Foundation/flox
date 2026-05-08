@@ -1857,6 +1857,52 @@ class WalkForwardRunner:
         """
         Callable[[int], Strategy] — receives fold_index, returns a fresh Strategy instance per fold (called twice per fold: train + test).
         """
+class _PortfolioRiskAggregator:
+    """
+    C++-backed aggregator. Public Python users go through flox_py.portfolio_risk.PortfolioRiskAggregator which preserves the existing dataclass surface.
+    """
+    def __init__(self, rules: _PortfolioRiskRules = ..., initial_equity: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
+        ...
+    def check_order(self, strategy: str, notional: typing.SupportsFloat | typing.SupportsIndex, side: str) -> typing.Any:
+        ...
+    def remove(self, name: str) -> None:
+        ...
+    def reset_kill_switch(self) -> None:
+        ...
+    def snapshot(self) -> dict:
+        ...
+    def update(self, name: str, realized_pnl: typing.SupportsFloat | typing.SupportsIndex = 0.0, unrealized_pnl: typing.SupportsFloat | typing.SupportsIndex = 0.0, fees: typing.SupportsFloat | typing.SupportsIndex = 0.0, gross_exposure: typing.SupportsFloat | typing.SupportsIndex = 0.0, net_exposure: typing.SupportsFloat | typing.SupportsIndex = 0.0, trade_count: typing.SupportsInt | typing.SupportsIndex = 0, field_mask: typing.SupportsInt | typing.SupportsIndex = 63) -> None:
+        ...
+class _PortfolioRiskRules:
+    """
+    Internal C++-backed risk rules struct.
+    """
+    def __init__(self) -> None:
+        ...
+    @property
+    def max_concentration_pct(self) -> float | None:
+        ...
+    @max_concentration_pct.setter
+    def max_concentration_pct(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
+        ...
+    @property
+    def max_daily_loss(self) -> float | None:
+        ...
+    @max_daily_loss.setter
+    def max_daily_loss(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
+        ...
+    @property
+    def max_drawdown_pct(self) -> float | None:
+        ...
+    @max_drawdown_pct.setter
+    def max_drawdown_pct(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
+        ...
+    @property
+    def max_gross_exposure(self) -> float | None:
+        ...
+    @max_gross_exposure.setter
+    def max_gross_exposure(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
+        ...
 def _tape_diff_native(left: str, right: str, max_mismatches: typing.SupportsInt | typing.SupportsIndex = 16, field_tolerance_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> typing.Any:
     """
     Internal C++-backed tape diff. Returns a dict the public wrapper in flox_py.tape converts to a TapeDiff dataclass.

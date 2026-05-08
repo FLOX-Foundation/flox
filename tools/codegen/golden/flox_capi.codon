@@ -308,6 +308,22 @@ from C import flox_segment_export_p(cobj, cobj, u8, i64, i64, Ptr[u32], u32, cob
 from C import flox_segment_validate_full_p(cobj, u8, u8, cobj)
 from C import flox_dataset_validate_p(cobj, cobj)
 
+# ── portfolio_risk ──
+from C import flox_portfolio_risk_create(cobj, float) -> cobj
+from C import flox_portfolio_risk_destroy(cobj)
+from C import flox_portfolio_risk_update(cobj, cobj, cobj, u8)
+from C import flox_portfolio_risk_remove(cobj, cobj)
+from C import flox_portfolio_risk_reset_kill_switch(cobj)
+from C import flox_portfolio_risk_check_order(cobj, cobj, float, cobj, cobj) -> u8
+from C import flox_portfolio_risk_total_daily_pnl(cobj) -> float
+from C import flox_portfolio_risk_total_gross_exposure(cobj) -> float
+from C import flox_portfolio_risk_current_equity(cobj) -> float
+from C import flox_portfolio_risk_drawdown_pct(cobj) -> float
+from C import flox_portfolio_risk_kill_switch_active(cobj) -> u8
+from C import flox_portfolio_risk_breach_count(cobj) -> u64
+from C import flox_portfolio_risk_breach_at(cobj, u64, cobj) -> u8
+from C import flox_portfolio_risk_account_count(cobj) -> u64
+
 # ── position ──
 from C import flox_position_tracker_create(u8) -> cobj
 from C import flox_position_tracker_destroy(cobj)

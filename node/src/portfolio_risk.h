@@ -1,0 +1,235 @@
+// node/src/portfolio_risk.h -- Portfolio risk aggregator wrap.
+//
+// Wraps a FloxPortfolioRiskHandle through the C ABI. The constructor
+// takes a rules object plus optional initialEquity. update() takes
+// (name, fields) where fields is a partial object — present keys
+// drive the C ABI field_mask. Returns a JS object matching the
+// Python snapshot dict shape.
+
+#pragma once
+
+#include <napi.h>
+
+#include "error_translator.h"
+#include "flox/capi/flox_capi.h"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace node_flox
+{
+
+namespace detail_pr
+{
+
+inline void readOptDouble(const Napi::Object& opts, const char* key,
+                          uint8_t& has, double& val)
+{
+  if (opts.Has(key) && !opts.Get(key).IsNull() && !opts.Get(key).IsUndefined())
+  {
+    has = 1;
+    val = opts.Get(key).As<Napi::Number>().DoubleValue();
+  }
+  else
+  {
+    has = 0;
+    val = 0.0;
+  }
+}
+
+inline Napi::Object breachToJs(Napi::Env env, const FloxBreach& b)
+{
+  Napi::Object o = Napi::Object::New(env);
+  o.Set("rule", Napi::String::New(env, b.rule ? b.rule : ""));
+  o.Set("value", Napi::Number::New(env, b.value));
+  o.Set("limit", Napi::Number::New(env, b.limit));
+  o.Set("detail", Napi::String::New(env, b.detail ? b.detail : ""));
+  return o;
+}
+
+}  // namespace detail_pr
+
+class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(env, "PortfolioRiskAggregator",
+                       {InstanceMethod("update", &PortfolioRiskWrap::Update),
+                        InstanceMethod("remove", &PortfolioRiskWrap::Remove),
+                        InstanceMethod("resetKillSwitch", &PortfolioRiskWrap::ResetKillSwitch),
+                        InstanceMethod("checkOrder", &PortfolioRiskWrap::CheckOrder),
+                        InstanceMethod("snapshot", &PortfolioRiskWrap::Snapshot),
+                        InstanceMethod("totalDailyPnl", &PortfolioRiskWrap::TotalDailyPnl),
+                        InstanceMethod("totalGrossExposure", &PortfolioRiskWrap::TotalGrossExposure),
+                        InstanceMethod("currentEquity", &PortfolioRiskWrap::CurrentEquity),
+                        InstanceMethod("drawdownPct", &PortfolioRiskWrap::DrawdownPct),
+                        InstanceMethod("killSwitchActive", &PortfolioRiskWrap::KillSwitchActive)});
+  }
+
+  PortfolioRiskWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<PortfolioRiskWrap>(info)
+  {
+    FloxPortfolioRiskRules rules{};
+    double initial_equity = 0.0;
+    if (info.Length() > 0 && info[0].IsObject())
+    {
+      auto opts = info[0].As<Napi::Object>();
+      if (opts.Has("rules") && opts.Get("rules").IsObject())
+      {
+        auto r = opts.Get("rules").As<Napi::Object>();
+        detail_pr::readOptDouble(r, "maxDrawdownPct",
+                                 rules.has_max_drawdown_pct, rules.max_drawdown_pct);
+        detail_pr::readOptDouble(r, "maxDailyLoss",
+                                 rules.has_max_daily_loss, rules.max_daily_loss);
+        detail_pr::readOptDouble(r, "maxGrossExposure",
+                                 rules.has_max_gross_exposure, rules.max_gross_exposure);
+        detail_pr::readOptDouble(r, "maxConcentrationPct",
+                                 rules.has_max_concentration_pct, rules.max_concentration_pct);
+      }
+      if (opts.Has("initialEquity"))
+      {
+        initial_equity = opts.Get("initialEquity").As<Napi::Number>().DoubleValue();
+      }
+    }
+    _h = flox_portfolio_risk_create(&rules, initial_equity);
+    if (!_h)
+    {
+      auto err = Napi::Error::New(info.Env(),
+                                  "PortfolioRiskAggregator: failed to construct");
+      err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
+      err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
+      throw err;
+    }
+  }
+  ~PortfolioRiskWrap()
+  {
+    if (_h)
+    {
+      flox_portfolio_risk_destroy(_h);
+    }
+  }
+
+ private:
+  void Update(const Napi::CallbackInfo& info)
+  {
+    if (info.Length() < 2 || !info[0].IsString() || !info[1].IsObject())
+    {
+      throw Napi::TypeError::New(info.Env(), "update(name, fields) expected");
+    }
+    std::string name = info[0].As<Napi::String>().Utf8Value();
+    auto fields = info[1].As<Napi::Object>();
+    FloxStrategyAccountFields f{};
+    uint8_t mask = 0;
+    auto putDouble = [&](const char* js_key, uint8_t bit, double& out)
+    {
+      if (fields.Has(js_key))
+      {
+        out = fields.Get(js_key).As<Napi::Number>().DoubleValue();
+        mask |= bit;
+      }
+    };
+    auto putUint64 = [&](const char* js_key, uint8_t bit, uint64_t& out)
+    {
+      if (fields.Has(js_key))
+      {
+        out = static_cast<uint64_t>(fields.Get(js_key).As<Napi::Number>().Int64Value());
+        mask |= bit;
+      }
+    };
+    putDouble("realizedPnl", 1u << 0, f.realized_pnl);
+    putDouble("unrealizedPnl", 1u << 1, f.unrealized_pnl);
+    putDouble("fees", 1u << 2, f.fees);
+    putDouble("grossExposure", 1u << 3, f.gross_exposure);
+    putDouble("netExposure", 1u << 4, f.net_exposure);
+    putUint64("tradeCount", 1u << 5, f.trade_count);
+    flox_portfolio_risk_update(_h, name.c_str(), &f, mask);
+  }
+
+  void Remove(const Napi::CallbackInfo& info)
+  {
+    std::string name = info[0].As<Napi::String>().Utf8Value();
+    flox_portfolio_risk_remove(_h, name.c_str());
+  }
+
+  void ResetKillSwitch(const Napi::CallbackInfo&)
+  {
+    flox_portfolio_risk_reset_kill_switch(_h);
+  }
+
+  Napi::Value CheckOrder(const Napi::CallbackInfo& info)
+  {
+    std::string strategy = info[0].As<Napi::String>().Utf8Value();
+    double notional = info[1].As<Napi::Number>().DoubleValue();
+    std::string side = info[2].As<Napi::String>().Utf8Value();
+    FloxBreach b{};
+    if (!flox_portfolio_risk_check_order(_h, strategy.c_str(), notional,
+                                         side.c_str(), &b))
+    {
+      return info.Env().Null();
+    }
+    return detail_pr::breachToJs(info.Env(), b);
+  }
+
+  Napi::Value Snapshot(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    Napi::Object out = Napi::Object::New(env);
+    out.Set("totalDailyPnl", Napi::Number::New(env, flox_portfolio_risk_total_daily_pnl(_h)));
+    out.Set("totalGrossExposure",
+            Napi::Number::New(env, flox_portfolio_risk_total_gross_exposure(_h)));
+    out.Set("currentEquity",
+            Napi::Number::New(env, flox_portfolio_risk_current_equity(_h)));
+    out.Set("drawdownPct",
+            Napi::Number::New(env, flox_portfolio_risk_drawdown_pct(_h)));
+    out.Set("killSwitchActive",
+            Napi::Boolean::New(env, flox_portfolio_risk_kill_switch_active(_h) != 0));
+
+    const uint64_t bn = flox_portfolio_risk_breach_count(_h);
+    Napi::Array breaches = Napi::Array::New(env, static_cast<size_t>(bn));
+    for (uint64_t i = 0; i < bn; ++i)
+    {
+      FloxBreach b{};
+      if (flox_portfolio_risk_breach_at(_h, i, &b))
+      {
+        breaches.Set(static_cast<uint32_t>(i), detail_pr::breachToJs(env, b));
+      }
+    }
+    out.Set("breaches", breaches);
+    out.Set("accountCount",
+            Napi::Number::New(env, static_cast<double>(flox_portfolio_risk_account_count(_h))));
+    return out;
+  }
+
+  Napi::Value TotalDailyPnl(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), flox_portfolio_risk_total_daily_pnl(_h));
+  }
+  Napi::Value TotalGrossExposure(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), flox_portfolio_risk_total_gross_exposure(_h));
+  }
+  Napi::Value CurrentEquity(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), flox_portfolio_risk_current_equity(_h));
+  }
+  Napi::Value DrawdownPct(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), flox_portfolio_risk_drawdown_pct(_h));
+  }
+  Napi::Value KillSwitchActive(const Napi::CallbackInfo& info)
+  {
+    return Napi::Boolean::New(info.Env(),
+                              flox_portfolio_risk_kill_switch_active(_h) != 0);
+  }
+
+  FloxPortfolioRiskHandle _h{nullptr};
+};
+
+inline void registerPortfolioRisk(Napi::Env env, Napi::Object exports)
+{
+  exports.Set("PortfolioRiskAggregator", PortfolioRiskWrap::Init(env));
+}
+
+}  // namespace node_flox

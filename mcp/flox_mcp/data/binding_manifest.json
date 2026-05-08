@@ -1163,6 +1163,76 @@
           "name": "flox_pnl_tracker_destroy"
         },
         {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_account_count"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_breach_at"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_breach_count"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_check_order"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_create"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_current_equity"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_destroy"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_drawdown_pct"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_kill_switch_active"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_remove"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_reset_kill_switch"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_total_daily_pnl"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_total_gross_exposure"
+        },
+        {
+          "group": "portfolio_risk",
+          "kind": "function",
+          "name": "flox_portfolio_risk_update"
+        },
+        {
           "group": "position_group",
           "kind": "function",
           "name": "flox_position_group_close"
@@ -1825,6 +1895,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxBreach"
+        },
+        {
+          "kind": "struct",
           "name": "FloxDatasetSummary"
         },
         {
@@ -1897,6 +1971,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxPortfolioRiskRules"
+        },
+        {
+          "kind": "struct",
           "name": "FloxReaderStats"
         },
         {
@@ -1926,6 +2004,10 @@
         {
           "kind": "struct",
           "name": "FloxStorageSinkCallbacks"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxStrategyAccountFields"
         },
         {
           "kind": "struct",
@@ -2061,6 +2143,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxPortfolioRiskHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxPositionGroupHandle"
         },
         {
@@ -2142,6 +2228,7 @@
         "order_tracker",
         "partitioner",
         "pointer_out",
+        "portfolio_risk",
         "position",
         "position_group",
         "recorder",
@@ -3092,6 +3179,62 @@
         },
         {
           "kind": "function",
+          "name": "flox_portfolio_risk_account_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_breach_at"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_breach_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_check_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_current_equity"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_drawdown_pct"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_kill_switch_active"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_remove"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_reset_kill_switch"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_total_daily_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_total_gross_exposure"
+        },
+        {
+          "kind": "function",
+          "name": "flox_portfolio_risk_update"
+        },
+        {
+          "kind": "function",
           "name": "flox_position_group_close"
         },
         {
@@ -3848,6 +3991,26 @@
         },
         {
           "kind": "class",
+          "name": "PortfolioBreach"
+        },
+        {
+          "kind": "class",
+          "name": "PortfolioRiskAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "PortfolioRiskOptions"
+        },
+        {
+          "kind": "class",
+          "name": "PortfolioRiskRules"
+        },
+        {
+          "kind": "class",
+          "name": "PortfolioSnapshotJs"
+        },
+        {
+          "kind": "class",
           "name": "PositionGroupTracker"
         },
         {
@@ -3933,6 +4096,10 @@
         {
           "kind": "class",
           "name": "Strategy"
+        },
+        {
+          "kind": "class",
+          "name": "StrategyAccountFields"
         },
         {
           "kind": "class",
@@ -4497,6 +4664,14 @@
         {
           "kind": "class",
           "name": "WalkForwardRunner"
+        },
+        {
+          "kind": "class",
+          "name": "_PortfolioRiskAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "_PortfolioRiskRules"
         },
         {
           "kind": "function",
@@ -5665,6 +5840,41 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      }
+    },
+    "portfolio_risk": {
+      "capi_functions": [
+        "flox_portfolio_risk_account_count",
+        "flox_portfolio_risk_breach_at",
+        "flox_portfolio_risk_breach_count",
+        "flox_portfolio_risk_check_order",
+        "flox_portfolio_risk_create",
+        "flox_portfolio_risk_current_equity",
+        "flox_portfolio_risk_destroy",
+        "flox_portfolio_risk_drawdown_pct",
+        "flox_portfolio_risk_kill_switch_active",
+        "flox_portfolio_risk_remove",
+        "flox_portfolio_risk_reset_kill_switch",
+        "flox_portfolio_risk_total_daily_pnl",
+        "flox_portfolio_risk_total_gross_exposure",
+        "flox_portfolio_risk_update"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "PortfolioRiskAggregator"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "reason": "exposed via flox_py.portfolio_risk.PortfolioRiskAggregator (pure-Python wrapper around the C ABI). Compiled symbols are _PortfolioRiskAggregator and _PortfolioRiskRules; the public class preserves the original dataclass-friendly surface.",
+        "status": "allowlist"
       }
     },
     "position": {

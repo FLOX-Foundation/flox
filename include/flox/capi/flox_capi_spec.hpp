@@ -2476,6 +2476,116 @@ extern "C"
                                           FloxTapeDiffMismatch* out,
                                           uint64_t max_entries);
 
+  // ============================================================
+  // Portfolio risk aggregator
+  // ============================================================
+  //
+  // Cross-strategy daily PnL, gross / net exposure, kill switch on
+  // drawdown / loss / gross / concentration limits. Single-process,
+  // mutex-guarded; one handle per portfolio.
+
+  typedef void* FloxPortfolioRiskHandle;
+
+  // Field-mask bits for flox_portfolio_risk_update.
+  // Set ALL (0x3F) to overwrite every field; combine bits to update
+  // only specific dimensions (e.g. gross+net only).
+  // bit 0: realized_pnl, 1: unrealized_pnl, 2: fees,
+  // bit 3: gross_exposure, 4: net_exposure, 5: trade_count.
+
+  typedef struct
+  {
+    uint8_t has_max_drawdown_pct;
+    double max_drawdown_pct;
+    uint8_t has_max_daily_loss;
+    double max_daily_loss;
+    uint8_t has_max_gross_exposure;
+    double max_gross_exposure;
+    uint8_t has_max_concentration_pct;
+    double max_concentration_pct;
+  } FloxPortfolioRiskRules;
+
+  typedef struct
+  {
+    double realized_pnl;
+    double unrealized_pnl;
+    double fees;
+    double gross_exposure;
+    double net_exposure;
+    uint64_t trade_count;
+  } FloxStrategyAccountFields;
+
+  // Single breach record. `rule` and `detail` strings are owned by
+  // the aggregator and remain valid until the next state-mutating
+  // call on the same handle; copy them out if the caller needs to
+  // outlive that.
+  typedef struct
+  {
+    const char* rule;
+    double value;
+    double limit;
+    const char* detail;
+  } FloxBreach;
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  FloxPortfolioRiskHandle flox_portfolio_risk_create(
+      const FloxPortfolioRiskRules* rules, double initial_equity);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  void flox_portfolio_risk_destroy(FloxPortfolioRiskHandle handle);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle,
+                                  const char* name,
+                                  const FloxStrategyAccountFields* fields,
+                                  uint8_t field_mask);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  void flox_portfolio_risk_remove(FloxPortfolioRiskHandle handle, const char* name);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  void flox_portfolio_risk_reset_kill_switch(FloxPortfolioRiskHandle handle);
+
+  // Returns 1 and writes *out_breach if the order is rejected.
+  // Returns 0 and leaves out_breach untouched if the order is allowed.
+  FLOX_EXPORT(group = "portfolio_risk")
+  uint8_t flox_portfolio_risk_check_order(FloxPortfolioRiskHandle handle,
+                                          const char* strategy,
+                                          double notional,
+                                          const char* side,
+                                          FloxBreach* out_breach);
+
+  // Headline snapshot fields. The aggregator owns the strings
+  // referenced via flox_portfolio_risk_breach_at; they remain valid
+  // until the next mutating call.
+  FLOX_EXPORT(group = "portfolio_risk")
+  double flox_portfolio_risk_total_daily_pnl(FloxPortfolioRiskHandle handle);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  double flox_portfolio_risk_total_gross_exposure(FloxPortfolioRiskHandle handle);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  double flox_portfolio_risk_current_equity(FloxPortfolioRiskHandle handle);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  double flox_portfolio_risk_drawdown_pct(FloxPortfolioRiskHandle handle);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  uint8_t flox_portfolio_risk_kill_switch_active(FloxPortfolioRiskHandle handle);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  uint64_t flox_portfolio_risk_breach_count(FloxPortfolioRiskHandle handle);
+
+  // Returns 1 and writes *out on success, 0 if index is out of range.
+  // The handle owns the string memory; it is invalidated by the next
+  // mutating call.
+  FLOX_EXPORT(group = "portfolio_risk")
+  uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle,
+                                         uint64_t index,
+                                         FloxBreach* out);
+
+  FLOX_EXPORT(group = "portfolio_risk")
+  uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle);
+
 #ifdef __cplusplus
 }
 #endif

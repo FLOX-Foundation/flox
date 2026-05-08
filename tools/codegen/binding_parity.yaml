@@ -315,3 +315,12 @@ groups:
       status: required
       functions: [tapeDiff]
     codon: { status: required }
+
+  portfolio_risk:
+    pybind11:
+      status: allowlist
+      reason: "exposed via flox_py.portfolio_risk.PortfolioRiskAggregator (pure-Python wrapper around the C ABI). Compiled symbols are _PortfolioRiskAggregator and _PortfolioRiskRules; the public class preserves the original dataclass-friendly surface."
+    napi:
+      status: required
+      classes: [PortfolioRiskAggregator]
+    codon: { status: required }

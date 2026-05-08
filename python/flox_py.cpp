@@ -19,6 +19,7 @@
 #include "indicator_bindings.h"
 #include "latency_bindings.h"
 #include "optimizer_bindings.h"
+#include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
 #include "profile_bindings.h"
 #include "replay_bindings.h"
@@ -783,6 +784,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindHeatmap(m);
   flox_py::bindLatencyModels(m);
   flox_py::bindTapeDiff(m);
+  flox_py::bindPortfolioRisk(m);
   bindOptimizer(m);
   bindCompositeBook(m);
   bindStrategy(m);

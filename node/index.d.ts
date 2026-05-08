@@ -1489,3 +1489,62 @@ export interface TapeDiffResult {
  *  output. */
 export function tapeDiff(leftPath: string, rightPath: string,
                          opts?: TapeDiffOptions): TapeDiffResult;
+
+// ── Portfolio risk aggregator ─────────────────────────────────────────
+
+/** Cross-strategy risk limits. Pass any subset; missing fields stay
+ *  uncapped. */
+export interface PortfolioRiskRules {
+  maxDrawdownPct?: number;
+  maxDailyLoss?: number;
+  maxGrossExposure?: number;
+  maxConcentrationPct?: number;
+}
+
+export interface PortfolioRiskOptions {
+  rules?: PortfolioRiskRules;
+  initialEquity?: number;
+}
+
+/** One row's writable view; pass any subset to `update`. */
+export interface StrategyAccountFields {
+  realizedPnl?: number;
+  unrealizedPnl?: number;
+  fees?: number;
+  grossExposure?: number;
+  netExposure?: number;
+  tradeCount?: number;
+}
+
+export interface PortfolioBreach {
+  rule: string;
+  value: number;
+  limit: number;
+  detail: string;
+}
+
+export interface PortfolioSnapshotJs {
+  totalDailyPnl: number;
+  totalGrossExposure: number;
+  currentEquity: number;
+  drawdownPct: number;
+  killSwitchActive: boolean;
+  breaches: ReadonlyArray<PortfolioBreach>;
+  accountCount: number;
+}
+
+export class PortfolioRiskAggregator {
+  constructor(opts?: PortfolioRiskOptions);
+  update(name: string, fields: StrategyAccountFields): void;
+  remove(name: string): void;
+  resetKillSwitch(): void;
+  /** Returns `null` when allowed, or a breach describing the rule
+   *  hit. Pre-trade gate; does not mutate state. */
+  checkOrder(strategy: string, notional: number, side: string): PortfolioBreach | null;
+  snapshot(): PortfolioSnapshotJs;
+  totalDailyPnl(): number;
+  totalGrossExposure(): number;
+  currentEquity(): number;
+  drawdownPct(): number;
+  killSwitchActive(): boolean;
+}

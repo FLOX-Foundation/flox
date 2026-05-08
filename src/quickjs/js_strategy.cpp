@@ -502,6 +502,27 @@ void FloxJsStrategy::loadStdlib()
         return __flox_tape_diff(left, right, opts || {});
       },
 
+      // Portfolio risk aggregator. C ABI handle-based; JS class
+      // wraps the lifecycle.
+      PortfolioRiskAggregator: class {
+        constructor(opts) {
+          var o = opts || {};
+          this._h = __flox_portfolio_risk_create(o.rules || {}, o.initialEquity || 0);
+        }
+        destroy() {
+          if (this._h) { __flox_portfolio_risk_destroy(this._h); this._h = null; }
+        }
+        update(name, fields) {
+          __flox_portfolio_risk_update(this._h, name, fields || {});
+        }
+        remove(name) { __flox_portfolio_risk_remove(this._h, name); }
+        resetKillSwitch() { __flox_portfolio_risk_reset(this._h); }
+        checkOrder(strategy, notional, side) {
+          return __flox_portfolio_risk_check_order(this._h, strategy, notional, side);
+        }
+        snapshot() { return __flox_portfolio_risk_snapshot(this._h); }
+      },
+
       IndicatorGraph: class {
         constructor() {
           this._h = __flox_graph_create();

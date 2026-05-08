@@ -6,36 +6,35 @@ counts across N registered strategies, applies portfolio-level rules
 (max drawdown, max gross exposure, max position concentration),
 and publishes a single kill-switch signal back to the engine.
 
-Phase 1 is single-process and in-memory. The user's app instantiates
-one ``PortfolioRiskAggregator``, registers each strategy's view, and
-either polls ``snapshot()`` or wires the aggregator to call back on
-breach. Multi-process aggregation through shared state is a Phase 2
-concern; the API is shaped so the same call-site code works once a
-shared backend lands.
-
-Why this exists in flox: the open-source gap is real. Per-strategy
-daily-loss limits are common; portfolio-level caps that span
-strategies and accounts are commercial-only.
+Phase 1 is single-process and in-memory. The aggregator now lives in
+the C++ engine; this module is the Python surface, with the same
+dataclass shape it always had.
 """
 from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+
+_FIELD_TO_BIT: Dict[str, int] = {
+    "realized_pnl": 1 << 0,
+    "unrealized_pnl": 1 << 1,
+    "fees": 1 << 2,
+    "gross_exposure": 1 << 3,
+    "net_exposure": 1 << 4,
+    "trade_count": 1 << 5,
+}
 
 
 @dataclass
 class StrategyAccount:
-    """One row in the aggregator's view. The user's app fills these
-    in from whichever bookkeeping it already does (PnLTracker hook,
-    position state, etc) and feeds them through ``update``."""
-
     name: str
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
     fees: float = 0.0
-    gross_exposure: float = 0.0   # sum of |qty * price| across positions
-    net_exposure: float = 0.0     # signed: long minus short
+    gross_exposure: float = 0.0
+    net_exposure: float = 0.0
     trade_count: int = 0
 
     @property
@@ -45,29 +44,14 @@ class StrategyAccount:
 
 @dataclass
 class RiskRules:
-    """Portfolio-level limits. Any breach flips the kill switch."""
-
     max_drawdown_pct: Optional[float] = None
-    """Trip when ``(peak_equity - current_equity) / peak_equity`` exceeds
-    this value. Pass ``0.20`` for 20 percent drawdown."""
-
     max_daily_loss: Optional[float] = None
-    """Absolute loss cap on combined daily PnL. Pass a negative
-    threshold or a positive number; the magnitude is what matters."""
-
     max_gross_exposure: Optional[float] = None
-    """Total gross exposure across every registered strategy."""
-
     max_concentration_pct: Optional[float] = None
-    """Trip when any single strategy contributes more than this share
-    of the gross exposure. Useful for catching one strategy that
-    silently doubles up."""
 
 
 @dataclass
 class Breach:
-    """Why the kill switch tripped."""
-
     rule: str
     value: float
     limit: float
@@ -76,8 +60,6 @@ class Breach:
 
 @dataclass
 class PortfolioSnapshot:
-    """Read-only view of the current aggregate."""
-
     total_realized_pnl: float
     total_unrealized_pnl: float
     total_fees: float
@@ -125,27 +107,42 @@ class PortfolioSnapshot:
 KillSwitchCallback = Callable[[List[Breach]], None]
 
 
+def _account_from_dict(d: dict) -> StrategyAccount:
+    return StrategyAccount(
+        name=d["name"],
+        realized_pnl=float(d["realized_pnl"]),
+        unrealized_pnl=float(d["unrealized_pnl"]),
+        fees=float(d["fees"]),
+        gross_exposure=float(d["gross_exposure"]),
+        net_exposure=float(d["net_exposure"]),
+        trade_count=int(d["trade_count"]),
+    )
+
+
+def _breach_from_dict(d: dict) -> Breach:
+    return Breach(
+        rule=str(d["rule"]),
+        value=float(d["value"]),
+        limit=float(d["limit"]),
+        detail=str(d.get("detail", "")),
+    )
+
+
+def _build_native_rules(rules: RiskRules) -> Any:
+    from flox_py._flox_py import _PortfolioRiskRules  # type: ignore[attr-defined]
+
+    n = _PortfolioRiskRules()
+    n.max_drawdown_pct = rules.max_drawdown_pct
+    n.max_daily_loss = rules.max_daily_loss
+    n.max_gross_exposure = rules.max_gross_exposure
+    n.max_concentration_pct = rules.max_concentration_pct
+    return n
+
+
 class PortfolioRiskAggregator:
-    """Single-process, in-memory portfolio risk aggregator.
-
-    Typical usage::
-
-        aggregator = PortfolioRiskAggregator(
-            rules=RiskRules(max_drawdown_pct=0.20, max_daily_loss=10_000),
-            initial_equity=100_000,
-            on_breach=my_kill_switch.activate,
-        )
-        aggregator.update("ema-trend", realized_pnl=120.0,
-                          unrealized_pnl=-30.0, gross_exposure=5000.0,
-                          net_exposure=4500.0, trade_count=12)
-        snap = aggregator.snapshot()
-        if snap.kill_switch_active:
-            ...
-
-    All methods are thread-safe. ``snapshot()`` is the canonical read
-    primitive; it returns a deep copy so the caller can JSON-serialize
-    or hand it to a UI without holding the lock.
-    """
+    """Single-process portfolio risk aggregator. Delegates to the
+    C++-backed implementation in ``flox_py._flox_py`` and preserves
+    the dataclass-friendly Python surface."""
 
     def __init__(
         self,
@@ -154,46 +151,46 @@ class PortfolioRiskAggregator:
         initial_equity: float = 0.0,
         on_breach: Optional[KillSwitchCallback] = None,
     ) -> None:
-        self._rules = rules or RiskRules()
-        self._initial_equity = float(initial_equity)
-        self._peak_equity = float(initial_equity)
-        self._accounts: Dict[str, StrategyAccount] = {}
-        self._kill_switch_active = False
-        self._on_breach = on_breach
-        self._lock = threading.Lock()
+        from flox_py._flox_py import _PortfolioRiskAggregator  # type: ignore[attr-defined]
 
-    # ── Mutators (thread-safe) ────────────────────────────────────
+        self._rules = rules or RiskRules()
+        self._on_breach = on_breach
+        self._native = _PortfolioRiskAggregator(
+            _build_native_rules(self._rules), float(initial_equity),
+        )
+        self._kill_switch_seen = False
+        self._callback_lock = threading.Lock()
 
     def update(self, name: str, **fields: float) -> None:
-        """Upsert a strategy's view. Pass any subset of
-        ``StrategyAccount`` fields by keyword; missing fields keep
-        their previous value, missing strategy creates a new row."""
-        with self._lock:
-            row = self._accounts.get(name)
-            if row is None:
-                row = StrategyAccount(name=name)
-                self._accounts[name] = row
-            for k, v in fields.items():
-                if not hasattr(row, k):
-                    raise AttributeError(
-                        f"unknown StrategyAccount field {k!r}"
-                    )
-                setattr(row, k, type(getattr(row, k))(v))
-            self._reevaluate_locked()
+        valid = set(_FIELD_TO_BIT.keys())
+        unknown = set(fields.keys()) - valid
+        if unknown:
+            raise AttributeError(
+                f"unknown StrategyAccount field {next(iter(unknown))!r}"
+            )
+        mask = 0
+        for k in fields:
+            mask |= _FIELD_TO_BIT[k]
+
+        kwargs: Dict[str, float] = {
+            "realized_pnl": float(fields.get("realized_pnl", 0.0)),
+            "unrealized_pnl": float(fields.get("unrealized_pnl", 0.0)),
+            "fees": float(fields.get("fees", 0.0)),
+            "gross_exposure": float(fields.get("gross_exposure", 0.0)),
+            "net_exposure": float(fields.get("net_exposure", 0.0)),
+            "trade_count": int(fields.get("trade_count", 0)),
+        }
+        self._native.update(name=name, field_mask=mask, **kwargs)
+        self._maybe_fire_breach()
 
     def remove(self, name: str) -> None:
-        with self._lock:
-            self._accounts.pop(name, None)
-            self._reevaluate_locked()
+        self._native.remove(name)
+        self._maybe_fire_breach()
 
     def reset_kill_switch(self) -> None:
-        """Manual override after a breach has been investigated. The
-        next ``update`` re-evaluates and re-trips if the cause is
-        still present."""
-        with self._lock:
-            self._kill_switch_active = False
-
-    # ── Pre-trade check ──────────────────────────────────────────
+        self._native.reset_kill_switch()
+        with self._callback_lock:
+            self._kill_switch_seen = False
 
     def check_order(
         self,
@@ -202,159 +199,43 @@ class PortfolioRiskAggregator:
         notional: float,
         side: str,
     ) -> Optional[Breach]:
-        """Inspect a candidate order against the aggregated state.
-        Returns ``None`` if the order is allowed, or a ``Breach``
-        describing why it must be rejected. Does not mutate state."""
-        with self._lock:
-            if self._kill_switch_active:
-                return Breach(
-                    rule="kill_switch_active",
-                    value=1.0,
-                    limit=0.0,
-                    detail="portfolio kill switch is engaged",
-                )
-            if self._rules.max_gross_exposure is not None:
-                proposed = self._total_gross_locked() + abs(float(notional))
-                if proposed > self._rules.max_gross_exposure:
-                    return Breach(
-                        rule="max_gross_exposure",
-                        value=proposed,
-                        limit=self._rules.max_gross_exposure,
-                        detail=(
-                            f"order would push gross exposure to "
-                            f"{proposed:.2f} (cap {self._rules.max_gross_exposure:.2f})"
-                        ),
-                    )
-        return None
-
-    # ── Read primitive ───────────────────────────────────────────
+        result = self._native.check_order(strategy, float(notional), side)
+        if result is None:
+            return None
+        return _breach_from_dict(result)
 
     def snapshot(self) -> PortfolioSnapshot:
-        with self._lock:
-            return self._build_snapshot_locked()
-
-    # ── Internal ─────────────────────────────────────────────────
-
-    def _total_gross_locked(self) -> float:
-        return sum(a.gross_exposure for a in self._accounts.values())
-
-    def _total_daily_pnl_locked(self) -> float:
-        return sum(a.daily_pnl for a in self._accounts.values())
-
-    def _current_equity_locked(self) -> float:
-        return self._initial_equity + self._total_daily_pnl_locked()
-
-    def _drawdown_pct_locked(self) -> float:
-        if self._peak_equity <= 0:
-            return 0.0
-        return max(0.0, (self._peak_equity - self._current_equity_locked()) / self._peak_equity)
-
-    def _breaches_locked(self) -> List[Breach]:
-        breaches: List[Breach] = []
-        cur_equity = self._current_equity_locked()
-        if cur_equity > self._peak_equity:
-            self._peak_equity = cur_equity
-
-        if self._rules.max_drawdown_pct is not None:
-            dd = self._drawdown_pct_locked()
-            if dd > self._rules.max_drawdown_pct:
-                breaches.append(Breach(
-                    rule="max_drawdown_pct",
-                    value=dd,
-                    limit=self._rules.max_drawdown_pct,
-                    detail=(
-                        f"drawdown {dd:.4f} exceeds limit "
-                        f"{self._rules.max_drawdown_pct:.4f}"
-                    ),
-                ))
-
-        if self._rules.max_daily_loss is not None:
-            cap = abs(self._rules.max_daily_loss)
-            pnl = self._total_daily_pnl_locked()
-            if pnl < 0 and abs(pnl) > cap:
-                breaches.append(Breach(
-                    rule="max_daily_loss",
-                    value=pnl,
-                    limit=-cap,
-                    detail=f"daily loss {pnl:.2f} exceeds cap {cap:.2f}",
-                ))
-
-        if self._rules.max_gross_exposure is not None:
-            gross = self._total_gross_locked()
-            if gross > self._rules.max_gross_exposure:
-                breaches.append(Breach(
-                    rule="max_gross_exposure",
-                    value=gross,
-                    limit=self._rules.max_gross_exposure,
-                    detail=(
-                        f"gross exposure {gross:.2f} exceeds cap "
-                        f"{self._rules.max_gross_exposure:.2f}"
-                    ),
-                ))
-
-        # Concentration only makes sense when more than one strategy
-        # carries gross exposure. With a single contributor the share
-        # is by definition 1.0 and the check would trip at startup
-        # before any second strategy registers.
-        if self._rules.max_concentration_pct is not None:
-            contributors = [
-                a for a in self._accounts.values() if a.gross_exposure > 0
-            ]
-            if len(contributors) >= 2:
-                total = sum(a.gross_exposure for a in contributors)
-                worst = max(contributors, key=lambda a: a.gross_exposure)
-                share = worst.gross_exposure / total
-                if share > self._rules.max_concentration_pct:
-                    breaches.append(Breach(
-                        rule="max_concentration_pct",
-                        value=share,
-                        limit=self._rules.max_concentration_pct,
-                        detail=(
-                            f"strategy {worst.name!r} holds "
-                            f"{share:.4f} of gross (cap "
-                            f"{self._rules.max_concentration_pct:.4f})"
-                        ),
-                    ))
-        return breaches
-
-    def _reevaluate_locked(self) -> None:
-        breaches = self._breaches_locked()
-        if breaches and not self._kill_switch_active:
-            self._kill_switch_active = True
-            if self._on_breach is not None:
-                # Hold the lock briefly; user callback should be
-                # cheap. Heavy work belongs in a separate consumer.
-                try:
-                    self._on_breach(list(breaches))
-                except Exception:  # noqa: BLE001 — never let user callback crash the aggregator
-                    pass
-
-    def _build_snapshot_locked(self) -> PortfolioSnapshot:
-        accounts = [
-            StrategyAccount(
-                name=a.name,
-                realized_pnl=a.realized_pnl,
-                unrealized_pnl=a.unrealized_pnl,
-                fees=a.fees,
-                gross_exposure=a.gross_exposure,
-                net_exposure=a.net_exposure,
-                trade_count=a.trade_count,
-            )
-            for a in self._accounts.values()
-        ]
+        d = self._native.snapshot()
+        accounts = [_account_from_dict(a) for a in d["accounts"]]
+        breaches = [_breach_from_dict(b) for b in d["active_breaches"]]
         return PortfolioSnapshot(
-            total_realized_pnl=sum(a.realized_pnl for a in accounts),
-            total_unrealized_pnl=sum(a.unrealized_pnl for a in accounts),
-            total_fees=sum(a.fees for a in accounts),
-            total_daily_pnl=self._total_daily_pnl_locked(),
-            total_gross_exposure=self._total_gross_locked(),
-            total_net_exposure=sum(a.net_exposure for a in accounts),
-            peak_equity=self._peak_equity,
-            drawdown_pct=self._drawdown_pct_locked(),
+            total_realized_pnl=float(d["total_realized_pnl"]),
+            total_unrealized_pnl=float(d["total_unrealized_pnl"]),
+            total_fees=float(d["total_fees"]),
+            total_daily_pnl=float(d["total_daily_pnl"]),
+            total_gross_exposure=float(d["total_gross_exposure"]),
+            total_net_exposure=float(d["total_net_exposure"]),
+            peak_equity=float(d["peak_equity"]),
+            drawdown_pct=float(d["drawdown_pct"]),
             accounts=accounts,
-            kill_switch_active=self._kill_switch_active,
-            breaches=self._breaches_locked(),
+            kill_switch_active=bool(d["kill_switch_active"]),
+            breaches=breaches,
         )
+
+    def _maybe_fire_breach(self) -> None:
+        if self._on_breach is None:
+            return
+        snap = self.snapshot()
+        if not snap.kill_switch_active or not snap.breaches:
+            return
+        with self._callback_lock:
+            if self._kill_switch_seen:
+                return
+            self._kill_switch_seen = True
+        try:
+            self._on_breach(list(snap.breaches))
+        except Exception:
+            pass
 
 
 __all__ = [
