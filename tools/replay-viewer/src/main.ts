@@ -175,9 +175,21 @@ store.subscribe((s) => {
       renderSignals(cur);
       renderOrders(cur);
       renderEquity(cur);
+      updateOverflowMarkers();
     });
   }
 });
+
+function updateOverflowMarkers() {
+  for (const view of document.querySelectorAll<HTMLElement>('.view')) {
+    const inner = view.querySelector<HTMLElement>(':scope > div:not(.emptystate):not(.chart-tooltip)');
+    if (!inner) {
+      view.classList.remove('has-overflow');
+      continue;
+    }
+    view.classList.toggle('has-overflow', inner.scrollHeight > inner.clientHeight + 4);
+  }
+}
 
 // Autoload from a server-staged directory (used by `flox tape view`).
 async function tryAutoload() {

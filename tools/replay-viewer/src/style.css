@@ -125,8 +125,77 @@ html, body {
   color: var(--text-muted);
   font-weight: 600;
 }
-.view canvas, .view > div:not(.emptystate) { flex: 1; min-height: 0; overflow: auto; }
-.view canvas { width: 100%; height: 100%; }
+.view canvas, .view > div:not(.emptystate) {
+  flex: 1;
+  min-height: 0;
+  overflow: scroll;
+  scrollbar-gutter: stable;
+}
+.view canvas { width: 100%; height: 100%; overflow: hidden; scrollbar-gutter: auto; }
+
+/* Visible-overflow indicator: fade-out gradient at the bottom + a
+ * chevron, attached to the section so it does not scroll with the
+ * content. Renders regardless of OS scrollbar prefs (macOS overlay
+ * mode hides native scrollbars from screenshots and from users with
+ * "Show scrollbars: When scrolling" set; this affordance does not). */
+.view.has-overflow::after {
+  content: "▾";
+  position: absolute;
+  bottom: 4px;
+  right: 18px;
+  color: var(--accent);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 2;
+  background: var(--panel);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  text-align: center;
+  line-height: 16px;
+  border: 1px solid var(--border);
+}
+.view.has-overflow::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 1px;
+  height: 18px;
+  background: linear-gradient(to bottom, transparent, var(--panel) 75%);
+  pointer-events: none;
+  border-radius: 0 0 9px 9px;
+  z-index: 1;
+}
+
+/* Always-visible scrollbars, with palette-matched chrome. The styles
+ * here both reserve space (`scrollbar-gutter: stable`) and make the
+ * scrollbar visible on Chromium / macOS by switching out of the
+ * overlay default via `::-webkit-scrollbar` styling. */
+* {
+  scrollbar-color: var(--border-strong) var(--bg-soft);
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: var(--bg-soft);
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-soft);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--bg-soft);
+  min-height: 24px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+::-webkit-scrollbar-corner {
+  background: var(--bg-soft);
+}
 
 .view[data-view="price"] { grid-column: 1 / 3; grid-row: 1 / 2; }
 .view[data-view="orderbook"] { grid-column: 1 / 2; grid-row: 2 / 4; }
