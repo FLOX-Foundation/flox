@@ -172,6 +172,16 @@ flox_l3_book_destroy|void|FloxL3BookHandle
 flox_l3_book_modify_order|int32_t|FloxL3BookHandle|uint64_t|double
 flox_l3_book_remove_order|int32_t|FloxL3BookHandle|uint64_t
 flox_last_trade_price_raw|int64_t|FloxStrategyHandle|uint32_t
+flox_latency_constant_create|FloxLatencyModelHandle|int64_t|int64_t|int64_t
+flox_latency_destroy|void|FloxLatencyModelHandle
+flox_latency_empirical_create|FloxLatencyModelHandle|const int64_t *|size_t|const int64_t *|size_t|const int64_t *|size_t|uint64_t
+flox_latency_exponential_create|FloxLatencyModelHandle|double|double|double|uint64_t
+flox_latency_feed_delay|int64_t|FloxLatencyModelHandle
+flox_latency_fill_delay|int64_t|FloxLatencyModelHandle
+flox_latency_gaussian_create|FloxLatencyModelHandle|double|double|double|double|double|double|uint64_t
+flox_latency_order_delay|int64_t|FloxLatencyModelHandle
+flox_latency_reset|void|FloxLatencyModelHandle|uint64_t
+flox_latency_sample|void|FloxLatencyModelHandle|FloxLatencySample *
 flox_live_engine_add_strategy|void|FloxLiveEngineHandle|FloxStrategyHandle|FloxOnSignalCallback|void *
 flox_live_engine_create|FloxLiveEngineHandle|FloxRegistryHandle
 flox_live_engine_destroy|void|FloxLiveEngineHandle
@@ -326,6 +336,14 @@ flox_streaming_graph_reset|void|FloxStreamingGraphHandle|uint32_t
 flox_streaming_graph_reset_all|void|FloxStreamingGraphHandle
 flox_streaming_graph_step|void|FloxStreamingGraphHandle|uint32_t|double|double|double|double|double
 flox_streaming_graph_volume|const double *|FloxStreamingGraphHandle|uint32_t|size_t *
+flox_tape_diff_copy_mismatches|uint64_t|FloxTapeDiffHandle|FloxTapeDiffMismatch *|uint64_t
+flox_tape_diff_create|FloxTapeDiffHandle|const char *|const char *|uint32_t|int64_t
+flox_tape_diff_destroy|void|FloxTapeDiffHandle
+flox_tape_diff_equal|uint8_t|FloxTapeDiffHandle
+flox_tape_diff_first_divergence|uint8_t|FloxTapeDiffHandle|uint64_t *
+flox_tape_diff_left_count|uint64_t|FloxTapeDiffHandle
+flox_tape_diff_mismatch_count|uint64_t|FloxTapeDiffHandle
+flox_tape_diff_right_count|uint64_t|FloxTapeDiffHandle
 flox_target_future_ctc_volatility|void|const double *|size_t|size_t|double *
 flox_target_future_linear_slope|void|const double *|size_t|size_t|double *
 flox_target_future_return|void|const double *|size_t|size_t|double *

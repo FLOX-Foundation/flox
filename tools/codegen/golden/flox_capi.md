@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 349 functions, 33 handles, 42 structs, 33 callback typedefs, 2 enums, 48 groups.
+**Surface:** 357 functions, 34 handles, 44 structs, 33 callback typedefs, 2 enums, 49 groups.
 
 ## Opaque handles
 
@@ -41,6 +41,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxBacktestRunnerHandle`
 - `FloxGridSearchHandle`
 - `FloxLatencyModelHandle`
+- `FloxTapeDiffHandle`
 
 ## Enums
 
@@ -608,6 +609,24 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `order_ns` | `int64_t` |
 | `fill_ns` | `int64_t` |
 
+### `FloxTapeDiffTrade`
+
+| field | type |
+|---|---|
+| `exchange_ts_ns` | `int64_t` |
+| `price_raw` | `int64_t` |
+| `qty_raw` | `int64_t` |
+| `symbol_id` | `uint32_t` |
+| `side` | `uint8_t` |
+
+### `FloxTapeDiffMismatch`
+
+| field | type |
+|---|---|
+| `index` | `uint64_t` |
+| `left` | `FloxTapeDiffTrade` |
+| `right` | `FloxTapeDiffTrade` |
+
 ## Functions
 
 ### additional_bar
@@ -1074,6 +1093,17 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_registry_get_symbol_id(FloxRegistryHandle registry, const char * exchange, const char * name, uint32_t * id_out)`
 - `uint8_t flox_registry_get_symbol_name(FloxRegistryHandle registry, uint32_t symbol_id, char * exchange_out, size_t exchange_len, char * name_out, size_t name_len)`
 - `uint32_t flox_registry_symbol_count(FloxRegistryHandle registry)`
+
+### tape_diff
+
+- `FloxTapeDiffHandle flox_tape_diff_create(const char * left_path, const char * right_path, uint32_t max_mismatches, int64_t field_tolerance_ns)`
+- `void flox_tape_diff_destroy(FloxTapeDiffHandle handle)`
+- `uint64_t flox_tape_diff_left_count(FloxTapeDiffHandle handle)`
+- `uint64_t flox_tape_diff_right_count(FloxTapeDiffHandle handle)`
+- `uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle, uint64_t * out_index)`
+- `uint8_t flox_tape_diff_equal(FloxTapeDiffHandle handle)`
+- `uint64_t flox_tape_diff_mismatch_count(FloxTapeDiffHandle handle)`
+- `uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle, FloxTapeDiffMismatch * out, uint64_t max_entries)`
 
 ### targets
 

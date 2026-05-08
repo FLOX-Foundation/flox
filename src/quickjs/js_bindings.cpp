@@ -1380,6 +1380,112 @@ static JSValue js_pos_total_pnl(JSContext* ctx, JSValueConst, int, JSValueConst*
 }
 
 // ============================================================
+// Tape diff bindings (replay-equivalence localization)
+// ============================================================
+
+static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 2)
+  {
+    return JS_ThrowTypeError(ctx, "tapeDiff: need leftPath and rightPath");
+  }
+  const char* left = JS_ToCString(ctx, argv[0]);
+  const char* right = JS_ToCString(ctx, argv[1]);
+  if (!left || !right)
+  {
+    if (left)
+    {
+      JS_FreeCString(ctx, left);
+    }
+    if (right)
+    {
+      JS_FreeCString(ctx, right);
+    }
+    return JS_ThrowTypeError(ctx, "tapeDiff: paths must be strings");
+  }
+  uint32_t max_mismatches = 16;
+  int64_t tolerance_ns = 0;
+  if (argc >= 3 && JS_IsObject(argv[2]))
+  {
+    JSValue v = JS_GetPropertyStr(ctx, argv[2], "maxMismatches");
+    if (!JS_IsUndefined(v))
+    {
+      JS_ToUint32(ctx, &max_mismatches, v);
+    }
+    JS_FreeValue(ctx, v);
+    v = JS_GetPropertyStr(ctx, argv[2], "fieldToleranceNs");
+    if (!JS_IsUndefined(v))
+    {
+      JS_ToInt64(ctx, &tolerance_ns, v);
+    }
+    JS_FreeValue(ctx, v);
+  }
+
+  FloxTapeDiffHandle h =
+      flox_tape_diff_create(left, right, max_mismatches, tolerance_ns);
+  std::string leftStr = left;
+  std::string rightStr = right;
+  JS_FreeCString(ctx, left);
+  JS_FreeCString(ctx, right);
+  if (!h)
+  {
+    return JS_ThrowTypeError(ctx, "tapeDiff: failed to read tape directory(ies)");
+  }
+
+  JSValue out = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, out, "leftPath", JS_NewString(ctx, leftStr.c_str()));
+  JS_SetPropertyStr(ctx, out, "rightPath", JS_NewString(ctx, rightStr.c_str()));
+  JS_SetPropertyStr(ctx, out, "leftCount",
+                    JS_NewInt64(ctx, static_cast<int64_t>(flox_tape_diff_left_count(h))));
+  JS_SetPropertyStr(ctx, out, "rightCount",
+                    JS_NewInt64(ctx, static_cast<int64_t>(flox_tape_diff_right_count(h))));
+
+  uint64_t div_idx = 0;
+  if (flox_tape_diff_first_divergence(h, &div_idx))
+  {
+    JS_SetPropertyStr(ctx, out, "firstDivergenceIndex",
+                      JS_NewInt64(ctx, static_cast<int64_t>(div_idx)));
+  }
+  else
+  {
+    JS_SetPropertyStr(ctx, out, "firstDivergenceIndex", JS_NULL);
+  }
+  JS_SetPropertyStr(ctx, out, "equal",
+                    JS_NewBool(ctx, flox_tape_diff_equal(h) != 0));
+
+  const uint64_t mcount = flox_tape_diff_mismatch_count(h);
+  JSValue mlist = JS_NewArray(ctx);
+  if (mcount > 0)
+  {
+    std::vector<FloxTapeDiffMismatch> buf(mcount);
+    flox_tape_diff_copy_mismatches(h, buf.data(), mcount);
+    for (uint64_t i = 0; i < mcount; ++i)
+    {
+      JSValue entry = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, entry, "index",
+                        JS_NewInt64(ctx, static_cast<int64_t>(buf[i].index)));
+      auto putSide = [&](const char* key, const FloxTapeDiffTrade& t)
+      {
+        JSValue o = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, o, "exchangeTsNs", JS_NewInt64(ctx, t.exchange_ts_ns));
+        JS_SetPropertyStr(ctx, o, "symbolId", JS_NewUint32(ctx, t.symbol_id));
+        JS_SetPropertyStr(ctx, o, "priceRaw", JS_NewInt64(ctx, t.price_raw));
+        JS_SetPropertyStr(ctx, o, "qtyRaw", JS_NewInt64(ctx, t.qty_raw));
+        JS_SetPropertyStr(ctx, o, "side", JS_NewUint32(ctx, t.side));
+        JS_SetPropertyStr(ctx, entry, key, o);
+      };
+      putSide("left", buf[i].left);
+      putSide("right", buf[i].right);
+      JS_SetPropertyUint32(ctx, mlist, static_cast<uint32_t>(i), entry);
+    }
+  }
+  JS_SetPropertyStr(ctx, out, "mismatches", mlist);
+
+  flox_tape_diff_destroy(h);
+  return out;
+}
+
+// ============================================================
 // Latency model bindings
 // ============================================================
 
@@ -2905,6 +3011,9 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_pos_avg_entry", js_pos_avg_entry, 2);
   addGlobalFunc(ctx, "__flox_pos_pnl", js_pos_pnl, 2);
   addGlobalFunc(ctx, "__flox_pos_total_pnl", js_pos_total_pnl, 1);
+
+  // Tape diff
+  addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);
 
   // Latency models (Phase 1 sampling primitive)
   addGlobalFunc(ctx, "__flox_lat_constant_create", js_lat_constant_create, 3);

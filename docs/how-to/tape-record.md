@@ -55,6 +55,57 @@ Compares two `.floxlog` directories trade-by-trade on `(exchange_ts_ns, symbol_i
 
 The most common reason to run this: the replay-equivalence gate failed and you want to know exactly which trades shifted between the captured reference and what the engine produces today.
 
+The walk runs in the C++ engine; every binding speaks the same surface and returns the same shape:
+
+=== "Python"
+
+    ```python
+    from flox_py.tape import diff_tapes
+
+    diff = diff_tapes("./tapes/run-a", "./tapes/run-b",
+                     max_mismatches=16, field_tolerance_ns=0)
+    if not diff.equal:
+        print(f"first divergence at index {diff.first_divergence_index}")
+        for m in diff.mismatches[:3]:
+            print(m)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const flox = require('@flox-foundation/flox');
+
+    const diff = flox.tapeDiff('./tapes/run-a', './tapes/run-b',
+                                { maxMismatches: 16, fieldToleranceNs: 0 });
+    if (!diff.equal) {
+      console.log(`first divergence at index ${diff.firstDivergenceIndex}`);
+      for (const m of diff.mismatches.slice(0, 3)) console.log(m);
+    }
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.tape_diff import diff_tapes
+
+    summary = diff_tapes("./tapes/run-a", "./tapes/run-b")
+    if not summary.equal:
+        print("first divergence at index", summary.first_divergence_index)
+        print("total mismatches recorded:", summary.mismatch_count)
+    ```
+
+    Codon exposes the headline summary. For per-record mismatch
+    payloads, use the Python or Node binding.
+
+=== "QuickJS"
+
+    ```javascript
+    const diff = flox.tapeDiff("./tapes/run-a", "./tapes/run-b");
+    if (!diff.equal) {
+      console.log("first divergence at index " + diff.firstDivergenceIndex);
+    }
+    ```
+
 ## Replay a tape
 
 ```bash

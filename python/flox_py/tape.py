@@ -215,72 +215,33 @@ def diff_tapes(
     ``equal=True`` when both have the same count and every paired
     record matches on ``(exchange_ts_ns, symbol_id, price_raw,
     qty_raw, side)``. ``field_tolerance_ns`` allows a non-zero
-    timestamp jitter — useful when comparing live captures whose
-    record-side wallclock can differ across runs.
+    timestamp jitter, useful when comparing live captures whose
+    record-side wallclock differs across runs.
 
     The first ``max_mismatches`` divergences are recorded; the rest
     are summarized by count. Pass a high value if you need the full
-    list."""
-    import flox_py
-    import numpy as np
+    list. The walk runs in the C++ engine; this wrapper marshals
+    the result into the existing ``TapeDiff`` dataclass shape."""
+    from flox_py._flox_py import _tape_diff_native  # type: ignore[attr-defined]
 
     left = Path(left).expanduser()
     right = Path(right).expanduser()
 
-    lt = flox_py.DataReader(str(left)).read_trades()
-    rt = flox_py.DataReader(str(right)).read_trades()
-
-    diff = TapeDiff(
-        left_path=str(left),
-        right_path=str(right),
-        left_count=int(lt.size),
-        right_count=int(rt.size),
-        first_divergence_index=None,
+    raw = _tape_diff_native(
+        left=str(left),
+        right=str(right),
+        max_mismatches=int(max_mismatches),
+        field_tolerance_ns=int(field_tolerance_ns),
     )
-
-    n = min(int(lt.size), int(rt.size))
-    for i in range(n):
-        l_row = lt[i]
-        r_row = rt[i]
-        ts_ok = abs(int(l_row["exchange_ts_ns"]) - int(r_row["exchange_ts_ns"])) <= field_tolerance_ns
-        same = (
-            ts_ok
-            and int(l_row["symbol_id"]) == int(r_row["symbol_id"])
-            and int(l_row["price_raw"]) == int(r_row["price_raw"])
-            and int(l_row["qty_raw"]) == int(r_row["qty_raw"])
-            and int(l_row["side"]) == int(r_row["side"])
-        )
-        if not same:
-            if diff.first_divergence_index is None:
-                diff.first_divergence_index = i
-            if len(diff.mismatches) < max_mismatches:
-                diff.mismatches.append({
-                    "index": i,
-                    "left": {
-                        "exchange_ts_ns": int(l_row["exchange_ts_ns"]),
-                        "symbol_id": int(l_row["symbol_id"]),
-                        "price_raw": int(l_row["price_raw"]),
-                        "qty_raw": int(l_row["qty_raw"]),
-                        "side": int(l_row["side"]),
-                    },
-                    "right": {
-                        "exchange_ts_ns": int(r_row["exchange_ts_ns"]),
-                        "symbol_id": int(r_row["symbol_id"]),
-                        "price_raw": int(r_row["price_raw"]),
-                        "qty_raw": int(r_row["qty_raw"]),
-                        "side": int(r_row["side"]),
-                    },
-                })
-
-    if diff.left_count != diff.right_count and diff.first_divergence_index is None:
-        # Same prefix, one tape extends past the other.
-        diff.first_divergence_index = n
-
-    diff.equal = (
-        diff.left_count == diff.right_count
-        and diff.first_divergence_index is None
+    return TapeDiff(
+        left_path=raw["left_path"],
+        right_path=raw["right_path"],
+        left_count=int(raw["left_count"]),
+        right_count=int(raw["right_count"]),
+        first_divergence_index=raw["first_divergence_index"],
+        mismatches=list(raw["mismatches"]),
+        equal=bool(raw["equal"]),
     )
-    return diff
 
 
 __all__ = [

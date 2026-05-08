@@ -1857,6 +1857,10 @@ class WalkForwardRunner:
         """
         Callable[[int], Strategy] — receives fold_index, returns a fresh Strategy instance per fold (called twice per fold: train + test).
         """
+def _tape_diff_native(left: str, right: str, max_mismatches: typing.SupportsInt | typing.SupportsIndex = 16, field_tolerance_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> typing.Any:
+    """
+    Internal C++-backed tape diff. Returns a dict the public wrapper in flox_py.tape converts to a TapeDiff dataclass.
+    """
 def adf(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], max_lag: typing.SupportsInt | typing.SupportsIndex = 4, regression: str = 'c') -> dict:
     ...
 def adx(high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], period: typing.SupportsInt | typing.SupportsIndex = 14) -> dict:

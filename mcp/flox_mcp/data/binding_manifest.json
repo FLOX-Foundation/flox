@@ -1678,6 +1678,46 @@
           "name": "flox_streaming_graph_volume"
         },
         {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_copy_mismatches"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_create"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_destroy"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_equal"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_first_divergence"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_left_count"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_mismatch_count"
+        },
+        {
+          "group": "tape_diff",
+          "kind": "function",
+          "name": "flox_tape_diff_right_count"
+        },
+        {
           "group": "targets",
           "kind": "function",
           "name": "flox_target_future_ctc_volatility"
@@ -1897,6 +1937,14 @@
         },
         {
           "kind": "struct",
+          "name": "FloxTapeDiffMismatch"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxTapeDiffTrade"
+        },
+        {
+          "kind": "struct",
           "name": "FloxTradeData"
         },
         {
@@ -2053,6 +2101,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxTapeDiffHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxVolumeProfileHandle"
         }
       ]
@@ -2103,6 +2155,7 @@
         "strategy_lifecycle",
         "strategyrunner_synchronous",
         "symbol_registry",
+        "tape_diff",
         "targets",
         "validation",
         "volume_profile",
@@ -3451,6 +3504,38 @@
         },
         {
           "kind": "function",
+          "name": "flox_tape_diff_copy_mismatches"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_equal"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_first_divergence"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_left_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_mismatch_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_tape_diff_right_count"
+        },
+        {
+          "kind": "function",
           "name": "flox_target_future_ctc_volatility"
         },
         {
@@ -3871,6 +3956,22 @@
         },
         {
           "kind": "class",
+          "name": "TapeDiffMismatch"
+        },
+        {
+          "kind": "class",
+          "name": "TapeDiffOptions"
+        },
+        {
+          "kind": "class",
+          "name": "TapeDiffResult"
+        },
+        {
+          "kind": "class",
+          "name": "TapeDiffTrade"
+        },
+        {
+          "kind": "class",
           "name": "TradeData"
         },
         {
@@ -4076,6 +4177,10 @@
         {
           "kind": "function",
           "name": "stochastic"
+        },
+        {
+          "kind": "function",
+          "name": "tapeDiff"
         },
         {
           "kind": "function",
@@ -4392,6 +4497,10 @@
         {
           "kind": "class",
           "name": "WalkForwardRunner"
+        },
+        {
+          "kind": "function",
+          "name": "_tape_diff_native"
         },
         {
           "kind": "function",
@@ -5941,6 +6050,35 @@
         ],
         "functions": [],
         "status": "required"
+      }
+    },
+    "tape_diff": {
+      "capi_functions": [
+        "flox_tape_diff_copy_mismatches",
+        "flox_tape_diff_create",
+        "flox_tape_diff_destroy",
+        "flox_tape_diff_equal",
+        "flox_tape_diff_first_divergence",
+        "flox_tape_diff_left_count",
+        "flox_tape_diff_mismatch_count",
+        "flox_tape_diff_right_count"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "tapeDiff"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "reason": "exposed via flox_py.tape.diff_tapes (pure-Python wrapper around the C ABI's flox_tape_diff_*); the compiled symbol is _tape_diff_native, not a class. Ergonomic alias intentional.",
+        "status": "allowlist"
       }
     },
     "targets": {

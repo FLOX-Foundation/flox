@@ -7029,6 +7029,118 @@
       "return_type": "const double *"
     },
     {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_copy_mismatches",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxTapeDiffMismatch *"
+        },
+        {
+          "name": "max_entries",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_create",
+      "params": [
+        {
+          "name": "left_path",
+          "type": "const char *"
+        },
+        {
+          "name": "right_path",
+          "type": "const char *"
+        },
+        {
+          "name": "max_mismatches",
+          "type": "uint32_t"
+        },
+        {
+          "name": "field_tolerance_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "FloxTapeDiffHandle"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_destroy",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_equal",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_first_divergence",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        },
+        {
+          "name": "out_index",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_left_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_mismatch_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "tape_diff",
+      "name": "flox_tape_diff_right_count",
+      "params": [
+        {
+          "name": "handle",
+          "type": "FloxTapeDiffHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
       "group": "targets",
       "name": "flox_target_future_ctc_volatility",
       "params": [
@@ -8540,6 +8652,48 @@
     {
       "fields": [
         {
+          "name": "index",
+          "type": "uint64_t"
+        },
+        {
+          "name": "left",
+          "type": "FloxTapeDiffTrade"
+        },
+        {
+          "name": "right",
+          "type": "FloxTapeDiffTrade"
+        }
+      ],
+      "name": "FloxTapeDiffMismatch"
+    },
+    {
+      "fields": [
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        }
+      ],
+      "name": "FloxTapeDiffTrade"
+    },
+    {
+      "fields": [
+        {
           "name": "symbol",
           "type": "uint32_t"
         },
@@ -8819,6 +8973,10 @@
     {
       "alias_of": "FloxIndicatorGraphHandle",
       "name": "FloxStreamingGraphHandle"
+    },
+    {
+      "name": "FloxTapeDiffHandle",
+      "target": "void*"
     },
     {
       "name": "FloxVolumeProfileHandle",

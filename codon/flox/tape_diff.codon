@@ -1,0 +1,58 @@
+# flox/tape_diff.codon -- Tape diff for replay-equivalence localization.
+#
+# Walks two .floxlog directories trade-by-trade through the C ABI and
+# returns a Codon dataclass with the headline result. Per-record
+# mismatch payload extraction is left to the Python and Node bindings
+# where the C struct layout is easier to mirror; Codon gets the
+# top-level summary that drives "did the tapes match" decisions in
+# CI scripts.
+
+from C import flox_tape_diff_create(cobj, cobj, u32, int) -> cobj
+from C import flox_tape_diff_destroy(cobj)
+from C import flox_tape_diff_left_count(cobj) -> int
+from C import flox_tape_diff_right_count(cobj) -> int
+from C import flox_tape_diff_first_divergence(cobj, Ptr[int]) -> u8
+from C import flox_tape_diff_equal(cobj) -> u8
+from C import flox_tape_diff_mismatch_count(cobj) -> int
+
+
+@dataclass
+class TapeDiffSummary:
+    left_path: str
+    right_path: str
+    left_count: int
+    right_count: int
+    first_divergence_index: int  # -1 when tapes are equal
+    mismatch_count: int
+    equal: bool
+
+
+def diff_tapes(left: str, right: str,
+               max_mismatches: int = 16,
+               field_tolerance_ns: int = 0) -> TapeDiffSummary:
+    h = flox_tape_diff_create(left.c_str(), right.c_str(),
+                              u32(max_mismatches), field_tolerance_ns)
+    if not h:
+        raise ValueError("tape_diff: failed to read tape directory(ies)")
+
+    lc = flox_tape_diff_left_count(h)
+    rc = flox_tape_diff_right_count(h)
+
+    div_idx_buf = Ptr[int](1)
+    has_div = int(flox_tape_diff_first_divergence(h, div_idx_buf))
+    fdi = div_idx_buf[0] if has_div != 0 else -1
+
+    eq = int(flox_tape_diff_equal(h)) != 0
+    mcount = flox_tape_diff_mismatch_count(h)
+
+    flox_tape_diff_destroy(h)
+
+    return TapeDiffSummary(
+        left_path=left,
+        right_path=right,
+        left_count=lc,
+        right_count=rc,
+        first_divergence_index=fdi,
+        mismatch_count=mcount,
+        equal=eq,
+    )

@@ -1939,6 +1939,42 @@ extern "C"
   void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample* out);
   void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed);
 
+  // ============================================================
+  // Tape diff (replay-equivalence localization)
+  // ============================================================
+
+  typedef void* FloxTapeDiffHandle;
+
+  typedef struct
+  {
+    int64_t exchange_ts_ns;
+    int64_t price_raw;
+    int64_t qty_raw;
+    uint32_t symbol_id;
+    uint8_t side;
+  } FloxTapeDiffTrade;
+
+  typedef struct
+  {
+    uint64_t index;
+    FloxTapeDiffTrade left;
+    FloxTapeDiffTrade right;
+  } FloxTapeDiffMismatch;
+
+  FloxTapeDiffHandle flox_tape_diff_create(const char* left_path,
+                                           const char* right_path,
+                                           uint32_t max_mismatches,
+                                           int64_t field_tolerance_ns);
+  void flox_tape_diff_destroy(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_left_count(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_right_count(FloxTapeDiffHandle handle);
+  uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle, uint64_t* out_index);
+  uint8_t flox_tape_diff_equal(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_mismatch_count(FloxTapeDiffHandle handle);
+  uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle,
+                                          FloxTapeDiffMismatch* out,
+                                          uint64_t max_entries);
+
 #ifdef __cplusplus
 }
 #endif

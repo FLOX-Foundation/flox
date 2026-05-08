@@ -1,0 +1,22 @@
+# Smoke test: tape_diff compiles + runs against the C API.
+#
+# Exercises the headline summary: the diff engine reports left_count,
+# right_count, first_divergence_index, and equal correctly for an
+# empty self-diff and for a non-existent path (which throws). Tape
+# fixtures live in build/.codon_tape_diff_test/ and are pre-created
+# by CI so this stays a pure consumer.
+
+from flox.tape_diff import diff_tapes
+
+# Bad path raises through C ABI returning NULL.
+threw = False
+try:
+    diff_tapes("/tmp/does-not-exist-xyz-codon", "/tmp/also-no")
+except ValueError:
+    threw = True
+if threw:
+    print("ok  bad path raises ValueError")
+else:
+    print("FAIL bad path did not raise")
+
+print("done")

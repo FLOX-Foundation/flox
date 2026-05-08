@@ -427,6 +427,16 @@ from C import flox_registry_get_symbol_id(cobj, cobj, cobj, Ptr[u32]) -> u8
 from C import flox_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
 from C import flox_registry_symbol_count(cobj) -> u32
 
+# ── tape_diff ──
+from C import flox_tape_diff_create(cobj, cobj, u32, i64) -> cobj
+from C import flox_tape_diff_destroy(cobj)
+from C import flox_tape_diff_left_count(cobj) -> u64
+from C import flox_tape_diff_right_count(cobj) -> u64
+from C import flox_tape_diff_first_divergence(cobj, Ptr[u64]) -> u8
+from C import flox_tape_diff_equal(cobj) -> u8
+from C import flox_tape_diff_mismatch_count(cobj) -> u64
+from C import flox_tape_diff_copy_mismatches(cobj, cobj, u64) -> u64
+
 # ── targets ──
 from C import flox_target_future_return(Ptr[float], int, int, Ptr[float])
 from C import flox_target_future_ctc_volatility(Ptr[float], int, int, Ptr[float])

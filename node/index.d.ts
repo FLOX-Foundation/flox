@@ -1447,3 +1447,45 @@ export class EmpiricalLatency implements LatencyModel {
   sample(): LatencySample;
   reset(seed?: number): void;
 }
+
+// ── Tape diff ─────────────────────────────────────────────────────────
+
+/** One trade-record snapshot used for both sides of a diff. */
+export interface TapeDiffTrade {
+  exchangeTsNs: number;
+  symbolId: number;
+  priceRaw: number;
+  qtyRaw: number;
+  side: number;
+}
+
+/** One pair of records that did not match. */
+export interface TapeDiffMismatch {
+  index: number;
+  left: TapeDiffTrade;
+  right: TapeDiffTrade;
+}
+
+export interface TapeDiffOptions {
+  /** Maximum mismatches to record. 0 means no cap. Default 16. */
+  maxMismatches?: number;
+  /** Allowed symmetric tolerance on exchangeTsNs. Default 0. */
+  fieldToleranceNs?: number;
+}
+
+export interface TapeDiffResult {
+  leftPath: string;
+  rightPath: string;
+  leftCount: number;
+  rightCount: number;
+  /** Index of the first mismatch, or null when tapes are equal. */
+  firstDivergenceIndex: number | null;
+  mismatches: ReadonlyArray<TapeDiffMismatch>;
+  equal: boolean;
+}
+
+/** Compare two .floxlog directories trade-by-trade. The walk runs in
+ *  the C++ engine; result fields match the Python `flox_py.tape.diff_tapes`
+ *  output. */
+export function tapeDiff(leftPath: string, rightPath: string,
+                         opts?: TapeDiffOptions): TapeDiffResult;
