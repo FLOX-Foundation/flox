@@ -1768,6 +1768,11 @@
           "name": "flox_strategy_destroy"
         },
         {
+          "group": "strategy_lifecycle",
+          "kind": "function",
+          "name": "flox_strategy_replace_callbacks"
+        },
+        {
           "group": "indicatorgraph",
           "kind": "function",
           "name": "flox_streaming_graph_add_node"
@@ -3749,6 +3754,10 @@
         {
           "kind": "function",
           "name": "flox_strategy_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_replace_callbacks"
         },
         {
           "kind": "function",
@@ -6440,7 +6449,8 @@
     "strategy_lifecycle": {
       "capi_functions": [
         "flox_strategy_create",
-        "flox_strategy_destroy"
+        "flox_strategy_destroy",
+        "flox_strategy_replace_callbacks"
       ],
       "codon": {
         "present": true,

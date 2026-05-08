@@ -7304,6 +7304,21 @@
       "return_type": "void"
     },
     {
+      "group": "strategy_lifecycle",
+      "name": "flox_strategy_replace_callbacks",
+      "params": [
+        {
+          "name": "strategy",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "callbacks",
+          "type": "FloxStrategyCallbacks"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "indicatorgraph",
       "name": "flox_streaming_graph_add_node",
       "params": [

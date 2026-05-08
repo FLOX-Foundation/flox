@@ -327,6 +327,12 @@ export class Runner {
     threaded?: boolean,
   );
   addStrategy(strategy: Strategy): void;
+  /** Atomically swap the strategy at `index` for a new one. The old
+   *  strategy's `onStop` fires before the swap; the new strategy's
+   *  `onStart` fires after. Bus subscriptions, in-flight orders, and
+   *  WebSocket / gRPC connections are untouched. Must be invoked on
+   *  the V8 thread. */
+  replaceStrategy(index: number, strategy: Strategy): void;
   start(): void;
   stop(): void;
   onTrade(

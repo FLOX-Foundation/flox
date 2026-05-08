@@ -149,6 +149,14 @@ extern "C"
                                           FloxStrategyCallbacks callbacks);
   void flox_strategy_destroy(FloxStrategyHandle strategy);
 
+  // Atomically replace the strategy's callback set without dropping
+  // any subscriptions, in-flight orders, or open connections. The
+  // next dispatched event sees the new callbacks. on_stop fires on
+  // the old user_data before the swap; on_start fires on the new
+  // user_data after.
+  void flox_strategy_replace_callbacks(FloxStrategyHandle strategy,
+                                       FloxStrategyCallbacks callbacks);
+
   // ============================================================
   // Signal emission (returns OrderId, 0 on failure)
   // ============================================================

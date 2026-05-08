@@ -205,6 +205,15 @@ void flox_strategy_destroy(FloxStrategyHandle strategy)
   delete toStrategy(strategy);
 }
 
+void flox_strategy_replace_callbacks(FloxStrategyHandle strategy, FloxStrategyCallbacks callbacks)
+{
+  if (!strategy)
+  {
+    return;
+  }
+  toStrategy(strategy)->replaceCallbacks(callbacks);
+}
+
 // ============================================================
 // Signal emission
 // ============================================================

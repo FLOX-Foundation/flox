@@ -3180,6 +3180,7 @@ Solve specific problems. Assumes you know the basics.
 |-------|---------|
 | [Scaffold a project (`flox new`)](flox-new.md) | Bootstrap research / live / indicator-library projects from a template |
 | [Strategy classes](strategy-classes.md) | Structure strategy code idiomatically |
+| [Strategy hot-reload](strategy-hot-reload.md) | Swap a strategy at runtime without dropping connections |
 | [TypeScript strategy authoring](typescript-strategy-authoring.md) | Write strategies as TS classes with `@strategy` / `@onTrade` decorators |
 | [CCXT adapter](ccxt-adapter.md) | Connect to an exchange via the CCXT bridge |
 
@@ -8667,6 +8668,7 @@ Market Profile (TPO) aggregator. Tracks price activity across time periods.
 - `on_bar(self, symbol: typing.Any, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex, volume: typing.SupportsFloat | typing.SupportsIndex = 0.0, buy_volume: typing.SupportsFloat | typing.SupportsIndex = 0.0, start_time_ns: typing.SupportsInt | typing.SupportsIndex = 0, end_time_ns: typing.SupportsInt | typing.SupportsIndex = 0, bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0, close_reason: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `on_book_snapshot(self, symbol: typing.Any, bid_prices: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], bid_qtys: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], ask_prices: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], ask_qtys: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `on_trade(self, symbol: typing.Any, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `replace_strategy(self, index: typing.SupportsInt | typing.SupportsIndex, strategy: Strategy) -> None`
 - `set_executor(self, executor: Executor) -> None`
 - `set_kill_switch(self, ks: KillSwitch) -> None`
 - `set_market_data_recorder(self, recorder: MarketDataRecorderHook) -> None`

@@ -354,6 +354,7 @@ flox_storage_sink_create|FloxStorageSinkHandle|FloxStorageSinkCallbacks
 flox_storage_sink_destroy|void|FloxStorageSinkHandle
 flox_strategy_create|FloxStrategyHandle|uint32_t|const uint32_t *|uint32_t|FloxRegistryHandle|FloxStrategyCallbacks
 flox_strategy_destroy|void|FloxStrategyHandle
+flox_strategy_replace_callbacks|void|FloxStrategyHandle|FloxStrategyCallbacks
 flox_streaming_graph_add_node|void|FloxStreamingGraphHandle|const char *|const char *const *|size_t|FloxGraphNodeFn|void *
 flox_streaming_graph_bar_count|uint32_t|FloxStreamingGraphHandle|uint32_t
 flox_streaming_graph_close|const double *|FloxStreamingGraphHandle|uint32_t|size_t *
