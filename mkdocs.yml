@@ -116,6 +116,7 @@ nav:
           - Delta book compression: how-to/delta-book-compression.md
           - Record a strategy run as .floxrun: how-to/floxrun.md
           - Inspect a tape and run in the replay viewer: how-to/replay-viewer.md
+          - Read multi-timeframe context from a strategy: how-to/multi-tf-context.md
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md

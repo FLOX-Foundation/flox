@@ -3226,6 +3226,7 @@ Solve specific problems. Assumes you know the basics.
 | [Add an indicator](add-an-indicator.md) | Wire a custom indicator into a strategy |
 | [Indicator graph](indicator-graph.md) | Compose indicators into a DAG |
 | [Multi-symbol indicators](multi-symbol-indicators.md) | One indicator across many symbols |
+| [Read multi-timeframe context from a strategy](multi-tf-context.md) | `last_closed_bar(symbol, tf)` + `last_n_closed_bars(...)` ring helpers |
 | [Bar aggregation](bar-aggregation.md) | Pre-aggregate bars for fast backtesting |
 | [Custom bar policy](custom-bar-policy.md) | Hand-roll a new bar aggregation rule |
 | [Volume profile](use-volume-profile.md) | Build a volume profile from trades |

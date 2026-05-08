@@ -22,9 +22,11 @@
 #include "flox/strategy/symbol_state_map.h"
 
 #include <atomic>
+#include <deque>
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace flox
@@ -33,6 +35,28 @@ namespace flox
 class Strategy : public IStrategy
 {
  public:
+  // Identifies a single timeframe instance: a `(BarType, param)` pair.
+  // For Time bars the param is interval-in-nanoseconds; for Tick /
+  // Volume bars it is the tick count or volume threshold the
+  // aggregator was configured with.
+  struct BarTfKey
+  {
+    BarType type;
+    uint64_t param;
+    bool operator==(const BarTfKey& o) const noexcept
+    {
+      return type == o.type && param == o.param;
+    }
+  };
+  struct BarTfKeyHash
+  {
+    std::size_t operator()(const BarTfKey& k) const noexcept
+    {
+      return std::hash<uint8_t>{}(static_cast<uint8_t>(k.type)) ^
+             (std::hash<uint64_t>{}(k.param) << 1);
+    }
+  };
+
   Strategy(SubscriberId id, std::vector<SymbolId> symbols, const SymbolRegistry& registry)
       : _id(id), _symbols(std::move(symbols))
   {
@@ -102,6 +126,15 @@ class Strategy : public IStrategy
     c.lastTradePrice = ev.bar.close;
     c.lastUpdateNs = ev.bar.endTime.time_since_epoch().count();
 
+    // Push into the per-(symbol, timeframe) ring so multi-TF strategies
+    // can recall the last N closed bars without bookkeeping by hand.
+    auto& ring = _barRings[sym][BarTfKey{ev.barType, ev.barTypeParam}];
+    if (ring.size() >= _barRingCapacity)
+    {
+      ring.pop_front();
+    }
+    ring.push_back(ev.bar);
+
     onSymbolBar(c, ev);
   }
 
@@ -138,6 +171,56 @@ class Strategy : public IStrategy
   std::optional<OrderState> getOrder(OrderId orderId) const
   {
     return _orderTracker ? _orderTracker->get(orderId) : std::nullopt;
+  }
+
+ public:
+  // Multi-TF alignment helpers.
+  //
+  // After a `BarAggregator` of the requested timeframe has emitted at
+  // least one bar for the symbol, `lastClosedBar` returns it; before
+  // that it returns `std::nullopt`. The ring stores up to
+  // `barRingCapacity()` bars per (symbol, tf) and evicts the oldest
+  // when full. `lastNClosedBars` returns the most recent `n` in
+  // chronological order (oldest first).
+  size_t barRingCapacity() const noexcept { return _barRingCapacity; }
+  void setBarRingCapacity(size_t n) noexcept { _barRingCapacity = std::max<size_t>(n, 1); }
+
+  std::optional<Bar> lastClosedBar(SymbolId sym, BarType type, uint64_t param) const
+  {
+    auto symIt = _barRings.find(sym);
+    if (symIt == _barRings.end())
+    {
+      return std::nullopt;
+    }
+    auto tfIt = symIt->second.find(BarTfKey{type, param});
+    if (tfIt == symIt->second.end() || tfIt->second.empty())
+    {
+      return std::nullopt;
+    }
+    return tfIt->second.back();
+  }
+
+  std::vector<Bar> lastNClosedBars(SymbolId sym, BarType type, uint64_t param, size_t n) const
+  {
+    std::vector<Bar> out;
+    auto symIt = _barRings.find(sym);
+    if (symIt == _barRings.end())
+    {
+      return out;
+    }
+    auto tfIt = symIt->second.find(BarTfKey{type, param});
+    if (tfIt == symIt->second.end())
+    {
+      return out;
+    }
+    const auto& ring = tfIt->second;
+    size_t take = std::min(n, ring.size());
+    out.reserve(take);
+    for (size_t i = ring.size() - take; i < ring.size(); ++i)
+    {
+      out.push_back(ring[i]);
+    }
+    return out;
   }
 
   // Signal emission
@@ -285,6 +368,14 @@ class Strategy : public IStrategy
   std::vector<SymbolId> _symbols;
   std::set<SymbolId> _symbolSet;
   mutable SymbolStateMap<SymbolContext> _contexts;
+
+  // Per-(symbol, timeframe) ring of the most recent closed bars.
+  // Capacity is the same for every (symbol, tf) slot; tune with
+  // `setBarRingCapacity` when a strategy needs deeper history.
+  size_t _barRingCapacity{64};
+  std::unordered_map<SymbolId,
+                     std::unordered_map<BarTfKey, std::deque<Bar>, BarTfKeyHash>>
+      _barRings;
 };
 
 }  // namespace flox

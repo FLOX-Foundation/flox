@@ -474,6 +474,67 @@ class PyStrategyBase
     return _symbolNames.empty() ? "" : _symbolNames[0];
   }
 
+  // Multi-TF alignment helpers. Bars get pushed into a per-(symbol,
+  // timeframe) ring as the engine dispatches them; these accessors
+  // pull the most recent N back without bookkeeping in user code.
+  std::optional<py::dict> last_closed_bar(uint32_t symbol_id, uint8_t bar_type, uint64_t param) const
+  {
+    if (!_bridge)
+    {
+      return std::nullopt;
+    }
+    auto bar = _bridge->lastClosedBar(symbol_id, static_cast<flox::BarType>(bar_type), param);
+    if (!bar)
+    {
+      return std::nullopt;
+    }
+    py::dict d;
+    d["open"] = bar->open.toDouble();
+    d["high"] = bar->high.toDouble();
+    d["low"] = bar->low.toDouble();
+    d["close"] = bar->close.toDouble();
+    d["volume"] = bar->volume.toDouble();
+    d["start_ns"] = bar->startTime.time_since_epoch().count();
+    d["end_ns"] = bar->endTime.time_since_epoch().count();
+    return d;
+  }
+
+  py::list last_n_closed_bars(uint32_t symbol_id, uint8_t bar_type, uint64_t param, size_t n) const
+  {
+    py::list out;
+    if (!_bridge)
+    {
+      return out;
+    }
+    auto bars = _bridge->lastNClosedBars(symbol_id, static_cast<flox::BarType>(bar_type), param, n);
+    for (const auto& bar : bars)
+    {
+      py::dict d;
+      d["open"] = bar.open.toDouble();
+      d["high"] = bar.high.toDouble();
+      d["low"] = bar.low.toDouble();
+      d["close"] = bar.close.toDouble();
+      d["volume"] = bar.volume.toDouble();
+      d["start_ns"] = bar.startTime.time_since_epoch().count();
+      d["end_ns"] = bar.endTime.time_since_epoch().count();
+      out.append(d);
+    }
+    return out;
+  }
+
+  size_t bar_ring_capacity() const
+  {
+    return _bridge ? _bridge->barRingCapacity() : 0;
+  }
+
+  void set_bar_ring_capacity(size_t n)
+  {
+    if (_bridge)
+    {
+      _bridge->setBarRingCapacity(n);
+    }
+  }
+
  private:
   std::vector<uint32_t> _symbols;
   std::vector<std::string> _symbolNames;
@@ -1970,6 +2031,21 @@ inline void bindStrategy(py::module_& m)
       .def("best_ask", &PyStrategyBase::best_ask, py::arg("symbol") = py::none())
       .def("mid_price", &PyStrategyBase::mid_price, py::arg("symbol") = py::none())
       .def("order_status", &PyStrategyBase::order_status, py::arg("order_id"))
+      .def("last_closed_bar", &PyStrategyBase::last_closed_bar,
+           py::arg("symbol_id"), py::arg("bar_type") = uint8_t{0}, py::arg("param") = uint64_t{0},
+           "Return the last closed bar for (symbol, bar_type, param) or "
+           "None if no bar of that timeframe has been emitted yet. "
+           "bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, "
+           "5=HeikinAshi, 6=BpsRange. param: time bar interval in "
+           "nanoseconds, or the tick / volume / range threshold the "
+           "aggregator was configured with.")
+      .def("last_n_closed_bars", &PyStrategyBase::last_n_closed_bars,
+           py::arg("symbol_id"), py::arg("bar_type"), py::arg("param"), py::arg("n"),
+           "Return the most recent up to n closed bars for the given "
+           "(symbol, timeframe), oldest first. Returns an empty list "
+           "until the aggregator has emitted at least one bar.")
+      .def("bar_ring_capacity", &PyStrategyBase::bar_ring_capacity)
+      .def("set_bar_ring_capacity", &PyStrategyBase::set_bar_ring_capacity, py::arg("n"))
       .def_property_readonly("symbol_names", &PyStrategyBase::symbol_names)
       .def_property_readonly("primary_symbol_name", &PyStrategyBase::primary_symbol_name);
 
