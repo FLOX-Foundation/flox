@@ -20,6 +20,7 @@
 #include "flox/error/flox_error.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/run/trace_recorder.h"
 #include "flox/util/memory/pool.h"
 #include "hook_bindings.h"
 #include "types_bindings.h"
@@ -872,6 +873,8 @@ class PyStrategyRunner
   void start() { flox_runner_start(_runner); }
   void stop() { flox_runner_stop(_runner); }
 
+  FloxRunnerHandle handle() const noexcept { return _runner; }
+
   void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
   {
     _pnl_owner.reset();
@@ -1380,6 +1383,12 @@ class PyRunner
                     start_time_ns, end_time_ns, bar_type, bar_type_param,
                     close_reason);
     }
+  }
+
+ public:
+  FloxRunnerHandle _runner_handle() const noexcept
+  {
+    return _sync ? _sync->handle() : nullptr;
   }
 
  private:
@@ -2231,6 +2240,25 @@ inline void bindStrategy(py::module_& m)
            py::arg("recorder"), py::keep_alive<1, 2>())
       .def("set_executor", &PyRunner::set_executor, py::arg("executor"),
            py::keep_alive<1, 2>())
+      .def("attach_trace_recorder", [](PyRunner& r, py::object recorder)
+           {
+             // Accepts a flox_py.TraceRecorder or None. The TraceRecorder
+             // wraps a `flox::run::TraceRecorder*` reachable through its
+             // `_handle()` accessor; we pass the raw pointer through the
+             // C ABI so every binding shares one auto-capture path.
+             if (recorder.is_none())
+             {
+               flox_runner_attach_trace_recorder(r._runner_handle(), nullptr);
+               return;
+             }
+             // The pybind11 binding constructs a TraceRecorder by value
+             // (defined in run_trace_bindings.h) so we cast to that exact
+             // type and pass its address.
+             auto* trec = recorder.cast<flox::run::TraceRecorder*>();
+             flox_runner_attach_trace_recorder(r._runner_handle(),
+                                                static_cast<void*>(trec)); }, py::arg("recorder"), py::keep_alive<1, 2>())
+      .def("set_trace_feed_ts_ns", [](PyRunner& r, int64_t ts)
+           { flox_runner_set_trace_feed_ts_ns(r._runner_handle(), ts); }, py::arg("feed_ts_ns"))
       .def("on_trade", [](PyRunner& r, py::object sym, double price, double qty, bool is_buy, int64_t ts_ns)
            { r.on_trade(symId(sym), price, qty, is_buy, ts_ns); }, py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("is_buy"), py::arg("ts_ns") = 0)
       .def("on_book_snapshot", [](PyRunner& r, py::object sym, const std::vector<double>& bp, const std::vector<double>& bq, const std::vector<double>& ap, const std::vector<double>& aq, int64_t ts_ns)

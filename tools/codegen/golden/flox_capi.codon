@@ -554,6 +554,10 @@ from C import flox_target_future_return(Ptr[float], int, int, Ptr[float])
 from C import flox_target_future_ctc_volatility(Ptr[float], int, int, Ptr[float])
 from C import flox_target_future_linear_slope(Ptr[float], int, int, Ptr[float])
 
+# ── trace_attach ──
+from C import flox_runner_attach_trace_recorder(cobj, cobj)
+from C import flox_runner_set_trace_feed_ts_ns(cobj, i64)
+
 # ── validation ──
 from C import flox_segment_validate_full(cobj, u8, u8) -> cobj
 from C import flox_dataset_validate(cobj) -> cobj

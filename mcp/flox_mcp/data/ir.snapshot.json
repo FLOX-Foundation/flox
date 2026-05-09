@@ -7365,6 +7365,21 @@
       "return_type": "void"
     },
     {
+      "group": "trace_attach",
+      "name": "flox_runner_attach_trace_recorder",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "recorder",
+          "type": "FloxRunRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "strategyrunner_synchronous",
       "name": "flox_runner_create",
       "params": [
@@ -7628,6 +7643,21 @@
         {
           "name": "sink",
           "type": "FloxStorageSinkHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "trace_attach",
+      "name": "flox_runner_set_trace_feed_ts_ns",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxRunnerHandle"
+        },
+        {
+          "name": "feed_ts_ns",
+          "type": "int64_t"
         }
       ],
       "return_type": "void"

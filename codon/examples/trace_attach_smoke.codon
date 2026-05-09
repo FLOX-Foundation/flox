@@ -1,0 +1,28 @@
+# W14-T012 — verify the C ABI exports for runner trace attach are
+# reachable from Codon. End-to-end signal capture lives in the C++ +
+# pybind11 + NAPI suites where a runner is already wired into a strategy.
+
+from C import flox_runner_attach_trace_recorder(cobj, cobj)
+from C import flox_runner_set_trace_feed_ts_ns(cobj, i64)
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def run():
+    # NULL handles — the exports must be reachable but a no-op here
+    # without a real runner. Calling them with NULL would deref a null;
+    # we just verify the imports linked. (cobj() returns NULL.)
+    check("flox_runner_attach_trace_recorder symbol resolves",
+          flox_runner_attach_trace_recorder is not None)
+    check("flox_runner_set_trace_feed_ts_ns symbol resolves",
+          flox_runner_set_trace_feed_ts_ns is not None)
+
+    print("codon trace_attach smoke ok")
+
+
+run()

@@ -3653,9 +3653,90 @@ class RunnerSignalHandler : public ISignalHandler
   {
     _executor.store(e, std::memory_order_release);
   }
+  void setTraceRecorder(void* rec) noexcept
+  {
+    _traceRecorder.store(rec, std::memory_order_release);
+  }
+  void setTraceFeedTsNs(int64_t ts) noexcept
+  {
+    _traceFeedTsNs.store(ts, std::memory_order_relaxed);
+  }
 
   void onSignal(const Signal& sig) override
   {
+    // Auto-capture into the attached TraceRecorder, if any. Done before
+    // the user callback so the recorded signal is in flight even if the
+    // user mutates state in their callback.
+    if (auto* rec = _traceRecorder.load(std::memory_order_acquire))
+    {
+      auto* recorder = static_cast<flox::run::TraceRecorder*>(rec);
+      flox::run::SignalView view;
+      view.run_ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::system_clock::now().time_since_epoch())
+                           .count();
+      view.feed_ts_ns = _traceFeedTsNs.load(std::memory_order_relaxed);
+      view.signal_id = static_cast<uint32_t>(sig.orderId);
+      view.flags = 0;
+      switch (sig.type)
+      {
+        case SignalType::Market:
+        case SignalType::Limit:
+        case SignalType::StopMarket:
+        case SignalType::StopLimit:
+        case SignalType::TakeProfitMarket:
+        case SignalType::TakeProfitLimit:
+        case SignalType::TrailingStop:
+          view.flags = static_cast<uint32_t>(flox::run::SignalFlags::Enter);
+          break;
+        case SignalType::Cancel:
+        case SignalType::CancelAll:
+          view.flags = static_cast<uint32_t>(flox::run::SignalFlags::Exit);
+          break;
+        default:
+          break;
+      }
+      view.strength_raw = 0;
+      view.symbol_ids = {static_cast<uint32_t>(sig.symbol)};
+      const char* name = "unknown";
+      switch (sig.type)
+      {
+        case SignalType::Market:
+          name = "market";
+          break;
+        case SignalType::Limit:
+          name = "limit";
+          break;
+        case SignalType::Cancel:
+          name = "cancel";
+          break;
+        case SignalType::CancelAll:
+          name = "cancel_all";
+          break;
+        case SignalType::Modify:
+          name = "modify";
+          break;
+        case SignalType::StopMarket:
+          name = "stop_market";
+          break;
+        case SignalType::StopLimit:
+          name = "stop_limit";
+          break;
+        case SignalType::TakeProfitMarket:
+          name = "take_profit_market";
+          break;
+        case SignalType::TakeProfitLimit:
+          name = "take_profit_limit";
+          break;
+        case SignalType::TrailingStop:
+          name = "trailing_stop";
+          break;
+        default:
+          break;
+      }
+      view.name = name;
+      recorder->writeSignal(view);
+    }
+
     if (!_cb)
     {
       return;
@@ -3826,6 +3907,10 @@ class RunnerSignalHandler : public ISignalHandler
   std::atomic<FloxPnLTrackerImpl*> _pnl{nullptr};
   std::atomic<FloxStorageSinkImpl*> _sink{nullptr};
   std::atomic<FloxExecutorImpl*> _executor{nullptr};
+  // Optional trace recorder. Owned by caller; written into on every
+  // signal so the run captures without per-strategy instrumentation.
+  std::atomic<void*> _traceRecorder{nullptr};
+  std::atomic<int64_t> _traceFeedTsNs{0};
 };
 
 struct FloxRunnerImpl
@@ -3864,6 +3949,8 @@ struct FloxRunnerImpl
   }
   void setPnLTracker(FloxPnLTrackerImpl* p) { handler.setPnLTracker(p); }
   void setStorageSink(FloxStorageSinkImpl* s) { handler.setStorageSink(s); }
+  void attachTraceRecorder(void* rec) { handler.setTraceRecorder(rec); }
+  void setTraceFeedTsNs(int64_t ts) { handler.setTraceFeedTsNs(ts); }
 
   // Attach / detach a binding-supplied executor. Lifecycle (on_start /
   // on_stop) is balanced against runner start/stop, with hot-swap
@@ -4925,6 +5012,18 @@ void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
 {
   toRunner(runner)->setMarketDataRecorder(
       static_cast<capi_impl::FloxMarketDataRecorderImpl*>(recorder));
+}
+
+void flox_runner_attach_trace_recorder(FloxRunnerHandle runner, FloxRunRecorderHandle recorder)
+{
+  // recorder is a `flox::run::TraceRecorder*` (from
+  // `flox_run_recorder_create`) or NULL to detach.
+  toRunner(runner)->attachTraceRecorder(static_cast<void*>(recorder));
+}
+
+void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns)
+{
+  toRunner(runner)->setTraceFeedTsNs(feed_ts_ns);
 }
 
 void flox_runner_start(FloxRunnerHandle runner)

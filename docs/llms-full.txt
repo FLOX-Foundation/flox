@@ -8868,6 +8868,7 @@ Members:
 **Members**
 
 - `add_strategy(self, strategy: Strategy) -> None`
+- `attach_trace_recorder(self, recorder: typing.Any) -> None`
 - `on_bar(self, symbol: typing.Any, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex, volume: typing.SupportsFloat | typing.SupportsIndex = 0.0, buy_volume: typing.SupportsFloat | typing.SupportsIndex = 0.0, start_time_ns: typing.SupportsInt | typing.SupportsIndex = 0, end_time_ns: typing.SupportsInt | typing.SupportsIndex = 0, bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0, close_reason: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `on_book_snapshot(self, symbol: typing.Any, bid_prices: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], bid_qtys: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], ask_prices: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], ask_qtys: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `on_trade(self, symbol: typing.Any, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
@@ -8879,6 +8880,7 @@ Members:
 - `set_pnl_tracker(self, tracker: PnLTracker) -> None`
 - `set_risk_manager(self, rm: RiskManager) -> None`
 - `set_storage_sink(self, sink: StorageSink) -> None`
+- `set_trace_feed_ts_ns(self, feed_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `start(self) -> None`
 - `stop(self) -> None`
 

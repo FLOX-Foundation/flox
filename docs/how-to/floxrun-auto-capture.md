@@ -44,7 +44,37 @@ A `nullptr` recorder pointer disables capture without removing the inner-handler
 
 ## Phase status
 
-This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 adds an `Engine.attach_trace_recorder(rec)` convenience that wires the adapters into the engine's existing handler / listener chain in one call, plus pybind11 / NAPI surfaces. The adapters today are usable directly from C++; the binding work and the one-call helper are tracked separately.
+This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 (W14-T012) lifts a one-call `Runner.attach_trace_recorder(rec)` helper into every binding so polyglot strategies capture without per-language plumbing.
+
+## One-call attach (W14-T012)
+
+The `Runner` (sync mode) now exposes `attach_trace_recorder(recorder)`. Every signal the strategy emits is auto-mirrored into the recorder. Order / fill auto-capture is a follow-up — wire those through `TraceExecutionListener` against the executor's listener bus until then.
+
+```python
+# pybind11
+import flox_py
+rec = flox_py.TraceRecorder(path="./run.floxrun", strategy_id="trend",
+                             strategy_hash="sha256:abc",
+                             run_started_ns=time.time_ns())
+runner = flox_py.Runner(registry, on_signal=lambda sig: None)
+runner.attach_trace_recorder(rec)
+runner.set_trace_feed_ts_ns(trade.exchange_ts_ns)  # call once per tape event
+```
+
+```javascript
+// node
+const rec = new flox.TraceRecorder({
+  path: "./run.floxrun",
+  strategyId: "trend",
+  strategyHash: "sha256:abc",
+  runStartedNs: Date.now() * 1000000,
+});
+const runner = new flox.Runner(registry, sig => {});
+runner.attachTraceRecorder(rec);
+runner.setTraceFeedTsNs(trade.exchangeTsNs);
+```
+
+Codon reaches the same C ABI symbols (`flox_runner_attach_trace_recorder`, `flox_runner_set_trace_feed_ts_ns`) directly. Pass `null` / `None` to detach.
 
 ## See also
 

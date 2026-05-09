@@ -9,6 +9,7 @@
 #include "flox/capi/flox_capi.h"
 #include "flox/engine/symbol_registry.h"
 #include "hooks.h"
+#include "run_trace.h"
 
 #include <memory>
 #include <string>
@@ -1241,6 +1242,8 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
             InstanceMethod("setOrderValidator", &RunnerNode::setOrderValidator),
             InstanceMethod("setMarketDataRecorder", &RunnerNode::setMarketDataRecorder),
             InstanceMethod("setExecutor", &RunnerNode::setExecutor),
+            InstanceMethod("attachTraceRecorder", &RunnerNode::attachTraceRecorder),
+            InstanceMethod("setTraceFeedTsNs", &RunnerNode::setTraceFeedTsNs),
         });
   }
 
@@ -1706,6 +1709,38 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
       flox_live_engine_set_executor(_engine, _executor_host->handle);
     }
     return env.Undefined();
+  }
+
+  Napi::Value attachTraceRecorder(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (_mode != Mode::Sync)
+    {
+      Napi::Error::New(env, "attachTraceRecorder is only supported in sync mode")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      flox_runner_attach_trace_recorder(_runner, nullptr);
+      return env.Undefined();
+    }
+    auto* tr = Napi::ObjectWrap<TraceRecorderWrap>::Unwrap(info[0].As<Napi::Object>());
+    flox_runner_attach_trace_recorder(_runner, tr->handle());
+    return env.Undefined();
+  }
+
+  Napi::Value setTraceFeedTsNs(const Napi::CallbackInfo& info)
+  {
+    if (_mode != Mode::Sync)
+    {
+      Napi::Error::New(info.Env(), "setTraceFeedTsNs is only supported in sync mode")
+          .ThrowAsJavaScriptException();
+      return info.Env().Undefined();
+    }
+    int64_t ts = info[0].As<Napi::Number>().Int64Value();
+    flox_runner_set_trace_feed_ts_ns(_runner, ts);
+    return info.Env().Undefined();
   }
 };
 

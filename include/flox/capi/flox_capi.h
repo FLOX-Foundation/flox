@@ -2234,6 +2234,14 @@ extern "C"
                                     uint32_t symbol_id, uint8_t side, uint8_t liquidity);
   void flox_run_recorder_close(FloxRunRecorderHandle handle);
 
+  // ============================================================
+  // Trace recorder auto-attach (W14-T012)
+  // ============================================================
+
+  void flox_runner_attach_trace_recorder(FloxRunnerHandle runner,
+                                         FloxRunRecorderHandle recorder);
+  void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
+
   FloxRunReaderHandle flox_run_reader_open(const char* path);
   void flox_run_reader_close(FloxRunReaderHandle handle);
   uint64_t flox_run_reader_strategy_id(FloxRunReaderHandle handle, char* out, uint64_t max_bytes);
