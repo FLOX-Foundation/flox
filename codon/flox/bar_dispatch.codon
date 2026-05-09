@@ -1,0 +1,44 @@
+# Cross-binding parity test fixture for bar-close dispatch ordering.
+# Mirrors python/bar_dispatch_bindings.h, node/src/bar_dispatch.h, and
+# the QuickJS BarDispatchRecorder class. All four bindings must
+# produce the same dispatch sequence on the same input.
+
+from C import flox_bar_dispatch_recorder_create() -> cobj
+from C import flox_bar_dispatch_recorder_destroy(cobj)
+from C import flox_bar_dispatch_recorder_add_time_seconds(cobj, u32) -> u32
+from C import flox_bar_dispatch_recorder_on_trade(cobj, u32, f64, f64, i64)
+from C import flox_bar_dispatch_recorder_finalize(cobj)
+from C import flox_bar_dispatch_recorder_count(cobj) -> u32
+from C import flox_bar_dispatch_recorder_type_at(cobj, u32) -> u8
+from C import flox_bar_dispatch_recorder_param_at(cobj, u32) -> u64
+
+
+class BarDispatchRecorder:
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_bar_dispatch_recorder_create()
+
+    def __del__(self):
+        if self._h != cobj():
+            flox_bar_dispatch_recorder_destroy(self._h)
+            self._h = cobj()
+
+    def add_time_interval_seconds(self, seconds: int) -> int:
+        return int(flox_bar_dispatch_recorder_add_time_seconds(self._h, u32(seconds)))
+
+    def on_trade(self, symbol: int, price: float, qty: float, ts_ns: int):
+        flox_bar_dispatch_recorder_on_trade(self._h, u32(symbol),
+                                             f64(price), f64(qty), i64(ts_ns))
+
+    def finalize(self):
+        flox_bar_dispatch_recorder_finalize(self._h)
+
+    def count(self) -> int:
+        return int(flox_bar_dispatch_recorder_count(self._h))
+
+    def type_at(self, idx: int) -> int:
+        return int(flox_bar_dispatch_recorder_type_at(self._h, u32(idx)))
+
+    def param_at(self, idx: int) -> int:
+        return int(flox_bar_dispatch_recorder_param_at(self._h, u32(idx)))

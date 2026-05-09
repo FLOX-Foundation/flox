@@ -2315,6 +2315,18 @@ extern "C"
                             int64_t* out_price_raw, int64_t* out_qty_raw, int64_t* out_fee_raw,
                             uint32_t* out_symbol_id, uint8_t* out_side, uint8_t* out_liquidity);
 
+  typedef void* FloxBarDispatchRecorderHandle;
+  FloxBarDispatchRecorderHandle flox_bar_dispatch_recorder_create(void);
+  void flox_bar_dispatch_recorder_destroy(FloxBarDispatchRecorderHandle h);
+  uint32_t flox_bar_dispatch_recorder_add_time_seconds(FloxBarDispatchRecorderHandle h,
+                                                       uint32_t seconds);
+  void flox_bar_dispatch_recorder_on_trade(FloxBarDispatchRecorderHandle h, uint32_t symbol,
+                                           double price, double qty, int64_t ts_ns);
+  void flox_bar_dispatch_recorder_finalize(FloxBarDispatchRecorderHandle h);
+  uint32_t flox_bar_dispatch_recorder_count(FloxBarDispatchRecorderHandle h);
+  uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h, uint32_t index);
+  uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index);
+
 #ifdef __cplusplus
 }
 #endif

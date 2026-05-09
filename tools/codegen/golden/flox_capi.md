@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 475 functions, 42 handles, 48 structs, 33 callback typedefs, 2 enums, 57 groups.
+**Surface:** 483 functions, 43 handles, 48 structs, 33 callback typedefs, 2 enums, 58 groups.
 
 ## Opaque handles
 
@@ -50,6 +50,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDeltaBookReplayerHandle`
 - `FloxRunRecorderHandle`
 - `FloxRunReaderHandle`
+- `FloxBarDispatchRecorderHandle`
 
 ## Enums
 
@@ -724,6 +725,17 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint32_t flox_aggregate_time_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double interval_seconds, FloxBar * bars_out, uint32_t max_bars)`
 - `uint32_t flox_aggregate_tick_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, uint32_t tick_count, FloxBar * bars_out, uint32_t max_bars)`
 - `uint32_t flox_aggregate_volume_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double volume_threshold, FloxBar * bars_out, uint32_t max_bars)`
+
+### bar_dispatch
+
+- `FloxBarDispatchRecorderHandle flox_bar_dispatch_recorder_create(void)`
+- `void flox_bar_dispatch_recorder_destroy(FloxBarDispatchRecorderHandle h)`
+- `uint32_t flox_bar_dispatch_recorder_add_time_seconds(FloxBarDispatchRecorderHandle h, uint32_t seconds)`
+- `void flox_bar_dispatch_recorder_on_trade(FloxBarDispatchRecorderHandle h, uint32_t symbol, double price, double qty, int64_t ts_ns)`
+- `void flox_bar_dispatch_recorder_finalize(FloxBarDispatchRecorderHandle h)`
+- `uint32_t flox_bar_dispatch_recorder_count(FloxBarDispatchRecorderHandle h)`
+- `uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h, uint32_t index)`
+- `uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index)`
 
 ### composite_book
 

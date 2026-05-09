@@ -277,6 +277,8 @@ jobs:
           ./build/codon/codon_execution_algos_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_delta_book_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_bar_close_ordering_parity_smoke
 
     - name: Verify QuickJS runner
       run: |
@@ -289,6 +291,7 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/delta_book_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
 
     - name: Verify Node.js bindings
       run: |
@@ -317,6 +320,10 @@ jobs:
     - name: Verify Node.js delta book compression
       run: |
         cd node && node test/test_delta_book.js
+
+    - name: Verify Node.js bar-close ordering parity
+      run: |
+        cd node && node test/test_bar_close_ordering_parity.js
 
     - name: Verify Node.js extension hooks
       run: |

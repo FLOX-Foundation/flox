@@ -67,6 +67,7 @@ extern "C"
   typedef void* FloxDeltaBookReplayerHandle;
   typedef void* FloxRunRecorderHandle;
   typedef void* FloxRunReaderHandle;
+  typedef void* FloxBarDispatchRecorderHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -771,6 +772,21 @@ extern "C"
   uint32_t flox_aggregate_volume_bars(const int64_t* timestamps, const double* prices,
                                       const double* quantities, const uint8_t* is_buy, size_t len,
                                       double volume_threshold, FloxBar* bars_out, uint32_t max_bars);
+
+  // ============================================================
+  // Bar Dispatch
+  // ============================================================
+
+  FloxBarDispatchRecorderHandle flox_bar_dispatch_recorder_create(void);
+  void flox_bar_dispatch_recorder_destroy(FloxBarDispatchRecorderHandle h);
+  uint32_t flox_bar_dispatch_recorder_add_time_seconds(FloxBarDispatchRecorderHandle h,
+                                                       uint32_t seconds);
+  void flox_bar_dispatch_recorder_on_trade(FloxBarDispatchRecorderHandle h, uint32_t symbol,
+                                           double price, double qty, int64_t ts_ns);
+  void flox_bar_dispatch_recorder_finalize(FloxBarDispatchRecorderHandle h);
+  uint32_t flox_bar_dispatch_recorder_count(FloxBarDispatchRecorderHandle h);
+  uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h, uint32_t index);
+  uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index);
 
   // ============================================================
   // Composite Book

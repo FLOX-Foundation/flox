@@ -2168,6 +2168,75 @@ static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueCon
 }
 
 // ============================================================
+// Bar dispatch recorder (cross-binding parity test fixture)
+// ============================================================
+
+static JSValue js_bar_dispatch_recorder_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_bar_dispatch_recorder_create());
+}
+
+static JSValue js_bar_dispatch_recorder_destroy(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  flox_bar_dispatch_recorder_destroy(
+      static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_bar_dispatch_recorder_add_time_seconds(JSContext* ctx, JSValueConst, int,
+                                                         JSValueConst* argv)
+{
+  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  uint32_t seconds = toUint32(ctx, argv[1]);
+  return JS_NewUint32(ctx, flox_bar_dispatch_recorder_add_time_seconds(h, seconds));
+}
+
+static JSValue js_bar_dispatch_recorder_on_trade(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  double price = toDouble(ctx, argv[2]);
+  double qty = toDouble(ctx, argv[3]);
+  int64_t ts_ns = 0;
+  JS_ToInt64(ctx, &ts_ns, argv[4]);
+  flox_bar_dispatch_recorder_on_trade(h, symbol, price, qty, ts_ns);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_bar_dispatch_recorder_finalize(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  flox_bar_dispatch_recorder_finalize(
+      static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_bar_dispatch_recorder_count(JSContext* ctx, JSValueConst, int,
+                                              JSValueConst* argv)
+{
+  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, flox_bar_dispatch_recorder_count(h));
+}
+
+static JSValue js_bar_dispatch_recorder_type_at(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  return JS_NewUint32(ctx, flox_bar_dispatch_recorder_type_at(h, i));
+}
+
+static JSValue js_bar_dispatch_recorder_param_at(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  auto h = static_cast<FloxBarDispatchRecorderHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  return JS_NewInt64(ctx, static_cast<int64_t>(flox_bar_dispatch_recorder_param_at(h, i)));
+}
+
+// ============================================================
 // Tape diff bindings (replay-equivalence localization)
 // ============================================================
 
@@ -4217,6 +4286,21 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_run_reader_signals", js_run_reader_signals, 1);
   addGlobalFunc(ctx, "__flox_run_reader_orders", js_run_reader_orders, 1);
   addGlobalFunc(ctx, "__flox_run_reader_fills", js_run_reader_fills, 1);
+
+  // Bar dispatch recorder (cross-binding parity test fixture)
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_create", js_bar_dispatch_recorder_create, 0);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_destroy", js_bar_dispatch_recorder_destroy, 1);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_add_time_seconds",
+                js_bar_dispatch_recorder_add_time_seconds, 2);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_on_trade",
+                js_bar_dispatch_recorder_on_trade, 5);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_finalize",
+                js_bar_dispatch_recorder_finalize, 1);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_count", js_bar_dispatch_recorder_count, 1);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_type_at",
+                js_bar_dispatch_recorder_type_at, 2);
+  addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_param_at",
+                js_bar_dispatch_recorder_param_at, 2);
 
   // Tape diff
   addGlobalFunc(ctx, "__flox_tape_diff", js_tape_diff, 3);

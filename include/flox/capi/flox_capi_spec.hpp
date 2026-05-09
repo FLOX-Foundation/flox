@@ -3185,6 +3185,44 @@ extern "C"
                             int64_t* out_price_raw, int64_t* out_qty_raw, int64_t* out_fee_raw,
                             uint32_t* out_symbol_id, uint8_t* out_side, uint8_t* out_liquidity);
 
+  // Bar-close dispatch recorder.
+  //
+  // Cross-binding parity test fixture for the documented bar-close
+  // ordering rule: on tied closes, MultiTimeframeAggregator dispatches
+  // bars in the order their timeframes were registered. The recorder
+  // wraps a BarBus + aggregator + recording subscriber so a binding
+  // only needs to register timeframes, push trades, and read back the
+  // dispatch sequence.
+
+  typedef void* FloxBarDispatchRecorderHandle;
+
+  FLOX_EXPORT(group = "bar_dispatch")
+  FloxBarDispatchRecorderHandle flox_bar_dispatch_recorder_create(void);
+  FLOX_EXPORT(group = "bar_dispatch")
+  void flox_bar_dispatch_recorder_destroy(FloxBarDispatchRecorderHandle h);
+
+  // Returns slot index of the registered timeframe (or kMaxTimeframes on full).
+  FLOX_EXPORT(group = "bar_dispatch")
+  uint32_t flox_bar_dispatch_recorder_add_time_seconds(FloxBarDispatchRecorderHandle h,
+                                                       uint32_t seconds);
+
+  FLOX_EXPORT(group = "bar_dispatch")
+  void flox_bar_dispatch_recorder_on_trade(FloxBarDispatchRecorderHandle h,
+                                           uint32_t symbol, double price, double qty,
+                                           int64_t ts_ns);
+
+  // Drains the bus so all bars at the final tied close fire. Must be
+  // called before reading count / param_at / type_at.
+  FLOX_EXPORT(group = "bar_dispatch")
+  void flox_bar_dispatch_recorder_finalize(FloxBarDispatchRecorderHandle h);
+
+  FLOX_EXPORT(group = "bar_dispatch")
+  uint32_t flox_bar_dispatch_recorder_count(FloxBarDispatchRecorderHandle h);
+  FLOX_EXPORT(group = "bar_dispatch")
+  uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h, uint32_t index);
+  FLOX_EXPORT(group = "bar_dispatch")
+  uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index);
+
 #ifdef __cplusplus
 }
 #endif

@@ -303,6 +303,11 @@ groups:
     napi: { status: required, classes: [OrderGroup] }
     codon: { status: required }
 
+  bar_dispatch:
+    pybind11: { status: required, classes: [BarDispatchRecorder] }
+    napi: { status: required, classes: [BarDispatchRecorder] }
+    codon: { status: required }
+
   feed_clock:
     pybind11: { status: required, classes: [MultiFeedClock] }
     napi: { status: required, classes: [MultiFeedClock] }

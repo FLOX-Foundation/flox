@@ -6,6 +6,7 @@
 
 #include "aggregator_bindings.h"
 #include "backtest_bindings.h"
+#include "bar_dispatch_bindings.h"
 #include "book_bindings.h"
 #include "composite_book_bindings.h"
 #include "delta_book_bindings.h"
@@ -791,6 +792,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindTapeDiff(m);
   flox_py::bindPortfolioRisk(m);
   flox_py::bindOrderGroup(m);
+  flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);
   flox_py::bindExecutionAlgos(m);
   flox_py::bindDeltaBook(m);

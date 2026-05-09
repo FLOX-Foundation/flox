@@ -123,6 +123,46 @@
           "name": "flox_backtest_runner_take_result"
         },
         {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_add_time_seconds"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_count"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_create"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_destroy"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_finalize"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_on_trade"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_param_at"
+        },
+        {
+          "group": "bar_dispatch",
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_type_at"
+        },
+        {
           "group": "context_queries",
           "kind": "function",
           "name": "flox_best_ask_raw"
@@ -2587,6 +2627,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxBarDispatchRecorderHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxBookHandle"
         },
         {
@@ -2754,6 +2798,7 @@
         "backtest_slippage",
         "backtestrunner_replay",
         "bar_aggregation",
+        "bar_dispatch",
         "composite_book",
         "context_queries",
         "data_reader",
@@ -2903,6 +2948,38 @@
         {
           "kind": "function",
           "name": "flox_backtest_runner_take_result"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_add_time_seconds"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_finalize"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_on_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_param_at"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bar_dispatch_recorder_type_at"
         },
         {
           "kind": "function",
@@ -4746,6 +4823,10 @@
         },
         {
           "kind": "class",
+          "name": "BarDispatchRecorder"
+        },
+        {
+          "kind": "class",
           "name": "BboRecord"
         },
         {
@@ -5510,6 +5591,10 @@
         },
         {
           "kind": "class",
+          "name": "BarDispatchRecorder"
+        },
+        {
+          "kind": "class",
           "name": "Bollinger"
         },
         {
@@ -6240,6 +6325,36 @@
           "aggregate_tick_bars",
           "aggregate_volume_bars"
         ],
+        "status": "required"
+      }
+    },
+    "bar_dispatch": {
+      "capi_functions": [
+        "flox_bar_dispatch_recorder_add_time_seconds",
+        "flox_bar_dispatch_recorder_count",
+        "flox_bar_dispatch_recorder_create",
+        "flox_bar_dispatch_recorder_destroy",
+        "flox_bar_dispatch_recorder_finalize",
+        "flox_bar_dispatch_recorder_on_trade",
+        "flox_bar_dispatch_recorder_param_at",
+        "flox_bar_dispatch_recorder_type_at"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "BarDispatchRecorder"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "BarDispatchRecorder"
+        ],
+        "functions": [],
         "status": "required"
       }
     },
