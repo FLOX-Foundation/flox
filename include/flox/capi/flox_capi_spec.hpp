@@ -175,6 +175,20 @@ extern "C"
   void flox_strategy_replace_callbacks(FloxStrategyHandle strategy,
                                        FloxStrategyCallbacks callbacks);
 
+  // Pointer-variant constructors for FFIs that cannot pass a struct
+  // by value. The `_p` form takes a pointer to the same struct;
+  // calling `*p` to read is equivalent to passing the struct directly.
+  // These exist alongside the by-value variants so existing
+  // pybind11/NAPI/QuickJS callers keep working unchanged. (Used by
+  // Codon today.)
+  FLOX_EXPORT(group = "strategy_lifecycle")
+  FloxStrategyHandle flox_strategy_create_p(uint32_t id, const uint32_t* symbols,
+                                            uint32_t num_symbols, FloxRegistryHandle registry,
+                                            const FloxStrategyCallbacks* callbacks);
+  FLOX_EXPORT(group = "strategy_lifecycle")
+  void flox_strategy_replace_callbacks_p(FloxStrategyHandle strategy,
+                                         const FloxStrategyCallbacks* callbacks);
+
   // ============================================================
   // Signal emission (returns OrderId, 0 on failure)
   // ============================================================
@@ -1635,6 +1649,8 @@ extern "C"
   FLOX_EXPORT(group = "risk")
   FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
   FLOX_EXPORT(group = "risk")
+  FloxRiskManagerHandle flox_risk_manager_create_p(const FloxRiskManagerCallbacks* callbacks);
+  FLOX_EXPORT(group = "risk")
   void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
 
   // ============================================================
@@ -1661,6 +1677,8 @@ extern "C"
   FLOX_EXPORT(group = "risk")
   FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks);
   FLOX_EXPORT(group = "risk")
+  FloxKillSwitchHandle flox_kill_switch_create_p(const FloxKillSwitchCallbacks* callbacks);
+  FLOX_EXPORT(group = "risk")
   void flox_kill_switch_destroy(FloxKillSwitchHandle ks);
 
   // ============================================================
@@ -1686,6 +1704,8 @@ extern "C"
 
   FLOX_EXPORT(group = "risk")
   FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks);
+  FLOX_EXPORT(group = "risk")
+  FloxOrderValidatorHandle flox_order_validator_create_p(const FloxOrderValidatorCallbacks* callbacks);
   FLOX_EXPORT(group = "risk")
   void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
 
@@ -1747,6 +1767,8 @@ extern "C"
   FLOX_EXPORT(group = "metrics")
   FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks);
   FLOX_EXPORT(group = "metrics")
+  FloxPnLTrackerHandle flox_pnl_tracker_create_p(const FloxPnLTrackerCallbacks* callbacks);
+  FLOX_EXPORT(group = "metrics")
   void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker);
 
   // ============================================================
@@ -1773,6 +1795,8 @@ extern "C"
 
   FLOX_EXPORT(group = "storage")
   FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks);
+  FLOX_EXPORT(group = "storage")
+  FloxStorageSinkHandle flox_storage_sink_create_p(const FloxStorageSinkCallbacks* callbacks);
   FLOX_EXPORT(group = "storage")
   void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
 
@@ -1818,6 +1842,9 @@ extern "C"
   FLOX_EXPORT(group = "recorder")
   FloxMarketDataRecorderHandle
   flox_market_data_recorder_create(FloxMarketDataRecorderCallbacks callbacks);
+  FLOX_EXPORT(group = "recorder")
+  FloxMarketDataRecorderHandle
+  flox_market_data_recorder_create_p(const FloxMarketDataRecorderCallbacks* callbacks);
   FLOX_EXPORT(group = "recorder")
   void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
 
@@ -1882,6 +1909,8 @@ extern "C"
 
   FLOX_EXPORT(group = "replay")
   FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks);
+  FLOX_EXPORT(group = "replay")
+  FloxReplaySourceHandle flox_replay_source_create_p(const FloxReplaySourceCallbacks* callbacks);
   FLOX_EXPORT(group = "replay")
   void flox_replay_source_destroy(FloxReplaySourceHandle source);
 
@@ -1964,6 +1993,9 @@ extern "C"
   FloxExecutionListenerHandle
   flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks);
   FLOX_EXPORT(group = "execution")
+  FloxExecutionListenerHandle
+  flox_execution_listener_create_p(const FloxExecutionListenerCallbacks* callbacks);
+  FLOX_EXPORT(group = "execution")
   void flox_execution_listener_destroy(FloxExecutionListenerHandle listener);
 
   // Attaching listeners to BacktestRunner is declared with the rest of
@@ -2037,6 +2069,8 @@ extern "C"
 
   FLOX_EXPORT(group = "execution")
   FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks);
+  FLOX_EXPORT(group = "execution")
+  FloxExecutorHandle flox_executor_create_p(const FloxExecutorCallbacks* callbacks);
   FLOX_EXPORT(group = "execution")
   void flox_executor_destroy(FloxExecutorHandle executor);
 

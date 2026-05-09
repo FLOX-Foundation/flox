@@ -203,6 +203,14 @@ FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t* symbols,
   return static_cast<FloxStrategyHandle>(strat);
 }
 
+FloxStrategyHandle flox_strategy_create_p(uint32_t id, const uint32_t* symbols,
+                                          uint32_t num_symbols, FloxRegistryHandle registry,
+                                          const FloxStrategyCallbacks* callbacks)
+{
+  FloxStrategyCallbacks cbs = callbacks ? *callbacks : FloxStrategyCallbacks{};
+  return flox_strategy_create(id, symbols, num_symbols, registry, cbs);
+}
+
 void flox_strategy_destroy(FloxStrategyHandle strategy)
 {
   delete toStrategy(strategy);
@@ -215,6 +223,13 @@ void flox_strategy_replace_callbacks(FloxStrategyHandle strategy, FloxStrategyCa
     return;
   }
   toStrategy(strategy)->replaceCallbacks(callbacks);
+}
+
+void flox_strategy_replace_callbacks_p(FloxStrategyHandle strategy,
+                                       const FloxStrategyCallbacks* callbacks)
+{
+  FloxStrategyCallbacks cbs = callbacks ? *callbacks : FloxStrategyCallbacks{};
+  flox_strategy_replace_callbacks(strategy, cbs);
 }
 
 // ============================================================
@@ -4806,6 +4821,12 @@ FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callback
   return static_cast<FloxRiskManagerHandle>(rm);
 }
 
+FloxRiskManagerHandle flox_risk_manager_create_p(const FloxRiskManagerCallbacks* callbacks)
+{
+  FloxRiskManagerCallbacks cbs = callbacks ? *callbacks : FloxRiskManagerCallbacks{};
+  return flox_risk_manager_create(cbs);
+}
+
 void flox_risk_manager_destroy(FloxRiskManagerHandle rm)
 {
   delete static_cast<FloxRiskManagerImpl*>(rm);
@@ -4815,6 +4836,12 @@ FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks)
 {
   auto* ks = new FloxKillSwitchImpl{callbacks};
   return static_cast<FloxKillSwitchHandle>(ks);
+}
+
+FloxKillSwitchHandle flox_kill_switch_create_p(const FloxKillSwitchCallbacks* callbacks)
+{
+  FloxKillSwitchCallbacks cbs = callbacks ? *callbacks : FloxKillSwitchCallbacks{};
+  return flox_kill_switch_create(cbs);
 }
 
 void flox_kill_switch_destroy(FloxKillSwitchHandle ks)
@@ -4828,6 +4855,12 @@ FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks
   return static_cast<FloxOrderValidatorHandle>(ov);
 }
 
+FloxOrderValidatorHandle flox_order_validator_create_p(const FloxOrderValidatorCallbacks* callbacks)
+{
+  FloxOrderValidatorCallbacks cbs = callbacks ? *callbacks : FloxOrderValidatorCallbacks{};
+  return flox_order_validator_create(cbs);
+}
+
 void flox_order_validator_destroy(FloxOrderValidatorHandle ov)
 {
   delete static_cast<FloxOrderValidatorImpl*>(ov);
@@ -4838,6 +4871,12 @@ FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks)
   return static_cast<FloxPnLTrackerHandle>(new FloxPnLTrackerImpl{callbacks});
 }
 
+FloxPnLTrackerHandle flox_pnl_tracker_create_p(const FloxPnLTrackerCallbacks* callbacks)
+{
+  FloxPnLTrackerCallbacks cbs = callbacks ? *callbacks : FloxPnLTrackerCallbacks{};
+  return flox_pnl_tracker_create(cbs);
+}
+
 void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)
 {
   delete static_cast<FloxPnLTrackerImpl*>(tracker);
@@ -4846,6 +4885,12 @@ void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)
 FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks)
 {
   return static_cast<FloxStorageSinkHandle>(new FloxStorageSinkImpl{callbacks});
+}
+
+FloxStorageSinkHandle flox_storage_sink_create_p(const FloxStorageSinkCallbacks* callbacks)
+{
+  FloxStorageSinkCallbacks cbs = callbacks ? *callbacks : FloxStorageSinkCallbacks{};
+  return flox_storage_sink_create(cbs);
 }
 
 void flox_storage_sink_destroy(FloxStorageSinkHandle sink)
@@ -4860,6 +4905,13 @@ FloxMarketDataRecorderHandle flox_market_data_recorder_create(
       new FloxMarketDataRecorderImpl{callbacks});
 }
 
+FloxMarketDataRecorderHandle flox_market_data_recorder_create_p(
+    const FloxMarketDataRecorderCallbacks* callbacks)
+{
+  FloxMarketDataRecorderCallbacks cbs = callbacks ? *callbacks : FloxMarketDataRecorderCallbacks{};
+  return flox_market_data_recorder_create(cbs);
+}
+
 void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)
 {
   delete static_cast<FloxMarketDataRecorderImpl*>(recorder);
@@ -4869,6 +4921,12 @@ FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callb
 {
   return static_cast<FloxReplaySourceHandle>(
       new FloxReplaySourceImpl{callbacks});
+}
+
+FloxReplaySourceHandle flox_replay_source_create_p(const FloxReplaySourceCallbacks* callbacks)
+{
+  FloxReplaySourceCallbacks cbs = callbacks ? *callbacks : FloxReplaySourceCallbacks{};
+  return flox_replay_source_create(cbs);
 }
 
 void flox_replay_source_destroy(FloxReplaySourceHandle source)
@@ -4893,6 +4951,13 @@ flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks)
       new FloxExecutionListenerImpl{callbacks});
 }
 
+FloxExecutionListenerHandle
+flox_execution_listener_create_p(const FloxExecutionListenerCallbacks* callbacks)
+{
+  FloxExecutionListenerCallbacks cbs = callbacks ? *callbacks : FloxExecutionListenerCallbacks{};
+  return flox_execution_listener_create(cbs);
+}
+
 void flox_execution_listener_destroy(FloxExecutionListenerHandle listener)
 {
   delete static_cast<FloxExecutionListenerImpl*>(listener);
@@ -4901,6 +4966,12 @@ void flox_execution_listener_destroy(FloxExecutionListenerHandle listener)
 FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks)
 {
   return static_cast<FloxExecutorHandle>(new FloxExecutorImpl{callbacks});
+}
+
+FloxExecutorHandle flox_executor_create_p(const FloxExecutorCallbacks* callbacks)
+{
+  FloxExecutorCallbacks cbs = callbacks ? *callbacks : FloxExecutorCallbacks{};
+  return flox_executor_create(cbs);
 }
 
 void flox_executor_destroy(FloxExecutorHandle executor)

@@ -89,3 +89,6 @@ add_codon_executable(codon_trace_attach_smoke
 
 add_codon_executable(codon_byte_identical_fixture
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/byte_identical_fixture.codon)
+
+add_codon_executable(codon_strategy_e2e_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/strategy_e2e_smoke.codon)

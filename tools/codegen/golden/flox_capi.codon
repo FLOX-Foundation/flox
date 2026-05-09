@@ -118,8 +118,10 @@ from C import flox_delta_book_replayer_copy_asks(cobj, cobj, u64) -> u64
 
 # ── execution ──
 from C import flox_execution_listener_create(cobj) -> cobj
+from C import flox_execution_listener_create_p(cobj) -> cobj
 from C import flox_execution_listener_destroy(cobj)
 from C import flox_executor_create(cobj) -> cobj
+from C import flox_executor_create_p(cobj) -> cobj
 from C import flox_executor_destroy(cobj)
 from C import flox_executor_get_capabilities(cobj, cobj)
 from C import flox_live_engine_set_executor(cobj, cobj)
@@ -329,6 +331,7 @@ from C import flox_market_profile_clear(cobj)
 
 # ── metrics ──
 from C import flox_pnl_tracker_create(cobj) -> cobj
+from C import flox_pnl_tracker_create_p(cobj) -> cobj
 from C import flox_pnl_tracker_destroy(cobj)
 from C import flox_live_engine_set_pnl_tracker(cobj, cobj)
 from C import flox_runner_set_pnl_tracker(cobj, cobj)
@@ -443,21 +446,26 @@ from C import flox_position_group_prune(cobj)
 
 # ── recorder ──
 from C import flox_market_data_recorder_create(cobj) -> cobj
+from C import flox_market_data_recorder_create_p(cobj) -> cobj
 from C import flox_market_data_recorder_destroy(cobj)
 from C import flox_live_engine_set_market_data_recorder(cobj, cobj)
 from C import flox_runner_set_market_data_recorder(cobj, cobj)
 
 # ── replay ──
 from C import flox_replay_source_create(cobj) -> cobj
+from C import flox_replay_source_create_p(cobj) -> cobj
 from C import flox_replay_source_destroy(cobj)
 from C import flox_replay_source_seek_to(cobj, i64) -> u8
 
 # ── risk ──
 from C import flox_risk_manager_create(cobj) -> cobj
+from C import flox_risk_manager_create_p(cobj) -> cobj
 from C import flox_risk_manager_destroy(cobj)
 from C import flox_kill_switch_create(cobj) -> cobj
+from C import flox_kill_switch_create_p(cobj) -> cobj
 from C import flox_kill_switch_destroy(cobj)
 from C import flox_order_validator_create(cobj) -> cobj
+from C import flox_order_validator_create_p(cobj) -> cobj
 from C import flox_order_validator_destroy(cobj)
 from C import flox_live_engine_set_risk_manager(cobj, cobj)
 from C import flox_live_engine_set_kill_switch(cobj, cobj)
@@ -513,6 +521,7 @@ from C import flox_stat_win_rate(Ptr[float], int) -> float
 
 # ── storage ──
 from C import flox_storage_sink_create(cobj) -> cobj
+from C import flox_storage_sink_create_p(cobj) -> cobj
 from C import flox_storage_sink_destroy(cobj)
 from C import flox_live_engine_set_storage_sink(cobj, cobj)
 from C import flox_runner_set_storage_sink(cobj, cobj)
@@ -521,6 +530,8 @@ from C import flox_runner_set_storage_sink(cobj, cobj)
 from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
 from C import flox_strategy_destroy(cobj)
 from C import flox_strategy_replace_callbacks(cobj, cobj)
+from C import flox_strategy_create_p(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import flox_strategy_replace_callbacks_p(cobj, cobj)
 
 # ── strategyrunner_synchronous ──
 from C import flox_runner_create(cobj, cobj, cobj) -> cobj

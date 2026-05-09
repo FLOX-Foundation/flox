@@ -65,10 +65,10 @@ def run():
     # End-to-end strategy handle round-trip is exercised in the
     # C++ test (tests/test_multi_tf_alignment.cpp), the QuickJS suite
     # (tests/test_quickjs.cpp) and pybind11
-    # (python/tests/test_multi_tf_alignment.py). The Codon FFI imports
-    # `flox_strategy_create` but cannot drive it through a struct-by-value
-    # callbacks parameter today, so the codon coverage stops at the
-    # FloxBar serialisation contract this smoke locks down.
+    # (python/tests/test_multi_tf_alignment.py). The Codon FFI now has
+    # `flox_strategy_create_p` (pointer variant for the callbacks
+    # struct), so a separate codon smoke (codon_strategy_e2e_smoke)
+    # exercises the full path.
 
     print("codon multi-tf helpers smoke ok")
 

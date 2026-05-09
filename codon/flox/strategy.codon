@@ -1,7 +1,7 @@
 # flox/strategy.codon -- Strategy base class for Codon.
 # Mirrors C++ flox::Strategy. Override on_trade/on_book_update to implement logic.
 
-from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import flox_strategy_create_p(u32, Ptr[u32], u32, cobj, cobj) -> cobj
 from C import flox_strategy_destroy(cobj)
 from C import flox_emit_market_buy(cobj, u32, i64) -> u64
 from C import flox_emit_market_sell(cobj, u32, i64) -> u64
@@ -60,10 +60,11 @@ class Strategy:
     """Base class for Codon strategies. Mirrors C++ flox::Strategy.
 
     Override on_trade() and/or on_book_update() to implement strategy logic.
-    Use emit_* methods (legacy) or ergonomic methods (market_buy, limit_sell, etc).
+    Use emit_* methods (raw) or the ergonomic wrappers
+    (market_buy, limit_sell, etc.) — both reach the same C ABI.
     Use position() and ctx() to query state.
 
-    Codon compiles this to native code -- no interpreter overhead.
+    Codon compiles this to native code — no interpreter overhead.
     """
 
     _handle: cobj
@@ -71,13 +72,33 @@ class Strategy:
     _symbol_names: List[str]
     _symbol_map: Dict[str, int]
     _reverse_map: Dict[int, str]
+    _callbacks_buf: Ptr[byte]
 
-    def __init__(self, symbols: List[int]):
+    def __init__(self, symbols: List[int], strategy_id: int = 1,
+                 registry: cobj = cobj()):
+        """Construct a strategy bound to a registry. Without an attached
+        runner the handle is created but has no event source; pass it
+        into a Runner to drive trades / bars."""
         self._symbols = symbols
-        self._handle = cobj()
         self._symbol_names = list[str]()
         self._symbol_map = dict[str, int]()
         self._reverse_map = dict[int, str]()
+        # FloxStrategyCallbacks is a 6-pointer struct on 64-bit
+        # (on_trade, on_book, on_bar, on_start, on_stop, user_data).
+        # Zero-initialise — overrides happen on the C++ side via the
+        # BridgeStrategy that the runner attaches to this handle.
+        self._callbacks_buf = Ptr[byte](48)
+        for i in range(48):
+            self._callbacks_buf[i] = byte(0)
+        if registry == cobj():
+            # No registry attached; downstream `Runner.add_strategy`
+            # will rebuild the handle once a registry is present.
+            self._handle = cobj()
+        else:
+            sym_buf = [u32(s) for s in symbols]
+            self._handle = flox_strategy_create_p(
+                u32(strategy_id), Ptr[u32](sym_buf.arr.ptr),
+                u32(len(symbols)), registry, cobj(self._callbacks_buf))
 
     # ------------------------------------------------------------------
     # Overridable callbacks
