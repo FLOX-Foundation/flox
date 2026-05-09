@@ -4,6 +4,10 @@ Maintains a fast tick-level filter (``on_trade``) plus a slower
 bar-level confirmation (``on_bar``). Useful when bar TA gives
 direction and tick state controls entry timing.
 """
+# Next pieces of the project (run these via the MCP server):
+#   docs_search("project layout") — strategy / data / backtest folder shape
+#   docs_search("record tape")    — capture market data into a .floxlog
+#   docs_search("backtest")       — drive this strategy off a recorded tape
 from __future__ import annotations
 
 import flox_py as flox

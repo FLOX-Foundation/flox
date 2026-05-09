@@ -20,18 +20,39 @@ from typing import Optional
 from . import _data
 
 
-SUPPORTED_LANGUAGES = ("python", "node")
+SUPPORTED_LANGUAGES = ("python", "node", "codon", "quickjs")
 SUPPORTED_KINDS = ("bar-driven", "trade-driven", "hybrid")
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Pointers the agent should follow after scaffolding. Surfaced both in
+# the strategy template comments (so the rendered file carries them)
+# and in the trailing "Next steps" section of this tool's response, so
+# whether the agent reads its own generated file or the tool result, it
+# learns where the canonical recording / backtest paths live.
+NEXT_STEPS = (
+    ('project layout',
+     'where strategy / data / backtest live in a flox project'),
+    ('record tape',
+     'capture market data into a `.floxlog`, including historical backfill'),
+    ('backtest',
+     'drive the strategy off a recorded tape'),
+)
 
-def scaffold_strategy(language: str = "python", kind: str = "bar-driven",
+
+def scaffold_strategy(language: Optional[str] = None,
+                      kind: str = "bar-driven",
                       name: str = "MyStrategy") -> str:
+    if language is None or language == "":
+        return (
+            "scaffold_strategy: `language` is required. "
+            f"Supported: {', '.join(SUPPORTED_LANGUAGES)}. "
+            "FLOX is polyglot — picking the binding for the user is wrong; "
+            "ask which language they want before calling this tool."
+        )
     if language not in SUPPORTED_LANGUAGES:
         return (
             f"scaffold_strategy: unsupported language {language!r}. "
-            f"Supported: {', '.join(SUPPORTED_LANGUAGES)}. "
-            f"(Codon / QuickJS templates are tracked as a follow-up.)"
+            f"Supported: {', '.join(SUPPORTED_LANGUAGES)}."
         )
     if kind not in SUPPORTED_KINDS:
         return (
@@ -55,8 +76,17 @@ def scaffold_strategy(language: str = "python", kind: str = "bar-driven",
     raw = tmpl_path.read_text()
     rendered = string.Template(raw).safe_substitute(name=name)
 
-    fence_lang = "javascript" if language == "node" else language
+    fence_lang = {
+        "node": "javascript",
+        "quickjs": "javascript",
+        "codon": "python",
+    }.get(language, language)
+    next_steps = "\n".join(
+        f"- `docs_search(\"{q}\")` — {desc}"
+        for q, desc in NEXT_STEPS
+    )
     return (
         f"# scaffold_strategy: {language} / {kind} / `{name}`\n\n"
-        f"```{fence_lang}\n{rendered.rstrip()}\n```\n"
+        f"```{fence_lang}\n{rendered.rstrip()}\n```\n\n"
+        f"## Next steps\n\n{next_steps}\n"
     )

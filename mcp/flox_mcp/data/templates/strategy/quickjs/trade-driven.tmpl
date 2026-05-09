@@ -1,0 +1,33 @@
+// ${name} — trade-driven QuickJS strategy.
+//
+// Reacts on every print (onTrade); ignores bars. Use this kind when
+// the signal cares about microstructure or sub-bar latency. Loaded
+// by `flox_js_runner`; `Strategy` and `EMA` are global.
+//
+// Next pieces of the project (run these via the MCP server):
+//   docs_search("project layout") — strategy / data / backtest folder shape
+//   docs_search("record tape")    — capture market data into a .floxlog
+//   docs_search("backtest")       — drive this strategy off a recorded tape
+
+class ${name} extends Strategy {
+    constructor() {
+        super({ exchange: "Binance", symbols: ["BTCUSDT"] });
+        this.ema = new EMA(20);
+        this.orderSize = 0.01;
+        this.lastSignal = 0;
+    }
+
+    onTrade(ctx, trade) {
+        var v = this.ema.update(trade.price);
+        if (!this.ema.ready) return;
+        if (trade.price > v && this.lastSignal !== 1 && ctx.isFlat()) {
+            this.marketBuy({ qty: this.orderSize });
+            this.lastSignal = 1;
+        } else if (trade.price < v && this.lastSignal !== -1 && ctx.isLong()) {
+            this.marketSell({ qty: this.orderSize });
+            this.lastSignal = -1;
+        }
+    }
+}
+
+flox.register(new ${name}());

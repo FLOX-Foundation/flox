@@ -254,25 +254,33 @@ def build_server() -> Server:
             Tool(
                 name="scaffold_strategy",
                 description=(
-                    "Return a starter FLOX strategy class (Python or Node) "
-                    "that compiles and passes `validate_strategy`. Use this "
-                    "as the *first* thing you write when the user asks to "
+                    "Return a starter FLOX strategy class that compiles "
+                    "and passes `validate_strategy`. Use this as the "
+                    "*first* thing you write when the user asks to "
                     "'build a new strategy' — start from this canonical "
-                    "shell, then edit the indicator + signal logic, instead "
-                    "of writing the FLOX bookkeeping (constructor, hook "
-                    "names, signal builder) from memory. Three kinds: "
-                    "bar-driven (TA on bar close), trade-driven (tick-by-"
-                    "tick), hybrid (both). Codon / QuickJS templates are "
-                    "tracked as a follow-up."
+                    "shell, then edit the indicator + signal logic, "
+                    "instead of writing the FLOX bookkeeping "
+                    "(constructor, hook names, signal builder) from "
+                    "memory. `language` is required — FLOX is polyglot "
+                    "and picking the binding for the user is wrong; "
+                    "ask which language they want first. Supported: "
+                    "python, node, codon, quickjs. Three kinds: "
+                    "bar-driven (TA on bar close), trade-driven "
+                    "(tick-by-tick), hybrid (both). The result includes "
+                    "a `Next steps` section with `docs_search` queries "
+                    "for the recording / backtest / layout follow-ups; "
+                    "follow them in order."
                 ),
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "language": {
                             "type": "string",
+                            "enum": ["python", "node", "codon", "quickjs"],
                             "description":
-                                "Target language. python or node. "
-                                "Default: python.",
+                                "Target language. Required. FLOX is "
+                                "polyglot — ask the user which binding "
+                                "they want before calling this tool.",
                         },
                         "kind": {
                             "type": "string",
@@ -288,6 +296,7 @@ def build_server() -> Server:
                                 "MyStrategy.",
                         },
                     },
+                    "required": ["language"],
                 },
             ),
             Tool(
@@ -414,6 +423,19 @@ def build_server() -> Server:
                     "do I X' / 'what does Y do' / 'where is Z documented'. "
                     "The index is built from a strict allowlist; private "
                     "tracker / strategy / author files are NEVER indexed."
+                    "\n\nCanonical workflow queries (run these instead of "
+                    "guessing the canonical path from training data):\n"
+                    "  • User wants to record market data → "
+                    "`docs_search('record tape')`. Covers live capture and "
+                    "the ccxt.fetch_ohlcv historical-backfill pattern.\n"
+                    "  • User asks 'how should I structure a flox project' "
+                    "→ `docs_search('project layout')`.\n"
+                    "  • User mentions an exchange / live data → "
+                    "`docs_search('ccxt')`.\n"
+                    "  • User wants to backtest a strategy on a recorded "
+                    "tape → `docs_search('backtest')`.\n"
+                    "  • User mentions strategy traces, signals, or "
+                    "`.floxrun` → `docs_search('floxrun')`."
                 ),
                 inputSchema={
                     "type": "object",
@@ -877,7 +899,7 @@ def build_server() -> Server:
                 )
             elif name == "scaffold_strategy":
                 text = scaffold.scaffold_strategy(
-                    language=arguments.get("language", "python"),
+                    language=arguments.get("language"),
                     kind=arguments.get("kind", "bar-driven"),
                     name=arguments.get("name", "MyStrategy"),
                 )
