@@ -22,6 +22,7 @@ from .tools import (
     lookahead as lookahead_tool,
     lookup,
     positions,
+    record_data as record_data_tool,
     runtime,
     scaffold,
     strategy,
@@ -339,6 +340,88 @@ def build_server() -> Server:
                             "description":
                                 "Parent directory the project is created "
                                 "under. Default: current working dir.",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="record_data",
+                description=(
+                    "Capture market data into a `.floxlog` tape. Wraps "
+                    "the canonical recording paths — for `mode=live` "
+                    "shells out to the `flox tape record` CLI; for "
+                    "`mode=historical` shells out to "
+                    "`scripts/backfill_to_tape.py` which uses ccxt's "
+                    "`fetch_ohlcv` / `fetch_trades`. Use this when the "
+                    "user asks to 'record some BTC data' / 'pull a "
+                    "month of klines for backtest' / 'tape the last "
+                    "hour of trades'. The result is a `.floxlog` "
+                    "directory drivable by `BacktestRunner.run_tape`."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["mode", "exchange", "symbol", "out_path"],
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["historical", "live"],
+                            "description":
+                                "`historical` = ccxt backfill of past "
+                                "data. `live` = capture from now onwards "
+                                "via `flox tape record`.",
+                        },
+                        "exchange": {
+                            "type": "string",
+                            "description":
+                                "ccxt exchange id (bitget, binance, "
+                                "bybit, ...).",
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description":
+                                "Symbol in the exchange's spelling "
+                                "(BTC/USDT, BTCUSDT — both accepted).",
+                        },
+                        "out_path": {
+                            "type": "string",
+                            "description":
+                                "Output `.floxlog` directory (will be "
+                                "created if missing).",
+                        },
+                        "data_type": {
+                            "type": "string",
+                            "enum": ["klines", "trades"],
+                            "description":
+                                "Historical mode only. `klines` (1m bars "
+                                "by default) or `trades` (per-print). "
+                                "Trades have higher fidelity but are "
+                                "limited by what each exchange exposes.",
+                        },
+                        "from_dt": {
+                            "type": "string",
+                            "description":
+                                "Historical mode. Start datetime — ISO "
+                                "(2026-04-01) or unix-ms.",
+                        },
+                        "to_dt": {
+                            "type": "string",
+                            "description":
+                                "Historical mode. End datetime — ISO or "
+                                "unix-ms.",
+                        },
+                        "duration": {
+                            "type": "string",
+                            "description":
+                                "Live mode. Recording duration "
+                                "(`1h`, `30m`, `2d`). Omit for an open-"
+                                "ended recording (Ctrl+C to stop).",
+                        },
+                        "max_records": {
+                            "type": "integer",
+                            "description":
+                                "Historical mode. Refuse to start if "
+                                "estimated row count exceeds this. "
+                                "Default 1_000_000.",
                         },
                     },
                 },
@@ -963,6 +1046,18 @@ def build_server() -> Server:
                     project_name=arguments["project_name"],
                     template=arguments["template"],
                     target_dir=arguments.get("target_dir", "."),
+                )
+            elif name == "record_data":
+                text = record_data_tool.record_data(
+                    mode=arguments["mode"],
+                    exchange=arguments["exchange"],
+                    symbol=arguments["symbol"],
+                    out_path=arguments["out_path"],
+                    data_type=arguments.get("data_type", "klines"),
+                    from_dt=arguments.get("from_dt"),
+                    to_dt=arguments.get("to_dt"),
+                    duration=arguments.get("duration"),
+                    max_records=arguments.get("max_records", 1_000_000),
                 )
             elif name == "docs_search":
                 text = docs_search_tool.docs_search(
