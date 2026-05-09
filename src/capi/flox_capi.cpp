@@ -1333,6 +1333,13 @@ uint8_t flox_order_group_state(FloxOrderGroupHandle h)
   return static_cast<uint8_t>(toOrderGroup(h)->state());
 }
 
+void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index,
+                                             uint8_t kind)
+{
+  toOrderGroup(h)->markActionDispatched(leg_index,
+                                        static_cast<OrderGroupAction::Kind>(kind));
+}
+
 uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
                                               int64_t* actions_out,
                                               uint32_t max_actions)

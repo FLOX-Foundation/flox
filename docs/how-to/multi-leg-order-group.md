@@ -65,8 +65,38 @@ g.add_market_leg(btc, 0, 0.1)
 g.add_market_leg(eth, 1, 2.0)
 ```
 
+## Auto-dispatch through the executor
+
+When the strategy already exposes `emit_cancel(order_id)` /
+`emit_market_buy(symbol, qty)` / `emit_market_sell(symbol, qty)`, the
+group can fire the recommended actions itself instead of having the
+strategy read the list and dispatch by hand:
+
+```python
+# pybind11
+fired = g.auto_dispatch(strategy)  # returns the number of actions issued
+# Calling auto_dispatch again is a no-op — each leg's action is marked
+# dispatched once it has been emitted.
+```
+
+```javascript
+// node
+const fired = g.autoDispatch(strategy);
+```
+
+```javascript
+// QuickJS — the fake strategy must expose .cancel / .marketBuy / .marketSell
+const fired = g.autoDispatch(strategy);
+```
+
+```python
+# codon
+fired = g.auto_dispatch(strategy)  # strategy is any class with the three emit_* methods
+```
+
+`auto_dispatch` returns the number of actions it fired so the caller can decide whether to react. It is safe to call after every `record_*` event — only newly recommended actions will fire.
+
 ## Follow-ups
 
-- Auto-wire the recommended actions into the executor so strategies don't have to dispatch them by hand. Currently the strategy reads `recommended_actions()` and emits the orders itself.
 - Risk hooks at the group level (gross / concentration limits over the legs, not per leg).
 - Latency budgets on `OneSided` (only submit leg B if leg A acks within N ms).

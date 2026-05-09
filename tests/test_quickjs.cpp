@@ -804,6 +804,61 @@ TEST(JsIntegrationTest, MultiFeedClockWaitForAll)
 // Multi-leg order group (W15-T004)
 // ============================================================
 
+TEST(JsIntegrationTest, OrderGroupAutoDispatchFiresAndIsIdempotent)
+{
+  TempJsFile script(R"(
+    var fired = -1;
+    var fired2 = -1;
+    var sells = [];
+    var cancels = [];
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT", "ETHUSDT"] }); }
+      onStart() {
+        var fakeStrat = {
+          cancel: function(oid) { cancels.push(oid); },
+          marketBuy: function(o) {  /* unused in this scenario */ },
+          marketSell: function(o) { sells.push([o.symbol, o.qty]); },
+        };
+        var g = new OrderGroup({ parentSignalId: 9, policy: OrderGroupPolicy.AllOrNothing });
+        g.addMarketLeg(1, 0, 0.1);
+        g.addMarketLeg(2, 1, 2.0);
+        g.recordSubmit(0, 100); g.recordSubmit(1, 101);
+        g.recordFill(0, 0.1); g.recordFailure(1);
+        fired = g.autoDispatch(fakeStrat);
+        fired2 = g.autoDispatch(fakeStrat);
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  bridge->start();
+
+  auto* ctx = jsStrat.engine().context();
+  auto getInt = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    int32_t out = 0;
+    JS_ToInt32(ctx, &out, v);
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+  EXPECT_EQ(getInt("fired"), 1) << "first autoDispatch fires the revert";
+  EXPECT_EQ(getInt("fired2"), 0) << "second autoDispatch is a no-op";
+
+  JSValue sells = jsStrat.engine().getGlobalProperty("sells");
+  uint32_t len = 0;
+  JS_ToUint32(ctx, &len, JS_GetPropertyStr(ctx, sells, "length"));
+  EXPECT_EQ(len, 1u);
+  JS_FreeValue(ctx, sells);
+}
+
 TEST(JsIntegrationTest, OrderGroupAllOrNothingReverts)
 {
   TempJsFile script(R"(
@@ -852,7 +907,7 @@ TEST(JsIntegrationTest, OrderGroupAllOrNothingReverts)
 }
 
 // ============================================================
-// Indicator-grid sugar (W3-T017)
+// Indicator-grid sugar
 //
 // `grid(strategy, [BTC, ETH], [H4, M5]).ema(50)` instantiates one
 // indicator per (symbol, timeframe) cell. Lookup by
