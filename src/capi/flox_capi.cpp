@@ -1197,6 +1197,63 @@ uint32_t flox_aggregate_volume_bars(const int64_t* ts, const double* px, const d
 }
 
 // ============================================================
+// Multi-timeframe alignment helpers
+// ============================================================
+
+static void writeFloxBar(const Bar& bar, FloxBar* out)
+{
+  out->start_time_ns = bar.startTime.time_since_epoch().count();
+  out->end_time_ns = bar.endTime.time_since_epoch().count();
+  out->open_raw = bar.open.raw();
+  out->high_raw = bar.high.raw();
+  out->low_raw = bar.low.raw();
+  out->close_raw = bar.close.raw();
+  out->volume_raw = bar.volume.raw();
+  out->buy_volume_raw = bar.buyVolume.raw();
+  out->trade_count = static_cast<uint32_t>(bar.tradeCount.raw());
+}
+
+uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol,
+                                      uint8_t bar_type, uint64_t param, FloxBar* out)
+{
+  auto bar = toStrategy(s)->lastClosedBar(symbol, static_cast<BarType>(bar_type), param);
+  if (!bar || !out)
+  {
+    return 0;
+  }
+  writeFloxBar(*bar, out);
+  return 1;
+}
+
+uint32_t flox_strategy_last_n_closed_bars(FloxStrategyHandle s, uint32_t symbol,
+                                          uint8_t bar_type, uint64_t param,
+                                          FloxBar* bars_out, uint32_t max_bars)
+{
+  if (!bars_out || max_bars == 0)
+  {
+    return 0;
+  }
+  auto bars = toStrategy(s)->lastNClosedBars(symbol, static_cast<BarType>(bar_type),
+                                             param, static_cast<size_t>(max_bars));
+  uint32_t count = static_cast<uint32_t>(std::min<size_t>(bars.size(), max_bars));
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    writeFloxBar(bars[i], &bars_out[i]);
+  }
+  return count;
+}
+
+uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s)
+{
+  return static_cast<uint32_t>(toStrategy(s)->barRingCapacity());
+}
+
+void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity)
+{
+  toStrategy(s)->setBarRingCapacity(static_cast<size_t>(capacity));
+}
+
+// ============================================================
 // Position tracking
 // ============================================================
 

@@ -8208,6 +8208,75 @@
       "return_type": "void"
     },
     {
+      "group": "multi_tf_helpers",
+      "name": "flox_strategy_get_bar_ring_capacity",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "multi_tf_helpers",
+      "name": "flox_strategy_last_closed_bar",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bar_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "param",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "FloxBar *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "multi_tf_helpers",
+      "name": "flox_strategy_last_n_closed_bars",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bar_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "param",
+          "type": "uint64_t"
+        },
+        {
+          "name": "bars_out",
+          "type": "FloxBar *"
+        },
+        {
+          "name": "max_bars",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "strategy_lifecycle",
       "name": "flox_strategy_replace_callbacks",
       "params": [
@@ -8218,6 +8287,21 @@
         {
           "name": "callbacks",
           "type": "FloxStrategyCallbacks"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "multi_tf_helpers",
+      "name": "flox_strategy_set_bar_ring_capacity",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "capacity",
+          "type": "uint32_t"
         }
       ],
       "return_type": "void"

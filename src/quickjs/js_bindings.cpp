@@ -289,6 +289,76 @@ static JSValue js_get_order_status(JSContext* ctx, JSValueConst, int, JSValueCon
 }
 
 // ============================================================
+// Multi-timeframe alignment helpers
+// ============================================================
+
+static JSValue jsBarFromFlox(JSContext* ctx, const FloxBar& b)
+{
+  JSValue obj = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, obj, "open", JS_NewFloat64(ctx, flox_price_to_double(b.open_raw)));
+  JS_SetPropertyStr(ctx, obj, "high", JS_NewFloat64(ctx, flox_price_to_double(b.high_raw)));
+  JS_SetPropertyStr(ctx, obj, "low", JS_NewFloat64(ctx, flox_price_to_double(b.low_raw)));
+  JS_SetPropertyStr(ctx, obj, "close", JS_NewFloat64(ctx, flox_price_to_double(b.close_raw)));
+  JS_SetPropertyStr(ctx, obj, "volume",
+                    JS_NewFloat64(ctx, flox_quantity_to_double(b.volume_raw)));
+  JS_SetPropertyStr(ctx, obj, "startNs",
+                    JS_NewFloat64(ctx, static_cast<double>(b.start_time_ns)));
+  JS_SetPropertyStr(ctx, obj, "endNs",
+                    JS_NewFloat64(ctx, static_cast<double>(b.end_time_ns)));
+  return obj;
+}
+
+static JSValue js_strategy_last_closed_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  GET_HANDLE_OR_THROW(ctx, argv);
+  uint32_t sym = toUint32(ctx, argv[1]);
+  uint32_t bt = toUint32(ctx, argv[2]);
+  uint64_t param = static_cast<uint64_t>(toInt64(ctx, argv[3]));
+  FloxBar bar{};
+  uint8_t ok = flox_strategy_last_closed_bar(h, sym, static_cast<uint8_t>(bt), param, &bar);
+  if (!ok)
+  {
+    return JS_NULL;
+  }
+  return jsBarFromFlox(ctx, bar);
+}
+
+static JSValue js_strategy_last_n_closed_bars(JSContext* ctx, JSValueConst, int,
+                                              JSValueConst* argv)
+{
+  GET_HANDLE_OR_THROW(ctx, argv);
+  uint32_t sym = toUint32(ctx, argv[1]);
+  uint32_t bt = toUint32(ctx, argv[2]);
+  uint64_t param = static_cast<uint64_t>(toInt64(ctx, argv[3]));
+  uint32_t n = toUint32(ctx, argv[4]);
+  std::vector<FloxBar> bars(n);
+  uint32_t got = flox_strategy_last_n_closed_bars(h, sym, static_cast<uint8_t>(bt), param,
+                                                  bars.data(), n);
+  JSValue arr = JS_NewArray(ctx);
+  for (uint32_t i = 0; i < got; ++i)
+  {
+    JS_SetPropertyUint32(ctx, arr, i, jsBarFromFlox(ctx, bars[i]));
+  }
+  return arr;
+}
+
+static JSValue js_strategy_get_bar_ring_capacity(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  GET_HANDLE_OR_THROW(ctx, argv);
+  return JS_NewUint32(ctx, flox_strategy_get_bar_ring_capacity(h));
+}
+
+static JSValue js_strategy_set_bar_ring_capacity(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  GET_HANDLE_OR_THROW(ctx, argv);
+  uint32_t cap = toUint32(ctx, argv[1]);
+  flox_strategy_set_bar_ring_capacity(h, cap);
+  return JS_UNDEFINED;
+}
+
+// ============================================================
 // Batch indicators
 // ============================================================
 
@@ -3895,6 +3965,12 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_best_ask", js_best_ask, 2);
   addGlobalFunc(ctx, "__flox_mid_price", js_mid_price, 2);
   addGlobalFunc(ctx, "__flox_get_order_status", js_get_order_status, 2);
+  addGlobalFunc(ctx, "__flox_strategy_last_closed_bar", js_strategy_last_closed_bar, 4);
+  addGlobalFunc(ctx, "__flox_strategy_last_n_closed_bars", js_strategy_last_n_closed_bars, 5);
+  addGlobalFunc(ctx, "__flox_strategy_get_bar_ring_capacity",
+                js_strategy_get_bar_ring_capacity, 1);
+  addGlobalFunc(ctx, "__flox_strategy_set_bar_ring_capacity",
+                js_strategy_set_bar_ring_capacity, 2);
 
   // Batch indicators
   addGlobalFunc(ctx, "__flox_indicator_sma", js_indicator_sma, 2);

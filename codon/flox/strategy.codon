@@ -22,9 +22,34 @@ from C import flox_emit_close_position(cobj, u32) -> u64
 from C import flox_position_raw(cobj, u32) -> i64
 from C import flox_get_order_status(cobj, u64) -> i32
 
+# Multi-TF alignment helpers (W1-T027). FloxBar is a 72-byte struct;
+# fields are written through a byte buffer, see _floxbar_to_bardata.
+from C import flox_strategy_last_closed_bar(cobj, u32, u8, u64, cobj) -> u8
+from C import flox_strategy_last_n_closed_bars(cobj, u32, u8, u64, cobj, u32) -> u32
+from C import flox_strategy_get_bar_ring_capacity(cobj) -> u32
+from C import flox_strategy_set_bar_ring_capacity(cobj, u32)
+
 from flox.types import SCALE, Price, Quantity, TradeData, BarData, BUY, SELL
 from flox.types import TIF_GTC, TIF_IOC, TIF_FOK, TIF_POST_ONLY
 from flox.context import SymbolContext
+
+
+_FLOXBAR_SIZE = 72  # 8 * i64 + u32 + 4 bytes padding
+
+
+def _floxbar_to_bardata(buf: Ptr[byte], symbol: int, bar_type: int,
+                        bar_type_param: int, symbol_name: str = "") -> BarData:
+    start_ns = int(Ptr[i64](buf + 0)[0])
+    end_ns = int(Ptr[i64](buf + 8)[0])
+    o = int(Ptr[i64](buf + 16)[0])
+    h = int(Ptr[i64](buf + 24)[0])
+    l = int(Ptr[i64](buf + 32)[0])
+    c = int(Ptr[i64](buf + 40)[0])
+    v = int(Ptr[i64](buf + 48)[0])
+    bv = int(Ptr[i64](buf + 56)[0])
+    return BarData.from_raw(symbol, bar_type, bar_type_param,
+                            o, h, l, c, v, bv, start_ns, end_ns, 0,
+                            symbol_name)
 
 
 _TIF_MAP = {"gtc": TIF_GTC, "ioc": TIF_IOC, "fok": TIF_FOK, "post_only": TIF_POST_ONLY}
@@ -339,3 +364,45 @@ class Strategy:
     def order_status(self, order_id: int) -> int:
         """Get order status. Returns -1 if not found."""
         return self.get_order_status(order_id)
+
+    # ------------------------------------------------------------------
+    # Multi-TF alignment helpers (W1-T027)
+    #
+    # Read the per-(symbol, bar_type, param) ring the engine populates as
+    # it dispatches BarEvents. `bar_type` is 0=Time, 1=Tick, 2=Volume,
+    # ...; `param` is interval-ns / count / threshold.
+    # ------------------------------------------------------------------
+
+    def last_closed_bar(self, symbol: int, bar_type: int, param: int) -> Optional[BarData]:
+        """Most recent closed bar for (symbol, bar_type, param), or None."""
+        buf = Ptr[byte](_FLOXBAR_SIZE)
+        ok = flox_strategy_last_closed_bar(
+            self._handle, u32(symbol), u8(bar_type), u64(param), buf)
+        if int(ok) == 0:
+            return None
+        return _floxbar_to_bardata(buf, symbol, bar_type, param,
+                                   self._reverse_lookup(symbol))
+
+    def last_n_closed_bars(self, symbol: int, bar_type: int, param: int,
+                           n: int) -> List[BarData]:
+        """Up to `n` most recent closed bars, oldest-first."""
+        if n <= 0:
+            return list[BarData]()
+        buf = Ptr[byte](_FLOXBAR_SIZE * n)
+        got = int(flox_strategy_last_n_closed_bars(
+            self._handle, u32(symbol), u8(bar_type), u64(param), buf, u32(n)))
+        out = list[BarData]()
+        for i in range(got):
+            out.append(_floxbar_to_bardata(
+                buf + i * _FLOXBAR_SIZE, symbol, bar_type, param,
+                self._reverse_lookup(symbol)))
+        return out
+
+    @property
+    def bar_ring_capacity(self) -> int:
+        """Maximum bars retained per (symbol, bar_type, param) tuple."""
+        return int(flox_strategy_get_bar_ring_capacity(self._handle))
+
+    def set_bar_ring_capacity(self, n: int):
+        """Resize the per-(symbol, bar_type, param) ring."""
+        flox_strategy_set_bar_ring_capacity(self._handle, u32(n))

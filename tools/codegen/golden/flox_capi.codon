@@ -321,6 +321,12 @@ from C import flox_pnl_tracker_destroy(cobj)
 from C import flox_live_engine_set_pnl_tracker(cobj, cobj)
 from C import flox_runner_set_pnl_tracker(cobj, cobj)
 
+# ── multi_tf_helpers ──
+from C import flox_strategy_last_closed_bar(cobj, u32, u8, u64, cobj) -> u8
+from C import flox_strategy_last_n_closed_bars(cobj, u32, u8, u64, cobj, u32) -> u32
+from C import flox_strategy_get_bar_ring_capacity(cobj) -> u32
+from C import flox_strategy_set_bar_ring_capacity(cobj, u32)
+
 # ── order_book ──
 from C import flox_book_create(float) -> cobj
 from C import flox_book_destroy(cobj)

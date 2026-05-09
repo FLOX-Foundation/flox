@@ -573,6 +573,185 @@ TEST(JsIntegrationTest, NoRegisterOk)
   EXPECT_NO_THROW(FloxJsStrategy(script.path(), registry));
 }
 
+// ============================================================
+// Multi-TF alignment helpers (W1-T027)
+//
+// Parity with the pybind11 + NAPI surface added in T026: a JS strategy
+// can read its per-(symbol, type, param) bar ring via lastClosedBar and
+// lastNClosedBars without bookkeeping by hand.
+// ============================================================
+
+TEST(JsIntegrationTest, MultiTfHelpersExposeBarRing)
+{
+  TempJsFile script(R"(
+    var firstClose = -1;   // close of the M5 bar after the first onBar
+    var thirdClose = -1;   // close of the latest M5 bar after the third onBar
+    var thirdCount = 0;    // size of lastNClosedBars(3) after the third onBar
+    var thirdAllCloses = [];
+    var BAR_TYPE_TIME = 0;
+    var M5_NS = 5 * 60 * 1000000000;
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT"] }); }
+      onBar(ctx, bar) {
+        var last = this.lastClosedBar("BTCUSDT", BAR_TYPE_TIME, M5_NS);
+        if (firstClose < 0) {
+          firstClose = last ? last.close : -1;
+        }
+        thirdClose = last ? last.close : -1;
+        var nbars = this.lastNClosedBars("BTCUSDT", BAR_TYPE_TIME, M5_NS, 5);
+        thirdCount = nbars.length;
+        thirdAllCloses = nbars.map(function(b){ return b.close; });
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  const uint64_t M5_NS = 5ull * 60 * 1'000'000'000ull;
+  auto pushBar = [&](double open, double close, int64_t startNs)
+  {
+    BarEvent ev{};
+    ev.symbol = symIds[0];
+    ev.barType = BarType::Time;
+    ev.barTypeParam = M5_NS;
+    ev.bar.open = Price::fromDouble(open);
+    ev.bar.close = Price::fromDouble(close);
+    ev.bar.high = Price::fromDouble(std::max(open, close));
+    ev.bar.low = Price::fromDouble(std::min(open, close));
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{startNs}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{startNs + (int64_t)M5_NS}};
+    bridge->onBar(ev);
+  };
+
+  pushBar(100.0, 101.0, 0);
+  pushBar(101.0, 102.5, (int64_t)M5_NS);
+  pushBar(102.5, 103.0, 2 * (int64_t)M5_NS);
+
+  auto* ctx = jsStrat.engine().context();
+
+  JSValue first = jsStrat.engine().getGlobalProperty("firstClose");
+  double firstVal = 0;
+  JS_ToFloat64(ctx, &firstVal, first);
+  EXPECT_NEAR(firstVal, 101.0, 1e-9);
+  JS_FreeValue(ctx, first);
+
+  JSValue third = jsStrat.engine().getGlobalProperty("thirdClose");
+  double thirdVal = 0;
+  JS_ToFloat64(ctx, &thirdVal, third);
+  EXPECT_NEAR(thirdVal, 103.0, 1e-9);
+  JS_FreeValue(ctx, third);
+
+  JSValue count = jsStrat.engine().getGlobalProperty("thirdCount");
+  int32_t countVal = 0;
+  JS_ToInt32(ctx, &countVal, count);
+  EXPECT_EQ(countVal, 3);
+  JS_FreeValue(ctx, count);
+}
+
+TEST(JsIntegrationTest, MultiTfHelpersReturnNullBeforeAnyBar)
+{
+  TempJsFile script(R"(
+    var beforeAnyBar = "unset";
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT"] }); }
+      onStart() {
+        var bar = this.lastClosedBar("BTCUSDT", 0, 5*60*1000000000);
+        beforeAnyBar = bar === null ? "null" : "non-null";
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  bridge->start();
+
+  auto* ctx = jsStrat.engine().context();
+  JSValue val = jsStrat.engine().getGlobalProperty("beforeAnyBar");
+  const char* s = JS_ToCString(ctx, val);
+  EXPECT_STREQ(s, "null");
+  JS_FreeCString(ctx, s);
+  JS_FreeValue(ctx, val);
+}
+
+TEST(JsIntegrationTest, MultiTfHelpersRingCapacityIsAdjustable)
+{
+  TempJsFile script(R"(
+    var initialCap = 0;
+    var afterSet = 0;
+    var keptCount = 0;
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT"] }); }
+      onStart() {
+        initialCap = this.barRingCapacity;
+        this.setBarRingCapacity(3);
+        afterSet = this.barRingCapacity;
+      }
+      onBar(ctx, bar) {
+        var bars = this.lastNClosedBars("BTCUSDT", 0, 5*60*1000000000, 10);
+        keptCount = bars.length;
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  bridge->start();
+
+  const uint64_t M5_NS = 5ull * 60 * 1'000'000'000ull;
+  for (int i = 0; i < 7; ++i)
+  {
+    BarEvent ev{};
+    ev.symbol = symIds[0];
+    ev.barType = BarType::Time;
+    ev.barTypeParam = M5_NS;
+    ev.bar.open = Price::fromDouble(100.0 + i);
+    ev.bar.close = Price::fromDouble(100.5 + i);
+    ev.bar.high = Price::fromDouble(101.0 + i);
+    ev.bar.low = Price::fromDouble(99.5 + i);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M5_NS) * i}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M5_NS) * (i + 1)}};
+    bridge->onBar(ev);
+  }
+
+  auto* ctx = jsStrat.engine().context();
+  JSValue cap = jsStrat.engine().getGlobalProperty("afterSet");
+  int32_t capVal = 0;
+  JS_ToInt32(ctx, &capVal, cap);
+  EXPECT_EQ(capVal, 3);
+  JS_FreeValue(ctx, cap);
+
+  JSValue kept = jsStrat.engine().getGlobalProperty("keptCount");
+  int32_t keptVal = 0;
+  JS_ToInt32(ctx, &keptVal, kept);
+  EXPECT_EQ(keptVal, 3);
+  JS_FreeValue(ctx, kept);
+}
+
 TEST(JsIntegrationTest, JsExceptionInOnTradeDoesNotCrash)
 {
   TempJsFile script(R"(

@@ -71,3 +71,6 @@ add_codon_executable(codon_delta_book_smoke
 
 add_codon_executable(codon_run_trace_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/run_trace_smoke.codon)
+
+add_codon_executable(codon_multi_tf_helpers_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/multi_tf_helpers_smoke.codon)

@@ -50,8 +50,13 @@ no explicit register call.
 
 ## Cross-binding
 
-The Node binding exposes the same surface on the emitter passed into
-`onTrade` / `onBar`:
+The same surface is reachable from every binding the polyglot policy
+covers. The shape of the returned bar mirrors `FloxBar`: `open`, `high`,
+`low`, `close`, `volume`, plus `startNs` / `endNs` (or `start_ns` /
+`end_ns` in Python).
+
+The Node binding exposes it on the emitter passed into `onTrade` /
+`onBar`:
 
 ```javascript
 function onBar(ctx, bar, emit) {
@@ -62,6 +67,45 @@ function onBar(ctx, bar, emit) {
 ```
 
 `emit.setBarRingCapacity(n)` adjusts ring depth.
+
+The QuickJS strategy facade exposes the same methods on `this`:
+
+```javascript
+class TrendFollower extends Strategy {
+  onBar(ctx, bar) {
+    const M5 = 5 * 60 * 1000000000;
+    const H4 = 4 * 3600 * 1000000000;
+    if (bar.barTypeParam !== M5) return;
+    const h4 = this.lastClosedBar("BTCUSDT", 0, H4);
+    if (!h4) return;
+    if (h4.close > h4.open) {
+      this.marketBuy({ symbol: "BTCUSDT", qty: 0.01 });
+    }
+  }
+  get warmupReady() { return this.barRingCapacity > 0; }
+}
+```
+
+The Codon strategy mirrors the Python signature:
+
+```python
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import BarData
+
+H4 = 4 * 3600 * 1_000_000_000
+M5 = 5 * 60 * 1_000_000_000
+
+class TrendFollower(Strategy):
+    def on_bar(self, ctx: SymbolContext, bar: BarData):
+        if bar.bar_type_param != M5:
+            return
+        h4 = self.last_closed_bar(ctx.symbol_id, 0, H4)
+        if h4 is None:
+            return
+        if h4.close > h4.open:
+            self.market_buy(0.01)
+```
 
 ## See also
 
