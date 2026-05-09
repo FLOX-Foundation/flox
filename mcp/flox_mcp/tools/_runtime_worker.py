@@ -59,6 +59,73 @@ def _apply_rlimits(cpu_seconds: int, rss_bytes: int, fsize_bytes: int) -> None:
         pass
 
 
+def _run_bars_from_csv(bt, dataset_path: str, symbol: str):
+    """Load an OHLCV CSV and dispatch real `BarEvent`s through
+    `BacktestRunner.run_bars`. Used when the strategy overrides
+    `on_bar` — `run_csv` would synthesize trades and the bar hook
+    would never fire.
+
+    CSV columns: ``timestamp,open,high,low,close,volume`` (header
+    optional). Timestamps are normalised to nanoseconds the same way
+    `BacktestRunner.run_csv` does — second / millisecond / microsecond
+    inputs are auto-scaled.
+    """
+    import csv
+
+    import numpy as np
+
+    starts: list[int] = []
+    opens: list[float] = []
+    highs: list[float] = []
+    lows: list[float] = []
+    closes: list[float] = []
+    volumes: list[float] = []
+
+    with open(dataset_path) as f:
+        reader = csv.reader(f)
+        first = next(reader, None)
+        if first is None:
+            raise ValueError(f"empty dataset: {dataset_path}")
+        # Skip a header row if the first column isn't numeric.
+        try:
+            int(first[0])
+            rows = [first] + list(reader)
+        except (TypeError, ValueError):
+            rows = list(reader)
+
+        for row in rows:
+            if not row or len(row) < 6:
+                continue
+            starts.append(int(row[0]))
+            opens.append(float(row[1]))
+            highs.append(float(row[2]))
+            lows.append(float(row[3]))
+            closes.append(float(row[4]))
+            volumes.append(float(row[5]))
+
+    if not starts:
+        raise ValueError(f"no data rows in dataset: {dataset_path}")
+
+    start_ns = np.array(starts, dtype=np.int64)
+    # Normalise: BacktestRunner accepts s / ms / us / ns and auto-scales.
+    # Compute end_ns from the gap between consecutive starts (last bar
+    # uses the median gap as a fallback).
+    if len(start_ns) > 1:
+        diffs = np.diff(start_ns)
+        median_gap = int(np.median(diffs))
+    else:
+        median_gap = 60
+    end_ns = start_ns + median_gap
+
+    return bt.run_bars(start_ns, end_ns,
+                       np.asarray(opens, dtype=np.float64),
+                       np.asarray(highs, dtype=np.float64),
+                       np.asarray(lows, dtype=np.float64),
+                       np.asarray(closes, dtype=np.float64),
+                       np.asarray(volumes, dtype=np.float64),
+                       symbol=symbol)
+
+
 def _write_result(path: Path, payload: dict) -> None:
     try:
         path.write_text(json.dumps(payload))
@@ -140,6 +207,32 @@ def main() -> int:
         })
         return 1
 
+    # Pick the dispatch path based on which hook the strategy overrides.
+    # `run_csv` synthesizes one trade per CSV row and fires `on_trade`;
+    # `run_bars` dispatches real `BarEvent`s and fires `on_bar`. A
+    # bar-driven strategy passed through `run_csv` would have its
+    # `on_bar` hook never fire, looking broken though it isn't. Default
+    # to bar-driven when both are overridden — that's the dominant
+    # scaffold and the more accurate dispatch.
+    Strategy = getattr(flox, "Strategy", None)
+    has_on_bar = (Strategy is not None
+                  and "on_bar" in strat_cls.__dict__
+                  and getattr(strat_cls, "on_bar") is not Strategy.on_bar)
+    has_on_trade = (Strategy is not None
+                    and "on_trade" in strat_cls.__dict__
+                    and getattr(strat_cls, "on_trade") is not Strategy.on_trade)
+
+    if not has_on_bar and not has_on_trade:
+        _write_result(out_path, {
+            "status": "error",
+            "stats": None,
+            "error": ("strategy class overrides neither `on_bar` nor "
+                      "`on_trade`. Add at least one to receive market "
+                      "data."),
+            "stdout": captured.getvalue(),
+        })
+        return 1
+
     try:
         with redirect_stdout(captured):
             registry = flox.SymbolRegistry()
@@ -147,7 +240,10 @@ def main() -> int:
             bt = flox.BacktestRunner(registry, fee_rate=0.0004,
                                      initial_capital=10_000)
             bt.set_strategy(strat_cls([sym]))
-            stats = bt.run_csv(args.dataset, symbol=args.symbol)
+            if has_on_bar:
+                stats = _run_bars_from_csv(bt, args.dataset, args.symbol)
+            else:
+                stats = bt.run_csv(args.dataset, symbol=args.symbol)
     except Exception as exc:
         _write_result(out_path, {
             "status": "error",

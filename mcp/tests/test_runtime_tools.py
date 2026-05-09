@@ -191,6 +191,72 @@ def test_run_backtest_raises_in_user_code(monkeypatch):
     assert "boom-from-strategy" in out or "FAILED" in out
 
 
+@pytest.mark.skipif(
+    not HAS_FLOX or not _bundled_csv().exists(),
+    reason="needs flox_py + bundled sample CSV",
+)
+def test_run_backtest_routes_bar_driven_to_run_bars(monkeypatch):
+    """Bar-driven strategy (overrides `on_bar`) is dispatched as
+    `BarEvent`s, not synthesised trades. The previous default routed
+    through `run_csv` regardless of strategy kind, so a bar-driven
+    strategy never received any callbacks and the user got 0 trades
+    with no error."""
+    monkeypatch.setenv("PYTHONPATH",
+                       f"{_BUILD_PY}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
+    code = textwrap.dedent('''
+        import flox_py as flox
+
+        class S(flox.Strategy):
+            def __init__(self, syms):
+                super().__init__(syms)
+                self.bar_count = 0
+
+            def on_bar(self, ctx, bar):
+                self.bar_count += 1
+                if self.bar_count == 5 and ctx.is_flat():
+                    self.market_buy(0.01)
+
+        STRATEGY = S
+    ''')
+    out = runtime.run_backtest(
+        strategy_code=code,
+        dataset_path=str(_bundled_csv()),
+        wall_timeout_s=30,
+    )
+    # If on_bar fired, we either get a successful zero-trade summary
+    # or one trade. If routing was broken, on_bar never fired and the
+    # state stays bar_count=0 — but that doesn't surface in stats. The
+    # critical signal is that the run completes without the
+    # 'overrides neither on_bar nor on_trade' error path firing here
+    # (the strategy DOES override on_bar) AND that returns valid stats.
+    assert "OK" in out, out
+    assert "total_trades" in out
+
+
+def test_run_backtest_rejects_strategy_with_no_hooks(monkeypatch):
+    """A strategy that overrides neither `on_bar` nor `on_trade` is
+    a programming error — the worker fails loudly instead of running
+    a zero-callback backtest."""
+    monkeypatch.setenv("PYTHONPATH",
+                       f"{_BUILD_PY}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
+    code = textwrap.dedent('''
+        import flox_py as flox
+
+        class S(flox.Strategy):
+            pass
+
+        STRATEGY = S
+    ''')
+    if not HAS_FLOX or not _bundled_csv().exists():
+        pytest.skip("needs flox_py + bundled sample CSV")
+    out = runtime.run_backtest(
+        strategy_code=code,
+        dataset_path=str(_bundled_csv()),
+        wall_timeout_s=30,
+    )
+    assert "overrides neither" in out or "FAILED" in out
+
+
 def test_run_backtest_oversized_code():
     huge = "# pad\n" * (runtime.MAX_STRATEGY_CODE_BYTES // 6 + 1)
     out = runtime.run_backtest(

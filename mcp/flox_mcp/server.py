@@ -312,6 +312,14 @@ def build_server() -> Server:
                     "untrusted code outside a developer's own machine. "
                     "Returns the backtest stats dict as JSON plus any "
                     "stdout the strategy printed."
+                    "\n\nDispatch routing: the worker introspects the "
+                    "strategy class. If `on_bar` is overridden the "
+                    "dataset is dispatched as real `BarEvent`s through "
+                    "`run_bars` (CSV columns: "
+                    "ts,open,high,low,close,volume); otherwise the rows "
+                    "are synthesised into trades for `on_trade` via "
+                    "`run_csv`. A strategy that overrides neither hook "
+                    "fails loudly."
                 ),
                 inputSchema={
                     "type": "object",
