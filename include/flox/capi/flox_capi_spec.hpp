@@ -3004,6 +3004,27 @@ extern "C"
   FLOX_EXPORT(group = "trace_attach")
   void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
 
+  // Mirror an order event into the attached recorder. No-op when no
+  // recorder is attached. Wire from the user's executor wrapper —
+  // call this after the wrapper's `on_submitted` / `on_canceled` /
+  // `on_rejected` / etc. The runner stamps `run_ts_ns` with the
+  // current wall-clock and uses the most recent `feed_ts_ns` from
+  // `flox_runner_set_trace_feed_ts_ns`.
+  // event_kind: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject,
+  //             5=PartialFill, 6=Fill, 7=Expire (matches OrderEventKind).
+  FLOX_EXPORT(group = "trace_attach")
+  void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
+                                     uint64_t parent_signal_id, uint32_t symbol_id,
+                                     uint8_t event_kind, uint8_t side, uint8_t order_type,
+                                     int64_t price_raw, int64_t qty_raw, uint32_t flags);
+
+  // Mirror a fill into the attached recorder. liquidity: 0=Unknown,
+  // 1=Maker, 2=Taker.
+  FLOX_EXPORT(group = "trace_attach")
+  void flox_runner_trace_fill(FloxRunnerHandle runner, uint64_t order_id, uint64_t fill_id,
+                              int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
+                              uint32_t symbol_id, uint8_t side, uint8_t liquidity);
+
   // Reader. Opens an existing `.floxrun` directory and parses
   // manifest.json.
   FLOX_EXPORT(group = "floxrun")

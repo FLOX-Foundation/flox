@@ -4,6 +4,8 @@
 
 from C import flox_runner_attach_trace_recorder(cobj, cobj)
 from C import flox_runner_set_trace_feed_ts_ns(cobj, i64)
+from C import flox_runner_trace_order_event(cobj, u64, u64, u32, u8, u8, u8, i64, i64, u32)
+from C import flox_runner_trace_fill(cobj, u64, u64, i64, i64, i64, u32, u8, u8)
 
 
 def check(label: str, ok: bool):
@@ -21,6 +23,10 @@ def run():
           flox_runner_attach_trace_recorder is not None)
     check("flox_runner_set_trace_feed_ts_ns symbol resolves",
           flox_runner_set_trace_feed_ts_ns is not None)
+    check("flox_runner_trace_order_event symbol resolves",
+          flox_runner_trace_order_event is not None)
+    check("flox_runner_trace_fill symbol resolves",
+          flox_runner_trace_fill is not None)
 
     print("codon trace_attach smoke ok")
 

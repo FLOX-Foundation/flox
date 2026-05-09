@@ -44,7 +44,7 @@ A `nullptr` recorder pointer disables capture without removing the inner-handler
 
 ## Phase status
 
-This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 (W14-T012) lifts a one-call `Runner.attach_trace_recorder(rec)` helper into every binding so polyglot strategies capture without per-language plumbing.
+This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 (W14-T012) lifts a one-call `Runner.attach_trace_recorder(rec)` helper into every binding so polyglot strategies capture without per-language plumbing. Phase 3 (W14-T013) adds `Runner.trace_order_event(...)` and `Runner.trace_fill(...)` so the user's executor wrapper mirrors order events + fills into the same recorder with two extra lines per callback. End-to-end auto-subscription against the executor's listener bus is a phase-4 follow-up tracked separately.
 
 ## One-call attach (W14-T012)
 
@@ -75,6 +75,28 @@ runner.setTraceFeedTsNs(trade.exchangeTsNs);
 ```
 
 Codon reaches the same C ABI symbols (`flox_runner_attach_trace_recorder`, `flox_runner_set_trace_feed_ts_ns`) directly. Pass `null` / `None` to detach.
+
+## Mirroring order events and fills (W14-T013)
+
+The signal capture hook above is one half of the trace. To get a complete `.floxrun` your executor wrapper has to mirror its own callbacks into the recorder. The runner exposes two methods for this:
+
+```python
+# pybind11 — inside your executor's on_filled callback
+runner.trace_fill(order_id=fill.order_id, fill_id=fill.fill_id,
+                   price=fill.price, qty=fill.qty, fee=fill.fee,
+                   symbol_id=fill.symbol_id, side=fill.side, liquidity=2)
+```
+
+```javascript
+// node — after the executor's on_canceled fires
+runner.traceOrderEvent({
+  orderId, parentSignalId: 0, symbolId,
+  eventKind: 1 /* Cancel */, side, orderType: 0,
+  price: 0, qty: 0,
+});
+```
+
+Both methods are no-ops when no recorder is attached, so wiring them unconditionally during executor setup is safe. `eventKind` matches `OrderEventKind`: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject, 5=PartialFill, 6=Fill, 7=Expire. `liquidity`: 0=Unknown, 1=Maker, 2=Taker.
 
 ## See also
 

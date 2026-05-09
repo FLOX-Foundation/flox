@@ -3657,9 +3657,17 @@ class RunnerSignalHandler : public ISignalHandler
   {
     _traceRecorder.store(rec, std::memory_order_release);
   }
+  void* traceRecorder() const noexcept
+  {
+    return _traceRecorder.load(std::memory_order_acquire);
+  }
   void setTraceFeedTsNs(int64_t ts) noexcept
   {
     _traceFeedTsNs.store(ts, std::memory_order_relaxed);
+  }
+  int64_t traceFeedTsNs() const noexcept
+  {
+    return _traceFeedTsNs.load(std::memory_order_relaxed);
   }
 
   void onSignal(const Signal& sig) override
@@ -3951,6 +3959,11 @@ struct FloxRunnerImpl
   void setStorageSink(FloxStorageSinkImpl* s) { handler.setStorageSink(s); }
   void attachTraceRecorder(void* rec) { handler.setTraceRecorder(rec); }
   void setTraceFeedTsNs(int64_t ts) { handler.setTraceFeedTsNs(ts); }
+  flox::run::TraceRecorder* traceRecorder() const noexcept
+  {
+    return static_cast<flox::run::TraceRecorder*>(handler.traceRecorder());
+  }
+  int64_t traceFeedTsNs() const noexcept { return handler.traceFeedTsNs(); }
 
   // Attach / detach a binding-supplied executor. Lifecycle (on_start /
   // on_stop) is balanced against runner start/stop, with hot-swap
@@ -5024,6 +5037,58 @@ void flox_runner_attach_trace_recorder(FloxRunnerHandle runner, FloxRunRecorderH
 void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns)
 {
   toRunner(runner)->setTraceFeedTsNs(feed_ts_ns);
+}
+
+void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
+                                   uint64_t parent_signal_id, uint32_t symbol_id,
+                                   uint8_t event_kind, uint8_t side, uint8_t order_type,
+                                   int64_t price_raw, int64_t qty_raw, uint32_t flags)
+{
+  auto* rec = toRunner(runner)->traceRecorder();
+  if (!rec)
+  {
+    return;
+  }
+  flox::run::OrderEventView e;
+  e.run_ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+  e.feed_ts_ns = toRunner(runner)->traceFeedTsNs();
+  e.order_id = order_id;
+  e.parent_signal_id = parent_signal_id;
+  e.symbol_id = symbol_id;
+  e.event_kind = static_cast<flox::run::OrderEventKind>(event_kind);
+  e.side = side;
+  e.order_type = order_type;
+  e.price_raw = price_raw;
+  e.qty_raw = qty_raw;
+  e.flags = flags;
+  rec->writeOrderEvent(e);
+}
+
+void flox_runner_trace_fill(FloxRunnerHandle runner, uint64_t order_id, uint64_t fill_id,
+                            int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
+                            uint32_t symbol_id, uint8_t side, uint8_t liquidity)
+{
+  auto* rec = toRunner(runner)->traceRecorder();
+  if (!rec)
+  {
+    return;
+  }
+  flox::run::FillView f;
+  f.run_ts_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+  f.feed_ts_ns = toRunner(runner)->traceFeedTsNs();
+  f.order_id = order_id;
+  f.fill_id = fill_id;
+  f.price_raw = price_raw;
+  f.qty_raw = qty_raw;
+  f.fee_raw = fee_raw;
+  f.symbol_id = symbol_id;
+  f.side = side;
+  f.liquidity = static_cast<flox::run::FillLiquidity>(liquidity);
+  rec->writeFill(f);
 }
 
 void flox_runner_start(FloxRunnerHandle runner)
