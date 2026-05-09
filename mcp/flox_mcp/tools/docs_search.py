@@ -6,10 +6,12 @@ allowlist of doc roots (``docs/bindings``, ``docs/how-to``,
 ``docs/errors``). Internal trackers (``.notes/``) and author-only
 files (``CLAUDE.md``) are NEVER indexed — verified by a CI test.
 
-Queries use FTS5 syntax. Dashes are tokenizer separators, so
-``walk-forward`` is parsed as two tokens; the tool quotes the user's
-input so phrases like ``walk forward`` work without the caller having
-to know FTS syntax.
+Plain word lists are AND-matched (every token must appear in a doc
+to count). To force exact-phrase ranking, wrap the phrase in double
+quotes: ``"walk forward"``. The previous default was to phrase-quote
+plain queries, but FTS5 phrase match is so strict that natural agent
+queries (``"ccxt fetch_ohlcv historical"``) returned zero hits even
+when every keyword appeared in a single doc.
 """
 from __future__ import annotations
 
@@ -19,32 +21,36 @@ from typing import Optional
 from . import _data
 
 
-_FTS_QUERY_QUOTE = re.compile(r'^[A-Za-z0-9_ ]+$')
+# FTS5 reserved chars / boolean-operator syntax. If the user query
+# contains any of these, we treat it as an explicit FTS5 expression
+# and pass through unchanged.
+_FTS_OPERATOR_HINTS = ('"', " OR ", " AND ", " NEAR(", " NOT ", "(", "*", ":")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def _normalize_query(q: str) -> str:
     """Make a user query safe + reasonably useful for FTS5.
 
-    * If the query is already a valid FTS5 expression with operators
-      (``"phrase"``, ``OR``, ``AND``, ``NEAR``), pass through.
-    * Otherwise quote it so dashes / dots / colons don't trip the
-      parser. Multiple words become a phrase search.
+    * If the query already uses FTS5 operators (``"phrase"``, ``OR``,
+      ``AND``, ``NEAR``, ``NOT``, ``*``, parens, column-prefix), pass
+      through unchanged.
+    * Otherwise tokenize and AND the terms. ``ccxt fetch_ohlcv
+      historical`` becomes ``ccxt AND fetch_ohlcv AND historical`` —
+      every term must appear, but they can be in any order or
+      distance apart, which matches what an agent typing a multi-word
+      query actually wants.
     """
     q = q.strip()
     if not q:
         return q
-    if any(op in q for op in ('"', " OR ", " AND ", " NEAR(")):
+    if any(op in q for op in _FTS_OPERATOR_HINTS):
         return q
-    if _FTS_QUERY_QUOTE.match(q):
-        # Plain words — turn into a phrase so adjacent matches rank
-        # higher than scattered hits.
-        return f'"{q}"'
-    # Strip non-alphanumerics + collapse whitespace, then phrase-quote.
-    cleaned = re.sub(r"[^A-Za-z0-9_ ]+", " ", q)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    if not cleaned:
+    tokens = _TOKEN_RE.findall(q)
+    if not tokens:
         return ""
-    return f'"{cleaned}"'
+    if len(tokens) == 1:
+        return tokens[0]
+    return " AND ".join(tokens)
 
 
 def _excerpt(body: str, query: str, *, span: int = 240) -> str:

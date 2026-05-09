@@ -276,6 +276,25 @@ def test_docs_search_phrase_with_punctuation():
     assert "no matches" not in out.lower()
 
 
+def test_docs_search_multi_word_and_matches():
+    """Plain multi-word queries AND-match every token rather than
+    requiring an exact phrase. A query like `ccxt fetch_ohlcv historical`
+    has to find docs where every term appears, but they need not be
+    adjacent. The previous default phrase-quoted, returning zero hits
+    on natural agent queries.
+    """
+    out = docs_search_tool.docs_search("ccxt fetch_ohlcv historical", k=5)
+    assert "no matches" not in out.lower()
+    assert "docs/" in out
+
+
+def test_docs_search_explicit_phrase_still_works():
+    """Wrapping in double quotes preserves exact-phrase ranking."""
+    out = docs_search_tool.docs_search('"walk forward"', k=3)
+    assert "walk forward" in out.lower() or "walk-forward" in out.lower()
+    assert "docs/" in out
+
+
 def test_docs_search_unknown_query_is_friendly():
     out = docs_search_tool.docs_search("xyzpdq nonexistentterm zzzqqq")
     assert "no matches" in out.lower()
