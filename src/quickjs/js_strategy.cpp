@@ -578,6 +578,26 @@ void FloxJsStrategy::loadStdlib()
         readAllFills() { return __flox_run_reader_fills(this._h); }
       },
 
+      // Cross-binding parity test fixture for bar-close dispatch
+      // ordering. Drives a MultiTimeframeAggregator + BarBus through
+      // the C ABI; matches the pybind11 / NAPI / Codon surfaces.
+      BarDispatchRecorder: class {
+        constructor() { this._h = __flox_bar_dispatch_recorder_create(); }
+        destroy() {
+          if (this._h) { __flox_bar_dispatch_recorder_destroy(this._h); this._h = null; }
+        }
+        addTimeIntervalSeconds(seconds) {
+          return __flox_bar_dispatch_recorder_add_time_seconds(this._h, seconds);
+        }
+        onTrade(symbol, price, qty, tsNs) {
+          __flox_bar_dispatch_recorder_on_trade(this._h, symbol, price, qty, tsNs);
+        }
+        finalize() { __flox_bar_dispatch_recorder_finalize(this._h); }
+        count() { return __flox_bar_dispatch_recorder_count(this._h); }
+        typeAt(i) { return __flox_bar_dispatch_recorder_type_at(this._h, i); }
+        paramAt(i) { return __flox_bar_dispatch_recorder_param_at(this._h, i); }
+      },
+
       // Execution algos: TWAP / VWAP / Iceberg / POV. The user
       // drives `step(nowNs)` and dispatches the returned child
       // orders to its own executor.

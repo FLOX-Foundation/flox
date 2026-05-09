@@ -1,0 +1,45 @@
+# Codon smoke for cross-binding bar-close ordering parity.
+# Sister tests in pybind11 / NAPI / QuickJS assert the same.
+
+from flox.bar_dispatch import BarDispatchRecorder
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def drive(seconds_in_order: List[int]) -> List[int]:
+    H4_NS = 4 * 60 * 60 * 1_000_000_000
+    r = BarDispatchRecorder()
+    for s in seconds_in_order:
+        r.add_time_interval_seconds(s)
+    r.on_trade(1, 100.0, 0.1, 0)
+    r.on_trade(1, 101.0, 0.1, H4_NS)
+    r.finalize()
+    return [r.param_at(i) for i in range(r.count())]
+
+
+def run():
+    H4 = 4 * 60 * 60
+    H1 = 60 * 60
+    M5 = 5 * 60
+    NS = 1_000_000_000
+    H4_NS = H4 * NS
+    H1_NS = H1 * NS
+    M5_NS = M5 * NS
+
+    p1 = drive([H4, H1, M5])
+    check("coarsest-first registration: tied close fires H4, H1, M5",
+          p1[0] == H4_NS and p1[1] == H1_NS and p1[2] == M5_NS)
+
+    p2 = drive([M5, H1, H4])
+    check("reverse registration: tied close fires M5, H1, H4",
+          p2[0] == M5_NS and p2[1] == H1_NS and p2[2] == H4_NS)
+
+    print("codon bar-close ordering parity ok")
+
+
+run()

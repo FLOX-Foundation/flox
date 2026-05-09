@@ -1181,6 +1181,117 @@
       "return_type": "FloxBacktestResultHandle"
     },
     {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_add_time_seconds",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        },
+        {
+          "name": "seconds",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_create",
+      "params": [],
+      "return_type": "FloxBarDispatchRecorderHandle"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_finalize",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_on_trade",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "qty",
+          "type": "double"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_param_at",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "bar_dispatch",
+      "name": "flox_bar_dispatch_recorder_type_at",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxBarDispatchRecorderHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "context_queries",
       "name": "flox_best_ask_raw",
       "params": [
@@ -11221,6 +11332,10 @@
     },
     {
       "name": "FloxBacktestRunnerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxBarDispatchRecorderHandle",
       "target": "void*"
     },
     {

@@ -98,6 +98,7 @@
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/writers/binary_log_writer.h"
 #include "flox/strategy/abstract_signal_handler.h"
+#include "flox/testing/bar_dispatch_recorder.h"
 #include "flox/util/memory/pool.h"
 
 #include <random>
@@ -7201,4 +7202,57 @@ extern "C" void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index,
   {
     *out_liquidity = f.liquidity;
   }
+}
+
+namespace
+{
+inline flox::testing::BarDispatchRecorder* toBarDispatchRecorder(FloxBarDispatchRecorderHandle h)
+{
+  return static_cast<flox::testing::BarDispatchRecorder*>(h);
+}
+}  // namespace
+
+extern "C" FloxBarDispatchRecorderHandle flox_bar_dispatch_recorder_create(void)
+{
+  return new flox::testing::BarDispatchRecorder();
+}
+
+extern "C" void flox_bar_dispatch_recorder_destroy(FloxBarDispatchRecorderHandle h)
+{
+  delete toBarDispatchRecorder(h);
+}
+
+extern "C" uint32_t flox_bar_dispatch_recorder_add_time_seconds(FloxBarDispatchRecorderHandle h,
+                                                                uint32_t seconds)
+{
+  return static_cast<uint32_t>(toBarDispatchRecorder(h)->addTimeIntervalSeconds(seconds));
+}
+
+extern "C" void flox_bar_dispatch_recorder_on_trade(FloxBarDispatchRecorderHandle h,
+                                                    uint32_t symbol, double price, double qty,
+                                                    int64_t ts_ns)
+{
+  toBarDispatchRecorder(h)->onTrade(symbol, price, qty, ts_ns);
+}
+
+extern "C" void flox_bar_dispatch_recorder_finalize(FloxBarDispatchRecorderHandle h)
+{
+  toBarDispatchRecorder(h)->finalize();
+}
+
+extern "C" uint32_t flox_bar_dispatch_recorder_count(FloxBarDispatchRecorderHandle h)
+{
+  return static_cast<uint32_t>(toBarDispatchRecorder(h)->count());
+}
+
+extern "C" uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h,
+                                                      uint32_t index)
+{
+  return toBarDispatchRecorder(h)->typeAt(index);
+}
+
+extern "C" uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h,
+                                                        uint32_t index)
+{
+  return toBarDispatchRecorder(h)->paramAt(index);
 }

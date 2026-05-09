@@ -1644,6 +1644,22 @@ export class OrderGroup {
   recommendedActions(): OrderGroupAction[];
 }
 
+// ── Bar-close dispatch recorder (cross-binding parity test fixture) ──
+
+export class BarDispatchRecorder {
+  constructor();
+  /** Register a time-bar timeframe. Returns its slot index (or 8 if full). */
+  addTimeIntervalSeconds(seconds: number): number;
+  onTrade(symbol: number, price: number, qty: number, tsNs: number): void;
+  /** Drain the bus so all bars at the final tied close fire. */
+  finalize(): void;
+  count(): number;
+  /** BarType enum value at index. */
+  typeAt(index: number): number;
+  /** barTypeParam (nanoseconds for time bars) at index. */
+  paramAt(index: number): number;
+}
+
 // ── Multi-feed clock ─────────────────────────────────────────────────
 
 export type FeedClockPolicyName = 'WaitForAll' | 'FireOnAny' | 'LeaderFollower';
