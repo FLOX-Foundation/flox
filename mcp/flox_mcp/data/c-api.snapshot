@@ -22,6 +22,7 @@ flox_backtest_runner_run_bars|int|FloxBacktestRunnerHandle|const int64_t *|const
 flox_backtest_runner_run_csv|int|FloxBacktestRunnerHandle|const char *|const char *|FloxBacktestStats *
 flox_backtest_runner_run_ohlcv|int|FloxBacktestRunnerHandle|const int64_t *|const double *|uint32_t|const char *|FloxBacktestStats *
 flox_backtest_runner_run_replay_source|int|FloxBacktestRunnerHandle|FloxReplaySourceHandle|FloxBacktestStats *
+flox_backtest_runner_run_tape|int|FloxBacktestRunnerHandle|const char *|FloxBacktestStats *
 flox_backtest_runner_set_executor|void|FloxBacktestRunnerHandle|FloxExecutorHandle
 flox_backtest_runner_set_strategy|void|FloxBacktestRunnerHandle|FloxStrategyHandle
 flox_backtest_runner_take_result|FloxBacktestResultHandle|FloxBacktestRunnerHandle

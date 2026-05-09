@@ -24,6 +24,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -119,6 +120,14 @@ class BacktestRunner : public ISignalHandler
   /// Strategy::onBar and any registered IMarketDataSubscriber.
   /// Bars must be in non-decreasing endTime order.
   BacktestResult runBars(const std::vector<BarEvent>& bars);
+
+  /// Run the backtest off a `.floxlog` tape directory. Opens the tape
+  /// via `replay::createMultiSegmentReader` and dispatches every event
+  /// through `processEvent`. Use this to drive the strategy off a
+  /// recorded session (the canonical path: `flox tape record` → write
+  /// `.floxlog` → `bt.run_tape(path)`). Throws if `data_dir` is not a
+  /// `.floxlog` directory or contains no segments.
+  BacktestResult runTape(const std::filesystem::path& data_dir);
 
   // ========== Interactive mode ==========
 

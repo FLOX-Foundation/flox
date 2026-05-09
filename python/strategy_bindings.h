@@ -1529,6 +1529,39 @@ class PyBacktestRunner
     return runBars(std::move(bars));
   }
 
+  py::object run_tape(const std::string& path)
+  {
+    if (!_host)
+    {
+      throw flox::FloxError(
+          "E_RUN_001",
+          "BacktestRunner.run_tape() called before set_strategy(). "
+          "Attach a strategy with set_strategy(MyStrategy()) first.");
+    }
+    BacktestResult result = _runner->runTape(path);
+    BacktestStats stats = result.computeStats();
+    py::dict d;
+    d["total_trades"] = stats.totalTrades;
+    d["winning_trades"] = stats.winningTrades;
+    d["losing_trades"] = stats.losingTrades;
+    d["initial_capital"] = stats.initialCapital;
+    d["final_capital"] = stats.finalCapital;
+    d["total_pnl"] = stats.totalPnl;
+    d["total_fees"] = stats.totalFees;
+    d["net_pnl"] = stats.netPnl;
+    d["gross_profit"] = stats.grossProfit;
+    d["gross_loss"] = stats.grossLoss;
+    d["max_drawdown"] = stats.maxDrawdown;
+    d["max_drawdown_pct"] = stats.maxDrawdownPct;
+    d["win_rate"] = stats.winRate;
+    d["profit_factor"] = stats.profitFactor;
+    d["sharpe"] = stats.sharpeRatio;
+    d["sortino"] = stats.sortinoRatio;
+    d["return_pct"] = stats.returnPct;
+    _lastResult = std::move(result);
+    return d;
+  }
+
   py::object run_ohlcv(py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
                        py::array_t<double, py::array::c_style | py::array::forcecast> close,
                        const std::string& symbol = "")
@@ -2293,6 +2326,10 @@ inline void bindStrategy(py::module_& m)
            py::arg("listener"), py::keep_alive<1, 2>())
       .def("run_csv", &PyBacktestRunner::run_csv,
            py::arg("path"), py::arg("symbol") = "")
+      .def("run_tape", &PyBacktestRunner::run_tape, py::arg("path"),
+           "Run a backtest off a `.floxlog` tape directory. The tape is "
+           "the canonical recorded artifact (`flox tape record` writes it). "
+           "Returns the same stats dict shape as run_csv / run_bars.")
       .def("run_ohlcv", &PyBacktestRunner::run_ohlcv,
            py::arg("ts"), py::arg("close"), py::arg("symbol") = "")
       .def("run_bars", &PyBacktestRunner::run_bars,

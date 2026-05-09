@@ -1853,6 +1853,12 @@ extern "C"
                                    const char* symbol,
                                    FloxBacktestStats* stats_out);
 
+  // Drive the backtest off a `.floxlog` tape directory.
+  // Returns 1 on success, 0 on error.
+  int flox_backtest_runner_run_tape(FloxBacktestRunnerHandle runner,
+                                    const char* tape_dir,
+                                    FloxBacktestStats* stats_out);
+
   // Replay raw OHLCV arrays (timestamps in nanoseconds, close prices as double).
   // Each row produces one synthetic trade (price=close, qty=1). Strategy.on_trade fires.
   // Returns 1 on success, 0 on error.

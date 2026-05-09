@@ -4767,6 +4767,28 @@ struct FloxBacktestRunnerImpl
     return 1;
   }
 
+  int runTape(const char* tape_dir, FloxBacktestStats* out)
+  {
+    if (!runner)
+    {
+      return 0;
+    }
+    try
+    {
+      BacktestResult result = runner->runTape(std::filesystem::path(tape_dir));
+      if (out)
+      {
+        fillStats(result.computeStats(), out);
+      }
+      lastResult = std::move(result);
+      return 1;
+    }
+    catch (const std::exception&)
+    {
+      return 0;
+    }
+  }
+
   int runCsv(const char* path, const char* symbol, FloxBacktestStats* out)
   {
     uint32_t id = resolveSymbol(symbol);
@@ -5425,6 +5447,13 @@ int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle h,
                                  FloxBacktestStats* out)
 {
   return toBacktestRunner(h)->runCsv(path, symbol, out);
+}
+
+int flox_backtest_runner_run_tape(FloxBacktestRunnerHandle h,
+                                  const char* tape_dir,
+                                  FloxBacktestStats* out)
+{
+  return toBacktestRunner(h)->runTape(tape_dir, out);
 }
 
 int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle h,

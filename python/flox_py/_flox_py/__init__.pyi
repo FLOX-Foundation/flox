@@ -85,6 +85,10 @@ class BacktestRunner:
         ...
     def run_ohlcv(self, ts: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str = '') -> typing.Any:
         ...
+    def run_tape(self, path: str) -> typing.Any:
+        """
+        Run a backtest off a `.floxlog` tape directory. The tape is the canonical recorded artifact (`flox tape record` writes it). Returns the same stats dict shape as run_csv / run_bars.
+        """
     def set_executor(self, executor: Executor) -> None:
         ...
     def set_strategy(self, strategy: Strategy) -> None:
