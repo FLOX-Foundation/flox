@@ -181,8 +181,8 @@ while since_ms < end_ms:
         # one synthetic trade per bar at close price; replace with
         # fetch_trades + per-trade emission for full fidelity if the
         # exchange exposes it.
-        runner.on_trade(sym, price=c, qty=v, side=0,
-                        exchange_ts_ns=ts_ms * 1_000_000)
+        runner.on_trade(sym, price=c, qty=v, is_buy=True,
+                        ts_ns=ts_ms * 1_000_000)
     since_ms = bars[-1][0] + 60_000
     time.sleep(ex.rateLimit / 1000)
 
