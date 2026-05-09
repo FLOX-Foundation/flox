@@ -611,6 +611,66 @@ extern "C"
   void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
 
   // ============================================================
+  // Multi-leg order group (W15-T004)
+  // ============================================================
+  //
+  // Passive state machine: legs + policy + recorded events go in,
+  // aggregate state + recommended actions come out. The group does
+  // no I/O — the caller wires the actions into the executor.
+
+  typedef void* FloxOrderGroupHandle;
+
+  // policy: 0 = BestEffort, 1 = AllOrNothing, 2 = OneSided.
+  FLOX_EXPORT(group = "order_group")
+  FloxOrderGroupHandle flox_order_group_create(uint64_t parent_signal_id, uint8_t policy);
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_destroy(FloxOrderGroupHandle h);
+
+  // side: 0 = BUY, 1 = SELL. Returns leg index.
+  FLOX_EXPORT(group = "order_group")
+  uint32_t flox_order_group_add_market_leg(FloxOrderGroupHandle h, uint32_t symbol,
+                                           uint8_t side, int64_t qty_raw);
+  FLOX_EXPORT(group = "order_group")
+  uint32_t flox_order_group_add_limit_leg(FloxOrderGroupHandle h, uint32_t symbol,
+                                          uint8_t side, int64_t price_raw,
+                                          int64_t qty_raw);
+
+  FLOX_EXPORT(group = "order_group")
+  uint32_t flox_order_group_leg_count(FloxOrderGroupHandle h);
+  FLOX_EXPORT(group = "order_group")
+  uint8_t flox_order_group_leg_state(FloxOrderGroupHandle h, uint32_t leg_index);
+  FLOX_EXPORT(group = "order_group")
+  int64_t flox_order_group_leg_filled_raw(FloxOrderGroupHandle h, uint32_t leg_index);
+  FLOX_EXPORT(group = "order_group")
+  uint64_t flox_order_group_leg_order_id(FloxOrderGroupHandle h, uint32_t leg_index);
+
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_record_submit(FloxOrderGroupHandle h, uint32_t leg_index,
+                                      uint64_t order_id);
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_record_fill(FloxOrderGroupHandle h, uint32_t leg_index,
+                                    int64_t cumulative_qty_raw);
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index);
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index);
+
+  FLOX_EXPORT(group = "order_group")
+  uint8_t flox_order_group_state(FloxOrderGroupHandle h);
+
+  // Recommended-actions output. Each action is laid out as 5 i64 slots:
+  //   [0] kind (0=CancelLeg, 1=RevertLeg)
+  //   [1] leg_index
+  //   [2] order_id (CancelLeg) | symbol_id (RevertLeg)
+  //   [3] side (RevertLeg, 0=BUY/1=SELL) | 0
+  //   [4] qty_raw (RevertLeg) | 0
+  // Returns number of actions written; bounded by max_actions.
+  FLOX_EXPORT(group = "order_group")
+  uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
+                                                int64_t* actions_out,
+                                                uint32_t max_actions);
+
+  // ============================================================
   // Position tracking
   // ============================================================
 

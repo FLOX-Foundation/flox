@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 431 functions, 40 handles, 48 structs, 33 callback typedefs, 2 enums, 54 groups.
+**Surface:** 445 functions, 41 handles, 48 structs, 33 callback typedefs, 2 enums, 55 groups.
 
 ## Opaque handles
 
@@ -21,6 +21,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxCompositeBookHandle`
 - `FloxIndicatorGraphHandle`
 - `FloxStreamingGraphHandle` (alias of `FloxIndicatorGraphHandle`)
+- `FloxOrderGroupHandle`
 - `FloxL3BookHandle`
 - `FloxDataWriterHandle`
 - `FloxDataReaderHandle`
@@ -1046,6 +1047,23 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_book_clear(FloxBookHandle book)`
 - `uint32_t flox_book_get_bids(FloxBookHandle book, double * prices_out, double * qtys_out, uint32_t max_levels)`
 - `uint32_t flox_book_get_asks(FloxBookHandle book, double * prices_out, double * qtys_out, uint32_t max_levels)`
+
+### order_group
+
+- `FloxOrderGroupHandle flox_order_group_create(uint64_t parent_signal_id, uint8_t policy)`
+- `void flox_order_group_destroy(FloxOrderGroupHandle h)`
+- `uint32_t flox_order_group_add_market_leg(FloxOrderGroupHandle h, uint32_t symbol, uint8_t side, int64_t qty_raw)`
+- `uint32_t flox_order_group_add_limit_leg(FloxOrderGroupHandle h, uint32_t symbol, uint8_t side, int64_t price_raw, int64_t qty_raw)`
+- `uint32_t flox_order_group_leg_count(FloxOrderGroupHandle h)`
+- `uint8_t flox_order_group_leg_state(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `int64_t flox_order_group_leg_filled_raw(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `uint64_t flox_order_group_leg_order_id(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `void flox_order_group_record_submit(FloxOrderGroupHandle h, uint32_t leg_index, uint64_t order_id)`
+- `void flox_order_group_record_fill(FloxOrderGroupHandle h, uint32_t leg_index, int64_t cumulative_qty_raw)`
+- `void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `uint8_t flox_order_group_state(FloxOrderGroupHandle h)`
+- `uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h, int64_t * actions_out, uint32_t max_actions)`
 
 ### order_tracker
 

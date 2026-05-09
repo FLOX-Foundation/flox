@@ -1254,6 +1254,118 @@ void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity
 }
 
 // ============================================================
+// Multi-leg order group (W15-T004)
+// ============================================================
+
+#include "flox/execution/order_group.h"
+
+static OrderGroup* toOrderGroup(FloxOrderGroupHandle h) { return static_cast<OrderGroup*>(h); }
+
+FloxOrderGroupHandle flox_order_group_create(uint64_t parent_signal_id, uint8_t policy)
+{
+  return new OrderGroup(parent_signal_id, static_cast<OrderGroupPolicy>(policy));
+}
+
+void flox_order_group_destroy(FloxOrderGroupHandle h)
+{
+  delete toOrderGroup(h);
+}
+
+uint32_t flox_order_group_add_market_leg(FloxOrderGroupHandle h, uint32_t symbol,
+                                         uint8_t side, int64_t qty_raw)
+{
+  return static_cast<uint32_t>(
+      toOrderGroup(h)->addMarketLeg(symbol, side, Quantity::fromRaw(qty_raw)));
+}
+
+uint32_t flox_order_group_add_limit_leg(FloxOrderGroupHandle h, uint32_t symbol,
+                                        uint8_t side, int64_t price_raw,
+                                        int64_t qty_raw)
+{
+  return static_cast<uint32_t>(toOrderGroup(h)->addLimitLeg(
+      symbol, side, Price::fromRaw(price_raw), Quantity::fromRaw(qty_raw)));
+}
+
+uint32_t flox_order_group_leg_count(FloxOrderGroupHandle h)
+{
+  return static_cast<uint32_t>(toOrderGroup(h)->legCount());
+}
+
+uint8_t flox_order_group_leg_state(FloxOrderGroupHandle h, uint32_t leg_index)
+{
+  return static_cast<uint8_t>(toOrderGroup(h)->leg(leg_index).state);
+}
+
+int64_t flox_order_group_leg_filled_raw(FloxOrderGroupHandle h, uint32_t leg_index)
+{
+  return toOrderGroup(h)->leg(leg_index).filledQty.raw();
+}
+
+uint64_t flox_order_group_leg_order_id(FloxOrderGroupHandle h, uint32_t leg_index)
+{
+  return toOrderGroup(h)->leg(leg_index).orderId;
+}
+
+void flox_order_group_record_submit(FloxOrderGroupHandle h, uint32_t leg_index,
+                                    uint64_t order_id)
+{
+  toOrderGroup(h)->recordSubmit(leg_index, order_id);
+}
+
+void flox_order_group_record_fill(FloxOrderGroupHandle h, uint32_t leg_index,
+                                  int64_t cumulative_qty_raw)
+{
+  toOrderGroup(h)->recordFill(leg_index, Quantity::fromRaw(cumulative_qty_raw));
+}
+
+void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index)
+{
+  toOrderGroup(h)->recordCancel(leg_index);
+}
+
+void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index)
+{
+  toOrderGroup(h)->recordFailure(leg_index);
+}
+
+uint8_t flox_order_group_state(FloxOrderGroupHandle h)
+{
+  return static_cast<uint8_t>(toOrderGroup(h)->state());
+}
+
+uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
+                                              int64_t* actions_out,
+                                              uint32_t max_actions)
+{
+  if (!actions_out || max_actions == 0)
+  {
+    return 0;
+  }
+  auto actions = toOrderGroup(h)->recommendedActions();
+  uint32_t n = static_cast<uint32_t>(std::min<size_t>(actions.size(), max_actions));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    const auto& a = actions[i];
+    int64_t* slot = actions_out + i * 5;
+    slot[0] = static_cast<int64_t>(a.kind);
+    slot[1] = static_cast<int64_t>(a.legIndex);
+    if (a.kind == OrderGroupAction::Kind::CancelLeg)
+    {
+      slot[2] = static_cast<int64_t>(a.orderId);
+      slot[3] = 0;
+      slot[4] = 0;
+    }
+    else
+    {
+      slot[2] = static_cast<int64_t>(a.symbol);
+      slot[3] = static_cast<int64_t>(a.side);
+      slot[4] = a.qty.raw();
+    }
+  }
+  return n;
+}
+
+// ============================================================
 // Position tracking
 // ============================================================
 

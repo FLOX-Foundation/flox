@@ -298,6 +298,11 @@ groups:
     napi: { status: not_applicable }
     codon: { status: required }
 
+  order_group:
+    pybind11: { status: required, classes: [OrderGroup] }
+    napi: { status: required, classes: [OrderGroup] }
+    codon: { status: required }
+
   executor_fill:
     pybind11: { status: not_applicable }  # fills accessed via SimulatedExecutor.fills()
     napi: { status: not_applicable }

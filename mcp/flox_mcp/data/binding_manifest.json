@@ -1203,6 +1203,76 @@
           "name": "flox_mid_price_raw"
         },
         {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_add_limit_leg"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_add_market_leg"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_create"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_destroy"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_leg_count"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_leg_filled_raw"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_leg_order_id"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_leg_state"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_recommended_actions"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_record_cancel"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_record_failure"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_record_fill"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_record_submit"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_state"
+        },
+        {
           "group": "order_tracker",
           "kind": "function",
           "name": "flox_order_tracker_active_count"
@@ -2443,6 +2513,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxOrderGroupHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxOrderTrackerHandle"
         },
         {
@@ -2553,6 +2627,7 @@
         "metrics",
         "multi_tf_helpers",
         "order_book",
+        "order_group",
         "order_tracker",
         "partitioner",
         "pointer_out",
@@ -3536,6 +3611,62 @@
         {
           "kind": "function",
           "name": "flox_mid_price_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_add_limit_leg"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_add_market_leg"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_leg_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_leg_filled_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_leg_order_id"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_leg_state"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_recommended_actions"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_record_cancel"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_record_failure"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_record_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_record_submit"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_state"
         },
         {
           "kind": "function",
@@ -4571,6 +4702,22 @@
         },
         {
           "kind": "class",
+          "name": "OrderGroup"
+        },
+        {
+          "kind": "class",
+          "name": "OrderGroupCancelAction"
+        },
+        {
+          "kind": "class",
+          "name": "OrderGroupOptions"
+        },
+        {
+          "kind": "class",
+          "name": "OrderGroupRevertAction"
+        },
+        {
+          "kind": "class",
           "name": "OrderTracker"
         },
         {
@@ -5195,6 +5342,10 @@
         },
         {
           "kind": "class",
+          "name": "LegState"
+        },
+        {
+          "kind": "class",
           "name": "MACD"
         },
         {
@@ -5216,6 +5367,18 @@
         {
           "kind": "class",
           "name": "OrderEventKind"
+        },
+        {
+          "kind": "class",
+          "name": "OrderGroup"
+        },
+        {
+          "kind": "class",
+          "name": "OrderGroupPolicy"
+        },
+        {
+          "kind": "class",
+          "name": "OrderGroupState"
         },
         {
           "kind": "class",
@@ -6622,6 +6785,42 @@
       "pybind11": {
         "classes": [
           "OrderBook"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "order_group": {
+      "capi_functions": [
+        "flox_order_group_add_limit_leg",
+        "flox_order_group_add_market_leg",
+        "flox_order_group_create",
+        "flox_order_group_destroy",
+        "flox_order_group_leg_count",
+        "flox_order_group_leg_filled_raw",
+        "flox_order_group_leg_order_id",
+        "flox_order_group_leg_state",
+        "flox_order_group_recommended_actions",
+        "flox_order_group_record_cancel",
+        "flox_order_group_record_failure",
+        "flox_order_group_record_fill",
+        "flox_order_group_record_submit",
+        "flox_order_group_state"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "OrderGroup"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "OrderGroup"
         ],
         "functions": [],
         "status": "required"

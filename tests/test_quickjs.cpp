@@ -734,6 +734,57 @@ TEST(JsIntegrationTest, CompositeDslLogicalOps)
 }
 
 // ============================================================
+// Multi-leg order group (W15-T004)
+// ============================================================
+
+TEST(JsIntegrationTest, OrderGroupAllOrNothingReverts)
+{
+  TempJsFile script(R"(
+    var groupState = "";
+    var actions = [];
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT", "ETHUSDT"] }); }
+      onStart() {
+        var g = new OrderGroup({ parentSignalId: 7, policy: OrderGroupPolicy.AllOrNothing });
+        g.addMarketLeg(1, 0, 0.1);
+        g.addMarketLeg(2, 1, 2.0);
+        g.recordSubmit(0, 100);
+        g.recordSubmit(1, 101);
+        g.recordFill(0, 0.1);
+        g.recordFailure(1);
+        groupState = g.state();
+        actions = g.recommendedActions();
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  bridge->start();
+
+  auto* ctx = jsStrat.engine().context();
+  JSValue st = jsStrat.engine().getGlobalProperty("groupState");
+  const char* stStr = JS_ToCString(ctx, st);
+  EXPECT_STREQ(stStr, "Reverting") << "Reverting state expected (AllOrNothing + leg failure)";
+  JS_FreeCString(ctx, stStr);
+  JS_FreeValue(ctx, st);
+
+  // actions = [{kind:'revert', legIndex:0, symbol:1, side:1, qty:0.1}]
+  JSValue acts = jsStrat.engine().getGlobalProperty("actions");
+  uint32_t len = 0;
+  JS_ToUint32(ctx, &len, JS_GetPropertyStr(ctx, acts, "length"));
+  EXPECT_EQ(len, 1u);
+  JS_FreeValue(ctx, acts);
+}
+
+// ============================================================
 // Indicator-grid sugar (W3-T017)
 //
 // `grid(strategy, [BTC, ETH], [H4, M5]).ema(50)` instantiates one

@@ -343,6 +343,22 @@ from C import flox_book_clear(cobj)
 from C import flox_book_get_bids(cobj, Ptr[float], Ptr[float], u32) -> u32
 from C import flox_book_get_asks(cobj, Ptr[float], Ptr[float], u32) -> u32
 
+# ── order_group ──
+from C import flox_order_group_create(u64, u8) -> cobj
+from C import flox_order_group_destroy(cobj)
+from C import flox_order_group_add_market_leg(cobj, u32, u8, i64) -> u32
+from C import flox_order_group_add_limit_leg(cobj, u32, u8, i64, i64) -> u32
+from C import flox_order_group_leg_count(cobj) -> u32
+from C import flox_order_group_leg_state(cobj, u32) -> u8
+from C import flox_order_group_leg_filled_raw(cobj, u32) -> i64
+from C import flox_order_group_leg_order_id(cobj, u32) -> u64
+from C import flox_order_group_record_submit(cobj, u32, u64)
+from C import flox_order_group_record_fill(cobj, u32, i64)
+from C import flox_order_group_record_cancel(cobj, u32)
+from C import flox_order_group_record_failure(cobj, u32)
+from C import flox_order_group_state(cobj) -> u8
+from C import flox_order_group_recommended_actions(cobj, Ptr[i64], u32) -> u32
+
 # ── order_tracker ──
 from C import flox_order_tracker_create() -> cobj
 from C import flox_order_tracker_destroy(cobj)

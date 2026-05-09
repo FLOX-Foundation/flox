@@ -1,0 +1,134 @@
+# Multi-leg order group state machine for Codon strategies (W15-T004).
+# Mirrors the C++ engine primitive in include/flox/execution/order_group.h
+# and the NAPI / pybind11 / QuickJS surfaces.
+#
+# Wraps the C ABI flox_order_group_* exports through Codon's FFI. The
+# group is a passive state machine; the strategy records submit /
+# fill / cancel events and reads back state + recommended actions.
+
+from C import flox_order_group_create(u64, u8) -> cobj
+from C import flox_order_group_destroy(cobj)
+from C import flox_order_group_add_market_leg(cobj, u32, u8, i64) -> u32
+from C import flox_order_group_add_limit_leg(cobj, u32, u8, i64, i64) -> u32
+from C import flox_order_group_leg_count(cobj) -> u32
+from C import flox_order_group_leg_state(cobj, u32) -> u8
+from C import flox_order_group_leg_filled_raw(cobj, u32) -> i64
+from C import flox_order_group_leg_order_id(cobj, u32) -> u64
+from C import flox_order_group_record_submit(cobj, u32, u64)
+from C import flox_order_group_record_fill(cobj, u32, i64)
+from C import flox_order_group_record_cancel(cobj, u32)
+from C import flox_order_group_record_failure(cobj, u32)
+from C import flox_order_group_state(cobj) -> u8
+from C import flox_order_group_recommended_actions(cobj, cobj, u32) -> u32
+
+from flox.types import Quantity, Price
+
+
+# Policy constants.
+BEST_EFFORT = 0
+ALL_OR_NOTHING = 1
+ONE_SIDED = 2
+
+# Leg states.
+LEG_PENDING = 0
+LEG_SUBMITTED = 1
+LEG_PARTIAL = 2
+LEG_FILLED = 3
+LEG_CANCELLED = 4
+LEG_FAILED = 5
+
+# Group states.
+GROUP_PENDING = 0
+GROUP_SUBMITTED = 1
+GROUP_PARTIAL = 2
+GROUP_FILLED = 3
+GROUP_CANCELLED = 4
+GROUP_REVERTING = 5
+GROUP_FAILED = 6
+
+
+@dataclass
+class OrderGroupAction:
+    kind: str           # "cancel" or "revert"
+    leg_index: int
+    order_id: int       # for cancel
+    symbol: int         # for revert
+    side: int           # for revert (opposite of original fill)
+    qty: float          # for revert (filled qty to undo)
+
+
+class OrderGroup:
+    _h: cobj
+
+    def __init__(self, parent_signal_id: int = 0, policy: int = BEST_EFFORT):
+        self._h = flox_order_group_create(u64(parent_signal_id), u8(policy))
+
+    def __del__(self):
+        if self._h != cobj():
+            flox_order_group_destroy(self._h)
+            self._h = cobj()
+
+    def add_market_leg(self, symbol: int, side: int, qty: float) -> int:
+        return int(flox_order_group_add_market_leg(
+            self._h, u32(symbol), u8(side), Quantity.from_double(qty).raw()))
+
+    def add_limit_leg(self, symbol: int, side: int, price: float, qty: float) -> int:
+        return int(flox_order_group_add_limit_leg(
+            self._h, u32(symbol), u8(side),
+            Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw()))
+
+    def leg_count(self) -> int:
+        return int(flox_order_group_leg_count(self._h))
+
+    def leg_state(self, idx: int) -> int:
+        return int(flox_order_group_leg_state(self._h, u32(idx)))
+
+    def leg_filled(self, idx: int) -> float:
+        return float(flox_order_group_leg_filled_raw(self._h, u32(idx))) / 1e8
+
+    def leg_order_id(self, idx: int) -> int:
+        return int(flox_order_group_leg_order_id(self._h, u32(idx)))
+
+    def record_submit(self, idx: int, order_id: int):
+        flox_order_group_record_submit(self._h, u32(idx), u64(order_id))
+
+    def record_fill(self, idx: int, cumulative_qty: float):
+        flox_order_group_record_fill(self._h, u32(idx),
+                                      Quantity.from_double(cumulative_qty).raw())
+
+    def record_cancel(self, idx: int):
+        flox_order_group_record_cancel(self._h, u32(idx))
+
+    def record_failure(self, idx: int):
+        flox_order_group_record_failure(self._h, u32(idx))
+
+    def state(self) -> int:
+        return int(flox_order_group_state(self._h))
+
+    def recommended_actions(self) -> List[OrderGroupAction]:
+        # Each action is 5 i64 slots; 32 actions max is plenty for any
+        # realistic group.
+        max_actions = 32
+        buf = [i64(0)] * (max_actions * 5)
+        n = int(flox_order_group_recommended_actions(
+            self._h, cobj(buf.arr.ptr), u32(max_actions)))
+        out = list[OrderGroupAction]()
+        ip = Ptr[i64](buf.arr.ptr)
+        for i in range(n):
+            base = i * 5
+            kind_code = int(ip[base + 0])
+            leg_idx = int(ip[base + 1])
+            if kind_code == 0:
+                out.append(OrderGroupAction(
+                    kind="cancel", leg_index=leg_idx,
+                    order_id=int(ip[base + 2]),
+                    symbol=0, side=0, qty=0.0))
+            else:
+                out.append(OrderGroupAction(
+                    kind="revert", leg_index=leg_idx,
+                    order_id=0,
+                    symbol=int(ip[base + 2]),
+                    side=int(ip[base + 3]),
+                    qty=float(ip[base + 4]) / 1e8))
+        return out

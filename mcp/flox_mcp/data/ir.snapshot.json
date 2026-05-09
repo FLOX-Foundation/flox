@@ -5264,6 +5264,236 @@
       "return_type": "int64_t"
     },
     {
+      "group": "order_group",
+      "name": "flox_order_group_add_limit_leg",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_add_market_leg",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_create",
+      "params": [
+        {
+          "name": "parent_signal_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "policy",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxOrderGroupHandle"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_leg_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_leg_filled_raw",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_leg_order_id",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_leg_state",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_recommended_actions",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "actions_out",
+          "type": "int64_t *"
+        },
+        {
+          "name": "max_actions",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_record_cancel",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_record_failure",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_record_fill",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        },
+        {
+          "name": "cumulative_qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_record_submit",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_state",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "order_tracker",
       "name": "flox_order_tracker_active_count",
       "params": [
@@ -10537,6 +10767,10 @@
     },
     {
       "name": "FloxMarketProfileHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxOrderGroupHandle",
       "target": "void*"
     },
     {

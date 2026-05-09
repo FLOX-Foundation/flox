@@ -14,6 +14,7 @@
 #include "hooks.h"
 #include "indicators.h"
 #include "latency.h"
+#include "order_group.h"
 #include "portfolio_risk.h"
 #include "positions.h"
 #include "profiles.h"
@@ -42,6 +43,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerExecutionAlgos(env, exports);
   node_flox::registerLatency(env, exports);
   node_flox::registerPortfolioRisk(env, exports);
+  node_flox::registerOrderGroup(env, exports);
   node_flox::registerTapeDiff(env, exports);
   node_flox::registerRunTrace(env, exports);
   flox_node::registerHooks(env, exports);
