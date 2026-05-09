@@ -25,6 +25,10 @@ static const char* const COMPOSITE_JS =
 #include "js_stdlib_composite.inc"
     ;
 
+static const char* const ORDER_GROUP_JS =
+#include "js_stdlib_order_group.inc"
+    ;
+
 namespace flox
 {
 
@@ -81,6 +85,10 @@ void FloxJsStrategy::loadStdlib()
   if (!_engine.eval(COMPOSITE_JS, "flox/composite.js"))
   {
     throw std::runtime_error("Failed to load composite.js: " + _engine.getErrorMessage());
+  }
+  if (!_engine.eval(ORDER_GROUP_JS, "flox/order_group.js"))
+  {
+    throw std::runtime_error("Failed to load order_group.js: " + _engine.getErrorMessage());
   }
 
   // Create flox global object with register() and batch indicators

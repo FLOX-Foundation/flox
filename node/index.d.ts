@@ -1555,6 +1555,55 @@ export class PortfolioRiskAggregator {
   killSwitchActive(): boolean;
 }
 
+// ── Multi-leg order group (W15-T004) ─────────────────────────────────
+
+export type OrderGroupPolicyName = 'BestEffort' | 'AllOrNothing' | 'OneSided';
+export type OrderGroupStateName =
+  | 'Pending' | 'Submitted' | 'PartiallyFilled' | 'Filled'
+  | 'Cancelled' | 'Reverting' | 'Failed';
+export type LegStateName =
+  | 'Pending' | 'Submitted' | 'PartiallyFilled' | 'Filled' | 'Cancelled' | 'Failed';
+
+export const OrderGroupPolicy: Readonly<Record<OrderGroupPolicyName, OrderGroupPolicyName>>;
+export const OrderGroupState: Readonly<Record<OrderGroupStateName, OrderGroupStateName>>;
+
+export interface OrderGroupOptions {
+  parentSignalId?: number;
+  policy?: OrderGroupPolicyName;
+}
+
+export interface OrderGroupCancelAction {
+  kind: 'cancel';
+  legIndex: number;
+  orderId: number;
+}
+
+export interface OrderGroupRevertAction {
+  kind: 'revert';
+  legIndex: number;
+  symbol: number;
+  side: 0 | 1;
+  qty: number;
+}
+
+export type OrderGroupAction = OrderGroupCancelAction | OrderGroupRevertAction;
+
+export class OrderGroup {
+  constructor(opts?: OrderGroupOptions);
+  addMarketLeg(symbol: number, side: 0 | 1, qty: number): number;
+  addLimitLeg(symbol: number, side: 0 | 1, price: number, qty: number): number;
+  legCount(): number;
+  legState(legIndex: number): LegStateName;
+  legFilled(legIndex: number): number;
+  legOrderId(legIndex: number): number;
+  recordSubmit(legIndex: number, orderId: number): void;
+  recordFill(legIndex: number, cumulativeQty: number): void;
+  recordCancel(legIndex: number): void;
+  recordFailure(legIndex: number): void;
+  state(): OrderGroupStateName;
+  recommendedActions(): OrderGroupAction[];
+}
+
 // ── Execution algorithms (TWAP / VWAP / Iceberg / POV) ────────────────
 
 export interface ExecChildOrder {

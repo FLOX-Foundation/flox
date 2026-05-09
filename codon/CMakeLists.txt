@@ -77,3 +77,6 @@ add_codon_executable(codon_multi_tf_helpers_smoke
 
 add_codon_executable(codon_composite_dsl_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/composite_dsl_smoke.codon)
+
+add_codon_executable(codon_order_group_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/order_group_smoke.codon)

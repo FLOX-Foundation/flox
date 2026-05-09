@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ATR', 'AutoCorrelation', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventKind', 'OrderTracker', 'OrderValidator', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'LegState', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'REVERTING', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -812,6 +812,55 @@ class LatencySample:
     @order_ns.setter
     def order_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
+class LegState:
+    """
+    Members:
+    
+      PENDING
+    
+      SUBMITTED
+    
+      PARTIALLY_FILLED
+    
+      FILLED
+    
+      CANCELLED
+    
+      FAILED
+    """
+    CANCELLED: typing.ClassVar[LegState]  # value = <LegState.CANCELLED: 4>
+    FAILED: typing.ClassVar[LegState]  # value = <LegState.FAILED: 5>
+    FILLED: typing.ClassVar[LegState]  # value = <LegState.FILLED: 3>
+    PARTIALLY_FILLED: typing.ClassVar[LegState]  # value = <LegState.PARTIALLY_FILLED: 2>
+    PENDING: typing.ClassVar[LegState]  # value = <LegState.PENDING: 0>
+    SUBMITTED: typing.ClassVar[LegState]  # value = <LegState.SUBMITTED: 1>
+    __members__: typing.ClassVar[dict[str, LegState]]  # value = {'PENDING': <LegState.PENDING: 0>, 'SUBMITTED': <LegState.SUBMITTED: 1>, 'PARTIALLY_FILLED': <LegState.PARTIALLY_FILLED: 2>, 'FILLED': <LegState.FILLED: 3>, 'CANCELLED': <LegState.CANCELLED: 4>, 'FAILED': <LegState.FAILED: 5>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
 class MACD:
     def __init__(self, fast: typing.SupportsInt | typing.SupportsIndex = 12, slow: typing.SupportsInt | typing.SupportsIndex = 26, signal: typing.SupportsInt | typing.SupportsIndex = 9) -> None:
         ...
@@ -1039,6 +1088,129 @@ class OrderEventKind:
     REJECT: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.REJECT: 5>
     SUBMIT: typing.ClassVar[OrderEventKind]  # value = <OrderEventKind.SUBMIT: 1>
     __members__: typing.ClassVar[dict[str, OrderEventKind]]  # value = {'SUBMIT': <OrderEventKind.SUBMIT: 1>, 'CANCEL': <OrderEventKind.CANCEL: 2>, 'MODIFY': <OrderEventKind.MODIFY: 3>, 'ACK': <OrderEventKind.ACK: 4>, 'REJECT': <OrderEventKind.REJECT: 5>, 'EXPIRE': <OrderEventKind.EXPIRE: 6>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
+class OrderGroup:
+    def __init__(self, parent_signal_id: typing.SupportsInt | typing.SupportsIndex = 0, policy: OrderGroupPolicy = ...) -> None:
+        ...
+    def add_limit_leg(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex) -> int:
+        ...
+    def add_market_leg(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex) -> int:
+        ...
+    def leg_count(self) -> int:
+        ...
+    def leg_filled(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> float:
+        ...
+    def leg_order_id(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> int:
+        ...
+    def leg_state(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> LegState:
+        ...
+    def parent_signal_id(self) -> int:
+        ...
+    def policy(self) -> OrderGroupPolicy:
+        ...
+    def recommended_actions(self) -> list:
+        ...
+    def record_cancel(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def record_failure(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def record_fill(self, leg_index: typing.SupportsInt | typing.SupportsIndex, cumulative_qty: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def record_submit(self, leg_index: typing.SupportsInt | typing.SupportsIndex, order_id: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def state(self) -> OrderGroupState:
+        ...
+class OrderGroupPolicy:
+    """
+    Members:
+    
+      BEST_EFFORT
+    
+      ALL_OR_NOTHING
+    
+      ONE_SIDED
+    """
+    ALL_OR_NOTHING: typing.ClassVar[OrderGroupPolicy]  # value = <OrderGroupPolicy.ALL_OR_NOTHING: 1>
+    BEST_EFFORT: typing.ClassVar[OrderGroupPolicy]  # value = <OrderGroupPolicy.BEST_EFFORT: 0>
+    ONE_SIDED: typing.ClassVar[OrderGroupPolicy]  # value = <OrderGroupPolicy.ONE_SIDED: 2>
+    __members__: typing.ClassVar[dict[str, OrderGroupPolicy]]  # value = {'BEST_EFFORT': <OrderGroupPolicy.BEST_EFFORT: 0>, 'ALL_OR_NOTHING': <OrderGroupPolicy.ALL_OR_NOTHING: 1>, 'ONE_SIDED': <OrderGroupPolicy.ONE_SIDED: 2>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
+class OrderGroupState:
+    """
+    Members:
+    
+      PENDING
+    
+      SUBMITTED
+    
+      PARTIALLY_FILLED
+    
+      FILLED
+    
+      CANCELLED
+    
+      REVERTING
+    
+      FAILED
+    """
+    CANCELLED: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.CANCELLED: 4>
+    FAILED: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.FAILED: 6>
+    FILLED: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.FILLED: 3>
+    PARTIALLY_FILLED: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.PARTIALLY_FILLED: 2>
+    PENDING: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.PENDING: 0>
+    REVERTING: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.REVERTING: 5>
+    SUBMITTED: typing.ClassVar[OrderGroupState]  # value = <OrderGroupState.SUBMITTED: 1>
+    __members__: typing.ClassVar[dict[str, OrderGroupState]]  # value = {'PENDING': <OrderGroupState.PENDING: 0>, 'SUBMITTED': <OrderGroupState.SUBMITTED: 1>, 'PARTIALLY_FILLED': <OrderGroupState.PARTIALLY_FILLED: 2>, 'FILLED': <OrderGroupState.FILLED: 3>, 'CANCELLED': <OrderGroupState.CANCELLED: 4>, 'REVERTING': <OrderGroupState.REVERTING: 5>, 'FAILED': <OrderGroupState.FAILED: 6>}
     def __eq__(self, other: typing.Any) -> bool:
         ...
     def __getstate__(self) -> int:
@@ -2359,14 +2531,23 @@ def whites_reality_check(returns: typing.Annotated[numpy.typing.ArrayLike, numpy
     """
 def win_rate(trade_pnls: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> float:
     ...
+ALL_OR_NOTHING: OrderGroupPolicy  # value = <OrderGroupPolicy.ALL_OR_NOTHING: 1>
+BEST_EFFORT: OrderGroupPolicy  # value = <OrderGroupPolicy.BEST_EFFORT: 0>
+CANCELLED: OrderGroupState  # value = <OrderGroupState.CANCELLED: 4>
+FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
+FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>
+ONE_SIDED: OrderGroupPolicy  # value = <OrderGroupPolicy.ONE_SIDED: 2>
 ORDER_FLAG_IOC: int = 4
 ORDER_FLAG_POST_ONLY: int = 1
 ORDER_FLAG_REDUCE_ONLY: int = 2
+PARTIALLY_FILLED: OrderGroupState  # value = <OrderGroupState.PARTIALLY_FILLED: 2>
+PENDING: OrderGroupState  # value = <OrderGroupState.PENDING: 0>
 PRICE_SCALE: int = 100000000
 QUANTITY_SCALE: int = 100000000
 QUEUE_FULL: int = 2
 QUEUE_NONE: int = 0
 QUEUE_TOB: int = 1
+REVERTING: OrderGroupState  # value = <OrderGroupState.REVERTING: 5>
 SIGNAL_FLAG_ENTER: int = 1
 SIGNAL_FLAG_EXIT: int = 2
 SIGNAL_FLAG_REBALANCE: int = 4
@@ -2374,5 +2555,6 @@ SLIPPAGE_FIXED_BPS: int = 2
 SLIPPAGE_FIXED_TICKS: int = 1
 SLIPPAGE_NONE: int = 0
 SLIPPAGE_VOLUME_IMPACT: int = 3
+SUBMITTED: OrderGroupState  # value = <OrderGroupState.SUBMITTED: 1>
 VOLUME_SCALE: int = 100000000
 StreamingIndicatorGraph = IndicatorGraph

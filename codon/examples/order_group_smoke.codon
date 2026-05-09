@@ -1,0 +1,69 @@
+# Codon smoke for the multi-leg order group state machine (W15-T004).
+# Drives the same scenarios as the NAPI / QuickJS tests.
+
+from flox.order_group import (
+    OrderGroup, OrderGroupAction,
+    BEST_EFFORT, ALL_OR_NOTHING, ONE_SIDED,
+    GROUP_PENDING, GROUP_SUBMITTED, GROUP_PARTIAL, GROUP_FILLED,
+    GROUP_REVERTING,
+    LEG_FILLED, LEG_FAILED,
+)
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def run():
+    # --- BestEffort: nothing reverts.
+    g = OrderGroup(parent_signal_id=1, policy=BEST_EFFORT)
+    a = g.add_market_leg(1, 0, 0.1)
+    b = g.add_market_leg(2, 1, 2.0)
+    check("legCount = 2", g.leg_count() == 2)
+    check("initial state Pending", g.state() == GROUP_PENDING)
+    g.record_submit(a, 100)
+    g.record_submit(b, 101)
+    check("post-submit Submitted", g.state() == GROUP_SUBMITTED)
+    g.record_fill(a, 0.1)
+    g.record_failure(b)
+    check("partial fill + failure → PartiallyFilled", g.state() == GROUP_PARTIAL)
+    acts = g.recommended_actions()
+    check("BestEffort recommends nothing", len(acts) == 0)
+
+    # --- OneSided: first fill cancels remaining.
+    g2 = OrderGroup(parent_signal_id=2, policy=ONE_SIDED)
+    g2.add_limit_leg(1, 0, 50000.0, 0.1)
+    g2.add_limit_leg(2, 1, 3000.0, 1.5)
+    g2.record_submit(0, 200)
+    g2.record_submit(1, 201)
+    g2.record_fill(0, 0.1)
+    acts2 = g2.recommended_actions()
+    check("OneSided: 1 cancel for unfilled leg", len(acts2) == 1)
+    check("OneSided: cancel kind", acts2[0].kind == "cancel")
+    check("OneSided: cancel leg index 1", acts2[0].leg_index == 1)
+    check("OneSided: cancel order id 201", acts2[0].order_id == 201)
+
+    # --- AllOrNothing: failure → revert filled legs.
+    g3 = OrderGroup(parent_signal_id=3, policy=ALL_OR_NOTHING)
+    g3.add_market_leg(1, 0, 0.1)
+    g3.add_market_leg(2, 1, 2.0)
+    g3.record_submit(0, 300)
+    g3.record_submit(1, 301)
+    g3.record_fill(0, 0.1)
+    g3.record_failure(1)
+    check("AllOrNothing: state Reverting", g3.state() == GROUP_REVERTING)
+    acts3 = g3.recommended_actions()
+    check("AllOrNothing: 1 revert action", len(acts3) == 1)
+    check("AllOrNothing: revert kind", acts3[0].kind == "revert")
+    check("AllOrNothing: revert opposite side", acts3[0].side == 1)
+    check("AllOrNothing: revert symbol matches", acts3[0].symbol == 1)
+    check("AllOrNothing: revert qty matches fill",
+          abs(acts3[0].qty - 0.1) < 1e-6)
+
+    print("codon order_group smoke ok")
+
+
+run()

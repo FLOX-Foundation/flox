@@ -77,12 +77,23 @@ add_custom_command(
   COMMENT "Embedding composite.js"
 )
 
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_order_group.inc
+  COMMAND ${CMAKE_COMMAND}
+    -DIN_FILE=${JS_STDLIB_DIR}/order_group.js
+    -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_order_group.inc
+    -P ${GEN_INC_SCRIPT}
+  DEPENDS ${JS_STDLIB_DIR}/order_group.js ${GEN_INC_SCRIPT}
+  COMMENT "Embedding order_group.js"
+)
+
 add_custom_target(js_stdlib_gen DEPENDS
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_strategy.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_indicators.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_targets.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_latency.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_composite.inc
+  ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_order_group.inc
 )
 
 # flox_quickjs static library

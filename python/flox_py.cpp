@@ -21,6 +21,7 @@
 #include "indicator_bindings.h"
 #include "latency_bindings.h"
 #include "optimizer_bindings.h"
+#include "order_group_bindings.h"
 #include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
 #include "profile_bindings.h"
@@ -788,6 +789,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindLatencyModels(m);
   flox_py::bindTapeDiff(m);
   flox_py::bindPortfolioRisk(m);
+  flox_py::bindOrderGroup(m);
   flox_py::bindExecutionAlgos(m);
   flox_py::bindDeltaBook(m);
   flox_py::bindRunTrace(m);
