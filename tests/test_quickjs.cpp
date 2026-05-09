@@ -574,6 +574,166 @@ TEST(JsIntegrationTest, NoRegisterOk)
 }
 
 // ============================================================
+// Composite-condition DSL (W1-T028)
+//
+// `when(strategy, sym, barType, param).ema(50).gt(when(...).ema(200))`
+// builds a tree out of indicator nodes + comparison/logical wrappers.
+// Pure JS sugar over `lastNClosedBars`; no engine state.
+// ============================================================
+
+TEST(JsIntegrationTest, CompositeDslCrossover)
+{
+  TempJsFile script(R"(
+    var crossUpReady = false;
+    var crossUpValue = false;
+    var rsiReady = false;
+    var rsiValue = 0;
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT"] }); }
+      onBar(ctx, bar) {
+        var TIME = 0;
+        var M1 = 60 * 1000000000;
+        var fast = when(this, "BTCUSDT", TIME, M1).ema(3);
+        var slow = when(this, "BTCUSDT", TIME, M1).ema(6);
+        var cross = fast.gt(slow);
+        crossUpReady = cross.isReady();
+        crossUpValue = cross.isReady() ? cross.value() : false;
+
+        var rsi = when(this, "BTCUSDT", TIME, M1).rsi(3);
+        rsiReady = rsi.isReady();
+        rsiValue = rsi.isReady() ? rsi.value() : 0;
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  const uint64_t M1_NS = 60ull * 1'000'000'000ull;
+  // Climb from 100 → 110 over 8 bars so the fast EMA(3) ends well above
+  // the slow EMA(6).
+  for (int i = 0; i < 8; ++i)
+  {
+    BarEvent ev{};
+    ev.symbol = symIds[0];
+    ev.barType = BarType::Time;
+    ev.barTypeParam = M1_NS;
+    double price = 100.0 + i * 1.5;
+    ev.bar.open = Price::fromDouble(price);
+    ev.bar.close = Price::fromDouble(price + 0.5);
+    ev.bar.high = Price::fromDouble(price + 1.0);
+    ev.bar.low = Price::fromDouble(price - 0.5);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M1_NS) * i}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M1_NS) * (i + 1)}};
+    bridge->onBar(ev);
+  }
+
+  auto* ctx = jsStrat.engine().context();
+
+  JSValue ready = jsStrat.engine().getGlobalProperty("crossUpReady");
+  EXPECT_TRUE(JS_ToBool(ctx, ready));
+  JS_FreeValue(ctx, ready);
+
+  JSValue val = jsStrat.engine().getGlobalProperty("crossUpValue");
+  EXPECT_TRUE(JS_ToBool(ctx, val));
+  JS_FreeValue(ctx, val);
+
+  JSValue rready = jsStrat.engine().getGlobalProperty("rsiReady");
+  EXPECT_TRUE(JS_ToBool(ctx, rready));
+  JS_FreeValue(ctx, rready);
+
+  JSValue rval = jsStrat.engine().getGlobalProperty("rsiValue");
+  double rsiV = 0;
+  JS_ToFloat64(ctx, &rsiV, rval);
+  // Climbing series → RSI well above 50, ideally near 100.
+  EXPECT_GT(rsiV, 80.0);
+  JS_FreeValue(ctx, rval);
+}
+
+TEST(JsIntegrationTest, CompositeDslLogicalOps)
+{
+  TempJsFile script(R"(
+    var andReady = false;
+    var andValue = false;
+    var orValue = false;
+    var notValue = false;
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT"] }); }
+      onBar(ctx, bar) {
+        var M1 = 60 * 1000000000;
+        var fast = when(this, "BTCUSDT", 0, M1).ema(3);
+        var slow = when(this, "BTCUSDT", 0, M1).ema(6);
+        var crossUp = fast.gt(slow);
+        var aboveHundred = fast.gt(99);
+
+        var both = crossUp.and(aboveHundred);
+        var either = crossUp.or(aboveHundred);
+        var notCross = crossUp.not();
+
+        andReady = both.isReady();
+        andValue = both.isReady() ? both.value() : false;
+        orValue = either.isReady() ? either.value() : false;
+        notValue = notCross.isReady() ? notCross.value() : false;
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  const uint64_t M1_NS = 60ull * 1'000'000'000ull;
+  for (int i = 0; i < 8; ++i)
+  {
+    BarEvent ev{};
+    ev.symbol = symIds[0];
+    ev.barType = BarType::Time;
+    ev.barTypeParam = M1_NS;
+    double price = 100.0 + i * 1.5;
+    ev.bar.open = Price::fromDouble(price);
+    ev.bar.close = Price::fromDouble(price + 0.5);
+    ev.bar.high = Price::fromDouble(price + 1.0);
+    ev.bar.low = Price::fromDouble(price - 0.5);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M1_NS) * i}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M1_NS) * (i + 1)}};
+    bridge->onBar(ev);
+  }
+
+  auto* ctx = jsStrat.engine().context();
+
+  JSValue ar = jsStrat.engine().getGlobalProperty("andReady");
+  EXPECT_TRUE(JS_ToBool(ctx, ar));
+  JS_FreeValue(ctx, ar);
+
+  JSValue av = jsStrat.engine().getGlobalProperty("andValue");
+  EXPECT_TRUE(JS_ToBool(ctx, av));
+  JS_FreeValue(ctx, av);
+
+  JSValue ov = jsStrat.engine().getGlobalProperty("orValue");
+  EXPECT_TRUE(JS_ToBool(ctx, ov));
+  JS_FreeValue(ctx, ov);
+
+  JSValue nv = jsStrat.engine().getGlobalProperty("notValue");
+  EXPECT_FALSE(JS_ToBool(ctx, nv));
+  JS_FreeValue(ctx, nv);
+}
+
+// ============================================================
 // Multi-TF alignment helpers (W1-T027)
 //
 // Parity with the pybind11 + NAPI surface added in T026: a JS strategy

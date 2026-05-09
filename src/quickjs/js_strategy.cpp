@@ -21,6 +21,10 @@ static const char* const LATENCY_JS =
 #include "js_stdlib_latency.inc"
     ;
 
+static const char* const COMPOSITE_JS =
+#include "js_stdlib_composite.inc"
+    ;
+
 namespace flox
 {
 
@@ -73,6 +77,10 @@ void FloxJsStrategy::loadStdlib()
   if (!_engine.eval(LATENCY_JS, "flox/latency.js"))
   {
     throw std::runtime_error("Failed to load latency.js: " + _engine.getErrorMessage());
+  }
+  if (!_engine.eval(COMPOSITE_JS, "flox/composite.js"))
+  {
+    throw std::runtime_error("Failed to load composite.js: " + _engine.getErrorMessage());
   }
 
   // Create flox global object with register() and batch indicators

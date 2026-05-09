@@ -67,11 +67,22 @@ add_custom_command(
   COMMENT "Embedding latency.js"
 )
 
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_composite.inc
+  COMMAND ${CMAKE_COMMAND}
+    -DIN_FILE=${JS_STDLIB_DIR}/composite.js
+    -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_composite.inc
+    -P ${GEN_INC_SCRIPT}
+  DEPENDS ${JS_STDLIB_DIR}/composite.js ${GEN_INC_SCRIPT}
+  COMMENT "Embedding composite.js"
+)
+
 add_custom_target(js_stdlib_gen DEPENDS
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_strategy.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_indicators.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_targets.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_latency.inc
+  ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_composite.inc
 )
 
 # flox_quickjs static library
