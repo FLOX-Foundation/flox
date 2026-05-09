@@ -1963,9 +1963,29 @@
           "name": "flox_strategy_destroy"
         },
         {
+          "group": "multi_tf_helpers",
+          "kind": "function",
+          "name": "flox_strategy_get_bar_ring_capacity"
+        },
+        {
+          "group": "multi_tf_helpers",
+          "kind": "function",
+          "name": "flox_strategy_last_closed_bar"
+        },
+        {
+          "group": "multi_tf_helpers",
+          "kind": "function",
+          "name": "flox_strategy_last_n_closed_bars"
+        },
+        {
           "group": "strategy_lifecycle",
           "kind": "function",
           "name": "flox_strategy_replace_callbacks"
+        },
+        {
+          "group": "multi_tf_helpers",
+          "kind": "function",
+          "name": "flox_strategy_set_bar_ring_capacity"
         },
         {
           "group": "indicatorgraph",
@@ -2531,6 +2551,7 @@
         "logger",
         "market_profile",
         "metrics",
+        "multi_tf_helpers",
         "order_book",
         "order_tracker",
         "partitioner",
@@ -4126,7 +4147,23 @@
         },
         {
           "kind": "function",
+          "name": "flox_strategy_get_bar_ring_capacity"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_last_closed_bar"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_last_n_closed_bars"
+        },
+        {
+          "kind": "function",
           "name": "flox_strategy_replace_callbacks"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_set_bar_ring_capacity"
         },
         {
           "kind": "function",
@@ -6530,6 +6567,28 @@
         ],
         "functions": [],
         "status": "required"
+      }
+    },
+    "multi_tf_helpers": {
+      "capi_functions": [
+        "flox_strategy_get_bar_ring_capacity",
+        "flox_strategy_last_closed_bar",
+        "flox_strategy_last_n_closed_bars",
+        "flox_strategy_set_bar_ring_capacity"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
       }
     },
     "order_book": {

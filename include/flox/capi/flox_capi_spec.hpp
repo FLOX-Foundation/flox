@@ -589,6 +589,28 @@ extern "C"
                                       uint32_t max_bars);
 
   // ============================================================
+  // Multi-timeframe alignment helpers
+  // ============================================================
+  //
+  // Read the per-(symbol, timeframe) bar ring the engine populates as
+  // it dispatches BarEvents to the strategy. `bar_type` matches
+  // FloxBarData (0=Time, 1=Tick, ...); `param` is interval-ns for
+  // time bars, count for tick bars, threshold for volume bars.
+
+  FLOX_EXPORT(group = "multi_tf_helpers")
+  uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol,
+                                        uint8_t bar_type, uint64_t param,
+                                        FloxBar* out);
+  FLOX_EXPORT(group = "multi_tf_helpers")
+  uint32_t flox_strategy_last_n_closed_bars(FloxStrategyHandle s, uint32_t symbol,
+                                            uint8_t bar_type, uint64_t param,
+                                            FloxBar* bars_out, uint32_t max_bars);
+  FLOX_EXPORT(group = "multi_tf_helpers")
+  uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s);
+  FLOX_EXPORT(group = "multi_tf_helpers")
+  void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
+
+  // ============================================================
   // Position tracking
   // ============================================================
 

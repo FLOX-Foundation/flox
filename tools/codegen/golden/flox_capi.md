@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 427 functions, 40 handles, 48 structs, 33 callback typedefs, 2 enums, 53 groups.
+**Surface:** 431 functions, 40 handles, 48 structs, 33 callback typedefs, 2 enums, 54 groups.
 
 ## Opaque handles
 
@@ -1022,6 +1022,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)`
 - `void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine, FloxPnLTrackerHandle tracker)`
 - `void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker)`
+
+### multi_tf_helpers
+
+- `uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol, uint8_t bar_type, uint64_t param, FloxBar * out)`
+- `uint32_t flox_strategy_last_n_closed_bars(FloxStrategyHandle s, uint32_t symbol, uint8_t bar_type, uint64_t param, FloxBar * bars_out, uint32_t max_bars)`
+- `uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s)`
+- `void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity)`
 
 ### order_book
 

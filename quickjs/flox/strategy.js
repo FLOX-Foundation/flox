@@ -104,6 +104,29 @@ class Strategy {
     midPrice(symbol) { return __flox_mid_price(this._handle, this._resolve(symbol)); }
     orderStatus(orderId) { return __flox_get_order_status(this._handle, orderId); }
 
+    // --- Multi-timeframe alignment helpers ---
+    //
+    // The engine pushes each closed bar into a per-(symbol, type, param) ring as
+    // it dispatches BarEvents. `lastClosedBar` returns the most recent or null;
+    // `lastNClosedBars` returns up to `n` bars oldest-first. `barType` is 0=Time,
+    // 1=Tick, 2=Volume, ...; `param` matches BarEvent.barTypeParam (interval-ns
+    // for Time bars, count for Tick bars, threshold for Volume bars).
+
+    lastClosedBar(symbol, barType, param) {
+        return __flox_strategy_last_closed_bar(this._handle, this._resolve(symbol),
+            barType, param);
+    }
+    lastNClosedBars(symbol, barType, param, n) {
+        return __flox_strategy_last_n_closed_bars(this._handle, this._resolve(symbol),
+            barType, param, n);
+    }
+    get barRingCapacity() {
+        return __flox_strategy_get_bar_ring_capacity(this._handle);
+    }
+    setBarRingCapacity(n) {
+        __flox_strategy_set_bar_ring_capacity(this._handle, n);
+    }
+
     // --- Properties ---
 
     get primarySymbol() { return this._symbolNames[0]; }

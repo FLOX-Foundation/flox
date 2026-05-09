@@ -1262,6 +1262,17 @@ extern "C"
   void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker);
 
   // ============================================================
+  // Multi Tf Helpers
+  // ============================================================
+
+  uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol, uint8_t bar_type,
+                                        uint64_t param, FloxBar* out);
+  uint32_t flox_strategy_last_n_closed_bars(FloxStrategyHandle s, uint32_t symbol, uint8_t bar_type,
+                                            uint64_t param, FloxBar* bars_out, uint32_t max_bars);
+  uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s);
+  void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
+
+  // ============================================================
   // Order Book
   // ============================================================
 
