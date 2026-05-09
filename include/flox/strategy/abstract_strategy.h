@@ -16,6 +16,7 @@ namespace flox
 {
 
 class ISignalHandler;
+class IPositionManager;
 
 class IStrategy : public ISubsystem, public IMarketDataSubscriber
 {
@@ -23,6 +24,7 @@ class IStrategy : public ISubsystem, public IMarketDataSubscriber
   virtual ~IStrategy() = default;
 
   virtual void setSignalHandler(ISignalHandler*) {}
+  virtual void setPositionManager(IPositionManager*) {}
 };
 
 }  // namespace flox

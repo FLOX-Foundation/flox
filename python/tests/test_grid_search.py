@@ -99,7 +99,7 @@ class GridSearchTests(unittest.TestCase):
                         return
                     if f > s and ctx.is_flat():
                         self.market_buy(0.01)
-                    elif f < s and ctx.is_flat():
+                    elif f < s and ctx.is_long():
                         self.market_sell(0.01)
 
             bt = flox.BacktestRunner(reg, 0.0004, 10_000)

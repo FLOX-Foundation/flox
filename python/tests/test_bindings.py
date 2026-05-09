@@ -435,9 +435,13 @@ if os.path.exists(bt_csv):
             s = self.slow.update(t.price)
             if f is None or s is None:
                 return
+            # Long-only crossover with a real exit side. `totalTrades`
+            # counts round-trip trades (a buy is not a "trade" until
+            # it's closed by an opposing sell), so the strategy needs
+            # both branches to surface in stats.
             if f > s and ctx.is_flat():
                 self.market_buy(0.01)
-            elif f < s and ctx.is_flat():
+            elif f < s and ctx.is_long():
                 self.market_sell(0.01)
 
     bt = flox.BacktestRunner(reg2, fee_rate=0.0004, initial_capital=10_000)

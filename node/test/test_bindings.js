@@ -302,8 +302,11 @@ if (fs.existsSync(btCsv)) {
       const f = fast.update(t.price);
       const s = slow.update(t.price);
       if (f === null || s === null) return;
+      // Long-only crossover with a real exit side. `totalTrades`
+      // counts round-trip trades, so the strategy needs both
+      // entry (flat → long) and exit (long → flat) to surface.
       if (f > s && ctx.position === 0) emit.marketBuy(0.01);
-      else if (f < s && ctx.position === 0) emit.marketSell(0.01);
+      else if (f < s && ctx.position > 0) emit.marketSell(0.01);
     },
   };
 
@@ -364,7 +367,7 @@ if (fs.existsSync(wfCsv)) {
         const s = slow.update(t.price);
         if (f === null || s === null || !slow.ready) return;
         if (f > s && ctx.position === 0) emit.marketBuy(0.01);
-        else if (f < s && ctx.position === 0) emit.marketSell(0.01);
+        else if (f < s && ctx.position > 0) emit.marketSell(0.01);
       },
     };
   });
@@ -390,7 +393,7 @@ if (fs.existsSync(wfCsv)) {
         const f = fast.update(t.price), s = slow.update(t.price);
         if (f === null || s === null || !slow.ready) return;
         if (f > s && ctx.position === 0) emit.marketBuy(0.01);
-        else if (f < s && ctx.position === 0) emit.marketSell(0.01);
+        else if (f < s && ctx.position > 0) emit.marketSell(0.01);
       },
     };
   });
