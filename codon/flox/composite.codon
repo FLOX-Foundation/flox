@@ -1,0 +1,189 @@
+# Composite-condition DSL for Codon strategies (W1-T028).
+# Mirrors python/flox_py/composite.py, quickjs/flox/composite.js, and
+# node/lib/composite.js.
+#
+#   when(strategy, symbol, bar_type, param) → TfHandle
+#   .sma(p) / .ema(p) / .rsi(p) / .close() → Indicator
+#   Indicator.lt(value) / .gt(other) → Compare (vs scalar) / CompareInd (vs indicator)
+#
+# The DSL sits on top of `Strategy.last_n_closed_bars`. No new C ABI.
+# Codon's generics make heterogeneous condition trees awkward, so
+# logical composition (`and` / `or` / `not`) is performed on the
+# booleans returned by `.value()` rather than on the tree — the
+# semantics are identical.
+
+from flox.types import BarData
+
+
+# Bar-type ids matching include/flox/aggregator/bar.h.
+BAR_TYPE_TIME = 0
+BAR_TYPE_TICK = 1
+BAR_TYPE_VOLUME = 2
+BAR_TYPE_RENKO = 3
+BAR_TYPE_RANGE = 4
+BAR_TYPE_HEIKIN_ASHI = 5
+BAR_TYPE_BPS_RANGE = 6
+
+
+class Indicator[S]:
+    _strategy: S
+    _sym: int
+    _bt: int
+    _param: int
+    _n: int
+    _kind: str
+
+    def __init__(self, strategy: S, symbol: int, bar_type: int, param: int,
+                 period: int, kind: str):
+        self._strategy = strategy
+        self._sym = symbol
+        self._bt = bar_type
+        self._param = param
+        self._n = period
+        self._kind = kind
+
+    def _needed(self) -> int:
+        return self._n + 1 if self._kind == "rsi" else self._n
+
+    def _bars(self) -> List[BarData]:
+        return self._strategy.last_n_closed_bars(
+            self._sym, self._bt, self._param, self._needed())
+
+    def is_ready(self) -> bool:
+        return len(self._bars()) >= self._needed()
+
+    def value(self) -> float:
+        bars = self._bars()
+        need = self._needed()
+        if len(bars) < need:
+            return float('nan')
+        slice_start = len(bars) - need
+        if slice_start < 0:
+            slice_start = 0
+        closes = list[float]()
+        for i in range(slice_start, len(bars)):
+            closes.append(bars[i].close)
+        if self._kind == "sma":
+            tail = closes[-self._n:]
+            s = 0.0
+            for c in tail:
+                s += c
+            return s / float(self._n)
+        if self._kind == "ema":
+            alpha = 2.0 / float(self._n + 1)
+            v = closes[0]
+            for k in range(1, len(closes)):
+                v = alpha * closes[k] + (1.0 - alpha) * v
+            return v
+        if self._kind == "rsi":
+            gains = 0.0
+            losses = 0.0
+            for m in range(1, len(closes)):
+                d = closes[m] - closes[m - 1]
+                if d >= 0:
+                    gains += d
+                else:
+                    losses -= d
+            avg_g = gains / float(self._n)
+            avg_l = losses / float(self._n)
+            if avg_l == 0.0:
+                return 100.0
+            rs = avg_g / avg_l
+            return 100.0 - (100.0 / (1.0 + rs))
+        if self._kind == "close":
+            return closes[-1]
+        raise ValueError("unknown indicator kind: " + self._kind)
+
+    def lt(self, rhs: float):
+        return Compare[Indicator[S]](self, rhs, "lt")
+    def le(self, rhs: float):
+        return Compare[Indicator[S]](self, rhs, "le")
+    def gt(self, rhs: float):
+        return Compare[Indicator[S]](self, rhs, "gt")
+    def ge(self, rhs: float):
+        return Compare[Indicator[S]](self, rhs, "ge")
+    def eq(self, rhs: float):
+        return Compare[Indicator[S]](self, rhs, "eq")
+    def ne(self, rhs: float):
+        return Compare[Indicator[S]](self, rhs, "ne")
+    def lt_ind(self, other):
+        return CompareInd[Indicator[S]](self, other, "lt")
+    def le_ind(self, other):
+        return CompareInd[Indicator[S]](self, other, "le")
+    def gt_ind(self, other):
+        return CompareInd[Indicator[S]](self, other, "gt")
+    def ge_ind(self, other):
+        return CompareInd[Indicator[S]](self, other, "ge")
+
+
+class Compare[I]:
+    _ind: I
+    _rhs: float
+    _op: str
+
+    def __init__(self, ind: I, rhs: float, op: str):
+        self._ind = ind
+        self._rhs = rhs
+        self._op = op
+
+    def is_ready(self) -> bool:
+        return self._ind.is_ready()
+
+    def value(self) -> bool:
+        v = self._ind.value()
+        if self._op == "lt": return v < self._rhs
+        if self._op == "le": return v <= self._rhs
+        if self._op == "gt": return v > self._rhs
+        if self._op == "ge": return v >= self._rhs
+        if self._op == "eq": return v == self._rhs
+        if self._op == "ne": return v != self._rhs
+        return False
+
+
+class CompareInd[I]:
+    _lhs: I
+    _rhs: I
+    _op: str
+
+    def __init__(self, lhs: I, rhs: I, op: str):
+        self._lhs = lhs
+        self._rhs = rhs
+        self._op = op
+
+    def is_ready(self) -> bool:
+        return self._lhs.is_ready() and self._rhs.is_ready()
+
+    def value(self) -> bool:
+        a = self._lhs.value()
+        b = self._rhs.value()
+        if self._op == "lt": return a < b
+        if self._op == "le": return a <= b
+        if self._op == "gt": return a > b
+        if self._op == "ge": return a >= b
+        return False
+
+
+class TfHandle[S]:
+    _strategy: S
+    _sym: int
+    _bt: int
+    _param: int
+
+    def __init__(self, strategy: S, symbol: int, bar_type: int, param: int):
+        self._strategy = strategy
+        self._sym = symbol
+        self._bt = bar_type
+        self._param = param
+
+    def sma(self, period: int) -> Indicator[S]:
+        return Indicator[S](self._strategy, self._sym, self._bt, self._param, period, "sma")
+    def ema(self, period: int) -> Indicator[S]:
+        return Indicator[S](self._strategy, self._sym, self._bt, self._param, period, "ema")
+    def rsi(self, period: int) -> Indicator[S]:
+        return Indicator[S](self._strategy, self._sym, self._bt, self._param, period, "rsi")
+    def close(self) -> Indicator[S]:
+        return Indicator[S](self._strategy, self._sym, self._bt, self._param, 1, "close")
+
+
+def when(strategy, symbol: int, bar_type: int, param: int):
+    return TfHandle(strategy, symbol, bar_type, param)

@@ -1,0 +1,95 @@
+# Smoke test for the Codon composite DSL (W1-T028). Drives a fake
+# strategy holding a synthetic bar ring; engine integration is
+# exercised in C++ + QuickJS + pybind11 already.
+
+from flox.types import BarData
+from flox.composite import when, BAR_TYPE_TIME
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def make_bar(close: float) -> BarData:
+    b = BarData()
+    b.symbol = 1
+    b.symbol_name = "BTCUSDT"
+    b.bar_type = 0
+    b.bar_type_param = 60_000_000_000
+    b.open = close
+    b.high = close
+    b.low = close
+    b.close = close
+    b.volume = 0.0
+    b.buy_volume = 0.0
+    b.start_time_ns = 0
+    b.end_time_ns = 60_000_000_000
+    b.close_reason = 0
+    return b
+
+
+class FakeStrat:
+    bars: List[BarData]
+
+    def __init__(self, bars: List[BarData]):
+        self.bars = bars
+
+    def last_n_closed_bars(self, _sym: int, _bt: int, _param: int,
+                            n: int) -> List[BarData]:
+        start = len(self.bars) - n
+        if start < 0:
+            start = 0
+        out = list[BarData]()
+        for i in range(start, len(self.bars)):
+            out.append(self.bars[i])
+        return out
+
+
+def run():
+    M1 = 60_000_000_000
+
+    # Climbing series: 100, 101.5, 103, ..., 110.5
+    climb = list[BarData]()
+    for i in range(8):
+        climb.append(make_bar(100.0 + float(i) * 1.5))
+    strat = FakeStrat(climb)
+
+    fast = when(strat, 1, BAR_TYPE_TIME, M1).ema(3)
+    slow = when(strat, 1, BAR_TYPE_TIME, M1).ema(6)
+    check("fast EMA ready", fast.is_ready())
+    check("slow EMA ready", slow.is_ready())
+
+    cross = fast.gt_ind(slow)
+    check("cross is_ready", cross.is_ready())
+    check("fast > slow on uptrend", cross.value())
+
+    rsi = when(strat, 1, BAR_TYPE_TIME, M1).rsi(3)
+    check("rsi ready", rsi.is_ready())
+    check("rsi above 80 on monotone climb", rsi.value() > 80.0)
+
+    # Logical composition: combine boolean values returned by .value()
+    # rather than building a tree (Codon's strict generics don't model
+    # heterogeneous condition trees as gracefully as Python).
+    above100 = when(strat, 1, BAR_TYPE_TIME, M1).close().gt(99.0)
+    check("close > 99", above100.value())
+    fast_above_50 = fast.gt(50.0)
+    both = fast_above_50.is_ready() and above100.is_ready() and \
+           fast_above_50.value() and above100.value()
+    check("and value", both)
+    either = fast_above_50.value() or above100.value()
+    check("or value", either)
+    not_above = not above100.value()
+    check("not value (close > 99 was True; not is False)", not not_above)
+
+    # Empty ring short-circuits.
+    empty = FakeStrat(list[BarData]())
+    empty_fast = when(empty, 1, BAR_TYPE_TIME, M1).ema(3)
+    check("empty ring not ready", not empty_fast.is_ready())
+
+    print("codon composite DSL smoke ok")
+
+
+run()

@@ -137,6 +137,9 @@ class Strategy {
 
     _resolve(symbol) {
         var name = symbol !== undefined && symbol !== null ? symbol : this._symbolNames[0];
+        // Numeric symbols pass through unchanged so the composite DSL can
+        // pass `ctx.symbolId` directly without re-stringifying.
+        if (typeof name === 'number') return name;
         var id = this._symbolMap[name];
         if (id === undefined) {
             throw new Error("Unknown symbol: " + name);
