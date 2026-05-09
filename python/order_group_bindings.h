@@ -53,34 +53,21 @@ inline void bindOrderGroup(py::module_& m)
            py::arg("policy") = flox::OrderGroupPolicy::BestEffort)
       .def("parent_signal_id", &flox::OrderGroup::parentSignalId)
       .def("policy", &flox::OrderGroup::policy)
-      .def("add_market_leg",
-           [](flox::OrderGroup& g, uint32_t symbol, uint8_t side, double qty)
-           { return g.addMarketLeg(symbol, side, flox::Quantity::fromDouble(qty)); },
-           py::arg("symbol"), py::arg("side"), py::arg("qty"))
-      .def("add_limit_leg",
-           [](flox::OrderGroup& g, uint32_t symbol, uint8_t side, double price, double qty)
-           {
-             return g.addLimitLeg(symbol, side, flox::Price::fromDouble(price),
-                                  flox::Quantity::fromDouble(qty));
-           },
-           py::arg("symbol"), py::arg("side"), py::arg("price"), py::arg("qty"))
+      .def("add_market_leg", [](flox::OrderGroup& g, uint32_t symbol, uint8_t side, double qty)
+           { return g.addMarketLeg(symbol, side, flox::Quantity::fromDouble(qty)); }, py::arg("symbol"), py::arg("side"), py::arg("qty"))
+      .def("add_limit_leg", [](flox::OrderGroup& g, uint32_t symbol, uint8_t side, double price, double qty)
+           { return g.addLimitLeg(symbol, side, flox::Price::fromDouble(price),
+                                  flox::Quantity::fromDouble(qty)); }, py::arg("symbol"), py::arg("side"), py::arg("price"), py::arg("qty"))
       .def("leg_count", &flox::OrderGroup::legCount)
-      .def("leg_state",
-           [](const flox::OrderGroup& g, size_t idx) { return g.leg(idx).state; },
-           py::arg("leg_index"))
-      .def("leg_filled",
-           [](const flox::OrderGroup& g, size_t idx)
-           { return g.leg(idx).filledQty.toDouble(); },
-           py::arg("leg_index"))
-      .def("leg_order_id",
-           [](const flox::OrderGroup& g, size_t idx) { return g.leg(idx).orderId; },
-           py::arg("leg_index"))
-      .def("record_submit", &flox::OrderGroup::recordSubmit,
-           py::arg("leg_index"), py::arg("order_id"))
-      .def("record_fill",
-           [](flox::OrderGroup& g, size_t idx, double cumulative_qty)
-           { g.recordFill(idx, flox::Quantity::fromDouble(cumulative_qty)); },
-           py::arg("leg_index"), py::arg("cumulative_qty"))
+      .def("leg_state", [](const flox::OrderGroup& g, size_t idx)
+           { return g.leg(idx).state; }, py::arg("leg_index"))
+      .def("leg_filled", [](const flox::OrderGroup& g, size_t idx)
+           { return g.leg(idx).filledQty.toDouble(); }, py::arg("leg_index"))
+      .def("leg_order_id", [](const flox::OrderGroup& g, size_t idx)
+           { return g.leg(idx).orderId; }, py::arg("leg_index"))
+      .def("record_submit", &flox::OrderGroup::recordSubmit, py::arg("leg_index"), py::arg("order_id"))
+      .def("record_fill", [](flox::OrderGroup& g, size_t idx, double cumulative_qty)
+           { g.recordFill(idx, flox::Quantity::fromDouble(cumulative_qty)); }, py::arg("leg_index"), py::arg("cumulative_qty"))
       .def("record_cancel", &flox::OrderGroup::recordCancel, py::arg("leg_index"))
       .def("record_failure", &flox::OrderGroup::recordFailure, py::arg("leg_index"))
       .def("state", &flox::OrderGroup::state)

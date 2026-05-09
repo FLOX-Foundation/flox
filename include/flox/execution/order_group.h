@@ -37,22 +37,22 @@ enum class LegState : uint8_t
 
 enum class OrderGroupState : uint8_t
 {
-  Pending = 0,           // not all legs submitted yet
-  Submitted = 1,         // all legs submitted, none terminal
-  PartiallyFilled = 2,   // some terminal (filled), not all
-  Filled = 3,            // all legs filled
-  Cancelled = 4,         // user-driven cancel ran
-  Reverting = 5,         // AllOrNothing: a leg failed; recommend reverts
-  Failed = 6,            // every leg in a non-fill terminal state
+  Pending = 0,          // not all legs submitted yet
+  Submitted = 1,        // all legs submitted, none terminal
+  PartiallyFilled = 2,  // some terminal (filled), not all
+  Filled = 3,           // all legs filled
+  Cancelled = 4,        // user-driven cancel ran
+  Reverting = 5,        // AllOrNothing: a leg failed; recommend reverts
+  Failed = 6,           // every leg in a non-fill terminal state
 };
 
 struct OrderGroupLeg
 {
   SymbolId symbol{};
-  uint8_t side = 0;        // 0 = BUY, 1 = SELL
+  uint8_t side = 0;  // 0 = BUY, 1 = SELL
   Quantity targetQty{};
-  uint8_t orderType = 1;   // 0 = LIMIT, 1 = MARKET
-  Price limitPrice{};      // valid when orderType == 0
+  uint8_t orderType = 1;  // 0 = LIMIT, 1 = MARKET
+  Price limitPrice{};     // valid when orderType == 0
   OrderId orderId = 0;
   Quantity filledQty{};
   LegState state = LegState::Pending;
@@ -65,16 +65,16 @@ struct OrderGroupAction
 {
   enum class Kind : uint8_t
   {
-    CancelLeg = 0,   // cancel the existing order on this leg (OneSided)
-    RevertLeg = 1,   // submit an opposite-side market order to undo a fill (AllOrNothing)
+    CancelLeg = 0,  // cancel the existing order on this leg (OneSided)
+    RevertLeg = 1,  // submit an opposite-side market order to undo a fill (AllOrNothing)
   };
 
   Kind kind{Kind::CancelLeg};
   size_t legIndex = 0;
-  OrderId orderId = 0;       // for CancelLeg
-  SymbolId symbol{};         // for RevertLeg
-  uint8_t side = 0;          // for RevertLeg (opposite side of the original fill)
-  Quantity qty{};            // for RevertLeg (filled qty to undo)
+  OrderId orderId = 0;  // for CancelLeg
+  SymbolId symbol{};    // for RevertLeg
+  uint8_t side = 0;     // for RevertLeg (opposite side of the original fill)
+  Quantity qty{};       // for RevertLeg (filled qty to undo)
 };
 
 // `OrderGroup` is a passive state machine: callers feed it leg

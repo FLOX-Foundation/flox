@@ -52,9 +52,18 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
         if (p.IsString())
         {
           std::string s = p.As<Napi::String>().Utf8Value();
-          if (s == "BestEffort") policy = 0;
-          else if (s == "AllOrNothing") policy = 1;
-          else if (s == "OneSided") policy = 2;
+          if (s == "BestEffort")
+          {
+            policy = 0;
+          }
+          else if (s == "AllOrNothing")
+          {
+            policy = 1;
+          }
+          else if (s == "OneSided")
+          {
+            policy = 2;
+          }
           else
           {
             Napi::TypeError::New(info.Env(),
@@ -102,8 +111,8 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     double price = info[2].As<Napi::Number>().DoubleValue();
     double qty = info[3].As<Napi::Number>().DoubleValue();
     return Napi::Number::New(info.Env(), flox_order_group_add_limit_leg(
-                                            _h, sym, side, flox_price_from_double(price),
-                                            flox_quantity_from_double(qty)));
+                                             _h, sym, side, flox_price_from_double(price),
+                                             flox_quantity_from_double(qty)));
   }
 
   Napi::Value LegCount(const Napi::CallbackInfo& info)
