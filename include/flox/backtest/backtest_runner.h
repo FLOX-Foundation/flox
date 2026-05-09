@@ -16,6 +16,7 @@
 #include "flox/backtest/simulated_executor.h"
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/execution/abstract_executor.h"
+#include "flox/position/multi_mode_position_tracker.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/strategy/abstract_signal_handler.h"
 #include "flox/strategy/strategy.h"
@@ -179,6 +180,12 @@ class BacktestRunner : public ISignalHandler
   // here instead of to the built-in SimulatedExecutor.
   IOrderExecutor* _customExecutor{nullptr};
   IStrategy* _strategy{nullptr};
+  // Built-in position tracker. Wired as an execution listener at
+  // construction and attached to the strategy in setStrategy() so
+  // `ctx.position` / `ctx.is_long()` / `ctx.is_flat()` reflect fills
+  // the simulator dispatches. Subscriber id is internal — does not
+  // collide with user-registered listeners.
+  MultiModePositionTracker _positionTracker{0xFEFEFEFEu};
   std::vector<IMarketDataSubscriber*> _marketDataSubscribers;
   std::vector<IOrderExecutionListener*> _executionListeners;
   OrderId _nextOrderId{1};

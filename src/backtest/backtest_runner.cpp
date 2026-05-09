@@ -25,6 +25,12 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
   _executor.setOrderEventCallback(
       [this](const OrderEvent& ev)
       {
+        // The built-in position tracker has to receive fills before
+        // any user listener — strategies that read `ctx.position`
+        // inside an order-event handler need the tracker already
+        // updated when their listener fires. User listeners are
+        // appended after via addExecutionListener().
+        ev.dispatchTo(_positionTracker);
         for (auto* listener : _executionListeners)
         {
           ev.dispatchTo(*listener);
@@ -36,6 +42,11 @@ void BacktestRunner::setStrategy(IStrategy* strategy)
 {
   _strategy = strategy;
   strategy->setSignalHandler(this);
+  // Without this wire `ctx.position` / `ctx.is_long()` / `ctx.is_flat()`
+  // never reflect fills the executor dispatches. Strategy::onTrade /
+  // onBar / onBookUpdate refresh the per-symbol context from this
+  // tracker before each handler call.
+  strategy->setPositionManager(&_positionTracker);
 }
 
 void BacktestRunner::addMarketDataSubscriber(IMarketDataSubscriber* subscriber)

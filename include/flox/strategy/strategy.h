@@ -82,7 +82,7 @@ class Strategy : public IStrategy
 
   void setSignalHandler(ISignalHandler* handler) override { _signalHandler = handler; }
   void setOrderTracker(OrderTracker* tracker) noexcept { _orderTracker = tracker; }
-  void setPositionManager(IPositionManager* pm) noexcept { _positionManager = pm; }
+  void setPositionManager(IPositionManager* pm) noexcept override { _positionManager = pm; }
 
   void onTrade(const TradeEvent& ev) final
   {
@@ -95,6 +95,7 @@ class Strategy : public IStrategy
     auto& c = _contexts[sym];
     c.lastTradePrice = ev.trade.price;
     c.lastUpdateNs = ev.trade.exchangeTsNs;
+    refreshPosition(c, sym);
 
     onSymbolTrade(c, ev);
   }
@@ -110,6 +111,7 @@ class Strategy : public IStrategy
     auto& c = _contexts[sym];
     c.book.applyBookUpdate(ev);
     c.lastUpdateNs = ev.update.exchangeTsNs;
+    refreshPosition(c, sym);
 
     onSymbolBook(c, ev);
   }
@@ -125,6 +127,7 @@ class Strategy : public IStrategy
     auto& c = _contexts[sym];
     c.lastTradePrice = ev.bar.close;
     c.lastUpdateNs = ev.bar.endTime.time_since_epoch().count();
+    refreshPosition(c, sym);
 
     // Push into the per-(symbol, timeframe) ring so multi-TF strategies
     // can recall the last N closed bars without bookkeeping by hand.
@@ -359,6 +362,21 @@ class Strategy : public IStrategy
   {
     static std::atomic<OrderId> s_globalOrderId{1};
     return s_globalOrderId++;
+  }
+
+  // Pull the latest position from the attached IPositionManager into
+  // the per-symbol context so `ctx.position` / `ctx.is_long()` /
+  // `ctx.is_flat()` reflect fills the executor has dispatched. Without
+  // this hook the SymbolContext.position field is dead — initialised
+  // to zero and never updated — which silently produces 0-trade
+  // backtests when a strategy guards entries on `ctx.is_flat()` and
+  // exits on `ctx.is_long()`.
+  void refreshPosition(SymbolContext& c, SymbolId sym) noexcept
+  {
+    if (_positionManager)
+    {
+      c.position = _positionManager->getPosition(sym);
+    }
   }
 
   SubscriberId _id;
