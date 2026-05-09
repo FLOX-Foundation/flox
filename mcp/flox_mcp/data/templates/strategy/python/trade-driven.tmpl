@@ -3,6 +3,10 @@
 Reacts on every print (``on_trade``); ignores bars. Use this kind
 when your signal cares about microstructure or sub-bar latency.
 """
+# Next pieces of the project (run these via the MCP server):
+#   docs_search("project layout") — strategy / data / backtest folder shape
+#   docs_search("record tape")    — capture market data into a .floxlog
+#   docs_search("backtest")       — drive this strategy off a recorded tape
 from __future__ import annotations
 
 import flox_py as flox

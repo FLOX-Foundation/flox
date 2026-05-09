@@ -1,0 +1,32 @@
+// ${name} — bar-driven QuickJS strategy.
+//
+// Reacts on each finished bar (onBar); ignores tick events. Most
+// classical TA fits here. Loaded by `flox_js_runner` against an
+// already-set-up engine; `Strategy` and `SMA` are global.
+//
+// Next pieces of the project (run these via the MCP server):
+//   docs_search("project layout") — strategy / data / backtest folder shape
+//   docs_search("record tape")    — capture market data into a .floxlog
+//   docs_search("backtest")       — drive this strategy off a recorded tape
+
+class ${name} extends Strategy {
+    constructor() {
+        super({ exchange: "Binance", symbols: ["BTCUSDT"] });
+        this.fast = new SMA(10);
+        this.slow = new SMA(30);
+        this.orderSize = 0.01;
+    }
+
+    onBar(ctx, bar) {
+        var f = this.fast.update(bar.close);
+        var s = this.slow.update(bar.close);
+        if (!this.slow.ready) return;
+        if (f > s && ctx.isFlat()) {
+            this.marketBuy({ qty: this.orderSize });
+        } else if (f < s && ctx.isLong()) {
+            this.marketSell({ qty: this.orderSize });
+        }
+    }
+}
+
+flox.register(new ${name}());

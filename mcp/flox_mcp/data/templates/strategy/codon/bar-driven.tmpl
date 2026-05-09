@@ -1,0 +1,38 @@
+# ${name} — bar-driven Codon strategy.
+#
+# Receives one on_bar per finished bar; ignores tick events. Most
+# classical TA fits here. Compiled to native code by the Codon
+# compiler.
+#
+# Next pieces of the project (run these via the MCP server):
+#   docs_search("project layout") — strategy / data / backtest folder shape
+#   docs_search("record tape")    — capture market data into a .floxlog
+#   docs_search("backtest")       — drive this strategy off a recorded tape
+
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import BarData
+from flox.indicators import SMA
+
+
+class ${name}(Strategy):
+    fast: SMA
+    slow: SMA
+    order_size: float
+
+    def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30,
+                 size: float = 0.01):
+        super().__init__(symbols)
+        self.fast = SMA(fast)
+        self.slow = SMA(slow)
+        self.order_size = size
+
+    def on_bar(self, ctx: SymbolContext, bar: BarData):
+        f = self.fast.update(bar.close.to_double())
+        s = self.slow.update(bar.close.to_double())
+        if not self.fast.ready or not self.slow.ready:
+            return
+        if f > s and ctx.is_flat():
+            self.market_buy(self.order_size)
+        elif f < s and ctx.is_long():
+            self.market_sell(self.order_size)

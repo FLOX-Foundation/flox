@@ -1,0 +1,40 @@
+# ${name} — trade-driven Codon strategy.
+#
+# Reacts on every print (on_trade); ignores bars. Use this kind when
+# the signal cares about microstructure or sub-bar latency. Compiled
+# to native code by the Codon compiler.
+#
+# Next pieces of the project (run these via the MCP server):
+#   docs_search("project layout") — strategy / data / backtest folder shape
+#   docs_search("record tape")    — capture market data into a .floxlog
+#   docs_search("backtest")       — drive this strategy off a recorded tape
+
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import TradeData
+from flox.indicators import EMA
+
+
+class ${name}(Strategy):
+    ema: EMA
+    order_size: float
+    last_signal: int
+
+    def __init__(self, symbols: List[int], period: int = 20,
+                 size: float = 0.01):
+        super().__init__(symbols)
+        self.ema = EMA(period)
+        self.order_size = size
+        self.last_signal = 0
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        price = trade.price.to_double()
+        v = self.ema.update(price)
+        if not self.ema.ready:
+            return
+        if price > v and self.last_signal != 1 and ctx.is_flat():
+            self.market_buy(self.order_size)
+            self.last_signal = 1
+        elif price < v and self.last_signal != -1 and ctx.is_long():
+            self.market_sell(self.order_size)
+            self.last_signal = -1

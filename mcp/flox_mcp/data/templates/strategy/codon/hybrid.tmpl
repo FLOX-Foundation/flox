@@ -1,0 +1,46 @@
+# ${name} — hybrid Codon strategy.
+#
+# Bar-level trend filter (on_bar) plus tick-level entry timing
+# (on_trade). Bar trend gates direction; tick momentum picks the
+# entry instant. Compiled to native code by the Codon compiler.
+#
+# Next pieces of the project (run these via the MCP server):
+#   docs_search("project layout") — strategy / data / backtest folder shape
+#   docs_search("record tape")    — capture market data into a .floxlog
+#   docs_search("backtest")       — drive this strategy off a recorded tape
+
+from flox.strategy import Strategy
+from flox.context import SymbolContext
+from flox.types import BarData, TradeData
+from flox.indicators import EMA
+
+
+class ${name}(Strategy):
+    bar_ema: EMA
+    tick_ema: EMA
+    bar_trend: int
+    order_size: float
+
+    def __init__(self, symbols: List[int], bar_period: int = 20,
+                 tick_period: int = 5, size: float = 0.01):
+        super().__init__(symbols)
+        self.bar_ema = EMA(bar_period)
+        self.tick_ema = EMA(tick_period)
+        self.bar_trend = 0
+        self.order_size = size
+
+    def on_bar(self, ctx: SymbolContext, bar: BarData):
+        v = self.bar_ema.update(bar.close.to_double())
+        if not self.bar_ema.ready:
+            return
+        self.bar_trend = 1 if bar.close.to_double() > v else -1
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        price = trade.price.to_double()
+        f = self.tick_ema.update(price)
+        if not self.tick_ema.ready or self.bar_trend == 0:
+            return
+        if self.bar_trend > 0 and price > f and ctx.is_flat():
+            self.market_buy(self.order_size)
+        elif self.bar_trend < 0 and ctx.is_long():
+            self.market_sell(self.order_size)

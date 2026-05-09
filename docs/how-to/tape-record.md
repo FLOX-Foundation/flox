@@ -149,6 +149,49 @@ print(recorder.stats)
 
 `recorder.stats` exposes `trades_written`, `book_updates_skipped`, `started_at_ns`, `last_event_ns`, and an `error` field that is set when the underlying writer rejects a row.
 
+## Historical backfill
+
+`flox tape record` is the live capture path. For historical data — anything you need before the recorder was running — there is no built-in backfill CLI. Two reasons: each exchange exposes a different historical surface (some return trades back N days, some only klines, some neither), and the redistribution rules vary. The framework leaves the choice to the strategy author.
+
+The canonical pattern when you want a tape covering past data:
+
+1. Pull the raw history with `ccxt.fetch_ohlcv` (or `fetch_trades` if the exchange supports it). This is plain ccxt — no flox layer.
+2. Feed the rows into a `Runner` whose `MarketDataRecorderHook` writes them to a `.floxlog`. The recorder does not care whether the trades are live or replayed from history; the wire format is the same.
+
+```python
+import time, ccxt
+import flox_py as flox
+from flox_py.tape import make_recorder_hook
+
+ex = ccxt.bybit({"enableRateLimit": True})
+since_ms = ex.parse8601("2026-04-01T00:00:00Z")
+end_ms = ex.parse8601("2026-04-08T00:00:00Z")
+
+registry = flox.SymbolRegistry()
+sym = registry.add_symbol("bybit", "BTCUSDT", tick_size=0.01)
+recorder = make_recorder_hook("./tapes/bybit-btc-apr-week-1", max_segment_mb=64)
+runner = flox.Runner(registry, on_signal=lambda s: None)
+runner.set_market_data_recorder(recorder)
+
+while since_ms < end_ms:
+    bars = ex.fetch_ohlcv("BTC/USDT", "1m", since=since_ms, limit=1000)
+    if not bars:
+        break
+    for ts_ms, o, h, l, c, v in bars:
+        # one synthetic trade per bar at close price; replace with
+        # fetch_trades + per-trade emission for full fidelity if the
+        # exchange exposes it.
+        runner.on_trade(sym, price=c, qty=v, side=0,
+                        exchange_ts_ns=ts_ms * 1_000_000)
+    since_ms = bars[-1][0] + 60_000
+    time.sleep(ex.rateLimit / 1000)
+
+recorder.close()
+print(recorder.stats)
+```
+
+Use `fetch_trades` when fidelity matters (every print, with native side and id) and `fetch_ohlcv` when you need a longer window than the exchange exposes for trades. Either way the resulting `.floxlog` plugs into backtest the same way as a live recording.
+
 ## Limitations
 
 * The Python `DataWriter` C-API writes trades only. Book snapshots and deltas reach the recorder hook and increment `book_updates_skipped`, but they do not land on disk yet. The C++ `BinaryLogWriter::writeBook` path exists; exposing it through Python is a separate task.

@@ -1,0 +1,39 @@
+// ${name} — hybrid QuickJS strategy.
+//
+// Bar-level trend filter (onBar) plus tick-level entry timing
+// (onTrade). Bar trend gates direction; tick momentum picks the
+// entry instant. Loaded by `flox_js_runner`; `Strategy` and `EMA`
+// are global.
+//
+// Next pieces of the project (run these via the MCP server):
+//   docs_search("project layout") — strategy / data / backtest folder shape
+//   docs_search("record tape")    — capture market data into a .floxlog
+//   docs_search("backtest")       — drive this strategy off a recorded tape
+
+class ${name} extends Strategy {
+    constructor() {
+        super({ exchange: "Binance", symbols: ["BTCUSDT"] });
+        this.barEma = new EMA(20);
+        this.tickEma = new EMA(5);
+        this.barTrend = 0;
+        this.orderSize = 0.01;
+    }
+
+    onBar(ctx, bar) {
+        var v = this.barEma.update(bar.close);
+        if (!this.barEma.ready) return;
+        this.barTrend = bar.close > v ? 1 : -1;
+    }
+
+    onTrade(ctx, trade) {
+        var f = this.tickEma.update(trade.price);
+        if (!this.tickEma.ready || this.barTrend === 0) return;
+        if (this.barTrend > 0 && trade.price > f && ctx.isFlat()) {
+            this.marketBuy({ qty: this.orderSize });
+        } else if (this.barTrend < 0 && ctx.isLong()) {
+            this.marketSell({ qty: this.orderSize });
+        }
+    }
+}
+
+flox.register(new ${name}());
