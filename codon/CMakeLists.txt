@@ -83,3 +83,6 @@ add_codon_executable(codon_order_group_smoke
 
 add_codon_executable(codon_feed_clock_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/feed_clock_smoke.codon)
+
+add_codon_executable(codon_trace_attach_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/trace_attach_smoke.codon)

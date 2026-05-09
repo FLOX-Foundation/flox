@@ -1803,6 +1803,11 @@
           "name": "flox_runner_add_strategy"
         },
         {
+          "group": "trace_attach",
+          "kind": "function",
+          "name": "flox_runner_attach_trace_recorder"
+        },
+        {
           "group": "strategyrunner_synchronous",
           "kind": "function",
           "name": "flox_runner_create"
@@ -1861,6 +1866,11 @@
           "group": "storage",
           "kind": "function",
           "name": "flox_runner_set_storage_sink"
+        },
+        {
+          "group": "trace_attach",
+          "kind": "function",
+          "name": "flox_runner_set_trace_feed_ts_ns"
         },
         {
           "group": "strategyrunner_synchronous",
@@ -2702,6 +2712,7 @@
         "symbol_registry",
         "tape_diff",
         "targets",
+        "trace_attach",
         "validation",
         "volume_profile",
         "walk_forward"
@@ -4149,6 +4160,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_runner_attach_trace_recorder"
+        },
+        {
+          "kind": "function",
           "name": "flox_runner_create"
         },
         {
@@ -4194,6 +4209,10 @@
         {
           "kind": "function",
           "name": "flox_runner_set_storage_sink"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_set_trace_feed_ts_ns"
         },
         {
           "kind": "function",
@@ -7532,6 +7551,26 @@
         "functions": [],
         "reason": "exposed as `targets` submodule (see flox_py/_flox_py/targets.pyi); submodule-style is not currently inspected by the parity gate.",
         "status": "allowlist"
+      }
+    },
+    "trace_attach": {
+      "capi_functions": [
+        "flox_runner_attach_trace_recorder",
+        "flox_runner_set_trace_feed_ts_ns"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
       }
     },
     "validation": {

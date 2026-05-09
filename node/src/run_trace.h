@@ -170,6 +170,10 @@ class TraceRecorderWrap : public Napi::ObjectWrap<TraceRecorderWrap>
 
   void Close(const Napi::CallbackInfo&) { flox_run_recorder_close(_h); }
 
+ public:
+  FloxRunRecorderHandle handle() const noexcept { return _h; }
+
+ private:
   FloxRunRecorderHandle _h{nullptr};
 };
 

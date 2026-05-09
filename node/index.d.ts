@@ -364,6 +364,16 @@ export class Runner {
   setMarketDataRecorder(recorder: MarketDataRecorderHook | null): void;
   /** Sync only — Executor.capabilities() is read inline. */
   setExecutor(executor: Executor | null): void;
+
+  /** Auto-capture every signal into the given `.floxrun` recorder.
+   *  Pass `null` to detach. Sync mode only; throws otherwise.
+   *  Order / fill auto-capture is a follow-up — wire those through
+   *  the executor's listener bus today. (W14-T012) */
+  attachTraceRecorder(recorder: TraceRecorder | null): void;
+  /** Stamp every recorded signal with this `feed_ts_ns`. The runner
+   *  copies it into each `SignalView.feed_ts_ns` slot until the next
+   *  call. Useful for pinning replay determinism. */
+  setTraceFeedTsNs(feedTsNs: number): void;
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────

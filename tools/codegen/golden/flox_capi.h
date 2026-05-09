@@ -1648,6 +1648,13 @@ extern "C"
                                        double* output);
 
   // ============================================================
+  // Trace Attach
+  // ============================================================
+
+  void flox_runner_attach_trace_recorder(FloxRunnerHandle runner, FloxRunRecorderHandle recorder);
+  void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
+
+  // ============================================================
   // Validation
   // ============================================================
 

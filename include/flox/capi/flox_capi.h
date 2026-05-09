@@ -473,6 +473,7 @@ extern "C"
   uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s);
   void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
 
+
   // ============================================================
   // Multi-leg order group (W15-T004)
   // ============================================================
@@ -2233,6 +2234,14 @@ extern "C"
                                     int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
                                     uint32_t symbol_id, uint8_t side, uint8_t liquidity);
   void flox_run_recorder_close(FloxRunRecorderHandle handle);
+
+  // ============================================================
+  // Trace recorder auto-attach (W14-T012)
+  // ============================================================
+
+  void flox_runner_attach_trace_recorder(FloxRunnerHandle runner,
+                                         FloxRunRecorderHandle recorder);
+  void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
 
   FloxRunReaderHandle flox_run_reader_open(const char* path);
   void flox_run_reader_close(FloxRunReaderHandle handle);

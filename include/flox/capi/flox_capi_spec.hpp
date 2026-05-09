@@ -173,7 +173,7 @@ extern "C"
   // strategy logic in production without tearing down the connector.
   FLOX_EXPORT(group = "strategy_lifecycle")
   void flox_strategy_replace_callbacks(FloxStrategyHandle strategy,
-                                        FloxStrategyCallbacks callbacks);
+                                       FloxStrategyCallbacks callbacks);
 
   // ============================================================
   // Signal emission (returns OrderId, 0 on failure)
@@ -2369,11 +2369,11 @@ extern "C"
   // t + train_size + test_size]; t advances by `step`.
   typedef struct
   {
-    uint8_t mode;            // 0 = Anchored, 1 = Sliding
-    uint64_t train_size;     // sliding mode only (bars)
-    uint64_t test_size;      // bars per test window
-    uint64_t step;           // 0 → defaults to test_size
-    uint64_t min_train_size; // anchored mode only (bars before first fold)
+    uint8_t mode;             // 0 = Anchored, 1 = Sliding
+    uint64_t train_size;      // sliding mode only (bars)
+    uint64_t test_size;       // bars per test window
+    uint64_t step;            // 0 → defaults to test_size
+    uint64_t min_train_size;  // anchored mode only (bars before first fold)
   } FloxWalkForwardConfig;
 
   typedef struct
@@ -2723,8 +2723,8 @@ extern "C"
   // mutating call.
   FLOX_EXPORT(group = "portfolio_risk")
   uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle,
-                                         uint64_t index,
-                                         FloxBreach* out);
+                                        uint64_t index,
+                                        FloxBreach* out);
 
   FLOX_EXPORT(group = "portfolio_risk")
   uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle);
@@ -2803,7 +2803,7 @@ extern "C"
 
   FLOX_EXPORT(group = "execution_algos")
   uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index,
-                                FloxExecChildOrder* out);
+                               FloxExecChildOrder* out);
 
   FLOX_EXPORT(group = "execution_algos")
   void flox_exec_clear_pending(FloxExecAlgoHandle handle);
@@ -2865,23 +2865,23 @@ extern "C"
   // encode() on the same symbol.
   FLOX_EXPORT(group = "delta_book")
   void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle,
-                                       uint32_t symbol_id,
-                                       const FloxBookLevel* bids, size_t bid_count,
-                                       const FloxBookLevel* asks, size_t ask_count,
-                                       uint8_t* out_is_delta,
-                                       uint64_t* out_bid_count,
-                                       uint64_t* out_ask_count);
+                                      uint32_t symbol_id,
+                                      const FloxBookLevel* bids, size_t bid_count,
+                                      const FloxBookLevel* asks, size_t ask_count,
+                                      uint8_t* out_is_delta,
+                                      uint64_t* out_bid_count,
+                                      uint64_t* out_ask_count);
 
   // Copy the most recent encode() output into caller-allocated
   // buffers. Returns the number of entries written, capped at
   // max_entries.
   FLOX_EXPORT(group = "delta_book")
   uint64_t flox_delta_book_encoder_copy_bids(FloxDeltaBookEncoderHandle handle,
-                                              FloxBookLevel* out, uint64_t max_entries);
+                                             FloxBookLevel* out, uint64_t max_entries);
 
   FLOX_EXPORT(group = "delta_book")
   uint64_t flox_delta_book_encoder_copy_asks(FloxDeltaBookEncoderHandle handle,
-                                              FloxBookLevel* out, uint64_t max_entries);
+                                             FloxBookLevel* out, uint64_t max_entries);
 
   // Replayer: takes the events back and reconstructs full
   // snapshots per symbol.
@@ -2899,19 +2899,19 @@ extern "C"
   // Pull the levels via copy_bids / copy_asks.
   FLOX_EXPORT(group = "delta_book")
   void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle,
-                                       uint8_t type, uint32_t symbol_id,
-                                       const FloxBookLevel* bids, size_t bid_count,
-                                       const FloxBookLevel* asks, size_t ask_count,
-                                       uint64_t* out_bid_count,
-                                       uint64_t* out_ask_count);
+                                      uint8_t type, uint32_t symbol_id,
+                                      const FloxBookLevel* bids, size_t bid_count,
+                                      const FloxBookLevel* asks, size_t ask_count,
+                                      uint64_t* out_bid_count,
+                                      uint64_t* out_ask_count);
 
   FLOX_EXPORT(group = "delta_book")
   uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle,
-                                               FloxBookLevel* out, uint64_t max_entries);
+                                              FloxBookLevel* out, uint64_t max_entries);
 
   FLOX_EXPORT(group = "delta_book")
   uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle,
-                                               FloxBookLevel* out, uint64_t max_entries);
+                                              FloxBookLevel* out, uint64_t max_entries);
 
   // ============================================================
   // Strategy run trace (.floxrun)
@@ -2939,9 +2939,9 @@ extern "C"
   // manifest.json on close.
   FLOX_EXPORT(group = "floxrun")
   FloxRunRecorderHandle flox_run_recorder_create(const char* path,
-                                                  const char* strategy_id,
-                                                  const char* strategy_hash,
-                                                  int64_t run_started_ns);
+                                                 const char* strategy_id,
+                                                 const char* strategy_hash,
+                                                 int64_t run_started_ns);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_destroy(FloxRunRecorderHandle handle);
@@ -2949,43 +2949,60 @@ extern "C"
   // Append one tape reference to the manifest. Call before close().
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_add_tape_ref(FloxRunRecorderHandle handle,
-                                       const char* path,
-                                       const char* content_hash,
-                                       int64_t first_event_ns,
-                                       int64_t last_event_ns);
+                                      const char* path,
+                                      const char* content_hash,
+                                      int64_t first_event_ns,
+                                      int64_t last_event_ns);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_set_run_ended_ns(FloxRunRecorderHandle handle, int64_t ns);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_write_signal(FloxRunRecorderHandle handle,
-                                       int64_t run_ts_ns, int64_t feed_ts_ns,
-                                       uint32_t signal_id, uint32_t flags,
-                                       int64_t strength_raw,
-                                       const char* name, size_t name_len,
-                                       const uint32_t* symbol_ids, size_t symbol_count,
-                                       const uint8_t* payload, size_t payload_len);
+                                      int64_t run_ts_ns, int64_t feed_ts_ns,
+                                      uint32_t signal_id, uint32_t flags,
+                                      int64_t strength_raw,
+                                      const char* name, size_t name_len,
+                                      const uint32_t* symbol_ids, size_t symbol_count,
+                                      const uint8_t* payload, size_t payload_len);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_write_order_event(FloxRunRecorderHandle handle,
-                                             int64_t run_ts_ns, int64_t feed_ts_ns,
-                                             uint64_t order_id, uint64_t parent_signal_id,
-                                             int64_t price_raw, int64_t qty_raw,
-                                             uint32_t symbol_id, uint8_t event_kind,
-                                             uint8_t side, uint8_t order_type,
-                                             uint32_t flags,
-                                             const char* reason, size_t reason_len);
+                                           int64_t run_ts_ns, int64_t feed_ts_ns,
+                                           uint64_t order_id, uint64_t parent_signal_id,
+                                           int64_t price_raw, int64_t qty_raw,
+                                           uint32_t symbol_id, uint8_t event_kind,
+                                           uint8_t side, uint8_t order_type,
+                                           uint32_t flags,
+                                           const char* reason, size_t reason_len);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_write_fill(FloxRunRecorderHandle handle,
-                                     int64_t run_ts_ns, int64_t feed_ts_ns,
-                                     uint64_t order_id, uint64_t fill_id,
-                                     int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
-                                     uint32_t symbol_id, uint8_t side, uint8_t liquidity);
+                                    int64_t run_ts_ns, int64_t feed_ts_ns,
+                                    uint64_t order_id, uint64_t fill_id,
+                                    int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
+                                    uint32_t symbol_id, uint8_t side, uint8_t liquidity);
 
   // Flush + finalize all open segments + manifest.json. Idempotent.
   FLOX_EXPORT(group = "floxrun")
   void flox_run_recorder_close(FloxRunRecorderHandle handle);
+
+  // ============================================================
+  // Trace recorder auto-attach (W14-T012)
+  // ============================================================
+  //
+  // Attach a `FloxRunRecorderHandle` to a `FloxRunnerHandle` so every
+  // signal the strategy emits gets captured into the .floxrun trace
+  // without per-strategy instrumentation. Pass `recorder = NULL` to
+  // detach. Order / fill auto-capture is a follow-up; today the
+  // recorder captures signals only — order events still need to be
+  // written by the user's executor / on_fill callback.
+
+  FLOX_EXPORT(group = "trace_attach")
+  void flox_runner_attach_trace_recorder(FloxRunnerHandle runner,
+                                         FloxRunRecorderHandle recorder);
+  FLOX_EXPORT(group = "trace_attach")
+  void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
 
   // Reader. Opens an existing `.floxrun` directory and parses
   // manifest.json.
@@ -3029,43 +3046,43 @@ extern "C"
   // learn the size, then call again with a sized buffer.
   FLOX_EXPORT(group = "floxrun")
   void flox_run_reader_signal_header(FloxRunReaderHandle handle, uint64_t index,
-                                       int64_t* out_run_ts, int64_t* out_feed_ts,
-                                       uint32_t* out_signal_id, uint32_t* out_flags,
-                                       int64_t* out_strength_raw,
-                                       uint64_t* out_name_len, uint64_t* out_symbol_count,
-                                       uint64_t* out_payload_len);
+                                     int64_t* out_run_ts, int64_t* out_feed_ts,
+                                     uint32_t* out_signal_id, uint32_t* out_flags,
+                                     int64_t* out_strength_raw,
+                                     uint64_t* out_name_len, uint64_t* out_symbol_count,
+                                     uint64_t* out_payload_len);
 
   FLOX_EXPORT(group = "floxrun")
   uint64_t flox_run_reader_signal_name(FloxRunReaderHandle handle, uint64_t index,
-                                         char* out, uint64_t max_bytes);
+                                       char* out, uint64_t max_bytes);
 
   FLOX_EXPORT(group = "floxrun")
   uint64_t flox_run_reader_signal_symbol_ids(FloxRunReaderHandle handle, uint64_t index,
-                                                uint32_t* out, uint64_t max_entries);
+                                             uint32_t* out, uint64_t max_entries);
 
   FLOX_EXPORT(group = "floxrun")
   uint64_t flox_run_reader_signal_payload(FloxRunReaderHandle handle, uint64_t index,
-                                            uint8_t* out, uint64_t max_bytes);
+                                          uint8_t* out, uint64_t max_bytes);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_reader_order_event_header(FloxRunReaderHandle handle, uint64_t index,
-                                             int64_t* out_run_ts, int64_t* out_feed_ts,
-                                             uint64_t* out_order_id, uint64_t* out_parent_signal_id,
-                                             int64_t* out_price_raw, int64_t* out_qty_raw,
-                                             uint32_t* out_symbol_id, uint8_t* out_event_kind,
-                                             uint8_t* out_side, uint8_t* out_order_type,
-                                             uint32_t* out_flags, uint64_t* out_reason_len);
+                                          int64_t* out_run_ts, int64_t* out_feed_ts,
+                                          uint64_t* out_order_id, uint64_t* out_parent_signal_id,
+                                          int64_t* out_price_raw, int64_t* out_qty_raw,
+                                          uint32_t* out_symbol_id, uint8_t* out_event_kind,
+                                          uint8_t* out_side, uint8_t* out_order_type,
+                                          uint32_t* out_flags, uint64_t* out_reason_len);
 
   FLOX_EXPORT(group = "floxrun")
   uint64_t flox_run_reader_order_event_reason(FloxRunReaderHandle handle, uint64_t index,
-                                                  char* out, uint64_t max_bytes);
+                                              char* out, uint64_t max_bytes);
 
   FLOX_EXPORT(group = "floxrun")
   void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index,
-                              int64_t* out_run_ts, int64_t* out_feed_ts,
-                              uint64_t* out_order_id, uint64_t* out_fill_id,
-                              int64_t* out_price_raw, int64_t* out_qty_raw, int64_t* out_fee_raw,
-                              uint32_t* out_symbol_id, uint8_t* out_side, uint8_t* out_liquidity);
+                            int64_t* out_run_ts, int64_t* out_feed_ts,
+                            uint64_t* out_order_id, uint64_t* out_fill_id,
+                            int64_t* out_price_raw, int64_t* out_qty_raw, int64_t* out_fee_raw,
+                            uint32_t* out_symbol_id, uint8_t* out_side, uint8_t* out_liquidity);
 
 #ifdef __cplusplus
 }

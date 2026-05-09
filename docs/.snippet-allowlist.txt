@@ -201,3 +201,8 @@ docs/how-to/multi-leg-order-group.md
 # How-to: Wait for multiple feeds with staleness budget. Illustrative
 # API examples; runtime path exercised by python/tests/test_feed_clock.py.
 docs/how-to/multi-feed-clock.md
+
+# Cross-binding tabs for `Runner.attach_trace_recorder`. Polyglot
+# usage examples; the runtime path is exercised by
+# python/tests/test_runner_attach_trace.py + node/test/test_trace_attach.js.
+docs/how-to/floxrun-auto-capture.md
