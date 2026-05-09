@@ -1244,6 +1244,8 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
             InstanceMethod("setExecutor", &RunnerNode::setExecutor),
             InstanceMethod("attachTraceRecorder", &RunnerNode::attachTraceRecorder),
             InstanceMethod("setTraceFeedTsNs", &RunnerNode::setTraceFeedTsNs),
+            InstanceMethod("traceOrderEvent", &RunnerNode::traceOrderEvent),
+            InstanceMethod("traceFill", &RunnerNode::traceFill),
         });
   }
 
@@ -1741,6 +1743,63 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     int64_t ts = info[0].As<Napi::Number>().Int64Value();
     flox_runner_set_trace_feed_ts_ns(_runner, ts);
     return info.Env().Undefined();
+  }
+
+  Napi::Value traceOrderEvent(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (_mode != Mode::Sync)
+    {
+      Napi::Error::New(env, "traceOrderEvent is only supported in sync mode")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    auto opts = info[0].As<Napi::Object>();
+    uint64_t order_id = opts.Get("orderId").As<Napi::Number>().Int64Value();
+    uint64_t parent = opts.Has("parentSignalId")
+                          ? opts.Get("parentSignalId").As<Napi::Number>().Int64Value()
+                          : 0;
+    uint32_t sym = opts.Get("symbolId").As<Napi::Number>().Uint32Value();
+    uint8_t kind = opts.Get("eventKind").As<Napi::Number>().Uint32Value();
+    uint8_t side = opts.Get("side").As<Napi::Number>().Uint32Value();
+    uint8_t order_type = opts.Has("orderType")
+                             ? opts.Get("orderType").As<Napi::Number>().Uint32Value()
+                             : 0;
+    double price = opts.Has("price") ? opts.Get("price").As<Napi::Number>().DoubleValue() : 0.0;
+    double qty = opts.Has("qty") ? opts.Get("qty").As<Napi::Number>().DoubleValue() : 0.0;
+    uint32_t flags = opts.Has("flags") ? opts.Get("flags").As<Napi::Number>().Uint32Value() : 0;
+    flox_runner_trace_order_event(_runner, order_id, parent, sym, kind, side, order_type,
+                                  flox_price_from_double(price),
+                                  flox_quantity_from_double(qty), flags);
+    return env.Undefined();
+  }
+
+  Napi::Value traceFill(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (_mode != Mode::Sync)
+    {
+      Napi::Error::New(env, "traceFill is only supported in sync mode")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    auto opts = info[0].As<Napi::Object>();
+    uint64_t order_id = opts.Get("orderId").As<Napi::Number>().Int64Value();
+    uint64_t fill_id = opts.Has("fillId")
+                           ? opts.Get("fillId").As<Napi::Number>().Int64Value()
+                           : 0;
+    double price = opts.Get("price").As<Napi::Number>().DoubleValue();
+    double qty = opts.Get("qty").As<Napi::Number>().DoubleValue();
+    double fee = opts.Has("fee") ? opts.Get("fee").As<Napi::Number>().DoubleValue() : 0.0;
+    uint32_t sym = opts.Get("symbolId").As<Napi::Number>().Uint32Value();
+    uint8_t side = opts.Get("side").As<Napi::Number>().Uint32Value();
+    uint8_t liq = opts.Has("liquidity")
+                      ? opts.Get("liquidity").As<Napi::Number>().Uint32Value()
+                      : 0;
+    flox_runner_trace_fill(_runner, order_id, fill_id, flox_price_from_double(price),
+                           flox_quantity_from_double(qty), flox_quantity_from_double(fee),
+                           sym, side, liq);
+    return env.Undefined();
   }
 };
 

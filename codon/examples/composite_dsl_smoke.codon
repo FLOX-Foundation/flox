@@ -1,4 +1,4 @@
-# Smoke test for the Codon composite DSL (W1-T028). Drives a fake
+# Smoke test for the Codon composite DSL. Drives a fake
 # strategy holding a synthetic bar ring; engine integration is
 # exercised in C++ + QuickJS + pybind11 already.
 
@@ -89,7 +89,7 @@ def run():
     empty_fast = when(empty, 1, BAR_TYPE_TIME, M1).ema(3)
     check("empty ring not ready", not empty_fast.is_ready())
 
-    # Indicator-grid sugar (W3-T017).
+    # Indicator-grid sugar.
     from flox.composite import grid
     H1 = 3600_000_000_000
     syms = [1, 2]

@@ -611,7 +611,7 @@ extern "C"
   void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
 
   // ============================================================
-  // Multi-leg order group (W15-T004)
+  // Multi-leg order group
   // ============================================================
   //
   // Passive state machine: legs + policy + recorded events go in,
@@ -671,7 +671,7 @@ extern "C"
                                                 uint32_t max_actions);
 
   // ============================================================
-  // Multi-feed clock (W6-T021)
+  // Multi-feed clock
   // ============================================================
   //
   // Latency-aware multi-feed wait policy. The strategy creates a
@@ -2360,7 +2360,7 @@ extern "C"
                                          FloxExecutorHandle executor);
 
   // ============================================================
-  // Walk-forward (W6-T007 / T008)
+  // Walk-forward
   // ============================================================
   //
   // Anchored mode: train [0, t]; test [t, t + test_size]; t advances
@@ -2412,7 +2412,7 @@ extern "C"
                                      uint32_t max_folds);
 
   // ============================================================
-  // Grid search (W6-T002 sequential)
+  // Grid search (sequential)
   // ============================================================
   //
   // Type-erased over vector<double> params. Each axis carries a list
@@ -2458,7 +2458,7 @@ extern "C"
                                 uint32_t max_results);
 
   // ============================================================
-  // Heatmap rendering (W6-T004)
+  // Heatmap rendering
   // ============================================================
   //
   // z is row-major (length = rows * cols). row_labels / col_labels
@@ -2988,7 +2988,7 @@ extern "C"
   void flox_run_recorder_close(FloxRunRecorderHandle handle);
 
   // ============================================================
-  // Trace recorder auto-attach (W14-T012)
+  // Trace recorder auto-attach
   // ============================================================
   //
   // Attach a `FloxRunRecorderHandle` to a `FloxRunnerHandle` so every
@@ -3003,6 +3003,27 @@ extern "C"
                                          FloxRunRecorderHandle recorder);
   FLOX_EXPORT(group = "trace_attach")
   void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
+
+  // Mirror an order event into the attached recorder. No-op when no
+  // recorder is attached. Wire from the user's executor wrapper —
+  // call this after the wrapper's `on_submitted` / `on_canceled` /
+  // `on_rejected` / etc. The runner stamps `run_ts_ns` with the
+  // current wall-clock and uses the most recent `feed_ts_ns` from
+  // `flox_runner_set_trace_feed_ts_ns`.
+  // event_kind: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject,
+  //             5=PartialFill, 6=Fill, 7=Expire (matches OrderEventKind).
+  FLOX_EXPORT(group = "trace_attach")
+  void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
+                                     uint64_t parent_signal_id, uint32_t symbol_id,
+                                     uint8_t event_kind, uint8_t side, uint8_t order_type,
+                                     int64_t price_raw, int64_t qty_raw, uint32_t flags);
+
+  // Mirror a fill into the attached recorder. liquidity: 0=Unknown,
+  // 1=Maker, 2=Taker.
+  FLOX_EXPORT(group = "trace_attach")
+  void flox_runner_trace_fill(FloxRunnerHandle runner, uint64_t order_id, uint64_t fill_id,
+                              int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
+                              uint32_t symbol_id, uint8_t side, uint8_t liquidity);
 
   // Reader. Opens an existing `.floxrun` directory and parses
   // manifest.json.

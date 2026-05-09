@@ -1,4 +1,4 @@
-// Multi-feed clock for QuickJS strategies (W6-T021). Mirrors the
+// Multi-feed clock for QuickJS strategies. Mirrors the
 // NAPI / pybind11 / Codon surfaces. Pure JS facade over the C ABI
 // flox_feed_clock_* exports — the engine state lives in C++.
 

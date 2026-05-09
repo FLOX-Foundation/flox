@@ -350,8 +350,8 @@ def pack_bundle(
         info.size = len(e_bytes)
         tf.addfile(info, io.BytesIO(e_bytes))
 
-        # expected output (.floxrun directory, new in W14-T008).
-        # Bundles produced before this change have no `.floxrun/`
+        # expected output (.floxrun directory). Older bundles produced
+        # before the .floxrun ride-along landed have no `.floxrun/`
         # entry; `replay_bundle` falls back to JSON-only diff for those.
         if floxrun_dir.is_dir():
             tf.add(str(floxrun_dir), arcname=_EXPECTED_FLOXRUN_DIR)
@@ -415,8 +415,8 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
 
         # Capture a fresh `.floxrun` from the replay so we can diff
         # signal / order / fill counts against the bundled expected
-        # trace. Bundles produced before W14-T008 have no
-        # `expected.floxrun/`; we still produce a fresh one for the
+        # trace. Older bundles have no `expected.floxrun/`; we still
+        # produce a fresh one for the
         # actual side and the comparison degrades to "expected has
         # no .floxrun, skipping that diff dimension".
         actual_floxrun = work / "actual.floxrun"

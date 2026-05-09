@@ -2259,6 +2259,17 @@ inline void bindStrategy(py::module_& m)
                                                 static_cast<void*>(trec)); }, py::arg("recorder"), py::keep_alive<1, 2>())
       .def("set_trace_feed_ts_ns", [](PyRunner& r, int64_t ts)
            { flox_runner_set_trace_feed_ts_ns(r._runner_handle(), ts); }, py::arg("feed_ts_ns"))
+      .def("trace_order_event", [](PyRunner& r, uint64_t order_id, uint64_t parent_signal_id, uint32_t symbol_id, uint8_t event_kind, uint8_t side, uint8_t order_type, double price, double qty, uint32_t flags)
+           { flox_runner_trace_order_event(
+                 r._runner_handle(), order_id, parent_signal_id, symbol_id, event_kind, side,
+                 order_type, flox::Price::fromDouble(price).raw(),
+                 flox::Quantity::fromDouble(qty).raw(), flags); }, py::arg("order_id"), py::arg("parent_signal_id"), py::arg("symbol_id"), py::arg("event_kind"), py::arg("side"), py::arg("order_type"), py::arg("price"), py::arg("qty"), py::arg("flags") = 0u)
+      .def("trace_fill", [](PyRunner& r, uint64_t order_id, uint64_t fill_id, double price, double qty, double fee, uint32_t symbol_id, uint8_t side, uint8_t liquidity)
+           { flox_runner_trace_fill(r._runner_handle(), order_id, fill_id,
+                                    flox::Price::fromDouble(price).raw(),
+                                    flox::Quantity::fromDouble(qty).raw(),
+                                    flox::Quantity::fromDouble(fee).raw(), symbol_id, side,
+                                    liquidity); }, py::arg("order_id"), py::arg("fill_id"), py::arg("price"), py::arg("qty"), py::arg("fee"), py::arg("symbol_id"), py::arg("side"), py::arg("liquidity") = 0u)
       .def("on_trade", [](PyRunner& r, py::object sym, double price, double qty, bool is_buy, int64_t ts_ns)
            { r.on_trade(symId(sym), price, qty, is_buy, ts_ns); }, py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("is_buy"), py::arg("ts_ns") = 0)
       .def("on_book_snapshot", [](PyRunner& r, py::object sym, const std::vector<double>& bp, const std::vector<double>& bq, const std::vector<double>& ap, const std::vector<double>& aq, int64_t ts_ns)

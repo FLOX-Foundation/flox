@@ -1,4 +1,4 @@
-# Multi-feed clock for Codon strategies (W6-T021).
+# Multi-feed clock for Codon strategies.
 # Mirrors include/flox/feed/multi_feed_clock.h and the
 # pybind11 / NAPI / QuickJS facades. Wraps the C ABI
 # flox_feed_clock_* exports.

@@ -1160,6 +1160,8 @@ Members:
 - `set_trace_feed_ts_ns(self, feed_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `start(self) -> None`
 - `stop(self) -> None`
+- `trace_fill(self, order_id: typing.SupportsInt | typing.SupportsIndex, fill_id: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, fee: typing.SupportsFloat | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, liquidity: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `trace_order_event(self, order_id: typing.SupportsInt | typing.SupportsIndex, parent_signal_id: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, event_kind: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, order_type: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, flags: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 
 ### `class SMA`
 

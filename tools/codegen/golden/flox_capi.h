@@ -1653,6 +1653,13 @@ extern "C"
 
   void flox_runner_attach_trace_recorder(FloxRunnerHandle runner, FloxRunRecorderHandle recorder);
   void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns);
+  void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
+                                     uint64_t parent_signal_id, uint32_t symbol_id,
+                                     uint8_t event_kind, uint8_t side, uint8_t order_type,
+                                     int64_t price_raw, int64_t qty_raw, uint32_t flags);
+  void flox_runner_trace_fill(FloxRunnerHandle runner, uint64_t order_id, uint64_t fill_id,
+                              int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
+                              uint32_t symbol_id, uint8_t side, uint8_t liquidity);
 
   // ============================================================
   // Validation

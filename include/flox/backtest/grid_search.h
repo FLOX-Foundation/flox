@@ -56,7 +56,7 @@ class GridSearch
 
   /// Run the grid sequentially. Returns one result per combination,
   /// in flat-index order. `numThreads` is currently unused (parallel
-  /// backend is W6-T002 vector mode multi-process).
+  /// backend is the multi-process backend).
   std::vector<GridSearchResult> run(std::size_t numThreads = 0);
 
  private:

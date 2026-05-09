@@ -212,7 +212,7 @@ Compose with [walk-forward](walk-forward.md): run a `GridSearch` on each fold's 
 
 ### Limitations
 
-The current backend runs combinations sequentially. Multi-process / Ray Tune backends are W6-T002 / W6-T003 follow-ups. Result list is unsorted — sort or filter on the caller side.
+The current backend runs combinations sequentially. Multi-process and Ray Tune backends are tracked follow-ups. Result list is unsorted — sort or filter on the caller side.
 
 ## See also
 

@@ -368,12 +368,42 @@ export class Runner {
   /** Auto-capture every signal into the given `.floxrun` recorder.
    *  Pass `null` to detach. Sync mode only; throws otherwise.
    *  Order / fill auto-capture is a follow-up — wire those through
-   *  the executor's listener bus today. (W14-T012) */
+   *  the executor's listener bus today. */
   attachTraceRecorder(recorder: TraceRecorder | null): void;
   /** Stamp every recorded signal with this `feed_ts_ns`. The runner
    *  copies it into each `SignalView.feed_ts_ns` slot until the next
    *  call. Useful for pinning replay determinism. */
   setTraceFeedTsNs(feedTsNs: number): void;
+
+  /** Mirror an order event into the attached recorder. No-op when
+   *  no recorder is attached. Wire from your executor wrapper after
+   *  the corresponding `on_submitted` / `on_canceled` / etc. fires.
+   *  `eventKind`: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject,
+   *               5=PartialFill, 6=Fill, 7=Expire. */
+  traceOrderEvent(opts: {
+    orderId: number;
+    parentSignalId?: number;
+    symbolId: number;
+    eventKind: number;
+    side: 0 | 1;
+    orderType?: number;
+    price?: number;
+    qty?: number;
+    flags?: number;
+  }): void;
+
+  /** Mirror a fill into the attached recorder. `liquidity`:
+   *  0=Unknown, 1=Maker, 2=Taker. */
+  traceFill(opts: {
+    orderId: number;
+    fillId?: number;
+    price: number;
+    qty: number;
+    fee?: number;
+    symbolId: number;
+    side: 0 | 1;
+    liquidity?: number;
+  }): void;
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────
@@ -1565,7 +1595,7 @@ export class PortfolioRiskAggregator {
   killSwitchActive(): boolean;
 }
 
-// ── Multi-leg order group (W15-T004) ─────────────────────────────────
+// ── Multi-leg order group ────────────────────────────────────────────
 
 export type OrderGroupPolicyName = 'BestEffort' | 'AllOrNothing' | 'OneSided';
 export type OrderGroupStateName =
@@ -1614,7 +1644,7 @@ export class OrderGroup {
   recommendedActions(): OrderGroupAction[];
 }
 
-// ── Multi-feed clock (W6-T021) ───────────────────────────────────────
+// ── Multi-feed clock ─────────────────────────────────────────────────
 
 export type FeedClockPolicyName = 'WaitForAll' | 'FireOnAny' | 'LeaderFollower';
 

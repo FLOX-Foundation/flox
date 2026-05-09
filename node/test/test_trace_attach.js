@@ -38,7 +38,28 @@ check('attach again', true);
 runner.setTraceFeedTsNs(123456789);
 check('setTraceFeedTsNs accepts a number', true);
 
+// W14-T013 — order/fill mirror.
+runner.traceOrderEvent({
+  orderId: 42, parentSignalId: 1, symbolId: 10,
+  eventKind: 0, side: 0, orderType: 1, price: 50000.0, qty: 0.1,
+});
+check('traceOrderEvent accepts opts object', true);
+
+runner.traceFill({
+  orderId: 42, fillId: 99, price: 50000.5, qty: 0.1, fee: 0.5,
+  symbolId: 10, side: 0, liquidity: 2,
+});
+check('traceFill accepts opts object', true);
+
 rec.close();
+
+// Read back through TraceReader to confirm the events landed.
+const reader = new flox.TraceReader(runPath);
+const orderCount = reader.readAllOrderEvents().length;
+const fillCount = reader.readAllFills().length;
+check('1 order event written', orderCount === 1);
+check('1 fill written', fillCount === 1);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 console.log('node trace_attach test ok');

@@ -361,6 +361,7 @@ flox_run_recorder_write_fill|void|FloxRunRecorderHandle|int64_t|int64_t|uint64_t
 flox_run_recorder_write_order_event|void|FloxRunRecorderHandle|int64_t|int64_t|uint64_t|uint64_t|int64_t|int64_t|uint32_t|uint8_t|uint8_t|uint8_t|uint32_t|const char *|size_t
 flox_run_recorder_write_signal|void|FloxRunRecorderHandle|int64_t|int64_t|uint32_t|uint32_t|int64_t|const char *|size_t|const uint32_t *|size_t|const uint8_t *|size_t
 flox_runner_add_strategy|void|FloxRunnerHandle|FloxStrategyHandle
+flox_runner_attach_trace_recorder|void|FloxRunnerHandle|FloxRunRecorderHandle
 flox_runner_create|FloxRunnerHandle|FloxRegistryHandle|FloxOnSignalCallback|void *
 flox_runner_destroy|void|FloxRunnerHandle
 flox_runner_on_bar|void|FloxRunnerHandle|uint32_t|uint8_t|uint64_t|double|double|double|double|double|double|int64_t|int64_t|uint8_t
@@ -373,8 +374,11 @@ flox_runner_set_order_validator|void|FloxRunnerHandle|FloxOrderValidatorHandle
 flox_runner_set_pnl_tracker|void|FloxRunnerHandle|FloxPnLTrackerHandle
 flox_runner_set_risk_manager|void|FloxRunnerHandle|FloxRiskManagerHandle
 flox_runner_set_storage_sink|void|FloxRunnerHandle|FloxStorageSinkHandle
+flox_runner_set_trace_feed_ts_ns|void|FloxRunnerHandle|int64_t
 flox_runner_start|void|FloxRunnerHandle
 flox_runner_stop|void|FloxRunnerHandle
+flox_runner_trace_fill|void|FloxRunnerHandle|uint64_t|uint64_t|int64_t|int64_t|int64_t|uint32_t|uint8_t|uint8_t
+flox_runner_trace_order_event|void|FloxRunnerHandle|uint64_t|uint64_t|uint32_t|uint8_t|uint8_t|uint8_t|int64_t|int64_t|uint32_t
 flox_segment_export|FloxExportResult|const char *|const char *|uint8_t|int64_t|int64_t|const uint32_t *|uint32_t
 flox_segment_export_p|void|const char *|const char *|uint8_t|int64_t|int64_t|const uint32_t *|uint32_t|void *
 flox_segment_extract_symbols|uint64_t|const char *|const char *|const uint32_t *|uint32_t

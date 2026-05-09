@@ -557,6 +557,8 @@ from C import flox_target_future_linear_slope(Ptr[float], int, int, Ptr[float])
 # ── trace_attach ──
 from C import flox_runner_attach_trace_recorder(cobj, cobj)
 from C import flox_runner_set_trace_feed_ts_ns(cobj, i64)
+from C import flox_runner_trace_order_event(cobj, u64, u64, u32, u8, u8, u8, i64, i64, u32)
+from C import flox_runner_trace_fill(cobj, u64, u64, i64, i64, i64, u32, u8, u8)
 
 # ── validation ──
 from C import flox_segment_validate_full(cobj, u8, u8) -> cobj

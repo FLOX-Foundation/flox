@@ -71,7 +71,7 @@ from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_equity_curve(cobj, cobj, u32) -> u32
 from C import flox_backtest_result_trades(cobj, cobj, u32) -> u32
 
-# Walk-forward + grid search C ABI (W6-T007 / W6-T002).
+# Walk-forward + grid search C ABI.
 from C import flox_walk_forward_run_csv(cobj, cobj, cobj, float, float,
                                           cobj, cobj, cobj, cobj, u32) -> u32
 from C import flox_grid_search_create() -> cobj
@@ -81,7 +81,7 @@ from C import flox_grid_search_total(cobj) -> u64
 from C import flox_grid_search_params_for_index(cobj, u64, Ptr[float], u32) -> u32
 from C import flox_grid_search_run(cobj, cobj, cobj, cobj, u32) -> u64
 
-# Heatmap renderer (W6-T004) — engine-side HTML generator. Codon
+# Heatmap renderer — engine-side HTML generator. Codon
 # users build a FloxHeatmapData via @dataclass mirror and pass its
 # pointer; size-first two-call pattern returns total bytes.
 from C import flox_render_heatmap_html(cobj, cobj, u64) -> u64

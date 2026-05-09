@@ -1883,6 +1883,16 @@
           "name": "flox_runner_stop"
         },
         {
+          "group": "trace_attach",
+          "kind": "function",
+          "name": "flox_runner_trace_fill"
+        },
+        {
+          "group": "trace_attach",
+          "kind": "function",
+          "name": "flox_runner_trace_order_event"
+        },
+        {
           "group": "segment",
           "kind": "function",
           "name": "flox_segment_export"
@@ -4221,6 +4231,14 @@
         {
           "kind": "function",
           "name": "flox_runner_stop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_trace_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_runner_trace_order_event"
         },
         {
           "kind": "function",
@@ -7556,7 +7574,9 @@
     "trace_attach": {
       "capi_functions": [
         "flox_runner_attach_trace_recorder",
-        "flox_runner_set_trace_feed_ts_ns"
+        "flox_runner_set_trace_feed_ts_ns",
+        "flox_runner_trace_fill",
+        "flox_runner_trace_order_event"
       ],
       "codon": {
         "present": true,

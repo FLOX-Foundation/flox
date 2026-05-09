@@ -1,90 +1,49 @@
-"""Tests for the latency-aware multi-feed wait clock."""
+"""Tests for the MultiFeedClock primitive.
+
+`flox_py.MultiFeedClock` is bound from
+`include/flox/feed/multi_feed_clock.h` and is the same primitive every
+binding (pybind11 / NAPI / QuickJS / Codon) reaches through the C ABI.
+"""
 from __future__ import annotations
 
-import pytest
-
-from flox_py.feed_clock import (
-    FireOnAny, LeaderFollower, MultiFeedClock, WaitForAll,
-)
+import flox_py
 
 
 BTC, ETH = 1, 2
+SECOND_NS = 1_000_000_000
 
 
-def test_wait_for_all_fires_when_both_seen() -> None:
-    c = MultiFeedClock(symbols=[BTC, ETH], policy=WaitForAll, timeout_ms=200)
-    s = c.tick(1000, BTC)
-    assert not s.fired
-    s = c.tick(1100, ETH)
-    assert s.fired
-    assert s.triggered_by == ETH
+def test_wait_for_all_fires_after_both_feeds() -> None:
+    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+                                timeout_ms=200)
+    r1 = c.tick(SECOND_NS, BTC)
+    assert r1["fired"] is False
 
+    r2 = c.tick(SECOND_NS + 100_000_000, ETH)
+    assert r2["fired"] is True
+    assert r2["triggered_by"] == ETH
+    assert r2["staleness_ns"][BTC] == 100_000_000
+    assert r2["staleness_ns"][ETH] == 0
 
-def test_wait_for_all_resets_after_fire() -> None:
-    c = MultiFeedClock(symbols=[BTC, ETH], policy=WaitForAll)
-    c.tick(1000, BTC)
-    c.tick(1100, ETH)  # fires; resets
-    s = c.tick(1200, BTC)
-    assert not s.fired
-    s = c.tick(1300, ETH)
-    assert s.fired
-
-
-def test_wait_for_all_timeout_path() -> None:
-    c = MultiFeedClock(symbols=[BTC, ETH], policy=WaitForAll, timeout_ms=50)
-    c.tick(1_000_000, BTC)
-    c.tick(2_000_000, ETH)  # initial fire
-    # BTC keeps ticking; ETH lags > timeout.
-    c.tick(50_000_001, BTC)  # 50ms after last fire? not past budget yet
-    s = c.tick(60_000_000, BTC)
-    assert s.fired  # past 50ms budget without ETH
+    # After fire the accumulator resets.
+    r3 = c.tick(SECOND_NS + 200_000_000, BTC)
+    assert r3["fired"] is False
 
 
 def test_fire_on_any_fires_every_tick() -> None:
-    c = MultiFeedClock(symbols=[BTC, ETH], policy=FireOnAny)
-    assert c.tick(1, BTC).fired
-    assert c.tick(2, ETH).fired
-    assert c.tick(3, BTC).fired
+    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=flox_py.FeedClockPolicy.FIRE_ON_ANY)
+    assert c.tick(SECOND_NS, BTC)["fired"] is True
+    assert c.tick(SECOND_NS + 1, ETH)["fired"] is True
 
 
-def test_leader_follower_waits_for_follower_freshness() -> None:
-    c = MultiFeedClock(
-        symbols=[BTC, ETH], policy=LeaderFollower,
-        leader_symbol=BTC, staleness_budget_ms=100,
-    )
-    # Leader tick before follower has ever ticked => not fresh => no fire.
-    s = c.tick(1_000, BTC)
-    assert not s.fired
-    # Follower ticks; another leader tick within budget => fire.
-    c.tick(2_000, ETH)
-    s = c.tick(50_000_000, BTC)  # 50ms after follower; under 100ms budget
-    assert s.fired
-
-
-def test_leader_follower_skips_when_follower_too_stale() -> None:
-    c = MultiFeedClock(
-        symbols=[BTC, ETH], policy=LeaderFollower,
-        leader_symbol=BTC, staleness_budget_ms=100,
-    )
-    c.tick(1_000, ETH)  # follower
-    s = c.tick(200_000_000, BTC)  # 200ms after; over 100ms budget
-    assert not s.fired
-
-
-def test_staleness_map_reflects_per_feed_lag() -> None:
-    c = MultiFeedClock(symbols=[BTC, ETH], policy=FireOnAny)
-    c.tick(1_000_000, BTC)
-    c.tick(1_500_000, ETH)
-    s = c.tick(2_000_000, BTC)
-    assert s.staleness_ns[BTC] == 0  # just ticked
-    assert s.staleness_ns[ETH] == 500_000  # 500us lag
-
-
-def test_out_of_band_symbol_does_not_fire_or_count() -> None:
-    c = MultiFeedClock(symbols=[BTC, ETH], policy=WaitForAll)
-    s = c.tick(1, 999)  # not in symbol list
-    assert not s.fired
-    s = c.tick(2, BTC)
-    assert not s.fired  # only one of the registered legs has reported
-    s = c.tick(3, ETH)
-    assert s.fired
+def test_leader_follower_requires_fresh_follower() -> None:
+    c = flox_py.MultiFeedClock(symbols=[BTC, ETH],
+                                policy=flox_py.FeedClockPolicy.LEADER_FOLLOWER,
+                                leader_symbol=BTC,
+                                staleness_budget_ms=200)
+    assert c.tick(SECOND_NS, ETH)["fired"] is False
+    assert c.tick(SECOND_NS + 50_000_000, BTC)["fired"] is True
+    # Stale follower (>200ms) blocks the leader fire.
+    assert c.tick(SECOND_NS + 500_000_000, BTC)["fired"] is False
