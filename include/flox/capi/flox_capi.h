@@ -473,7 +473,6 @@ extern "C"
   uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s);
   void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
 
-
   // ============================================================
   // Multi-leg order group (W15-T004)
   // ============================================================
