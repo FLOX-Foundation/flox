@@ -223,7 +223,45 @@ class BridgeStrategy : public Strategy
     cb->on_bar(cb->user_data, &fctx, &fbar);
   }
 
+  void onSymbolFill(SymbolContext& c, const OrderEvent& ev) override
+  {
+    auto* cb = _cb.load(std::memory_order_acquire);
+    if (!cb || !cb->on_fill)
+    {
+      return;
+    }
+    FloxSymbolContext fctx = toFloxContext(c);
+    FloxOrderEventData fev = toFloxOrderEvent(ev);
+    cb->on_fill(cb->user_data, &fctx, &fev);
+  }
+
+  void onSymbolOrderUpdate(SymbolContext& c, const OrderEvent& ev) override
+  {
+    auto* cb = _cb.load(std::memory_order_acquire);
+    if (!cb || !cb->on_order_update)
+    {
+      return;
+    }
+    FloxSymbolContext fctx = toFloxContext(c);
+    FloxOrderEventData fev = toFloxOrderEvent(ev);
+    cb->on_order_update(cb->user_data, &fctx, &fev);
+  }
+
  private:
+  static FloxOrderEventData toFloxOrderEvent(const OrderEvent& ev)
+  {
+    FloxOrderEventData fev{};
+    fev.order_id = ev.order.id;
+    fev.symbol_id = ev.order.symbol;
+    fev.side = (ev.order.side == Side::BUY) ? 0 : 1;
+    fev.order_type = static_cast<uint8_t>(ev.order.type);
+    fev.status = static_cast<uint8_t>(ev.status);
+    fev.fill_qty_raw = ev.fillQty.raw();
+    fev.fill_price_raw = ev.fillPrice.raw();
+    fev.exchange_ts_ns = ev.exchangeTsNs;
+    fev.reject_reason = ev.rejectReason.empty() ? nullptr : ev.rejectReason.c_str();
+    return fev;
+  }
   static FloxBookSnapshot toBookSnapshot(const SymbolContext& c)
   {
     FloxBookSnapshot snap{};

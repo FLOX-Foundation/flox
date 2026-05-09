@@ -35,6 +35,15 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
         {
           ev.dispatchTo(*listener);
         }
+        // Forward to the attached strategy so user-side `on_fill` /
+        // `on_order_update` hooks fire. Without this the strategy
+        // never learns its emitted orders filled — native stops are
+        // unusable, and exit logic that wants to confirm a close
+        // has no callback to hang on.
+        if (_strategy)
+        {
+          _strategy->onOrderEvent(ev);
+        }
       });
 }
 

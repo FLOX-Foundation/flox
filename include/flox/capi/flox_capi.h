@@ -104,12 +104,37 @@ extern "C"
   // Callback function pointer types
   // ============================================================
 
+  // Status codes match flox::OrderEventStatus. Kept as a plain int so
+  // callers don't have to reach into the C++ enum.
+  //   0 NEW                 1 SUBMITTED       2 ACCEPTED
+  //   3 PARTIALLY_FILLED    4 FILLED          5 PENDING_CANCEL
+  //   6 CANCELED            7 EXPIRED         8 REJECTED
+  //   9 REPLACED           10 PENDING_TRIGGER 11 TRIGGERED
+  //  12 TRAILING_UPDATED
+  typedef struct
+  {
+    uint64_t order_id;
+    uint32_t symbol_id;
+    uint8_t side;        // 0 BUY, 1 SELL
+    uint8_t order_type;  // 0 LIMIT, 1 MARKET, 2 STOP_MARKET, ...
+    uint8_t status;      // FloxOrderEventStatus, see comment above
+    uint8_t _pad;
+    int64_t fill_qty_raw;
+    int64_t fill_price_raw;
+    int64_t exchange_ts_ns;
+    const char* reject_reason;  // null when status != REJECTED
+  } FloxOrderEventData;
+
   typedef void (*FloxOnTradeCallback)(void* user_data, const FloxSymbolContext* ctx,
                                       const FloxTradeData* trade);
   typedef void (*FloxOnBookCallback)(void* user_data, const FloxSymbolContext* ctx,
                                      const FloxBookData* book);
   typedef void (*FloxOnBarCallback)(void* user_data, const FloxSymbolContext* ctx,
                                     const FloxBarData* bar);
+  typedef void (*FloxOnFillCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                     const FloxOrderEventData* ev);
+  typedef void (*FloxOnOrderUpdateCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                            const FloxOrderEventData* ev);
   typedef void (*FloxOnStartCallback)(void* user_data);
   typedef void (*FloxOnStopCallback)(void* user_data);
 
@@ -120,6 +145,12 @@ extern "C"
     FloxOnBarCallback on_bar;
     FloxOnStartCallback on_start;
     FloxOnStopCallback on_stop;
+    // Order-event hooks. Default-initialised to nullptr by C `{}`-init,
+    // so existing callers that don't set them get no-op behaviour. The
+    // runner only invokes a callback when its function pointer is
+    // non-null.
+    FloxOnFillCallback on_fill;
+    FloxOnOrderUpdateCallback on_order_update;
     void* user_data;
   } FloxStrategyCallbacks;
 
