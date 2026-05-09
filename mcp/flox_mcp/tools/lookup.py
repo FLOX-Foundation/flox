@@ -199,13 +199,18 @@ def lookup_symbol(name: str, language: Optional[str] = None) -> str:
         if qj_match is not None:
             rows.append(("quickjs", qj_match))
 
+    gotchas = _collect_gotchas(name, rows)
+
     if not rows:
-        return (
+        body = (
             f"# lookup_symbol: no match for `{name}`\n\n"
             f"Tried C-API, Python, Node, Codon"
             f"{' (filtered to ' + language + ')' if language else ''}."
             f" Use `list_bindings(language=...)` to browse the surface."
         )
+        if gotchas:
+            body += "\n\n## Gotchas\n\n" + _format_gotchas(gotchas)
+        return body
 
     out = [f"# lookup_symbol: `{name}`", ""]
     out.append("| Binding | Local name | Kind | Signature |")
@@ -217,7 +222,70 @@ def lookup_symbol(name: str, language: Optional[str] = None) -> str:
             f"`{sig}` |" if sig else
             f"| {binding} | `{m.get('name', '')}` | {m.get('kind', '')} |  |"
         )
+
+    if gotchas:
+        out.append("")
+        out.append("## Gotchas")
+        out.append("")
+        out.append(_format_gotchas(gotchas))
     return "\n".join(out)
+
+
+def _format_gotchas(gotchas: List[dict]) -> str:
+    lines = []
+    for g in gotchas:
+        lines.append(f"- **{g['summary']}**")
+        lines.append(f"  - When: {g['context']}")
+        lines.append(f"  - Fix: {g['fix']}")
+    return "\n".join(lines)
+
+
+# ── Gotcha merge ──────────────────────────────────────────────────────
+
+
+def _collect_gotchas(input_name: str,
+                     rows: List[Tuple[str, dict]]) -> List[dict]:
+    """Return any curated gotchas whose key matches the input name or
+    any of the resolved per-binding names. Hand-curated entries live in
+    ``mcp/flox_mcp/data/gotchas.json``."""
+    data = _data.load_gotchas()
+    if not data:
+        return []
+    # Build the candidate-key set: the user's input plus everything we
+    # resolved across bindings. Match is case-sensitive on full key.
+    candidates = {input_name}
+    for _, m in rows:
+        n = m.get("name")
+        if n:
+            candidates.add(n)
+    seen_ids: set[str] = set()
+    out: List[dict] = []
+    for key, entries in data.items():
+        if key.startswith("$"):
+            continue  # schema/comment slot
+        if key not in candidates and not _key_matches_loosely(key, candidates):
+            continue
+        for entry in entries:
+            eid = entry.get("id") or ""
+            if eid in seen_ids:
+                continue
+            seen_ids.add(eid)
+            out.append(entry)
+    return out
+
+
+def _key_matches_loosely(key: str, candidates: set) -> bool:
+    """Allow a gotcha key to match by trailing component too — so a key
+    like ``Strategy.market_buy`` matches a resolved name of just
+    ``market_buy`` (Python) or ``flox_strategy_market_buy`` (C-API).
+    The match is anchored on the last path segment."""
+    tail = key.rsplit(".", 1)[-1]
+    if tail in candidates:
+        return True
+    for c in candidates:
+        if c.endswith("_" + tail) or c.endswith(tail):
+            return True
+    return False
 
 
 # ── list_bindings ─────────────────────────────────────────────────────

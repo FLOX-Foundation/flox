@@ -167,6 +167,63 @@ def test_examples_index_entries(examples_index: dict) -> None:
         assert {"path", "language", "topic", "size_bytes", "sha256"} <= ex.keys()
         assert ex["language"] in valid_languages, ex
         assert ex["topic"] in valid_topics, ex
+
+
+# ── gotchas.json ──────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def gotchas() -> dict:
+    path = DATA / "gotchas.json"
+    assert path.exists(), (
+        f"missing {path}; gotchas are hand-curated, see "
+        f"mcp/flox_mcp/data/gotchas.json")
+    return json.loads(path.read_text())
+
+
+def test_gotchas_schema(gotchas: dict) -> None:
+    """Every non-schema entry is a list of dicts with the required
+    fields; ids are unique within a key."""
+    required = {"id", "summary", "context", "fix"}
+    for key, entries in gotchas.items():
+        if key.startswith("$"):
+            continue
+        assert isinstance(entries, list), key
+        assert entries, f"{key}: empty entry list"
+        seen_ids = set()
+        for entry in entries:
+            assert required <= entry.keys(), (key, entry)
+            assert entry["id"] not in seen_ids, f"{key}: duplicate id {entry['id']!r}"
+            seen_ids.add(entry["id"])
+
+
+def test_gotchas_keys_resolve(gotchas: dict, ir_snapshot: dict,
+                              binding_manifest: dict) -> None:
+    """Every gotcha key must resolve through the same loose match the
+    drift check uses. A rename that orphans a key fails this test."""
+    universe: set = set()
+    for kind in ("functions", "structs", "enums", "typedefs"):
+        for item in ir_snapshot.get(kind, []):
+            n = item.get("name")
+            if n:
+                universe.add(n)
+    for bind in binding_manifest.get("bindings", {}).values():
+        for s in bind.get("symbols", []):
+            n = s.get("name")
+            if n:
+                universe.add(n)
+
+    for key in gotchas:
+        if key.startswith("$"):
+            continue
+        if key in universe:
+            continue
+        tail = key.rsplit(".", 1)[-1]
+        if tail in universe:
+            continue
+        if any(n.endswith("_" + tail) or n.endswith(tail) for n in universe):
+            continue
+        pytest.fail(f"gotcha key {key!r} resolves to no symbol")
         assert ex["path"].startswith("docs/examples/"), ex["path"]
         assert (REPO_ROOT / ex["path"]).exists(), (
             f"index points at missing file: {ex['path']}")
