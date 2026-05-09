@@ -877,6 +877,7 @@ Members:
 - `leg_order_id(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `leg_state(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> LegState`
 - `mark_action_dispatched(self, leg_index: typing.SupportsInt | typing.SupportsIndex, kind: str) -> None`
+- `pair_latency_decision(self, leader_submit_ts_ns: typing.SupportsInt | typing.SupportsIndex, leader_ack_ts_ns: typing.SupportsInt | typing.SupportsIndex, ack_received: bool = False) -> str`
 - `parent_signal_id(self) -> int`
 - `policy(self) -> OrderGroupPolicy`
 - `precheck_submission(self, equity: typing.SupportsFloat | typing.SupportsIndex = 0.0, market_ref_prices: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex] = []) -> dict`
@@ -885,6 +886,7 @@ Members:
 - `record_failure(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `record_fill(self, leg_index: typing.SupportsInt | typing.SupportsIndex, cumulative_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `record_submit(self, leg_index: typing.SupportsInt | typing.SupportsIndex, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `set_pair_latency_budget_ns(self, budget_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_risk_limits(self, max_gross_notional: typing.SupportsFloat | typing.SupportsIndex = 0.0, max_concentration_pct: typing.SupportsFloat | typing.SupportsIndex = 0.0, max_leg_qty: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `state(self) -> OrderGroupState`
 
