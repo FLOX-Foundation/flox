@@ -745,6 +745,8 @@ extern "C"
                                          FloxStrategyHandle strategy);
   int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle runner, const char* path,
                                    const char* symbol, FloxBacktestStats* stats_out);
+  int flox_backtest_runner_run_tape(FloxBacktestRunnerHandle runner, const char* tape_dir,
+                                    FloxBacktestStats* stats_out);
   int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner, const int64_t* timestamps_ns,
                                      const double* close_prices, uint32_t n, const char* symbol,
                                      FloxBacktestStats* stats_out);

@@ -108,6 +108,11 @@
           "name": "flox_backtest_runner_run_replay_source"
         },
         {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_run_tape"
+        },
+        {
           "group": "execution",
           "kind": "function",
           "name": "flox_backtest_runner_set_executor"
@@ -2936,6 +2941,10 @@
         {
           "kind": "function",
           "name": "flox_backtest_runner_run_replay_source"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_run_tape"
         },
         {
           "kind": "function",
@@ -6277,6 +6286,7 @@
         "flox_backtest_runner_run_csv",
         "flox_backtest_runner_run_ohlcv",
         "flox_backtest_runner_run_replay_source",
+        "flox_backtest_runner_run_tape",
         "flox_backtest_runner_set_strategy",
         "flox_backtest_runner_take_result"
       ],

@@ -93,6 +93,30 @@ BacktestResult BacktestRunner::run(replay::IMultiSegmentReader& reader)
   return result();
 }
 
+BacktestResult BacktestRunner::runTape(const std::filesystem::path& data_dir)
+{
+  if (!std::filesystem::exists(data_dir))
+  {
+    throw std::runtime_error(
+        "BacktestRunner.runTape: directory does not exist: " +
+        data_dir.string());
+  }
+  if (!std::filesystem::is_directory(data_dir))
+  {
+    throw std::runtime_error(
+        "BacktestRunner.runTape: path is not a directory: " +
+        data_dir.string());
+  }
+  auto reader = replay::createMultiSegmentReader(data_dir);
+  if (!reader)
+  {
+    throw std::runtime_error(
+        "BacktestRunner.runTape: cannot open `.floxlog` directory: " +
+        data_dir.string());
+  }
+  return run(*reader);
+}
+
 BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 {
   _interactiveMode = false;

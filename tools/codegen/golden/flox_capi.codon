@@ -36,6 +36,7 @@ from C import flox_backtest_runner_create(cobj, float, float) -> cobj
 from C import flox_backtest_runner_destroy(cobj)
 from C import flox_backtest_runner_set_strategy(cobj, cobj)
 from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, cobj) -> int
+from C import flox_backtest_runner_run_tape(cobj, cobj, cobj) -> int
 from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, cobj) -> int
 from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64], Ptr[float], Ptr[float], Ptr[float], Ptr[float], Ptr[float], u32, cobj, u8, u64, cobj) -> int
 from C import flox_backtest_runner_run_replay_source(cobj, cobj, cobj) -> int

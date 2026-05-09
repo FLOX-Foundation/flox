@@ -170,6 +170,7 @@ Surface: 84 classes, 56 functions, 30 constants.
 - `run_bars(self, start_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], end_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], open: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], volume: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str = '', bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0) -> typing.Any`
 - `run_csv(self, path: str, symbol: str = '') -> typing.Any`
 - `run_ohlcv(self, ts: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str = '') -> typing.Any`
+- `run_tape(self, path: str) -> typing.Any`
 - `set_executor(self, executor: Executor) -> None`
 - `set_strategy(self, strategy: Strategy) -> None`
 - `trades(self) -> typing.Any`
