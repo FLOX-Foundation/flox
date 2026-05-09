@@ -370,6 +370,7 @@ from C import flox_order_group_record_cancel(cobj, u32)
 from C import flox_order_group_record_failure(cobj, u32)
 from C import flox_order_group_state(cobj) -> u8
 from C import flox_order_group_recommended_actions(cobj, Ptr[i64], u32) -> u32
+from C import flox_order_group_mark_action_dispatched(cobj, u32, u8)
 
 # ── order_tracker ──
 from C import flox_order_tracker_create() -> cobj

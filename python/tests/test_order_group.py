@@ -60,6 +60,74 @@ def test_all_or_nothing_reverts_filled_legs_on_failure() -> None:
     assert actions[0]["qty"] == pytest.approx(0.1)
 
 
+def test_auto_dispatch_fires_actions_through_strategy() -> None:
+    """T005 — `auto_dispatch(strategy)` walks the recommended actions
+    and emits the matching cancel / revert calls through the strategy.
+    A second call is a no-op because each action is marked
+    dispatched."""
+
+    class FakeStrat:
+        def __init__(self) -> None:
+            self.cancels: list = []
+            self.market_buys: list = []
+            self.market_sells: list = []
+
+        def emit_cancel(self, order_id: int) -> None:
+            self.cancels.append(order_id)
+
+        def emit_market_buy(self, symbol: int, qty: float) -> None:
+            self.market_buys.append((symbol, qty))
+
+        def emit_market_sell(self, symbol: int, qty: float) -> None:
+            self.market_sells.append((symbol, qty))
+
+    s = FakeStrat()
+    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ALL_OR_NOTHING)
+    g.add_market_leg(symbol=1, side=0, qty=0.1)  # buy BTC
+    g.add_market_leg(symbol=2, side=1, qty=2.0)  # sell ETH
+    g.record_submit(0, 100)
+    g.record_submit(1, 101)
+    g.record_fill(0, 0.1)
+    g.record_failure(1)
+
+    fired = g.auto_dispatch(s)
+    assert fired == 1
+    # Filled BTC buy → revert as a market sell.
+    assert s.market_sells == [(1, pytest.approx(0.1))]
+    assert s.market_buys == []
+    assert s.cancels == []
+    # Idempotent — no double-fire.
+    assert g.auto_dispatch(s) == 0
+
+
+def test_auto_dispatch_one_sided_cancels_remaining_legs() -> None:
+    class FakeStrat:
+        def __init__(self) -> None:
+            self.cancels: list = []
+            self.market_buys: list = []
+            self.market_sells: list = []
+
+        def emit_cancel(self, order_id: int) -> None:
+            self.cancels.append(order_id)
+
+        def emit_market_buy(self, symbol: int, qty: float) -> None:
+            self.market_buys.append((symbol, qty))
+
+        def emit_market_sell(self, symbol: int, qty: float) -> None:
+            self.market_sells.append((symbol, qty))
+
+    s = FakeStrat()
+    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
+    g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
+    g.record_submit(0, 200)
+    g.record_submit(1, 201)
+    g.record_fill(0, 0.1)
+    fired = g.auto_dispatch(s)
+    assert fired == 1
+    assert s.cancels == [201]
+
+
 def test_partial_fill_marks_leg_partially_filled() -> None:
     g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.BEST_EFFORT)
     g.add_market_leg(1, 0, 0.5)

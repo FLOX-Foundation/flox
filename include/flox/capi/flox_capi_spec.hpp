@@ -670,6 +670,13 @@ extern "C"
                                                 int64_t* actions_out,
                                                 uint32_t max_actions);
 
+  // Mark a leg's action as dispatched so it stops surfacing in
+  // `recommended_actions`. Called by the auto-dispatch helper after
+  // each emit. kind: 0 = CancelLeg, 1 = RevertLeg.
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index,
+                                               uint8_t kind);
+
   // ============================================================
   // Multi-feed clock
   // ============================================================

@@ -1295,6 +1295,11 @@
         {
           "group": "order_group",
           "kind": "function",
+          "name": "flox_order_group_mark_action_dispatched"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
           "name": "flox_order_group_recommended_actions"
         },
         {
@@ -3759,6 +3764,10 @@
         {
           "kind": "function",
           "name": "flox_order_group_leg_state"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_mark_action_dispatched"
         },
         {
           "kind": "function",
@@ -6984,6 +6993,7 @@
         "flox_order_group_leg_filled_raw",
         "flox_order_group_leg_order_id",
         "flox_order_group_leg_state",
+        "flox_order_group_mark_action_dispatched",
         "flox_order_group_recommended_actions",
         "flox_order_group_record_cancel",
         "flox_order_group_record_failure",

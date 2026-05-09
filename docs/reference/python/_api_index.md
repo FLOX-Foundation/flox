@@ -871,10 +871,12 @@ Members:
 
 - `add_limit_leg(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `add_market_leg(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex) -> int`
+- `auto_dispatch(self, strategy: typing.Any) -> int`
 - `leg_count(self) -> int`
 - `leg_filled(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> float`
 - `leg_order_id(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `leg_state(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> LegState`
+- `mark_action_dispatched(self, leg_index: typing.SupportsInt | typing.SupportsIndex, kind: str) -> None`
 - `parent_signal_id(self) -> int`
 - `policy(self) -> OrderGroupPolicy`
 - `recommended_actions(self) -> list`

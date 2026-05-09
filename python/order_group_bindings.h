@@ -70,6 +70,38 @@ inline void bindOrderGroup(py::module_& m)
            { g.recordFill(idx, flox::Quantity::fromDouble(cumulative_qty)); }, py::arg("leg_index"), py::arg("cumulative_qty"))
       .def("record_cancel", &flox::OrderGroup::recordCancel, py::arg("leg_index"))
       .def("record_failure", &flox::OrderGroup::recordFailure, py::arg("leg_index"))
+      .def("mark_action_dispatched", [](flox::OrderGroup& g, size_t idx, const std::string& kind)
+           {
+            auto k = (kind == "cancel") ? flox::OrderGroupAction::Kind::CancelLeg
+                                        : flox::OrderGroupAction::Kind::RevertLeg;
+            g.markActionDispatched(idx, k); }, py::arg("leg_index"), py::arg("kind"))
+      .def("auto_dispatch", [](flox::OrderGroup& g, py::object strategy)
+           {
+            // Dispatch every not-yet-dispatched recommended action
+            // through the strategy's emit helpers. Marks each action
+            // as dispatched so subsequent calls don't re-fire it.
+            size_t fired = 0;
+            for (const auto& a : g.recommendedActions())
+            {
+              if (a.kind == flox::OrderGroupAction::Kind::CancelLeg)
+              {
+                strategy.attr("emit_cancel")(a.orderId);
+              }
+              else
+              {
+                if (a.side == 0)
+                {
+                  strategy.attr("emit_market_buy")(a.symbol, a.qty.toDouble());
+                }
+                else
+                {
+                  strategy.attr("emit_market_sell")(a.symbol, a.qty.toDouble());
+                }
+              }
+              g.markActionDispatched(a.legIndex, a.kind);
+              ++fired;
+            }
+            return fired; }, py::arg("strategy"))
       .def("state", &flox::OrderGroup::state)
       .def("recommended_actions", [](const flox::OrderGroup& g)
            {

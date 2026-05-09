@@ -1,4 +1,4 @@
-// node/src/order_group.h — Multi-leg order group state machine wrap (W15-T004).
+// node/src/order_group.h — Multi-leg order group state machine wrap.
 //
 // Thin NAPI wrap over the C ABI flox_order_group_* surface. The group
 // is a passive state machine — bindings record submit / fill / cancel
@@ -31,7 +31,10 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
                         InstanceMethod("recordFailure", &OrderGroupWrap::RecordFailure),
                         InstanceMethod("state", &OrderGroupWrap::State),
                         InstanceMethod("recommendedActions",
-                                       &OrderGroupWrap::RecommendedActions)});
+                                       &OrderGroupWrap::RecommendedActions),
+                        InstanceMethod("markActionDispatched",
+                                       &OrderGroupWrap::MarkActionDispatched),
+                        InstanceMethod("autoDispatch", &OrderGroupWrap::AutoDispatch)});
   }
 
   OrderGroupWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderGroupWrap>(info)
@@ -204,6 +207,54 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
       out.Set(i, obj);
     }
     return out;
+  }
+
+  void MarkActionDispatched(const Napi::CallbackInfo& info)
+  {
+    uint32_t leg = info[0].As<Napi::Number>().Uint32Value();
+    std::string kind = info[1].As<Napi::String>().Utf8Value();
+    uint8_t k = (kind == "cancel") ? 0 : 1;
+    flox_order_group_mark_action_dispatched(_h, leg, k);
+  }
+
+  Napi::Value AutoDispatch(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || !info[0].IsObject())
+    {
+      Napi::TypeError::New(env, "autoDispatch requires a strategy object")
+          .ThrowAsJavaScriptException();
+      return Napi::Number::New(env, 0);
+    }
+    auto strategy = info[0].As<Napi::Object>();
+
+    constexpr uint32_t kMaxActions = 32;
+    int64_t buf[kMaxActions * 5];
+    uint32_t n = flox_order_group_recommended_actions(_h, buf, kMaxActions);
+    uint32_t fired = 0;
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      const int64_t* slot = buf + i * 5;
+      uint32_t leg = static_cast<uint32_t>(slot[1]);
+      if (slot[0] == 0)
+      {
+        // CancelLeg: strategy.emitCancel(orderId).
+        Napi::Function fn = strategy.Get("emitCancel").As<Napi::Function>();
+        fn.Call(strategy, {Napi::Number::New(env, static_cast<double>(slot[2]))});
+        flox_order_group_mark_action_dispatched(_h, leg, 0);
+      }
+      else
+      {
+        // RevertLeg: opposite side market order.
+        const char* method = (slot[3] == 0) ? "emitMarketBuy" : "emitMarketSell";
+        Napi::Function fn = strategy.Get(method).As<Napi::Function>();
+        fn.Call(strategy, {Napi::Number::New(env, static_cast<double>(slot[2])),
+                           Napi::Number::New(env, flox_quantity_to_double(slot[4]))});
+        flox_order_group_mark_action_dispatched(_h, leg, 1);
+      }
+      ++fired;
+    }
+    return Napi::Number::New(env, fired);
   }
 };
 

@@ -108,6 +108,34 @@ class OrderGroup {
     recordCancel(i) { this._legs[i].state = 4; }
     recordFailure(i) { this._legs[i].state = 5; }
 
+    markActionDispatched(legIndex, kind) {
+        var bit = (kind === 'cancel') ? 0x1 : 0x2;
+        this._legs[legIndex].dispatched = (this._legs[legIndex].dispatched || 0) | bit;
+    }
+
+    autoDispatch(strategy) {
+        // Dispatch every not-yet-dispatched recommended action through
+        // the strategy's emit helpers; mark each so it doesn't fire
+        // again on subsequent calls.
+        var actions = this.recommendedActions();
+        var fired = 0;
+        for (var i = 0; i < actions.length; i++) {
+            var a = actions[i];
+            if (a.kind === 'cancel') {
+                strategy.cancel(a.orderId);
+            } else {
+                if (a.side === 0) {
+                    strategy.marketBuy({ symbol: a.symbol, qty: a.qty });
+                } else {
+                    strategy.marketSell({ symbol: a.symbol, qty: a.qty });
+                }
+            }
+            this.markActionDispatched(a.legIndex, a.kind);
+            fired++;
+        }
+        return fired;
+    }
+
     _stateRaw() {
         if (this._legs.length === 0) return 0;
         var anyPending = false, anyFilled = false, allFilled = true;
@@ -148,7 +176,8 @@ class OrderGroup {
             if (!anyFill) return out;
             for (var j = 0; j < this._legs.length; j++) {
                 var l = this._legs[j];
-                if (l.state === 0 || l.state === 1) {
+                var dispatched = l.dispatched || 0;
+                if ((l.state === 0 || l.state === 1) && !(dispatched & 0x1)) {
                     out.push({ kind: 'cancel', legIndex: j, orderId: l.orderId });
                 }
             }
@@ -163,9 +192,10 @@ class OrderGroup {
             if (!anyFailureOrCancel) return out;
             for (var m = 0; m < this._legs.length; m++) {
                 var ll = this._legs[m];
-                if (ll.state === 0 || ll.state === 1) {
+                var disp = ll.dispatched || 0;
+                if ((ll.state === 0 || ll.state === 1) && !(disp & 0x1)) {
                     out.push({ kind: 'cancel', legIndex: m, orderId: ll.orderId });
-                } else if (ll.state === 3 || ll.state === 2) {
+                } else if ((ll.state === 3 || ll.state === 2) && !(disp & 0x2)) {
                     out.push({
                         kind: 'revert',
                         legIndex: m,

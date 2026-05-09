@@ -5547,6 +5547,25 @@
     },
     {
       "group": "order_group",
+      "name": "flox_order_group_mark_action_dispatched",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leg_index",
+          "type": "uint32_t"
+        },
+        {
+          "name": "kind",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
       "name": "flox_order_group_recommended_actions",
       "params": [
         {

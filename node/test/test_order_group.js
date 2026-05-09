@@ -72,4 +72,30 @@ check('OrderGroupPolicy exposes named constants',
   check('unknown policy string throws', threw);
 }
 
+// --- autoDispatch fires emit calls and is idempotent.
+{
+  function fakeStrat() {
+    return {
+      cancels: [],
+      buys: [],
+      sells: [],
+      emitCancel(oid) { this.cancels.push(oid); },
+      emitMarketBuy(sym, qty) { this.buys.push([sym, qty]); },
+      emitMarketSell(sym, qty) { this.sells.push([sym, qty]); },
+    };
+  }
+  const s = fakeStrat();
+  const g = new flox.OrderGroup({ policy: OrderGroupPolicy.AllOrNothing });
+  g.addMarketLeg(1, 0, 0.1);
+  g.addMarketLeg(2, 1, 2.0);
+  g.recordSubmit(0, 100); g.recordSubmit(1, 101);
+  g.recordFill(0, 0.1); g.recordFailure(1);
+  const fired = g.autoDispatch(s);
+  check('autoDispatch fires 1 action', fired === 1);
+  check('autoDispatch emitted market sell to revert filled BTC',
+        s.sells.length === 1 && s.sells[0][0] === 1
+        && Math.abs(s.sells[0][1] - 0.1) < 1e-9);
+  check('autoDispatch idempotent on re-call', g.autoDispatch(s) === 0);
+}
+
 console.log('node order_group test ok');

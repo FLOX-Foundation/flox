@@ -56,6 +56,12 @@ struct OrderGroupLeg
   OrderId orderId = 0;
   Quantity filledQty{};
   LegState state = LegState::Pending;
+  // Bitmask of actions already dispatched to the executor:
+  //   bit 0 = CancelLeg, bit 1 = RevertLeg.
+  // The auto-dispatch helper sets these so a leg's cancel /
+  // revert is fired exactly once even if `recommendedActions()` is
+  // queried repeatedly.
+  uint8_t dispatchedActions = 0;
 };
 
 // Recommended action surfaced by the state machine. The binding /
@@ -221,8 +227,19 @@ class OrderGroup
     return OrderGroupState::Submitted;
   }
 
+  // Mark a leg's action as dispatched so it is not surfaced again
+  // by recommendedActions(). Called by the binding-side auto-dispatch
+  // helper after the action has been emitted through the executor.
+  void markActionDispatched(size_t legIdx, OrderGroupAction::Kind kind)
+  {
+    auto& l = _legs.at(legIdx);
+    uint8_t bit = (kind == OrderGroupAction::Kind::CancelLeg) ? 0x1 : 0x2;
+    l.dispatchedActions |= bit;
+  }
+
   // Recommended next actions given the current legs / policy. Empty
-  // if nothing needs to happen.
+  // if nothing needs to happen. Actions already marked dispatched
+  // (via `markActionDispatched`) are filtered out.
   std::vector<OrderGroupAction> recommendedActions() const
   {
     std::vector<OrderGroupAction> out;
@@ -250,7 +267,8 @@ class OrderGroup
       for (size_t i = 0; i < _legs.size(); ++i)
       {
         const auto& l = _legs[i];
-        if (l.state == LegState::Submitted || l.state == LegState::Pending)
+        if ((l.state == LegState::Submitted || l.state == LegState::Pending) &&
+            !(l.dispatchedActions & 0x1))
         {
           OrderGroupAction a{};
           a.kind = OrderGroupAction::Kind::CancelLeg;
@@ -281,7 +299,8 @@ class OrderGroup
       for (size_t i = 0; i < _legs.size(); ++i)
       {
         const auto& l = _legs[i];
-        if (l.state == LegState::Submitted || l.state == LegState::Pending)
+        if ((l.state == LegState::Submitted || l.state == LegState::Pending) &&
+            !(l.dispatchedActions & 0x1))
         {
           OrderGroupAction a{};
           a.kind = OrderGroupAction::Kind::CancelLeg;
@@ -289,7 +308,8 @@ class OrderGroup
           a.orderId = l.orderId;
           out.push_back(a);
         }
-        else if (l.state == LegState::Filled || l.state == LegState::PartiallyFilled)
+        else if ((l.state == LegState::Filled || l.state == LegState::PartiallyFilled) &&
+                 !(l.dispatchedActions & 0x2))
         {
           OrderGroupAction a{};
           a.kind = OrderGroupAction::Kind::RevertLeg;

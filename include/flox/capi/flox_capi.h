@@ -504,6 +504,8 @@ extern "C"
   uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
                                                 int64_t* actions_out,
                                                 uint32_t max_actions);
+  void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index,
+                                               uint8_t kind);
 
   // ============================================================
   // Multi-feed clock

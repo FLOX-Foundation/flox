@@ -63,6 +63,35 @@ def run():
     check("AllOrNothing: revert qty matches fill",
           abs(acts3[0].qty - 0.1) < 1e-6)
 
+    # --- auto_dispatch: fires through a fake strategy and is idempotent.
+    @dataclass
+    class FakeStrat:
+        cancels: List[int]
+        buys: List[Tuple[int, float]]
+        sells: List[Tuple[int, float]]
+
+        def emit_cancel(self, order_id: int):
+            self.cancels.append(order_id)
+
+        def emit_market_buy(self, symbol: int, qty: float):
+            self.buys.append((symbol, qty))
+
+        def emit_market_sell(self, symbol: int, qty: float):
+            self.sells.append((symbol, qty))
+
+    s = FakeStrat(cancels=list[int](), buys=list[Tuple[int, float]](),
+                   sells=list[Tuple[int, float]]())
+    g4 = OrderGroup(parent_signal_id=4, policy=ALL_OR_NOTHING)
+    g4.add_market_leg(1, 0, 0.1)
+    g4.add_market_leg(2, 1, 2.0)
+    g4.record_submit(0, 400); g4.record_submit(1, 401)
+    g4.record_fill(0, 0.1); g4.record_failure(1)
+    fired = g4.auto_dispatch(s)
+    check("auto_dispatch fired 1", fired == 1)
+    check("auto_dispatch emitted a sell", len(s.sells) == 1)
+    check("auto_dispatch sell symbol = 1", s.sells[0][0] == 1)
+    check("auto_dispatch idempotent", g4.auto_dispatch(s) == 0)
+
     print("codon order_group smoke ok")
 
 

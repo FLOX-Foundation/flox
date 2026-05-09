@@ -20,6 +20,7 @@ from C import flox_order_group_record_cancel(cobj, u32)
 from C import flox_order_group_record_failure(cobj, u32)
 from C import flox_order_group_state(cobj) -> u8
 from C import flox_order_group_recommended_actions(cobj, cobj, u32) -> u32
+from C import flox_order_group_mark_action_dispatched(cobj, u32, u8)
 
 from flox.types import Quantity, Price
 
@@ -132,3 +133,29 @@ class OrderGroup:
                     side=int(ip[base + 3]),
                     qty=float(ip[base + 4]) / 1e8))
         return out
+
+    def mark_action_dispatched(self, leg_index: int, kind: str):
+        """Mark a leg's action as dispatched so it stops surfacing in
+        `recommended_actions`. kind: "cancel" or "revert"."""
+        k = u8(0) if kind == "cancel" else u8(1)
+        flox_order_group_mark_action_dispatched(self._h, u32(leg_index), k)
+
+    def auto_dispatch(self, strategy) -> int:
+        """Dispatch every not-yet-dispatched recommended action through
+        the strategy's emit helpers and mark each as dispatched. The
+        strategy must expose `emit_cancel(order_id)`,
+        `emit_market_buy(symbol, qty)` and `emit_market_sell(symbol, qty)`.
+        Returns the number of actions fired."""
+        actions = self.recommended_actions()
+        fired = 0
+        for a in actions:
+            if a.kind == "cancel":
+                strategy.emit_cancel(a.order_id)
+            else:
+                if a.side == 0:
+                    strategy.emit_market_buy(a.symbol, a.qty)
+                else:
+                    strategy.emit_market_sell(a.symbol, a.qty)
+            self.mark_action_dispatched(a.leg_index, a.kind)
+            fired += 1
+        return fired
