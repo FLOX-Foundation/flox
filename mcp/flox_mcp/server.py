@@ -423,6 +423,10 @@ def build_server() -> Server:
                     "do I X' / 'what does Y do' / 'where is Z documented'. "
                     "The index is built from a strict allowlist; private "
                     "tracker / strategy / author files are NEVER indexed."
+                    "\n\nQuery syntax: plain word lists are AND-matched "
+                    "(every token must appear). Wrap a phrase in double "
+                    "quotes for exact match: `\"walk forward\"`. FTS5 "
+                    "operators (OR, NEAR, *, parens) pass through."
                     "\n\nCanonical workflow queries (run these instead of "
                     "guessing the canonical path from training data):\n"
                     "  • User wants to record market data → "
@@ -444,10 +448,9 @@ def build_server() -> Server:
                         "query": {
                             "type": "string",
                             "description":
-                                "Free-text query. Phrases like \"walk "
-                                "forward\" are treated as one phrase. "
-                                "Plain word lists work too; the tool "
-                                "quotes them automatically.",
+                                "Free-text query. Plain word lists are "
+                                "AND-matched. Wrap a phrase in double "
+                                "quotes for exact match.",
                         },
                         "k": {
                             "type": "integer",
