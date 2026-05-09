@@ -573,6 +573,10 @@ export class BacktestRunner {
   setStrategy(strategy: Strategy): void;
   runCsv(path: string, symbol: string): BacktestStats;
   runOhlcv(timestamps: Float64Array, closes: Float64Array, symbol: string): BacktestStats;
+  /** Replay a `.floxlog` tape directory through the backtest. The tape
+   *  is the canonical recording format written by `flox tape record`
+   *  (live) or `scripts/backfill_to_tape.py` (historical). */
+  runTape(path: string): BacktestStats;
   /** Replace the built-in SimulatedExecutor with a binding-supplied one. */
   setExecutor(executor: Executor | null): void;
   /** Attach a listener for order lifecycle events. Multiple listeners
