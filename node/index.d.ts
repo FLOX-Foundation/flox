@@ -378,8 +378,8 @@ export class Runner {
   /** Mirror an order event into the attached recorder. No-op when
    *  no recorder is attached. Wire from your executor wrapper after
    *  the corresponding `on_submitted` / `on_canceled` / etc. fires.
-   *  `eventKind`: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject,
-   *               5=PartialFill, 6=Fill, 7=Expire. */
+   *  `eventKind`: 1=Submit, 2=Cancel, 3=Modify, 4=Ack, 5=Reject,
+   *               6=Expire. */
   traceOrderEvent(opts: {
     orderId: number;
     parentSignalId?: number;

@@ -3017,8 +3017,8 @@ extern "C"
   // `on_rejected` / etc. The runner stamps `run_ts_ns` with the
   // current wall-clock and uses the most recent `feed_ts_ns` from
   // `flox_runner_set_trace_feed_ts_ns`.
-  // event_kind: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject,
-  //             5=PartialFill, 6=Fill, 7=Expire (matches OrderEventKind).
+  // event_kind matches OrderEventKind in run_format_v1.h:
+  //   1=Submit, 2=Cancel, 3=Modify, 4=Ack, 5=Reject, 6=Expire.
   FLOX_EXPORT(group = "trace_attach")
   void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
                                      uint64_t parent_signal_id, uint32_t symbol_id,

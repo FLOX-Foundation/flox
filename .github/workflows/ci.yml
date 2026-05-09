@@ -57,8 +57,8 @@ jobs:
     - name: Verify doc snippets follow the --8<-- include pattern
       run: |
         # Ratchet floor: 6 `--8<--` includes today (2% of 288 typed
-        # blocks). Migration target is W2-T011 (50% coverage). Bump the
-        # floor in this step every time a PR successfully migrates more
+        # blocks). Migration target is 50% coverage. Bump the floor
+        # in this step every time a PR successfully migrates more
         # snippets — never lower it.
         python3 scripts/check_doc_snippets.py --min-includes 6
     - name: Verify flox-mcp bundled data is in sync
@@ -210,8 +210,11 @@ jobs:
     - name: Verify RL environment
       run: PYTHONPATH=build/python python3 python/tests/test_rl_env.py
 
-    - name: Replay-equivalence CI gate (W2-T017)
+    - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
+
+    - name: Cross-binding .floxrun parity gate
+      run: python3 scripts/floxrun_byte_identical_gate.py
 
     - name: Verify Python CCXT adapter (mock-based)
       run: PYTHONPATH=build/python python3 python/tests/test_ccxt_adapter.py
