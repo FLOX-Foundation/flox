@@ -96,6 +96,47 @@ export interface TradeData {
   timestampNs: bigint;
 }
 
+/** Order-event lifecycle status, mirrored from `FloxOrderEventStatus`. */
+export type OrderEventStatus =
+  | "NEW"
+  | "ACCEPTED"
+  | "PENDING_NEW"
+  | "PARTIALLY_FILLED"
+  | "FILLED"
+  | "PENDING_CANCEL"
+  | "CANCELED"
+  | "EXPIRED"
+  | "REJECTED"
+  | "REPLACED"
+  | "PENDING_TRIGGER"
+  | "TRIGGERED"
+  | "TRAILING_UPDATED"
+  | "UNKNOWN";
+
+/** Order-event payload delivered to `onFill` / `onOrderUpdate`. */
+export interface OrderEventData {
+  orderId: number;
+  symbolId: number;
+  side: Side;
+  orderType:
+    | "LIMIT"
+    | "MARKET"
+    | "STOP_MARKET"
+    | "STOP_LIMIT"
+    | "TP_MARKET"
+    | "TP_LIMIT"
+    | "ICEBERG"
+    | "UNKNOWN";
+  status: OrderEventStatus;
+  /** Cumulative or last-fill quantity depending on the executor. */
+  fillQty: number;
+  /** Last-fill price; 0 for non-fill events. */
+  fillPrice: number;
+  exchangeTsNs: number;
+  /** Set only when status === "REJECTED". */
+  rejectReason: string | null;
+}
+
 /** Order-emission helper passed as the third arg to strategy callbacks. */
 export interface EmitMethods {
   marketBuy(qty: number): void;
@@ -125,6 +166,13 @@ export interface Strategy {
   onTrade?(ctx: SymbolContext, trade: TradeData, emit: EmitMethods): void;
   onBookUpdate?(ctx: SymbolContext, emit: EmitMethods): void;
   onBar?(ctx: SymbolContext, bar: BarData, emit: EmitMethods): void;
+  /** Fires on every fill the strategy's own orders produce
+   *  (status PARTIALLY_FILLED or FILLED). */
+  onFill?(ctx: SymbolContext, ev: OrderEventData, emit: EmitMethods): void;
+  /** Fires on every order-lifecycle status change: NEW / ACCEPTED /
+   *  CANCELED / REJECTED / REPLACED / TRIGGERED / TRAILING_UPDATED.
+   *  Includes fills too — pick `onFill` if you only care about those. */
+  onOrderUpdate?(ctx: SymbolContext, ev: OrderEventData, emit: EmitMethods): void;
 }
 
 // ── Extension hooks ──────────────────────────────────────────────────
