@@ -136,6 +136,8 @@ struct NodeStrategyHost
   Napi::FunctionReference on_bar_fn;
   Napi::FunctionReference on_start_fn;
   Napi::FunctionReference on_stop_fn;
+  Napi::FunctionReference on_fill_fn;
+  Napi::FunctionReference on_order_update_fn;
   Napi::ObjectReference emitter;
   std::vector<uint32_t> syms;
   std::unique_ptr<BridgeStrategy> bridge;
@@ -162,6 +164,16 @@ struct NodeStrategyHost
     FloxSymbolContext ctx;
     FloxBarData bar;
     NodeStrategyHost* host;
+  };
+  struct OrderEventCallData
+  {
+    FloxSymbolContext ctx;
+    FloxOrderEventData ev;
+    // reject_reason is a borrowed pointer in the C ABI struct; copy
+    // it onto the heap so the TSFN consumer can outlive the caller.
+    std::string reject_reason_owned;
+    NodeStrategyHost* host;
+    bool is_fill;
   };
 
   void enableThreaded()
@@ -205,6 +217,8 @@ struct NodeStrategyHost
     on_bar_fn = get("onBar");
     on_start_fn = get("onStart");
     on_stop_fn = get("onStop");
+    on_fill_fn = get("onFill");
+    on_order_update_fn = get("onOrderUpdate");
     if (on_start_fn)
     {
       on_start_fn.Call({});
@@ -230,6 +244,8 @@ struct NodeStrategyHost
     on_bar_fn = get("onBar");
     on_start_fn = get("onStart");
     on_stop_fn = get("onStop");
+    on_fill_fn = get("onFill");
+    on_order_update_fn = get("onOrderUpdate");
 
     FloxStrategyCallbacks cbs{};
     cbs.user_data = this;
@@ -238,6 +254,8 @@ struct NodeStrategyHost
     cbs.on_bar = &NodeStrategyHost::onBar;
     cbs.on_start = &NodeStrategyHost::onStart;
     cbs.on_stop = &NodeStrategyHost::onStop;
+    cbs.on_fill = &NodeStrategyHost::onFill;
+    cbs.on_order_update = &NodeStrategyHost::onOrderUpdate;
 
     bridge = std::make_unique<BridgeStrategy>(
         static_cast<SubscriberId>(id), syms, *reg, cbs);
@@ -498,6 +516,134 @@ struct NodeStrategyHost
       buildBarObj(env, barObj, bar);
       self->on_bar_fn.Call({ctxObj, barObj, self->emitter.Value()});
     }
+  }
+
+  // ── Order-event hooks ─────────────────────────────────────────────
+  //
+  // Mirror the pybind11 surface: status names match
+  // `FloxOrderEventStatus` (NEW, PARTIALLY_FILLED, FILLED, CANCELED,
+  // REJECTED, ...). `onFill` is called only on terminal fill events
+  // (status == PARTIALLY_FILLED or FILLED); `onOrderUpdate` fires on
+  // every status change including fills, so a strategy that only
+  // wants the lifecycle and is happy to inspect status itself can
+  // implement the latter.
+
+  static const char* orderEventStatusName(uint8_t s)
+  {
+    switch (s)
+    {
+      case 0: return "NEW";
+      case 1: return "ACCEPTED";
+      case 2: return "PENDING_NEW";
+      case 3: return "PARTIALLY_FILLED";
+      case 4: return "FILLED";
+      case 5: return "PENDING_CANCEL";
+      case 6: return "CANCELED";
+      case 7: return "EXPIRED";
+      case 8: return "REJECTED";
+      case 9: return "REPLACED";
+      case 10: return "PENDING_TRIGGER";
+      case 11: return "TRIGGERED";
+      case 12: return "TRAILING_UPDATED";
+      default: return "UNKNOWN";
+    }
+  }
+
+  static const char* orderTypeName(uint8_t t)
+  {
+    switch (t)
+    {
+      case 0: return "LIMIT";
+      case 1: return "MARKET";
+      case 2: return "STOP_MARKET";
+      case 3: return "STOP_LIMIT";
+      case 4: return "TP_MARKET";
+      case 5: return "TP_LIMIT";
+      case 6: return "ICEBERG";
+      default: return "UNKNOWN";
+    }
+  }
+
+  static void buildOrderEventObj(Napi::Env env, Napi::Object& o,
+                                 const FloxOrderEventData* ev,
+                                 const std::string* reject_owned)
+  {
+    o.Set("orderId", Napi::Number::New(env, static_cast<double>(ev->order_id)));
+    o.Set("symbolId", Napi::Number::New(env, ev->symbol_id));
+    o.Set("side", Napi::String::New(env, ev->side == 0 ? "buy" : "sell"));
+    o.Set("orderType", Napi::String::New(env, orderTypeName(ev->order_type)));
+    o.Set("status", Napi::String::New(env, orderEventStatusName(ev->status)));
+    o.Set("fillQty", Napi::Number::New(env, flox_quantity_to_double(ev->fill_qty_raw)));
+    o.Set("fillPrice", Napi::Number::New(env, flox_price_to_double(ev->fill_price_raw)));
+    o.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(ev->exchange_ts_ns)));
+    if (reject_owned && !reject_owned->empty())
+    {
+      o.Set("rejectReason", Napi::String::New(env, *reject_owned));
+    }
+    else if (ev->reject_reason)
+    {
+      o.Set("rejectReason", Napi::String::New(env, ev->reject_reason));
+    }
+    else
+    {
+      o.Set("rejectReason", env.Null());
+    }
+  }
+
+  static void callOnOrderEvent(Napi::Env env, Napi::Function, OrderEventCallData* d)
+  {
+    auto* self = d->host;
+    auto& fn = d->is_fill ? self->on_fill_fn : self->on_order_update_fn;
+    if (!fn.IsEmpty())
+    {
+      auto ctxObj = Napi::Object::New(env);
+      buildCtxObj(env, ctxObj, &d->ctx);
+      auto evObj = Napi::Object::New(env);
+      buildOrderEventObj(env, evObj, &d->ev, &d->reject_reason_owned);
+      fn.Call({ctxObj, evObj, self->emitter.Value()});
+    }
+    delete d;
+  }
+
+  static void dispatchOrderEvent(NodeStrategyHost* self,
+                                 const FloxSymbolContext* ctx,
+                                 const FloxOrderEventData* ev,
+                                 bool is_fill)
+  {
+    auto& fn = is_fill ? self->on_fill_fn : self->on_order_update_fn;
+    if (fn.IsEmpty())
+    {
+      return;
+    }
+    if (self->_threaded)
+    {
+      auto* d = new OrderEventCallData{
+          *ctx, *ev,
+          ev->reject_reason ? std::string(ev->reject_reason) : std::string{},
+          self, is_fill};
+      self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnOrderEvent);
+    }
+    else
+    {
+      auto env = self->env;
+      auto ctxObj = Napi::Object::New(env);
+      buildCtxObj(env, ctxObj, ctx);
+      auto evObj = Napi::Object::New(env);
+      buildOrderEventObj(env, evObj, ev, nullptr);
+      fn.Call({ctxObj, evObj, self->emitter.Value()});
+    }
+  }
+
+  static void onFill(void* ud, const FloxSymbolContext* ctx,
+                     const FloxOrderEventData* ev)
+  {
+    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev, true);
+  }
+
+  static void onOrderUpdate(void* ud, const FloxSymbolContext* ctx,
+                            const FloxOrderEventData* ev)
+  {
+    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev, false);
   }
 
   struct LifecycleCallData

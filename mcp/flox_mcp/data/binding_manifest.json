@@ -5084,6 +5084,10 @@
         },
         {
           "kind": "class",
+          "name": "OrderEventData"
+        },
+        {
+          "kind": "class",
           "name": "OrderGroup"
         },
         {

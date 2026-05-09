@@ -83,12 +83,13 @@ class Strategy:
         self._symbol_names = list[str]()
         self._symbol_map = dict[str, int]()
         self._reverse_map = dict[int, str]()
-        # FloxStrategyCallbacks is a 6-pointer struct on 64-bit
-        # (on_trade, on_book, on_bar, on_start, on_stop, user_data).
-        # Zero-initialise — overrides happen on the C++ side via the
-        # BridgeStrategy that the runner attaches to this handle.
-        self._callbacks_buf = Ptr[byte](48)
-        for i in range(48):
+        # FloxStrategyCallbacks is an 8-pointer struct on 64-bit
+        # (on_trade, on_book, on_bar, on_start, on_stop, on_fill,
+        # on_order_update, user_data). Zero-initialise — overrides
+        # happen on the C++ side via the BridgeStrategy that the
+        # runner attaches to this handle.
+        self._callbacks_buf = Ptr[byte](64)
+        for i in range(64):
             self._callbacks_buf[i] = byte(0)
         if registry == cobj():
             # No registry attached; downstream `Runner.add_strategy`
@@ -122,6 +123,20 @@ class Strategy:
 
     def on_stop(self):
         """Called when strategy stops. Override in subclass."""
+        pass
+
+    def on_fill(self, ctx: SymbolContext, ev):
+        """Called on each fill (status PARTIALLY_FILLED or FILLED)
+        for orders this strategy emitted. `ev` carries `order_id`,
+        `side`, `fill_qty`, `fill_price`, `exchange_ts_ns`. Override
+        in subclass to react to your own fills."""
+        pass
+
+    def on_order_update(self, ctx: SymbolContext, ev):
+        """Called on every order-lifecycle status change for orders
+        this strategy emitted (NEW / ACCEPTED / CANCELED / REJECTED /
+        REPLACED / TRIGGERED / TRAILING_UPDATED). Includes fills
+        too — pick `on_fill` if you only want fills."""
         pass
 
     # ------------------------------------------------------------------

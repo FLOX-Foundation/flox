@@ -855,6 +855,8 @@ FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
   cb.on_bar = FloxJsStrategy::onBar;
   cb.on_start = FloxJsStrategy::onStart;
   cb.on_stop = FloxJsStrategy::onStop;
+  cb.on_fill = FloxJsStrategy::onFill;
+  cb.on_order_update = FloxJsStrategy::onOrderUpdate;
   cb.user_data = this;
   return cb;
 }
@@ -1062,6 +1064,122 @@ JSValue FloxJsStrategy::makeBarObject(const FloxBarData* bar)
                     JS_NewFloat64(c, static_cast<double>(bar->end_time_ns)));
   JS_SetPropertyStr(c, obj, "closeReason", JS_NewUint32(c, bar->close_reason));
   return obj;
+}
+
+namespace
+{
+const char* jsOrderEventStatusName(uint8_t s)
+{
+  switch (s)
+  {
+    case 0: return "NEW";
+    case 1: return "ACCEPTED";
+    case 2: return "PENDING_NEW";
+    case 3: return "PARTIALLY_FILLED";
+    case 4: return "FILLED";
+    case 5: return "PENDING_CANCEL";
+    case 6: return "CANCELED";
+    case 7: return "EXPIRED";
+    case 8: return "REJECTED";
+    case 9: return "REPLACED";
+    case 10: return "PENDING_TRIGGER";
+    case 11: return "TRIGGERED";
+    case 12: return "TRAILING_UPDATED";
+    default: return "UNKNOWN";
+  }
+}
+const char* jsOrderTypeName(uint8_t t)
+{
+  switch (t)
+  {
+    case 0: return "LIMIT";
+    case 1: return "MARKET";
+    case 2: return "STOP_MARKET";
+    case 3: return "STOP_LIMIT";
+    case 4: return "TP_MARKET";
+    case 5: return "TP_LIMIT";
+    case 6: return "ICEBERG";
+    default: return "UNKNOWN";
+  }
+}
+}  // namespace
+
+JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
+{
+  auto* c = _engine.context();
+  JSValue obj = JS_NewObject(c);
+  JS_SetPropertyStr(c, obj, "orderId",
+                    JS_NewFloat64(c, static_cast<double>(ev->order_id)));
+  JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, ev->symbol_id));
+  JS_SetPropertyStr(c, obj, "side",
+                    JS_NewString(c, ev->side == 0 ? "buy" : "sell"));
+  JS_SetPropertyStr(c, obj, "orderType",
+                    JS_NewString(c, jsOrderTypeName(ev->order_type)));
+  JS_SetPropertyStr(c, obj, "status",
+                    JS_NewString(c, jsOrderEventStatusName(ev->status)));
+  JS_SetPropertyStr(c, obj, "fillQty",
+                    JS_NewFloat64(c, flox_quantity_to_double(ev->fill_qty_raw)));
+  JS_SetPropertyStr(c, obj, "fillPrice",
+                    JS_NewFloat64(c, flox_price_to_double(ev->fill_price_raw)));
+  JS_SetPropertyStr(c, obj, "exchangeTsNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->exchange_ts_ns)));
+  if (ev->reject_reason)
+  {
+    JS_SetPropertyStr(c, obj, "rejectReason", JS_NewString(c, ev->reject_reason));
+  }
+  else
+  {
+    JS_SetPropertyStr(c, obj, "rejectReason", JS_NULL);
+  }
+  return obj;
+}
+
+void FloxJsStrategy::onFill(void* userData, const FloxSymbolContext* ctx,
+                            const FloxOrderEventData* ev)
+{
+  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* jsCtx = self->_engine.context();
+  JSValue ctxObj = self->makeCtxObject(ctx);
+  JSValue evObj = self->makeOrderEventObject(ev);
+  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchFill");
+  if (JS_IsFunction(jsCtx, method))
+  {
+    JSValue args[2] = {ctxObj, evObj};
+    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
+    if (JS_IsException(ret))
+    {
+      std::cerr << "[flox-js] Error in onFill: "
+                << self->_engine.getErrorMessage() << std::endl;
+    }
+    JS_FreeValue(jsCtx, ret);
+  }
+  JS_FreeValue(jsCtx, method);
+  JS_FreeValue(jsCtx, ctxObj);
+  JS_FreeValue(jsCtx, evObj);
+}
+
+void FloxJsStrategy::onOrderUpdate(void* userData, const FloxSymbolContext* ctx,
+                                   const FloxOrderEventData* ev)
+{
+  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* jsCtx = self->_engine.context();
+  JSValue ctxObj = self->makeCtxObject(ctx);
+  JSValue evObj = self->makeOrderEventObject(ev);
+  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchOrderUpdate");
+  if (JS_IsFunction(jsCtx, method))
+  {
+    JSValue args[2] = {ctxObj, evObj};
+    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
+    if (JS_IsException(ret))
+    {
+      std::cerr << "[flox-js] Error in onOrderUpdate: "
+                << self->_engine.getErrorMessage() << std::endl;
+    }
+    JS_FreeValue(jsCtx, ret);
+  }
+  JS_FreeValue(jsCtx, method);
+  JS_FreeValue(jsCtx, ctxObj);
+  JS_FreeValue(jsCtx, evObj);
 }
 
 }  // namespace flox
