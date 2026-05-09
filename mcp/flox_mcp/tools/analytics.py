@@ -37,8 +37,14 @@ def _post(path: str, body: Mapping[str, Any]) -> str:
     token = _env("FLOX_CONTROL_TOKEN")
     if not token:
         return json.dumps({
-            "error": "FLOX_CONTROL_TOKEN is not set; analytics tools "
-                     "cannot reach the control plane.",
+            "error": ("No flox engine detected. Runtime tools "
+                      "(list_strategies, get_positions, get_pnl, "
+                      "get_event_log, get_strategy_state, get_kill_switch) "
+                      "need a running engine reachable via "
+                      "FLOX_CONTROL_URL + FLOX_CONTROL_TOKEN. If you are "
+                      "exploring the framework without an engine, use "
+                      "docs_search / lookup_symbol / scaffold_strategy / "
+                      "run_backtest instead — those work standalone."),
         }, indent=2)
     headers = {
         "Content-Type": "application/json",

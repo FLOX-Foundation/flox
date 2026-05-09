@@ -36,8 +36,13 @@ def _post(path: str, body: Mapping[str, Any]) -> str:
     token = _env("FLOX_CONTROL_TOKEN")
     if not token:
         return json.dumps({
-            "error": "FLOX_CONTROL_TOKEN is not set; flox-mcp cannot "
-                     "reach the control plane without a bearer token.",
+            "error": ("No flox engine detected. Mutating control tools "
+                      "(place_order, cancel_order, cancel_all, "
+                      "flatten_positions, set_kill_switch) need a running "
+                      "engine reachable via FLOX_CONTROL_URL + "
+                      "FLOX_CONTROL_TOKEN. If you are exploring without "
+                      "an engine, use docs_search / lookup_symbol / "
+                      "scaffold_strategy / run_backtest instead."),
         }, indent=2)
 
     headers = {
