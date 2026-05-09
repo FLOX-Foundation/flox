@@ -160,6 +160,30 @@ def test_auto_dispatch_one_sided_cancels_remaining_legs() -> None:
     assert s.cancels == [201]
 
 
+def test_pair_latency_decision_returns_wait_when_unset() -> None:
+    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
+    g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
+    assert g.pair_latency_decision(0, 0, False) == "wait"
+
+
+def test_pair_latency_decision_paths() -> None:
+    g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+    g.add_limit_leg(symbol=1, side=0, price=50000.0, qty=0.1)
+    g.add_limit_leg(symbol=2, side=1, price=3000.0, qty=1.5)
+    g.set_pair_latency_budget_ns(50_000_000)  # 50 ms
+
+    submit_ts = 1_000_000_000
+    # Ack within budget → submit follower.
+    assert g.pair_latency_decision(submit_ts, submit_ts + 30_000_000, True) == "submit_follower"
+    # Ack over budget → cancel leader.
+    assert g.pair_latency_decision(submit_ts, submit_ts + 60_000_000, True) == "cancel_leader"
+    # No ack yet, still inside budget → keep waiting.
+    assert g.pair_latency_decision(submit_ts, submit_ts + 10_000_000, False) == "wait"
+    # No ack yet, past budget → cancel leader on timeout.
+    assert g.pair_latency_decision(submit_ts, submit_ts + 80_000_000, False) == "cancel_leader"
+
+
 def test_partial_fill_marks_leg_partially_filled() -> None:
     g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.BEST_EFFORT)
     g.add_market_leg(1, 0, 0.5)

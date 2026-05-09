@@ -52,6 +52,17 @@ struct GroupRiskBreach
   std::string detail;
 };
 
+// Decision returned by `pairLatencyDecision`: should the strategy
+// submit the follower leg (leader acked in time), cancel the leader
+// leg (leader timed out), or wait (decision is still pending —
+// neither submitted nor acked yet)?
+enum class PairLatencyDecision : uint8_t
+{
+  Wait = 0,            // budget not yet evaluated / no decision needed
+  SubmitFollower = 1,  // leader acked within budget — go ahead with leg B
+  CancelLeader = 2,    // leader timed out — pull the open leg, abort basket
+};
+
 enum class LegState : uint8_t
 {
   Pending = 0,
@@ -129,6 +140,48 @@ class OrderGroup
   // setRiskLimits to enable any of the three caps.
   void setRiskLimits(const GroupRiskLimits& limits) noexcept { _limits = limits; }
   const GroupRiskLimits& riskLimits() const noexcept { return _limits; }
+
+  // OneSided pair latency budget. After the leader leg submits, the
+  // strategy waits up to `budgetNs` for the leader's exchange ack
+  // before sending the follower leg. If the ack lands within budget
+  // the call to `pairLatencyDecision` returns SubmitFollower; if the
+  // ack timestamp exceeds the budget (or the strategy passes a "now"
+  // past the budget without an ack), CancelLeader.
+  //
+  // Use feed-time timestamps (deterministic under replay), not wall
+  // clock. Zero `budgetNs` disables the gate.
+  void setPairLatencyBudgetNs(int64_t budgetNs) noexcept { _pairBudgetNs = budgetNs; }
+  int64_t pairLatencyBudgetNs() const noexcept { return _pairBudgetNs; }
+
+  // Returns the decision the strategy should act on. Pass the leader's
+  // submit timestamp and either the ack timestamp (if it has landed)
+  // or the current feed time (treated as "still no ack"). The leg
+  // index is the leader leg — typically 0 for OneSided pairs.
+  PairLatencyDecision pairLatencyDecision(int64_t leaderSubmitTsNs,
+                                          int64_t leaderAckTsNs,
+                                          bool ackReceived) const noexcept
+  {
+    if (_pairBudgetNs <= 0)
+    {
+      return PairLatencyDecision::Wait;
+    }
+    if (ackReceived)
+    {
+      const int64_t latency = leaderAckTsNs - leaderSubmitTsNs;
+      if (latency <= _pairBudgetNs)
+      {
+        return PairLatencyDecision::SubmitFollower;
+      }
+      return PairLatencyDecision::CancelLeader;
+    }
+    // No ack yet — caller passed current feed-time as `leaderAckTsNs`.
+    const int64_t elapsed = leaderAckTsNs - leaderSubmitTsNs;
+    if (elapsed > _pairBudgetNs)
+    {
+      return PairLatencyDecision::CancelLeader;
+    }
+    return PairLatencyDecision::Wait;
+  }
 
   // Run the configured limits against the current legs. Each leg
   // contributes `referencePrice * targetQty` to gross notional;
@@ -432,6 +485,7 @@ class OrderGroup
   OrderGroupPolicy _policy;
   std::vector<OrderGroupLeg> _legs;
   GroupRiskLimits _limits{};
+  int64_t _pairBudgetNs = 0;
 };
 
 }  // namespace flox

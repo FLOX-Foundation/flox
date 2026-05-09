@@ -1409,6 +1409,20 @@ uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equi
   return 1;
 }
 
+void flox_order_group_set_pair_latency_budget_ns(FloxOrderGroupHandle h, int64_t budget_ns)
+{
+  toOrderGroup(h)->setPairLatencyBudgetNs(budget_ns);
+}
+
+uint8_t flox_order_group_pair_latency_decision(FloxOrderGroupHandle h,
+                                               int64_t leader_submit_ts_ns,
+                                               int64_t leader_ack_ts_ns,
+                                               uint8_t ack_received)
+{
+  return static_cast<uint8_t>(toOrderGroup(h)->pairLatencyDecision(
+      leader_submit_ts_ns, leader_ack_ts_ns, ack_received != 0));
+}
+
 uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
                                               int64_t* actions_out,
                                               uint32_t max_actions)

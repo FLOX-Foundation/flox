@@ -116,4 +116,33 @@ check('OrderGroupPolicy exposes named constants',
   check('autoDispatch idempotent on re-call', g.autoDispatch(s) === 0);
 }
 
+// --- OneSided pair-latency budget: SubmitFollower / Wait / CancelLeader.
+{
+  const g = new flox.OrderGroup({ policy: OrderGroupPolicy.OneSided });
+  g.addLimitLeg(1, 0, 50000.0, 0.1);
+  g.addLimitLeg(2, 1, 3000.0, 1.5);
+  check('budget unset → wait',
+        g.pairLatencyDecision({ leaderSubmitTsNs: 0, leaderAckTsNs: 0,
+                                 ackReceived: false }) === 'wait');
+
+  g.setPairLatencyBudgetNs(50_000_000);  // 50 ms
+  const submitTs = 1_000_000_000;
+  check('ack within budget → submit_follower',
+        g.pairLatencyDecision({ leaderSubmitTsNs: submitTs,
+                                 leaderAckTsNs: submitTs + 30_000_000,
+                                 ackReceived: true }) === 'submit_follower');
+  check('ack over budget → cancel_leader',
+        g.pairLatencyDecision({ leaderSubmitTsNs: submitTs,
+                                 leaderAckTsNs: submitTs + 60_000_000,
+                                 ackReceived: true }) === 'cancel_leader');
+  check('no ack, still inside budget → wait',
+        g.pairLatencyDecision({ leaderSubmitTsNs: submitTs,
+                                 leaderAckTsNs: submitTs + 10_000_000,
+                                 ackReceived: false }) === 'wait');
+  check('no ack, past budget → cancel_leader (timeout)',
+        g.pairLatencyDecision({ leaderSubmitTsNs: submitTs,
+                                 leaderAckTsNs: submitTs + 80_000_000,
+                                 ackReceived: false }) === 'cancel_leader');
+}
+
 console.log('node order_group test ok');

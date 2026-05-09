@@ -113,6 +113,25 @@ class OrderGroup {
         this._legs[legIndex].dispatched = (this._legs[legIndex].dispatched || 0) | bit;
     }
 
+    setPairLatencyBudgetNs(budgetNs) {
+        this._pairBudgetNs = budgetNs;
+    }
+
+    pairLatencyDecision(opts) {
+        opts = opts || {};
+        var budget = this._pairBudgetNs || 0;
+        if (budget <= 0) return 'wait';
+        var submit = opts.leaderSubmitTsNs || 0;
+        var ack = opts.leaderAckTsNs || 0;
+        var ackReceived = opts.ackReceived === true;
+        if (ackReceived) {
+            return (ack - submit <= budget) ? 'submit_follower' : 'cancel_leader';
+        }
+        // No ack yet — caller passed current feed-time as ackTs.
+        if (ack - submit > budget) return 'cancel_leader';
+        return 'wait';
+    }
+
     setRiskLimits(opts) {
         opts = opts || {};
         this._limits = {

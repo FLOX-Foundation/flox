@@ -122,6 +122,20 @@ inline void bindOrderGroup(py::module_& m)
             d["rule"] = breach.rule;
             d["detail"] = breach.detail;
             return d; }, py::arg("equity") = 0.0, py::arg("market_ref_prices") = std::vector<double>{})
+      .def("set_pair_latency_budget_ns", &flox::OrderGroup::setPairLatencyBudgetNs, py::arg("budget_ns"))
+      .def("pair_latency_decision", [](const flox::OrderGroup& g, int64_t leader_submit_ts_ns, int64_t leader_ack_ts_ns, bool ack_received)
+           {
+            auto d = g.pairLatencyDecision(leader_submit_ts_ns, leader_ack_ts_ns,
+                                            ack_received);
+            switch (d)
+            {
+              case flox::PairLatencyDecision::Wait: return std::string("wait");
+              case flox::PairLatencyDecision::SubmitFollower:
+                return std::string("submit_follower");
+              case flox::PairLatencyDecision::CancelLeader:
+                return std::string("cancel_leader");
+            }
+            return std::string("wait"); }, py::arg("leader_submit_ts_ns"), py::arg("leader_ack_ts_ns"), py::arg("ack_received") = false)
       .def("state", &flox::OrderGroup::state)
       .def("recommended_actions", [](const flox::OrderGroup& g)
            {
