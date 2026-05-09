@@ -18,6 +18,7 @@ from .tools import (
     events,
     examples,
     indicators,
+    init_project as init_project_tool,
     lookahead as lookahead_tool,
     lookup,
     positions,
@@ -297,6 +298,49 @@ def build_server() -> Server:
                         },
                     },
                     "required": ["language"],
+                },
+            ),
+            Tool(
+                name="init_project",
+                description=(
+                    "Create a new FLOX project from a bundled template. "
+                    "Thin wrapper around the canonical `flox new` CLI — "
+                    "the CLI stays the source of truth, this tool only "
+                    "makes it discoverable from MCP. Use when the user "
+                    "asks 'set up a new flox project' / 'I want to "
+                    "scaffold a research notebook' / 'start a live "
+                    "trading bot'. Three templates ship with flox-py: "
+                    "`research` (notebook + sample data + main.py), "
+                    "`live` (CCXT broker + dry-run safety harness), "
+                    "`indicator-library` (standalone indicator package "
+                    "with tests). Result includes the CLI output and a "
+                    "Next steps section with `docs_search` queries."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["project_name", "template"],
+                    "properties": {
+                        "project_name": {
+                            "type": "string",
+                            "description":
+                                "Directory name for the new project. "
+                                "Created under `target_dir`. Special "
+                                "characters in the name become snake_case "
+                                "in the bundled `__PROJECT_SLUG__`.",
+                        },
+                        "template": {
+                            "type": "string",
+                            "enum": ["research", "live", "indicator-library"],
+                            "description":
+                                "Template to scaffold from. Required.",
+                        },
+                        "target_dir": {
+                            "type": "string",
+                            "description":
+                                "Parent directory the project is created "
+                                "under. Default: current working dir.",
+                        },
+                    },
                 },
             ),
             Tool(
@@ -905,6 +949,12 @@ def build_server() -> Server:
                     language=arguments.get("language"),
                     kind=arguments.get("kind", "bar-driven"),
                     name=arguments.get("name", "MyStrategy"),
+                )
+            elif name == "init_project":
+                text = init_project_tool.init_project(
+                    project_name=arguments["project_name"],
+                    template=arguments["template"],
+                    target_dir=arguments.get("target_dir", "."),
                 )
             elif name == "docs_search":
                 text = docs_search_tool.docs_search(
