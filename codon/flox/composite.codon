@@ -187,3 +187,69 @@ class TfHandle[S]:
 
 def when(strategy, symbol: int, bar_type: int, param: int):
     return TfHandle(strategy, symbol, bar_type, param)
+
+
+# ---------------------------------------------------------------------------
+# Indicator-grid sugar (W3-T017): instantiate the same indicator across a
+# cross-product of symbols and timeframes. The Codon shape mirrors the
+# Python and JS surfaces; cells are stored as a parallel list of keys +
+# indicators rather than a dict because Codon's generic maps over
+# generic values are awkward.
+# ---------------------------------------------------------------------------
+
+class IndicatorGrid[S]:
+    keys: List[Tuple[int, int, int]]   # (symbol, bar_type, param)
+    cells: List[Indicator[S]]
+
+    def __init__(self):
+        self.keys = list[Tuple[int, int, int]]()
+        self.cells = list[Indicator[S]]()
+
+    def _set(self, symbol: int, bt: int, param: int, ind: Indicator[S]):
+        self.keys.append((symbol, bt, param))
+        self.cells.append(ind)
+
+    def get(self, symbol: int, bt: int, param: int) -> Indicator[S]:
+        target = (symbol, bt, param)
+        for i in range(len(self.keys)):
+            if self.keys[i] == target:
+                return self.cells[i]
+        raise KeyError("indicator not in grid")
+
+    def size(self) -> int:
+        return len(self.keys)
+
+
+class GridBuilder[S]:
+    _strategy: S
+    _symbols: List[int]
+    _tfs: List[Tuple[int, int]]   # (bar_type, param)
+
+    def __init__(self, strategy: S, symbols: List[int],
+                 timeframes: List[Tuple[int, int]]):
+        self._strategy = strategy
+        self._symbols = symbols
+        self._tfs = timeframes
+
+    def _build(self, period: int, kind: str) -> IndicatorGrid[S]:
+        g = IndicatorGrid[S]()
+        for sym in self._symbols:
+            for tf in self._tfs:
+                bt = tf[0]
+                param = tf[1]
+                ind = Indicator[S](self._strategy, sym, bt, param, period, kind)
+                g._set(sym, bt, param, ind)
+        return g
+
+    def sma(self, period: int) -> IndicatorGrid[S]: return self._build(period, "sma")
+    def ema(self, period: int) -> IndicatorGrid[S]: return self._build(period, "ema")
+    def rsi(self, period: int) -> IndicatorGrid[S]: return self._build(period, "rsi")
+    def close(self) -> IndicatorGrid[S]: return self._build(1, "close")
+
+
+def grid(strategy, symbols: List[int], timeframes: List[Tuple[int, int]]):
+    """Returns a builder that produces an IndicatorGrid spanning the
+    cross-product of `symbols` × `timeframes`. Each timeframe is a
+    `(bar_type, param)` tuple — pass `(BAR_TYPE_TIME, ns)` for time
+    bars."""
+    return GridBuilder(strategy, symbols, timeframes)

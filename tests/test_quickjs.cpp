@@ -734,6 +734,90 @@ TEST(JsIntegrationTest, CompositeDslLogicalOps)
 }
 
 // ============================================================
+// Indicator-grid sugar (W3-T017)
+//
+// `grid(strategy, [BTC, ETH], [H4, M5]).ema(50)` instantiates one
+// indicator per (symbol, timeframe) cell. Lookup by
+// `g.get(symbol, barType, param)`.
+// ============================================================
+
+TEST(JsIntegrationTest, IndicatorGridCrossProduct)
+{
+  TempJsFile script(R"(
+    var gridSize = 0;
+    var btcReady = false;
+    var btcValue = 0;
+    var ethReady = false;
+    var keysShape = "";
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT", "ETHUSDT"] }); }
+      onBar(ctx, bar) {
+        var BTC = this._symbolMap["BTCUSDT"];
+        var ETH = this._symbolMap["ETHUSDT"];
+        var M1 = 60 * 1000000000;
+        var H1 = 3600 * 1000000000;
+        var g = grid(this, [BTC, ETH], [M1, H1]).ema(3);
+        gridSize = g.size();
+
+        var btcEma = g.get(BTC, 0, M1);
+        btcReady = btcEma.isReady();
+        if (btcReady) btcValue = btcEma.value();
+
+        var ethEma = g.get(ETH, 0, H1);
+        ethReady = ethEma.isReady();
+
+        var ks = g.keys();
+        keysShape = ks.length + "/" + ks[0].symbol + ":" + ks[0].param;
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  // Drive 5 M1 bars on BTC so the M1 EMA(3) is ready; H1 cells stay cold.
+  const uint64_t M1_NS = 60ull * 1'000'000'000ull;
+  for (int i = 0; i < 5; ++i)
+  {
+    BarEvent ev{};
+    ev.symbol = symIds[0];  // BTC
+    ev.barType = BarType::Time;
+    ev.barTypeParam = M1_NS;
+    ev.bar.open = Price::fromDouble(100.0 + i);
+    ev.bar.close = Price::fromDouble(101.0 + i);
+    ev.bar.high = Price::fromDouble(102.0 + i);
+    ev.bar.low = Price::fromDouble(99.0 + i);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M1_NS) * i}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{static_cast<int64_t>(M1_NS) * (i + 1)}};
+    bridge->onBar(ev);
+  }
+
+  auto* ctx = jsStrat.engine().context();
+
+  JSValue size = jsStrat.engine().getGlobalProperty("gridSize");
+  int32_t sizeVal = 0;
+  JS_ToInt32(ctx, &sizeVal, size);
+  EXPECT_EQ(sizeVal, 4) << "2 symbols x 2 timeframes";
+  JS_FreeValue(ctx, size);
+
+  JSValue btcReady = jsStrat.engine().getGlobalProperty("btcReady");
+  EXPECT_TRUE(JS_ToBool(ctx, btcReady));
+  JS_FreeValue(ctx, btcReady);
+
+  JSValue ethReady = jsStrat.engine().getGlobalProperty("ethReady");
+  EXPECT_FALSE(JS_ToBool(ctx, ethReady)) << "ETH/H1 cell stays cold";
+  JS_FreeValue(ctx, ethReady);
+}
+
+// ============================================================
 // Multi-TF alignment helpers (W1-T027)
 //
 // Parity with the pybind11 + NAPI surface added in T026: a JS strategy

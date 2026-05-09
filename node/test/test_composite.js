@@ -52,4 +52,16 @@ const emptyStrat = fakeStrat([]);
 const emptyFast = when(emptyStrat, 1, BAR_TYPE_TIME, M1).ema(3);
 check('empty ring not ready', !emptyFast.isReady());
 
+// Indicator-grid sugar (W3-T017).
+const { grid } = require('../lib/composite');
+const H1 = 3600 * 1000000000;
+const g = grid(climbStrat, [1, 2], [M1, [BAR_TYPE_TIME, H1]]).ema(3);
+check('grid size 2x2 = 4', g.size() === 4);
+const btcM1 = g.get(1, BAR_TYPE_TIME, M1);
+check('grid[(1, M1)] resolves', !!btcM1);
+check('grid cell ready (uses fake ring)', btcM1.isReady());
+const keys = g.keys();
+check('grid keys length', keys.length === 4);
+check('grid first key has symbol+param', keys[0].symbol === 1 && keys[0].param === M1);
+
 console.log('node composite DSL test ok');

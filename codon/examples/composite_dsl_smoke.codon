@@ -89,6 +89,17 @@ def run():
     empty_fast = when(empty, 1, BAR_TYPE_TIME, M1).ema(3)
     check("empty ring not ready", not empty_fast.is_ready())
 
+    # Indicator-grid sugar (W3-T017).
+    from flox.composite import grid
+    H1 = 3600_000_000_000
+    syms = [1, 2]
+    tfs = [(BAR_TYPE_TIME, M1), (BAR_TYPE_TIME, H1)]
+    g = grid(strat, syms, tfs).ema(3)
+    check("grid 2x2 = 4 cells", g.size() == 4)
+    btc_m1 = g.get(1, BAR_TYPE_TIME, M1)
+    check("grid cell ready (climbing series)", btc_m1.is_ready())
+    check("grid cell value sane", btc_m1.value() > 100.0)
+
     print("codon composite DSL smoke ok")
 
 
