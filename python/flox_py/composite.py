@@ -3,7 +3,7 @@
 Lets a strategy declare entry / exit logic as a tree built from
 indicator handles and comparison operators rather than inlining the
 boolean state machine in `on_bar`. Reads bars from the per-(symbol,
-timeframe) ring populated by `Strategy.last_n_closed_bars` (W1-T026),
+timeframe) ring populated by `Strategy.last_n_closed_bars`,
 so warmup, multi-symbol, and multi-TF are handled uniformly.
 
 Example::

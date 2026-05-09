@@ -474,7 +474,7 @@ extern "C"
   void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity);
 
   // ============================================================
-  // Multi-leg order group (W15-T004)
+  // Multi-leg order group
   // ============================================================
 
   typedef void* FloxOrderGroupHandle;
@@ -506,7 +506,7 @@ extern "C"
                                                 uint32_t max_actions);
 
   // ============================================================
-  // Multi-feed clock (W6-T021)
+  // Multi-feed clock
   // ============================================================
 
   typedef void* FloxFeedClockHandle;
@@ -1877,7 +1877,7 @@ extern "C"
                                          FloxExecutorHandle executor);
 
   // ============================================================
-  // Walk-forward (W6-T007 / T008)
+  // Walk-forward
   // ============================================================
 
   typedef struct
@@ -1917,7 +1917,7 @@ extern "C"
                                      uint32_t max_folds);
 
   // ============================================================
-  // Grid search (W6-T002 sequential)
+  // Grid search (sequential)
   // ============================================================
 
   typedef void* FloxGridSearchHandle;
@@ -1943,7 +1943,7 @@ extern "C"
                                 uint32_t max_results);
 
   // ============================================================
-  // Heatmap rendering (W6-T004)
+  // Heatmap rendering
   // ============================================================
 
   typedef struct
@@ -2235,7 +2235,7 @@ extern "C"
   void flox_run_recorder_close(FloxRunRecorderHandle handle);
 
   // ============================================================
-  // Trace recorder auto-attach (W14-T012)
+  // Trace recorder auto-attach
   // ============================================================
 
   void flox_runner_attach_trace_recorder(FloxRunnerHandle runner,

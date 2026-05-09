@@ -1,4 +1,4 @@
-# Smoke test for the Codon-side multi-TF alignment helpers (W1-T027).
+# Smoke test for the Codon-side multi-TF alignment helpers.
 #
 # The same C ABI exports are exercised end-to-end through QuickJS in
 # tests/test_quickjs.cpp and through pybind11 in

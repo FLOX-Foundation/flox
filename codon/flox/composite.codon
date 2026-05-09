@@ -1,4 +1,4 @@
-# Composite-condition DSL for Codon strategies (W1-T028).
+# Composite-condition DSL for Codon strategies.
 # Mirrors python/flox_py/composite.py, quickjs/flox/composite.js, and
 # node/lib/composite.js.
 #
@@ -190,7 +190,7 @@ def when(strategy, symbol: int, bar_type: int, param: int):
 
 
 # ---------------------------------------------------------------------------
-# Indicator-grid sugar (W3-T017): instantiate the same indicator across a
+# Indicator-grid sugar: instantiate the same indicator across a
 # cross-product of symbols and timeframes. The Codon shape mirrors the
 # Python and JS surfaces; cells are stored as a parallel list of keys +
 # indicators rather than a dict because Codon's generic maps over

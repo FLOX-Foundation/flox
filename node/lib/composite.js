@@ -8,8 +8,7 @@
 //   if (crossUp.isReady() && crossUp.value()) emitMarketBuy();
 //
 // `strat` must expose `lastNClosedBars(symbol, barType, param, n)` —
-// the helper landed across pybind11/NAPI/QuickJS/Codon under W1-T026 +
-// T027.
+// the helper is available across pybind11 / NAPI / QuickJS / Codon.
 
 'use strict';
 

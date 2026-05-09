@@ -1,6 +1,6 @@
 # Capture a strategy run automatically with `.floxrun`
 
-The `.floxrun` recorder API ships in W14-T007. By default the strategy author calls `rec.write_signal()` / `write_order_event()` / `write_fill()` by hand. This page shows how to attach the recorder once and have every event captured automatically.
+The `.floxrun` recorder API ships standalone. By default the strategy author calls `rec.write_signal()` / `write_order_event()` / `write_fill()` by hand. This page shows how to attach the recorder once and have every event captured automatically.
 
 ## Adapter classes
 
@@ -44,9 +44,9 @@ A `nullptr` recorder pointer disables capture without removing the inner-handler
 
 ## Phase status
 
-This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 (W14-T012) lifts a one-call `Runner.attach_trace_recorder(rec)` helper into every binding so polyglot strategies capture without per-language plumbing. Phase 3 (W14-T013) adds `Runner.trace_order_event(...)` and `Runner.trace_fill(...)` so the user's executor wrapper mirrors order events + fills into the same recorder with two extra lines per callback. End-to-end auto-subscription against the executor's listener bus is a phase-4 follow-up tracked separately.
+This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 lifts a one-call `Runner.attach_trace_recorder(rec)` helper into every binding so polyglot strategies capture without per-language plumbing. Phase 3 adds `Runner.trace_order_event(...)` and `Runner.trace_fill(...)` so the user's executor wrapper mirrors order events + fills into the same recorder with two extra lines per callback. End-to-end auto-subscription against the executor's listener bus is a follow-up tracked separately.
 
-## One-call attach (W14-T012)
+## One-call attach
 
 The `Runner` (sync mode) now exposes `attach_trace_recorder(recorder)`. Every signal the strategy emits is auto-mirrored into the recorder. Order / fill auto-capture is a follow-up — wire those through `TraceExecutionListener` against the executor's listener bus until then.
 
@@ -76,7 +76,7 @@ runner.setTraceFeedTsNs(trade.exchangeTsNs);
 
 Codon reaches the same C ABI symbols (`flox_runner_attach_trace_recorder`, `flox_runner_set_trace_feed_ts_ns`) directly. Pass `null` / `None` to detach.
 
-## Mirroring order events and fills (W14-T013)
+## Mirroring order events and fills
 
 The signal capture hook above is one half of the trace. To get a complete `.floxrun` your executor wrapper has to mirror its own callbacks into the recorder. The runner exposes two methods for this:
 

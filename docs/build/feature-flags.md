@@ -72,7 +72,7 @@ cmake -B build -DFLOX_BUILD_TESTS=ON -DFLOX_BUILD_BENCHMARKS=ON \
 
 ## Deprecated names
 
-The eight artefact options were renamed from `FLOX_ENABLE_*` to `FLOX_BUILD_*` in the W9-T002 cleanup. The legacy names continue to work as aliases for one release cycle:
+The eight artefact options were renamed from `FLOX_ENABLE_*` to `FLOX_BUILD_*` during a build-flag cleanup. The legacy names continue to work as aliases for one release cycle:
 
 | Legacy | Current | Status |
 |---|---|---|

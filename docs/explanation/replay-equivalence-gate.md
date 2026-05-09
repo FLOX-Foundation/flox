@@ -26,7 +26,7 @@ The gate is intentionally small. It does not exercise:
 
 - Stop / take-profit / trailing variants. Those are no-ops in `SimulatedExecutor.submit_order` today.
 - Multi-strategy composition.
-- Live ↔ backtest equivalence proper. That is W2-T017 Phase 2: a captured live tape replayed through the engine, comparing against the live-side fill log.
+- Live ↔ backtest equivalence proper. A separate phase tracks that work: a captured live tape replayed through the engine, comparing against the live-side fill log.
 
 When those land, this gate gets new fixtures alongside the existing one.
 

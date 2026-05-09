@@ -1,4 +1,4 @@
-# W14-T012 — verify the C ABI exports for runner trace attach are
+# verify the C ABI exports for runner trace attach are
 # reachable from Codon. End-to-end signal capture lives in the C++ +
 # pybind11 + NAPI suites where a runner is already wired into a strategy.
 

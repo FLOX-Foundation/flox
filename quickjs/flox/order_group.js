@@ -1,4 +1,4 @@
-// Multi-leg order group state machine for QuickJS strategies (W15-T004).
+// Multi-leg order group state machine for QuickJS strategies.
 // Mirrors the NAPI / pybind11 / Codon surfaces — passive state machine
 // that records submit / fill / cancel events and reports the group
 // state + recommended actions. The strategy is responsible for wiring

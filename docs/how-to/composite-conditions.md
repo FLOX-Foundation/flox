@@ -2,7 +2,7 @@
 
 Multi-symbol multi-TF strategies often look like a tangle of nested `if` statements that pull values from per-(symbol, timeframe) caches and check warmup at every step. The composite-condition DSL builds the same logic as a tree of indicator handles and operators, so the boolean state machine is the readable structure.
 
-The DSL pulls bars from the per-(symbol, timeframe) ring populated by `Strategy.last_n_closed_bars` (W1-T026). Warmup is uniform: a condition reports `is_ready() = False` until every leaf in the tree has its window of bars.
+The DSL pulls bars from the per-(symbol, timeframe) ring populated by `Strategy.last_n_closed_bars`. Warmup is uniform: a condition reports `is_ready() = False` until every leaf in the tree has its window of bars.
 
 ## Quick start
 

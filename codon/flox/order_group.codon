@@ -1,4 +1,4 @@
-# Multi-leg order group state machine for Codon strategies (W15-T004).
+# Multi-leg order group state machine for Codon strategies.
 # Mirrors the C++ engine primitive in include/flox/execution/order_group.h
 # and the NAPI / pybind11 / QuickJS surfaces.
 #

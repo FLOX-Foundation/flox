@@ -23,7 +23,7 @@ class PairTrade(Strategy):
 There are two `OrderGroup` types in flox today, and they answer different questions:
 
 - `flox_py.execution.OrderGroup` (legacy). Pure-Python helper that submits every leg through the strategy's emit functions and reads back order status; `BestEffort` only. Documented above.
-- `flox_py.OrderGroup` (W15-T004). C++ state machine in `include/flox/execution/order_group.h`, exposed through every binding. Records leg events (submit / fill / cancel / failure) and answers two questions: aggregate state, and what actions the strategy *should* take next given the chosen policy. Does no I/O — the strategy wires the recommended actions into its executor.
+- `flox_py.OrderGroup`. C++ state machine in `include/flox/execution/order_group.h`, exposed through every binding. Records leg events (submit / fill / cancel / failure) and answers two questions: aggregate state, and what actions the strategy *should* take next given the chosen policy. Does no I/O — the strategy wires the recommended actions into its executor.
 
 The state machine is what you use for `AllOrNothing` and `OneSided` semantics. In the cross-binding section below the new surface is the one shown.
 

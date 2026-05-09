@@ -5,7 +5,7 @@
 // and compose conditions with .and / .or / .not.
 //
 // The DSL sits on top of `Strategy.lastNClosedBars(symbol, barType,
-// param, n)` (W1-T026 / T027). No engine state, no C ABI surface.
+// param, n)`. No engine state, no C ABI surface.
 
 var BAR_TYPE_TIME = 0;
 var BAR_TYPE_TICK = 1;

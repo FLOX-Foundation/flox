@@ -42,7 +42,7 @@ Calling `tick()` with a symbol that was not in the original `symbols` list updat
 
 `python/tests/test_feed_clock.py` covers all three policies, the timeout fallback path, the staleness map, the leader / follower freshness check, and the out-of-band symbol case.
 
-## Engine primitive (W6-T021)
+## Engine primitive
 
 The doc above describes `flox_py.feed_clock.MultiFeedClock` — a pure-Python helper that ships with flox_py. There is also a C++ engine primitive (`include/flox/feed/multi_feed_clock.h`) reachable from every binding through a shared C ABI. The two have the same shape; pick the engine version when you need polyglot parity or a zero-overhead hot path.
 
