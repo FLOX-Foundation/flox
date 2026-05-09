@@ -48,6 +48,30 @@ def test_suggest_volatility():
     assert "ATR" in out or "Bollinger" in out
 
 
+def test_suggest_mean_reversion_with_stddev():
+    """Real-session query: 'mean reversion: short when price is N
+    standard deviations above moving average, cover at the mean'.
+    Previously matched only 'moving average' → trend topic, returning
+    SMA / EMA / KAMA / DEMA / TEMA. The textbook fits are Bollinger
+    and RollingZScore."""
+    out = runtime.suggest_indicator(
+        "mean reversion: short when price is N standard deviations above moving average",
+        k=5,
+    )
+    assert "Bollinger" in out, out
+    assert "RollingZScore" in out, out
+
+
+def test_suggest_z_score():
+    out = runtime.suggest_indicator("z-score threshold")
+    assert "RollingZScore" in out
+
+
+def test_suggest_stddev_band():
+    out = runtime.suggest_indicator("stddev band around mean")
+    assert "Bollinger" in out or "RollingZScore" in out
+
+
 def test_suggest_momentum():
     out = runtime.suggest_indicator("overbought oscillator")
     assert "RSI" in out or "Stochastic" in out

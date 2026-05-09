@@ -328,6 +328,13 @@ INDICATOR_KEYWORDS: dict[str, dict[str, str]] = {
         "ParkinsonVol": "Parkinson volatility from highs/lows",
         "RogersSatchellVol": "Rogers-Satchell drift-independent volatility",
         "Bollinger": "Bollinger Bands; SMA ± k * stddev",
+        "RollingZScore": "rolling z-score; how many sigma above/below the rolling mean",
+    },
+    "mean_reversion": {
+        "Bollinger": "Bollinger Bands; classic SMA ± k*stddev fade signal",
+        "RollingZScore": "rolling z-score; threshold-based mean reversion",
+        "RSI": "RSI; overbought/oversold mean-reversion oscillator",
+        "Stochastic": "stochastic oscillator; %K threshold mean reversion",
     },
     "oscillator": {
         "RSI": "relative strength index; classic momentum oscillator",
@@ -362,6 +369,11 @@ INDICATOR_KEYWORDS: dict[str, dict[str, str]] = {
         "Bollinger": "Bollinger Bands",
         "atr": "ATR-based channel inputs",
     },
+    "stddev": {
+        "Bollinger": "Bollinger Bands; SMA ± k * stddev",
+        "RollingZScore": "rolling z-score; price expressed in stddev units",
+        "RollingStd": "rolling standard deviation",
+    },
 }
 
 # Aliases mapping a user phrase to one or more topics.
@@ -381,11 +393,23 @@ _TOPIC_ALIASES: dict[str, Iterable[str]] = {
     "regime": ("regime",),
     "stationary": ("stationarity",),
     "stationarity": ("stationarity",),
-    "mean revert": ("oscillator", "stationarity"),
+    "mean revert": ("mean_reversion", "oscillator", "stationarity"),
+    "mean reversion": ("mean_reversion", "oscillator", "stationarity"),
+    "revert to mean": ("mean_reversion",),
+    "fade": ("mean_reversion",),
     "noise": ("noise",),
     "entropy": ("noise",),
     "channel": ("channel",),
-    "band": ("channel",),
+    "band": ("channel", "stddev"),
+    "bands": ("channel", "stddev"),
+    "envelope": ("channel",),
+    "standard deviation": ("stddev", "volatility"),
+    "stddev": ("stddev", "volatility"),
+    "std dev": ("stddev", "volatility"),
+    "sigma": ("stddev", "volatility"),
+    "z-score": ("stddev", "mean_reversion"),
+    "zscore": ("stddev", "mean_reversion"),
+    "z score": ("stddev", "mean_reversion"),
 }
 
 
@@ -417,14 +441,33 @@ def suggest_indicator(description: str, *, k: int = 3) -> str:
             f"phrasing matters."
         )
 
+    # Round-robin across matched topics: take one indicator per topic
+    # per pass, then start a second pass for the next-best from each.
+    # Without this, a query that matches several topics (e.g. "mean
+    # reversion + standard deviations + moving average") would fill
+    # the first k slots from whichever topic happens to be iterated
+    # first, hiding the more specific suggestions from the other
+    # matched topics.
+    topics_in_order = [t for _, t in matched_topics]
+    topic_iters: dict[str, list[Tuple[str, str]]] = {
+        t: list(INDICATOR_KEYWORDS.get(t, {}).items()) for t in topics_in_order
+    }
     suggestions: List[Tuple[str, str, str]] = []
     seen_names: set = set()
-    for phrase, topic in matched_topics:
-        for ind_name, rationale in INDICATOR_KEYWORDS.get(topic, {}).items():
-            if ind_name in seen_names:
-                continue
-            seen_names.add(ind_name)
-            suggestions.append((ind_name, topic, rationale))
+    while True:
+        progressed = False
+        for topic in topics_in_order:
+            entries = topic_iters[topic]
+            while entries:
+                ind_name, rationale = entries.pop(0)
+                if ind_name in seen_names:
+                    continue
+                seen_names.add(ind_name)
+                suggestions.append((ind_name, topic, rationale))
+                progressed = True
+                break
+        if not progressed:
+            break
 
     top = suggestions[: max(1, int(k))]
     lines = [
