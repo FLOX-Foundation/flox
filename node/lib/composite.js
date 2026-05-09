@@ -138,8 +138,57 @@ class _Not extends _Condition {
     value() { return !Boolean(this._inner.value()); }
 }
 
+// ---------------------------------------------------------------------------
+// Indicator-grid sugar: instantiate the same indicator across a cross-product
+// of symbols and timeframes in one declaration. Mirrors Python `composite.grid`.
+// ---------------------------------------------------------------------------
+
+function _gridKey(sym, bt, param) { return `${sym}|${bt}|${param}`; }
+
+class _IndicatorGrid {
+    constructor() { this._cells = Object.create(null); this._keys = []; }
+    _set(sym, bt, param, ind) {
+        const key = _gridKey(sym, bt, param);
+        this._cells[key] = ind;
+        this._keys.push({ symbol: sym, barType: bt, param });
+    }
+    get(sym, bt, param) { return this._cells[_gridKey(sym, bt, param)]; }
+    keys() { return this._keys.slice(); }
+    size() { return this._keys.length; }
+}
+
+class _GridBuilder {
+    constructor(strategy, symbols, timeframes) {
+        this._s = strategy;
+        this._symbols = symbols.slice();
+        this._tfs = timeframes.map((tf) =>
+            Array.isArray(tf) && tf.length === 2
+                ? { bt: Number(tf[0]), param: Number(tf[1]) }
+                : { bt: BAR_TYPE_TIME, param: Number(tf) });
+    }
+    _build(period, kind) {
+        const g = new _IndicatorGrid();
+        for (const sym of this._symbols) {
+            for (const tf of this._tfs) {
+                g._set(sym, tf.bt, tf.param,
+                       new _Indicator(this._s, sym, tf.bt, tf.param, period, kind));
+            }
+        }
+        return g;
+    }
+    sma(period) { return this._build(period, 'sma'); }
+    ema(period) { return this._build(period, 'ema'); }
+    rsi(period) { return this._build(period, 'rsi'); }
+    close() { return this._build(1, 'close'); }
+}
+
+function grid(strategy, symbols, timeframes) {
+    return new _GridBuilder(strategy, symbols, timeframes);
+}
+
 module.exports = {
     when,
+    grid,
     BAR_TYPE_TIME, BAR_TYPE_TICK, BAR_TYPE_VOLUME,
     BAR_TYPE_RENKO, BAR_TYPE_RANGE, BAR_TYPE_HEIKIN_ASHI, BAR_TYPE_BPS_RANGE,
 };

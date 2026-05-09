@@ -138,3 +138,62 @@ class _Not extends _Condition {
     isReady() { return this._inner.isReady(); }
     value() { return !Boolean(this._inner.value()); }
 }
+
+// ---------------------------------------------------------------------------
+// Indicator-grid sugar: instantiate the same indicator across a cross-product
+// of symbols and timeframes in one declaration. Mirrors Python `composite.grid`.
+// ---------------------------------------------------------------------------
+
+function _gridKey(sym, bt, param) {
+    return sym + '|' + bt + '|' + param;
+}
+
+class _IndicatorGrid {
+    constructor() { this._cells = Object.create(null); this._keys = []; }
+    _set(sym, bt, param, ind) {
+        var key = _gridKey(sym, bt, param);
+        this._cells[key] = ind;
+        this._keys.push({ symbol: sym, barType: bt, param: param });
+    }
+    get(sym, bt, param) {
+        return this._cells[_gridKey(sym, bt, param)];
+    }
+    keys() { return this._keys.slice(); }
+    size() { return this._keys.length; }
+}
+
+class _GridBuilder {
+    constructor(strategy, symbols, timeframes) {
+        this._s = strategy;
+        this._symbols = symbols.slice();
+        this._tfs = [];
+        for (var i = 0; i < timeframes.length; i++) {
+            var tf = timeframes[i];
+            if (Array.isArray(tf) && tf.length === 2) {
+                this._tfs.push({ bt: Number(tf[0]), param: Number(tf[1]) });
+            } else {
+                this._tfs.push({ bt: BAR_TYPE_TIME, param: Number(tf) });
+            }
+        }
+    }
+    _build(period, kind) {
+        var g = new _IndicatorGrid();
+        for (var i = 0; i < this._symbols.length; i++) {
+            for (var j = 0; j < this._tfs.length; j++) {
+                var sym = this._symbols[i];
+                var tf = this._tfs[j];
+                g._set(sym, tf.bt, tf.param,
+                       new _Indicator(this._s, sym, tf.bt, tf.param, period, kind));
+            }
+        }
+        return g;
+    }
+    sma(period) { return this._build(period, 'sma'); }
+    ema(period) { return this._build(period, 'ema'); }
+    rsi(period) { return this._build(period, 'rsi'); }
+    close() { return this._build(1, 'close'); }
+}
+
+function grid(strategy, symbols, timeframes) {
+    return new _GridBuilder(strategy, symbols, timeframes);
+}

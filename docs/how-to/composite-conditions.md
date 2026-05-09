@@ -70,6 +70,30 @@ for (sym, bt, param), ind in self.ema50:
 
 Each cell is a regular `_Indicator` and slots straight into the comparison / boolean operators. Timeframes can be plain integers (treated as Time-bar interval in nanoseconds) or `(bar_type, param)` tuples for tick / volume / range bars.
 
+The grid ships in every binding. Lookup is `g.get(symbol, bar_type, param)` in JS / Codon and `g[(symbol, bar_type, param)]` (or the 2-tuple Time-bar shortcut) in Python.
+
+```javascript
+// node
+const { grid, BAR_TYPE_TIME } = require('flox/composite');
+const g = grid(strat, [btcId, ethId], [M5_NS, [BAR_TYPE_TIME, H4_NS]]).ema(50);
+const btcM5 = g.get(btcId, BAR_TYPE_TIME, M5_NS);
+if (btcM5.isReady()) console.log(btcM5.value());
+```
+
+```javascript
+// QuickJS — `grid` is global
+const g = grid(this, [btcId, ethId], [M5_NS, H4_NS]).ema(50);
+const eth4h = g.get(ethId, 0, H4_NS);
+```
+
+```python
+# codon
+from flox.composite import grid, BAR_TYPE_TIME
+g = grid(self, [btc_id, eth_id],
+         [(BAR_TYPE_TIME, M5_NS), (BAR_TYPE_TIME, H4_NS)]).ema(50)
+btc_m5 = g.get(btc_id, BAR_TYPE_TIME, M5_NS)
+```
+
 ## Cross-binding
 
 The DSL ships in every binding. The Python form uses Python operator overloading; the JS / Codon forms use named methods because their type systems do not give the same operator-overload latitude. The semantics are identical.
