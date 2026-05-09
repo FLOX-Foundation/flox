@@ -1,0 +1,69 @@
+# End-to-end Codon strategy smoke. Constructs a Strategy through the
+# pointer-variant callbacks export (flox_strategy_create_p), attaches
+# it to a Runner, drives a tape that crosses an M5 bar boundary,
+# and reads the bar ring back through Strategy.last_closed_bar.
+#
+# Before W9-T003 the Codon FFI couldn't model struct-by-value
+# parameters, so this smoke would never have run. With the pointer
+# variants in place, pure-Codon strategies are constructible.
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+
+from C import flox_runner_create(cobj, cobj, cobj) -> cobj
+from C import flox_runner_destroy(cobj)
+from C import flox_runner_add_strategy(cobj, cobj)
+from C import flox_runner_start(cobj)
+from C import flox_runner_stop(cobj)
+from C import flox_runner_on_bar(cobj, u32, u8, u64,
+                                  f64, f64, f64, f64, f64, f64,
+                                  i64, i64, u8)
+
+from flox.strategy import Strategy
+from flox.types import BarData
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def run():
+    registry = flox_registry_create()
+    exch = "test"
+    sym_name = "BTCUSDT"
+    sym_id = int(flox_registry_add_symbol(
+        registry, exch.c_str(), sym_name.c_str(), 0.01))
+
+    strat = Strategy(symbols=[sym_id], strategy_id=1, registry=registry)
+    check("strategy handle constructed", strat._handle != cobj())
+
+    runner = flox_runner_create(registry, cobj(), cobj())
+    flox_runner_add_strategy(runner, strat._handle)
+    flox_runner_start(runner)
+
+    M5_NS = 5 * 60 * 1_000_000_000
+    flox_runner_on_bar(runner, u32(sym_id), u8(0), u64(M5_NS),
+                        100.0, 102.0, 99.0, 101.0, 1.0, 0.5,
+                        i64(0), i64(M5_NS), u8(0))
+    flox_runner_on_bar(runner, u32(sym_id), u8(0), u64(M5_NS),
+                        101.0, 103.0, 100.0, 102.5, 1.0, 0.5,
+                        i64(M5_NS), i64(2 * M5_NS), u8(0))
+
+    last = strat.last_closed_bar(sym_id, 0, M5_NS)
+    check("last_closed_bar returns a bar", last is not None)
+    if last is not None:
+        check("last close matches latest bar",
+              abs(last.close - 102.5) < 1e-6)
+
+    flox_runner_stop(runner)
+    flox_runner_destroy(runner)
+    # Strategy handle is owned by Codon; the destructor will free it.
+    flox_registry_destroy(registry)
+    print("codon strategy e2e smoke ok")
+
+
+run()

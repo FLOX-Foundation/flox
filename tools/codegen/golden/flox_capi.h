@@ -907,8 +907,10 @@ extern "C"
   // ============================================================
 
   FloxExecutionListenerHandle flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks);
+  FloxExecutionListenerHandle flox_execution_listener_create_p(const FloxExecutionListenerCallbacks* callbacks);
   void flox_execution_listener_destroy(FloxExecutionListenerHandle listener);
   FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks);
+  FloxExecutorHandle flox_executor_create_p(const FloxExecutorCallbacks* callbacks);
   void flox_executor_destroy(FloxExecutorHandle executor);
   void flox_executor_get_capabilities(FloxExecutorHandle executor,
                                       FloxExchangeCapabilities* caps_out);
@@ -1276,6 +1278,7 @@ extern "C"
   // ============================================================
 
   FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks);
+  FloxPnLTrackerHandle flox_pnl_tracker_create_p(const FloxPnLTrackerCallbacks* callbacks);
   void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker);
   void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine, FloxPnLTrackerHandle tracker);
   void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker);
@@ -1457,6 +1460,7 @@ extern "C"
   // ============================================================
 
   FloxMarketDataRecorderHandle flox_market_data_recorder_create(FloxMarketDataRecorderCallbacks callbacks);
+  FloxMarketDataRecorderHandle flox_market_data_recorder_create_p(const FloxMarketDataRecorderCallbacks* callbacks);
   void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
   void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
                                                  FloxMarketDataRecorderHandle recorder);
@@ -1468,6 +1472,7 @@ extern "C"
   // ============================================================
 
   FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks);
+  FloxReplaySourceHandle flox_replay_source_create_p(const FloxReplaySourceCallbacks* callbacks);
   void flox_replay_source_destroy(FloxReplaySourceHandle source);
   uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns);
 
@@ -1476,10 +1481,13 @@ extern "C"
   // ============================================================
 
   FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
+  FloxRiskManagerHandle flox_risk_manager_create_p(const FloxRiskManagerCallbacks* callbacks);
   void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
   FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks);
+  FloxKillSwitchHandle flox_kill_switch_create_p(const FloxKillSwitchCallbacks* callbacks);
   void flox_kill_switch_destroy(FloxKillSwitchHandle ks);
   FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks);
+  FloxOrderValidatorHandle flox_order_validator_create_p(const FloxOrderValidatorCallbacks* callbacks);
   void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
   void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm);
   void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine, FloxKillSwitchHandle ks);
@@ -1574,6 +1582,7 @@ extern "C"
   // ============================================================
 
   FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks);
+  FloxStorageSinkHandle flox_storage_sink_create_p(const FloxStorageSinkCallbacks* callbacks);
   void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
   void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine, FloxStorageSinkHandle sink);
   void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle sink);
@@ -1587,6 +1596,11 @@ extern "C"
                                           FloxStrategyCallbacks callbacks);
   void flox_strategy_destroy(FloxStrategyHandle strategy);
   void flox_strategy_replace_callbacks(FloxStrategyHandle strategy, FloxStrategyCallbacks callbacks);
+  FloxStrategyHandle flox_strategy_create_p(uint32_t id, const uint32_t* symbols,
+                                            uint32_t num_symbols, FloxRegistryHandle registry,
+                                            const FloxStrategyCallbacks* callbacks);
+  void flox_strategy_replace_callbacks_p(FloxStrategyHandle strategy,
+                                         const FloxStrategyCallbacks* callbacks);
 
   // ============================================================
   // Strategyrunner Synchronous

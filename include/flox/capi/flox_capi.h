@@ -147,6 +147,9 @@ extern "C"
   FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t* symbols,
                                           uint32_t num_symbols, FloxRegistryHandle registry,
                                           FloxStrategyCallbacks callbacks);
+  FloxStrategyHandle flox_strategy_create_p(uint32_t id, const uint32_t* symbols,
+                                            uint32_t num_symbols, FloxRegistryHandle registry,
+                                            const FloxStrategyCallbacks* callbacks);
   void flox_strategy_destroy(FloxStrategyHandle strategy);
 
   // Atomically replace the strategy's callback set without dropping
@@ -156,6 +159,8 @@ extern "C"
   // user_data after.
   void flox_strategy_replace_callbacks(FloxStrategyHandle strategy,
                                        FloxStrategyCallbacks callbacks);
+  void flox_strategy_replace_callbacks_p(FloxStrategyHandle strategy,
+                                         const FloxStrategyCallbacks* callbacks);
 
   // ============================================================
   // Signal emission (returns OrderId, 0 on failure)
@@ -1280,6 +1285,7 @@ extern "C"
   typedef void* FloxRiskManagerHandle;
 
   FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks);
+  FloxRiskManagerHandle flox_risk_manager_create_p(const FloxRiskManagerCallbacks* callbacks);
   void flox_risk_manager_destroy(FloxRiskManagerHandle rm);
 
   // ============================================================
@@ -1300,6 +1306,7 @@ extern "C"
   typedef void* FloxKillSwitchHandle;
 
   FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks);
+  FloxKillSwitchHandle flox_kill_switch_create_p(const FloxKillSwitchCallbacks* callbacks);
   void flox_kill_switch_destroy(FloxKillSwitchHandle ks);
 
   // ============================================================
@@ -1320,6 +1327,7 @@ extern "C"
   typedef void* FloxOrderValidatorHandle;
 
   FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks);
+  FloxOrderValidatorHandle flox_order_validator_create_p(const FloxOrderValidatorCallbacks* callbacks);
   void flox_order_validator_destroy(FloxOrderValidatorHandle ov);
 
   // ============================================================
@@ -1359,6 +1367,7 @@ extern "C"
   typedef void* FloxPnLTrackerHandle;
 
   FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks);
+  FloxPnLTrackerHandle flox_pnl_tracker_create_p(const FloxPnLTrackerCallbacks* callbacks);
   void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker);
 
   // ============================================================
@@ -1377,6 +1386,7 @@ extern "C"
   typedef void* FloxStorageSinkHandle;
 
   FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks);
+  FloxStorageSinkHandle flox_storage_sink_create_p(const FloxStorageSinkCallbacks* callbacks);
   void flox_storage_sink_destroy(FloxStorageSinkHandle sink);
 
   // ============================================================
@@ -1413,6 +1423,8 @@ extern "C"
 
   FloxMarketDataRecorderHandle flox_market_data_recorder_create(
       FloxMarketDataRecorderCallbacks callbacks);
+  FloxMarketDataRecorderHandle flox_market_data_recorder_create_p(
+      const FloxMarketDataRecorderCallbacks* callbacks);
   void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
 
   // ============================================================
@@ -1464,6 +1476,7 @@ extern "C"
   typedef void* FloxReplaySourceHandle;
 
   FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks);
+  FloxReplaySourceHandle flox_replay_source_create_p(const FloxReplaySourceCallbacks* callbacks);
   void flox_replay_source_destroy(FloxReplaySourceHandle source);
 
   // Convenience: forward a seek to the binding's seek_to callback.
@@ -1537,6 +1550,8 @@ extern "C"
 
   FloxExecutionListenerHandle
   flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks);
+  FloxExecutionListenerHandle
+  flox_execution_listener_create_p(const FloxExecutionListenerCallbacks* callbacks);
   void flox_execution_listener_destroy(FloxExecutionListenerHandle listener);
 
   // ============================================================
@@ -1599,6 +1614,7 @@ extern "C"
   typedef void* FloxExecutorHandle;
 
   FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks);
+  FloxExecutorHandle flox_executor_create_p(const FloxExecutorCallbacks* callbacks);
   void flox_executor_destroy(FloxExecutorHandle executor);
 
   // Query the executor's reported capabilities. Forwards to the binding's

@@ -630,12 +630,22 @@
         {
           "group": "execution",
           "kind": "function",
+          "name": "flox_execution_listener_create_p"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
           "name": "flox_execution_listener_destroy"
         },
         {
           "group": "execution",
           "kind": "function",
           "name": "flox_executor_create"
+        },
+        {
+          "group": "execution",
+          "kind": "function",
+          "name": "flox_executor_create_p"
         },
         {
           "group": "execution",
@@ -1000,6 +1010,11 @@
         {
           "group": "risk",
           "kind": "function",
+          "name": "flox_kill_switch_create_p"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
           "name": "flox_kill_switch_destroy"
         },
         {
@@ -1181,6 +1196,11 @@
           "group": "recorder",
           "kind": "function",
           "name": "flox_market_data_recorder_create"
+        },
+        {
+          "group": "recorder",
+          "kind": "function",
+          "name": "flox_market_data_recorder_create_p"
         },
         {
           "group": "recorder",
@@ -1380,6 +1400,11 @@
         {
           "group": "risk",
           "kind": "function",
+          "name": "flox_order_validator_create_p"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
           "name": "flox_order_validator_destroy"
         },
         {
@@ -1426,6 +1451,11 @@
           "group": "metrics",
           "kind": "function",
           "name": "flox_pnl_tracker_create"
+        },
+        {
+          "group": "metrics",
+          "kind": "function",
+          "name": "flox_pnl_tracker_create_p"
         },
         {
           "group": "metrics",
@@ -1655,6 +1685,11 @@
         {
           "group": "replay",
           "kind": "function",
+          "name": "flox_replay_source_create_p"
+        },
+        {
+          "group": "replay",
+          "kind": "function",
           "name": "flox_replay_source_destroy"
         },
         {
@@ -1666,6 +1701,11 @@
           "group": "risk",
           "kind": "function",
           "name": "flox_risk_manager_create"
+        },
+        {
+          "group": "risk",
+          "kind": "function",
+          "name": "flox_risk_manager_create_p"
         },
         {
           "group": "risk",
@@ -2095,12 +2135,22 @@
         {
           "group": "storage",
           "kind": "function",
+          "name": "flox_storage_sink_create_p"
+        },
+        {
+          "group": "storage",
+          "kind": "function",
           "name": "flox_storage_sink_destroy"
         },
         {
           "group": "strategy_lifecycle",
           "kind": "function",
           "name": "flox_strategy_create"
+        },
+        {
+          "group": "strategy_lifecycle",
+          "kind": "function",
+          "name": "flox_strategy_create_p"
         },
         {
           "group": "strategy_lifecycle",
@@ -2126,6 +2176,11 @@
           "group": "strategy_lifecycle",
           "kind": "function",
           "name": "flox_strategy_replace_callbacks"
+        },
+        {
+          "group": "strategy_lifecycle",
+          "kind": "function",
+          "name": "flox_strategy_replace_callbacks_p"
         },
         {
           "group": "multi_tf_helpers",
@@ -3235,11 +3290,19 @@
         },
         {
           "kind": "function",
+          "name": "flox_execution_listener_create_p"
+        },
+        {
+          "kind": "function",
           "name": "flox_execution_listener_destroy"
         },
         {
           "kind": "function",
           "name": "flox_executor_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_executor_create_p"
         },
         {
           "kind": "function",
@@ -3531,6 +3594,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_kill_switch_create_p"
+        },
+        {
+          "kind": "function",
           "name": "flox_kill_switch_destroy"
         },
         {
@@ -3676,6 +3743,10 @@
         {
           "kind": "function",
           "name": "flox_market_data_recorder_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_market_data_recorder_create_p"
         },
         {
           "kind": "function",
@@ -3835,6 +3906,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_order_validator_create_p"
+        },
+        {
+          "kind": "function",
           "name": "flox_order_validator_destroy"
         },
         {
@@ -3872,6 +3947,10 @@
         {
           "kind": "function",
           "name": "flox_pnl_tracker_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pnl_tracker_create_p"
         },
         {
           "kind": "function",
@@ -4055,6 +4134,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_replay_source_create_p"
+        },
+        {
+          "kind": "function",
           "name": "flox_replay_source_destroy"
         },
         {
@@ -4064,6 +4147,10 @@
         {
           "kind": "function",
           "name": "flox_risk_manager_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_risk_manager_create_p"
         },
         {
           "kind": "function",
@@ -4407,11 +4494,19 @@
         },
         {
           "kind": "function",
+          "name": "flox_storage_sink_create_p"
+        },
+        {
+          "kind": "function",
           "name": "flox_storage_sink_destroy"
         },
         {
           "kind": "function",
           "name": "flox_strategy_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_create_p"
         },
         {
           "kind": "function",
@@ -4432,6 +4527,10 @@
         {
           "kind": "function",
           "name": "flox_strategy_replace_callbacks"
+        },
+        {
+          "kind": "function",
+          "name": "flox_strategy_replace_callbacks_p"
         },
         {
           "kind": "function",
@@ -6341,8 +6440,10 @@
         "flox_backtest_runner_add_execution_listener",
         "flox_backtest_runner_set_executor",
         "flox_execution_listener_create",
+        "flox_execution_listener_create_p",
         "flox_execution_listener_destroy",
         "flox_executor_create",
+        "flox_executor_create_p",
         "flox_executor_destroy",
         "flox_executor_get_capabilities",
         "flox_live_engine_set_executor",
@@ -6903,6 +7004,7 @@
       "capi_functions": [
         "flox_live_engine_set_pnl_tracker",
         "flox_pnl_tracker_create",
+        "flox_pnl_tracker_create_p",
         "flox_pnl_tracker_destroy",
         "flox_runner_set_pnl_tracker"
       ],
@@ -7208,6 +7310,7 @@
       "capi_functions": [
         "flox_live_engine_set_market_data_recorder",
         "flox_market_data_recorder_create",
+        "flox_market_data_recorder_create_p",
         "flox_market_data_recorder_destroy",
         "flox_runner_set_market_data_recorder"
       ],
@@ -7233,6 +7336,7 @@
     "replay": {
       "capi_functions": [
         "flox_replay_source_create",
+        "flox_replay_source_create_p",
         "flox_replay_source_destroy",
         "flox_replay_source_seek_to"
       ],
@@ -7258,13 +7362,16 @@
     "risk": {
       "capi_functions": [
         "flox_kill_switch_create",
+        "flox_kill_switch_create_p",
         "flox_kill_switch_destroy",
         "flox_live_engine_set_kill_switch",
         "flox_live_engine_set_order_validator",
         "flox_live_engine_set_risk_manager",
         "flox_order_validator_create",
+        "flox_order_validator_create_p",
         "flox_order_validator_destroy",
         "flox_risk_manager_create",
+        "flox_risk_manager_create_p",
         "flox_risk_manager_destroy",
         "flox_runner_set_kill_switch",
         "flox_runner_set_order_validator",
@@ -7425,6 +7532,7 @@
         "flox_live_engine_set_storage_sink",
         "flox_runner_set_storage_sink",
         "flox_storage_sink_create",
+        "flox_storage_sink_create_p",
         "flox_storage_sink_destroy"
       ],
       "codon": {
@@ -7449,8 +7557,10 @@
     "strategy_lifecycle": {
       "capi_functions": [
         "flox_strategy_create",
+        "flox_strategy_create_p",
         "flox_strategy_destroy",
-        "flox_strategy_replace_callbacks"
+        "flox_strategy_replace_callbacks",
+        "flox_strategy_replace_callbacks_p"
       ],
       "codon": {
         "present": true,

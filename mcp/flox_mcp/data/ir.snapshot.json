@@ -3043,6 +3043,17 @@
     },
     {
       "group": "execution",
+      "name": "flox_execution_listener_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxExecutionListenerCallbacks *"
+        }
+      ],
+      "return_type": "FloxExecutionListenerHandle"
+    },
+    {
+      "group": "execution",
       "name": "flox_execution_listener_destroy",
       "params": [
         {
@@ -3059,6 +3070,17 @@
         {
           "name": "callbacks",
           "type": "FloxExecutorCallbacks"
+        }
+      ],
+      "return_type": "FloxExecutorHandle"
+    },
+    {
+      "group": "execution",
+      "name": "flox_executor_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxExecutorCallbacks *"
         }
       ],
       "return_type": "FloxExecutorHandle"
@@ -4567,6 +4589,17 @@
     },
     {
       "group": "risk",
+      "name": "flox_kill_switch_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxKillSwitchCallbacks *"
+        }
+      ],
+      "return_type": "FloxKillSwitchHandle"
+    },
+    {
+      "group": "risk",
       "name": "flox_kill_switch_destroy",
       "params": [
         {
@@ -5233,6 +5266,17 @@
     },
     {
       "group": "recorder",
+      "name": "flox_market_data_recorder_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxMarketDataRecorderCallbacks *"
+        }
+      ],
+      "return_type": "FloxMarketDataRecorderHandle"
+    },
+    {
+      "group": "recorder",
       "name": "flox_market_data_recorder_destroy",
       "params": [
         {
@@ -5805,6 +5849,17 @@
     },
     {
       "group": "risk",
+      "name": "flox_order_validator_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxOrderValidatorCallbacks *"
+        }
+      ],
+      "return_type": "FloxOrderValidatorHandle"
+    },
+    {
+      "group": "risk",
       "name": "flox_order_validator_destroy",
       "params": [
         {
@@ -5989,6 +6044,17 @@
         {
           "name": "callbacks",
           "type": "FloxPnLTrackerCallbacks"
+        }
+      ],
+      "return_type": "FloxPnLTrackerHandle"
+    },
+    {
+      "group": "metrics",
+      "name": "flox_pnl_tracker_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxPnLTrackerCallbacks *"
         }
       ],
       "return_type": "FloxPnLTrackerHandle"
@@ -6660,6 +6726,17 @@
     },
     {
       "group": "replay",
+      "name": "flox_replay_source_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxReplaySourceCallbacks *"
+        }
+      ],
+      "return_type": "FloxReplaySourceHandle"
+    },
+    {
+      "group": "replay",
       "name": "flox_replay_source_destroy",
       "params": [
         {
@@ -6691,6 +6768,17 @@
         {
           "name": "callbacks",
           "type": "FloxRiskManagerCallbacks"
+        }
+      ],
+      "return_type": "FloxRiskManagerHandle"
+    },
+    {
+      "group": "risk",
+      "name": "flox_risk_manager_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxRiskManagerCallbacks *"
         }
       ],
       "return_type": "FloxRiskManagerHandle"
@@ -8679,6 +8767,17 @@
     },
     {
       "group": "storage",
+      "name": "flox_storage_sink_create_p",
+      "params": [
+        {
+          "name": "callbacks",
+          "type": "const FloxStorageSinkCallbacks *"
+        }
+      ],
+      "return_type": "FloxStorageSinkHandle"
+    },
+    {
+      "group": "storage",
       "name": "flox_storage_sink_destroy",
       "params": [
         {
@@ -8711,6 +8810,33 @@
         {
           "name": "callbacks",
           "type": "FloxStrategyCallbacks"
+        }
+      ],
+      "return_type": "FloxStrategyHandle"
+    },
+    {
+      "group": "strategy_lifecycle",
+      "name": "flox_strategy_create_p",
+      "params": [
+        {
+          "name": "id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        },
+        {
+          "name": "registry",
+          "type": "FloxRegistryHandle"
+        },
+        {
+          "name": "callbacks",
+          "type": "const FloxStrategyCallbacks *"
         }
       ],
       "return_type": "FloxStrategyHandle"
@@ -8806,6 +8932,21 @@
         {
           "name": "callbacks",
           "type": "FloxStrategyCallbacks"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "strategy_lifecycle",
+      "name": "flox_strategy_replace_callbacks_p",
+      "params": [
+        {
+          "name": "strategy",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "callbacks",
+          "type": "const FloxStrategyCallbacks *"
         }
       ],
       "return_type": "void"
