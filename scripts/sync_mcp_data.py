@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import json
 import os
 import sqlite3
 import sys
@@ -65,6 +66,7 @@ DST_IR = DST_DATA / "ir.snapshot.json"
 DST_MANIFEST = DST_DATA / "binding_manifest.json"
 DST_EXAMPLES = DST_DATA / "examples_index.json"
 DST_FTS = DST_DATA / "docs.fts.sqlite"
+DST_GOTCHAS = DST_DATA / "gotchas.json"
 
 # Total bundle budget. The IR snapshot + binding manifest + examples
 # index are tiny (kBs); the FTS index dominates. 10 MB is a soft cap
@@ -256,6 +258,81 @@ def _sync_docs_fts(dst: Path, drifts: List[str], *, check_only: bool) -> None:
     dst.write_bytes(new_bytes)
 
 
+def _validate_gotchas(gotchas_path: Path, ir_json: str,
+                      manifest_json: str) -> List[str]:
+    """Return a list of error strings for any gotcha key that fails to
+    resolve against the IR or any binding manifest.
+
+    The check is intentionally permissive — same loose matching the
+    ``lookup_symbol`` tool does — so an entry keyed on a Python member
+    (``Strategy.market_buy``) does not need to exist verbatim in the
+    C-API IR. The key resolves if any of:
+
+    - exact key in IR functions / structs / enums / typedefs
+    - any key segment matches a binding-local symbol name
+    - last dot-segment matches an IR or binding name (snake-case
+      tolerant: ``market_buy`` matches ``flox_strategy_market_buy``)
+    """
+    if not gotchas_path.exists():
+        return []
+    try:
+        data = json.loads(gotchas_path.read_text())
+    except Exception as exc:
+        return [f"{gotchas_path.relative_to(REPO_ROOT)}: invalid JSON: {exc}"]
+
+    ir = json.loads(ir_json)
+    mf = json.loads(manifest_json)
+
+    ir_names = set()
+    for kind in ("functions", "structs", "enums", "typedefs"):
+        for item in ir.get(kind, []):
+            n = item.get("name")
+            if n:
+                ir_names.add(n)
+
+    binding_names = set()
+    for bind in mf.get("bindings", {}).values():
+        for s in bind.get("symbols", []):
+            n = s.get("name")
+            if n:
+                binding_names.add(n)
+
+    universe = ir_names | binding_names
+    errors: List[str] = []
+
+    for key, entries in data.items():
+        if key.startswith("$"):
+            continue  # schema/comment slot
+        if not isinstance(entries, list):
+            errors.append(f"gotchas.json: {key!r} value must be a list")
+            continue
+        if not _gotcha_key_resolves(key, universe):
+            errors.append(
+                f"gotchas.json: {key!r} resolves to no symbol in IR / any "
+                f"binding manifest. Did the symbol get renamed?"
+            )
+        for i, entry in enumerate(entries):
+            for required in ("id", "summary", "context", "fix"):
+                if required not in entry:
+                    errors.append(
+                        f"gotchas.json: {key!r}[{i}] missing field "
+                        f"{required!r}"
+                    )
+    return errors
+
+
+def _gotcha_key_resolves(key: str, universe: set) -> bool:
+    if key in universe:
+        return True
+    tail = key.rsplit(".", 1)[-1]
+    if tail in universe:
+        return True
+    for n in universe:
+        if n.endswith("_" + tail) or n.endswith(tail):
+            return True
+    return False
+
+
 def _copy_if_different(src: Path, dst: Path, *, check_only: bool) -> bool:
     if not src.exists():
         return True
@@ -312,6 +389,16 @@ def main(argv=None) -> int:
     # 4. Docs FTS5 index — content-equal (row set), not byte-equal.
     _sync_docs_fts(DST_FTS, drifts, check_only=args.check)
 
+    # 4b. gotchas.json — hand-curated, not regenerated. Validate that
+    # every key still resolves to a real symbol; otherwise a rename
+    # silently orphans the entry.
+    gotcha_errors = _validate_gotchas(
+        DST_GOTCHAS,
+        _build_ir_json(),
+        _build_binding_manifest_json(),
+    )
+    drifts.extend(gotcha_errors)
+
     # 5. Bundle budget. Reported (not enforced) on --check; enforced on
     # write so an over-budget commit fails locally before it lands.
     if DST_DATA.exists():
@@ -338,10 +425,16 @@ def main(argv=None) -> int:
         print(f"OK: flox-mcp bundled data in sync.")
     else:
         n_pages = len(src_pages)
+        n_gotchas = sum(
+            len(v) for k, v in
+            (json.loads(DST_GOTCHAS.read_text()) if DST_GOTCHAS.exists() else {}).items()
+            if not k.startswith("$") and isinstance(v, list)
+        )
         print(
             f"synced: c-api.snapshot + {n_pages} error page(s) + "
             f"ir.snapshot.json + binding_manifest.json + "
-            f"examples_index.json + docs.fts.sqlite → "
+            f"examples_index.json + docs.fts.sqlite + "
+            f"{n_gotchas} gotcha(s) → "
             f"{DST_DATA.relative_to(REPO_ROOT)}"
         )
     return 0

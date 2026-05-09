@@ -1,0 +1,30 @@
+{
+  "$schema": "Curated semantic footguns surfaced by `lookup_symbol`. Keys are matched against the user's input name and against any symbol the lookup resolves to across bindings. Hand-curated; no bulk import. Drift check (scripts/sync_mcp_data.py --check) requires every key to resolve to ≥1 binding.",
+  "Strategy.market_buy": [
+    {
+      "id": "qty-rounds-to-tick-step",
+      "summary": "Quantity is silently rounded down to the symbol's tick step.",
+      "context": "If `qty` is below the symbol's registered tick step (e.g. 0.0001 BTC on a symbol with step 0.001), the engine quantizes to zero and the order is dropped without an event.",
+      "fix": "Use `lookup_symbol` to confirm the symbol's tick step and check `qty >= step` before submission, or scale qty up explicitly.",
+      "discovered": "2026-05-10"
+    }
+  ],
+  "BacktestRunner.run_bars": [
+    {
+      "id": "requires-chronological-bars",
+      "summary": "Bars must be sorted by `start_time_ns` ascending.",
+      "context": "`run_bars` does not re-sort its input. Out-of-order bars are processed in array order, which produces wrong PnL and out-of-order book/aggregate state.",
+      "fix": "Sort bars by `start_time_ns` before calling. The backtest runner intentionally trusts the caller for hot-path reasons.",
+      "discovered": "2026-05-10"
+    }
+  ],
+  "Strategy.symbols": [
+    {
+      "id": "subscribed-only-not-registry",
+      "summary": "Returns subscribed symbols, not every symbol in the registry.",
+      "context": "`Strategy.symbols()` reflects the strategy's own subscription list. Symbols that are in the `SymbolRegistry` but not subscribed to (or filtered out by `subscribed_symbols()`) are absent.",
+      "fix": "If you need the full registry, query `SymbolRegistry` directly. `Strategy.symbols()` is the right answer for 'what is this strategy listening to'.",
+      "discovered": "2026-05-10"
+    }
+  ]
+}

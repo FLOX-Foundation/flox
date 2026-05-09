@@ -77,6 +77,24 @@ def test_lookup_symbol_requires_string():
     assert "required" in out.lower() or "must be" in out.lower()
 
 
+def test_lookup_symbol_attaches_gotcha_when_keyed_input():
+    """A gotcha keyed on `Strategy.market_buy` should attach when the
+    user types `market_buy` — even if the resolver finds no symbol,
+    the curated footgun is the real reason the tool exists for this
+    name."""
+    out = lookup.lookup_symbol("market_buy")
+    assert "Gotchas" in out
+    assert "tick step" in out
+
+
+def test_lookup_symbol_attaches_gotcha_when_resolved():
+    """When the resolver does match (e.g. `Strategy`), gotchas on any
+    member key (`Strategy.symbols`) are still surfaced via tail-segment
+    matching."""
+    out = lookup.lookup_symbol("symbols")
+    assert "subscribed" in out.lower()
+
+
 # ── list_bindings ─────────────────────────────────────────────────────
 
 

@@ -166,7 +166,11 @@ def build_server() -> Server:
                     "spelling. Accepts any spelling the user knows "
                     "('FloxBarData', 'BarData', 'flox_indicator_ema', 'ema', "
                     "'Ema'). Filter to one language with the `language` arg "
-                    "if the user is writing in a specific binding."
+                    "if the user is writing in a specific binding. "
+                    "When the symbol has hand-curated semantic gotchas "
+                    "(silent quantization, ordering preconditions, "
+                    "subscribed-vs-registry distinctions), they appear "
+                    "under a `## Gotchas` section in the response."
                 ),
                 inputSchema={
                     "type": "object",

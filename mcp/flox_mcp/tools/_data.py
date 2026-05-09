@@ -53,6 +53,11 @@ def _examples_index_cached(_mtime: float) -> Optional[dict]:
     return _load_json("examples_index.json")
 
 
+@functools.lru_cache(maxsize=1)
+def _gotchas_cached(_mtime: float) -> Optional[dict]:
+    return _load_json("gotchas.json")
+
+
 def _mtime_of(name: str) -> float:
     p = _data_path(name)
     return p.stat().st_mtime if p is not None else 0.0
@@ -68,6 +73,10 @@ def load_binding_manifest() -> Optional[dict]:
 
 def load_examples_index() -> Optional[dict]:
     return _examples_index_cached(_mtime_of("examples_index.json"))
+
+
+def load_gotchas() -> Optional[dict]:
+    return _gotchas_cached(_mtime_of("gotchas.json"))
 
 
 def open_docs_db() -> Optional[sqlite3.Connection]:
