@@ -34,7 +34,10 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
                                        &OrderGroupWrap::RecommendedActions),
                         InstanceMethod("markActionDispatched",
                                        &OrderGroupWrap::MarkActionDispatched),
-                        InstanceMethod("autoDispatch", &OrderGroupWrap::AutoDispatch)});
+                        InstanceMethod("autoDispatch", &OrderGroupWrap::AutoDispatch),
+                        InstanceMethod("setRiskLimits", &OrderGroupWrap::SetRiskLimits),
+                        InstanceMethod("precheckSubmission",
+                                       &OrderGroupWrap::PrecheckSubmission)});
   }
 
   OrderGroupWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderGroupWrap>(info)
@@ -215,6 +218,57 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     std::string kind = info[1].As<Napi::String>().Utf8Value();
     uint8_t k = (kind == "cancel") ? 0 : 1;
     flox_order_group_mark_action_dispatched(_h, leg, k);
+  }
+
+  void SetRiskLimits(const Napi::CallbackInfo& info)
+  {
+    auto opts = info[0].As<Napi::Object>();
+    double max_gross = opts.Has("maxGrossNotional")
+                           ? opts.Get("maxGrossNotional").As<Napi::Number>().DoubleValue()
+                           : 0.0;
+    double max_conc = opts.Has("maxConcentrationPct")
+                          ? opts.Get("maxConcentrationPct").As<Napi::Number>().DoubleValue()
+                          : 0.0;
+    double max_leg = opts.Has("maxLegQty")
+                         ? opts.Get("maxLegQty").As<Napi::Number>().DoubleValue()
+                         : 0.0;
+    flox_order_group_set_risk_limits(_h, flox_quantity_from_double(max_gross), max_conc,
+                                     flox_quantity_from_double(max_leg));
+  }
+
+  Napi::Value PrecheckSubmission(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    double equity = 0.0;
+    std::vector<int64_t> ref_prices;
+    if (info.Length() > 0 && info[0].IsObject())
+    {
+      auto opts = info[0].As<Napi::Object>();
+      if (opts.Has("equity"))
+      {
+        equity = opts.Get("equity").As<Napi::Number>().DoubleValue();
+      }
+      if (opts.Has("marketRefPrices"))
+      {
+        auto arr = opts.Get("marketRefPrices").As<Napi::Array>();
+        ref_prices.reserve(arr.Length());
+        for (uint32_t i = 0; i < arr.Length(); ++i)
+        {
+          ref_prices.push_back(
+              flox_price_from_double(arr.Get(i).As<Napi::Number>().DoubleValue()));
+        }
+      }
+    }
+    char rule[64] = {0};
+    char detail[256] = {0};
+    uint8_t denied = flox_order_group_precheck_submission(
+        _h, equity, ref_prices.empty() ? nullptr : ref_prices.data(),
+        static_cast<uint32_t>(ref_prices.size()), rule, sizeof(rule), detail, sizeof(detail));
+    Napi::Object out = Napi::Object::New(env);
+    out.Set("denied", Napi::Boolean::New(env, denied != 0));
+    out.Set("rule", Napi::String::New(env, rule));
+    out.Set("detail", Napi::String::New(env, detail));
+    return out;
   }
 
   Napi::Value AutoDispatch(const Napi::CallbackInfo& info)

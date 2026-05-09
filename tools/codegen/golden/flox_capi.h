@@ -1343,6 +1343,13 @@ extern "C"
                                                 uint32_t max_actions);
   void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index,
                                                uint8_t kind);
+  void flox_order_group_set_risk_limits(FloxOrderGroupHandle h, int64_t max_gross_notional_raw,
+                                        double max_concentration_pct, int64_t max_leg_qty_raw);
+  uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equity,
+                                               const int64_t* market_ref_prices_raw,
+                                               uint32_t market_ref_prices_len, char* rule_out,
+                                               size_t rule_capacity, char* detail_out,
+                                               size_t detail_capacity);
 
   // ============================================================
   // Order Tracker

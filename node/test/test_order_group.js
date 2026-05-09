@@ -72,6 +72,24 @@ check('OrderGroupPolicy exposes named constants',
   check('unknown policy string throws', threw);
 }
 
+// --- Group risk gate: basket over concentration cap is denied.
+{
+  const g = new flox.OrderGroup();
+  g.addMarketLeg(1, 0, 0.1);
+  g.addMarketLeg(2, 1, 2.0);
+  g.setRiskLimits({ maxConcentrationPct: 0.05 });
+  const breach = g.precheckSubmission({ equity: 100000, marketRefPrices: [50000, 3000] });
+  check('risk gate denies oversized basket', breach.denied === true);
+  check('risk gate names the rule', breach.rule === 'maxConcentrationPct');
+
+  // Tiny basket OK.
+  const g2 = new flox.OrderGroup();
+  g2.addMarketLeg(1, 0, 0.001);
+  g2.setRiskLimits({ maxConcentrationPct: 0.05 });
+  check('risk gate allows small basket',
+        g2.precheckSubmission({ equity: 100000, marketRefPrices: [50000] }).denied === false);
+}
+
 // --- autoDispatch fires emit calls and is idempotent.
 {
   function fakeStrat() {

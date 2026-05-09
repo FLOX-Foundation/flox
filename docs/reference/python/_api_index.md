@@ -879,11 +879,13 @@ Members:
 - `mark_action_dispatched(self, leg_index: typing.SupportsInt | typing.SupportsIndex, kind: str) -> None`
 - `parent_signal_id(self) -> int`
 - `policy(self) -> OrderGroupPolicy`
+- `precheck_submission(self, equity: typing.SupportsFloat | typing.SupportsIndex = 0.0, market_ref_prices: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex] = []) -> dict`
 - `recommended_actions(self) -> list`
 - `record_cancel(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `record_failure(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `record_fill(self, leg_index: typing.SupportsInt | typing.SupportsIndex, cumulative_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `record_submit(self, leg_index: typing.SupportsInt | typing.SupportsIndex, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `set_risk_limits(self, max_gross_notional: typing.SupportsFloat | typing.SupportsIndex = 0.0, max_concentration_pct: typing.SupportsFloat | typing.SupportsIndex = 0.0, max_leg_qty: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `state(self) -> OrderGroupState`
 
 ### `class OrderGroupPolicy`

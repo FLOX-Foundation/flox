@@ -96,7 +96,58 @@ fired = g.auto_dispatch(strategy)  # strategy is any class with the three emit_*
 
 `auto_dispatch` returns the number of actions it fired so the caller can decide whether to react. It is safe to call after every `record_*` event — only newly recommended actions will fire.
 
+## Group-level risk gate
+
+`OrderGroup` accepts a small set of basket-level limits that gate submission before any leg goes out:
+
+| Limit | Meaning | Off when |
+|---|---|---|
+| `max_gross_notional` | absolute notional sum across legs | zero |
+| `max_concentration_pct` | basket gross notional as a fraction of equity | zero |
+| `max_leg_qty` | per-leg quantity cap | zero |
+
+`precheck_submission(equity, market_ref_prices)` runs the configured limits against the current legs and returns a breach record. The strategy guards on `breach.denied` before calling `auto_dispatch` or emitting any leg.
+
+```python
+# pybind11
+g = flox_py.OrderGroup()
+g.add_market_leg(symbol=btc, side=0, qty=0.1)
+g.add_market_leg(symbol=eth, side=1, qty=2.0)
+g.set_risk_limits(max_concentration_pct=0.05)  # cap at 5% of equity
+breach = g.precheck_submission(equity=100_000.0,
+                                 market_ref_prices=[50_000.0, 3_000.0])
+if breach["denied"]:
+    log.warning("group denied: %s — %s", breach["rule"], breach["detail"])
+    return
+g.auto_dispatch(strategy)
+```
+
+```javascript
+// node
+const g = new flox.OrderGroup();
+g.addMarketLeg(btc, 0, 0.1);
+g.addMarketLeg(eth, 1, 2.0);
+g.setRiskLimits({ maxConcentrationPct: 0.05 });
+const breach = g.precheckSubmission({
+  equity: 100000,
+  marketRefPrices: [50000, 3000],
+});
+if (breach.denied) return;
+g.autoDispatch(strategy);
+```
+
+```python
+# codon
+g.set_risk_limits(max_concentration_pct=0.05)
+denied, rule, detail = g.precheck_submission(equity=100_000.0,
+                                              market_ref_prices=[50_000.0, 3_000.0])
+if denied:
+    return
+g.auto_dispatch(strategy)
+```
+
+The cap is **additive** to the per-order risk gates (KillSwitch / OrderValidator / RiskManager) — those still fire on every leg the strategy emits.
+
 ## Follow-ups
 
-- Risk hooks at the group level (gross / concentration limits over the legs, not per leg).
 - Latency budgets on `OneSided` (only submit leg B if leg A acks within N ms).

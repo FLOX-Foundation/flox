@@ -92,6 +92,21 @@ def run():
     check("auto_dispatch sell symbol = 1", s.sells[0][0] == 1)
     check("auto_dispatch idempotent", g4.auto_dispatch(s) == 0)
 
+    # --- Group-level risk gate: basket over concentration cap denied.
+    g5 = OrderGroup(parent_signal_id=5, policy=BEST_EFFORT)
+    g5.add_market_leg(1, 0, 0.1)
+    g5.add_market_leg(2, 1, 2.0)
+    g5.set_risk_limits(max_concentration_pct=0.05)
+    denied, rule, _ = g5.precheck_submission(equity=100_000.0,
+                                              market_ref_prices=[50_000.0, 3_000.0])
+    check("risk gate denies oversized basket", denied)
+    check("risk gate names rule", rule == "maxConcentrationPct")
+    g6 = OrderGroup(parent_signal_id=6, policy=BEST_EFFORT)
+    g6.add_market_leg(1, 0, 0.001)
+    g6.set_risk_limits(max_concentration_pct=0.05)
+    d6, _r6, _d6 = g6.precheck_submission(equity=100_000.0, market_ref_prices=[50_000.0])
+    check("risk gate allows small basket", not d6)
+
     print("codon order_group smoke ok")
 
 

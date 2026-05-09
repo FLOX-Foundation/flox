@@ -1320,6 +1320,11 @@
         {
           "group": "order_group",
           "kind": "function",
+          "name": "flox_order_group_precheck_submission"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
           "name": "flox_order_group_recommended_actions"
         },
         {
@@ -1341,6 +1346,11 @@
           "group": "order_group",
           "kind": "function",
           "name": "flox_order_group_record_submit"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_set_risk_limits"
         },
         {
           "group": "order_group",
@@ -3842,6 +3852,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_order_group_precheck_submission"
+        },
+        {
+          "kind": "function",
           "name": "flox_order_group_recommended_actions"
         },
         {
@@ -3859,6 +3873,10 @@
         {
           "kind": "function",
           "name": "flox_order_group_record_submit"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_set_risk_limits"
         },
         {
           "kind": "function",
@@ -7096,11 +7114,13 @@
         "flox_order_group_leg_order_id",
         "flox_order_group_leg_state",
         "flox_order_group_mark_action_dispatched",
+        "flox_order_group_precheck_submission",
         "flox_order_group_recommended_actions",
         "flox_order_group_record_cancel",
         "flox_order_group_record_failure",
         "flox_order_group_record_fill",
         "flox_order_group_record_submit",
+        "flox_order_group_set_risk_limits",
         "flox_order_group_state"
       ],
       "codon": {
