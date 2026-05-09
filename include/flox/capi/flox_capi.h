@@ -506,6 +506,30 @@ extern "C"
                                                 uint32_t max_actions);
 
   // ============================================================
+  // Multi-feed clock (W6-T021)
+  // ============================================================
+
+  typedef void* FloxFeedClockHandle;
+
+  FloxFeedClockHandle flox_feed_clock_create(const uint32_t* symbols, uint32_t symbol_count,
+                                             uint8_t policy, int64_t timeout_ms,
+                                             uint32_t leader_symbol,
+                                             int64_t staleness_budget_ms);
+  void flox_feed_clock_destroy(FloxFeedClockHandle h);
+
+  uint32_t flox_feed_clock_symbol_count(FloxFeedClockHandle h);
+  uint32_t flox_feed_clock_symbol_at(FloxFeedClockHandle h, uint32_t index);
+
+  uint8_t flox_feed_clock_tick(FloxFeedClockHandle h, int64_t ts_ns, uint32_t symbol);
+
+  uint8_t flox_feed_clock_last_fired(FloxFeedClockHandle h);
+  uint32_t flox_feed_clock_last_triggered_by(FloxFeedClockHandle h);
+  int64_t flox_feed_clock_last_seen_at(FloxFeedClockHandle h, uint32_t index);
+  int64_t flox_feed_clock_staleness_at(FloxFeedClockHandle h, uint32_t index);
+
+  void flox_feed_clock_reset(FloxFeedClockHandle h);
+
+  // ============================================================
   // Position tracking
   // ============================================================
 

@@ -1,0 +1,69 @@
+# Multi-feed clock for Codon strategies (W6-T021).
+# Mirrors include/flox/feed/multi_feed_clock.h and the
+# pybind11 / NAPI / QuickJS facades. Wraps the C ABI
+# flox_feed_clock_* exports.
+
+from C import flox_feed_clock_create(cobj, u32, u8, i64, u32, i64) -> cobj
+from C import flox_feed_clock_destroy(cobj)
+from C import flox_feed_clock_symbol_count(cobj) -> u32
+from C import flox_feed_clock_symbol_at(cobj, u32) -> u32
+from C import flox_feed_clock_tick(cobj, i64, u32) -> u8
+from C import flox_feed_clock_last_fired(cobj) -> u8
+from C import flox_feed_clock_last_triggered_by(cobj) -> u32
+from C import flox_feed_clock_last_seen_at(cobj, u32) -> i64
+from C import flox_feed_clock_staleness_at(cobj, u32) -> i64
+from C import flox_feed_clock_reset(cobj)
+
+
+# Policy constants matching FeedClockPolicy in C++.
+WAIT_FOR_ALL = 0
+FIRE_ON_ANY = 1
+LEADER_FOLLOWER = 2
+
+
+@dataclass
+class FeedClockSnapshot:
+    fired: bool
+    triggered_by: int
+    last_ts_ns: Dict[int, int]
+    staleness_ns: Dict[int, int]
+
+
+class MultiFeedClock:
+    _h: cobj
+    _symbols: List[int]
+
+    def __init__(self, symbols: List[int], policy: int = WAIT_FOR_ALL,
+                 timeout_ms: int = 200, leader_symbol: int = 0,
+                 staleness_budget_ms: int = 200):
+        self._symbols = symbols
+        # Pack symbol ids into a u32 buffer the C ABI can read.
+        u32_buf = [u32(s) for s in symbols]
+        self._h = flox_feed_clock_create(
+            cobj(u32_buf.arr.ptr), u32(len(symbols)),
+            u8(policy), i64(timeout_ms),
+            u32(leader_symbol), i64(staleness_budget_ms))
+
+    def __del__(self):
+        if self._h != cobj():
+            flox_feed_clock_destroy(self._h)
+            self._h = cobj()
+
+    def symbol_count(self) -> int:
+        return int(flox_feed_clock_symbol_count(self._h))
+
+    def tick(self, ts_ns: int, symbol: int) -> FeedClockSnapshot:
+        fired = int(flox_feed_clock_tick(self._h, i64(ts_ns), u32(symbol))) != 0
+        triggered = int(flox_feed_clock_last_triggered_by(self._h))
+        n = int(flox_feed_clock_symbol_count(self._h))
+        last_ts = dict[int, int]()
+        stale = dict[int, int]()
+        for i in range(n):
+            sid = int(flox_feed_clock_symbol_at(self._h, u32(i)))
+            last_ts[sid] = int(flox_feed_clock_last_seen_at(self._h, u32(i)))
+            stale[sid] = int(flox_feed_clock_staleness_at(self._h, u32(i)))
+        return FeedClockSnapshot(fired=fired, triggered_by=triggered,
+                                  last_ts_ns=last_ts, staleness_ns=stale)
+
+    def reset(self):
+        flox_feed_clock_reset(self._h)

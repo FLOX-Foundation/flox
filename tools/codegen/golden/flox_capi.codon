@@ -148,6 +148,18 @@ from C import flox_exec_is_done(cobj) -> u8
 # ── executor_fill ──
 from C import flox_simulated_executor_get_fills(cobj, cobj, u32) -> u32
 
+# ── feed_clock ──
+from C import flox_feed_clock_create(Ptr[u32], u32, u8, i64, u32, i64) -> cobj
+from C import flox_feed_clock_destroy(cobj)
+from C import flox_feed_clock_symbol_count(cobj) -> u32
+from C import flox_feed_clock_symbol_at(cobj, u32) -> u32
+from C import flox_feed_clock_tick(cobj, i64, u32) -> u8
+from C import flox_feed_clock_last_fired(cobj) -> u8
+from C import flox_feed_clock_last_triggered_by(cobj) -> u32
+from C import flox_feed_clock_last_seen_at(cobj, u32) -> i64
+from C import flox_feed_clock_staleness_at(cobj, u32) -> i64
+from C import flox_feed_clock_reset(cobj)
+
 # ── fixed_point ──
 from C import flox_price_from_double(float) -> i64
 from C import flox_price_to_double(i64) -> float

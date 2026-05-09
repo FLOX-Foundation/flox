@@ -9,6 +9,7 @@
 #include "delta_book.h"
 #include "engine.h"
 #include "execution_algos.h"
+#include "feed_clock.h"
 #include "graph.h"
 #include "heatmap.h"
 #include "hooks.h"
@@ -44,6 +45,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerLatency(env, exports);
   node_flox::registerPortfolioRisk(env, exports);
   node_flox::registerOrderGroup(env, exports);
+  node_flox::registerFeedClock(env, exports);
   node_flox::registerTapeDiff(env, exports);
   node_flox::registerRunTrace(env, exports);
   flox_node::registerHooks(env, exports);

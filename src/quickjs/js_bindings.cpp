@@ -359,6 +359,106 @@ static JSValue js_strategy_set_bar_ring_capacity(JSContext* ctx, JSValueConst, i
 }
 
 // ============================================================
+// Multi-feed clock (W6-T021)
+// ============================================================
+
+static JSValue js_feed_clock_create(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  if (argc < 6 || !JS_IsArray(ctx, argv[0]))
+  {
+    return JS_ThrowTypeError(ctx, "feed_clock_create(symbols[], count, policy, timeoutMs, leader, budgetMs)");
+  }
+  uint32_t count = toUint32(ctx, argv[1]);
+  std::vector<uint32_t> sv(count);
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    JSValue v = JS_GetPropertyUint32(ctx, argv[0], i);
+    sv[i] = toUint32(ctx, v);
+    JS_FreeValue(ctx, v);
+  }
+  uint32_t policy = toUint32(ctx, argv[2]);
+  int64_t timeout = toInt64(ctx, argv[3]);
+  uint32_t leader = toUint32(ctx, argv[4]);
+  int64_t budget = toInt64(ctx, argv[5]);
+  void* h = flox_feed_clock_create(sv.data(), count, static_cast<uint8_t>(policy), timeout,
+                                   leader, budget);
+  return JS_NewBigInt64(ctx, reinterpret_cast<int64_t>(h));
+}
+
+static JSValue js_feed_clock_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  flox_feed_clock_destroy(reinterpret_cast<void*>(hv));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_feed_clock_symbol_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  return JS_NewUint32(ctx, flox_feed_clock_symbol_count(reinterpret_cast<void*>(hv)));
+}
+
+static JSValue js_feed_clock_symbol_at(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  uint32_t idx = toUint32(ctx, argv[1]);
+  return JS_NewUint32(ctx, flox_feed_clock_symbol_at(reinterpret_cast<void*>(hv), idx));
+}
+
+static JSValue js_feed_clock_tick(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  int64_t ts = toInt64(ctx, argv[1]);
+  uint32_t sym = toUint32(ctx, argv[2]);
+  return JS_NewUint32(ctx, flox_feed_clock_tick(reinterpret_cast<void*>(hv), ts, sym));
+}
+
+static JSValue js_feed_clock_last_fired(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  return JS_NewUint32(ctx, flox_feed_clock_last_fired(reinterpret_cast<void*>(hv)));
+}
+
+static JSValue js_feed_clock_last_triggered_by(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  return JS_NewUint32(ctx, flox_feed_clock_last_triggered_by(reinterpret_cast<void*>(hv)));
+}
+
+static JSValue js_feed_clock_last_seen_at(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  uint32_t idx = toUint32(ctx, argv[1]);
+  return JS_NewBigInt64(
+      ctx, flox_feed_clock_last_seen_at(reinterpret_cast<void*>(hv), idx));
+}
+
+static JSValue js_feed_clock_staleness_at(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  uint32_t idx = toUint32(ctx, argv[1]);
+  return JS_NewBigInt64(
+      ctx, flox_feed_clock_staleness_at(reinterpret_cast<void*>(hv), idx));
+}
+
+static JSValue js_feed_clock_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t hv = 0;
+  JS_ToBigInt64(ctx, &hv, argv[0]);
+  flox_feed_clock_reset(reinterpret_cast<void*>(hv));
+  return JS_UNDEFINED;
+}
+
+// ============================================================
 // Batch indicators
 // ============================================================
 
@@ -3971,6 +4071,17 @@ void registerFloxBindings(JSContext* ctx)
                 js_strategy_get_bar_ring_capacity, 1);
   addGlobalFunc(ctx, "__flox_strategy_set_bar_ring_capacity",
                 js_strategy_set_bar_ring_capacity, 2);
+  addGlobalFunc(ctx, "__flox_feed_clock_create", js_feed_clock_create, 6);
+  addGlobalFunc(ctx, "__flox_feed_clock_destroy", js_feed_clock_destroy, 1);
+  addGlobalFunc(ctx, "__flox_feed_clock_symbol_count", js_feed_clock_symbol_count, 1);
+  addGlobalFunc(ctx, "__flox_feed_clock_symbol_at", js_feed_clock_symbol_at, 2);
+  addGlobalFunc(ctx, "__flox_feed_clock_tick", js_feed_clock_tick, 3);
+  addGlobalFunc(ctx, "__flox_feed_clock_last_fired", js_feed_clock_last_fired, 1);
+  addGlobalFunc(ctx, "__flox_feed_clock_last_triggered_by",
+                js_feed_clock_last_triggered_by, 1);
+  addGlobalFunc(ctx, "__flox_feed_clock_last_seen_at", js_feed_clock_last_seen_at, 2);
+  addGlobalFunc(ctx, "__flox_feed_clock_staleness_at", js_feed_clock_staleness_at, 2);
+  addGlobalFunc(ctx, "__flox_feed_clock_reset", js_feed_clock_reset, 1);
 
   // Batch indicators
   addGlobalFunc(ctx, "__flox_indicator_sma", js_indicator_sma, 2);

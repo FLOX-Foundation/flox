@@ -734,6 +734,73 @@ TEST(JsIntegrationTest, CompositeDslLogicalOps)
 }
 
 // ============================================================
+// Multi-feed clock (W6-T021)
+// ============================================================
+
+TEST(JsIntegrationTest, MultiFeedClockWaitForAll)
+{
+  TempJsFile script(R"(
+    var fired1 = "";
+    var fired2 = "";
+    var fired3 = "";
+    var staleAfter = 0;
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT", "ETHUSDT"] }); }
+      onStart() {
+        var c = new MultiFeedClock({
+          symbols: [1, 2],
+          policy: FeedClockPolicy.WaitForAll,
+          timeoutMs: 200,
+        });
+        var r1 = c.tick(1000000000, 1);
+        fired1 = String(r1.fired);
+        var r2 = c.tick(1100000000, 2);
+        fired2 = String(r2.fired);
+        var r3 = c.tick(1200000000, 1);
+        fired3 = String(r3.fired);
+        staleAfter = r2.stalenessNs[1];
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  bridge->start();
+
+  auto* ctx = jsStrat.engine().context();
+
+  auto getStr = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    const char* s = JS_ToCString(ctx, v);
+    std::string out = s ? s : "";
+    if (s)
+    {
+      JS_FreeCString(ctx, s);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+
+  EXPECT_EQ(getStr("fired1"), "false");
+  EXPECT_EQ(getStr("fired2"), "true");
+  EXPECT_EQ(getStr("fired3"), "false");
+
+  JSValue stale = jsStrat.engine().getGlobalProperty("staleAfter");
+  int64_t staleVal = 0;
+  JS_ToBigInt64(ctx, &staleVal, stale);
+  EXPECT_EQ(staleVal, 100000000);
+  JS_FreeValue(ctx, stale);
+}
+
+// ============================================================
 // Multi-leg order group (W15-T004)
 // ============================================================
 

@@ -87,6 +87,16 @@ add_custom_command(
   COMMENT "Embedding order_group.js"
 )
 
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_feed_clock.inc
+  COMMAND ${CMAKE_COMMAND}
+    -DIN_FILE=${JS_STDLIB_DIR}/feed_clock.js
+    -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_feed_clock.inc
+    -P ${GEN_INC_SCRIPT}
+  DEPENDS ${JS_STDLIB_DIR}/feed_clock.js ${GEN_INC_SCRIPT}
+  COMMENT "Embedding feed_clock.js"
+)
+
 add_custom_target(js_stdlib_gen DEPENDS
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_strategy.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_indicators.inc
@@ -94,6 +104,7 @@ add_custom_target(js_stdlib_gen DEPENDS
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_latency.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_composite.inc
   ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_order_group.inc
+  ${CMAKE_CURRENT_BINARY_DIR}/js_stdlib_feed_clock.inc
 )
 
 # flox_quickjs static library

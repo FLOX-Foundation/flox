@@ -80,3 +80,6 @@ add_codon_executable(codon_composite_dsl_smoke
 
 add_codon_executable(codon_order_group_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/order_group_smoke.codon)
+
+add_codon_executable(codon_feed_clock_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/feed_clock_smoke.codon)
