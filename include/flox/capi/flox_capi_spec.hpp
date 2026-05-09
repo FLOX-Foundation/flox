@@ -671,6 +671,57 @@ extern "C"
                                                 uint32_t max_actions);
 
   // ============================================================
+  // Multi-feed clock (W6-T021)
+  // ============================================================
+  //
+  // Latency-aware multi-feed wait policy. The strategy creates a
+  // clock for a list of symbols + a policy + a staleness budget; on
+  // each tick the clock decides whether to fire and reports per-feed
+  // staleness so the strategy can weight or skip a decision.
+  //
+  // The snapshot is read through accessor functions (no struct
+  // returned by value over the C ABI) so bindings can shape it
+  // however they want.
+
+  typedef void* FloxFeedClockHandle;
+
+  // policy: 0 = WaitForAll, 1 = FireOnAny, 2 = LeaderFollower.
+  // leader_symbol: ignored unless policy == LeaderFollower; defaults
+  // to symbols[0] when zero.
+  FLOX_EXPORT(group = "feed_clock")
+  FloxFeedClockHandle flox_feed_clock_create(const uint32_t* symbols, uint32_t symbol_count,
+                                             uint8_t policy, int64_t timeout_ms,
+                                             uint32_t leader_symbol,
+                                             int64_t staleness_budget_ms);
+  FLOX_EXPORT(group = "feed_clock")
+  void flox_feed_clock_destroy(FloxFeedClockHandle h);
+
+  FLOX_EXPORT(group = "feed_clock")
+  uint32_t flox_feed_clock_symbol_count(FloxFeedClockHandle h);
+  FLOX_EXPORT(group = "feed_clock")
+  uint32_t flox_feed_clock_symbol_at(FloxFeedClockHandle h, uint32_t index);
+
+  // Drive a tick. Returns 1 if the clock fired, 0 otherwise. The
+  // snapshot it produced (last-ts and staleness per registered feed)
+  // is cached on the clock and read with the accessors below.
+  FLOX_EXPORT(group = "feed_clock")
+  uint8_t flox_feed_clock_tick(FloxFeedClockHandle h, int64_t ts_ns, uint32_t symbol);
+
+  // Last computed snapshot. `triggered_by` is the symbol that
+  // produced the most recent tick.
+  FLOX_EXPORT(group = "feed_clock")
+  uint8_t flox_feed_clock_last_fired(FloxFeedClockHandle h);
+  FLOX_EXPORT(group = "feed_clock")
+  uint32_t flox_feed_clock_last_triggered_by(FloxFeedClockHandle h);
+  FLOX_EXPORT(group = "feed_clock")
+  int64_t flox_feed_clock_last_seen_at(FloxFeedClockHandle h, uint32_t index);
+  FLOX_EXPORT(group = "feed_clock")
+  int64_t flox_feed_clock_staleness_at(FloxFeedClockHandle h, uint32_t index);
+
+  FLOX_EXPORT(group = "feed_clock")
+  void flox_feed_clock_reset(FloxFeedClockHandle h);
+
+  // ============================================================
   // Position tracking
   // ============================================================
 

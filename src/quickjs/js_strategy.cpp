@@ -29,6 +29,10 @@ static const char* const ORDER_GROUP_JS =
 #include "js_stdlib_order_group.inc"
     ;
 
+static const char* const FEED_CLOCK_JS =
+#include "js_stdlib_feed_clock.inc"
+    ;
+
 namespace flox
 {
 
@@ -89,6 +93,10 @@ void FloxJsStrategy::loadStdlib()
   if (!_engine.eval(ORDER_GROUP_JS, "flox/order_group.js"))
   {
     throw std::runtime_error("Failed to load order_group.js: " + _engine.getErrorMessage());
+  }
+  if (!_engine.eval(FEED_CLOCK_JS, "flox/feed_clock.js"))
+  {
+    throw std::runtime_error("Failed to load feed_clock.js: " + _engine.getErrorMessage());
   }
 
   // Create flox global object with register() and batch indicators

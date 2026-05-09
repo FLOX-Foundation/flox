@@ -41,3 +41,50 @@ Calling `tick()` with a symbol that was not in the original `symbols` list updat
 ## Tests
 
 `python/tests/test_feed_clock.py` covers all three policies, the timeout fallback path, the staleness map, the leader / follower freshness check, and the out-of-band symbol case.
+
+## Engine primitive (W6-T021)
+
+The doc above describes `flox_py.feed_clock.MultiFeedClock` — a pure-Python helper that ships with flox_py. There is also a C++ engine primitive (`include/flox/feed/multi_feed_clock.h`) reachable from every binding through a shared C ABI. The two have the same shape; pick the engine version when you need polyglot parity or a zero-overhead hot path.
+
+The engine primitive exposes named string constants for the policy in JS bindings and an enum (`flox_py.FeedClockPolicy`) in Python so users never hand-write integer codes.
+
+```python
+# pybind11
+import flox_py
+clock = flox_py.MultiFeedClock(
+    symbols=[btc, eth],
+    policy=flox_py.FeedClockPolicy.WAIT_FOR_ALL,
+    timeout_ms=200,
+)
+state = clock.tick(ts_ns, btc)
+if state["fired"]:
+    print(state["staleness_ns"])  # {btc: 0, eth: 1234567}
+```
+
+```javascript
+// node
+const { MultiFeedClock, FeedClockPolicy } = require('flox');
+const clock = new MultiFeedClock({
+  symbols: [btc, eth],
+  policy: FeedClockPolicy.WaitForAll,
+  timeoutMs: 200,
+});
+const state = clock.tick(tsNs, btc);
+```
+
+```javascript
+// QuickJS — `MultiFeedClock` and `FeedClockPolicy` are globals
+const clock = new MultiFeedClock({
+  symbols: [btc, eth],
+  policy: FeedClockPolicy.LeaderFollower,
+  leaderSymbol: btc,
+  stalenessBudgetMs: 200,
+});
+```
+
+```python
+# codon
+from flox.feed_clock import MultiFeedClock, WAIT_FOR_ALL
+clock = MultiFeedClock(symbols=[btc, eth], policy=WAIT_FOR_ALL, timeout_ms=200)
+state = clock.tick(ts_ns, btc)
+```

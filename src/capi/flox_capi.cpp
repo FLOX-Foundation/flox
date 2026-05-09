@@ -1366,6 +1366,118 @@ uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
 }
 
 // ============================================================
+// Multi-feed clock (W6-T021)
+// ============================================================
+
+#include "flox/feed/multi_feed_clock.h"
+
+namespace
+{
+
+struct FeedClockState
+{
+  MultiFeedClock clock;
+  FeedClockSnapshot last;
+
+  FeedClockState(std::vector<SymbolId> symbols, FeedClockPolicy policy, int64_t timeoutMs,
+                 SymbolId leader, int64_t budgetMs)
+      : clock(std::move(symbols), policy, timeoutMs, leader, budgetMs)
+  {
+  }
+};
+
+}  // namespace
+
+static FeedClockState* toFeedClock(FloxFeedClockHandle h)
+{
+  return static_cast<FeedClockState*>(h);
+}
+
+FloxFeedClockHandle flox_feed_clock_create(const uint32_t* symbols, uint32_t symbol_count,
+                                           uint8_t policy, int64_t timeout_ms,
+                                           uint32_t leader_symbol,
+                                           int64_t staleness_budget_ms)
+{
+  std::vector<SymbolId> sv;
+  sv.reserve(symbol_count);
+  for (uint32_t i = 0; i < symbol_count; ++i)
+  {
+    sv.push_back(symbols[i]);
+  }
+  return new FeedClockState(std::move(sv), static_cast<FeedClockPolicy>(policy), timeout_ms,
+                            static_cast<SymbolId>(leader_symbol), staleness_budget_ms);
+}
+
+void flox_feed_clock_destroy(FloxFeedClockHandle h)
+{
+  delete toFeedClock(h);
+}
+
+uint32_t flox_feed_clock_symbol_count(FloxFeedClockHandle h)
+{
+  return static_cast<uint32_t>(toFeedClock(h)->clock.symbolCount());
+}
+
+uint32_t flox_feed_clock_symbol_at(FloxFeedClockHandle h, uint32_t index)
+{
+  auto& last = toFeedClock(h)->last;
+  if (last.symbols.empty())
+  {
+    // Snapshot not yet populated; tick once to materialize symbols.
+    // Use ts=0 + an out-of-band symbol so the tick records nothing.
+    toFeedClock(h)->last = toFeedClock(h)->clock.tick(0, 0);
+  }
+  if (index >= toFeedClock(h)->last.symbols.size())
+  {
+    return 0;
+  }
+  return toFeedClock(h)->last.symbols[index];
+}
+
+uint8_t flox_feed_clock_tick(FloxFeedClockHandle h, int64_t ts_ns, uint32_t symbol)
+{
+  auto* st = toFeedClock(h);
+  st->last = st->clock.tick(ts_ns, static_cast<SymbolId>(symbol));
+  return st->last.fired ? 1 : 0;
+}
+
+uint8_t flox_feed_clock_last_fired(FloxFeedClockHandle h)
+{
+  return toFeedClock(h)->last.fired ? 1 : 0;
+}
+
+uint32_t flox_feed_clock_last_triggered_by(FloxFeedClockHandle h)
+{
+  return static_cast<uint32_t>(toFeedClock(h)->last.triggeredBy);
+}
+
+int64_t flox_feed_clock_last_seen_at(FloxFeedClockHandle h, uint32_t index)
+{
+  auto& last = toFeedClock(h)->last;
+  if (index >= last.lastTsNs.size())
+  {
+    return 0;
+  }
+  return last.lastTsNs[index];
+}
+
+int64_t flox_feed_clock_staleness_at(FloxFeedClockHandle h, uint32_t index)
+{
+  auto& last = toFeedClock(h)->last;
+  if (index >= last.stalenessNs.size())
+  {
+    return 0;
+  }
+  return last.stalenessNs[index];
+}
+
+void flox_feed_clock_reset(FloxFeedClockHandle h)
+{
+  toFeedClock(h)->clock.reset();
+  toFeedClock(h)->last = FeedClockSnapshot{};
+}
+
+// ============================================================
 // Position tracking
 // ============================================================
 

@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LatencyModel', 'LatencySample', 'LegState', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'REVERTING', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'Bollinger', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataRecorder', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyModel', 'LatencySample', 'LegState', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'MultiFeedClock', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'REVERTING', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -570,6 +570,46 @@ class ExponentialLatency(LatencyModel):
     """
     def __init__(self, feed_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, order_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, fill_mean_ns: typing.SupportsFloat | typing.SupportsIndex = 0.0, seed: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
+class FeedClockPolicy:
+    """
+    Members:
+    
+      WAIT_FOR_ALL
+    
+      FIRE_ON_ANY
+    
+      LEADER_FOLLOWER
+    """
+    FIRE_ON_ANY: typing.ClassVar[FeedClockPolicy]  # value = <FeedClockPolicy.FIRE_ON_ANY: 1>
+    LEADER_FOLLOWER: typing.ClassVar[FeedClockPolicy]  # value = <FeedClockPolicy.LEADER_FOLLOWER: 2>
+    WAIT_FOR_ALL: typing.ClassVar[FeedClockPolicy]  # value = <FeedClockPolicy.WAIT_FOR_ALL: 0>
+    __members__: typing.ClassVar[dict[str, FeedClockPolicy]]  # value = {'WAIT_FOR_ALL': <FeedClockPolicy.WAIT_FOR_ALL: 0>, 'FIRE_ON_ANY': <FeedClockPolicy.FIRE_ON_ANY: 1>, 'LEADER_FOLLOWER': <FeedClockPolicy.LEADER_FOLLOWER: 2>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
 class FillLiquidity:
     """
     Members:
@@ -932,6 +972,17 @@ class MarketProfile:
     def value_area_high(self) -> float:
         ...
     def value_area_low(self) -> float:
+        ...
+class MultiFeedClock:
+    def __init__(self, symbols: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], policy: FeedClockPolicy = ..., timeout_ms: typing.SupportsInt | typing.SupportsIndex = 200, leader_symbol: typing.SupportsInt | typing.SupportsIndex = 0, staleness_budget_ms: typing.SupportsInt | typing.SupportsIndex = 200) -> None:
+        ...
+    def policy(self) -> FeedClockPolicy:
+        ...
+    def reset(self) -> None:
+        ...
+    def symbol_count(self) -> int:
+        ...
+    def tick(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> dict:
         ...
 class Order:
     close_position: bool
@@ -2536,6 +2587,8 @@ BEST_EFFORT: OrderGroupPolicy  # value = <OrderGroupPolicy.BEST_EFFORT: 0>
 CANCELLED: OrderGroupState  # value = <OrderGroupState.CANCELLED: 4>
 FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
 FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>
+FIRE_ON_ANY: FeedClockPolicy  # value = <FeedClockPolicy.FIRE_ON_ANY: 1>
+LEADER_FOLLOWER: FeedClockPolicy  # value = <FeedClockPolicy.LEADER_FOLLOWER: 2>
 ONE_SIDED: OrderGroupPolicy  # value = <OrderGroupPolicy.ONE_SIDED: 2>
 ORDER_FLAG_IOC: int = 4
 ORDER_FLAG_POST_ONLY: int = 1
@@ -2557,4 +2610,5 @@ SLIPPAGE_NONE: int = 0
 SLIPPAGE_VOLUME_IMPACT: int = 3
 SUBMITTED: OrderGroupState  # value = <OrderGroupState.SUBMITTED: 1>
 VOLUME_SCALE: int = 100000000
+WAIT_FOR_ALL: FeedClockPolicy  # value = <FeedClockPolicy.WAIT_FOR_ALL: 0>
 StreamingIndicatorGraph = IndicatorGraph

@@ -10,6 +10,7 @@
 #include "composite_book_bindings.h"
 #include "delta_book_bindings.h"
 #include "execution_algos_bindings.h"
+#include "feed_clock_bindings.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
@@ -790,6 +791,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindTapeDiff(m);
   flox_py::bindPortfolioRisk(m);
   flox_py::bindOrderGroup(m);
+  flox_py::bindFeedClock(m);
   flox_py::bindExecutionAlgos(m);
   flox_py::bindDeltaBook(m);
   flox_py::bindRunTrace(m);

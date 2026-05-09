@@ -648,6 +648,56 @@
           "name": "flox_executor_get_capabilities"
         },
         {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_create"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_destroy"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_last_fired"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_last_seen_at"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_last_triggered_by"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_reset"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_staleness_at"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_symbol_at"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_symbol_count"
+        },
+        {
+          "group": "feed_clock",
+          "kind": "function",
+          "name": "flox_feed_clock_tick"
+        },
+        {
           "group": "footprint_bar",
           "kind": "function",
           "name": "flox_footprint_add_trade"
@@ -2477,6 +2527,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxFeedClockHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxFootprintHandle"
         },
         {
@@ -2611,6 +2665,7 @@
         "execution",
         "execution_algos",
         "executor_fill",
+        "feed_clock",
         "fixed_point",
         "floxliveengine_disruptor",
         "floxrun",
@@ -3167,6 +3222,46 @@
         {
           "kind": "function",
           "name": "flox_executor_get_capabilities"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_last_fired"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_last_seen_at"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_last_triggered_by"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_reset"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_staleness_at"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_symbol_at"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_symbol_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_feed_clock_tick"
         },
         {
           "kind": "function",
@@ -4614,6 +4709,10 @@
         },
         {
           "kind": "class",
+          "name": "FeedClockSnapshot"
+        },
+        {
+          "kind": "class",
           "name": "FloxError"
         },
         {
@@ -4691,6 +4790,14 @@
         {
           "kind": "class",
           "name": "MergeDirResult"
+        },
+        {
+          "kind": "class",
+          "name": "MultiFeedClock"
+        },
+        {
+          "kind": "class",
+          "name": "MultiFeedClockOptions"
         },
         {
           "kind": "class",
@@ -5294,6 +5401,10 @@
         },
         {
           "kind": "class",
+          "name": "FeedClockPolicy"
+        },
+        {
+          "kind": "class",
           "name": "FillLiquidity"
         },
         {
@@ -5355,6 +5466,10 @@
         {
           "kind": "class",
           "name": "MarketProfile"
+        },
+        {
+          "kind": "class",
+          "name": "MultiFeedClock"
         },
         {
           "kind": "class",
@@ -6265,6 +6380,38 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      }
+    },
+    "feed_clock": {
+      "capi_functions": [
+        "flox_feed_clock_create",
+        "flox_feed_clock_destroy",
+        "flox_feed_clock_last_fired",
+        "flox_feed_clock_last_seen_at",
+        "flox_feed_clock_last_triggered_by",
+        "flox_feed_clock_reset",
+        "flox_feed_clock_staleness_at",
+        "flox_feed_clock_symbol_at",
+        "flox_feed_clock_symbol_count",
+        "flox_feed_clock_tick"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "MultiFeedClock"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "MultiFeedClock"
+        ],
+        "functions": [],
+        "status": "required"
       }
     },
     "fixed_point": {

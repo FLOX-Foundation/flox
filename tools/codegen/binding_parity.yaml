@@ -303,6 +303,11 @@ groups:
     napi: { status: required, classes: [OrderGroup] }
     codon: { status: required }
 
+  feed_clock:
+    pybind11: { status: required, classes: [MultiFeedClock] }
+    napi: { status: required, classes: [MultiFeedClock] }
+    codon: { status: required }
+
   executor_fill:
     pybind11: { status: not_applicable }  # fills accessed via SimulatedExecutor.fills()
     napi: { status: not_applicable }

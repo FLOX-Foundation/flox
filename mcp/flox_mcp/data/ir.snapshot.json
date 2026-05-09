@@ -3090,6 +3090,156 @@
       "return_type": "void"
     },
     {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_create",
+      "params": [
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "policy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "timeout_ms",
+          "type": "int64_t"
+        },
+        {
+          "name": "leader_symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "staleness_budget_ms",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "FloxFeedClockHandle"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_last_fired",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_last_seen_at",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_last_triggered_by",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_reset",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_staleness_at",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_symbol_at",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        },
+        {
+          "name": "index",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_symbol_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "feed_clock",
+      "name": "flox_feed_clock_tick",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeedClockHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "footprint_bar",
       "name": "flox_footprint_add_trade",
       "params": [
@@ -10731,6 +10881,10 @@
     },
     {
       "name": "FloxExecutorHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxFeedClockHandle",
       "target": "void*"
     },
     {

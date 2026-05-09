@@ -1604,6 +1604,36 @@ export class OrderGroup {
   recommendedActions(): OrderGroupAction[];
 }
 
+// ── Multi-feed clock (W6-T021) ───────────────────────────────────────
+
+export type FeedClockPolicyName = 'WaitForAll' | 'FireOnAny' | 'LeaderFollower';
+
+export const FeedClockPolicy: Readonly<Record<FeedClockPolicyName, FeedClockPolicyName>>;
+
+export interface MultiFeedClockOptions {
+  symbols: number[];
+  policy?: FeedClockPolicyName;
+  timeoutMs?: number;
+  leaderSymbol?: number;
+  stalenessBudgetMs?: number;
+}
+
+export interface FeedClockSnapshot {
+  fired: boolean;
+  triggeredBy: number;
+  /** Symbol id → last-seen exchange-ts in nanoseconds (0 if never). */
+  lastTsNs: Record<number, number>;
+  /** Symbol id → staleness in nanoseconds at the moment of this tick. */
+  stalenessNs: Record<number, number>;
+}
+
+export class MultiFeedClock {
+  constructor(opts: MultiFeedClockOptions);
+  tick(tsNs: number, symbol: number): FeedClockSnapshot;
+  reset(): void;
+  symbolCount(): number;
+}
+
 // ── Execution algorithms (TWAP / VWAP / Iceberg / POV) ────────────────
 
 export interface ExecChildOrder {
