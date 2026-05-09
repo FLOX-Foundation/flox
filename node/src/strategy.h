@@ -532,20 +532,34 @@ struct NodeStrategyHost
   {
     switch (s)
     {
-      case 0: return "NEW";
-      case 1: return "ACCEPTED";
-      case 2: return "PENDING_NEW";
-      case 3: return "PARTIALLY_FILLED";
-      case 4: return "FILLED";
-      case 5: return "PENDING_CANCEL";
-      case 6: return "CANCELED";
-      case 7: return "EXPIRED";
-      case 8: return "REJECTED";
-      case 9: return "REPLACED";
-      case 10: return "PENDING_TRIGGER";
-      case 11: return "TRIGGERED";
-      case 12: return "TRAILING_UPDATED";
-      default: return "UNKNOWN";
+      case 0:
+        return "NEW";
+      case 1:
+        return "ACCEPTED";
+      case 2:
+        return "PENDING_NEW";
+      case 3:
+        return "PARTIALLY_FILLED";
+      case 4:
+        return "FILLED";
+      case 5:
+        return "PENDING_CANCEL";
+      case 6:
+        return "CANCELED";
+      case 7:
+        return "EXPIRED";
+      case 8:
+        return "REJECTED";
+      case 9:
+        return "REPLACED";
+      case 10:
+        return "PENDING_TRIGGER";
+      case 11:
+        return "TRIGGERED";
+      case 12:
+        return "TRAILING_UPDATED";
+      default:
+        return "UNKNOWN";
     }
   }
 
@@ -553,14 +567,22 @@ struct NodeStrategyHost
   {
     switch (t)
     {
-      case 0: return "LIMIT";
-      case 1: return "MARKET";
-      case 2: return "STOP_MARKET";
-      case 3: return "STOP_LIMIT";
-      case 4: return "TP_MARKET";
-      case 5: return "TP_LIMIT";
-      case 6: return "ICEBERG";
-      default: return "UNKNOWN";
+      case 0:
+        return "LIMIT";
+      case 1:
+        return "MARKET";
+      case 2:
+        return "STOP_MARKET";
+      case 3:
+        return "STOP_LIMIT";
+      case 4:
+        return "TP_MARKET";
+      case 5:
+        return "TP_LIMIT";
+      case 6:
+        return "ICEBERG";
+      default:
+        return "UNKNOWN";
     }
   }
 
