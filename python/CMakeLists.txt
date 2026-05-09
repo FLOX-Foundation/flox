@@ -32,22 +32,17 @@ set_target_properties(_flox_py PROPERTIES
 # type checkers resolve `flox_py._flox_py.X`. Stubs are copied only if
 # present so the very first build — which produces the .so that stubgen
 # needs as input — is not blocked on them existing.
+#
+# The .py file list is globbed from `flox_py/*.py` so a new module
+# automatically lands in the wheel without touching this file. CMake
+# re-runs the configure step when this CMakeLists.txt changes; if you
+# add a new .py module, run `cmake -B build -S .` once to pick it up.
+file(GLOB FLOX_PY_PURE_PYTHON_MODULES
+     CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/flox_py/*.py")
 set(FLOX_PY_REQUIRED_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/__init__.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/cli.py
+  ${FLOX_PY_PURE_PYTHON_MODULES}
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/py.typed
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/ccxt.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/report.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/tape.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/paper.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/bundle.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/control_server.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/event_log.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/lookahead.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/portfolio_risk.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/latency_models.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/execution_algos.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/rl_env.py
 )
 set(FLOX_PY_OPTIONAL_ROOT_STUBS
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/__init__.pyi

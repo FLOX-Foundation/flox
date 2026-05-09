@@ -222,6 +222,14 @@ jobs:
     - name: Verify .pyi stubs are in sync with the binding
       run: python3 scripts/gen_pyi_stubs.py --check
 
+    # Build the wheel from python/pyproject.toml, install it into a
+    # throwaway venv, and assert every documented pure-Python module is
+    # importable. Catches the regression where scikit-build-core only
+    # collects the install component contents and silently drops new
+    # `.py` files added under `python/flox_py/`.
+    - name: Verify wheel ships every pure-Python module
+      run: bash scripts/check_flox_py_wheel.sh
+
     - name: Type-check Python examples with mypy
       run: PYTHONPATH=build/python python3 -m mypy --ignore-missing-imports
         docs/examples/python_backtest_vs_live.py
