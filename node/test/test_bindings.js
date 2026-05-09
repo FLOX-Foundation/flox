@@ -344,6 +344,31 @@ if (fs.existsSync(btCsv)) {
   console.log(`  skip BacktestRunner accessors (CSV not found: ${btCsv})`);
 }
 
+// ── BacktestRunner.runTape (parity proof) ────────────────────────────
+
+console.log('=== BacktestRunner.runTape ===');
+
+{
+  const reg = new flox.SymbolRegistry();
+  reg.addSymbol('exchange', 'BTCUSDT', 0.01);
+  const bt = new flox.BacktestRunner(reg, 0.0004, 10000);
+  bt.setStrategy({
+    symbols: [],
+    onTrade(_ctx, _t, _emit) {},
+  });
+  check(typeof bt.runTape === 'function',
+        'BacktestRunner.runTape is a function');
+
+  // Missing-path case: per the existing runCsv pattern, the C ABI
+  // returns null when the underlying call fails. (Some fail modes
+  // raise FloxError instead — accept either.)
+  let result = 'pending';
+  try { result = bt.runTape('/__nonexistent_tape_path__'); }
+  catch (_) { result = 'threw'; }
+  check(result === null || result === 'threw',
+        `runTape signals failure on missing tape (got ${JSON.stringify(result)})`);
+}
+
 // ── Strategy on_fill / on_order_update hooks ─────────────────────────
 
 console.log('=== Strategy onFill / onOrderUpdate ===');

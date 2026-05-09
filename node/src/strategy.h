@@ -1116,6 +1116,7 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
             InstanceMethod("runCsv", &BacktestRunnerNode::runCsv),
             InstanceMethod("runOhlcv", &BacktestRunnerNode::runOhlcv),
             InstanceMethod("runBars", &BacktestRunnerNode::runBars),
+            InstanceMethod("runTape", &BacktestRunnerNode::runTape),
             InstanceMethod("setExecutor", &BacktestRunnerNode::setExecutor),
             InstanceMethod("addExecutionListener", &BacktestRunnerNode::addExecutionListener),
             InstanceMethod("equityCurve", &BacktestRunnerNode::equityCurve),
@@ -1165,6 +1166,24 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
     flox_backtest_runner_set_strategy(_handle,
                                       static_cast<FloxStrategyHandle>(_host->bridge.get()));
     return env.Undefined();
+  }
+
+  // runner.runTape(path) → stats object. `path` is a `.floxlog`
+  // directory written by `flox tape record` or `scripts/backfill_to_tape.py`.
+  Napi::Value runTape(const Napi::CallbackInfo& info)
+  {
+    return tryFlox(info.Env(),
+                   [&]() -> Napi::Value
+                   {
+                     std::string path = info[0].As<Napi::String>().Utf8Value();
+                     FloxBacktestStats s{};
+                     int ok = flox_backtest_runner_run_tape(_handle, path.c_str(), &s);
+                     if (!ok)
+                     {
+                       return info.Env().Null();
+                     }
+                     return statsToJs(info.Env(), s);
+                   });
   }
 
   // runner.runCsv(path, symbol) → stats object

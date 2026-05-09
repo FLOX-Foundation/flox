@@ -62,6 +62,7 @@ from C import flox_backtest_runner_destroy(cobj)
 from C import flox_backtest_runner_set_strategy(cobj, cobj)
 from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, Ptr[i64]) -> i32
 from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, Ptr[i64]) -> i32
+from C import flox_backtest_runner_run_tape(cobj, cobj, Ptr[i64]) -> i32
 from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64],
                                               Ptr[float], Ptr[float], Ptr[float],
                                               Ptr[float], Ptr[float],
@@ -337,6 +338,19 @@ class BacktestRunner:
             self._handle, path.c_str(), symbol.c_str(), buf.arr.ptr)
         if ok == i32(0):
             raise ValueError(f"BacktestRunner.run_csv failed: {path}")
+        return self._parse_stats(buf)
+
+    def run_tape(self, path: str) -> BacktestStats:
+        """Replay a `.floxlog` tape directory through the backtest.
+        The tape is the canonical recording format written by
+        `flox tape record` (live) or `scripts/backfill_to_tape.py`
+        (historical). Strategy.on_trade fires for each recorded
+        event; on_bar does not."""
+        buf = [i64(0)] * 29
+        ok = flox_backtest_runner_run_tape(
+            self._handle, path.c_str(), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError(f"BacktestRunner.run_tape failed: {path}")
         return self._parse_stats(buf)
 
     def run_ohlcv(self, timestamps: List[int], closes: List[float],
