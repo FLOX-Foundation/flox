@@ -96,7 +96,7 @@ runner.traceOrderEvent({
 });
 ```
 
-Both methods are no-ops when no recorder is attached, so wiring them unconditionally during executor setup is safe. `eventKind` matches `OrderEventKind`: 0=Submit, 1=Cancel, 2=Modify, 3=Ack, 4=Reject, 5=PartialFill, 6=Fill, 7=Expire. `liquidity`: 0=Unknown, 1=Maker, 2=Taker.
+Both methods are no-ops when no recorder is attached, so wiring them unconditionally during executor setup is safe. `eventKind` matches `OrderEventKind`: 1=Submit, 2=Cancel, 3=Modify, 4=Ack, 5=Reject, 6=Expire. `liquidity`: 0=Unknown, 1=Maker, 2=Taker.
 
 ## See also
 
