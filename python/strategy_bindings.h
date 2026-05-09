@@ -90,6 +90,23 @@ struct PySymbolCtx
   bool is_flat() const { return position == 0; }
 };
 
+// Order-event payload exposed to the Python `on_fill` /
+// `on_order_update` hooks. Mirrors `FloxOrderEventData` from the C
+// ABI but with double prices/qtys so user code doesn't need to
+// touch raw fixed-point.
+struct PyOrderEventData
+{
+  uint64_t order_id;
+  uint32_t symbol_id;
+  std::string side;        // "buy" | "sell"
+  std::string order_type;  // "limit" | "market" | "stop_market" | ...
+  std::string status;      // "FILLED" | "PARTIALLY_FILLED" | "CANCELED" | ...
+  double fill_qty;
+  double fill_price;
+  int64_t exchange_ts_ns;
+  std::string reject_reason;  // empty unless status == "REJECTED"
+};
+
 inline Side parseSide(const std::string& s)
 {
   return (s == "buy") ? Side::BUY : Side::SELL;
@@ -105,6 +122,8 @@ class PyStrategyBase
   virtual void on_trade(const PySymbolCtx& ctx, const PyTradeData& trade) {}
   virtual void on_book_update(const PySymbolCtx& ctx) {}
   virtual void on_bar(const PySymbolCtx& ctx, const PyBarData& bar) {}
+  virtual void on_fill(const PySymbolCtx& ctx, const PyOrderEventData& ev) {}
+  virtual void on_order_update(const PySymbolCtx& ctx, const PyOrderEventData& ev) {}
   virtual void on_start() {}
   virtual void on_stop() {}
 
@@ -612,6 +631,16 @@ class PyStrategyTrampoline : public PyStrategyBase
     PYBIND11_OVERRIDE(void, PyStrategyBase, on_bar, ctx, bar);
   }
 
+  void on_fill(const PySymbolCtx& ctx, const PyOrderEventData& ev) override
+  {
+    PYBIND11_OVERRIDE(void, PyStrategyBase, on_fill, ctx, ev);
+  }
+
+  void on_order_update(const PySymbolCtx& ctx, const PyOrderEventData& ev) override
+  {
+    PYBIND11_OVERRIDE(void, PyStrategyBase, on_order_update, ctx, ev);
+  }
+
   void on_start() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_start); }
 
   void on_stop() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_stop); }
@@ -685,6 +714,8 @@ struct PyStrategyHost
     cbs.on_bar = &PyStrategyHost::onBar;
     cbs.on_start = &PyStrategyHost::onStart;
     cbs.on_stop = &PyStrategyHost::onStop;
+    cbs.on_fill = &PyStrategyHost::onFill;
+    cbs.on_order_update = &PyStrategyHost::onOrderUpdate;
 
     const auto& syms = strat->symbols();
     bridge = std::make_unique<BridgeStrategy>(
@@ -806,6 +837,133 @@ struct PyStrategyHost
     else
     {
       self->strategy.load(std::memory_order_acquire)->on_start();
+    }
+  }
+
+  static PyOrderEventData toPyOrderEvent(const FloxOrderEventData* ev)
+  {
+    PyOrderEventData pe{};
+    pe.order_id = ev->order_id;
+    pe.symbol_id = ev->symbol_id;
+    pe.side = (ev->side == 0) ? "buy" : "sell";
+    pe.order_type = orderTypeName(ev->order_type);
+    pe.status = orderStatusName(ev->status);
+    pe.fill_qty = flox_quantity_to_double(ev->fill_qty_raw);
+    pe.fill_price = flox_price_to_double(ev->fill_price_raw);
+    pe.exchange_ts_ns = ev->exchange_ts_ns;
+    pe.reject_reason = ev->reject_reason ? std::string(ev->reject_reason) : "";
+    return pe;
+  }
+
+  static const char* orderTypeName(uint8_t t)
+  {
+    switch (t)
+    {
+      case 0:
+        return "limit";
+      case 1:
+        return "market";
+      case 2:
+        return "stop_market";
+      case 3:
+        return "stop_limit";
+      case 4:
+        return "take_profit_market";
+      case 5:
+        return "take_profit_limit";
+      case 6:
+        return "trailing_stop";
+      default:
+        return "unknown";
+    }
+  }
+
+  static const char* orderStatusName(uint8_t s)
+  {
+    switch (s)
+    {
+      case 0:
+        return "NEW";
+      case 1:
+        return "SUBMITTED";
+      case 2:
+        return "ACCEPTED";
+      case 3:
+        return "PARTIALLY_FILLED";
+      case 4:
+        return "FILLED";
+      case 5:
+        return "PENDING_CANCEL";
+      case 6:
+        return "CANCELED";
+      case 7:
+        return "EXPIRED";
+      case 8:
+        return "REJECTED";
+      case 9:
+        return "REPLACED";
+      case 10:
+        return "PENDING_TRIGGER";
+      case 11:
+        return "TRIGGERED";
+      case 12:
+        return "TRAILING_UPDATED";
+      default:
+        return "UNKNOWN";
+    }
+  }
+
+  static void onFill(void* ud, const FloxSymbolContext* ctx,
+                     const FloxOrderEventData* ev)
+  {
+    auto* self = static_cast<PyStrategyHost*>(ud);
+    auto call = [self, ctx, ev]()
+    {
+      PySymbolCtx pc{};
+      pc.symbol_id = ctx->symbol_id;
+      pc.position = flox_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
+      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
+      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      PyOrderEventData pe = toPyOrderEvent(ev);
+      self->strategy.load(std::memory_order_acquire)->on_fill(pc, pe);
+    };
+    if (self->with_gil)
+    {
+      py::gil_scoped_acquire gil;
+      call();
+    }
+    else
+    {
+      call();
+    }
+  }
+
+  static void onOrderUpdate(void* ud, const FloxSymbolContext* ctx,
+                            const FloxOrderEventData* ev)
+  {
+    auto* self = static_cast<PyStrategyHost*>(ud);
+    auto call = [self, ctx, ev]()
+    {
+      PySymbolCtx pc{};
+      pc.symbol_id = ctx->symbol_id;
+      pc.position = flox_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
+      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
+      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      PyOrderEventData pe = toPyOrderEvent(ev);
+      self->strategy.load(std::memory_order_acquire)->on_order_update(pc, pe);
+    };
+    if (self->with_gil)
+    {
+      py::gil_scoped_acquire gil;
+      call();
+    }
+    else
+    {
+      call();
     }
   }
 
@@ -1997,6 +2155,17 @@ inline void bindStrategy(py::module_& m)
       .def("is_short", &PySymbolCtx::is_short)
       .def("is_flat", &PySymbolCtx::is_flat);
 
+  py::class_<PyOrderEventData>(m, "OrderEventData")
+      .def_readwrite("order_id", &PyOrderEventData::order_id)
+      .def_readwrite("symbol_id", &PyOrderEventData::symbol_id)
+      .def_readwrite("side", &PyOrderEventData::side)
+      .def_readwrite("order_type", &PyOrderEventData::order_type)
+      .def_readwrite("status", &PyOrderEventData::status)
+      .def_readwrite("fill_qty", &PyOrderEventData::fill_qty)
+      .def_readwrite("fill_price", &PyOrderEventData::fill_price)
+      .def_readwrite("exchange_ts_ns", &PyOrderEventData::exchange_ts_ns)
+      .def_readwrite("reject_reason", &PyOrderEventData::reject_reason);
+
   py::class_<PyStrategyBase, PyStrategyTrampoline>(m, "Strategy")
       .def(py::init([](py::list symbols)
                     { return std::make_unique<PyStrategyTrampoline>(symIds(symbols)); }),
@@ -2004,6 +2173,8 @@ inline void bindStrategy(py::module_& m)
       .def("on_trade", &PyStrategyBase::on_trade, py::arg("ctx"), py::arg("trade"))
       .def("on_book_update", &PyStrategyBase::on_book_update, py::arg("ctx"))
       .def("on_bar", &PyStrategyBase::on_bar, py::arg("ctx"), py::arg("bar"))
+      .def("on_fill", &PyStrategyBase::on_fill, py::arg("ctx"), py::arg("event"))
+      .def("on_order_update", &PyStrategyBase::on_order_update, py::arg("ctx"), py::arg("event"))
       .def("on_start", &PyStrategyBase::on_start)
       .def("on_stop", &PyStrategyBase::on_stop)
       .def("emit_market_buy", &PyStrategyBase::emit_market_buy, py::arg("symbol"),

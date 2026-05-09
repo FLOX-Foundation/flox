@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 484 functions, 43 handles, 48 structs, 33 callback typedefs, 2 enums, 58 groups.
+**Surface:** 484 functions, 43 handles, 49 structs, 35 callback typedefs, 2 enums, 58 groups.
 
 ## Opaque handles
 
@@ -72,6 +72,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxOnTradeCallback)(void *, const FloxSymbolContext *, const FloxTradeData *);`
 - `typedef void (*FloxOnBookCallback)(void *, const FloxSymbolContext *, const FloxBookData *);`
 - `typedef void (*FloxOnBarCallback)(void *, const FloxSymbolContext *, const FloxBarData *);`
+- `typedef void (*FloxOnFillCallback)(void *, const FloxSymbolContext *, const FloxOrderEventData *);`
+- `typedef void (*FloxOnOrderUpdateCallback)(void *, const FloxSymbolContext *, const FloxOrderEventData *);`
 - `typedef void (*FloxOnStartCallback)(void *);`
 - `typedef void (*FloxOnStopCallback)(void *);`
 - `typedef const double * (*FloxGraphNodeFn)(void *, FloxIndicatorGraphHandle, uint32_t, size_t *);`
@@ -171,6 +173,21 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `last_update_ns` | `int64_t` |
 | `book` | `FloxBookSnapshot` |
 
+### `FloxOrderEventData`
+
+| field | type |
+|---|---|
+| `order_id` | `uint64_t` |
+| `symbol_id` | `uint32_t` |
+| `side` | `uint8_t` |
+| `order_type` | `uint8_t` |
+| `status` | `uint8_t` |
+| `_pad` | `uint8_t` |
+| `fill_qty_raw` | `int64_t` |
+| `fill_price_raw` | `int64_t` |
+| `exchange_ts_ns` | `int64_t` |
+| `reject_reason` | `const char *` |
+
 ### `FloxStrategyCallbacks`
 
 | field | type |
@@ -180,6 +197,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `on_bar` | `FloxOnBarCallback` |
 | `on_start` | `FloxOnStartCallback` |
 | `on_stop` | `FloxOnStopCallback` |
+| `on_fill` | `FloxOnFillCallback` |
+| `on_order_update` | `FloxOnOrderUpdateCallback` |
 | `user_data` | `void *` |
 
 ### `FloxBar`

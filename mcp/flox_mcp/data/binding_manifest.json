@@ -2528,6 +2528,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxOrderEventData"
+        },
+        {
+          "kind": "struct",
           "name": "FloxOrderValidatorCallbacks"
         },
         {
@@ -5753,6 +5757,10 @@
         {
           "kind": "class",
           "name": "OrderBook"
+        },
+        {
+          "kind": "class",
+          "name": "OrderEventData"
         },
         {
           "kind": "class",

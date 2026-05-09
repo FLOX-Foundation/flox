@@ -345,6 +345,42 @@
       "return_type": "void"
     },
     {
+      "name": "FloxOnFillCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrderEventData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnOrderUpdateCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrderEventData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "name": "FloxOnSignalCallback",
       "params": [
         {
@@ -10720,6 +10756,51 @@
     {
       "fields": [
         {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "order_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "status",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad",
+          "type": "uint8_t"
+        },
+        {
+          "name": "fill_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "fill_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "reject_reason",
+          "type": "const char *"
+        }
+      ],
+      "name": "FloxOrderEventData"
+    },
+    {
+      "fields": [
+        {
           "name": "validate",
           "type": "FloxOrderValidatorValidateFn"
         },
@@ -11111,6 +11192,14 @@
         {
           "name": "on_stop",
           "type": "FloxOnStopCallback"
+        },
+        {
+          "name": "on_fill",
+          "type": "FloxOnFillCallback"
+        },
+        {
+          "name": "on_order_update",
+          "type": "FloxOnOrderUpdateCallback"
         },
         {
           "name": "user_data",

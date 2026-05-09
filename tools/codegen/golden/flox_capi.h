@@ -153,6 +153,20 @@ extern "C"
 
   typedef struct
   {
+    uint64_t order_id;
+    uint32_t symbol_id;
+    uint8_t side;
+    uint8_t order_type;
+    uint8_t status;
+    uint8_t _pad;
+    int64_t fill_qty_raw;
+    int64_t fill_price_raw;
+    int64_t exchange_ts_ns;
+    const char* reject_reason;
+  } FloxOrderEventData;
+
+  typedef struct
+  {
     int64_t start_time_ns;
     int64_t end_time_ns;
     int64_t open_raw;
@@ -536,6 +550,8 @@ extern "C"
   typedef void (*FloxOnTradeCallback)(void*, const FloxSymbolContext*, const FloxTradeData*);
   typedef void (*FloxOnBookCallback)(void*, const FloxSymbolContext*, const FloxBookData*);
   typedef void (*FloxOnBarCallback)(void*, const FloxSymbolContext*, const FloxBarData*);
+  typedef void (*FloxOnFillCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
+  typedef void (*FloxOnOrderUpdateCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
   typedef void (*FloxOnStartCallback)(void*);
   typedef void (*FloxOnStopCallback)(void*);
   typedef const double* (*FloxGraphNodeFn)(void*, FloxIndicatorGraphHandle, uint32_t, size_t*);
@@ -578,6 +594,8 @@ extern "C"
     FloxOnBarCallback on_bar;
     FloxOnStartCallback on_start;
     FloxOnStopCallback on_stop;
+    FloxOnFillCallback on_fill;
+    FloxOnOrderUpdateCallback on_order_update;
     void* user_data;
   } FloxStrategyCallbacks;
 
