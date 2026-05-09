@@ -288,6 +288,7 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/portfolio_risk_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/delta_book_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
 
     - name: Verify Node.js bindings
       run: |

@@ -148,6 +148,52 @@ g.auto_dispatch(strategy)
 
 The cap is **additive** to the per-order risk gates (KillSwitch / OrderValidator / RiskManager) — those still fire on every leg the strategy emits.
 
-## Follow-ups
+## Pair latency budget (`OneSided`)
 
-- Latency budgets on `OneSided` (only submit leg B if leg A acks within N ms).
+A pair-trade where the second leg only makes sense once the first one is live needs a deadline. `OrderGroup` exposes a budget the strategy checks each tick to decide whether to submit the follower, cancel the leader on timeout, or keep waiting:
+
+| Decision | When |
+|---|---|
+| `wait` | budget unset, or leader still inside budget without an ack |
+| `submit_follower` | leader acked within the budget |
+| `cancel_leader` | leader ack arrived past the budget, or no ack and elapsed time has already exceeded it |
+
+```python
+# pybind11
+g = flox_py.OrderGroup(policy=flox_py.OrderGroupPolicy.ONE_SIDED)
+g.add_limit_leg(btc, 0, 50_000.0, 0.1)
+g.add_limit_leg(eth, 1, 3_000.0, 1.5)
+g.set_pair_latency_budget_ns(50_000_000)  # 50 ms
+
+# After submitting leg A, on each tick:
+decision = g.pair_latency_decision(submit_ts_ns, ack_ts_ns, ack_received=False)
+if decision == "submit_follower":
+    g.record_submit(1, strategy.emit_limit(...))
+elif decision == "cancel_leader":
+    strategy.emit_cancel(g.leg_order_id(0))
+```
+
+```javascript
+// node
+const g = new flox.OrderGroup({ policy: 'OneSided' });
+g.setPairLatencyBudgetNs(50_000_000);
+const d = g.pairLatencyDecision({
+  leaderSubmitTsNs: submitTs,
+  leaderAckTsNs: nowTs,
+  ackReceived: false,
+});
+```
+
+```javascript
+// QuickJS — same shape; `OrderGroup` is a global from the embedded stdlib.
+g.setPairLatencyBudgetNs(50_000_000);
+const d = g.pairLatencyDecision({ leaderSubmitTsNs, leaderAckTsNs, ackReceived });
+```
+
+```python
+# codon
+g.set_pair_latency_budget_ns(50_000_000)
+d = g.pair_latency_decision(submit_ts_ns, ack_ts_ns, False)  # "wait" | "submit_follower" | "cancel_leader"
+```
+
+When no ack has arrived yet, pass the current feed time as `leader_ack_ts_ns` — the budget logic treats it as "elapsed since submit" and switches to `cancel_leader` once that exceeds the cap.

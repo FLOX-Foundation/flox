@@ -712,6 +712,24 @@ extern "C"
                                                char* rule_out, size_t rule_capacity,
                                                char* detail_out, size_t detail_capacity);
 
+  // OneSided pair latency budget. After the leader submits, the
+  // strategy waits up to `budget_ns` of feed-time for the leader's
+  // ack before sending the follower. Zero disables the gate.
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_set_pair_latency_budget_ns(FloxOrderGroupHandle h,
+                                                   int64_t budget_ns);
+
+  // Returns the decision the strategy should act on:
+  //   0 = Wait, 1 = SubmitFollower, 2 = CancelLeader.
+  // Pass `ack_received = 1` and the actual ack ts when the leader has
+  // acked; pass 0 + the current feed-time as `leader_ack_ts_ns` to
+  // poll for timeout.
+  FLOX_EXPORT(group = "order_group")
+  uint8_t flox_order_group_pair_latency_decision(FloxOrderGroupHandle h,
+                                                 int64_t leader_submit_ts_ns,
+                                                 int64_t leader_ack_ts_ns,
+                                                 uint8_t ack_received);
+
   // ============================================================
   // Multi-feed clock
   // ============================================================

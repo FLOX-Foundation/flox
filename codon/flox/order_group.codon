@@ -23,6 +23,8 @@ from C import flox_order_group_recommended_actions(cobj, cobj, u32) -> u32
 from C import flox_order_group_mark_action_dispatched(cobj, u32, u8)
 from C import flox_order_group_set_risk_limits(cobj, i64, f64, i64)
 from C import flox_order_group_precheck_submission(cobj, f64, cobj, u32, cobj, int, cobj, int) -> u8
+from C import flox_order_group_set_pair_latency_budget_ns(cobj, i64)
+from C import flox_order_group_pair_latency_decision(cobj, i64, i64, u8) -> u8
 
 from flox.types import Quantity, Price
 
@@ -169,6 +171,28 @@ class OrderGroup:
         rule = str.from_ptr(rule_buf)
         detail = str.from_ptr(detail_buf)
         return (denied, rule, detail)
+
+    def set_pair_latency_budget_ns(self, budget_ns: int):
+        """OneSided helper: maximum allowed leader submit→ack latency
+        before the follower leg is held back and the leader is
+        cancelled. Zero (default) disables the budget."""
+        flox_order_group_set_pair_latency_budget_ns(self._h, i64(budget_ns))
+
+    def pair_latency_decision(self, leader_submit_ts_ns: int,
+                                leader_ack_ts_ns: int,
+                                ack_received: bool = False) -> str:
+        """Decide whether to submit the follower leg, cancel the leader,
+        or keep waiting. Returns "wait", "submit_follower", or
+        "cancel_leader". When `ack_received` is False, pass current
+        feed-time as `leader_ack_ts_ns` to detect timeout."""
+        d = int(flox_order_group_pair_latency_decision(
+            self._h, i64(leader_submit_ts_ns), i64(leader_ack_ts_ns),
+            u8(1) if ack_received else u8(0)))
+        if d == 1:
+            return "submit_follower"
+        if d == 2:
+            return "cancel_leader"
+        return "wait"
 
     def auto_dispatch(self, strategy) -> int:
         """Dispatch every not-yet-dispatched recommended action through

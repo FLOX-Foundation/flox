@@ -107,6 +107,24 @@ def run():
     d6, _r6, _d6 = g6.precheck_submission(equity=100_000.0, market_ref_prices=[50_000.0])
     check("risk gate allows small basket", not d6)
 
+    # --- OneSided pair-latency budget.
+    g7 = OrderGroup(parent_signal_id=7, policy=ONE_SIDED)
+    g7.add_limit_leg(1, 0, 50000.0, 0.1)
+    g7.add_limit_leg(2, 1, 3000.0, 1.5)
+    check("budget unset → wait",
+          g7.pair_latency_decision(0, 0, False) == "wait")
+
+    g7.set_pair_latency_budget_ns(50_000_000)
+    submit = 1_000_000_000
+    check("ack within budget → submit_follower",
+          g7.pair_latency_decision(submit, submit + 30_000_000, True) == "submit_follower")
+    check("ack over budget → cancel_leader",
+          g7.pair_latency_decision(submit, submit + 60_000_000, True) == "cancel_leader")
+    check("no ack, still inside budget → wait",
+          g7.pair_latency_decision(submit, submit + 10_000_000, False) == "wait")
+    check("no ack, past budget → cancel_leader (timeout)",
+          g7.pair_latency_decision(submit, submit + 80_000_000, False) == "cancel_leader")
+
     print("codon order_group smoke ok")
 
 

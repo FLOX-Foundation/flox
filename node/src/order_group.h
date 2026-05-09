@@ -37,7 +37,11 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
                         InstanceMethod("autoDispatch", &OrderGroupWrap::AutoDispatch),
                         InstanceMethod("setRiskLimits", &OrderGroupWrap::SetRiskLimits),
                         InstanceMethod("precheckSubmission",
-                                       &OrderGroupWrap::PrecheckSubmission)});
+                                       &OrderGroupWrap::PrecheckSubmission),
+                        InstanceMethod("setPairLatencyBudgetNs",
+                                       &OrderGroupWrap::SetPairLatencyBudgetNs),
+                        InstanceMethod("pairLatencyDecision",
+                                       &OrderGroupWrap::PairLatencyDecision)});
   }
 
   OrderGroupWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderGroupWrap>(info)
@@ -269,6 +273,27 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
     out.Set("rule", Napi::String::New(env, rule));
     out.Set("detail", Napi::String::New(env, detail));
     return out;
+  }
+
+  void SetPairLatencyBudgetNs(const Napi::CallbackInfo& info)
+  {
+    int64_t budget = info[0].As<Napi::Number>().Int64Value();
+    flox_order_group_set_pair_latency_budget_ns(_h, budget);
+  }
+
+  Napi::Value PairLatencyDecision(const Napi::CallbackInfo& info)
+  {
+    auto opts = info[0].As<Napi::Object>();
+    int64_t submit_ts = opts.Get("leaderSubmitTsNs").As<Napi::Number>().Int64Value();
+    int64_t ack_ts = opts.Get("leaderAckTsNs").As<Napi::Number>().Int64Value();
+    bool ack_received = opts.Has("ackReceived")
+                            ? opts.Get("ackReceived").As<Napi::Boolean>().Value()
+                            : false;
+    uint8_t d = flox_order_group_pair_latency_decision(_h, submit_ts, ack_ts,
+                                                       ack_received ? 1 : 0);
+    const char* name = (d == 0) ? "wait" : (d == 1) ? "submit_follower"
+                                                    : "cancel_leader";
+    return Napi::String::New(info.Env(), name);
   }
 
   Napi::Value AutoDispatch(const Napi::CallbackInfo& info)

@@ -5610,6 +5610,29 @@
     },
     {
       "group": "order_group",
+      "name": "flox_order_group_pair_latency_decision",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "leader_submit_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "leader_ack_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "ack_received",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_group",
       "name": "flox_order_group_precheck_submission",
       "params": [
         {
@@ -5730,6 +5753,21 @@
         {
           "name": "order_id",
           "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_set_pair_latency_budget_ns",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "budget_ns",
+          "type": "int64_t"
         }
       ],
       "return_type": "void"
