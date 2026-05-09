@@ -21,6 +21,8 @@ from C import flox_order_group_record_failure(cobj, u32)
 from C import flox_order_group_state(cobj) -> u8
 from C import flox_order_group_recommended_actions(cobj, cobj, u32) -> u32
 from C import flox_order_group_mark_action_dispatched(cobj, u32, u8)
+from C import flox_order_group_set_risk_limits(cobj, i64, f64, i64)
+from C import flox_order_group_precheck_submission(cobj, f64, cobj, u32, cobj, int, cobj, int) -> u8
 
 from flox.types import Quantity, Price
 
@@ -139,6 +141,34 @@ class OrderGroup:
         `recommended_actions`. kind: "cancel" or "revert"."""
         k = u8(0) if kind == "cancel" else u8(1)
         flox_order_group_mark_action_dispatched(self._h, u32(leg_index), k)
+
+    def set_risk_limits(self, max_gross_notional: float = 0.0,
+                         max_concentration_pct: float = 0.0,
+                         max_leg_qty: float = 0.0):
+        """Configure per-group risk limits. Zero in any field means
+        "no cap on that dimension"."""
+        flox_order_group_set_risk_limits(
+            self._h,
+            Quantity.from_double(max_gross_notional).raw(),
+            f64(max_concentration_pct),
+            Quantity.from_double(max_leg_qty).raw())
+
+    def precheck_submission(self, equity: float = 0.0,
+                             market_ref_prices: List[float] = []) -> Tuple[bool, str, str]:
+        """Run the configured limits against the current legs. Returns
+        (denied, rule, detail). Pass `equity` only when
+        `max_concentration_pct` is set."""
+        raw_prices = [Price.from_double(p).raw() for p in market_ref_prices]
+        rule_buf = Ptr[byte](64)
+        detail_buf = Ptr[byte](256)
+        denied = int(flox_order_group_precheck_submission(
+            self._h, f64(equity),
+            cobj() if len(raw_prices) == 0 else cobj(raw_prices.arr.ptr),
+            u32(len(raw_prices)),
+            cobj(rule_buf), 64, cobj(detail_buf), 256)) != 0
+        rule = str.from_ptr(rule_buf)
+        detail = str.from_ptr(detail_buf)
+        return (denied, rule, detail)
 
     def auto_dispatch(self, strategy) -> int:
         """Dispatch every not-yet-dispatched recommended action through

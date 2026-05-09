@@ -804,6 +804,54 @@ TEST(JsIntegrationTest, MultiFeedClockWaitForAll)
 // Multi-leg order group (W15-T004)
 // ============================================================
 
+TEST(JsIntegrationTest, OrderGroupRiskGateDeniesOversizedBasket)
+{
+  TempJsFile script(R"(
+    var deniedBig = false;
+    var ruleBig = "";
+    var deniedSmall = true;
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT", "ETHUSDT"] }); }
+      onStart() {
+        var g = new OrderGroup();
+        g.addMarketLeg(1, 0, 0.1);
+        g.addMarketLeg(2, 1, 2.0);
+        g.setRiskLimits({ maxConcentrationPct: 0.05 });
+        var b = g.precheckSubmission({ equity: 100000, marketRefPrices: [50000, 3000] });
+        deniedBig = b.denied;
+        ruleBig = b.rule;
+        var g2 = new OrderGroup();
+        g2.addMarketLeg(1, 0, 0.001);
+        g2.setRiskLimits({ maxConcentrationPct: 0.05 });
+        deniedSmall = g2.precheckSubmission({ equity: 100000, marketRefPrices: [50000] }).denied;
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+  bridge->start();
+
+  auto* ctx = jsStrat.engine().context();
+  JSValue dBig = jsStrat.engine().getGlobalProperty("deniedBig");
+  EXPECT_TRUE(JS_ToBool(ctx, dBig));
+  JS_FreeValue(ctx, dBig);
+  JSValue rule = jsStrat.engine().getGlobalProperty("ruleBig");
+  const char* rs = JS_ToCString(ctx, rule);
+  EXPECT_STREQ(rs, "maxConcentrationPct");
+  JS_FreeCString(ctx, rs);
+  JS_FreeValue(ctx, rule);
+  JSValue dSmall = jsStrat.engine().getGlobalProperty("deniedSmall");
+  EXPECT_FALSE(JS_ToBool(ctx, dSmall));
+  JS_FreeValue(ctx, dSmall);
+}
+
 TEST(JsIntegrationTest, OrderGroupAutoDispatchFiresAndIsIdempotent)
 {
   TempJsFile script(R"(

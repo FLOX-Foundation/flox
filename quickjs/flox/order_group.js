@@ -113,6 +113,50 @@ class OrderGroup {
         this._legs[legIndex].dispatched = (this._legs[legIndex].dispatched || 0) | bit;
     }
 
+    setRiskLimits(opts) {
+        opts = opts || {};
+        this._limits = {
+            maxGrossNotional: opts.maxGrossNotional || 0,
+            maxConcentrationPct: opts.maxConcentrationPct || 0,
+            maxLegQty: opts.maxLegQty || 0,
+        };
+    }
+
+    precheckSubmission(opts) {
+        opts = opts || {};
+        var limits = this._limits || { maxGrossNotional: 0, maxConcentrationPct: 0, maxLegQty: 0 };
+        if (limits.maxGrossNotional === 0 && limits.maxConcentrationPct === 0
+            && limits.maxLegQty === 0) {
+            return { denied: false, rule: '', detail: '' };
+        }
+        var equity = opts.equity || 0;
+        var refPrices = opts.marketRefPrices || [];
+        var grossNotional = 0;
+        for (var i = 0; i < this._legs.length; i++) {
+            var l = this._legs[i];
+            if (limits.maxLegQty !== 0 && l.targetQty > limits.maxLegQty) {
+                return { denied: true, rule: 'maxLegQty',
+                         detail: 'leg ' + i + ' qty exceeds per-leg cap' };
+            }
+            var price = 0;
+            if (l.orderType === 0) price = l.limitPrice;
+            else if (i < refPrices.length) price = refPrices[i];
+            grossNotional += Math.abs(price * l.targetQty);
+        }
+        if (limits.maxGrossNotional !== 0 && grossNotional > limits.maxGrossNotional) {
+            return { denied: true, rule: 'maxGrossNotional',
+                     detail: 'basket gross notional exceeds cap' };
+        }
+        if (limits.maxConcentrationPct > 0 && equity > 0) {
+            var frac = grossNotional / equity;
+            if (frac > limits.maxConcentrationPct) {
+                return { denied: true, rule: 'maxConcentrationPct',
+                         detail: 'basket gross notional exceeds concentration limit vs equity' };
+            }
+        }
+        return { denied: false, rule: '', detail: '' };
+    }
+
     autoDispatch(strategy) {
         // Dispatch every not-yet-dispatched recommended action through
         // the strategy's emit helpers; mark each so it doesn't fire

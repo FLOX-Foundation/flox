@@ -100,6 +100,38 @@ def test_auto_dispatch_fires_actions_through_strategy() -> None:
     assert g.auto_dispatch(s) == 0
 
 
+def test_risk_gate_denies_basket_over_concentration_cap() -> None:
+    """Group-level risk gate: basket gross notional exceeding the
+    concentration cap (% of equity) must deny submission."""
+    g = flox_py.OrderGroup()
+    g.add_market_leg(symbol=1, side=0, qty=0.1)  # BTC
+    g.add_market_leg(symbol=2, side=1, qty=2.0)  # ETH
+    g.set_risk_limits(max_concentration_pct=0.05)
+
+    # Equity 100k; leg notionals 0.1 * 50k + 2.0 * 3k = 11k → 11% > 5%.
+    breach = g.precheck_submission(equity=100_000.0,
+                                    market_ref_prices=[50_000.0, 3_000.0])
+    assert breach["denied"] is True
+    assert breach["rule"] == "maxConcentrationPct"
+
+    # Smaller basket: 0.001 * 50k + 0.001 * 3k = 53 → well under 5%.
+    g2 = flox_py.OrderGroup()
+    g2.add_market_leg(symbol=1, side=0, qty=0.001)
+    g2.add_market_leg(symbol=2, side=1, qty=0.001)
+    g2.set_risk_limits(max_concentration_pct=0.05)
+    assert g2.precheck_submission(equity=100_000.0,
+                                   market_ref_prices=[50_000.0, 3_000.0])["denied"] is False
+
+
+def test_risk_gate_per_leg_cap_denies_oversized_leg() -> None:
+    g = flox_py.OrderGroup()
+    g.add_market_leg(symbol=1, side=0, qty=10.0)
+    g.set_risk_limits(max_leg_qty=1.0)
+    breach = g.precheck_submission()
+    assert breach["denied"] is True
+    assert breach["rule"] == "maxLegQty"
+
+
 def test_auto_dispatch_one_sided_cancels_remaining_legs() -> None:
     class FakeStrat:
         def __init__(self) -> None:

@@ -126,8 +126,10 @@ flox_exec_target_qty|double|FloxExecAlgoHandle
 flox_exec_twap_create|FloxExecAlgoHandle|double|uint8_t|uint32_t|uint8_t|double|int64_t|uint32_t|int64_t
 flox_exec_vwap_create|FloxExecAlgoHandle|double|uint8_t|uint32_t|uint8_t|double|const int64_t *|const double *|size_t
 flox_execution_listener_create|FloxExecutionListenerHandle|FloxExecutionListenerCallbacks
+flox_execution_listener_create_p|FloxExecutionListenerHandle|const FloxExecutionListenerCallbacks *
 flox_execution_listener_destroy|void|FloxExecutionListenerHandle
 flox_executor_create|FloxExecutorHandle|FloxExecutorCallbacks
+flox_executor_create_p|FloxExecutorHandle|const FloxExecutorCallbacks *
 flox_executor_destroy|void|FloxExecutorHandle
 flox_executor_get_capabilities|void|FloxExecutorHandle|FloxExchangeCapabilities *
 flox_feed_clock_create|FloxFeedClockHandle|const uint32_t *|uint32_t|uint8_t|int64_t|uint32_t|int64_t
@@ -200,6 +202,7 @@ flox_indicator_stochastic|void|const double *|const double *|const double *|size
 flox_indicator_tema|void|const double *|size_t|size_t|double *
 flox_indicator_vwap|void|const double *|const double *|size_t|size_t|double *
 flox_kill_switch_create|FloxKillSwitchHandle|FloxKillSwitchCallbacks
+flox_kill_switch_create_p|FloxKillSwitchHandle|const FloxKillSwitchCallbacks *
 flox_kill_switch_destroy|void|FloxKillSwitchHandle
 flox_l3_book_add_order|int32_t|FloxL3BookHandle|uint64_t|double|double|uint8_t
 flox_l3_book_ask_at_price|double|FloxL3BookHandle|double
@@ -237,6 +240,7 @@ flox_live_engine_set_storage_sink|void|FloxLiveEngineHandle|FloxStorageSinkHandl
 flox_live_engine_start|void|FloxLiveEngineHandle
 flox_live_engine_stop|void|FloxLiveEngineHandle
 flox_market_data_recorder_create|FloxMarketDataRecorderHandle|FloxMarketDataRecorderCallbacks
+flox_market_data_recorder_create_p|FloxMarketDataRecorderHandle|const FloxMarketDataRecorderCallbacks *
 flox_market_data_recorder_destroy|void|FloxMarketDataRecorderHandle
 flox_market_profile_add_trade|void|FloxMarketProfileHandle|int64_t|double|double|uint8_t
 flox_market_profile_clear|void|FloxMarketProfileHandle
@@ -260,11 +264,13 @@ flox_order_group_leg_filled_raw|int64_t|FloxOrderGroupHandle|uint32_t
 flox_order_group_leg_order_id|uint64_t|FloxOrderGroupHandle|uint32_t
 flox_order_group_leg_state|uint8_t|FloxOrderGroupHandle|uint32_t
 flox_order_group_mark_action_dispatched|void|FloxOrderGroupHandle|uint32_t|uint8_t
+flox_order_group_precheck_submission|uint8_t|FloxOrderGroupHandle|double|const int64_t *|uint32_t|char *|size_t|char *|size_t
 flox_order_group_recommended_actions|uint32_t|FloxOrderGroupHandle|int64_t *|uint32_t
 flox_order_group_record_cancel|void|FloxOrderGroupHandle|uint32_t
 flox_order_group_record_failure|void|FloxOrderGroupHandle|uint32_t
 flox_order_group_record_fill|void|FloxOrderGroupHandle|uint32_t|int64_t
 flox_order_group_record_submit|void|FloxOrderGroupHandle|uint32_t|uint64_t
+flox_order_group_set_risk_limits|void|FloxOrderGroupHandle|int64_t|double|int64_t
 flox_order_group_state|uint8_t|FloxOrderGroupHandle
 flox_order_tracker_active_count|uint32_t|FloxOrderTrackerHandle
 flox_order_tracker_create|FloxOrderTrackerHandle
@@ -276,6 +282,7 @@ flox_order_tracker_on_submitted|uint8_t|FloxOrderTrackerHandle|uint64_t|uint32_t
 flox_order_tracker_prune|void|FloxOrderTrackerHandle
 flox_order_tracker_total_count|uint32_t|FloxOrderTrackerHandle
 flox_order_validator_create|FloxOrderValidatorHandle|FloxOrderValidatorCallbacks
+flox_order_validator_create_p|FloxOrderValidatorHandle|const FloxOrderValidatorCallbacks *
 flox_order_validator_destroy|void|FloxOrderValidatorHandle
 flox_partitioner_by_calendar|uint32_t|FloxPartitionerHandle|uint8_t|int64_t|FloxPartition *|uint32_t
 flox_partitioner_by_duration|uint32_t|FloxPartitionerHandle|int64_t|int64_t|FloxPartition *|uint32_t
@@ -286,6 +293,7 @@ flox_partitioner_create|FloxPartitionerHandle|const char *
 flox_partitioner_destroy|void|FloxPartitionerHandle
 flox_partitioner_per_symbol|uint32_t|FloxPartitionerHandle|FloxPartition *|uint32_t
 flox_pnl_tracker_create|FloxPnLTrackerHandle|FloxPnLTrackerCallbacks
+flox_pnl_tracker_create_p|FloxPnLTrackerHandle|const FloxPnLTrackerCallbacks *
 flox_pnl_tracker_destroy|void|FloxPnLTrackerHandle
 flox_portfolio_risk_account_count|uint64_t|FloxPortfolioRiskHandle
 flox_portfolio_risk_breach_at|uint8_t|FloxPortfolioRiskHandle|uint64_t|FloxBreach *
@@ -331,9 +339,11 @@ flox_registry_get_symbol_name|uint8_t|FloxRegistryHandle|uint32_t|char *|size_t|
 flox_registry_symbol_count|uint32_t|FloxRegistryHandle
 flox_render_heatmap_html|uint64_t|const FloxHeatmapData *|char *|uint64_t
 flox_replay_source_create|FloxReplaySourceHandle|FloxReplaySourceCallbacks
+flox_replay_source_create_p|FloxReplaySourceHandle|const FloxReplaySourceCallbacks *
 flox_replay_source_destroy|void|FloxReplaySourceHandle
 flox_replay_source_seek_to|uint8_t|FloxReplaySourceHandle|int64_t
 flox_risk_manager_create|FloxRiskManagerHandle|FloxRiskManagerCallbacks
+flox_risk_manager_create_p|FloxRiskManagerHandle|const FloxRiskManagerCallbacks *
 flox_risk_manager_destroy|void|FloxRiskManagerHandle
 flox_run_reader_close|void|FloxRunReaderHandle
 flox_run_reader_fill|void|FloxRunReaderHandle|uint64_t|int64_t *|int64_t *|uint64_t *|uint64_t *|int64_t *|int64_t *|int64_t *|uint32_t *|uint8_t *|uint8_t *
@@ -419,13 +429,16 @@ flox_stat_profit_factor|double|const double *|size_t
 flox_stat_whites_reality_check|void|const double *|size_t|size_t|uint32_t|double|double *|double *|int32_t *
 flox_stat_win_rate|double|const double *|size_t
 flox_storage_sink_create|FloxStorageSinkHandle|FloxStorageSinkCallbacks
+flox_storage_sink_create_p|FloxStorageSinkHandle|const FloxStorageSinkCallbacks *
 flox_storage_sink_destroy|void|FloxStorageSinkHandle
 flox_strategy_create|FloxStrategyHandle|uint32_t|const uint32_t *|uint32_t|FloxRegistryHandle|FloxStrategyCallbacks
+flox_strategy_create_p|FloxStrategyHandle|uint32_t|const uint32_t *|uint32_t|FloxRegistryHandle|const FloxStrategyCallbacks *
 flox_strategy_destroy|void|FloxStrategyHandle
 flox_strategy_get_bar_ring_capacity|uint32_t|FloxStrategyHandle
 flox_strategy_last_closed_bar|uint8_t|FloxStrategyHandle|uint32_t|uint8_t|uint64_t|FloxBar *
 flox_strategy_last_n_closed_bars|uint32_t|FloxStrategyHandle|uint32_t|uint8_t|uint64_t|FloxBar *|uint32_t
 flox_strategy_replace_callbacks|void|FloxStrategyHandle|FloxStrategyCallbacks
+flox_strategy_replace_callbacks_p|void|FloxStrategyHandle|const FloxStrategyCallbacks *
 flox_strategy_set_bar_ring_capacity|void|FloxStrategyHandle|uint32_t
 flox_streaming_graph_add_node|void|FloxStreamingGraphHandle|const char *|const char *const *|size_t|FloxGraphNodeFn|void *
 flox_streaming_graph_bar_count|uint32_t|FloxStreamingGraphHandle|uint32_t

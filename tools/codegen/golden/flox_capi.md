@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 471 functions, 42 handles, 48 structs, 33 callback typedefs, 2 enums, 57 groups.
+**Surface:** 473 functions, 42 handles, 48 structs, 33 callback typedefs, 2 enums, 57 groups.
 
 ## Opaque handles
 
@@ -1082,6 +1082,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_order_group_state(FloxOrderGroupHandle h)`
 - `uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h, int64_t * actions_out, uint32_t max_actions)`
 - `void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index, uint8_t kind)`
+- `void flox_order_group_set_risk_limits(FloxOrderGroupHandle h, int64_t max_gross_notional_raw, double max_concentration_pct, int64_t max_leg_qty_raw)`
+- `uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equity, const int64_t * market_ref_prices_raw, uint32_t market_ref_prices_len, char * rule_out, size_t rule_capacity, char * detail_out, size_t detail_capacity)`
 
 ### order_tracker
 

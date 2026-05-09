@@ -1355,6 +1355,60 @@ void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t le
                                         static_cast<OrderGroupAction::Kind>(kind));
 }
 
+void flox_order_group_set_risk_limits(FloxOrderGroupHandle h, int64_t max_gross_notional_raw,
+                                      double max_concentration_pct, int64_t max_leg_qty_raw)
+{
+  GroupRiskLimits limits;
+  limits.maxGrossNotional = Quantity::fromRaw(max_gross_notional_raw);
+  limits.maxConcentrationPct = max_concentration_pct;
+  limits.maxLegQty = Quantity::fromRaw(max_leg_qty_raw);
+  toOrderGroup(h)->setRiskLimits(limits);
+}
+
+namespace
+{
+inline void copy_truncated(const std::string& src, char* out, size_t capacity)
+{
+  if (!out || capacity == 0)
+  {
+    return;
+  }
+  size_t n = std::min(src.size(), capacity - 1);
+  std::memcpy(out, src.data(), n);
+  out[n] = '\0';
+}
+}  // namespace
+
+uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equity,
+                                             const int64_t* market_ref_prices_raw,
+                                             uint32_t market_ref_prices_len, char* rule_out,
+                                             size_t rule_capacity, char* detail_out,
+                                             size_t detail_capacity)
+{
+  std::vector<Price> prices;
+  prices.reserve(market_ref_prices_len);
+  for (uint32_t i = 0; i < market_ref_prices_len; ++i)
+  {
+    prices.push_back(Price::fromRaw(market_ref_prices_raw[i]));
+  }
+  auto breach = toOrderGroup(h)->precheckSubmission(equity, prices);
+  if (!breach.denied)
+  {
+    if (rule_out && rule_capacity > 0)
+    {
+      rule_out[0] = '\0';
+    }
+    if (detail_out && detail_capacity > 0)
+    {
+      detail_out[0] = '\0';
+    }
+    return 0;
+  }
+  copy_truncated(breach.rule, rule_out, rule_capacity);
+  copy_truncated(breach.detail, detail_out, detail_capacity);
+  return 1;
+}
+
 uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
                                               int64_t* actions_out,
                                               uint32_t max_actions)

@@ -5610,6 +5610,45 @@
     },
     {
       "group": "order_group",
+      "name": "flox_order_group_precheck_submission",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "equity",
+          "type": "double"
+        },
+        {
+          "name": "market_ref_prices_raw",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "market_ref_prices_len",
+          "type": "uint32_t"
+        },
+        {
+          "name": "rule_out",
+          "type": "char *"
+        },
+        {
+          "name": "rule_capacity",
+          "type": "size_t"
+        },
+        {
+          "name": "detail_out",
+          "type": "char *"
+        },
+        {
+          "name": "detail_capacity",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "order_group",
       "name": "flox_order_group_recommended_actions",
       "params": [
         {
@@ -5691,6 +5730,29 @@
         {
           "name": "order_id",
           "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_group",
+      "name": "flox_order_group_set_risk_limits",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxOrderGroupHandle"
+        },
+        {
+          "name": "max_gross_notional_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "max_concentration_pct",
+          "type": "double"
+        },
+        {
+          "name": "max_leg_qty_raw",
+          "type": "int64_t"
         }
       ],
       "return_type": "void"

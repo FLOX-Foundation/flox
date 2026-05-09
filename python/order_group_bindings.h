@@ -102,6 +102,26 @@ inline void bindOrderGroup(py::module_& m)
               ++fired;
             }
             return fired; }, py::arg("strategy"))
+      .def("set_risk_limits", [](flox::OrderGroup& g, double max_gross_notional, double max_concentration_pct, double max_leg_qty)
+           {
+            flox::GroupRiskLimits limits;
+            limits.maxGrossNotional = flox::Quantity::fromDouble(max_gross_notional);
+            limits.maxConcentrationPct = max_concentration_pct;
+            limits.maxLegQty = flox::Quantity::fromDouble(max_leg_qty);
+            g.setRiskLimits(limits); }, py::arg("max_gross_notional") = 0.0, py::arg("max_concentration_pct") = 0.0, py::arg("max_leg_qty") = 0.0)
+      .def("precheck_submission", [](const flox::OrderGroup& g, double equity, const std::vector<double>& market_ref_prices)
+           {
+            std::vector<flox::Price> prices;
+            prices.reserve(market_ref_prices.size());
+            for (double p : market_ref_prices){
+              prices.push_back(flox::Price::fromDouble(p));
+}
+            auto breach = g.precheckSubmission(equity, prices);
+            py::dict d;
+            d["denied"] = breach.denied;
+            d["rule"] = breach.rule;
+            d["detail"] = breach.detail;
+            return d; }, py::arg("equity") = 0.0, py::arg("market_ref_prices") = std::vector<double>{})
       .def("state", &flox::OrderGroup::state)
       .def("recommended_actions", [](const flox::OrderGroup& g)
            {

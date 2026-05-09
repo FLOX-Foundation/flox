@@ -11,8 +11,11 @@
 
 #include "flox/common.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace flox
@@ -23,6 +26,30 @@ enum class OrderGroupPolicy : uint8_t
   BestEffort = 0,    // submit every leg, observe independently
   AllOrNothing = 1,  // any leg failure → revert (close) every filled leg
   OneSided = 2,      // first leg fill → cancel remaining legs
+};
+
+// Per-group risk limits checked before any leg is submitted. Each
+// field is a hard cap; zero means "no limit on this dimension".
+//
+// `maxGrossNotional` is the absolute notional sum across legs
+// (price * qty). `maxConcentrationPct` is the basket gross notional
+// expressed as a fraction of the equity passed into the precheck —
+// e.g. 0.05 means "no leg basket bigger than 5% of equity". Legs
+// with `orderType == 1` (MARKET) need a reference price supplied
+// by the caller; the precheck call accepts a per-leg fallback price
+// vector for that.
+struct GroupRiskLimits
+{
+  Quantity maxGrossNotional{};    // absolute notional cap (zero = off)
+  double maxConcentrationPct{0};  // fraction of equity (zero = off)
+  Quantity maxLegQty{};           // per-leg qty cap (zero = off)
+};
+
+struct GroupRiskBreach
+{
+  bool denied = false;
+  std::string rule;
+  std::string detail;
 };
 
 enum class LegState : uint8_t
@@ -97,6 +124,80 @@ class OrderGroup
 
   uint64_t parentSignalId() const noexcept { return _parentSignalId; }
   OrderGroupPolicy policy() const noexcept { return _policy; }
+
+  // Risk limits applied across the basket. Zeroed by default — call
+  // setRiskLimits to enable any of the three caps.
+  void setRiskLimits(const GroupRiskLimits& limits) noexcept { _limits = limits; }
+  const GroupRiskLimits& riskLimits() const noexcept { return _limits; }
+
+  // Run the configured limits against the current legs. Each leg
+  // contributes `referencePrice * targetQty` to gross notional;
+  // for limit legs the leg's stored limitPrice is used, for market
+  // legs the caller supplies a reference price via marketRefPrices
+  // (one entry per leg in addMarketLeg order; missing entries are
+  // treated as zero-priced and skip the gross check).
+  // `equity` is the strategy's current equity; only consulted when
+  // maxConcentrationPct > 0. Returns a breach record; .denied=false
+  // means submit is allowed.
+  GroupRiskBreach precheckSubmission(double equity = 0.0,
+                                     const std::vector<Price>& marketRefPrices = {}) const
+  {
+    GroupRiskBreach out;
+    if (_limits.maxGrossNotional.raw() == 0 && _limits.maxConcentrationPct == 0 &&
+        _limits.maxLegQty.raw() == 0)
+    {
+      return out;
+    }
+
+    double grossNotional = 0.0;
+    for (size_t i = 0; i < _legs.size(); ++i)
+    {
+      const auto& l = _legs[i];
+
+      if (_limits.maxLegQty.raw() != 0 && l.targetQty.raw() > _limits.maxLegQty.raw())
+      {
+        out.denied = true;
+        out.rule = "maxLegQty";
+        out.detail = "leg " + std::to_string(i) + " qty exceeds per-leg cap";
+        return out;
+      }
+
+      double price = 0.0;
+      if (l.orderType == 0)
+      {
+        price = l.limitPrice.toDouble();
+      }
+      else if (i < marketRefPrices.size())
+      {
+        price = marketRefPrices[i].toDouble();
+      }
+      grossNotional += std::abs(price * l.targetQty.toDouble());
+    }
+
+    if (_limits.maxGrossNotional.raw() != 0 &&
+        grossNotional > _limits.maxGrossNotional.toDouble())
+    {
+      out.denied = true;
+      out.rule = "maxGrossNotional";
+      out.detail = "basket gross notional exceeds cap";
+      return out;
+    }
+
+    if (_limits.maxConcentrationPct > 0 && equity > 0)
+    {
+      double frac = grossNotional / equity;
+      if (frac > _limits.maxConcentrationPct)
+      {
+        out.denied = true;
+        out.rule = "maxConcentrationPct";
+        out.detail =
+            "basket gross notional exceeds concentration limit "
+            "vs equity";
+        return out;
+      }
+    }
+    return out;
+  }
 
   size_t addMarketLeg(SymbolId symbol, uint8_t side, Quantity qty)
   {
@@ -330,6 +431,7 @@ class OrderGroup
   uint64_t _parentSignalId;
   OrderGroupPolicy _policy;
   std::vector<OrderGroupLeg> _legs;
+  GroupRiskLimits _limits{};
 };
 
 }  // namespace flox
