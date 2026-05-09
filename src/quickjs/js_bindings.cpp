@@ -2168,6 +2168,248 @@ static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueCon
 }
 
 // ============================================================
+// Order group (multi-leg state machine + risk gate + pair-latency)
+// ============================================================
+//
+// Thin shim over the C ABI. The high-level OrderGroup class lives in
+// quickjs/flox/order_group.js and wraps these globals so the four
+// bindings (pybind11 / NAPI / QuickJS / Codon) all reach the same
+// C++ engine.
+
+static JSValue js_order_group_create(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  int64_t parent = 0;
+  uint32_t policy = 0;
+  if (argv)
+  {
+    JS_ToInt64(ctx, &parent, argv[0]);
+    JS_ToUint32(ctx, &policy, argv[1]);
+  }
+  auto h = flox_order_group_create(static_cast<uint64_t>(parent), static_cast<uint8_t>(policy));
+  return createHandleObject(ctx, h);
+}
+
+static JSValue js_order_group_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_order_group_destroy(static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_add_market_leg(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  uint32_t side = toUint32(ctx, argv[2]);
+  double qty = toDouble(ctx, argv[3]);
+  int64_t qty_raw = static_cast<int64_t>(qty * 100'000'000LL);
+  return JS_NewUint32(ctx,
+                      flox_order_group_add_market_leg(h, symbol, static_cast<uint8_t>(side),
+                                                      qty_raw));
+}
+
+static JSValue js_order_group_add_limit_leg(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  uint32_t side = toUint32(ctx, argv[2]);
+  double price = toDouble(ctx, argv[3]);
+  double qty = toDouble(ctx, argv[4]);
+  int64_t price_raw = static_cast<int64_t>(price * 100'000'000LL);
+  int64_t qty_raw = static_cast<int64_t>(qty * 100'000'000LL);
+  return JS_NewUint32(
+      ctx, flox_order_group_add_limit_leg(h, symbol, static_cast<uint8_t>(side), price_raw,
+                                          qty_raw));
+}
+
+static JSValue js_order_group_leg_count(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, flox_order_group_leg_count(h));
+}
+
+static JSValue js_order_group_leg_state(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  return JS_NewUint32(ctx, flox_order_group_leg_state(h, i));
+}
+
+static JSValue js_order_group_leg_filled(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  int64_t raw = flox_order_group_leg_filled_raw(h, i);
+  return JS_NewFloat64(ctx, static_cast<double>(raw) / 1e8);
+}
+
+static JSValue js_order_group_leg_order_id(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  return JS_NewInt64(ctx, static_cast<int64_t>(flox_order_group_leg_order_id(h, i)));
+}
+
+static JSValue js_order_group_record_submit(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  int64_t order_id = 0;
+  JS_ToInt64(ctx, &order_id, argv[2]);
+  flox_order_group_record_submit(h, i, static_cast<uint64_t>(order_id));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_record_fill(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  double qty = toDouble(ctx, argv[2]);
+  flox_order_group_record_fill(h, i, static_cast<int64_t>(qty * 100'000'000LL));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_record_cancel(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  flox_order_group_record_cancel(h, i);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_record_failure(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  flox_order_group_record_failure(h, i);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_state(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, flox_order_group_state(h));
+}
+
+static JSValue js_order_group_recommended_actions(JSContext* ctx, JSValueConst, int,
+                                                  JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  constexpr uint32_t kMax = 32;
+  int64_t buf[kMax * 5];
+  uint32_t n = flox_order_group_recommended_actions(h, buf, kMax);
+  JSValue out = JS_NewArray(ctx);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    int64_t* row = buf + i * 5;
+    JSValue rec = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rec, "kind",
+                      JS_NewString(ctx, row[0] == 0 ? "cancel" : "revert"));
+    JS_SetPropertyStr(ctx, rec, "legIndex", JS_NewInt32(ctx, static_cast<int32_t>(row[1])));
+    if (row[0] == 0)
+    {
+      JS_SetPropertyStr(ctx, rec, "orderId", JS_NewInt64(ctx, row[2]));
+    }
+    else
+    {
+      JS_SetPropertyStr(ctx, rec, "symbol", JS_NewInt32(ctx, static_cast<int32_t>(row[2])));
+      JS_SetPropertyStr(ctx, rec, "side", JS_NewInt32(ctx, static_cast<int32_t>(row[3])));
+      JS_SetPropertyStr(ctx, rec, "qty", JS_NewFloat64(ctx, static_cast<double>(row[4]) / 1e8));
+    }
+    JS_SetPropertyUint32(ctx, out, i, rec);
+  }
+  return out;
+}
+
+static JSValue js_order_group_mark_action_dispatched(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t leg = toUint32(ctx, argv[1]);
+  uint32_t kind = toUint32(ctx, argv[2]);
+  flox_order_group_mark_action_dispatched(h, leg, static_cast<uint8_t>(kind));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_set_risk_limits(JSContext* ctx, JSValueConst, int,
+                                              JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  double max_gross = toDouble(ctx, argv[1]);
+  double max_conc = toDouble(ctx, argv[2]);
+  double max_leg = toDouble(ctx, argv[3]);
+  int64_t gross_raw = static_cast<int64_t>(max_gross * 100'000'000LL);
+  int64_t leg_raw = static_cast<int64_t>(max_leg * 100'000'000LL);
+  flox_order_group_set_risk_limits(h, gross_raw, max_conc, leg_raw);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_precheck_submission(JSContext* ctx, JSValueConst, int,
+                                                  JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  double equity = toDouble(ctx, argv[1]);
+
+  std::vector<int64_t> prices_raw;
+  uint32_t plen = 0;
+  if (JS_IsArray(ctx, argv[2]))
+  {
+    JSValue lenVal = JS_GetPropertyStr(ctx, argv[2], "length");
+    JS_ToUint32(ctx, &plen, lenVal);
+    JS_FreeValue(ctx, lenVal);
+    prices_raw.reserve(plen);
+    for (uint32_t i = 0; i < plen; ++i)
+    {
+      JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
+      double p = 0;
+      JS_ToFloat64(ctx, &p, v);
+      JS_FreeValue(ctx, v);
+      prices_raw.push_back(static_cast<int64_t>(p * 100'000'000LL));
+    }
+  }
+
+  char rule[64] = {};
+  char detail[256] = {};
+  uint8_t denied = flox_order_group_precheck_submission(
+      h, equity, prices_raw.empty() ? nullptr : prices_raw.data(), plen, rule, sizeof(rule),
+      detail, sizeof(detail));
+
+  JSValue out = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, out, "denied", JS_NewBool(ctx, denied != 0));
+  JS_SetPropertyStr(ctx, out, "rule", JS_NewString(ctx, rule));
+  JS_SetPropertyStr(ctx, out, "detail", JS_NewString(ctx, detail));
+  return out;
+}
+
+static JSValue js_order_group_set_pair_latency_budget_ns(JSContext* ctx, JSValueConst, int,
+                                                         JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  int64_t budget = 0;
+  JS_ToInt64(ctx, &budget, argv[1]);
+  flox_order_group_set_pair_latency_budget_ns(h, budget);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_pair_latency_decision(JSContext* ctx, JSValueConst, int,
+                                                    JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  int64_t submit_ts = 0, ack_ts = 0;
+  JS_ToInt64(ctx, &submit_ts, argv[1]);
+  JS_ToInt64(ctx, &ack_ts, argv[2]);
+  uint32_t ack_received = toUint32(ctx, argv[3]);
+  uint8_t d = flox_order_group_pair_latency_decision(h, submit_ts, ack_ts,
+                                                     static_cast<uint8_t>(ack_received));
+  const char* name = d == 0 ? "wait" : (d == 1 ? "submit_follower" : "cancel_leader");
+  return JS_NewString(ctx, name);
+}
+
+// ============================================================
 // Bar dispatch recorder (cross-binding parity test fixture)
 // ============================================================
 
@@ -4286,6 +4528,33 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_run_reader_signals", js_run_reader_signals, 1);
   addGlobalFunc(ctx, "__flox_run_reader_orders", js_run_reader_orders, 1);
   addGlobalFunc(ctx, "__flox_run_reader_fills", js_run_reader_fills, 1);
+
+  // Order group (multi-leg state machine; QuickJS class wraps these in
+  // quickjs/flox/order_group.js so all four bindings share the engine).
+  addGlobalFunc(ctx, "__flox_order_group_create", js_order_group_create, 2);
+  addGlobalFunc(ctx, "__flox_order_group_destroy", js_order_group_destroy, 1);
+  addGlobalFunc(ctx, "__flox_order_group_add_market_leg", js_order_group_add_market_leg, 4);
+  addGlobalFunc(ctx, "__flox_order_group_add_limit_leg", js_order_group_add_limit_leg, 5);
+  addGlobalFunc(ctx, "__flox_order_group_leg_count", js_order_group_leg_count, 1);
+  addGlobalFunc(ctx, "__flox_order_group_leg_state", js_order_group_leg_state, 2);
+  addGlobalFunc(ctx, "__flox_order_group_leg_filled", js_order_group_leg_filled, 2);
+  addGlobalFunc(ctx, "__flox_order_group_leg_order_id", js_order_group_leg_order_id, 2);
+  addGlobalFunc(ctx, "__flox_order_group_record_submit", js_order_group_record_submit, 3);
+  addGlobalFunc(ctx, "__flox_order_group_record_fill", js_order_group_record_fill, 3);
+  addGlobalFunc(ctx, "__flox_order_group_record_cancel", js_order_group_record_cancel, 2);
+  addGlobalFunc(ctx, "__flox_order_group_record_failure", js_order_group_record_failure, 2);
+  addGlobalFunc(ctx, "__flox_order_group_state", js_order_group_state, 1);
+  addGlobalFunc(ctx, "__flox_order_group_recommended_actions",
+                js_order_group_recommended_actions, 1);
+  addGlobalFunc(ctx, "__flox_order_group_mark_action_dispatched",
+                js_order_group_mark_action_dispatched, 3);
+  addGlobalFunc(ctx, "__flox_order_group_set_risk_limits", js_order_group_set_risk_limits, 4);
+  addGlobalFunc(ctx, "__flox_order_group_precheck_submission",
+                js_order_group_precheck_submission, 3);
+  addGlobalFunc(ctx, "__flox_order_group_set_pair_latency_budget_ns",
+                js_order_group_set_pair_latency_budget_ns, 2);
+  addGlobalFunc(ctx, "__flox_order_group_pair_latency_decision",
+                js_order_group_pair_latency_decision, 4);
 
   // Bar dispatch recorder (cross-binding parity test fixture)
   addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_create", js_bar_dispatch_recorder_create, 0);
