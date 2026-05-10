@@ -271,3 +271,5 @@ r = Σ(x − x̄)(y − ȳ) / sqrt(Σ(x − x̄)² × Σ(y − ȳ)²)
 ```
 
 Range [−1, 1]. Used for pairs construction, cross-asset filters, or detecting when a relationship is breaking down. Returns NaN when either series is constant within the window.
+
+For the cross-symbol case (`Correlation(BTC, ETH)` from a live strategy or paired bar arrays), the engine does **not** auto-align timestamps — the caller must synchronise the streams first. See [the cross-symbol how-to](../how-to/cross-symbol-indicators.md) for the alignment recipe.

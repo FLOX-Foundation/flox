@@ -26,5 +26,23 @@
       "fix": "If you need the full registry, query `SymbolRegistry` directly. `Strategy.symbols()` is the right answer for 'what is this strategy listening to'.",
       "discovered": "2026-05-10"
     }
+  ],
+  "Correlation": [
+    {
+      "id": "cross-symbol-needs-alignment",
+      "summary": "Cross-symbol correlation requires manual timestamp alignment — the engine does not synchronise streams for you.",
+      "context": "`Correlation.update(x, y)` expects same-instant samples. Two live symbols (BTC trades, ETH trades) arrive on different cadences; feeding raw values without a clock decision produces noise that looks like real signal. Same caveat for batch arrays loaded from independent sources.",
+      "fix": "Pick a clock (usually the slower symbol's bar boundaries), forward-fill the faster series, drop the warmup. See `docs/how-to/cross-symbol-indicators.md` for the streaming + batch recipes; `flox.FeedClock` is the right alignment primitive on the streaming path.",
+      "discovered": "2026-05-10"
+    }
+  ],
+  "AutoCorrelation": [
+    {
+      "id": "single-input-not-cross-symbol",
+      "summary": "AutoCorrelation correlates a series with a lagged version of *itself* — not with another symbol.",
+      "context": "Users searching for cross-symbol cross-correlation often land on `AutoCorrelation` because the name sounds right. It isn't: it takes one series and one lag, computes Corr(x[t], x[t-lag]).",
+      "fix": "For cross-symbol pairs use `Correlation(x, y)` with aligned streams (see `docs/how-to/cross-symbol-indicators.md`). For lagged auto-correlation on one series, this is the right tool.",
+      "discovered": "2026-05-10"
+    }
   ]
 }
