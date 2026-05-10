@@ -1211,6 +1211,66 @@
     },
     {
       "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_set_kill_switch",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "ks",
+          "type": "FloxKillSwitchHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_set_order_validator",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "ov",
+          "type": "FloxOrderValidatorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_set_pnl_tracker",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "tracker",
+          "type": "FloxPnLTrackerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_set_risk_manager",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "rm",
+          "type": "FloxRiskManagerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtestrunner_replay",
       "name": "flox_backtest_runner_set_strategy",
       "params": [
         {

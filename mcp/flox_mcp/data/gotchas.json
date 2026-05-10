@@ -44,5 +44,14 @@
       "fix": "For cross-symbol pairs use `Correlation(x, y)` with aligned streams (see `docs/how-to/cross-symbol-indicators.md`). For lagged auto-correlation on one series, this is the right tool.",
       "discovered": "2026-05-10"
     }
+  ],
+  "BacktestRunner.set_risk_manager": [
+    {
+      "id": "reduce-only-bypasses-gate",
+      "summary": "Reduce-only / flatten / exit orders bypass the risk manager (and kill switch and order validator) by design.",
+      "context": "If a strategy holds a position and a tightened cap would now reject the entry, the exit must still go through — otherwise the strategy is stuck in the position. The gate fires only on entry-type orders without `flags.reduceOnly`. Same contract on the live `Runner`.",
+      "fix": "Don't rely on the gate to halt all order flow during a halt. Set `flags.reduceOnly = true` (or use `closePosition` / `Strategy.close_position`) when you want an order to bypass; rely on a separate guard if you need to block exits as well.",
+      "discovered": "2026-05-10"
+    }
   ]
 }

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 484 functions, 43 handles, 49 structs, 35 callback typedefs, 2 enums, 58 groups.
+**Surface:** 488 functions, 43 handles, 49 structs, 35 callback typedefs, 2 enums, 58 groups.
 
 ## Opaque handles
 
@@ -739,6 +739,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle runner, const int64_t * start_time_ns, const int64_t * end_time_ns, const double * open, const double * high, const double * low, const double * close, const double * volume, uint32_t n, const char * symbol, uint8_t bar_type, uint64_t bar_type_param, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner, FloxReplaySourceHandle source, FloxBacktestStats * stats_out)`
 - `FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle runner)`
+- `void flox_backtest_runner_set_risk_manager(FloxBacktestRunnerHandle runner, FloxRiskManagerHandle rm)`
+- `void flox_backtest_runner_set_kill_switch(FloxBacktestRunnerHandle runner, FloxKillSwitchHandle ks)`
+- `void flox_backtest_runner_set_order_validator(FloxBacktestRunnerHandle runner, FloxOrderValidatorHandle ov)`
+- `void flox_backtest_runner_set_pnl_tracker(FloxBacktestRunnerHandle runner, FloxPnLTrackerHandle tracker)`
 
 ### bar_aggregation
 
