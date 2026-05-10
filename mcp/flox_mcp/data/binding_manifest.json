@@ -120,6 +120,26 @@
         {
           "group": "backtestrunner_replay",
           "kind": "function",
+          "name": "flox_backtest_runner_set_kill_switch"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_set_order_validator"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_set_pnl_tracker"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_set_risk_manager"
+        },
+        {
+          "group": "backtestrunner_replay",
+          "kind": "function",
           "name": "flox_backtest_runner_set_strategy"
         },
         {
@@ -2953,6 +2973,22 @@
         {
           "kind": "function",
           "name": "flox_backtest_runner_set_executor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_set_kill_switch"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_set_order_validator"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_set_pnl_tracker"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_set_risk_manager"
         },
         {
           "kind": "function",
@@ -6299,6 +6335,10 @@
         "flox_backtest_runner_run_ohlcv",
         "flox_backtest_runner_run_replay_source",
         "flox_backtest_runner_run_tape",
+        "flox_backtest_runner_set_kill_switch",
+        "flox_backtest_runner_set_order_validator",
+        "flox_backtest_runner_set_pnl_tracker",
+        "flox_backtest_runner_set_risk_manager",
         "flox_backtest_runner_set_strategy",
         "flox_backtest_runner_take_result"
       ],

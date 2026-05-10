@@ -16,10 +16,14 @@
 #include "flox/backtest/simulated_executor.h"
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/execution/abstract_executor.h"
+#include "flox/killswitch/abstract_killswitch.h"
+#include "flox/metrics/abstract_pnl_tracker.h"
 #include "flox/position/multi_mode_position_tracker.h"
 #include "flox/replay/abstract_event_reader.h"
+#include "flox/risk/abstract_risk_manager.h"
 #include "flox/strategy/abstract_signal_handler.h"
 #include "flox/strategy/strategy.h"
+#include "flox/validation/abstract_order_validator.h"
 
 #include <atomic>
 #include <chrono>
@@ -109,6 +113,24 @@ class BacktestRunner : public ISignalHandler
   void setExecutor(IOrderExecutor* executor) noexcept { _customExecutor = executor; }
   IOrderExecutor* customExecutor() const noexcept { return _customExecutor; }
 
+  /// Pre-trade gate parity with the live `Runner`. All four hooks are
+  /// optional; an unset hook is a no-op (let the order through).
+  ///
+  /// Gates fire on entry-type signals (Market / Limit / Stop* / TP* /
+  /// TrailingStop) and on the order they produce. Cancel / CancelAll
+  /// / Modify pass through without gating — they reduce, not add,
+  /// exposure. Reduce-only orders also bypass: when caps tighten you
+  /// do not want to be stuck in a position. This matches how the live
+  /// runner is conventionally wired and is documented as a gotcha
+  /// surfaced through `lookup_symbol`.
+  ///
+  /// Caller retains ownership of every hook; the runner holds raw
+  /// pointers and does not delete them.
+  void setRiskManager(IRiskManager* rm) noexcept { _riskManager = rm; }
+  void setOrderValidator(IOrderValidator* ov) noexcept { _orderValidator = ov; }
+  void setKillSwitch(IKillSwitch* ks) noexcept { _killSwitch = ks; }
+  void setPnLTracker(IPnLTracker* tracker) noexcept { _pnlTracker = tracker; }
+
   // ========== Non-interactive mode ==========
 
   /// Run backtest synchronously from start to end
@@ -181,6 +203,7 @@ class BacktestRunner : public ISignalHandler
   void waitForResume();
   void notifyPaused();
   Order signalToOrder(const Signal& sig);
+  bool passesPreTradeGate(const Order& order);
 
   BacktestConfig _config;
   SimulatedClock _clock;
@@ -189,6 +212,12 @@ class BacktestRunner : public ISignalHandler
   // here instead of to the built-in SimulatedExecutor.
   IOrderExecutor* _customExecutor{nullptr};
   IStrategy* _strategy{nullptr};
+  // Pre-trade gate stack — parity with live Runner. Caller-owned;
+  // runner does not delete.
+  IRiskManager* _riskManager{nullptr};
+  IOrderValidator* _orderValidator{nullptr};
+  IKillSwitch* _killSwitch{nullptr};
+  IPnLTracker* _pnlTracker{nullptr};
   // Built-in position tracker. Wired as an execution listener at
   // construction and attached to the strategy in setStrategy() so
   // `ctx.position` / `ctx.is_long()` / `ctx.is_flat()` reflect fills

@@ -778,6 +778,13 @@ extern "C"
                                              FloxReplaySourceHandle source,
                                              FloxBacktestStats* stats_out);
   FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle runner);
+  void flox_backtest_runner_set_risk_manager(FloxBacktestRunnerHandle runner,
+                                             FloxRiskManagerHandle rm);
+  void flox_backtest_runner_set_kill_switch(FloxBacktestRunnerHandle runner, FloxKillSwitchHandle ks);
+  void flox_backtest_runner_set_order_validator(FloxBacktestRunnerHandle runner,
+                                                FloxOrderValidatorHandle ov);
+  void flox_backtest_runner_set_pnl_tracker(FloxBacktestRunnerHandle runner,
+                                            FloxPnLTrackerHandle tracker);
 
   // ============================================================
   // Bar Aggregation

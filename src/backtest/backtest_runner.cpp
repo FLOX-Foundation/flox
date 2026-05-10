@@ -31,6 +31,17 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
         // updated when their listener fires. User listeners are
         // appended after via addExecutionListener().
         ev.dispatchTo(_positionTracker);
+        // PnL tracker parity with live Runner: an attached tracker
+        // sees every fill (PARTIALLY_FILLED + FILLED) regardless of
+        // whether user listeners are wired. Mirrors the live path,
+        // so a strategy validated in backtest produces the same
+        // tracker timeline in production.
+        if (_pnlTracker != nullptr &&
+            (ev.status == OrderEventStatus::FILLED ||
+             ev.status == OrderEventStatus::PARTIALLY_FILLED))
+        {
+          _pnlTracker->onOrderFilled(ev.order);
+        }
         for (auto* listener : _executionListeners)
         {
           ev.dispatchTo(*listener);
@@ -492,6 +503,44 @@ BacktestResult BacktestRunner::extractResult()
   return res;
 }
 
+// Pre-trade gate. Returns true if the order should pass through;
+// false if any gate rejected it. Reduce-only orders bypass — when
+// caps tighten you do not want to be stuck in a position; the live
+// runner is conventionally wired this way and `lookup_symbol`
+// surfaces a gotcha entry pointing at this contract.
+bool BacktestRunner::passesPreTradeGate(const Order& order)
+{
+  if (order.flags.reduceOnly)
+  {
+    return true;
+  }
+  if (_killSwitch != nullptr)
+  {
+    // Engine contract: check(order) may flip state; isTriggered()
+    // reads the current state. Call check first so a per-order rule
+    // (e.g. "trip if cumulative loss > X") gets evaluated for this
+    // order before we read the trigger.
+    _killSwitch->check(order);
+    if (_killSwitch->isTriggered())
+    {
+      return false;
+    }
+  }
+  if (_orderValidator != nullptr)
+  {
+    std::string reason;
+    if (!_orderValidator->validate(order, reason))
+    {
+      return false;
+    }
+  }
+  if (_riskManager != nullptr && !_riskManager->allow(order))
+  {
+    return false;
+  }
+  return true;
+}
+
 void BacktestRunner::onSignal(const Signal& signal)
 {
   ++_signalCount;
@@ -511,9 +560,18 @@ void BacktestRunner::onSignal(const Signal& signal)
     case SignalType::TakeProfitMarket:
     case SignalType::TakeProfitLimit:
     case SignalType::TrailingStop:
-      exec.submitOrder(signalToOrder(signal));
+    {
+      Order order = signalToOrder(signal);
+      if (!passesPreTradeGate(order))
+      {
+        return;
+      }
+      exec.submitOrder(order);
       break;
+    }
     case SignalType::Cancel:
+      // Cancel / CancelAll / Modify do not add exposure — same
+      // pass-through semantics as the live runner.
       exec.cancelOrder(signal.orderId);
       break;
     case SignalType::CancelAll:
@@ -541,6 +599,11 @@ void BacktestRunner::onSignal(const Signal& signal)
                    .timeInForce = signal.timeInForce,
                    .flags = {.reduceOnly = signal.reduceOnly, .postOnly = signal.postOnly}};
 
+      // Both legs of an OCO need to pass; rejecting either drops the pair.
+      if (!passesPreTradeGate(order1) || !passesPreTradeGate(order2))
+      {
+        return;
+      }
       OCOParams params{.order1 = order1, .order2 = order2};
       exec.submitOCO(params);
       break;

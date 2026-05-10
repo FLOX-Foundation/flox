@@ -85,6 +85,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest_metrics)
   add_flox_test(test_backtest_ctx_position)
   add_flox_test(test_backtest_run_tape)
+  add_flox_test(test_backtest_runner_hooks)
 endif()
 
 add_flox_test(test_indicators)

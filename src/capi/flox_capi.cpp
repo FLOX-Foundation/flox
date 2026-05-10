@@ -4636,6 +4636,128 @@ class OhlcvBacktestReader : public replay::IMultiSegmentReader
 };
 
 // ──────────────────────────────────────────────────────────────
+// Adapters: wrap callback-shaped FloxRiskManagerImpl /
+// FloxKillSwitchImpl / FloxOrderValidatorImpl / FloxPnLTrackerImpl
+// into engine-side I* interfaces so the new BacktestRunner setters
+// (which are C++-typed) accept the existing C ABI handles bindings
+// already create. The live runner doesn't need this bridge — it
+// gates at signal-level inside RunnerSignalHandler — but the
+// engine-level BacktestRunner takes Order-shaped callbacks, so we
+// build a FloxSignal from the Order and forward.
+// ──────────────────────────────────────────────────────────────
+
+inline FloxSignal orderToFloxSignal(const Order& order) noexcept
+{
+  FloxSignal fs{};
+  fs.order_id = order.id;
+  fs.symbol = order.symbol;
+  fs.side = (order.side == Side::BUY) ? 0 : 1;
+  fs.price = order.price.toDouble();
+  fs.quantity = order.quantity.toDouble();
+  fs.order_type = static_cast<uint8_t>(order.type);
+  return fs;
+}
+
+class CapiBacktestRiskManager : public flox::IRiskManager
+{
+ public:
+  explicit CapiBacktestRiskManager(FloxRiskManagerImpl* impl) : _impl(impl) {}
+
+  bool allow(const Order& order) const override
+  {
+    if (_impl == nullptr || _impl->cb.allow == nullptr)
+    {
+      return true;
+    }
+    FloxSignal fs = orderToFloxSignal(order);
+    return _impl->cb.allow(_impl->cb.user_data, &fs) != 0;
+  }
+
+ private:
+  FloxRiskManagerImpl* _impl;
+};
+
+class CapiBacktestKillSwitch : public flox::IKillSwitch
+{
+ public:
+  explicit CapiBacktestKillSwitch(FloxKillSwitchImpl* impl) : _impl(impl) {}
+
+  // The C ABI kill switch is a per-signal check. The engine contract
+  // is "check(order) may trigger; isTriggered() reports current state".
+  // Cache the latest check result so the runner's gate logic
+  // (`check(order); if (isTriggered()) drop`) maps cleanly.
+  void check(const Order& order) override
+  {
+    if (_impl == nullptr || _impl->cb.check == nullptr)
+    {
+      _triggered = false;
+      return;
+    }
+    FloxSignal fs = orderToFloxSignal(order);
+    // C ABI: 0 → drop / kill-switch active.
+    _triggered = (_impl->cb.check(_impl->cb.user_data, &fs) == 0);
+  }
+  void trigger(const std::string& reason) override
+  {
+    _triggered = true;
+    _reason = reason;
+  }
+  bool isTriggered() const override { return _triggered; }
+  std::string reason() const override { return _reason; }
+
+ private:
+  FloxKillSwitchImpl* _impl;
+  bool _triggered{false};
+  std::string _reason;
+};
+
+class CapiBacktestOrderValidator : public flox::IOrderValidator
+{
+ public:
+  explicit CapiBacktestOrderValidator(FloxOrderValidatorImpl* impl) : _impl(impl) {}
+
+  // The C ABI validator returns 0/1 without a reason string. Engine
+  // contract returns a `reason` parameter — leave it empty when the
+  // C ABI rejects so the rejected event still surfaces upward; the
+  // user-visible reason can be plumbed through the binding's own
+  // PyOrderValidator if richer messaging is needed.
+  bool validate(const Order& order, std::string& /*reason*/) const override
+  {
+    if (_impl == nullptr || _impl->cb.validate == nullptr)
+    {
+      return true;
+    }
+    FloxSignal fs = orderToFloxSignal(order);
+    return _impl->cb.validate(_impl->cb.user_data, &fs) != 0;
+  }
+
+ private:
+  FloxOrderValidatorImpl* _impl;
+};
+
+class CapiBacktestPnLTracker : public flox::IPnLTracker
+{
+ public:
+  explicit CapiBacktestPnLTracker(FloxPnLTrackerImpl* impl) : _impl(impl) {}
+
+  // Engine fires onOrderFilled per fill; C ABI signature takes a
+  // FloxSignal. Convert and forward — bindings that want richer fill
+  // detail should attach an ExecutionListener instead.
+  void onOrderFilled(const Order& order) override
+  {
+    if (_impl == nullptr || _impl->cb.on_signal == nullptr)
+    {
+      return;
+    }
+    FloxSignal fs = orderToFloxSignal(order);
+    _impl->cb.on_signal(_impl->cb.user_data, &fs);
+  }
+
+ private:
+  FloxPnLTrackerImpl* _impl;
+};
+
+// ──────────────────────────────────────────────────────────────
 // FloxBacktestRunnerImpl
 // ──────────────────────────────────────────────────────────────
 
@@ -4649,6 +4771,14 @@ struct FloxBacktestRunnerImpl
   // Adapter for the binding-supplied executor. Owned so it outlives the
   // runner's non-owning pointer. Replaced on every set call.
   std::unique_ptr<CapiExecutor> executorAdapter;
+  // Adapters for the four pre-trade gate hooks. The runner stores
+  // raw IRiskManager / IKillSwitch / etc pointers; we own the
+  // adapters so they outlive the runner's non-owning references.
+  // Replaced on every set call (NULL detaches).
+  std::unique_ptr<CapiBacktestRiskManager> riskAdapter;
+  std::unique_ptr<CapiBacktestKillSwitch> killAdapter;
+  std::unique_ptr<CapiBacktestOrderValidator> validatorAdapter;
+  std::unique_ptr<CapiBacktestPnLTracker> pnlAdapter;
   // Most recent BacktestResult, kept after each run_* call so bindings
   // can fetch the equity curve / trades without re-running the
   // backtest. Replaced on every run.
@@ -4691,6 +4821,54 @@ struct FloxBacktestRunnerImpl
   void setStrategy(BridgeStrategy* bridge)
   {
     runner->setStrategy(bridge);
+  }
+
+  // Pre-trade gate parity with the live runner. NULL detaches.
+  // The adapter owns conversion from FloxSignal-shaped callbacks
+  // into the engine's Order-shaped I* interfaces.
+  void setRiskManager(FloxRiskManagerImpl* rm)
+  {
+    if (rm == nullptr)
+    {
+      runner->setRiskManager(nullptr);
+      riskAdapter.reset();
+      return;
+    }
+    riskAdapter = std::make_unique<CapiBacktestRiskManager>(rm);
+    runner->setRiskManager(riskAdapter.get());
+  }
+  void setKillSwitch(FloxKillSwitchImpl* ks)
+  {
+    if (ks == nullptr)
+    {
+      runner->setKillSwitch(nullptr);
+      killAdapter.reset();
+      return;
+    }
+    killAdapter = std::make_unique<CapiBacktestKillSwitch>(ks);
+    runner->setKillSwitch(killAdapter.get());
+  }
+  void setOrderValidator(FloxOrderValidatorImpl* ov)
+  {
+    if (ov == nullptr)
+    {
+      runner->setOrderValidator(nullptr);
+      validatorAdapter.reset();
+      return;
+    }
+    validatorAdapter = std::make_unique<CapiBacktestOrderValidator>(ov);
+    runner->setOrderValidator(validatorAdapter.get());
+  }
+  void setPnLTracker(FloxPnLTrackerImpl* tracker)
+  {
+    if (tracker == nullptr)
+    {
+      runner->setPnLTracker(nullptr);
+      pnlAdapter.reset();
+      return;
+    }
+    pnlAdapter = std::make_unique<CapiBacktestPnLTracker>(tracker);
+    runner->setPnLTracker(pnlAdapter.get());
   }
 
   static int64_t normalizeTs(int64_t t)
@@ -5518,6 +5696,38 @@ void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle h,
 {
   toBacktestRunner(h)->setExecutor(
       static_cast<capi_impl::FloxExecutorImpl*>(executor));
+}
+
+// Pre-trade gate parity with the live runner. The Impl wrappers
+// already inherit from the IRiskManager / IKillSwitch / IOrderValidator
+// / IPnLTracker interfaces, so the cast handed to the BacktestRunner
+// setters is direct.
+void flox_backtest_runner_set_risk_manager(FloxBacktestRunnerHandle h,
+                                           FloxRiskManagerHandle rm)
+{
+  toBacktestRunner(h)->setRiskManager(
+      static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
+}
+
+void flox_backtest_runner_set_kill_switch(FloxBacktestRunnerHandle h,
+                                          FloxKillSwitchHandle ks)
+{
+  toBacktestRunner(h)->setKillSwitch(
+      static_cast<capi_impl::FloxKillSwitchImpl*>(ks));
+}
+
+void flox_backtest_runner_set_order_validator(FloxBacktestRunnerHandle h,
+                                              FloxOrderValidatorHandle ov)
+{
+  toBacktestRunner(h)->setOrderValidator(
+      static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
+}
+
+void flox_backtest_runner_set_pnl_tracker(FloxBacktestRunnerHandle h,
+                                          FloxPnLTrackerHandle tracker)
+{
+  toBacktestRunner(h)->setPnLTracker(
+      static_cast<capi_impl::FloxPnLTrackerImpl*>(tracker));
 }
 
 // ============================================================
