@@ -1679,6 +1679,72 @@ class PyBacktestRunner
     _listener_adapters.push_back(std::move(adapter));
   }
 
+  // Pre-trade gate parity with the live Runner. None on entry; pass an
+  // instance of PyRiskManager / PyKillSwitch / PyOrderValidator /
+  // PyPnLTracker to attach, None to detach. Reduce-only orders bypass
+  // the gate by design (see lookup_symbol gotcha) so tightening caps
+  // does not strand a strategy in a position.
+  void set_risk_manager(std::shared_ptr<flox_py::PyRiskManager> rm)
+  {
+    if (rm)
+    {
+      _risk_adapter = std::make_unique<flox_py::cxx_adapters::PyRiskManagerCxxAdapter>(
+          std::move(rm));
+      _runner->setRiskManager(_risk_adapter.get());
+    }
+    else
+    {
+      _runner->setRiskManager(nullptr);
+      _risk_adapter.reset();
+    }
+  }
+
+  void set_kill_switch(std::shared_ptr<flox_py::PyKillSwitch> ks)
+  {
+    if (ks)
+    {
+      _kill_adapter = std::make_unique<flox_py::cxx_adapters::PyKillSwitchCxxAdapter>(
+          std::move(ks));
+      _runner->setKillSwitch(_kill_adapter.get());
+    }
+    else
+    {
+      _runner->setKillSwitch(nullptr);
+      _kill_adapter.reset();
+    }
+  }
+
+  void set_order_validator(std::shared_ptr<flox_py::PyOrderValidator> ov)
+  {
+    if (ov)
+    {
+      _validator_adapter =
+          std::make_unique<flox_py::cxx_adapters::PyOrderValidatorCxxAdapter>(
+              std::move(ov));
+      _runner->setOrderValidator(_validator_adapter.get());
+    }
+    else
+    {
+      _runner->setOrderValidator(nullptr);
+      _validator_adapter.reset();
+    }
+  }
+
+  void set_pnl_tracker(std::shared_ptr<flox_py::PyPnLTracker> tracker)
+  {
+    if (tracker)
+    {
+      _pnl_adapter = std::make_unique<flox_py::cxx_adapters::PyPnLTrackerCxxAdapter>(
+          std::move(tracker));
+      _runner->setPnLTracker(_pnl_adapter.get());
+    }
+    else
+    {
+      _runner->setPnLTracker(nullptr);
+      _pnl_adapter.reset();
+    }
+  }
+
   py::object run_csv(const std::string& path, const std::string& symbol = "")
   {
     std::string sym = symbol.empty() ? inferSymbol(path) : symbol;
@@ -1909,6 +1975,13 @@ class PyBacktestRunner
   std::unique_ptr<flox_py::cxx_adapters::PyExecutorCxxAdapter> _executor_adapter;
   std::vector<std::unique_ptr<flox_py::cxx_adapters::PyExecutionListenerCxxAdapter>>
       _listener_adapters;
+  // Pre-trade gate adapters (W1-T036). Owned so they outlive the
+  // runner's non-owning IRiskManager / IKillSwitch / IOrderValidator
+  // / IPnLTracker pointers. Replaced on every set_* call.
+  std::unique_ptr<flox_py::cxx_adapters::PyRiskManagerCxxAdapter> _risk_adapter;
+  std::unique_ptr<flox_py::cxx_adapters::PyKillSwitchCxxAdapter> _kill_adapter;
+  std::unique_ptr<flox_py::cxx_adapters::PyOrderValidatorCxxAdapter> _validator_adapter;
+  std::unique_ptr<flox_py::cxx_adapters::PyPnLTrackerCxxAdapter> _pnl_adapter;
 
   uint32_t resolveSymbol(const std::string& sym)
   {
@@ -2495,6 +2568,22 @@ inline void bindStrategy(py::module_& m)
            py::keep_alive<1, 2>())
       .def("add_execution_listener", &PyBacktestRunner::add_execution_listener,
            py::arg("listener"), py::keep_alive<1, 2>())
+      .def("set_risk_manager", &PyBacktestRunner::set_risk_manager,
+           py::arg("rm").none(true), py::keep_alive<1, 2>(),
+           "Attach (or detach with None) a pre-trade risk manager. "
+           "Reduce-only orders bypass the gate by design.")
+      .def("set_kill_switch", &PyBacktestRunner::set_kill_switch,
+           py::arg("ks").none(true), py::keep_alive<1, 2>(),
+           "Attach (or detach with None) a kill switch. Reduce-only "
+           "orders bypass so tightening caps does not strand a position.")
+      .def("set_order_validator", &PyBacktestRunner::set_order_validator,
+           py::arg("ov").none(true), py::keep_alive<1, 2>(),
+           "Attach (or detach with None) an order validator. Reduce-only "
+           "orders bypass.")
+      .def("set_pnl_tracker", &PyBacktestRunner::set_pnl_tracker,
+           py::arg("tracker").none(true), py::keep_alive<1, 2>(),
+           "Attach (or detach with None) a PnL tracker. Fires "
+           "`on_signal(signal)` for every fill the simulator dispatches.")
       .def("run_csv", &PyBacktestRunner::run_csv,
            py::arg("path"), py::arg("symbol") = "")
       .def("run_tape", &PyBacktestRunner::run_tape, py::arg("path"),

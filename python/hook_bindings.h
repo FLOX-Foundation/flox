@@ -32,6 +32,10 @@
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/exchange_capabilities.h"
 #include "flox/execution/order.h"
+#include "flox/killswitch/abstract_killswitch.h"
+#include "flox/metrics/abstract_pnl_tracker.h"
+#include "flox/risk/abstract_risk_manager.h"
+#include "flox/validation/abstract_order_validator.h"
 #include "types_bindings.h"
 
 #include <memory>
@@ -1440,6 +1444,148 @@ class PyExecutionListenerCxxAdapter : public flox::IOrderExecutionListener
 // on_accepted, ..., which the adapter forwards to via the _BR1 macros.
 // (Mapping is one-to-one: onOrderSubmitted → on_submitted, etc., done in
 // each macro instance.)
+
+// ── Pre-trade gate adapters (W1-T036) ────────────────────────────────
+//
+// Bridge the existing PyRiskManager / PyKillSwitch / PyOrderValidator /
+// PyPnLTracker (which work on PySignal) into the engine-side
+// IRiskManager / IKillSwitch / IOrderValidator / IPnLTracker
+// interfaces (which work on Order). Conversion is one-shot per call —
+// orders ship the same fields as signals plus side/type as Order
+// enums, so we re-emit a PySignal shape so existing user code keeps
+// working unchanged.
+
+inline PySignal pySignalFromOrder(const flox::Order& o)
+{
+  PySignal ps{};
+  ps.order_id = o.id;
+  ps.symbol = o.symbol;
+  ps.side = (o.side == flox::Side::BUY) ? "buy" : "sell";
+  switch (o.type)
+  {
+    case flox::OrderType::LIMIT:
+      ps.order_type = "limit";
+      break;
+    case flox::OrderType::MARKET:
+      ps.order_type = "market";
+      break;
+    case flox::OrderType::STOP_MARKET:
+      ps.order_type = "stop_market";
+      break;
+    case flox::OrderType::STOP_LIMIT:
+      ps.order_type = "stop_limit";
+      break;
+    case flox::OrderType::TAKE_PROFIT_MARKET:
+      ps.order_type = "tp_market";
+      break;
+    case flox::OrderType::TAKE_PROFIT_LIMIT:
+      ps.order_type = "tp_limit";
+      break;
+    case flox::OrderType::TRAILING_STOP:
+      ps.order_type = "trailing_stop";
+      break;
+    case flox::OrderType::ICEBERG:
+      ps.order_type = "iceberg";
+      break;
+  }
+  ps.price = o.price.toDouble();
+  ps.quantity = o.quantity.toDouble();
+  ps.trigger_price = o.triggerPrice.toDouble();
+  ps.trailing_offset = o.trailingOffset.toDouble();
+  return ps;
+}
+
+class PyRiskManagerCxxAdapter : public flox::IRiskManager
+{
+ public:
+  explicit PyRiskManagerCxxAdapter(std::shared_ptr<PyRiskManager> delegate)
+      : _delegate(std::move(delegate))
+  {
+  }
+  bool allow(const flox::Order& order) const override
+  {
+    bool result = true;
+    invokeUnderGil([&]
+                   { result = _delegate->allow(pySignalFromOrder(order)); });
+    return result;
+  }
+
+ private:
+  std::shared_ptr<PyRiskManager> _delegate;
+};
+
+class PyKillSwitchCxxAdapter : public flox::IKillSwitch
+{
+ public:
+  explicit PyKillSwitchCxxAdapter(std::shared_ptr<PyKillSwitch> delegate)
+      : _delegate(std::move(delegate))
+  {
+  }
+  // Engine contract: check(order) may flip state; isTriggered() reads
+  // it. The Python check() returns True=allow / False=halt, so we
+  // store its inverse as `_triggered`.
+  void check(const flox::Order& order) override
+  {
+    bool allowed = true;
+    invokeUnderGil([&]
+                   { allowed = _delegate->check(pySignalFromOrder(order)); });
+    if (!allowed)
+    {
+      _triggered = true;
+    }
+  }
+  void trigger(const std::string& reason) override
+  {
+    _triggered = true;
+    _reason = reason;
+  }
+  bool isTriggered() const override { return _triggered; }
+  std::string reason() const override { return _reason; }
+
+ private:
+  std::shared_ptr<PyKillSwitch> _delegate;
+  bool _triggered{false};
+  std::string _reason;
+};
+
+class PyOrderValidatorCxxAdapter : public flox::IOrderValidator
+{
+ public:
+  explicit PyOrderValidatorCxxAdapter(std::shared_ptr<PyOrderValidator> delegate)
+      : _delegate(std::move(delegate))
+  {
+  }
+  // The Python validator returns True=valid / False=reject. We do not
+  // expose a reason channel — bindings that want richer messaging
+  // can raise via the engine's REJECTED order event.
+  bool validate(const flox::Order& order, std::string& /*reason*/) const override
+  {
+    bool valid = true;
+    invokeUnderGil([&]
+                   { valid = _delegate->validate(pySignalFromOrder(order)); });
+    return valid;
+  }
+
+ private:
+  std::shared_ptr<PyOrderValidator> _delegate;
+};
+
+class PyPnLTrackerCxxAdapter : public flox::IPnLTracker
+{
+ public:
+  explicit PyPnLTrackerCxxAdapter(std::shared_ptr<PyPnLTracker> delegate)
+      : _delegate(std::move(delegate))
+  {
+  }
+  void onOrderFilled(const flox::Order& order) override
+  {
+    invokeUnderGil([&]
+                   { _delegate->on_signal(pySignalFromOrder(order)); });
+  }
+
+ private:
+  std::shared_ptr<PyPnLTracker> _delegate;
+};
 
 }  // namespace cxx_adapters
 

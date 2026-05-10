@@ -1945,6 +1945,18 @@ extern "C"
   void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle runner,
                                          FloxExecutorHandle executor);
 
+  // Pre-trade gate parity with the live runner. All four hooks are
+  // optional (NULL = no-op). Reduce-only orders bypass the gate so a
+  // tightening cap cannot strand a strategy in a position.
+  void flox_backtest_runner_set_risk_manager(FloxBacktestRunnerHandle runner,
+                                             FloxRiskManagerHandle rm);
+  void flox_backtest_runner_set_kill_switch(FloxBacktestRunnerHandle runner,
+                                            FloxKillSwitchHandle ks);
+  void flox_backtest_runner_set_order_validator(FloxBacktestRunnerHandle runner,
+                                                FloxOrderValidatorHandle ov);
+  void flox_backtest_runner_set_pnl_tracker(FloxBacktestRunnerHandle runner,
+                                            FloxPnLTrackerHandle tracker);
+
   // ============================================================
   // Walk-forward
   // ============================================================
