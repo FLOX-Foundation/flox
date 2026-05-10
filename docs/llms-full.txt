@@ -7566,43 +7566,67 @@ hosting; nothing leaves the machine.
 | `compute_indicator` | Run one FLOX indicator over a list of floats. Accepts class-form (`EMA`) or function-form (`ema`) names and forwards extra kwargs to the constructor. Input capped at 1 MiB. Needs `flox-py` installed (`pip install "flox-mcp[flox]"`). |
 | `suggest_indicator` | Map an English description ('trend filter', 'momentum oscillator', 'volatility band', 'mean revert', 'regime test') to a ranked shortlist of FLOX indicators. Pure keyword heuristic — no LLM call. Always confirm the chosen indicator with `list_indicators` before using it. |
 
-## Install
+## Quickstart
 
 ```bash
-pip install flox-mcp
-# or with the optional binding for indicator introspection:
-pip install "flox-mcp[flox]"
+pip install flox-mcp           # MCP server + flox-py (indicators, backtest, engine CLI)
+flox-mcp init                  # writes ./.mcp.json for the current project
+# restart your MCP client (Claude Code / Cursor / Cline) → done
 ```
 
-## Configure your AI client
+You get the whole surface in one install: docs / lookup tools,
+indicator introspection, backtest, and the engine CLI
+(`flox engine sim`, `flox tape record`). For tier-5/6 (live state,
+`place_order`, `flatten_positions`), also start a paper engine and
+rerun `init` with the printed token:
 
-### Claude Code
+```bash
+flox engine sim --strategy s.py --tape ./tape       # prints engine URL + token
+flox-mcp init --engine-url URL --token T            # appends env to ./.mcp.json
+```
 
-Edit `~/.claude.json` (or per-project `.claude/settings.json`):
+`flox engine sim` boots a `Runner` + `SimulatedExecutor` +
+`ControlServer` and writes a runtime snapshot the read tools poll.
+See [`python/flox_py/engine_cli.py`](../python/flox_py/engine_cli.py)
+for the full set of flags.
+
+`flox engine sim` boots a `Runner` + `SimulatedExecutor` + `ControlServer`
+and writes a runtime snapshot the read tools poll. See
+[`python/flox_py/engine_cli.py`](../python/flox_py/engine_cli.py)
+for the full set of flags.
+
+### `flox-mcp init` flags
+
+| Flag | What it does |
+|---|---|
+| *(default)* | Writes `./.mcp.json` in the current directory. Merges with an existing file. |
+| `--global` | Writes `~/.config/claude/.mcp.json` instead. |
+| `--overwrite` | Replace an existing `mcpServers.flox` entry instead of refusing. |
+| `--print` | Print the merged config to stdout, don't write. |
+| `--engine-url URL` | Sets `FLOX_CONTROL_URL` (tier-5/6 wiring). |
+| `--token T` | Sets `FLOX_CONTROL_TOKEN` (printed by `flox engine sim`). |
+
+### Manual override
+
+If you'd rather hand-edit, the resulting `.mcp.json` is shaped like:
 
 ```json
 {
   "mcpServers": {
     "flox": {
-      "command": "flox-mcp"
+      "command": "flox-mcp",
+      "args": ["serve"],
+      "env": {
+        "FLOX_RUNTIME_STATE": "$HOME/.flox/runtime.json"
+      }
     }
   }
 }
 ```
 
-### Cursor
-
-Settings → Features → MCP Servers → Add:
-
-```json
-{
-  "flox": { "command": "flox-mcp" }
-}
-```
-
-### Cline (VS Code)
-
-Cline's MCP settings panel; same shape.
+Same shape works for Claude Code, Cursor, and Cline — they all read
+`mcpServers.<name>` from a project-local `.mcp.json` (or the
+client-specific global path).
 
 ## Develop
 

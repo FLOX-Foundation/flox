@@ -22,13 +22,10 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0",
+    "flox-py>=0.5",
 ]
 
 [project.optional-dependencies]
-# Pulling in flox_py is optional: the C-API and error-code tools work
-# from bundled data alone. `list_indicators` and `compute_indicator`
-# need the actual bindings.
-flox = ["flox-py>=0.5"]
 dev = ["pytest>=7"]
 
 [project.scripts]
