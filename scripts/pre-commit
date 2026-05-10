@@ -1,12 +1,112 @@
 #!/bin/sh
+#
+# scripts/pre-commit — local guard against the regen-drift class of CI
+# failures. Catches the four artifacts that ship-from-source and break
+# CI when contributors forget to re-run the generators after editing
+# the canonical input.
+#
+# Install (one-time, per checkout):
+#
+#     git config core.hooksPath scripts
+#
+# After that this fires on every `git commit`. To skip in an emergency:
+# `git commit --no-verify` (don't make a habit of it; CI catches drift
+# anyway, the hook just shifts the catch left).
+#
+# Triggers:
+#   *.cpp / *.h ........................... clang-format in place
+#   python/*.{h,cpp} ...................... regen .pyi + _api_index.md
+#                                           (chains into llms.txt + FTS
+#                                           via DOCS_TOUCHED below)
+#   include/flox/capi/flox_capi_spec.hpp .. full codegen regen
+#                                           (golden/ + .api/ + mcp data)
+#   docs/**/*.md | mcp/README.md .......... regen docs/llms*.txt + FTS
+#   mcp/flox_mcp/data/gotchas.json ........ re-sync mcp bundled data
 
-FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|h)$')
-if [ -z "$FILES" ]; then
-  exit 0
+set -e
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+# Track whether docs/ changed transitively (either by direct edit or
+# by a generator run below) so the FTS index gets re-synced once at
+# the end. The dependency chain is:
+#
+#   python/*.{h,cpp} → gen_pyi_stubs.py → __init__.pyi
+#                    → gen_api_index.py → docs/reference/python/_api_index.md
+#                    → gen_llms_txt.py  → docs/llms*.txt
+#                    → sync_mcp_data.py → mcp/flox_mcp/data/docs.fts.sqlite
+#
+# Each step is idempotent so re-running on every commit is cheap.
+DOCS_TOUCHED=0
+
+# ── clang-format ────────────────────────────────────────────────────
+CPP_FILES=$(echo "$FILES" | grep -E '\.(cpp|h)$' || true)
+if [ -n "$CPP_FILES" ]; then
+  echo "[pre-commit] clang-format..."
+  for file in $CPP_FILES; do
+    clang-format -i "$file"
+    git add "$file"
+  done
 fi
 
-echo "[pre-commit] Running clang-format..."
-for file in $FILES; do
-  clang-format -i "$file"
-  git add "$file"
-done
+# ── pybind11 → .pyi stubs → docs/_api_index.md ─────────────────────
+# Anything under python/*.h or the dispatcher python/flox_py.cpp can
+# change the surface the .pyi stubs describe. The generator scans the
+# compiled module so it picks up whatever pybind11 ended up exporting;
+# regen also bumps docs/reference/python/_api_index.md which is
+# auto-generated FROM the .pyi.
+if echo "$FILES" | grep -qE '^python/[^/]+\.(h|cpp)$'; then
+  echo "[pre-commit] regen .pyi stubs + _api_index.md..."
+  python3 scripts/gen_pyi_stubs.py
+  python3 scripts/gen_api_index.py
+  git add python/flox_py/__init__.pyi python/flox_py/_flox_py/__init__.pyi \
+          python/flox_py/_flox_py/targets.pyi \
+          docs/reference/python/_api_index.md 2>/dev/null || true
+  DOCS_TOUCHED=1
+fi
+
+# ── flox_capi_spec.hpp → full codegen regen ─────────────────────────
+if echo "$FILES" | grep -qE '^include/flox/capi/flox_capi_spec\.hpp$'; then
+  echo "[pre-commit] regen codegen + mcp bundled data..."
+  bash tools/codegen/scripts/regenerate.sh > /dev/null
+  git add tools/codegen/golden/flox_capi.h tools/codegen/golden/flox_capi.codon \
+          tools/codegen/golden/flox_capi.md .api/c-api.snapshot \
+          mcp/flox_mcp/data/c-api.snapshot mcp/flox_mcp/data/ir.snapshot.json \
+          mcp/flox_mcp/data/binding_manifest.json \
+          mcp/flox_mcp/data/examples_index.json \
+          mcp/flox_mcp/data/docs.fts.sqlite 2>/dev/null || true
+fi
+
+# ── docs/ or mcp/README.md → llms.txt + FTS re-sync ────────────────
+# llms.txt indexes user-facing prose; the README is included because
+# `gen_llms_txt.py` walks mcp/ and pulls top-level READMEs.
+# `mcp/flox_mcp/data/docs.fts.sqlite` indexes docs/ via sync_mcp_data.
+if echo "$FILES" | grep -qE '^docs/.*\.md$|^mcp/README\.md$'; then
+  DOCS_TOUCHED=1
+fi
+
+if [ "$DOCS_TOUCHED" = "1" ]; then
+  echo "[pre-commit] regen docs/llms*.txt..."
+  python3 scripts/gen_llms_txt.py > /dev/null
+  git add docs/llms.txt docs/llms-full.txt 2>/dev/null || true
+
+  echo "[pre-commit] re-sync mcp bundled data (docs.fts.sqlite)..."
+  python3 scripts/sync_mcp_data.py > /dev/null
+  git add mcp/flox_mcp/data/ 2>/dev/null || true
+fi
+
+# ── gotchas.json → re-sync mcp bundle (already covered above unless
+# gotchas.json is the *only* change, in which case docs/ wasn't
+# touched). Run idempotently so the FTS index stays consistent.
+if echo "$FILES" | grep -qE '^mcp/flox_mcp/data/gotchas\.json$'; then
+  if [ "$DOCS_TOUCHED" = "0" ]; then
+    echo "[pre-commit] sync mcp bundled data..."
+    python3 scripts/sync_mcp_data.py > /dev/null
+    git add mcp/flox_mcp/data/ 2>/dev/null || true
+  fi
+fi
+
+exit 0
