@@ -596,6 +596,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_r.add_argument("--subtitle", default=None, help="subtitle")
     p_r.set_defaults(handler=cmd_report)
 
+    # ── engine ─────────────────────────────────────────────────────
+    from . import engine_cli
+    engine_cli.add_engine_subparser(sub)
+
     # ── tape ───────────────────────────────────────────────────────
     p_tape = sub.add_parser(
         "tape",
