@@ -91,6 +91,22 @@ class BacktestRunner:
         """
     def set_executor(self, executor: Executor) -> None:
         ...
+    def set_kill_switch(self, ks: KillSwitch) -> None:
+        """
+        Attach (or detach with None) a kill switch. Reduce-only orders bypass so tightening caps does not strand a position.
+        """
+    def set_order_validator(self, ov: OrderValidator) -> None:
+        """
+        Attach (or detach with None) an order validator. Reduce-only orders bypass.
+        """
+    def set_pnl_tracker(self, tracker: PnLTracker) -> None:
+        """
+        Attach (or detach with None) a PnL tracker. Fires `on_signal(signal)` for every fill the simulator dispatches.
+        """
+    def set_risk_manager(self, rm: RiskManager) -> None:
+        """
+        Attach (or detach with None) a pre-trade risk manager. Reduce-only orders bypass the gate by design.
+        """
     def set_strategy(self, strategy: Strategy) -> None:
         ...
     def trades(self) -> typing.Any:
