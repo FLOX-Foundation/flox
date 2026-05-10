@@ -1,6 +1,6 @@
 # flox-py
 
-Python bindings for the [FLOX](https://github.com/FLOX-Foundation/flox) trading framework.
+Python bindings for [FLOX](https://github.com/FLOX-Foundation/flox), a modular framework for building trading systems with polyglot strategy bindings and AI-friendly developer tools. Same strategy code goes from backtest to live without a rewrite step.
 
 ## Install
 
@@ -11,15 +11,15 @@ pip install flox-py
 ## Scaffold a new project
 
 ```bash
-flox new my-strategy                            # research scaffold (default)
-flox new my-bot --template=live                 # live trading via CcxtBroker
-flox new my-indicators --template=indicator-library   # publishable indicator package
-flox templates                                  # list templates
+flox new my-strategy                                   # research scaffold (default)
+flox new my-bot --template=live                        # live trading via CcxtBroker
+flox new my-indicators --template=indicator-library    # publishable indicator package
+flox templates                                         # list templates
 ```
 
 `flox new` ships with the wheel; see [`docs/how-to/flox-new.md`](https://flox-foundation.github.io/flox/how-to/flox-new/) for what each template lays down.
 
-## Quick Start
+## Quick start
 
 ```python
 import flox_py as flox
@@ -27,7 +27,7 @@ import flox_py as flox
 registry = flox.SymbolRegistry()
 btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
-class SMAcross(flox.Strategy):
+class SMACross(flox.Strategy):
     def __init__(self, symbols):
         super().__init__(symbols)
         self.fast = flox.SMA(10)
@@ -47,13 +47,34 @@ def on_signal(sig):
     print(sig.side, sig.order_type, sig.quantity, sig.price)
 
 runner = flox.Runner(registry, on_signal)
-runner.add_strategy(SMAcross([btc]))
+runner.add_strategy(SMACross([btc]))
 runner.start()
 # feed market data:
 # runner.on_trade(btc, price, qty, is_buy, ts_ns)
 # runner.on_book_snapshot(btc, bid_prices, bid_qtys, ask_prices, ask_qtys, ts_ns)
 runner.stop()
 ```
+
+## Run a paper engine in one command
+
+For tier-5/6 control (live order placement, position queries, kill switch over HTTP), `flox engine sim` boots a `Runner` + `SimulatedExecutor` + `ControlServer` + state-snapshot writer:
+
+```bash
+flox engine sim --strategy strategy.py --tape ./tape
+```
+
+Prints the engine URL and a copy-pasteable `flox-mcp init --engine-url URL --token T` command for wiring into AI tools.
+
+## AI companion
+
+`flox-mcp` is a Model Context Protocol server that gives coding agents (Claude Code, Cursor, Cline) grounded access to indicators, error codes, the C-API surface, and full-text doc search:
+
+```bash
+pip install flox-mcp
+flox-mcp init           # writes ./.mcp.json for the current project
+```
+
+See the [flox-mcp README](https://github.com/FLOX-Foundation/flox/tree/main/mcp) for the tool list.
 
 ## Symbol and SymbolRegistry
 
@@ -83,12 +104,13 @@ class MyStrategy(flox.Strategy):
     def on_start(self): ...
     def on_stop(self): ...
 
-    def on_trade(self, ctx, trade):
-        # ctx  -- SymbolContext
-        # trade -- TradeData
-        pass
-
+    def on_trade(self, ctx, trade): ...      # ctx: SymbolContext, trade: TradeData
     def on_book_update(self, ctx): ...
+    def on_bar(self, ctx, bar): ...
+
+    # Order-event hooks (fires on the strategy's own emitted orders).
+    def on_fill(self, ctx, ev): ...           # status PARTIALLY_FILLED or FILLED
+    def on_order_update(self, ctx, ev): ...   # every status change including fills
 ```
 
 ### Order emission (shorthand, uses first symbol by default)
@@ -125,6 +147,17 @@ class MyStrategy(flox.Strategy):
 | `is_buy` | `bool` | Buy-side aggressor |
 | `timestamp_ns` | `int` | Timestamp (nanoseconds) |
 
+### OrderEvent (passed to `on_fill` / `on_order_update`)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `order_id` | `int` | Engine order ID |
+| `status` | `str` | `"FILLED"` / `"PARTIALLY_FILLED"` / `"REJECTED"` / `"CANCELED"` / ... |
+| `side` | `str` | `"buy"` or `"sell"` |
+| `fill_qty` | `float` | Last-fill quantity |
+| `fill_price` | `float` | Last-fill price |
+| `reject_reason` | `str \| None` | Set when status == REJECTED |
+
 ## Runner
 
 ```python
@@ -156,12 +189,22 @@ bt.set_strategy(MyStrategy([btc]))
 
 stats = bt.run_csv("data.csv")             # auto-detects symbol from registry
 stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
+stats = bt.run_tape("./tape")              # replay a recorded `.floxlog` directory
 
-equity = bt.equity_curve()   # list of {timestamp_ns, equity, drawdown_pct}
-trades = bt.trades()         # per-trade detail
+equity = bt.equity_curve()   # numpy arrays: timestamp_ns, equity, drawdown_pct
+trades = bt.trades()         # numpy arrays: per-trade detail
 
 from flox_py.report import write_html
 write_html("report.html", stats=stats, equity_curve=equity, trades=trades)
+```
+
+The same risk-gate stack as the live `Runner` plugs into the backtest. Reduce-only / flatten orders bypass the gate by design (so a tightening cap cannot strand a position):
+
+```python
+bt.set_risk_manager(my_risk_manager)        # IRiskManager: .allow(order)
+bt.set_kill_switch(my_kill_switch)          # IKillSwitch: .check(order), .is_triggered()
+bt.set_order_validator(my_validator)        # IOrderValidator: .validate(order, reason)
+bt.set_pnl_tracker(my_pnl_tracker)          # IPnLTracker: .on_order_filled(order)
 ```
 
 ### Stats dict
@@ -178,14 +221,23 @@ write_html("report.html", stats=stats, equity_curve=equity, trades=trades)
 ### Walk-forward and grid search
 
 ```python
-wf = flox.WalkForwardRunner(registry, mode="anchored",
-                            train_periods=180, test_periods=30)
-folds = wf.run(strategy_factory, dataset_path="data.csv", symbol="BTCUSDT")
+wf = flox.WalkForwardRunner(
+    registry, fee_rate=0.0004, initial_capital=10_000,
+    mode="anchored", train_size=180, test_size=30,
+)
+wf.set_strategy_factory(lambda fold_idx: MyStrategy([btc]))
+folds = wf.run_csv("data.csv", "BTCUSDT")
 
-grid = flox.GridSearch(registry, factory=lambda p: build_strategy(*p))
-grid.add_axis("fast", [5, 10, 20])
-grid.add_axis("slow", [30, 50, 100])
-results = grid.run("data.csv", symbol="BTCUSDT")
+grid = flox.GridSearch()
+grid.add_axis([5, 10, 20])    # fast period
+grid.add_axis([30, 50, 100])  # slow period
+def factory(params):
+    fast, slow = params
+    bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
+    bt.set_strategy(MyStrategy([btc]))  # configure with fast / slow as needed
+    return bt.run_csv("data.csv", "BTCUSDT")
+grid.set_factory(factory)
+results = grid.run()    # list of {index, params, stats}
 ```
 
 Render a heatmap with `flox_py.report.heatmap_html(...)` /
@@ -197,9 +249,11 @@ test with `flox.whites_reality_check(returns, num_bootstrap=10_000)`.
 ```python
 from flox_py import mlflow as flox_mlflow
 
-flox_mlflow.log_backtest(stats, equity_curve=equity, trades=trades,
-                          params={"fast": 10, "slow": 30},
-                          run_name="sma-2025-01")
+flox_mlflow.log_backtest(
+    stats, equity_curve=equity, trades=trades,
+    params={"fast": 10, "slow": 30},
+    run_name="sma-2025-01",
+)
 ```
 
 `mlflow` is optional — install with `pip install mlflow`.
@@ -210,7 +264,7 @@ flox_mlflow.log_backtest(stats, equity_curve=equity, trades=trades,
 |--------|-------------|
 | Strategy / Runner | Event-driven live and backtest strategies |
 | Engine | Batch backtest engine (signal arrays, parallel runs) |
-| Indicators | EMA, SMA, RSI, MACD, ATR, Bollinger, ADX, Stochastic, CCI, VWAP, CVD, and more |
+| Indicators | EMA, SMA, RSI, MACD, ATR, Bollinger, ADX, Stochastic, CCI, VWAP, CVD, Correlation, AutoCorrelation, and more |
 | Aggregators | Time, tick, volume, range, renko, Heikin-Ashi bars |
 | Order Books | N-level, L3, cross-exchange CompositeBookMatrix |
 | Profiles | Footprint bars, volume profile, market profile |
