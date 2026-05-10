@@ -32,7 +32,7 @@ flox = ["flox-py>=0.5"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-flox-mcp = "flox_mcp.server:main"
+flox-mcp = "flox_mcp.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/FLOX-Foundation/flox"
