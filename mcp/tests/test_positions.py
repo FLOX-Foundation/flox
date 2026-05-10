@@ -118,25 +118,53 @@ class GetPositionsTests(_SnapshotTestCase):
             account="bybit-prod", strategy="kijun", state_path=self.path))
         self.assertEqual(out["data"], [])
 
-    def test_missing_snapshot_returns_error(self) -> None:
+    def test_missing_snapshot_returns_idle_response(self) -> None:
+        """No snapshot is a normal state — return an
+        engine_not_running marker, not an error. This is what makes
+        the state_daemon.py workaround unnecessary."""
         out = json.loads(positions.get_positions(
             state_path="/no/such/file.json"))
-        self.assertIn("error", out)
-        self.assertIn("not found", out["error"])
+        self.assertEqual(out["engine"], "not_running")
+        self.assertEqual(out["data"], [])
+        self.assertNotIn("error", out)
+        self.assertIn("flox engine sim", out["hint"])
+
+    def test_empty_snapshot_file_returns_idle_response(self) -> None:
+        """An empty file is the same shape of 'engine hasn't written
+        yet' as a missing file."""
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".json", delete=False) as f:
+            empty = f.name
+        try:
+            out = json.loads(positions.get_positions(state_path=empty))
+            self.assertEqual(out["engine"], "not_running")
+            self.assertEqual(out["data"], [])
+        finally:
+            os.unlink(empty)
 
     def test_unsupported_schema_version_returns_error(self) -> None:
+        """Corrupt-snapshot signals must keep failing loud — masking
+        them would hide engine corruption."""
         bad = _sample_state()
         bad["schema_version"] = 999
         self._write(bad)
         out = json.loads(positions.get_positions(state_path=self.path))
         self.assertIn("error", out)
         self.assertIn("schema_version", out["error"])
+        # Definitely not the idle path.
+        self.assertNotIn("engine", out)
 
 
 class GetOpenOrdersTests(_SnapshotTestCase):
     def test_no_filter_returns_all(self) -> None:
         out = json.loads(positions.get_open_orders(state_path=self.path))
         self.assertEqual(len(out["data"]), 1)
+
+    def test_missing_snapshot_returns_idle(self) -> None:
+        out = json.loads(positions.get_open_orders(
+            state_path="/no/such/file.json"))
+        self.assertEqual(out["engine"], "not_running")
+        self.assertEqual(out["data"], [])
 
     def test_filter_substring_on_symbol(self) -> None:
         out = json.loads(positions.get_open_orders(
@@ -158,6 +186,11 @@ class GetPnlTests(_SnapshotTestCase):
         self.assertEqual(out["data"]["total"]["realized"], 1184.56)
         self.assertEqual(len(out["data"]["by_strategy"]), 2)
 
+    def test_missing_snapshot_returns_idle(self) -> None:
+        out = json.loads(positions.get_pnl(state_path="/no/such/file.json"))
+        self.assertEqual(out["engine"], "not_running")
+        self.assertEqual(out["data"], {"by_strategy": [], "total": {}})
+
     def test_strategy_filter_narrows_breakdown(self) -> None:
         out = json.loads(positions.get_pnl(
             strategy="ema-trend", state_path=self.path))
@@ -171,6 +204,14 @@ class GetPnlTests(_SnapshotTestCase):
 class GetKillSwitchTests(_SnapshotTestCase):
     def test_inactive_returns_active_false(self) -> None:
         out = json.loads(positions.get_kill_switch(state_path=self.path))
+        self.assertFalse(out["data"]["active"])
+
+    def test_missing_snapshot_returns_idle_inactive(self) -> None:
+        """Defaulting to active=false when there is no engine is
+        the right answer: there is no live trading to halt."""
+        out = json.loads(positions.get_kill_switch(
+            state_path="/no/such/file.json"))
+        self.assertEqual(out["engine"], "not_running")
         self.assertFalse(out["data"]["active"])
 
     def test_active_returns_reason_and_since(self) -> None:

@@ -23,6 +23,15 @@ _DEFAULT_STATE_PATH = "/tmp/flox-runtime-state.json"
 _SUPPORTED_SCHEMA_VERSIONS = {1}
 
 
+class _NoSnapshot(Exception):
+    """Raised when the runtime snapshot file is absent or empty.
+
+    Distinct from the corrupt-snapshot case: this is a normal state
+    ('no engine attached yet') and the read-only tools translate it
+    into an idle response instead of an error.
+    """
+
+
 def _resolve_path(state_path: Optional[str]) -> Path:
     if state_path:
         return Path(state_path).expanduser()
@@ -35,13 +44,16 @@ def _resolve_path(state_path: Optional[str]) -> Path:
 def _load_state(state_path: Optional[str]) -> Dict[str, Any]:
     p = _resolve_path(state_path)
     if not p.exists():
-        raise FileNotFoundError(
-            f"runtime state snapshot not found at {p}. "
-            f"Set FLOX_RUNTIME_STATE or have your app write a snapshot. "
-            f"See docs/reference/runtime-state-schema.md."
-        )
-    with p.open("r") as fh:
-        data = json.load(fh)
+        raise _NoSnapshot(str(p))
+    raw = p.read_text()
+    if not raw.strip():
+        # Empty file is the same shape of "engine hasn't written yet"
+        # as a missing file — treat it the same way.
+        raise _NoSnapshot(str(p))
+    # Past this point any failure is a real bug — corrupt JSON or a
+    # schema mismatch is something the user wants to see, not have
+    # silently masked.
+    data = json.loads(raw)
     if not isinstance(data, dict):
         raise ValueError(f"runtime state at {p} is not a JSON object")
     version = data.get("schema_version")
@@ -52,6 +64,26 @@ def _load_state(state_path: Optional[str]) -> Dict[str, Any]:
             f"{sorted(_SUPPORTED_SCHEMA_VERSIONS)})"
         )
     return data
+
+
+def _idle_payload(reason: str, data: Any) -> str:
+    """Idle response shape for the 'no snapshot yet' state.
+
+    The agent gets a structured 'engine not running' marker plus an
+    actionable hint, rather than a stack trace. Read-only tools all
+    funnel through this so the response shape is consistent.
+    """
+    return json.dumps({
+        "engine": "not_running",
+        "reason": reason,
+        "snapshot_age_ms": None,
+        "data": data,
+        "hint": (
+            "No engine has written a runtime snapshot yet. Start one "
+            "with `flox engine sim --strategy s.py` (W2-T035), or "
+            "point FLOX_RUNTIME_STATE at an existing snapshot file."
+        ),
+    }, indent=2, sort_keys=True)
 
 
 def _snapshot_age_ms(state: Dict[str, Any]) -> Optional[int]:
@@ -87,11 +119,17 @@ def get_positions(
     """Return positions matching account / strategy filters.
 
     Filters are AND-ed. Both default to None (no filter). Returns a
-    JSON object ``{"snapshot_age_ms": int|None, "data": [{...}, ...]}``.
+    JSON object ``{"snapshot_age_ms": int|None, "data": [{...}, ...]}``
+    when an engine snapshot is present, or an
+    ``{"engine": "not_running", "data": [], "hint": ...}`` shape when
+    no snapshot has been written yet (no error — this is a normal
+    pre-engine state).
     """
     try:
         state = _load_state(state_path)
-    except (FileNotFoundError, ValueError) as exc:
+    except _NoSnapshot as exc:
+        return _idle_payload(f"no runtime snapshot at {exc}", [])
+    except ValueError as exc:
         return _format_error(str(exc))
     rows = state.get("positions") or []
     if account is not None:
@@ -109,7 +147,9 @@ def get_open_orders(
     match against ``symbol_name`` or ``strategy``."""
     try:
         state = _load_state(state_path)
-    except (FileNotFoundError, ValueError) as exc:
+    except _NoSnapshot as exc:
+        return _idle_payload(f"no runtime snapshot at {exc}", [])
+    except ValueError as exc:
         return _format_error(str(exc))
     rows: List[Dict[str, Any]] = state.get("open_orders") or []
     if filter:
@@ -135,7 +175,12 @@ def get_pnl(
     or a separate read path."""
     try:
         state = _load_state(state_path)
-    except (FileNotFoundError, ValueError) as exc:
+    except _NoSnapshot as exc:
+        return _idle_payload(
+            f"no runtime snapshot at {exc}",
+            {"by_strategy": [], "total": {}},
+        )
+    except ValueError as exc:
         return _format_error(str(exc))
     pnl = state.get("pnl") or {}
     by_strategy = pnl.get("by_strategy") or []
@@ -152,7 +197,12 @@ def get_kill_switch(state_path: Optional[str] = None) -> str:
     str|None, "since_ns": int|None}``."""
     try:
         state = _load_state(state_path)
-    except (FileNotFoundError, ValueError) as exc:
+    except _NoSnapshot as exc:
+        return _idle_payload(
+            f"no runtime snapshot at {exc}",
+            {"active": False, "reason": None, "since_ns": None},
+        )
+    except ValueError as exc:
         return _format_error(str(exc))
     ks = state.get("kill_switch") or {"active": False, "reason": None, "since_ns": None}
     return _format_payload(state, ks)

@@ -611,7 +611,12 @@ def build_server() -> Server:
                     "symbol_name, qty, avg_price, unrealized_pnl}, ...]}. "
                     "Snapshot path is FLOX_RUNTIME_STATE env var or the "
                     "passed `state_path`; the user app is responsible for "
-                    "writing the snapshot. Read-only — never modifies state."
+                    "writing the snapshot. When no engine has written a "
+                    "snapshot yet, returns "
+                    "{engine: 'not_running', data: [], hint: ...} instead "
+                    "of an error — that's a normal pre-engine state, not "
+                    "a problem to surface to the user. Read-only — never "
+                    "modifies state."
                 ),
                 inputSchema={
                     "type": "object",
@@ -640,7 +645,9 @@ def build_server() -> Server:
                     "Read in-flight orders from the runtime state snapshot. "
                     "Use this for 'what orders are pending' / 'do I have "
                     "anything sitting on Bybit'. Optional substring filter "
-                    "matches against symbol_name or strategy. Read-only."
+                    "matches against symbol_name or strategy. Returns the "
+                    "engine_not_running idle response when no snapshot is "
+                    "present yet (no error). Read-only."
                 ),
                 inputSchema={
                     "type": "object",
@@ -665,7 +672,9 @@ def build_server() -> Server:
                     "Read PnL totals plus per-strategy breakdown from the "
                     "runtime state snapshot. Use this for 'what's my PnL' / "
                     "'how is strategy X doing today'. Returns realized + "
-                    "unrealized + fees per strategy. Read-only."
+                    "unrealized + fees per strategy. Returns the "
+                    "engine_not_running idle response when no snapshot is "
+                    "present yet (no error). Read-only."
                 ),
                 inputSchema={
                     "type": "object",
@@ -691,7 +700,10 @@ def build_server() -> Server:
                     "Read kill-switch state from the runtime state snapshot. "
                     "Returns {active, reason, since_ns}. Use this for 'is "
                     "trading halted' / 'why was the kill switch tripped'. "
-                    "Read-only — to flip the switch use set_kill_switch."
+                    "When no engine has written a snapshot, returns the "
+                    "idle response with active=false (there is no live "
+                    "trading to halt). Read-only — to flip the switch "
+                    "use set_kill_switch."
                 ),
                 inputSchema={
                     "type": "object",
