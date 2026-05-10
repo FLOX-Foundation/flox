@@ -1119,6 +1119,12 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
             InstanceMethod("runTape", &BacktestRunnerNode::runTape),
             InstanceMethod("setExecutor", &BacktestRunnerNode::setExecutor),
             InstanceMethod("addExecutionListener", &BacktestRunnerNode::addExecutionListener),
+            // Pre-trade gate parity with live Runner (W1-T037 / T036).
+            // Reduce-only orders bypass the gate by design.
+            InstanceMethod("setRiskManager", &BacktestRunnerNode::setRiskManager),
+            InstanceMethod("setKillSwitch", &BacktestRunnerNode::setKillSwitch),
+            InstanceMethod("setOrderValidator", &BacktestRunnerNode::setOrderValidator),
+            InstanceMethod("setPnlTracker", &BacktestRunnerNode::setPnlTracker),
             InstanceMethod("equityCurve", &BacktestRunnerNode::equityCurve),
             InstanceMethod("trades", &BacktestRunnerNode::trades),
         });
@@ -1146,6 +1152,74 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
   FloxBacktestRunnerHandle _handle{nullptr};
   SymbolRegistry* _reg{nullptr};
   std::unique_ptr<NodeStrategyHost> _host;
+  // Pre-trade gate hosts (W1-T037). Owned so they outlive the
+  // runner's non-owning use of the FloxXxxHandle each one wraps.
+  // The same Host classes used by RunnerNode/LiveEngineNode work
+  // here — only the C ABI setter target changes.
+  std::unique_ptr<flox_node::RiskManagerHost> _risk_host;
+  std::unique_ptr<flox_node::KillSwitchHost> _kill_host;
+  std::unique_ptr<flox_node::OrderValidatorHost> _validator_host;
+  std::unique_ptr<flox_node::PnLTrackerHost> _pnl_host;
+
+  Napi::Value setRiskManager(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _risk_host.reset();
+      flox_backtest_runner_set_risk_manager(_handle, nullptr);
+      return env.Undefined();
+    }
+    _risk_host = std::make_unique<flox_node::RiskManagerHost>(
+        env, info[0].As<Napi::Object>());
+    flox_backtest_runner_set_risk_manager(_handle, _risk_host->handle);
+    return env.Undefined();
+  }
+
+  Napi::Value setKillSwitch(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _kill_host.reset();
+      flox_backtest_runner_set_kill_switch(_handle, nullptr);
+      return env.Undefined();
+    }
+    _kill_host = std::make_unique<flox_node::KillSwitchHost>(
+        env, info[0].As<Napi::Object>());
+    flox_backtest_runner_set_kill_switch(_handle, _kill_host->handle);
+    return env.Undefined();
+  }
+
+  Napi::Value setOrderValidator(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _validator_host.reset();
+      flox_backtest_runner_set_order_validator(_handle, nullptr);
+      return env.Undefined();
+    }
+    _validator_host = std::make_unique<flox_node::OrderValidatorHost>(
+        env, info[0].As<Napi::Object>());
+    flox_backtest_runner_set_order_validator(_handle, _validator_host->handle);
+    return env.Undefined();
+  }
+
+  Napi::Value setPnlTracker(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      _pnl_host.reset();
+      flox_backtest_runner_set_pnl_tracker(_handle, nullptr);
+      return env.Undefined();
+    }
+    _pnl_host = std::make_unique<flox_node::PnLTrackerHost>(
+        env, info[0].As<Napi::Object>());
+    flox_backtest_runner_set_pnl_tracker(_handle, _pnl_host->handle);
+    return env.Undefined();
+  }
 
   // runner.setStrategy(strategyObj) — plain JS object with callbacks
   Napi::Value setStrategy(const Napi::CallbackInfo& info)

@@ -344,6 +344,27 @@ if (fs.existsSync(btCsv)) {
   console.log(`  skip BacktestRunner accessors (CSV not found: ${btCsv})`);
 }
 
+// ── BacktestRunner pre-trade gate hooks (parity proof) ───────────────
+
+console.log('=== BacktestRunner gate hooks ===');
+
+{
+  const reg = new flox.SymbolRegistry();
+  reg.addSymbol('exchange', 'BTCUSDT', 0.01);
+  const bt = new flox.BacktestRunner(reg, 0.0004, 10000);
+  bt.setStrategy({ symbols: [], onTrade(_c, _t, _e) {} });
+
+  for (const m of ['setRiskManager', 'setKillSwitch',
+                   'setOrderValidator', 'setPnlTracker']) {
+    check(typeof bt[m] === 'function',
+          `BacktestRunner.${m} is a function`);
+    // null detach must not throw on a fresh runner.
+    let threw = false;
+    try { bt[m](null); } catch (_) { threw = true; }
+    check(!threw, `BacktestRunner.${m}(null) detaches without throwing`);
+  }
+}
+
 // ── BacktestRunner.runTape (parity proof) ────────────────────────────
 
 console.log('=== BacktestRunner.runTape ===');

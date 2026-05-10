@@ -582,6 +582,13 @@ export class BacktestRunner {
   /** Attach a listener for order lifecycle events. Multiple listeners
    *  may be attached; each fires for every order event. */
   addExecutionListener(listener: ExecutionListener): void;
+  /** Pre-trade gate parity with the live `Runner`. Reduce-only orders
+   *  bypass the gate by design — when caps tighten you must still be
+   *  able to flatten. Pass `null` to detach. */
+  setRiskManager(rm: RiskManager | null): void;
+  setKillSwitch(ks: KillSwitch | null): void;
+  setOrderValidator(ov: OrderValidator | null): void;
+  setPnlTracker(tracker: PnLTracker | null): void;
   /** Equity curve from the most recent run. Throws FloxError(E_RUN_002)
    *  if no run has completed. */
   equityCurve(): EquityCurve;
