@@ -127,6 +127,15 @@ docs/how-to/whites-reality-check.md
 # mcp/tests/test_positions.py.
 docs/how-to/mcp-runtime-inspection.md
 
+# How-to: cross-symbol indicators — illustrative streaming + batch
+# patterns for two-input pair indicators (Correlation, AutoCorrelation).
+# The Correlation / AutoCorrelation surface itself is covered by
+# python/tests/test_indicators.py + node/test/test_bindings.js;
+# inline snippets here demonstrate the alignment recipe (timestamp
+# join, last-value cache in a Strategy), which is composed of pieces
+# already tested elsewhere.
+docs/how-to/cross-symbol-indicators.md
+
 # How-to: tape record — short illustrative blocks (replay_tape callback
 # signature, strategy-attachment skeleton with `# ... feed events ...`
 # placeholder). The full runnable companion is

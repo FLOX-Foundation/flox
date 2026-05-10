@@ -1,5 +1,11 @@
 # Multi-symbol indicators
 
+> **Looking for `Correlation(BTC, ETH)`?** This page is about
+> running the same single-input indicator (SMA, EMA, RSI)
+> independently per symbol. For two-input indicators that consume
+> a synchronised pair of streams, see
+> [cross-symbol-indicators.md](cross-symbol-indicators.md).
+
 Run the same indicator pipeline across multiple symbols. The C++ engine ships a built-in helper for parallel execution; from Python and Node.js, group your data per symbol and either iterate or use a process pool.
 
 ## Partition by symbol

@@ -4968,6 +4968,12 @@ See also: [Multi-symbol indicators](multi-symbol-indicators.md).
 
 # Multi-symbol indicators
 
+> **Looking for `Correlation(BTC, ETH)`?** This page is about
+> running the same single-input indicator (SMA, EMA, RSI)
+> independently per symbol. For two-input indicators that consume
+> a synchronised pair of streams, see
+> [cross-symbol-indicators.md](cross-symbol-indicators.md).
+
 Run the same indicator pipeline across multiple symbols. The C++ engine ships a built-in helper for parallel execution; from Python and Node.js, group your data per symbol and either iterate or use a process pool.
 
 ## Partition by symbol
@@ -16715,6 +16721,8 @@ r = Σ(x − x̄)(y − ȳ) / sqrt(Σ(x − x̄)² × Σ(y − ȳ)²)
 ```
 
 Range [−1, 1]. Used for pairs construction, cross-asset filters, or detecting when a relationship is breaking down. Returns NaN when either series is constant within the window.
+
+For the cross-symbol case (`Correlation(BTC, ETH)` from a live strategy or paired bar arrays), the engine does **not** auto-align timestamps — the caller must synchronise the streams first. See [the cross-symbol how-to](../how-to/cross-symbol-indicators.md) for the alignment recipe.
 
 ------------------------------------------------------------------------------
 # Source: docs/explanation/disruptor.md
