@@ -172,6 +172,10 @@ Surface: 85 classes, 56 functions, 30 constants.
 - `run_ohlcv(self, ts: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str = '') -> typing.Any`
 - `run_tape(self, path: str) -> typing.Any`
 - `set_executor(self, executor: Executor) -> None`
+- `set_kill_switch(self, ks: KillSwitch) -> None`
+- `set_order_validator(self, ov: OrderValidator) -> None`
+- `set_pnl_tracker(self, tracker: PnLTracker) -> None`
+- `set_risk_manager(self, rm: RiskManager) -> None`
 - `set_strategy(self, strategy: Strategy) -> None`
 - `trades(self) -> typing.Any`
 
