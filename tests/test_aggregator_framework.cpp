@@ -10,6 +10,7 @@
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
+#include "flox/replay/aggregators/volume_bin.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/writers/binary_log_writer.h"
@@ -581,4 +582,172 @@ TEST_F(AggregatorFrameworkTest, BinCountRejectsNonPositiveBucket)
 {
   EXPECT_THROW(BinCountAggregator(0), std::invalid_argument);
   EXPECT_THROW(BinCountAggregator(-1'000'000LL), std::invalid_argument);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// VolumeBinAggregator
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Tape designed for volume math. 5 buckets at 100 ms each. In every
+// bucket symbol 1 gets 3 BUY trades at qty 10 each + 2 SELL trades at
+// qty 20 each → total qty = 70 (30 BUY + 40 SELL). Symbol 2 gets one
+// BUY trade at qty 5 → total 5. Numbers are picked so every per-cell
+// expected value is distinct and the sums catch off-by-side errors.
+void writeVolumeTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 100,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  constexpr int64_t bucket_ns = 100'000'000LL;
+  uint64_t tid = 0;
+  for (int b = 0; b < 5; ++b)
+  {
+    const int64_t base = b * bucket_ns + 1;
+    for (int i = 0; i < 3; ++i)
+    {
+      TradeRecord t{};
+      t.exchange_ts_ns = base + i;
+      t.symbol_id = 1;
+      t.trade_id = tid++;
+      t.side = 0;  // BUY
+      t.qty_raw = 10;
+      writer.writeTrade(t);
+    }
+    for (int i = 0; i < 2; ++i)
+    {
+      TradeRecord t{};
+      t.exchange_ts_ns = base + 10 + i;
+      t.symbol_id = 1;
+      t.trade_id = tid++;
+      t.side = 1;  // SELL
+      t.qty_raw = 20;
+      writer.writeTrade(t);
+    }
+    TradeRecord t{};
+    t.exchange_ts_ns = base + 50;
+    t.symbol_id = 2;
+    t.trade_id = tid++;
+    t.side = 0;
+    t.qty_raw = 5;
+    writer.writeTrade(t);
+  }
+
+  writer.close();
+}
+
+const VolumeBinAggregator::Row* findVol(const std::vector<VolumeBinAggregator::Row>& rows,
+                                        int64_t bucket, uint32_t sym, uint8_t side)
+{
+  auto it = std::find_if(rows.begin(), rows.end(),
+                         [=](const auto& r)
+                         {
+                           return r.bucket_ts_ns == bucket && r.symbol_id == sym &&
+                                  r.side == side;
+                         });
+  return it == rows.end() ? nullptr : &*it;
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, VolumeBinFlatNoSplit)
+{
+  // Each bucket: 3×10 + 2×20 (sym1) + 5 (sym2) = 30 + 40 + 5 = 75.
+  writeVolumeTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  VolumeBinAggregator vol(100'000'000LL);
+  std::array<IAggregator*, 1> aggregators{&vol};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = vol.result();
+  ASSERT_EQ(rows.size(), 5u);
+  for (size_t i = 0; i < 5; ++i)
+  {
+    EXPECT_EQ(rows[i].bucket_ts_ns, static_cast<int64_t>(i) * 100'000'000LL);
+    EXPECT_EQ(rows[i].symbol_id, 0u);
+    EXPECT_EQ(rows[i].side, 0u);
+    EXPECT_EQ(rows[i].qty_raw, 75);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, VolumeBinBySide)
+{
+  // BUY qty per bucket: 3×10 (sym1) + 5 (sym2) = 35.
+  // SELL qty per bucket: 2×20 (sym1) = 40.
+  writeVolumeTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  VolumeBinAggregator vol(100'000'000LL, /*by_side=*/true);
+  std::array<IAggregator*, 1> aggregators{&vol};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = vol.result();
+  ASSERT_EQ(rows.size(), 10u);  // 5 buckets × 2 sides
+  for (int b = 0; b < 5; ++b)
+  {
+    const int64_t bucket = b * 100'000'000LL;
+    const auto* buys = findVol(rows, bucket, 0, 1);
+    const auto* sells = findVol(rows, bucket, 0, 2);
+    ASSERT_NE(buys, nullptr);
+    ASSERT_NE(sells, nullptr);
+    EXPECT_EQ(buys->qty_raw, 35);
+    EXPECT_EQ(sells->qty_raw, 40);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, VolumeBinBySymbolBySide)
+{
+  writeVolumeTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  VolumeBinAggregator vol(100'000'000LL, /*by_side=*/true, /*by_symbol=*/true);
+  std::array<IAggregator*, 1> aggregators{&vol};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = vol.result();
+  // sym1: BUY + SELL = 2 rows; sym2: BUY only = 1 row; per bucket → 3.
+  ASSERT_EQ(rows.size(), 15u);
+  for (int b = 0; b < 5; ++b)
+  {
+    const int64_t bucket = b * 100'000'000LL;
+    EXPECT_EQ(findVol(rows, bucket, 1, 1)->qty_raw, 30);  // sym1 BUY 3×10
+    EXPECT_EQ(findVol(rows, bucket, 1, 2)->qty_raw, 40);  // sym1 SELL 2×20
+    EXPECT_EQ(findVol(rows, bucket, 2, 1)->qty_raw, 5);   // sym2 BUY 1×5
+    EXPECT_EQ(findVol(rows, bucket, 2, 2), nullptr);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, VolumeBinBooksOnlyIsEmpty)
+{
+  // Books carry no scalar qty for this aggregator; passing BooksOnly
+  // produces no rows. Confirms the filter is honoured even though it
+  // looks redundant given the trade-only nature of the aggregator.
+  writeVolumeTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  VolumeBinAggregator vol(100'000'000LL, false, false,
+                          AggregatorEventFilter::BooksOnly);
+  std::array<IAggregator*, 1> aggregators{&vol};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  EXPECT_TRUE(vol.result().empty());
+}
+
+TEST_F(AggregatorFrameworkTest, VolumeBinRejectsNonPositiveBucket)
+{
+  EXPECT_THROW(VolumeBinAggregator(0), std::invalid_argument);
+  EXPECT_THROW(VolumeBinAggregator(-100), std::invalid_argument);
 }
