@@ -68,7 +68,7 @@ FLOX welcomes contributions in these areas:
 | `FLOX_ENABLE_DEMO` | `OFF` | Build demo application |
 | `FLOX_ENABLE_TOOLS` | `OFF` | Build command-line tools (preagg_bars, etc.) |
 | `FLOX_ENABLE_BACKTEST` | `OFF` | Build backtest module (simulated execution) |
-| `FLOX_ENABLE_LZ4` | `OFF` | Enable LZ4 compression for binary logs |
+| `FLOX_ENABLE_LZ4` | `ON` | Enable LZ4 compression for binary logs |
 | `FLOX_ENABLE_CPU_AFFINITY` | `OFF` | Enable CPU affinity and NUMA functionality |
 | `FLOX_ENABLE_TRACY` | `OFF` | Enable Tracy profiler integration |
 | `FLOX_ENABLE_DEV_SETUP` | `OFF` | Install pre-commit hook automatically |

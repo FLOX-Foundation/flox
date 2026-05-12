@@ -100,10 +100,32 @@ int64_t lastTimestampInBlock(const std::vector<std::byte>& data)
 }
 
 // Decompress a single block at a known file position.
+//
+// Returns {} on any inconsistency (truncated block, implausible header sizes,
+// failed decompression). Important for live tapes: the actively-written tail
+// block can have a header on disk before its payload is finished, leaving
+// `compressed_size` pointing past EOF or — worse, if the header bytes weren't
+// yet written and contain prior garbage — to a value in the gigabytes that
+// would OOM the recovery path.
 std::vector<std::byte> decompressBlock(std::FILE* f, long data_pos,
                                        const CompressedBlockHeader& block,
                                        CompressionType comp_type)
 {
+  if (std::fseek(f, 0, SEEK_END) != 0)
+  {
+    return {};
+  }
+  long file_end = std::ftell(f);
+  if (file_end < 0 || data_pos < 0 || data_pos > file_end)
+  {
+    return {};
+  }
+  if (block.compressed_size == 0 ||
+      block.compressed_size > static_cast<uint32_t>(file_end - data_pos))
+  {
+    return {};
+  }
+
   std::vector<std::byte> compressed(block.compressed_size);
   if (std::fseek(f, data_pos, SEEK_SET) != 0)
   {
@@ -133,9 +155,20 @@ void recoverCompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
   out_first_ns = 0;
   out_last_ns = 0;
 
-  const long stop_at = (hdr.hasIndex() && hdr.index_offset > 0)
-                           ? static_cast<long>(hdr.index_offset)
-                           : std::numeric_limits<long>::max();
+  if (std::fseek(f, 0, SEEK_END) != 0)
+  {
+    return;
+  }
+  const long file_end = std::ftell(f);
+  if (file_end < 0)
+  {
+    return;
+  }
+
+  const long stop_at =
+      std::min<long>(file_end, (hdr.hasIndex() && hdr.index_offset > 0)
+                                   ? static_cast<long>(hdr.index_offset)
+                                   : std::numeric_limits<long>::max());
 
   if (std::fseek(f, sizeof(SegmentHeader), SEEK_SET) != 0)
   {
@@ -143,6 +176,11 @@ void recoverCompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
   }
 
   // Scan all block headers: count events, collect positions of non-empty blocks.
+  // Stops cleanly on the live-tape tail: a partially-written block header is
+  // either invalid (caught by `block.isValid()`) or claims a `compressed_size`
+  // past EOF (caught below). Without the EOF check, a stale `compressed_size`
+  // in unflushed header bytes can lead recoverCompressedSegmentMeta to allocate
+  // gigabytes when the recovery path later tries to read the block.
   struct BlockLoc
   {
     long data_pos;
@@ -165,6 +203,14 @@ void recoverCompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
     }
 
     long data_pos = std::ftell(f);
+    if (data_pos < 0 ||
+        static_cast<long>(block.compressed_size) > stop_at - data_pos)
+    {
+      // Block claims to extend past the file (or past the index trailer) —
+      // tail of a live-writing segment. Don't include it in the event count
+      // or the decompression list.
+      break;
+    }
     out_event_count += block.event_count;
 
     if (block.event_count > 0)
@@ -894,9 +940,37 @@ bool BinaryLogIterator::loadNextBlock()
     return false;  // Invalid block
   }
 
-  // Sanity check sizes
+  // Sanity check sizes — the 100 MB ceiling is a coarse upper bound for
+  // sane blocks. Below it we also bound `compressed_size` by the bytes
+  // remaining in the segment region, so a live-writing tape whose tail
+  // header was flushed before its payload (or before any payload was
+  // ever written) does not allocate up to 100 MB on garbage.
   if (block_header.compressed_size > 100 * 1024 * 1024 ||
       block_header.original_size > 100 * 1024 * 1024)
+  {
+    return false;
+  }
+
+  const long payload_pos = std::ftell(_file);
+  long stop_at;
+  if (_header.hasIndex() && _header.index_offset > 0)
+  {
+    stop_at = static_cast<long>(_header.index_offset);
+  }
+  else
+  {
+    if (std::fseek(_file, 0, SEEK_END) != 0)
+    {
+      return false;
+    }
+    stop_at = std::ftell(_file);
+    if (stop_at < 0 || std::fseek(_file, payload_pos, SEEK_SET) != 0)
+    {
+      return false;
+    }
+  }
+  if (payload_pos < 0 ||
+      static_cast<long>(block_header.compressed_size) > stop_at - payload_pos)
   {
     return false;
   }
