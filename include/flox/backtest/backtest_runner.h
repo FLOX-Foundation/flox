@@ -151,6 +151,16 @@ class BacktestRunner : public ISignalHandler
   /// `.floxlog` directory or contains no segments.
   BacktestResult runTape(const std::filesystem::path& data_dir);
 
+  /// Run the backtest off N `.floxlog` tapes merged on read. Symbols
+  /// are rekeyed into the engine's symbol registry via
+  /// `(metadata.exchange, name)` — strategies that pre-resolved
+  /// venue-tagged symbols see the same ids the merger uses. Throws
+  /// if any input is not a `.floxlog` directory, or if two inputs
+  /// declare overlapping book streams for the same symbol
+  /// (`OverlappingBookStreamError`). `runTapes({t})` is equivalent
+  /// to `runTape(t)` modulo the rekey.
+  BacktestResult runTapes(const std::vector<std::filesystem::path>& data_dirs);
+
   // ========== Interactive mode ==========
 
   /// Start backtest in interactive mode (starts paused, must call from separate thread)

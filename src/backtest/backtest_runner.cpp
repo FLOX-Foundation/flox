@@ -11,6 +11,7 @@
 
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/replay/merged_tape_reader.h"
 #include "flox/strategy/strategy.h"
 
 #include <memory_resource>
@@ -135,6 +136,28 @@ BacktestResult BacktestRunner::runTape(const std::filesystem::path& data_dir)
         data_dir.string());
   }
   return run(*reader);
+}
+
+BacktestResult BacktestRunner::runTapes(
+    const std::vector<std::filesystem::path>& data_dirs)
+{
+  if (data_dirs.empty())
+  {
+    throw std::runtime_error("BacktestRunner.runTapes: empty paths list");
+  }
+  for (const auto& d : data_dirs)
+  {
+    if (!std::filesystem::exists(d) || !std::filesystem::is_directory(d))
+    {
+      throw std::runtime_error(
+          "BacktestRunner.runTapes: not a directory: " + d.string());
+    }
+  }
+  replay::MergedTapeReaderConfig cfg{};
+  cfg.tape_dirs = data_dirs;
+  replay::MergedTapeReader merger(std::move(cfg));
+  auto adapter = merger.asMultiSegmentReader();
+  return run(*adapter);
 }
 
 BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)

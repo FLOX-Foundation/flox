@@ -1195,6 +1195,29 @@
       "return_type": "int"
     },
     {
+      "group": "backtestrunner_replay",
+      "name": "flox_backtest_runner_run_tapes",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "tape_dirs",
+          "type": "const char *const *"
+        },
+        {
+          "name": "n_dirs",
+          "type": "uint32_t"
+        },
+        {
+          "name": "stats_out",
+          "type": "FloxBacktestStats *"
+        }
+      ],
+      "return_type": "int"
+    },
+    {
       "group": "execution",
       "name": "flox_backtest_runner_set_executor",
       "params": [

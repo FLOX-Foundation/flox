@@ -651,6 +651,8 @@ void BinaryLogWriter::close()
     char iso_buf[80];
     std::snprintf(iso_buf, sizeof(iso_buf), "%s.%03dZ", buf, static_cast<int>(ms));
     _metadata->recording_end = iso_buf;
+    _metadata->total_trades = _stats.trades_written;
+    _metadata->total_book_updates = _stats.book_updates_written;
 
     _metadata->save(RecordingMetadata::metadataPath(_config.output_dir));
   }

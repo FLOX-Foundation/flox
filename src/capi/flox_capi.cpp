@@ -5307,6 +5307,35 @@ struct FloxBacktestRunnerImpl
     }
   }
 
+  int runTapes(const char* const* tape_dirs, uint32_t n_dirs,
+               FloxBacktestStats* out)
+  {
+    if (!runner || !tape_dirs || n_dirs == 0)
+    {
+      return 0;
+    }
+    try
+    {
+      std::vector<std::filesystem::path> paths;
+      paths.reserve(n_dirs);
+      for (uint32_t i = 0; i < n_dirs; ++i)
+      {
+        paths.emplace_back(tape_dirs[i] ? tape_dirs[i] : "");
+      }
+      BacktestResult result = runner->runTapes(paths);
+      if (out)
+      {
+        fillStats(result.computeStats(), out);
+      }
+      lastResult = std::move(result);
+      return 1;
+    }
+    catch (const std::exception&)
+    {
+      return 0;
+    }
+  }
+
   int runCsv(const char* path, const char* symbol, FloxBacktestStats* out)
   {
     uint32_t id = resolveSymbol(symbol);
@@ -6137,6 +6166,14 @@ int flox_backtest_runner_run_tape(FloxBacktestRunnerHandle h,
                                   FloxBacktestStats* out)
 {
   return toBacktestRunner(h)->runTape(tape_dir, out);
+}
+
+int flox_backtest_runner_run_tapes(FloxBacktestRunnerHandle h,
+                                   const char* const* tape_dirs,
+                                   uint32_t n_dirs,
+                                   FloxBacktestStats* out)
+{
+  return toBacktestRunner(h)->runTapes(tape_dirs, n_dirs, out);
 }
 
 int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle h,

@@ -5,12 +5,15 @@
 // cursor on tick. URL bookmarks store cursor + speed so a shared link
 // resumes at the same position.
 
-import type { FloxlogEvent } from './parsers/floxlog.ts';
+import type { FloxlogEvent, SymbolTable } from './parsers/floxlog.ts';
 import type { FloxrunData, Signal, OrderEvent, Fill } from './parsers/floxrun.ts';
 
 export interface ViewerState {
   tape: FloxlogEvent[];
   run: FloxrunData | null;
+  // symbol_id -> { exchange, name } from metadata.json. Empty when the
+  // loaded tape has no metadata file or the file omits symbol mappings.
+  symbols: SymbolTable;
   // Range covered by the loaded data, in nanoseconds.
   ts_min: bigint;
   ts_max: bigint;
@@ -27,6 +30,7 @@ export class Store {
   private state: ViewerState = {
     tape: [],
     run: null,
+    symbols: new Map(),
     ts_min: 0n,
     ts_max: 0n,
     cursor_ns: 0n,
@@ -51,6 +55,11 @@ export class Store {
   setTape(events: FloxlogEvent[]) {
     this.state.tape = events;
     this.recomputeRange();
+    this.notify();
+  }
+
+  setSymbols(symbols: SymbolTable) {
+    this.state.symbols = symbols;
     this.notify();
   }
 

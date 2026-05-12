@@ -222,7 +222,7 @@ html, body {
 
 .row {
   display: grid;
-  grid-template-columns: 90px 50px 80px 1fr;
+  grid-template-columns: 90px 60px 40px 1fr 70px;
   gap: 8px;
   padding: 3px 6px;
   font-family: ui-monospace, monospace;
@@ -232,6 +232,50 @@ html, body {
 .row:last-child { border-bottom: none; }
 .row.bid { color: var(--bid); }
 .row.ask { color: var(--ask); }
+.row .symbol-label {
+  color: var(--text-fade);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Multi-venue split for the trades pane. Mirrors the side-by-side
+ * orderbook layout so cross-exchange basis comparisons read with
+ * the same visual model on both panels. */
+#view-trades.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  overflow: hidden;
+}
+#view-trades.split .trades-col {
+  overflow-y: auto;
+  min-width: 0;  /* let columns shrink below content width */
+}
+#view-trades.split .trades-col-header {
+  padding: 4px 6px 2px;
+  font-size: 10px;
+  color: var(--muted, #666);
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+}
+#view-trades.split .row {
+  /* split rows: only price + qty visible. Row tint encodes side. */
+  grid-template-columns: minmax(0, 1fr) 60px;
+  gap: 6px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+#view-trades.split .row .qty {
+  text-align: right;
+  color: var(--muted, #888);
+}
+#view-trades .trades-overflow {
+  grid-column: 1 / -1;
+  padding: 4px 6px;
+  font-size: 10px;
+  color: var(--muted, #666);
+}
 .row .ts { color: var(--text-fade); }
 
 .signal-card, .order-card {

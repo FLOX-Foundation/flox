@@ -51,6 +51,13 @@ struct RecordingMetadata
   bool has_book_snapshots{false};
   bool has_book_deltas{false};
 
+  // Per-content event counts as written. 0 means "unknown" (legacy
+  // manifests written before this field was added) — callers should
+  // fall back to a tape scan or treat the field as absent. Updated
+  // by `BinaryLogWriter::close()` from `WriterStats`.
+  uint64_t total_trades{0};
+  uint64_t total_book_updates{0};
+
   // Book depth info (if applicable)
   uint16_t book_depth{0};  // Max levels recorded
 

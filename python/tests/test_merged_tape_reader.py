@@ -147,6 +147,59 @@ class MergedTapeReaderTests(unittest.TestCase):
                 flox.MergedTapeReader([t1, t2])
             self.assertIn("overlapping", str(ctx.exception).lower())
 
+    def test_stream_events_matches_eager_read(self):
+        """`stream_events` walks via N-way heap merge with O(N) memory;
+        output must be bit-equal to `read_trades` / `read_books`."""
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "a")
+            t2 = os.path.join(d, "b")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t1, "ex_a", "FOO",
+                        [(base + i * 1_000_000, 100.0 + i, 1.0, True)
+                         for i in range(7)],
+                        exchange_id=1)
+            _write_tape(t2, "ex_b", "BAR",
+                        [(base + 500_000 + i * 1_000_000, 200.0 + i, 2.0, False)
+                         for i in range(5)],
+                        exchange_id=2)
+
+            mr_eager = flox.MergedTapeReader([t1, t2])
+            eager = [
+                (int(t["exchange_ts_ns"]), int(t["symbol_id"]),
+                 int(t["price_raw"]), int(t["qty_raw"]), int(t["side"]))
+                for t in mr_eager.read_trades()
+            ]
+
+            mr_stream = flox.MergedTapeReader([t1, t2])
+            streamed = []
+
+            def on_trade(ets, rts, p, q, sid, ti, side):
+                streamed.append((ets, sid, p, q, side))
+
+            mr_stream.stream_events(on_trade=on_trade)
+
+            self.assertEqual(len(eager), 12)
+            self.assertEqual(streamed, eager)
+
+    def test_stream_events_callback_can_abort(self):
+        """Returning False from on_trade halts the walk."""
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "tape")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t1, "ex", "SYM",
+                        [(base + i * 1_000_000, 100.0 + i, 1.0, True)
+                         for i in range(10)])
+
+            mr = flox.MergedTapeReader([t1])
+            seen = []
+
+            def on_trade(ets, rts, p, q, sid, ti, side):
+                seen.append(p)
+                return len(seen) < 3  # stop after 3
+
+            mr.stream_events(on_trade=on_trade)
+            self.assertEqual(len(seen), 3)
+
     def test_replay_tapes_emits_in_time_order(self):
         with tempfile.TemporaryDirectory() as d:
             t1 = os.path.join(d, "a")
@@ -174,6 +227,157 @@ class MergedTapeReaderTests(unittest.TestCase):
             # Alternates between the two venues.
             symbols = [s[1] for s in seen]
             self.assertEqual(symbols, [1, 2, 1, 2, 1, 2])
+
+
+class BacktestRunTapesTests(unittest.TestCase):
+    """Acceptance #8 from W14-T016: `run_tapes([t])` ≡ `run_tape(t)`.
+
+    Both go through the same `BacktestRunner::run` pipeline; the
+    multi-tape path is an adapter over `MergedTapeReader`. For a
+    single-tape input the merge is a no-op (one global symbol id =
+    1, events flow through unchanged), so stats must match.
+    """
+
+    def test_run_tapes_single_equals_run_tape(self):
+        with tempfile.TemporaryDirectory() as d:
+            t = os.path.join(d, "tape")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t, "bybit", "BTCUSDT",
+                        [(base + i * 1_000_000, 50000.0 + i, 0.1, i % 2 == 0)
+                         for i in range(20)])
+
+            reg1 = flox.SymbolRegistry()
+            bt1 = flox.BacktestRunner(reg1, fee_rate=0.0,
+                                       initial_capital=10000.0)
+            bt1.set_strategy(flox.Strategy(symbols=[]))
+            single = bt1.run_tape(t)
+
+            reg2 = flox.SymbolRegistry()
+            bt2 = flox.BacktestRunner(reg2, fee_rate=0.0,
+                                       initial_capital=10000.0)
+            bt2.set_strategy(flox.Strategy(symbols=[]))
+            multi = bt2.run_tapes([t])
+
+            # Both paths drove the engine through the same event sequence.
+            # Stats dicts must match field-by-field.
+            for key in ("total_trades", "winning_trades", "losing_trades",
+                        "initial_capital", "final_capital", "total_pnl",
+                        "net_pnl"):
+                self.assertEqual(single[key], multi[key],
+                                  f"field {key} diverged: "
+                                  f"single={single[key]} multi={multi[key]}")
+
+    def test_run_tapes_empty_paths_raises(self):
+        reg = flox.SymbolRegistry()
+        bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=10000.0)
+        bt.set_strategy(flox.Strategy(symbols=[]))
+        with self.assertRaises(Exception):
+            bt.run_tapes([])
+
+    def test_run_tapes_two_venues_runs_to_completion(self):
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "bybit")
+            t2 = os.path.join(d, "binance")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t1, "bybit", "BTCUSDT",
+                        [(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                         for i in range(5)])
+            _write_tape(t2, "binance", "ETHUSDT",
+                        [(base + 500_000 + i * 1_000_000, 3000.0 + i, 1.0, False)
+                         for i in range(3)])
+
+            reg = flox.SymbolRegistry()
+            bt = flox.BacktestRunner(reg, fee_rate=0.0,
+                                      initial_capital=10000.0)
+            bt.set_strategy(flox.Strategy(symbols=[]))
+            stats = bt.run_tapes([t1, t2])
+            self.assertEqual(stats["initial_capital"], 10000.0)
+            self.assertEqual(stats["final_capital"], 10000.0)
+
+    # ── summary() ───────────────────────────────────────────────────────
+    def test_summary_reports_inspect_totals_before_read(self):
+        """`summary()` on a freshly built reader returns the same
+        aggregate counts as the underlying `BinaryLogReader::inspect`
+        — without forcing the caller to materialise every event."""
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "bybit")
+            t2 = os.path.join(d, "binance")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t1, "bybit", "BTCUSDT",
+                        [(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                         for i in range(5)],
+                        exchange_id=1)
+            _write_tape(t2, "binance", "ETHUSDT",
+                        [(base + 500_000 + i * 1_000_000, 3000.0 + i, 1.0, False)
+                         for i in range(3)],
+                        exchange_id=2)
+
+            mr = flox.MergedTapeReader([t1, t2])
+            s = mr.summary()
+            self.assertEqual(s["tape_count"], 2)
+            self.assertEqual(s["symbol_count"], 2)
+            self.assertEqual(s["total_events"], 8)
+            self.assertLessEqual(s["first_event_ns"], s["last_event_ns"])
+
+    # ── per_tape_stats() ────────────────────────────────────────────────
+    def test_per_tape_stats_filled_from_manifest_at_construction(self):
+        """`per_tape_stats()` must report honest trade / book counts
+        immediately after construction — no `read_trades` / `read_books`
+        round trip required. The values come from the recording
+        manifest (`total_trades` / `total_book_updates`), which
+        `BinaryLogWriter::close()` populates from `WriterStats`."""
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "bybit")
+            t2 = os.path.join(d, "binance")
+            base = 1_700_000_000_000_000_000
+            _write_tape(
+                t1, "bybit", "BTCUSDT",
+                trades=[(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                        for i in range(5)],
+                books=[(base + i * 2_000_000,
+                        [100.0, 99.5], [1.0, 2.0],
+                        [100.5, 101.0], [1.5, 2.5])
+                       for i in range(3)],
+                exchange_id=1,
+            )
+            _write_tape(
+                t2, "binance", "ETHUSDT",
+                trades=[(base + 500_000 + i * 1_000_000, 3000.0 + i, 1.0, False)
+                        for i in range(7)],
+                exchange_id=2,
+            )
+
+            mr = flox.MergedTapeReader([t1, t2])
+            stats = mr.per_tape_stats()
+            self.assertEqual(len(stats), 2)
+
+            by_path = {s["path"]: s for s in stats}
+            self.assertEqual(by_path[t1]["trades"], 5)
+            self.assertEqual(by_path[t1]["books"], 3)
+            self.assertEqual(by_path[t2]["trades"], 7)
+            self.assertEqual(by_path[t2]["books"], 0)
+
+    def test_per_tape_stats_stable_after_reads(self):
+        """`per_tape_stats()` reflects manifest ground truth, not
+        consumed-during-read counts — repeated reads (with or without
+        filters) leave the numbers untouched."""
+        with tempfile.TemporaryDirectory() as d:
+            t = os.path.join(d, "bybit")
+            base = 1_700_000_000_000_000_000
+            _write_tape(
+                t, "bybit", "BTCUSDT",
+                trades=[(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                        for i in range(4)],
+                exchange_id=1,
+            )
+
+            mr = flox.MergedTapeReader([t])
+            before = mr.per_tape_stats()[0]["trades"]
+            mr.read_trades()
+            mr.read_trades()
+            after = mr.per_tape_stats()[0]["trades"]
+            self.assertEqual(before, 4)
+            self.assertEqual(after, 4)
 
 
 if __name__ == "__main__":

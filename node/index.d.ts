@@ -578,6 +578,12 @@ export class BacktestRunner {
    *  is the canonical recording format written by `flox tape record`
    *  (live) or `scripts/backfill_to_tape.py` (historical). */
   runTape(path: string): BacktestStats;
+  /** Merge N `.floxlog` tape directories on read and replay the merged
+   *  event stream through the backtest. Symbols are rekeyed by
+   *  `(metadata.exchange, name)` so two venues stay distinct.
+   *  `runTapes([t])` is equivalent to `runTape(t)`. Throws on bad paths
+   *  or overlapping book streams across tapes. */
+  runTapes(paths: string[]): BacktestStats;
   /** Replace the built-in SimulatedExecutor with a binding-supplied one. */
   setExecutor(executor: Executor | null): void;
   /** Attach a listener for order lifecycle events. Multiple listeners

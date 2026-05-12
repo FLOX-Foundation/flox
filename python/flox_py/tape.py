@@ -32,11 +32,18 @@ def make_recorder_hook(
     max_segment_mb: int = 256,
     exchange_id: int = 0,
     compression: str = "none",
+    exchange_name: str = "",
+    instrument_type: str = "",
 ) -> Any:
     """Return a :class:`flox_py.BinaryLogRecorderHook` ready to plug
     into ``runner.set_market_data_recorder(hook)``. Writes both trades
     and book updates to ``output_dir`` via the in-tree
     ``BinaryLogWriter``.
+
+    ``exchange_name`` and ``instrument_type`` are stamped into the
+    tape's ``metadata.json`` so :class:`flox_py.MergedTapeReader` can
+    key it by ``(exchange, name)`` against other tapes — leaving them
+    empty produces a tape that merges into the unnamed-exchange bucket.
 
     Differs from subclassing :class:`flox_py.MarketDataRecorderHook` in
     three ways: no Python callback per event, raw int64 prices/quantities
@@ -52,6 +59,8 @@ def make_recorder_hook(
         max_segment_mb=int(max_segment_mb),
         exchange_id=int(exchange_id),
         compression=compression,
+        exchange_name=exchange_name,
+        instrument_type=instrument_type,
     )
 
 

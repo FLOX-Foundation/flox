@@ -1118,6 +1118,7 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
             InstanceMethod("runOhlcv", &BacktestRunnerNode::runOhlcv),
             InstanceMethod("runBars", &BacktestRunnerNode::runBars),
             InstanceMethod("runTape", &BacktestRunnerNode::runTape),
+            InstanceMethod("runTapes", &BacktestRunnerNode::runTapes),
             InstanceMethod("setExecutor", &BacktestRunnerNode::setExecutor),
             InstanceMethod("addExecutionListener", &BacktestRunnerNode::addExecutionListener),
             InstanceMethod("equityCurve", &BacktestRunnerNode::equityCurve),
@@ -1184,6 +1185,53 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
                        return info.Env().Null();
                      }
                      return statsToJs(info.Env(), s);
+                   });
+  }
+
+  // runner.runTapes(paths) → stats object. Merges N `.floxlog` directories
+  // on read via MergedTapeReader and feeds the merged event stream through
+  // the same engine pipeline as runTape. Symbols are rekeyed by
+  // (metadata.exchange, name) so two venues remain distinct.
+  Napi::Value runTapes(const Napi::CallbackInfo& info)
+  {
+    return tryFlox(info.Env(),
+                   [&]() -> Napi::Value
+                   {
+                     auto env = info.Env();
+                     if (info.Length() == 0 || !info[0].IsArray())
+                     {
+                       Napi::TypeError::New(
+                           env, "BacktestRunner.runTapes(paths): expected string[]")
+                           .ThrowAsJavaScriptException();
+                       return env.Undefined();
+                     }
+                     auto arr = info[0].As<Napi::Array>();
+                     uint32_t n = arr.Length();
+                     std::vector<std::string> owned;
+                     owned.reserve(n);
+                     for (uint32_t i = 0; i < n; ++i)
+                     {
+                       owned.emplace_back(arr.Get(i).As<Napi::String>().Utf8Value());
+                     }
+                     std::vector<const char*> cstrs;
+                     cstrs.reserve(n);
+                     for (const auto& s : owned)
+                     {
+                       cstrs.push_back(s.c_str());
+                     }
+                     FloxBacktestStats s{};
+                     int ok = flox_backtest_runner_run_tapes(
+                         _handle, cstrs.data(), n, &s);
+                     if (!ok)
+                     {
+                       Napi::Error::New(
+                           env,
+                           "BacktestRunner.runTapes failed (invalid paths or "
+                           "overlapping book streams)")
+                           .ThrowAsJavaScriptException();
+                       return env.Undefined();
+                     }
+                     return statsToJs(env, s);
                    });
   }
 

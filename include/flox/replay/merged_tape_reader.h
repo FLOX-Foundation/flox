@@ -9,11 +9,16 @@
 
 #pragma once
 
+#include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/recording_metadata.h"
+
+#include <memory>
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -95,6 +100,20 @@ class MergedTapeReader
   // Aggregate time range across all tapes (min first, max last).
   std::pair<int64_t, int64_t> timeRange() const noexcept { return _time_range; }
 
+  // Aggregate summary across all tapes. Mirrors
+  // `BinaryLogReader::DatasetSummary` for a single tape — total event
+  // counts + time range + distinct (rekeyed) symbols + tape count.
+  struct Summary
+  {
+    int64_t first_event_ns{0};
+    int64_t last_event_ns{0};
+    uint64_t total_events{0};
+    uint32_t tape_count{0};
+    uint32_t symbol_count{0};
+    bool empty() const noexcept { return total_events == 0; }
+  };
+  Summary summary() const noexcept;
+
   // Merged sorted trade rows. Empty filter = all symbols.
   std::vector<MergedTradeRow> readTrades();
 
@@ -103,7 +122,31 @@ class MergedTapeReader
   // the returned levels vector.
   std::pair<std::vector<MergedBookRow>, std::vector<BookLevel>> readBooks();
 
-  // Per-tape contribution counts. Useful for "one tape is empty" debug.
+  // Streaming walk via N-way heap merge over per-tape iterators.
+  // O(N tapes) peak memory regardless of total event count — the
+  // path to take for long captures where `readTrades` / `readBooks`
+  // would blow the heap budget.
+  //
+  // `callback` is invoked once per event in (exchange_ts_ns,
+  // tape_index) order. Returning `false` aborts the walk. The
+  // ReplayEvent has its `trade.symbol_id` / `book_header.symbol_id`
+  // already rewritten to the global id.
+  using StreamCallback = std::function<bool(uint32_t tape_index,
+                                            const ReplayEvent& event)>;
+  bool streamEvents(StreamCallback callback);
+
+  // IMultiSegmentReader adapter — wraps `this` so the merged stream
+  // plugs into anything that consumes a single-tape `IMultiSegmentReader`
+  // (BacktestRunner::run, primarily). Lifetime of the returned pointer
+  // is bounded by `this` MergedTapeReader.
+  std::unique_ptr<IMultiSegmentReader> asMultiSegmentReader();
+
+  // Per-tape ground-truth counts from the recording manifest. Populated
+  // at construction so callers can audit "one tape is empty" without
+  // a `readTrades`/`readBooks` round trip. Legacy tapes recorded before
+  // `manifest.total_trades` / `total_book_updates` were added report
+  // 0 here — for those, `summary()` falls back to the lumped
+  // `BinaryLogReader::inspect` total so the aggregate stays useful.
   struct PerTapeStats
   {
     std::filesystem::path path;
@@ -130,6 +173,11 @@ class MergedTapeReader
   // Per tape: local_id (manifest entry) → global_id. -1 = unmapped.
   std::vector<std::vector<int64_t>> _local_to_global;
   std::vector<PerTapeStats> _per_tape_stats;
+  // total_events from `BinaryLogReader::inspect` at construction time
+  // — `_per_tape_stats[i].trades + .books` is only filled after a
+  // `readTrades`/`readBooks` pass, so this is the only count available
+  // for `summary()` on a freshly constructed reader.
+  std::vector<uint64_t> _inspect_total_events;
   std::pair<int64_t, int64_t> _time_range{0, 0};
 };
 

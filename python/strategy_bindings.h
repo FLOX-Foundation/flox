@@ -1907,6 +1907,31 @@ class PyBacktestRunner
           "Attach a strategy with set_strategy(MyStrategy()) first.");
     }
     BacktestResult result = _runner->runTape(path);
+    return statsToDict(std::move(result));
+  }
+
+  py::object run_tapes(const std::vector<std::string>& paths)
+  {
+    if (!_host)
+    {
+      throw flox::FloxError(
+          "E_RUN_001",
+          "BacktestRunner.run_tapes() called before set_strategy(). "
+          "Attach a strategy with set_strategy(MyStrategy()) first.");
+    }
+    std::vector<std::filesystem::path> ps;
+    ps.reserve(paths.size());
+    for (const auto& p : paths)
+    {
+      ps.emplace_back(p);
+    }
+    BacktestResult result = _runner->runTapes(ps);
+    return statsToDict(std::move(result));
+  }
+
+ private:
+  py::object statsToDict(BacktestResult result)
+  {
     BacktestStats stats = result.computeStats();
     py::dict d;
     d["total_trades"] = stats.totalTrades;
@@ -1930,6 +1955,7 @@ class PyBacktestRunner
     return d;
   }
 
+ public:
   py::object run_ohlcv(py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
                        py::array_t<double, py::array::c_style | py::array::forcecast> close,
                        const std::string& symbol = "")
@@ -2740,6 +2766,12 @@ inline void bindStrategy(py::module_& m)
            "Run a backtest off a `.floxlog` tape directory. The tape is "
            "the canonical recorded artifact (`flox tape record` writes it). "
            "Returns the same stats dict shape as run_csv / run_bars.")
+      .def("run_tapes", &PyBacktestRunner::run_tapes, py::arg("paths"),
+           "Run a backtest off N `.floxlog` tapes merged on read. "
+           "Symbols are rekeyed by (metadata.exchange, name) so two "
+           "captures of the same venue/symbol collapse, and two "
+           "different venues stay distinct. `run_tapes([t])` is "
+           "equivalent to `run_tape(t)`. Stats shape mirrors run_tape.")
       .def("run_ohlcv", &PyBacktestRunner::run_ohlcv,
            py::arg("ts"), py::arg("close"), py::arg("symbol") = "")
       .def("run_bars", &PyBacktestRunner::run_bars,
