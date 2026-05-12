@@ -352,6 +352,20 @@ bool SegmentValidator::validateEventsCompressed(std::FILE* file, SegmentValidati
       return false;
     }
 
+    // Bounds-check `compressed_size` against the bytes remaining in the
+    // segment region. Without this, validating an actively-written tape
+    // whose tail block has a header on disk but not its payload would
+    // resize the buffer to whatever stale value the unflushed header
+    // bytes carried — potentially gigabytes — before fread short-reads.
+    const uint64_t payload_pos = current_pos + sizeof(block_header);
+    if (payload_pos > end_pos ||
+        block_header.compressed_size > end_pos - payload_pos)
+    {
+      addIssue(result, IssueType::FrameTruncated, IssueSeverity::Error,
+               "Truncated compressed block at offset " + std::to_string(current_pos), current_pos);
+      return false;
+    }
+
     // Read compressed data
     compressed_buffer.resize(block_header.compressed_size);
     if (std::fread(compressed_buffer.data(), 1, block_header.compressed_size, file) !=

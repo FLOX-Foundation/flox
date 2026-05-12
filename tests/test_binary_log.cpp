@@ -1345,6 +1345,75 @@ TEST_F(BinaryLogTest, CompressedWithIndex)
   EXPECT_GT(count, 200);
   EXPECT_LE(count, 300);  // Allow some tolerance due to block boundaries
 }
+
+TEST_F(BinaryLogTest, LiveTapeTruncatedTailNoOOM)
+{
+  // Regression: a live-writing compressed tape can have a complete
+  // CompressedBlockHeader on disk while its payload is still being
+  // written. Worse, the 16-byte header region may have been seeked-into
+  // before any bytes were flushed, so `compressed_size` reads as prior
+  // disk garbage — e.g. 0x7FFFFFFF (~2 GB). Without bounds-checking the
+  // recovery path would `std::vector<byte>(compressed_size)` and OOM.
+  //
+  // This test writes a well-formed no-index compressed segment, then
+  // appends a fake tail block header whose `compressed_size` points far
+  // past EOF, and confirms reads complete cleanly: the bogus tail is
+  // treated as the live-writer tail and skipped, surfacing exactly the
+  // events that were durably written.
+
+  WriterConfig config{.output_dir = _test_dir,
+                      .create_index = false,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  constexpr int num_trades = 200;
+  for (int i = 0; i < num_trades; ++i)
+  {
+    TradeRecord trade{};
+    trade.exchange_ts_ns = 1000000000LL + i * 1000000LL;
+    trade.symbol_id = 1;
+    trade.trade_id = static_cast<uint64_t>(i);
+    writer.writeTrade(trade);
+  }
+  writer.close();
+
+  std::filesystem::path tape_path;
+  for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
+  {
+    if (entry.path().extension() == ".floxlog")
+    {
+      tape_path = entry.path();
+      break;
+    }
+  }
+  ASSERT_FALSE(tape_path.empty());
+
+  {
+    std::FILE* f = std::fopen(tape_path.string().c_str(), "ab");
+    ASSERT_NE(f, nullptr);
+    CompressedBlockHeader bogus{};
+    bogus.compressed_size = 0x7FFFFFFFu;
+    bogus.original_size = 4096;
+    bogus.event_count = 999;
+    ASSERT_EQ(std::fwrite(&bogus, sizeof(bogus), 1, f), 1u);
+    std::fclose(f);
+  }
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  int read_count = 0;
+  reader.forEach(
+      [&read_count](const ReplayEvent& event)
+      {
+        EXPECT_EQ(event.type, EventType::Trade);
+        EXPECT_EQ(event.trade.trade_id, static_cast<uint64_t>(read_count));
+        ++read_count;
+        return true;
+      });
+
+  EXPECT_EQ(read_count, num_trades);
+}
 #endif  // FLOX_LZ4_ENABLED
 
 #include "flox/replay/ops/validator.h"
