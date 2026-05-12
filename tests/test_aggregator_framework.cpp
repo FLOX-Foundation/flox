@@ -10,6 +10,7 @@
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
+#include "flox/replay/aggregators/peak.h"
 #include "flox/replay/aggregators/volume_bin.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/readers/binary_log_reader.h"
@@ -750,4 +751,221 @@ TEST_F(AggregatorFrameworkTest, VolumeBinRejectsNonPositiveBucket)
 {
   EXPECT_THROW(VolumeBinAggregator(0), std::invalid_argument);
   EXPECT_THROW(VolumeBinAggregator(-100), std::invalid_argument);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// PeakAggregator
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Tape with two distinct, well-separated bursts so the dedup logic
+// can be checked: 50 trades within 100 µs at the 10s mark (the
+// dominant burst at small scales), then 30 trades within 100 µs at
+// the 60s mark (second-place at small scales), separated by ≈ 50 s
+// of sparse activity (one trade per second between the bursts).
+void writePeakTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 1000,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  uint64_t tid = 0;
+  auto pushTrade = [&](int64_t ts)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = ts;
+    t.symbol_id = 1;
+    t.trade_id = tid++;
+    t.side = 0;
+    t.qty_raw = 1;
+    writer.writeTrade(t);
+  };
+
+  // Burst 1 at 10 s: 50 trades within 100 µs.
+  const int64_t b1 = 10'000'000'000LL;
+  for (int i = 0; i < 50; ++i)
+  {
+    pushTrade(b1 + i * 1'000LL);  // 1 µs apart → all in first 50 µs
+  }
+
+  // Sparse: 1 trade per second from t=11s to t=59s.
+  for (int s = 11; s < 60; ++s)
+  {
+    pushTrade(static_cast<int64_t>(s) * 1'000'000'000LL);
+  }
+
+  // Burst 2 at 60 s: 30 trades within 100 µs.
+  const int64_t b2 = 60'000'000'000LL;
+  for (int i = 0; i < 30; ++i)
+  {
+    pushTrade(b2 + i * 1'000LL);
+  }
+
+  writer.close();
+}
+
+const PeakAggregator::Row* findPeak(const std::vector<PeakAggregator::Row>& rows,
+                                    int64_t window_ns, std::size_t rank)
+{
+  std::size_t r = 0;
+  for (const auto& row : rows)
+  {
+    if (row.window_ns == window_ns)
+    {
+      if (r == rank)
+      {
+        return &row;
+      }
+      ++r;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, PeakSingleScaleFindsBothBurstsDeduped)
+{
+  // 1 ms window: burst 1 has 50 trades in 100 µs (fully contained
+  // within any 1 ms window starting between b1-900µs and b1). Burst 2
+  // has 30 trades in 100 µs. Sparse region has 1 trade per second
+  // (count = 1 in a 1 ms window). top_n=2 with 3 ms suppression
+  // separates the two bursts cleanly.
+  writePeakTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  PeakAggregator peaks({1'000'000LL}, /*top_n=*/2);
+  std::array<IAggregator*, 1> aggregators{&peaks};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = peaks.result();
+  ASSERT_EQ(rows.size(), 2u);
+
+  // Strongest peak should be the 50-trade burst at t≈10s.
+  EXPECT_EQ(rows[0].window_ns, 1'000'000LL);
+  EXPECT_EQ(rows[0].count, 50u);
+  EXPECT_GE(rows[0].start_ns, 9'000'000'000LL);
+  EXPECT_LT(rows[0].start_ns, 11'000'000'000LL);
+
+  // Second peak should be the 30-trade burst at t≈60s, NOT another
+  // copy of the first burst's neighborhood (which the 3*window
+  // dedup must have suppressed).
+  EXPECT_EQ(rows[1].count, 30u);
+  EXPECT_GE(rows[1].start_ns, 59'000'000'000LL);
+  EXPECT_LT(rows[1].start_ns, 61'000'000'000LL);
+}
+
+TEST_F(AggregatorFrameworkTest, PeakMultipleScalesEachReportsOwnTop)
+{
+  // Three scales: 1 ms (catches each burst fully — 50 / 30), 1 s
+  // (still distinguishes bursts but with more nearby sparse trades
+  // included), 10 s (windows long enough to potentially merge bursts;
+  // the 10 s window starting near burst 1 catches just burst 1, the
+  // window near burst 2 catches just burst 2 — they're 50 s apart).
+  writePeakTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  PeakAggregator peaks({1'000'000LL, 1'000'000'000LL, 10'000'000'000LL},
+                       /*top_n=*/2);
+  std::array<IAggregator*, 1> aggregators{&peaks};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = peaks.result();
+  // 3 scales × 2 peaks = 6 rows expected.
+  ASSERT_EQ(rows.size(), 6u);
+
+  // 1 ms scale: 50, 30.
+  EXPECT_EQ(findPeak(rows, 1'000'000LL, 0)->count, 50u);
+  EXPECT_EQ(findPeak(rows, 1'000'000LL, 1)->count, 30u);
+
+  // 1 s scale: burst 1 (50) and burst 2 (30) still dominate vs the
+  // 1-per-second sparse activity (count = 1 in a 1 s window).
+  EXPECT_GE(findPeak(rows, 1'000'000'000LL, 0)->count, 50u);
+  EXPECT_GE(findPeak(rows, 1'000'000'000LL, 1)->count, 30u);
+
+  // 10 s scale: each burst is the dominant feature within its
+  // ±10 s neighborhood; the second peak is still on burst 2 (the
+  // 3*window = 30 s suppression keeps it from collapsing into
+  // burst 1's neighborhood).
+  const auto* p10_top = findPeak(rows, 10'000'000'000LL, 0);
+  const auto* p10_second = findPeak(rows, 10'000'000'000LL, 1);
+  ASSERT_NE(p10_top, nullptr);
+  ASSERT_NE(p10_second, nullptr);
+  EXPECT_GT(p10_top->count, p10_second->count);
+}
+
+TEST_F(AggregatorFrameworkTest, PeakBooksOnlyFilterIsEmpty)
+{
+  writePeakTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  PeakAggregator peaks({1'000'000LL}, 5, 100, AggregatorEventFilter::BooksOnly);
+  std::array<IAggregator*, 1> aggregators{&peaks};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  EXPECT_TRUE(peaks.result().empty());
+}
+
+TEST_F(AggregatorFrameworkTest, PeakConstructorRejectsBadArgs)
+{
+  EXPECT_THROW(PeakAggregator({}), std::invalid_argument);
+  EXPECT_THROW(PeakAggregator({0}), std::invalid_argument);
+  EXPECT_THROW(PeakAggregator({-1'000'000LL}), std::invalid_argument);
+  EXPECT_THROW(PeakAggregator({1'000'000LL}, 0), std::invalid_argument);
+}
+
+TEST_F(AggregatorFrameworkTest, PeakSymbolFilterScopesToListedSymbols)
+{
+  // Add a second symbol that has its own larger burst; filter to
+  // symbol 1 only and confirm peaks come from symbol 1's bursts, not
+  // the (larger) symbol 2 burst.
+  WriterConfig config{.output_dir = _test_dir,
+                      .index_interval = 1000,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  uint64_t tid = 0;
+  // symbol 1: 20-trade burst at 5 s
+  for (int i = 0; i < 20; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 5'000'000'000LL + i * 1'000LL;
+    t.symbol_id = 1;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  // symbol 2: 100-trade "noise" burst at 30 s (much bigger; would
+  // dominate if not filtered out)
+  for (int i = 0; i < 100; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 30'000'000'000LL + i * 1'000LL;
+    t.symbol_id = 2;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  writer.close();
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  PeakAggregator peaks({1'000'000LL}, /*top_n=*/1, 100,
+                       AggregatorEventFilter::Trades, {1});
+  std::array<IAggregator*, 1> aggregators{&peaks};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = peaks.result();
+  ASSERT_EQ(rows.size(), 1u);
+  EXPECT_EQ(rows[0].count, 20u);
+  EXPECT_GE(rows[0].start_ns, 4'000'000'000LL);
+  EXPECT_LT(rows[0].start_ns, 6'000'000'000LL);
 }
