@@ -29,25 +29,29 @@ Most users record from a live connector. The Python recorder writes the same `.f
 
     ```python
     import flox_py as flox
+    import numpy as np
 
-    rec = flox.MarketDataRecorder(output_dir="/data/bybit/BTCUSDT",
-                                   max_segment_bytes=256 << 20)
-    # Feed trades / book updates from your connector
-    rec.write_trade(trade_record)
-    rec.write_book(book_header, bids, asks)
-    rec.close()
+    w = flox.DataWriter("/data/bybit/BTCUSDT", max_segment_mb=256,
+                        exchange_id=0, compression="none")
+    w.write_trade(exchange_ts_ns=ts, recv_ts_ns=ts, price=p, qty=q,
+                  trade_id=0, symbol_id=1, side=0)
+    bids = np.array([(1005000000000, 50000000, 0)],
+                    dtype=[("price_raw","i8"),("qty_raw","i8"),("side","u1")])
+    asks = np.array([(1005100000000, 30000000, 1)], dtype=bids.dtype)
+    w.write_book(exchange_ts_ns=ts, recv_ts_ns=ts, seq=0, symbol_id=1,
+                 is_snapshot=True, bids=bids, asks=asks)
+    w.close()
     ```
 
 === "Node.js"
 
     ```javascript
-    const rec = new flox.MarketDataRecorder({
-      outputDir: "/data/bybit/BTCUSDT",
-      maxSegmentBytes: 256 << 20,
-    });
-    rec.writeTrade(tradeRecord);
-    rec.writeBook(bookHeader, bids, asks);
-    rec.close();
+    const w = new flox.DataWriter("/data/bybit/BTCUSDT", 256, 0);
+    w.writeTrade(tsNs, tsNs, price, qty, 0n, 1, 0);
+    const bids = new BigInt64Array([1005000000000n, 50000000n]);
+    const asks = new BigInt64Array([1005100000000n, 30000000n]);
+    w.writeBook(tsNs, tsNs, 0n, 1, true, bids, asks);
+    w.close();
     ```
 
 === "C++"

@@ -13,48 +13,76 @@ FLOX writes a custom binary format optimised for sequential writes and fast sequ
 
 ## Basic recording
 
-=== "Python"
+Two ways to write a `.floxlog`:
+
+1. **Attach a `BinaryLogRecorderHook` to a `Runner`** (recommended). The runner feeds trades and book updates straight into the writer on the C++ side — no per-event managed-language callback.
+2. **Use the low-level `DataWriter`** directly when you're synthesising data outside a runner (e.g. converting an arbitrary archive into `.floxlog`).
+
+=== "Python — runner attach"
 
     ```python
     import flox_py as flox
 
-    rec = flox.MarketDataRecorder(
-        output_dir="/data/btcusdt",
-        exchange_name="binance",
-        instrument_type="perpetual",
-        book_depth=20,
-        max_segment_bytes=256 << 20,
+    hook = flox.BinaryLogRecorderHook(
+        "/data/btcusdt",
+        max_segment_mb=256,
+        exchange_id=0,
+        compression="none",   # or "lz4"
     )
-    rec.add_symbol(1, "BTCUSDT", base="BTC", quote="USDT",
-                   price_precision=2, qty_precision=3)
-    rec.start()
+    hook.add_symbol(1, "BTCUSDT", base="BTC", quote="USDT",
+                    price_precision=2, qty_precision=3)
 
-    # Feed events as they arrive — for example from a Runner subscription
-    rec.write_trade(symbol_id=1, price=10050.0, qty=0.5, is_buy=True,
-                     exchange_ts_ns=ts_ns)
-    rec.write_book_snapshot(symbol_id=1, bids=bids_arr, asks=asks_arr,
-                             exchange_ts_ns=ts_ns)
-
-    rec.stop()    # writes metadata.json
+    runner = flox.Runner(registry, on_signal=lambda _s: None)
+    runner.set_market_data_recorder(hook)
+    runner.start()
+    # ... events flow through the runner ...
+    runner.stop()
+    print(hook.stats())
     ```
 
-=== "Node.js"
+=== "Python — direct DataWriter"
+
+    ```python
+    import flox_py as flox
+    import numpy as np
+
+    w = flox.DataWriter("/data/btcusdt", max_segment_mb=256, exchange_id=0,
+                        compression="none")
+    w.write_trade(exchange_ts_ns=ts_ns, recv_ts_ns=ts_ns,
+                  price=10050.0, qty=0.5, trade_id=0, symbol_id=1, side=0)
+
+    bids = np.array([(1005000000000, 50000000, 0)],
+                    dtype=[("price_raw","i8"),("qty_raw","i8"),("side","u1")])
+    asks = np.array([(1005100000000, 30000000, 1)], dtype=bids.dtype)
+    w.write_book(exchange_ts_ns=ts_ns, recv_ts_ns=ts_ns, seq=0,
+                 symbol_id=1, is_snapshot=True, bids=bids, asks=asks)
+    w.close()
+    ```
+
+=== "Node.js — runner attach"
 
     ```javascript
-    const rec = new flox.MarketDataRecorder({
-      outputDir: "/data/btcusdt",
-      exchangeName: "binance",
-      instrumentType: "perpetual",
-      bookDepth: 20,
-      maxSegmentBytes: 256 << 20,
-    });
-    rec.addSymbol(1, "BTCUSDT", "BTC", "USDT", 2, 3);
-    rec.start();
+    const hook = new flox.BinaryLogRecorderHook(
+      "/data/btcusdt", 256, 0, "none");
+    hook.addSymbol(1n, "BTCUSDT", "BTC", "USDT", 2, 3);
 
-    rec.writeTrade(1, 10050.0, 0.5, /*isBuy=*/ true, tsNs);
-    rec.writeBookSnapshot(1, bidPrices, bidQtys, askPrices, askQtys, tsNs);
+    runner.setMarketDataRecorder(hook);
+    runner.start();
+    // ... events flow ...
+    runner.stop();
+    console.log(hook.stats());
+    ```
 
-    rec.stop();
+=== "Node.js — direct DataWriter"
+
+    ```javascript
+    const w = new flox.DataWriter("/data/btcusdt", 256, 0);
+    w.writeTrade(tsNs, tsNs, 10050.0, 0.5, 0n, 1, 0);
+    // Book levels are flat BigInt64Array: [price_raw, qty_raw, ...]
+    const bids = new BigInt64Array([1005000000000n, 50000000n]);
+    const asks = new BigInt64Array([1005100000000n, 30000000n]);
+    w.writeBook(tsNs, tsNs, 0n, 1, true, bids, asks);
+    w.close();
     ```
 
 === "C++"
@@ -88,10 +116,13 @@ FLOX writes a custom binary format optimised for sequential writes and fast sequ
 Subscribe the writer to your market data buses:
 
 ```cpp
-class MarketDataRecorder : public IMarketDataSubscriber
+// Bespoke subscriber that writes both buses into one .floxlog.
+// Functionally equivalent to flox::replay::BinaryLogRecorderHook, but
+// shown here as a worked example of the underlying writer surface.
+class CustomBusRecorder : public IMarketDataSubscriber
 {
 public:
-  MarketDataRecorder(const std::filesystem::path& output_dir)
+  CustomBusRecorder(const std::filesystem::path& output_dir)
     : _writer(createConfig(output_dir)) {}
 
   SubscriberId id() const override {
@@ -145,7 +176,7 @@ private:
 };
 
 // Wire it up
-auto recorder = std::make_unique<MarketDataRecorder>("/data/live");
+auto recorder = std::make_unique<CustomBusRecorder>("/data/live");
 tradeBus->subscribe(recorder.get());
 bookBus->subscribe(recorder.get());
 ```
@@ -223,28 +254,35 @@ Each recording includes a `metadata.json` file with source information:
 }
 ```
 
-### Using MarketDataRecorder
+### Using BinaryLogRecorderHook
 
-The high-level `MarketDataRecorder` automatically creates metadata:
+`flox::replay::BinaryLogRecorderHook` plugs into a Runner / LiveEngine
+via `flox_runner_set_market_data_recorder` and writes both trades and
+books on the engine thread:
 
 ```cpp
-#include "flox/replay/market_data_recorder.h"
+#include "flox/replay/binary_log_recorder_hook.h"
 
-MarketDataRecorderConfig config;
-config.output_dir = "/data/btcusdt";
-config.exchange_name = "binance";
-config.exchange_type = "cex";
-config.instrument_type = "perpetual";
-config.book_depth = 20;
+flox::replay::BinaryLogRecorderHookConfig cfg;
+cfg.output_dir = "/data/btcusdt";
+cfg.max_segment_bytes = 256ull << 20;
+cfg.exchange_id = 0;
+cfg.compression = flox::replay::CompressionType::None;
 
-MarketDataRecorder recorder(config);
+flox::replay::BinaryLogRecorderHook hook(std::move(cfg));
 
-// Add symbol mappings
-recorder.addSymbol(1, "BTCUSDT", "BTC", "USDT", 2, 3);
+flox::replay::SymbolInfo sym;
+sym.symbol_id = 1;
+sym.name = "BTCUSDT";
+sym.base_asset = "BTC";
+sym.quote_asset = "USDT";
+sym.price_precision = 2;
+sym.qty_precision = 3;
+hook.addSymbol(sym);
 
-recorder.start();
-// ... subscribe to market data buses ...
-recorder.stop();  // Writes metadata.json automatically
+// Attach via flox_runner_set_market_data_recorder (see the C-API
+// recorder-hook section); start/stop fire automatically with the
+// runner. metadata.json is written on stop().
 ```
 
 ### Manual Metadata with BinaryLogWriter

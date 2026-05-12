@@ -60,25 +60,30 @@ rounds values past 2^53 (e.g. `1765615835519000000` becomes
 
 ---
 
-## DataRecorder
+## BinaryLogRecorderHook
 
-Records live market data to disk.
+Built-in `.floxlog` recorder. Plug into a `Runner` via
+`runner.setMarketDataRecorder(hook)` and the engine drives `start` /
+`stop` for you.
 
 ```javascript
-const recorder = new flox.DataRecorder(outputDir, exchangeName?, maxSegmentMb?);
-recorder.addSymbol(symbolId, name, base?, quote?, pricePrecision?, qtyPrecision?);
-recorder.start();
-// feed data...
-recorder.stop();
+const hook = new flox.BinaryLogRecorderHook(
+  outputDir, maxSegmentMb /*=256*/, exchangeId /*=0*/, compression /*"none"|"lz4"*/);
+hook.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
+
+runner.setMarketDataRecorder(hook);
+runner.start();
+// ... events flow ...
+runner.stop();
+console.log(hook.stats());
 ```
 
-| Method / Property | Description |
-|-------------------|-------------|
-| `addSymbol(symbolId, name, base?, quote?, pricePrecision?, qtyPrecision?)` | Register a symbol for recording |
-| `start()` | Start recording |
-| `stop()` | Stop recording |
-| `flush()` | Flush buffers to disk |
-| `isRecording` | `boolean` property |
+| Method | Description |
+|--------|-------------|
+| `addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision)` | Register a symbol in the recording metadata. |
+| `flush()` | Flush buffered bytes to disk. |
+| `stats()` | Returns `{ tradesWritten, bookUpdatesWritten, bytesWritten, segmentsCreated, errors }` as BigInts. |
+| `destroy()` | Release the underlying C-API handle. |
 
 ---
 

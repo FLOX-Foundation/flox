@@ -7,7 +7,7 @@ from flox.tools import (
     OrderBook, L3Book, CompositeBook,
     PositionTracker, PositionGroupTracker, OrderTracker,
     VolumeProfile, MarketProfile, FootprintBar,
-    DataWriter, DataReader, DataRecorder, Partitioner,
+    DataWriter, DataReader, BinaryLogRecorderHook, Partitioner,
     correlation, profit_factor, win_rate,
     permutation_test, bootstrap_ci,
     validate_segment, merge_segments, merge_dir,
@@ -276,23 +276,23 @@ events = reader.read_book_updates()
 
 `BookUpdate` fields: `exchange_ts_ns`, `recv_ts_ns`, `seq`, `symbol_id`, `event_type`, `bids: List[BookLevel]`, `asks: List[BookLevel]`.
 
-### DataRecorder
+### BinaryLogRecorderHook
 
 ```codon
-recorder = DataRecorder("./data", exchange_name="binance", max_segment_mb=256)
-recorder.add_symbol(symbol_id, "BTCUSDT", base="BTC", quote="USDT")
-recorder.start()
-# feed live data...
-recorder.stop()
+hook = BinaryLogRecorderHook("./data", max_segment_mb=256,
+                              exchange_id=0, compression="none")
+hook.add_symbol(symbol_id, "BTCUSDT", base="BTC", quote="USDT")
+# attach via the runner's market-data-recorder slot;
+# lifecycle is driven by the engine.
 ```
 
-| Method / Property | Description |
-|-------------------|-------------|
-| `add_symbol(symbol_id, name, base="", quote="", price_precision=8, qty_precision=8)` | Register a symbol |
-| `start()` | Start recording |
-| `stop()` | Stop recording |
-| `flush()` | Flush buffers to disk |
-| `is_recording` | `bool` property |
+| Method | Description |
+|--------|-------------|
+| `add_symbol(symbol_id, name, base="", quote="", price_precision=8, qty_precision=8)` | Register a symbol in the recording metadata. |
+| `flush()` | Flush buffered bytes to disk. |
+| `stats()` | Returns trade / book / byte counters. |
+| `close()` | Stop the underlying writer (idempotent). |
+| `_as_recorder_handle()` | Borrowed `FloxMarketDataRecorderHandle` for runner attach. |
 
 ---
 

@@ -13,4 +13,4 @@ Full API for `@flox-foundation/flox`. See [Getting started](../../bindings/node.
 | [Order books](books.md) | OrderBook, L3Book, CompositeBookMatrix |
 | [Position tracking](positions.md) | PositionTracker, PositionGroupTracker, OrderTracker |
 | [Profiles & statistics](profiles.md) | VolumeProfile, MarketProfile, FootprintBar, statistics functions |
-| [Data I/O](data.md) | DataWriter, DataReader, DataRecorder, Partitioner |
+| [Data I/O](data.md) | DataWriter, DataReader, BinaryLogRecorderHook, Partitioner |

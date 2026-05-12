@@ -176,4 +176,4 @@ If no cross-block inversions are detected during recording, the segment is marke
 
 * [Binary Format](binary_format.md) — File format specification
 * [BinaryLogReader](binary_log_reader.md) — Reading segments
-* [MarketDataRecorder](market_data_recorder.md) — High-level recording interface
+* [BinaryLogRecorderHook](market_data_recorder.md) — High-level recording interface

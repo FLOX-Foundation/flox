@@ -125,13 +125,14 @@ Record shapes:
 ```javascript
 const writer = new DataWriter('./out', maxSegmentMb, exchangeId);
 writer.writeTrade(exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side);
+// Raw int64 book levels — flat BigInt64Array as [price_raw, qty_raw, ...]
+writer.writeBook(exchangeTsNs, recvTsNs, seqNs, symbolId, isSnapshot, bidsBuf, asksBuf);
 writer.flush();
 writer.close();
 writer.stats();          // { bytesWritten, eventsWritten, segmentsCreated, tradesWritten }
 
-const recorder = new DataRecorder('./out', exchangeName, maxSegmentMb);
-recorder.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
-recorder.start();
-// feed live data...
-recorder.stop();
+const hook = new BinaryLogRecorderHook('./out', maxSegmentMb, exchangeId, 'none');
+hook.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
+// attach via the runner's market-data-recorder slot; lifecycle is engine-driven.
+hook.destroy();
 ```
