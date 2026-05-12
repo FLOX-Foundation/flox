@@ -65,6 +65,7 @@ from C import flox_backtest_runner_set_strategy(cobj, cobj)
 from C import flox_backtest_runner_run_csv(cobj, cobj, cobj, Ptr[i64]) -> i32
 from C import flox_backtest_runner_run_ohlcv(cobj, Ptr[i64], Ptr[float], u32, cobj, Ptr[i64]) -> i32
 from C import flox_backtest_runner_run_tape(cobj, cobj, Ptr[i64]) -> i32
+from C import flox_backtest_runner_run_tapes(cobj, Ptr[cobj], u32, Ptr[i64]) -> i32
 from C import flox_backtest_runner_run_bars(cobj, Ptr[i64], Ptr[i64],
                                               Ptr[float], Ptr[float], Ptr[float],
                                               Ptr[float], Ptr[float],
@@ -368,6 +369,32 @@ class BacktestRunner:
             self._handle, path.c_str(), buf.arr.ptr)
         if ok == i32(0):
             raise ValueError(f"BacktestRunner.run_tape failed: {path}")
+        return self._parse_stats(buf)
+
+    def run_tapes(self, paths: List[str]) -> BacktestStats:
+        """Replay N `.floxlog` tape directories merged on read.
+        Symbols are rekeyed by ``(metadata.exchange, name)``; events
+        are delivered to Strategy.on_trade in global time order across
+        tapes. Returns the aggregated BacktestStats. Raises on bad
+        input, overlapping book streams, or any per-tape decode error
+        (the C ABI returns 0 in those cases)."""
+        n_paths = len(paths)
+        if n_paths == 0:
+            raise ValueError("BacktestRunner.run_tapes: paths must be non-empty")
+        # Build a cobj[] of c_str pointers; the c_str buffers must remain
+        # alive for the duration of the FFI call, so we hold them in
+        # path_bufs alongside path_ptrs.
+        path_ptrs = [cobj() for _ in range(n_paths)]
+        path_bufs = list[Ptr[byte]]()
+        for i in range(n_paths):
+            buf_i = paths[i].c_str()
+            path_bufs.append(buf_i)
+            path_ptrs[i] = buf_i
+        buf = [i64(0)] * 29
+        ok = flox_backtest_runner_run_tapes(
+            self._handle, path_ptrs.arr.ptr, u32(n_paths), buf.arr.ptr)
+        if ok == i32(0):
+            raise ValueError("BacktestRunner.run_tapes failed")
         return self._parse_stats(buf)
 
     def run_ohlcv(self, timestamps: List[int], closes: List[float],

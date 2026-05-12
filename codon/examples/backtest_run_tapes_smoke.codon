@@ -1,0 +1,148 @@
+# Smoke test: BacktestRunner.run_tapes -- multi-tape merged backtest replay.
+#
+# Covers W14-T017 acceptance for the Codon binding:
+#   * `run_tapes([t])` matches `run_tape(t)` field-by-field for at least
+#     a handful of FloxBacktestStats fields (single-tape merge is a no-op)
+#   * `run_tapes([t1, t2])` runs two tapes from distinct venues to
+#     completion and returns sane initial/final capital
+#   * empty paths list raises ValueError (mirrors the pybind binding)
+
+import os
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import flox_runner_create(cobj, cobj, cobj) -> cobj
+from C import flox_runner_destroy(cobj)
+from C import flox_runner_start(cobj)
+from C import flox_runner_stop(cobj)
+from C import flox_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import flox_runner_set_market_data_recorder(cobj, cobj)
+
+from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
+
+from flox.runner import BacktestRunner
+from flox.strategy import Strategy
+from flox.tools import BinaryLogRecorderHook
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+def write_tape(out_dir: str, exchange: str, symbol_name: str,
+               trades: List[Tuple[int, float, float, bool]],
+               exchange_id: int = 0):
+    """Write a single .floxlog at out_dir via a Runner + BinaryLogRecorderHook."""
+    registry = flox_registry_create()
+    sym = int(flox_registry_add_symbol(
+        registry, exchange.c_str(), symbol_name.c_str(), 0.01))
+
+    hook = BinaryLogRecorderHook(
+        out_dir, max_segment_mb=4,
+        exchange_id=exchange_id, compression="none",
+        exchange_name=exchange, instrument_type="perpetual")
+    hook.add_symbol(sym, symbol_name, "", "", 2, 6)
+
+    runner = flox_runner_create(registry, cobj(), cobj())
+    flox_runner_set_market_data_recorder(
+        runner, flox_binary_log_recorder_hook_as_recorder(hook._h))
+    flox_runner_start(runner)
+
+    for entry in trades:
+        ts_ns, price, qty, is_buy = entry
+        flox_runner_on_trade(runner, u32(sym), price, qty,
+                              u8(1 if is_buy else 0), i64(ts_ns))
+
+    flox_runner_stop(runner)
+    flox_runner_destroy(runner)
+    hook.close()
+    flox_registry_destroy(registry)
+
+
+root = "/tmp/codon_backtest_run_tapes_smoke"
+t1 = root + "/bybit"
+t2 = root + "/binance"
+# Clean up any leftover dirs from a prior run so this stays reproducible.
+os.system("rm -rf " + root)
+os.system("mkdir -p " + t1)
+os.system("mkdir -p " + t2)
+
+base_ns = 1_700_000_000_000_000_000
+write_tape(t1, "bybit", "BTCUSDT",
+           [(base_ns + i * 1_000_000, 50000.0 + float(i), 0.1, i % 2 == 0)
+            for i in range(20)],
+           exchange_id=1)
+write_tape(t2, "binance", "ETHUSDT",
+           [(base_ns + 500_000 + i * 1_000_000, 3000.0 + float(i), 1.0, False)
+            for i in range(8)],
+           exchange_id=2)
+
+
+# ── 1. Empty paths list raises ValueError ────────────────────────────────
+
+reg0 = flox_registry_create()
+bt0 = BacktestRunner(reg0, fee_rate=0.0, initial_capital=10_000.0)
+strat0 = Strategy(list[int](), strategy_id=1, registry=reg0)
+bt0.set_strategy(strat0)
+threw = False
+try:
+    bt0.run_tapes(list[str]())
+except ValueError:
+    threw = True
+check("empty paths raises ValueError", threw)
+bt0.close()
+flox_registry_destroy(reg0)
+
+
+# ── 2. run_tapes([t]) ≡ run_tape(t) on shared stats fields ───────────────
+#
+# A single-tape merge is a no-op; both code paths drive the engine through
+# the same event sequence, so the aggregated stats must agree.
+
+reg1 = flox_registry_create()
+bt1 = BacktestRunner(reg1, fee_rate=0.0, initial_capital=10_000.0)
+strat1 = Strategy(list[int](), strategy_id=1, registry=reg1)
+bt1.set_strategy(strat1)
+single = bt1.run_tape(t1)
+
+reg2 = flox_registry_create()
+bt2 = BacktestRunner(reg2, fee_rate=0.0, initial_capital=10_000.0)
+strat2 = Strategy(list[int](), strategy_id=1, registry=reg2)
+bt2.set_strategy(strat2)
+multi = bt2.run_tapes([t1])
+
+check("total_trades matches", single.total_trades == multi.total_trades)
+check("initial_capital matches",
+      single.initial_capital == multi.initial_capital)
+check("final_capital matches",
+      single.final_capital == multi.final_capital)
+check("net_pnl matches", single.net_pnl == multi.net_pnl)
+check("total_fees matches", single.total_fees == multi.total_fees)
+
+bt1.close()
+bt2.close()
+flox_registry_destroy(reg1)
+flox_registry_destroy(reg2)
+
+
+# ── 3. run_tapes([t1, t2]) runs two venues to completion ─────────────────
+
+reg3 = flox_registry_create()
+bt3 = BacktestRunner(reg3, fee_rate=0.0, initial_capital=10_000.0)
+strat3 = Strategy(list[int](), strategy_id=1, registry=reg3)
+bt3.set_strategy(strat3)
+stats = bt3.run_tapes([t1, t2])
+check("two-tape initial_capital == 10000",
+      stats.initial_capital == 10_000.0)
+check("two-tape final_capital == 10000 (no orders emitted)",
+      stats.final_capital == 10_000.0)
+check("two-tape total_trades == 0", stats.total_trades == 0)
+bt3.close()
+flox_registry_destroy(reg3)
+
+
+print("done")

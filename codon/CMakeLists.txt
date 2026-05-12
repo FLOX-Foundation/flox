@@ -98,3 +98,6 @@ add_codon_executable(codon_strategy_e2e_smoke
 
 add_codon_executable(codon_merged_tape_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/merged_tape_smoke.codon)
+
+add_codon_executable(codon_backtest_run_tapes_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/backtest_run_tapes_smoke.codon)
