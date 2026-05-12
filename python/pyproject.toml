@@ -26,7 +26,16 @@ Repository = "https://github.com/FLOX-Foundation/flox"
 flox = "flox_py.cli:main"
 
 [tool.scikit-build]
-cmake.args = ["-DFLOX_ENABLE_BACKTEST=ON", "-DFLOX_BUILD_PYTHON=ON", "-DFLOX_ENABLE_LZ4=ON"]
+cmake.args = [
+    "-DFLOX_ENABLE_BACKTEST=ON",
+    "-DFLOX_BUILD_PYTHON=ON",
+    "-DFLOX_ENABLE_LZ4=ON",
+    # Wheels run on machines the build host knows nothing about; pin to
+    # the portable x86-64-v3 baseline (or compiler-default on non-x86)
+    # so the shipped .so does not require AVX-512 or other build-host-
+    # specific instructions.
+    "-DFLOX_NATIVE=OFF",
+]
 cmake.source-dir = ".."
 # Ship the package directory (pure-Python wrapper, .pyi stubs, py.typed
 # marker). The compiled `_flox_py` extension is copied into this same

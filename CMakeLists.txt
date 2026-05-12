@@ -54,6 +54,32 @@ if(WIN32)
   target_compile_definitions(${FLOX} PUBLIC NOMINMAX)
 endif()
 
+# FLOX_NATIVE controls whether Release builds target the build machine's
+# instruction set (`-march=native`) or a portable baseline. `native` is
+# fastest but ties the resulting binary to the build host — if the build
+# CPU has AVX-512 and the runtime CPU does not, the process dies with
+# SIGILL on the first vector instruction. Default ON preserves the
+# historical local-dev behaviour; wheel/binary distribution paths
+# (python/pyproject.toml) flip it OFF.
+option(FLOX_NATIVE
+  "Compile Release with -march=native. Disable for distributable artifacts."
+  ON)
+
+if(NOT MSVC)
+  if(FLOX_NATIVE)
+    set(FLOX_ARCH_OPT -march=native)
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    # x86-64-v3 = AVX2 + BMI2 + FMA, baseline for Haswell/Excavator
+    # (~2015) and up. Covers the vast majority of distribution targets
+    # without requiring AVX-512.
+    set(FLOX_ARCH_OPT -march=x86-64-v3)
+  else()
+    # arm64/aarch64 etc.: compiler default is portable enough; macOS
+    # arm64 wheels are arch-tagged anyway so native vs. baseline is moot.
+    set(FLOX_ARCH_OPT "")
+  endif()
+endif()
+
 if(MSVC)
   target_compile_options(${FLOX} PUBLIC
     $<$<CONFIG:Release>:/O2 /GL>
@@ -62,8 +88,12 @@ if(MSVC)
     $<$<CONFIG:Release>:/LTCG>
   )
 else()
+  set(FLOX_RELEASE_OPTS -O3 -flto -funroll-loops)
+  if(FLOX_ARCH_OPT)
+    list(APPEND FLOX_RELEASE_OPTS ${FLOX_ARCH_OPT})
+  endif()
   target_compile_options(${FLOX} PUBLIC
-    $<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
+    $<$<CONFIG:Release>:${FLOX_RELEASE_OPTS}>
   )
   # LTO requires -flto flag at link time as well
   target_link_options(${FLOX} PUBLIC
@@ -94,7 +124,7 @@ else()
   target_compile_definitions(${FLOX} PUBLIC FLOX_NUMA_LIBRARY_LINKED=0)
 endif()
 
-option(FLOX_ENABLE_LZ4 "Enable LZ4 compression for binary logs" OFF)
+option(FLOX_ENABLE_LZ4 "Enable LZ4 compression for binary logs" ON)
 if(FLOX_ENABLE_LZ4)
   # Try find_package first (works with vcpkg on Windows)
   find_package(lz4 CONFIG QUIET)
