@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinaryLogRecorderHook', 'Bollinger', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyModel', 'LatencySample', 'LegState', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'REVERTING', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'BinaryLogRecorderHook', 'Bollinger', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyModel', 'LatencySample', 'LegState', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PositionGroupTracker', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -26,6 +26,48 @@ class ATR:
         ...
     @property
     def value(self) -> float | None:
+        ...
+class AggregatorEventFilter:
+    """
+    Which event kinds an aggregator counts. Trades = TradeRecord only, BooksOnly = BookSnapshot + BookDelta only, Both = every event.
+    
+    Members:
+    
+      Trades
+    
+      BooksOnly
+    
+      Both
+    """
+    BooksOnly: typing.ClassVar[AggregatorEventFilter]  # value = <AggregatorEventFilter.BooksOnly: 2>
+    Both: typing.ClassVar[AggregatorEventFilter]  # value = <AggregatorEventFilter.Both: 3>
+    Trades: typing.ClassVar[AggregatorEventFilter]  # value = <AggregatorEventFilter.Trades: 1>
+    __members__: typing.ClassVar[dict[str, AggregatorEventFilter]]  # value = {'Trades': <AggregatorEventFilter.Trades: 1>, 'BooksOnly': <AggregatorEventFilter.BooksOnly: 2>, 'Both': <AggregatorEventFilter.Both: 3>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
         ...
 class AutoCorrelation:
     def __init__(self, window: typing.SupportsInt | typing.SupportsIndex, lag: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -208,6 +250,16 @@ class BarDispatchRecorder:
         ...
     def type_at(self, index: typing.SupportsInt | typing.SupportsIndex) -> int:
         ...
+class BinCountAggregator(_AggregatorHandle):
+    """
+    Time-bucketed event count. Each event floors to its bucket (floor(exchange_ts_ns / bucket_ns) * bucket_ns) and increments the (bucket, optional symbol, optional side) cell. Result is a flat structured numpy array of (bucket, symbol_id, side, count) rows.
+    """
+    def __init__(self, bucket_ns: typing.SupportsInt | typing.SupportsIndex, by_side: bool = False, by_symbol: bool = False, event_filter: AggregatorEventFilter = ..., symbol_filter: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = []) -> None:
+        ...
+    def result(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
+        """
+        Structured numpy: (bucket_ts_ns i8, symbol_id u4, side u1, count u8). side encoding: 0 = aggregate, 1 = BUY, 2 = SELL. symbol_id is 0 when by_symbol=False.
+        """
 class BinaryLogRecorderHook:
     def __init__(self, output_dir: str, max_segment_mb: typing.SupportsInt | typing.SupportsIndex = 256, exchange_id: typing.SupportsInt | typing.SupportsIndex = 0, compression: str = 'none', exchange_name: str = '', instrument_type: str = '') -> None:
         """
@@ -401,6 +453,10 @@ class DataReader:
         """
         Read trades starting from a given timestamp (nanoseconds)
         """
+    def run(self, aggregators: list) -> bool:
+        """
+        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk.
+        """
     def segment_files(self) -> list:
         """
         Return list of segment file paths
@@ -544,6 +600,16 @@ class Engine:
     @property
     def symbols(self) -> list:
         ...
+class EventTypeStatsAggregator(_AggregatorHandle):
+    """
+    Per-symbol counters split by event kind (trade / book_snapshot / book_delta). Cheapest of the native aggregators; useful as the 'what's in this tape' overview.
+    """
+    def __init__(self, event_filter: AggregatorEventFilter = ..., symbol_filter: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = []) -> None:
+        ...
+    def result(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
+        """
+        Structured numpy array with fields (symbol_id u4, trades u8, book_snapshots u8, book_deltas u8). Sorted by symbol_id ascending. Empty until DataReader.run() has called finalize().
+        """
 class ExchangeCapabilities:
     close_position: bool
     fok: bool
@@ -1033,6 +1099,10 @@ class MergedTapeReader:
         """
         Merged trades as PyTrade structured numpy array, sorted by exchange_ts_ns; tie-break by tape order.
         """
+    def run(self, aggregators: list) -> bool:
+        """
+        Run a panel of streaming aggregators over the merged tape stream in a single decompression pass. Same semantics as DataReader.run — events are seen with global-rewritten symbol ids; per-tape provenance is not surfaced to aggregators (reach for stream_events directly when needed).
+        """
     def stream_events(self, on_trade: typing.Any = None, on_book: typing.Any = None) -> None:
         """
         Walk the merged stream via N-way heap merge (O(N tapes) peak memory). Calls on_trade(exchange_ts_ns, recv_ts_ns, price_raw, qty_raw, symbol_id, tape_index, side) and on_book(exchange_ts_ns, recv_ts_ns, symbol_id, tape_index, is_snapshot, bids, asks). bids/asks are lists of (price_raw, qty_raw) tuples. Returning False from either aborts the walk.
@@ -1488,6 +1558,16 @@ class Partitioner:
         ...
     def partition_per_symbol(self) -> list:
         ...
+class PeakAggregator(_AggregatorHandle):
+    """
+    Streaming top-N busiest fixed-width windows per scale. For each window_ns in the constructor list, finds the top_n time intervals that pack the most events into a window of that width. Peaks within 3*window_ns of a stronger one are deduped at finalize().
+    """
+    def __init__(self, window_ns_list: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], top_n: typing.SupportsInt | typing.SupportsIndex = 10, oversample_factor: typing.SupportsInt | typing.SupportsIndex = 100, event_filter: AggregatorEventFilter = ..., symbol_filter: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = []) -> None:
+        ...
+    def result(self) -> dict:
+        """
+        dict[window_ns -> list[(count, start_ns)]] — peaks per scale, sorted by count descending after dedup.
+        """
 class PnLTracker:
     def __init__(self) -> None:
         ...
@@ -1578,6 +1658,16 @@ class PositionTracker:
     def total_realized_pnl(self) -> float:
         """
         Total realized PnL across all symbols
+        """
+class QuantileAggregator(_AggregatorHandle):
+    """
+    Window-count distribution + quantile lookup. For each window_ns, observes the count of events inside a sliding window of that width at every event arrival, builds a histogram, and at finalize() resolves each requested quantile to the count threshold below which that fraction of observations lies.
+    """
+    def __init__(self, window_ns_list: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], quantiles: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], event_filter: AggregatorEventFilter = ..., symbol_filter: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = []) -> None:
+        ...
+    def result(self) -> dict:
+        """
+        dict[window_ns -> dict[quantile -> count]].
         """
 class RMA:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -2373,6 +2463,16 @@ class TradeData:
     @timestamp_ns.setter
     def timestamp_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
+class VolumeBinAggregator(_AggregatorHandle):
+    """
+    Time-bucketed trade quantity sum. Same bucketing structure as BinCountAggregator but sums trade.qty_raw per cell instead of counting. Books are ignored (no scalar qty per book event).
+    """
+    def __init__(self, bucket_ns: typing.SupportsInt | typing.SupportsIndex, by_side: bool = False, by_symbol: bool = False, event_filter: AggregatorEventFilter = ..., symbol_filter: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = []) -> None:
+        ...
+    def result(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
+        """
+        Structured numpy: (bucket_ts_ns i8, symbol_id u4, side u1, qty_raw i8). qty_raw is fixed-point — divide by Quantity::SCALE to get floats.
+        """
 class VolumeProfile:
     """
     Volume Profile aggregator. Tracks volume distribution across price levels.
@@ -2410,6 +2510,8 @@ class WalkForwardRunner:
         """
         Callable[[int], Strategy] — receives fold_index, returns a fresh Strategy instance per fold (called twice per fold: train + test).
         """
+class _AggregatorHandle:
+    pass
 class _ExecOrderType:
     """
     Members:

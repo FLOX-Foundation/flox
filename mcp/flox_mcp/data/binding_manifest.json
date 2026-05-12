@@ -5796,6 +5796,10 @@
         },
         {
           "kind": "class",
+          "name": "AggregatorEventFilter"
+        },
+        {
+          "kind": "class",
           "name": "AutoCorrelation"
         },
         {
@@ -5813,6 +5817,10 @@
         {
           "kind": "class",
           "name": "BarDispatchRecorder"
+        },
+        {
+          "kind": "class",
+          "name": "BinCountAggregator"
         },
         {
           "kind": "class",
@@ -5869,6 +5877,10 @@
         {
           "kind": "class",
           "name": "Engine"
+        },
+        {
+          "kind": "class",
+          "name": "EventTypeStatsAggregator"
         },
         {
           "kind": "class",
@@ -6008,6 +6020,10 @@
         },
         {
           "kind": "class",
+          "name": "PeakAggregator"
+        },
+        {
+          "kind": "class",
           "name": "PnLTracker"
         },
         {
@@ -6017,6 +6033,10 @@
         {
           "kind": "class",
           "name": "PositionTracker"
+        },
+        {
+          "kind": "class",
+          "name": "QuantileAggregator"
         },
         {
           "kind": "class",
@@ -6128,11 +6148,19 @@
         },
         {
           "kind": "class",
+          "name": "VolumeBinAggregator"
+        },
+        {
+          "kind": "class",
           "name": "VolumeProfile"
         },
         {
           "kind": "class",
           "name": "WalkForwardRunner"
+        },
+        {
+          "kind": "class",
+          "name": "_AggregatorHandle"
         },
         {
           "kind": "class",

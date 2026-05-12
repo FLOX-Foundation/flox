@@ -783,6 +783,7 @@ PYBIND11_MODULE(_flox_py, m)
   bindProfiles(m);
   bindPositions(m);
   bindReplay(m);
+  flox_py::bindTapeAggregators(m);
   bindSegmentOps(m);
   bindBacktest(m);
   flox_py::bindWalkForward(m);

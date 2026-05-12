@@ -15,6 +15,7 @@
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/recording_metadata.h"
 #include "flox/replay/writers/binary_log_writer.h"
+#include "tape_aggregator_bindings.h"
 
 #include <cstring>
 #include <memory>
@@ -508,6 +509,22 @@ class PyDataReader
     return d;
   }
 
+  // Streaming aggregator dispatch. Walks the tape once, forwarding each
+  // event to every IPyAggregator wrapper's underlying IAggregator, then
+  // calls finalize() on each. Empty list is a no-op (no decompression).
+  // GIL released for the whole walk — concrete aggregators must be
+  // self-contained (no Python crossings) for this to be safe.
+  bool run(py::list py_aggregators)
+  {
+    auto raw = flox_py::collectAggregators(py_aggregators);
+    bool ok;
+    {
+      py::gil_scoped_release release;
+      ok = _reader.run(raw);
+    }
+    return ok;
+  }
+
   py::list segmentFiles()
   {
     auto files = _reader.segmentFiles();
@@ -932,6 +949,21 @@ class PyMergedTapeReader
           return true;
         });
   }
+
+  // Streaming aggregator dispatch over the merged stream. Same
+  // contract as PyDataReader::run — empty list is a no-op, otherwise
+  // every aggregator's onEvent fires once per merged event and
+  // finalize() once at the end. GIL released around the whole walk.
+  bool run(py::list py_aggregators)
+  {
+    auto raw = flox_py::collectAggregators(py_aggregators);
+    bool ok;
+    {
+      py::gil_scoped_release release;
+      ok = _reader.run(raw);
+    }
+    return ok;
+  }
 };
 
 }  // namespace
@@ -1064,7 +1096,13 @@ inline void bindReplay(py::module_& m)
       .def("segment_files", &PyDataReader::segmentFiles,
            "Return list of segment file paths")
       .def("segments", &PyDataReader::segments,
-           "Return list of segment info dicts");
+           "Return list of segment info dicts")
+      .def("run", &PyDataReader::run,
+           "Run a panel of streaming aggregators over the tape in a single "
+           "decompression pass. Each aggregator's onEvent fires once per "
+           "event, then finalize() fires once at the end. An empty list is "
+           "a no-op (no decompression). GIL released for the whole walk.",
+           py::arg("aggregators"));
 
   // DataWriter
   py::class_<PyDataWriter>(m, "DataWriter")
@@ -1170,5 +1208,12 @@ inline void bindReplay(py::module_& m)
            "lists of (price_raw, qty_raw) tuples. Returning False "
            "from either aborts the walk.",
            py::arg("on_trade") = py::none(),
-           py::arg("on_book") = py::none());
+           py::arg("on_book") = py::none())
+      .def("run", &PyMergedTapeReader::run,
+           "Run a panel of streaming aggregators over the merged tape "
+           "stream in a single decompression pass. Same semantics as "
+           "DataReader.run — events are seen with global-rewritten "
+           "symbol ids; per-tape provenance is not surfaced to "
+           "aggregators (reach for stream_events directly when needed).",
+           py::arg("aggregators"));
 }
