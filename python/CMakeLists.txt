@@ -13,8 +13,16 @@ target_include_directories(_flox_py PRIVATE
 )
 
 if(NOT MSVC)
+  # FLOX_ARCH_OPT is computed in the top-level CMakeLists.txt and
+  # honours the FLOX_NATIVE option. Wheel builds set FLOX_NATIVE=OFF via
+  # python/pyproject.toml so the shipped .so does not require AVX-512
+  # (or whatever ISA the build host happened to expose).
+  set(_FLOX_PY_OPTS -O3 -flto)
+  if(FLOX_ARCH_OPT)
+    list(APPEND _FLOX_PY_OPTS ${FLOX_ARCH_OPT})
+  endif()
   target_compile_options(_flox_py PRIVATE
-    $<$<CONFIG:Release>:-O3 -march=native -flto>
+    $<$<CONFIG:Release>:${_FLOX_PY_OPTS}>
   )
 endif()
 
