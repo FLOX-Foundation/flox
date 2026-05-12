@@ -193,6 +193,38 @@ class CliTapeTests(unittest.TestCase):
         # Unknown quote → pass through unchanged so the user can fix.
         self.assertEqual(cli._normalize_ccxt_symbol("FOOBAR"), "FOOBAR")
 
+    def test_parse_venue_single_symbol(self) -> None:
+        self.assertEqual(
+            cli._parse_venue_arg("bybit:BTC/USDT:USDT"),
+            ("bybit", ["BTC/USDT:USDT"]),
+        )
+
+    def test_parse_venue_multi_symbol(self) -> None:
+        self.assertEqual(
+            cli._parse_venue_arg("bitget:BTC/USDT:USDT,ETH/USDT:USDT"),
+            ("bitget", ["BTC/USDT:USDT", "ETH/USDT:USDT"]),
+        )
+
+    def test_parse_venue_trims_whitespace(self) -> None:
+        self.assertEqual(
+            cli._parse_venue_arg("  binance : BTC/USDT , ETH/USDT  "),
+            ("binance", ["BTC/USDT", "ETH/USDT"]),
+        )
+
+    def test_parse_venue_rejects_missing_colon(self) -> None:
+        with self.assertRaises(ValueError):
+            cli._parse_venue_arg("bybit")
+
+    def test_parse_venue_rejects_missing_exchange(self) -> None:
+        with self.assertRaises(ValueError):
+            cli._parse_venue_arg(":BTC/USDT")
+
+    def test_parse_venue_rejects_no_symbols(self) -> None:
+        with self.assertRaises(ValueError):
+            cli._parse_venue_arg("bybit:")
+        with self.assertRaises(ValueError):
+            cli._parse_venue_arg("bybit:,,,")
+
 
 if __name__ == "__main__":
     unittest.main()

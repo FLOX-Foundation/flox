@@ -8595,6 +8595,7 @@ Market Profile (TPO) aggregator. Tracks price activity across time periods.
 - `read_books(self) -> tuple`
 - `read_trades(self) -> numpy.ndarray`
 - `stream_events(self, on_trade: typing.Any = None, on_book: typing.Any = None) -> None`
+- `summary(self) -> dict`
 - `symbol_table(self) -> list`
 - `time_range(self) -> tuple`
 

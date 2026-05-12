@@ -54,6 +54,7 @@ void MergedTapeReader::loadManifests()
   _manifests.reserve(_config.tape_dirs.size());
   _local_to_global.resize(_config.tape_dirs.size());
   _per_tape_stats.reserve(_config.tape_dirs.size());
+  _inspect_total_events.reserve(_config.tape_dirs.size());
 
   std::unordered_map<std::string, uint32_t> key_to_global;
   auto canon_key = [](const std::string& exchange, const std::string& name)
@@ -136,6 +137,7 @@ void MergedTapeReader::loadManifests()
     st.first_event_ns = summary.first_event_ns;
     st.last_event_ns = summary.last_event_ns;
     _per_tape_stats.push_back(st);
+    _inspect_total_events.push_back(summary.total_events);
 
     if (summary.total_events > 0)
     {
@@ -646,6 +648,36 @@ std::unique_ptr<IMultiSegmentReader>
 MergedTapeReader::asMultiSegmentReader()
 {
   return std::make_unique<MergedAsMultiSegmentReader>(this);
+}
+
+MergedTapeReader::Summary MergedTapeReader::summary() const noexcept
+{
+  Summary s{};
+  s.first_event_ns = _time_range.first;
+  s.last_event_ns = _time_range.second;
+  s.tape_count = static_cast<uint32_t>(_per_tape_stats.size());
+  s.symbol_count = static_cast<uint32_t>(_symbols.size());
+  // Prefer the actual contribution counts if `readTrades`/`readBooks`
+  // already ran (post-filter, exact). Otherwise fall back to the
+  // construction-time `BinaryLogReader::inspect` totals so freshly
+  // built readers report a meaningful event count.
+  uint64_t contributed = 0;
+  for (const auto& t : _per_tape_stats)
+  {
+    contributed += t.trades + t.books;
+  }
+  if (contributed > 0)
+  {
+    s.total_events = contributed;
+  }
+  else
+  {
+    for (auto n : _inspect_total_events)
+    {
+      s.total_events += n;
+    }
+  }
+  return s;
 }
 
 }  // namespace flox::replay

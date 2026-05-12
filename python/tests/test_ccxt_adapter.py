@@ -655,6 +655,158 @@ class CcxtBrokerTests(unittest.TestCase):
         # 1.0, 3.0, then capped at 4.0 from there on.
         self.assertEqual(delays, [1.0, 3.0, 4.0, 4.0, 4.0])
 
+    # ── book_depth resolution ────────────────────────────────────────
+    def test_book_depth_none_omits_limit_kwarg(self):
+        """`book_depth=None` on a non-overridden venue → ccxt picks its
+        own default (we don't pass `limit`)."""
+        seen_limits = []
+
+        class RecordingFake(FakeCcxtExchange):
+            async def watch_order_book(self, symbol, limit=None):
+                seen_limits.append(limit)
+                if self._book_q is None:
+                    await asyncio.sleep(3600)
+                return await self._book_q.get()
+
+        fake = RecordingFake()
+        broker = CcxtBroker("binance", exchange=fake)
+
+        async def go():
+            await broker.add_symbol("BTC/USDT")
+            fake.init_queues()
+            fake.feed_book({"bids": [[1.0, 1.0]], "asks": [[1.1, 1.0]],
+                            "timestamp": 1})
+            run_task = asyncio.create_task(
+                broker.run(streams=("book",), book_depth=None,
+                           reconcile=False)
+            )
+            await asyncio.sleep(0.05)
+            await broker.stop()
+            try:
+                await run_task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(go())
+        self.assertTrue(seen_limits, "watch_order_book was never called")
+        self.assertIsNone(seen_limits[0])
+
+    def test_book_depth_bitget_override_applies(self):
+        """`book_depth=None` on bitget → broker resolves to 15 (the venue
+        rejects ccxt's default of 50 with code 30016)."""
+        seen_limits = []
+
+        class RecordingFake(FakeCcxtExchange):
+            async def watch_order_book(self, symbol, limit=None):
+                seen_limits.append(limit)
+                if self._book_q is None:
+                    await asyncio.sleep(3600)
+                return await self._book_q.get()
+
+        fake = RecordingFake()
+        broker = CcxtBroker("bitget", exchange=fake)
+
+        async def go():
+            await broker.add_symbol("BTC/USDT")
+            fake.init_queues()
+            fake.feed_book({"bids": [[1.0, 1.0]], "asks": [[1.1, 1.0]],
+                            "timestamp": 1})
+            run_task = asyncio.create_task(
+                broker.run(streams=("book",), book_depth=None,
+                           reconcile=False)
+            )
+            await asyncio.sleep(0.05)
+            await broker.stop()
+            try:
+                await run_task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(go())
+        self.assertTrue(seen_limits, "watch_order_book was never called")
+        self.assertEqual(seen_limits[0], 15)
+
+    def test_book_depth_explicit_wins_over_override(self):
+        """An explicit `book_depth=` always wins over the override table."""
+        seen_limits = []
+
+        class RecordingFake(FakeCcxtExchange):
+            async def watch_order_book(self, symbol, limit=None):
+                seen_limits.append(limit)
+                if self._book_q is None:
+                    await asyncio.sleep(3600)
+                return await self._book_q.get()
+
+        fake = RecordingFake()
+        broker = CcxtBroker("bitget", exchange=fake)
+
+        async def go():
+            await broker.add_symbol("BTC/USDT")
+            fake.init_queues()
+            fake.feed_book({"bids": [[1.0, 1.0]], "asks": [[1.1, 1.0]],
+                            "timestamp": 1})
+            run_task = asyncio.create_task(
+                broker.run(streams=("book",), book_depth=5, reconcile=False)
+            )
+            await asyncio.sleep(0.05)
+            await broker.stop()
+            try:
+                await run_task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(go())
+        self.assertEqual(seen_limits[0], 5)
+
+    # ── market-data recorder symbol mirror ───────────────────────────
+    def test_recorder_attached_late_replays_existing_symbols(self):
+        """`set_market_data_recorder` after `add_symbol` → recorder gets
+        every already-registered symbol on attach."""
+        fake = FakeCcxtExchange()
+        broker = CcxtBroker("binance", exchange=fake)
+
+        class FakeRecorder:
+            def __init__(self):
+                self.added = []
+
+            def add_symbol(self, sid, name, *_a, **_kw):
+                self.added.append((sid, name))
+
+        rec = FakeRecorder()
+
+        async def go():
+            btc = await broker.add_symbol("BTC/USDT")
+            eth = await broker.add_symbol("ETH/USDT")
+            broker.set_market_data_recorder(rec)
+            return int(btc), int(eth)
+
+        btc_id, eth_id = asyncio.run(go())
+        self.assertEqual(sorted(rec.added),
+                         sorted([(btc_id, "BTCUSDT"), (eth_id, "ETHUSDT")]))
+
+    def test_recorder_attached_first_then_add_symbol_mirrors(self):
+        """Reverse order: recorder first, then `add_symbol` → each new
+        symbol is mirrored as it lands."""
+        fake = FakeCcxtExchange()
+        broker = CcxtBroker("binance", exchange=fake)
+
+        class FakeRecorder:
+            def __init__(self):
+                self.added = []
+
+            def add_symbol(self, sid, name, *_a, **_kw):
+                self.added.append((sid, name))
+
+        rec = FakeRecorder()
+        broker.set_market_data_recorder(rec)
+
+        async def go():
+            btc = await broker.add_symbol("BTC/USDT")
+            return int(btc)
+
+        btc_id = asyncio.run(go())
+        self.assertEqual(rec.added, [(btc_id, "BTCUSDT")])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

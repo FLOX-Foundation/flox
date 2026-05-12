@@ -100,6 +100,20 @@ class MergedTapeReader
   // Aggregate time range across all tapes (min first, max last).
   std::pair<int64_t, int64_t> timeRange() const noexcept { return _time_range; }
 
+  // Aggregate summary across all tapes. Mirrors
+  // `BinaryLogReader::DatasetSummary` for a single tape — total event
+  // counts + time range + distinct (rekeyed) symbols + tape count.
+  struct Summary
+  {
+    int64_t first_event_ns{0};
+    int64_t last_event_ns{0};
+    uint64_t total_events{0};
+    uint32_t tape_count{0};
+    uint32_t symbol_count{0};
+    bool empty() const noexcept { return total_events == 0; }
+  };
+  Summary summary() const noexcept;
+
   // Merged sorted trade rows. Empty filter = all symbols.
   std::vector<MergedTradeRow> readTrades();
 
@@ -154,6 +168,11 @@ class MergedTapeReader
   // Per tape: local_id (manifest entry) → global_id. -1 = unmapped.
   std::vector<std::vector<int64_t>> _local_to_global;
   std::vector<PerTapeStats> _per_tape_stats;
+  // total_events from `BinaryLogReader::inspect` at construction time
+  // — `_per_tape_stats[i].trades + .books` is only filled after a
+  // `readTrades`/`readBooks` pass, so this is the only count available
+  // for `summary()` on a freshly constructed reader.
+  std::vector<uint64_t> _inspect_total_events;
   std::pair<int64_t, int64_t> _time_range{0, 0};
 };
 

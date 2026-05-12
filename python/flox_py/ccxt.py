@@ -148,6 +148,15 @@ class UnsupportedOrderType(RuntimeError):
     """Raised when a strategy emits an order type the adapter can't route."""
 
 
+# Per-exchange override for ccxt's order-book depth. ccxt.pro's default
+# for bitget USDT-FUTURES is `books50`, which the venue rejects with
+# error 30016 (`books15` / `books5` only). Other exchanges use ccxt's
+# own default when not listed here.
+_BOOK_DEPTH_OVERRIDE = {
+    "bitget": 15,
+}
+
+
 # ── Broker ─────────────────────────────────────────────────────────────
 
 
@@ -317,6 +326,18 @@ class CcxtBroker:
         sym = self._registry.add_symbol(self.exchange_id, ccxt_sym, tick)
         self._sym_to_ccxt[int(sym)] = ccxt_sym
         self._ccxt_to_sym[ccxt_sym] = sym
+        # Mirror the symbol into the attached recorder (if any) so
+        # tapes recorded directly via the broker carry a populated
+        # metadata.json::symbols. set_market_data_recorder() handles
+        # the symmetric case (recorder attached after symbols added).
+        recorder = self._market_data_recorder
+        add_symbol = getattr(recorder, "add_symbol", None) if recorder else None
+        if callable(add_symbol):
+            flat_name = ccxt_sym.replace("/", "").split(":")[0]
+            try:
+                add_symbol(int(sym), flat_name, "", "", 2, 8)
+            except Exception:
+                pass
         return sym
 
     def add_strategy(self, strategy: Any) -> None:
@@ -331,8 +352,34 @@ class CcxtBroker:
         ``run()`` starts. Used by ``flox tape record`` to dump live
         feeds to a ``.floxlog`` directory; downstream code can pass
         any subclass that implements the hook interface.
+
+        If the recorder is a :class:`flox_py.BinaryLogRecorderHook`
+        (the canonical sink for ``.floxlog`` capture) and the broker
+        already has symbols registered, this method auto-registers
+        each ``(symbol_id, ccxt_name)`` pair with the recorder so the
+        resulting tape's ``metadata.json`` carries the symbol table.
+        Without this step a script that records directly via the
+        broker leaves ``metadata.json::symbols`` empty and
+        :class:`flox_py.MergedTapeReader` can't rekey events on read.
         """
         self._market_data_recorder = recorder
+        # Best-effort: skip if the hook lacks an `add_symbol`
+        # method (e.g. a user-defined `MarketDataRecorderHook`
+        # subclass that doesn't speak the BinaryLogRecorderHook
+        # surface).
+        add_symbol = getattr(recorder, "add_symbol", None)
+        if not callable(add_symbol):
+            return
+        for ccxt_name, flox_sid in self._ccxt_to_sym.items():
+            # Strip the perp suffix so MergedTapeReader's
+            # (exchange, name) key matches across exchanges that
+            # label perps differently (e.g. ":USDT" appended).
+            flat_name = ccxt_name.replace("/", "").split(":")[0]
+            try:
+                add_symbol(int(flox_sid), flat_name, "", "", 2, 8)
+            except Exception:
+                # Hook may reject duplicate adds; not our problem.
+                pass
 
     # ── Run loop ──────────────────────────────────────────────────────
 
@@ -340,7 +387,7 @@ class CcxtBroker:
         self,
         *,
         streams: Iterable[str] = ("trades", "book"),
-        book_depth: int = 20,
+        book_depth: int | None = None,
         reconcile: bool = True,
     ) -> None:
         """Start the runner, dispatch positions, spawn streams, await.
@@ -362,6 +409,9 @@ class CcxtBroker:
             raise ValueError(
                 "no symbols registered — call await broker.add_symbol(...) first"
             )
+
+        if book_depth is None:
+            book_depth = _BOOK_DEPTH_OVERRIDE.get(self.exchange_id)
 
         import flox_py
         self._runner = flox_py.Runner(self._registry, on_signal=self._on_signal)
@@ -445,13 +495,22 @@ class CcxtBroker:
                     _ccxt_ts_ns(t),
                 )
 
-    async def _book_loop(self, ccxt_sym: str, flox_sym: Any, depth: int) -> None:
+    async def _book_loop(
+        self, ccxt_sym: str, flox_sym: Any, depth: int | None
+    ) -> None:
         sym_id = int(flox_sym)
+        # depth=None → let ccxt pick the venue-appropriate default channel.
+        # Bitget USDT-FUTURES rejects books50 with code 30016, so we don't
+        # want to force a depth unless the caller asked for one explicitly.
+        stream_kwargs = {} if depth is None else {"limit": depth}
         async for ob in self._stream(
-            self.exchange.watch_order_book, ccxt_sym, ccxt_sym, limit=depth
+            self.exchange.watch_order_book, ccxt_sym, ccxt_sym, **stream_kwargs
         ):
-            bids_raw = (ob.get("bids") or [])[:depth]
-            asks_raw = (ob.get("asks") or [])[:depth]
+            bids_raw = ob.get("bids") or []
+            asks_raw = ob.get("asks") or []
+            if depth is not None:
+                bids_raw = bids_raw[:depth]
+                asks_raw = asks_raw[:depth]
             self._runner.on_book_snapshot(
                 sym_id,
                 [float(b[0]) for b in bids_raw],

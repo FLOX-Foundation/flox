@@ -1037,6 +1037,10 @@ class MergedTapeReader:
         """
         Walk the merged stream via N-way heap merge (O(N tapes) peak memory). Calls on_trade(exchange_ts_ns, recv_ts_ns, price_raw, qty_raw, symbol_id, tape_index, side) and on_book(exchange_ts_ns, recv_ts_ns, symbol_id, tape_index, is_snapshot, bids, asks). bids/asks are lists of (price_raw, qty_raw) tuples. Returning False from either aborts the walk.
         """
+    def summary(self) -> dict:
+        """
+        Aggregate stats: first_event_ns, last_event_ns, total_events (populated after readTrades/readBooks), tape_count, symbol_count.
+        """
     def symbol_table(self) -> list:
         """
         List of dicts: global_id, exchange, name, price_precision, qty_precision.

@@ -294,6 +294,48 @@ class BacktestRunTapesTests(unittest.TestCase):
             self.assertEqual(stats["initial_capital"], 10000.0)
             self.assertEqual(stats["final_capital"], 10000.0)
 
+    # ── summary() ───────────────────────────────────────────────────────
+    def test_summary_reports_inspect_totals_before_read(self):
+        """`summary()` on a freshly built reader returns the same
+        aggregate counts as the underlying `BinaryLogReader::inspect`
+        — without forcing the caller to materialise every event."""
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "bybit")
+            t2 = os.path.join(d, "binance")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t1, "bybit", "BTCUSDT",
+                        [(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                         for i in range(5)],
+                        exchange_id=1)
+            _write_tape(t2, "binance", "ETHUSDT",
+                        [(base + 500_000 + i * 1_000_000, 3000.0 + i, 1.0, False)
+                         for i in range(3)],
+                        exchange_id=2)
+
+            mr = flox.MergedTapeReader([t1, t2])
+            s = mr.summary()
+            self.assertEqual(s["tape_count"], 2)
+            self.assertEqual(s["symbol_count"], 2)
+            self.assertEqual(s["total_events"], 8)
+            self.assertLessEqual(s["first_event_ns"], s["last_event_ns"])
+
+    def test_summary_after_read_uses_contribution_counts(self):
+        """After `read_trades`/`read_books`, `summary()` reports the
+        post-filter contribution counts (which may differ from the raw
+        inspect total when `symbols=` filters out a tape)."""
+        with tempfile.TemporaryDirectory() as d:
+            t1 = os.path.join(d, "bybit")
+            base = 1_700_000_000_000_000_000
+            _write_tape(t1, "bybit", "BTCUSDT",
+                        [(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                         for i in range(4)],
+                        exchange_id=1)
+
+            mr = flox.MergedTapeReader([t1])
+            mr.read_trades()
+            s = mr.summary()
+            self.assertEqual(s["total_events"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()

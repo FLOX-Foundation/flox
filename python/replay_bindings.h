@@ -783,6 +783,18 @@ class PyMergedTapeReader
     return py::make_tuple(a, b);
   }
 
+  py::dict summary() const
+  {
+    auto s = _reader.summary();
+    py::dict d;
+    d["first_event_ns"] = s.first_event_ns;
+    d["last_event_ns"] = s.last_event_ns;
+    d["total_events"] = s.total_events;
+    d["tape_count"] = s.tape_count;
+    d["symbol_count"] = s.symbol_count;
+    return d;
+  }
+
   py::array readTrades()
   {
     auto rows = _reader.readTrades();
@@ -1137,6 +1149,10 @@ inline void bindReplay(py::module_& m)
            "qty_precision.")
       .def("time_range", &PyMergedTapeReader::timeRange,
            "(min first_event_ns, max last_event_ns) across all tapes.")
+      .def("summary", &PyMergedTapeReader::summary,
+           "Aggregate stats: first_event_ns, last_event_ns, "
+           "total_events (populated after readTrades/readBooks), "
+           "tape_count, symbol_count.")
       .def("read_trades", &PyMergedTapeReader::readTrades,
            "Merged trades as PyTrade structured numpy array, sorted by "
            "exchange_ts_ns; tie-break by tape order.")
