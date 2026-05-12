@@ -843,6 +843,12 @@ extern "C"
                                                                        uint64_t max_segment_mb,
                                                                        uint8_t exchange_id,
                                                                        uint8_t compression);
+  FloxBinaryLogRecorderHookHandle flox_binary_log_recorder_hook_create_ex(const char* output_dir,
+                                                                          uint64_t max_segment_mb,
+                                                                          uint8_t exchange_id,
+                                                                          uint8_t compression,
+                                                                          const char* exchange_name,
+                                                                          const char* instrument_type);
   void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
   FloxMarketDataRecorderHandle flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook);
   void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook,

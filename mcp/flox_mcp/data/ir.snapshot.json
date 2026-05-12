@@ -1507,6 +1507,37 @@
     },
     {
       "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_create_ex",
+      "params": [
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "max_segment_mb",
+          "type": "uint64_t"
+        },
+        {
+          "name": "exchange_id",
+          "type": "uint8_t"
+        },
+        {
+          "name": "compression",
+          "type": "uint8_t"
+        },
+        {
+          "name": "exchange_name",
+          "type": "const char *"
+        },
+        {
+          "name": "instrument_type",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxBinaryLogRecorderHookHandle"
+    },
+    {
+      "group": "binary_log_recorder_hook",
       "name": "flox_binary_log_recorder_hook_destroy",
       "params": [
         {

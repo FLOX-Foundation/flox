@@ -1543,6 +1543,17 @@ extern "C"
                                        uint64_t max_segment_mb,
                                        uint8_t exchange_id,
                                        uint8_t compression);
+  // Variant that stamps RecordingMetadata.exchange / instrument_type into
+  // the tape manifest. MergedTapeReader keys tapes by (exchange, name) so
+  // bindings that need to write merge-ready tapes must use this form.
+  // Pass NULL or "" for either string to leave it empty.
+  FloxBinaryLogRecorderHookHandle
+  flox_binary_log_recorder_hook_create_ex(const char* output_dir,
+                                          uint64_t max_segment_mb,
+                                          uint8_t exchange_id,
+                                          uint8_t compression,
+                                          const char* exchange_name,
+                                          const char* instrument_type);
   void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
 
   // Borrowed handle for runner / live-engine attachment. Lifetime is tied

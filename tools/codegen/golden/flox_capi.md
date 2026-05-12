@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 501 functions, 44 handles, 51 structs, 35 callback typedefs, 2 enums, 59 groups.
+**Surface:** 502 functions, 44 handles, 51 structs, 35 callback typedefs, 2 enums, 59 groups.
 
 ## Opaque handles
 
@@ -786,6 +786,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 ### binary_log_recorder_hook
 
 - `FloxBinaryLogRecorderHookHandle flox_binary_log_recorder_hook_create(const char * output_dir, uint64_t max_segment_mb, uint8_t exchange_id, uint8_t compression)`
+- `FloxBinaryLogRecorderHookHandle flox_binary_log_recorder_hook_create_ex(const char * output_dir, uint64_t max_segment_mb, uint8_t exchange_id, uint8_t compression, const char * exchange_name, const char * instrument_type)`
 - `void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook)`
 - `FloxMarketDataRecorderHandle flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook)`
 - `void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook, uint32_t symbol_id, const char * name, const char * base, const char * quote, int8_t price_precision, int8_t qty_precision)`

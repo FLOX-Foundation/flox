@@ -215,6 +215,11 @@
         {
           "group": "binary_log_recorder_hook",
           "kind": "function",
+          "name": "flox_binary_log_recorder_hook_create_ex"
+        },
+        {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
           "name": "flox_binary_log_recorder_hook_destroy"
         },
         {
@@ -3130,6 +3135,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_binary_log_recorder_hook_create_ex"
+        },
+        {
+          "kind": "function",
           "name": "flox_binary_log_recorder_hook_destroy"
         },
         {
@@ -5238,6 +5247,22 @@
         },
         {
           "kind": "class",
+          "name": "MergedTapeReader"
+        },
+        {
+          "kind": "class",
+          "name": "MergedTapeReaderOptions"
+        },
+        {
+          "kind": "class",
+          "name": "MergedTapeStats"
+        },
+        {
+          "kind": "class",
+          "name": "MergedTapeSymbol"
+        },
+        {
+          "kind": "class",
           "name": "MultiFeedClock"
         },
         {
@@ -6563,6 +6588,7 @@
         "flox_binary_log_recorder_hook_add_symbol",
         "flox_binary_log_recorder_hook_as_recorder",
         "flox_binary_log_recorder_hook_create",
+        "flox_binary_log_recorder_hook_create_ex",
         "flox_binary_log_recorder_hook_destroy",
         "flox_binary_log_recorder_hook_flush",
         "flox_binary_log_recorder_hook_stats"
@@ -7347,6 +7373,39 @@
       "pybind11": {
         "classes": [
           "MarketProfile"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "merged_tape_reader": {
+      "capi_functions": [
+        "flox_merged_tape_reader_count_books",
+        "flox_merged_tape_reader_count_trades",
+        "flox_merged_tape_reader_create",
+        "flox_merged_tape_reader_destroy",
+        "flox_merged_tape_reader_get_symbols",
+        "flox_merged_tape_reader_get_tape_stats",
+        "flox_merged_tape_reader_read_books",
+        "flox_merged_tape_reader_read_trades",
+        "flox_merged_tape_reader_symbol_count",
+        "flox_merged_tape_reader_tape_count",
+        "flox_merged_tape_reader_time_range"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "MergedTapeReader"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "MergedTapeReader"
         ],
         "functions": [],
         "status": "required"

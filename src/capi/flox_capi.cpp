@@ -5584,11 +5584,40 @@ flox_binary_log_recorder_hook_create(const char* output_dir,
                                      uint8_t exchange_id,
                                      uint8_t compression)
 {
+  return flox_binary_log_recorder_hook_create_ex(output_dir, max_segment_mb,
+                                                 exchange_id, compression,
+                                                 nullptr, nullptr);
+}
+
+FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_create_ex(const char* output_dir,
+                                        uint64_t max_segment_mb,
+                                        uint8_t exchange_id,
+                                        uint8_t compression,
+                                        const char* exchange_name,
+                                        const char* instrument_type)
+{
   flox::replay::BinaryLogRecorderHookConfig cfg{};
   cfg.output_dir = output_dir ? output_dir : "";
   cfg.max_segment_bytes = max_segment_mb * 1024ull * 1024ull;
   cfg.exchange_id = exchange_id;
   cfg.compression = static_cast<flox::replay::CompressionType>(compression);
+
+  const bool has_exchange = exchange_name && *exchange_name;
+  const bool has_instrument = instrument_type && *instrument_type;
+  if (has_exchange || has_instrument)
+  {
+    flox::replay::RecordingMetadata meta{};
+    if (has_exchange)
+    {
+      meta.exchange = exchange_name;
+    }
+    if (has_instrument)
+    {
+      meta.instrument_type = instrument_type;
+    }
+    cfg.metadata = std::move(meta);
+  }
 
   auto* impl = new capi_impl::FloxBinaryLogRecorderHookImpl(std::move(cfg));
   impl->recorder_view.cb.on_trade = &capi_impl::blrhOnTrade;

@@ -63,6 +63,7 @@ from C import flox_bar_dispatch_recorder_param_at(cobj, u32) -> u64
 
 # ── binary_log_recorder_hook ──
 from C import flox_binary_log_recorder_hook_create(cobj, u64, u8, u8) -> cobj
+from C import flox_binary_log_recorder_hook_create_ex(cobj, u64, u8, u8, cobj, cobj) -> cobj
 from C import flox_binary_log_recorder_hook_destroy(cobj)
 from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
 from C import flox_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
