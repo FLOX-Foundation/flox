@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 490 functions, 43 handles, 49 structs, 35 callback typedefs, 2 enums, 58 groups.
+**Surface:** 501 functions, 44 handles, 51 structs, 35 callback typedefs, 2 enums, 59 groups.
 
 ## Opaque handles
 
@@ -27,6 +27,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDataWriterHandle`
 - `FloxDataReaderHandle`
 - `FloxBacktestResultHandle`
+- `FloxMergedTapeReaderHandle`
 - `FloxPartitionerHandle`
 - `FloxRiskManagerHandle`
 - `FloxKillSwitchHandle`
@@ -403,6 +404,27 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `price_raw` | `int64_t` |
 | `qty_raw` | `int64_t` |
 | `side` | `uint8_t` |
+
+### `FloxMergedSymbol`
+
+| field | type |
+|---|---|
+| `global_id` | `uint32_t` |
+| `price_precision` | `int8_t` |
+| `qty_precision` | `int8_t` |
+| `_pad` | `uint8_t[2]` |
+| `exchange` | `const char *` |
+| `name` | `const char *` |
+
+### `FloxMergedTapeStats`
+
+| field | type |
+|---|---|
+| `first_event_ns` | `int64_t` |
+| `last_event_ns` | `int64_t` |
+| `trades` | `uint64_t` |
+| `books` | `uint64_t` |
+| `path` | `const char *` |
 
 ### `FloxWriterStats`
 
@@ -1069,6 +1091,20 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_market_profile_is_poor_low(FloxMarketProfileHandle profile)`
 - `uint32_t flox_market_profile_num_levels(FloxMarketProfileHandle profile)`
 - `void flox_market_profile_clear(FloxMarketProfileHandle profile)`
+
+### merged_tape_reader
+
+- `FloxMergedTapeReaderHandle flox_merged_tape_reader_create(const char *const * paths, uint32_t n_paths, int64_t from_ns, int64_t to_ns, const uint32_t * symbol_filter, uint32_t n_filter)`
+- `void flox_merged_tape_reader_destroy(FloxMergedTapeReaderHandle reader)`
+- `uint32_t flox_merged_tape_reader_symbol_count(FloxMergedTapeReaderHandle reader)`
+- `uint32_t flox_merged_tape_reader_get_symbols(FloxMergedTapeReaderHandle reader, FloxMergedSymbol * out, uint32_t max)`
+- `uint32_t flox_merged_tape_reader_tape_count(FloxMergedTapeReaderHandle reader)`
+- `uint32_t flox_merged_tape_reader_get_tape_stats(FloxMergedTapeReaderHandle reader, FloxMergedTapeStats * out, uint32_t max)`
+- `void flox_merged_tape_reader_time_range(FloxMergedTapeReaderHandle reader, int64_t * min_first_ns_out, int64_t * max_last_ns_out)`
+- `uint64_t flox_merged_tape_reader_count_trades(FloxMergedTapeReaderHandle reader)`
+- `uint64_t flox_merged_tape_reader_read_trades(FloxMergedTapeReaderHandle reader, FloxTradeRecord * trades_out, uint64_t max_trades)`
+- `uint64_t flox_merged_tape_reader_count_books(FloxMergedTapeReaderHandle reader, uint64_t * total_levels_out)`
+- `uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle reader, FloxBookUpdateHeader * headers_out, uint64_t max_events, FloxLevel * levels_out, uint64_t max_levels)`
 
 ### metrics
 

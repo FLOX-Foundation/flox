@@ -1343,6 +1343,61 @@
           "name": "flox_market_profile_val"
         },
         {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_count_books"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_count_trades"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_create"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_destroy"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_get_symbols"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_get_tape_stats"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_read_books"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_read_trades"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_symbol_count"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_tape_count"
+        },
+        {
+          "group": "merged_tape_reader",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_time_range"
+        },
+        {
           "group": "context_queries",
           "kind": "function",
           "name": "flox_mid_price_raw"
@@ -2554,6 +2609,14 @@
         },
         {
           "kind": "struct",
+          "name": "FloxMergedSymbol"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxMergedTapeStats"
+        },
+        {
+          "kind": "struct",
           "name": "FloxOrder"
         },
         {
@@ -2750,6 +2813,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxOrderGroupHandle"
         },
         {
@@ -2863,6 +2930,7 @@
         "latency_models",
         "logger",
         "market_profile",
+        "merged_tape_reader",
         "metrics",
         "multi_tf_helpers",
         "order_book",
@@ -3963,6 +4031,50 @@
         {
           "kind": "function",
           "name": "flox_market_profile_val"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_count_books"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_count_trades"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_get_symbols"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_get_tape_stats"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_read_books"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_read_trades"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_symbol_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_tape_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_merged_tape_reader_time_range"
         },
         {
           "kind": "function",

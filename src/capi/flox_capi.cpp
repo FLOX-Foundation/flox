@@ -92,6 +92,7 @@
 #include "flox/position/position_group.h"
 #include "flox/position/position_tracker.h"
 #include "flox/replay/binary_log_recorder_hook.h"
+#include "flox/replay/merged_tape_reader.h"
 #include "flox/replay/ops/partitioner.h"
 #include "flox/replay/ops/segment_ops.h"
 #include "flox/replay/ops/validator.h"
@@ -3126,6 +3127,319 @@ FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle h)
   auto* w = static_cast<replay::BinaryLogWriter*>(h);
   auto s = w->stats();
   return {s.bytes_written, s.events_written, s.segments_created, s.trades_written};
+}
+
+// ============================================================
+// MergedTapeReader — N-tape merged consumption
+// ============================================================
+namespace capi_impl
+{
+struct FloxMergedTapeReaderImpl
+{
+  std::unique_ptr<flox::replay::MergedTapeReader> reader;
+  // Cached result of readTrades / readBooks so two-phase count→read
+  // doesn't re-merge. Cleared on first read of each kind.
+  std::optional<std::vector<flox::replay::MergedTradeRow>> cached_trades;
+  std::optional<std::pair<std::vector<flox::replay::MergedBookRow>,
+                          std::vector<flox::replay::BookLevel>>>
+      cached_books;
+
+  // Owning strings for symbol_table and per-tape paths so the borrowed
+  // const char* pointers we hand out stay valid for the reader's lifetime.
+  std::vector<std::string> sym_exchanges;
+  std::vector<std::string> sym_names;
+  std::vector<std::string> tape_paths;
+};
+}  // namespace capi_impl
+
+FloxMergedTapeReaderHandle
+flox_merged_tape_reader_create(const char* const* paths, uint32_t n_paths,
+                               int64_t from_ns, int64_t to_ns,
+                               const uint32_t* symbol_filter,
+                               uint32_t n_filter)
+{
+  if (!paths || n_paths == 0)
+  {
+    return nullptr;
+  }
+  flox::replay::MergedTapeReaderConfig cfg{};
+  cfg.tape_dirs.reserve(n_paths);
+  for (uint32_t i = 0; i < n_paths; ++i)
+  {
+    cfg.tape_dirs.emplace_back(paths[i] ? paths[i] : "");
+  }
+  if (from_ns >= 0)
+  {
+    cfg.from_ns = from_ns;
+  }
+  if (to_ns >= 0)
+  {
+    cfg.to_ns = to_ns;
+  }
+  if (symbol_filter && n_filter > 0)
+  {
+    cfg.symbol_filter.assign(symbol_filter, symbol_filter + n_filter);
+  }
+
+  try
+  {
+    auto impl = std::make_unique<capi_impl::FloxMergedTapeReaderImpl>();
+    impl->reader =
+        std::make_unique<flox::replay::MergedTapeReader>(std::move(cfg));
+    // Cache symbol / path strings now so const char* pointers stay stable.
+    for (const auto& s : impl->reader->symbols())
+    {
+      impl->sym_exchanges.push_back(s.exchange);
+      impl->sym_names.push_back(s.name);
+    }
+    for (const auto& t : impl->reader->perTapeStats())
+    {
+      impl->tape_paths.push_back(t.path.string());
+    }
+    return static_cast<FloxMergedTapeReaderHandle>(impl.release());
+  }
+  catch (...)
+  {
+    // Construction may throw on bad input or overlapping book streams;
+    // surface as a NULL handle, leaving caller to decide.
+    return nullptr;
+  }
+}
+
+void flox_merged_tape_reader_destroy(FloxMergedTapeReaderHandle h)
+{
+  delete static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+}
+
+uint32_t flox_merged_tape_reader_symbol_count(FloxMergedTapeReaderHandle h)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  return static_cast<uint32_t>(impl->reader->symbols().size());
+}
+
+uint32_t flox_merged_tape_reader_get_symbols(FloxMergedTapeReaderHandle h,
+                                             FloxMergedSymbol* out,
+                                             uint32_t max)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  const auto& syms = impl->reader->symbols();
+  uint32_t n = std::min(static_cast<uint32_t>(syms.size()), max);
+  if (!out)
+  {
+    return static_cast<uint32_t>(syms.size());
+  }
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    out[i].global_id = syms[i].global_id;
+    out[i].price_precision = syms[i].price_precision;
+    out[i].qty_precision = syms[i].qty_precision;
+    out[i]._pad[0] = out[i]._pad[1] = 0;
+    out[i].exchange = impl->sym_exchanges[i].c_str();
+    out[i].name = impl->sym_names[i].c_str();
+  }
+  return n;
+}
+
+uint32_t flox_merged_tape_reader_tape_count(FloxMergedTapeReaderHandle h)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  return static_cast<uint32_t>(
+      static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h)
+          ->reader->perTapeStats()
+          .size());
+}
+
+uint32_t flox_merged_tape_reader_get_tape_stats(FloxMergedTapeReaderHandle h,
+                                                FloxMergedTapeStats* out,
+                                                uint32_t max)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  const auto& stats = impl->reader->perTapeStats();
+  uint32_t n = std::min(static_cast<uint32_t>(stats.size()), max);
+  if (!out)
+  {
+    return static_cast<uint32_t>(stats.size());
+  }
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    out[i].first_event_ns = stats[i].first_event_ns;
+    out[i].last_event_ns = stats[i].last_event_ns;
+    out[i].trades = stats[i].trades;
+    out[i].books = stats[i].books;
+    out[i].path = impl->tape_paths[i].c_str();
+  }
+  return n;
+}
+
+void flox_merged_tape_reader_time_range(FloxMergedTapeReaderHandle h,
+                                        int64_t* min_first_ns_out,
+                                        int64_t* max_last_ns_out)
+{
+  if (!h)
+  {
+    if (min_first_ns_out)
+    {
+      *min_first_ns_out = 0;
+    }
+    if (max_last_ns_out)
+    {
+      *max_last_ns_out = 0;
+    }
+    return;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  auto [a, b] = impl->reader->timeRange();
+  if (min_first_ns_out)
+  {
+    *min_first_ns_out = a;
+  }
+  if (max_last_ns_out)
+  {
+    *max_last_ns_out = b;
+  }
+}
+
+uint64_t flox_merged_tape_reader_count_trades(FloxMergedTapeReaderHandle h)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  if (!impl->cached_trades)
+  {
+    impl->cached_trades = impl->reader->readTrades();
+  }
+  return impl->cached_trades->size();
+}
+
+uint64_t flox_merged_tape_reader_read_trades(FloxMergedTapeReaderHandle h,
+                                             FloxTradeRecord* trades_out,
+                                             uint64_t max_trades)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  if (!impl->cached_trades)
+  {
+    impl->cached_trades = impl->reader->readTrades();
+  }
+  const auto& src = *impl->cached_trades;
+  uint64_t n = std::min<uint64_t>(src.size(), max_trades);
+  if (!trades_out)
+  {
+    return src.size();
+  }
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    trades_out[i].exchange_ts_ns = src[i].exchange_ts_ns;
+    trades_out[i].recv_ts_ns = src[i].recv_ts_ns;
+    trades_out[i].price_raw = src[i].price_raw;
+    trades_out[i].qty_raw = src[i].qty_raw;
+    trades_out[i].trade_id = src[i].trade_id;
+    trades_out[i].symbol_id = src[i].global_symbol_id;
+    trades_out[i].side = src[i].side;
+  }
+  return n;
+}
+
+uint64_t flox_merged_tape_reader_count_books(FloxMergedTapeReaderHandle h,
+                                             uint64_t* total_levels_out)
+{
+  if (!h)
+  {
+    if (total_levels_out)
+    {
+      *total_levels_out = 0;
+    }
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  if (!impl->cached_books)
+  {
+    impl->cached_books = impl->reader->readBooks();
+  }
+  if (total_levels_out)
+  {
+    *total_levels_out = impl->cached_books->second.size();
+  }
+  return impl->cached_books->first.size();
+}
+
+uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle h,
+                                            FloxBookUpdateHeader* headers_out,
+                                            uint64_t max_events,
+                                            FloxLevel* levels_out,
+                                            uint64_t max_levels)
+{
+  if (!h)
+  {
+    return 0;
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  if (!impl->cached_books)
+  {
+    impl->cached_books = impl->reader->readBooks();
+  }
+  const auto& [rows, levels] = *impl->cached_books;
+  uint64_t n_ev = std::min<uint64_t>(rows.size(), max_events);
+  uint64_t n_lv = std::min<uint64_t>(levels.size(), max_levels);
+
+  if (headers_out)
+  {
+    for (uint64_t i = 0; i < n_ev; ++i)
+    {
+      headers_out[i].exchange_ts_ns = rows[i].exchange_ts_ns;
+      headers_out[i].recv_ts_ns = rows[i].recv_ts_ns;
+      headers_out[i].seq = rows[i].seq;
+      headers_out[i].level_offset = rows[i].level_offset;
+      headers_out[i].symbol_id = rows[i].global_symbol_id;
+      headers_out[i].bid_count = rows[i].bid_count;
+      headers_out[i].ask_count = rows[i].ask_count;
+      headers_out[i].event_type = rows[i].event_type;
+    }
+  }
+  if (levels_out)
+  {
+    // Reader stores levels flat (bids then asks per event). The side
+    // byte is reconstructed here using the corresponding header's
+    // bid_count split.
+    uint64_t k = 0;
+    for (uint64_t i = 0; i < rows.size() && k < n_lv; ++i)
+    {
+      const auto& r = rows[i];
+      for (uint16_t b = 0; b < r.bid_count && k < n_lv; ++b, ++k)
+      {
+        levels_out[k].price_raw = levels[k].price_raw;
+        levels_out[k].qty_raw = levels[k].qty_raw;
+        levels_out[k].side = 0;
+      }
+      for (uint16_t a = 0; a < r.ask_count && k < n_lv; ++a, ++k)
+      {
+        levels_out[k].price_raw = levels[k].price_raw;
+        levels_out[k].qty_raw = levels[k].qty_raw;
+        levels_out[k].side = 1;
+      }
+    }
+  }
+  return n_ev;
 }
 
 // ============================================================

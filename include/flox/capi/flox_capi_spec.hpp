@@ -1546,6 +1546,97 @@ extern "C"
                                                    uint64_t max_levels);
 
   // ============================================================
+  // MergedTapeReader — read N `.floxlog` directories as one merged
+  // stream, sorted by exchange_ts_ns. Symbols are rekeyed into a global
+  // id space keyed by (metadata.exchange, name). Trades may overlap in
+  // time across tapes; overlapping book streams for the same
+  // (exchange, name) raise on construction (returns NULL handle and
+  // sets the FloxError thread-local). See docs/errors/E_INPUT_003.md.
+  // ============================================================
+
+  typedef void* FloxMergedTapeReaderHandle;
+
+  // Metadata about one global symbol after rekey. Strings are owned by
+  // the reader — valid until the reader is destroyed.
+  typedef struct
+  {
+    uint32_t global_id;
+    int8_t price_precision;
+    int8_t qty_precision;
+    uint8_t _pad[2];
+    const char* exchange;  // borrowed pointer
+    const char* name;      // borrowed pointer
+  } FloxMergedSymbol;
+
+  // Per-tape contribution counts. Path is borrowed.
+  typedef struct
+  {
+    int64_t first_event_ns;
+    int64_t last_event_ns;
+    uint64_t trades;
+    uint64_t books;
+    const char* path;
+  } FloxMergedTapeStats;
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  FloxMergedTapeReaderHandle
+  flox_merged_tape_reader_create(const char* const* paths, uint32_t n_paths,
+                                 int64_t from_ns,  // -1 = no lower bound
+                                 int64_t to_ns,    // -1 = no upper bound
+                                 const uint32_t* symbol_filter,
+                                 uint32_t n_filter);
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  void flox_merged_tape_reader_destroy(FloxMergedTapeReaderHandle reader);
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint32_t flox_merged_tape_reader_symbol_count(FloxMergedTapeReaderHandle reader);
+
+  // Populate `out` with up to `max` symbols. Returns the number written.
+  // Pass NULL out to size — returns the actual count.
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint32_t flox_merged_tape_reader_get_symbols(FloxMergedTapeReaderHandle reader,
+                                               FloxMergedSymbol* out,
+                                               uint32_t max);
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint32_t flox_merged_tape_reader_tape_count(FloxMergedTapeReaderHandle reader);
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint32_t flox_merged_tape_reader_get_tape_stats(FloxMergedTapeReaderHandle reader,
+                                                  FloxMergedTapeStats* out,
+                                                  uint32_t max);
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  void flox_merged_tape_reader_time_range(FloxMergedTapeReaderHandle reader,
+                                          int64_t* min_first_ns_out,
+                                          int64_t* max_last_ns_out);
+
+  // Two-phase trade read: count first, then allocate, then fill.
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint64_t flox_merged_tape_reader_count_trades(FloxMergedTapeReaderHandle reader);
+
+  // FloxTradeRecord matches the reader's struct (datareader group);
+  // symbol_id field carries the global_id.
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint64_t flox_merged_tape_reader_read_trades(FloxMergedTapeReaderHandle reader,
+                                               FloxTradeRecord* trades_out,
+                                               uint64_t max_trades);
+
+  // Books — same shape as flox_data_reader_count_book_updates /
+  // _read_book_updates.
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint64_t flox_merged_tape_reader_count_books(FloxMergedTapeReaderHandle reader,
+                                               uint64_t* total_levels_out);
+
+  FLOX_EXPORT(group = "merged_tape_reader")
+  uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle reader,
+                                              FloxBookUpdateHeader* headers_out,
+                                              uint64_t max_events,
+                                              FloxLevel* levels_out,
+                                              uint64_t max_levels);
+
+  // ============================================================
   // DataWriter (extras)
   // ============================================================
 
