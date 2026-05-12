@@ -11,6 +11,7 @@
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
 #include "flox/replay/aggregators/peak.h"
+#include "flox/replay/aggregators/quantile.h"
 #include "flox/replay/aggregators/volume_bin.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/readers/binary_log_reader.h"
@@ -921,6 +922,154 @@ TEST_F(AggregatorFrameworkTest, PeakConstructorRejectsBadArgs)
   EXPECT_THROW(PeakAggregator({0}), std::invalid_argument);
   EXPECT_THROW(PeakAggregator({-1'000'000LL}), std::invalid_argument);
   EXPECT_THROW(PeakAggregator({1'000'000LL}, 0), std::invalid_argument);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// QuantileAggregator
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Tape with a known event-time distribution: 100 trades evenly spaced
+// at 1 ms intervals → a 1 ms window catches exactly 1 trade most of
+// the time. We then add a single 5-trade burst (5 trades within
+// 200 µs) somewhere in the middle. With 1 ms windows, observations
+// during the burst region see counts 2..5 briefly, but the vast
+// majority of windows still see count 1. So quantile(0.5)=1 and
+// quantile(0.99) might be 1 or 2 depending on how many burst-region
+// observations slip past the dedup threshold.
+void writeQuantileTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 1000,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  uint64_t tid = 0;
+  // Sparse: 100 trades, 1 ms apart, starting at t=1s.
+  for (int i = 0; i < 100; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 1'000'000'000LL + static_cast<int64_t>(i) * 1'000'000LL;
+    t.symbol_id = 1;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  writer.close();
+}
+
+const QuantileAggregator::Row* findQuant(
+    const std::vector<QuantileAggregator::Row>& rows, int64_t window_ns,
+    double quantile)
+{
+  auto it = std::find_if(rows.begin(), rows.end(),
+                         [=](const auto& r)
+                         {
+                           return r.window_ns == window_ns && r.quantile == quantile;
+                         });
+  return it == rows.end() ? nullptr : &*it;
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, QuantileSparseTapeMostlyOneEventPerWindow)
+{
+  // 100 trades 1 ms apart, 1 ms sliding window → at every event
+  // arrival the sliding window contains exactly that event (the
+  // previous event was 1 ms ago, which is on the boundary —
+  // pruning is at `front <= t - w` so prior event is dropped).
+  // Therefore every observation is count=1, all quantiles → 1.
+  writeQuantileTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  QuantileAggregator quant({1'000'000LL}, {0.5, 0.95, 0.99});
+  std::array<IAggregator*, 1> aggregators{&quant};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = quant.result();
+  ASSERT_EQ(rows.size(), 3u);
+  EXPECT_EQ(findQuant(rows, 1'000'000LL, 0.5)->count, 1u);
+  EXPECT_EQ(findQuant(rows, 1'000'000LL, 0.95)->count, 1u);
+  EXPECT_EQ(findQuant(rows, 1'000'000LL, 0.99)->count, 1u);
+}
+
+TEST_F(AggregatorFrameworkTest, QuantileLargerWindowSeesMoreEvents)
+{
+  // Same tape, but with a 5 ms window: each event arrival sees the
+  // previous ~5 events in its sliding window. The first few events
+  // see 1, 2, 3, 4, 5 counts; the rest of the tape sees count=5
+  // (the steady-state sliding-window depth). The median should
+  // be 5.
+  writeQuantileTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  QuantileAggregator quant({5'000'000LL}, {0.5, 0.95});
+  std::array<IAggregator*, 1> aggregators{&quant};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = quant.result();
+  EXPECT_EQ(findQuant(rows, 5'000'000LL, 0.5)->count, 5u);
+  EXPECT_EQ(findQuant(rows, 5'000'000LL, 0.95)->count, 5u);
+}
+
+TEST_F(AggregatorFrameworkTest, QuantileMultipleScales)
+{
+  writeQuantileTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  QuantileAggregator quant({1'000'000LL, 5'000'000LL, 10'000'000LL},
+                           {0.5, 0.99});
+  std::array<IAggregator*, 1> aggregators{&quant};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = quant.result();
+  ASSERT_EQ(rows.size(), 6u);
+  // Larger windows → higher median window count.
+  EXPECT_LT(findQuant(rows, 1'000'000LL, 0.5)->count,
+            findQuant(rows, 5'000'000LL, 0.5)->count);
+  EXPECT_LE(findQuant(rows, 5'000'000LL, 0.5)->count,
+            findQuant(rows, 10'000'000LL, 0.5)->count);
+}
+
+TEST_F(AggregatorFrameworkTest, QuantileBooksOnlyEmitsZeroThresholds)
+{
+  // BooksOnly with a trade-only tape → no observations. Result rows
+  // still appear (one per (scale, quantile)) with count=0 so the
+  // shape stays stable for downstream consumers.
+  writeQuantileTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  QuantileAggregator quant({1'000'000LL}, {0.5, 0.95},
+                           AggregatorEventFilter::BooksOnly);
+  std::array<IAggregator*, 1> aggregators{&quant};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = quant.result();
+  ASSERT_EQ(rows.size(), 2u);
+  for (const auto& r : rows)
+  {
+    EXPECT_EQ(r.count, 0u);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, QuantileRejectsBadArgs)
+{
+  EXPECT_THROW(QuantileAggregator({}, {0.5}), std::invalid_argument);
+  EXPECT_THROW(QuantileAggregator({1'000'000LL}, {}), std::invalid_argument);
+  EXPECT_THROW(QuantileAggregator({0}, {0.5}), std::invalid_argument);
+  EXPECT_THROW(QuantileAggregator({-1}, {0.5}), std::invalid_argument);
+  EXPECT_THROW(QuantileAggregator({1'000'000LL}, {0.0}), std::invalid_argument);
+  EXPECT_THROW(QuantileAggregator({1'000'000LL}, {1.5}), std::invalid_argument);
+  EXPECT_THROW(QuantileAggregator({1'000'000LL}, {-0.1}), std::invalid_argument);
 }
 
 TEST_F(AggregatorFrameworkTest, PeakSymbolFilterScopesToListedSymbols)
