@@ -97,6 +97,21 @@ struct ReaderConfig
   std::optional<int64_t> to_ns;
   std::set<uint32_t> symbols;
   bool verify_crc{true};
+
+  // Cross-block reorder window used by streamForEach / run() on
+  // segments without the Sorted flag. Events with exchange_ts_ns
+  // < (watermark - reorder_window_ns) cannot be emitted in sorted
+  // order anymore (we already emitted past their position); the
+  // reader throws FloxError with the observed delta when it sees
+  // one. The default (10s) covers exchange-WS jitter and the
+  // 99th-percentile of reconnect-induced cross-block inversions
+  // measured on real md_collector tapes. Bump it for tapes with
+  // longer real-world reconnect gaps.
+  //
+  // Memory bound: roughly reorder_window_ns × peak_event_rate ×
+  // sizeof(ReplayEvent). At 10s × 10k ev/s burst that's ~36 MB —
+  // 100× smaller than the legacy buffer-the-whole-segment path.
+  int64_t reorder_window_ns{10'000'000'000};  // 10s default
 };
 
 struct DatasetSummary
@@ -270,6 +285,10 @@ class BinaryLogIterator
   std::vector<IndexEntry> _index_entries;
 
   std::vector<std::byte> _block_data;
+  // Scratch buffer reused across sortBlockFramesInPlace calls. Empty
+  // when the block was already monotonic (fast path) — only allocated
+  // on the first unsorted block of the iterator's lifetime.
+  std::vector<std::byte> _sort_scratch;
   size_t _block_offset{0};
   size_t _block_events_remaining{0};
 };

@@ -7,6 +7,7 @@
  * license information.
  */
 
+#include "flox/error/flox_error.h"
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
@@ -1180,4 +1181,133 @@ TEST_F(AggregatorFrameworkTest, PeakSymbolFilterScopesToListedSymbols)
   EXPECT_EQ(rows[0].count, 20u);
   EXPECT_GE(rows[0].start_ns, 4'000'000'000LL);
   EXPECT_LT(rows[0].start_ns, 6'000'000'000LL);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Bounded reorder buffer (cross-block OOO recovery)
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Writes a tape with deliberate cross-block timestamp inversion so the
+// segment ends up with Sorted=false at close. BinaryLogWriter sorts
+// inside each block but tracks (and does not fix) cross-block inversion,
+// so any block whose first event timestamp is < previous block's last
+// event timestamp leaves _segment_has_cross_block_inversion=true.
+//
+// Layout: block 0 events at t = 1ms, 2ms, ..., 5ms; block 1 events at
+// t = 2.5ms, 3.5ms, ..., 6.5ms. block 1's first event (2.5ms) < block 0's
+// last (5ms) → cross-block inversion of magnitude 2.5ms.
+void writeCrossBlockInvertedTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 5,  // tiny blocks to force the inversion
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  uint64_t tid = 0;
+  for (int i = 0; i < 5; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = static_cast<int64_t>(1'000'000) * (i + 1);  // 1ms..5ms
+    t.symbol_id = 1;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  for (int i = 0; i < 5; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns =
+        static_cast<int64_t>(2'500'000) + static_cast<int64_t>(1'000'000) * i;  // 2.5ms..6.5ms
+    t.symbol_id = 1;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  writer.close();
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, ReorderBufferDeliversCrossBlockInOrder)
+{
+  // Wide reorder window relative to the 2.5ms inversion → heap can
+  // hold both blocks at once, drain at end emits the merged stream
+  // in timestamp order.
+  writeCrossBlockInvertedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir, .reorder_window_ns = 10'000'000};  // 10ms
+  BinaryLogReader reader(rconfig);
+
+  std::vector<int64_t> timestamps;
+  ASSERT_TRUE(reader.streamForEach(
+      [&timestamps](const ReplayEvent& ev)
+      {
+        timestamps.push_back(ev.timestamp_ns);
+        return true;
+      }));
+
+  ASSERT_EQ(timestamps.size(), 10u);
+  for (size_t i = 1; i < timestamps.size(); ++i)
+  {
+    EXPECT_LE(timestamps[i - 1], timestamps[i])
+        << "monotonic violation at index " << i;
+  }
+
+  // Sanity: the merge interleaves block 0 (1-5ms) and block 1 (2.5-6.5ms)
+  // — first three timestamps should be 1ms, 2ms, 2.5ms.
+  EXPECT_EQ(timestamps[0], 1'000'000);
+  EXPECT_EQ(timestamps[1], 2'000'000);
+  EXPECT_EQ(timestamps[2], 2'500'000);
+}
+
+TEST_F(AggregatorFrameworkTest, ReorderBufferThrowsOnWindowOverflow)
+{
+  // Same tape (2.5ms inversion) but reorder_window=1ms. The first
+  // event from block 1 (t=2.5ms) arrives when watermark=5ms; delta
+  // = 2.5ms > 1ms → FloxError with E_DATA_002.
+  writeCrossBlockInvertedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir, .reorder_window_ns = 1'000'000};  // 1ms
+  BinaryLogReader reader(rconfig);
+
+  bool threw = false;
+  std::string err_code;
+  try
+  {
+    reader.streamForEach(
+        [](const ReplayEvent&)
+        { return true; });
+  }
+  catch (const flox::FloxError& e)
+  {
+    threw = true;
+    err_code = e.code();
+  }
+  EXPECT_TRUE(threw);
+  EXPECT_EQ(err_code, "E_DATA_002");
+}
+
+TEST_F(AggregatorFrameworkTest, ReorderBufferBypassedForSortedSegment)
+{
+  // Writer with sane monotonic input → segment ends up Sorted=true →
+  // streamForEach takes the fast path, the reorder window is ignored.
+  // Setting reorder_window=0 would normally throw on any OOO; here we
+  // verify it does NOT, because the fast path bypasses the buffer
+  // entirely.
+  writeCompressedTrades(50);  // monotonic from the helper
+
+  ReaderConfig rconfig{.data_dir = _test_dir, .reorder_window_ns = 0};
+  BinaryLogReader reader(rconfig);
+
+  int seen = 0;
+  ASSERT_NO_THROW({
+    reader.streamForEach(
+        [&seen](const ReplayEvent&)
+        {
+          ++seen;
+          return true;
+        });
+  });
+  EXPECT_EQ(seen, 50);
 }
