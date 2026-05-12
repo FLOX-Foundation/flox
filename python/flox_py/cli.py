@@ -257,8 +257,14 @@ def cmd_tape_record(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
 
+    # Stamp the venue into metadata.json so MergedTapeReader can key
+    # this tape against other captures of the same instrument from a
+    # different exchange. Without this, multi-tape merge of CLI output
+    # loses every symbol mapping ((exchange="" , name="") collides).
     recorder = tape_mod.make_recorder_hook(
         out, max_segment_mb=args.max_segment_mb,
+        exchange_name=args.exchange,
+        instrument_type=("perpetual" if ":" in ccxt_sym else "spot"),
     )
 
     async def _run() -> int:
@@ -268,6 +274,16 @@ def cmd_tape_record(args: argparse.Namespace) -> int:
         )
         async with broker:
             await broker.add_symbol(ccxt_sym)
+            # Persist the (flox-side) symbol mapping into metadata.json
+            # so consumers of the tape know what id 1, 2, ... mean.
+            # `_ccxt_to_sym` is the broker's local registry: ccxt name
+            # (e.g. "BTC/USDT:USDT") → flox SymbolId.
+            for ccxt_name, flox_sid in broker._ccxt_to_sym.items():
+                # Strip the perp suffix for the metadata `name` field so
+                # MergedTapeReader's (exchange, name) key matches across
+                # exchanges that label perps differently.
+                flat_name = ccxt_name.replace("/", "").split(":")[0]
+                recorder.add_symbol(int(flox_sid), flat_name, "", "", 2, 8)
             broker.set_market_data_recorder(recorder)
             run_task = asyncio.create_task(
                 broker.run(streams=("trades", "book"),
