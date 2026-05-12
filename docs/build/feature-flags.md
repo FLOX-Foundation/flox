@@ -5,14 +5,18 @@ CMake options for tailoring a FLOX build to a specific use case. Two prefixes, b
 - `FLOX_ENABLE_*` — capabilities of the core library (backtest module, LZ4 compression, Tracy profiler, CPU affinity).
 - `FLOX_BUILD_*` — optional build artefacts (binding wheels, demo, tools, tests, benchmarks, connectors).
 
-Both default to OFF unless noted, so a bare `cmake -B build` produces only the core C++ static library.
+Most options default to OFF unless noted, so a bare `cmake -B build` produces only the core C++ static library. Two exceptions are flagged explicitly in the tables below (`FLOX_NATIVE`, `FLOX_ENABLE_LZ4`).
+
+A third prefix gates compiler/portability flags rather than features:
+
+- `FLOX_NATIVE` — controls whether Release builds target the build host's exact ISA (`-march=native`) or a portable baseline. Default ON for fastest local builds; flip OFF when shipping artefacts to machines whose CPUs you do not control (e.g. `flox-py` wheels do this automatically).
 
 ## Capabilities
 
 | Flag | Default | Effect |
 |---|---|---|
 | `FLOX_ENABLE_BACKTEST` | OFF | Compile `src/backtest/` into the core library. Required for `BacktestRunner`, `WalkForwardRunner`, `GridSearch`. |
-| `FLOX_ENABLE_LZ4` | OFF | Link LZ4 for replay-log compression. Tries `find_package(lz4 CONFIG)` first, then FetchContent. |
+| `FLOX_ENABLE_LZ4` | **ON** | Link LZ4 for replay-log compression. Tries `find_package(lz4 CONFIG)` first, then `find_library`, then pkg-config, then a vendored LZ4 source via FetchContent — so the dependency self-resolves on every supported platform. Set to OFF only if you specifically need an LZ4-free build. |
 | `FLOX_ENABLE_TRACY` | OFF | Link the Tracy profiler client. Adds runtime instrumentation; OFF in production builds. |
 | `FLOX_ENABLE_CPU_AFFINITY` | OFF | Compile pthread / NUMA-aware affinity helpers. Linux only; on macOS / Windows the calls become no-ops. **Warning:** can hurt perf on busy or shared systems — only use on isolated dedicated hardware. |
 | `FLOX_ENABLE_DEV_SETUP` | OFF | Install the project's pre-commit hook into `.git/hooks/` at configure time. Developer-only. |
@@ -42,6 +46,12 @@ cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
 ```
 
 The empty string (the default) means "all venues currently in `connectors/src/`". Listing an unknown venue produces a configure-time error with the available set.
+
+## Compiler options
+
+| Flag | Default | Effect |
+|---|---|---|
+| `FLOX_NATIVE` | **ON** | Add `-march=native` to Release builds. Fastest on the build host, but the resulting `.so` / `.a` will fault with SIGILL on any CPU lacking an instruction the build host had (e.g. AVX-512 → consumer x86). When OFF on x86_64, falls back to `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, supported since ~2015); on arm64 the compiler default is used. Distribution paths (wheels, prebuilt binaries) must build with `FLOX_NATIVE=OFF`. |
 
 ## Recommended configurations
 

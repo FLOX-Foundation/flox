@@ -17,8 +17,16 @@ cmake .. \
 
 Default release flags in FLOX:
 ```cmake
-$<$<CONFIG:Release>:-O3 -march=native -flto -funroll-loops>
+$<$<CONFIG:Release>:-O3 ${FLOX_ARCH_OPT} -flto -funroll-loops>
 ```
+
+`FLOX_ARCH_OPT` resolves at configure time from `FLOX_NATIVE` (default `ON`):
+
+- `FLOX_NATIVE=ON` → `-march=native` (fastest, locked to the build host's ISA).
+- `FLOX_NATIVE=OFF` on x86_64 → `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, portable to anything since ~2015).
+- `FLOX_NATIVE=OFF` on arm64 → compiler default (no `-march`).
+
+Set `FLOX_NATIVE=OFF` when shipping artefacts to machines whose CPUs you do not control; the `flox-py` wheel build does this automatically. See [Build feature flags](../build/feature-flags.md#compiler-options) for the full table.
 
 ### Link-Time Optimization
 
