@@ -44,7 +44,6 @@ extern "C"
   typedef void* FloxDataWriterHandle;
   typedef void* FloxDataReaderHandle;
   typedef void* FloxBacktestResultHandle;
-  typedef void* FloxDataRecorderHandle;
   typedef void* FloxPartitionerHandle;
   typedef void* FloxRiskManagerHandle;
   typedef void* FloxKillSwitchHandle;
@@ -52,6 +51,7 @@ extern "C"
   typedef void* FloxPnLTrackerHandle;
   typedef void* FloxStorageSinkHandle;
   typedef void* FloxMarketDataRecorderHandle;
+  typedef void* FloxBinaryLogRecorderHookHandle;
   typedef void* FloxReplaySourceHandle;
   typedef void* FloxExecutionListenerHandle;
   typedef void* FloxExecutorHandle;
@@ -816,6 +816,23 @@ extern "C"
   uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index);
 
   // ============================================================
+  // Binary Log Recorder Hook
+  // ============================================================
+
+  FloxBinaryLogRecorderHookHandle flox_binary_log_recorder_hook_create(const char* output_dir,
+                                                                       uint64_t max_segment_mb,
+                                                                       uint8_t exchange_id,
+                                                                       uint8_t compression);
+  void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
+  FloxMarketDataRecorderHandle flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook);
+  void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook,
+                                                uint32_t symbol_id, const char* name,
+                                                const char* base, const char* quote,
+                                                int8_t price_precision, int8_t qty_precision);
+  void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle hook);
+  FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle hook);
+
+  // ============================================================
   // Composite Book
   // ============================================================
 
@@ -861,6 +878,10 @@ extern "C"
   uint8_t flox_data_writer_write_trade(FloxDataWriterHandle writer, int64_t exchange_ts_ns,
                                        int64_t recv_ts_ns, double price, double qty,
                                        uint64_t trade_id, uint32_t symbol_id, uint8_t side);
+  uint8_t flox_data_writer_write_book(FloxDataWriterHandle writer, int64_t exchange_ts_ns,
+                                      int64_t recv_ts_ns, int64_t seq, uint32_t symbol_id,
+                                      uint8_t is_snapshot, const FloxBookLevel* bids,
+                                      uint32_t n_bids, const FloxBookLevel* asks, uint32_t n_asks);
   void flox_data_writer_flush(FloxDataWriterHandle writer);
   void flox_data_writer_close(FloxDataWriterHandle writer);
 
@@ -895,26 +916,13 @@ extern "C"
                                                    uint64_t max_levels);
 
   // ============================================================
-  // Datarecorder
-  // ============================================================
-
-  FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
-                                                   const char* exchange_name,
-                                                   uint64_t max_segment_mb);
-  void flox_data_recorder_destroy(FloxDataRecorderHandle recorder);
-  void flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder, uint32_t symbol_id,
-                                     const char* name, const char* base, const char* quote,
-                                     int8_t price_precision, int8_t qty_precision);
-  void flox_data_recorder_start(FloxDataRecorderHandle recorder);
-  void flox_data_recorder_stop(FloxDataRecorderHandle recorder);
-  void flox_data_recorder_flush(FloxDataRecorderHandle recorder);
-  uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder);
-
-  // ============================================================
   // Datawriter
   // ============================================================
 
   FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer);
+  uint64_t flox_data_writer_write_books(FloxDataWriterHandle writer,
+                                        const FloxBookUpdateHeader* headers, uint64_t n_events,
+                                        const FloxLevel* levels, uint64_t total_levels);
 
   // ============================================================
   // Delta Book
@@ -1441,6 +1449,7 @@ extern "C"
   void flox_data_reader_summary_p(FloxDataReaderHandle reader, void* out);
   void flox_data_reader_stats_p(FloxDataReaderHandle reader, void* out);
   void flox_data_writer_stats_p(FloxDataWriterHandle writer, void* out);
+  void flox_binary_log_recorder_hook_stats_p(void* hook, void* out);
   void flox_segment_merge_full_p(const char* input_paths, size_t num_paths, const char* output_dir,
                                  const char* output_name, uint8_t sort, void* out);
   void flox_segment_merge_dir_p(const char* input_dir, const char* output_dir, void* out);

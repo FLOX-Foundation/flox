@@ -270,7 +270,8 @@ def cmd_tape_record(args: argparse.Namespace) -> int:
             await broker.add_symbol(ccxt_sym)
             broker.set_market_data_recorder(recorder)
             run_task = asyncio.create_task(
-                broker.run(streams=("trades",), reconcile=False)
+                broker.run(streams=("trades", "book"),
+                           book_depth=args.book_depth, reconcile=False)
             )
 
             stop_event = asyncio.Event()
@@ -300,13 +301,12 @@ def cmd_tape_record(args: argparse.Namespace) -> int:
                     pass
                 recorder.close()
 
-        s = recorder.stats
-        print(f"  trades written : {s.trades_written}")
-        if s.book_updates_skipped:
-            print(f"  book updates   : {s.book_updates_skipped} skipped "
-                  f"(book write API not yet exposed; trades only in v1)")
-        if s.error:
-            print(f"  ERROR          : {s.error}", file=sys.stderr)
+        s = recorder.stats()
+        print(f"  trades written      : {s.get('trades_written', 0)}")
+        print(f"  book updates written: {s.get('book_updates_written', 0)}")
+        if s.get("errors"):
+            print(f"  ERROR               : {s['errors']} write failure(s)",
+                  file=sys.stderr)
             return 1
         return 0
 
@@ -631,6 +631,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rec.add_argument(
         "--testnet", action="store_true",
         help="Use the exchange's testnet/sandbox endpoint.",
+    )
+    p_rec.add_argument(
+        "--book-depth", type=int, default=50,
+        help=("Order-book depth subscribed via watchOrderBook. Exchanges have "
+              "different valid ranges: bitget perp accepts 20, bybit spot "
+              "wants 1/50/200/1000. Default 50 is the safe cross-exchange "
+              "value."),
     )
     p_rec.set_defaults(handler=cmd_tape_record)
 

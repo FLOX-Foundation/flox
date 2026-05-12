@@ -81,21 +81,30 @@ class RecorderRoundTripTests(unittest.TestCase):
         # side: 0=buy, 1=sell — matches our (True, False, True) input.
         self.assertEqual([t[2] for t in seen], [0, 1, 0])
 
-    def test_recorder_book_updates_are_counted_not_written(self) -> None:
-        # v1 only writes trades. Book updates should count toward
-        # `book_updates_skipped` so the CLI can surface "you tried to
-        # record book and got nothing" instead of silent loss.
+    def test_recorder_writes_book_updates(self) -> None:
+        # BinaryLogRecorderHook captures both trades AND books — events
+        # stay in C++ on the hot path via BinaryLogWriter::writeBook.
         registry = flox.SymbolRegistry()
         sym = registry.add_symbol("test", "BTCUSDT", tick_size=0.01)
-        recorder = tape.make_recorder_hook(self.tmp)
+        out_dir = self.tmp / "book_capture"
+        recorder = tape.make_recorder_hook(out_dir)
         runner = flox.Runner(registry, on_signal=lambda _sig: None)
         runner.set_market_data_recorder(recorder)
         runner.start()
         runner.on_book_snapshot(sym, [100.0], [1.0], [101.0], [1.0], 1_000_000)
         runner.stop()
         recorder.close()
-        self.assertEqual(recorder.stats.book_updates_skipped, 1)
-        self.assertEqual(recorder.stats.trades_written, 0)
+
+        stats = recorder.stats()
+        self.assertEqual(stats["book_updates_written"], 1)
+        self.assertEqual(stats["trades_written"], 0)
+
+        reader = flox.DataReader(str(out_dir))
+        headers, levels = reader.read_book_updates()
+        self.assertEqual(headers.size, 1)
+        self.assertEqual(int(headers[0]["bid_count"]), 1)
+        self.assertEqual(int(headers[0]["ask_count"]), 1)
+        self.assertEqual(levels.size, 2)
 
     def test_inspect_on_empty_directory(self) -> None:
         empty_dir = self.tmp / "empty"

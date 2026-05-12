@@ -1437,6 +1437,123 @@
       "return_type": "int64_t"
     },
     {
+      "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_add_symbol",
+      "params": [
+        {
+          "name": "hook",
+          "type": "FloxBinaryLogRecorderHookHandle"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "base",
+          "type": "const char *"
+        },
+        {
+          "name": "quote",
+          "type": "const char *"
+        },
+        {
+          "name": "price_precision",
+          "type": "int8_t"
+        },
+        {
+          "name": "qty_precision",
+          "type": "int8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_as_recorder",
+      "params": [
+        {
+          "name": "hook",
+          "type": "FloxBinaryLogRecorderHookHandle"
+        }
+      ],
+      "return_type": "FloxMarketDataRecorderHandle"
+    },
+    {
+      "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_create",
+      "params": [
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "max_segment_mb",
+          "type": "uint64_t"
+        },
+        {
+          "name": "exchange_id",
+          "type": "uint8_t"
+        },
+        {
+          "name": "compression",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxBinaryLogRecorderHookHandle"
+    },
+    {
+      "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_destroy",
+      "params": [
+        {
+          "name": "hook",
+          "type": "FloxBinaryLogRecorderHookHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_flush",
+      "params": [
+        {
+          "name": "hook",
+          "type": "FloxBinaryLogRecorderHookHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_stats",
+      "params": [
+        {
+          "name": "hook",
+          "type": "FloxBinaryLogRecorderHookHandle"
+        }
+      ],
+      "return_type": "FloxWriterStats"
+    },
+    {
+      "group": "pointer_out",
+      "name": "flox_binary_log_recorder_hook_stats_p",
+      "params": [
+        {
+          "name": "hook",
+          "type": "void *"
+        },
+        {
+          "name": "out",
+          "type": "void *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "order_book",
       "name": "flox_book_apply_delta",
       "params": [
@@ -2091,115 +2208,6 @@
       "return_type": "void"
     },
     {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_add_symbol",
-      "params": [
-        {
-          "name": "recorder",
-          "type": "FloxDataRecorderHandle"
-        },
-        {
-          "name": "symbol_id",
-          "type": "uint32_t"
-        },
-        {
-          "name": "name",
-          "type": "const char *"
-        },
-        {
-          "name": "base",
-          "type": "const char *"
-        },
-        {
-          "name": "quote",
-          "type": "const char *"
-        },
-        {
-          "name": "price_precision",
-          "type": "int8_t"
-        },
-        {
-          "name": "qty_precision",
-          "type": "int8_t"
-        }
-      ],
-      "return_type": "void"
-    },
-    {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_create",
-      "params": [
-        {
-          "name": "output_dir",
-          "type": "const char *"
-        },
-        {
-          "name": "exchange_name",
-          "type": "const char *"
-        },
-        {
-          "name": "max_segment_mb",
-          "type": "uint64_t"
-        }
-      ],
-      "return_type": "FloxDataRecorderHandle"
-    },
-    {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_destroy",
-      "params": [
-        {
-          "name": "recorder",
-          "type": "FloxDataRecorderHandle"
-        }
-      ],
-      "return_type": "void"
-    },
-    {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_flush",
-      "params": [
-        {
-          "name": "recorder",
-          "type": "FloxDataRecorderHandle"
-        }
-      ],
-      "return_type": "void"
-    },
-    {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_is_recording",
-      "params": [
-        {
-          "name": "recorder",
-          "type": "FloxDataRecorderHandle"
-        }
-      ],
-      "return_type": "uint8_t"
-    },
-    {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_start",
-      "params": [
-        {
-          "name": "recorder",
-          "type": "FloxDataRecorderHandle"
-        }
-      ],
-      "return_type": "void"
-    },
-    {
-      "group": "datarecorder",
-      "name": "flox_data_recorder_stop",
-      "params": [
-        {
-          "name": "recorder",
-          "type": "FloxDataRecorderHandle"
-        }
-      ],
-      "return_type": "void"
-    },
-    {
       "group": "data_writer",
       "name": "flox_data_writer_close",
       "params": [
@@ -2276,6 +2284,80 @@
         }
       ],
       "return_type": "void"
+    },
+    {
+      "group": "data_writer",
+      "name": "flox_data_writer_write_book",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        },
+        {
+          "name": "exchange_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "recv_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "seq",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "is_snapshot",
+          "type": "uint8_t"
+        },
+        {
+          "name": "bids",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "n_bids",
+          "type": "uint32_t"
+        },
+        {
+          "name": "asks",
+          "type": "const FloxBookLevel *"
+        },
+        {
+          "name": "n_asks",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "datawriter",
+      "name": "flox_data_writer_write_books",
+      "params": [
+        {
+          "name": "writer",
+          "type": "FloxDataWriterHandle"
+        },
+        {
+          "name": "headers",
+          "type": "const FloxBookUpdateHeader *"
+        },
+        {
+          "name": "n_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "levels",
+          "type": "const FloxLevel *"
+        },
+        {
+          "name": "total_levels",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
     },
     {
       "group": "data_writer",
@@ -11507,6 +11589,10 @@
       "target": "void*"
     },
     {
+      "name": "FloxBinaryLogRecorderHookHandle",
+      "target": "void*"
+    },
+    {
       "name": "FloxBookHandle",
       "target": "void*"
     },
@@ -11516,10 +11602,6 @@
     },
     {
       "name": "FloxDataReaderHandle",
-      "target": "void*"
-    },
-    {
-      "name": "FloxDataRecorderHandle",
       "target": "void*"
     },
     {

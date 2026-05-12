@@ -291,6 +291,15 @@ void FloxJsStrategy::loadStdlib()
                               price, qty, tradeId || 0,
                               symbolId, isBuy ? 0 : 1);
       }
+      // bidsBuf / asksBuf are BigInt64Array buffers laid out [price_raw, qty_raw, ...].
+      writeBook(timestampNs, exchangeNs, seqNs, symbolId, isSnapshot, bidsBuf, asksBuf) {
+        var nBids = bidsBuf ? (bidsBuf.length >> 1) : 0;
+        var nAsks = asksBuf ? (asksBuf.length >> 1) : 0;
+        return __flox_dw_write_book(this._h, timestampNs, exchangeNs, seqNs || 0,
+                                    symbolId, isSnapshot ? 1 : 0,
+                                    bidsBuf || null, nBids,
+                                    asksBuf || null, nAsks);
+      }
       flush() { __flox_dw_flush(this._h); }
       close() { __flox_dw_close(this._h); }
       stats() { return __flox_dw_stats(this._h); }
@@ -322,20 +331,33 @@ void FloxJsStrategy::loadStdlib()
       readBookUpdatesFrom(startTsNs) { return __flox_dr_read_book_updates_from(this._h, startTsNs); }
     }
 
-    class DataRecorder {
-      constructor(dir, maxSegmentSize, compression) {
-        this._h = __flox_recorder_create(dir, maxSegmentSize || 0, compression || 0);
+    class BinaryLogRecorderHook {
+      constructor(outputDir, maxSegmentMb, exchangeId, compression) {
+        var compMap = { none: 0, lz4: 1 };
+        var comp = 0;
+        if (typeof compression === "number") {
+          comp = compression | 0;
+        } else if (typeof compression === "string") {
+          if (compMap[compression] === undefined) {
+            throw new Error("BinaryLogRecorderHook: unknown compression '" + compression + "'. Use 'none' or 'lz4'.");
+          }
+          comp = compMap[compression];
+        }
+        this._h = __flox_blrh_create(outputDir, maxSegmentMb === undefined ? 256 : maxSegmentMb,
+                                     exchangeId || 0, comp);
+        this.__floxIsBinaryLogRecorderHook = true;
       }
-      destroy() { __flox_recorder_destroy(this._h); }
-      addSymbol(symbolId, exchange, symbol, tickSize, lotSize, contractSize, takerFee) {
-        __flox_recorder_add_symbol(this._h, symbolId, exchange || "", symbol || "",
-                                   tickSize || 0.01, lotSize || 1.0,
-                                   contractSize || 1.0, takerFee || 0.0);
+      destroy() {
+        if (this._h) { __flox_blrh_destroy(this._h); this._h = null; }
       }
-      start() { __flox_recorder_start(this._h); }
-      stop() { __flox_recorder_stop(this._h); }
-      flush() { __flox_recorder_flush(this._h); }
-      get isRecording() { return __flox_recorder_is_recording(this._h) !== 0; }
+      addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision) {
+        __flox_blrh_add_symbol(this._h, symbolId, name || "", base || "", quote || "",
+                               pricePrecision === undefined ? 8 : pricePrecision,
+                               qtyPrecision === undefined ? 8 : qtyPrecision);
+      }
+      flush() { __flox_blrh_flush(this._h); }
+      stats() { return __flox_blrh_stats(this._h); }
+      _asRecorderHandle() { return __flox_blrh_as_recorder(this._h); }
     }
 
     class Partitioner {

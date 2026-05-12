@@ -198,6 +198,41 @@
           "name": "flox_best_bid_raw"
         },
         {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_add_symbol"
+        },
+        {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_as_recorder"
+        },
+        {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_create"
+        },
+        {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_destroy"
+        },
+        {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_flush"
+        },
+        {
+          "group": "binary_log_recorder_hook",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_stats"
+        },
+        {
+          "group": "pointer_out",
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_stats_p"
+        },
+        {
           "group": "order_book",
           "kind": "function",
           "name": "flox_book_apply_delta"
@@ -383,41 +418,6 @@
           "name": "flox_data_reader_summary_p"
         },
         {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_add_symbol"
-        },
-        {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_create"
-        },
-        {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_destroy"
-        },
-        {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_flush"
-        },
-        {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_is_recording"
-        },
-        {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_start"
-        },
-        {
-          "group": "datarecorder",
-          "kind": "function",
-          "name": "flox_data_recorder_stop"
-        },
-        {
           "group": "data_writer",
           "kind": "function",
           "name": "flox_data_writer_close"
@@ -446,6 +446,16 @@
           "group": "pointer_out",
           "kind": "function",
           "name": "flox_data_writer_stats_p"
+        },
+        {
+          "group": "data_writer",
+          "kind": "function",
+          "name": "flox_data_writer_write_book"
+        },
+        {
+          "group": "datawriter",
+          "kind": "function",
+          "name": "flox_data_writer_write_books"
         },
         {
           "group": "data_writer",
@@ -2660,6 +2670,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxBinaryLogRecorderHookHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxBookHandle"
         },
         {
@@ -2669,10 +2683,6 @@
         {
           "kind": "handle",
           "name": "FloxDataReaderHandle"
-        },
-        {
-          "kind": "handle",
-          "name": "FloxDataRecorderHandle"
         },
         {
           "kind": "handle",
@@ -2828,12 +2838,12 @@
         "backtestrunner_replay",
         "bar_aggregation",
         "bar_dispatch",
+        "binary_log_recorder_hook",
         "composite_book",
         "context_queries",
         "data_reader",
         "data_writer",
         "datareader",
-        "datarecorder",
         "datawriter",
         "delta_book",
         "execution",
@@ -3040,6 +3050,34 @@
         },
         {
           "kind": "function",
+          "name": "flox_binary_log_recorder_hook_add_symbol"
+        },
+        {
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_as_recorder"
+        },
+        {
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_flush"
+        },
+        {
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_stats"
+        },
+        {
+          "kind": "function",
+          "name": "flox_binary_log_recorder_hook_stats_p"
+        },
+        {
+          "kind": "function",
           "name": "flox_book_apply_delta"
         },
         {
@@ -3188,34 +3226,6 @@
         },
         {
           "kind": "function",
-          "name": "flox_data_recorder_add_symbol"
-        },
-        {
-          "kind": "function",
-          "name": "flox_data_recorder_create"
-        },
-        {
-          "kind": "function",
-          "name": "flox_data_recorder_destroy"
-        },
-        {
-          "kind": "function",
-          "name": "flox_data_recorder_flush"
-        },
-        {
-          "kind": "function",
-          "name": "flox_data_recorder_is_recording"
-        },
-        {
-          "kind": "function",
-          "name": "flox_data_recorder_start"
-        },
-        {
-          "kind": "function",
-          "name": "flox_data_recorder_stop"
-        },
-        {
-          "kind": "function",
           "name": "flox_data_writer_close"
         },
         {
@@ -3237,6 +3247,14 @@
         {
           "kind": "function",
           "name": "flox_data_writer_stats_p"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_write_book"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_writer_write_books"
         },
         {
           "kind": "function",
@@ -4880,6 +4898,14 @@
         },
         {
           "kind": "class",
+          "name": "BinaryLogRecorderHook"
+        },
+        {
+          "kind": "class",
+          "name": "BinaryLogRecorderHookStats"
+        },
+        {
+          "kind": "class",
           "name": "Bollinger"
         },
         {
@@ -4925,10 +4951,6 @@
         {
           "kind": "class",
           "name": "DataReaderSummary"
-        },
-        {
-          "kind": "class",
-          "name": "DataRecorder"
         },
         {
           "kind": "class",
@@ -5648,6 +5670,10 @@
         },
         {
           "kind": "class",
+          "name": "BinaryLogRecorderHook"
+        },
+        {
+          "kind": "class",
           "name": "Bollinger"
         },
         {
@@ -5673,10 +5699,6 @@
         {
           "kind": "class",
           "name": "DataReader"
-        },
-        {
-          "kind": "class",
-          "name": "DataRecorder"
         },
         {
           "kind": "class",
@@ -6420,6 +6442,34 @@
         "status": "required"
       }
     },
+    "binary_log_recorder_hook": {
+      "capi_functions": [
+        "flox_binary_log_recorder_hook_add_symbol",
+        "flox_binary_log_recorder_hook_as_recorder",
+        "flox_binary_log_recorder_hook_create",
+        "flox_binary_log_recorder_hook_destroy",
+        "flox_binary_log_recorder_hook_flush",
+        "flox_binary_log_recorder_hook_stats"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "BinaryLogRecorderHook"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "BinaryLogRecorderHook"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
     "composite_book": {
       "capi_functions": [
         "flox_composite_book_best_ask",
@@ -6505,6 +6555,7 @@
         "flox_data_writer_create",
         "flox_data_writer_destroy",
         "flox_data_writer_flush",
+        "flox_data_writer_write_book",
         "flox_data_writer_write_trade"
       ],
       "codon": {
@@ -6559,38 +6610,10 @@
         "status": "required"
       }
     },
-    "datarecorder": {
-      "capi_functions": [
-        "flox_data_recorder_add_symbol",
-        "flox_data_recorder_create",
-        "flox_data_recorder_destroy",
-        "flox_data_recorder_flush",
-        "flox_data_recorder_is_recording",
-        "flox_data_recorder_start",
-        "flox_data_recorder_stop"
-      ],
-      "codon": {
-        "present": true,
-        "status": "required"
-      },
-      "napi": {
-        "classes": [
-          "DataRecorder"
-        ],
-        "functions": [],
-        "status": "required"
-      },
-      "pybind11": {
-        "classes": [
-          "DataRecorder"
-        ],
-        "functions": [],
-        "status": "required"
-      }
-    },
     "datawriter": {
       "capi_functions": [
-        "flox_data_writer_stats"
+        "flox_data_writer_stats",
+        "flox_data_writer_write_books"
       ],
       "codon": {
         "present": true,
@@ -7402,6 +7425,7 @@
     },
     "pointer_out": {
       "capi_functions": [
+        "flox_binary_log_recorder_hook_stats_p",
         "flox_data_reader_stats_p",
         "flox_data_reader_summary_p",
         "flox_data_writer_stats_p",

@@ -1,118 +1,96 @@
-# MarketDataRecorder
+# BinaryLogRecorderHook
 
-`MarketDataRecorder` is a high-level component that subscribes to market data buses and records events to binary log files. It implements `IMarketDataSubscriber` for seamless integration with the engine.
+`flox::replay::BinaryLogRecorderHook` is the built-in market-data
+recorder that plugs into the recorder slot on a `Runner` or
+`LiveEngine` and writes both trades and book updates to a `.floxlog`
+directory.
+
+Lives at `include/flox/replay/binary_log_recorder_hook.h`; replaced
+the older `MarketDataRecorder` class in v0.6.0.
 
 ```cpp
-struct MarketDataRecorderConfig {
+struct BinaryLogRecorderHookConfig {
   std::filesystem::path output_dir;
-  uint64_t max_segment_bytes{256ull << 20};  // 256 MB
+  uint64_t max_segment_bytes{256ull << 20};   // 256 MB
   uint8_t exchange_id{0};
+  CompressionType compression{CompressionType::None};
+  std::optional<RecordingMetadata> metadata;
 };
 
-class MarketDataRecorder : public IMarketDataRecorder {
+class BinaryLogRecorderHook {
 public:
-  explicit MarketDataRecorder(MarketDataRecorderConfig config);
-  ~MarketDataRecorder() override;
+  explicit BinaryLogRecorderHook(BinaryLogRecorderHookConfig config);
 
-  // ISubsystem
-  void start() override;
-  void stop() override;
+  void start();
+  void stop();
+  bool isRecording() const noexcept;
 
-  // IMarketDataSubscriber
-  SubscriberId id() const override;
-  void onBookUpdate(const BookUpdateEvent& event) override;
-  void onTrade(const TradeEvent& event) override;
-  void onBar(const BarEvent& event) override;
+  void onTrade(uint32_t symbol_id, int64_t price_raw, int64_t qty_raw,
+               bool is_buy, int64_t exchange_ts_ns,
+               int64_t recv_ts_ns) noexcept;
+  void onBookUpdate(uint32_t symbol_id, bool is_snapshot,
+                    const BookLevel* bids, uint32_t n_bids,
+                    const BookLevel* asks, uint32_t n_asks,
+                    int64_t exchange_ts_ns,
+                    int64_t recv_ts_ns) noexcept;
 
-  // IMarketDataRecorder
-  void setOutputDir(const std::filesystem::path& dir) override;
-  void flush() override;
-  RecorderStats stats() const override;
-  bool isRecording() const override;
+  void addSymbol(const SymbolInfo& info);
+  void flush();
+  RecorderStats stats() const noexcept;
+  std::filesystem::path currentSegmentPath() const;
 };
 ```
 
-## Purpose
+## Attaching to an engine
 
-* Provide a ready-to-use market data recording solution.
-* Subscribe to `TradeBus`, `BookUpdateBus`, and `BarBus` for automatic recording.
-* Abstract away low-level binary format details.
+The hook is wired through the C-API:
+
+```cpp
+auto handle = flox_binary_log_recorder_hook_create(
+    "/data/btcusdt", 256, /*exchange_id=*/0, /*compression=*/0);
+
+flox_binary_log_recorder_hook_add_symbol(handle, 1, "BTCUSDT", "BTC",
+                                         "USDT", 2, 3);
+
+flox_runner_set_market_data_recorder(
+    runner, flox_binary_log_recorder_hook_as_recorder(handle));
+
+// ... runner runs ...
+
+flox_binary_log_recorder_hook_destroy(handle);
+```
+
+`flox_runner_set_market_data_recorder` accepts the same handle type
+that `flox_market_data_recorder_create` (user-callback flavour) yields,
+so the two flavours of recorder are interchangeable at the attach
+point. Internally `start()` / `stop()` fire on the engine's lifecycle.
+
+## Bindings
+
+| Language | Class |
+|----------|-------|
+| Python | `flox_py.BinaryLogRecorderHook` |
+| Node.js | `flox.BinaryLogRecorderHook` |
+| QuickJS | `BinaryLogRecorderHook` |
+| Codon | `BinaryLogRecorderHook` |
+
+All four accept the same constructor signature `(output_dir,
+max_segment_mb, exchange_id, compression)` and expose `add_symbol`,
+`flush`, `stats`, and `close`.
 
 ## Configuration
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `output_dir` | - | Directory for recorded segments. |
+| `output_dir` | — | Directory for recorded segments. |
 | `max_segment_bytes` | 256 MB | Maximum segment size before rotation. |
 | `exchange_id` | 0 | Exchange identifier in segment headers. |
+| `compression` | `None` | `None` or `LZ4`. |
+| `metadata` | `nullopt` | Optional `RecordingMetadata` written alongside segments. |
 
-## Methods
+## See also
 
-| Method | Description |
-|--------|-------------|
-| `start()` | Begin recording (creates initial segment). |
-| `stop()` | Stop recording and close current segment. |
-| `onBookUpdate(event)` | Record a book update event. |
-| `onTrade(event)` | Record a trade event. |
-| `onBar(event)` | Record a bar event (currently no-op). |
-| `setOutputDir(dir)` | Change output directory (takes effect on next rotation). |
-| `flush()` | Flush buffers to disk. |
-| `stats()` | Returns recording statistics. |
-| `isRecording()` | Returns `true` if actively recording. |
-
-## Usage
-
-```cpp
-// Configure recorder
-MarketDataRecorderConfig config{
-  .output_dir = "/data/market/btcusdt",
-  .max_segment_bytes = 512ull << 20,
-  .exchange_id = 1
-};
-
-// Create recorder
-auto recorder = std::make_shared<MarketDataRecorder>(config);
-
-// Subscribe to buses
-tradeBus.subscribe(recorder.get());
-bookBus.subscribe(recorder.get());
-
-// Start recording
-recorder->start();
-
-// ... market data flows through buses ...
-
-// Stop and flush
-recorder->stop();
-```
-
-## Integration with Engine
-
-```cpp
-// In your builder
-auto recorder = std::make_shared<MarketDataRecorder>(recorderConfig);
-
-// Add as subsystem for lifecycle management
-subsystems.push_back(recorder);
-
-// Subscribe to market data buses
-tradeBus->subscribe(recorder.get());
-bookUpdateBus->subscribe(recorder.get());
-
-// Engine will call start()/stop() automatically
-```
-
-## Notes
-
-* Implements `ISubsystem` for automatic lifecycle management.
-* Thread-safe for concurrent event delivery.
-* Internally uses `BinaryLogWriter` for actual file operations.
-* Call `flush()` periodically for durability guarantees.
-* Segments are automatically rotated based on size.
-
-## See Also
-
-* [BinaryLogWriter](binary_log_writer.md) — Low-level writer
-* [BinaryLogReader](binary_log_reader.md) — Reading recorded data
-* [Recording Data Tutorial](../../../tutorials/recording-data.md) — Step-by-step guide
-* [IMarketDataSubscriber](../engine/abstract_market_data_subscriber.md) — Subscriber interface
+- [BinaryLogWriter](binary_log_writer.md) — low-level writer.
+- [BinaryLogReader](binary_log_reader.md) — reading recorded data.
+- [Recording Data Tutorial](../../../tutorials/recording-data.md).
+- [`flox tape` CLI](../../../how-to/tape-record.md).

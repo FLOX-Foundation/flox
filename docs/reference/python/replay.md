@@ -268,53 +268,49 @@ Path of the current segment being written.
 
 ---
 
-## DataRecorder
+## BinaryLogRecorderHook
 
-High-level market data recorder with symbol metadata support.
+Built-in `.floxlog` recorder. Plug into a `Runner` via
+`runner.set_market_data_recorder(hook)`. Lifecycle is driven by the
+engine; both trades and book updates are captured.
 
 ```python
-recorder = flox.DataRecorder(
-    output_dir="./recordings",
-    exchange_name="binance",
+hook = flox.BinaryLogRecorderHook(
+    "./recordings",
     max_segment_mb=256,
+    exchange_id=0,
+    compression="none",   # or "lz4"
 )
+hook.add_symbol(1, "BTCUSDT", base="BTC", quote="USDT",
+                price_precision=2, qty_precision=6)
+runner.set_market_data_recorder(hook)
 ```
 
 ### Methods
 
 #### `add_symbol(symbol_id, name, base="", quote="", price_precision=8, qty_precision=8)`
 
-Register a symbol with metadata.
-
-```python
-recorder.add_symbol(1, "BTCUSDT", base="BTC", quote="USDT",
-                     price_precision=2, qty_precision=6)
-```
-
-#### `start()`
-
-Start recording.
-
-#### `stop()`
-
-Stop recording and finalize output.
+Register a symbol in the recording metadata.
 
 #### `flush()`
 
-Flush buffered data.
+Flush buffered bytes to disk.
 
-#### `is_recording() -> bool`
+#### `close()`
 
-Check if currently recording.
+Stop the underlying writer (idempotent — also called by the engine's
+on-stop lifecycle).
+
+#### `current_segment_path() -> str`
+
+Path of the segment currently being written. Empty before `start()`.
 
 #### `stats() -> dict`
-
-Recorder statistics.
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `trades_written` | `int` | Trades recorded |
 | `book_updates_written` | `int` | Book updates recorded |
 | `bytes_written` | `int` | Bytes written |
-| `files_created` | `int` | Files created |
-| `errors` | `int` | Error count |
+| `segments_created` | `int` | Segments written |
+| `errors` | `int` | Writer rejections |

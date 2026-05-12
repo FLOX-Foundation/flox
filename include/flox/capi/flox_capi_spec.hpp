@@ -1065,6 +1065,19 @@ extern "C"
   uint8_t flox_data_writer_write_trade(FloxDataWriterHandle writer, int64_t exchange_ts_ns,
                                        int64_t recv_ts_ns, double price, double qty,
                                        uint64_t trade_id, uint32_t symbol_id, uint8_t side);
+  // Single book-update writer. Levels are raw int64 (Price/Quantity
+  // scale = 1e8); no double conversion in the hot path. Returns 1 on
+  // success, 0 on failure (e.g. writer closed). bids/asks may be NULL
+  // when the matching count is 0.
+  FLOX_EXPORT(group = "data_writer")
+  uint8_t flox_data_writer_write_book(FloxDataWriterHandle writer,
+                                      int64_t exchange_ts_ns,
+                                      int64_t recv_ts_ns,
+                                      int64_t seq,
+                                      uint32_t symbol_id,
+                                      uint8_t is_snapshot,
+                                      const FloxBookLevel* bids, uint32_t n_bids,
+                                      const FloxBookLevel* asks, uint32_t n_asks);
   FLOX_EXPORT(group = "data_writer")
   void flox_data_writer_flush(FloxDataWriterHandle writer);
   FLOX_EXPORT(group = "data_writer")
@@ -1547,30 +1560,18 @@ extern "C"
   FLOX_EXPORT(group = "datawriter")
   FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer);
 
-  // ============================================================
-  // DataRecorder
-  // ============================================================
-
-  typedef void* FloxDataRecorderHandle;
-
-  FLOX_EXPORT(group = "datarecorder")
-  FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
-                                                   const char* exchange_name,
-                                                   uint64_t max_segment_mb);
-  FLOX_EXPORT(group = "datarecorder")
-  void flox_data_recorder_destroy(FloxDataRecorderHandle recorder);
-  FLOX_EXPORT(group = "datarecorder")
-  void flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder, uint32_t symbol_id,
-                                     const char* name, const char* base, const char* quote,
-                                     int8_t price_precision, int8_t qty_precision);
-  FLOX_EXPORT(group = "datarecorder")
-  void flox_data_recorder_start(FloxDataRecorderHandle recorder);
-  FLOX_EXPORT(group = "datarecorder")
-  void flox_data_recorder_stop(FloxDataRecorderHandle recorder);
-  FLOX_EXPORT(group = "datarecorder")
-  void flox_data_recorder_flush(FloxDataRecorderHandle recorder);
-  FLOX_EXPORT(group = "datarecorder")
-  uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder);
+  // Batched book writer. headers + flat levels array, sliced per event
+  // via header.level_offset / bid_count / ask_count. Same struct layout
+  // as flox_data_reader_read_book_updates, so round-trip works.
+  // event_type 2=snapshot, 3=delta. FloxLevel.side is ignored on write
+  // (bid vs ask is derived from the bid_count/ask_count split). Returns
+  // count successfully written.
+  FLOX_EXPORT(group = "datawriter")
+  uint64_t flox_data_writer_write_books(FloxDataWriterHandle writer,
+                                        const FloxBookUpdateHeader* headers,
+                                        uint64_t n_events,
+                                        const FloxLevel* levels,
+                                        uint64_t total_levels);
 
   // ============================================================
   // Partitioner
@@ -1631,6 +1632,8 @@ extern "C"
   void flox_data_reader_stats_p(FloxDataReaderHandle reader, void* out);
   FLOX_EXPORT(group = "pointer_out")
   void flox_data_writer_stats_p(FloxDataWriterHandle writer, void* out);
+  FLOX_EXPORT(group = "pointer_out")
+  void flox_binary_log_recorder_hook_stats_p(void* hook, void* out);
   FLOX_EXPORT(group = "pointer_out")
   void flox_segment_merge_full_p(const char* input_paths, size_t num_paths,
                                  const char* output_dir, const char* output_name,
@@ -1863,17 +1866,24 @@ extern "C"
   // MarketDataRecorder — receive every market data event fed into the
   // engine, for custom recording (CSV, parquet, custom binary).
   //
-  // Companion to the concrete C API recorder (flox_data_recorder_*
-  // already defined for the in-tree binary log writer); this hook lets a
-  // binding implement IMarketDataRecorder in the host language.
+  // Two flavours share the same FloxMarketDataRecorderHandle plug
+  // socket on `flox_runner_set_market_data_recorder` and
+  // `flox_live_engine_set_market_data_recorder`:
+  //   1. User-callback hook (`flox_market_data_recorder_create`). The
+  //      binding implements on_trade / on_book_update etc. in the host
+  //      language.
+  //   2. Binary-log sink (`flox_binary_log_recorder_hook_create`).
+  //      Built-in `.floxlog` writer; events stay in C++ on the hot
+  //      path and are written via `BinaryLogWriter` without crossing
+  //      the binding boundary.
   //
-  // Callbacks fire on every published trade and book update — synchronously
-  // for the runner, on the consumer thread for the live engine.
-  // on_start / on_stop fire on engine.start() / engine.stop() while the
-  // recorder is attached. Any callback may be NULL (no-op).
+  // Callbacks fire on every published trade and book update:
+  // synchronously for the runner, on the consumer thread for the live
+  // engine. on_start / on_stop fire on engine.start() / engine.stop()
+  // while the recorder is attached. Any callback may be NULL (no-op).
   //
-  // The trade / book pointers and book level arrays are valid only for the
-  // duration of the callback; copy if retained.
+  // The trade / book pointers and book level arrays are valid only for
+  // the duration of the callback; copy if retained.
   // ============================================================
 
   typedef void (*FloxRecorderOnTradeFn)(void* user_data, const FloxTradeData* trade);
@@ -1906,6 +1916,44 @@ extern "C"
   flox_market_data_recorder_create_p(const FloxMarketDataRecorderCallbacks* callbacks);
   FLOX_EXPORT(group = "recorder")
   void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder);
+
+  // Binary-log recorder hook. Owns a BinaryLogWriter internally and
+  // writes trades + books on the engine thread without crossing the
+  // binding boundary. `compression` matches
+  // `flox::replay::CompressionType`: 0 = None, 1 = LZ4.
+  typedef void* FloxBinaryLogRecorderHookHandle;
+
+  FLOX_EXPORT(group = "binary_log_recorder_hook")
+  FloxBinaryLogRecorderHookHandle
+  flox_binary_log_recorder_hook_create(const char* output_dir,
+                                       uint64_t max_segment_mb,
+                                       uint8_t exchange_id,
+                                       uint8_t compression);
+  FLOX_EXPORT(group = "binary_log_recorder_hook")
+  void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
+
+  // Borrowed handle compatible with flox_runner_set_market_data_recorder
+  // and flox_live_engine_set_market_data_recorder. Lifetime is tied to
+  // the owning hook. DO NOT pass to flox_market_data_recorder_destroy.
+  FLOX_EXPORT(group = "binary_log_recorder_hook")
+  FloxMarketDataRecorderHandle
+  flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook);
+
+  FLOX_EXPORT(group = "binary_log_recorder_hook")
+  void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook,
+                                                uint32_t symbol_id,
+                                                const char* name,
+                                                const char* base,
+                                                const char* quote,
+                                                int8_t price_precision,
+                                                int8_t qty_precision);
+
+  FLOX_EXPORT(group = "binary_log_recorder_hook")
+  void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle hook);
+
+  FLOX_EXPORT(group = "binary_log_recorder_hook")
+  FloxWriterStats
+  flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle hook);
 
   // ============================================================
   // ReplaySource — binding-side market data event source.

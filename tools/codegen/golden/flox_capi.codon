@@ -61,6 +61,14 @@ from C import flox_bar_dispatch_recorder_count(cobj) -> u32
 from C import flox_bar_dispatch_recorder_type_at(cobj, u32) -> u8
 from C import flox_bar_dispatch_recorder_param_at(cobj, u32) -> u64
 
+# ── binary_log_recorder_hook ──
+from C import flox_binary_log_recorder_hook_create(cobj, u64, u8, u8) -> cobj
+from C import flox_binary_log_recorder_hook_destroy(cobj)
+from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
+from C import flox_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
+from C import flox_binary_log_recorder_hook_flush(cobj)
+from C import flox_binary_log_recorder_hook_stats(cobj) -> cobj
+
 # ── composite_book ──
 from C import flox_composite_book_create() -> cobj
 from C import flox_composite_book_destroy(cobj)
@@ -88,6 +96,7 @@ from C import flox_data_reader_count(cobj) -> u64
 from C import flox_data_writer_create(cobj, u64, u8) -> cobj
 from C import flox_data_writer_destroy(cobj)
 from C import flox_data_writer_write_trade(cobj, i64, i64, float, float, u64, u32, u8) -> u8
+from C import flox_data_writer_write_book(cobj, i64, i64, i64, u32, u8, cobj, u32, cobj, u32) -> u8
 from C import flox_data_writer_flush(cobj)
 from C import flox_data_writer_close(cobj)
 
@@ -104,17 +113,9 @@ from C import flox_data_reader_read_bbo_from(cobj, i64, cobj, u64) -> u64
 from C import flox_data_reader_count_book_updates_from(cobj, i64, Ptr[u64]) -> u64
 from C import flox_data_reader_read_book_updates_from(cobj, i64, cobj, u64, cobj, u64) -> u64
 
-# ── datarecorder ──
-from C import flox_data_recorder_create(cobj, cobj, u64) -> cobj
-from C import flox_data_recorder_destroy(cobj)
-from C import flox_data_recorder_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
-from C import flox_data_recorder_start(cobj)
-from C import flox_data_recorder_stop(cobj)
-from C import flox_data_recorder_flush(cobj)
-from C import flox_data_recorder_is_recording(cobj) -> u8
-
 # ── datawriter ──
 from C import flox_data_writer_stats(cobj) -> cobj
+from C import flox_data_writer_write_books(cobj, cobj, u64, cobj, u64) -> u64
 
 # ── delta_book ──
 from C import flox_delta_book_encoder_create(u32) -> cobj
@@ -419,6 +420,7 @@ from C import flox_partitioner_by_event_count(cobj, u32, cobj, u32) -> u32
 from C import flox_data_reader_summary_p(cobj, cobj)
 from C import flox_data_reader_stats_p(cobj, cobj)
 from C import flox_data_writer_stats_p(cobj, cobj)
+from C import flox_binary_log_recorder_hook_stats_p(cobj, cobj)
 from C import flox_segment_merge_full_p(cobj, int, cobj, cobj, u8, cobj)
 from C import flox_segment_merge_dir_p(cobj, cobj, cobj)
 from C import flox_segment_split_p(cobj, cobj, u8, i64, u64, cobj)

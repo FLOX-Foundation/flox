@@ -506,3 +506,43 @@ declare class CompositeBook {
     bestAsk(symbol: number): { price: number; quantity: number } | null;
     hasArbitrage(symbol: number): boolean;
 }
+
+interface WriterStats {
+    readonly bytesWritten: number;
+    readonly eventsWritten: number;
+    readonly segmentsCreated: number;
+    readonly tradesWritten: number;
+}
+
+interface BinaryLogRecorderStats {
+    readonly tradesWritten: number;
+    readonly bookUpdatesWritten: number;
+    readonly bytesWritten: number;
+    readonly segmentsCreated: number;
+}
+
+declare class DataWriter {
+    constructor(dir: string, maxSegmentSize?: number, exchangeId?: number);
+    destroy(): void;
+    writeTrade(timestampNs: number, exchangeNs: number, price: number, qty: number,
+               tradeId: number, symbolId: number, isBuy: boolean): boolean;
+    // bidsBuf / asksBuf carry raw int64 levels laid out [price_raw, qty_raw, ...].
+    writeBook(timestampNs: number, exchangeNs: number, seqNs: number, symbolId: number,
+              isSnapshot: boolean, bidsBuf: BigInt64Array | null,
+              asksBuf: BigInt64Array | null): boolean;
+    flush(): void;
+    close(): void;
+    stats(): WriterStats;
+}
+
+declare class BinaryLogRecorderHook {
+    constructor(outputDir: string, maxSegmentMb?: number, exchangeId?: number,
+                compression?: "none" | "lz4" | number);
+    destroy(): void;
+    addSymbol(symbolId: number, name: string, base?: string, quote?: string,
+              pricePrecision?: number, qtyPrecision?: number): void;
+    flush(): void;
+    stats(): BinaryLogRecorderStats;
+    // Private — passed to runner attach API.
+    _asRecorderHandle(): unknown;
+}

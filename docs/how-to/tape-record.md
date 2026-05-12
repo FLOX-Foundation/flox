@@ -8,7 +8,7 @@
 pip install "flox-py[ccxt]"
 ```
 
-The `[ccxt]` extra pulls in `ccxt.pro` for the live feed. If you have your own data source, wire it up to the `MarketDataRecorderHook` API directly and skip the extra.
+The `[ccxt]` extra pulls in `ccxt.pro` for the live feed. If you have your own data source, attach a `BinaryLogRecorderHook` (or a user `MarketDataRecorderHook` subclass) to the `Runner` directly and skip the extra.
 
 ## Record a session
 
@@ -27,13 +27,14 @@ Arguments:
 
 The CLI writes a `.floxlog` segment directory at the output path and rotates segments at `--max-segment-mb` (default 256 MB).
 
-When recording stops, you get a one-line summary:
+When recording stops, you get a summary:
 
 ```
-trades_written=14523 book_updates_skipped=0 last_event_ns=1714123456789012345
+  trades written      : 14523
+  book updates written: 9821
 ```
 
-`book_updates_skipped` will be non-zero if the source emits L2 updates that the build does not write to disk yet. See [Limitations](#limitations).
+Both trades and book updates are captured. The recorder writes them via `BinaryLogWriter` inside C++, so there's no per-event Python callback.
 
 ## Inspect a tape
 
@@ -128,7 +129,7 @@ print(f"replayed {n} trades")
 
 ## Use it from a strategy
 
-The recorder is a `MarketDataRecorderHook`. Attach it to any `Runner`, not just the CLI:
+The recorder is a `BinaryLogRecorderHook`. Attach it to any `Runner`, not just the CLI:
 
 ```python
 import flox_py as flox
@@ -144,10 +145,10 @@ runner.set_market_data_recorder(recorder)
 # ... feed events through runner.on_trade(...) ...
 
 recorder.close()
-print(recorder.stats)
+print(recorder.stats())
 ```
 
-`recorder.stats` exposes `trades_written`, `book_updates_skipped`, `started_at_ns`, `last_event_ns`, and an `error` field that is set when the underlying writer rejects a row.
+`recorder.stats()` returns a dict with `trades_written`, `book_updates_written`, `bytes_written`, `segments_created`, and `errors` (writer-side rejections).
 
 ## Historical backfill
 
@@ -156,7 +157,7 @@ print(recorder.stats)
 The canonical pattern when you want a tape covering past data:
 
 1. Pull the raw history with `ccxt.fetch_ohlcv` (or `fetch_trades` if the exchange supports it). This is plain ccxt — no flox layer.
-2. Feed the rows into a `Runner` whose `MarketDataRecorderHook` writes them to a `.floxlog`. The recorder does not care whether the trades are live or replayed from history; the wire format is the same.
+2. Feed the rows into a `Runner` whose `BinaryLogRecorderHook` writes them to a `.floxlog`. The recorder does not care whether the trades are live or replayed from history; the wire format is the same.
 
 ```python
 import time, ccxt
@@ -187,14 +188,13 @@ while since_ms < end_ms:
     time.sleep(ex.rateLimit / 1000)
 
 recorder.close()
-print(recorder.stats)
+print(recorder.stats())
 ```
 
 Use `fetch_trades` when fidelity matters (every print, with native side and id) and `fetch_ohlcv` when you need a longer window than the exchange exposes for trades. Either way the resulting `.floxlog` plugs into backtest the same way as a live recording.
 
 ## Limitations
 
-* The Python `DataWriter` C-API writes trades only. Book snapshots and deltas reach the recorder hook and increment `book_updates_skipped`, but they do not land on disk yet. The C++ `BinaryLogWriter::writeBook` path exists; exposing it through Python is a separate task.
 * Trade IDs are written as `0`. Replay deduplicates by `(symbol_id, exchange_ts_ns, price_raw, qty_raw)` instead.
 * The format version is `v1`. A reader from a newer flox release reads v1 tapes; a v1 reader does not read newer tapes. Migration paths come with the public format spec.
 

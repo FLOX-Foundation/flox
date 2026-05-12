@@ -29,7 +29,7 @@ typedef void* FloxMarketProfileHandle;
 typedef void* FloxFootprintHandle;
 typedef void* FloxDataWriterHandle;
 typedef void* FloxDataReaderHandle;
-typedef void* FloxDataRecorderHandle;
+typedef void* FloxBinaryLogRecorderHookHandle;
 typedef void* FloxPartitionerHandle;
 ```
 
@@ -715,7 +715,7 @@ void     flox_footprint_clear(FloxFootprintHandle footprint);
 
 ## Data writer
 
-Writes trades to binary log segments.
+Writes trades and book updates to binary log segments.
 
 ```c
 FloxDataWriterHandle flox_data_writer_create(const char* output_dir,
@@ -727,6 +727,25 @@ uint8_t flox_data_writer_write_trade(FloxDataWriterHandle writer,
                                      int64_t exchange_ts_ns, int64_t recv_ts_ns,
                                      double price, double qty,
                                      uint64_t trade_id, uint32_t symbol_id, uint8_t side);
+
+// Raw int64 book levels (scale 1e8). bids/asks may be NULL when the
+// matching count is 0. Returns 1 on success, 0 on failure.
+uint8_t flox_data_writer_write_book(FloxDataWriterHandle writer,
+                                    int64_t exchange_ts_ns, int64_t recv_ts_ns,
+                                    int64_t seq, uint32_t symbol_id,
+                                    uint8_t is_snapshot,
+                                    const FloxBookLevel* bids, uint32_t n_bids,
+                                    const FloxBookLevel* asks, uint32_t n_asks);
+
+// Batched book writer. headers + flat levels array, sliced per event
+// via header.level_offset / bid_count / ask_count. Same struct layout
+// as flox_data_reader_read_book_updates — round-trip works.
+uint64_t flox_data_writer_write_books(FloxDataWriterHandle writer,
+                                      const FloxBookUpdateHeader* headers,
+                                      uint64_t n_events,
+                                      const FloxLevel* levels,
+                                      uint64_t total_levels);
+
 void flox_data_writer_flush(FloxDataWriterHandle writer);
 void flox_data_writer_close(FloxDataWriterHandle writer);
 void flox_data_writer_stats_p(FloxDataWriterHandle writer, void* out); // → FloxWriterStats
@@ -787,24 +806,34 @@ Live segments are safe to read while a writer is still appending. Compressed seg
 
 ---
 
-## Data recorder
+## Binary-log recorder hook
 
-Records live market data to disk.
+Built-in `.floxlog` sink. Owns a `BinaryLogWriter` and routes runner /
+live-engine events into it on the C++ side, without crossing into the
+host language per event. `as_recorder` yields a borrowed handle for
+`flox_runner_set_market_data_recorder` /
+`flox_live_engine_set_market_data_recorder`.
 
 ```c
-FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
-                                                  const char* exchange_name,
-                                                  uint64_t max_segment_mb);
-void flox_data_recorder_destroy(FloxDataRecorderHandle recorder);
+FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_create(const char* output_dir,
+                                     uint64_t max_segment_mb,
+                                     uint8_t exchange_id,
+                                     uint8_t compression /* 0=None, 1=LZ4 */);
+void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
 
-void    flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder,
-                                      uint32_t symbol_id, const char* name,
-                                      const char* base, const char* quote,
-                                      int8_t price_precision, int8_t qty_precision);
-void    flox_data_recorder_start(FloxDataRecorderHandle recorder);
-void    flox_data_recorder_stop(FloxDataRecorderHandle recorder);
-void    flox_data_recorder_flush(FloxDataRecorderHandle recorder);
-uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder);
+FloxMarketDataRecorderHandle
+flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook);
+
+void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook,
+                                              uint32_t symbol_id, const char* name,
+                                              const char* base, const char* quote,
+                                              int8_t price_precision,
+                                              int8_t qty_precision);
+
+void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle hook);
+FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle hook);
+void flox_binary_log_recorder_hook_stats_p(void* hook, void* out);
 ```
 
 ---

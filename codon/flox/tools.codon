@@ -107,6 +107,7 @@ from C import flox_footprint_clear(cobj)
 from C import flox_data_writer_create(cobj, u64, u8) -> cobj
 from C import flox_data_writer_destroy(cobj)
 from C import flox_data_writer_write_trade(cobj, i64, i64, f64, f64, u64, u32, u8) -> u8
+from C import flox_data_writer_write_book(cobj, i64, i64, i64, u32, u8, Ptr[byte], u32, Ptr[byte], u32) -> u8
 from C import flox_data_writer_flush(cobj)
 from C import flox_data_writer_close(cobj)
 
@@ -149,14 +150,13 @@ from C import flox_data_reader_stats_p(cobj, Ptr[byte])
 # Extended DataWriter
 from C import flox_data_writer_stats_p(cobj, Ptr[byte])
 
-# DataRecorder
-from C import flox_data_recorder_create(cobj, cobj, u64) -> cobj
-from C import flox_data_recorder_destroy(cobj)
-from C import flox_data_recorder_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
-from C import flox_data_recorder_start(cobj)
-from C import flox_data_recorder_stop(cobj)
-from C import flox_data_recorder_flush(cobj)
-from C import flox_data_recorder_is_recording(cobj) -> u8
+# BinaryLogRecorderHook
+from C import flox_binary_log_recorder_hook_create(cobj, u64, u8, u8) -> cobj
+from C import flox_binary_log_recorder_hook_destroy(cobj)
+from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
+from C import flox_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
+from C import flox_binary_log_recorder_hook_flush(cobj)
+from C import flox_binary_log_recorder_hook_stats_p(cobj, Ptr[byte])
 
 # Partitioner
 from C import flox_partitioner_create(cobj) -> cobj
@@ -541,6 +541,29 @@ class DataWriter:
         return flox_data_writer_write_trade(
             self._h, i64(exchange_ts_ns), i64(recv_ts_ns), price, qty,
             u64(trade_id), u32(symbol_id), u8(side)) != u8(0)
+
+    def write_book(self, exchange_ts_ns: int, recv_ts_ns: int, seq: int,
+                   symbol_id: int, is_snapshot: bool,
+                   bids: List[Tuple[int, int]],
+                   asks: List[Tuple[int, int]]) -> bool:
+        # FloxBookLevel: { i64 price_raw; i64 quantity_raw; } — 16 bytes per level.
+        n_bids = len(bids)
+        n_asks = len(asks)
+        bid_buf = [i64(0)] * (n_bids * 2)
+        ask_buf = [i64(0)] * (n_asks * 2)
+        for i in range(n_bids):
+            p, q = bids[i]
+            bid_buf[i * 2] = i64(p)
+            bid_buf[i * 2 + 1] = i64(q)
+        for i in range(n_asks):
+            p, q = asks[i]
+            ask_buf[i * 2] = i64(p)
+            ask_buf[i * 2 + 1] = i64(q)
+        return flox_data_writer_write_book(
+            self._h, i64(exchange_ts_ns), i64(recv_ts_ns), i64(seq),
+            u32(symbol_id), u8(1) if is_snapshot else u8(0),
+            Ptr[byte](bid_buf.arr.ptr), u32(n_bids),
+            Ptr[byte](ask_buf.arr.ptr), u32(n_asks)) != u8(0)
 
     def flush(self):
         flox_data_writer_flush(self._h)
@@ -1110,45 +1133,61 @@ class DataWriter:
 
 
 # ======================================================================
-# DataRecorder
+# BinaryLogRecorderHook
 # ======================================================================
 
 
-class DataRecorder:
-    """Records live market data (trades) to disk in the Flox binary format."""
+class BinaryLogRecorderHook:
+    """Recorder hook that writes trades + book updates to a .floxlog segment.
+
+    Attach to a Runner via runner.set_market_data_recorder(hook); the hook
+    owns a BinaryLogWriter internally and serialises events on the engine
+    thread without crossing the binding boundary.
+    """
 
     _h: cobj
 
-    def __init__(self, output_dir: str, exchange_name: str = "",
-                 max_segment_mb: int = 256):
-        self._h = flox_data_recorder_create(
-            output_dir.c_str(), exchange_name.c_str(), u64(max_segment_mb))
+    def __init__(self, output_dir: str, max_segment_mb: int = 256,
+                 exchange_id: int = 0, compression: str = "none"):
+        comp = 0
+        if compression == "none":
+            comp = 0
+        elif compression == "lz4":
+            comp = 1
+        else:
+            raise ValueError("compression must be 'none' or 'lz4'")
+        self._h = flox_binary_log_recorder_hook_create(
+            output_dir.c_str(), u64(max_segment_mb),
+            u8(exchange_id), u8(comp))
 
     def close(self):
         if self._h != cobj():
-            flox_data_recorder_destroy(self._h)
+            flox_binary_log_recorder_hook_destroy(self._h)
             self._h = cobj()
 
     def add_symbol(self, symbol_id: int, name: str, base: str = "",
                    quote: str = "", price_precision: int = 8,
                    qty_precision: int = 8):
-        flox_data_recorder_add_symbol(
+        flox_binary_log_recorder_hook_add_symbol(
             self._h, u32(symbol_id),
             name.c_str(), base.c_str(), quote.c_str(),
             i8(price_precision), i8(qty_precision))
 
-    def start(self):
-        flox_data_recorder_start(self._h)
-
-    def stop(self):
-        flox_data_recorder_stop(self._h)
-
     def flush(self):
-        flox_data_recorder_flush(self._h)
+        flox_binary_log_recorder_hook_flush(self._h)
 
-    @property
-    def is_recording(self) -> bool:
-        return flox_data_recorder_is_recording(self._h) != u8(0)
+    def stats(self) -> WriterStats:
+        buf = [i64(0)] * 4
+        flox_binary_log_recorder_hook_stats_p(self._h, Ptr[byte](buf.arr.ptr))
+        return WriterStats(
+            bytes_written=int(buf[0]),
+            events_written=int(buf[1]),
+            segments_created=int(buf[2]),
+            trades_written=int(buf[3])
+        )
+
+    def _as_recorder_handle(self) -> cobj:
+        return flox_binary_log_recorder_hook_as_recorder(self._h)
 
 
 # ======================================================================

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 488 functions, 43 handles, 49 structs, 35 callback typedefs, 2 enums, 58 groups.
+**Surface:** 490 functions, 43 handles, 49 structs, 35 callback typedefs, 2 enums, 58 groups.
 
 ## Opaque handles
 
@@ -27,7 +27,6 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDataWriterHandle`
 - `FloxDataReaderHandle`
 - `FloxBacktestResultHandle`
-- `FloxDataRecorderHandle`
 - `FloxPartitionerHandle`
 - `FloxRiskManagerHandle`
 - `FloxKillSwitchHandle`
@@ -35,6 +34,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxPnLTrackerHandle`
 - `FloxStorageSinkHandle`
 - `FloxMarketDataRecorderHandle`
+- `FloxBinaryLogRecorderHookHandle`
 - `FloxReplaySourceHandle`
 - `FloxExecutionListenerHandle`
 - `FloxExecutorHandle`
@@ -761,6 +761,15 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h, uint32_t index)`
 - `uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index)`
 
+### binary_log_recorder_hook
+
+- `FloxBinaryLogRecorderHookHandle flox_binary_log_recorder_hook_create(const char * output_dir, uint64_t max_segment_mb, uint8_t exchange_id, uint8_t compression)`
+- `void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook)`
+- `FloxMarketDataRecorderHandle flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook)`
+- `void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook, uint32_t symbol_id, const char * name, const char * base, const char * quote, int8_t price_precision, int8_t qty_precision)`
+- `void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle hook)`
+- `FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle hook)`
+
 ### composite_book
 
 - `FloxCompositeBookHandle flox_composite_book_create(void)`
@@ -792,6 +801,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDataWriterHandle flox_data_writer_create(const char * output_dir, uint64_t max_segment_mb, uint8_t exchange_id)`
 - `void flox_data_writer_destroy(FloxDataWriterHandle writer)`
 - `uint8_t flox_data_writer_write_trade(FloxDataWriterHandle writer, int64_t exchange_ts_ns, int64_t recv_ts_ns, double price, double qty, uint64_t trade_id, uint32_t symbol_id, uint8_t side)`
+- `uint8_t flox_data_writer_write_book(FloxDataWriterHandle writer, int64_t exchange_ts_ns, int64_t recv_ts_ns, int64_t seq, uint32_t symbol_id, uint8_t is_snapshot, const FloxBookLevel * bids, uint32_t n_bids, const FloxBookLevel * asks, uint32_t n_asks)`
 - `void flox_data_writer_flush(FloxDataWriterHandle writer)`
 - `void flox_data_writer_close(FloxDataWriterHandle writer)`
 
@@ -809,19 +819,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint64_t flox_data_reader_count_book_updates_from(FloxDataReaderHandle reader, int64_t start_ts_ns, uint64_t * total_levels_out)`
 - `uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle reader, int64_t start_ts_ns, FloxBookUpdateHeader * headers_out, uint64_t max_events, FloxLevel * levels_out, uint64_t max_levels)`
 
-### datarecorder
-
-- `FloxDataRecorderHandle flox_data_recorder_create(const char * output_dir, const char * exchange_name, uint64_t max_segment_mb)`
-- `void flox_data_recorder_destroy(FloxDataRecorderHandle recorder)`
-- `void flox_data_recorder_add_symbol(FloxDataRecorderHandle recorder, uint32_t symbol_id, const char * name, const char * base, const char * quote, int8_t price_precision, int8_t qty_precision)`
-- `void flox_data_recorder_start(FloxDataRecorderHandle recorder)`
-- `void flox_data_recorder_stop(FloxDataRecorderHandle recorder)`
-- `void flox_data_recorder_flush(FloxDataRecorderHandle recorder)`
-- `uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle recorder)`
-
 ### datawriter
 
 - `FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle writer)`
+- `uint64_t flox_data_writer_write_books(FloxDataWriterHandle writer, const FloxBookUpdateHeader * headers, uint64_t n_events, const FloxLevel * levels, uint64_t total_levels)`
 
 ### delta_book
 
@@ -1151,6 +1152,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_data_reader_summary_p(FloxDataReaderHandle reader, void * out)`
 - `void flox_data_reader_stats_p(FloxDataReaderHandle reader, void * out)`
 - `void flox_data_writer_stats_p(FloxDataWriterHandle writer, void * out)`
+- `void flox_binary_log_recorder_hook_stats_p(void * hook, void * out)`
 - `void flox_segment_merge_full_p(const char * input_paths, size_t num_paths, const char * output_dir, const char * output_name, uint8_t sort, void * out)`
 - `void flox_segment_merge_dir_p(const char * input_dir, const char * output_dir, void * out)`
 - `void flox_segment_split_p(const char * input_path, const char * output_dir, uint8_t mode, int64_t time_interval_ns, uint64_t events_per_file, void * out)`

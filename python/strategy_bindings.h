@@ -20,9 +20,11 @@
 #include "flox/error/flox_error.h"
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/binary_log_recorder_hook.h"
 #include "flox/run/trace_recorder.h"
 #include "flox/util/memory/pool.h"
 #include "hook_bindings.h"
+#include "replay_bindings.h"
 #include "types_bindings.h"
 
 #include <atomic>
@@ -1003,6 +1005,11 @@ class PyStrategyRunner
 
   ~PyStrategyRunner()
   {
+    if (_binlog_recorder_handle)
+    {
+      flox_market_data_recorder_destroy(_binlog_recorder_handle);
+      _binlog_recorder_handle = nullptr;
+    }
     if (_runner)
     {
       flox_runner_destroy(_runner);
@@ -1106,6 +1113,7 @@ class PyStrategyRunner
   void set_market_data_recorder(std::shared_ptr<flox_py::PyMarketDataRecorderHook> rec)
   {
     _recorder_owner.reset();
+    _binlog_recorder.reset();
     if (rec)
     {
       _recorder_owner = std::make_unique<flox_py::PyMarketDataRecorderHookOwner>(std::move(rec));
@@ -1114,6 +1122,65 @@ class PyStrategyRunner
     else
     {
       flox_runner_set_market_data_recorder(_runner, nullptr);
+    }
+  }
+
+  // Built-in `.floxlog` sink overload. Same single attach slot as the
+  // user-callback flavour — setting one clears the other.
+  void set_market_data_recorder(std::shared_ptr<flox_py::PyBinaryLogRecorderHook> rec)
+  {
+    _recorder_owner.reset();
+    _binlog_recorder.reset();
+    if (rec)
+    {
+      auto* raw = rec->raw();
+      // Bridge C++ hook through the same callback handle the C-API uses
+      // for user-callback recorders. The C-API `binary_log_recorder_hook_create`
+      // path would yield a self-owned handle; here we already own the
+      // C++ object, so wire the callbacks manually onto a transient handle.
+      FloxMarketDataRecorderCallbacks cb{};
+      cb.on_trade = [](void* ud, const FloxTradeData* t)
+      {
+        if (!t)
+        {
+          return;
+        }
+        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->onTrade(
+            t->symbol, t->price_raw, t->quantity_raw,
+            t->is_buy != 0, t->exchange_ts_ns, 0);
+      };
+      cb.on_book_update = [](void* ud, uint32_t symbol, uint8_t is_snap,
+                             const FloxBookLevel* bids, uint32_t n_bids,
+                             const FloxBookLevel* asks, uint32_t n_asks,
+                             int64_t ts)
+      {
+        auto* hk = static_cast<flox::replay::BinaryLogRecorderHook*>(ud);
+        hk->onBookUpdate(symbol, is_snap != 0,
+                         reinterpret_cast<const flox::replay::BookLevel*>(bids), n_bids,
+                         reinterpret_cast<const flox::replay::BookLevel*>(asks), n_asks,
+                         ts, 0);
+      };
+      cb.on_start = [](void* ud)
+      {
+        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->start();
+      };
+      cb.on_stop = [](void* ud)
+      {
+        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->stop();
+      };
+      cb.user_data = raw;
+      _binlog_recorder_handle = flox_market_data_recorder_create(cb);
+      _binlog_recorder = std::move(rec);
+      flox_runner_set_market_data_recorder(_runner, _binlog_recorder_handle);
+    }
+    else
+    {
+      if (_binlog_recorder_handle)
+      {
+        flox_runner_set_market_data_recorder(_runner, nullptr);
+        flox_market_data_recorder_destroy(_binlog_recorder_handle);
+        _binlog_recorder_handle = nullptr;
+      }
     }
   }
 
@@ -1179,6 +1246,11 @@ class PyStrategyRunner
   std::unique_ptr<flox_py::PyKillSwitchOwner> _kill_owner;
   std::unique_ptr<flox_py::PyOrderValidatorOwner> _validator_owner;
   std::unique_ptr<flox_py::PyMarketDataRecorderHookOwner> _recorder_owner;
+  // Built-in `.floxlog` sink overload — keeps the Python hook alive
+  // for the duration of the attach, plus the transient callback bundle
+  // we hand to flox_market_data_recorder_create.
+  std::shared_ptr<flox_py::PyBinaryLogRecorderHook> _binlog_recorder;
+  FloxMarketDataRecorderHandle _binlog_recorder_handle{nullptr};
   std::unique_ptr<flox_py::PyExecutorOwner> _executor_owner;
 
   static void signalCallback(void* ud, const FloxSignal* sig)
@@ -1209,6 +1281,11 @@ class PyLiveEngine
 
   ~PyLiveEngine()
   {
+    if (_binlog_recorder_handle)
+    {
+      flox_market_data_recorder_destroy(_binlog_recorder_handle);
+      _binlog_recorder_handle = nullptr;
+    }
     if (_engine)
     {
       flox_live_engine_destroy(_engine);
@@ -1348,6 +1425,7 @@ class PyLiveEngine
   void set_market_data_recorder(std::shared_ptr<flox_py::PyMarketDataRecorderHook> rec)
   {
     _recorder_owner.reset();
+    _binlog_recorder.reset();
     if (rec)
     {
       _recorder_owner = std::make_unique<flox_py::PyMarketDataRecorderHookOwner>(std::move(rec));
@@ -1356,6 +1434,56 @@ class PyLiveEngine
     else
     {
       flox_live_engine_set_market_data_recorder(_engine, nullptr);
+    }
+  }
+
+  void set_market_data_recorder(std::shared_ptr<flox_py::PyBinaryLogRecorderHook> rec)
+  {
+    _recorder_owner.reset();
+    _binlog_recorder.reset();
+    if (_binlog_recorder_handle)
+    {
+      flox_live_engine_set_market_data_recorder(_engine, nullptr);
+      flox_market_data_recorder_destroy(_binlog_recorder_handle);
+      _binlog_recorder_handle = nullptr;
+    }
+    if (rec)
+    {
+      auto* raw = rec->raw();
+      FloxMarketDataRecorderCallbacks cb{};
+      cb.on_trade = [](void* ud, const FloxTradeData* t)
+      {
+        if (!t)
+        {
+          return;
+        }
+        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->onTrade(
+            t->symbol, t->price_raw, t->quantity_raw,
+            t->is_buy != 0, t->exchange_ts_ns, 0);
+      };
+      cb.on_book_update = [](void* ud, uint32_t symbol, uint8_t is_snap,
+                             const FloxBookLevel* bids, uint32_t n_bids,
+                             const FloxBookLevel* asks, uint32_t n_asks,
+                             int64_t ts)
+      {
+        auto* hk = static_cast<flox::replay::BinaryLogRecorderHook*>(ud);
+        hk->onBookUpdate(symbol, is_snap != 0,
+                         reinterpret_cast<const flox::replay::BookLevel*>(bids), n_bids,
+                         reinterpret_cast<const flox::replay::BookLevel*>(asks), n_asks,
+                         ts, 0);
+      };
+      cb.on_start = [](void* ud)
+      {
+        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->start();
+      };
+      cb.on_stop = [](void* ud)
+      {
+        static_cast<flox::replay::BinaryLogRecorderHook*>(ud)->stop();
+      };
+      cb.user_data = raw;
+      _binlog_recorder_handle = flox_market_data_recorder_create(cb);
+      _binlog_recorder = std::move(rec);
+      flox_live_engine_set_market_data_recorder(_engine, _binlog_recorder_handle);
     }
   }
 
@@ -1384,6 +1512,8 @@ class PyLiveEngine
   std::unique_ptr<flox_py::PyKillSwitchOwner> _kill_owner;
   std::unique_ptr<flox_py::PyOrderValidatorOwner> _validator_owner;
   std::unique_ptr<flox_py::PyMarketDataRecorderHookOwner> _recorder_owner;
+  std::shared_ptr<flox_py::PyBinaryLogRecorderHook> _binlog_recorder;
+  FloxMarketDataRecorderHandle _binlog_recorder_handle{nullptr};
   std::unique_ptr<flox_py::PyExecutorOwner> _executor_owner;
 
   static void signalCallback(void* ud, const FloxSignal* sig)
@@ -1489,6 +1619,20 @@ class PyRunner
   _PYRUNNER_SET_HOOK(market_data_recorder, PyMarketDataRecorderHook)
   _PYRUNNER_SET_HOOK(executor, PyExecutor)
 #undef _PYRUNNER_SET_HOOK
+
+  // Built-in `.floxlog` recorder overload — picks up the same attach
+  // slot as the user-callback flavour on the underlying runner / engine.
+  void set_market_data_recorder(std::shared_ptr<flox_py::PyBinaryLogRecorderHook> hook)
+  {
+    if (_live)
+    {
+      _live->set_market_data_recorder(std::move(hook));
+    }
+    else
+    {
+      _sync->set_market_data_recorder(std::move(hook));
+    }
+  }
 
   void on_trade(uint32_t symbol, double price, double qty,
                 bool is_buy, int64_t ts_ns)
@@ -2513,7 +2657,13 @@ inline void bindStrategy(py::module_& m)
            py::keep_alive<1, 2>())
       .def("set_order_validator", &PyRunner::set_order_validator, py::arg("ov"),
            py::keep_alive<1, 2>())
-      .def("set_market_data_recorder", &PyRunner::set_market_data_recorder,
+      .def("set_market_data_recorder",
+           py::overload_cast<std::shared_ptr<flox_py::PyMarketDataRecorderHook>>(
+               &PyRunner::set_market_data_recorder),
+           py::arg("recorder"), py::keep_alive<1, 2>())
+      .def("set_market_data_recorder",
+           py::overload_cast<std::shared_ptr<flox_py::PyBinaryLogRecorderHook>>(
+               &PyRunner::set_market_data_recorder),
            py::arg("recorder"), py::keep_alive<1, 2>())
       .def("set_executor", &PyRunner::set_executor, py::arg("executor"),
            py::keep_alive<1, 2>())

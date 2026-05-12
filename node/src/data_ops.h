@@ -1,4 +1,4 @@
-// node/src/data_ops.h -- DataWriter, DataReader, DataRecorder, Partitioner, segment ops
+// node/src/data_ops.h -- DataWriter, DataReader, BinaryLogRecorderHook, Partitioner, segment ops
 
 #pragma once
 #include <napi.h>
@@ -33,6 +33,7 @@ class DataWriterWrap : public Napi::ObjectWrap<DataWriterWrap>
   {
     return DefineClass(env, "DataWriter",
                        {InstanceMethod("writeTrade", &DataWriterWrap::WriteTrade),
+                        InstanceMethod("writeBook", &DataWriterWrap::WriteBook),
                         InstanceMethod("flush", &DataWriterWrap::Flush),
                         InstanceMethod("close", &DataWriterWrap::Close),
                         InstanceMethod("stats", &DataWriterWrap::Stats)});
@@ -61,6 +62,27 @@ class DataWriterWrap : public Napi::ObjectWrap<DataWriterWrap>
                                                                        info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue(),
                                                                        info[4].As<Napi::Number>().Int64Value(), info[5].As<Napi::Number>().Uint32Value(),
                                                                        info[6].As<Napi::Number>().Uint32Value()));
+  }
+  // bids/asks are flat BigInt64Array: [price_raw, qty_raw, price_raw, qty_raw, ...].
+  // Reinterpret the buffer as FloxBookLevel* — layout matches (two int64 per level).
+  Napi::Value WriteBook(const Napi::CallbackInfo& info)
+  {
+    int64_t exchTs = toInt64Ns(info[0]);
+    int64_t recvTs = toInt64Ns(info[1]);
+    int64_t seq = toInt64Ns(info[2]);
+    uint32_t symId = info[3].As<Napi::Number>().Uint32Value();
+    uint8_t isSnap = info[4].As<Napi::Boolean>().Value() ? 1u : 0u;
+    auto bidsArr = info[5].As<Napi::BigInt64Array>();
+    auto asksArr = info[6].As<Napi::BigInt64Array>();
+    const FloxBookLevel* bids =
+        reinterpret_cast<const FloxBookLevel*>(bidsArr.Data());
+    const FloxBookLevel* asks =
+        reinterpret_cast<const FloxBookLevel*>(asksArr.Data());
+    uint32_t nBids = static_cast<uint32_t>(bidsArr.ElementLength() / 2);
+    uint32_t nAsks = static_cast<uint32_t>(asksArr.ElementLength() / 2);
+    return Napi::Boolean::New(info.Env(),
+                              flox_data_writer_write_book(_h, exchTs, recvTs, seq, symId,
+                                                          isSnap, bids, nBids, asks, nAsks));
   }
   void Flush(const Napi::CallbackInfo&) { flox_data_writer_flush(_h); }
   void Close(const Napi::CallbackInfo&) { flox_data_writer_close(_h); }
@@ -298,51 +320,105 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   FloxDataReaderHandle _h = nullptr;
 };
 
-// ── DataRecorder ────────────────────────────────────────────────────
+// ── BinaryLogRecorderHook ───────────────────────────────────────────
+//
+// Built-in .floxlog recorder. Owns a BinaryLogWriter on the engine
+// thread — events stay in C++ on the hot path, no JS callbacks.
+// Attach via `runner.setMarketDataRecorder(hook)`.
 
-class DataRecorderWrap : public Napi::ObjectWrap<DataRecorderWrap>
+class BinaryLogRecorderHookWrap : public Napi::ObjectWrap<BinaryLogRecorderHookWrap>
 {
  public:
+  // Cached at module init; used by RunnerNode::setMarketDataRecorder for
+  // an InstanceOf check before unwrapping.
+  static Napi::FunctionReference& Ctor()
+  {
+    static Napi::FunctionReference ref;
+    return ref;
+  }
   static Napi::Function Init(Napi::Env env)
   {
-    return DefineClass(env, "DataRecorder",
-                       {InstanceMethod("addSymbol", &DataRecorderWrap::AddSymbol),
-                        InstanceMethod("start", &DataRecorderWrap::Start),
-                        InstanceMethod("stop", &DataRecorderWrap::Stop),
-                        InstanceMethod("flush", &DataRecorderWrap::Flush),
-                        InstanceAccessor("isRecording", &DataRecorderWrap::IsRecording, nullptr)});
+    Napi::Function fn = DefineClass(env, "BinaryLogRecorderHook",
+                                    {InstanceMethod("addSymbol", &BinaryLogRecorderHookWrap::AddSymbol),
+                                     InstanceMethod("flush", &BinaryLogRecorderHookWrap::Flush),
+                                     InstanceMethod("stats", &BinaryLogRecorderHookWrap::Stats)});
+    Ctor() = Napi::Persistent(fn);
+    Ctor().SuppressDestruct();
+    return fn;
   }
-  DataRecorderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataRecorderWrap>(info)
+  BinaryLogRecorderHookWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<BinaryLogRecorderHookWrap>(info)
   {
-    _h = flox_data_recorder_create(
-        info[0].As<Napi::String>().Utf8Value().c_str(),
-        info.Length() > 1 ? info[1].As<Napi::String>().Utf8Value().c_str() : "default",
-        info.Length() > 2 ? info[2].As<Napi::Number>().Int64Value() : 256);
+    auto env = info.Env();
+    std::string dir = info[0].As<Napi::String>().Utf8Value();
+    uint64_t maxMb = info.Length() > 1 && info[1].IsNumber()
+                         ? info[1].As<Napi::Number>().Int64Value()
+                         : 256;
+    uint8_t exId = info.Length() > 2 && info[2].IsNumber()
+                       ? info[2].As<Napi::Number>().Uint32Value()
+                       : 0;
+    uint8_t compression = 0;
+    if (info.Length() > 3 && info[3].IsString())
+    {
+      auto s = info[3].As<Napi::String>().Utf8Value();
+      if (s == "none")
+      {
+        compression = 0;
+      }
+      else if (s == "lz4")
+      {
+        compression = 1;
+      }
+      else
+      {
+        Napi::TypeError::New(env, "compression must be \"none\" or \"lz4\"")
+            .ThrowAsJavaScriptException();
+        return;
+      }
+    }
+    _h = flox_binary_log_recorder_hook_create(dir.c_str(), maxMb, exId, compression);
   }
-  ~DataRecorderWrap()
+  ~BinaryLogRecorderHookWrap()
   {
     if (_h)
     {
-      flox_data_recorder_destroy(_h);
+      flox_binary_log_recorder_hook_destroy(_h);
     }
+  }
+
+  // Borrowed handle for runner attachment. Lifetime tied to this hook.
+  FloxMarketDataRecorderHandle asRecorder() const
+  {
+    return _h ? flox_binary_log_recorder_hook_as_recorder(_h) : nullptr;
   }
 
  private:
   void AddSymbol(const Napi::CallbackInfo& info)
   {
-    flox_data_recorder_add_symbol(_h,
-                                  info[0].As<Napi::Number>().Uint32Value(),
-                                  info[1].As<Napi::String>().Utf8Value().c_str(),
-                                  info.Length() > 2 ? info[2].As<Napi::String>().Utf8Value().c_str() : "",
-                                  info.Length() > 3 ? info[3].As<Napi::String>().Utf8Value().c_str() : "",
-                                  info.Length() > 4 ? info[4].As<Napi::Number>().Int32Value() : 8,
-                                  info.Length() > 5 ? info[5].As<Napi::Number>().Int32Value() : 8);
+    flox_binary_log_recorder_hook_add_symbol(
+        _h,
+        info[0].As<Napi::Number>().Uint32Value(),
+        info[1].As<Napi::String>().Utf8Value().c_str(),
+        info.Length() > 2 ? info[2].As<Napi::String>().Utf8Value().c_str() : "",
+        info.Length() > 3 ? info[3].As<Napi::String>().Utf8Value().c_str() : "",
+        static_cast<int8_t>(info.Length() > 4 ? info[4].As<Napi::Number>().Int32Value() : 8),
+        static_cast<int8_t>(info.Length() > 5 ? info[5].As<Napi::Number>().Int32Value() : 8));
   }
-  void Start(const Napi::CallbackInfo&) { flox_data_recorder_start(_h); }
-  void Stop(const Napi::CallbackInfo&) { flox_data_recorder_stop(_h); }
-  void Flush(const Napi::CallbackInfo&) { flox_data_recorder_flush(_h); }
-  Napi::Value IsRecording(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_data_recorder_is_recording(_h)); }
-  FloxDataRecorderHandle _h = nullptr;
+  void Flush(const Napi::CallbackInfo&) { flox_binary_log_recorder_hook_flush(_h); }
+  Napi::Value Stats(const Napi::CallbackInfo& info)
+  {
+    auto s = flox_binary_log_recorder_hook_stats(_h);
+    auto env = info.Env();
+    auto o = Napi::Object::New(env);
+    o.Set("tradesWritten", Napi::BigInt::New(env, s.trades_written));
+    o.Set("bookUpdatesWritten",
+          Napi::BigInt::New(env, s.events_written - s.trades_written));
+    o.Set("bytesWritten", Napi::BigInt::New(env, s.bytes_written));
+    o.Set("segmentsCreated", Napi::BigInt::New(env, s.segments_created));
+    o.Set("errors", Napi::BigInt::New(env, uint64_t{0}));
+    return o;
+  }
+  FloxBinaryLogRecorderHookHandle _h = nullptr;
 };
 
 // ── Partitioner ─────────────────────────────────────────────────────
@@ -630,7 +706,7 @@ inline void registerDataOps(Napi::Env env, Napi::Object exports)
 {
   exports.Set("DataWriter", DataWriterWrap::Init(env));
   exports.Set("DataReader", DataReaderWrap::Init(env));
-  exports.Set("DataRecorder", DataRecorderWrap::Init(env));
+  exports.Set("BinaryLogRecorderHook", BinaryLogRecorderHookWrap::Init(env));
   exports.Set("Partitioner", PartitionerWrap::Init(env));
 
   exports.Set("validateSegment", Napi::Function::New(env, seg_validate));

@@ -129,9 +129,9 @@ groups:
     napi: { status: required, classes: [FootprintBar] }
     codon: { status: required }
 
-  datarecorder:
-    pybind11: { status: required, classes: [DataRecorder] }
-    napi: { status: required, classes: [DataRecorder] }
+  binary_log_recorder_hook:
+    pybind11: { status: required, classes: [BinaryLogRecorderHook] }
+    napi: { status: required, classes: [BinaryLogRecorderHook] }
     codon: { status: required }
 
   data_reader:
