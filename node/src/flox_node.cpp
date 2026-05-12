@@ -23,6 +23,7 @@
 #include "run_trace.h"
 #include "stats.h"
 #include "strategy.h"
+#include "tape_aggregators.h"
 #include "tape_diff.h"
 #include "targets.h"
 
@@ -36,6 +37,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerProfiles(env, exports);
   node_flox::registerStats(env, exports);
   node_flox::registerAggregators(env, exports);
+  node_flox::registerTapeAggregators(env, exports);
   node_flox::registerDataOps(env, exports);
   node_flox::registerStrategy(env, exports);
   node_flox::registerTargets(env, exports);

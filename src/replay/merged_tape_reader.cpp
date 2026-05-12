@@ -10,6 +10,7 @@
 #include "flox/replay/merged_tape_reader.h"
 
 #include "flox/error/flox_error.h"
+#include "flox/replay/aggregator.h"
 #include "flox/replay/readers/binary_log_reader.h"
 
 #include <algorithm>
@@ -489,6 +490,100 @@ class TapeWalker
   int64_t _to_ns;
 };
 
+// Wraps TapeWalker with a bounded reorder buffer so the N-way merge in
+// MergedTapeReader::streamEvents sees a monotonic per-tape stream even
+// when the underlying segments have cross-block inversion (Sorted=false
+// md_collector tapes). Intra-block sort already runs inside
+// BinaryLogIterator on decompress; this layer handles the cross-block
+// jitter the same way BinaryLogReader::readSegmentStreaming does for
+// the single-tape path.
+class ReorderingWalker
+{
+ public:
+  ReorderingWalker(std::vector<SegmentInfo> segments,
+                   std::optional<int64_t> from_ns,
+                   std::optional<int64_t> to_ns,
+                   int64_t reorder_window_ns,
+                   uint32_t tape_index)
+      : _inner(std::move(segments), from_ns, to_ns),
+        _W(reorder_window_ns),
+        _tape_index(tape_index)
+  {
+  }
+
+  bool next(ReplayEvent& out)
+  {
+    while (true)
+    {
+      // If the heap's smallest event is safely below watermark - W
+      // (no future event can be older), emit it.
+      if (!_heap.empty() && _heap.front().timestamp_ns < safeBelow())
+      {
+        std::pop_heap(_heap.begin(), _heap.end(), Cmp{});
+        out = std::move(_heap.back());
+        _heap.pop_back();
+        return true;
+      }
+
+      // Otherwise pull the next event from the inner walker.
+      ReplayEvent ev;
+      if (!_inner.next(ev))
+      {
+        // Inner exhausted — drain the heap in sorted order.
+        if (_heap.empty())
+        {
+          return false;
+        }
+        std::pop_heap(_heap.begin(), _heap.end(), Cmp{});
+        out = std::move(_heap.back());
+        _heap.pop_back();
+        return true;
+      }
+
+      if (_watermark != std::numeric_limits<int64_t>::min() &&
+          ev.timestamp_ns < _watermark - _W)
+      {
+        throw flox::FloxError(
+            "E_DATA_002",
+            "Event arrived past reorder window on tape " +
+                std::to_string(_tape_index) + ": delta=" +
+                std::to_string(_watermark - ev.timestamp_ns) +
+                "ns exceeds reorder_window_ns=" + std::to_string(_W) +
+                ". Bump MergedTapeReaderConfig::reorder_window_ns or pre-sort the tape.");
+      }
+      if (ev.timestamp_ns > _watermark)
+      {
+        _watermark = ev.timestamp_ns;
+      }
+      _heap.push_back(std::move(ev));
+      std::push_heap(_heap.begin(), _heap.end(), Cmp{});
+      // Loop: re-check whether the heap head is now safe to emit.
+    }
+  }
+
+ private:
+  struct Cmp
+  {
+    bool operator()(const ReplayEvent& a, const ReplayEvent& b) const noexcept
+    {
+      return a.timestamp_ns > b.timestamp_ns;  // min-heap
+    }
+  };
+
+  int64_t safeBelow() const noexcept
+  {
+    return (_watermark == std::numeric_limits<int64_t>::min())
+               ? std::numeric_limits<int64_t>::min()
+               : (_watermark - _W);
+  }
+
+  TapeWalker _inner;
+  int64_t _W;
+  uint32_t _tape_index;
+  std::vector<ReplayEvent> _heap;
+  int64_t _watermark{std::numeric_limits<int64_t>::min()};
+};
+
 }  // namespace
 
 bool MergedTapeReader::streamEvents(StreamCallback callback)
@@ -502,7 +597,7 @@ bool MergedTapeReader::streamEvents(StreamCallback callback)
 
   // One walker per tape (owns the segment chain + iterator). We need
   // stable storage for these; the heap stores tape_index ints.
-  std::vector<std::unique_ptr<TapeWalker>> walkers;
+  std::vector<std::unique_ptr<ReorderingWalker>> walkers;
   walkers.reserve(n_tapes);
   std::vector<ReplayEvent> heads(n_tapes);
   std::vector<bool> alive(n_tapes, false);
@@ -511,14 +606,16 @@ bool MergedTapeReader::streamEvents(StreamCallback callback)
   {
     // Use BinaryLogReader to discover this tape's segments via the
     // same filter machinery as the eager path. We grab segment list
-    // then hand it to TapeWalker which iterates without buffering.
+    // then hand it to ReorderingWalker (TapeWalker wrapped with the
+    // cross-block reorder buffer) which iterates without buffering.
     BinaryLogReader reader(
         makeReaderConfig(_config.tape_dirs[i], _config.from_ns, _config.to_ns));
     // segments() returns the cached vector — populate via summary().
     (void)reader.summary();
     auto seg_list = reader.segments();
-    auto walker = std::make_unique<TapeWalker>(
-        std::move(seg_list), _config.from_ns, _config.to_ns);
+    auto walker = std::make_unique<ReorderingWalker>(
+        std::move(seg_list), _config.from_ns, _config.to_ns,
+        _config.reorder_window_ns, static_cast<uint32_t>(i));
     if (walker->next(heads[i]))
     {
       alive[i] = true;
@@ -600,6 +697,37 @@ bool MergedTapeReader::streamEvents(StreamCallback callback)
     }
   }
   return true;
+}
+
+bool MergedTapeReader::run(std::span<IAggregator* const> aggregators)
+{
+  if (aggregators.empty())
+  {
+    return true;
+  }
+
+  const bool walked = streamEvents(
+      [&aggregators](uint32_t /*tape_index*/, const ReplayEvent& ev) -> bool
+      {
+        for (auto* agg : aggregators)
+        {
+          if (agg != nullptr)
+          {
+            agg->onEvent(ev);
+          }
+        }
+        return true;
+      });
+
+  for (auto* agg : aggregators)
+  {
+    if (agg != nullptr)
+    {
+      agg->finalize();
+    }
+  }
+
+  return walked;
 }
 
 namespace

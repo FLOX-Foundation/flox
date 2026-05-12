@@ -3436,6 +3436,162 @@ extern "C"
   FLOX_EXPORT(group = "bar_dispatch")
   uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index);
 
+  // ============================================================
+  // Streaming tape aggregators (W14-T019)
+  //
+  // Single-pass dispatch over a captured `.floxlog` via a panel of
+  // streaming aggregators. Five concrete aggregators (event-type
+  // stats / time-bucketed count / volume-bin / top-N peak windows /
+  // window-count quantiles) implement a common contract; the reader
+  // walks the tape once and forwards every event to every attached
+  // aggregator's `onEvent`, then calls `finalize` on each.
+  //
+  // Lifecycle: create an aggregator handle, pass an array of them to
+  // `flox_data_reader_run` (or the merged equivalent), read the
+  // result via the type-specific `read_result` family, destroy the
+  // handle when done. All result accessors are call-twice: first to
+  // get the row count, second with a caller-allocated buffer.
+  // ============================================================
+
+  typedef void* FloxAggregatorHandle;
+
+  // Event-type filter applied inside each aggregator's onEvent.
+  // Matches `flox::replay::AggregatorEventFilter`: 1 = Trades only,
+  // 2 = Books only, 3 = Both.
+  typedef enum
+  {
+    FLOX_AGG_FILTER_TRADES = 1,
+    FLOX_AGG_FILTER_BOOKS_ONLY = 2,
+    FLOX_AGG_FILTER_BOTH = 3,
+  } FloxAggregatorEventFilter;
+
+  // Side encoding shared across BinCount / VolumeBin result rows:
+  // 0 = aggregate (no split), 1 = BUY, 2 = SELL.
+  //
+  // Constructors take `symbol_filter` as `(uint32_t*, uint32_t count)`
+  // — pass NULL/0 to disable filtering (all symbols admitted).
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_event_type_stats_aggregator_create(
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_bin_count_aggregator_create(
+      int64_t bucket_ns, uint8_t by_side, uint8_t by_symbol,
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_volume_bin_aggregator_create(
+      int64_t bucket_ns, uint8_t by_side, uint8_t by_symbol,
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
+  // PeakAggregator: `oversample_factor` 0 means "use the engine default"
+  // (currently 100). Pass non-zero to override.
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_peak_aggregator_create(
+      const int64_t* window_ns_list, uint32_t window_count, uint32_t top_n,
+      uint32_t oversample_factor, FloxAggregatorEventFilter event_filter,
+      const uint32_t* symbol_filter, uint32_t symbol_filter_count);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_quantile_aggregator_create(
+      const int64_t* window_ns_list, uint32_t window_count,
+      const double* quantiles, uint32_t quantile_count,
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
+  // Universal destroy — works on any handle returned by the create
+  // functions above. Safe to call with NULL.
+  FLOX_EXPORT(group = "tape_aggregator")
+  void flox_aggregator_destroy(FloxAggregatorHandle h);
+
+  // Single-pass dispatch. `aggregators` is an array of handles (any
+  // mix of types); returns non-zero on success, zero on failure
+  // (typically: empty data directory or read error). An empty array
+  // is a no-op and returns success without decompressing anything.
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
+                               FloxAggregatorHandle* aggregators,
+                               uint32_t aggregator_count);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
+                                      FloxAggregatorHandle* aggregators,
+                                      uint32_t aggregator_count);
+
+  // Result row layouts. Mirror the C++ Row structs byte-for-byte;
+  // bindings memcpy from the C ABI buffer into their native form.
+
+  typedef struct
+  {
+    uint32_t symbol_id;
+    uint64_t trades;
+    uint64_t book_snapshots;
+    uint64_t book_deltas;
+  } FloxEventTypeStatsRow;
+
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    uint8_t side;
+    uint64_t count;
+  } FloxBinCountRow;
+
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    uint8_t side;
+    int64_t qty_raw;
+  } FloxVolumeBinRow;
+
+  typedef struct
+  {
+    int64_t window_ns;
+    uint64_t count;
+    int64_t start_ns;
+  } FloxPeakRow;
+
+  typedef struct
+  {
+    int64_t window_ns;
+    double quantile;
+    uint64_t count;
+  } FloxQuantileRow;
+
+  // Result accessors. Each is two-call: first form returns the row
+  // count (pass `rows_out=NULL`, `max_rows=0`); second form fills the
+  // caller's buffer (returns the number of rows actually written,
+  // capped at `max_rows`). The shape returned by each aggregator is
+  // documented at its create-function site.
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h,
+                                             FloxEventTypeStatsRow* rows_out,
+                                             uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_bin_count_read_result(FloxAggregatorHandle h,
+                                      FloxBinCountRow* rows_out,
+                                      uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
+                                       FloxVolumeBinRow* rows_out,
+                                       uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_peak_read_result(FloxAggregatorHandle h,
+                                 FloxPeakRow* rows_out, uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
+                                     FloxQuantileRow* rows_out,
+                                     uint32_t max_rows);
+
 #ifdef __cplusplus
 }
 #endif

@@ -7,6 +7,7 @@ flox_aggregate_renko_bars|uint32_t|const int64_t *|const double *|const double *
 flox_aggregate_tick_bars|uint32_t|const int64_t *|const double *|const double *|const uint8_t *|size_t|uint32_t|FloxBar *|uint32_t
 flox_aggregate_time_bars|uint32_t|const int64_t *|const double *|const double *|const uint8_t *|size_t|double|FloxBar *|uint32_t
 flox_aggregate_volume_bars|uint32_t|const int64_t *|const double *|const double *|const uint8_t *|size_t|double|FloxBar *|uint32_t
+flox_aggregator_destroy|void|FloxAggregatorHandle
 flox_backtest_result_create|FloxBacktestResultHandle|double|double|uint8_t|double|double|double
 flox_backtest_result_destroy|void|FloxBacktestResultHandle
 flox_backtest_result_equity_curve|uint32_t|FloxBacktestResultHandle|FloxEquityPoint *|uint32_t
@@ -41,6 +42,8 @@ flox_bar_dispatch_recorder_param_at|uint64_t|FloxBarDispatchRecorderHandle|uint3
 flox_bar_dispatch_recorder_type_at|uint8_t|FloxBarDispatchRecorderHandle|uint32_t
 flox_best_ask_raw|int64_t|FloxStrategyHandle|uint32_t
 flox_best_bid_raw|int64_t|FloxStrategyHandle|uint32_t
+flox_bin_count_aggregator_create|FloxAggregatorHandle|int64_t|uint8_t|uint8_t|FloxAggregatorEventFilter|const uint32_t *|uint32_t
+flox_bin_count_read_result|uint32_t|FloxAggregatorHandle|FloxBinCountRow *|uint32_t
 flox_binary_log_recorder_hook_add_symbol|void|FloxBinaryLogRecorderHookHandle|uint32_t|const char *|const char *|const char *|int8_t|int8_t
 flox_binary_log_recorder_hook_as_recorder|FloxMarketDataRecorderHandle|FloxBinaryLogRecorderHookHandle
 flox_binary_log_recorder_hook_create|FloxBinaryLogRecorderHookHandle|const char *|uint64_t|uint8_t|uint8_t
@@ -82,6 +85,7 @@ flox_data_reader_read_book_updates|uint64_t|FloxDataReaderHandle|FloxBookUpdateH
 flox_data_reader_read_book_updates_from|uint64_t|FloxDataReaderHandle|int64_t|FloxBookUpdateHeader *|uint64_t|FloxLevel *|uint64_t
 flox_data_reader_read_trades|uint64_t|FloxDataReaderHandle|FloxTradeRecord *|uint64_t
 flox_data_reader_read_trades_from|uint64_t|FloxDataReaderHandle|int64_t|FloxTradeRecord *|uint64_t
+flox_data_reader_run|uint8_t|FloxDataReaderHandle|FloxAggregatorHandle *|uint32_t
 flox_data_reader_stats|FloxReaderStats|FloxDataReaderHandle
 flox_data_reader_stats_p|void|FloxDataReaderHandle|void *
 flox_data_reader_summary|FloxDatasetSummary|FloxDataReaderHandle
@@ -126,6 +130,8 @@ flox_emit_take_profit_limit|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int64_t
 flox_emit_take_profit_market|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int64_t|int64_t
 flox_emit_trailing_stop|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int64_t|int64_t
 flox_emit_trailing_stop_percent|uint64_t|FloxStrategyHandle|uint32_t|uint8_t|int32_t|int64_t
+flox_event_type_stats_aggregator_create|FloxAggregatorHandle|FloxAggregatorEventFilter|const uint32_t *|uint32_t
+flox_event_type_stats_read_result|uint32_t|FloxAggregatorHandle|FloxEventTypeStatsRow *|uint32_t
 flox_exec_clear_pending|void|FloxExecAlgoHandle
 flox_exec_destroy|void|FloxExecAlgoHandle
 flox_exec_filled_qty|double|FloxExecAlgoHandle
@@ -279,6 +285,7 @@ flox_merged_tape_reader_get_symbols|uint32_t|FloxMergedTapeReaderHandle|FloxMerg
 flox_merged_tape_reader_get_tape_stats|uint32_t|FloxMergedTapeReaderHandle|FloxMergedTapeStats *|uint32_t
 flox_merged_tape_reader_read_books|uint64_t|FloxMergedTapeReaderHandle|FloxBookUpdateHeader *|uint64_t|FloxLevel *|uint64_t
 flox_merged_tape_reader_read_trades|uint64_t|FloxMergedTapeReaderHandle|FloxTradeRecord *|uint64_t
+flox_merged_tape_reader_run|uint8_t|FloxMergedTapeReaderHandle|FloxAggregatorHandle *|uint32_t
 flox_merged_tape_reader_symbol_count|uint32_t|FloxMergedTapeReaderHandle
 flox_merged_tape_reader_tape_count|uint32_t|FloxMergedTapeReaderHandle
 flox_merged_tape_reader_time_range|void|FloxMergedTapeReaderHandle|int64_t *|int64_t *
@@ -322,6 +329,8 @@ flox_partitioner_by_time|uint32_t|FloxPartitionerHandle|uint32_t|int64_t|FloxPar
 flox_partitioner_create|FloxPartitionerHandle|const char *
 flox_partitioner_destroy|void|FloxPartitionerHandle
 flox_partitioner_per_symbol|uint32_t|FloxPartitionerHandle|FloxPartition *|uint32_t
+flox_peak_aggregator_create|FloxAggregatorHandle|const int64_t *|uint32_t|uint32_t|uint32_t|FloxAggregatorEventFilter|const uint32_t *|uint32_t
+flox_peak_read_result|uint32_t|FloxAggregatorHandle|FloxPeakRow *|uint32_t
 flox_pnl_tracker_create|FloxPnLTrackerHandle|FloxPnLTrackerCallbacks
 flox_pnl_tracker_create_p|FloxPnLTrackerHandle|const FloxPnLTrackerCallbacks *
 flox_pnl_tracker_destroy|void|FloxPnLTrackerHandle
@@ -359,6 +368,8 @@ flox_position_tracker_realized_pnl|double|FloxPositionTrackerHandle|uint32_t
 flox_position_tracker_total_pnl|double|FloxPositionTrackerHandle
 flox_price_from_double|int64_t|double
 flox_price_to_double|double|int64_t
+flox_quantile_aggregator_create|FloxAggregatorHandle|const int64_t *|uint32_t|const double *|uint32_t|FloxAggregatorEventFilter|const uint32_t *|uint32_t
+flox_quantile_read_result|uint32_t|FloxAggregatorHandle|FloxQuantileRow *|uint32_t
 flox_quantity_from_double|int64_t|double
 flox_quantity_to_double|double|int64_t
 flox_registry_add_symbol|uint32_t|FloxRegistryHandle|const char *|const char *|double
@@ -493,6 +504,8 @@ flox_tape_diff_right_count|uint64_t|FloxTapeDiffHandle
 flox_target_future_ctc_volatility|void|const double *|size_t|size_t|double *
 flox_target_future_linear_slope|void|const double *|size_t|size_t|double *
 flox_target_future_return|void|const double *|size_t|size_t|double *
+flox_volume_bin_aggregator_create|FloxAggregatorHandle|int64_t|uint8_t|uint8_t|FloxAggregatorEventFilter|const uint32_t *|uint32_t
+flox_volume_bin_read_result|uint32_t|FloxAggregatorHandle|FloxVolumeBinRow *|uint32_t
 flox_volume_profile_add_trade|void|FloxVolumeProfileHandle|double|double|uint8_t
 flox_volume_profile_clear|void|FloxVolumeProfileHandle
 flox_volume_profile_create|FloxVolumeProfileHandle|double

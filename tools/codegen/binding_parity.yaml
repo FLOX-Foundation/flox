@@ -381,3 +381,22 @@ groups:
       status: required
       classes: [TraceRecorder, TraceReader]
     codon: { status: required }
+
+  tape_aggregator:
+    pybind11:
+      status: required
+      classes:
+        - EventTypeStatsAggregator
+        - BinCountAggregator
+        - VolumeBinAggregator
+        - PeakAggregator
+        - QuantileAggregator
+    napi:
+      status: required
+      classes:
+        - EventTypeStatsAggregator
+        - BinCountAggregator
+        - VolumeBinAggregator
+        - PeakAggregator
+        - QuantileAggregator
+    codon: { status: required }

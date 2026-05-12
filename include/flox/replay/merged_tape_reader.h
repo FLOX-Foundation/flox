@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -27,6 +28,8 @@
 
 namespace flox::replay
 {
+
+class IAggregator;
 
 struct MergedTradeRow
 {
@@ -69,6 +72,16 @@ struct MergedTapeReaderConfig
   std::optional<int64_t> to_ns;
   // Filter applied post-rekey. Empty = all symbols.
   std::vector<uint32_t> symbol_filter;
+
+  // Per-tape cross-block reorder window applied by `streamEvents` /
+  // `run()`. Same semantics as `ReaderConfig::reorder_window_ns`: for
+  // segments without the Sorted flag, each per-tape stream is
+  // re-ordered through a bounded min-heap so the N-way merge sees
+  // monotonic per-tape input. Events arriving past the window throw
+  // FloxError E_DATA_002. Memory bound: N_tapes × reorder_window_ns
+  // × peak_event_rate × sizeof(ReplayEvent). Default matches
+  // ReaderConfig (10s).
+  int64_t reorder_window_ns{10'000'000'000};
 };
 
 class OverlappingBookStreamError : public std::runtime_error
@@ -134,6 +147,16 @@ class MergedTapeReader
   using StreamCallback = std::function<bool(uint32_t tape_index,
                                             const ReplayEvent& event)>;
   bool streamEvents(StreamCallback callback);
+
+  // Single-pass streaming aggregator dispatch over the merged stream.
+  // Walks via the same N-way heap merge as `streamEvents`, forwarding
+  // each event (with global-rewritten symbol ids) to every aggregator's
+  // onEvent, then calling finalize() on each. An empty span is a no-op
+  // and performs no decompression. The `tape_index` of the originating
+  // tape is not surfaced to aggregators — they see the merged stream
+  // as one sequence; reach for `streamEvents` directly when per-tape
+  // provenance matters.
+  bool run(std::span<IAggregator* const> aggregators);
 
   // IMultiSegmentReader adapter — wraps `this` so the merged stream
   // plugs into anything that consumes a single-tape `IMultiSegmentReader`

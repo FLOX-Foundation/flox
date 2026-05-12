@@ -99,6 +99,7 @@ SECTIONS: list[tuple[str, list[Entry]]] = [
         ("docs/how-to/bar-aggregation.md", "Bar aggregation", "Aggregate trades into bars"),
         ("docs/how-to/custom-bar-policy.md", "Custom bar policy", "Build your own bar trigger"),
         ("docs/how-to/use-volume-profile.md", "Volume profile", "Volume-by-price analysis"),
+        ("docs/how-to/aggregate-tape-events.md", "Aggregate tape events", "Streaming aggregator framework: 5 native aggregators in one decompression pass"),
     ]),
     ("How-to: performance and extension (C++)", [
         ("docs/how-to/optimize-performance.md", "Optimize performance", "System-level performance guide"),

@@ -59,6 +59,7 @@ Documentation is grouped below by Diátaxis category — pick the section matchi
 - [Bar aggregation](https://flox-foundation.github.io/flox/how-to/bar-aggregation/): Aggregate trades into bars
 - [Custom bar policy](https://flox-foundation.github.io/flox/how-to/custom-bar-policy/): Build your own bar trigger
 - [Volume profile](https://flox-foundation.github.io/flox/how-to/use-volume-profile/): Volume-by-price analysis
+- [Aggregate tape events](https://flox-foundation.github.io/flox/how-to/aggregate-tape-events/): Streaming aggregator framework: 5 native aggregators in one decompression pass
 
 ## How-to: performance and extension (C++)
 

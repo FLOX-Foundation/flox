@@ -8,11 +8,14 @@
  */
 
 #include "flox/replay/readers/binary_log_reader.h"
+#include "flox/error/flox_error.h"
+#include "flox/replay/aggregator.h"
 #include "flox/replay/ops/compression.h"
 
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <string>
 
 namespace flox::replay
 {
@@ -97,6 +100,89 @@ int64_t lastTimestampInBlock(const std::vector<std::byte>& data)
     offset += frame.size;
   }
   return last;
+}
+
+// In-place sort of frames inside a decompressed block by exchange_ts_ns.
+// Mirrors `BinaryLogWriter::sortBlockBuffer`: walks frames, collects
+// (offset, total_size, timestamp) refs, fast-paths monotonic blocks
+// (no-op), and stable-sorts on the refs writing into a scratch buffer
+// that's then swapped with the input. Memory: O(events_in_block × 24
+// bytes for refs) + O(block_size) for the scratch buffer.
+//
+// For Sorted=true segments this fast-paths because the writer already
+// did the same sort on the producing side; cost is one linear scan to
+// confirm monotonicity. For Sorted=false segments (md_collector and
+// other external writers) this lifts intra-block jitter (typically
+// 1-2ms exchange-WS jitter, observed 95th-percentile of OOO deltas
+// in production traces) without any caller involvement.
+inline void sortBlockFramesInPlace(std::vector<std::byte>& block_data,
+                                   uint32_t event_count,
+                                   std::vector<std::byte>& scratch)
+{
+  struct FrameRef
+  {
+    size_t offset;
+    size_t total_size;
+    int64_t timestamp;
+  };
+
+  std::vector<FrameRef> refs;
+  refs.reserve(event_count);
+
+  size_t pos = 0;
+  while (pos < block_data.size())
+  {
+    if (pos + sizeof(FrameHeader) > block_data.size())
+    {
+      break;
+    }
+    FrameHeader hdr;
+    std::memcpy(&hdr, block_data.data() + pos, sizeof(FrameHeader));
+    const size_t total = sizeof(FrameHeader) + hdr.size;
+    if (pos + total > block_data.size())
+    {
+      break;
+    }
+    int64_t ts = 0;
+    if (hdr.size >= sizeof(int64_t))
+    {
+      // exchange_ts_ns is the first field of both TradeRecord and
+      // BookRecordHeader.
+      std::memcpy(&ts, block_data.data() + pos + sizeof(FrameHeader),
+                  sizeof(int64_t));
+    }
+    refs.push_back({pos, total, ts});
+    pos += total;
+  }
+
+  // Fast path: already monotonic. No buffer copy.
+  bool sorted = true;
+  for (size_t i = 1; i < refs.size(); ++i)
+  {
+    if (refs[i].timestamp < refs[i - 1].timestamp)
+    {
+      sorted = false;
+      break;
+    }
+  }
+  if (sorted)
+  {
+    return;
+  }
+
+  std::stable_sort(refs.begin(), refs.end(),
+                   [](const FrameRef& a, const FrameRef& b)
+                   { return a.timestamp < b.timestamp; });
+
+  scratch.resize(block_data.size());
+  size_t out_pos = 0;
+  for (const auto& ref : refs)
+  {
+    std::memcpy(scratch.data() + out_pos, block_data.data() + ref.offset,
+                ref.total_size);
+    out_pos += ref.total_size;
+  }
+  std::swap(block_data, scratch);
 }
 
 // Decompress a single block at a known file position.
@@ -541,6 +627,304 @@ bool BinaryLogReader::forEach(EventCallback callback)
   }
 
   return true;
+}
+
+bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
+{
+  // Empty span: do not even scan / decompress. This is the contract
+  // that lets a `run([])` call cost effectively zero in the framework
+  // tests that exercise the no-op path.
+  if (aggregators.empty())
+  {
+    return true;
+  }
+
+  // Route through streamForEach, not forEach: for segments without
+  // the Sorted flag (external writers like md_collector) forEach
+  // buffers the entire segment into memory before dispatching, which
+  // blew peak RSS to 4.29 GB on an 11.78M-event 467 MB Bitget tape.
+  // streamForEach iterates BinaryLogIterator::next() directly, O(1)
+  // memory per segment.
+  const bool walked = streamForEach(
+      [&aggregators](const ReplayEvent& ev)
+      {
+        for (auto* agg : aggregators)
+        {
+          if (agg != nullptr)
+          {
+            agg->onEvent(ev);
+          }
+        }
+        return true;
+      });
+
+  for (auto* agg : aggregators)
+  {
+    if (agg != nullptr)
+    {
+      agg->finalize();
+    }
+  }
+
+  return walked;
+}
+
+bool BinaryLogReader::streamForEach(EventCallback callback)
+{
+  if (!scanSegments())
+  {
+    return false;
+  }
+
+  for (const auto& segment : _segments)
+  {
+    if (!readSegmentStreaming(segment.path, callback))
+    {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool BinaryLogReader::streamForEachFrom(int64_t start_ts_ns, EventCallback callback)
+{
+  if (!scanSegments())
+  {
+    return false;
+  }
+
+  auto it = std::lower_bound(_segments.begin(), _segments.end(), start_ts_ns,
+                             [](const SegmentInfo& seg, int64_t ts)
+                             { return seg.last_event_ns < ts; });
+
+  for (; it != _segments.end(); ++it)
+  {
+    if (!readSegmentStreamingFrom(*it, start_ts_ns, callback))
+    {
+      return false;
+    }
+    // After first segment, deliver remaining segments from beginning.
+    start_ts_ns = 0;
+  }
+
+  return true;
+}
+
+namespace
+{
+// Min-heap comparator for ReplayEvent. Greater-than yields a min-heap
+// when paired with std::push_heap / std::pop_heap.
+struct ReplayEventLater
+{
+  bool operator()(const ReplayEvent& a, const ReplayEvent& b) const noexcept
+  {
+    return a.timestamp_ns > b.timestamp_ns;
+  }
+};
+}  // namespace
+
+bool BinaryLogReader::readSegmentStreaming(const std::filesystem::path& path,
+                                           EventCallback& callback)
+{
+  BinaryLogIterator iter(path);
+  if (!iter.isValid())
+  {
+    return false;
+  }
+
+  ++_stats.files_read;
+
+  // Sorted segments: stream straight through. The writer guaranteed
+  // monotonicity at close, BinaryLogIterator preserves it (its
+  // per-block sort is a no-op on the fast path for sorted blocks).
+  if (iter.header().isSorted())
+  {
+    ReplayEvent event;
+    while (iter.next(event))
+    {
+      if (!passesFilter(event))
+      {
+        continue;
+      }
+      ++_stats.events_read;
+      event.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      if (!callback(event))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Unsorted segments: bounded reorder buffer over already-block-sorted
+  // events from the iterator. Per-block sort lifts intra-block jitter
+  // (typically 1-2ms exchange-WS jitter, 95th-percentile in production
+  // traces); the heap here handles cross-block inversions up to
+  // reorder_window_ns (typically exchange-reconnect-induced batches of
+  // older events appearing in a fresh block).
+  std::vector<ReplayEvent> heap;
+  ReplayEventLater cmp;
+  int64_t watermark = std::numeric_limits<int64_t>::min();
+  const int64_t W = _config.reorder_window_ns;
+
+  auto drain_below = [&](int64_t threshold_ts_ns) -> bool
+  {
+    while (!heap.empty() && heap.front().timestamp_ns < threshold_ts_ns)
+    {
+      std::pop_heap(heap.begin(), heap.end(), cmp);
+      ReplayEvent ev = std::move(heap.back());
+      heap.pop_back();
+      if (!passesFilter(ev))
+      {
+        continue;
+      }
+      ++_stats.events_read;
+      ev.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      if (!callback(ev))
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  ReplayEvent event;
+  while (iter.next(event))
+  {
+    if (watermark != std::numeric_limits<int64_t>::min() &&
+        event.timestamp_ns < watermark - W)
+    {
+      throw flox::FloxError(
+          "E_DATA_002",
+          "Event arrived past reorder window: delta=" +
+              std::to_string(watermark - event.timestamp_ns) +
+              "ns exceeds reorder_window_ns=" + std::to_string(W) +
+              ". Bump ReaderConfig::reorder_window_ns or pre-sort the tape.");
+    }
+    if (event.timestamp_ns > watermark)
+    {
+      watermark = event.timestamp_ns;
+    }
+    heap.push_back(std::move(event));
+    std::push_heap(heap.begin(), heap.end(), cmp);
+
+    // Emit anything that fell out of the reorder window; no future
+    // event can have an older timestamp (we'd have thrown above).
+    if (!drain_below(watermark - W))
+    {
+      return false;
+    }
+  }
+
+  // Final drain — emit tail in sorted order.
+  return drain_below(std::numeric_limits<int64_t>::max());
+}
+
+bool BinaryLogReader::readSegmentStreamingFrom(const SegmentInfo& segment,
+                                               int64_t start_ts_ns,
+                                               EventCallback& callback)
+{
+  BinaryLogIterator iter(segment.path);
+  if (!iter.isValid())
+  {
+    return false;
+  }
+
+  ++_stats.files_read;
+
+  if (segment.has_index)
+  {
+    iter.loadIndex();
+    if (iter.hasIndex())
+    {
+      iter.seekToTimestamp(start_ts_ns);
+    }
+  }
+
+  // Sorted: straight stream with start_ts filter.
+  if (iter.header().isSorted())
+  {
+    ReplayEvent event;
+    while (iter.next(event))
+    {
+      if (event.timestamp_ns < start_ts_ns)
+      {
+        continue;
+      }
+      if (!passesFilter(event))
+      {
+        continue;
+      }
+      ++_stats.events_read;
+      event.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      if (!callback(event))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Unsorted: same bounded-reorder pattern as readSegmentStreaming,
+  // with start_ts_ns applied after the heap re-orders.
+  std::vector<ReplayEvent> heap;
+  ReplayEventLater cmp;
+  int64_t watermark = std::numeric_limits<int64_t>::min();
+  const int64_t W = _config.reorder_window_ns;
+
+  auto drain_below = [&](int64_t threshold_ts_ns) -> bool
+  {
+    while (!heap.empty() && heap.front().timestamp_ns < threshold_ts_ns)
+    {
+      std::pop_heap(heap.begin(), heap.end(), cmp);
+      ReplayEvent ev = std::move(heap.back());
+      heap.pop_back();
+      if (ev.timestamp_ns < start_ts_ns)
+      {
+        continue;
+      }
+      if (!passesFilter(ev))
+      {
+        continue;
+      }
+      ++_stats.events_read;
+      ev.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      if (!callback(ev))
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  ReplayEvent event;
+  while (iter.next(event))
+  {
+    if (watermark != std::numeric_limits<int64_t>::min() &&
+        event.timestamp_ns < watermark - W)
+    {
+      throw flox::FloxError(
+          "E_DATA_002",
+          "Event arrived past reorder window: delta=" +
+              std::to_string(watermark - event.timestamp_ns) +
+              "ns exceeds reorder_window_ns=" + std::to_string(W) +
+              ". Bump ReaderConfig::reorder_window_ns or pre-sort the tape.");
+    }
+    if (event.timestamp_ns > watermark)
+    {
+      watermark = event.timestamp_ns;
+    }
+    heap.push_back(std::move(event));
+    std::push_heap(heap.begin(), heap.end(), cmp);
+
+    if (!drain_below(watermark - W))
+    {
+      return false;
+    }
+  }
+
+  return drain_below(std::numeric_limits<int64_t>::max());
 }
 
 bool BinaryLogReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)
@@ -993,6 +1377,16 @@ bool BinaryLogIterator::loadNextBlock()
   if (decompressed_size != block_header.original_size)
   {
     return false;  // Decompression failed
+  }
+
+  // Intra-block sort on Sorted=false segments. Lifts the 95th-percentile
+  // of exchange-WS jitter (1-2ms) at the cost of one linear scan of the
+  // block + a stable_sort over event-count refs only when the block is
+  // genuinely unsorted. Sorted=true segments hit the monotonic fast path
+  // (the writer already did this work on its side).
+  if (!_header.isSorted())
+  {
+    sortBlockFramesInPlace(_block_data, block_header.event_count, _sort_scratch);
   }
 
   _block_offset = 0;

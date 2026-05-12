@@ -1,0 +1,143 @@
+# Aggregate tape events in a single pass
+
+`DataReader.run([...])` walks a `.floxlog` once and forwards every event to a panel of streaming aggregators. The aggregators run entirely in C++; the dispatch loop never crosses into Python or JS during the walk.
+
+The five native aggregators:
+
+| Aggregator | Per-cell value | Typical use |
+|---|---|---|
+| `EventTypeStatsAggregator` | Counter of trades, book snapshots, book deltas | Quick overview of a tape's contents |
+| `BinCountAggregator` | Event count per time bucket | Trades per minute, per second, etc. |
+| `VolumeBinAggregator` | Sum of trade `qty_raw` per time bucket | Volume profile over time |
+| `PeakAggregator` | Top-N busiest fixed-width windows per scale | Finding bursts at chosen scales |
+| `QuantileAggregator` | Window-count distribution to quantiles | Activity baseline at a given scale |
+
+The filter parameters work the same way on all five:
+
+- `event_filter`: `Trades`, `BooksOnly`, or `Both`. Aggregators that only make sense for trades (volume, peaks, quantiles) default to `Trades`.
+- `symbol_filter`: a list of symbol ids. The default (empty) admits every symbol.
+
+`run([])` is a no-op. It does not decompress anything; useful as a sanity check that the framework is wired up.
+
+## Python
+
+```python
+import flox_py
+
+reader = flox_py.DataReader("./tape")
+
+stats = flox_py.EventTypeStatsAggregator()
+counts = flox_py.BinCountAggregator(
+    bucket_ns=60_000_000_000,  # 1-minute buckets
+    by_side=True,
+)
+volume = flox_py.VolumeBinAggregator(
+    bucket_ns=60_000_000_000,
+    by_side=True,
+)
+peaks = flox_py.PeakAggregator(
+    window_ns_list=[1_000_000, 10_000_000, 100_000_000, 1_000_000_000],
+    top_n=10,
+)
+quantiles = flox_py.QuantileAggregator(
+    window_ns_list=[1_000_000, 100_000_000],
+    quantiles=[0.5, 0.95, 0.99],
+)
+
+reader.run([stats, counts, volume, peaks, quantiles])
+
+# .result() is populated once run() returns.
+print(stats.result())       # structured numpy array
+print(counts.result())      # structured numpy array
+print(volume.result())      # structured numpy array
+print(peaks.result())       # dict[window_ns, list[(count, start_ns)]]
+print(quantiles.result())   # dict[window_ns, dict[quantile, count]]
+```
+
+The tabular aggregators (stats, counts, volume) return structured numpy arrays. Field names match the row struct, so `arr["count"]`, `arr["bucket_ts_ns"]`, `arr["qty_raw"]` work directly.
+
+`side` encoding in `BinCount` and `VolumeBin` rows: `0` means aggregate (no side split), `1` is BUY, `2` is SELL. `symbol_id = 0` means aggregate; set `by_symbol=True` to get one row per (bucket, symbol_id) cell.
+
+## Node.js
+
+```js
+import { DataReader, EventTypeStatsAggregator, BinCountAggregator,
+         VolumeBinAggregator, PeakAggregator, QuantileAggregator,
+         AggregatorEventFilter } from '@flox-foundation/flox';
+
+const reader = new DataReader('./tape');
+
+const F = AggregatorEventFilter;
+const stats = new EventTypeStatsAggregator(F.Both, []);
+const counts = new BinCountAggregator(60_000_000_000n, /*bySide=*/true);
+const volume = new VolumeBinAggregator(60_000_000_000n, /*bySide=*/true);
+const peaks = new PeakAggregator(
+    [1_000_000n, 10_000_000n, 100_000_000n, 1_000_000_000n],
+    /*topN=*/10
+);
+const quantiles = new QuantileAggregator(
+    [1_000_000n, 100_000_000n],
+    [0.5, 0.95, 0.99]
+);
+
+reader.run([stats, counts, volume, peaks, quantiles]);
+
+console.log(stats.result());
+console.log(counts.result());
+console.log(volume.result());
+console.log(peaks.result());
+console.log(quantiles.result());
+```
+
+Node returns BigInt for ns timestamps and 64-bit counters, so values past `2^53` keep precision. The `Peak` result is `Array<{windowNs, peaks: Array<{count, startNs}>}>` rather than a Map; iterate with `for (const entry of result)`.
+
+## Merged tapes
+
+`MergedTapeReader.run([...])` takes the same aggregator panel and walks the merged stream from N input tapes in a single pass. Aggregators see events with global-rewritten symbol ids; the originating tape index is not surfaced. Use `streamEvents()` directly when the tape index matters.
+
+```python
+merged = flox_py.MergedTapeReader(["./tape-bybit", "./tape-bitget"])
+peaks = flox_py.PeakAggregator(window_ns_list=[1_000_000_000], top_n=20)
+merged.run([peaks])
+```
+
+## Aggregator semantics
+
+### EventTypeStats
+
+Result is sorted by `symbol_id` ascending. Symbols with zero matching events don't appear in the output. Pass an explicit `symbol_filter` for a stable shape across runs.
+
+### BinCount and VolumeBin
+
+The bucket for an event at time `t` is `floor(t / bucket_ns) * bucket_ns`. Empty buckets produce no rows. `by_side=True` only splits trades (book events stay in `side=0`); `by_symbol=True` produces one row per (bucket, symbol_id) cell.
+
+`VolumeBin` ignores book events. Pass `event_filter=BooksOnly` and you get an empty result by design.
+
+### Peak
+
+For each `window_ns`, finds the top-N intervals of width `window_ns` that contain the most events. After the walk, `finalize()` removes peaks that fall within `3 × window_ns` of a stronger one already kept; this keeps the top-N from being filled with adjacent samples of one burst.
+
+`oversample_factor` (default 100) sets the in-flight candidate heap size to `top_n × oversample_factor`. Raise it when tapes have many distinct bursts clustered within `3 × window_ns` of an earlier candidate.
+
+`start_ns` in the result is `t - window_ns`, where `t` is the arrival time of the last event in the window. The window starts `window_ns` earlier and ends at the event.
+
+### Quantile
+
+For each `window_ns`, the aggregator records the sliding-window event count at every event arrival and accumulates those observations into a histogram. `finalize()` then resolves each requested quantile `q` to the smallest count value `C` for which `fraction(observed ≤ C) ≥ q`.
+
+Quantiles must be in `(0.0, 1.0]`. The result row count is `len(window_ns_list) × len(quantiles)`. When `event_filter` admits no events, rows still appear with `count=0` so the shape stays stable.
+
+## Performance notes
+
+`onEvent` runs once per event for each aggregator in the panel. Adding aggregators raises the per-event cost; it does not change how many times the tape is walked.
+
+Aggregators don't do I/O and don't call into Python. The only hot-path allocation is the bounded sliding deque used by Peak and Quantile.
+
+For multi-tape captures use `MergedTapeReader.run()`. The C++ N-way heap merge keeps peak memory at `O(N_tapes)` regardless of total event count.
+
+The Quantile histogram is keyed by `count_value` in an `unordered_map`. There are at most a few dozen distinct count values (bounded by the peak burst size), so the histogram stays small even when the tape contains billions of observations.
+
+## See also
+
+- [Record and replay market data with `flox tape`](tape-record.md) for capturing the `.floxlog`.
+- [Merged tape consumption](multi-tape-replay.md) for `MergedTapeReader` reference when streaming `run()` is not enough.

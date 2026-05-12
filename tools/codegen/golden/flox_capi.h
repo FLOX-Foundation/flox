@@ -69,6 +69,7 @@ extern "C"
   typedef void* FloxRunRecorderHandle;
   typedef void* FloxRunReaderHandle;
   typedef void* FloxBarDispatchRecorderHandle;
+  typedef void* FloxAggregatorHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -87,6 +88,13 @@ extern "C"
     FLOX_QUEUE_TOB = 1,
     FLOX_QUEUE_FULL = 2,
   } FloxQueueModel;
+
+  typedef enum
+  {
+    FLOX_AGG_FILTER_TRADES = 1,
+    FLOX_AGG_FILTER_BOOKS_ONLY = 2,
+    FLOX_AGG_FILTER_BOTH = 3,
+  } FloxAggregatorEventFilter;
 
   // ============================================================
   // Flat event structs (C-compatible)
@@ -562,6 +570,44 @@ extern "C"
     double price;
     uint8_t type;
   } FloxExecChildOrder;
+
+  typedef struct
+  {
+    uint32_t symbol_id;
+    uint64_t trades;
+    uint64_t book_snapshots;
+    uint64_t book_deltas;
+  } FloxEventTypeStatsRow;
+
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    uint8_t side;
+    uint64_t count;
+  } FloxBinCountRow;
+
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    uint8_t side;
+    int64_t qty_raw;
+  } FloxVolumeBinRow;
+
+  typedef struct
+  {
+    int64_t window_ns;
+    uint64_t count;
+    int64_t start_ns;
+  } FloxPeakRow;
+
+  typedef struct
+  {
+    int64_t window_ns;
+    double quantile;
+    uint64_t count;
+  } FloxQuantileRow;
 
   // ============================================================
   // Callback function pointer types
@@ -1755,6 +1801,51 @@ extern "C"
                                         char* exchange_out, size_t exchange_len, char* name_out,
                                         size_t name_len);
   uint32_t flox_registry_symbol_count(FloxRegistryHandle registry);
+
+  // ============================================================
+  // Tape Aggregator
+  // ============================================================
+
+  FloxAggregatorHandle flox_event_type_stats_aggregator_create(FloxAggregatorEventFilter event_filter,
+                                                               const uint32_t* symbol_filter,
+                                                               uint32_t symbol_filter_count);
+  FloxAggregatorHandle flox_bin_count_aggregator_create(int64_t bucket_ns, uint8_t by_side,
+                                                        uint8_t by_symbol,
+                                                        FloxAggregatorEventFilter event_filter,
+                                                        const uint32_t* symbol_filter,
+                                                        uint32_t symbol_filter_count);
+  FloxAggregatorHandle flox_volume_bin_aggregator_create(int64_t bucket_ns, uint8_t by_side,
+                                                         uint8_t by_symbol,
+                                                         FloxAggregatorEventFilter event_filter,
+                                                         const uint32_t* symbol_filter,
+                                                         uint32_t symbol_filter_count);
+  FloxAggregatorHandle flox_peak_aggregator_create(const int64_t* window_ns_list,
+                                                   uint32_t window_count, uint32_t top_n,
+                                                   uint32_t oversample_factor,
+                                                   FloxAggregatorEventFilter event_filter,
+                                                   const uint32_t* symbol_filter,
+                                                   uint32_t symbol_filter_count);
+  FloxAggregatorHandle flox_quantile_aggregator_create(const int64_t* window_ns_list,
+                                                       uint32_t window_count,
+                                                       const double* quantiles,
+                                                       uint32_t quantile_count,
+                                                       FloxAggregatorEventFilter event_filter,
+                                                       const uint32_t* symbol_filter,
+                                                       uint32_t symbol_filter_count);
+  void flox_aggregator_destroy(FloxAggregatorHandle h);
+  uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle* aggregators,
+                               uint32_t aggregator_count);
+  uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
+                                      FloxAggregatorHandle* aggregators, uint32_t aggregator_count);
+  uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h,
+                                             FloxEventTypeStatsRow* rows_out, uint32_t max_rows);
+  uint32_t flox_bin_count_read_result(FloxAggregatorHandle h, FloxBinCountRow* rows_out,
+                                      uint32_t max_rows);
+  uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h, FloxVolumeBinRow* rows_out,
+                                       uint32_t max_rows);
+  uint32_t flox_peak_read_result(FloxAggregatorHandle h, FloxPeakRow* rows_out, uint32_t max_rows);
+  uint32_t flox_quantile_read_result(FloxAggregatorHandle h, FloxQuantileRow* rows_out,
+                                     uint32_t max_rows);
 
   // ============================================================
   // Tape Diff

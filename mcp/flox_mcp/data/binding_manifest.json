@@ -33,6 +33,11 @@
           "name": "flox_aggregate_volume_bars"
         },
         {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_aggregator_destroy"
+        },
+        {
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_backtest_result_create"
@@ -201,6 +206,16 @@
           "group": "context_queries",
           "kind": "function",
           "name": "flox_best_bid_raw"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_bin_count_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_bin_count_read_result"
         },
         {
           "group": "binary_log_recorder_hook",
@@ -406,6 +421,11 @@
           "group": "datareader",
           "kind": "function",
           "name": "flox_data_reader_read_trades_from"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_data_reader_run"
         },
         {
           "group": "datareader",
@@ -626,6 +646,16 @@
           "group": "signal_emission",
           "kind": "function",
           "name": "flox_emit_trailing_stop_percent"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_event_type_stats_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_event_type_stats_read_result"
         },
         {
           "group": "execution_algos",
@@ -1393,6 +1423,11 @@
           "name": "flox_merged_tape_reader_read_trades"
         },
         {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_merged_tape_reader_run"
+        },
+        {
           "group": "merged_tape_reader",
           "kind": "function",
           "name": "flox_merged_tape_reader_symbol_count"
@@ -1608,6 +1643,16 @@
           "name": "flox_partitioner_per_symbol"
         },
         {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_peak_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_peak_read_result"
+        },
+        {
           "group": "metrics",
           "kind": "function",
           "name": "flox_pnl_tracker_create"
@@ -1791,6 +1836,16 @@
           "group": "fixed_point",
           "kind": "function",
           "name": "flox_price_to_double"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_quantile_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_quantile_read_result"
         },
         {
           "group": "fixed_point",
@@ -2463,6 +2518,16 @@
           "name": "flox_target_future_return"
         },
         {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_volume_bin_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_volume_bin_read_result"
+        },
+        {
           "group": "volume_profile",
           "kind": "function",
           "name": "flox_volume_profile_add_trade"
@@ -2539,6 +2604,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxBinCountRow"
+        },
+        {
+          "kind": "struct",
           "name": "FloxBookData"
         },
         {
@@ -2568,6 +2637,10 @@
         {
           "kind": "struct",
           "name": "FloxEquityPoint"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxEventTypeStatsRow"
         },
         {
           "kind": "struct",
@@ -2643,11 +2716,19 @@
         },
         {
           "kind": "struct",
+          "name": "FloxPeakRow"
+        },
+        {
+          "kind": "struct",
           "name": "FloxPnLTrackerCallbacks"
         },
         {
           "kind": "struct",
           "name": "FloxPortfolioRiskRules"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxQuantileRow"
         },
         {
           "kind": "struct",
@@ -2711,6 +2792,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxVolumeBinRow"
+        },
+        {
+          "kind": "struct",
           "name": "FloxWalkForwardConfig"
         },
         {
@@ -2723,11 +2808,19 @@
         },
         {
           "kind": "enum",
+          "name": "FloxAggregatorEventFilter"
+        },
+        {
+          "kind": "enum",
           "name": "FloxQueueModel"
         },
         {
           "kind": "enum",
           "name": "FloxSlippageModel"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxAggregatorHandle"
         },
         {
           "kind": "handle",
@@ -2962,6 +3055,7 @@
         "strategy_lifecycle",
         "strategyrunner_synchronous",
         "symbol_registry",
+        "tape_aggregator",
         "tape_diff",
         "targets",
         "trace_attach",
@@ -2993,6 +3087,10 @@
         {
           "kind": "function",
           "name": "flox_aggregate_volume_bars"
+        },
+        {
+          "kind": "function",
+          "name": "flox_aggregator_destroy"
         },
         {
           "kind": "function",
@@ -3129,6 +3227,14 @@
         {
           "kind": "function",
           "name": "flox_best_bid_raw"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bin_count_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_bin_count_read_result"
         },
         {
           "kind": "function",
@@ -3293,6 +3399,10 @@
         {
           "kind": "function",
           "name": "flox_data_reader_read_trades_from"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_run"
         },
         {
           "kind": "function",
@@ -3469,6 +3579,14 @@
         {
           "kind": "function",
           "name": "flox_emit_trailing_stop_percent"
+        },
+        {
+          "kind": "function",
+          "name": "flox_event_type_stats_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_event_type_stats_read_result"
         },
         {
           "kind": "function",
@@ -4084,6 +4202,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_merged_tape_reader_run"
+        },
+        {
+          "kind": "function",
           "name": "flox_merged_tape_reader_symbol_count"
         },
         {
@@ -4256,6 +4378,14 @@
         },
         {
           "kind": "function",
+          "name": "flox_peak_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_peak_read_result"
+        },
+        {
+          "kind": "function",
           "name": "flox_pnl_tracker_create"
         },
         {
@@ -4401,6 +4531,14 @@
         {
           "kind": "function",
           "name": "flox_price_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "flox_quantile_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_quantile_read_result"
         },
         {
           "kind": "function",
@@ -4940,6 +5078,14 @@
         },
         {
           "kind": "function",
+          "name": "flox_volume_bin_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_volume_bin_read_result"
+        },
+        {
+          "kind": "function",
           "name": "flox_volume_profile_add_trade"
         },
         {
@@ -5025,6 +5171,14 @@
         {
           "kind": "class",
           "name": "BboRecord"
+        },
+        {
+          "kind": "class",
+          "name": "BinCountAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "BinCountRow"
         },
         {
           "kind": "class",
@@ -5141,6 +5295,14 @@
         {
           "kind": "class",
           "name": "EquityCurve"
+        },
+        {
+          "kind": "class",
+          "name": "EventTypeStatsAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "EventTypeStatsRow"
         },
         {
           "kind": "class",
@@ -5336,6 +5498,18 @@
         },
         {
           "kind": "class",
+          "name": "PeakAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "PeakEntry"
+        },
+        {
+          "kind": "class",
+          "name": "PeakWindowResult"
+        },
+        {
+          "kind": "class",
           "name": "PnLTracker"
         },
         {
@@ -5365,6 +5539,18 @@
         {
           "kind": "class",
           "name": "PositionTracker"
+        },
+        {
+          "kind": "class",
+          "name": "QuantileAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "QuantileThreshold"
+        },
+        {
+          "kind": "class",
+          "name": "QuantileWindowResult"
         },
         {
           "kind": "class",
@@ -5549,6 +5735,14 @@
         {
           "kind": "class",
           "name": "VWAPOptions"
+        },
+        {
+          "kind": "class",
+          "name": "VolumeBinAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "VolumeBinRow"
         },
         {
           "kind": "class",
@@ -5796,6 +5990,10 @@
         },
         {
           "kind": "class",
+          "name": "AggregatorEventFilter"
+        },
+        {
+          "kind": "class",
           "name": "AutoCorrelation"
         },
         {
@@ -5813,6 +6011,10 @@
         {
           "kind": "class",
           "name": "BarDispatchRecorder"
+        },
+        {
+          "kind": "class",
+          "name": "BinCountAggregator"
         },
         {
           "kind": "class",
@@ -5869,6 +6071,10 @@
         {
           "kind": "class",
           "name": "Engine"
+        },
+        {
+          "kind": "class",
+          "name": "EventTypeStatsAggregator"
         },
         {
           "kind": "class",
@@ -6008,6 +6214,10 @@
         },
         {
           "kind": "class",
+          "name": "PeakAggregator"
+        },
+        {
+          "kind": "class",
           "name": "PnLTracker"
         },
         {
@@ -6017,6 +6227,10 @@
         {
           "kind": "class",
           "name": "PositionTracker"
+        },
+        {
+          "kind": "class",
+          "name": "QuantileAggregator"
         },
         {
           "kind": "class",
@@ -6128,11 +6342,19 @@
         },
         {
           "kind": "class",
+          "name": "VolumeBinAggregator"
+        },
+        {
+          "kind": "class",
           "name": "VolumeProfile"
         },
         {
           "kind": "class",
           "name": "WalkForwardRunner"
+        },
+        {
+          "kind": "class",
+          "name": "_AggregatorHandle"
         },
         {
           "kind": "class",
@@ -8060,6 +8282,49 @@
       "pybind11": {
         "classes": [
           "SymbolRegistry"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "tape_aggregator": {
+      "capi_functions": [
+        "flox_aggregator_destroy",
+        "flox_bin_count_aggregator_create",
+        "flox_bin_count_read_result",
+        "flox_data_reader_run",
+        "flox_event_type_stats_aggregator_create",
+        "flox_event_type_stats_read_result",
+        "flox_merged_tape_reader_run",
+        "flox_peak_aggregator_create",
+        "flox_peak_read_result",
+        "flox_quantile_aggregator_create",
+        "flox_quantile_read_result",
+        "flox_volume_bin_aggregator_create",
+        "flox_volume_bin_read_result"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "EventTypeStatsAggregator",
+          "BinCountAggregator",
+          "VolumeBinAggregator",
+          "PeakAggregator",
+          "QuantileAggregator"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "EventTypeStatsAggregator",
+          "BinCountAggregator",
+          "VolumeBinAggregator",
+          "PeakAggregator",
+          "QuantileAggregator"
         ],
         "functions": [],
         "status": "required"

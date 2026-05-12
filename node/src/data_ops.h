@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 #include "flox/capi/flox_capi.h"
+#include "tape_aggregators.h"
 
 namespace node_flox
 {
@@ -115,7 +116,8 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
                         InstanceMethod("readBBO", &DataReaderWrap::ReadBBO),
                         InstanceMethod("readBBOFrom", &DataReaderWrap::ReadBBOFrom),
                         InstanceMethod("readBookUpdates", &DataReaderWrap::ReadBookUpdates),
-                        InstanceMethod("readBookUpdatesFrom", &DataReaderWrap::ReadBookUpdatesFrom)});
+                        InstanceMethod("readBookUpdatesFrom", &DataReaderWrap::ReadBookUpdatesFrom),
+                        InstanceMethod("run", &DataReaderWrap::Run)});
   }
   DataReaderWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DataReaderWrap>(info)
   {
@@ -316,6 +318,31 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     return arr;
   }
 
+  // Single-pass streaming aggregator dispatch over the tape. Takes a
+  // JS array of aggregator wraps (any mix of the five tape aggregator
+  // classes), unwraps each to a C ABI handle, and dispatches.
+  // Returns `true` on success; an empty array is a no-op no-decompression
+  // call returning `true`. GIL release N/A in NAPI.
+  Napi::Value Run(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || !info[0].IsArray())
+    {
+      Napi::TypeError::New(env, "DataReader.run expects an Array of aggregator wraps")
+          .ThrowAsJavaScriptException();
+      return env.Null();
+    }
+    auto js_arr = info[0].As<Napi::Array>();
+    std::vector<FloxAggregatorHandle> handles;
+    if (!collectAggregatorHandles(env, js_arr, handles))
+    {
+      return env.Null();
+    }
+    uint8_t ok = flox_data_reader_run(_h, handles.empty() ? nullptr : handles.data(),
+                                      static_cast<uint32_t>(handles.size()));
+    return Napi::Boolean::New(env, ok != 0);
+  }
+
  public:
   FloxDataReaderHandle _h = nullptr;
 };
@@ -452,7 +479,8 @@ class MergedTapeReaderWrap : public Napi::ObjectWrap<MergedTapeReaderWrap>
                         InstanceMethod("timeRange", &MergedTapeReaderWrap::TimeRange),
                         InstanceMethod("perTapeStats", &MergedTapeReaderWrap::PerTapeStats),
                         InstanceMethod("readTrades", &MergedTapeReaderWrap::ReadTrades),
-                        InstanceMethod("readBooks", &MergedTapeReaderWrap::ReadBooks)});
+                        InstanceMethod("readBooks", &MergedTapeReaderWrap::ReadBooks),
+                        InstanceMethod("run", &MergedTapeReaderWrap::Run)});
   }
   MergedTapeReaderWrap(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<MergedTapeReaderWrap>(info)
@@ -673,6 +701,30 @@ class MergedTapeReaderWrap : public Napi::ObjectWrap<MergedTapeReaderWrap>
       arr.Set((uint32_t)i, o);
     }
     return arr;
+  }
+
+  // Streaming aggregator dispatch over the merged stream. Same semantics
+  // as DataReader.run — events are seen with global-rewritten symbol
+  // ids; per-tape provenance is not surfaced to aggregators.
+  Napi::Value Run(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    if (info.Length() == 0 || !info[0].IsArray())
+    {
+      Napi::TypeError::New(env, "MergedTapeReader.run expects an Array of aggregator wraps")
+          .ThrowAsJavaScriptException();
+      return env.Null();
+    }
+    auto js_arr = info[0].As<Napi::Array>();
+    std::vector<FloxAggregatorHandle> handles;
+    if (!collectAggregatorHandles(env, js_arr, handles))
+    {
+      return env.Null();
+    }
+    uint8_t ok = flox_merged_tape_reader_run(
+        _h, handles.empty() ? nullptr : handles.data(),
+        static_cast<uint32_t>(handles.size()));
+    return Napi::Boolean::New(env, ok != 0);
   }
 
   FloxMergedTapeReaderHandle _h = nullptr;
