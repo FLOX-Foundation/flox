@@ -462,6 +462,92 @@ def cmd_tape_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def _materialize_merged_tape(paths: list[Path], out_dir: Path) -> None:
+    """Write a synthetic `.floxlog` directory at `out_dir` containing
+    the merged event stream from `paths`. Symbols are rekeyed to global
+    IDs; metadata.json carries the merged symbol table so the viewer can
+    label them.
+
+    MVP for `flox tape view path1 path2 ...`. The streaming HTTP `/merge`
+    endpoint that the spec preferred lives behind SPA-side multi-tape
+    support — until that lands this materialization gives the viewer a
+    file it already knows how to render.
+    """
+    import json
+    import flox_py
+    import numpy as np
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    reader = flox_py.MergedTapeReader([str(p) for p in paths])
+
+    writer = flox_py.DataWriter(str(out_dir), max_segment_mb=256,
+                                exchange_id=0, compression="none")
+
+    # Trades: convert raw int64 → double for the existing
+    # DataWriter.write_trade signature. Acceptable precision loss for
+    # the viewer use case (prices have plenty of headroom under 1e15).
+    for row in reader.read_trades():
+        writer.write_trade(
+            exchange_ts_ns=int(row["exchange_ts_ns"]),
+            recv_ts_ns=int(row["recv_ts_ns"]),
+            price=float(row["price_raw"]) / 1e8,
+            qty=float(row["qty_raw"]) / 1e8,
+            trade_id=int(row["trade_id"]),
+            symbol_id=int(row["symbol_id"]),
+            side=int(row["side"]),
+        )
+
+    # Books: write_book takes raw int64 directly, lossless round-trip.
+    headers, levels = reader.read_books()
+    if headers.size:
+        for h in headers:
+            offset = int(h["level_offset"])
+            n_bid = int(h["bid_count"])
+            n_ask = int(h["ask_count"])
+            bids = levels[offset:offset + n_bid]
+            asks = levels[offset + n_bid:offset + n_bid + n_ask]
+            writer.write_book(
+                exchange_ts_ns=int(h["exchange_ts_ns"]),
+                recv_ts_ns=int(h["recv_ts_ns"]),
+                seq=int(h["seq"]),
+                symbol_id=int(h["symbol_id"]),
+                is_snapshot=int(h["event_type"]) == 2,
+                bids=bids,
+                asks=asks,
+            )
+    writer.close()
+
+    # Synthesize a metadata.json that maps the global symbol IDs back to
+    # readable (exchange, name) tuples. The viewer reads this for chart
+    # legends / tooltips.
+    sym_table = reader.symbol_table()
+    metadata = {
+        "exchange": "merged",
+        "exchange_type": "synthetic",
+        "instrument_type": "merged",
+        "symbols": [
+            {
+                "symbol_id": int(s["global_id"]),
+                "name": f"{s['exchange']}/{s['name']}",
+                "base_asset": "",
+                "quote_asset": "",
+                "price_precision": int(s["price_precision"]),
+                "qty_precision": int(s["qty_precision"]),
+            }
+            for s in sym_table
+        ],
+        "has_trades": True,
+        "has_book_snapshots": bool(headers.size),
+        "has_book_deltas": False,
+        "price_scale": 100000000,
+        "qty_scale": 100000000,
+        "description": (
+            "Merged view of: " + ", ".join(str(p) for p in paths)
+        ),
+    }
+    (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+
 def cmd_tape_view(args: argparse.Namespace) -> int:
     """Serve the static replay viewer locally with the requested tape /
     run directory pre-staged, then open a browser."""
@@ -486,7 +572,7 @@ def cmd_tape_view(args: argparse.Namespace) -> int:
               "first, or install a published wheel.", file=sys.stderr)
         return 1
 
-    tape_path: Optional[Path] = None
+    tape_paths: list[Path] = []
     run_path: Optional[Path] = None
     for raw in args.paths:
         p = Path(raw).expanduser().resolve()
@@ -495,7 +581,7 @@ def cmd_tape_view(args: argparse.Namespace) -> int:
             return 1
         suffix = p.suffix.lower()
         if suffix == ".floxlog" or any(p.glob("*.floxlog")):
-            tape_path = p
+            tape_paths.append(p)
         elif suffix == ".floxrun":
             run_path = p
         else:
@@ -511,8 +597,18 @@ def cmd_tape_view(args: argparse.Namespace) -> int:
     _shutil.copytree(viewer_root, serve_root)
     fixtures = serve_root / "fixture-cli"
     fixtures.mkdir()
-    if tape_path is not None:
-        _shutil.copytree(tape_path, fixtures / "tape")
+
+    if len(tape_paths) == 1:
+        _shutil.copytree(tape_paths[0], fixtures / "tape")
+    elif len(tape_paths) >= 2:
+        # Multi-tape view — materialize a merged synthetic tape into
+        # fixtures/tape so the existing single-tape SPA renders the
+        # union. The merged tape carries rekeyed (global) symbol IDs.
+        # SPA-side multi-venue legend / per-venue book chart is a
+        # separate follow-up; for now the viewer sees one synthetic
+        # stream with N distinct symbol IDs and colours them
+        # accordingly.
+        _materialize_merged_tape(tape_paths, fixtures / "tape")
     if run_path is not None:
         _shutil.copytree(run_path, fixtures / "run")
 
@@ -665,8 +761,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "given .floxlog and / or .floxrun directory.",
     )
     p_view.add_argument("paths", nargs="+",
-                        help="One or two paths: a .floxlog directory, a "
-                             ".floxrun directory, or both.")
+                        help="One or more .floxlog directories and/or one "
+                             ".floxrun. With multiple .floxlog dirs the "
+                             "viewer renders a merged synthetic tape "
+                             "(symbols rekeyed into a global id space "
+                             "keyed by (exchange, name) — see "
+                             "docs/how-to/multi-tape.md).")
     p_view.add_argument("--port", type=int, default=8765,
                         help="Local port to serve the viewer on (default 8765).")
     p_view.add_argument("--no-open", action="store_true",
