@@ -8,6 +8,7 @@
  */
 
 #include "flox/replay/aggregator.h"
+#include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/readers/binary_log_reader.h"
@@ -390,4 +391,194 @@ TEST_F(AggregatorFrameworkTest, EventTypeStatsResultEmptyBeforeRun)
   // step that publishes the result.
   EventTypeStatsAggregator stats;
   EXPECT_TRUE(stats.result().empty());
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// BinCountAggregator
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Tape with predictable per-bucket counts. 10 buckets at 100 ms each,
+// symbol 1 gets 3 BUY + 2 SELL per bucket = 5 trades, symbol 2 gets 1
+// trade per bucket (all BUY). All trades.
+void writeBucketedTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 100,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  constexpr int64_t bucket_ns = 100'000'000LL;  // 100 ms
+
+  uint64_t tid = 0;
+  for (int b = 0; b < 10; ++b)
+  {
+    const int64_t base = b * bucket_ns + 1;  // offset into bucket
+    // symbol 1: 3 BUY, 2 SELL
+    for (int i = 0; i < 5; ++i)
+    {
+      TradeRecord t{};
+      t.exchange_ts_ns = base + i;
+      t.symbol_id = 1;
+      t.trade_id = tid++;
+      t.side = (i < 3) ? 0 : 1;  // 0=BUY, 1=SELL
+      writer.writeTrade(t);
+    }
+    // symbol 2: 1 BUY
+    TradeRecord t{};
+    t.exchange_ts_ns = base + 50;
+    t.symbol_id = 2;
+    t.trade_id = tid++;
+    t.side = 0;
+    writer.writeTrade(t);
+  }
+
+  writer.close();
+}
+
+const BinCountAggregator::Row* findBin(const std::vector<BinCountAggregator::Row>& rows,
+                                       int64_t bucket, uint32_t sym, uint8_t side)
+{
+  auto it = std::find_if(rows.begin(), rows.end(),
+                         [=](const auto& r)
+                         {
+                           return r.bucket_ts_ns == bucket && r.symbol_id == sym &&
+                                  r.side == side;
+                         });
+  return it == rows.end() ? nullptr : &*it;
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, BinCountFlatNoSplit)
+{
+  // 100 ms buckets, no side/symbol split. Each bucket sees 6 trades
+  // (5 from symbol 1 + 1 from symbol 2). 10 buckets total.
+  writeBucketedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  BinCountAggregator bins(100'000'000LL);
+  std::array<IAggregator*, 1> aggregators{&bins};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = bins.result();
+  ASSERT_EQ(rows.size(), 10u);
+  for (size_t i = 0; i < 10; ++i)
+  {
+    EXPECT_EQ(rows[i].bucket_ts_ns, static_cast<int64_t>(i) * 100'000'000LL);
+    EXPECT_EQ(rows[i].symbol_id, 0u);
+    EXPECT_EQ(rows[i].side, 0u);
+    EXPECT_EQ(rows[i].count, 6u);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, BinCountBySide)
+{
+  // Same tape, by_side=true. Each bucket: BUY = 3 (sym1) + 1 (sym2) =
+  // 4, SELL = 2 (sym1). Rows are (bucket, sym=0, side=1) and
+  // (bucket, sym=0, side=2).
+  writeBucketedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  BinCountAggregator bins(100'000'000LL, /*by_side=*/true);
+  std::array<IAggregator*, 1> aggregators{&bins};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = bins.result();
+  ASSERT_EQ(rows.size(), 20u);  // 10 buckets × 2 sides
+
+  for (int b = 0; b < 10; ++b)
+  {
+    const int64_t bucket = b * 100'000'000LL;
+    const auto* buys = findBin(rows, bucket, 0, 1);
+    const auto* sells = findBin(rows, bucket, 0, 2);
+    ASSERT_NE(buys, nullptr);
+    ASSERT_NE(sells, nullptr);
+    EXPECT_EQ(buys->count, 4u);
+    EXPECT_EQ(sells->count, 2u);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, BinCountBySymbol)
+{
+  writeBucketedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  BinCountAggregator bins(100'000'000LL, /*by_side=*/false, /*by_symbol=*/true);
+  std::array<IAggregator*, 1> aggregators{&bins};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = bins.result();
+  ASSERT_EQ(rows.size(), 20u);  // 10 buckets × 2 symbols
+
+  for (int b = 0; b < 10; ++b)
+  {
+    const int64_t bucket = b * 100'000'000LL;
+    const auto* s1 = findBin(rows, bucket, 1, 0);
+    const auto* s2 = findBin(rows, bucket, 2, 0);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(s1->count, 5u);
+    EXPECT_EQ(s2->count, 1u);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, BinCountBySideAndBySymbol)
+{
+  writeBucketedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  BinCountAggregator bins(100'000'000LL, /*by_side=*/true, /*by_symbol=*/true);
+  std::array<IAggregator*, 1> aggregators{&bins};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = bins.result();
+  // Symbol 1 has BUY and SELL → 2 rows/bucket. Symbol 2 has only BUY → 1.
+  ASSERT_EQ(rows.size(), 30u);  // 10 buckets × 3 (sym1 buy + sym1 sell + sym2 buy)
+
+  for (int b = 0; b < 10; ++b)
+  {
+    const int64_t bucket = b * 100'000'000LL;
+    EXPECT_EQ(findBin(rows, bucket, 1, 1)->count, 3u);  // sym1 BUY
+    EXPECT_EQ(findBin(rows, bucket, 1, 2)->count, 2u);  // sym1 SELL
+    EXPECT_EQ(findBin(rows, bucket, 2, 1)->count, 1u);  // sym2 BUY
+    EXPECT_EQ(findBin(rows, bucket, 2, 2), nullptr);    // sym2 has no SELL
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, BinCountSymbolFilter)
+{
+  writeBucketedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  // Filter to symbol 2 only — should drop symbol 1 trades entirely.
+  BinCountAggregator bins(100'000'000LL, /*by_side=*/false, /*by_symbol=*/false,
+                          AggregatorEventFilter::Both, {2});
+  std::array<IAggregator*, 1> aggregators{&bins};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = bins.result();
+  ASSERT_EQ(rows.size(), 10u);
+  for (const auto& r : rows)
+  {
+    EXPECT_EQ(r.count, 1u);  // only sym2's single trade per bucket
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, BinCountRejectsNonPositiveBucket)
+{
+  EXPECT_THROW(BinCountAggregator(0), std::invalid_argument);
+  EXPECT_THROW(BinCountAggregator(-1'000'000LL), std::invalid_argument);
 }
