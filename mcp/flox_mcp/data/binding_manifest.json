@@ -5810,6 +5810,10 @@
         },
         {
           "kind": "class",
+          "name": "MergedTapeReader"
+        },
+        {
+          "kind": "class",
           "name": "MultiFeedClock"
         },
         {

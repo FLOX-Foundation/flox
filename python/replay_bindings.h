@@ -11,6 +11,7 @@
 #include "flox/common.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/binary_log_recorder_hook.h"
+#include "flox/replay/merged_tape_reader.h"
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/recording_metadata.h"
 #include "flox/replay/writers/binary_log_writer.h"
@@ -35,7 +36,9 @@ class PyBinaryLogRecorderHook
 
  public:
   PyBinaryLogRecorderHook(const std::string& outputDir, uint64_t maxSegmentMb,
-                          uint8_t exchangeId, const std::string& compression)
+                          uint8_t exchangeId, const std::string& compression,
+                          const std::string& exchangeName,
+                          const std::string& instrumentType)
   {
     flox::replay::BinaryLogRecorderHookConfig cfg{};
     cfg.output_dir = outputDir;
@@ -54,6 +57,13 @@ class PyBinaryLogRecorderHook
       throw flox::FloxError(
           "E_INPUT_001",
           "Unknown compression: '" + compression + "'. Expected 'none' or 'lz4'.");
+    }
+    if (!exchangeName.empty() || !instrumentType.empty())
+    {
+      flox::replay::RecordingMetadata meta{};
+      meta.exchange = exchangeName;
+      meta.instrument_type = instrumentType;
+      cfg.metadata = std::move(meta);
     }
     _hook = std::make_unique<flox::replay::BinaryLogRecorderHook>(std::move(cfg));
   }
@@ -709,6 +719,147 @@ class PyDataWriter
   std::string currentSegmentPath() { return _writer.currentSegmentPath().string(); }
 };
 
+// ─── PyMergedTapeReader ────────────────────────────────────────────────────────
+
+class PyMergedTapeReader
+{
+  flox::replay::MergedTapeReader _reader;
+
+  static flox::replay::MergedTapeReaderConfig
+  buildConfig(const std::vector<std::string>& paths, py::object from_ns,
+              py::object to_ns, py::object symbols)
+  {
+    flox::replay::MergedTapeReaderConfig cfg{};
+    cfg.tape_dirs.reserve(paths.size());
+    for (const auto& p : paths)
+    {
+      cfg.tape_dirs.emplace_back(p);
+    }
+    if (!from_ns.is_none())
+    {
+      cfg.from_ns = from_ns.cast<int64_t>();
+    }
+    if (!to_ns.is_none())
+    {
+      cfg.to_ns = to_ns.cast<int64_t>();
+    }
+    if (!symbols.is_none())
+    {
+      for (auto h : symbols.cast<py::list>())
+      {
+        cfg.symbol_filter.push_back(h.cast<uint32_t>());
+      }
+    }
+    return cfg;
+  }
+
+ public:
+  PyMergedTapeReader(const std::vector<std::string>& paths, py::object from_ns,
+                     py::object to_ns, py::object symbols)
+      : _reader(buildConfig(paths, std::move(from_ns), std::move(to_ns),
+                            std::move(symbols)))
+  {
+  }
+
+  py::list symbolTable() const
+  {
+    py::list out;
+    for (const auto& s : _reader.symbols())
+    {
+      py::dict d;
+      d["global_id"] = s.global_id;
+      d["exchange"] = s.exchange;
+      d["name"] = s.name;
+      d["price_precision"] = s.price_precision;
+      d["qty_precision"] = s.qty_precision;
+      out.append(d);
+    }
+    return out;
+  }
+
+  py::tuple timeRange() const
+  {
+    auto [a, b] = _reader.timeRange();
+    return py::make_tuple(a, b);
+  }
+
+  py::array readTrades()
+  {
+    auto rows = _reader.readTrades();
+    py::array_t<PyTrade> arr(static_cast<py::ssize_t>(rows.size()));
+    auto* out = arr.mutable_data();
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+      const auto& r = rows[i];
+      out[i].exchange_ts_ns = r.exchange_ts_ns;
+      out[i].recv_ts_ns = r.recv_ts_ns;
+      out[i].price_raw = r.price_raw;
+      out[i].qty_raw = r.qty_raw;
+      out[i].trade_id = r.trade_id;
+      out[i].symbol_id = r.global_symbol_id;
+      out[i].side = r.side;
+      out[i]._pad[0] = out[i]._pad[1] = out[i]._pad[2] = 0;
+    }
+    return std::move(arr);
+  }
+
+  py::tuple readBooks()
+  {
+    auto [rows, levels] = _reader.readBooks();
+    py::array_t<PyBookUpdateHeader> headers(static_cast<py::ssize_t>(rows.size()));
+    auto* hout = headers.mutable_data();
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+      const auto& r = rows[i];
+      hout[i].exchange_ts_ns = r.exchange_ts_ns;
+      hout[i].recv_ts_ns = r.recv_ts_ns;
+      hout[i].seq = r.seq;
+      hout[i].symbol_id = r.global_symbol_id;
+      hout[i].bid_count = r.bid_count;
+      hout[i].ask_count = r.ask_count;
+      hout[i].level_offset = r.level_offset;
+      hout[i].event_type = r.event_type;
+    }
+
+    py::array_t<PyLevel> lvls(static_cast<py::ssize_t>(levels.size()));
+    auto* lout = lvls.mutable_data();
+    size_t k = 0;
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+      const auto& r = rows[i];
+      for (uint16_t b = 0; b < r.bid_count; ++b, ++k)
+      {
+        lout[k].price_raw = levels[k].price_raw;
+        lout[k].qty_raw = levels[k].qty_raw;
+        lout[k].side = 0;
+      }
+      for (uint16_t a = 0; a < r.ask_count; ++a, ++k)
+      {
+        lout[k].price_raw = levels[k].price_raw;
+        lout[k].qty_raw = levels[k].qty_raw;
+        lout[k].side = 1;
+      }
+    }
+    return py::make_tuple(std::move(headers), std::move(lvls));
+  }
+
+  py::list perTapeStats() const
+  {
+    py::list out;
+    for (const auto& s : _reader.perTapeStats())
+    {
+      py::dict d;
+      d["path"] = s.path.string();
+      d["trades"] = s.trades;
+      d["books"] = s.books;
+      d["first_event_ns"] = s.first_event_ns;
+      d["last_event_ns"] = s.last_event_ns;
+      out.append(d);
+    }
+    return out;
+  }
+};
+
 }  // namespace
 
 // ─── Module binding ────────────────────────────────────────────────────────────
@@ -881,14 +1032,19 @@ inline void bindReplay(py::module_& m)
   // driven automatically by the engine.
   py::class_<flox_py::PyBinaryLogRecorderHook, std::shared_ptr<flox_py::PyBinaryLogRecorderHook>>(
       m, "BinaryLogRecorderHook")
-      .def(py::init<const std::string&, uint64_t, uint8_t, const std::string&>(),
-           "Create a binary-log recorder hook. Trades AND books are written "
+      .def(py::init<const std::string&, uint64_t, uint8_t, const std::string&,
+                    const std::string&, const std::string&>(),
+           "Create a binary-log recorder hook. Trades and books are written "
            "via BinaryLogWriter on the engine thread — no Python callback "
-           "per event.",
+           "per event. exchange_name + instrument_type are stamped into "
+           "the recording's metadata.json so MergedTapeReader can key by "
+           "(exchange, name) across multiple tapes.",
            py::arg("output_dir"),
            py::arg("max_segment_mb") = 256,
            py::arg("exchange_id") = 0,
-           py::arg("compression") = "none")
+           py::arg("compression") = "none",
+           py::arg("exchange_name") = "",
+           py::arg("instrument_type") = "")
       .def("add_symbol", &flox_py::PyBinaryLogRecorderHook::addSymbol,
            "Register a symbol for recording metadata",
            py::arg("symbol_id"), py::arg("name"),
@@ -902,4 +1058,29 @@ inline void bindReplay(py::module_& m)
            "Return recorder statistics as a dict")
       .def("current_segment_path", &flox_py::PyBinaryLogRecorderHook::currentSegmentPath,
            "Return the path of the segment currently being written");
+
+  // MergedTapeReader — k-tape consumption primitive.
+  py::class_<PyMergedTapeReader>(m, "MergedTapeReader")
+      .def(py::init<const std::vector<std::string>&, py::object, py::object,
+                    py::object>(),
+           "Open N `.floxlog` directories and expose a merged trade / book "
+           "stream. Symbols are rekeyed into a global id space, keyed by "
+           "(metadata.exchange, name). Ties on exchange_ts_ns are broken by "
+           "tape order in `paths`. read_trades / read_books are eager — "
+           "they materialise the merged arrays.",
+           py::arg("paths"), py::arg("from_ns") = py::none(),
+           py::arg("to_ns") = py::none(), py::arg("symbols") = py::none())
+      .def("symbol_table", &PyMergedTapeReader::symbolTable,
+           "List of dicts: global_id, exchange, name, price_precision, "
+           "qty_precision.")
+      .def("time_range", &PyMergedTapeReader::timeRange,
+           "(min first_event_ns, max last_event_ns) across all tapes.")
+      .def("read_trades", &PyMergedTapeReader::readTrades,
+           "Merged trades as PyTrade structured numpy array, sorted by "
+           "exchange_ts_ns; tie-break by tape order.")
+      .def("read_books", &PyMergedTapeReader::readBooks,
+           "(headers, levels) tuple. Headers carry global symbol_id; "
+           "level_offset slices the levels array per event.")
+      .def("per_tape_stats", &PyMergedTapeReader::perTapeStats,
+           "Per-tape breakdown — useful for debugging an empty input.");
 }
