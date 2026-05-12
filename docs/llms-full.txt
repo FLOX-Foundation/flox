@@ -5963,7 +5963,7 @@ VolumeProfile<512> futuresProfile;  // High precision needed
 
 # Aggregate tape events in a single pass
 
-`DataReader.run([...])` walks a `.floxlog` once and forwards every event to a panel of streaming aggregators. The aggregators run in C++ without per-event Python or JS crossings, so adding more aggregators to the panel only adds a small per-event cost; the panel is walked once regardless.
+`DataReader.run([...])` walks a `.floxlog` once and forwards every event to a panel of streaming aggregators. The aggregators run entirely in C++; the dispatch loop never crosses into Python or JS during the walk.
 
 The five native aggregators:
 
@@ -6086,19 +6086,19 @@ For each `window_ns`, finds the top-N intervals of width `window_ns` that contai
 
 ### Quantile
 
-For each `window_ns`, the aggregator records the sliding-window event count at every event arrival, builds a histogram of those observations, and at `finalize()` resolves each quantile `q` to the smallest count value `C` for which `fraction(observed ≤ C) ≥ q`.
+For each `window_ns`, the aggregator records the sliding-window event count at every event arrival and accumulates those observations into a histogram. `finalize()` then resolves each requested quantile `q` to the smallest count value `C` for which `fraction(observed ≤ C) ≥ q`.
 
 Quantiles must be in `(0.0, 1.0]`. The result row count is `len(window_ns_list) × len(quantiles)`. When `event_filter` admits no events, rows still appear with `count=0` so the shape stays stable.
 
 ## Performance notes
 
-`onEvent` is called once per event per pass. Inside the dispatch loop each aggregator adds one indirection per event; the cost scales with the panel size but not with how many passes you'd otherwise need.
+`onEvent` runs once per event for each aggregator in the panel. Adding aggregators raises the per-event cost; it does not change how many times the tape is walked.
 
-The aggregators are self-contained: no I/O, no Python crossings, no hot-path allocations beyond the bounded sliding deques in Peak and Quantile.
+Aggregators don't do I/O and don't call into Python. The only hot-path allocation is the bounded sliding deque used by Peak and Quantile.
 
-For multi-tape captures the C++ N-way heap merge in `MergedTapeReader` is the right entry point. `run()` walks the merged stream in `O(N_tapes)` peak memory regardless of total event count.
+For multi-tape captures use `MergedTapeReader.run()`. The C++ N-way heap merge keeps peak memory at `O(N_tapes)` regardless of total event count.
 
-The Quantile histogram is sparse (`unordered_map<count_value, occurrences>`). Distinct count values are bounded by the peak burst size (usually dozens), while observations scale with the event count, so memory stays in the kilobytes even on multi-gigabyte captures.
+The Quantile histogram is keyed by `count_value` in an `unordered_map`. There are at most a few dozen distinct count values (bounded by the peak burst size), so the histogram stays small even when the tape contains billions of observations.
 
 ## See also
 
