@@ -251,13 +251,14 @@ export interface OrderValidator {
  *  recording (CSV, parquet, custom binary). */
 export interface MarketDataRecorderHook {
   onTrade?(trade: TradeData): void;
-  /** `bids` / `asks` are arrays of `[price, quantity]` pairs. */
+  /** `bids` / `asks` are flat `BigInt64Array`s: `[price_raw, qty_raw, ...]`,
+   *  raw int64 ticks (multiply by 1e-8 to get a double price/qty). */
   onBookUpdate?(
     symbol: number,
     isSnapshot: boolean,
-    bids: ReadonlyArray<readonly [number, number]>,
-    asks: ReadonlyArray<readonly [number, number]>,
-    timestampNs: number
+    bids: BigInt64Array,
+    asks: BigInt64Array,
+    timestampNs: bigint
   ): void;
   onStart?(): void;
   onStop?(): void;
@@ -409,7 +410,7 @@ export class Runner {
   setKillSwitch(ks: KillSwitch | null): void;
   /** Sync only — OrderValidator.validate is read inline. */
   setOrderValidator(ov: OrderValidator | null): void;
-  setMarketDataRecorder(recorder: MarketDataRecorderHook | null): void;
+  setMarketDataRecorder(recorder: MarketDataRecorderHook | BinaryLogRecorderHook | null): void;
   /** Sync only — Executor.capabilities() is read inline. */
   setExecutor(executor: Executor | null): void;
 
@@ -1200,6 +1201,17 @@ export class DataWriter {
     symbolId: number,
     side: Side,
   ): boolean;
+  /** `bids` / `asks` are flat `BigInt64Array`s of interleaved raw int64
+   *  `[price, qty, price, qty, ...]` (Price/Quantity scale = 1e8). */
+  writeBook(
+    exchangeTsNs: bigint,
+    recvTsNs: bigint,
+    seq: bigint,
+    symbolId: number,
+    isSnapshot: boolean,
+    bids: BigInt64Array,
+    asks: BigInt64Array,
+  ): boolean;
   flush(): void;
   close(): void;
   stats(): DataWriterStats;
@@ -1219,8 +1231,25 @@ export class DataReader {
   readBookUpdatesFrom(startTsNs: number | bigint): BookUpdateRecord[];
 }
 
-export class DataRecorder {
-  constructor(outputDir: string, exchangeName?: string, maxSegmentMb?: number);
+/** Built-in `.floxlog` recorder. Owns a `BinaryLogWriter` on the engine
+ *  thread — trade/book events are persisted in C++ on the hot path without
+ *  bouncing through JS. Attach via `runner.setMarketDataRecorder(hook)`. */
+export interface BinaryLogRecorderHookStats {
+  tradesWritten: bigint;
+  bookUpdatesWritten: bigint;
+  bytesWritten: bigint;
+  segmentsCreated: bigint;
+  errors: bigint;
+}
+
+export class BinaryLogRecorderHook {
+  constructor(
+    outputDir: string,
+    maxSegmentMb?: number,
+    exchangeId?: number,
+    /** `"none"` (default) or `"lz4"`. */
+    compression?: "none" | "lz4",
+  );
   addSymbol(
     symbolId: number,
     name: string,
@@ -1229,10 +1258,8 @@ export class DataRecorder {
     pricePrecision?: number,
     qtyPrecision?: number,
   ): void;
-  start(): void;
-  stop(): void;
   flush(): void;
-  readonly isRecording: boolean;
+  stats(): BinaryLogRecorderHookStats;
 }
 
 export interface Partition {

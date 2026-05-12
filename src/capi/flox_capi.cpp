@@ -91,7 +91,7 @@
 #include "flox/execution/order_tracker.h"
 #include "flox/position/position_group.h"
 #include "flox/position/position_tracker.h"
-#include "flox/replay/market_data_recorder.h"
+#include "flox/replay/binary_log_recorder_hook.h"
 #include "flox/replay/ops/partitioner.h"
 #include "flox/replay/ops/segment_ops.h"
 #include "flox/replay/ops/validator.h"
@@ -2171,6 +2171,81 @@ uint8_t flox_data_writer_write_trade(FloxDataWriterHandle h, int64_t exchange_ts
   return static_cast<replay::BinaryLogWriter*>(h)->writeTrade(tr) ? 1 : 0;
 }
 
+uint8_t flox_data_writer_write_book(FloxDataWriterHandle h,
+                                    int64_t exchange_ts_ns,
+                                    int64_t recv_ts_ns,
+                                    int64_t seq,
+                                    uint32_t symbol_id,
+                                    uint8_t is_snapshot,
+                                    const FloxBookLevel* bids, uint32_t n_bids,
+                                    const FloxBookLevel* asks, uint32_t n_asks)
+{
+  replay::BookRecordHeader header{};
+  header.exchange_ts_ns = exchange_ts_ns;
+  header.recv_ts_ns = recv_ts_ns;
+  header.seq = seq;
+  header.symbol_id = symbol_id;
+  header.bid_count = static_cast<uint16_t>(n_bids);
+  header.ask_count = static_cast<uint16_t>(n_asks);
+  header.type = is_snapshot ? 0 : 1;
+
+  // FloxBookLevel and replay::BookLevel are layout-compatible
+  // (int64 price_raw, int64 qty_raw). Cast is intentional.
+  auto* bid_levels = reinterpret_cast<const replay::BookLevel*>(bids);
+  auto* ask_levels = reinterpret_cast<const replay::BookLevel*>(asks);
+  std::span<const replay::BookLevel> bid_span(bid_levels, n_bids);
+  std::span<const replay::BookLevel> ask_span(ask_levels, n_asks);
+
+  return static_cast<replay::BinaryLogWriter*>(h)->writeBook(header, bid_span, ask_span) ? 1 : 0;
+}
+
+uint64_t flox_data_writer_write_books(FloxDataWriterHandle h,
+                                      const FloxBookUpdateHeader* headers,
+                                      uint64_t n_events,
+                                      const FloxLevel* levels,
+                                      uint64_t /*total_levels*/)
+{
+  auto* writer = static_cast<replay::BinaryLogWriter*>(h);
+  if (!writer || !headers)
+  {
+    return 0;
+  }
+
+  // FloxLevel has an extra `side` byte we ignore on write — copy into
+  // contiguous replay::BookLevel buffers per event.
+  std::vector<replay::BookLevel> scratch;
+  uint64_t written = 0;
+  for (uint64_t i = 0; i < n_events; ++i)
+  {
+    const auto& fh = headers[i];
+    const uint64_t total = static_cast<uint64_t>(fh.bid_count) + fh.ask_count;
+    scratch.clear();
+    scratch.reserve(total);
+    for (uint64_t k = 0; k < total; ++k)
+    {
+      const auto& lv = levels[fh.level_offset + k];
+      scratch.push_back({lv.price_raw, lv.qty_raw});
+    }
+
+    replay::BookRecordHeader rh{};
+    rh.exchange_ts_ns = fh.exchange_ts_ns;
+    rh.recv_ts_ns = fh.recv_ts_ns;
+    rh.seq = fh.seq;
+    rh.symbol_id = fh.symbol_id;
+    rh.bid_count = fh.bid_count;
+    rh.ask_count = fh.ask_count;
+    rh.type = (fh.event_type == 2) ? 0 : 1;
+
+    std::span<const replay::BookLevel> bid_span(scratch.data(), fh.bid_count);
+    std::span<const replay::BookLevel> ask_span(scratch.data() + fh.bid_count, fh.ask_count);
+    if (writer->writeBook(rh, bid_span, ask_span))
+    {
+      ++written;
+    }
+  }
+  return written;
+}
+
 void flox_data_writer_flush(FloxDataWriterHandle h)
 {
   static_cast<replay::BinaryLogWriter*>(h)->flush();
@@ -3051,55 +3126,6 @@ FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle h)
   auto* w = static_cast<replay::BinaryLogWriter*>(h);
   auto s = w->stats();
   return {s.bytes_written, s.events_written, s.segments_created, s.trades_written};
-}
-
-// ============================================================
-// DataRecorder
-// ============================================================
-
-FloxDataRecorderHandle flox_data_recorder_create(const char* output_dir,
-                                                 const char* exchange_name,
-                                                 uint64_t max_segment_mb)
-{
-  MarketDataRecorderConfig cfg;
-  cfg.output_dir = output_dir;
-  cfg.exchange_name = exchange_name;
-  cfg.max_segment_bytes = max_segment_mb * 1024 * 1024;
-  return new MarketDataRecorder(cfg);
-}
-
-void flox_data_recorder_destroy(FloxDataRecorderHandle h)
-{
-  delete static_cast<MarketDataRecorder*>(h);
-}
-
-void flox_data_recorder_add_symbol(FloxDataRecorderHandle h, uint32_t symbol_id, const char* name,
-                                   const char* base, const char* quote, int8_t price_precision,
-                                   int8_t qty_precision)
-{
-  static_cast<MarketDataRecorder*>(h)->addSymbol(symbol_id, name, base ? base : "",
-                                                 quote ? quote : "", price_precision,
-                                                 qty_precision);
-}
-
-void flox_data_recorder_start(FloxDataRecorderHandle h)
-{
-  static_cast<MarketDataRecorder*>(h)->start();
-}
-
-void flox_data_recorder_stop(FloxDataRecorderHandle h)
-{
-  static_cast<MarketDataRecorder*>(h)->stop();
-}
-
-void flox_data_recorder_flush(FloxDataRecorderHandle h)
-{
-  static_cast<MarketDataRecorder*>(h)->flush();
-}
-
-uint8_t flox_data_recorder_is_recording(FloxDataRecorderHandle h)
-{
-  return static_cast<MarketDataRecorder*>(h)->isRecording() ? 1 : 0;
 }
 
 // ============================================================
@@ -5184,6 +5210,142 @@ FloxMarketDataRecorderHandle flox_market_data_recorder_create_p(
 void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)
 {
   delete static_cast<FloxMarketDataRecorderImpl*>(recorder);
+}
+
+// ── Binary-log recorder hook ──────────────────────────────────────────
+namespace capi_impl
+{
+struct FloxBinaryLogRecorderHookImpl
+{
+  flox::replay::BinaryLogRecorderHook hook;
+  // FloxMarketDataRecorderImpl whose callbacks bridge engine events
+  // straight into hook.onTrade / onBookUpdate. user_data points at
+  // `this`. Lifetime is tied to the owning impl — DO NOT separately
+  // free via flox_market_data_recorder_destroy.
+  FloxMarketDataRecorderImpl recorder_view{};
+
+  explicit FloxBinaryLogRecorderHookImpl(flox::replay::BinaryLogRecorderHookConfig cfg)
+      : hook(std::move(cfg))
+  {
+  }
+};
+
+static void blrhOnTrade(void* ud, const FloxTradeData* t)
+{
+  if (!t)
+  {
+    return;
+  }
+  auto* self = static_cast<FloxBinaryLogRecorderHookImpl*>(ud);
+  self->hook.onTrade(t->symbol, t->price_raw, t->quantity_raw,
+                     t->is_buy != 0, t->exchange_ts_ns, /*recv_ts_ns=*/0);
+}
+
+static void blrhOnBookUpdate(void* ud, uint32_t symbol, uint8_t is_snapshot,
+                             const FloxBookLevel* bids, uint32_t n_bids,
+                             const FloxBookLevel* asks, uint32_t n_asks,
+                             int64_t exchange_ts_ns)
+{
+  auto* self = static_cast<FloxBinaryLogRecorderHookImpl*>(ud);
+  auto* bid_levels = reinterpret_cast<const flox::replay::BookLevel*>(bids);
+  auto* ask_levels = reinterpret_cast<const flox::replay::BookLevel*>(asks);
+  self->hook.onBookUpdate(symbol, is_snapshot != 0, bid_levels, n_bids,
+                          ask_levels, n_asks, exchange_ts_ns, /*recv_ts_ns=*/0);
+}
+
+static void blrhOnStart(void* ud)
+{
+  static_cast<FloxBinaryLogRecorderHookImpl*>(ud)->hook.start();
+}
+
+static void blrhOnStop(void* ud)
+{
+  static_cast<FloxBinaryLogRecorderHookImpl*>(ud)->hook.stop();
+}
+}  // namespace capi_impl
+
+FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_create(const char* output_dir,
+                                     uint64_t max_segment_mb,
+                                     uint8_t exchange_id,
+                                     uint8_t compression)
+{
+  flox::replay::BinaryLogRecorderHookConfig cfg{};
+  cfg.output_dir = output_dir ? output_dir : "";
+  cfg.max_segment_bytes = max_segment_mb * 1024ull * 1024ull;
+  cfg.exchange_id = exchange_id;
+  cfg.compression = static_cast<flox::replay::CompressionType>(compression);
+
+  auto* impl = new capi_impl::FloxBinaryLogRecorderHookImpl(std::move(cfg));
+  impl->recorder_view.cb.on_trade = &capi_impl::blrhOnTrade;
+  impl->recorder_view.cb.on_book_update = &capi_impl::blrhOnBookUpdate;
+  impl->recorder_view.cb.on_start = &capi_impl::blrhOnStart;
+  impl->recorder_view.cb.on_stop = &capi_impl::blrhOnStop;
+  impl->recorder_view.cb.user_data = impl;
+  return static_cast<FloxBinaryLogRecorderHookHandle>(impl);
+}
+
+void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle h)
+{
+  delete static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h);
+}
+
+FloxMarketDataRecorderHandle
+flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle h)
+{
+  if (!h)
+  {
+    return nullptr;
+  }
+  return static_cast<FloxMarketDataRecorderHandle>(
+      &static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->recorder_view);
+}
+
+void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle h,
+                                              uint32_t symbol_id,
+                                              const char* name,
+                                              const char* base,
+                                              const char* quote,
+                                              int8_t price_precision,
+                                              int8_t qty_precision)
+{
+  if (!h)
+  {
+    return;
+  }
+  flox::replay::SymbolInfo info;
+  info.symbol_id = symbol_id;
+  info.name = name ? name : "";
+  info.base_asset = base ? base : "";
+  info.quote_asset = quote ? quote : "";
+  info.price_precision = price_precision;
+  info.qty_precision = qty_precision;
+  static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->hook.addSymbol(info);
+}
+
+void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle h)
+{
+  if (h)
+  {
+    static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->hook.flush();
+  }
+}
+
+FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle h)
+{
+  if (!h)
+  {
+    return {};
+  }
+  auto s = static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->hook.stats();
+  return {s.bytes_written, s.trades_written + s.book_updates_written,
+          s.segments_created, s.trades_written};
+}
+
+void flox_binary_log_recorder_hook_stats_p(void* h, void* out)
+{
+  auto s = flox_binary_log_recorder_hook_stats(static_cast<FloxBinaryLogRecorderHookHandle>(h));
+  memcpy(out, &s, sizeof(s));
 }
 
 FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks)

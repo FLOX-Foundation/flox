@@ -40,6 +40,13 @@ flox_bar_dispatch_recorder_param_at|uint64_t|FloxBarDispatchRecorderHandle|uint3
 flox_bar_dispatch_recorder_type_at|uint8_t|FloxBarDispatchRecorderHandle|uint32_t
 flox_best_ask_raw|int64_t|FloxStrategyHandle|uint32_t
 flox_best_bid_raw|int64_t|FloxStrategyHandle|uint32_t
+flox_binary_log_recorder_hook_add_symbol|void|FloxBinaryLogRecorderHookHandle|uint32_t|const char *|const char *|const char *|int8_t|int8_t
+flox_binary_log_recorder_hook_as_recorder|FloxMarketDataRecorderHandle|FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_create|FloxBinaryLogRecorderHookHandle|const char *|uint64_t|uint8_t|uint8_t
+flox_binary_log_recorder_hook_destroy|void|FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_flush|void|FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_stats|FloxWriterStats|FloxBinaryLogRecorderHookHandle
+flox_binary_log_recorder_hook_stats_p|void|void *|void *
 flox_book_apply_delta|void|FloxBookHandle|const double *|const double *|size_t|const double *|const double *|size_t
 flox_book_apply_snapshot|void|FloxBookHandle|const double *|const double *|size_t|const double *|const double *|size_t
 flox_book_ask_at_price|double|FloxBookHandle|double
@@ -77,19 +84,14 @@ flox_data_reader_stats|FloxReaderStats|FloxDataReaderHandle
 flox_data_reader_stats_p|void|FloxDataReaderHandle|void *
 flox_data_reader_summary|FloxDatasetSummary|FloxDataReaderHandle
 flox_data_reader_summary_p|void|FloxDataReaderHandle|void *
-flox_data_recorder_add_symbol|void|FloxDataRecorderHandle|uint32_t|const char *|const char *|const char *|int8_t|int8_t
-flox_data_recorder_create|FloxDataRecorderHandle|const char *|const char *|uint64_t
-flox_data_recorder_destroy|void|FloxDataRecorderHandle
-flox_data_recorder_flush|void|FloxDataRecorderHandle
-flox_data_recorder_is_recording|uint8_t|FloxDataRecorderHandle
-flox_data_recorder_start|void|FloxDataRecorderHandle
-flox_data_recorder_stop|void|FloxDataRecorderHandle
 flox_data_writer_close|void|FloxDataWriterHandle
 flox_data_writer_create|FloxDataWriterHandle|const char *|uint64_t|uint8_t
 flox_data_writer_destroy|void|FloxDataWriterHandle
 flox_data_writer_flush|void|FloxDataWriterHandle
 flox_data_writer_stats|FloxWriterStats|FloxDataWriterHandle
 flox_data_writer_stats_p|void|FloxDataWriterHandle|void *
+flox_data_writer_write_book|uint8_t|FloxDataWriterHandle|int64_t|int64_t|int64_t|uint32_t|uint8_t|const FloxBookLevel *|uint32_t|const FloxBookLevel *|uint32_t
+flox_data_writer_write_books|uint64_t|FloxDataWriterHandle|const FloxBookUpdateHeader *|uint64_t|const FloxLevel *|uint64_t
 flox_data_writer_write_trade|uint8_t|FloxDataWriterHandle|int64_t|int64_t|double|double|uint64_t|uint32_t|uint8_t
 flox_dataset_validate|FloxDatasetValidation|const char *
 flox_dataset_validate_p|void|const char *|void *

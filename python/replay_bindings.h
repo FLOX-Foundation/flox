@@ -10,16 +10,91 @@
 
 #include "flox/common.h"
 #include "flox/replay/binary_format_v1.h"
-#include "flox/replay/market_data_recorder.h"
+#include "flox/replay/binary_log_recorder_hook.h"
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/recording_metadata.h"
 #include "flox/replay/writers/binary_log_writer.h"
 
 #include <cstring>
+#include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace py = pybind11;
+
+namespace flox_py
+{
+
+// Thin pybind wrapper over flox::replay::BinaryLogRecorderHook. Lives in
+// flox_py namespace so strategy_bindings.h can take a shared_ptr to it in
+// `runner.set_market_data_recorder(...)` overloads.
+class PyBinaryLogRecorderHook
+{
+  std::unique_ptr<flox::replay::BinaryLogRecorderHook> _hook;
+
+ public:
+  PyBinaryLogRecorderHook(const std::string& outputDir, uint64_t maxSegmentMb,
+                          uint8_t exchangeId, const std::string& compression)
+  {
+    flox::replay::BinaryLogRecorderHookConfig cfg{};
+    cfg.output_dir = outputDir;
+    cfg.max_segment_bytes = maxSegmentMb * (1024ull * 1024ull);
+    cfg.exchange_id = exchangeId;
+    if (compression == "none" || compression.empty())
+    {
+      cfg.compression = flox::replay::CompressionType::None;
+    }
+    else if (compression == "lz4")
+    {
+      cfg.compression = flox::replay::CompressionType::LZ4;
+    }
+    else
+    {
+      throw flox::FloxError(
+          "E_INPUT_001",
+          "Unknown compression: '" + compression + "'. Expected 'none' or 'lz4'.");
+    }
+    _hook = std::make_unique<flox::replay::BinaryLogRecorderHook>(std::move(cfg));
+  }
+
+  flox::replay::BinaryLogRecorderHook* raw() noexcept { return _hook.get(); }
+
+  void addSymbol(uint32_t symbolId, const std::string& name, const std::string& base,
+                 const std::string& quote, int8_t pricePrecision, int8_t qtyPrecision)
+  {
+    flox::replay::SymbolInfo info;
+    info.symbol_id = symbolId;
+    info.name = name;
+    info.base_asset = base;
+    info.quote_asset = quote;
+    info.price_precision = pricePrecision;
+    info.qty_precision = qtyPrecision;
+    _hook->addSymbol(info);
+  }
+
+  void flush() { _hook->flush(); }
+
+  // Idempotent — safe to call from user code OR via the engine's on_stop
+  // lifecycle callback. Just stops the underlying writer.
+  void close() { _hook->stop(); }
+
+  pybind11::dict stats()
+  {
+    auto s = _hook->stats();
+    pybind11::dict d;
+    d["trades_written"] = s.trades_written;
+    d["book_updates_written"] = s.book_updates_written;
+    d["bytes_written"] = s.bytes_written;
+    d["segments_created"] = s.segments_created;
+    d["errors"] = s.errors;
+    return d;
+  }
+
+  std::string currentSegmentPath() const { return _hook->currentSegmentPath().string(); }
+};
+
+}  // namespace flox_py
 
 namespace
 {
@@ -146,17 +221,6 @@ inline WriterConfig makeWriterConfig(const std::string& outputDir, uint64_t maxS
             "'. Expected 'none' or 'lz4'.");
   }
 
-  return cfg;
-}
-
-inline MarketDataRecorderConfig makeRecorderConfig(const std::string& outputDir,
-                                                   const std::string& exchangeName,
-                                                   uint64_t maxSegmentMb)
-{
-  MarketDataRecorderConfig cfg;
-  cfg.output_dir = outputDir;
-  cfg.exchange_name = exchangeName;
-  cfg.max_segment_bytes = maxSegmentMb * (1024ull * 1024ull);
   return cfg;
 }
 
@@ -538,6 +602,91 @@ class PyDataWriter
     return written;
   }
 
+  // Single book write. `bids`/`asks` are structured arrays with PyLevel
+  // dtype (price_raw, qty_raw, side). `side` is ignored on write — bid/
+  // ask is determined by which array a level is in. Returns True iff the
+  // write succeeded.
+  bool writeBook(int64_t exchangeTsNs, int64_t recvTsNs, int64_t seq,
+                 uint32_t symbolId, bool isSnapshot,
+                 py::array_t<PyLevel, py::array::c_style | py::array::forcecast> bids,
+                 py::array_t<PyLevel, py::array::c_style | py::array::forcecast> asks)
+  {
+    auto n_bids = static_cast<uint32_t>(bids.size());
+    auto n_asks = static_cast<uint32_t>(asks.size());
+
+    BookRecordHeader header{};
+    header.exchange_ts_ns = exchangeTsNs;
+    header.recv_ts_ns = recvTsNs;
+    header.seq = seq;
+    header.symbol_id = symbolId;
+    header.bid_count = static_cast<uint16_t>(n_bids);
+    header.ask_count = static_cast<uint16_t>(n_asks);
+    header.type = isSnapshot ? 0 : 1;
+
+    // PyLevel includes a `side` byte; copy into contiguous BookLevel.
+    std::vector<flox::replay::BookLevel> bid_levels;
+    std::vector<flox::replay::BookLevel> ask_levels;
+    bid_levels.reserve(n_bids);
+    ask_levels.reserve(n_asks);
+    const auto* b = bids.data();
+    for (uint32_t i = 0; i < n_bids; ++i)
+    {
+      bid_levels.push_back({b[i].price_raw, b[i].qty_raw});
+    }
+    const auto* a = asks.data();
+    for (uint32_t i = 0; i < n_asks; ++i)
+    {
+      ask_levels.push_back({a[i].price_raw, a[i].qty_raw});
+    }
+    return _writer.writeBook(header, bid_levels, ask_levels);
+  }
+
+  // Batched book writer. `headers` is a structured array with
+  // PyBookUpdateHeader dtype; `levels` is a flat PyLevel array sliced
+  // per event by header.level_offset / bid_count / ask_count. Round-trip
+  // with DataReader.read_book_updates(). Returns count successfully written.
+  uint64_t writeBooks(py::array_t<PyBookUpdateHeader, py::array::c_style | py::array::forcecast> headers,
+                      py::array_t<PyLevel, py::array::c_style | py::array::forcecast> levels)
+  {
+    const auto n_events = static_cast<uint64_t>(headers.size());
+    const auto* h = headers.data();
+    const auto* lv = levels.data();
+    std::vector<flox::replay::BookLevel> scratch;
+    uint64_t written = 0;
+    {
+      py::gil_scoped_release release;
+      for (uint64_t i = 0; i < n_events; ++i)
+      {
+        const auto& fh = h[i];
+        const uint64_t total = static_cast<uint64_t>(fh.bid_count) + fh.ask_count;
+        scratch.clear();
+        scratch.reserve(total);
+        for (uint64_t k = 0; k < total; ++k)
+        {
+          const auto& el = lv[fh.level_offset + k];
+          scratch.push_back({el.price_raw, el.qty_raw});
+        }
+
+        BookRecordHeader rh{};
+        rh.exchange_ts_ns = fh.exchange_ts_ns;
+        rh.recv_ts_ns = fh.recv_ts_ns;
+        rh.seq = fh.seq;
+        rh.symbol_id = fh.symbol_id;
+        rh.bid_count = fh.bid_count;
+        rh.ask_count = fh.ask_count;
+        rh.type = (fh.event_type == 2) ? 0 : 1;
+
+        std::span<const flox::replay::BookLevel> bid_span(scratch.data(), fh.bid_count);
+        std::span<const flox::replay::BookLevel> ask_span(scratch.data() + fh.bid_count, fh.ask_count);
+        if (_writer.writeBook(rh, bid_span, ask_span))
+        {
+          ++written;
+        }
+      }
+    }
+    return written;
+  }
+
   void flush() { _writer.flush(); }
 
   void close() { _writer.close(); }
@@ -558,43 +707,6 @@ class PyDataWriter
   }
 
   std::string currentSegmentPath() { return _writer.currentSegmentPath().string(); }
-};
-
-// ─── PyDataRecorder ────────────────────────────────────────────────────────────
-
-class PyDataRecorder
-{
-  MarketDataRecorder _recorder;
-
- public:
-  PyDataRecorder(const std::string& outputDir, const std::string& exchangeName,
-                 uint64_t maxSegmentMb)
-      : _recorder(makeRecorderConfig(outputDir, exchangeName, maxSegmentMb))
-  {
-  }
-
-  void addSymbol(uint32_t symbolId, const std::string& name, const std::string& base,
-                 const std::string& quote, int8_t pricePrecision, int8_t qtyPrecision)
-  {
-    _recorder.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
-  }
-
-  void start() { _recorder.start(); }
-  void stop() { _recorder.stop(); }
-  void flush() { _recorder.flush(); }
-  bool isRecording() const { return _recorder.isRecording(); }
-
-  py::dict stats()
-  {
-    auto s = _recorder.stats();
-    py::dict d;
-    d["trades_written"] = s.trades_written;
-    d["book_updates_written"] = s.book_updates_written;
-    d["bytes_written"] = s.bytes_written;
-    d["files_created"] = s.files_created;
-    d["errors"] = s.errors;
-    return d;
-  }
 };
 
 }  // namespace
@@ -742,6 +854,14 @@ inline void bindReplay(py::module_& m)
            py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"),
            py::arg("price"), py::arg("qty"),
            py::arg("trade_id"), py::arg("symbol_id"), py::arg("side"))
+      .def("write_book", &PyDataWriter::writeBook,
+           "Write a single book update. bids/asks are PyLevel structured arrays.",
+           py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"),
+           py::arg("seq"), py::arg("symbol_id"), py::arg("is_snapshot"),
+           py::arg("bids"), py::arg("asks"))
+      .def("write_books", &PyDataWriter::writeBooks,
+           "Batched book writer. Round-trip with DataReader.read_book_updates.",
+           py::arg("headers"), py::arg("levels"))
       .def("write_trades", &PyDataWriter::writeTrades,
            "Write trades from numpy arrays (vectorized). Returns number of trades written.",
            py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"),
@@ -756,26 +876,30 @@ inline void bindReplay(py::module_& m)
       .def("current_segment_path", &PyDataWriter::currentSegmentPath,
            "Return the path of the current segment being written");
 
-  // DataRecorder
-  py::class_<PyDataRecorder>(m, "DataRecorder")
-      .def(py::init<const std::string&, const std::string&, uint64_t>(),
-           "Create a DataRecorder for market data recording",
+  // BinaryLogRecorderHook — built-in `.floxlog` sink. Plug into a runner
+  // via `runner.set_market_data_recorder(hook)`; lifecycle (start/stop) is
+  // driven automatically by the engine.
+  py::class_<flox_py::PyBinaryLogRecorderHook, std::shared_ptr<flox_py::PyBinaryLogRecorderHook>>(
+      m, "BinaryLogRecorderHook")
+      .def(py::init<const std::string&, uint64_t, uint8_t, const std::string&>(),
+           "Create a binary-log recorder hook. Trades AND books are written "
+           "via BinaryLogWriter on the engine thread — no Python callback "
+           "per event.",
            py::arg("output_dir"),
-           py::arg("exchange_name"),
-           py::arg("max_segment_mb") = 256)
-      .def("add_symbol", &PyDataRecorder::addSymbol,
+           py::arg("max_segment_mb") = 256,
+           py::arg("exchange_id") = 0,
+           py::arg("compression") = "none")
+      .def("add_symbol", &flox_py::PyBinaryLogRecorderHook::addSymbol,
            "Register a symbol for recording metadata",
            py::arg("symbol_id"), py::arg("name"),
            py::arg("base") = "", py::arg("quote") = "",
            py::arg("price_precision") = 8, py::arg("qty_precision") = 8)
-      .def("start", &PyDataRecorder::start,
-           "Start recording")
-      .def("stop", &PyDataRecorder::stop,
-           "Stop recording and finalize output")
-      .def("flush", &PyDataRecorder::flush,
+      .def("flush", &flox_py::PyBinaryLogRecorderHook::flush,
            "Flush buffered data to disk")
-      .def("is_recording", &PyDataRecorder::isRecording,
-           "Return True if currently recording")
-      .def("stats", &PyDataRecorder::stats,
-           "Return recorder statistics as a dict");
+      .def("close", &flox_py::PyBinaryLogRecorderHook::close,
+           "Stop recording (idempotent; engine on_stop also calls this)")
+      .def("stats", &flox_py::PyBinaryLogRecorderHook::stats,
+           "Return recorder statistics as a dict")
+      .def("current_segment_path", &flox_py::PyBinaryLogRecorderHook::currentSegmentPath,
+           "Return the path of the segment currently being written");
 }

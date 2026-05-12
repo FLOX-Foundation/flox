@@ -4,6 +4,7 @@
 
 #include <napi.h>
 
+#include "data_ops.h"
 #include "error_translator.h"
 #include "flox/capi/bridge_strategy.h"
 #include "flox/capi/flox_capi.h"
@@ -1700,6 +1701,9 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   std::unique_ptr<flox_node::KillSwitchHost> _kill_host;
   std::unique_ptr<flox_node::OrderValidatorHost> _validator_host;
   std::unique_ptr<flox_node::MarketDataRecorderHookHost> _recorder_host;
+  // Keep the JS BinaryLogRecorderHook alive while attached so its C++
+  // handle (borrowed via flox_binary_log_recorder_hook_as_recorder) stays valid.
+  Napi::ObjectReference _recorder_binlog_ref;
   std::unique_ptr<flox_node::ExecutorHost> _executor_host;
 
   Napi::Value setPnlTracker(const Napi::CallbackInfo& info)
@@ -1849,6 +1853,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
     {
       _recorder_host.reset();
+      _recorder_binlog_ref.Reset();
       if (_mode == Mode::Sync)
       {
         flox_runner_set_market_data_recorder(_runner, nullptr);
@@ -1859,8 +1864,37 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
       }
       return env.Undefined();
     }
+
+    auto obj = info[0].As<Napi::Object>();
+
+    // Detect the built-in BinaryLogRecorderHook wrapper via the cached
+    // constructor stored at module init.
+    FloxMarketDataRecorderHandle binlog_handle = nullptr;
+    auto& ctor = node_flox::BinaryLogRecorderHookWrap::Ctor();
+    if (!ctor.IsEmpty() && obj.InstanceOf(ctor.Value()))
+    {
+      auto* hook = Napi::ObjectWrap<node_flox::BinaryLogRecorderHookWrap>::Unwrap(obj);
+      binlog_handle = hook->asRecorder();
+    }
+
+    if (binlog_handle)
+    {
+      _recorder_host.reset();
+      _recorder_binlog_ref = Napi::Persistent(obj);
+      if (_mode == Mode::Sync)
+      {
+        flox_runner_set_market_data_recorder(_runner, binlog_handle);
+      }
+      else
+      {
+        flox_live_engine_set_market_data_recorder(_engine, binlog_handle);
+      }
+      return env.Undefined();
+    }
+
+    _recorder_binlog_ref.Reset();
     _recorder_host = std::make_unique<flox_node::MarketDataRecorderHookHost>(
-        env, info[0].As<Napi::Object>());
+        env, obj);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_market_data_recorder(_runner, _recorder_host->handle);

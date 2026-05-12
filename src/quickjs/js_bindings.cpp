@@ -3505,6 +3505,176 @@ static JSValue js_dw_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
   return o;
 }
 
+// Extract raw int64 [price,qty,...] pairs from a BigInt64Array (or ArrayBuffer) into a
+// vector<FloxBookLevel>. Returns true on success; throws on type/size error.
+static bool extractBookLevels(JSContext* c, JSValueConst arr, uint32_t expectedPairs,
+                              std::vector<FloxBookLevel>& out)
+{
+  if (expectedPairs == 0)
+  {
+    out.clear();
+    return true;
+  }
+  if (JS_IsUndefined(arr) || JS_IsNull(arr))
+  {
+    JS_ThrowTypeError(c, "writeBook: levels buffer is null but count > 0");
+    return false;
+  }
+  size_t byteOffset = 0;
+  size_t byteLength = 0;
+  size_t bytesPerElement = 0;
+  JSValue ab = JS_GetTypedArrayBuffer(c, arr, &byteOffset, &byteLength, &bytesPerElement);
+  uint8_t* base = nullptr;
+  size_t totalSize = 0;
+  if (!JS_IsException(ab))
+  {
+    base = JS_GetArrayBuffer(c, &totalSize, ab);
+    JS_FreeValue(c, ab);
+  }
+  else
+  {
+    // Maybe a plain ArrayBuffer.
+    JS_GetException(c);  // clear pending
+    base = JS_GetArrayBuffer(c, &totalSize, arr);
+    byteOffset = 0;
+    byteLength = totalSize;
+    bytesPerElement = 8;
+  }
+  if (!base)
+  {
+    JS_ThrowTypeError(c, "writeBook: expected BigInt64Array or ArrayBuffer");
+    return false;
+  }
+  if (bytesPerElement != 0 && bytesPerElement != 8)
+  {
+    JS_ThrowTypeError(c, "writeBook: typed array must be BigInt64Array (8-byte elements)");
+    return false;
+  }
+  size_t needed = static_cast<size_t>(expectedPairs) * 2 * 8;
+  if (byteLength < needed)
+  {
+    JS_ThrowRangeError(c, "writeBook: buffer too small for declared level count");
+    return false;
+  }
+  const int64_t* p = reinterpret_cast<const int64_t*>(base + byteOffset);
+  out.resize(expectedPairs);
+  for (uint32_t i = 0; i < expectedPairs; i++)
+  {
+    out[i].price_raw = p[i * 2];
+    out[i].quantity_raw = p[i * 2 + 1];
+  }
+  return true;
+}
+
+static JSValue js_dw_write_book(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxDataWriterHandle>(getHandle(c, a[0]));
+  int64_t exchangeTsNs = toInt64(c, a[1]);
+  int64_t recvTsNs = toInt64(c, a[2]);
+  int64_t seq = toInt64(c, a[3]);
+  uint32_t symbolId = toUint32(c, a[4]);
+  uint8_t isSnapshot = static_cast<uint8_t>(toUint32(c, a[5]));
+  uint32_t nBids = toUint32(c, a[7]);
+  uint32_t nAsks = toUint32(c, a[9]);
+
+  std::vector<FloxBookLevel> bids;
+  std::vector<FloxBookLevel> asks;
+  if (!extractBookLevels(c, a[6], nBids, bids))
+  {
+    return JS_EXCEPTION;
+  }
+  if (!extractBookLevels(c, a[8], nAsks, asks))
+  {
+    return JS_EXCEPTION;
+  }
+  uint8_t ok = flox_data_writer_write_book(h, exchangeTsNs, recvTsNs, seq, symbolId, isSnapshot,
+                                           bids.empty() ? nullptr : bids.data(), nBids,
+                                           asks.empty() ? nullptr : asks.data(), nAsks);
+  return JS_NewBool(c, ok);
+}
+
+// ============================================================
+// BinaryLogRecorderHook
+// ============================================================
+
+static JSValue js_blrh_create(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  const char* dir = JS_ToCString(c, a[0]);
+  uint64_t mb = (argc < 2 || JS_IsUndefined(a[1]) || JS_IsNull(a[1]))
+                    ? 256
+                    : static_cast<uint64_t>(toInt64(c, a[1]));
+  uint8_t eid = (argc < 3 || JS_IsUndefined(a[2]) || JS_IsNull(a[2]))
+                    ? 0
+                    : static_cast<uint8_t>(toUint32(c, a[2]));
+  uint8_t comp = (argc < 4 || JS_IsUndefined(a[3]) || JS_IsNull(a[3]))
+                     ? 0
+                     : static_cast<uint8_t>(toUint32(c, a[3]));
+  JSValue ret = createHandleObject(c, flox_binary_log_recorder_hook_create(dir, mb, eid, comp));
+  JS_FreeCString(c, dir);
+  return ret;
+}
+
+static JSValue js_blrh_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  flox_binary_log_recorder_hook_destroy(
+      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_blrh_as_recorder(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto rec = flox_binary_log_recorder_hook_as_recorder(
+      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  return createHandleObject(c, rec);
+}
+
+static JSValue js_blrh_add_symbol(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  auto h = static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0]));
+  uint32_t symbolId = toUint32(c, a[1]);
+  const char* name = JS_ToCString(c, a[2]);
+  const char* base = argc > 3 ? JS_ToCString(c, a[3]) : nullptr;
+  const char* quote = argc > 4 ? JS_ToCString(c, a[4]) : nullptr;
+  int8_t pp = argc > 5 ? static_cast<int8_t>(toInt64(c, a[5])) : 8;
+  int8_t qp = argc > 6 ? static_cast<int8_t>(toInt64(c, a[6])) : 8;
+  flox_binary_log_recorder_hook_add_symbol(h, symbolId, name ? name : "", base ? base : "",
+                                           quote ? quote : "", pp, qp);
+  if (name)
+  {
+    JS_FreeCString(c, name);
+  }
+  if (base)
+  {
+    JS_FreeCString(c, base);
+  }
+  if (quote)
+  {
+    JS_FreeCString(c, quote);
+  }
+  return JS_UNDEFINED;
+}
+
+static JSValue js_blrh_flush(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  flox_binary_log_recorder_hook_flush(
+      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_blrh_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  FloxWriterStats s = flox_binary_log_recorder_hook_stats(
+      static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0])));
+  JSValue o = JS_NewObject(c);
+  JS_SetPropertyStr(c, o, "tradesWritten", JS_NewInt64(c, static_cast<int64_t>(s.trades_written)));
+  JS_SetPropertyStr(c, o, "bookUpdatesWritten",
+                    JS_NewInt64(c, static_cast<int64_t>(s.events_written - s.trades_written)));
+  JS_SetPropertyStr(c, o, "bytesWritten", JS_NewInt64(c, static_cast<int64_t>(s.bytes_written)));
+  JS_SetPropertyStr(c, o, "segmentsCreated",
+                    JS_NewInt64(c, static_cast<int64_t>(s.segments_created)));
+  return o;
+}
+
 // ============================================================
 // DataReader
 // ============================================================
@@ -3776,74 +3946,6 @@ static JSValue js_dr_read_book_updates_from(JSContext* c, JSValueConst, int, JSV
   uint64_t got = flox_data_reader_read_book_updates_from(
       h, startTsNs, headers.data(), n_events, levels.data(), total_levels);
   return js_dr_build_book_updates_array(c, headers, levels, got);
-}
-
-// ============================================================
-// DataRecorder
-// ============================================================
-
-static JSValue js_recorder_create(JSContext* c, JSValueConst, int argc, JSValueConst* a)
-{
-  const char* dir = JS_ToCString(c, a[0]);
-  const char* exc = argc > 1 ? JS_ToCString(c, a[1]) : "";
-  uint64_t mb = argc > 2 ? static_cast<uint64_t>(toInt64(c, a[2])) : 256;
-  JSValue ret = createHandleObject(c, flox_data_recorder_create(dir, exc ? exc : "", mb));
-  JS_FreeCString(c, dir);
-  if (argc > 1)
-  {
-    JS_FreeCString(c, exc);
-  }
-  return ret;
-}
-
-static JSValue js_recorder_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
-{
-  flox_data_recorder_destroy(static_cast<FloxDataRecorderHandle>(getHandle(c, a[0])));
-  return JS_UNDEFINED;
-}
-
-static JSValue js_recorder_add_symbol(JSContext* c, JSValueConst, int argc, JSValueConst* a)
-{
-  auto h = static_cast<FloxDataRecorderHandle>(getHandle(c, a[0]));
-  const char* name = JS_ToCString(c, a[2]);
-  const char* base = argc > 3 ? JS_ToCString(c, a[3]) : "";
-  const char* quote = argc > 4 ? JS_ToCString(c, a[4]) : "";
-  int8_t pp = argc > 5 ? static_cast<int8_t>(toInt64(c, a[5])) : 8;
-  int8_t qp = argc > 6 ? static_cast<int8_t>(toInt64(c, a[6])) : 8;
-  flox_data_recorder_add_symbol(h, toUint32(c, a[1]), name, base ? base : "", quote ? quote : "", pp, qp);
-  JS_FreeCString(c, name);
-  if (argc > 3)
-  {
-    JS_FreeCString(c, base);
-  }
-  if (argc > 4)
-  {
-    JS_FreeCString(c, quote);
-  }
-  return JS_UNDEFINED;
-}
-
-static JSValue js_recorder_start(JSContext* c, JSValueConst, int, JSValueConst* a)
-{
-  flox_data_recorder_start(static_cast<FloxDataRecorderHandle>(getHandle(c, a[0])));
-  return JS_UNDEFINED;
-}
-
-static JSValue js_recorder_stop(JSContext* c, JSValueConst, int, JSValueConst* a)
-{
-  flox_data_recorder_stop(static_cast<FloxDataRecorderHandle>(getHandle(c, a[0])));
-  return JS_UNDEFINED;
-}
-
-static JSValue js_recorder_flush(JSContext* c, JSValueConst, int, JSValueConst* a)
-{
-  flox_data_recorder_flush(static_cast<FloxDataRecorderHandle>(getHandle(c, a[0])));
-  return JS_UNDEFINED;
-}
-
-static JSValue js_recorder_is_recording(JSContext* c, JSValueConst, int, JSValueConst* a)
-{
-  return JS_NewBool(c, flox_data_recorder_is_recording(static_cast<FloxDataRecorderHandle>(getHandle(c, a[0]))));
 }
 
 // ============================================================
@@ -4818,6 +4920,7 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_dw_create", js_dw_create, 3);
   addGlobalFunc(ctx, "__flox_dw_destroy", js_dw_destroy, 1);
   addGlobalFunc(ctx, "__flox_dw_write_trade", js_dw_write_trade, 8);
+  addGlobalFunc(ctx, "__flox_dw_write_book", js_dw_write_book, 10);
   addGlobalFunc(ctx, "__flox_dw_flush", js_dw_flush, 1);
   addGlobalFunc(ctx, "__flox_dw_close", js_dw_close, 1);
   addGlobalFunc(ctx, "__flox_dw_stats", js_dw_stats, 1);
@@ -4836,14 +4939,13 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_dr_read_bbo_from", js_dr_read_bbo_from, 3);
   addGlobalFunc(ctx, "__flox_dr_read_book_updates_from", js_dr_read_book_updates_from, 2);
 
-  // DataRecorder
-  addGlobalFunc(ctx, "__flox_recorder_create", js_recorder_create, 3);
-  addGlobalFunc(ctx, "__flox_recorder_destroy", js_recorder_destroy, 1);
-  addGlobalFunc(ctx, "__flox_recorder_add_symbol", js_recorder_add_symbol, 7);
-  addGlobalFunc(ctx, "__flox_recorder_start", js_recorder_start, 1);
-  addGlobalFunc(ctx, "__flox_recorder_stop", js_recorder_stop, 1);
-  addGlobalFunc(ctx, "__flox_recorder_flush", js_recorder_flush, 1);
-  addGlobalFunc(ctx, "__flox_recorder_is_recording", js_recorder_is_recording, 1);
+  // BinaryLogRecorderHook
+  addGlobalFunc(ctx, "__flox_blrh_create", js_blrh_create, 4);
+  addGlobalFunc(ctx, "__flox_blrh_destroy", js_blrh_destroy, 1);
+  addGlobalFunc(ctx, "__flox_blrh_as_recorder", js_blrh_as_recorder, 1);
+  addGlobalFunc(ctx, "__flox_blrh_add_symbol", js_blrh_add_symbol, 7);
+  addGlobalFunc(ctx, "__flox_blrh_flush", js_blrh_flush, 1);
+  addGlobalFunc(ctx, "__flox_blrh_stats", js_blrh_stats, 1);
 
   // Partitioner
   addGlobalFunc(ctx, "__flox_part_create", js_part_create, 1);

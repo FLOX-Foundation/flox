@@ -300,13 +300,12 @@ def cmd_tape_record(args: argparse.Namespace) -> int:
                     pass
                 recorder.close()
 
-        s = recorder.stats
-        print(f"  trades written : {s.trades_written}")
-        if s.book_updates_skipped:
-            print(f"  book updates   : {s.book_updates_skipped} skipped "
-                  f"(book write API not yet exposed; trades only in v1)")
-        if s.error:
-            print(f"  ERROR          : {s.error}", file=sys.stderr)
+        s = recorder.stats()
+        print(f"  trades written      : {s.get('trades_written', 0)}")
+        print(f"  book updates written: {s.get('book_updates_written', 0)}")
+        if s.get("errors"):
+            print(f"  ERROR               : {s['errors']} write failure(s)",
+                  file=sys.stderr)
             return 1
         return 0
 

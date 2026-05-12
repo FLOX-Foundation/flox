@@ -30,6 +30,7 @@
 
 #include "flox/capi/flox_capi.h"
 
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -124,6 +125,22 @@ inline Napi::Array bookLevelsToJs(Napi::Env env, const FloxBookLevel* lvls, uint
     arr.Set(i, pair);
   }
   return arr;
+}
+
+// Flat BigInt64Array view of FloxBookLevel[]: [price_raw, qty_raw, ...].
+// FloxBookLevel layout is two int64s, so we copy via a backing ArrayBuffer
+// to keep ownership simple — the JS caller can read raw int64 ticks without
+// the precision loss of /1e8 doubles.
+inline Napi::BigInt64Array bookLevelsToBigInt64(Napi::Env env, const FloxBookLevel* lvls,
+                                                uint32_t n)
+{
+  size_t elems = static_cast<size_t>(n) * 2;
+  auto buf = Napi::ArrayBuffer::New(env, elems * sizeof(int64_t));
+  if (n > 0)
+  {
+    std::memcpy(buf.Data(), lvls, n * sizeof(FloxBookLevel));
+  }
+  return Napi::BigInt64Array::New(env, elems, buf, 0);
 }
 
 // Hook host mode:
@@ -494,9 +511,9 @@ struct MarketDataRecorderHookHost
       self->on_book_fn.Call({
           Napi::Number::New(self->env, symbol),
           Napi::Boolean::New(self->env, is_snap != 0),
-          bookLevelsToJs(self->env, bids, n_bids),
-          bookLevelsToJs(self->env, asks, n_asks),
-          Napi::Number::New(self->env, static_cast<double>(ts)),
+          bookLevelsToBigInt64(self->env, bids, n_bids),
+          bookLevelsToBigInt64(self->env, asks, n_asks),
+          Napi::BigInt::New(self->env, ts),
       });
       return;
     }
@@ -509,11 +526,11 @@ struct MarketDataRecorderHookHost
                                  self->on_book_fn.Call({
                                      Napi::Number::New(env, bp->symbol),
                                      Napi::Boolean::New(env, bp->is_snap != 0),
-                                     bookLevelsToJs(env, bp->bids.data(),
-                                                    static_cast<uint32_t>(bp->bids.size())),
-                                     bookLevelsToJs(env, bp->asks.data(),
-                                                    static_cast<uint32_t>(bp->asks.size())),
-                                     Napi::Number::New(env, static_cast<double>(bp->ts)),
+                                     bookLevelsToBigInt64(env, bp->bids.data(),
+                                                          static_cast<uint32_t>(bp->bids.size())),
+                                     bookLevelsToBigInt64(env, bp->asks.data(),
+                                                          static_cast<uint32_t>(bp->asks.size())),
+                                     Napi::BigInt::New(env, bp->ts),
                                  });
                                  delete bp;
                                });

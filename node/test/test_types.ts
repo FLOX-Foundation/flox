@@ -18,8 +18,8 @@ import {
   CompositeBookMatrix,
   Correlation,
   DEMA,
+  BinaryLogRecorderHook,
   DataReader,
-  DataRecorder,
   DataWriter,
   EMA,
   Engine,
@@ -412,12 +412,11 @@ const bookU: BookUpdateRecord[] = dr.readBookUpdates();
 void bookU[0]?.bids;
 void dr.readBookUpdatesFrom(0n);
 
-const recorder = new DataRecorder("/tmp/flox-test", "binance", 64);
+const recorder = new BinaryLogRecorderHook("/tmp/flox-test", 64, 0, "lz4");
 recorder.addSymbol(1, "BTCUSDT", "BTC", "USDT", 2, 8);
-recorder.start();
 recorder.flush();
-const _recOn: boolean = recorder.isRecording;
-recorder.stop();
+const _recStats = recorder.stats();
+void _recStats.tradesWritten;
 
 const part = new Partitioner("/tmp/flox-test");
 const parts: Partition[] = part.byTime(4, 0n);

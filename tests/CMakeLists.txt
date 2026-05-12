@@ -51,7 +51,6 @@ add_flox_test(test_event_bus)
 
 # Replay tests
 add_flox_test(test_binary_log)
-add_flox_test(test_market_data_recorder)
 add_flox_test(test_replay_connector)
 
 # Run-trace tests (.floxrun)

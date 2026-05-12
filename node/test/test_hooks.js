@@ -158,7 +158,10 @@ function testMarketDataRecorder() {
   runner.stop();
   check(trades.length === 1, `recorder.onTrade fired once (got ${trades.length})`);
   check(books.length === 1, `recorder.onBookUpdate fired once`);
-  check(books[0]?.bids?.length === 2, `bids has 2 levels`);
+  // bids/asks are flat BigInt64Array views: [price_raw, qty_raw, ...].
+  // 2 levels × 2 int64s per level = 4 elements.
+  check(books[0]?.bids instanceof BigInt64Array, `bids is BigInt64Array`);
+  check(books[0]?.bids?.length === 4, `bids has 4 int64s (2 levels)`);
 }
 
 // ── ExecutionListener (BacktestRunner) ──────────────────────────────

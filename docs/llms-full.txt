@@ -7981,6 +7981,20 @@ Surface: 85 classes, 56 functions, 30 constants.
 - `param_at(self, index: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `type_at(self, index: typing.SupportsInt | typing.SupportsIndex) -> int`
 
+### `class BinaryLogRecorderHook`
+
+**Constructor**
+
+- `BinaryLogRecorderHook(output_dir: str, max_segment_mb: typing.SupportsInt | typing.SupportsIndex = 256, exchange_id: typing.SupportsInt | typing.SupportsIndex = 0, compression: str = 'none') -> None`
+
+**Members**
+
+- `add_symbol(self, symbol_id: typing.SupportsInt | typing.SupportsIndex, name: str, base: str = '', quote: str = '', price_precision: typing.SupportsInt | typing.SupportsIndex = 8, qty_precision: typing.SupportsInt | typing.SupportsIndex = 8) -> None`
+- `close(self) -> None`
+- `current_segment_path(self) -> str`
+- `flush(self) -> None`
+- `stats(self) -> dict`
+
 ### `class Bollinger`
 
 **Constructor**
@@ -8095,21 +8109,6 @@ Returns the same nanoseconds every call. Useful as a baseline.
 - `symbols(self) -> set`
 - `time_range(self) -> typing.Any`
 
-### `class DataRecorder`
-
-**Constructor**
-
-- `DataRecorder(output_dir: str, exchange_name: str, max_segment_mb: typing.SupportsInt | typing.SupportsIndex = 256) -> None`
-
-**Members**
-
-- `add_symbol(self, symbol_id: typing.SupportsInt | typing.SupportsIndex, name: str, base: str = '', quote: str = '', price_precision: typing.SupportsInt | typing.SupportsIndex = 8, qty_precision: typing.SupportsInt | typing.SupportsIndex = 8) -> None`
-- `flush(self) -> None`
-- `is_recording(self) -> bool`
-- `start(self) -> None`
-- `stats(self) -> dict`
-- `stop(self) -> None`
-
 ### `class DataWriter`
 
 **Constructor**
@@ -8122,6 +8121,8 @@ Returns the same nanoseconds every call. Useful as a baseline.
 - `current_segment_path(self) -> str`
 - `flush(self) -> None`
 - `stats(self) -> dict`
+- `write_book(self, exchange_ts_ns: typing.SupportsInt | typing.SupportsIndex, recv_ts_ns: typing.SupportsInt | typing.SupportsIndex, seq: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, is_snapshot: bool, bids: typing.Annotated[numpy.typing.ArrayLike, ...], asks: typing.Annotated[numpy.typing.ArrayLike, ...]) -> bool`
+- `write_books(self, headers: typing.Annotated[numpy.typing.ArrayLike, ...], levels: typing.Annotated[numpy.typing.ArrayLike, ...]) -> int`
 - `write_trade(self, exchange_ts_ns: typing.SupportsInt | typing.SupportsIndex, recv_ts_ns: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, trade_id: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex) -> bool`
 - `write_trades(self, exchange_ts_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], recv_ts_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], trade_ids: typing.Annotated[numpy.typing.ArrayLike, numpy.uint64], symbol_ids: typing.Annotated[numpy.typing.ArrayLike, numpy.uint32], sides: typing.Annotated[numpy.typing.ArrayLike, numpy.uint8]) -> int`
 
@@ -8951,6 +8952,7 @@ Members:
 - `set_executor(self, executor: Executor) -> None`
 - `set_kill_switch(self, ks: KillSwitch) -> None`
 - `set_market_data_recorder(self, recorder: MarketDataRecorderHook) -> None`
+- `set_market_data_recorder(self, recorder: BinaryLogRecorderHook) -> None`
 - `set_order_validator(self, ov: OrderValidator) -> None`
 - `set_pnl_tracker(self, tracker: PnLTracker) -> None`
 - `set_risk_manager(self, rm: RiskManager) -> None`

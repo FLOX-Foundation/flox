@@ -7,7 +7,6 @@
  * license information.
  */
 
-#include "flox/replay/market_data_recorder.h"
 #include "flox/replay/replay_connector.h"
 #include "flox/replay/writers/binary_log_writer.h"
 
