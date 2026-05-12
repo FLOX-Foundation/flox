@@ -554,7 +554,13 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
     return true;
   }
 
-  const bool walked = forEach(
+  // Route through streamForEach, not forEach: for segments without
+  // the Sorted flag (external writers like md_collector) forEach
+  // buffers the entire segment into memory before dispatching, which
+  // blew peak RSS to 4.29 GB on an 11.78M-event 467 MB Bitget tape.
+  // streamForEach iterates BinaryLogIterator::next() directly, O(1)
+  // memory per segment.
+  const bool walked = streamForEach(
       [&aggregators](const ReplayEvent& ev)
       {
         for (auto* agg : aggregators)
@@ -576,6 +582,129 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
   }
 
   return walked;
+}
+
+bool BinaryLogReader::streamForEach(EventCallback callback)
+{
+  if (!scanSegments())
+  {
+    return false;
+  }
+
+  for (const auto& segment : _segments)
+  {
+    if (!readSegmentStreaming(segment.path, callback))
+    {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool BinaryLogReader::streamForEachFrom(int64_t start_ts_ns, EventCallback callback)
+{
+  if (!scanSegments())
+  {
+    return false;
+  }
+
+  auto it = std::lower_bound(_segments.begin(), _segments.end(), start_ts_ns,
+                             [](const SegmentInfo& seg, int64_t ts)
+                             { return seg.last_event_ns < ts; });
+
+  for (; it != _segments.end(); ++it)
+  {
+    if (!readSegmentStreamingFrom(*it, start_ts_ns, callback))
+    {
+      return false;
+    }
+    // After first segment, deliver remaining segments from beginning.
+    start_ts_ns = 0;
+  }
+
+  return true;
+}
+
+bool BinaryLogReader::readSegmentStreaming(const std::filesystem::path& path,
+                                           EventCallback& callback)
+{
+  BinaryLogIterator iter(path);
+  if (!iter.isValid())
+  {
+    return false;
+  }
+
+  ++_stats.files_read;
+
+  // Pure streaming, regardless of the segment's Sorted flag. Events
+  // arrive in BinaryLogIterator order (writer order); for tapes
+  // produced by external writers without the Sorted flag the caller
+  // must tolerate writer-order arrival.
+  ReplayEvent event;
+  while (iter.next(event))
+  {
+    if (!passesFilter(event))
+    {
+      continue;
+    }
+    ++_stats.events_read;
+    if (event.type == EventType::Trade)
+    {
+      ++_stats.trades_read;
+    }
+    else
+    {
+      ++_stats.book_updates_read;
+    }
+    if (!callback(event))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool BinaryLogReader::readSegmentStreamingFrom(const SegmentInfo& segment,
+                                               int64_t start_ts_ns,
+                                               EventCallback& callback)
+{
+  BinaryLogIterator iter(segment.path);
+  if (!iter.isValid())
+  {
+    return false;
+  }
+
+  ++_stats.files_read;
+
+  if (segment.has_index)
+  {
+    iter.loadIndex();
+    if (iter.hasIndex())
+    {
+      iter.seekToTimestamp(start_ts_ns);
+    }
+  }
+
+  ReplayEvent event;
+  while (iter.next(event))
+  {
+    if (event.timestamp_ns < start_ts_ns)
+    {
+      continue;
+    }
+    if (!passesFilter(event))
+    {
+      continue;
+    }
+    ++_stats.events_read;
+    event.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+    if (!callback(event))
+    {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool BinaryLogReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)

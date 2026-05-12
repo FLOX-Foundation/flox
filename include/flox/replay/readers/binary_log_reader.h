@@ -184,13 +184,39 @@ class BinaryLogReader
   std::set<uint32_t> availableSymbols();
 
   using EventCallback = std::function<bool(const ReplayEvent&)>;
+
+  // Sorted-order delivery. For segments without the Sorted flag the
+  // entire segment is buffered into memory and stable_sort'ed before
+  // dispatch — O(N_events × sizeof(ReplayEvent)) per segment. Use
+  // this when the caller requires strict timestamp ordering across
+  // events from the same segment (replay engine, tape_diff).
   bool forEach(EventCallback callback);
   bool forEachFrom(int64_t start_ts_ns, EventCallback callback);
 
-  // Single-pass streaming aggregator dispatch. Walks the tape once,
-  // forwarding each event to every aggregator's onEvent, then calling
-  // finalize() on each. An empty span is a no-op and performs no
-  // decompression. See `include/flox/replay/aggregator.h`.
+  // Writer-order delivery — never buffers a whole segment. O(1)
+  // memory per segment regardless of event count. Events arrive in
+  // BinaryLogIterator order (the order the writer flushed them); for
+  // Sorted segments this is identical to forEach. For unsorted
+  // segments (e.g. tapes from external writers that don't set the
+  // Sorted flag) the caller must tolerate writer-order arrival.
+  //
+  // Use this when memory matters more than strict timestamp order.
+  // `run(panel)` below uses this path.
+  bool streamForEach(EventCallback callback);
+  bool streamForEachFrom(int64_t start_ts_ns, EventCallback callback);
+
+  // Single-pass streaming aggregator dispatch. Walks the tape once
+  // via `streamForEach` (writer-order, O(1) memory per segment),
+  // forwarding each event to every aggregator's onEvent, then
+  // calling finalize() on each. An empty span is a no-op and
+  // performs no decompression.
+  //
+  // Ordering: events arrive in writer order. For sliding-window
+  // aggregators (Peak, Quantile) on tapes whose writer does not set
+  // the Sorted flag, the caller is responsible for the tape being
+  // monotonic in practice (single recv thread per symbol per
+  // segment). flox's BinaryLogWriter sets Sorted; external writers
+  // (md_collector, third-party tapes) typically do not.
   bool run(std::span<IAggregator* const> aggregators);
 
   std::optional<std::pair<int64_t, int64_t>> timeRange() const;
@@ -202,6 +228,9 @@ class BinaryLogReader
   bool scanSegments();
   bool readSegment(const std::filesystem::path& path, EventCallback& callback);
   bool readSegmentFrom(const SegmentInfo& segment, int64_t start_ts_ns, EventCallback& callback);
+  bool readSegmentStreaming(const std::filesystem::path& path, EventCallback& callback);
+  bool readSegmentStreamingFrom(const SegmentInfo& segment, int64_t start_ts_ns,
+                                EventCallback& callback);
   bool passesFilter(const ReplayEvent& event) const;
 
   ReaderConfig _config;

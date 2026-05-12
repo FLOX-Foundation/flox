@@ -1072,6 +1072,69 @@ TEST_F(AggregatorFrameworkTest, QuantileRejectsBadArgs)
   EXPECT_THROW(QuantileAggregator({1'000'000LL}, {-0.1}), std::invalid_argument);
 }
 
+TEST_F(AggregatorFrameworkTest, PeakStreamForEachParityWithForEach)
+{
+  // Correctness gate for the streaming-run memory fix: PeakAggregator
+  // results via DataReader.run() (which routes through streamForEach
+  // for O(1) per-segment memory) must equal results via forEach
+  // (which buffers + sorts unsorted segments) on a monotonic tape.
+  //
+  // The two-burst writePeakTape fixture is monotonic by construction
+  // (timestamps emitted in ascending order); both paths must deliver
+  // the same event stream to PeakAggregator and therefore the same
+  // top-N. This is the unit-level guard for the prod observation
+  // that md_collector tapes are monotonic in practice even when the
+  // Sorted flag is not set.
+  writePeakTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+
+  BinaryLogReader reader_run(rconfig);
+  PeakAggregator peak_run({1'000'000LL, 1'000'000'000LL}, /*top_n=*/3);
+  std::array<IAggregator*, 1> aggregators{&peak_run};
+  ASSERT_TRUE(reader_run.run(aggregators));
+
+  BinaryLogReader reader_foreach(rconfig);
+  PeakAggregator peak_foreach({1'000'000LL, 1'000'000'000LL}, /*top_n=*/3);
+  ASSERT_TRUE(reader_foreach.forEach(
+      [&peak_foreach](const ReplayEvent& ev)
+      {
+        peak_foreach.onEvent(ev);
+        return true;
+      }));
+  peak_foreach.finalize();
+
+  const auto& rows_run = peak_run.result();
+  const auto& rows_fe = peak_foreach.result();
+  ASSERT_EQ(rows_run.size(), rows_fe.size());
+  for (size_t i = 0; i < rows_run.size(); ++i)
+  {
+    EXPECT_EQ(rows_run[i].window_ns, rows_fe[i].window_ns) << "row " << i;
+    EXPECT_EQ(rows_run[i].count, rows_fe[i].count) << "row " << i;
+    EXPECT_EQ(rows_run[i].start_ns, rows_fe[i].start_ns) << "row " << i;
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, StreamForEachVisitsEveryEvent)
+{
+  // Direct exercise of the new public streamForEach. Counts events
+  // and verifies the totals match what scanSegments saw at open.
+  writePeakTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+  const uint64_t expected = reader.count();
+
+  int seen = 0;
+  ASSERT_TRUE(reader.streamForEach(
+      [&seen](const ReplayEvent& /*ev*/)
+      {
+        ++seen;
+        return true;
+      }));
+  EXPECT_EQ(static_cast<uint64_t>(seen), expected);
+}
+
 TEST_F(AggregatorFrameworkTest, PeakSymbolFilterScopesToListedSymbols)
 {
   // Add a second symbol that has its own larger burst; filter to
