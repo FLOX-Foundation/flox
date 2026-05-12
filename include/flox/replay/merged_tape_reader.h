@@ -72,6 +72,16 @@ struct MergedTapeReaderConfig
   std::optional<int64_t> to_ns;
   // Filter applied post-rekey. Empty = all symbols.
   std::vector<uint32_t> symbol_filter;
+
+  // Per-tape cross-block reorder window applied by `streamEvents` /
+  // `run()`. Same semantics as `ReaderConfig::reorder_window_ns`: for
+  // segments without the Sorted flag, each per-tape stream is
+  // re-ordered through a bounded min-heap so the N-way merge sees
+  // monotonic per-tape input. Events arriving past the window throw
+  // FloxError E_DATA_002. Memory bound: N_tapes × reorder_window_ns
+  // × peak_event_rate × sizeof(ReplayEvent). Default matches
+  // ReaderConfig (10s).
+  int64_t reorder_window_ns{10'000'000'000};
 };
 
 class OverlappingBookStreamError : public std::runtime_error

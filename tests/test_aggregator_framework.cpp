@@ -15,7 +15,9 @@
 #include "flox/replay/aggregators/quantile.h"
 #include "flox/replay/aggregators/volume_bin.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/merged_tape_reader.h"
 #include "flox/replay/readers/binary_log_reader.h"
+#include "flox/replay/recording_metadata.h"
 #include "flox/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
@@ -1310,4 +1312,130 @@ TEST_F(AggregatorFrameworkTest, ReorderBufferBypassedForSortedSegment)
         });
   });
   EXPECT_EQ(seen, 50);
+}
+
+namespace
+{
+
+// Write a metadata.json for a single-symbol tape directory so
+// MergedTapeReader's loadManifests() accepts it.
+void writeTapeMetadata(const std::filesystem::path& dir, const std::string& exchange,
+                       uint32_t symbol_id, const std::string& symbol_name)
+{
+  RecordingMetadata meta;
+  meta.recording_id = "test-" + exchange + "-" + symbol_name;
+  meta.exchange = exchange;
+  meta.exchange_type = "cex";
+  meta.instrument_type = "perpetual";
+  meta.has_trades = true;
+  SymbolInfo sym;
+  sym.symbol_id = symbol_id;
+  sym.name = symbol_name;
+  sym.base_asset = symbol_name.substr(0, 3);
+  sym.quote_asset = "USDT";
+  sym.price_precision = 2;
+  sym.qty_precision = 4;
+  meta.symbols.push_back(sym);
+  meta.save(RecordingMetadata::metadataPath(dir));
+}
+
+void writeCrossBlockInvertedTapeNamed(const std::filesystem::path& dir,
+                                      uint32_t symbol_id)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 5,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  uint64_t tid = 0;
+  for (int i = 0; i < 5; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = static_cast<int64_t>(1'000'000) * (i + 1);
+    t.symbol_id = symbol_id;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  for (int i = 0; i < 5; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = static_cast<int64_t>(2'500'000) +
+                       static_cast<int64_t>(1'000'000) * i;
+    t.symbol_id = symbol_id;
+    t.trade_id = tid++;
+    writer.writeTrade(t);
+  }
+  writer.close();
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, MergedReorderBufferDeliversCrossBlockInOrder)
+{
+  // Two tapes, each with the same 2.5 ms cross-block inversion as the
+  // single-tape fixture. Without per-tape reorder, MergedTapeReader's
+  // N-way heap would see out-of-order events from each tape and the
+  // merged stream would have monotonicity gaps. With ReorderingWalker
+  // (T021 fix) each per-tape input is monotonic before merging.
+  auto dir_a = _test_dir / "tape_a";
+  auto dir_b = _test_dir / "tape_b";
+  std::filesystem::create_directories(dir_a);
+  std::filesystem::create_directories(dir_b);
+  writeCrossBlockInvertedTapeNamed(dir_a, /*symbol_id=*/1);
+  writeCrossBlockInvertedTapeNamed(dir_b, /*symbol_id=*/1);
+  writeTapeMetadata(dir_a, "bitget", 1, "BTCUSDT");
+  writeTapeMetadata(dir_b, "bybit", 1, "BTCUSDT");
+
+  MergedTapeReaderConfig cfg{};
+  cfg.tape_dirs = {dir_a, dir_b};
+  cfg.reorder_window_ns = 10'000'000;  // 10 ms — well above the 2.5 ms inversion.
+  MergedTapeReader merged(cfg);
+
+  std::vector<int64_t> timestamps;
+  ASSERT_TRUE(merged.streamEvents(
+      [&timestamps](uint32_t /*tape_index*/, const ReplayEvent& ev)
+      {
+        timestamps.push_back(ev.timestamp_ns);
+        return true;
+      }));
+
+  ASSERT_EQ(timestamps.size(), 20u);  // 10 per tape × 2 tapes
+  for (size_t i = 1; i < timestamps.size(); ++i)
+  {
+    EXPECT_LE(timestamps[i - 1], timestamps[i])
+        << "merged stream non-monotonic at index " << i;
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, MergedReorderBufferThrowsOnOverflow)
+{
+  auto dir_a = _test_dir / "tape_a2";
+  auto dir_b = _test_dir / "tape_b2";
+  std::filesystem::create_directories(dir_a);
+  std::filesystem::create_directories(dir_b);
+  writeCrossBlockInvertedTapeNamed(dir_a, /*symbol_id=*/1);
+  writeCrossBlockInvertedTapeNamed(dir_b, /*symbol_id=*/1);
+  writeTapeMetadata(dir_a, "bitget", 1, "BTCUSDT");
+  writeTapeMetadata(dir_b, "bybit", 1, "BTCUSDT");
+
+  MergedTapeReaderConfig cfg{};
+  cfg.tape_dirs = {dir_a, dir_b};
+  cfg.reorder_window_ns = 1'000'000;  // 1 ms < 2.5 ms inversion → overflow
+  MergedTapeReader merged(cfg);
+
+  bool threw = false;
+  std::string code;
+  try
+  {
+    merged.streamEvents(
+        [](uint32_t, const ReplayEvent&)
+        { return true; });
+  }
+  catch (const flox::FloxError& e)
+  {
+    threw = true;
+    code = e.code();
+  }
+  EXPECT_TRUE(threw);
+  EXPECT_EQ(code, "E_DATA_002");
 }
