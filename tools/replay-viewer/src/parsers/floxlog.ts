@@ -189,15 +189,68 @@ export interface FloxlogManifest {
   segments: Array<{ name: string; type: string }>;
 }
 
-export async function parseFloxlogDirectory(files: File[]): Promise<FloxlogEvent[]> {
-  // Two on-disk shapes are accepted:
+// Symbol metadata table extracted from `metadata.json` if present.
+// Lets the viewer label charts / trade rows with "exchange/name"
+// instead of bare numeric IDs — the difference is most visible for
+// merged multi-tape views (`flox tape view t1 t2`), where each global
+// symbol id covers a different venue+instrument.
+export type SymbolTable = Map<number, { exchange: string; name: string }>;
+
+export interface FloxlogParseResult {
+  events: FloxlogEvent[];
+  symbols: SymbolTable;
+}
+
+interface MetadataJson {
+  exchange?: string;
+  symbols?: Array<{
+    symbol_id: number;
+    name?: string;
+    base_asset?: string;
+    quote_asset?: string;
+  }>;
+}
+
+async function parseMetadataJson(file: File): Promise<SymbolTable> {
+  const out: SymbolTable = new Map();
+  try {
+    const m = JSON.parse(await file.text()) as MetadataJson;
+    if (Array.isArray(m.symbols)) {
+      for (const s of m.symbols) {
+        if (typeof s.symbol_id !== 'number') continue;
+        const label = s.name ?? '';
+        // Per `BinaryLogRecorderHook`, `metadata.json::exchange` is the
+        // venue string. For merged tapes written by `flox tape view`'s
+        // materialise path, the symbol name already carries
+        // "exchange/symbol" because that's how the merger labels
+        // global ids — leave it untouched in that case.
+        const exchange = label.includes('/') ? '' : (m.exchange ?? '');
+        out.set(s.symbol_id, { exchange, name: label });
+      }
+    }
+  } catch {
+    // Bad JSON / absent file. Caller treats empty symbols map as
+    // "fall back to numeric ids".
+  }
+  return out;
+}
+
+export async function parseFloxlogDirectory(
+  files: File[],
+): Promise<FloxlogParseResult> {
+  // Three on-disk shapes are accepted:
   //   1. Manifest form (publish spec):
   //        name.floxlog/manifest.json + segment .bin files listed inside.
-  //   2. Bare segments (legacy / `flox tape record` output):
-  //        name.floxlog/<timestamp>.floxlog or name.floxlog/*.bin
-  //      with no manifest. Each candidate file is sniffed for the FLOX
-  //      segment magic before being treated as a segment.
+  //   2. Bare segments + `metadata.json` (`flox tape record` output):
+  //        name.floxlog/<timestamp>.floxlog + metadata.json
+  //   3. Bare segments alone (legacy / partial captures): same as 2 but
+  //      without metadata.json. Each candidate file is sniffed for the
+  //      FLOX segment magic before being treated as a segment.
   const manifestFile = files.find((f) => f.name === 'manifest.json');
+  const metadataFile = files.find((f) => f.name === 'metadata.json');
+  const symbols = metadataFile
+    ? await parseMetadataJson(metadataFile)
+    : new Map();
   const candidates: File[] = manifestFile
     ? []
     : files.filter((f) =>
@@ -225,5 +278,5 @@ export async function parseFloxlogDirectory(files: File[]): Promise<FloxlogEvent
     }
   }
   all.sort((a, b) => Number(a.ts_ns - b.ts_ns));
-  return all;
+  return { events: all, symbols };
 }

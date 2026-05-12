@@ -10,6 +10,7 @@ import {
   renderOrders,
   renderEquity,
   renderPriceChart,
+  renderSymbolLegend,
 } from './views/index.ts';
 
 const store = new Store();
@@ -50,8 +51,9 @@ async function loadFiles(files: File[]) {
       }
       if (Array.isArray(json.segments)) {
         const tape = await parseFloxlogDirectory(group);
-        store.setTape(tape);
-        messages.push(`${dirName || '.floxlog'}: ${tape.length} events`);
+        store.setTape(tape.events);
+        store.setSymbols(tape.symbols);
+        messages.push(`${dirName || '.floxlog'}: ${tape.events.length} events`);
         continue;
       }
     }
@@ -59,9 +61,10 @@ async function loadFiles(files: File[]) {
     // directory if any candidate file carries the FLOX magic.
     try {
       const tape = await parseFloxlogDirectory(group);
-      if (tape.length > 0) {
-        store.setTape(tape);
-        messages.push(`${dirName || 'tape'}: ${tape.length} events (legacy form)`);
+      if (tape.events.length > 0) {
+        store.setTape(tape.events);
+        store.setSymbols(tape.symbols);
+        messages.push(`${dirName || 'tape'}: ${tape.events.length} events`);
       }
     } catch (err) {
       messages.push(`${dirName}: parse error: ${(err as Error).message}`);
@@ -170,6 +173,7 @@ store.subscribe((s) => {
       renderScheduled = false;
       const cur = store.get();
       renderPriceChart(cur);
+      renderSymbolLegend(cur);
       renderTrades(cur);
       renderOrderbook(cur);
       renderSignals(cur);

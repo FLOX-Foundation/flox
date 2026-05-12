@@ -24,11 +24,20 @@ let lastOrdersSig = '';
 let lastOrderbookSig = '';
 let lastEquitySig = '';
 
+function symbolLabel(state: ViewerState, sid: number): string {
+  const s = state.symbols.get(sid);
+  if (!s) return `#${sid}`;
+  // Merged-tape names already carry "exchange/name". Standalone tapes
+  // carry just the symbol name; prepend `metadata.exchange` if present.
+  if (s.name.includes('/') || !s.exchange) return s.name || `#${sid}`;
+  return `${s.exchange}/${s.name}`;
+}
+
 export function renderTrades(state: ViewerState) {
   const el = document.getElementById('view-trades')!;
   const empty = document.querySelector<HTMLElement>('.emptystate[data-for="trades"]')!;
   const trades = tapeSlice(state).filter((e) => e.type === 'trade').slice(-100);
-  const sig = `${state.tape.length}|${trades.length}|${trades[trades.length - 1]?.ts_ns ?? ''}`;
+  const sig = `${state.tape.length}|${trades.length}|${trades[trades.length - 1]?.ts_ns ?? ''}|${state.symbols.size}`;
   if (sig === lastTradesSig) return;
   lastTradesSig = sig;
   if (trades.length === 0 && state.tape.length === 0) {
@@ -44,12 +53,46 @@ export function renderTrades(state: ViewerState) {
       if (t.type !== 'trade') return '';
       return `<div class="row ${t.side === 'buy' ? 'bid' : 'ask'}">
         <span class="ts">${fmtTs(t.ts_ns)}</span>
+        <span class="symbol-label" data-sid="${t.symbol_id}">${symbolLabel(state, t.symbol_id)}</span>
         <span>${t.side}</span>
         <span>${fmtNum(t.price)}</span>
         <span>${fmtNum(t.qty, 4)}</span>
       </div>`;
     })
     .join('');
+}
+
+export function renderSymbolLegend(state: ViewerState) {
+  // Optional UI: a small panel listing every symbol present in the
+  // loaded tape with its (exchange, name) label. The element is
+  // created on first render if not present so legacy HTML stays valid.
+  let el = document.getElementById('view-symbol-legend') as HTMLElement | null;
+  if (!el) {
+    const container = document.querySelector('main')
+                       ?? document.body;
+    el = document.createElement('div');
+    el.id = 'view-symbol-legend';
+    el.style.cssText = 'padding:4px 8px; font-size:11px; color:#555; '
+                     + 'border-top:1px solid #eee;';
+    container.appendChild(el);
+  }
+  // Distinct symbol ids actually seen in the loaded tape.
+  const seen = new Set<number>();
+  for (const ev of state.tape) {
+    if (ev.type === 'trade') seen.add(ev.symbol_id);
+    else seen.add(ev.symbol_id);
+  }
+  if (seen.size === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  const items: string[] = [];
+  for (const sid of [...seen].sort((a, b) => a - b)) {
+    const label = symbolLabel(state, sid);
+    items.push(`<span class="symbol-legend-item" data-sid="${sid}" `
+               + `style="margin-right:12px">${label}</span>`);
+  }
+  el.innerHTML = `<strong>symbols:</strong> ${items.join('')}`;
 }
 
 export function renderOrderbook(state: ViewerState) {
