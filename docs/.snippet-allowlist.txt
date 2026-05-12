@@ -107,6 +107,14 @@ docs/how-to/walk-forward.md
 # variant is covered by test_grid_search.py + node/test/test_bindings.js.
 docs/how-to/grid-search.md
 
+# How-to: aggregate tape events — three illustrative panels (Python +
+# Node + merged-tape) showing how to assemble the same aggregator set
+# across bindings. End-to-end equivalents are exercised in C++ by
+# test_aggregator_framework, which is the canonical runnable form;
+# extracting these JS / Python blocks as runnable would mostly
+# duplicate the test fixture without adding coverage.
+docs/how-to/aggregate-tape-events.md
+
 # How-to: heatmap render — illustrative end-to-end snippets per language.
 # Engine renderer covered by python/tests/test_heatmap.py and the
 # heatmap section in node/test/test_bindings.js.
