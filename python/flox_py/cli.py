@@ -625,7 +625,7 @@ def cmd_tape_view(args: argparse.Namespace) -> int:
                                                               directory=str(serve_root),
                                                               **kw))
     url = f"http://127.0.0.1:{port}/"
-    if tape_path is not None or run_path is not None:
+    if tape_paths or run_path is not None:
         url += "?autoload=fixture-cli"
 
     def _serve() -> None:

@@ -210,7 +210,8 @@ async function tryAutoload() {
       for (const m of html.matchAll(/href="([^"?]+?)(?:\?[^"]*)?"/g)) {
         const name = decodeURIComponent(m[1]).replace(/^\.?\//, '').replace(/\/$/, '');
         if (!name || name === '..' || name.startsWith('?')) continue;
-        if (name === 'manifest.json' || /\.(bin|floxlog)$/i.test(name)) {
+        if (name === 'manifest.json' || name === 'metadata.json'
+            || /\.(bin|floxlog)$/i.test(name)) {
           names.push(name);
         }
       }
