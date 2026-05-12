@@ -44,6 +44,7 @@ from C import flox_runner_on_book_snapshot(cobj, u32, Ptr[float], Ptr[float], u3
 from C import flox_runner_on_bar(cobj, u32, u8, u64,
                                   float, float, float, float,
                                   float, float, i64, i64, u8)
+from C import flox_runner_set_market_data_recorder(cobj, cobj)
 
 from C import flox_live_engine_create(cobj) -> cobj
 from C import flox_live_engine_destroy(cobj)
@@ -56,6 +57,7 @@ from C import flox_live_engine_publish_book_snapshot(cobj, u32, Ptr[float], Ptr[
 from C import flox_live_engine_publish_bar(cobj, u32, u8, u64,
                                             float, float, float, float,
                                             float, float, i64, i64, u8)
+from C import flox_live_engine_set_market_data_recorder(cobj, cobj)
 
 from C import flox_backtest_runner_create(cobj, float, float) -> cobj
 from C import flox_backtest_runner_destroy(cobj)
@@ -213,6 +215,21 @@ class Runner:
     def stop(self):
         if self._threaded: flox_live_engine_stop(self._live_handle)
         else:              flox_runner_stop(self._sync_handle)
+
+    def set_market_data_recorder(self, recorder_handle: cobj):
+        """Attach a market-data recorder (or detach with ``cobj()``).
+
+        ``recorder_handle`` must be the ``FloxMarketDataRecorderHandle``
+        returned by ``flox_binary_log_recorder_hook_as_recorder`` (or any
+        other recorder factory). The hook itself owns the handle; the
+        runner only borrows it.
+        """
+        if self._threaded:
+            flox_live_engine_set_market_data_recorder(
+                self._live_handle, recorder_handle)
+        else:
+            flox_runner_set_market_data_recorder(
+                self._sync_handle, recorder_handle)
 
     def on_trade(self, symbol: int, price: float, qty: float,
                  is_buy: bool, ts_ns: int = 0):

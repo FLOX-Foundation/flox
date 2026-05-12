@@ -1,0 +1,141 @@
+# Smoke test: MergedTapeReader compiles + drives the C ABI.
+#
+# Covers W14-T016 acceptance for the Codon binding:
+#   * bad-path construction surfaces as ValueError (capi returns NULL)
+#   * a two-tape round-trip via the existing BinaryLogRecorderHook +
+#     Runner produces a global symbol_table() (two exchanges, distinct
+#     global_ids) and time-sorted trades across tapes.
+
+import os
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+from C import flox_runner_create(cobj, cobj, cobj) -> cobj
+from C import flox_runner_destroy(cobj)
+from C import flox_runner_start(cobj)
+from C import flox_runner_stop(cobj)
+from C import flox_runner_on_trade(cobj, u32, float, float, u8, i64)
+from C import flox_runner_set_market_data_recorder(cobj, cobj)
+
+from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
+
+from flox.tools import MergedTapeReader, BinaryLogRecorderHook
+
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
+# ── 1. Bad path raises ValueError ────────────────────────────────────────
+
+threw = False
+try:
+    MergedTapeReader(["/tmp/floxlog-does-not-exist-codon-xyz"])
+except ValueError:
+    threw = True
+check("bad path raises ValueError", threw)
+
+
+# ── 2. Empty paths list raises ValueError ────────────────────────────────
+
+threw = False
+try:
+    MergedTapeReader(list[str]())
+except ValueError:
+    threw = True
+check("empty paths raises ValueError", threw)
+
+
+# ── 3. Two-tape merged round-trip ────────────────────────────────────────
+
+def write_tape(out_dir: str, exchange: str, symbol_name: str,
+               trades: List[Tuple[int, float, float, bool]],
+               exchange_id: int = 0):
+    """Write a single .floxlog at out_dir via a Runner + BinaryLogRecorderHook."""
+    registry = flox_registry_create()
+    sym = int(flox_registry_add_symbol(
+        registry, exchange.c_str(), symbol_name.c_str(), 0.01))
+
+    hook = BinaryLogRecorderHook(
+        out_dir, max_segment_mb=4,
+        exchange_id=exchange_id, compression="none",
+        exchange_name=exchange, instrument_type="perpetual")
+    hook.add_symbol(sym, symbol_name, "", "", 2, 6)
+
+    runner = flox_runner_create(registry, cobj(), cobj())
+    flox_runner_set_market_data_recorder(
+        runner, flox_binary_log_recorder_hook_as_recorder(hook._h))
+    flox_runner_start(runner)
+
+    for entry in trades:
+        ts_ns, price, qty, is_buy = entry
+        flox_runner_on_trade(runner, u32(sym), price, qty,
+                              u8(1 if is_buy else 0), i64(ts_ns))
+
+    flox_runner_stop(runner)
+    flox_runner_destroy(runner)
+    hook.close()
+    flox_registry_destroy(registry)
+
+
+root = "/tmp/codon_merged_tape_smoke"
+t1 = root + "/bybit"
+t2 = root + "/binance"
+# Clean up any leftover dirs from a prior run so this stays reproducible.
+os.system("rm -rf " + root)
+os.system("mkdir -p " + t1)
+os.system("mkdir -p " + t2)
+
+base_ns = 1_700_000_000_000_000_000
+write_tape(t1, "bybit", "BTCUSDT",
+           [(base_ns + i * 1_000_000, 50000.0 + float(i), 0.1, True)
+            for i in range(5)],
+           exchange_id=1)
+write_tape(t2, "binance", "ETHUSDT",
+           [(base_ns + 500_000 + i * 1_000_000, 3000.0 + float(i), 1.0, False)
+            for i in range(3)],
+           exchange_id=2)
+
+reader = MergedTapeReader([t1, t2])
+
+syms = reader.symbol_table()
+check("symbol_table has two entries", len(syms) == 2)
+
+exchanges = sorted([s.exchange for s in syms])
+check("distinct exchanges (binance, bybit)",
+      exchanges == ["binance", "bybit"])
+
+global_ids = sorted([s.global_id for s in syms])
+check("global_ids are 1..N", global_ids == [1, 2])
+
+lo, hi = reader.time_range()
+check("time_range covers all events",
+      lo == base_ns and hi >= base_ns + 4 * 1_000_000)
+
+trades = reader.read_trades()
+check("read_trades returns 8 records", len(trades) == 8)
+
+ts = [t.exchange_ts_ns for t in trades]
+check("trades are sorted by exchange_ts_ns", ts == sorted(ts))
+
+# Trades from t1 (bybit) carry one global_id, from t2 (binance) another.
+# Each tape only contributed one symbol, so we expect exactly two distinct
+# symbol_ids in the merged stream.
+distinct_syms = sorted(list(set(t.symbol_id for t in trades)))
+check("merged trades carry two distinct global symbol_ids",
+      len(distinct_syms) == 2)
+
+# per_tape_stats() reports trade counts that accumulate during readTrades(),
+# so the assertion must come after read_trades() above.
+stats = reader.per_tape_stats()
+check("per_tape_stats has two entries", len(stats) == 2)
+total_tape_trades = sum(s.trades for s in stats)
+check("per_tape_stats total trades == 8", total_tape_trades == 8)
+
+reader.close()
+
+print("done")

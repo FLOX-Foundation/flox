@@ -95,3 +95,6 @@ add_codon_executable(codon_byte_identical_fixture
 
 add_codon_executable(codon_strategy_e2e_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/strategy_e2e_smoke.codon)
+
+add_codon_executable(codon_merged_tape_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/merged_tape_smoke.codon)

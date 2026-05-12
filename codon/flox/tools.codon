@@ -147,11 +147,28 @@ from C import flox_data_reader_read_book_updates_from(cobj, i64, cobj, u64, cobj
 from C import flox_data_reader_summary_p(cobj, Ptr[byte])
 from C import flox_data_reader_stats_p(cobj, Ptr[byte])
 
+# MergedTapeReader -- N-tape merged consumption.
+from C import flox_merged_tape_reader_create(Ptr[cobj], u32, i64, i64,
+                                              Ptr[u32], u32) -> cobj
+from C import flox_merged_tape_reader_destroy(cobj)
+from C import flox_merged_tape_reader_symbol_count(cobj) -> u32
+from C import flox_merged_tape_reader_get_symbols(cobj, Ptr[byte], u32) -> u32
+from C import flox_merged_tape_reader_tape_count(cobj) -> u32
+from C import flox_merged_tape_reader_get_tape_stats(cobj, Ptr[byte], u32) -> u32
+from C import flox_merged_tape_reader_time_range(cobj, Ptr[i64], Ptr[i64])
+from C import flox_merged_tape_reader_count_trades(cobj) -> u64
+from C import flox_merged_tape_reader_read_trades(cobj, Ptr[byte], u64) -> u64
+from C import flox_merged_tape_reader_count_books(cobj, Ptr[u64]) -> u64
+from C import flox_merged_tape_reader_read_books(cobj, Ptr[byte], u64,
+                                                  Ptr[byte], u64) -> u64
+
 # Extended DataWriter
 from C import flox_data_writer_stats_p(cobj, Ptr[byte])
 
 # BinaryLogRecorderHook
 from C import flox_binary_log_recorder_hook_create(cobj, u64, u8, u8) -> cobj
+from C import flox_binary_log_recorder_hook_create_ex(cobj, u64, u8, u8,
+                                                      cobj, cobj) -> cobj
 from C import flox_binary_log_recorder_hook_destroy(cobj)
 from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
 from C import flox_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
@@ -1113,6 +1130,275 @@ class DataReader:
 
 
 # ======================================================================
+# MergedTapeReader -- k-tape consumption (W14-T016)
+# ======================================================================
+
+
+@dataclass
+class MergedSymbol:
+    """One row of the global symbol table for a merged read.
+
+    ``global_id`` is the rekeyed id that appears on every
+    :class:`TradeRecord` and :class:`BookUpdate` returned by the reader.
+    ``exchange`` / ``name`` come from the tape's ``metadata.json``.
+    """
+    global_id: int
+    exchange: str
+    name: str
+    price_precision: int
+    qty_precision: int
+
+
+@dataclass
+class MergedTapeStats:
+    """Per-tape contribution to a merged read."""
+    path: str
+    trades: int
+    books: int
+    first_event_ns: int
+    last_event_ns: int
+
+
+class MergedTapeReader:
+    """N-tape merged consumption primitive.
+
+    Opens a set of ``.floxlog`` directories, rekeys their symbols into a
+    global id space keyed by ``(metadata.exchange, name)``, and exposes
+    a time-sorted view across all tapes. Mirrors ``flox_py.MergedTapeReader``
+    and the pybind11 binding documented under W14-T016.
+
+    Example::
+
+        mr = MergedTapeReader([tape_a, tape_b])
+        trades = mr.read_trades()              # exchange_ts_ns ascending
+        headers, levels = mr.read_books()       # book updates with depth
+
+    Construction raises :class:`ValueError` on bad input or overlapping
+    book streams (the C ABI returns ``NULL`` in both cases).
+    """
+
+    _handle: cobj
+
+    def __init__(self, paths: List[str], from_ns: int = -1, to_ns: int = -1,
+                 symbols: Optional[List[int]] = None):
+        n_paths = len(paths)
+        if n_paths == 0:
+            raise ValueError("MergedTapeReader: paths must be non-empty")
+        # Allocate a Codon-owned cobj[] holding c_str pointers. The strings
+        # themselves live in the c_str() buffers; we just need them alive for
+        # the duration of the create call (which copies them).
+        path_ptrs = [cobj() for _ in range(n_paths)]
+        path_bufs = list[Ptr[byte]]()
+        for i in range(n_paths):
+            buf = paths[i].c_str()
+            path_bufs.append(buf)
+            path_ptrs[i] = buf
+
+        sym_buf = list[u32]()
+        sym_ptr = Ptr[u32]()
+        n_filter = u32(0)
+        if symbols is not None and len(symbols) > 0:
+            sym_buf = [u32(s) for s in symbols]
+            sym_ptr = sym_buf.arr.ptr
+            n_filter = u32(len(sym_buf))
+
+        self._handle = flox_merged_tape_reader_create(
+            path_ptrs.arr.ptr, u32(n_paths),
+            i64(from_ns), i64(to_ns),
+            sym_ptr, n_filter)
+        if self._handle == cobj():
+            raise ValueError(
+                "MergedTapeReader: failed to open tapes "
+                "(bad input or overlapping book streams)")
+
+    def __del__(self):
+        if self._handle != cobj():
+            flox_merged_tape_reader_destroy(self._handle)
+            self._handle = cobj()
+
+    def close(self):
+        """Release the underlying reader. Idempotent."""
+        if self._handle != cobj():
+            flox_merged_tape_reader_destroy(self._handle)
+            self._handle = cobj()
+
+    def symbol_table(self) -> List[MergedSymbol]:
+        """Return the global symbol table for this merged read.
+
+        ``global_id`` is the value that appears as ``symbol_id`` on every
+        record returned by :meth:`read_trades` / :meth:`read_books`.
+        """
+        n = int(flox_merged_tape_reader_symbol_count(self._handle))
+        if n == 0:
+            return list[MergedSymbol]()
+        # FloxMergedSymbol layout (24 bytes, 8-byte aligned):
+        #   u32 global_id           (0)
+        #   i8  price_precision     (4)
+        #   i8  qty_precision       (5)
+        #   u8  _pad[2]             (6,7)
+        #   const char* exchange    (8)
+        #   const char* name        (16)
+        stride = 24
+        buf = [byte(0)] * (n * stride)
+        got = int(flox_merged_tape_reader_get_symbols(
+            self._handle, buf.arr.ptr, u32(n)))
+        result = list[MergedSymbol]()
+        for i in range(got):
+            base = i * stride
+            up = Ptr[u32](Ptr[byte](buf.arr.ptr) + base)
+            sp = Ptr[i8](Ptr[byte](buf.arr.ptr) + base)
+            cp = Ptr[cobj](Ptr[byte](buf.arr.ptr) + base)
+            # cobj slots live at byte offsets 8 and 16 -> indices 1 and 2.
+            exchange_ptr = cp[1]
+            name_ptr = cp[2]
+            result.append(MergedSymbol(
+                global_id=int(up[0]),
+                exchange=str.from_ptr(exchange_ptr),
+                name=str.from_ptr(name_ptr),
+                price_precision=int(sp[4]),
+                qty_precision=int(sp[5]),
+            ))
+        return result
+
+    def per_tape_stats(self) -> List[MergedTapeStats]:
+        """Per-tape contribution to the merged stream."""
+        n = int(flox_merged_tape_reader_tape_count(self._handle))
+        if n == 0:
+            return list[MergedTapeStats]()
+        # FloxMergedTapeStats layout (40 bytes):
+        #   i64 first_event_ns      (0)
+        #   i64 last_event_ns       (8)
+        #   u64 trades              (16)
+        #   u64 books               (24)
+        #   const char* path        (32)
+        stride = 40
+        buf = [byte(0)] * (n * stride)
+        got = int(flox_merged_tape_reader_get_tape_stats(
+            self._handle, buf.arr.ptr, u32(n)))
+        result = list[MergedTapeStats]()
+        for i in range(got):
+            base = i * stride
+            lp = Ptr[i64](Ptr[byte](buf.arr.ptr) + base)
+            cp = Ptr[cobj](Ptr[byte](buf.arr.ptr) + base)
+            # i64 at offsets 0/8/16/24 -> indices 0..3.
+            # cobj at offset 32 -> index 4.
+            path_ptr = cp[4]
+            result.append(MergedTapeStats(
+                path=str.from_ptr(path_ptr),
+                trades=int(lp[2]),
+                books=int(lp[3]),
+                first_event_ns=int(lp[0]),
+                last_event_ns=int(lp[1]),
+            ))
+        return result
+
+    def time_range(self) -> Tuple[int, int]:
+        """Return ``(min_first_event_ns, max_last_event_ns)`` across tapes."""
+        lo = i64(0)
+        hi = i64(0)
+        flox_merged_tape_reader_time_range(
+            self._handle, __ptr__(lo), __ptr__(hi))
+        return (int(lo), int(hi))
+
+    def read_trades(self) -> List[TradeRecord]:
+        """Read all merged trade records in ``exchange_ts_ns`` ascending order.
+
+        ``symbol_id`` carries the global rekeyed id (see :meth:`symbol_table`).
+        Ties on timestamp break by tape order from the constructor.
+        """
+        n = int(flox_merged_tape_reader_read_trades(
+            self._handle, Ptr[byte](), u64(0)))
+        if n == 0:
+            return list[TradeRecord]()
+        # FloxTradeRecord layout matches DataReader.read_trades (48 bytes).
+        stride = 48
+        raw = [byte(0)] * (n * stride)
+        got = int(flox_merged_tape_reader_read_trades(
+            self._handle, raw.arr.ptr, u64(n)))
+        result = list[TradeRecord]()
+        for i in range(got):
+            base = i * stride
+            lp = Ptr[i64](Ptr[byte](raw.arr.ptr) + base)
+            up = Ptr[u32](Ptr[byte](raw.arr.ptr) + base)
+            bp = Ptr[u8](Ptr[byte](raw.arr.ptr) + base)
+            result.append(TradeRecord(
+                exchange_ts_ns=int(lp[0]),
+                recv_ts_ns=int(lp[1]),
+                price_raw=int(lp[2]),
+                qty_raw=int(lp[3]),
+                trade_id=int(lp[4]),
+                symbol_id=int(up[10]),   # byte offset 40
+                side=int(bp[44]),
+            ))
+        return result
+
+    def read_books(self) -> List[BookUpdate]:
+        """Read all merged book-update events with full per-event depth."""
+        total_levels = u64(0)
+        n_events = int(flox_merged_tape_reader_count_books(
+            self._handle, __ptr__(total_levels)))
+        if n_events == 0:
+            return list[BookUpdate]()
+
+        # FloxBookUpdateHeader (48 bytes) + FloxLevel (24 bytes), same as
+        # DataReader.read_book_updates.
+        hstride = 48
+        lstride = 24
+        n_levels = int(total_levels)
+        hraw = [byte(0)] * (n_events * hstride)
+        lraw = [byte(0)] * (n_levels * lstride)
+        got = int(flox_merged_tape_reader_read_books(
+            self._handle,
+            hraw.arr.ptr, u64(n_events),
+            lraw.arr.ptr, u64(n_levels)))
+
+        result = list[BookUpdate]()
+        for i in range(got):
+            hbase = i * hstride
+            lp = Ptr[i64](Ptr[byte](hraw.arr.ptr) + hbase)
+            up = Ptr[u32](Ptr[byte](hraw.arr.ptr) + hbase)
+            us = Ptr[u16](Ptr[byte](hraw.arr.ptr) + hbase)
+            bp = Ptr[u8](Ptr[byte](hraw.arr.ptr) + hbase)
+            level_offset = int(lp[3])         # u64 at offset 24
+            symbol_id    = int(up[8])         # u32 at offset 32
+            bid_count    = int(us[18])        # u16 at offset 36
+            ask_count    = int(us[19])        # u16 at offset 38
+            event_type   = int(bp[40])
+
+            bids = list[BookLevel]()
+            for k in range(bid_count):
+                lbase = (level_offset + k) * lstride
+                llp = Ptr[i64](Ptr[byte](lraw.arr.ptr) + lbase)
+                lbp = Ptr[u8](Ptr[byte](lraw.arr.ptr) + lbase)
+                bids.append(BookLevel(
+                    price_raw=int(llp[0]),
+                    qty_raw=int(llp[1]),
+                    side=int(lbp[16]),
+                ))
+            asks = list[BookLevel]()
+            for k in range(ask_count):
+                lbase = (level_offset + bid_count + k) * lstride
+                llp = Ptr[i64](Ptr[byte](lraw.arr.ptr) + lbase)
+                lbp = Ptr[u8](Ptr[byte](lraw.arr.ptr) + lbase)
+                asks.append(BookLevel(
+                    price_raw=int(llp[0]),
+                    qty_raw=int(llp[1]),
+                    side=int(lbp[16]),
+                ))
+
+            result.append(BookUpdate(
+                exchange_ts_ns=int(lp[0]),
+                recv_ts_ns=int(lp[1]),
+                seq=int(lp[2]),
+                symbol_id=symbol_id,
+                event_type=event_type,
+                bids=bids,
+                asks=asks,
+            ))
+        return result
+
+
+# ======================================================================
 # Extended DataWriter (stats)
 # ======================================================================
 
@@ -1148,7 +1434,16 @@ class BinaryLogRecorderHook:
     _h: cobj
 
     def __init__(self, output_dir: str, max_segment_mb: int = 256,
-                 exchange_id: int = 0, compression: str = "none"):
+                 exchange_id: int = 0, compression: str = "none",
+                 exchange_name: str = "", instrument_type: str = ""):
+        """Open a hook that writes trades + book updates to ``output_dir``.
+
+        ``exchange_name`` / ``instrument_type`` populate ``metadata.json`` so
+        :class:`MergedTapeReader` can key tapes by ``(exchange, name)``. Pass
+        them when recording tapes you'll later feed to MergedTapeReader.
+        Both default to empty (no metadata stamped), matching the prior
+        single-arg behaviour.
+        """
         comp = 0
         if compression == "none":
             comp = 0
@@ -1156,9 +1451,15 @@ class BinaryLogRecorderHook:
             comp = 1
         else:
             raise ValueError("compression must be 'none' or 'lz4'")
-        self._h = flox_binary_log_recorder_hook_create(
-            output_dir.c_str(), u64(max_segment_mb),
-            u8(exchange_id), u8(comp))
+        if len(exchange_name) > 0 or len(instrument_type) > 0:
+            self._h = flox_binary_log_recorder_hook_create_ex(
+                output_dir.c_str(), u64(max_segment_mb),
+                u8(exchange_id), u8(comp),
+                exchange_name.c_str(), instrument_type.c_str())
+        else:
+            self._h = flox_binary_log_recorder_hook_create(
+                output_dir.c_str(), u64(max_segment_mb),
+                u8(exchange_id), u8(comp))
 
     def close(self):
         if self._h != cobj():
