@@ -1,34 +1,32 @@
 # Merge multiple tapes on read
 
-Tapes stay per-exchange by design — `exchange_id` lives in the
-manifest, `recv_ts` comes from one writer process, failure isolation
-is per-venue. To let a strategy see N venues at once, FLOX merges
-them **on read**, not on write. `.floxlog` format does not change.
+Each tape is per-exchange. `exchange_id` lives in the manifest,
+`recv_ts` comes from one writer process, and failure isolation is
+per-venue. To let a strategy see N venues at once, FLOX merges them
+*on read*, not on write. `.floxlog` format does not change.
 
-This page covers three consumption paths, all backed by the same
-`MergedTapeReader` primitive:
+Three consumption paths share the same `MergedTapeReader` primitive:
 
-- [`flox_py.tape.replay_tapes`](#python-replay) — iterating callback
-  API for ad-hoc cross-venue scripts
-- [`flox_py.MergedTapeReader`](#python-direct) — DataReader-shaped
-  bulk read for analytics
-- [`flox tape view path1 path2 …`](#cli-view) — visualise N tapes
-  side-by-side in the replay viewer
+- [`flox_py.tape.replay_tapes`](#python-replay) is a callback API for
+  ad-hoc cross-venue scripts.
+- [`flox_py.MergedTapeReader`](#python-direct) has the DataReader
+  shape and is the right fit for bulk analytics.
+- [`flox tape view path1 path2 …`](#cli-view) renders N tapes
+  side-by-side in the replay viewer.
 
 ## Symbol identity
 
 The merge keys symbols by `(metadata.exchange, name)`. Two tapes that
-recorded the same `(bybit, BTCUSDT)` are merged into one global
-symbol id (trades from both are time-sorted into a single stream).
-Two tapes that recorded `(bybit, BTCUSDT)` and `(binance, BTCUSDT)`
-get distinct global ids — the merge keeps them as separate venues.
+recorded the same `(bybit, BTCUSDT)` collapse into one global symbol
+id (their trades go into a single time-sorted stream). Two tapes
+that recorded `(bybit, BTCUSDT)` and `(binance, BTCUSDT)` get
+distinct global ids; the merge keeps them as separate venues.
 
 Same `(exchange, name)` with different `price_precision` /
-`qty_precision` is treated as a data-quality error
+`qty_precision` is a data-quality error
 ([E_INPUT_003](../errors/E_INPUT_003.md)). Tapes from older capture
-stacks that drifted on precision must either be excluded or
-re-recorded under a distinct exchange string (`"bybit-legacy"` vs
-`"bybit"`).
+stacks that drifted on precision either get excluded or re-recorded
+under a distinct exchange string (`"bybit-legacy"` vs `"bybit"`).
 
 When you record with `BinaryLogRecorderHook`, pass `exchange_name`
 explicitly so the merge has something to key on:
@@ -48,15 +46,15 @@ explicitly so the merge has something to key on:
         "tapes/bybit-btc", 256, 0, "none", "bybit", "perpetual");
     ```
 
-If `exchange_name` is empty the merge will still work — it just won't
+If `exchange_name` is empty the merge still runs; it just won't
 discriminate venues from each other.
 
 ## Tie-breaking
 
 For two events with identical `exchange_ts_ns` the merge breaks ties
-by tape order in the `paths` list passed by the caller, then by
-per-tape internal sequence. Reproducible — but **you have to pass the
-paths in the same order across runs** or the tie-broken sub-sequence
+by tape order in the `paths` list, then by per-tape internal
+sequence. Reproducible, but only if you pass the paths in the same
+order across runs. Reorder the list and the tie-broken sub-sequence
 flips.
 
 ## Trade vs book overlap
@@ -64,11 +62,11 @@ flips.
 The merge handles trades and books differently when two tapes claim
 the same `(exchange, name)` and their time ranges intersect:
 
-- **Trades** are emitted in time order with no dedup. Each writer's
-  view is preserved faithfully. If the same trade was observed by
-  both tapes it shows up twice — the caller is responsible for
-  upstream non-overlap or downstream dedup.
-- **Books** raise [`OverlappingBookStreamError`](../errors/E_INPUT_003.md)
+- Trades are emitted in time order, no dedup. Each writer's view is
+  preserved faithfully. If the same trade appeared in both tapes it
+  shows up twice; upstream non-overlap or downstream dedup is on the
+  caller.
+- Books raise [`OverlappingBookStreamError`](../errors/E_INPUT_003.md)
   at `MergedTapeReader` construction. Overlapping book state has no
   defined semantics (whose reset wins?). Either time-slice the
   inputs or pick one.
@@ -97,7 +95,7 @@ for entry in stats.tapes:
     print(f"  {entry['path']}: {entry['trades']} trades / {entry['books']} books")
 ```
 
-`stats.tapes` gives a per-tape breakdown — useful when one of the
+`stats.tapes` gives a per-tape breakdown. Useful when one of the
 inputs is empty (typo in path, recording crashed before any events).
 
 ## <a name="python-direct"></a>Python: `MergedTapeReader` direct API
@@ -116,7 +114,7 @@ reader = flox_py.MergedTapeReader(
 for s in reader.symbol_table():
     print(s)
 
-# Merged numpy structured arrays — same dtype as DataReader.
+# Merged numpy structured arrays. Same dtype as DataReader.
 trades = reader.read_trades()
 headers, levels = reader.read_books()
 
@@ -153,8 +151,8 @@ tape.replay_tapes(
 ```
 
 For a real backtest, hand the merged stream to a `BacktestRunner`
-via `bt.run_tapes([t1, t2])` (mirrors `bt.run_tape(t)` — single-tape
-input round-trips identically).
+via `bt.run_tapes([t1, t2])`. Mirrors `bt.run_tape(t)`: single-tape
+input round-trips identically.
 
 ## <a name="cli-view"></a>CLI: `flox tape view`
 
@@ -164,23 +162,30 @@ flox tape view tapes/bybit-btc tapes/binance-btc
 
 Opens the replay viewer pre-loaded with both tapes merged into one
 synthetic stream. Each global symbol gets its own colour on the
-price chart; the cursor shows the order book of whichever venue is
-under the legend selection. The merged view is computed in the
-local CLI server (`/merge?paths=...`), so the inputs are not
-re-materialised to disk.
+price chart.
+
+Under the hood the CLI materialises the merge into a fresh
+synthetic `.floxlog` inside the per-session temp dir, rekeyed to
+global symbol ids, and points the existing single-tape viewer at it.
+This is the v1 path. The follow-up plan is a streaming `/merge`
+HTTP endpoint that the SPA reads directly, with a multi-venue legend
+and per-venue book chart; the materialisation route is what works
+today without SPA-side changes.
 
 Limitations:
 
 - Books for the same `(exchange, name)` must not overlap in time.
-- The viewer's MVP draws one orderbook depth chart at a time — pick
-  a venue from the legend to switch.
+- Legend labels show the rekeyed global ids; reading the
+  metadata.json the CLI writes alongside the synthetic tape gives
+  you the `exchange/name` mapping until the SPA learns to render it.
 
 ## See also
 
-- [Spec: floxlog format](../spec/floxlog.md) — per-tape on-disk shape.
-- [Record and replay tapes](tape-record.md) — capturing the input
+- [Spec: floxlog format](../spec/floxlog.md) for the per-tape on-disk
+  shape.
+- [Record and replay tapes](tape-record.md) for capturing the input
   tapes.
-- [`BinaryLogRecorderHook`](../reference/api/replay/market_data_recorder.md)
-  — the producer side; `exchange_name=` matters for merging.
+- [`BinaryLogRecorderHook`](../reference/api/replay/market_data_recorder.md):
+  the producer side. `exchange_name=` matters for merging.
 - Errors: [E_INPUT_002](../errors/E_INPUT_002.md) (missing metadata),
   [E_INPUT_003](../errors/E_INPUT_003.md) (precision mismatch).
