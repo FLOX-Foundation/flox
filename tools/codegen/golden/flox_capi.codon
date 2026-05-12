@@ -63,6 +63,7 @@ from C import flox_bar_dispatch_recorder_param_at(cobj, u32) -> u64
 
 # ── binary_log_recorder_hook ──
 from C import flox_binary_log_recorder_hook_create(cobj, u64, u8, u8) -> cobj
+from C import flox_binary_log_recorder_hook_create_ex(cobj, u64, u8, u8, cobj, cobj) -> cobj
 from C import flox_binary_log_recorder_hook_destroy(cobj)
 from C import flox_binary_log_recorder_hook_as_recorder(cobj) -> cobj
 from C import flox_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, cobj, i8, i8)
@@ -344,6 +345,19 @@ from C import flox_market_profile_is_poor_high(cobj) -> u8
 from C import flox_market_profile_is_poor_low(cobj) -> u8
 from C import flox_market_profile_num_levels(cobj) -> u32
 from C import flox_market_profile_clear(cobj)
+
+# ── merged_tape_reader ──
+from C import flox_merged_tape_reader_create(Ptr[cobj], u32, i64, i64, Ptr[u32], u32) -> cobj
+from C import flox_merged_tape_reader_destroy(cobj)
+from C import flox_merged_tape_reader_symbol_count(cobj) -> u32
+from C import flox_merged_tape_reader_get_symbols(cobj, cobj, u32) -> u32
+from C import flox_merged_tape_reader_tape_count(cobj) -> u32
+from C import flox_merged_tape_reader_get_tape_stats(cobj, cobj, u32) -> u32
+from C import flox_merged_tape_reader_time_range(cobj, Ptr[i64], Ptr[i64])
+from C import flox_merged_tape_reader_count_trades(cobj) -> u64
+from C import flox_merged_tape_reader_read_trades(cobj, cobj, u64) -> u64
+from C import flox_merged_tape_reader_count_books(cobj, Ptr[u64]) -> u64
+from C import flox_merged_tape_reader_read_books(cobj, cobj, u64, cobj, u64) -> u64
 
 # ── metrics ──
 from C import flox_pnl_tracker_create(cobj) -> cobj

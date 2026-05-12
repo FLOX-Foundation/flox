@@ -1507,6 +1507,37 @@
     },
     {
       "group": "binary_log_recorder_hook",
+      "name": "flox_binary_log_recorder_hook_create_ex",
+      "params": [
+        {
+          "name": "output_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "max_segment_mb",
+          "type": "uint64_t"
+        },
+        {
+          "name": "exchange_id",
+          "type": "uint8_t"
+        },
+        {
+          "name": "compression",
+          "type": "uint8_t"
+        },
+        {
+          "name": "exchange_name",
+          "type": "const char *"
+        },
+        {
+          "name": "instrument_type",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "FloxBinaryLogRecorderHookHandle"
+    },
+    {
+      "group": "binary_log_recorder_hook",
       "name": "flox_binary_log_recorder_hook_destroy",
       "params": [
         {
@@ -5749,6 +5780,199 @@
         }
       ],
       "return_type": "double"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_count_books",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "total_levels_out",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_count_trades",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_create",
+      "params": [
+        {
+          "name": "paths",
+          "type": "const char *const *"
+        },
+        {
+          "name": "n_paths",
+          "type": "uint32_t"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "n_filter",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxMergedTapeReaderHandle"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_destroy",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_get_symbols",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxMergedSymbol *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_get_tape_stats",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxMergedTapeStats *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_read_books",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "headers_out",
+          "type": "FloxBookUpdateHeader *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint64_t"
+        },
+        {
+          "name": "levels_out",
+          "type": "FloxLevel *"
+        },
+        {
+          "name": "max_levels",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_read_trades",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "trades_out",
+          "type": "FloxTradeRecord *"
+        },
+        {
+          "name": "max_trades",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_symbol_count",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_tape_count",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "merged_tape_reader",
+      "name": "flox_merged_tape_reader_time_range",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "min_first_ns_out",
+          "type": "int64_t *"
+        },
+        {
+          "name": "max_last_ns_out",
+          "type": "int64_t *"
+        }
+      ],
+      "return_type": "void"
     },
     {
       "group": "context_queries",
@@ -10829,6 +11053,60 @@
     {
       "fields": [
         {
+          "name": "global_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_precision",
+          "type": "int8_t"
+        },
+        {
+          "name": "qty_precision",
+          "type": "int8_t"
+        },
+        {
+          "name": "_pad",
+          "type": "uint8_t[2]"
+        },
+        {
+          "name": "exchange",
+          "type": "const char *"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        }
+      ],
+      "name": "FloxMergedSymbol"
+    },
+    {
+      "fields": [
+        {
+          "name": "first_event_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_event_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "trades",
+          "type": "uint64_t"
+        },
+        {
+          "name": "books",
+          "type": "uint64_t"
+        },
+        {
+          "name": "path",
+          "type": "const char *"
+        }
+      ],
+      "name": "FloxMergedTapeStats"
+    },
+    {
+      "fields": [
+        {
           "name": "id",
           "type": "uint64_t"
         },
@@ -11666,6 +11944,10 @@
     },
     {
       "name": "FloxMarketProfileHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxMergedTapeReaderHandle",
       "target": "void*"
     },
     {

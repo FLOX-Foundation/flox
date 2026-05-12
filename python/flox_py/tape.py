@@ -198,12 +198,100 @@ def diff_tapes(
     )
 
 
+@dataclass
+class MultiTapeStats:
+    """Result of :func:`replay_tapes`. ``trades`` / ``books`` are totals
+    across all tapes after merge-sort; ``tapes`` is a per-tape
+    contribution list: ``{path, trades, books, first_event_ns,
+    last_event_ns}`` — useful for debugging "one of the tapes is empty"."""
+
+    trades: int = 0
+    books: int = 0
+    tapes: List[dict] = field(default_factory=list)
+
+
+def replay_tapes(
+    paths: List[str | Path],
+    *,
+    on_trade: Optional[Any] = None,
+    on_book: Optional[Any] = None,
+    from_ns: Optional[int] = None,
+    to_ns: Optional[int] = None,
+    symbols: Optional[List[int]] = None,
+) -> MultiTapeStats:
+    """Replay the merged event stream from N ``.floxlog`` directories.
+
+    Symbols are rekeyed into a global id space keyed by
+    ``(metadata.exchange, name)``. Events emit in ``exchange_ts_ns``
+    order; ties break by ``paths`` order.
+
+    Callbacks (any may be ``None``):
+
+      ``on_trade(ts_ns, global_symbol_id, price, qty, side)``
+      ``on_book(ts_ns, global_symbol_id, is_snapshot, bids, asks)``
+        — ``bids`` / ``asks`` are lists of ``(price, qty)`` tuples.
+    """
+    import flox_py
+
+    paths = [str(Path(p).expanduser()) for p in paths]
+    reader = flox_py.MergedTapeReader(
+        paths,
+        from_ns=from_ns,
+        to_ns=to_ns,
+        symbols=symbols,
+    )
+
+    trades = reader.read_trades()
+    headers, levels = reader.read_books()
+
+    if on_trade is not None and trades.size:
+        for row in trades:
+            on_trade(
+                int(row["exchange_ts_ns"]),
+                int(row["symbol_id"]),
+                float(row["price_raw"]) / 1e8,
+                float(row["qty_raw"]) / 1e8,
+                int(row["side"]),
+            )
+
+    if on_book is not None and headers.size:
+        for h in headers:
+            offset = int(h["level_offset"])
+            n_bid = int(h["bid_count"])
+            n_ask = int(h["ask_count"])
+            bids = [
+                (float(levels[offset + i]["price_raw"]) / 1e8,
+                 float(levels[offset + i]["qty_raw"]) / 1e8)
+                for i in range(n_bid)
+            ]
+            asks = [
+                (float(levels[offset + n_bid + i]["price_raw"]) / 1e8,
+                 float(levels[offset + n_bid + i]["qty_raw"]) / 1e8)
+                for i in range(n_ask)
+            ]
+            on_book(
+                int(h["exchange_ts_ns"]),
+                int(h["symbol_id"]),
+                int(h["event_type"]) == 2,
+                bids,
+                asks,
+            )
+
+    return MultiTapeStats(
+        trades=int(trades.size),
+        books=int(headers.size),
+        tapes=list(reader.per_tape_stats()),
+    )
+
+
 __all__ = [
     "TapeRecorderStats",
     "TapeStats",
     "TapeDiff",
+    "MultiTapeStats",
     "make_recorder_hook",
     "inspect_tape",
     "replay_tape",
+    "replay_tapes",
     "diff_tapes",
 ]

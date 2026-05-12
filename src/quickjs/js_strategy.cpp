@@ -331,8 +331,48 @@ void FloxJsStrategy::loadStdlib()
       readBookUpdatesFrom(startTsNs) { return __flox_dr_read_book_updates_from(this._h, startTsNs); }
     }
 
+    class MergedTapeReader {
+      // pathsOrOpts: string[] OR { paths: string[], fromNs?: bigint|number, toNs?: bigint|number, symbols?: number[] }
+      constructor(pathsOrOpts, opts) {
+        var paths, o;
+        if (Array.isArray(pathsOrOpts)) {
+          paths = pathsOrOpts;
+          o = opts || {};
+        } else {
+          o = pathsOrOpts || {};
+          paths = o.paths || [];
+        }
+        var from = (o.fromNs === undefined || o.fromNs === null) ? -1 : o.fromNs;
+        var to   = (o.toNs   === undefined || o.toNs   === null) ? -1 : o.toNs;
+        this._h = __flox_mtr_create(paths, from, to, o.symbols || []);
+        if (!this._h) {
+          throw new Error("MergedTapeReader: failed to open tapes - bad input or overlapping book streams");
+        }
+      }
+      destroy() {
+        if (this._h) { __flox_mtr_destroy(this._h); this._h = null; }
+      }
+      // Unified view of symbols across all tapes, keyed by (exchange, name).
+      symbolTable() { return __flox_mtr_get_symbols(this._h); }
+      get symbolCount() { return __flox_mtr_symbol_count(this._h); }
+      // Per-tape stats: { firstEventNs, lastEventNs, trades, books, path }
+      perTapeStats() { return __flox_mtr_get_tape_stats(this._h); }
+      get tapeCount() { return __flox_mtr_tape_count(this._h); }
+      // { minFirstNs, maxLastNs } — outer time range across all tapes.
+      timeRange() { return __flox_mtr_time_range(this._h); }
+      countTrades() { return __flox_mtr_count_trades(this._h); }
+      readTrades(maxTrades) { return __flox_mtr_read_trades(this._h, maxTrades || 0); }
+      // { events, levels } two-phase count for book updates.
+      countBooks() { return __flox_mtr_count_books(this._h); }
+      readBooks() { return __flox_mtr_read_books(this._h); }
+    }
+
     class BinaryLogRecorderHook {
-      constructor(outputDir, maxSegmentMb, exchangeId, compression) {
+      // (outputDir, maxSegmentMb, exchangeId, compression, exchangeName?, instrumentType?)
+      // exchangeName / instrumentType are stamped into metadata.json so
+      // MergedTapeReader can key tapes by (exchange, name).
+      constructor(outputDir, maxSegmentMb, exchangeId, compression,
+                  exchangeName, instrumentType) {
         var compMap = { none: 0, lz4: 1 };
         var comp = 0;
         if (typeof compression === "number") {
@@ -344,7 +384,8 @@ void FloxJsStrategy::loadStdlib()
           comp = compMap[compression];
         }
         this._h = __flox_blrh_create(outputDir, maxSegmentMb === undefined ? 256 : maxSegmentMb,
-                                     exchangeId || 0, comp);
+                                     exchangeId || 0, comp,
+                                     exchangeName || "", instrumentType || "");
         this.__floxIsBinaryLogRecorderHook = true;
       }
       destroy() {

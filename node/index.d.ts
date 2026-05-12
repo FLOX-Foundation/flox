@@ -1249,6 +1249,13 @@ export class BinaryLogRecorderHook {
     exchangeId?: number,
     /** `"none"` (default) or `"lz4"`. */
     compression?: "none" | "lz4",
+    /** Stamped into the tape manifest as `metadata.exchange`. Required
+     *  for `MergedTapeReader` keying — tapes without an exchange name
+     *  will refuse to merge. */
+    exchangeName?: string,
+    /** Stamped into the tape manifest as `metadata.instrument_type`
+     *  (e.g. `"spot"`, `"perpetual"`, `"futures"`, `"option"`). */
+    instrumentType?: string,
   );
   addSymbol(
     symbolId: number,
@@ -1260,6 +1267,66 @@ export class BinaryLogRecorderHook {
   ): void;
   flush(): void;
   stats(): BinaryLogRecorderHookStats;
+}
+
+/** A single rekeyed symbol entry from `MergedTapeReader.symbolTable()`.
+ *  `globalId` is allocated 1..M on construction and is stable for the
+ *  lifetime of the reader. Ties between tapes that carry the same
+ *  `(exchange, name)` collapse to one entry; tie-breaking follows the
+ *  order of the `paths` array passed to the constructor. */
+export interface MergedTapeSymbol {
+  globalId: number;
+  exchange: string;
+  name: string;
+  pricePrecision: number;
+  qtyPrecision: number;
+}
+
+export interface MergedTapeStats {
+  path: string;
+  trades: bigint;
+  books: bigint;
+  firstEventNs: bigint;
+  lastEventNs: bigint;
+}
+
+export interface MergedTapeReaderOptions {
+  /** Inclusive ns lower bound. Omit / pass `undefined` for no bound. */
+  fromNs?: bigint | number;
+  /** Inclusive ns upper bound. Omit / pass `undefined` for no bound. */
+  toNs?: bigint | number;
+  /** Post-rekey global IDs (see `symbolTable()`). Filters the merged
+   *  stream to just these symbols. */
+  symbols?: number[];
+}
+
+/** N-tape merge-on-read. Walks the K-way heap of per-tape readers and
+ *  emits a single event stream ordered by `exchange_ts_ns`. Symbol IDs
+ *  are rekeyed: each tape's local `symbol_id` is mapped to a `globalId`
+ *  keyed by `(metadata.exchange, name)`. Two tapes that carry the same
+ *  `(exchange, name)` share a `globalId`; ties on identical
+ *  `exchange_ts_ns` break by the order of the `paths` array. Throws if
+ *  any two tapes have books for the same `(exchange, name)` with
+ *  overlapping time ranges — `MergedTapeReader: invalid paths or
+ *  overlapping book streams`. */
+export class MergedTapeReader {
+  constructor(paths: string[], options?: MergedTapeReaderOptions);
+  /** All distinct symbols across the merged tapes. `globalId` is
+   *  rekeyed and ties break by `paths` order. */
+  symbolTable(): MergedTapeSymbol[];
+  /** `[minFirstEventNs, maxLastEventNs]` across all tapes. */
+  timeRange(): [bigint, bigint];
+  /** Per-input-tape breakdown. `path` order matches the constructor's
+   *  `paths` array. */
+  perTapeStats(): MergedTapeStats[];
+  /** Materialized merged trade stream. `symbolId` is the rekeyed
+   *  `globalId`. Use `replayTapes` / streaming APIs for memory-bounded
+   *  consumption — this method is for `DataReader` parity. */
+  readTrades(): TradeRecord[];
+  /** Materialized merged book stream, same shape as
+   *  `DataReader.readBookUpdates()`. `symbolId` is the rekeyed
+   *  `globalId`. */
+  readBooks(): BookUpdateRecord[];
 }
 
 export interface Partition {

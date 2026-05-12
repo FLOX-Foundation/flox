@@ -142,6 +142,7 @@ docs/how-to/cross-symbol-indicators.md
 # docs/examples/python_tape_roundtrip.py and is referenced via --8<--;
 # inline blocks are pedagogical scaffolds, not standalone runnable.
 docs/how-to/tape-record.md
+docs/how-to/multi-tape.md
 
 # How-to: paper trading — illustrative quick-start and ccxt-feed
 # patterns; the full runnable end-to-end is exercised by

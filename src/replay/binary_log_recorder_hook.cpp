@@ -108,6 +108,9 @@ void BinaryLogRecorderHook::onTrade(uint32_t symbol_id, int64_t price_raw,
   if (_writer->writeTrade(rec))
   {
     ++_stats.trades_written;
+    // Lazy metadata flag so downstream consumers (e.g. MergedTapeReader's
+    // overlap detector) can tell which content kinds this tape carries.
+    _writer->setHasTrades(true);
   }
   else
   {
@@ -141,6 +144,14 @@ void BinaryLogRecorderHook::onBookUpdate(uint32_t symbol_id, bool is_snapshot,
   if (_writer->writeBook(header, bid_span, ask_span))
   {
     ++_stats.book_updates_written;
+    if (is_snapshot)
+    {
+      _writer->setHasBookSnapshots(true);
+    }
+    else
+    {
+      _writer->setHasBookDeltas(true);
+    }
   }
   else
   {

@@ -44,6 +44,7 @@ extern "C"
   typedef void* FloxDataWriterHandle;
   typedef void* FloxDataReaderHandle;
   typedef void* FloxBacktestResultHandle;
+  typedef void* FloxMergedTapeReaderHandle;
   typedef void* FloxPartitionerHandle;
   typedef void* FloxRiskManagerHandle;
   typedef void* FloxKillSwitchHandle;
@@ -351,6 +352,25 @@ extern "C"
     int64_t qty_raw;
     uint8_t side;
   } FloxLevel;
+
+  typedef struct
+  {
+    uint32_t global_id;
+    int8_t price_precision;
+    int8_t qty_precision;
+    uint8_t _pad[2];
+    const char* exchange;
+    const char* name;
+  } FloxMergedSymbol;
+
+  typedef struct
+  {
+    int64_t first_event_ns;
+    int64_t last_event_ns;
+    uint64_t trades;
+    uint64_t books;
+    const char* path;
+  } FloxMergedTapeStats;
 
   typedef struct
   {
@@ -823,6 +843,12 @@ extern "C"
                                                                        uint64_t max_segment_mb,
                                                                        uint8_t exchange_id,
                                                                        uint8_t compression);
+  FloxBinaryLogRecorderHookHandle flox_binary_log_recorder_hook_create_ex(const char* output_dir,
+                                                                          uint64_t max_segment_mb,
+                                                                          uint8_t exchange_id,
+                                                                          uint8_t compression,
+                                                                          const char* exchange_name,
+                                                                          const char* instrument_type);
   void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
   FloxMarketDataRecorderHandle flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook);
   void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook,
@@ -1323,6 +1349,34 @@ extern "C"
   uint8_t flox_market_profile_is_poor_low(FloxMarketProfileHandle profile);
   uint32_t flox_market_profile_num_levels(FloxMarketProfileHandle profile);
   void flox_market_profile_clear(FloxMarketProfileHandle profile);
+
+  // ============================================================
+  // Merged Tape Reader
+  // ============================================================
+
+  FloxMergedTapeReaderHandle flox_merged_tape_reader_create(const char* const* paths,
+                                                            uint32_t n_paths, int64_t from_ns,
+                                                            int64_t to_ns,
+                                                            const uint32_t* symbol_filter,
+                                                            uint32_t n_filter);
+  void flox_merged_tape_reader_destroy(FloxMergedTapeReaderHandle reader);
+  uint32_t flox_merged_tape_reader_symbol_count(FloxMergedTapeReaderHandle reader);
+  uint32_t flox_merged_tape_reader_get_symbols(FloxMergedTapeReaderHandle reader,
+                                               FloxMergedSymbol* out, uint32_t max);
+  uint32_t flox_merged_tape_reader_tape_count(FloxMergedTapeReaderHandle reader);
+  uint32_t flox_merged_tape_reader_get_tape_stats(FloxMergedTapeReaderHandle reader,
+                                                  FloxMergedTapeStats* out, uint32_t max);
+  void flox_merged_tape_reader_time_range(FloxMergedTapeReaderHandle reader,
+                                          int64_t* min_first_ns_out, int64_t* max_last_ns_out);
+  uint64_t flox_merged_tape_reader_count_trades(FloxMergedTapeReaderHandle reader);
+  uint64_t flox_merged_tape_reader_read_trades(FloxMergedTapeReaderHandle reader,
+                                               FloxTradeRecord* trades_out, uint64_t max_trades);
+  uint64_t flox_merged_tape_reader_count_books(FloxMergedTapeReaderHandle reader,
+                                               uint64_t* total_levels_out);
+  uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle reader,
+                                              FloxBookUpdateHeader* headers_out,
+                                              uint64_t max_events, FloxLevel* levels_out,
+                                              uint64_t max_levels);
 
   // ============================================================
   // Metrics

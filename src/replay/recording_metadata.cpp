@@ -328,8 +328,45 @@ std::optional<RecordingMetadata> RecordingMetadata::load(const std::filesystem::
   meta.timezone = extractStringValue(content, "timezone");
   meta.flox_version = extractStringValue(content, "flox_version");
 
-  // Note: symbols array and custom map parsing would need more complex logic
-  // This is a simplified implementation
+  // Symbols array. The on-disk shape is well-defined since we write it
+  // ourselves in save(): one inner object per entry with the same six
+  // fields. Find the "symbols" key, then walk balanced { ... } blocks
+  // inside its array. No general JSON parser — just enough to round-trip
+  // what we emit.
+  auto sym_key = content.find("\"symbols\"");
+  if (sym_key != std::string::npos)
+  {
+    auto arr_start = content.find('[', sym_key);
+    auto arr_end = content.find(']', arr_start);
+    if (arr_start != std::string::npos && arr_end != std::string::npos)
+    {
+      std::string body = content.substr(arr_start + 1, arr_end - arr_start - 1);
+      size_t pos = 0;
+      while (pos < body.size())
+      {
+        auto obj_open = body.find('{', pos);
+        if (obj_open == std::string::npos)
+        {
+          break;
+        }
+        auto obj_close = body.find('}', obj_open);
+        if (obj_close == std::string::npos)
+        {
+          break;
+        }
+        std::string entry = body.substr(obj_open, obj_close - obj_open + 1);
+        SymbolInfo info;
+        info.symbol_id = static_cast<uint32_t>(extractIntValue(entry, "symbol_id"));
+        info.name = extractStringValue(entry, "name");
+        info.base_asset = extractStringValue(entry, "base_asset");
+        info.quote_asset = extractStringValue(entry, "quote_asset");
+        info.price_precision = static_cast<int8_t>(extractIntValue(entry, "price_precision"));
+        info.qty_precision = static_cast<int8_t>(extractIntValue(entry, "qty_precision"));
+        meta.symbols.push_back(std::move(info));
+        pos = obj_close + 1;
+      }
+    }
+  }
 
   return meta;
 }

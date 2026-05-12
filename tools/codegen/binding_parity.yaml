@@ -134,6 +134,11 @@ groups:
     napi: { status: required, classes: [BinaryLogRecorderHook] }
     codon: { status: required }
 
+  merged_tape_reader:
+    pybind11: { status: required, classes: [MergedTapeReader] }
+    napi: { status: required, classes: [MergedTapeReader] }
+    codon: { status: required }
+
   data_reader:
     pybind11: { status: required, classes: [DataReader] }
     napi: { status: required, classes: [DataReader] }

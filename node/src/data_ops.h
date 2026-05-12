@@ -376,7 +376,20 @@ class BinaryLogRecorderHookWrap : public Napi::ObjectWrap<BinaryLogRecorderHookW
         return;
       }
     }
-    _h = flox_binary_log_recorder_hook_create(dir.c_str(), maxMb, exId, compression);
+    std::string exchangeName;
+    std::string instrumentType;
+    if (info.Length() > 4 && info[4].IsString())
+    {
+      exchangeName = info[4].As<Napi::String>().Utf8Value();
+    }
+    if (info.Length() > 5 && info[5].IsString())
+    {
+      instrumentType = info[5].As<Napi::String>().Utf8Value();
+    }
+    _h = flox_binary_log_recorder_hook_create_ex(
+        dir.c_str(), maxMb, exId, compression,
+        exchangeName.empty() ? nullptr : exchangeName.c_str(),
+        instrumentType.empty() ? nullptr : instrumentType.c_str());
   }
   ~BinaryLogRecorderHookWrap()
   {
@@ -419,6 +432,254 @@ class BinaryLogRecorderHookWrap : public Napi::ObjectWrap<BinaryLogRecorderHookW
     return o;
   }
   FloxBinaryLogRecorderHookHandle _h = nullptr;
+};
+
+// ── MergedTapeReader ────────────────────────────────────────────────
+//
+// N-tape merge-on-read. Rekeys per-tape local symbol ids into a global
+// id space keyed by (exchange, name). Tape order in the `paths` array
+// is load-bearing — ties on identical exchange_ts_ns break by paths
+// order. Throws on overlapping book streams for the same symbol; the
+// merged book state is otherwise undefined.
+
+class MergedTapeReaderWrap : public Napi::ObjectWrap<MergedTapeReaderWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(env, "MergedTapeReader",
+                       {InstanceMethod("symbolTable", &MergedTapeReaderWrap::SymbolTable),
+                        InstanceMethod("timeRange", &MergedTapeReaderWrap::TimeRange),
+                        InstanceMethod("perTapeStats", &MergedTapeReaderWrap::PerTapeStats),
+                        InstanceMethod("readTrades", &MergedTapeReaderWrap::ReadTrades),
+                        InstanceMethod("readBooks", &MergedTapeReaderWrap::ReadBooks)});
+  }
+  MergedTapeReaderWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<MergedTapeReaderWrap>(info)
+  {
+    auto env = info.Env();
+    if (info.Length() < 1 || !info[0].IsArray())
+    {
+      Napi::TypeError::New(env, "MergedTapeReader: paths must be string[]")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    auto pathsArr = info[0].As<Napi::Array>();
+    uint32_t n = pathsArr.Length();
+    _pathStorage.reserve(n);
+    std::vector<const char*> ptrs;
+    ptrs.reserve(n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      auto v = pathsArr.Get(i);
+      if (!v.IsString())
+      {
+        Napi::TypeError::New(env, "MergedTapeReader: paths must be string[]")
+            .ThrowAsJavaScriptException();
+        return;
+      }
+      _pathStorage.push_back(v.As<Napi::String>().Utf8Value());
+      ptrs.push_back(_pathStorage.back().c_str());
+    }
+
+    int64_t fromNs = -1;
+    int64_t toNs = -1;
+    std::vector<uint32_t> filter;
+    if (info.Length() > 1 && info[1].IsObject())
+    {
+      auto opts = info[1].As<Napi::Object>();
+      if (opts.Has("fromNs"))
+      {
+        auto v = opts.Get("fromNs");
+        if (!v.IsNull() && !v.IsUndefined())
+        {
+          fromNs = toInt64Ns(v);
+        }
+      }
+      if (opts.Has("toNs"))
+      {
+        auto v = opts.Get("toNs");
+        if (!v.IsNull() && !v.IsUndefined())
+        {
+          toNs = toInt64Ns(v);
+        }
+      }
+      if (opts.Has("symbols"))
+      {
+        auto v = opts.Get("symbols");
+        if (v.IsArray())
+        {
+          auto sa = v.As<Napi::Array>();
+          uint32_t m = sa.Length();
+          filter.reserve(m);
+          for (uint32_t i = 0; i < m; ++i)
+          {
+            filter.push_back(sa.Get(i).As<Napi::Number>().Uint32Value());
+          }
+        }
+      }
+    }
+
+    _h = flox_merged_tape_reader_create(
+        ptrs.data(), n, fromNs, toNs,
+        filter.empty() ? nullptr : filter.data(),
+        static_cast<uint32_t>(filter.size()));
+    if (!_h)
+    {
+      Napi::Error::New(env,
+                       "MergedTapeReader: invalid paths or overlapping book streams")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+  }
+  ~MergedTapeReaderWrap()
+  {
+    if (_h)
+    {
+      flox_merged_tape_reader_destroy(_h);
+    }
+  }
+
+ private:
+  Napi::Value SymbolTable(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    uint32_t n = flox_merged_tape_reader_symbol_count(_h);
+    std::vector<FloxMergedSymbol> syms(n);
+    uint32_t got = flox_merged_tape_reader_get_symbols(_h, syms.data(), n);
+    auto arr = Napi::Array::New(env, got);
+    for (uint32_t i = 0; i < got; ++i)
+    {
+      auto o = Napi::Object::New(env);
+      o.Set("globalId", syms[i].global_id);
+      // exchange / name are borrowed const char* — Napi::String::New copies.
+      o.Set("exchange",
+            syms[i].exchange ? Napi::String::New(env, syms[i].exchange)
+                             : Napi::String::New(env, ""));
+      o.Set("name",
+            syms[i].name ? Napi::String::New(env, syms[i].name)
+                         : Napi::String::New(env, ""));
+      o.Set("pricePrecision", (int32_t)syms[i].price_precision);
+      o.Set("qtyPrecision", (int32_t)syms[i].qty_precision);
+      arr.Set(i, o);
+    }
+    return arr;
+  }
+
+  Napi::Value TimeRange(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    int64_t first = 0;
+    int64_t last = 0;
+    flox_merged_tape_reader_time_range(_h, &first, &last);
+    auto arr = Napi::Array::New(env, 2);
+    arr.Set((uint32_t)0, Napi::BigInt::New(env, first));
+    arr.Set((uint32_t)1, Napi::BigInt::New(env, last));
+    return arr;
+  }
+
+  Napi::Value PerTapeStats(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    uint32_t n = flox_merged_tape_reader_tape_count(_h);
+    std::vector<FloxMergedTapeStats> stats(n);
+    uint32_t got = flox_merged_tape_reader_get_tape_stats(_h, stats.data(), n);
+    auto arr = Napi::Array::New(env, got);
+    for (uint32_t i = 0; i < got; ++i)
+    {
+      auto o = Napi::Object::New(env);
+      o.Set("path",
+            stats[i].path ? Napi::String::New(env, stats[i].path)
+                          : Napi::String::New(env, ""));
+      o.Set("trades", Napi::BigInt::New(env, stats[i].trades));
+      o.Set("books", Napi::BigInt::New(env, stats[i].books));
+      o.Set("firstEventNs", Napi::BigInt::New(env, stats[i].first_event_ns));
+      o.Set("lastEventNs", Napi::BigInt::New(env, stats[i].last_event_ns));
+      arr.Set(i, o);
+    }
+    return arr;
+  }
+
+  // Mirrors DataReaderWrap.ReadTrades shape: an Array of plain objects
+  // with the same field names. symbol_id carries the post-rekey global id.
+  Napi::Value ReadTrades(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    uint64_t maxTrades = flox_merged_tape_reader_count_trades(_h);
+    std::vector<FloxTradeRecord> trades(maxTrades);
+    uint64_t n = flox_merged_tape_reader_read_trades(_h, trades.data(), maxTrades);
+    auto arr = Napi::Array::New(env, n);
+    for (uint64_t i = 0; i < n; ++i)
+    {
+      auto o = Napi::Object::New(env);
+      o.Set("exchangeTsNs", Napi::BigInt::New(env, trades[i].exchange_ts_ns));
+      o.Set("recvTsNs", Napi::BigInt::New(env, trades[i].recv_ts_ns));
+      o.Set("price", (double)trades[i].price_raw / 1e8);
+      o.Set("qty", (double)trades[i].qty_raw / 1e8);
+      o.Set("tradeId", Napi::BigInt::New(env, trades[i].trade_id));
+      o.Set("symbolId", trades[i].symbol_id);
+      o.Set("side", trades[i].side);
+      arr.Set((uint32_t)i, o);
+    }
+    return arr;
+  }
+
+  // Mirrors DataReaderWrap.ReadBookUpdates: returns { headers, levels }.
+  // Each header carries the global symbol_id; levels[] is flat and
+  // sliced by header.levelOffset / bidCount / askCount.
+  Napi::Value ReadBooks(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    uint64_t totalLevels = 0;
+    uint64_t maxEvents = flox_merged_tape_reader_count_books(_h, &totalLevels);
+    std::vector<FloxBookUpdateHeader> headers(maxEvents);
+    std::vector<FloxLevel> levels(totalLevels);
+    uint64_t n = flox_merged_tape_reader_read_books(_h, headers.data(), maxEvents,
+                                                    levels.data(), totalLevels);
+
+    auto arr = Napi::Array::New(env, n);
+    for (uint64_t i = 0; i < n; ++i)
+    {
+      const auto& h = headers[i];
+      auto o = Napi::Object::New(env);
+      o.Set("exchangeTsNs", Napi::BigInt::New(env, h.exchange_ts_ns));
+      o.Set("recvTsNs", Napi::BigInt::New(env, h.recv_ts_ns));
+      o.Set("seq", Napi::BigInt::New(env, h.seq));
+      o.Set("symbolId", h.symbol_id);
+      o.Set("eventType", h.event_type);
+
+      auto bids = Napi::Array::New(env, h.bid_count);
+      for (uint16_t k = 0; k < h.bid_count; ++k)
+      {
+        const auto& l = levels[h.level_offset + k];
+        auto lo = Napi::Object::New(env);
+        lo.Set("price", (double)l.price_raw / 1e8);
+        lo.Set("qty", (double)l.qty_raw / 1e8);
+        bids.Set((uint32_t)k, lo);
+      }
+      o.Set("bids", bids);
+
+      auto asks = Napi::Array::New(env, h.ask_count);
+      for (uint16_t k = 0; k < h.ask_count; ++k)
+      {
+        const auto& l = levels[h.level_offset + h.bid_count + k];
+        auto lo = Napi::Object::New(env);
+        lo.Set("price", (double)l.price_raw / 1e8);
+        lo.Set("qty", (double)l.qty_raw / 1e8);
+        asks.Set((uint32_t)k, lo);
+      }
+      o.Set("asks", asks);
+
+      arr.Set((uint32_t)i, o);
+    }
+    return arr;
+  }
+
+  FloxMergedTapeReaderHandle _h = nullptr;
+  // Path strings need to outlive flox_merged_tape_reader_create — it
+  // copies internally but the const char* array must stay valid for the
+  // duration of the call.
+  std::vector<std::string> _pathStorage;
 };
 
 // ── Partitioner ─────────────────────────────────────────────────────
@@ -707,6 +968,7 @@ inline void registerDataOps(Napi::Env env, Napi::Object exports)
   exports.Set("DataWriter", DataWriterWrap::Init(env));
   exports.Set("DataReader", DataReaderWrap::Init(env));
   exports.Set("BinaryLogRecorderHook", BinaryLogRecorderHookWrap::Init(env));
+  exports.Set("MergedTapeReader", MergedTapeReaderWrap::Init(env));
   exports.Set("Partitioner", PartitionerWrap::Init(env));
 
   exports.Set("validateSegment", Napi::Function::New(env, seg_validate));
