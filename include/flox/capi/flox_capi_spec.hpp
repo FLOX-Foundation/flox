@@ -2558,6 +2558,14 @@ extern "C"
                                     const char* tape_dir,
                                     FloxBacktestStats* stats_out);
 
+  // Drive the backtest off N `.floxlog` tapes merged on read.
+  // Returns 1 on success, 0 on error.
+  FLOX_EXPORT(group = "backtestrunner_replay")
+  int flox_backtest_runner_run_tapes(FloxBacktestRunnerHandle runner,
+                                     const char* const* tape_dirs,
+                                     uint32_t n_dirs,
+                                     FloxBacktestStats* stats_out);
+
   // Replay raw OHLCV arrays (timestamps in nanoseconds, close prices as double).
   // Each row produces one synthetic trade (price=close, qty=1). Strategy.on_trade fires.
   // Returns 1 on success, 0 on error.

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 502 functions, 44 handles, 51 structs, 35 callback typedefs, 2 enums, 59 groups.
+**Surface:** 503 functions, 44 handles, 51 structs, 35 callback typedefs, 2 enums, 59 groups.
 
 ## Opaque handles
 
@@ -757,6 +757,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_backtest_runner_set_strategy(FloxBacktestRunnerHandle runner, FloxStrategyHandle strategy)`
 - `int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle runner, const char * path, const char * symbol, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_tape(FloxBacktestRunnerHandle runner, const char * tape_dir, FloxBacktestStats * stats_out)`
+- `int flox_backtest_runner_run_tapes(FloxBacktestRunnerHandle runner, const char *const * tape_dirs, uint32_t n_dirs, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle runner, const int64_t * timestamps_ns, const double * close_prices, uint32_t n, const char * symbol, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle runner, const int64_t * start_time_ns, const int64_t * end_time_ns, const double * open, const double * high, const double * low, const double * close, const double * volume, uint32_t n, const char * symbol, uint8_t bar_type, uint64_t bar_type_param, FloxBacktestStats * stats_out)`
 - `int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner, FloxReplaySourceHandle source, FloxBacktestStats * stats_out)`

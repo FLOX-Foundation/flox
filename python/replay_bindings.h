@@ -858,6 +858,68 @@ class PyMergedTapeReader
     }
     return out;
   }
+
+  // Streaming walk via the C++ N-way heap merge. O(N tapes) peak
+  // memory regardless of total event count. on_trade / on_book are
+  // optional Python callables; returning False from either aborts.
+  // Lossless raw int64 prices/qty preserved (no float conversion).
+  void streamEvents(py::object on_trade, py::object on_book)
+  {
+    _reader.streamEvents(
+        [&](uint32_t tape_index, const flox::replay::ReplayEvent& ev) -> bool
+        {
+          if (ev.type == flox::replay::EventType::Trade)
+          {
+            if (on_trade.is_none())
+            {
+              return true;
+            }
+            py::object rv = on_trade(int64_t{ev.trade.exchange_ts_ns},
+                                     int64_t{ev.trade.recv_ts_ns},
+                                     int64_t{ev.trade.price_raw},
+                                     int64_t{ev.trade.qty_raw},
+                                     uint32_t{ev.trade.symbol_id},
+                                     uint32_t{tape_index},
+                                     uint8_t{ev.trade.side});
+            if (!rv.is_none() && !rv.cast<bool>())
+            {
+              return false;
+            }
+            return true;
+          }
+          if (ev.type == flox::replay::EventType::BookSnapshot ||
+              ev.type == flox::replay::EventType::BookDelta)
+          {
+            if (on_book.is_none())
+            {
+              return true;
+            }
+            const bool is_snap = ev.type == flox::replay::EventType::BookSnapshot;
+            py::list bids;
+            for (const auto& b : ev.bids)
+            {
+              bids.append(py::make_tuple(int64_t{b.price_raw}, int64_t{b.qty_raw}));
+            }
+            py::list asks;
+            for (const auto& a : ev.asks)
+            {
+              asks.append(py::make_tuple(int64_t{a.price_raw}, int64_t{a.qty_raw}));
+            }
+            py::object rv = on_book(int64_t{ev.book_header.exchange_ts_ns},
+                                    int64_t{ev.book_header.recv_ts_ns},
+                                    uint32_t{ev.book_header.symbol_id},
+                                    uint32_t{tape_index},
+                                    is_snap,
+                                    bids, asks);
+            if (!rv.is_none() && !rv.cast<bool>())
+            {
+              return false;
+            }
+            return true;
+          }
+          return true;
+        });
+  }
 };
 
 }  // namespace
@@ -1082,5 +1144,15 @@ inline void bindReplay(py::module_& m)
            "(headers, levels) tuple. Headers carry global symbol_id; "
            "level_offset slices the levels array per event.")
       .def("per_tape_stats", &PyMergedTapeReader::perTapeStats,
-           "Per-tape breakdown — useful for debugging an empty input.");
+           "Per-tape breakdown — useful for debugging an empty input.")
+      .def("stream_events", &PyMergedTapeReader::streamEvents,
+           "Walk the merged stream via N-way heap merge (O(N tapes) "
+           "peak memory). Calls on_trade(exchange_ts_ns, recv_ts_ns, "
+           "price_raw, qty_raw, symbol_id, tape_index, side) and "
+           "on_book(exchange_ts_ns, recv_ts_ns, symbol_id, "
+           "tape_index, is_snapshot, bids, asks). bids/asks are "
+           "lists of (price_raw, qty_raw) tuples. Returning False "
+           "from either aborts the walk.",
+           py::arg("on_trade") = py::none(),
+           py::arg("on_book") = py::none());
 }

@@ -89,6 +89,10 @@ class BacktestRunner:
         """
         Run a backtest off a `.floxlog` tape directory. The tape is the canonical recorded artifact (`flox tape record` writes it). Returns the same stats dict shape as run_csv / run_bars.
         """
+    def run_tapes(self, paths: collections.abc.Sequence[str]) -> typing.Any:
+        """
+        Run a backtest off N `.floxlog` tapes merged on read. Symbols are rekeyed by (metadata.exchange, name) so two captures of the same venue/symbol collapse, and two different venues stay distinct. `run_tapes([t])` is equivalent to `run_tape(t)`. Stats shape mirrors run_tape.
+        """
     def set_executor(self, executor: Executor) -> None:
         ...
     def set_kill_switch(self, ks: KillSwitch) -> None:
@@ -1028,6 +1032,10 @@ class MergedTapeReader:
     def read_trades(self) -> numpy.ndarray:
         """
         Merged trades as PyTrade structured numpy array, sorted by exchange_ts_ns; tie-break by tape order.
+        """
+    def stream_events(self, on_trade: typing.Any = None, on_book: typing.Any = None) -> None:
+        """
+        Walk the merged stream via N-way heap merge (O(N tapes) peak memory). Calls on_trade(exchange_ts_ns, recv_ts_ns, price_raw, qty_raw, symbol_id, tape_index, side) and on_book(exchange_ts_ns, recv_ts_ns, symbol_id, tape_index, is_snapshot, bids, asks). bids/asks are lists of (price_raw, qty_raw) tuples. Returning False from either aborts the walk.
         """
     def symbol_table(self) -> list:
         """

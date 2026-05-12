@@ -13,6 +13,8 @@
 #include "flox/replay/readers/binary_log_reader.h"
 
 #include <algorithm>
+#include <memory>
+#include <queue>
 #include <sstream>
 #include <unordered_map>
 
@@ -390,6 +392,260 @@ MergedTapeReader::readBooks()
     rows.push_back(p.row);
   }
   return {std::move(rows), std::move(levels)};
+}
+
+namespace
+{
+
+// Walks one tape's segments in order via BinaryLogIterator, applying
+// the merged reader's from_ns/to_ns filter. Cheaper than letting
+// BinaryLogReader::forEach materialise everything per tape.
+class TapeWalker
+{
+ public:
+  TapeWalker(std::vector<SegmentInfo> segments,
+             std::optional<int64_t> from_ns,
+             std::optional<int64_t> to_ns)
+      : _segments(std::move(segments)),
+        _from_ns(from_ns ? *from_ns : std::numeric_limits<int64_t>::min()),
+        _to_ns(to_ns ? *to_ns : std::numeric_limits<int64_t>::max())
+  {
+    advanceSegment();
+  }
+
+  bool next(ReplayEvent& out)
+  {
+    while (_iter)
+    {
+      if (_iter->next(out))
+      {
+        if (out.timestamp_ns < _from_ns)
+        {
+          continue;
+        }
+        if (out.timestamp_ns > _to_ns)
+        {
+          _iter.reset();
+          _segment_idx = _segments.size();
+          return false;
+        }
+        return true;
+      }
+      ++_segment_idx;
+      advanceSegment();
+    }
+    return false;
+  }
+
+ private:
+  void advanceSegment()
+  {
+    _iter.reset();
+    while (_segment_idx < _segments.size())
+    {
+      const auto& seg = _segments[_segment_idx];
+      // Skip segments entirely outside the time window.
+      if (seg.last_event_ns < _from_ns)
+      {
+        ++_segment_idx;
+        continue;
+      }
+      if (seg.first_event_ns > _to_ns)
+      {
+        return;  // done
+      }
+      _iter = std::make_unique<BinaryLogIterator>(seg.path);
+      if (!_iter->isValid())
+      {
+        _iter.reset();
+        ++_segment_idx;
+        continue;
+      }
+      if (_from_ns > seg.first_event_ns && _iter->hasIndex())
+      {
+        _iter->seekToTimestamp(_from_ns);
+      }
+      else if (_from_ns > seg.first_event_ns)
+      {
+        // No index — try to load one; harmless if absent.
+        _iter->loadIndex();
+        _iter->seekToTimestamp(_from_ns);
+      }
+      return;
+    }
+  }
+
+  std::vector<SegmentInfo> _segments;
+  size_t _segment_idx{0};
+  std::unique_ptr<BinaryLogIterator> _iter;
+  int64_t _from_ns;
+  int64_t _to_ns;
+};
+
+}  // namespace
+
+bool MergedTapeReader::streamEvents(StreamCallback callback)
+{
+  if (!callback)
+  {
+    return false;
+  }
+
+  const size_t n_tapes = _config.tape_dirs.size();
+
+  // One walker per tape (owns the segment chain + iterator). We need
+  // stable storage for these; the heap stores tape_index ints.
+  std::vector<std::unique_ptr<TapeWalker>> walkers;
+  walkers.reserve(n_tapes);
+  std::vector<ReplayEvent> heads(n_tapes);
+  std::vector<bool> alive(n_tapes, false);
+
+  for (size_t i = 0; i < n_tapes; ++i)
+  {
+    // Use BinaryLogReader to discover this tape's segments via the
+    // same filter machinery as the eager path. We grab segment list
+    // then hand it to TapeWalker which iterates without buffering.
+    BinaryLogReader reader(
+        makeReaderConfig(_config.tape_dirs[i], _config.from_ns, _config.to_ns));
+    // segments() returns the cached vector — populate via summary().
+    (void)reader.summary();
+    auto seg_list = reader.segments();
+    auto walker = std::make_unique<TapeWalker>(
+        std::move(seg_list), _config.from_ns, _config.to_ns);
+    if (walker->next(heads[i]))
+    {
+      alive[i] = true;
+    }
+    walkers.push_back(std::move(walker));
+  }
+
+  // Min-heap by (timestamp_ns, tape_index). priority_queue is a
+  // max-heap, hence the > comparator.
+  struct HeapItem
+  {
+    int64_t ts_ns;
+    uint32_t tape_index;
+  };
+  auto cmp = [](const HeapItem& a, const HeapItem& b)
+  {
+    if (a.ts_ns != b.ts_ns)
+    {
+      return a.ts_ns > b.ts_ns;
+    }
+    return a.tape_index > b.tape_index;
+  };
+  std::priority_queue<HeapItem, std::vector<HeapItem>, decltype(cmp)> heap(cmp);
+  for (size_t i = 0; i < n_tapes; ++i)
+  {
+    if (alive[i])
+    {
+      heap.push({heads[i].timestamp_ns, static_cast<uint32_t>(i)});
+    }
+  }
+
+  while (!heap.empty())
+  {
+    auto top = heap.top();
+    heap.pop();
+    const uint32_t ti = top.tape_index;
+    ReplayEvent& ev = heads[ti];
+
+    // Apply symbol rekey + filter.
+    bool emit = true;
+    if (ev.type == EventType::Trade)
+    {
+      uint32_t gid = globalIdForLocal(ti, ev.trade.symbol_id);
+      if (gid == 0 || !symbolPassesFilter(gid))
+      {
+        emit = false;
+      }
+      else
+      {
+        ev.trade.symbol_id = gid;
+      }
+    }
+    else if (ev.type == EventType::BookSnapshot ||
+             ev.type == EventType::BookDelta)
+    {
+      uint32_t gid = globalIdForLocal(ti, ev.book_header.symbol_id);
+      if (gid == 0 || !symbolPassesFilter(gid))
+      {
+        emit = false;
+      }
+      else
+      {
+        ev.book_header.symbol_id = gid;
+      }
+    }
+
+    if (emit)
+    {
+      if (!callback(ti, ev))
+      {
+        return false;  // caller aborted
+      }
+    }
+
+    // Advance this tape's walker.
+    if (walkers[ti]->next(heads[ti]))
+    {
+      heap.push({heads[ti].timestamp_ns, ti});
+    }
+  }
+  return true;
+}
+
+namespace
+{
+
+// IMultiSegmentReader view over a MergedTapeReader. Used by
+// BacktestRunner::runTapes to plug the merged stream into the
+// existing single-reader engine pipeline.
+class MergedAsMultiSegmentReader : public IMultiSegmentReader
+{
+ public:
+  explicit MergedAsMultiSegmentReader(MergedTapeReader* parent) : _parent(parent)
+  {
+  }
+
+  uint64_t forEach(EventCallback callback) override
+  {
+    uint64_t n = 0;
+    _parent->streamEvents(
+        [&](uint32_t, const ReplayEvent& ev) -> bool
+        {
+          ++n;
+          return callback(ev);
+        });
+    return n;
+  }
+
+  uint64_t forEachFrom(int64_t /*start_ts_ns*/, EventCallback callback) override
+  {
+    // The from_ns filter on MergedTapeReader is set at construction;
+    // a mid-stream re-seek would require re-opening the underlying
+    // readers. For BacktestRunner this isn't exercised — `run` calls
+    // `forEach` only.
+    return forEach(std::move(callback));
+  }
+
+  const std::vector<SegmentInfo>& segments() const override
+  {
+    return _empty_segments;
+  }
+  uint64_t totalEvents() const override { return 0; }
+
+ private:
+  MergedTapeReader* _parent;
+  std::vector<SegmentInfo> _empty_segments;
+};
+
+}  // namespace
+
+std::unique_ptr<IMultiSegmentReader>
+MergedTapeReader::asMultiSegmentReader()
+{
+  return std::make_unique<MergedAsMultiSegmentReader>(this);
 }
 
 }  // namespace flox::replay

@@ -113,6 +113,11 @@
           "name": "flox_backtest_runner_run_tape"
         },
         {
+          "group": "backtestrunner_replay",
+          "kind": "function",
+          "name": "flox_backtest_runner_run_tapes"
+        },
+        {
           "group": "execution",
           "kind": "function",
           "name": "flox_backtest_runner_set_executor"
@@ -3052,6 +3057,10 @@
         {
           "kind": "function",
           "name": "flox_backtest_runner_run_tape"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_run_tapes"
         },
         {
           "kind": "function",
@@ -6498,6 +6507,7 @@
         "flox_backtest_runner_run_ohlcv",
         "flox_backtest_runner_run_replay_source",
         "flox_backtest_runner_run_tape",
+        "flox_backtest_runner_run_tapes",
         "flox_backtest_runner_set_kill_switch",
         "flox_backtest_runner_set_order_validator",
         "flox_backtest_runner_set_pnl_tracker",

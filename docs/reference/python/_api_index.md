@@ -171,6 +171,7 @@ Surface: 86 classes, 56 functions, 30 constants.
 - `run_csv(self, path: str, symbol: str = '') -> typing.Any`
 - `run_ohlcv(self, ts: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str = '') -> typing.Any`
 - `run_tape(self, path: str) -> typing.Any`
+- `run_tapes(self, paths: collections.abc.Sequence[str]) -> typing.Any`
 - `set_executor(self, executor: Executor) -> None`
 - `set_kill_switch(self, ks: KillSwitch) -> None`
 - `set_order_validator(self, ov: OrderValidator) -> None`
@@ -798,6 +799,7 @@ Market Profile (TPO) aggregator. Tracks price activity across time periods.
 - `per_tape_stats(self) -> list`
 - `read_books(self) -> tuple`
 - `read_trades(self) -> numpy.ndarray`
+- `stream_events(self, on_trade: typing.Any = None, on_book: typing.Any = None) -> None`
 - `symbol_table(self) -> list`
 - `time_range(self) -> tuple`
 

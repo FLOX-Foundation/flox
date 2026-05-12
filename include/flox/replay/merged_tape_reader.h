@@ -9,11 +9,16 @@
 
 #pragma once
 
+#include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
+#include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/recording_metadata.h"
+
+#include <memory>
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -102,6 +107,25 @@ class MergedTapeReader
   // bids then asks per event; each header's `level_offset` indexes into
   // the returned levels vector.
   std::pair<std::vector<MergedBookRow>, std::vector<BookLevel>> readBooks();
+
+  // Streaming walk via N-way heap merge over per-tape iterators.
+  // O(N tapes) peak memory regardless of total event count — the
+  // path to take for long captures where `readTrades` / `readBooks`
+  // would blow the heap budget.
+  //
+  // `callback` is invoked once per event in (exchange_ts_ns,
+  // tape_index) order. Returning `false` aborts the walk. The
+  // ReplayEvent has its `trade.symbol_id` / `book_header.symbol_id`
+  // already rewritten to the global id.
+  using StreamCallback = std::function<bool(uint32_t tape_index,
+                                            const ReplayEvent& event)>;
+  bool streamEvents(StreamCallback callback);
+
+  // IMultiSegmentReader adapter — wraps `this` so the merged stream
+  // plugs into anything that consumes a single-tape `IMultiSegmentReader`
+  // (BacktestRunner::run, primarily). Lifetime of the returned pointer
+  // is bounded by `this` MergedTapeReader.
+  std::unique_ptr<IMultiSegmentReader> asMultiSegmentReader();
 
   // Per-tape contribution counts. Useful for "one tape is empty" debug.
   struct PerTapeStats
