@@ -8,11 +8,13 @@
  */
 
 #include "flox/replay/aggregator.h"
+#include "flox/replay/aggregators/event_type_stats.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/writers/binary_log_writer.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <array>
 #include <filesystem>
 
@@ -165,4 +167,227 @@ TEST_F(AggregatorFrameworkTest, RunIgnoresNullAggregators)
 
   EXPECT_EQ(counter.events(), num_trades);
   EXPECT_EQ(counter.finalize_calls(), 1);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// EventTypeStatsAggregator
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Mixed-symbol mixed-event tape fixture. Three symbols, each gets a
+// distinct mix of trades / snapshots / deltas so the per-symbol +
+// per-event-kind counters can be verified independently.
+void writeMixedTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 100,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  // symbol 1: 10 trades, 4 snapshots, 0 deltas
+  for (int i = 0; i < 10; ++i)
+  {
+    TradeRecord trade{};
+    trade.exchange_ts_ns = 1'000'000'000LL + i * 1'000LL;
+    trade.symbol_id = 1;
+    trade.trade_id = static_cast<uint64_t>(i);
+    writer.writeTrade(trade);
+  }
+  for (int i = 0; i < 4; ++i)
+  {
+    BookRecordHeader hdr{};
+    hdr.exchange_ts_ns = 2'000'000'000LL + i * 1'000LL;
+    hdr.symbol_id = 1;
+    hdr.type = 0;  // snapshot
+    hdr.bid_count = 1;
+    hdr.ask_count = 1;
+    std::vector<BookLevel> bids = {{1, 1}};
+    std::vector<BookLevel> asks = {{2, 1}};
+    writer.writeBook(hdr, bids, asks);
+  }
+
+  // symbol 2: 5 trades, 0 snapshots, 7 deltas
+  for (int i = 0; i < 5; ++i)
+  {
+    TradeRecord trade{};
+    trade.exchange_ts_ns = 3'000'000'000LL + i * 1'000LL;
+    trade.symbol_id = 2;
+    trade.trade_id = static_cast<uint64_t>(100 + i);
+    writer.writeTrade(trade);
+  }
+  for (int i = 0; i < 7; ++i)
+  {
+    BookRecordHeader hdr{};
+    hdr.exchange_ts_ns = 4'000'000'000LL + i * 1'000LL;
+    hdr.symbol_id = 2;
+    hdr.type = 1;  // delta
+    hdr.bid_count = 1;
+    hdr.ask_count = 0;
+    std::vector<BookLevel> bids = {{3, 1}};
+    std::vector<BookLevel> asks;
+    writer.writeBook(hdr, bids, asks);
+  }
+
+  // symbol 3: 2 trades, 1 snapshot, 1 delta
+  for (int i = 0; i < 2; ++i)
+  {
+    TradeRecord trade{};
+    trade.exchange_ts_ns = 5'000'000'000LL + i * 1'000LL;
+    trade.symbol_id = 3;
+    trade.trade_id = static_cast<uint64_t>(200 + i);
+    writer.writeTrade(trade);
+  }
+  {
+    BookRecordHeader hdr{};
+    hdr.exchange_ts_ns = 6'000'000'000LL;
+    hdr.symbol_id = 3;
+    hdr.type = 0;
+    hdr.bid_count = 1;
+    hdr.ask_count = 1;
+    std::vector<BookLevel> bids = {{4, 1}};
+    std::vector<BookLevel> asks = {{5, 1}};
+    writer.writeBook(hdr, bids, asks);
+  }
+  {
+    BookRecordHeader hdr{};
+    hdr.exchange_ts_ns = 6'001'000'000LL;
+    hdr.symbol_id = 3;
+    hdr.type = 1;
+    hdr.bid_count = 0;
+    hdr.ask_count = 1;
+    std::vector<BookLevel> bids;
+    std::vector<BookLevel> asks = {{6, 1}};
+    writer.writeBook(hdr, bids, asks);
+  }
+
+  writer.close();
+}
+
+const EventTypeStatsAggregator::PerSymbolRow* findRow(
+    const std::vector<EventTypeStatsAggregator::PerSymbolRow>& rows, uint32_t sid)
+{
+  auto it = std::find_if(rows.begin(), rows.end(),
+                         [sid](const auto& r)
+                         { return r.symbol_id == sid; });
+  return it == rows.end() ? nullptr : &*it;
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, EventTypeStatsCountsPerSymbol)
+{
+  writeMixedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  EventTypeStatsAggregator stats;
+  std::array<IAggregator*, 1> aggregators{&stats};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = stats.result();
+  ASSERT_EQ(rows.size(), 3u);
+  // Sorted by symbol_id.
+  EXPECT_EQ(rows[0].symbol_id, 1u);
+  EXPECT_EQ(rows[1].symbol_id, 2u);
+  EXPECT_EQ(rows[2].symbol_id, 3u);
+
+  const auto* s1 = findRow(rows, 1);
+  ASSERT_NE(s1, nullptr);
+  EXPECT_EQ(s1->trades, 10u);
+  EXPECT_EQ(s1->book_snapshots, 4u);
+  EXPECT_EQ(s1->book_deltas, 0u);
+
+  const auto* s2 = findRow(rows, 2);
+  ASSERT_NE(s2, nullptr);
+  EXPECT_EQ(s2->trades, 5u);
+  EXPECT_EQ(s2->book_snapshots, 0u);
+  EXPECT_EQ(s2->book_deltas, 7u);
+
+  const auto* s3 = findRow(rows, 3);
+  ASSERT_NE(s3, nullptr);
+  EXPECT_EQ(s3->trades, 2u);
+  EXPECT_EQ(s3->book_snapshots, 1u);
+  EXPECT_EQ(s3->book_deltas, 1u);
+}
+
+TEST_F(AggregatorFrameworkTest, EventTypeStatsEventFilterTradesOnly)
+{
+  writeMixedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  EventTypeStatsAggregator stats(AggregatorEventFilter::Trades);
+  std::array<IAggregator*, 1> aggregators{&stats};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = stats.result();
+  ASSERT_EQ(rows.size(), 3u);
+  for (const auto& r : rows)
+  {
+    EXPECT_EQ(r.book_snapshots, 0u);
+    EXPECT_EQ(r.book_deltas, 0u);
+  }
+  EXPECT_EQ(findRow(rows, 1)->trades, 10u);
+  EXPECT_EQ(findRow(rows, 2)->trades, 5u);
+  EXPECT_EQ(findRow(rows, 3)->trades, 2u);
+}
+
+TEST_F(AggregatorFrameworkTest, EventTypeStatsEventFilterBooksOnly)
+{
+  writeMixedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  EventTypeStatsAggregator stats(AggregatorEventFilter::BooksOnly);
+  std::array<IAggregator*, 1> aggregators{&stats};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = stats.result();
+  // Only symbols with book events appear. Symbol 1: 4 snapshots, symbol
+  // 2: 7 deltas, symbol 3: 1 + 1. All three have books, so 3 rows.
+  ASSERT_EQ(rows.size(), 3u);
+  for (const auto& r : rows)
+  {
+    EXPECT_EQ(r.trades, 0u);
+  }
+  EXPECT_EQ(findRow(rows, 1)->book_snapshots, 4u);
+  EXPECT_EQ(findRow(rows, 2)->book_deltas, 7u);
+  EXPECT_EQ(findRow(rows, 3)->book_snapshots, 1u);
+  EXPECT_EQ(findRow(rows, 3)->book_deltas, 1u);
+}
+
+TEST_F(AggregatorFrameworkTest, EventTypeStatsSymbolFilter)
+{
+  writeMixedTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  // Filter to symbols 1 and 3 only. Symbol 2 should not appear in the
+  // result vector at all (its counters stay at zero and the row is
+  // never inserted).
+  EventTypeStatsAggregator stats(AggregatorEventFilter::Both, {1, 3});
+  std::array<IAggregator*, 1> aggregators{&stats};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = stats.result();
+  ASSERT_EQ(rows.size(), 2u);
+  EXPECT_EQ(rows[0].symbol_id, 1u);
+  EXPECT_EQ(rows[1].symbol_id, 3u);
+  EXPECT_EQ(findRow(rows, 2), nullptr);
+}
+
+TEST_F(AggregatorFrameworkTest, EventTypeStatsResultEmptyBeforeRun)
+{
+  // The contract: result() returns an empty vector until run() has
+  // finalised. Skipping run() (or never starting it) yields no rows
+  // even if onEvent was somehow invoked manually — finalize() is the
+  // step that publishes the result.
+  EventTypeStatsAggregator stats;
+  EXPECT_TRUE(stats.result().empty());
 }
