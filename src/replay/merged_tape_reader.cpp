@@ -136,6 +136,13 @@ void MergedTapeReader::loadManifests()
     st.path = dir;
     st.first_event_ns = summary.first_event_ns;
     st.last_event_ns = summary.last_event_ns;
+    // Manifest carries trade / book-update counts written by
+    // `BinaryLogWriter::close()`. Legacy tapes (recorded before the
+    // counts were added) report 0 here — `summary()` falls back to
+    // `BinaryLogReader::inspect`'s lumped `total_events` so the
+    // aggregate stays meaningful.
+    st.trades = meta.total_trades;
+    st.books = meta.total_book_updates;
     _per_tape_stats.push_back(st);
     _inspect_total_events.push_back(summary.total_events);
 
@@ -296,7 +303,6 @@ std::vector<MergedTradeRow> MergedTapeReader::readTrades()
           row.tape_index = static_cast<uint32_t>(i);
           row.side = ev.trade.side;
           rows.push_back(row);
-          ++_per_tape_stats[i].trades;
           return true;
         });
   }
@@ -360,7 +366,6 @@ MergedTapeReader::readBooks()
           p.bids = ev.bids;
           p.asks = ev.asks;
           pending.push_back(std::move(p));
-          ++_per_tape_stats[i].books;
           return true;
         });
   }
@@ -657,18 +662,19 @@ MergedTapeReader::Summary MergedTapeReader::summary() const noexcept
   s.last_event_ns = _time_range.second;
   s.tape_count = static_cast<uint32_t>(_per_tape_stats.size());
   s.symbol_count = static_cast<uint32_t>(_symbols.size());
-  // Prefer the actual contribution counts if `readTrades`/`readBooks`
-  // already ran (post-filter, exact). Otherwise fall back to the
-  // construction-time `BinaryLogReader::inspect` totals so freshly
-  // built readers report a meaningful event count.
-  uint64_t contributed = 0;
+  // Prefer manifest-derived per-tape counts. Tapes recorded before
+  // `manifest.total_trades` / `total_book_updates` were added report
+  // 0 in both fields — for those, fall back to the lumped
+  // `BinaryLogReader::inspect` total so legacy captures still have
+  // a meaningful event count in the summary.
+  uint64_t manifest_total = 0;
   for (const auto& t : _per_tape_stats)
   {
-    contributed += t.trades + t.books;
+    manifest_total += t.trades + t.books;
   }
-  if (contributed > 0)
+  if (manifest_total > 0)
   {
-    s.total_events = contributed;
+    s.total_events = manifest_total;
   }
   else
   {

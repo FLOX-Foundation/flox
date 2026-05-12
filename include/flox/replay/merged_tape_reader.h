@@ -141,7 +141,12 @@ class MergedTapeReader
   // is bounded by `this` MergedTapeReader.
   std::unique_ptr<IMultiSegmentReader> asMultiSegmentReader();
 
-  // Per-tape contribution counts. Useful for "one tape is empty" debug.
+  // Per-tape ground-truth counts from the recording manifest. Populated
+  // at construction so callers can audit "one tape is empty" without
+  // a `readTrades`/`readBooks` round trip. Legacy tapes recorded before
+  // `manifest.total_trades` / `total_book_updates` were added report
+  // 0 here — for those, `summary()` falls back to the lumped
+  // `BinaryLogReader::inspect` total so the aggregate stays useful.
   struct PerTapeStats
   {
     std::filesystem::path path;

@@ -319,22 +319,65 @@ class BacktestRunTapesTests(unittest.TestCase):
             self.assertEqual(s["total_events"], 8)
             self.assertLessEqual(s["first_event_ns"], s["last_event_ns"])
 
-    def test_summary_after_read_uses_contribution_counts(self):
-        """After `read_trades`/`read_books`, `summary()` reports the
-        post-filter contribution counts (which may differ from the raw
-        inspect total when `symbols=` filters out a tape)."""
+    # ── per_tape_stats() ────────────────────────────────────────────────
+    def test_per_tape_stats_filled_from_manifest_at_construction(self):
+        """`per_tape_stats()` must report honest trade / book counts
+        immediately after construction — no `read_trades` / `read_books`
+        round trip required. The values come from the recording
+        manifest (`total_trades` / `total_book_updates`), which
+        `BinaryLogWriter::close()` populates from `WriterStats`."""
         with tempfile.TemporaryDirectory() as d:
             t1 = os.path.join(d, "bybit")
+            t2 = os.path.join(d, "binance")
             base = 1_700_000_000_000_000_000
-            _write_tape(t1, "bybit", "BTCUSDT",
-                        [(base + i * 1_000_000, 50000.0 + i, 0.1, True)
-                         for i in range(4)],
-                        exchange_id=1)
+            _write_tape(
+                t1, "bybit", "BTCUSDT",
+                trades=[(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                        for i in range(5)],
+                books=[(base + i * 2_000_000,
+                        [100.0, 99.5], [1.0, 2.0],
+                        [100.5, 101.0], [1.5, 2.5])
+                       for i in range(3)],
+                exchange_id=1,
+            )
+            _write_tape(
+                t2, "binance", "ETHUSDT",
+                trades=[(base + 500_000 + i * 1_000_000, 3000.0 + i, 1.0, False)
+                        for i in range(7)],
+                exchange_id=2,
+            )
 
-            mr = flox.MergedTapeReader([t1])
+            mr = flox.MergedTapeReader([t1, t2])
+            stats = mr.per_tape_stats()
+            self.assertEqual(len(stats), 2)
+
+            by_path = {s["path"]: s for s in stats}
+            self.assertEqual(by_path[t1]["trades"], 5)
+            self.assertEqual(by_path[t1]["books"], 3)
+            self.assertEqual(by_path[t2]["trades"], 7)
+            self.assertEqual(by_path[t2]["books"], 0)
+
+    def test_per_tape_stats_stable_after_reads(self):
+        """`per_tape_stats()` reflects manifest ground truth, not
+        consumed-during-read counts — repeated reads (with or without
+        filters) leave the numbers untouched."""
+        with tempfile.TemporaryDirectory() as d:
+            t = os.path.join(d, "bybit")
+            base = 1_700_000_000_000_000_000
+            _write_tape(
+                t, "bybit", "BTCUSDT",
+                trades=[(base + i * 1_000_000, 50000.0 + i, 0.1, True)
+                        for i in range(4)],
+                exchange_id=1,
+            )
+
+            mr = flox.MergedTapeReader([t])
+            before = mr.per_tape_stats()[0]["trades"]
             mr.read_trades()
-            s = mr.summary()
-            self.assertEqual(s["total_events"], 4)
+            mr.read_trades()
+            after = mr.per_tape_stats()[0]["trades"]
+            self.assertEqual(before, 4)
+            self.assertEqual(after, 4)
 
 
 if __name__ == "__main__":
