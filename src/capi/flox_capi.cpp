@@ -29,6 +29,12 @@
 #include "flox/book/nlevel_order_book.h"
 #include "flox/execution/algos.h"
 #include "flox/replay/abstract_event_reader.h"
+#include "flox/replay/aggregator.h"
+#include "flox/replay/aggregators/bin_count.h"
+#include "flox/replay/aggregators/event_type_stats.h"
+#include "flox/replay/aggregators/peak.h"
+#include "flox/replay/aggregators/quantile.h"
+#include "flox/replay/aggregators/volume_bin.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/delta_book.h"
 #include "flox/replay/ohlcv_replay_source.h"
@@ -8036,4 +8042,356 @@ extern "C" uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderH
                                                         uint32_t index)
 {
   return toBarDispatchRecorder(h)->paramAt(index);
+}
+
+// ============================================================
+// Streaming tape aggregators (W14-T019)
+// ============================================================
+
+namespace
+{
+
+// Tagged holder. The C ABI exposes a single FloxAggregatorHandle
+// (void*), but each result accessor needs to know the concrete type
+// to do a typed static_cast. The `kind` tag is checked on every
+// `*_read_result` entry; mismatched kind → return 0 rows so a buggy
+// binding can't read garbage past the end of a smaller Row struct.
+struct AggregatorHolder
+{
+  enum Kind : uint8_t
+  {
+    KIND_EVENT_TYPE_STATS,
+    KIND_BIN_COUNT,
+    KIND_VOLUME_BIN,
+    KIND_PEAK,
+    KIND_QUANTILE,
+  };
+  Kind kind;
+  std::unique_ptr<replay::IAggregator> impl;
+
+  template <typename T>
+  T* as(Kind expected)
+  {
+    if (kind != expected)
+    {
+      return nullptr;
+    }
+    return static_cast<T*>(impl.get());
+  }
+};
+
+inline AggregatorHolder* toAgg(FloxAggregatorHandle h)
+{
+  return static_cast<AggregatorHolder*>(h);
+}
+
+inline replay::AggregatorEventFilter toAggFilter(FloxAggregatorEventFilter f)
+{
+  switch (f)
+  {
+    case FLOX_AGG_FILTER_TRADES:
+      return replay::AggregatorEventFilter::Trades;
+    case FLOX_AGG_FILTER_BOOKS_ONLY:
+      return replay::AggregatorEventFilter::BooksOnly;
+    case FLOX_AGG_FILTER_BOTH:
+    default:
+      return replay::AggregatorEventFilter::Both;
+  }
+}
+
+inline std::vector<uint32_t> copySymbolFilter(const uint32_t* sf, uint32_t count)
+{
+  if (sf == nullptr || count == 0)
+  {
+    return {};
+  }
+  return std::vector<uint32_t>(sf, sf + count);
+}
+
+}  // namespace
+
+extern "C" FloxAggregatorHandle flox_event_type_stats_aggregator_create(
+    FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+    uint32_t symbol_filter_count)
+{
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_EVENT_TYPE_STATS,
+      std::make_unique<replay::EventTypeStatsAggregator>(
+          toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
+extern "C" FloxAggregatorHandle flox_bin_count_aggregator_create(
+    int64_t bucket_ns, uint8_t by_side, uint8_t by_symbol,
+    FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+    uint32_t symbol_filter_count)
+{
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_BIN_COUNT,
+      std::make_unique<replay::BinCountAggregator>(
+          bucket_ns, by_side != 0, by_symbol != 0, toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
+extern "C" FloxAggregatorHandle flox_volume_bin_aggregator_create(
+    int64_t bucket_ns, uint8_t by_side, uint8_t by_symbol,
+    FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+    uint32_t symbol_filter_count)
+{
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_VOLUME_BIN,
+      std::make_unique<replay::VolumeBinAggregator>(
+          bucket_ns, by_side != 0, by_symbol != 0, toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
+extern "C" FloxAggregatorHandle flox_peak_aggregator_create(
+    const int64_t* window_ns_list, uint32_t window_count, uint32_t top_n,
+    uint32_t oversample_factor, FloxAggregatorEventFilter event_filter,
+    const uint32_t* symbol_filter, uint32_t symbol_filter_count)
+{
+  std::vector<int64_t> windows;
+  if (window_ns_list != nullptr && window_count > 0)
+  {
+    windows.assign(window_ns_list, window_ns_list + window_count);
+  }
+  // 0 → engine default (100). PeakAggregator's ctor maxes the factor
+  // at 1 internally so a 0 here would collapse the heap to top_n
+  // candidates only — pass 100 to preserve the spec'd default.
+  const std::size_t oversample =
+      oversample_factor == 0 ? std::size_t{100} : std::size_t{oversample_factor};
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_PEAK,
+      std::make_unique<replay::PeakAggregator>(
+          std::move(windows), top_n, oversample, toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
+extern "C" FloxAggregatorHandle flox_quantile_aggregator_create(
+    const int64_t* window_ns_list, uint32_t window_count,
+    const double* quantiles, uint32_t quantile_count,
+    FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+    uint32_t symbol_filter_count)
+{
+  std::vector<int64_t> windows;
+  if (window_ns_list != nullptr && window_count > 0)
+  {
+    windows.assign(window_ns_list, window_ns_list + window_count);
+  }
+  std::vector<double> qs;
+  if (quantiles != nullptr && quantile_count > 0)
+  {
+    qs.assign(quantiles, quantiles + quantile_count);
+  }
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_QUANTILE,
+      std::make_unique<replay::QuantileAggregator>(
+          std::move(windows), std::move(qs), toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
+extern "C" void flox_aggregator_destroy(FloxAggregatorHandle h)
+{
+  delete toAgg(h);
+}
+
+extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
+                                        FloxAggregatorHandle* aggregators,
+                                        uint32_t aggregator_count)
+{
+  if (reader == nullptr)
+  {
+    return 0;
+  }
+  std::vector<replay::IAggregator*> raw;
+  if (aggregators != nullptr && aggregator_count > 0)
+  {
+    raw.reserve(aggregator_count);
+    for (uint32_t i = 0; i < aggregator_count; ++i)
+    {
+      auto* holder = toAgg(aggregators[i]);
+      raw.push_back(holder != nullptr ? holder->impl.get() : nullptr);
+    }
+  }
+  auto* r = static_cast<replay::BinaryLogReader*>(reader);
+  return r->run(raw) ? 1 : 0;
+}
+
+extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
+                                               FloxAggregatorHandle* aggregators,
+                                               uint32_t aggregator_count)
+{
+  if (reader == nullptr)
+  {
+    return 0;
+  }
+  std::vector<replay::IAggregator*> raw;
+  if (aggregators != nullptr && aggregator_count > 0)
+  {
+    raw.reserve(aggregator_count);
+    for (uint32_t i = 0; i < aggregator_count; ++i)
+    {
+      auto* holder = toAgg(aggregators[i]);
+      raw.push_back(holder != nullptr ? holder->impl.get() : nullptr);
+    }
+  }
+  auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(reader);
+  if (!impl || !impl->reader)
+  {
+    return 0;
+  }
+  return impl->reader->run(raw) ? 1 : 0;
+}
+
+extern "C" uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h,
+                                                      FloxEventTypeStatsRow* rows_out,
+                                                      uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::EventTypeStatsAggregator>(
+      AggregatorHolder::KIND_EVENT_TYPE_STATS);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].symbol_id = rows[i].symbol_id;
+    rows_out[i].trades = rows[i].trades;
+    rows_out[i].book_snapshots = rows[i].book_snapshots;
+    rows_out[i].book_deltas = rows[i].book_deltas;
+  }
+  return n;
+}
+
+extern "C" uint32_t flox_bin_count_read_result(FloxAggregatorHandle h,
+                                               FloxBinCountRow* rows_out,
+                                               uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::BinCountAggregator>(AggregatorHolder::KIND_BIN_COUNT);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].bucket_ts_ns = rows[i].bucket_ts_ns;
+    rows_out[i].symbol_id = rows[i].symbol_id;
+    rows_out[i].side = rows[i].side;
+    rows_out[i].count = rows[i].count;
+  }
+  return n;
+}
+
+extern "C" uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
+                                                FloxVolumeBinRow* rows_out,
+                                                uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::VolumeBinAggregator>(AggregatorHolder::KIND_VOLUME_BIN);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].bucket_ts_ns = rows[i].bucket_ts_ns;
+    rows_out[i].symbol_id = rows[i].symbol_id;
+    rows_out[i].side = rows[i].side;
+    rows_out[i].qty_raw = rows[i].qty_raw;
+  }
+  return n;
+}
+
+extern "C" uint32_t flox_peak_read_result(FloxAggregatorHandle h,
+                                          FloxPeakRow* rows_out, uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::PeakAggregator>(AggregatorHolder::KIND_PEAK);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].window_ns = rows[i].window_ns;
+    rows_out[i].count = rows[i].count;
+    rows_out[i].start_ns = rows[i].start_ns;
+  }
+  return n;
+}
+
+extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
+                                              FloxQuantileRow* rows_out,
+                                              uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::QuantileAggregator>(AggregatorHolder::KIND_QUANTILE);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].window_ns = rows[i].window_ns;
+    rows_out[i].quantile = rows[i].quantile;
+    rows_out[i].count = rows[i].count;
+  }
+  return n;
 }

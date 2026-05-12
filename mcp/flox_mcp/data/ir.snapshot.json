@@ -1,6 +1,23 @@
 {
   "enums": [
     {
+      "name": "FloxAggregatorEventFilter",
+      "values": [
+        {
+          "name": "FLOX_AGG_FILTER_TRADES",
+          "value": 1
+        },
+        {
+          "name": "FLOX_AGG_FILTER_BOOKS_ONLY",
+          "value": 2
+        },
+        {
+          "name": "FLOX_AGG_FILTER_BOTH",
+          "value": 3
+        }
+      ]
+    },
+    {
       "name": "FloxQueueModel",
       "values": [
         {
@@ -839,6 +856,17 @@
       "return_type": "uint32_t"
     },
     {
+      "group": "tape_aggregator",
+      "name": "flox_aggregator_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "backtest_slippage",
       "name": "flox_backtest_result_create",
       "params": [
@@ -1458,6 +1486,56 @@
         }
       ],
       "return_type": "int64_t"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_bin_count_aggregator_create",
+      "params": [
+        {
+          "name": "bucket_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "by_side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "by_symbol",
+          "type": "uint8_t"
+        },
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_bin_count_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxBinCountRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
     },
     {
       "group": "binary_log_recorder_hook",
@@ -2208,6 +2286,25 @@
         }
       ],
       "return_type": "uint64_t"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_data_reader_run",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "aggregators",
+          "type": "FloxAggregatorHandle *"
+        },
+        {
+          "name": "aggregator_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
     },
     {
       "group": "datareader",
@@ -3095,6 +3192,44 @@
         }
       ],
       "return_type": "uint64_t"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_event_type_stats_aggregator_create",
+      "params": [
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_event_type_stats_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxEventTypeStatsRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
     },
     {
       "group": "execution_algos",
@@ -5957,6 +6092,25 @@
       "return_type": "uint64_t"
     },
     {
+      "group": "tape_aggregator",
+      "name": "flox_merged_tape_reader_run",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxMergedTapeReaderHandle"
+        },
+        {
+          "name": "aggregators",
+          "type": "FloxAggregatorHandle *"
+        },
+        {
+          "name": "aggregator_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "merged_tape_reader",
       "name": "flox_merged_tape_reader_symbol_count",
       "params": [
@@ -6693,6 +6847,60 @@
       "return_type": "uint32_t"
     },
     {
+      "group": "tape_aggregator",
+      "name": "flox_peak_aggregator_create",
+      "params": [
+        {
+          "name": "window_ns_list",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "window_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "top_n",
+          "type": "uint32_t"
+        },
+        {
+          "name": "oversample_factor",
+          "type": "uint32_t"
+        },
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_peak_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxPeakRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "metrics",
       "name": "flox_pnl_tracker_create",
       "params": [
@@ -7221,6 +7429,60 @@
         }
       ],
       "return_type": "double"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_quantile_aggregator_create",
+      "params": [
+        {
+          "name": "window_ns_list",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "window_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "quantiles",
+          "type": "const double *"
+        },
+        {
+          "name": "quantile_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_quantile_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxQuantileRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
     },
     {
       "group": "fixed_point",
@@ -10022,6 +10284,56 @@
       "return_type": "void"
     },
     {
+      "group": "tape_aggregator",
+      "name": "flox_volume_bin_aggregator_create",
+      "params": [
+        {
+          "name": "bucket_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "by_side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "by_symbol",
+          "type": "uint8_t"
+        },
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_volume_bin_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxVolumeBinRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "volume_profile",
       "name": "flox_volume_profile_add_trade",
       "params": [
@@ -10500,6 +10812,27 @@
     {
       "fields": [
         {
+          "name": "bucket_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "count",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxBinCountRow"
+    },
+    {
+      "fields": [
+        {
           "name": "symbol",
           "type": "uint32_t"
         },
@@ -10696,6 +11029,27 @@
         }
       ],
       "name": "FloxEquityPoint"
+    },
+    {
+      "fields": [
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "trades",
+          "type": "uint64_t"
+        },
+        {
+          "name": "book_snapshots",
+          "type": "uint64_t"
+        },
+        {
+          "name": "book_deltas",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxEventTypeStatsRow"
     },
     {
       "fields": [
@@ -11286,6 +11640,23 @@
     {
       "fields": [
         {
+          "name": "window_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "count",
+          "type": "uint64_t"
+        },
+        {
+          "name": "start_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxPeakRow"
+    },
+    {
+      "fields": [
+        {
           "name": "on_signal",
           "type": "FloxPnLTrackerOnSignalFn"
         },
@@ -11332,6 +11703,23 @@
         }
       ],
       "name": "FloxPortfolioRiskRules"
+    },
+    {
+      "fields": [
+        {
+          "name": "window_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "quantile",
+          "type": "double"
+        },
+        {
+          "name": "count",
+          "type": "uint64_t"
+        }
+      ],
+      "name": "FloxQuantileRow"
     },
     {
       "fields": [
@@ -11783,6 +12171,27 @@
     {
       "fields": [
         {
+          "name": "bucket_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxVolumeBinRow"
+    },
+    {
+      "fields": [
+        {
           "name": "mode",
           "type": "uint8_t"
         },
@@ -11877,6 +12286,10 @@
     }
   ],
   "typedefs": [
+    {
+      "name": "FloxAggregatorHandle",
+      "target": "void*"
+    },
     {
       "name": "FloxBacktestResultHandle",
       "target": "void*"

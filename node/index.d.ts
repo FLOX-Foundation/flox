@@ -1235,6 +1235,86 @@ export class DataReader {
   readBBOFrom(startTsNs: number | bigint, max?: number): BboRecord[];
   readBookUpdates(): BookUpdateRecord[];
   readBookUpdatesFrom(startTsNs: number | bigint): BookUpdateRecord[];
+  /** Streaming aggregator dispatch over the tape in a single
+   *  decompression pass. Returns `true` on success; an empty list is a
+   *  no-op no-decompression call returning `true`. */
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>): boolean;
+}
+
+// ── Streaming tape aggregator framework (W14-T019) ─────────────────
+
+/** Event-type filter applied inside each aggregator. Numeric constants
+ *  mirror the C ABI: 1 = Trades, 2 = BooksOnly, 3 = Both. */
+export const AggregatorEventFilter: {
+  readonly Trades: 1;
+  readonly BooksOnly: 2;
+  readonly Both: 3;
+};
+export type AggregatorEventFilter = typeof AggregatorEventFilter[keyof typeof AggregatorEventFilter];
+
+export interface EventTypeStatsRow {
+  symbolId: number;
+  trades: bigint;
+  bookSnapshots: bigint;
+  bookDeltas: bigint;
+}
+export class EventTypeStatsAggregator {
+  constructor(eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): EventTypeStatsRow[];
+}
+
+export interface BinCountRow {
+  bucketTsNs: bigint;
+  symbolId: number;
+  /** 0 = aggregate, 1 = BUY, 2 = SELL. */
+  side: number;
+  count: bigint;
+}
+export class BinCountAggregator {
+  constructor(bucketNs: bigint | number, bySide?: boolean, bySymbol?: boolean,
+              eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): BinCountRow[];
+}
+
+export interface VolumeBinRow {
+  bucketTsNs: bigint;
+  symbolId: number;
+  side: number;
+  qtyRaw: bigint;
+}
+export class VolumeBinAggregator {
+  constructor(bucketNs: bigint | number, bySide?: boolean, bySymbol?: boolean,
+              eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): VolumeBinRow[];
+}
+
+export interface PeakEntry {
+  count: bigint;
+  startNs: bigint;
+}
+export interface PeakWindowResult {
+  windowNs: bigint;
+  peaks: PeakEntry[];
+}
+export class PeakAggregator {
+  constructor(windowNsList: Array<bigint | number>, topN?: number,
+              oversampleFactor?: number,
+              eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): PeakWindowResult[];
+}
+
+export interface QuantileThreshold {
+  quantile: number;
+  count: bigint;
+}
+export interface QuantileWindowResult {
+  windowNs: bigint;
+  thresholds: QuantileThreshold[];
+}
+export class QuantileAggregator {
+  constructor(windowNsList: Array<bigint | number>, quantiles: number[],
+              eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): QuantileWindowResult[];
 }
 
 /** Built-in `.floxlog` recorder. Owns a `BinaryLogWriter` on the engine
@@ -1333,6 +1413,11 @@ export class MergedTapeReader {
    *  `DataReader.readBookUpdates()`. `symbolId` is the rekeyed
    *  `globalId`. */
   readBooks(): BookUpdateRecord[];
+  /** Streaming aggregator dispatch over the merged stream in a single
+   *  decompression pass. Same contract as `DataReader.run` — events
+   *  carry global-rewritten symbol ids; per-tape provenance is not
+   *  surfaced to aggregators. */
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>): boolean;
 }
 
 export interface Partition {

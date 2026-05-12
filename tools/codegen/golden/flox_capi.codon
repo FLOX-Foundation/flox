@@ -587,6 +587,21 @@ from C import flox_registry_get_symbol_id(cobj, cobj, cobj, Ptr[u32]) -> u8
 from C import flox_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
 from C import flox_registry_symbol_count(cobj) -> u32
 
+# ── tape_aggregator ──
+from C import flox_event_type_stats_aggregator_create(cobj, Ptr[u32], u32) -> cobj
+from C import flox_bin_count_aggregator_create(i64, u8, u8, cobj, Ptr[u32], u32) -> cobj
+from C import flox_volume_bin_aggregator_create(i64, u8, u8, cobj, Ptr[u32], u32) -> cobj
+from C import flox_peak_aggregator_create(Ptr[i64], u32, u32, u32, cobj, Ptr[u32], u32) -> cobj
+from C import flox_quantile_aggregator_create(Ptr[i64], u32, Ptr[float], u32, cobj, Ptr[u32], u32) -> cobj
+from C import flox_aggregator_destroy(cobj)
+from C import flox_data_reader_run(cobj, cobj, u32) -> u8
+from C import flox_merged_tape_reader_run(cobj, cobj, u32) -> u8
+from C import flox_event_type_stats_read_result(cobj, cobj, u32) -> u32
+from C import flox_bin_count_read_result(cobj, cobj, u32) -> u32
+from C import flox_volume_bin_read_result(cobj, cobj, u32) -> u32
+from C import flox_peak_read_result(cobj, cobj, u32) -> u32
+from C import flox_quantile_read_result(cobj, cobj, u32) -> u32
+
 # ── tape_diff ──
 from C import flox_tape_diff_create(cobj, cobj, u32, i64) -> cobj
 from C import flox_tape_diff_destroy(cobj)
