@@ -116,9 +116,16 @@ void PeakAggregator::onEvent(const ReplayEvent& ev)
       scale.heap.push_back(candidate);
       std::push_heap(scale.heap.begin(), scale.heap.end(), HeapGreater{});
     }
-    else if (HeapGreater{}(scale.heap.front(), candidate))
+    else if (HeapGreater{}(candidate, scale.heap.front()))
     {
-      // candidate beats the current minimum — replace.
+      // candidate beats the current minimum — replace. HeapGreater
+      // is greater-than on count (then start_ns); the comparator
+      // arg order is (candidate, front) so the predicate reads
+      // "candidate > front" — candidate is bigger than the heap's
+      // current minimum. The arg-swapped version of this check
+      // silently kept the smallest-N candidates instead of the
+      // largest, capping top peaks at the first `budget` events'
+      // small counts.
       std::pop_heap(scale.heap.begin(), scale.heap.end(), HeapGreater{});
       scale.heap.back() = candidate;
       std::push_heap(scale.heap.begin(), scale.heap.end(), HeapGreater{});

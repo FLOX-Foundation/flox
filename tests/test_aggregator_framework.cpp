@@ -1138,6 +1138,50 @@ TEST_F(AggregatorFrameworkTest, StreamForEachVisitsEveryEvent)
   EXPECT_EQ(static_cast<uint64_t>(seen), expected);
 }
 
+TEST_F(AggregatorFrameworkTest, PeakHeapBudgetBoundedPathKeepsLargestCounts)
+{
+  // Regression for the budget-bound replace path bug: with
+  // oversample_factor=1 and top_n=2 the heap fills at 2 candidates,
+  // every subsequent event hits the branch that replaces the heap
+  // minimum if the new candidate beats it.
+  //
+  // Fixture: 100 trades 1ms apart, 100ms sliding window. The
+  // observed window count grows 1, 2, 3, ..., 100 across event
+  // arrivals — every candidate after the second is strictly larger
+  // than the current heap minimum and MUST replace it. Correct
+  // top-1 count is in the 90s. The arg-swapped version of the heap
+  // check would freeze top-1 at 2 (the largest count before the
+  // budget filled), so any drift back below ~50 means the bug
+  // returned.
+  WriterConfig cfg{.output_dir = _test_dir,
+                   .index_interval = 1000,
+                   .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(cfg);
+  for (int i = 0; i < 100; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 1'000'000LL * (i + 1);  // 1ms..100ms
+    t.symbol_id = 1;
+    t.trade_id = static_cast<uint64_t>(i);
+    writer.writeTrade(t);
+  }
+  writer.close();
+
+  ReaderConfig rcfg{.data_dir = _test_dir};
+  BinaryLogReader reader(rcfg);
+
+  PeakAggregator peak({100'000'000LL}, /*top_n=*/2, /*oversample_factor=*/1);
+  std::array<IAggregator*, 1> aggs{&peak};
+  ASSERT_TRUE(reader.run(aggs));
+
+  const auto& rows = peak.result();
+  ASSERT_FALSE(rows.empty());
+  EXPECT_GE(rows[0].count, 90u)
+      << "top-1 count should reflect the steady-state full window (~100); "
+      << "got " << rows[0].count
+      << " — heap comparator likely keeping smallest instead of largest";
+}
+
 TEST_F(AggregatorFrameworkTest, PeakSymbolFilterScopesToListedSymbols)
 {
   // Add a second symbol that has its own larger burst; filter to
