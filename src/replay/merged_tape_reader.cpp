@@ -10,6 +10,7 @@
 #include "flox/replay/merged_tape_reader.h"
 
 #include "flox/error/flox_error.h"
+#include "flox/replay/aggregator.h"
 #include "flox/replay/readers/binary_log_reader.h"
 
 #include <algorithm>
@@ -600,6 +601,37 @@ bool MergedTapeReader::streamEvents(StreamCallback callback)
     }
   }
   return true;
+}
+
+bool MergedTapeReader::run(std::span<IAggregator* const> aggregators)
+{
+  if (aggregators.empty())
+  {
+    return true;
+  }
+
+  const bool walked = streamEvents(
+      [&aggregators](uint32_t /*tape_index*/, const ReplayEvent& ev) -> bool
+      {
+        for (auto* agg : aggregators)
+        {
+          if (agg != nullptr)
+          {
+            agg->onEvent(ev);
+          }
+        }
+        return true;
+      });
+
+  for (auto* agg : aggregators)
+  {
+    if (agg != nullptr)
+    {
+      agg->finalize();
+    }
+  }
+
+  return walked;
 }
 
 namespace

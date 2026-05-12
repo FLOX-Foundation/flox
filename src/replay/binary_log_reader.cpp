@@ -8,6 +8,7 @@
  */
 
 #include "flox/replay/readers/binary_log_reader.h"
+#include "flox/replay/aggregator.h"
 #include "flox/replay/ops/compression.h"
 
 #include <algorithm>
@@ -541,6 +542,40 @@ bool BinaryLogReader::forEach(EventCallback callback)
   }
 
   return true;
+}
+
+bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
+{
+  // Empty span: do not even scan / decompress. This is the contract
+  // that lets a `run([])` call cost effectively zero in the framework
+  // tests that exercise the no-op path.
+  if (aggregators.empty())
+  {
+    return true;
+  }
+
+  const bool walked = forEach(
+      [&aggregators](const ReplayEvent& ev)
+      {
+        for (auto* agg : aggregators)
+        {
+          if (agg != nullptr)
+          {
+            agg->onEvent(ev);
+          }
+        }
+        return true;
+      });
+
+  for (auto* agg : aggregators)
+  {
+    if (agg != nullptr)
+    {
+      agg->finalize();
+    }
+  }
+
+  return walked;
 }
 
 bool BinaryLogReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)

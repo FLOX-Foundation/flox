@@ -17,10 +17,13 @@
 #include <functional>
 #include <optional>
 #include <set>
+#include <span>
 #include <vector>
 
 namespace flox::replay
 {
+
+class IAggregator;
 
 struct TimeRange
 {
@@ -183,6 +186,12 @@ class BinaryLogReader
   using EventCallback = std::function<bool(const ReplayEvent&)>;
   bool forEach(EventCallback callback);
   bool forEachFrom(int64_t start_ts_ns, EventCallback callback);
+
+  // Single-pass streaming aggregator dispatch. Walks the tape once,
+  // forwarding each event to every aggregator's onEvent, then calling
+  // finalize() on each. An empty span is a no-op and performs no
+  // decompression. See `include/flox/replay/aggregator.h`.
+  bool run(std::span<IAggregator* const> aggregators);
 
   std::optional<std::pair<int64_t, int64_t>> timeRange() const;
   ReaderStats stats() const;
