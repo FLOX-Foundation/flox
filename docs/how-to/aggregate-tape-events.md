@@ -127,6 +127,47 @@ For each `window_ns`, the aggregator records the sliding-window event count at e
 
 Quantiles must be in `(0.0, 1.0]`. The result row count is `len(window_ns_list) × len(quantiles)`. When `event_filter` admits no events, rows still appear with `count=0` so the shape stays stable.
 
+## Parallel execution
+
+`reader.run(panel)` accepts an optional `n_threads` argument controlling worker concurrency:
+
+```python
+reader.run(panel, n_threads=4)   # explicit 4 workers
+reader.run(panel)                # default n_threads=0 → auto
+```
+
+`n_threads` policy:
+
+- `0` (default): auto, resolved to `min(blocks_per_segment / 2, hardware_concurrency())`. The caller doesn't have to know the tape layout or the core count; small captures stay single-threaded, multi-block segments saturate available cores.
+- `1`: explicit single-thread. Useful for benchmarking the base path or for environments where threading is undesirable.
+- `>1`: explicit worker count. Capped to the effective block count per segment so an over-eager `n_threads=100` on a 4-block segment allocates only 4 panel clones.
+
+The partition is **intra-segment** at the compressed-block level. Each worker holds its own panel cloned from the caller's via `IAggregator::cloneEmpty()` and walks its assigned block range; results merge into the caller's originals via `IAggregator::merge()` before `finalize()`. This is the path that gives real speedup on captures with one big active segment (md_collector-style); segment-level partition would leave workers idle.
+
+Aggregators with associative state (`EventTypeStats`, `BinCount`, `VolumeBin`, `Quantile`) produce identical results between single-thread and parallel runs.
+
+`PeakAggregator` and `QuantileAggregator` are sliding-window aggregators: with `N` workers there are up to `N-1` partition seams per segment, each at most `max(window_ns)` wide, where events spanning the seam are not seen by a single worker's window. The trade-off is documented on `IAggregator::merge`. For peak-finding at the `window_ns` scale where the bursts you care about are much wider than the seam, results match the single-thread reference; for window-finding at sub-millisecond scales on a tape with 16 workers, expect a small percentage of cross-seam windows to be miscounted.
+
+`MergedTapeReader.run()` stays single-threaded for now. Per-tape symbol rekey is instance-local, and parallel workers would not share a global symbol-id space; tracked as a follow-up.
+
+## Out-of-order tapes and the reorder buffer
+
+For segments without the `Sorted` flag (tapes produced by external writers — `md_collector`, third-party recorders), the reader applies a two-stage ordering fix:
+
+1. **Intra-block sort** runs on decompress, lifting the ~1–2 ms exchange-WS jitter that dominates exchange-feed reordering. Cost: one linear scan of the block buffer per Sorted=false block.
+2. **Cross-block reorder buffer** is a bounded min-heap of in-flight events keyed by `exchange_ts_ns`. As events arrive (each block already intra-sorted), the heap drains anything whose timestamp falls outside `watermark - reorder_window_ns`. Memory: `O(reorder_window_ns × peak_event_rate)`.
+
+`reorder_window_ns` is a constructor argument on `DataReader`:
+
+```python
+reader = flox_py.DataReader(
+    "./tape",
+    reorder_window_ns=30_000_000_000,  # 30s
+)
+```
+
+Default 10s covers ~99% of cross-block inversions observed in real `md_collector` captures (1–25s tail, p99 around 5s). If an event arrives with `exchange_ts_ns < watermark - reorder_window_ns` — too late for the buffer to slot in sorted order — the reader raises `FloxError(code="E_DATA_002")` with the observed delta in the message. The caller can bump `reorder_window_ns` and retry, or pre-sort the tape through `BinaryLogWriter` (which sets the `Sorted` flag and bypasses the reorder buffer entirely).
+
 ## Performance notes
 
 `onEvent` runs once per event for each aggregator in the panel. Adding aggregators raises the per-event cost; it does not change how many times the tape is walked.

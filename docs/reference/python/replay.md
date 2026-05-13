@@ -32,11 +32,14 @@ Read trades and book updates from binary log files.
 ```python
 reader = flox.DataReader(
     data_dir="./data",
-    from_ns=None,     # start timestamp filter
-    to_ns=None,       # end timestamp filter
-    symbols=None,     # list of symbol IDs to filter
+    from_ns=None,             # start timestamp filter
+    to_ns=None,               # end timestamp filter
+    symbols=None,             # list of symbol IDs to filter
+    reorder_window_ns=None,   # cross-block reorder window (default 10s)
 )
 ```
+
+`reorder_window_ns` controls the bounded reorder buffer used by `run()` and `streamForEach` on segments without the `Sorted` flag. Events arriving more than `reorder_window_ns` past the watermark raise `FloxError(code="E_DATA_002")`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#out-of-order-tapes-and-the-reorder-buffer) for the full discussion.
 
 ### Methods
 
@@ -126,6 +129,24 @@ Reader statistics.
 | `book_updates_read` | `int` | Book update events |
 | `bytes_read` | `int` | Bytes read |
 | `crc_errors` | `int` | CRC checksum failures |
+
+#### `run(aggregators, n_threads=0) -> bool`
+
+Single-pass streaming aggregator dispatch. Walks the tape once and forwards each event to every aggregator's `onEvent`, then calls `finalize()` once on each. The GIL is released for the whole walk; aggregators must be self-contained.
+
+```python
+reader.run([stats, peaks, quantiles])           # n_threads=0 → auto
+reader.run([stats, peaks, quantiles], 4)        # 4 workers
+reader.run([stats, peaks, quantiles], 1)        # explicit single-thread
+```
+
+`n_threads` policy:
+
+- `0` (default): auto, resolved to `min(blocks_per_segment / 2, hardware_concurrency())`.
+- `1`: explicit single-thread.
+- `>1`: explicit worker count, capped to the effective block count per segment.
+
+Parallel mode partitions the segment at the compressed-block level — each worker holds a panel cloned via `cloneEmpty()` and walks its assigned block range; results merge via `merge()` before `finalize()`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#parallel-execution) for the boundary semantics on sliding-window aggregators.
 
 #### `segment_files() -> list[str]`
 
