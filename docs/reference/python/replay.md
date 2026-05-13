@@ -39,7 +39,7 @@ reader = flox.DataReader(
 )
 ```
 
-`reorder_window_ns` controls the bounded reorder buffer used by `run()` and `streamForEach` on segments without the `Sorted` flag. Events arriving more than `reorder_window_ns` past the watermark raise `FloxError(code="E_DATA_002")`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#out-of-order-tapes-and-the-reorder-buffer) for the full discussion.
+`reorder_window_ns` controls the bounded reorder buffer used by `run()` and `streamForEach` on segments without the `Sorted` flag. Events arriving more than `reorder_window_ns` past the watermark raise `FloxError(code="E_DATA_002")`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#out-of-order-tapes-and-the-reorder-buffer) for details.
 
 ### Methods
 
@@ -146,7 +146,7 @@ reader.run([stats, peaks, quantiles], 1)        # explicit single-thread
 - `1`: explicit single-thread.
 - `>1`: explicit worker count, capped to the effective block count per segment.
 
-Parallel mode partitions the segment at the compressed-block level — each worker holds a panel cloned via `cloneEmpty()` and walks its assigned block range; results merge via `merge()` before `finalize()`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#parallel-execution) for the boundary semantics on sliding-window aggregators.
+Parallel mode partitions the segment at the compressed-block level. Each worker holds a panel cloned via `cloneEmpty()` and walks its assigned block range; results merge via `merge()` before `finalize()`. See [Aggregate tape events](../../how-to/aggregate-tape-events.md#parallel-execution) for boundary semantics on sliding-window aggregators.
 
 #### `segment_files() -> list[str]`
 

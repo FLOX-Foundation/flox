@@ -379,7 +379,7 @@ Returns the same nanoseconds every call. Useful as a baseline.
 - `read_book_updates_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> tuple`
 - `read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `read_trades_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
-- `run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 1) -> bool`
+- `run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0) -> bool`
 - `segment_files(self) -> list`
 - `segments(self) -> list`
 - `stats(self) -> dict`

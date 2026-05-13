@@ -1117,10 +1117,13 @@ inline void bindReplay(py::module_& m)
            "decompression pass. Each aggregator's onEvent fires once per "
            "event, then finalize() fires once at the end. An empty list is "
            "a no-op (no decompression). GIL released for the whole walk. "
-           "n_threads=1 (default) keeps single-threaded; n_threads>1 "
-           "partitions segments across worker threads via "
-           "IAggregator::cloneEmpty()/merge().",
-           py::arg("aggregators"), py::arg("n_threads") = std::size_t{1});
+           "n_threads=0 (default) is auto, resolved to "
+           "min(blocks_per_segment/2, hardware_concurrency); n_threads=1 "
+           "forces explicit single-thread; n_threads>1 partitions each "
+           "segment at the compressed-block level via "
+           "IAggregator::cloneEmpty()/merge() and is capped to the "
+           "effective block count.",
+           py::arg("aggregators"), py::arg("n_threads") = std::size_t{0});
 
   // DataWriter
   py::class_<PyDataWriter>(m, "DataWriter")

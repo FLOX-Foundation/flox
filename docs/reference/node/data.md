@@ -44,7 +44,7 @@ const events = reader.readBookUpdates();
 | `readBBOFrom(startTsNs, max?)` | BBO record array | Same as `readBBO` starting from `startTsNs` |
 | `readBookUpdates()` | book update array | Full depth: each event includes `bids` and `asks` arrays |
 | `readBookUpdatesFrom(startTsNs)` | book update array | Same as `readBookUpdates` starting from `startTsNs` |
-| `run(aggregators, nThreads?)` | `boolean` | Streaming aggregator dispatch over the tape. `nThreads=0` (default) auto-picks `min(blocks_per_segment/2, hardware_concurrency)`; `1` is explicit single-thread; `>1` is explicit worker count (capped to effective block count). Parallel mode partitions at the compressed-block level and merges per-worker panels back into the caller's array. See the [aggregate-tape-events how-to](../../how-to/aggregate-tape-events.md) for the full surface. |
+| `run(aggregators, nThreads?)` | `boolean` | Streaming aggregator dispatch over the tape. `nThreads=0` (default) auto-picks `min(blocks_per_segment/2, hardware_concurrency)`; `1` forces single-thread; `>1` sets the worker count (capped to the effective block count). Parallel mode partitions at the compressed-block level and merges per-worker panels back into the caller's array. See the [aggregate-tape-events how-to](../../how-to/aggregate-tape-events.md). |
 
 Record shapes:
 

@@ -129,7 +129,7 @@ Quantiles must be in `(0.0, 1.0]`. The result row count is `len(window_ns_list) 
 
 ## Parallel execution
 
-`reader.run(panel)` accepts an optional `n_threads` argument controlling worker concurrency:
+`reader.run(panel)` takes an optional `n_threads` argument:
 
 ```python
 reader.run(panel, n_threads=4)   # explicit 4 workers
@@ -138,24 +138,24 @@ reader.run(panel)                # default n_threads=0 → auto
 
 `n_threads` policy:
 
-- `0` (default): auto, resolved to `min(blocks_per_segment / 2, hardware_concurrency())`. The caller doesn't have to know the tape layout or the core count; small captures stay single-threaded, multi-block segments saturate available cores.
-- `1`: explicit single-thread. Useful for benchmarking the base path or for environments where threading is undesirable.
-- `>1`: explicit worker count. Capped to the effective block count per segment so an over-eager `n_threads=100` on a 4-block segment allocates only 4 panel clones.
+- `0` (default): auto, resolved to `min(blocks_per_segment / 2, hardware_concurrency())`. Small captures stay single-threaded; multi-block segments use all available cores. The caller does not need to know the tape layout or core count.
+- `1`: explicit single-thread. Useful for benchmarking the base path, or for environments where threading is undesirable.
+- `>1`: explicit worker count, capped to the effective block count per segment. `n_threads=100` on a 4-block segment allocates 4 panel clones.
 
-The partition is **intra-segment** at the compressed-block level. Each worker holds its own panel cloned from the caller's via `IAggregator::cloneEmpty()` and walks its assigned block range; results merge into the caller's originals via `IAggregator::merge()` before `finalize()`. This is the path that gives real speedup on captures with one big active segment (md_collector-style); segment-level partition would leave workers idle.
+Partitioning is intra-segment at the compressed-block level. Each worker holds its own panel, cloned from the caller's via `IAggregator::cloneEmpty()`, and walks its assigned block range; results merge into the caller's originals via `IAggregator::merge()` before `finalize()`. Captures with one large active segment (md_collector style) benefit from this layout; segment-level partitioning would leave workers idle when one segment dominates.
 
 Aggregators with associative state (`EventTypeStats`, `BinCount`, `VolumeBin`, `Quantile`) produce identical results between single-thread and parallel runs.
 
-`PeakAggregator` and `QuantileAggregator` are sliding-window aggregators: with `N` workers there are up to `N-1` partition seams per segment, each at most `max(window_ns)` wide, where events spanning the seam are not seen by a single worker's window. The trade-off is documented on `IAggregator::merge`. For peak-finding at the `window_ns` scale where the bursts you care about are much wider than the seam, results match the single-thread reference; for window-finding at sub-millisecond scales on a tape with 16 workers, expect a small percentage of cross-seam windows to be miscounted.
+`PeakAggregator` and `QuantileAggregator` are sliding-window aggregators. With `N` workers there are up to `N-1` partition seams per segment, each at most `max(window_ns)` wide; windows that span a seam are not seen by any single worker. The trade-off is documented on `IAggregator::merge`. Results match the single-thread reference when `window_ns` is much wider than the seam. At sub-millisecond scales on a tape with 16 workers, expect a small fraction of cross-seam windows to be miscounted.
 
-`MergedTapeReader.run()` stays single-threaded for now. Per-tape symbol rekey is instance-local, and parallel workers would not share a global symbol-id space; tracked as a follow-up.
+`MergedTapeReader.run()` is single-threaded (per-tape symbol rekey is instance-local, and parallel workers would not share a global symbol-id space).
 
 ## Out-of-order tapes and the reorder buffer
 
-For segments without the `Sorted` flag (tapes produced by external writers — `md_collector`, third-party recorders), the reader applies a two-stage ordering fix:
+For segments without the `Sorted` flag (tapes produced by external writers such as `md_collector` or third-party recorders), the reader applies two ordering stages:
 
-1. **Intra-block sort** runs on decompress, lifting the ~1–2 ms exchange-WS jitter that dominates exchange-feed reordering. Cost: one linear scan of the block buffer per Sorted=false block.
-2. **Cross-block reorder buffer** is a bounded min-heap of in-flight events keyed by `exchange_ts_ns`. As events arrive (each block already intra-sorted), the heap drains anything whose timestamp falls outside `watermark - reorder_window_ns`. Memory: `O(reorder_window_ns × peak_event_rate)`.
+1. Intra-block sort runs on decompress, removing the ~1–2 ms exchange-WS jitter that accounts for most exchange-feed reordering. Cost: one linear scan of the block buffer per Sorted=false block.
+2. Cross-block reorder buffer is a bounded min-heap of in-flight events keyed by `exchange_ts_ns`. As events arrive (each block already intra-sorted), the heap drains anything whose timestamp falls outside `watermark - reorder_window_ns`. Memory: `O(reorder_window_ns × peak_event_rate)`.
 
 `reorder_window_ns` is a constructor argument on `DataReader`:
 
@@ -166,7 +166,7 @@ reader = flox_py.DataReader(
 )
 ```
 
-Default 10s covers ~99% of cross-block inversions observed in real `md_collector` captures (1–25s tail, p99 around 5s). If an event arrives with `exchange_ts_ns < watermark - reorder_window_ns` — too late for the buffer to slot in sorted order — the reader raises `FloxError(code="E_DATA_002")` with the observed delta in the message. The caller can bump `reorder_window_ns` and retry, or pre-sort the tape through `BinaryLogWriter` (which sets the `Sorted` flag and bypasses the reorder buffer entirely).
+The 10s default covers ~99% of cross-block inversions observed on real `md_collector` captures (1–25s tail, p99 around 5s). If an event arrives with `exchange_ts_ns < watermark - reorder_window_ns`, the buffer cannot slot it in sorted order and the reader raises `FloxError(code="E_DATA_002")` carrying the observed delta. The caller can raise `reorder_window_ns` and retry, or pre-sort the tape through `BinaryLogWriter`, which sets the `Sorted` flag and bypasses the reorder buffer.
 
 ## Performance notes
 

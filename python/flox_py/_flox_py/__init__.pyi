@@ -453,9 +453,9 @@ class DataReader:
         """
         Read trades starting from a given timestamp (nanoseconds)
         """
-    def run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 1) -> bool:
+    def run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0) -> bool:
         """
-        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk. n_threads=1 (default) keeps single-threaded; n_threads>1 partitions segments across worker threads via IAggregator::cloneEmpty()/merge().
+        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk. n_threads=0 (default) is auto, resolved to min(blocks_per_segment/2, hardware_concurrency); n_threads=1 forces explicit single-thread; n_threads>1 partitions each segment at the compressed-block level via IAggregator::cloneEmpty()/merge() and is capped to the effective block count.
         """
     def segment_files(self) -> list:
         """

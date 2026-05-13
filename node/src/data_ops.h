@@ -339,11 +339,12 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     {
       return env.Null();
     }
-    uint32_t n_threads = 1;
+    uint32_t n_threads = 0;  // 0 = auto: min(segments, hardware_concurrency)
     if (info.Length() > 1 && info[1].IsNumber())
     {
       const int32_t v = info[1].As<Napi::Number>().Int32Value();
-      n_threads = (v <= 0) ? 1u : static_cast<uint32_t>(v);
+      // Negative or zero from JS → auto (0). Otherwise clamp to uint32.
+      n_threads = (v < 0) ? 0u : static_cast<uint32_t>(v);
     }
     uint8_t ok = flox_data_reader_run(_h, handles.empty() ? nullptr : handles.data(),
                                       static_cast<uint32_t>(handles.size()),
@@ -732,11 +733,12 @@ class MergedTapeReaderWrap : public Napi::ObjectWrap<MergedTapeReaderWrap>
     // n_threads is reserved on MergedTapeReader for now (single-tape
     // partitioning gets symbol-rekey tangled across workers); accept
     // and pass through but the C ABI ignores it for the merged path.
-    uint32_t n_threads = 1;
+    uint32_t n_threads = 0;  // 0 = auto: min(segments, hardware_concurrency)
     if (info.Length() > 1 && info[1].IsNumber())
     {
       const int32_t v = info[1].As<Napi::Number>().Int32Value();
-      n_threads = (v <= 0) ? 1u : static_cast<uint32_t>(v);
+      // Negative or zero from JS → auto (0). Otherwise clamp to uint32.
+      n_threads = (v < 0) ? 0u : static_cast<uint32_t>(v);
     }
     uint8_t ok = flox_merged_tape_reader_run(
         _h, handles.empty() ? nullptr : handles.data(),
