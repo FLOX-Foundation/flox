@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 516 functions, 45 handles, 56 structs, 35 callback typedefs, 3 enums, 60 groups.
+**Surface:** 518 functions, 45 handles, 57 structs, 35 callback typedefs, 3 enums, 60 groups.
 
 ## Opaque handles
 
@@ -754,6 +754,17 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `side` | `uint8_t` |
 | `qty_raw` | `int64_t` |
 
+### `FloxOHLCBinRow`
+
+| field | type |
+|---|---|
+| `bucket_ts_ns` | `int64_t` |
+| `symbol_id` | `uint32_t` |
+| `open_raw` | `int64_t` |
+| `high_raw` | `int64_t` |
+| `low_raw` | `int64_t` |
+| `close_raw` | `int64_t` |
+
 ### `FloxPeakRow`
 
 | field | type |
@@ -1411,14 +1422,16 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxAggregatorHandle flox_event_type_stats_aggregator_create(FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_bin_count_aggregator_create(int64_t bucket_ns, uint8_t by_side, uint8_t by_symbol, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_volume_bin_aggregator_create(int64_t bucket_ns, uint8_t by_side, uint8_t by_symbol, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
+- `FloxAggregatorHandle flox_ohlc_bin_aggregator_create(int64_t bucket_ns, uint8_t by_symbol, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_peak_aggregator_create(const int64_t * window_ns_list, uint32_t window_count, uint32_t top_n, uint32_t oversample_factor, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_quantile_aggregator_create(const int64_t * window_ns_list, uint32_t window_count, const double * quantiles, uint32_t quantile_count, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `void flox_aggregator_destroy(FloxAggregatorHandle h)`
-- `uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count)`
-- `uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count)`
+- `uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count, uint32_t n_threads)`
+- `uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count, uint32_t n_threads)`
 - `uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h, FloxEventTypeStatsRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_bin_count_read_result(FloxAggregatorHandle h, FloxBinCountRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h, FloxVolumeBinRow * rows_out, uint32_t max_rows)`
+- `uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h, FloxOHLCBinRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_peak_read_result(FloxAggregatorHandle h, FloxPeakRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_quantile_read_result(FloxAggregatorHandle h, FloxQuantileRow * rows_out, uint32_t max_rows)`
 

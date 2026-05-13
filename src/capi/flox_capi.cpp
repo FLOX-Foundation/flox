@@ -32,6 +32,7 @@
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
+#include "flox/replay/aggregators/ohlc_bin.h"
 #include "flox/replay/aggregators/peak.h"
 #include "flox/replay/aggregators/quantile.h"
 #include "flox/replay/aggregators/volume_bin.h"
@@ -8063,6 +8064,7 @@ struct AggregatorHolder
     KIND_EVENT_TYPE_STATS,
     KIND_BIN_COUNT,
     KIND_VOLUME_BIN,
+    KIND_OHLC_BIN,
     KIND_PEAK,
     KIND_QUANTILE,
   };
@@ -8148,6 +8150,19 @@ extern "C" FloxAggregatorHandle flox_volume_bin_aggregator_create(
   return holder;
 }
 
+extern "C" FloxAggregatorHandle flox_ohlc_bin_aggregator_create(
+    int64_t bucket_ns, uint8_t by_symbol,
+    FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+    uint32_t symbol_filter_count)
+{
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_OHLC_BIN,
+      std::make_unique<replay::OHLCBinAggregator>(
+          bucket_ns, by_symbol != 0, toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
 extern "C" FloxAggregatorHandle flox_peak_aggregator_create(
     const int64_t* window_ns_list, uint32_t window_count, uint32_t top_n,
     uint32_t oversample_factor, FloxAggregatorEventFilter event_filter,
@@ -8202,7 +8217,8 @@ extern "C" void flox_aggregator_destroy(FloxAggregatorHandle h)
 
 extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                         FloxAggregatorHandle* aggregators,
-                                        uint32_t aggregator_count)
+                                        uint32_t aggregator_count,
+                                        uint32_t n_threads)
 {
   if (reader == nullptr)
   {
@@ -8219,13 +8235,18 @@ extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
     }
   }
   auto* r = static_cast<replay::BinaryLogReader*>(reader);
-  return r->run(raw) ? 1 : 0;
+  const std::size_t nt = n_threads == 0 ? std::size_t{1} : std::size_t{n_threads};
+  return r->run(raw, nt) ? 1 : 0;
 }
 
 extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
                                                FloxAggregatorHandle* aggregators,
-                                               uint32_t aggregator_count)
+                                               uint32_t aggregator_count,
+                                               uint32_t /*n_threads*/)
 {
+  // n_threads reserved for future; MergedTapeReader::run is single-
+  // threaded for now (per-instance symbol rekey would not align
+  // across worker partitions).
   if (reader == nullptr)
   {
     return 0;
@@ -8335,6 +8356,38 @@ extern "C" uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
     rows_out[i].symbol_id = rows[i].symbol_id;
     rows_out[i].side = rows[i].side;
     rows_out[i].qty_raw = rows[i].qty_raw;
+  }
+  return n;
+}
+
+extern "C" uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h,
+                                              FloxOHLCBinRow* rows_out,
+                                              uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::OHLCBinAggregator>(AggregatorHolder::KIND_OHLC_BIN);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].bucket_ts_ns = rows[i].bucket_ts_ns;
+    rows_out[i].symbol_id = rows[i].symbol_id;
+    rows_out[i].open_raw = rows[i].open_raw;
+    rows_out[i].high_raw = rows[i].high_raw;
+    rows_out[i].low_raw = rows[i].low_raw;
+    rows_out[i].close_raw = rows[i].close_raw;
   }
   return n;
 }

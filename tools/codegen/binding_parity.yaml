@@ -389,6 +389,7 @@ groups:
         - EventTypeStatsAggregator
         - BinCountAggregator
         - VolumeBinAggregator
+        - OHLCBinAggregator
         - PeakAggregator
         - QuantileAggregator
     napi:
@@ -397,6 +398,7 @@ groups:
         - EventTypeStatsAggregator
         - BinCountAggregator
         - VolumeBinAggregator
+        - OHLCBinAggregator
         - PeakAggregator
         - QuantileAggregator
     codon: { status: required }

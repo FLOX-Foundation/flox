@@ -186,7 +186,8 @@ inline PyTrade tradeRecordToPyTrade(const flox::replay::TradeRecord& tr)
 }
 
 inline ReaderConfig makeReaderConfig(const std::string& dataDir, py::object fromNs,
-                                     py::object toNs, py::object symbols)
+                                     py::object toNs, py::object symbols,
+                                     py::object reorderWindowNs)
 {
   ReaderConfig cfg;
   cfg.data_dir = dataDir;
@@ -203,6 +204,10 @@ inline ReaderConfig makeReaderConfig(const std::string& dataDir, py::object from
   {
     auto symList = symbols.cast<std::vector<uint32_t>>();
     cfg.symbols.insert(symList.begin(), symList.end());
+  }
+  if (!reorderWindowNs.is_none())
+  {
+    cfg.reorder_window_ns = reorderWindowNs.cast<int64_t>();
   }
 
   return cfg;
@@ -242,8 +247,9 @@ class PyDataReader
   BinaryLogReader _reader;
 
  public:
-  PyDataReader(const std::string& dataDir, py::object fromNs, py::object toNs, py::object symbols)
-      : _reader(makeReaderConfig(dataDir, fromNs, toNs, symbols))
+  PyDataReader(const std::string& dataDir, py::object fromNs, py::object toNs,
+               py::object symbols, py::object reorderWindowNs)
+      : _reader(makeReaderConfig(dataDir, fromNs, toNs, symbols, reorderWindowNs))
   {
   }
 
@@ -514,13 +520,18 @@ class PyDataReader
   // calls finalize() on each. Empty list is a no-op (no decompression).
   // GIL released for the whole walk — concrete aggregators must be
   // self-contained (no Python crossings) for this to be safe.
-  bool run(py::list py_aggregators)
+  //
+  // n_threads=1 (default) preserves single-threaded semantics.
+  // n_threads>1 partitions the segment list across workers; each
+  // worker clones the panel via cloneEmpty(), then results merge
+  // into the user-visible instances before finalize().
+  bool run(py::list py_aggregators, std::size_t n_threads)
   {
     auto raw = flox_py::collectAggregators(py_aggregators);
     bool ok;
     {
       py::gil_scoped_release release;
-      ok = _reader.run(raw);
+      ok = _reader.run(raw, n_threads);
     }
     return ok;
   }
@@ -1058,12 +1069,16 @@ inline void bindReplay(py::module_& m)
 
   // DataReader
   py::class_<PyDataReader>(m, "DataReader")
-      .def(py::init<const std::string&, py::object, py::object, py::object>(),
-           "Create a DataReader for a binary log data directory",
+      .def(py::init<const std::string&, py::object, py::object, py::object,
+                    py::object>(),
+           "Create a DataReader for a binary log data directory. "
+           "`reorder_window_ns` controls the bounded reorder buffer applied "
+           "to segments without the Sorted flag (default 10s).",
            py::arg("data_dir"),
            py::arg("from_ns") = py::none(),
            py::arg("to_ns") = py::none(),
-           py::arg("symbols") = py::none())
+           py::arg("symbols") = py::none(),
+           py::arg("reorder_window_ns") = py::none())
       .def("summary", &PyDataReader::summary,
            "Return a dict summarizing the dataset")
       .def("count", &PyDataReader::count,
@@ -1101,8 +1116,14 @@ inline void bindReplay(py::module_& m)
            "Run a panel of streaming aggregators over the tape in a single "
            "decompression pass. Each aggregator's onEvent fires once per "
            "event, then finalize() fires once at the end. An empty list is "
-           "a no-op (no decompression). GIL released for the whole walk.",
-           py::arg("aggregators"));
+           "a no-op (no decompression). GIL released for the whole walk. "
+           "n_threads=0 (default) is auto, resolved to "
+           "min(blocks_per_segment/2, hardware_concurrency); n_threads=1 "
+           "forces explicit single-thread; n_threads>1 partitions each "
+           "segment at the compressed-block level via "
+           "IAggregator::cloneEmpty()/merge() and is capped to the "
+           "effective block count.",
+           py::arg("aggregators"), py::arg("n_threads") = std::size_t{0});
 
   // DataWriter
   py::class_<PyDataWriter>(m, "DataWriter")

@@ -3488,6 +3488,15 @@ extern "C"
       FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
       uint32_t symbol_filter_count);
 
+  // OHLCBinAggregator: per-bucket open/high/low/close of trade
+  // price_raw. Trade-only; by_symbol controls per-symbol split (no
+  // by_side because OHLC by side is not a generally useful primitive).
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_ohlc_bin_aggregator_create(
+      int64_t bucket_ns, uint8_t by_symbol,
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
   // PeakAggregator: `oversample_factor` 0 means "use the engine default"
   // (currently 100). Pass non-zero to override.
   FLOX_EXPORT(group = "tape_aggregator")
@@ -3512,15 +3521,25 @@ extern "C"
   // mix of types); returns non-zero on success, zero on failure
   // (typically: empty data directory or read error). An empty array
   // is a no-op and returns success without decompressing anything.
+  // n_threads=1 (or 0 → treated as 1) preserves single-threaded
+  // semantics. n_threads>1 partitions the segment list across worker
+  // threads; each worker clones the panel via cloneEmpty(), and the
+  // reader merges worker panels into the caller's originals before
+  // finalize. Effective worker count is clamped to segment count.
   FLOX_EXPORT(group = "tape_aggregator")
   uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                FloxAggregatorHandle* aggregators,
-                               uint32_t aggregator_count);
+                               uint32_t aggregator_count, uint32_t n_threads);
 
+  // MergedTapeReader::run is single-threaded for the moment — symbol
+  // rekey is per-instance and a per-worker MergedTapeReader would not
+  // share global symbol ids. The n_threads parameter is reserved for
+  // future use; values > 1 are accepted but currently ignored.
   FLOX_EXPORT(group = "tape_aggregator")
   uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
                                       FloxAggregatorHandle* aggregators,
-                                      uint32_t aggregator_count);
+                                      uint32_t aggregator_count,
+                                      uint32_t n_threads);
 
   // Result row layouts. Mirror the C++ Row structs byte-for-byte;
   // bindings memcpy from the C ABI buffer into their native form.
@@ -3548,6 +3567,16 @@ extern "C"
     uint8_t side;
     int64_t qty_raw;
   } FloxVolumeBinRow;
+
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    int64_t open_raw;
+    int64_t high_raw;
+    int64_t low_raw;
+    int64_t close_raw;
+  } FloxOHLCBinRow;
 
   typedef struct
   {
@@ -3582,6 +3611,11 @@ extern "C"
   uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
                                        FloxVolumeBinRow* rows_out,
                                        uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h,
+                                     FloxOHLCBinRow* rows_out,
+                                     uint32_t max_rows);
 
   FLOX_EXPORT(group = "tape_aggregator")
   uint32_t flox_peak_read_result(FloxAggregatorHandle h,

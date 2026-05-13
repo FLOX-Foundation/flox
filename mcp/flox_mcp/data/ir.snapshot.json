@@ -2302,6 +2302,10 @@
         {
           "name": "aggregator_count",
           "type": "uint32_t"
+        },
+        {
+          "name": "n_threads",
+          "type": "uint32_t"
         }
       ],
       "return_type": "uint8_t"
@@ -6106,6 +6110,10 @@
         {
           "name": "aggregator_count",
           "type": "uint32_t"
+        },
+        {
+          "name": "n_threads",
+          "type": "uint32_t"
         }
       ],
       "return_type": "uint8_t"
@@ -6165,6 +6173,52 @@
         }
       ],
       "return_type": "int64_t"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_ohlc_bin_aggregator_create",
+      "params": [
+        {
+          "name": "bucket_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "by_symbol",
+          "type": "uint8_t"
+        },
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_ohlc_bin_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxOHLCBinRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
     },
     {
       "group": "order_group",
@@ -11480,6 +11534,35 @@
         }
       ],
       "name": "FloxMergedTapeStats"
+    },
+    {
+      "fields": [
+        {
+          "name": "bucket_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "open_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "high_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "low_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "close_raw",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxOHLCBinRow"
     },
     {
       "fields": [

@@ -19,34 +19,34 @@
 namespace flox::replay
 {
 
-// Time-bucketed quantity sum. Sums `trade.qty_raw` per
-// (bucket, optional symbol, optional side) cell. The book-side
-// equivalent (sum of bid/ask level sizes) is intentionally out of
-// scope — books don't have a single "qty per event" the way trades
-// do, and a useful book-volume metric is per-level not per-event.
+// Time-bucketed price OHLC. For each (bucket, optional symbol) cell,
+// records first/last/min/max of `trade.price_raw`. Empty buckets
+// produce no row; the caller is responsible for forward-filling if a
+// dense series is needed.
 //
-// Result rows mirror BinCountAggregator's shape: one row per
-// (bucket, symbol_id, side) with a `qty_raw` value. Bindings convert
-// the raw int64 to whatever decimal-aware type the host expects (in
-// Python: divide by `flox::Quantity::SCALE` for floats, or expose
-// raw int64 alongside a precision hint).
-class VolumeBinAggregator final : public IAggregator
+// Trade-only: book events have no single "price per event" the way
+// trades do. Passing event_filter=BooksOnly yields an empty result.
+//
+// by_side is intentionally out of scope: an "open price for buys" is
+// not a generally useful primitive. Callers who want per-side flow
+// metrics should pair this with VolumeBinAggregator(by_side=true).
+class OHLCBinAggregator final : public IAggregator
 {
  public:
   struct Row
   {
     int64_t bucket_ts_ns{0};
     uint32_t symbol_id{0};  // 0 when by_symbol=false (aggregate)
-    uint8_t side{0};        // 0 = aggregate, 1 = BUY, 2 = SELL
-    int64_t qty_raw{0};
+    int64_t open_raw{0};
+    int64_t high_raw{0};
+    int64_t low_raw{0};
+    int64_t close_raw{0};
   };
 
   // `bucket_ns` must be > 0. `event_filter` is accepted for API
-  // parity with the rest of the family; only Trade events ever
-  // contribute, so passing `BooksOnly` yields an empty result.
-  explicit VolumeBinAggregator(
+  // parity; only trade events ever contribute.
+  explicit OHLCBinAggregator(
       int64_t bucket_ns,
-      bool by_side = false,
       bool by_symbol = false,
       AggregatorEventFilter event_filter = AggregatorEventFilter::Trades,
       std::vector<uint32_t> symbol_filter = {});
@@ -56,20 +56,29 @@ class VolumeBinAggregator final : public IAggregator
   std::unique_ptr<IAggregator> cloneEmpty() const override;
   void merge(const IAggregator& other) override;
 
-  // Rows sorted by (bucket_ts_ns, symbol_id, side) ascending. Empty
-  // before run() completes.
+  // Rows sorted by (bucket_ts_ns, symbol_id) ascending. Empty before
+  // run() completes.
   const std::vector<Row>& result() const noexcept { return _rows; }
 
  private:
+  struct Cell
+  {
+    int64_t open_ts_ns{0};
+    int64_t close_ts_ns{0};
+    int64_t open_raw{0};
+    int64_t close_raw{0};
+    int64_t high_raw{0};
+    int64_t low_raw{0};
+  };
+
   bool symbolAllowed(uint32_t symbol_id) const noexcept;
 
   int64_t _bucket_ns;
-  bool _by_side;
   bool _by_symbol;
   AggregatorEventFilter _event_filter;
   std::vector<uint32_t> _symbol_filter;
 
-  std::map<std::tuple<int64_t, uint32_t, uint8_t>, int64_t> _qtys;
+  std::map<std::tuple<int64_t, uint32_t>, Cell> _cells;
   std::vector<Row> _rows;
 };
 

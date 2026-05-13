@@ -63,6 +63,8 @@ class PeakAggregator final : public IAggregator
 
   void onEvent(const ReplayEvent& ev) override;
   void finalize() override;
+  std::unique_ptr<IAggregator> cloneEmpty() const override;
+  void merge(const IAggregator& other) override;
 
   const std::vector<Row>& result() const noexcept { return _rows; }
 

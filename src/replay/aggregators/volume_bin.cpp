@@ -10,6 +10,7 @@
 #include "flox/replay/aggregators/volume_bin.h"
 
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
 
 namespace flox::replay
@@ -103,6 +104,26 @@ void VolumeBinAggregator::finalize()
     r.side = std::get<2>(key);
     r.qty_raw = qty;
     _rows.push_back(r);
+  }
+}
+
+std::unique_ptr<IAggregator> VolumeBinAggregator::cloneEmpty() const
+{
+  return std::make_unique<VolumeBinAggregator>(_bucket_ns, _by_side, _by_symbol,
+                                               _event_filter, _symbol_filter);
+}
+
+void VolumeBinAggregator::merge(const IAggregator& other)
+{
+  const auto* o = dynamic_cast<const VolumeBinAggregator*>(&other);
+  if (o == nullptr)
+  {
+    throw std::invalid_argument(
+        "VolumeBinAggregator::merge: other is not the same concrete type");
+  }
+  for (const auto& [key, qty] : o->_qtys)
+  {
+    _qtys[key] += qty;
   }
 }
 

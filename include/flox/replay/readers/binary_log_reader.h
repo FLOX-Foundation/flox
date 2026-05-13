@@ -221,18 +221,35 @@ class BinaryLogReader
   bool streamForEachFrom(int64_t start_ts_ns, EventCallback callback);
 
   // Single-pass streaming aggregator dispatch. Walks the tape once
-  // via `streamForEach` (writer-order, O(1) memory per segment),
-  // forwarding each event to every aggregator's onEvent, then
-  // calling finalize() on each. An empty span is a no-op and
-  // performs no decompression.
+  // via `streamForEach`, forwarding each event to every aggregator's
+  // onEvent, then calling finalize() on each. An empty span is a
+  // no-op and performs no decompression.
   //
-  // Ordering: events arrive in writer order. For sliding-window
-  // aggregators (Peak, Quantile) on tapes whose writer does not set
-  // the Sorted flag, the caller is responsible for the tape being
-  // monotonic in practice (single recv thread per symbol per
-  // segment). flox's BinaryLogWriter sets Sorted; external writers
-  // (md_collector, third-party tapes) typically do not.
-  bool run(std::span<IAggregator* const> aggregators);
+  // `n_threads` policy:
+  //   0 (the default): auto — `min(segment_count,
+  //                              std::thread::hardware_concurrency())`.
+  //                    Caller doesn't have to know the tape layout
+  //                    or core count; small captures stay
+  //                    single-threaded, large captures saturate
+  //                    available cores without oversubscription.
+  //   1:               explicit single-thread (no clone/merge
+  //                    overhead, useful for benchmarking).
+  //   >1:              explicit worker count, capped at the segment
+  //                    count internally — surplus workers are
+  //                    not allocated.
+  //
+  // Multi-threaded path partitions the segment list across that
+  // many worker threads. Each worker clones the panel via
+  // `IAggregator::cloneEmpty()`, runs its segment slice, and the
+  // reader then merges every worker's panel into the caller's
+  // original instances via `IAggregator::merge()` before calling
+  // finalize() once on each.
+  //
+  // Sliding-window aggregators (Peak / Quantile) cannot observe
+  // windows that straddle worker boundaries. See
+  // `IAggregator::merge` for the boundary semantics discussion.
+  bool run(std::span<IAggregator* const> aggregators,
+           std::size_t n_threads = 0);
 
   std::optional<std::pair<int64_t, int64_t>> timeRange() const;
   ReaderStats stats() const;
@@ -246,6 +263,14 @@ class BinaryLogReader
   bool readSegmentStreaming(const std::filesystem::path& path, EventCallback& callback);
   bool readSegmentStreamingFrom(const SegmentInfo& segment, int64_t start_ts_ns,
                                 EventCallback& callback);
+  // Streams a single segment using the same intra-block sort + bounded
+  // reorder buffer logic as readSegmentStreaming, but writes counter
+  // updates into the caller-supplied ReaderStats. Used by parallel
+  // run(panel, n_threads) so workers accumulate into thread-local
+  // stats without locking shared _stats. The single-threaded
+  // readSegmentStreaming delegates to this with `_stats`.
+  bool streamSegmentWithStats(const std::filesystem::path& path,
+                              EventCallback& callback, ReaderStats& stats);
   bool passesFilter(const ReplayEvent& event) const;
 
   ReaderConfig _config;
@@ -273,6 +298,17 @@ class BinaryLogIterator
   bool loadIndex();
   bool hasIndex() const { return !_index_entries.empty(); }
 
+  // Block-level positioning for intra-segment parallel workers. The
+  // caller is responsible for picking valid block boundaries (use
+  // `scanBlockOffsets` on the reader side to discover them); the
+  // iterator does not verify the offset points at a real
+  // CompressedBlockHeader. `setStopAtBlockEnd(true)` causes next()
+  // to return false at the end of the current block instead of
+  // auto-advancing to the next block — workers use this to confine
+  // themselves to their assigned block range.
+  bool seekToBlockOffset(uint64_t file_offset);
+  void setStopAtBlockEnd(bool stop) { _stop_at_block_end = stop; }
+
  private:
   bool nextUncompressed(ReplayEvent& out);
   bool nextCompressed(ReplayEvent& out);
@@ -291,6 +327,11 @@ class BinaryLogIterator
   std::vector<std::byte> _sort_scratch;
   size_t _block_offset{0};
   size_t _block_events_remaining{0};
+  // Worker-mode flag: when true, `next()` returns false at the end of
+  // the current block instead of calling loadNextBlock to advance.
+  // Lets intra-segment parallel workers confine themselves to an
+  // assigned block range.
+  bool _stop_at_block_end{false};
 };
 
 }  // namespace flox::replay

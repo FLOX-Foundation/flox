@@ -10,7 +10,9 @@
 #include "flox/replay/aggregators/quantile.h"
 
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace flox::replay
 {
@@ -157,6 +159,52 @@ void QuantileAggregator::finalize()
 
     scale.sliding.clear();
     scale.histogram.clear();
+  }
+}
+
+std::unique_ptr<IAggregator> QuantileAggregator::cloneEmpty() const
+{
+  std::vector<int64_t> windows;
+  windows.reserve(_scales.size());
+  for (const auto& s : _scales)
+  {
+    windows.push_back(s.window_ns);
+  }
+  return std::make_unique<QuantileAggregator>(std::move(windows), _quantiles,
+                                              _event_filter, _symbol_filter);
+}
+
+void QuantileAggregator::merge(const IAggregator& other)
+{
+  const auto* o = dynamic_cast<const QuantileAggregator*>(&other);
+  if (o == nullptr)
+  {
+    throw std::invalid_argument(
+        "QuantileAggregator::merge: other is not the same concrete type");
+  }
+  if (o->_scales.size() != _scales.size())
+  {
+    throw std::invalid_argument(
+        "QuantileAggregator::merge: scale count differs (other has different "
+        "window_ns_list)");
+  }
+  // cloneEmpty() preserves window_ns ordering — pair scales positionally
+  // and add the other side's histogram counters in.
+  for (size_t i = 0; i < _scales.size(); ++i)
+  {
+    auto& dst = _scales[i];
+    const auto& src = o->_scales[i];
+    if (src.window_ns != dst.window_ns)
+    {
+      throw std::invalid_argument(
+          "QuantileAggregator::merge: window_ns mismatch at scale index " +
+          std::to_string(i));
+    }
+    for (const auto& [count_value, occurrences] : src.histogram)
+    {
+      dst.histogram[count_value] += occurrences;
+    }
+    dst.total_observations += src.total_observations;
   }
 }
 

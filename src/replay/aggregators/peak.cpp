@@ -12,7 +12,9 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace flox::replay
 {
@@ -188,6 +190,80 @@ void PeakAggregator::finalize()
     // aggregator's result vector is the public surface.
     scale.sliding.clear();
     scale.heap.clear();
+  }
+}
+
+std::unique_ptr<IAggregator> PeakAggregator::cloneEmpty() const
+{
+  std::vector<int64_t> windows;
+  windows.reserve(_scales.size());
+  for (const auto& s : _scales)
+  {
+    windows.push_back(s.window_ns);
+  }
+  // _candidate_budget was set in the ctor to `top_n * max(oversample,1)`,
+  // so dividing recovers the effective oversample factor without
+  // re-storing it explicitly.
+  const std::size_t oversample =
+      (_top_n > 0) ? (_candidate_budget / _top_n) : std::size_t{100};
+  return std::make_unique<PeakAggregator>(std::move(windows), _top_n,
+                                          oversample, _event_filter,
+                                          _symbol_filter);
+}
+
+void PeakAggregator::merge(const IAggregator& other)
+{
+  const auto* o = dynamic_cast<const PeakAggregator*>(&other);
+  if (o == nullptr)
+  {
+    throw std::invalid_argument(
+        "PeakAggregator::merge: other is not the same concrete type");
+  }
+  if (o->_scales.size() != _scales.size())
+  {
+    throw std::invalid_argument(
+        "PeakAggregator::merge: scale count differs (other has different "
+        "window_ns_list)");
+  }
+  // cloneEmpty() preserves scale order. Union the candidate heaps and
+  // keep the top `_candidate_budget` so the post-merge state holds
+  // exactly the same number of candidates a single-threaded run would
+  // have. The sliding deque is discarded — it's stream-maintenance
+  // state, not candidate state; candidates were already pushed during
+  // the worker's onEvent calls.
+  for (size_t i = 0; i < _scales.size(); ++i)
+  {
+    auto& dst = _scales[i];
+    const auto& src = o->_scales[i];
+    if (src.window_ns != dst.window_ns)
+    {
+      throw std::invalid_argument(
+          "PeakAggregator::merge: window_ns mismatch at scale index " +
+          std::to_string(i));
+    }
+    dst.heap.insert(dst.heap.end(), src.heap.begin(), src.heap.end());
+    if (dst.heap.size() > _candidate_budget)
+    {
+      // Partial sort by count descending to retain the top
+      // candidate_budget — std::nth_element places the
+      // budget-th-largest at position `budget` so the prefix is the
+      // top-N (unordered, but finalize() sorts).
+      std::nth_element(dst.heap.begin(), dst.heap.begin() + _candidate_budget,
+                       dst.heap.end(),
+                       [](const std::pair<uint64_t, int64_t>& a,
+                          const std::pair<uint64_t, int64_t>& b)
+                       {
+                         if (a.first != b.first)
+                         {
+                           return a.first > b.first;  // descending by count
+                         }
+                         return a.second < b.second;  // earlier start_ns first
+                       });
+      dst.heap.resize(_candidate_budget);
+    }
+    // Re-establish heap invariant for any subsequent onEvent (rare
+    // post-merge, but cheap).
+    std::make_heap(dst.heap.begin(), dst.heap.end(), HeapGreater{});
   }
 }
 
