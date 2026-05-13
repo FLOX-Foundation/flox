@@ -60,6 +60,8 @@ class BinCountAggregator final : public IAggregator
 
   void onEvent(const ReplayEvent& ev) override;
   void finalize() override;
+  std::unique_ptr<IAggregator> cloneEmpty() const override;
+  void merge(const IAggregator& other) override;
 
   // Rows sorted by (bucket_ts_ns, symbol_id, side) ascending. Empty
   // before run() completes.

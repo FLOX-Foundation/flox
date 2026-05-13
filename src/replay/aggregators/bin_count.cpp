@@ -10,6 +10,7 @@
 #include "flox/replay/aggregators/bin_count.h"
 
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
 
 namespace flox::replay
@@ -127,6 +128,26 @@ void BinCountAggregator::finalize()
   }
   // _counts is std::map → already sorted by tuple order, which is
   // exactly (bucket_ts_ns, symbol_id, side). No extra sort needed.
+}
+
+std::unique_ptr<IAggregator> BinCountAggregator::cloneEmpty() const
+{
+  return std::make_unique<BinCountAggregator>(_bucket_ns, _by_side, _by_symbol,
+                                              _event_filter, _symbol_filter);
+}
+
+void BinCountAggregator::merge(const IAggregator& other)
+{
+  const auto* o = dynamic_cast<const BinCountAggregator*>(&other);
+  if (o == nullptr)
+  {
+    throw std::invalid_argument(
+        "BinCountAggregator::merge: other is not the same concrete type");
+  }
+  for (const auto& [key, count] : o->_counts)
+  {
+    _counts[key] += count;
+  }
 }
 
 }  // namespace flox::replay

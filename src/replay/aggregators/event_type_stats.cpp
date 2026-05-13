@@ -10,6 +10,7 @@
 #include "flox/replay/aggregators/event_type_stats.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 namespace flox::replay
 {
@@ -103,6 +104,29 @@ void EventTypeStatsAggregator::finalize()
   std::sort(_rows.begin(), _rows.end(),
             [](const PerSymbolRow& a, const PerSymbolRow& b)
             { return a.symbol_id < b.symbol_id; });
+}
+
+std::unique_ptr<IAggregator> EventTypeStatsAggregator::cloneEmpty() const
+{
+  return std::make_unique<EventTypeStatsAggregator>(_event_filter, _symbol_filter);
+}
+
+void EventTypeStatsAggregator::merge(const IAggregator& other)
+{
+  const auto* o = dynamic_cast<const EventTypeStatsAggregator*>(&other);
+  if (o == nullptr)
+  {
+    throw std::invalid_argument(
+        "EventTypeStatsAggregator::merge: other is not the same concrete type");
+  }
+  for (const auto& [sid, row] : o->_counts)
+  {
+    auto& mine = _counts[sid];
+    mine.symbol_id = sid;
+    mine.trades += row.trades;
+    mine.book_snapshots += row.book_snapshots;
+    mine.book_deltas += row.book_deltas;
+  }
 }
 
 }  // namespace flox::replay

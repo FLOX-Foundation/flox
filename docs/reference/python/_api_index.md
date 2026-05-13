@@ -368,7 +368,7 @@ Returns the same nanoseconds every call. Useful as a baseline.
 
 **Constructor**
 
-- `DataReader(data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None) -> None`
+- `DataReader(data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None, reorder_window_ns: typing.Any = None) -> None`
 
 **Members**
 
@@ -379,7 +379,7 @@ Returns the same nanoseconds every call. Useful as a baseline.
 - `read_book_updates_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> tuple`
 - `read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `read_trades_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
-- `run(self, aggregators: list) -> bool`
+- `run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 1) -> bool`
 - `segment_files(self) -> list`
 - `segments(self) -> list`
 - `stats(self) -> dict`

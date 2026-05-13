@@ -13,9 +13,15 @@
 #include "flox/replay/ops/compression.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <exception>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace flox::replay
 {
@@ -629,7 +635,8 @@ bool BinaryLogReader::forEach(EventCallback callback)
   return true;
 }
 
-bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
+bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
+                          std::size_t n_threads)
 {
   // Empty span: do not even scan / decompress. This is the contract
   // that lets a `run([])` call cost effectively zero in the framework
@@ -639,25 +646,156 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
     return true;
   }
 
-  // Route through streamForEach, not forEach: for segments without
-  // the Sorted flag (external writers like md_collector) forEach
-  // buffers the entire segment into memory before dispatching, which
-  // blew peak RSS to 4.29 GB on an 11.78M-event 467 MB Bitget tape.
-  // streamForEach iterates BinaryLogIterator::next() directly, O(1)
-  // memory per segment.
-  const bool walked = streamForEach(
-      [&aggregators](const ReplayEvent& ev)
-      {
-        for (auto* agg : aggregators)
+  // Single-threaded path (default). Routes through streamForEach so
+  // segments without the Sorted flag stay O(1) memory thanks to the
+  // bounded reorder buffer.
+  if (n_threads <= 1)
+  {
+    const bool walked = streamForEach(
+        [&aggregators](const ReplayEvent& ev)
         {
-          if (agg != nullptr)
+          for (auto* agg : aggregators)
           {
-            agg->onEvent(ev);
+            if (agg != nullptr)
+            {
+              agg->onEvent(ev);
+            }
           }
-        }
-        return true;
-      });
+          return true;
+        });
 
+    for (auto* agg : aggregators)
+    {
+      if (agg != nullptr)
+      {
+        agg->finalize();
+      }
+    }
+
+    return walked;
+  }
+
+  // Parallel path: partition segments across N worker threads. Each
+  // worker has its own panel cloned via IAggregator::cloneEmpty(),
+  // walks its segment slice, accumulates into its panel + local
+  // ReaderStats. After join, the workers' panels are merged into
+  // the caller's original panel via IAggregator::merge() and we
+  // finalize() once per original aggregator.
+  if (!scanSegments())
+  {
+    return false;
+  }
+
+  const std::size_t n_segs = _segments.size();
+  if (n_segs == 0)
+  {
+    for (auto* agg : aggregators)
+    {
+      if (agg != nullptr)
+      {
+        agg->finalize();
+      }
+    }
+    return true;
+  }
+
+  // Effective worker count never exceeds segment count.
+  n_threads = std::min(n_threads, n_segs);
+
+  // workers[i][k] is worker i's clone of caller's aggregator k.
+  // Null entries mirror null entries in the input span.
+  std::vector<std::vector<std::unique_ptr<IAggregator>>> workers(n_threads);
+  for (auto& panel : workers)
+  {
+    panel.reserve(aggregators.size());
+    for (auto* a : aggregators)
+    {
+      panel.push_back(a != nullptr ? a->cloneEmpty() : nullptr);
+    }
+  }
+
+  std::vector<ReaderStats> local_stats(n_threads);
+  std::atomic<bool> ok{true};
+  std::mutex error_mutex;
+  std::exception_ptr first_error;
+
+  std::vector<std::thread> threads;
+  threads.reserve(n_threads);
+  for (std::size_t ti = 0; ti < n_threads; ++ti)
+  {
+    // Static partition by segment index — each worker owns a
+    // contiguous slice.
+    const std::size_t lo = (ti * n_segs) / n_threads;
+    const std::size_t hi = ((ti + 1) * n_segs) / n_threads;
+    threads.emplace_back(
+        [this, ti, lo, hi, &workers, &local_stats, &ok, &error_mutex,
+         &first_error]()
+        {
+          try
+          {
+            auto& panel = workers[ti];
+            EventCallback cb = [&panel](const ReplayEvent& ev) -> bool
+            {
+              for (auto& agg : panel)
+              {
+                if (agg)
+                {
+                  agg->onEvent(ev);
+                }
+              }
+              return true;
+            };
+            for (std::size_t si = lo; si < hi; ++si)
+            {
+              if (!ok.load(std::memory_order_relaxed))
+              {
+                return;
+              }
+              if (!streamSegmentWithStats(_segments[si].path, cb,
+                                          local_stats[ti]))
+              {
+                ok.store(false, std::memory_order_relaxed);
+                return;
+              }
+            }
+          }
+          catch (...)
+          {
+            std::lock_guard<std::mutex> g(error_mutex);
+            if (!first_error)
+            {
+              first_error = std::current_exception();
+            }
+            ok.store(false, std::memory_order_relaxed);
+          }
+        });
+  }
+  for (auto& t : threads)
+  {
+    t.join();
+  }
+
+  if (first_error)
+  {
+    std::rethrow_exception(first_error);
+  }
+  if (!ok.load())
+  {
+    return false;
+  }
+
+  // Merge worker panels into the caller's originals, then finalize
+  // each caller-supplied aggregator exactly once.
+  for (auto& panel : workers)
+  {
+    for (std::size_t k = 0; k < aggregators.size(); ++k)
+    {
+      if (aggregators[k] != nullptr && panel[k] != nullptr)
+      {
+        aggregators[k]->merge(*panel[k]);
+      }
+    }
+  }
   for (auto* agg : aggregators)
   {
     if (agg != nullptr)
@@ -666,7 +804,18 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators)
     }
   }
 
-  return walked;
+  // Sum worker-local stats into shared _stats.
+  for (const auto& s : local_stats)
+  {
+    _stats.files_read += s.files_read;
+    _stats.events_read += s.events_read;
+    _stats.trades_read += s.trades_read;
+    _stats.book_updates_read += s.book_updates_read;
+    _stats.bytes_read += s.bytes_read;
+    _stats.crc_errors += s.crc_errors;
+  }
+
+  return true;
 }
 
 bool BinaryLogReader::streamForEach(EventCallback callback)
@@ -727,13 +876,20 @@ struct ReplayEventLater
 bool BinaryLogReader::readSegmentStreaming(const std::filesystem::path& path,
                                            EventCallback& callback)
 {
+  return streamSegmentWithStats(path, callback, _stats);
+}
+
+bool BinaryLogReader::streamSegmentWithStats(const std::filesystem::path& path,
+                                             EventCallback& callback,
+                                             ReaderStats& stats)
+{
   BinaryLogIterator iter(path);
   if (!iter.isValid())
   {
     return false;
   }
 
-  ++_stats.files_read;
+  ++stats.files_read;
 
   // Sorted segments: stream straight through. The writer guaranteed
   // monotonicity at close, BinaryLogIterator preserves it (its
@@ -747,8 +903,8 @@ bool BinaryLogReader::readSegmentStreaming(const std::filesystem::path& path,
       {
         continue;
       }
-      ++_stats.events_read;
-      event.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      ++stats.events_read;
+      event.type == EventType::Trade ? ++stats.trades_read : ++stats.book_updates_read;
       if (!callback(event))
       {
         return false;
@@ -779,8 +935,8 @@ bool BinaryLogReader::readSegmentStreaming(const std::filesystem::path& path,
       {
         continue;
       }
-      ++_stats.events_read;
-      ev.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      ++stats.events_read;
+      ev.type == EventType::Trade ? ++stats.trades_read : ++stats.book_updates_read;
       if (!callback(ev))
       {
         return false;

@@ -2531,11 +2531,12 @@ extern "C"
 
   uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                FloxAggregatorHandle* aggregators,
-                               uint32_t aggregator_count);
+                               uint32_t aggregator_count, uint32_t n_threads);
 
   uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
                                       FloxAggregatorHandle* aggregators,
-                                      uint32_t aggregator_count);
+                                      uint32_t aggregator_count,
+                                      uint32_t n_threads);
 
   typedef struct
   {

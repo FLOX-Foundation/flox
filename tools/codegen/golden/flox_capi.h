@@ -1834,9 +1834,10 @@ extern "C"
                                                        uint32_t symbol_filter_count);
   void flox_aggregator_destroy(FloxAggregatorHandle h);
   uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle* aggregators,
-                               uint32_t aggregator_count);
+                               uint32_t aggregator_count, uint32_t n_threads);
   uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
-                                      FloxAggregatorHandle* aggregators, uint32_t aggregator_count);
+                                      FloxAggregatorHandle* aggregators, uint32_t aggregator_count,
+                                      uint32_t n_threads);
   uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h,
                                              FloxEventTypeStatsRow* rows_out, uint32_t max_rows);
   uint32_t flox_bin_count_read_result(FloxAggregatorHandle h, FloxBinCountRow* rows_out,

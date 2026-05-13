@@ -3512,15 +3512,25 @@ extern "C"
   // mix of types); returns non-zero on success, zero on failure
   // (typically: empty data directory or read error). An empty array
   // is a no-op and returns success without decompressing anything.
+  // n_threads=1 (or 0 → treated as 1) preserves single-threaded
+  // semantics. n_threads>1 partitions the segment list across worker
+  // threads; each worker clones the panel via cloneEmpty(), and the
+  // reader merges worker panels into the caller's originals before
+  // finalize. Effective worker count is clamped to segment count.
   FLOX_EXPORT(group = "tape_aggregator")
   uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                FloxAggregatorHandle* aggregators,
-                               uint32_t aggregator_count);
+                               uint32_t aggregator_count, uint32_t n_threads);
 
+  // MergedTapeReader::run is single-threaded for the moment — symbol
+  // rekey is per-instance and a per-worker MergedTapeReader would not
+  // share global symbol ids. The n_threads parameter is reserved for
+  // future use; values > 1 are accepted but currently ignored.
   FLOX_EXPORT(group = "tape_aggregator")
   uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
                                       FloxAggregatorHandle* aggregators,
-                                      uint32_t aggregator_count);
+                                      uint32_t aggregator_count,
+                                      uint32_t n_threads);
 
   // Result row layouts. Mirror the C++ Row structs byte-for-byte;
   // bindings memcpy from the C ABI buffer into their native form.

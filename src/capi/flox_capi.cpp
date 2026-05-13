@@ -8202,7 +8202,8 @@ extern "C" void flox_aggregator_destroy(FloxAggregatorHandle h)
 
 extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                         FloxAggregatorHandle* aggregators,
-                                        uint32_t aggregator_count)
+                                        uint32_t aggregator_count,
+                                        uint32_t n_threads)
 {
   if (reader == nullptr)
   {
@@ -8219,13 +8220,18 @@ extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
     }
   }
   auto* r = static_cast<replay::BinaryLogReader*>(reader);
-  return r->run(raw) ? 1 : 0;
+  const std::size_t nt = n_threads == 0 ? std::size_t{1} : std::size_t{n_threads};
+  return r->run(raw, nt) ? 1 : 0;
 }
 
 extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
                                                FloxAggregatorHandle* aggregators,
-                                               uint32_t aggregator_count)
+                                               uint32_t aggregator_count,
+                                               uint32_t /*n_threads*/)
 {
+  // n_threads reserved for future; MergedTapeReader::run is single-
+  // threaded for now (per-instance symbol rekey would not align
+  // across worker partitions).
   if (reader == nullptr)
   {
     return 0;

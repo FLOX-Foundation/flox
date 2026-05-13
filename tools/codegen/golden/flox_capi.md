@@ -1414,8 +1414,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxAggregatorHandle flox_peak_aggregator_create(const int64_t * window_ns_list, uint32_t window_count, uint32_t top_n, uint32_t oversample_factor, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_quantile_aggregator_create(const int64_t * window_ns_list, uint32_t window_count, const double * quantiles, uint32_t quantile_count, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `void flox_aggregator_destroy(FloxAggregatorHandle h)`
-- `uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count)`
-- `uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count)`
+- `uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count, uint32_t n_threads)`
+- `uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count, uint32_t n_threads)`
 - `uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h, FloxEventTypeStatsRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_bin_count_read_result(FloxAggregatorHandle h, FloxBinCountRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h, FloxVolumeBinRow * rows_out, uint32_t max_rows)`

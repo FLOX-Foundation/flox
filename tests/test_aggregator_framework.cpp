@@ -51,6 +51,22 @@ class CounterAggregator : public IAggregator
 
   void finalize() override { ++_finalize_calls; }
 
+  std::unique_ptr<IAggregator> cloneEmpty() const override
+  {
+    return std::make_unique<CounterAggregator>();
+  }
+
+  void merge(const IAggregator& other) override
+  {
+    const auto* o = dynamic_cast<const CounterAggregator*>(&other);
+    ASSERT_NE(o, nullptr);
+    _events += o->_events;
+    _trades += o->_trades;
+    _books += o->_books;
+    // _finalize_calls is intentionally NOT merged — each instance's
+    // finalize() counter is its own.
+  }
+
   int events() const { return _events; }
   int trades() const { return _trades; }
   int books() const { return _books; }
@@ -1482,4 +1498,110 @@ TEST_F(AggregatorFrameworkTest, MergedReorderBufferThrowsOnOverflow)
   }
   EXPECT_TRUE(threw);
   EXPECT_EQ(code, "E_DATA_002");
+}
+
+namespace
+{
+
+// Write a multi-segment fixture by rotating at small byte budget. Each
+// trade is ~48 bytes payload + 12B frame header ≈ 60B; 8 KB rotation
+// gives roughly 100-200 events per segment, so 1000 trades land in
+// ~6-10 segments — enough to spread across 4 workers.
+void writeMultiSegmentTrades(const std::filesystem::path& dir, int count)
+{
+  WriterConfig cfg{.output_dir = dir,
+                   .max_segment_bytes = 8 * 1024,
+                   .index_interval = 50,
+                   .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(cfg);
+  for (int i = 0; i < count; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 1'000'000LL * (i + 1);  // 1ms apart
+    t.symbol_id = 1;
+    t.trade_id = static_cast<uint64_t>(i);
+    t.side = (i % 2);
+    t.qty_raw = 100 + (i % 10);
+    writer.writeTrade(t);
+  }
+  writer.close();
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, ParallelRunMatchesSingleThreadResults)
+{
+  // Multi-segment fixture run through single-threaded and parallel
+  // panels with identical inputs. Result vectors / per-cell values
+  // must match exactly for the merge-friendly aggregators
+  // (EventTypeStats, BinCount, VolumeBin, Quantile). Peak's
+  // post-merge top-N is unordered by start_ns within a count tier so
+  // we compare the multiset of counts.
+  constexpr int N = 1000;
+  writeMultiSegmentTrades(_test_dir, N);
+
+  ReaderConfig rcfg{.data_dir = _test_dir};
+
+  auto runWith = [&](std::size_t n_threads)
+  {
+    BinaryLogReader r(rcfg);
+    auto stats = std::make_unique<EventTypeStatsAggregator>();
+    auto bins = std::make_unique<BinCountAggregator>(10'000'000LL);
+    auto vol = std::make_unique<VolumeBinAggregator>(10'000'000LL);
+    auto quant = std::make_unique<QuantileAggregator>(
+        std::vector<int64_t>{10'000'000LL}, std::vector<double>{0.5, 0.99});
+    std::array<IAggregator*, 4> panel{stats.get(), bins.get(), vol.get(), quant.get()};
+    EXPECT_TRUE(r.run(panel, n_threads));
+    return std::make_tuple(std::move(stats), std::move(bins), std::move(vol),
+                           std::move(quant));
+  };
+
+  auto [s1, b1, v1, q1] = runWith(1);
+  auto [s4, b4, v4, q4] = runWith(4);
+
+  // EventTypeStats parity
+  ASSERT_EQ(s1->result().size(), s4->result().size());
+  for (size_t i = 0; i < s1->result().size(); ++i)
+  {
+    EXPECT_EQ(s1->result()[i].symbol_id, s4->result()[i].symbol_id);
+    EXPECT_EQ(s1->result()[i].trades, s4->result()[i].trades);
+    EXPECT_EQ(s1->result()[i].book_snapshots, s4->result()[i].book_snapshots);
+    EXPECT_EQ(s1->result()[i].book_deltas, s4->result()[i].book_deltas);
+  }
+  EXPECT_EQ(s1->result()[0].trades, static_cast<uint64_t>(N));
+
+  // BinCount parity
+  ASSERT_EQ(b1->result().size(), b4->result().size());
+  for (size_t i = 0; i < b1->result().size(); ++i)
+  {
+    EXPECT_EQ(b1->result()[i].bucket_ts_ns, b4->result()[i].bucket_ts_ns);
+    EXPECT_EQ(b1->result()[i].count, b4->result()[i].count);
+  }
+
+  // VolumeBin parity
+  ASSERT_EQ(v1->result().size(), v4->result().size());
+  for (size_t i = 0; i < v1->result().size(); ++i)
+  {
+    EXPECT_EQ(v1->result()[i].bucket_ts_ns, v4->result()[i].bucket_ts_ns);
+    EXPECT_EQ(v1->result()[i].qty_raw, v4->result()[i].qty_raw);
+  }
+
+  // Quantile parity — histogram sums merge associatively so threshold
+  // counts must match exactly.
+  ASSERT_EQ(q1->result().size(), q4->result().size());
+  for (size_t i = 0; i < q1->result().size(); ++i)
+  {
+    EXPECT_EQ(q1->result()[i].window_ns, q4->result()[i].window_ns);
+    EXPECT_EQ(q1->result()[i].quantile, q4->result()[i].quantile);
+    EXPECT_EQ(q1->result()[i].count, q4->result()[i].count);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, ParallelRunEmptySpanNoOp)
+{
+  writeMultiSegmentTrades(_test_dir, 100);
+  ReaderConfig rcfg{.data_dir = _test_dir};
+  BinaryLogReader reader(rcfg);
+  std::array<IAggregator*, 0> empty{};
+  EXPECT_TRUE(reader.run(empty, 4));
 }

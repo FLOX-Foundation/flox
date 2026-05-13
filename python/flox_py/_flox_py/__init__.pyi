@@ -421,9 +421,9 @@ class DEMA:
     def value(self) -> float | None:
         ...
 class DataReader:
-    def __init__(self, data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None) -> None:
+    def __init__(self, data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None, reorder_window_ns: typing.Any = None) -> None:
         """
-        Create a DataReader for a binary log data directory
+        Create a DataReader for a binary log data directory. `reorder_window_ns` controls the bounded reorder buffer applied to segments without the Sorted flag (default 10s).
         """
     def count(self) -> int:
         """
@@ -453,9 +453,9 @@ class DataReader:
         """
         Read trades starting from a given timestamp (nanoseconds)
         """
-    def run(self, aggregators: list) -> bool:
+    def run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 1) -> bool:
         """
-        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk.
+        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk. n_threads=1 (default) keeps single-threaded; n_threads>1 partitions segments across worker threads via IAggregator::cloneEmpty()/merge().
         """
     def segment_files(self) -> list:
         """

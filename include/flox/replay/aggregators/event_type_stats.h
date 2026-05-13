@@ -45,6 +45,8 @@ class EventTypeStatsAggregator final : public IAggregator
 
   void onEvent(const ReplayEvent& ev) override;
   void finalize() override;
+  std::unique_ptr<IAggregator> cloneEmpty() const override;
+  void merge(const IAggregator& other) override;
 
   // Sorted-by-symbol-id flat result. Available after run() completes
   // (the reader calls finalize() on its way out). Calling result()

@@ -2302,6 +2302,10 @@
         {
           "name": "aggregator_count",
           "type": "uint32_t"
+        },
+        {
+          "name": "n_threads",
+          "type": "uint32_t"
         }
       ],
       "return_type": "uint8_t"
@@ -6105,6 +6109,10 @@
         },
         {
           "name": "aggregator_count",
+          "type": "uint32_t"
+        },
+        {
+          "name": "n_threads",
           "type": "uint32_t"
         }
       ],

@@ -1238,7 +1238,7 @@ export class DataReader {
   /** Streaming aggregator dispatch over the tape in a single
    *  decompression pass. Returns `true` on success; an empty list is a
    *  no-op no-decompression call returning `true`. */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>): boolean;
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
 }
 
 // ── Streaming tape aggregator framework (W14-T019) ─────────────────
@@ -1417,7 +1417,7 @@ export class MergedTapeReader {
    *  decompression pass. Same contract as `DataReader.run` — events
    *  carry global-rewritten symbol ids; per-tape provenance is not
    *  surfaced to aggregators. */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>): boolean;
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
 }
 
 export interface Partition {
