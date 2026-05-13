@@ -326,6 +326,87 @@ class VolumeBinAggregatorWrap : public Napi::ObjectWrap<VolumeBinAggregatorWrap>
   FloxAggregatorHandle _h = nullptr;
 };
 
+// ── OHLCBinAggregator ───────────────────────────────────────────────
+
+class OHLCBinAggregatorWrap : public Napi::ObjectWrap<OHLCBinAggregatorWrap>
+{
+ public:
+  static Napi::FunctionReference& Ctor()
+  {
+    static Napi::FunctionReference ref;
+    return ref;
+  }
+  static Napi::Function Init(Napi::Env env)
+  {
+    Napi::Function fn = DefineClass(
+        env, "OHLCBinAggregator",
+        {InstanceMethod("result", &OHLCBinAggregatorWrap::Result)});
+    Ctor() = Napi::Persistent(fn);
+    Ctor().SuppressDestruct();
+    return fn;
+  }
+
+  OHLCBinAggregatorWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<OHLCBinAggregatorWrap>(info)
+  {
+    int64_t bucket_ns = 0;
+    if (info.Length() > 0)
+    {
+      if (info[0].IsBigInt())
+      {
+        bool lossless = false;
+        bucket_ns = info[0].As<Napi::BigInt>().Int64Value(&lossless);
+      }
+      else if (info[0].IsNumber())
+      {
+        bucket_ns = info[0].As<Napi::Number>().Int64Value();
+      }
+    }
+    uint8_t by_symbol = info.Length() > 1 && info[1].IsBoolean() && info[1].As<Napi::Boolean>().Value();
+    auto filter = tape_agg_detail::readEventFilter(info, 2, FLOX_AGG_FILTER_TRADES);
+    auto sf = tape_agg_detail::readSymbolFilter(info, 3);
+    _h = flox_ohlc_bin_aggregator_create(bucket_ns, by_symbol, filter,
+                                         sf.empty() ? nullptr : sf.data(),
+                                         static_cast<uint32_t>(sf.size()));
+  }
+  ~OHLCBinAggregatorWrap()
+  {
+    if (_h)
+    {
+      flox_aggregator_destroy(_h);
+    }
+  }
+
+  FloxAggregatorHandle nativeHandle() const { return _h; }
+
+ private:
+  Napi::Value Result(const Napi::CallbackInfo& info)
+  {
+    uint32_t n = flox_ohlc_bin_read_result(_h, nullptr, 0);
+    std::vector<FloxOHLCBinRow> rows(n);
+    if (n > 0)
+    {
+      flox_ohlc_bin_read_result(_h, rows.data(), n);
+    }
+    auto env = info.Env();
+    auto arr = Napi::Array::New(env, n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      auto o = Napi::Object::New(env);
+      o.Set("bucketTsNs", Napi::BigInt::New(env, rows[i].bucket_ts_ns));
+      o.Set("symbolId", Napi::Number::New(env, rows[i].symbol_id));
+      o.Set("openRaw", Napi::BigInt::New(env, rows[i].open_raw));
+      o.Set("highRaw", Napi::BigInt::New(env, rows[i].high_raw));
+      o.Set("lowRaw", Napi::BigInt::New(env, rows[i].low_raw));
+      o.Set("closeRaw", Napi::BigInt::New(env, rows[i].close_raw));
+      arr.Set(i, o);
+    }
+    return arr;
+  }
+
+  FloxAggregatorHandle _h = nullptr;
+};
+
 // ── PeakAggregator ──────────────────────────────────────────────────
 
 class PeakAggregatorWrap : public Napi::ObjectWrap<PeakAggregatorWrap>
@@ -558,6 +639,10 @@ inline bool collectAggregatorHandles(Napi::Env env, Napi::Array js_aggregators,
     {
       h = Napi::ObjectWrap<VolumeBinAggregatorWrap>::Unwrap(obj)->nativeHandle();
     }
+    else if (obj.InstanceOf(OHLCBinAggregatorWrap::Ctor().Value()))
+    {
+      h = Napi::ObjectWrap<OHLCBinAggregatorWrap>::Unwrap(obj)->nativeHandle();
+    }
     else if (obj.InstanceOf(PeakAggregatorWrap::Ctor().Value()))
     {
       h = Napi::ObjectWrap<PeakAggregatorWrap>::Unwrap(obj)->nativeHandle();
@@ -571,7 +656,7 @@ inline bool collectAggregatorHandles(Napi::Env env, Napi::Array js_aggregators,
       Napi::TypeError::New(
           env,
           "Element is not a recognised tape aggregator wrap "
-          "(EventTypeStats/BinCount/VolumeBin/Peak/Quantile)")
+          "(EventTypeStats/BinCount/VolumeBin/OHLCBin/Peak/Quantile)")
           .ThrowAsJavaScriptException();
       return false;
     }
@@ -585,6 +670,7 @@ inline void registerTapeAggregators(Napi::Env env, Napi::Object exports)
   exports.Set("EventTypeStatsAggregator", EventTypeStatsAggregatorWrap::Init(env));
   exports.Set("BinCountAggregator", BinCountAggregatorWrap::Init(env));
   exports.Set("VolumeBinAggregator", VolumeBinAggregatorWrap::Init(env));
+  exports.Set("OHLCBinAggregator", OHLCBinAggregatorWrap::Init(env));
   exports.Set("PeakAggregator", PeakAggregatorWrap::Init(env));
   exports.Set("QuantileAggregator", QuantileAggregatorWrap::Init(env));
 

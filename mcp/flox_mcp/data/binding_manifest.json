@@ -1448,6 +1448,16 @@
           "name": "flox_mid_price_raw"
         },
         {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_ohlc_bin_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_ohlc_bin_read_result"
+        },
+        {
           "group": "order_group",
           "kind": "function",
           "name": "flox_order_group_add_limit_leg"
@@ -2697,6 +2707,10 @@
         {
           "kind": "struct",
           "name": "FloxMergedTapeStats"
+        },
+        {
+          "kind": "struct",
+          "name": "FloxOHLCBinRow"
         },
         {
           "kind": "struct",
@@ -4222,6 +4236,14 @@
         },
         {
           "kind": "function",
+          "name": "flox_ohlc_bin_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_ohlc_bin_read_result"
+        },
+        {
+          "kind": "function",
           "name": "flox_order_group_add_limit_leg"
         },
         {
@@ -5442,6 +5464,14 @@
         },
         {
           "kind": "class",
+          "name": "OHLCBinAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "OHLCBinRow"
+        },
+        {
+          "kind": "class",
           "name": "Order"
         },
         {
@@ -6167,6 +6197,10 @@
         {
           "kind": "class",
           "name": "MultiFeedClock"
+        },
+        {
+          "kind": "class",
+          "name": "OHLCBinAggregator"
         },
         {
           "kind": "class",
@@ -8296,6 +8330,8 @@
         "flox_event_type_stats_aggregator_create",
         "flox_event_type_stats_read_result",
         "flox_merged_tape_reader_run",
+        "flox_ohlc_bin_aggregator_create",
+        "flox_ohlc_bin_read_result",
         "flox_peak_aggregator_create",
         "flox_peak_read_result",
         "flox_quantile_aggregator_create",
@@ -8312,6 +8348,7 @@
           "EventTypeStatsAggregator",
           "BinCountAggregator",
           "VolumeBinAggregator",
+          "OHLCBinAggregator",
           "PeakAggregator",
           "QuantileAggregator"
         ],
@@ -8323,6 +8360,7 @@
           "EventTypeStatsAggregator",
           "BinCountAggregator",
           "VolumeBinAggregator",
+          "OHLCBinAggregator",
           "PeakAggregator",
           "QuantileAggregator"
         ],

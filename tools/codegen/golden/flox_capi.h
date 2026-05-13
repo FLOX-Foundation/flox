@@ -597,6 +597,16 @@ extern "C"
 
   typedef struct
   {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    int64_t open_raw;
+    int64_t high_raw;
+    int64_t low_raw;
+    int64_t close_raw;
+  } FloxOHLCBinRow;
+
+  typedef struct
+  {
     int64_t window_ns;
     uint64_t count;
     int64_t start_ns;
@@ -1819,6 +1829,10 @@ extern "C"
                                                          FloxAggregatorEventFilter event_filter,
                                                          const uint32_t* symbol_filter,
                                                          uint32_t symbol_filter_count);
+  FloxAggregatorHandle flox_ohlc_bin_aggregator_create(int64_t bucket_ns, uint8_t by_symbol,
+                                                       FloxAggregatorEventFilter event_filter,
+                                                       const uint32_t* symbol_filter,
+                                                       uint32_t symbol_filter_count);
   FloxAggregatorHandle flox_peak_aggregator_create(const int64_t* window_ns_list,
                                                    uint32_t window_count, uint32_t top_n,
                                                    uint32_t oversample_factor,
@@ -1844,6 +1858,8 @@ extern "C"
                                       uint32_t max_rows);
   uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h, FloxVolumeBinRow* rows_out,
                                        uint32_t max_rows);
+  uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h, FloxOHLCBinRow* rows_out,
+                                     uint32_t max_rows);
   uint32_t flox_peak_read_result(FloxAggregatorHandle h, FloxPeakRow* rows_out, uint32_t max_rows);
   uint32_t flox_quantile_read_result(FloxAggregatorHandle h, FloxQuantileRow* rows_out,
                                      uint32_t max_rows);

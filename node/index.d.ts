@@ -1238,7 +1238,7 @@ export class DataReader {
   /** Streaming aggregator dispatch over the tape in a single
    *  decompression pass. Returns `true` on success; an empty list is a
    *  no-op no-decompression call returning `true`. */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
 }
 
 // ── Streaming tape aggregator framework (W14-T019) ─────────────────
@@ -1286,6 +1286,20 @@ export class VolumeBinAggregator {
   constructor(bucketNs: bigint | number, bySide?: boolean, bySymbol?: boolean,
               eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
   result(): VolumeBinRow[];
+}
+
+export interface OHLCBinRow {
+  bucketTsNs: bigint;
+  symbolId: number;
+  openRaw: bigint;
+  highRaw: bigint;
+  lowRaw: bigint;
+  closeRaw: bigint;
+}
+export class OHLCBinAggregator {
+  constructor(bucketNs: bigint | number, bySymbol?: boolean,
+              eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): OHLCBinRow[];
 }
 
 export interface PeakEntry {
@@ -1417,7 +1431,7 @@ export class MergedTapeReader {
    *  decompression pass. Same contract as `DataReader.run` — events
    *  carry global-rewritten symbol ids; per-tape provenance is not
    *  surfaced to aggregators. */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
 }
 
 export interface Partition {

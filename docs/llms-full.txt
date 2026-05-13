@@ -5965,19 +5965,20 @@ VolumeProfile<512> futuresProfile;  // High precision needed
 
 `DataReader.run([...])` walks a `.floxlog` once and forwards every event to a panel of streaming aggregators. The aggregators run entirely in C++; the dispatch loop never crosses into Python or JS during the walk.
 
-The five native aggregators:
+The six native aggregators:
 
 | Aggregator | Per-cell value | Typical use |
 |---|---|---|
 | `EventTypeStatsAggregator` | Counter of trades, book snapshots, book deltas | Quick overview of a tape's contents |
 | `BinCountAggregator` | Event count per time bucket | Trades per minute, per second, etc. |
 | `VolumeBinAggregator` | Sum of trade `qty_raw` per time bucket | Volume profile over time |
+| `OHLCBinAggregator` | Open / high / low / close of trade `price_raw` per bucket | Price-time series for returns and candle reconstruction |
 | `PeakAggregator` | Top-N busiest fixed-width windows per scale | Finding bursts at chosen scales |
 | `QuantileAggregator` | Window-count distribution to quantiles | Activity baseline at a given scale |
 
-The filter parameters work the same way on all five:
+The filter parameters work the same way on all six:
 
-- `event_filter`: `Trades`, `BooksOnly`, or `Both`. Aggregators that only make sense for trades (volume, peaks, quantiles) default to `Trades`.
+- `event_filter`: `Trades`, `BooksOnly`, or `Both`. Aggregators that only make sense for trades (volume, OHLC, peaks, quantiles) default to `Trades`.
 - `symbol_filter`: a list of symbol ids. The default (empty) admits every symbol.
 
 `run([])` is a no-op. It does not decompress anything; useful as a sanity check that the framework is wired up.
@@ -5998,6 +5999,9 @@ volume = flox_py.VolumeBinAggregator(
     bucket_ns=60_000_000_000,
     by_side=True,
 )
+ohlc = flox_py.OHLCBinAggregator(
+    bucket_ns=60_000_000_000,
+)
 peaks = flox_py.PeakAggregator(
     window_ns_list=[1_000_000, 10_000_000, 100_000_000, 1_000_000_000],
     top_n=10,
@@ -6007,17 +6011,18 @@ quantiles = flox_py.QuantileAggregator(
     quantiles=[0.5, 0.95, 0.99],
 )
 
-reader.run([stats, counts, volume, peaks, quantiles])
+reader.run([stats, counts, volume, ohlc, peaks, quantiles])
 
 # .result() is populated once run() returns.
 print(stats.result())       # structured numpy array
 print(counts.result())      # structured numpy array
 print(volume.result())      # structured numpy array
+print(ohlc.result())        # structured numpy array
 print(peaks.result())       # dict[window_ns, list[(count, start_ns)]]
 print(quantiles.result())   # dict[window_ns, dict[quantile, count]]
 ```
 
-The tabular aggregators (stats, counts, volume) return structured numpy arrays. Field names match the row struct, so `arr["count"]`, `arr["bucket_ts_ns"]`, `arr["qty_raw"]` work directly.
+The tabular aggregators (stats, counts, volume, ohlc) return structured numpy arrays. Field names match the row struct, so `arr["count"]`, `arr["bucket_ts_ns"]`, `arr["close_raw"]` work directly.
 
 `side` encoding in `BinCount` and `VolumeBin` rows: `0` means aggregate (no side split), `1` is BUY, `2` is SELL. `symbol_id = 0` means aggregate; set `by_symbol=True` to get one row per (bucket, symbol_id) cell.
 
@@ -6025,8 +6030,9 @@ The tabular aggregators (stats, counts, volume) return structured numpy arrays. 
 
 ```js
 import { DataReader, EventTypeStatsAggregator, BinCountAggregator,
-         VolumeBinAggregator, PeakAggregator, QuantileAggregator,
-         AggregatorEventFilter } from '@flox-foundation/flox';
+         VolumeBinAggregator, OHLCBinAggregator, PeakAggregator,
+         QuantileAggregator, AggregatorEventFilter }
+    from '@flox-foundation/flox';
 
 const reader = new DataReader('./tape');
 
@@ -6034,6 +6040,7 @@ const F = AggregatorEventFilter;
 const stats = new EventTypeStatsAggregator(F.Both, []);
 const counts = new BinCountAggregator(60_000_000_000n, /*bySide=*/true);
 const volume = new VolumeBinAggregator(60_000_000_000n, /*bySide=*/true);
+const ohlc = new OHLCBinAggregator(60_000_000_000n);
 const peaks = new PeakAggregator(
     [1_000_000n, 10_000_000n, 100_000_000n, 1_000_000_000n],
     /*topN=*/10
@@ -6043,11 +6050,12 @@ const quantiles = new QuantileAggregator(
     [0.5, 0.95, 0.99]
 );
 
-reader.run([stats, counts, volume, peaks, quantiles]);
+reader.run([stats, counts, volume, ohlc, peaks, quantiles]);
 
 console.log(stats.result());
 console.log(counts.result());
 console.log(volume.result());
+console.log(ohlc.result());
 console.log(peaks.result());
 console.log(quantiles.result());
 ```
@@ -6075,6 +6083,20 @@ Result is sorted by `symbol_id` ascending. Symbols with zero matching events don
 The bucket for an event at time `t` is `floor(t / bucket_ns) * bucket_ns`. Empty buckets produce no rows. `by_side=True` only splits trades (book events stay in `side=0`); `by_symbol=True` produces one row per (bucket, symbol_id) cell.
 
 `VolumeBin` ignores book events. Pass `event_filter=BooksOnly` and you get an empty result by design.
+
+### OHLCBin
+
+Same bucketing as `BinCount` / `VolumeBin`. For every (bucket, optional symbol) cell, four values come out of the trades that fell into it:
+
+- `open_raw`: `price_raw` of the trade with the smallest `exchange_ts_ns`.
+- `close_raw`: `price_raw` of the trade with the largest `exchange_ts_ns`.
+- `high_raw` / `low_raw`: max and min of `price_raw` across the cell.
+
+Books are ignored — no scalar price per book event. Empty buckets produce no row; forward-fill on the caller side if a dense series is needed.
+
+There is no `by_side` parameter. An "open price for buys" is not a generally useful primitive; pair with `VolumeBinAggregator(by_side=True)` when per-side flow has to sit next to the price series.
+
+`*_raw` fields are fixed-point int64. Divide by `Price::SCALE` (= 1e8) to get floats. Parallel runs preserve open/close ordering by comparing the per-cell first/last timestamps on merge.
 
 ### Peak
 
@@ -8009,7 +8031,7 @@ Generated by `scripts/gen_api_index.py` from
 
 Module: `flox_py`
 
-Surface: 92 classes, 56 functions, 30 constants.
+Surface: 93 classes, 56 functions, 30 constants.
 
 ### Constants
 
@@ -8852,6 +8874,18 @@ Market Profile (TPO) aggregator. Tracks price activity across time periods.
 - `reset(self) -> None`
 - `symbol_count(self) -> int`
 - `tick(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> dict`
+
+### `class OHLCBinAggregator(_AggregatorHandle)`
+
+Time-bucketed price OHLC over trade events. For each cell, records open (earliest ts), close (latest ts), high (max), and low (min) of trade.price_raw. Empty buckets produce no row; forward-fill on the caller side if a dense series is needed. Books are ignored.
+
+**Constructor**
+
+- `OHLCBinAggregator(bucket_ns: typing.SupportsInt | typing.SupportsIndex, by_symbol: bool = False, event_filter: AggregatorEventFilter = ..., symbol_filter: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex] = []) -> None`
+
+**Members**
+
+- `result(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 
 ### `class Order`
 

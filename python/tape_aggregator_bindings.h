@@ -19,6 +19,7 @@
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
+#include "flox/replay/aggregators/ohlc_bin.h"
 #include "flox/replay/aggregators/peak.h"
 #include "flox/replay/aggregators/quantile.h"
 #include "flox/replay/aggregators/volume_bin.h"
@@ -126,6 +127,34 @@ class PyVolumeBinAggregator : public IPyAggregator
   flox::replay::VolumeBinAggregator _impl;
 };
 
+class PyOHLCBinAggregator : public IPyAggregator
+{
+ public:
+  PyOHLCBinAggregator(int64_t bucket_ns, bool by_symbol,
+                      flox::replay::AggregatorEventFilter event_filter,
+                      std::vector<uint32_t> symbol_filter)
+      : _impl(bucket_ns, by_symbol, event_filter, std::move(symbol_filter))
+  {
+  }
+
+  flox::replay::IAggregator* native() override { return &_impl; }
+
+  py::array_t<flox::replay::OHLCBinAggregator::Row> result()
+  {
+    const auto& rows = _impl.result();
+    py::array_t<flox::replay::OHLCBinAggregator::Row> out(rows.size());
+    if (!rows.empty())
+    {
+      std::memcpy(out.mutable_data(), rows.data(),
+                  rows.size() * sizeof(flox::replay::OHLCBinAggregator::Row));
+    }
+    return out;
+  }
+
+ private:
+  flox::replay::OHLCBinAggregator _impl;
+};
+
 class PyPeakAggregator : public IPyAggregator
 {
  public:
@@ -226,6 +255,8 @@ inline void bindTapeAggregators(py::module_& m)
                        symbol_id, side, count);
   PYBIND11_NUMPY_DTYPE(flox::replay::VolumeBinAggregator::Row, bucket_ts_ns,
                        symbol_id, side, qty_raw);
+  PYBIND11_NUMPY_DTYPE(flox::replay::OHLCBinAggregator::Row, bucket_ts_ns,
+                       symbol_id, open_raw, high_raw, low_raw, close_raw);
 
   py::enum_<flox::replay::AggregatorEventFilter>(m, "AggregatorEventFilter",
                                                  "Which event kinds an aggregator counts. Trades = TradeRecord only, "
@@ -284,6 +315,24 @@ inline void bindTapeAggregators(py::module_& m)
            "Structured numpy: (bucket_ts_ns i8, symbol_id u4, side u1, "
            "qty_raw i8). qty_raw is fixed-point — divide by Quantity::SCALE "
            "to get floats.");
+
+  py::class_<PyOHLCBinAggregator, IPyAggregator>(m, "OHLCBinAggregator",
+                                                 "Time-bucketed price OHLC over trade events. For each cell, "
+                                                 "records open (earliest ts), close (latest ts), high (max), and "
+                                                 "low (min) of trade.price_raw. Empty buckets produce no row; "
+                                                 "forward-fill on the caller side if a dense series is needed. "
+                                                 "Books are ignored.")
+      .def(py::init<int64_t, bool, flox::replay::AggregatorEventFilter,
+                    std::vector<uint32_t>>(),
+           py::arg("bucket_ns"),
+           py::arg("by_symbol") = false,
+           py::arg("event_filter") = flox::replay::AggregatorEventFilter::Trades,
+           py::arg("symbol_filter") = std::vector<uint32_t>{})
+      .def("result", &PyOHLCBinAggregator::result,
+           "Structured numpy: (bucket_ts_ns i8, symbol_id u4, "
+           "open_raw i8, high_raw i8, low_raw i8, close_raw i8). "
+           "*_raw fields are fixed-point. Divide by Price::SCALE to get "
+           "floats. symbol_id is 0 when by_symbol=False.");
 
   py::class_<PyPeakAggregator, IPyAggregator>(m, "PeakAggregator",
                                               "Streaming top-N busiest fixed-width windows per scale. For each "

@@ -3488,6 +3488,15 @@ extern "C"
       FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
       uint32_t symbol_filter_count);
 
+  // OHLCBinAggregator: per-bucket open/high/low/close of trade
+  // price_raw. Trade-only; by_symbol controls per-symbol split (no
+  // by_side because OHLC by side is not a generally useful primitive).
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_ohlc_bin_aggregator_create(
+      int64_t bucket_ns, uint8_t by_symbol,
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
   // PeakAggregator: `oversample_factor` 0 means "use the engine default"
   // (currently 100). Pass non-zero to override.
   FLOX_EXPORT(group = "tape_aggregator")
@@ -3561,6 +3570,16 @@ extern "C"
 
   typedef struct
   {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    int64_t open_raw;
+    int64_t high_raw;
+    int64_t low_raw;
+    int64_t close_raw;
+  } FloxOHLCBinRow;
+
+  typedef struct
+  {
     int64_t window_ns;
     uint64_t count;
     int64_t start_ns;
@@ -3592,6 +3611,11 @@ extern "C"
   uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
                                        FloxVolumeBinRow* rows_out,
                                        uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h,
+                                     FloxOHLCBinRow* rows_out,
+                                     uint32_t max_rows);
 
   FLOX_EXPORT(group = "tape_aggregator")
   uint32_t flox_peak_read_result(FloxAggregatorHandle h,

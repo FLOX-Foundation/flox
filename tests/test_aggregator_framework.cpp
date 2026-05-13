@@ -11,6 +11,7 @@
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
 #include "flox/replay/aggregators/event_type_stats.h"
+#include "flox/replay/aggregators/ohlc_bin.h"
 #include "flox/replay/aggregators/peak.h"
 #include "flox/replay/aggregators/quantile.h"
 #include "flox/replay/aggregators/volume_bin.h"
@@ -771,6 +772,239 @@ TEST_F(AggregatorFrameworkTest, VolumeBinRejectsNonPositiveBucket)
 {
   EXPECT_THROW(VolumeBinAggregator(0), std::invalid_argument);
   EXPECT_THROW(VolumeBinAggregator(-100), std::invalid_argument);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// OHLCBinAggregator
+// ───────────────────────────────────────────────────────────────────────
+
+namespace
+{
+
+// Tape designed for OHLC math. 5 buckets at 100 ms each. Within each
+// bucket b, symbol 1 gets four trades at prices
+//   open  = 100 + 10·b
+//   high  = open + 5
+//   low   = open - 3
+//   close = open + 2
+// emitted in (open → high → low → close) order so that the timestamps
+// inside the bucket are strictly ascending and the reorder buffer is a
+// no-op. Symbol 2 gets a single trade at price 200 + b at ts mid-
+// bucket. Prices are picked so every OHLC field is distinct from every
+// neighbouring field — off-by-one mistakes (high↔close, open↔low)
+// would show up as mismatched expectations.
+void writeOhlcTape(const std::filesystem::path& dir)
+{
+  WriterConfig config{.output_dir = dir,
+                      .index_interval = 100,
+                      .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(config);
+
+  constexpr int64_t bucket_ns = 100'000'000LL;
+  uint64_t tid = 0;
+  for (int b = 0; b < 5; ++b)
+  {
+    const int64_t base = b * bucket_ns;
+    const int64_t open_price = 100 + 10 * b;
+    const int64_t high_price = open_price + 5;
+    const int64_t low_price = open_price - 3;
+    const int64_t close_price = open_price + 2;
+    const int64_t prices[4] = {open_price, high_price, low_price, close_price};
+    for (int i = 0; i < 4; ++i)
+    {
+      TradeRecord t{};
+      t.exchange_ts_ns = base + i + 1;
+      t.symbol_id = 1;
+      t.trade_id = tid++;
+      t.side = (i % 2 == 0) ? 0 : 1;
+      t.qty_raw = 1;
+      t.price_raw = prices[i];
+      writer.writeTrade(t);
+    }
+    TradeRecord t{};
+    t.exchange_ts_ns = base + 50;
+    t.symbol_id = 2;
+    t.trade_id = tid++;
+    t.side = 0;
+    t.qty_raw = 1;
+    t.price_raw = 200 + b;
+    writer.writeTrade(t);
+  }
+
+  writer.close();
+}
+
+const OHLCBinAggregator::Row* findOhlc(const std::vector<OHLCBinAggregator::Row>& rows,
+                                       int64_t bucket, uint32_t sym)
+{
+  auto it = std::find_if(rows.begin(), rows.end(),
+                         [=](const auto& r)
+                         { return r.bucket_ts_ns == bucket && r.symbol_id == sym; });
+  return it == rows.end() ? nullptr : &*it;
+}
+
+}  // namespace
+
+TEST_F(AggregatorFrameworkTest, OhlcBinFlatAcrossSymbols)
+{
+  // by_symbol=false: per bucket every trade folds into one cell, so
+  // the aggregate OHLC covers symbol 1's quad AND symbol 2's single
+  // print. Per construction:
+  //   open  = 100 + 10·b       (sym1's first trade is earliest)
+  //   high  = max(100+10b+5, 200+b) = 200 + b  (sym2 dominates highs)
+  //   low   = (100+10b) - 3
+  //   close = 200 + b          (sym2 prints last at ts = base+50)
+  writeOhlcTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  OHLCBinAggregator ohlc(100'000'000LL);
+  std::array<IAggregator*, 1> aggregators{&ohlc};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = ohlc.result();
+  ASSERT_EQ(rows.size(), 5u);
+  for (int b = 0; b < 5; ++b)
+  {
+    const int64_t open_price = 100 + 10 * b;
+    EXPECT_EQ(rows[b].bucket_ts_ns, static_cast<int64_t>(b) * 100'000'000LL);
+    EXPECT_EQ(rows[b].symbol_id, 0u);
+    EXPECT_EQ(rows[b].open_raw, open_price);
+    EXPECT_EQ(rows[b].high_raw, 200 + b);
+    EXPECT_EQ(rows[b].low_raw, open_price - 3);
+    EXPECT_EQ(rows[b].close_raw, 200 + b);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, OhlcBinBySymbol)
+{
+  // by_symbol=true: separate cells for sym1 (the quad) and sym2 (one
+  // print). Sym1's OHLC follows the constructed prices exactly; sym2
+  // is degenerate (O=H=L=C = 200+b).
+  writeOhlcTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  OHLCBinAggregator ohlc(100'000'000LL, /*by_symbol=*/true);
+  std::array<IAggregator*, 1> aggregators{&ohlc};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = ohlc.result();
+  ASSERT_EQ(rows.size(), 10u);  // 5 buckets × 2 symbols
+  for (int b = 0; b < 5; ++b)
+  {
+    const int64_t bucket = b * 100'000'000LL;
+    const int64_t open_price = 100 + 10 * b;
+    const auto* s1 = findOhlc(rows, bucket, 1);
+    const auto* s2 = findOhlc(rows, bucket, 2);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(s1->open_raw, open_price);
+    EXPECT_EQ(s1->high_raw, open_price + 5);
+    EXPECT_EQ(s1->low_raw, open_price - 3);
+    EXPECT_EQ(s1->close_raw, open_price + 2);
+    EXPECT_EQ(s2->open_raw, 200 + b);
+    EXPECT_EQ(s2->high_raw, 200 + b);
+    EXPECT_EQ(s2->low_raw, 200 + b);
+    EXPECT_EQ(s2->close_raw, 200 + b);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, OhlcBinBooksOnlyIsEmpty)
+{
+  writeOhlcTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  OHLCBinAggregator ohlc(100'000'000LL, false, AggregatorEventFilter::BooksOnly);
+  std::array<IAggregator*, 1> aggregators{&ohlc};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  EXPECT_TRUE(ohlc.result().empty());
+}
+
+TEST_F(AggregatorFrameworkTest, OhlcBinSymbolFilter)
+{
+  writeOhlcTape(_test_dir);
+
+  ReaderConfig rconfig{.data_dir = _test_dir};
+  BinaryLogReader reader(rconfig);
+
+  OHLCBinAggregator ohlc(100'000'000LL, /*by_symbol=*/true,
+                         AggregatorEventFilter::Trades, /*symbol_filter=*/{2});
+  std::array<IAggregator*, 1> aggregators{&ohlc};
+  ASSERT_TRUE(reader.run(aggregators));
+
+  const auto& rows = ohlc.result();
+  ASSERT_EQ(rows.size(), 5u);
+  for (int b = 0; b < 5; ++b)
+  {
+    EXPECT_EQ(rows[b].symbol_id, 2u);
+    EXPECT_EQ(rows[b].open_raw, 200 + b);
+    EXPECT_EQ(rows[b].close_raw, 200 + b);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, OhlcBinRejectsNonPositiveBucket)
+{
+  EXPECT_THROW(OHLCBinAggregator(0), std::invalid_argument);
+  EXPECT_THROW(OHLCBinAggregator(-100), std::invalid_argument);
+}
+
+TEST_F(AggregatorFrameworkTest, OhlcBinMergePreservesOpenClose)
+{
+  // merge() is exercised by the parallel-run path; here we test it
+  // directly to lock in the open-by-earliest-ts / close-by-latest-ts
+  // invariant. Two clones receive disjoint, time-ordered halves of a
+  // single bucket; the merge of the second into the first must yield
+  // the same OHLC as a single aggregator over both halves.
+  OHLCBinAggregator agg_a(1'000'000'000LL);
+  OHLCBinAggregator agg_b(1'000'000'000LL);
+  OHLCBinAggregator ref(1'000'000'000LL);
+
+  auto trade = [](int64_t ts, int64_t price)
+  {
+    ReplayEvent ev{};
+    ev.type = EventType::Trade;
+    ev.timestamp_ns = ts;
+    ev.trade.symbol_id = 1;
+    ev.trade.exchange_ts_ns = ts;
+    ev.trade.price_raw = price;
+    ev.trade.qty_raw = 1;
+    return ev;
+  };
+
+  // First half (earlier ts): prices that set the open and the low.
+  agg_a.onEvent(trade(1'000, 100));
+  agg_a.onEvent(trade(2'000, 95));
+  ref.onEvent(trade(1'000, 100));
+  ref.onEvent(trade(2'000, 95));
+
+  // Second half (later ts): prices that set the high and the close.
+  agg_b.onEvent(trade(3'000, 120));
+  agg_b.onEvent(trade(4'000, 110));
+  ref.onEvent(trade(3'000, 120));
+  ref.onEvent(trade(4'000, 110));
+
+  agg_a.merge(agg_b);
+  agg_a.finalize();
+  ref.finalize();
+
+  const auto& rows = agg_a.result();
+  const auto& ref_rows = ref.result();
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(ref_rows.size(), 1u);
+  EXPECT_EQ(rows[0].open_raw, ref_rows[0].open_raw);    // 100
+  EXPECT_EQ(rows[0].high_raw, ref_rows[0].high_raw);    // 120
+  EXPECT_EQ(rows[0].low_raw, ref_rows[0].low_raw);      // 95
+  EXPECT_EQ(rows[0].close_raw, ref_rows[0].close_raw);  // 110
+  EXPECT_EQ(rows[0].open_raw, 100);
+  EXPECT_EQ(rows[0].high_raw, 120);
+  EXPECT_EQ(rows[0].low_raw, 95);
+  EXPECT_EQ(rows[0].close_raw, 110);
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -1682,5 +1916,57 @@ TEST_F(AggregatorFrameworkTest, IntraSegmentParallelMatchesSingleThread)
   for (size_t i = 0; i < q1->result().size(); ++i)
   {
     EXPECT_EQ(q1->result()[i].count, q4->result()[i].count);
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, OhlcBinParallelMatchesSingleThread)
+{
+  // Single huge segment with many blocks + monotonically drifting
+  // price. Parallel intra-segment partition splits the bucket that
+  // straddles a worker seam; OHLCBinAggregator::merge() has to
+  // recombine per-cell open/high/low/close exactly. Drift makes the
+  // open and close of the merged cell differ, so a broken merge that
+  // (say) picks dst.open unconditionally would show up here.
+  WriterConfig cfg{.output_dir = _test_dir,
+                   .max_segment_bytes = 1024ull * 1024 * 1024,
+                   .index_interval = 5,
+                   .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(cfg);
+  constexpr int N = 2000;
+  for (int i = 0; i < N; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 1'000'000LL * (i + 1);
+    t.symbol_id = 1;
+    t.trade_id = static_cast<uint64_t>(i);
+    t.side = (i % 2);
+    t.qty_raw = 1;
+    // Drift + sawtooth: distinct open/high/low/close per bucket.
+    t.price_raw = 1000 + i + (i % 11) * 17 - (i % 7) * 13;
+    writer.writeTrade(t);
+  }
+  writer.close();
+
+  ReaderConfig rcfg{.data_dir = _test_dir};
+  auto runWith = [&](std::size_t n_threads)
+  {
+    BinaryLogReader r(rcfg);
+    auto ohlc = std::make_unique<OHLCBinAggregator>(50'000'000LL);
+    std::array<IAggregator*, 1> panel{ohlc.get()};
+    EXPECT_TRUE(r.run(panel, n_threads));
+    return ohlc;
+  };
+
+  auto o1 = runWith(1);
+  auto o4 = runWith(4);
+
+  ASSERT_EQ(o1->result().size(), o4->result().size());
+  for (size_t i = 0; i < o1->result().size(); ++i)
+  {
+    EXPECT_EQ(o1->result()[i].bucket_ts_ns, o4->result()[i].bucket_ts_ns);
+    EXPECT_EQ(o1->result()[i].open_raw, o4->result()[i].open_raw);
+    EXPECT_EQ(o1->result()[i].high_raw, o4->result()[i].high_raw);
+    EXPECT_EQ(o1->result()[i].low_raw, o4->result()[i].low_raw);
+    EXPECT_EQ(o1->result()[i].close_raw, o4->result()[i].close_raw);
   }
 }
