@@ -108,6 +108,108 @@ int64_t lastTimestampInBlock(const std::vector<std::byte>& data)
   return last;
 }
 
+// Metadata for one compressed block — used by intra-segment parallel
+// workers to know where each block lives and how big it is. Filled
+// by `scanBlockOffsetsForSegment` via a fast header-only walk (no
+// decompression).
+struct BlockMeta
+{
+  uint64_t file_offset;  // position of the CompressedBlockHeader in the file
+  uint64_t data_offset;  // position of the compressed payload (header + 16)
+  uint32_t comp_size;    // compressed payload length
+  uint32_t orig_size;    // decompressed payload length
+  uint32_t event_count;  // events in this block (from the header)
+};
+
+// Walks a compressed segment reading only CompressedBlockHeaders and
+// skipping past each block's payload by its `compressed_size`. No
+// decompression. Stops at index trailer if present, otherwise at the
+// first invalid header or EOF.
+//
+// Returns true if at least one valid block was discovered (false
+// only on outright IO failure or invalid segment header). Callers
+// can treat an empty out_blocks as "process this segment single-
+// threaded".
+inline bool scanBlockOffsetsForSegment(const std::filesystem::path& path,
+                                       SegmentHeader& out_hdr,
+                                       std::vector<BlockMeta>& out_blocks)
+{
+  out_blocks.clear();
+  std::FILE* f = std::fopen(path.string().c_str(), "rb");
+  if (!f)
+  {
+    return false;
+  }
+
+  if (std::fread(&out_hdr, sizeof(out_hdr), 1, f) != 1 || !out_hdr.isValid())
+  {
+    std::fclose(f);
+    return false;
+  }
+  if (!out_hdr.isCompressed())
+  {
+    // Uncompressed segments are walked directly; intra-segment
+    // parallelism for them isn't wired up here.
+    std::fclose(f);
+    return true;
+  }
+
+  if (std::fseek(f, 0, SEEK_END) != 0)
+  {
+    std::fclose(f);
+    return false;
+  }
+  const long file_end = std::ftell(f);
+  if (file_end < 0)
+  {
+    std::fclose(f);
+    return false;
+  }
+  const long stop_at =
+      (out_hdr.hasIndex() && out_hdr.index_offset > 0)
+          ? static_cast<long>(out_hdr.index_offset)
+          : file_end;
+
+  if (std::fseek(f, sizeof(SegmentHeader), SEEK_SET) != 0)
+  {
+    std::fclose(f);
+    return false;
+  }
+
+  for (;;)
+  {
+    const long pos = std::ftell(f);
+    if (pos < 0 || pos >= stop_at)
+    {
+      break;
+    }
+    CompressedBlockHeader bh;
+    if (std::fread(&bh, sizeof(bh), 1, f) != 1 || !bh.isValid())
+    {
+      break;
+    }
+    const long data_pos = std::ftell(f);
+    if (data_pos < 0 ||
+        static_cast<long>(bh.compressed_size) > stop_at - data_pos)
+    {
+      // Truncated tail (live-tape write in progress) — stop here.
+      break;
+    }
+    out_blocks.push_back(BlockMeta{static_cast<uint64_t>(pos),
+                                   static_cast<uint64_t>(data_pos),
+                                   bh.compressed_size, bh.original_size,
+                                   bh.event_count});
+    if (std::fseek(f, data_pos + static_cast<long>(bh.compressed_size),
+                   SEEK_SET) != 0)
+    {
+      break;
+    }
+  }
+
+  std::fclose(f);
+  return true;
+}
+
 // In-place sort of frames inside a decompressed block by exchange_ts_ns.
 // Mirrors `BinaryLogWriter::sortBlockBuffer`: walks frames, collects
 // (offset, total_size, timestamp) refs, fast-paths monotonic blocks
@@ -352,6 +454,139 @@ void recoverCompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
       }
     }
   }
+}
+
+// Min-heap comparator for ReplayEvent. Greater-than yields a min-heap
+// when paired with std::push_heap / std::pop_heap. Defined in this
+// anon namespace so both `streamSegmentWithStats` (single-thread per-
+// segment loop) and the worker-mode `streamBlockRangeImpl` template
+// below can use it.
+struct ReplayEventLater
+{
+  bool operator()(const ReplayEvent& a, const ReplayEvent& b) const noexcept
+  {
+    return a.timestamp_ns > b.timestamp_ns;
+  }
+};
+
+// Worker-mode segment processor for intra-segment parallel run().
+// Opens a private BinaryLogIterator at `path`, switches it to
+// stop-at-block-end mode, and walks the assigned `blocks` range:
+// seekToBlockOffset → drain events → seek to next block. Events flow
+// through the same bounded reorder buffer logic as
+// streamSegmentWithStats so cross-block jitter within the worker's
+// range is correctly merged. Boundary effects at the partition seam
+// between workers are documented at IAggregator::merge (sliding-
+// window aggregators may underreport on that seam).
+template <typename Filter>
+bool streamBlockRangeImpl(const std::filesystem::path& path,
+                          std::span<const BlockMeta> blocks,
+                          BinaryLogReader::EventCallback& callback,
+                          ReaderStats& stats, int64_t reorder_window_ns,
+                          Filter passes_filter)
+{
+  if (blocks.empty())
+  {
+    return true;
+  }
+  BinaryLogIterator iter(path);
+  if (!iter.isValid())
+  {
+    return false;
+  }
+  iter.setStopAtBlockEnd(true);
+
+  ++stats.files_read;
+
+  const bool is_sorted = iter.header().isSorted();
+
+  if (is_sorted)
+  {
+    for (const auto& bm : blocks)
+    {
+      if (!iter.seekToBlockOffset(bm.file_offset))
+      {
+        return false;
+      }
+      ReplayEvent event;
+      while (iter.next(event))
+      {
+        if (!passes_filter(event))
+        {
+          continue;
+        }
+        ++stats.events_read;
+        event.type == EventType::Trade ? ++stats.trades_read : ++stats.book_updates_read;
+        if (!callback(event))
+        {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Unsorted: cross-block bounded reorder buffer over the worker's
+  // assigned block range.
+  std::vector<ReplayEvent> heap;
+  ReplayEventLater cmp;
+  int64_t watermark = std::numeric_limits<int64_t>::min();
+  const int64_t W = reorder_window_ns;
+
+  auto drain_below = [&](int64_t threshold_ts_ns) -> bool
+  {
+    while (!heap.empty() && heap.front().timestamp_ns < threshold_ts_ns)
+    {
+      std::pop_heap(heap.begin(), heap.end(), cmp);
+      ReplayEvent ev = std::move(heap.back());
+      heap.pop_back();
+      if (!passes_filter(ev))
+      {
+        continue;
+      }
+      ++stats.events_read;
+      ev.type == EventType::Trade ? ++stats.trades_read : ++stats.book_updates_read;
+      if (!callback(ev))
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for (const auto& bm : blocks)
+  {
+    if (!iter.seekToBlockOffset(bm.file_offset))
+    {
+      return false;
+    }
+    ReplayEvent event;
+    while (iter.next(event))
+    {
+      if (watermark != std::numeric_limits<int64_t>::min() &&
+          event.timestamp_ns < watermark - W)
+      {
+        throw flox::FloxError(
+            "E_DATA_002",
+            "Event arrived past reorder window in worker block range: delta=" +
+                std::to_string(watermark - event.timestamp_ns) +
+                "ns exceeds reorder_window_ns=" + std::to_string(W) +
+                ". Bump ReaderConfig::reorder_window_ns or pre-sort the tape.");
+      }
+      if (event.timestamp_ns > watermark)
+      {
+        watermark = event.timestamp_ns;
+      }
+      heap.push_back(std::move(event));
+      std::push_heap(heap.begin(), heap.end(), cmp);
+      if (!drain_below(watermark - W))
+      {
+        return false;
+      }
+    }
+  }
+
+  return drain_below(std::numeric_limits<int64_t>::max());
 }
 
 }  // namespace
@@ -646,10 +881,10 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
     return true;
   }
 
-  // Single-threaded path (default). Routes through streamForEach so
+  // Explicit single-thread path. Routes through streamForEach so
   // segments without the Sorted flag stay O(1) memory thanks to the
   // bounded reorder buffer.
-  if (n_threads <= 1)
+  if (n_threads == 1)
   {
     const bool walked = streamForEach(
         [&aggregators](const ReplayEvent& ev)
@@ -675,12 +910,8 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
     return walked;
   }
 
-  // Parallel path: partition segments across N worker threads. Each
-  // worker has its own panel cloned via IAggregator::cloneEmpty(),
-  // walks its segment slice, accumulates into its panel + local
-  // ReaderStats. After join, the workers' panels are merged into
-  // the caller's original panel via IAggregator::merge() and we
-  // finalize() once per original aggregator.
+  // Auto / multi-thread path. Resolve n_threads after scanning the
+  // segment list so we can cap to actual segment count.
   if (!scanSegments())
   {
     return false;
@@ -699,103 +930,197 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
     return true;
   }
 
-  // Effective worker count never exceeds segment count.
-  n_threads = std::min(n_threads, n_segs);
-
-  // workers[i][k] is worker i's clone of caller's aggregator k.
-  // Null entries mirror null entries in the input span.
-  std::vector<std::vector<std::unique_ptr<IAggregator>>> workers(n_threads);
-  for (auto& panel : workers)
+  // Resolve effective worker count.
+  std::size_t max_threads;
+  if (n_threads == 0)
   {
-    panel.reserve(aggregators.size());
-    for (auto* a : aggregators)
-    {
-      panel.push_back(a != nullptr ? a->cloneEmpty() : nullptr);
-    }
+    const unsigned hc = std::thread::hardware_concurrency();
+    max_threads = hc > 0 ? static_cast<std::size_t>(hc) : std::size_t{1};
   }
-
-  std::vector<ReaderStats> local_stats(n_threads);
-  std::atomic<bool> ok{true};
-  std::mutex error_mutex;
-  std::exception_ptr first_error;
-
-  std::vector<std::thread> threads;
-  threads.reserve(n_threads);
-  for (std::size_t ti = 0; ti < n_threads; ++ti)
+  else
   {
-    // Static partition by segment index — each worker owns a
-    // contiguous slice.
-    const std::size_t lo = (ti * n_segs) / n_threads;
-    const std::size_t hi = ((ti + 1) * n_segs) / n_threads;
-    threads.emplace_back(
-        [this, ti, lo, hi, &workers, &local_stats, &ok, &error_mutex,
-         &first_error]()
+    max_threads = n_threads;
+  }
+  if (max_threads <= 1)
+  {
+    // Auto resolved to 1 (single-core box or hardware_concurrency=0):
+    // single-thread path.
+    const bool walked = streamForEach(
+        [&aggregators](const ReplayEvent& ev)
         {
-          try
+          for (auto* agg : aggregators)
           {
-            auto& panel = workers[ti];
-            EventCallback cb = [&panel](const ReplayEvent& ev) -> bool
+            if (agg != nullptr)
             {
-              for (auto& agg : panel)
-              {
-                if (agg)
-                {
-                  agg->onEvent(ev);
-                }
-              }
-              return true;
-            };
-            for (std::size_t si = lo; si < hi; ++si)
-            {
-              if (!ok.load(std::memory_order_relaxed))
-              {
-                return;
-              }
-              if (!streamSegmentWithStats(_segments[si].path, cb,
-                                          local_stats[ti]))
-              {
-                ok.store(false, std::memory_order_relaxed);
-                return;
-              }
+              agg->onEvent(ev);
             }
           }
-          catch (...)
-          {
-            std::lock_guard<std::mutex> g(error_mutex);
-            if (!first_error)
-            {
-              first_error = std::current_exception();
-            }
-            ok.store(false, std::memory_order_relaxed);
-          }
+          return true;
         });
-  }
-  for (auto& t : threads)
-  {
-    t.join();
-  }
-
-  if (first_error)
-  {
-    std::rethrow_exception(first_error);
-  }
-  if (!ok.load())
-  {
-    return false;
-  }
-
-  // Merge worker panels into the caller's originals, then finalize
-  // each caller-supplied aggregator exactly once.
-  for (auto& panel : workers)
-  {
-    for (std::size_t k = 0; k < aggregators.size(); ++k)
+    for (auto* agg : aggregators)
     {
-      if (aggregators[k] != nullptr && panel[k] != nullptr)
+      if (agg != nullptr)
       {
-        aggregators[k]->merge(*panel[k]);
+        agg->finalize();
       }
     }
+    return walked;
   }
+
+  // Intra-segment parallel path. For each segment we discover its
+  // compressed-block offsets via a fast header-only walk, partition
+  // those across at most `max_threads` workers, and merge each
+  // segment's worker panels into the caller's originals before
+  // moving to the next segment. This handles md_collector-style
+  // captures with one huge active segment (segment-level partition
+  // would leave workers idle while one thread chews the big file).
+  //
+  // Minimum-blocks-per-worker heuristic: don't bother spawning
+  // threads for segments with fewer than 2× max_threads blocks —
+  // the spawn / join / merge overhead dominates the work.
+  constexpr std::size_t kMinBlocksPerWorker = 2;
+
+  auto run_segment_single_thread = [&](const std::filesystem::path& path)
+  {
+    EventCallback cb = [&aggregators](const ReplayEvent& ev) -> bool
+    {
+      for (auto* agg : aggregators)
+      {
+        if (agg != nullptr)
+        {
+          agg->onEvent(ev);
+        }
+      }
+      return true;
+    };
+    return streamSegmentWithStats(path, cb, _stats);
+  };
+
+  for (const auto& segment : _segments)
+  {
+    std::vector<BlockMeta> blocks;
+    SegmentHeader seg_hdr;
+    if (!scanBlockOffsetsForSegment(segment.path, seg_hdr, blocks))
+    {
+      return false;
+    }
+
+    const std::size_t workers_for_segment =
+        std::min(max_threads, blocks.size() / kMinBlocksPerWorker);
+    if (workers_for_segment <= 1)
+    {
+      // Too few blocks (or uncompressed segment) — single-thread it
+      // through the master panel directly.
+      if (!run_segment_single_thread(segment.path))
+      {
+        return false;
+      }
+      continue;
+    }
+
+    // Clone master panel per worker for THIS segment.
+    std::vector<std::vector<std::unique_ptr<IAggregator>>> worker_panels(
+        workers_for_segment);
+    for (auto& panel : worker_panels)
+    {
+      panel.reserve(aggregators.size());
+      for (auto* a : aggregators)
+      {
+        panel.push_back(a != nullptr ? a->cloneEmpty() : nullptr);
+      }
+    }
+
+    std::vector<ReaderStats> local_stats(workers_for_segment);
+    std::atomic<bool> ok{true};
+    std::mutex error_mutex;
+    std::exception_ptr first_error;
+
+    const std::size_t n_blocks = blocks.size();
+    const int64_t reorder_W = _config.reorder_window_ns;
+    const std::filesystem::path& seg_path = segment.path;
+
+    std::vector<std::thread> threads;
+    threads.reserve(workers_for_segment);
+    for (std::size_t ti = 0; ti < workers_for_segment; ++ti)
+    {
+      const std::size_t lo = (ti * n_blocks) / workers_for_segment;
+      const std::size_t hi = ((ti + 1) * n_blocks) / workers_for_segment;
+      threads.emplace_back(
+          [this, ti, lo, hi, &blocks, &worker_panels, &local_stats, &ok,
+           &error_mutex, &first_error, &seg_path, reorder_W]()
+          {
+            try
+            {
+              auto& panel = worker_panels[ti];
+              EventCallback cb = [&panel](const ReplayEvent& ev) -> bool
+              {
+                for (auto& agg : panel)
+                {
+                  if (agg)
+                  {
+                    agg->onEvent(ev);
+                  }
+                }
+                return true;
+              };
+              auto filter = [this](const ReplayEvent& ev)
+              {
+                return passesFilter(ev);
+              };
+              std::span<const BlockMeta> slice(blocks.data() + lo, hi - lo);
+              if (!streamBlockRangeImpl(seg_path, slice, cb, local_stats[ti],
+                                        reorder_W, filter))
+              {
+                ok.store(false, std::memory_order_relaxed);
+              }
+            }
+            catch (...)
+            {
+              std::lock_guard<std::mutex> g(error_mutex);
+              if (!first_error)
+              {
+                first_error = std::current_exception();
+              }
+              ok.store(false, std::memory_order_relaxed);
+            }
+          });
+    }
+    for (auto& t : threads)
+    {
+      t.join();
+    }
+    if (first_error)
+    {
+      std::rethrow_exception(first_error);
+    }
+    if (!ok.load())
+    {
+      return false;
+    }
+
+    // Merge this segment's worker panels into the master panel.
+    for (auto& panel : worker_panels)
+    {
+      for (std::size_t k = 0; k < aggregators.size(); ++k)
+      {
+        if (aggregators[k] != nullptr && panel[k] != nullptr)
+        {
+          aggregators[k]->merge(*panel[k]);
+        }
+      }
+    }
+    // Sum local stats from this segment's workers into master.
+    for (const auto& s : local_stats)
+    {
+      _stats.files_read += s.files_read;
+      _stats.events_read += s.events_read;
+      _stats.trades_read += s.trades_read;
+      _stats.book_updates_read += s.book_updates_read;
+      _stats.bytes_read += s.bytes_read;
+      _stats.crc_errors += s.crc_errors;
+    }
+  }
+
   for (auto* agg : aggregators)
   {
     if (agg != nullptr)
@@ -803,18 +1128,6 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
       agg->finalize();
     }
   }
-
-  // Sum worker-local stats into shared _stats.
-  for (const auto& s : local_stats)
-  {
-    _stats.files_read += s.files_read;
-    _stats.events_read += s.events_read;
-    _stats.trades_read += s.trades_read;
-    _stats.book_updates_read += s.book_updates_read;
-    _stats.bytes_read += s.bytes_read;
-    _stats.crc_errors += s.crc_errors;
-  }
-
   return true;
 }
 
@@ -859,19 +1172,6 @@ bool BinaryLogReader::streamForEachFrom(int64_t start_ts_ns, EventCallback callb
 
   return true;
 }
-
-namespace
-{
-// Min-heap comparator for ReplayEvent. Greater-than yields a min-heap
-// when paired with std::push_heap / std::pop_heap.
-struct ReplayEventLater
-{
-  bool operator()(const ReplayEvent& a, const ReplayEvent& b) const noexcept
-  {
-    return a.timestamp_ns > b.timestamp_ns;
-  }
-};
-}  // namespace
 
 bool BinaryLogReader::readSegmentStreaming(const std::filesystem::path& path,
                                            EventCallback& callback)
@@ -1409,10 +1709,17 @@ bool BinaryLogIterator::nextUncompressed(ReplayEvent& out)
 
 bool BinaryLogIterator::nextCompressed(ReplayEvent& out)
 {
-  // If we have events remaining in current block, read from it
+  // If we have events remaining in current block, read from it.
+  // In worker-mode (_stop_at_block_end=true), the iterator returns
+  // false at the end of the current block instead of advancing —
+  // the worker re-positions itself via seekToBlockOffset for the
+  // next block in its assigned range.
   while (_block_events_remaining == 0)
   {
-    // Need to load next block
+    if (_stop_at_block_end)
+    {
+      return false;
+    }
     if (!loadNextBlock())
     {
       return false;  // No more blocks
@@ -1601,6 +1908,26 @@ bool BinaryLogIterator::parseFrame(EventType type, const std::byte* data, size_t
   }
 
   return false;  // Unknown type
+}
+
+bool BinaryLogIterator::seekToBlockOffset(uint64_t file_offset)
+{
+  if (!_file)
+  {
+    return false;
+  }
+  if (std::fseek(_file, static_cast<long>(file_offset), SEEK_SET) != 0)
+  {
+    return false;
+  }
+  // Discard current block state. Then immediately load the block at
+  // the new file position so worker-mode `next()` calls can proceed
+  // without falling into the stop-at-block-end short-circuit (which
+  // fires whenever `_block_events_remaining == 0`).
+  _block_data.clear();
+  _block_offset = 0;
+  _block_events_remaining = 0;
+  return loadNextBlock();
 }
 
 bool BinaryLogIterator::loadIndex()

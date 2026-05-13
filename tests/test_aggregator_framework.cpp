@@ -1605,3 +1605,82 @@ TEST_F(AggregatorFrameworkTest, ParallelRunEmptySpanNoOp)
   std::array<IAggregator*, 0> empty{};
   EXPECT_TRUE(reader.run(empty, 4));
 }
+
+TEST_F(AggregatorFrameworkTest, IntraSegmentParallelMatchesSingleThread)
+{
+  // Single huge segment with many blocks — exercises intra-segment
+  // partition (per-segment blocks distributed across workers). The
+  // md_collector workload looks like this: one active segment that
+  // grows for weeks before rotation. Segment-level partition would
+  // pin all work on one worker; intra-segment must split it.
+  //
+  // Config: no segment rotation (huge max_segment_bytes), tiny
+  // index_interval so we get many blocks. 2000 trades at 5 events
+  // per block → 400 blocks in one segment.
+  WriterConfig cfg{.output_dir = _test_dir,
+                   .max_segment_bytes = 1024ull * 1024 * 1024,  // 1 GB cap
+                   .index_interval = 5,
+                   .compression = CompressionType::LZ4};
+  BinaryLogWriter writer(cfg);
+  constexpr int N = 2000;
+  for (int i = 0; i < N; ++i)
+  {
+    TradeRecord t{};
+    t.exchange_ts_ns = 1'000'000LL * (i + 1);
+    t.symbol_id = 1;
+    t.trade_id = static_cast<uint64_t>(i);
+    t.side = (i % 2);
+    t.qty_raw = 100 + (i % 7);
+    writer.writeTrade(t);
+  }
+  writer.close();
+
+  ReaderConfig rcfg{.data_dir = _test_dir};
+
+  auto runWith = [&](std::size_t n_threads)
+  {
+    BinaryLogReader r(rcfg);
+    auto stats = std::make_unique<EventTypeStatsAggregator>();
+    auto bins = std::make_unique<BinCountAggregator>(50'000'000LL);
+    auto vol = std::make_unique<VolumeBinAggregator>(50'000'000LL);
+    auto quant = std::make_unique<QuantileAggregator>(
+        std::vector<int64_t>{10'000'000LL}, std::vector<double>{0.5, 0.99});
+    std::array<IAggregator*, 4> panel{stats.get(), bins.get(), vol.get(), quant.get()};
+    EXPECT_TRUE(r.run(panel, n_threads));
+    const auto segs = r.summary().segment_count;
+    return std::make_tuple(std::move(stats), std::move(bins), std::move(vol),
+                           std::move(quant), segs);
+  };
+
+  auto [s1, b1, v1, q1, segs1] = runWith(1);
+  auto [s4, b4, v4, q4, segs4] = runWith(4);
+
+  // Sanity: this fixture really is a single segment (the whole point
+  // of the test). If the writer rotated for some reason, the test
+  // doesn't exercise intra-segment partition — fail loud rather than
+  // pass quietly.
+  EXPECT_EQ(segs1, 1u);
+  EXPECT_EQ(segs4, 1u);
+
+  ASSERT_EQ(s1->result().size(), s4->result().size());
+  EXPECT_EQ(s1->result()[0].trades, static_cast<uint64_t>(N));
+  EXPECT_EQ(s4->result()[0].trades, static_cast<uint64_t>(N));
+
+  ASSERT_EQ(b1->result().size(), b4->result().size());
+  for (size_t i = 0; i < b1->result().size(); ++i)
+  {
+    EXPECT_EQ(b1->result()[i].count, b4->result()[i].count);
+  }
+
+  ASSERT_EQ(v1->result().size(), v4->result().size());
+  for (size_t i = 0; i < v1->result().size(); ++i)
+  {
+    EXPECT_EQ(v1->result()[i].qty_raw, v4->result()[i].qty_raw);
+  }
+
+  ASSERT_EQ(q1->result().size(), q4->result().size());
+  for (size_t i = 0; i < q1->result().size(); ++i)
+  {
+    EXPECT_EQ(q1->result()[i].count, q4->result()[i].count);
+  }
+}
