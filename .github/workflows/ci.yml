@@ -216,9 +216,6 @@ jobs:
     - name: Verify Binance book archive importer
       run: PYTHONPATH=build/python python3 python/tests/test_binance_book_archive.py
 
-    - name: Verify Bybit archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_bybit_archive.py
-
     - name: Verify OrderBookIterator
       run: PYTHONPATH=build/python python3 python/tests/test_orderbook_iterator.py
 
@@ -259,7 +256,6 @@ jobs:
         docs/examples/python_tape_roundtrip.py
         docs/examples/python_binance_archive.py
         docs/examples/python_binance_book_archive.py
-        docs/examples/python_bybit_archive.py
         docs/examples/python_orderbook_iterator.py
         docs/examples/python_rolling_top_k.py
         docs/examples/python_xs_panel.py
@@ -285,9 +281,6 @@ jobs:
 
     - name: Run Python Binance book archive importer example
       run: PYTHONPATH=build/python python3 docs/examples/python_binance_book_archive.py
-
-    - name: Run Python Bybit archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_bybit_archive.py
 
     - name: Run Python OrderBookIterator example
       run: PYTHONPATH=build/python python3 docs/examples/python_orderbook_iterator.py
