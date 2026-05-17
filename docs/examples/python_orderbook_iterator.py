@@ -63,10 +63,10 @@ def main() -> None:
 
         # Point query at a chosen instant.
         target = base + 75 * 1_000_000_000
-        snap = ob.book_at(tape, ts_ns=target, levels=5)
-        assert snap is not None
-        print(f"book_at(ts=base+75s): bids[0]={snap.bids[0]} "
-              f"asks[0]={snap.asks[0]}")
+        at = ob.book_at(tape, ts_ns=target, levels=5)
+        assert at is not None
+        print(f"book_at(ts=base+75s): bids[0]={at.bids[0]} "
+              f"asks[0]={at.asks[0]}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
