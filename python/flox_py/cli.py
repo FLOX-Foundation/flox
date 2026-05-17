@@ -857,6 +857,53 @@ def _cmd_archive_binance_book(args: argparse.Namespace, archives) -> int:
     return 0
 
 
+def cmd_archive_bybit(args: argparse.Namespace) -> int:
+    """Convert Bybit public trade archives into a `.floxlog` tape."""
+    from . import archives
+
+    if args.csv:
+        stats = archives.bybit.trades_to_floxlog(
+            csv_path=args.csv,
+            out_tape=args.out,
+            symbol_id=args.symbol_id,
+            symbol_name=args.symbol or "",
+            market=args.market,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+        )
+    else:
+        if not (args.symbol and args.date_from and args.date_to):
+            print("flox archive bybit: --symbol, --from and --to are "
+                  "required when --csv is not used.", file=sys.stderr)
+            return 2
+        stats = archives.bybit.range_to_floxlog(
+            symbol=args.symbol,
+            market=args.market,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            out_tape=args.out,
+            mirror=args.mirror,
+            parallel=args.parallel,
+            symbol_id=args.symbol_id,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+            skip_missing=args.skip_missing,
+        )
+
+    print(
+        f"flox archive bybit: trades_written={stats.trades_written} "
+        f"rows_read={stats.rows_read} rows_skipped={stats.rows_skipped} "
+        f"files={stats.files_processed}"
+    )
+    return 0
+
+
 # ── Argparse setup ─────────────────────────────────────────────────────
 
 
@@ -1158,6 +1205,53 @@ def _build_parser() -> argparse.ArgumentParser:
                            help="Maximum levels per side to keep when "
                                 "importing depth20 (default: 20).")
     p_binance.set_defaults(handler=cmd_archive_binance)
+
+    p_bybit = archive_sub.add_parser(
+        "bybit",
+        help="Convert Bybit public archive (`public.bybit.com`) trade "
+             "ticks into a `.floxlog` tape. Single day via `--csv` or "
+             "a date range via `--symbol/--from/--to`.",
+    )
+    p_bybit.add_argument("--csv", default=None,
+                         help="Path to a single Bybit archive `.csv.gz` "
+                              "or extracted `.csv`. When set, --from / "
+                              "--to are ignored.")
+    p_bybit.add_argument("--symbol", default=None,
+                         help="Symbol in Bybit naming (e.g. BTCUSDT for "
+                              "linear, BTCUSD for inverse, BTCUSDT for spot).")
+    p_bybit.add_argument("--market", default="linear",
+                         choices=("spot", "linear", "inverse"),
+                         help="Bybit market segment (default: linear).")
+    p_bybit.add_argument("--from", dest="date_from", default=None,
+                         help="Start date YYYY-MM-DD (inclusive).")
+    p_bybit.add_argument("--to", dest="date_to", default=None,
+                         help="End date YYYY-MM-DD (inclusive).")
+    p_bybit.add_argument("--out", required=True,
+                         help="Output `.floxlog` directory.")
+    p_bybit.add_argument("--mirror", default=None,
+                         help="Local mirror cache for downloaded files. "
+                              "Defaults to the shared archive cache "
+                              "(`~/.flox/archive-cache/bybit`).")
+    p_bybit.add_argument("--parallel", type=int, default=4,
+                         help="Concurrent downloads (default: 4). "
+                              "Conversion stays serial.")
+    p_bybit.add_argument("--symbol-id", dest="symbol_id", type=int, default=1,
+                         help="Symbol ID stamped on every trade.")
+    p_bybit.add_argument("--exchange-id", dest="exchange_id", type=int, default=0,
+                         help="Exchange ID stamped into the tape header.")
+    p_bybit.add_argument("--exchange-name", dest="exchange_name", default="bybit",
+                         help="Exchange tag written into metadata.json.")
+    p_bybit.add_argument("--max-segment-mb", dest="max_segment_mb",
+                         type=int, default=256,
+                         help="Rotate to a new segment after N MB (default: 256).")
+    p_bybit.add_argument("--compression", default="none",
+                         choices=("none", "lz4"),
+                         help="Segment compression (default: none).")
+    p_bybit.add_argument("--no-append", action="store_true",
+                         help="Disable trade_id dedup against an existing tape.")
+    p_bybit.add_argument("--skip-missing", action="store_true",
+                         help="Skip days that fail to download.")
+    p_bybit.set_defaults(handler=cmd_archive_bybit)
 
     # ── lint (lookahead) ────────────────────────────────────────────
     p_lint = sub.add_parser(
