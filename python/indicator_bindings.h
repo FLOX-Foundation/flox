@@ -22,6 +22,7 @@
 #include "flox/indicator/cvd.h"
 #include "flox/indicator/dema.h"
 #include "flox/indicator/ema.h"
+#include "flox/indicator/hurst.h"
 #include "flox/indicator/kama.h"
 #include "flox/indicator/kurtosis.h"
 #include "flox/indicator/macd.h"
@@ -745,6 +746,65 @@ inline void bindIndicators(py::module_& m)
         return d;
       },
       py::arg("input"), py::arg("max_lag") = 4, py::arg("regression") = "c");
+
+  m.def(
+      "hurst_dfa",
+      [](contiguous_double input, py::object scales_obj) -> double
+      {
+        auto buf = input.request();
+        size_t n = buf.shape[0];
+        const auto* p = static_cast<const double*>(buf.ptr);
+
+        // Optional scales: None → defaults, otherwise a contiguous int64 array.
+        std::vector<int> scalesBuf;
+        std::span<const int> scalesSpan;
+        if (!scales_obj.is_none())
+        {
+          auto scalesArr = py::array_t<int64_t, py::array::c_style | py::array::forcecast>(scales_obj);
+          auto sbuf = scalesArr.request();
+          const auto* sp = static_cast<const int64_t*>(sbuf.ptr);
+          scalesBuf.reserve(static_cast<std::size_t>(sbuf.shape[0]));
+          for (py::ssize_t i = 0; i < sbuf.shape[0]; ++i)
+          {
+            scalesBuf.push_back(static_cast<int>(sp[i]));
+          }
+          scalesSpan = std::span<const int>{scalesBuf};
+        }
+
+        double h;
+        {
+          py::gil_scoped_release release;
+          h = flox::indicator::hurst_dfa(std::span<const double>(p, n), scalesSpan);
+        }
+        return h;
+      },
+      py::arg("returns"), py::arg("scales") = py::none(),
+      "Hurst exponent via Detrended Fluctuation Analysis on a series of "
+      "returns (NOT prices). H ≈ 0.5 random, H > 0.5 persistent / "
+      "trending, H < 0.5 anti-persistent / mean-reverting. If `scales` "
+      "is None, uses a log-spaced default grid from 4 to N/4. Returns "
+      "NaN if input is too short (< 32) or degenerate.");
+
+  m.def(
+      "rolling_hurst",
+      [](contiguous_double prices, size_t window) -> py::array_t<double>
+      {
+        auto buf = prices.request();
+        size_t n = buf.shape[0];
+        const auto* p = static_cast<const double*>(buf.ptr);
+        py::array_t<double> result(static_cast<py::ssize_t>(n));
+        auto* o = result.mutable_data();
+        {
+          py::gil_scoped_release release;
+          auto out = flox::indicator::rolling_hurst(std::span<const double>(p, n), window);
+          std::copy(out.begin(), out.end(), o);
+        }
+        return result;
+      },
+      py::arg("prices"), py::arg("window") = static_cast<size_t>(1080),
+      "Rolling DFA-Hurst on price levels. For each bar i, computes Hurst "
+      "of log-returns over the previous `window` returns. Output[i] = NaN "
+      "for i ≤ window (insufficient history). Output length matches input.");
 
   m.def(
       "autocorrelation",
