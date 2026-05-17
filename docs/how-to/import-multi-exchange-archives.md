@@ -7,8 +7,9 @@
 | Binance | `flox_py.archives.binance` | `aggtrades_to_floxlog` | `flox archive binance ...` |
 | Bybit   | `flox_py.archives.bybit`   | `trades_to_floxlog`    | `flox archive bybit ...`   |
 | OKX     | `flox_py.archives.okx`     | `trades_to_floxlog`    | `flox archive okx ...`     |
+| Bitget  | `flox_py.archives.bitget`  | `trades_to_floxlog`    | `flox archive bitget ...`  |
 
-Bitget and Deribit follow the same shape and ship as separate tasks when a concrete research use case shows up. Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
+Deribit follows the same shape and ships as a separate task. Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
 
 ## Bybit
 
@@ -64,6 +65,7 @@ flox archive bybit \
   --parallel 4
 ```
 
+<<<<<<< HEAD
 ## OKX
 
 OKX publishes daily trade ticks on `www.okx.com/cdn/okex/traderecords/` for spot, swap (perpetual), futures, and options. The on-disk CSV columns:
@@ -107,6 +109,43 @@ flox archive okx \
   --out ./tapes/okx-swap-BTC-USDT-SWAP \
   --parallel 4
 ```
+
+## Bitget
+
+Bitget publishes daily trade ticks on its public archive S3 / CDN mirror. The on-disk CSV columns:
+
+```text
+trade_id, price, size, side, timestamp_ms
+```
+
+`trade_id` is an integer exchange-assigned id, used directly for append-safe dedup. `side` is the active flow as `buy` / `sell` lowercase. `timestamp_ms` is Unix milliseconds.
+
+Market codes follow Bitget's own API naming: `spot`, `umcbl` (USDT-margined perpetual), `cmcbl` (coin-margined perpetual). The converter accepts them verbatim.
+
+### Example
+
+```python
+--8<-- "examples/python_bitget_archive.py"
+```
+
+### CLI
+
+```bash
+# Single day from a local file
+flox archive bitget \
+  --csv ./BTCUSDT-trades-2024-01-15.zip \
+  --out ./tapes/bitget-umcbl-BTCUSDT \
+  --symbol BTCUSDT --market umcbl
+
+# Multi-day range with download
+flox archive bitget \
+  --symbol BTCUSDT --market umcbl \
+  --from 2024-01-01 --to 2024-12-31 \
+  --out ./tapes/bitget-umcbl-BTCUSDT \
+  --parallel 4
+```
+
+Bitget specifically matters for production reproduction: `md_collector` deployments on Singapore default to Bitget feeds for multi-symbol fixtures, so the archive lets researchers re-run the same `(exchange, name)` keying that the live capture used.
 
 ## Shared download cache
 
