@@ -6542,6 +6542,10 @@
         },
         {
           "kind": "function",
+          "name": "hurst_dfa"
+        },
+        {
+          "kind": "function",
           "name": "inspect"
         },
         {
@@ -6607,6 +6611,10 @@
         {
           "kind": "function",
           "name": "rolling_correlation"
+        },
+        {
+          "kind": "function",
+          "name": "rolling_hurst"
         },
         {
           "kind": "function",
