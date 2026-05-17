@@ -72,6 +72,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_okx_archive.py",
+      "sha256": "776c7cd4df2d4bc02f44af163c128b5cec90b19cc416f0352c6324fd0aeabfea",
+      "size_bytes": 1928,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_orderbook_iterator.py",
       "sha256": "1485c853b0f4372fde84e11fccef09942a396d4679930c479898e52ed8638992",
       "size_bytes": 2521,
