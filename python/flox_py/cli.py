@@ -740,8 +740,17 @@ def cmd_tape_view(args: argparse.Namespace) -> int:
 
 
 def cmd_archive_binance(args: argparse.Namespace) -> int:
-    """Convert Binance public aggTrades archives into a `.floxlog` tape."""
+    """Convert Binance public archives into a `.floxlog` tape.
+
+    Default product is aggTrades. Pass ``--book t1`` or
+    ``--book depth20`` to import bookTicker / bookDepth instead. The
+    two book products write to the same tape directory as trades, so a
+    single ``--out`` can carry both event streams interleaved.
+    """
     from . import archives  # local import keeps the CLI cheap to start
+
+    if args.book:
+        return _cmd_archive_binance_book(args, archives)
 
     if args.csv:
         stats = archives.binance.aggtrades_to_floxlog(
@@ -781,6 +790,67 @@ def cmd_archive_binance(args: argparse.Namespace) -> int:
 
     print(
         f"flox archive binance: trades_written={stats.trades_written} "
+        f"rows_read={stats.rows_read} rows_skipped={stats.rows_skipped} "
+        f"files={stats.files_processed}"
+    )
+    return 0
+
+
+def _cmd_archive_binance_book(args: argparse.Namespace, archives) -> int:
+    """Implementation for `flox archive binance --book {t1|depth20} ...`.
+
+    Mirrors `cmd_archive_binance` for the book products: --csv path for
+    one day, otherwise the date-range form with optional download
+    mirror."""
+    book_type = args.book
+    book_kwargs = dict(
+        symbol_id=args.symbol_id,
+        symbol_name=args.symbol or "",
+        market=args.market,
+        exchange_id=args.exchange_id,
+        exchange_name=args.exchange_name,
+        append=not args.no_append,
+        max_segment_mb=args.max_segment_mb,
+        compression=args.compression,
+    )
+
+    if args.csv:
+        if book_type == "t1":
+            stats = archives.binance.t1_to_floxlog(
+                csv_path=args.csv, out_tape=args.out, **book_kwargs)
+        else:
+            stats = archives.binance.depth20_to_floxlog(
+                csv_path=args.csv, out_tape=args.out,
+                levels=args.book_levels, **book_kwargs)
+    else:
+        if not (args.symbol and args.date_from and args.date_to):
+            print("flox archive binance --book: --symbol, --from and --to "
+                  "are required when --csv is not used.",
+                  file=sys.stderr)
+            return 2
+        stats = archives.binance.range_book_to_floxlog(
+            symbol=args.symbol,
+            market=args.market,
+            book_type=book_type,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            out_tape=args.out,
+            mirror=args.mirror,
+            parallel=args.parallel,
+            levels=args.book_levels,
+            symbol_id=args.symbol_id,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+            skip_missing=args.skip_missing,
+        )
+
+    print(
+        f"flox archive binance --book {book_type}: "
+        f"snapshots={stats.snapshots_written} "
+        f"deltas={stats.deltas_written} "
         f"rows_read={stats.rows_read} rows_skipped={stats.rows_skipped} "
         f"files={stats.files_processed}"
     )
@@ -1075,6 +1145,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p_binance.add_argument("--skip-missing", action="store_true",
                            help="Skip days that fail to download instead of "
                                 "aborting the whole range.")
+    p_binance.add_argument("--book", default=None,
+                           choices=("t1", "depth20"),
+                           help="Switch to the book archive product. "
+                                "`t1` imports bookTicker (best bid/ask "
+                                "snapshots); `depth20` imports bookDepth "
+                                "(top-20 levels per side, delta-encoded "
+                                "against the previous snapshot). Without "
+                                "this flag, aggTrades is imported.")
+    p_binance.add_argument("--book-levels", dest="book_levels", type=int,
+                           default=20,
+                           help="Maximum levels per side to keep when "
+                                "importing depth20 (default: 20).")
     p_binance.set_defaults(handler=cmd_archive_binance)
 
     # ── lint (lookahead) ────────────────────────────────────────────
