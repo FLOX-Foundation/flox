@@ -72,6 +72,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_orderbook_iterator.py",
+      "sha256": "ac6f86abd4057c4eec5eba54edb04bbc991585cebd35f88447bdbe895640e835",
+      "size_bytes": 2529,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_rolling_top_k.py",
       "sha256": "640757bc47a624b4f849692608b9fc93c8f6854881f178a831111aad9d079d24",
       "size_bytes": 1842,

@@ -22,6 +22,7 @@ Solve specific problems. Assumes you know the basics.
 | [Import Binance public archives](import-binance-archive.md) | Convert `data.binance.vision` aggTrades zips into a `.floxlog` tape |
 | [Import Binance book archives](import-binance-book-archive.md) | Convert `bookTicker` / `bookDepth` zips into delta-encoded book events on the same tape |
 | [Import multi-exchange archives](import-multi-exchange-archives.md) | Bybit (and future OKX / Bitget / Deribit) public archive importers |
+| [Iterate the order book from a tape](iterate-orderbook.md) | Reconstruct ladder state per bucket or at a chosen instant for offline book analysis |
 | [Rolling top-K thresholds](rolling-thresholds.md) | Vectorized sliding K-th-largest for extreme-event filters at any timeframe |
 | [Cross-sectional panel builder](cross-sectional-panel.md) | Aligned (T × S) close / OHLC / returns panel over N floxlog tapes |
 | [Delta book compression](delta-book-compression.md) | Shrink L2 tapes 10-30x by emitting only the changed levels |

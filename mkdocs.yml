@@ -131,6 +131,7 @@ nav:
           - Import Binance public archives: how-to/import-binance-archive.md
           - Import Binance book archives: how-to/import-binance-book-archive.md
           - Import multi-exchange archives: how-to/import-multi-exchange-archives.md
+          - Iterate the order book from a tape: how-to/iterate-orderbook.md
           - Rolling top-K thresholds: how-to/rolling-thresholds.md
           - Cross-sectional panel builder: how-to/cross-sectional-panel.md
           - Interactive Backtest: how-to/interactive-backtest.md
