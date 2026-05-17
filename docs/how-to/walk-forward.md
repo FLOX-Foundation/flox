@@ -121,6 +121,57 @@ folds) on the client side — the runner does not aggregate for you on
 purpose, since useful aggregates depend on what you are looking for
 (robustness vs. average performance vs. worst case).
 
+## Full OHLCV path for `on_bar` strategies
+
+`run_csv` replays close prices as synthetic trade events — `on_trade`
+fires, but `on_bar` does not, and intrabar high / low / volume are
+not preserved. For strategies whose decisions depend on bar internals
+(TP/SL ladders on high/low, ATR-style indicators, breakout filters),
+use `run_bars` with numpy arrays:
+
+```python
+import flox_py as flox
+import numpy as np
+
+reg = flox.SymbolRegistry()
+btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
+
+
+class IntrabarBreakout(flox.Strategy):
+    def __init__(self, syms):
+        super().__init__(syms)
+        self.in_pos = False
+
+    def on_bar(self, ctx, bar):
+        if not self.in_pos and bar.high >= bar.open * 1.005:
+            self.market_buy(0.01)
+            self.in_pos = True
+        elif self.in_pos and bar.low <= bar.open * 0.99:
+            self.market_sell(0.01)
+            self.in_pos = False
+
+
+wfr = flox.WalkForwardRunner(
+    reg, fee_rate=0.0, initial_capital=10_000,
+    mode="sliding", train_size=4380, test_size=2190, step=2190,
+)
+wfr.set_strategy_factory(lambda _i: IntrabarBreakout([btc]))
+
+# OHLCV arrays — all must have the same length, sorted by end_time_ns.
+start_ns = ...  # int64 ns, bar open
+end_ns = ...    # int64 ns, bar close
+open_, high, low, close, volume = ...  # float64
+
+folds = wfr.run_bars(
+    start_ns, end_ns, open_, high, low, close, volume,
+    symbol="BTCUSDT")
+```
+
+Each fold dispatches `BarEvent`s with full OHLCV preserved. `on_bar`
+fires; `on_trade` does not — same convention as
+`BacktestRunner.run_bars`. `bar_type` (default `0` = Time) and
+`bar_type_param` are forwarded for non-time bar aggregations.
+
 ## What walk-forward does not do
 
 It does not optimise hyperparameters per fold. If you need that, run

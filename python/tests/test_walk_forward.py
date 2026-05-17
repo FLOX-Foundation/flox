@@ -117,5 +117,142 @@ class WalkForwardTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "E_RUN_001")
 
 
+class _IntrabarHighLowStrategy(flox.Strategy):
+    """Bar-strategy diagnostic for high/low preservation.
+
+    Enters long on any bar with a non-degenerate intrabar range
+    (bar.high > bar.low) — this is true for every real OHLCV bar.
+    Under a close-only replay path the bar would arrive with
+    high == low == close, so the guard never triggers and the
+    strategy stays flat. Under a full-OHLCV path it enters every
+    other bar (flat-long alternation).
+    """
+
+    def __init__(self, syms):
+        super().__init__(syms)
+        self.in_position = False
+
+    def on_bar(self, ctx, bar):
+        if not self.in_position:
+            if float(bar.high) > float(bar.low):
+                self.market_buy(0.01)
+                self.in_position = True
+        else:
+            self.market_sell(0.01)
+            self.in_position = False
+
+
+@unittest.skipUnless(os.path.exists(_CSV),
+                     f"sample CSV not found at {_CSV}")
+class WalkForwardRunBarsTests(unittest.TestCase):
+    """Tests for WalkForwardRunner.run_bars (full OHLCV path)."""
+
+    def setUp(self) -> None:
+        self.reg = flox.SymbolRegistry()
+        self.btc = self.reg.add_symbol("exchange", "BTCUSDT", 0.01)
+        # Load the bundled BTC sample into OHLCV arrays.
+        import csv
+        ts, o, h, lo, c, v = [], [], [], [], [], []
+        with open(_CSV) as f:
+            r = csv.reader(f)
+            next(r)  # header
+            for row in r:
+                ts.append(int(row[0]))
+                o.append(float(row[1]))
+                h.append(float(row[2]))
+                lo.append(float(row[3]))
+                c.append(float(row[4]))
+                v.append(float(row[5]))
+        import numpy as np
+        # The sample uses minute-bar timestamps; convert to ns and
+        # derive end_time_ns = start + 60s.
+        self.start_ns = np.array(ts, dtype=np.int64) * 1_000_000
+        self.end_ns = self.start_ns + 60 * 1_000_000_000
+        self.o = np.array(o, dtype=np.float64)
+        self.h = np.array(h, dtype=np.float64)
+        self.lo = np.array(lo, dtype=np.float64)
+        self.c = np.array(c, dtype=np.float64)
+        self.v = np.array(v, dtype=np.float64)
+
+    def test_run_bars_produces_folds(self):
+        wfr = flox.WalkForwardRunner(
+            self.reg, fee_rate=0.0, initial_capital=10_000,
+            mode="sliding", train_size=200, test_size=100, step=100,
+        )
+        wfr.set_strategy_factory(
+            lambda _i: _IntrabarHighLowStrategy([self.btc]))
+        folds = wfr.run_bars(
+            self.start_ns, self.end_ns, self.o, self.h, self.lo,
+            self.c, self.v, symbol="BTCUSDT")
+        # Fold count: 500 bars, sliding train=200 / test=100 / step=100
+        # → start positions 0, 100, 200 → 3 folds (same as run_csv).
+        self.assertEqual(len(folds), 3)
+        for f in folds:
+            self.assertEqual(
+                f["train_end_bar"] - f["train_start_bar"], 200)
+            self.assertEqual(
+                f["test_end_bar"] - f["test_start_bar"], 100)
+
+    def test_run_bars_fires_bar_strategy(self):
+        """Critical: a strategy that depends on intrabar high/low must
+        produce >0 trades when bars carry full OHLCV. Under the legacy
+        close-only path this strategy would see high == low == close
+        and never trigger."""
+        wfr = flox.WalkForwardRunner(
+            self.reg, fee_rate=0.0, initial_capital=10_000,
+            mode="sliding", train_size=200, test_size=100, step=100,
+        )
+        wfr.set_strategy_factory(
+            lambda _i: _IntrabarHighLowStrategy([self.btc]))
+        folds = wfr.run_bars(
+            self.start_ns, self.end_ns, self.o, self.h, self.lo,
+            self.c, self.v, symbol="BTCUSDT")
+        total_trades = sum(
+            f["test_stats"].get("total_trades", 0) or 0 for f in folds)
+        # Even if some folds have zero trades, the aggregate across
+        # the sample must be > 0 — otherwise the high/low path is
+        # not making it into the strategy.
+        self.assertGreater(total_trades, 0,
+                           "bar-strategy produced 0 trades across all "
+                           "folds — high/low are likely not flowing "
+                           "through to on_bar")
+
+    def test_run_bars_without_factory_raises(self):
+        wfr = flox.WalkForwardRunner(
+            self.reg, fee_rate=0.0, initial_capital=10_000,
+            mode="sliding", train_size=200, test_size=100, step=100,
+        )
+        with self.assertRaises(flox.FloxError) as cm:
+            wfr.run_bars(self.start_ns, self.end_ns, self.o, self.h,
+                         self.lo, self.c, self.v, symbol="BTCUSDT")
+        self.assertEqual(cm.exception.code, "E_RUN_001")
+
+    def test_run_bars_unknown_symbol_raises(self):
+        wfr = flox.WalkForwardRunner(
+            self.reg, fee_rate=0.0, initial_capital=10_000,
+            mode="sliding", train_size=200, test_size=100, step=100,
+        )
+        wfr.set_strategy_factory(
+            lambda _i: _IntrabarHighLowStrategy([self.btc]))
+        with self.assertRaises(flox.FloxError) as cm:
+            wfr.run_bars(self.start_ns, self.end_ns, self.o, self.h,
+                         self.lo, self.c, self.v, symbol="UNKNOWN")
+        self.assertEqual(cm.exception.code, "E_SYM_001")
+
+    def test_run_bars_length_mismatch_raises(self):
+        import numpy as np
+        wfr = flox.WalkForwardRunner(
+            self.reg, fee_rate=0.0, initial_capital=10_000,
+            mode="sliding", train_size=200, test_size=100, step=100,
+        )
+        wfr.set_strategy_factory(
+            lambda _i: _IntrabarHighLowStrategy([self.btc]))
+        # truncate one array — should reject
+        with self.assertRaises(flox.FloxError) as cm:
+            wfr.run_bars(self.start_ns, self.end_ns[:-1], self.o,
+                         self.h, self.lo, self.c, self.v, symbol="BTCUSDT")
+        self.assertEqual(cm.exception.code, "E_LEN_001")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

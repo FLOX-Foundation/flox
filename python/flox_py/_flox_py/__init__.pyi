@@ -2514,8 +2514,14 @@ class VolumeProfile:
 class WalkForwardRunner:
     def __init__(self, registry: ..., fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0004, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 10000.0, mode: str = 'anchored', train_size: typing.SupportsInt | typing.SupportsIndex = 0, test_size: typing.SupportsInt | typing.SupportsIndex = 0, step: typing.SupportsInt | typing.SupportsIndex = 0, min_train_size: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
+    def run_bars(self, start_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], end_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], open: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], volume: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str, bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0) -> list:
+        """
+        Walk-forward over a sequence of full OHLCV bars. Each fold dispatches BarEvents through Strategy.on_bar with open / high / low / close / volume preserved. Bars must be sorted by end_time_ns. bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi.
+        """
     def run_csv(self, path: str, symbol: str) -> list:
-        ...
+        """
+        Walk-forward over an OHLCV CSV. Bars are dispatched to the strategy as synthetic trade events at close price — useful for on_trade strategies. For on_bar strategies that need open/high/low/volume, use run_bars().
+        """
     def set_strategy_factory(self, factory: typing.Any) -> None:
         """
         Callable[[int], Strategy] — receives fold_index, returns a fresh Strategy instance per fold (called twice per fold: train + test).
