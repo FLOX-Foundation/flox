@@ -130,6 +130,7 @@ nav:
           - Merge multiple tapes on read: how-to/multi-tape.md
           - Import Binance public archives: how-to/import-binance-archive.md
           - Rolling top-K thresholds: how-to/rolling-thresholds.md
+          - Cross-sectional panel builder: how-to/cross-sectional-panel.md
           - Interactive Backtest: how-to/interactive-backtest.md
           - Grid Search: how-to/grid-search.md
           - Walk-forward: how-to/walk-forward.md

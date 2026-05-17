@@ -69,6 +69,13 @@
       "sha256": "1d2bcbc67df849e9de564d524db885d1a72397fe55d599942e2756ccb9b1acf8",
       "size_bytes": 2446,
       "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_xs_panel.py",
+      "sha256": "8e58215f23c03247bf001802408f0676305176d2714b9f61bc04da04aa8c9f24",
+      "size_bytes": 2679,
+      "topic": "strategy"
     }
   ],
   "version": 1
