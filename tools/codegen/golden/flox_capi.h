@@ -658,6 +658,7 @@ extern "C"
   typedef void (*FloxExecutorLifecycleFn)(void*);
   typedef FloxStrategyHandle (*FloxWalkForwardFactoryFn)(void*, uint64_t);
   typedef int (*FloxGridSearchFactoryFn)(void*, uint64_t, const double*, uint32_t, FloxBacktestStats*);
+  typedef uint8_t (*FloxProgressCallback)(void*, double, int64_t);
 
   // ============================================================
   // Callback bundles
@@ -951,6 +952,9 @@ extern "C"
   FloxDataReaderHandle flox_data_reader_create(const char* data_dir);
   void flox_data_reader_destroy(FloxDataReaderHandle reader);
   uint64_t flox_data_reader_count(FloxDataReaderHandle reader);
+  void flox_data_reader_set_progress_callback(FloxDataReaderHandle reader, FloxProgressCallback cb,
+                                              void* user_data, uint32_t interval_ms);
+  void flox_data_reader_clear_progress_callback(FloxDataReaderHandle reader);
 
   // ============================================================
   // Data Writer

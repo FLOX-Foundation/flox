@@ -6166,6 +6166,34 @@ For multi-tape captures use `MergedTapeReader.run()`. The C++ N-way heap merge k
 
 The Quantile histogram is keyed by `count_value` in an `unordered_map`. There are at most a few dozen distinct count values (bounded by the peak burst size), so the histogram stays small even when the tape contains billions of observations.
 
+## Long-running tapes: progress callback
+
+`DataReader.run()` on a multi-day capture can sit silently for minutes. `progress_callback` lets the caller report status without changing the aggregator surface.
+
+```python
+def progress(pct: float, ts_ns: int) -> bool:
+    print(f"  {pct * 100:5.1f}%  ts={ts_ns}", flush=True)
+    return True  # return False to cancel
+
+reader.run([agg],
+           n_threads=1,
+           progress_callback=progress,
+           progress_interval_ms=1000)
+```
+
+The callback fires from inside the run loop at most once per `progress_interval_ms` (default 1 s) with the bytes-of-events pct in `[0.0, 1.0]` and the exchange timestamp of the most recent dispatched event. Returning `False` cancels the run: `run()` returns `False`, aggregators are still finalised with the partial state they had accumulated, and the caller can call `.result()` on them. Returning `True` (or `None`) lets the run continue. Raising inside the callback also cancels, and the exception re-raises after `run()` finalises so the caller sees it instead of a silent partial.
+
+Progress is reported only on the single-thread path (`n_threads=1`). Multi-thread runs ignore the callback because per-event GIL reentry would defeat the parallelism gained from cloning aggregators across workers; for those, run a smaller probe slice first to estimate throughput, then let the full run complete without progress.
+
+```js
+// Node.js: { onProgress, progressIntervalMs, nThreads }
+reader.run([agg], {
+  nThreads: 1,
+  progressIntervalMs: 1000,
+  onProgress: (pct, tsNs) => { console.log(`${(pct*100).toFixed(1)}%`); },
+});
+```
+
 ## See also
 
 - [Record and replay market data with `flox tape`](tape-record.md) for capturing the `.floxlog`.
@@ -8397,7 +8425,7 @@ Returns the same nanoseconds every call. Useful as a baseline.
 - `read_book_updates_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> tuple`
 - `read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `read_trades_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
-- `run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0) -> bool`
+- `run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0, progress_callback: typing.Any = None, progress_interval_ms: typing.SupportsInt | typing.SupportsIndex = 1000) -> bool`
 - `segment_files(self) -> list`
 - `segments(self) -> list`
 - `stats(self) -> dict`

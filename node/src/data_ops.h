@@ -324,6 +324,13 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
   // Unwraps each element to a C ABI handle and dispatches. Returns
   // `true` on success; an empty array is a no-op no-decompression
   // call returning `true`.
+  // Accepts either a positional `n_threads` integer (back-compat) or
+  // an options object `{ nThreads, onProgress, progressIntervalMs }`.
+  // `onProgress(pct, tsNs)` fires from inside the run loop at most
+  // once per `progressIntervalMs`; returning a falsy value cancels.
+  // Progress is reported only on the single-thread path; multi-thread
+  // runs ignore the callback because per-event JS reentry would
+  // defeat the parallelism.
   Napi::Value Run(const Napi::CallbackInfo& info)
   {
     auto env = info.Env();
@@ -340,15 +347,88 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
       return env.Null();
     }
     uint32_t n_threads = 0;  // 0 = auto: min(segments, hardware_concurrency)
-    if (info.Length() > 1 && info[1].IsNumber())
+    Napi::Function on_progress;
+    bool has_progress = false;
+    uint32_t progress_interval_ms = 1000;
+    if (info.Length() > 1)
     {
-      const int32_t v = info[1].As<Napi::Number>().Int32Value();
-      // Negative or zero from JS → auto (0). Otherwise clamp to uint32.
-      n_threads = (v < 0) ? 0u : static_cast<uint32_t>(v);
+      if (info[1].IsNumber())
+      {
+        const int32_t v = info[1].As<Napi::Number>().Int32Value();
+        n_threads = (v < 0) ? 0u : static_cast<uint32_t>(v);
+      }
+      else if (info[1].IsObject() && !info[1].IsNull())
+      {
+        auto opts = info[1].As<Napi::Object>();
+        if (opts.Has("nThreads"))
+        {
+          const int32_t v = opts.Get("nThreads").As<Napi::Number>().Int32Value();
+          n_threads = (v < 0) ? 0u : static_cast<uint32_t>(v);
+        }
+        if (opts.Has("onProgress") && opts.Get("onProgress").IsFunction())
+        {
+          on_progress = opts.Get("onProgress").As<Napi::Function>();
+          has_progress = true;
+        }
+        if (opts.Has("progressIntervalMs"))
+        {
+          const int32_t v =
+              opts.Get("progressIntervalMs").As<Napi::Number>().Int32Value();
+          progress_interval_ms = (v <= 0) ? 1000u : static_cast<uint32_t>(v);
+        }
+      }
     }
+
+    struct ProgressCtx
+    {
+      Napi::Env env;
+      Napi::Function fn;
+      bool cancelled = false;
+    } ctx{env, on_progress, false};
+
+    if (has_progress)
+    {
+      flox_data_reader_set_progress_callback(
+          _h,
+          [](void* user, double pct, int64_t cursor_ts_ns) -> uint8_t
+          {
+            auto* c = static_cast<ProgressCtx*>(user);
+            Napi::HandleScope scope(c->env);
+            try
+            {
+              auto result =
+                  c->fn.Call({Napi::Number::New(c->env, pct),
+                              Napi::Number::New(c->env,
+                                                static_cast<double>(cursor_ts_ns))});
+              if (result.IsBoolean() && !result.As<Napi::Boolean>().Value())
+              {
+                c->cancelled = true;
+                return 0;
+              }
+              return 1;
+            }
+            catch (const Napi::Error&)
+            {
+              c->cancelled = true;
+              return 0;
+            }
+          },
+          &ctx, progress_interval_ms);
+    }
+    else
+    {
+      flox_data_reader_clear_progress_callback(_h);
+    }
+
     uint8_t ok = flox_data_reader_run(_h, handles.empty() ? nullptr : handles.data(),
                                       static_cast<uint32_t>(handles.size()),
                                       n_threads);
+    if (has_progress)
+    {
+      // Drop the callback so a follow-up run() without options does
+      // not inherit the previous progress hook.
+      flox_data_reader_clear_progress_callback(_h);
+    }
     return Napi::Boolean::New(env, ok != 0);
   }
 

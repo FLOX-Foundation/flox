@@ -8215,6 +8215,37 @@ extern "C" void flox_aggregator_destroy(FloxAggregatorHandle h)
   delete toAgg(h);
 }
 
+extern "C" void flox_data_reader_set_progress_callback(
+    FloxDataReaderHandle reader, FloxProgressCallback cb, void* user_data,
+    uint32_t interval_ms)
+{
+  if (reader == nullptr)
+  {
+    return;
+  }
+  auto* r = static_cast<replay::BinaryLogReader*>(reader);
+  if (cb == nullptr)
+  {
+    r->clearProgressCallback();
+    return;
+  }
+  std::chrono::milliseconds interval{interval_ms == 0 ? 1000u : interval_ms};
+  r->setProgressCallback(
+      [cb, user_data](double pct, int64_t cursor_ts_ns) -> bool
+      { return cb(user_data, pct, cursor_ts_ns) != 0; },
+      interval);
+}
+
+extern "C" void flox_data_reader_clear_progress_callback(
+    FloxDataReaderHandle reader)
+{
+  if (reader == nullptr)
+  {
+    return;
+  }
+  static_cast<replay::BinaryLogReader*>(reader)->clearProgressCallback();
+}
+
 extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                         FloxAggregatorHandle* aggregators,
                                         uint32_t aggregator_count,

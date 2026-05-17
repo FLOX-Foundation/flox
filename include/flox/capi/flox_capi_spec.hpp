@@ -3531,6 +3531,29 @@ extern "C"
                                FloxAggregatorHandle* aggregators,
                                uint32_t aggregator_count, uint32_t n_threads);
 
+  // Progress callback for `flox_data_reader_run` (single-threaded
+  // path only — n_threads=1). The callback fires at most once per
+  // `interval_ms` from inside the run loop. `pct` is the fraction of
+  // total events dispatched, in [0.0, 1.0]; `cursor_ts_ns` is the
+  // exchange timestamp of the most recent dispatched event. The
+  // callback returns non-zero to keep running, zero to request
+  // cancellation — on cancel, the run finalizes aggregators with
+  // whatever state has been accumulated and `flox_data_reader_run`
+  // returns 0. `interval_ms = 0` is treated as 1000ms.
+  typedef uint8_t (*FloxProgressCallback)(void* user_data, double pct,
+                                          int64_t cursor_ts_ns);
+
+  FLOX_EXPORT(group = "data_reader")
+  void flox_data_reader_set_progress_callback(
+      FloxDataReaderHandle reader, FloxProgressCallback cb,
+      void* user_data, uint32_t interval_ms);
+
+  // Clear any callback previously installed via
+  // `flox_data_reader_set_progress_callback`. Equivalent to passing
+  // NULL as the callback function pointer.
+  FLOX_EXPORT(group = "data_reader")
+  void flox_data_reader_clear_progress_callback(FloxDataReaderHandle reader);
+
   // MergedTapeReader::run is single-threaded for the moment — symbol
   // rekey is per-instance and a per-worker MergedTapeReader would not
   // share global symbol ids. The n_threads parameter is reserved for

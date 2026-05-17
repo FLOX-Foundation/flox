@@ -219,6 +219,9 @@ jobs:
     - name: Verify cross-sectional panel builder
       run: PYTHONPATH=build/python python3 python/tests/test_panel.py
 
+    - name: Verify DataReader progress callback (Python)
+      run: PYTHONPATH=build/python python3 python/tests/test_progress_callback.py
+
     - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
 
@@ -349,6 +352,10 @@ jobs:
     - name: Verify Node.js extension hooks
       run: |
         cd node && node test/test_hooks.js
+
+    - name: Verify Node.js DataReader progress callback
+      run: |
+        cd node && node test/test_progress_callback.js
 
     - name: Verify Node.js FloxError surface
       run: |

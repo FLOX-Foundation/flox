@@ -478,6 +478,24 @@
       "return_type": "void"
     },
     {
+      "name": "FloxProgressCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "double"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "name": "FloxRecorderLifecycleFn",
       "params": [
         {
@@ -2053,6 +2071,17 @@
     },
     {
       "group": "data_reader",
+      "name": "flox_data_reader_clear_progress_callback",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "data_reader",
       "name": "flox_data_reader_count",
       "params": [
         {
@@ -2309,6 +2338,29 @@
         }
       ],
       "return_type": "uint8_t"
+    },
+    {
+      "group": "data_reader",
+      "name": "flox_data_reader_set_progress_callback",
+      "params": [
+        {
+          "name": "reader",
+          "type": "FloxDataReaderHandle"
+        },
+        {
+          "name": "cb",
+          "type": "FloxProgressCallback"
+        },
+        {
+          "name": "user_data",
+          "type": "void *"
+        },
+        {
+          "name": "interval_ms",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
     },
     {
       "group": "datareader",

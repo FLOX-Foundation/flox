@@ -93,6 +93,8 @@ from C import flox_get_order_status(cobj, u64) -> i32
 from C import flox_data_reader_create(cobj) -> cobj
 from C import flox_data_reader_destroy(cobj)
 from C import flox_data_reader_count(cobj) -> u64
+from C import flox_data_reader_set_progress_callback(cobj, cobj, cobj, u32)
+from C import flox_data_reader_clear_progress_callback(cobj)
 
 # ── data_writer ──
 from C import flox_data_writer_create(cobj, u64, u8) -> cobj

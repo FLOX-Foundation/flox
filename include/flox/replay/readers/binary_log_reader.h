@@ -200,6 +200,23 @@ class BinaryLogReader
 
   using EventCallback = std::function<bool(const ReplayEvent&)>;
 
+  // Progress reporter invoked from inside `run()` at most once per
+  // `interval`. `pct` is in [0.0, 1.0] based on bytes-of-segments
+  // processed / total bytes (events-per-tape is not known up front).
+  // `cursor_ts_ns` is the exchange timestamp of the most recent
+  // dispatched event. Returning `false` requests cancellation —
+  // `run()` stops the walk, calls `finalize()` once on every
+  // aggregator with whatever partial state has been accumulated, and
+  // returns `false` so the caller can distinguish a cancelled run
+  // from a successful one. Returning `true` (or omitting the bool by
+  // wrapping a `void`-returning lambda inside the std::function) lets
+  // the run continue.
+  using ProgressCallback = std::function<bool(double pct, int64_t cursor_ts_ns)>;
+  void setProgressCallback(
+      ProgressCallback cb,
+      std::chrono::milliseconds interval = std::chrono::milliseconds(1000));
+  void clearProgressCallback();
+
   // Sorted-order delivery. For segments without the Sorted flag the
   // entire segment is buffered into memory and stable_sort'ed before
   // dispatch — O(N_events × sizeof(ReplayEvent)) per segment. Use
@@ -277,6 +294,8 @@ class BinaryLogReader
   ReaderStats _stats;
   std::vector<SegmentInfo> _segments;
   bool _scanned{false};
+  ProgressCallback _progress_cb;
+  std::chrono::milliseconds _progress_interval{1000};
 };
 
 class BinaryLogIterator
