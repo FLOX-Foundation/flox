@@ -213,6 +213,9 @@ jobs:
     - name: Verify Binance archive importer
       run: PYTHONPATH=build/python python3 python/tests/test_binance_archive.py
 
+    - name: Verify rolling top-K helper
+      run: PYTHONPATH=build/python python3 python/tests/test_rolling.py
+
     - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
 
@@ -240,6 +243,7 @@ jobs:
         docs/examples/python_ccxt_live.py
         docs/examples/python_tape_roundtrip.py
         docs/examples/python_binance_archive.py
+        docs/examples/python_rolling_top_k.py
 
     # Pyright is what Cursor / Pylance / VSCode actually run; mypy and
     # pyright sometimes disagree, and the AI-DX goal is the editor
@@ -259,6 +263,9 @@ jobs:
 
     - name: Run Python Binance archive importer example
       run: PYTHONPATH=build/python python3 docs/examples/python_binance_archive.py
+
+    - name: Run Python rolling top-K example
+      run: PYTHONPATH=build/python python3 docs/examples/python_rolling_top_k.py
 
     - name: Verify Codon binaries
       run: |

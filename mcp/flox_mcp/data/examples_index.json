@@ -58,6 +58,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_rolling_top_k.py",
+      "sha256": "640757bc47a624b4f849692608b9fc93c8f6854881f178a831111aad9d079d24",
+      "size_bytes": 1842,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_tape_roundtrip.py",
       "sha256": "1d2bcbc67df849e9de564d524db885d1a72397fe55d599942e2756ccb9b1acf8",
       "size_bytes": 2446,
