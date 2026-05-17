@@ -51,6 +51,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_bitget_archive.py",
+      "sha256": "8b9509332470e25100d80f20ffa54bde94c0d110637759f9f4c386ddb18ca8d0",
+      "size_bytes": 1898,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_bybit_archive.py",
       "sha256": "6680978e94b2f8aa592b4a42d0b01764f181cad007697ee32fc9881e0013f332",
       "size_bytes": 2218,
