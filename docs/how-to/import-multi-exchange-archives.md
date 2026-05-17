@@ -6,8 +6,9 @@
 |---|---|---|---|
 | Binance | `flox_py.archives.binance` | `aggtrades_to_floxlog` | `flox archive binance ...` |
 | Bybit   | `flox_py.archives.bybit`   | `trades_to_floxlog`    | `flox archive bybit ...`   |
+| OKX     | `flox_py.archives.okx`     | `trades_to_floxlog`    | `flox archive okx ...`     |
 
-OKX, Bitget, and Deribit follow the same shape and ship as separate tasks when a concrete research use case shows up. Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
+Bitget and Deribit follow the same shape and ship as separate tasks when a concrete research use case shows up. Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
 
 ## Bybit
 
@@ -60,6 +61,50 @@ flox archive bybit \
   --symbol BTCUSDT --market linear \
   --from 2024-01-01 --to 2024-12-31 \
   --out ./tapes/bybit-linear-BTCUSDT \
+  --parallel 4
+```
+
+## OKX
+
+OKX publishes daily trade ticks on `www.okx.com/cdn/okex/traderecords/` for spot, swap (perpetual), futures, and options. The on-disk CSV columns:
+
+```text
+trade_id, side, size, price, timestamp_ms
+```
+
+`trade_id` is an integer exchange-assigned id, used directly as the floxlog `trade_id` for dedup. `side` is the active flow as `buy` / `sell` lowercase, mapped to floxlog's `Side::BUY` / `Side::SELL`.
+
+### URL layout
+
+- spot:    `cdn/okex/traderecords/spot/daily/<YYYYMMDD>/<SYMBOL>-trades-<YYYY-MM-DD>.zip`
+- swap:    `cdn/okex/traderecords/swap/daily/<YYYYMMDD>/<SYMBOL>-trades-<YYYY-MM-DD>.zip`
+- futures: `cdn/okex/traderecords/futures/daily/<YYYYMMDD>/<SYMBOL>-trades-<YYYY-MM-DD>.zip`
+- option:  `cdn/okex/traderecords/option/daily/<YYYYMMDD>/<SYMBOL>-trades-<YYYY-MM-DD>.zip`
+
+Symbol naming follows OKX convention (`BTC-USDT` for spot, `BTC-USDT-SWAP` for perp, `BTC-29MAR24-50000-C` for option-chain instruments). The converter accepts the symbol verbatim; cross-exchange normalisation is out of scope.
+
+### Example
+
+The script below builds a synthetic OKX-style zipped CSV in memory and round-trips it through the converter:
+
+```python
+--8<-- "examples/python_okx_archive.py"
+```
+
+### CLI
+
+```bash
+# Single day from a local CSV / zip
+flox archive okx \
+  --csv ./BTC-USDT-SWAP-trades-2024-01-15.zip \
+  --out ./tapes/okx-swap-BTC-USDT-SWAP \
+  --symbol BTC-USDT-SWAP --market swap
+
+# Multi-day range with download
+flox archive okx \
+  --symbol BTC-USDT-SWAP --market swap \
+  --from 2024-01-01 --to 2024-12-31 \
+  --out ./tapes/okx-swap-BTC-USDT-SWAP \
   --parallel 4
 ```
 
