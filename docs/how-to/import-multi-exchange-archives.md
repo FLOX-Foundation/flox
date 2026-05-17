@@ -8,8 +8,9 @@
 | Bybit   | `flox_py.archives.bybit`   | `trades_to_floxlog`    | `flox archive bybit ...`   |
 | OKX     | `flox_py.archives.okx`     | `trades_to_floxlog`    | `flox archive okx ...`     |
 | Bitget  | `flox_py.archives.bitget`  | `trades_to_floxlog`    | `flox archive bitget ...`  |
+| Deribit | `flox_py.archives.deribit` | `trades_to_floxlog`    | `flox archive deribit ...` |
 
-Deribit follows the same shape and ships as a separate task. Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
+Adding a new venue is a self-contained module under `flox_py/archives/` that implements `trades_to_floxlog` + `range_to_floxlog` matching the `ArchiveReader` Protocol.
 
 ## Bybit
 
@@ -65,7 +66,6 @@ flox archive bybit \
   --parallel 4
 ```
 
-<<<<<<< HEAD
 ## OKX
 
 OKX publishes daily trade ticks on `www.okx.com/cdn/okex/traderecords/` for spot, swap (perpetual), futures, and options. The on-disk CSV columns:
@@ -146,6 +146,48 @@ flox archive bitget \
 ```
 
 Bitget specifically matters for production reproduction: `md_collector` deployments on Singapore default to Bitget feeds for multi-symbol fixtures, so the archive lets researchers re-run the same `(exchange, name)` keying that the live capture used.
+
+## Deribit
+
+Deribit dominates crypto options volume and is the only venue of this set whose public archive carries options trades as a first-class event type. The on-disk CSV columns (post-2022):
+
+```text
+trade_id, timestamp_ms, instrument, side, price, amount,
+mark_price, iv, index_price
+```
+
+`trade_id` is integer, used directly for append-safe dedup. `side` is `buy` / `sell` lowercase. `mark_price`, `iv`, and `index_price` are dropped at read time — the floxlog `TradeRecord` schema does not represent them; keep the source CSV alongside the tape and re-join in numpy when needed.
+
+### Instrument naming
+
+- perpetual: `BTC-PERPETUAL`, `ETH-PERPETUAL`, ...
+- future:    `BTC-29MAR24`, `ETH-28JUN24`, ... (date-encoded expiry)
+- option:    `BTC-29MAR24-50000-C`, `BTC-29MAR24-50000-P` (date-encoded expiry + strike + C/P)
+
+The converter takes one instrument per tape. Multi-instrument option-chain aggregation (one tape covering every strike at a given expiry) is left as a follow-up — backtests that pin to a specific strike or roll through a known series sequentially are well served by the single-instrument path.
+
+### Example
+
+```python
+--8<-- "examples/python_deribit_archive.py"
+```
+
+### CLI
+
+```bash
+# Single day from a local file
+flox archive deribit \
+  --csv ./BTC-PERPETUAL-2024-01-15.csv.gz \
+  --out ./tapes/deribit-perp-BTC \
+  --symbol BTC-PERPETUAL --market perpetual
+
+# Multi-day option-chain instrument
+flox archive deribit \
+  --symbol BTC-29MAR24-50000-C --market option \
+  --from 2024-01-01 --to 2024-03-29 \
+  --out ./tapes/deribit-opt-BTC-29MAR24-50000-C \
+  --parallel 4
+```
 
 ## Shared download cache
 

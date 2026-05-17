@@ -7,7 +7,7 @@ Each exchange ships as its own submodule with a small shared spine:
   * ``aggtrades_to_floxlog`` / ``trades_to_floxlog`` — single-day
     convert.
   * ``range_to_floxlog`` — multi-day with optional HTTP mirror cache.
-  * CLI: ``flox archive {binance | bybit | okx | bitget | ...} ...``.
+  * CLI: ``flox archive {binance | bybit | okx | bitget | deribit} ...``.
 
 The downloaded zip / csv.gz files share a single on-disk cache rooted
 at ``~/.flox/archive-cache`` (overridable via ``FLOX_ARCHIVE_CACHE``);
@@ -15,9 +15,9 @@ each exchange namespaces its files under
 ``<cache_root>/<exchange>/<...>/``.
 
 Today ships ``binance`` (aggTrades + book products), ``bybit``,
-``okx``, and ``bitget`` (trades). Deribit ships on its own branch.
+``okx``, ``bitget``, and ``deribit`` (perp / future / option trades).
 """
-from . import _cache, archive_reader, binance, bitget, bybit, okx
+from . import _cache, archive_reader, binance, bitget, bybit, deribit, okx
 
 cache_root = _cache.cache_root
 ArchiveReader = archive_reader.ArchiveReader
@@ -30,5 +30,6 @@ __all__ = [
     "binance",
     "bitget",
     "bybit",
+    "deribit",
     "okx",
 ]

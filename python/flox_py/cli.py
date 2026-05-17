@@ -998,6 +998,53 @@ def cmd_archive_bitget(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_archive_deribit(args: argparse.Namespace) -> int:
+    """Convert Deribit public trade archives into a `.floxlog` tape."""
+    from . import archives
+
+    if args.csv:
+        stats = archives.deribit.trades_to_floxlog(
+            csv_path=args.csv,
+            out_tape=args.out,
+            symbol_id=args.symbol_id,
+            symbol_name=args.symbol or "",
+            market=args.market,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+        )
+    else:
+        if not (args.symbol and args.date_from and args.date_to):
+            print("flox archive deribit: --symbol, --from and --to are "
+                  "required when --csv is not used.", file=sys.stderr)
+            return 2
+        stats = archives.deribit.range_to_floxlog(
+            symbol=args.symbol,
+            market=args.market,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            out_tape=args.out,
+            mirror=args.mirror,
+            parallel=args.parallel,
+            symbol_id=args.symbol_id,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+            skip_missing=args.skip_missing,
+        )
+
+    print(
+        f"flox archive deribit: trades_written={stats.trades_written} "
+        f"rows_read={stats.rows_read} rows_skipped={stats.rows_skipped} "
+        f"files={stats.files_processed}"
+    )
+    return 0
+
+
 # ── Argparse setup ─────────────────────────────────────────────────────
 
 
@@ -1437,6 +1484,52 @@ def _build_parser() -> argparse.ArgumentParser:
     p_bitget.add_argument("--skip-missing", action="store_true",
                           help="Skip days that fail to download.")
     p_bitget.set_defaults(handler=cmd_archive_bitget)
+
+    p_deribit = archive_sub.add_parser(
+        "deribit",
+        help="Convert Deribit public archive trade ticks into a "
+             "`.floxlog` tape. Covers perpetual / dated future / "
+             "option instruments. Single day via `--csv` or a date "
+             "range via `--symbol/--from/--to`.",
+    )
+    p_deribit.add_argument("--csv", default=None,
+                           help="Path to a single Deribit archive "
+                                "`.csv.gz` / `.csv` / `.zip`.")
+    p_deribit.add_argument("--symbol", default=None,
+                           help="Instrument in Deribit naming "
+                                "(e.g. BTC-PERPETUAL, BTC-29MAR24, "
+                                "BTC-29MAR24-50000-C).")
+    p_deribit.add_argument("--market", default="perpetual",
+                           choices=("perpetual", "future", "option"),
+                           help="Deribit market segment (default: perpetual).")
+    p_deribit.add_argument("--from", dest="date_from", default=None,
+                           help="Start date YYYY-MM-DD (inclusive).")
+    p_deribit.add_argument("--to", dest="date_to", default=None,
+                           help="End date YYYY-MM-DD (inclusive).")
+    p_deribit.add_argument("--out", required=True,
+                           help="Output `.floxlog` directory.")
+    p_deribit.add_argument("--mirror", default=None,
+                           help="Local mirror cache. Defaults to "
+                                "`~/.flox/archive-cache/deribit`.")
+    p_deribit.add_argument("--parallel", type=int, default=4,
+                           help="Concurrent downloads (default: 4).")
+    p_deribit.add_argument("--symbol-id", dest="symbol_id", type=int, default=1,
+                           help="Symbol ID stamped on every trade.")
+    p_deribit.add_argument("--exchange-id", dest="exchange_id", type=int, default=0,
+                           help="Exchange ID stamped into the tape header.")
+    p_deribit.add_argument("--exchange-name", dest="exchange_name", default="deribit",
+                           help="Exchange tag written into metadata.json.")
+    p_deribit.add_argument("--max-segment-mb", dest="max_segment_mb",
+                           type=int, default=256,
+                           help="Rotate to a new segment after N MB (default: 256).")
+    p_deribit.add_argument("--compression", default="none",
+                           choices=("none", "lz4"),
+                           help="Segment compression (default: none).")
+    p_deribit.add_argument("--no-append", action="store_true",
+                           help="Disable trade_id dedup against an existing tape.")
+    p_deribit.add_argument("--skip-missing", action="store_true",
+                           help="Skip days that fail to download.")
+    p_deribit.set_defaults(handler=cmd_archive_deribit)
 
     # ── lint (lookahead) ────────────────────────────────────────────
     p_lint = sub.add_parser(

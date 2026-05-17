@@ -72,6 +72,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_deribit_archive.py",
+      "sha256": "0af2c66c8d71396b4d35ad9d1597abb1e7683bc8dfe48cf2a4d11f37f5b7c7f1",
+      "size_bytes": 2694,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_multi_symbol.py",
       "sha256": "524c3c289215c0404ad7dcc2919ff8d2bb6ebb608954588c20fdcf97dd1f7b21",
       "size_bytes": 3285,
