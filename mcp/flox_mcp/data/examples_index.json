@@ -73,8 +73,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_orderbook_iterator.py",
-      "sha256": "ac6f86abd4057c4eec5eba54edb04bbc991585cebd35f88447bdbe895640e835",
-      "size_bytes": 2529,
+      "sha256": "1485c853b0f4372fde84e11fccef09942a396d4679930c479898e52ed8638992",
+      "size_bytes": 2521,
       "topic": "strategy"
     },
     {
