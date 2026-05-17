@@ -20,6 +20,7 @@ Solve specific problems. Assumes you know the basics.
 | [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
 | [Record and replay tapes](tape-record.md) | Capture live market data to `.floxlog`, replay deterministically |
 | [Import Binance public archives](import-binance-archive.md) | Convert `data.binance.vision` aggTrades zips into a `.floxlog` tape |
+| [Rolling top-K thresholds](rolling-thresholds.md) | Vectorized sliding K-th-largest for extreme-event filters at any timeframe |
 | [Delta book compression](delta-book-compression.md) | Shrink L2 tapes 10-30x by emitting only the changed levels |
 | [Record a strategy run as `.floxrun`](floxrun.md) | Capture signals, orders, and fills as a per-run trace alongside the tape |
 | [Capture a strategy run automatically with `.floxrun`](floxrun-auto-capture.md) | `TraceSignalHandler` + `TraceExecutionListener` adapters; no per-strategy instrumentation |
