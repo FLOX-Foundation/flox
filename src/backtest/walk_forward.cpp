@@ -49,6 +49,25 @@ BacktestStats runWindow(const BacktestConfig& cfg,
   return res.computeStats();
 }
 
+BacktestStats runWindowBars(const BacktestConfig& cfg,
+                            IStrategy* strategy,
+                            const std::vector<BarEvent>& bars,
+                            std::size_t startBar,
+                            std::size_t endBarExclusive)
+{
+  if (startBar >= endBarExclusive || endBarExclusive > bars.size())
+  {
+    return {};
+  }
+  BacktestRunner runner(cfg);
+  runner.setStrategy(strategy);
+  std::vector<BarEvent> slice(
+      bars.begin() + static_cast<std::ptrdiff_t>(startBar),
+      bars.begin() + static_cast<std::ptrdiff_t>(endBarExclusive));
+  BacktestResult res = runner.runBars(slice);
+  return res.computeStats();
+}
+
 }  // namespace
 
 std::vector<WalkForwardFold> WalkForwardRunner::run(
@@ -129,6 +148,102 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
       IStrategy* testStrat = _factory(f.foldIndex);
       f.testStats = runWindow(_backtestConfig, testStrat, bars,
                               f.testStartBar, f.testEndBar);
+
+      folds.push_back(f);
+    }
+  }
+
+  return folds;
+}
+
+namespace
+{
+
+int64_t barEndNs(const BarEvent& b)
+{
+  return b.bar.endTime.time_since_epoch().count();
+}
+
+}  // namespace
+
+std::vector<WalkForwardFold> WalkForwardRunner::run(
+    const std::vector<BarEvent>& bars)
+{
+  std::vector<WalkForwardFold> folds;
+  if (!_factory)
+  {
+    FLOX_LOG_ERROR("WalkForwardRunner: no strategy factory set");
+    return folds;
+  }
+  if (_wfConfig.testSize == 0)
+  {
+    FLOX_LOG_ERROR("WalkForwardRunner: testSize must be > 0");
+    return folds;
+  }
+  const std::size_t step = _wfConfig.step == 0 ? _wfConfig.testSize : _wfConfig.step;
+  const std::size_t n = bars.size();
+
+  std::size_t foldIdx = 0;
+
+  if (_wfConfig.mode == WalkForwardMode::Anchored)
+  {
+    const std::size_t firstSplit = _wfConfig.minTrainSize > 0
+                                       ? _wfConfig.minTrainSize
+                                       : _wfConfig.testSize;
+    for (std::size_t split = firstSplit; split + _wfConfig.testSize <= n;
+         split += step)
+    {
+      WalkForwardFold f{};
+      f.foldIndex = foldIdx++;
+      f.trainStartBar = 0;
+      f.trainEndBar = split;
+      f.testStartBar = split;
+      f.testEndBar = split + _wfConfig.testSize;
+      f.trainStartNs = barEndNs(bars.front());
+      f.trainEndNs = barEndNs(bars[split - 1]);
+      f.testStartNs = barEndNs(bars[split]);
+      f.testEndNs = barEndNs(bars[f.testEndBar - 1]);
+
+      IStrategy* trainStrat = _factory(f.foldIndex);
+      f.trainStats = runWindowBars(_backtestConfig, trainStrat, bars,
+                                   f.trainStartBar, f.trainEndBar);
+
+      IStrategy* testStrat = _factory(f.foldIndex);
+      f.testStats = runWindowBars(_backtestConfig, testStrat, bars,
+                                  f.testStartBar, f.testEndBar);
+
+      folds.push_back(f);
+    }
+  }
+  else  // Sliding
+  {
+    if (_wfConfig.trainSize == 0)
+    {
+      FLOX_LOG_ERROR("WalkForwardRunner: sliding mode requires trainSize > 0");
+      return folds;
+    }
+    for (std::size_t trainStart = 0;
+         trainStart + _wfConfig.trainSize + _wfConfig.testSize <= n;
+         trainStart += step)
+    {
+      WalkForwardFold f{};
+      f.foldIndex = foldIdx++;
+      f.trainStartBar = trainStart;
+      f.trainEndBar = trainStart + _wfConfig.trainSize;
+      f.testStartBar = f.trainEndBar;
+      f.testEndBar = f.testStartBar + _wfConfig.testSize;
+      f.trainStartNs = barEndNs(bars[f.trainStartBar]);
+      f.trainEndNs = barEndNs(bars[f.trainEndBar - 1]);
+      f.testStartNs = barEndNs(bars[f.testStartBar]);
+      f.testEndNs = barEndNs(bars[f.testEndBar - 1]);
+
+      IStrategy* trainStrat = _factory(f.foldIndex);
+      f.trainStats = runWindowBars(_backtestConfig, trainStrat, bars,
+                                   f.trainStartBar, f.trainEndBar);
+
+      IStrategy* testStrat = _factory(f.foldIndex);
+      f.testStats = runWindowBars(_backtestConfig, testStrat, bars,
+                                  f.testStartBar, f.testEndBar);
 
       folds.push_back(f);
     }
