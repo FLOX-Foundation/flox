@@ -210,6 +210,9 @@ jobs:
     - name: Verify RL environment
       run: PYTHONPATH=build/python python3 python/tests/test_rl_env.py
 
+    - name: Verify Binance archive importer
+      run: PYTHONPATH=build/python python3 python/tests/test_binance_archive.py
+
     - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
 
@@ -236,6 +239,7 @@ jobs:
         docs/examples/python_multi_symbol.py
         docs/examples/python_ccxt_live.py
         docs/examples/python_tape_roundtrip.py
+        docs/examples/python_binance_archive.py
 
     # Pyright is what Cursor / Pylance / VSCode actually run; mypy and
     # pyright sometimes disagree, and the AI-DX goal is the editor
@@ -252,6 +256,9 @@ jobs:
 
     - name: Run Python tape round-trip example
       run: PYTHONPATH=build/python python3 docs/examples/python_tape_roundtrip.py
+
+    - name: Run Python Binance archive importer example
+      run: PYTHONPATH=build/python python3 docs/examples/python_binance_archive.py
 
     - name: Verify Codon binaries
       run: |

@@ -37,6 +37,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_binance_archive.py",
+      "sha256": "56b2276438b62b0d407fa53c073196e30aa03ac3590c0bc9acf5e09791c46244",
+      "size_bytes": 2520,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_ccxt_live.py",
       "sha256": "686b9e5e410edc5d496dfafa7c382ee4b337b7ac25e60df5caed62e49a10db2a",
       "size_bytes": 3042,
