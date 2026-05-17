@@ -20,6 +20,7 @@ Solve specific problems. Assumes you know the basics.
 | [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
 | [Record and replay tapes](tape-record.md) | Capture live market data to `.floxlog`, replay deterministically |
 | [Import Binance public archives](import-binance-archive.md) | Convert `data.binance.vision` aggTrades zips into a `.floxlog` tape |
+| [Import Binance book archives](import-binance-book-archive.md) | Convert `bookTicker` / `bookDepth` zips into delta-encoded book events on the same tape |
 | [Rolling top-K thresholds](rolling-thresholds.md) | Vectorized sliding K-th-largest for extreme-event filters at any timeframe |
 | [Cross-sectional panel builder](cross-sectional-panel.md) | Aligned (T × S) close / OHLC / returns panel over N floxlog tapes |
 | [Delta book compression](delta-book-compression.md) | Shrink L2 tapes 10-30x by emitting only the changed levels |
