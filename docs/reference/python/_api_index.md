@@ -1721,6 +1721,7 @@ Volume Profile aggregator. Tracks volume distribution across price levels.
 
 **Members**
 
+- `run_bars(self, start_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], end_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], open: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], volume: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str, bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0) -> list`
 - `run_csv(self, path: str, symbol: str) -> list`
 - `set_strategy_factory(self, factory: typing.Any) -> None`
 

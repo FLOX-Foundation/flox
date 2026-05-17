@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/aggregator/events/bar_event.h"
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/replay/ohlcv_replay_source.h"
@@ -77,6 +78,16 @@ class WalkForwardRunner
 
   std::vector<WalkForwardFold> run(
       const std::vector<OhlcvReplaySource::Bar>& bars);
+
+  /// Walk-forward over a sequence of full OHLCV bars (open / high / low /
+  /// close / volume). Each fold dispatches `BarEvent`s through the strategy
+  /// via `BacktestRunner::runBars`, so `Strategy::onBar` fires with full
+  /// bar data — high / low / volume are preserved. Use this overload for
+  /// `on_bar` strategies that need intrabar information (TP/SL ladders,
+  /// breakout confirmation, ATR-style indicators).
+  ///
+  /// Bars must be sorted by `bar.endTime`.
+  std::vector<WalkForwardFold> run(const std::vector<BarEvent>& bars);
 
  private:
   BacktestConfig _backtestConfig;
