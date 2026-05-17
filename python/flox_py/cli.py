@@ -736,6 +736,57 @@ def cmd_tape_view(args: argparse.Namespace) -> int:
     return 0
 
 
+# ── archive ─────────────────────────────────────────────────────────
+
+
+def cmd_archive_binance(args: argparse.Namespace) -> int:
+    """Convert Binance public aggTrades archives into a `.floxlog` tape."""
+    from . import archives  # local import keeps the CLI cheap to start
+
+    if args.csv:
+        stats = archives.binance.aggtrades_to_floxlog(
+            csv_path=args.csv,
+            out_tape=args.out,
+            symbol_id=args.symbol_id,
+            symbol_name=args.symbol or "",
+            market=args.market,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+        )
+    else:
+        if not (args.symbol and args.date_from and args.date_to):
+            print("flox archive binance: --symbol, --from and --to are "
+                  "required when --csv is not used.",
+                  file=sys.stderr)
+            return 2
+        stats = archives.binance.range_to_floxlog(
+            symbol=args.symbol,
+            market=args.market,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            out_tape=args.out,
+            mirror=args.mirror,
+            parallel=args.parallel,
+            symbol_id=args.symbol_id,
+            exchange_id=args.exchange_id,
+            exchange_name=args.exchange_name,
+            append=not args.no_append,
+            max_segment_mb=args.max_segment_mb,
+            compression=args.compression,
+            skip_missing=args.skip_missing,
+        )
+
+    print(
+        f"flox archive binance: trades_written={stats.trades_written} "
+        f"rows_read={stats.rows_read} rows_skipped={stats.rows_skipped} "
+        f"files={stats.files_processed}"
+    )
+    return 0
+
+
 # ── Argparse setup ─────────────────────────────────────────────────────
 
 
@@ -958,6 +1009,73 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_validate.add_argument("path", help="Path to the bundle .tar file.")
     p_validate.set_defaults(handler=cmd_bundle_validate)
+
+    # ── archive ─────────────────────────────────────────────────────
+    p_archive = sub.add_parser(
+        "archive",
+        help="Import public historical archives (Binance public aggTrades "
+             "today; other venues land as separate subcommands).",
+    )
+    archive_sub = p_archive.add_subparsers(dest="archive_command", required=True)
+
+    p_binance = archive_sub.add_parser(
+        "binance",
+        help="Convert Binance public aggTrades zip archives into a "
+             "`.floxlog` tape (single day via --csv, or a date range "
+             "via --symbol/--from/--to).",
+    )
+    p_binance.add_argument(
+        "--csv", default=None,
+        help="Path to a single aggTrades zip or extracted CSV. When set, "
+             "--from / --to are ignored and a one-file conversion is run.",
+    )
+    p_binance.add_argument(
+        "--symbol", default=None,
+        help="Symbol (e.g. BTCUSDT). Required for the date-range form.",
+    )
+    p_binance.add_argument(
+        "--market", default="um-futures",
+        choices=("spot", "um-futures", "cm-futures"),
+        help="Binance market segment (default: um-futures).",
+    )
+    p_binance.add_argument("--from", dest="date_from", default=None,
+                           help="Start date YYYY-MM-DD (inclusive).")
+    p_binance.add_argument("--to", dest="date_to", default=None,
+                           help="End date YYYY-MM-DD (inclusive).")
+    p_binance.add_argument(
+        "--out", required=True,
+        help="Output `.floxlog` directory.",
+    )
+    p_binance.add_argument(
+        "--mirror", default=None,
+        help="Local mirror cache for downloaded zips. Without this a "
+             "tempdir is used and discarded.",
+    )
+    p_binance.add_argument(
+        "--parallel", type=int, default=4,
+        help="Concurrent downloads (default: 4). Conversion stays serial.",
+    )
+    p_binance.add_argument("--symbol-id", dest="symbol_id", type=int, default=1,
+                           help="Symbol ID to stamp on every trade (default: 1).")
+    p_binance.add_argument("--exchange-id", dest="exchange_id", type=int, default=0,
+                           help="Exchange ID stamped into the tape header.")
+    p_binance.add_argument("--exchange-name", dest="exchange_name", default="binance",
+                           help="Exchange tag written into metadata.json.")
+    p_binance.add_argument("--max-segment-mb", dest="max_segment_mb",
+                           type=int, default=256,
+                           help="Rotate to a new segment after this many MB "
+                                "(default: 256).")
+    p_binance.add_argument("--compression", default="none",
+                           choices=("none", "lz4"),
+                           help="Segment compression (default: none).")
+    p_binance.add_argument("--no-append", action="store_true",
+                           help="Disable agg_trade_id dedup against an "
+                                "existing tape; every row is written even "
+                                "if its trade_id was already present.")
+    p_binance.add_argument("--skip-missing", action="store_true",
+                           help="Skip days that fail to download instead of "
+                                "aborting the whole range.")
+    p_binance.set_defaults(handler=cmd_archive_binance)
 
     # ── lint (lookahead) ────────────────────────────────────────────
     p_lint = sub.add_parser(
