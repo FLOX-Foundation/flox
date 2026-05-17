@@ -365,6 +365,11 @@
         {
           "group": "data_reader",
           "kind": "function",
+          "name": "flox_data_reader_clear_progress_callback"
+        },
+        {
+          "group": "data_reader",
+          "kind": "function",
           "name": "flox_data_reader_count"
         },
         {
@@ -426,6 +431,11 @@
           "group": "tape_aggregator",
           "kind": "function",
           "name": "flox_data_reader_run"
+        },
+        {
+          "group": "data_reader",
+          "kind": "function",
+          "name": "flox_data_reader_set_progress_callback"
         },
         {
           "group": "datareader",
@@ -3368,6 +3378,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_data_reader_clear_progress_callback"
+        },
+        {
+          "kind": "function",
           "name": "flox_data_reader_count"
         },
         {
@@ -3417,6 +3431,10 @@
         {
           "kind": "function",
           "name": "flox_data_reader_run"
+        },
+        {
+          "kind": "function",
+          "name": "flox_data_reader_set_progress_callback"
         },
         {
           "kind": "function",
@@ -5252,6 +5270,10 @@
         },
         {
           "kind": "class",
+          "name": "DataReaderRunOptions"
+        },
+        {
+          "kind": "class",
           "name": "DataReaderStats"
         },
         {
@@ -6934,9 +6956,11 @@
     },
     "data_reader": {
       "capi_functions": [
+        "flox_data_reader_clear_progress_callback",
         "flox_data_reader_count",
         "flox_data_reader_create",
-        "flox_data_reader_destroy"
+        "flox_data_reader_destroy",
+        "flox_data_reader_set_progress_callback"
       ],
       "codon": {
         "present": true,

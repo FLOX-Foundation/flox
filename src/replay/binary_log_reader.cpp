@@ -599,7 +599,9 @@ BinaryLogReader::BinaryLogReader(BinaryLogReader&& other) noexcept
     : _config(std::move(other._config)),
       _stats(other._stats),
       _segments(std::move(other._segments)),
-      _scanned(other._scanned)
+      _scanned(other._scanned),
+      _progress_cb(std::move(other._progress_cb)),
+      _progress_interval(other._progress_interval)
 {
 }
 
@@ -611,8 +613,22 @@ BinaryLogReader& BinaryLogReader::operator=(BinaryLogReader&& other) noexcept
     _stats = other._stats;
     _segments = std::move(other._segments);
     _scanned = other._scanned;
+    _progress_cb = std::move(other._progress_cb);
+    _progress_interval = other._progress_interval;
   }
   return *this;
+}
+
+void BinaryLogReader::setProgressCallback(
+    ProgressCallback cb, std::chrono::milliseconds interval)
+{
+  _progress_cb = std::move(cb);
+  _progress_interval = (interval.count() > 0) ? interval : std::chrono::milliseconds(1000);
+}
+
+void BinaryLogReader::clearProgressCallback()
+{
+  _progress_cb = nullptr;
 }
 
 bool BinaryLogReader::scanSegments()
@@ -886,14 +902,59 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
   // bounded reorder buffer.
   if (n_threads == 1)
   {
+    // Progress accounting: when the callback is set, we approximate
+    // pct by event count rather than bytes — we already know the
+    // total event count from the manifest (or from a scan), but
+    // pulling segment file sizes is cheap, so use bytes-processed as
+    // the more meaningful pct. Without a scan we still fall back to
+    // event counts.
+    const auto* cb_ptr = _progress_cb ? &_progress_cb : nullptr;
+    uint64_t total_events = 0;
+    if (cb_ptr != nullptr)
+    {
+      // Best-effort cheap scan; if scanSegments fails (corrupt /
+      // missing directory) we leave total_events = 0 and report
+      // pct=0.0 to the callback. The walk itself will then fail and
+      // surface the underlying error to the caller.
+      if (scanSegments())
+      {
+        for (const auto& seg : _segments)
+        {
+          total_events += seg.event_count;
+        }
+      }
+    }
+
+    uint64_t seen_events = 0;
+    auto last_progress = std::chrono::steady_clock::now();
+    bool cancelled = false;
     const bool walked = streamForEach(
-        [&aggregators](const ReplayEvent& ev)
+        [&](const ReplayEvent& ev) -> bool
         {
           for (auto* agg : aggregators)
           {
             if (agg != nullptr)
             {
               agg->onEvent(ev);
+            }
+          }
+          if (cb_ptr != nullptr)
+          {
+            ++seen_events;
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_progress >= _progress_interval)
+            {
+              last_progress = now;
+              const double pct =
+                  total_events > 0
+                      ? std::min(1.0, static_cast<double>(seen_events) /
+                                          static_cast<double>(total_events))
+                      : 0.0;
+              if (!(*cb_ptr)(pct, ev.timestamp_ns))
+              {
+                cancelled = true;
+                return false;  // stops streamForEach
+              }
             }
           }
           return true;
@@ -907,7 +968,18 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
       }
     }
 
-    return walked;
+    if (cb_ptr != nullptr && walked && !cancelled)
+    {
+      // One final 100% tick so progress UIs reach the end frame. Use
+      // the last segment's last_event_ns (we already scanned for the
+      // total event count) so the timestamp is exact, not just the
+      // most recent intra-walk dispatch.
+      const int64_t end_ts =
+          _segments.empty() ? int64_t{0} : _segments.back().last_event_ns;
+      (*cb_ptr)(1.0, end_ts);
+    }
+
+    return walked && !cancelled;
   }
 
   // Auto / multi-thread path. Resolve n_threads after scanning the

@@ -525,13 +525,62 @@ class PyDataReader
   // n_threads>1 partitions the segment list across workers; each
   // worker clones the panel via cloneEmpty(), then results merge
   // into the user-visible instances before finalize().
-  bool run(py::list py_aggregators, std::size_t n_threads)
+  bool run(py::list py_aggregators, std::size_t n_threads,
+           py::object progress_callback, uint32_t progress_interval_ms)
   {
     auto raw = flox_py::collectAggregators(py_aggregators);
+    const bool has_callback = !progress_callback.is_none();
+    if (has_callback)
+    {
+      auto cb = progress_callback;  // capture by value (Python ref)
+      std::chrono::milliseconds interval{
+          progress_interval_ms == 0 ? 1000u : progress_interval_ms};
+      _reader.setProgressCallback(
+          [cb](double pct, int64_t cursor_ts_ns) -> bool
+          {
+            py::gil_scoped_acquire acquire;
+            try
+            {
+              py::object result = cb(pct, cursor_ts_ns);
+              // Pythonic convention: returning None / no value is
+              // treated as "keep running". An explicit False cancels.
+              if (result.is_none())
+              {
+                return true;
+              }
+              return py::cast<bool>(result);
+            }
+            catch (py::error_already_set& e)
+            {
+              // Surface the Python exception by cancelling. The
+              // exception is restored after run() returns so the
+              // caller sees it instead of a silent partial result.
+              e.restore();
+              return false;
+            }
+          },
+          interval);
+    }
+    else
+    {
+      _reader.clearProgressCallback();
+    }
     bool ok;
     {
       py::gil_scoped_release release;
       ok = _reader.run(raw, n_threads);
+    }
+    // Clear so a re-run without callback does not inherit the previous
+    // one — common foot-gun when a user toggles progress on / off.
+    if (has_callback)
+    {
+      _reader.clearProgressCallback();
+      // If the Python callback threw, propagate that exception now
+      // (we restored it before returning false above).
+      if (PyErr_Occurred() != nullptr)
+      {
+        throw py::error_already_set();
+      }
     }
     return ok;
   }
@@ -1122,8 +1171,17 @@ inline void bindReplay(py::module_& m)
            "forces explicit single-thread; n_threads>1 partitions each "
            "segment at the compressed-block level via "
            "IAggregator::cloneEmpty()/merge() and is capped to the "
-           "effective block count.",
-           py::arg("aggregators"), py::arg("n_threads") = std::size_t{0});
+           "effective block count. "
+           "progress_callback, when set, fires inside the run loop at most "
+           "once per progress_interval_ms with (pct: float in [0,1], "
+           "cursor_ts_ns: int). Return False to cancel; raising stops the "
+           "run and re-raises after finalize. Progress is reported only on "
+           "the single-thread path (n_threads=1); multi-thread runs ignore "
+           "the callback because per-event GIL re-acquisition would defeat "
+           "the parallelism.",
+           py::arg("aggregators"), py::arg("n_threads") = std::size_t{0},
+           py::arg("progress_callback") = py::none(),
+           py::arg("progress_interval_ms") = uint32_t{1000});
 
   // DataWriter
   py::class_<PyDataWriter>(m, "DataWriter")

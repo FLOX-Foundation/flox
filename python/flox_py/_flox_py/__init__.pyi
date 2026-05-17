@@ -453,9 +453,9 @@ class DataReader:
         """
         Read trades starting from a given timestamp (nanoseconds)
         """
-    def run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0) -> bool:
+    def run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0, progress_callback: typing.Any = None, progress_interval_ms: typing.SupportsInt | typing.SupportsIndex = 1000) -> bool:
         """
-        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk. n_threads=0 (default) is auto, resolved to min(blocks_per_segment/2, hardware_concurrency); n_threads=1 forces explicit single-thread; n_threads>1 partitions each segment at the compressed-block level via IAggregator::cloneEmpty()/merge() and is capped to the effective block count.
+        Run a panel of streaming aggregators over the tape in a single decompression pass. Each aggregator's onEvent fires once per event, then finalize() fires once at the end. An empty list is a no-op (no decompression). GIL released for the whole walk. n_threads=0 (default) is auto, resolved to min(blocks_per_segment/2, hardware_concurrency); n_threads=1 forces explicit single-thread; n_threads>1 partitions each segment at the compressed-block level via IAggregator::cloneEmpty()/merge() and is capped to the effective block count. progress_callback, when set, fires inside the run loop at most once per progress_interval_ms with (pct: float in [0,1], cursor_ts_ns: int). Return False to cancel; raising stops the run and re-raises after finalize. Progress is reported only on the single-thread path (n_threads=1); multi-thread runs ignore the callback because per-event GIL re-acquisition would defeat the parallelism.
         """
     def segment_files(self) -> list:
         """

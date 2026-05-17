@@ -1237,8 +1237,28 @@ export class DataReader {
   readBookUpdatesFrom(startTsNs: number | bigint): BookUpdateRecord[];
   /** Streaming aggregator dispatch over the tape in a single
    *  decompression pass. Returns `true` on success; an empty list is a
-   *  no-op no-decompression call returning `true`. */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
+   *  no-op no-decompression call returning `true`.
+   *
+   *  The second argument is either an `nThreads` integer (back-compat)
+   *  or an options object. `onProgress(pct, tsNs)` fires from inside
+   *  the run loop at most once per `progressIntervalMs`; returning
+   *  `false` cancels the walk and returns `false` from `run`. Progress
+   *  is reported only on the single-thread path (nThreads=1). */
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator>, options?: number | DataReaderRunOptions): boolean;
+}
+
+export interface DataReaderRunOptions {
+  /** Worker count for `DataReader.run`. 0 (default) = auto. 1 = forced
+   *  single-thread (required for `onProgress`). >1 = explicit. */
+  nThreads?: number;
+  /** Called periodically from inside the run loop with the bytes-based
+   *  pct (0..1) and the cursor timestamp in nanoseconds. Return `false`
+   *  to cancel; any other return value keeps the run going. Only fires
+   *  on the single-thread path. */
+  onProgress?: (pct: number, tsNs: number) => boolean | void;
+  /** Minimum interval between `onProgress` calls in milliseconds.
+   *  Defaults to 1000 (1 second). 0 is treated as 1000. */
+  progressIntervalMs?: number;
 }
 
 // ── Streaming tape aggregator framework (W14-T019) ─────────────────

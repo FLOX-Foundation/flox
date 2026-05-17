@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 518 functions, 45 handles, 57 structs, 35 callback typedefs, 3 enums, 60 groups.
+**Surface:** 520 functions, 45 handles, 57 structs, 36 callback typedefs, 3 enums, 60 groups.
 
 ## Opaque handles
 
@@ -112,6 +112,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxExecutorLifecycleFn)(void *);`
 - `typedef FloxStrategyHandle (*FloxWalkForwardFactoryFn)(void *, uint64_t);`
 - `typedef int (*FloxGridSearchFactoryFn)(void *, uint64_t, const double *, uint32_t, FloxBacktestStats *);`
+- `typedef uint8_t (*FloxProgressCallback)(void *, double, int64_t);`
 
 ## Structs
 
@@ -880,6 +881,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDataReaderHandle flox_data_reader_create(const char * data_dir)`
 - `void flox_data_reader_destroy(FloxDataReaderHandle reader)`
 - `uint64_t flox_data_reader_count(FloxDataReaderHandle reader)`
+- `void flox_data_reader_set_progress_callback(FloxDataReaderHandle reader, FloxProgressCallback cb, void * user_data, uint32_t interval_ms)`
+- `void flox_data_reader_clear_progress_callback(FloxDataReaderHandle reader)`
 
 ### data_writer
 
