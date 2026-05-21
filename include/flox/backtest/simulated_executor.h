@@ -151,6 +151,15 @@ class SimulatedExecutor : public IOrderExecutor
                                      const MarketState& state) const;
   void forgetMarketPosition(OrderId orderId);
 
+  // Replace-in-flight ack: enqueue pending replace, finalize when
+  // ack deadline passes, reject the replace when the original
+  // order fills first.
+  void enqueuePendingReplace(const Order& oldOrder, const Order& newOrder);
+  void finalizePendingReplaces();
+  void resolveLateReplaceOnFill(const Order& order);
+  int64_t sampleReplaceAckLatency();
+  void forgetPendingReplace(OrderId orderId);
+
   Order* findPendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
 
@@ -206,6 +215,17 @@ class SimulatedExecutor : public IOrderExecutor
   // MARKET_POSITION_CHANGED emission so it fires only on categorical
   // transitions, not on every tick.
   std::unordered_map<OrderId, MarketPosition> _lastEmittedMarketPosition;
+
+  struct PendingReplace
+  {
+    OrderId orderId;
+    int64_t ackAtNs;
+    Order oldSnapshot;
+    Order newOrder;
+  };
+  std::vector<PendingReplace> _pendingReplaces;
+  int64_t _replaceAckLatencyNs{0};
+  int64_t _replaceAckJitterNs{0};
 };
 
 }  // namespace flox

@@ -113,6 +113,9 @@ export type OrderEventStatus =
   | "TRAILING_UPDATED"
   | "QUEUE_POSITION_UPDATED"
   | "MARKET_POSITION_CHANGED"
+  | "REPLACE_SUBMITTED"
+  | "REPLACE_ACCEPTED"
+  | "REPLACE_REJECTED"
   | "UNKNOWN";
 
 /** Categorical position of a resting limit order relative to top-of-book. */

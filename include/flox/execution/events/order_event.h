@@ -38,7 +38,14 @@ enum class OrderEventStatus
   // Market position of a resting order moved across categorical
   // states (best, behind_best, mid_spread, level_empty, crossed).
   // Backtest-only.
-  MARKET_POSITION_CHANGED
+  MARKET_POSITION_CHANGED,
+  // Replace-in-flight states. SUBMITTED fires immediately on
+  // replaceOrder(); ACCEPTED fires after the ack latency; REJECTED
+  // fires when the original order has already filled or cannot be
+  // replaced. REPLACED stays the terminal "old gone, new alive".
+  REPLACE_SUBMITTED,
+  REPLACE_ACCEPTED,
+  REPLACE_REJECTED
 };
 
 // Categorical position of a resting limit order relative to the
@@ -161,6 +168,15 @@ struct OrderEvent
       case OrderEventStatus::MARKET_POSITION_CHANGED:
         listener.onOrderMarketPositionChange(
             order, static_cast<uint8_t>(marketPosition), distanceToBestTicks);
+        break;
+      case OrderEventStatus::REPLACE_SUBMITTED:
+        listener.onOrderReplaceSubmitted(order, newOrder);
+        break;
+      case OrderEventStatus::REPLACE_ACCEPTED:
+        listener.onOrderReplaceAccepted(order, newOrder);
+        break;
+      case OrderEventStatus::REPLACE_REJECTED:
+        listener.onOrderReplaceRejected(order, newOrder, rejectReason);
         break;
     }
   }

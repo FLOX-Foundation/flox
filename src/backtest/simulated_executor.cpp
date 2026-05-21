@@ -47,6 +47,8 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   _cancelAckLatencyNs = config.cancelAckLatencyNs;
   _cancelAckJitterNs = config.cancelAckJitterNs;
   _cancelAckRng.seed(config.cancelAckSeed);
+  _replaceAckLatencyNs = config.replaceAckLatencyNs;
+  _replaceAckJitterNs = config.replaceAckJitterNs;
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -276,6 +278,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
       forgetQueuePosition(orderId);
       forgetTimestamps(orderId);
       forgetMarketPosition(orderId);
+      forgetPendingReplace(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       return;
     }
@@ -319,6 +322,7 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
       forgetQueuePosition(_pending_orders[i].id);
       forgetTimestamps(_pending_orders[i].id);
       forgetMarketPosition(_pending_orders[i].id);
+      forgetPendingReplace(_pending_orders[i].id);
       _pending_orders[i] = _pending_orders.back();
       _pending_orders.pop_back();
     }
@@ -359,6 +363,33 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 
 void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
+  // Async path: emit REPLACE_SUBMITTED immediately and defer the
+  // ACCEPTED + REPLACED transition until the ack deadline. The
+  // original order stays in the book and can still fill in the
+  // race window.
+  if (_replaceAckLatencyNs > 0)
+  {
+    for (const auto& order : _pending_orders)
+    {
+      if (order.id == oldOrderId)
+      {
+        OrderEvent ev;
+        ev.status = OrderEventStatus::REPLACE_SUBMITTED;
+        ev.order = order;
+        ev.newOrder = newOrder;
+        ev.exchangeTsNs = _clock.nowNs();
+        ev.timestamps = timestampsFor(order.id);
+        if (_callback)
+        {
+          _callback(ev);
+        }
+        enqueuePendingReplace(order, newOrder);
+        return;
+      }
+    }
+    return;
+  }
+
   for (auto& order : _pending_orders)
   {
     if (order.id == oldOrderId)
@@ -420,6 +451,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
   maybeEmitMarketPositionChanges();
 
   finalizePendingCancels();
+  finalizePendingReplaces();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
 }
@@ -459,6 +491,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
         forgetQueuePosition(o.id);
         forgetTimestamps(o.id);
         forgetMarketPosition(o.id);
+        forgetPendingReplace(o.id);
       }
     }
     _pending_orders.erase(
@@ -472,6 +505,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   maybeEmitMarketPositionChanges();
 
   finalizePendingCancels();
+  finalizePendingReplaces();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -488,6 +522,7 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price price)
   state.hasAsk = true;
   state.hasTrade = true;
   finalizePendingCancels();
+  finalizePendingReplaces();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -657,6 +692,7 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
   if (ev.status == OrderEventStatus::FILLED)
   {
     resolveLateCancelOnFill(order);
+    resolveLateReplaceOnFill(order);
     _compositeLogic.onOrderFilled(order);
   }
 }
@@ -747,6 +783,118 @@ void SimulatedExecutor::forgetQueuePosition(OrderId orderId)
 void SimulatedExecutor::forgetMarketPosition(OrderId orderId)
 {
   _lastEmittedMarketPosition.erase(orderId);
+}
+
+int64_t SimulatedExecutor::sampleReplaceAckLatency()
+{
+  if (_replaceAckJitterNs <= 0)
+  {
+    return _replaceAckLatencyNs;
+  }
+  std::uniform_int_distribution<int64_t> dist(-_replaceAckJitterNs,
+                                              _replaceAckJitterNs);
+  return std::max<int64_t>(0, _replaceAckLatencyNs + dist(_cancelAckRng));
+}
+
+void SimulatedExecutor::enqueuePendingReplace(const Order& oldOrder,
+                                              const Order& newOrder)
+{
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  _pendingReplaces.push_back(
+      PendingReplace{.orderId = oldOrder.id,
+                     .ackAtNs = now + sampleReplaceAckLatency(),
+                     .oldSnapshot = oldOrder,
+                     .newOrder = newOrder});
+}
+
+void SimulatedExecutor::forgetPendingReplace(OrderId orderId)
+{
+  for (auto it = _pendingReplaces.begin(); it != _pendingReplaces.end();)
+  {
+    if (it->orderId == orderId)
+    {
+      it = _pendingReplaces.erase(it);
+    }
+    else
+    {
+      ++it;
+    }
+  }
+}
+
+void SimulatedExecutor::finalizePendingReplaces()
+{
+  if (_pendingReplaces.empty() || !_callback)
+  {
+    return;
+  }
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  size_t i = 0;
+  while (i < _pendingReplaces.size())
+  {
+    if (_pendingReplaces[i].ackAtNs > now)
+    {
+      ++i;
+      continue;
+    }
+    const OrderId orderId = _pendingReplaces[i].orderId;
+    Order oldSnapshot = _pendingReplaces[i].oldSnapshot;
+    Order newOrder = _pendingReplaces[i].newOrder;
+    _pendingReplaces[i] = _pendingReplaces.back();
+    _pendingReplaces.pop_back();
+
+    Order* live = findPendingOrder(orderId);
+    if (!live)
+    {
+      // Original order is gone (typically filled mid-window); the
+      // fill path already emitted REPLACE_REJECTED.
+      continue;
+    }
+
+    OrderEvent accepted;
+    accepted.status = OrderEventStatus::REPLACE_ACCEPTED;
+    accepted.order = oldSnapshot;
+    accepted.newOrder = newOrder;
+    accepted.exchangeTsNs = now;
+    accepted.timestamps = timestampsFor(orderId);
+    _callback(accepted);
+
+    *live = newOrder;
+
+    OrderEvent replaced;
+    replaced.status = OrderEventStatus::REPLACED;
+    replaced.order = oldSnapshot;
+    replaced.newOrder = newOrder;
+    replaced.exchangeTsNs = now;
+    replaced.timestamps = timestampsFor(orderId);
+    _callback(replaced);
+  }
+}
+
+void SimulatedExecutor::resolveLateReplaceOnFill(const Order& order)
+{
+  if (_pendingReplaces.empty() || !_callback)
+  {
+    return;
+  }
+  for (auto it = _pendingReplaces.begin(); it != _pendingReplaces.end(); ++it)
+  {
+    if (it->orderId != order.id)
+    {
+      continue;
+    }
+    OrderEvent ev;
+    ev.status = OrderEventStatus::REPLACE_REJECTED;
+    ev.order = it->oldSnapshot;
+    ev.newOrder = it->newOrder;
+    ev.rejectReason = "late_replace_after_fill";
+    ev.exchangeTsNs = _clock.nowNs();
+    ev.timestamps = timestampsFor(order.id);
+    _callback(ev);
+    *it = _pendingReplaces.back();
+    _pendingReplaces.pop_back();
+    return;
+  }
 }
 
 MarketPosition SimulatedExecutor::computeMarketPosition(
@@ -930,6 +1078,7 @@ void SimulatedExecutor::finalizePendingCancels()
       forgetQueuePosition(orderId);
       forgetTimestamps(orderId);
       forgetMarketPosition(orderId);
+      forgetPendingReplace(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       continue;
     }

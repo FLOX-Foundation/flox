@@ -579,6 +579,12 @@ struct NodeStrategyHost
         return "QUEUE_POSITION_UPDATED";
       case 14:
         return "MARKET_POSITION_CHANGED";
+      case 15:
+        return "REPLACE_SUBMITTED";
+      case 16:
+        return "REPLACE_ACCEPTED";
+      case 17:
+        return "REPLACE_REJECTED";
       default:
         return "UNKNOWN";
     }
