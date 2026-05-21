@@ -126,6 +126,16 @@ extern "C"
     const char* reject_reason;  // null when status != REJECTED
     int64_t queue_ahead_raw;    // queue position (backtest limit orders only)
     int64_t queue_total_raw;    // total quantity at the order's price level
+    // Per-lifecycle-stage timestamps. Zero means the stage has not
+    // fired yet for this order.
+    int64_t submitted_at_ns;
+    int64_t accepted_at_ns;
+    int64_t first_fill_at_ns;
+    int64_t last_fill_at_ns;
+    int64_t canceled_at_ns;
+    int64_t rejected_at_ns;
+    int64_t triggered_at_ns;
+    int64_t expired_at_ns;
   } FloxOrderEventData;
 
   typedef void (*FloxOnTradeCallback)(void* user_data, const FloxSymbolContext* ctx,

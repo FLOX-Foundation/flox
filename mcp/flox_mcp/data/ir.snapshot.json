@@ -11778,6 +11778,38 @@
         {
           "name": "queue_total_raw",
           "type": "int64_t"
+        },
+        {
+          "name": "submitted_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "accepted_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "first_fill_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_fill_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "canceled_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "rejected_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "triggered_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "expired_at_ns",
+          "type": "int64_t"
         }
       ],
       "name": "FloxOrderEventData"

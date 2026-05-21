@@ -141,6 +141,16 @@ export interface OrderEventData {
   queueAhead: number;
   /** Backtest only: total quantity at the order's price level. */
   queueTotal: number;
+  /** Per-lifecycle-stage timestamps. Zero means the stage has not
+   *  fired yet for this order. */
+  submittedAtNs: number;
+  acceptedAtNs: number;
+  firstFillAtNs: number;
+  lastFillAtNs: number;
+  canceledAtNs: number;
+  rejectedAtNs: number;
+  triggeredAtNs: number;
+  expiredAtNs: number;
 }
 
 /** Order-emission helper passed as the third arg to strategy callbacks. */

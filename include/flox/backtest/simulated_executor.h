@@ -159,6 +159,14 @@ class SimulatedExecutor : public IOrderExecutor
   std::vector<QueueSnapshot> _queueSnapshotBuffer;             // reused scratch
   std::unordered_map<OrderId, int64_t> _lastEmittedQueueAheadRaw;
   double _queuePosMinFraction{0.05};
+
+  // Per-order lifecycle-stage timestamps. Populated as statuses fire
+  // (SUBMITTED, ACCEPTED, fills, CANCELED, REJECTED, TRIGGERED,
+  // EXPIRED). Each emitted OrderEvent receives the current snapshot.
+  std::unordered_map<OrderId, OrderTimestamps> _orderTimestamps;
+
+  OrderTimestamps& timestampsFor(OrderId id);
+  void forgetTimestamps(OrderId id);
 };
 
 }  // namespace flox

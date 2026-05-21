@@ -245,6 +245,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
       _pending_orders.pop_back();
       _queueTracker.removeOrder(orderId);
       forgetQueuePosition(orderId);
+      forgetTimestamps(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       return;
     }
@@ -286,6 +287,7 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
       emitEvent(OrderEventStatus::CANCELED, _pending_orders[i]);
       _queueTracker.removeOrder(_pending_orders[i].id);
       forgetQueuePosition(_pending_orders[i].id);
+      forgetTimestamps(_pending_orders[i].id);
       _pending_orders[i] = _pending_orders.back();
       _pending_orders.pop_back();
     }
@@ -414,12 +416,13 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       executeFill(*ord, price, fillQty);
     }
     // Remove fully-filled queued orders and drop their queue
-    // position tracking entries.
+    // position + timestamp tracking entries.
     for (const auto& o : _pending_orders)
     {
       if (o.filledQuantity.raw() >= o.quantity.raw())
       {
         forgetQueuePosition(o.id);
+        forgetTimestamps(o.id);
       }
     }
     _pending_orders.erase(
@@ -598,6 +601,13 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty)
     ev.queueAhead = snap->ahead;
     ev.queueTotal = snap->total;
   }
+  auto& ts = timestampsFor(order.id);
+  if (ts.firstFillAtNs == 0)
+  {
+    ts.firstFillAtNs = static_cast<int64_t>(now);
+  }
+  ts.lastFillAtNs = static_cast<int64_t>(now);
+  ev.timestamps = ts;
 
   if (_callback)
   {
@@ -612,14 +622,41 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty)
 
 void SimulatedExecutor::emitEvent(OrderEventStatus status, const Order& order)
 {
-  if (_callback)
+  if (!_callback)
   {
-    OrderEvent ev;
-    ev.status = status;
-    ev.order = order;
-    ev.exchangeTsNs = _clock.nowNs();
-    _callback(ev);
+    return;
   }
+  const int64_t nowNs = static_cast<int64_t>(_clock.nowNs());
+  auto& ts = timestampsFor(order.id);
+  switch (status)
+  {
+    case OrderEventStatus::SUBMITTED:
+      ts.submittedAtNs = nowNs;
+      break;
+    case OrderEventStatus::ACCEPTED:
+      ts.acceptedAtNs = nowNs;
+      break;
+    case OrderEventStatus::CANCELED:
+      ts.canceledAtNs = nowNs;
+      break;
+    case OrderEventStatus::REJECTED:
+      ts.rejectedAtNs = nowNs;
+      break;
+    case OrderEventStatus::TRIGGERED:
+      ts.triggeredAtNs = nowNs;
+      break;
+    case OrderEventStatus::EXPIRED:
+      ts.expiredAtNs = nowNs;
+      break;
+    default:
+      break;
+  }
+  OrderEvent ev;
+  ev.status = status;
+  ev.order = order;
+  ev.exchangeTsNs = nowNs;
+  ev.timestamps = ts;
+  _callback(ev);
 }
 
 void SimulatedExecutor::maybeEmitQueuePositionChanges()
@@ -655,6 +692,7 @@ void SimulatedExecutor::maybeEmitQueuePositionChanges()
     ev.queueAhead = snap.ahead;
     ev.queueTotal = snap.total;
     ev.exchangeTsNs = _clock.nowNs();
+    ev.timestamps = timestampsFor(snap.orderId);
     _callback(ev);
     _lastEmittedQueueAheadRaw[snap.orderId] = snap.ahead.raw();
   }
@@ -663,6 +701,16 @@ void SimulatedExecutor::maybeEmitQueuePositionChanges()
 void SimulatedExecutor::forgetQueuePosition(OrderId orderId)
 {
   _lastEmittedQueueAheadRaw.erase(orderId);
+}
+
+OrderTimestamps& SimulatedExecutor::timestampsFor(OrderId id)
+{
+  return _orderTimestamps[id];
+}
+
+void SimulatedExecutor::forgetTimestamps(OrderId id)
+{
+  _orderTimestamps.erase(id);
 }
 
 void SimulatedExecutor::emitTrailingUpdate(const Order& order, Price newTrigger)

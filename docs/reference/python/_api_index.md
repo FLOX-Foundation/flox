@@ -944,20 +944,36 @@ Time-bucketed price OHLC over trade events. For each cell, records open (earlies
 - *attr* `reject_reason: str`
 - *attr* `side: str`
 - *attr* `status: str`
+- *property* `accepted_at_ns: int`
+- *property* `accepted_at_ns: None`
+- *property* `canceled_at_ns: int`
+- *property* `canceled_at_ns: None`
 - *property* `exchange_ts_ns: int`
 - *property* `exchange_ts_ns: None`
+- *property* `expired_at_ns: int`
+- *property* `expired_at_ns: None`
 - *property* `fill_price: float`
 - *property* `fill_price: None`
 - *property* `fill_qty: float`
 - *property* `fill_qty: None`
+- *property* `first_fill_at_ns: int`
+- *property* `first_fill_at_ns: None`
+- *property* `last_fill_at_ns: int`
+- *property* `last_fill_at_ns: None`
 - *property* `order_id: int`
 - *property* `order_id: None`
 - *property* `queue_ahead: float`
 - *property* `queue_ahead: None`
 - *property* `queue_total: float`
 - *property* `queue_total: None`
+- *property* `rejected_at_ns: int`
+- *property* `rejected_at_ns: None`
+- *property* `submitted_at_ns: int`
+- *property* `submitted_at_ns: None`
 - *property* `symbol_id: int`
 - *property* `symbol_id: None`
+- *property* `triggered_at_ns: int`
+- *property* `triggered_at_ns: None`
 
 ### `class OrderEventKind`
 
