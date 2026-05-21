@@ -112,7 +112,16 @@ export type OrderEventStatus =
   | "TRIGGERED"
   | "TRAILING_UPDATED"
   | "QUEUE_POSITION_UPDATED"
+  | "MARKET_POSITION_CHANGED"
   | "UNKNOWN";
+
+/** Categorical position of a resting limit order relative to top-of-book. */
+export type MarketPosition =
+  | "best"
+  | "behind_best"
+  | "mid_spread"
+  | "level_empty"
+  | "crossed";
 
 /** Order-event payload delivered to `onFill` / `onOrderUpdate` /
  *  `onQueuePositionChange`. */
@@ -158,6 +167,10 @@ export interface OrderEventData {
   isMaker: boolean;
   /** "maker" | "taker" for fill statuses; null otherwise. */
   fillRole: "maker" | "taker" | null;
+  /** Categorical market position for resting limit orders; null when unknown. */
+  marketPosition: MarketPosition | null;
+  /** Signed ticks from best on our side. Positive = behind, negative = ahead. */
+  distanceToBestTicks: number;
 }
 
 /** Order-emission helper passed as the third arg to strategy callbacks. */
@@ -200,6 +213,10 @@ export interface Strategy {
    *  lifecycle transition. `ev.queueAhead` and `ev.queueTotal` carry
    *  the current snapshot. Backtest only. */
   onQueuePositionChange?(ctx: SymbolContext, ev: OrderEventData, emit: EmitMethods): void;
+  /** Resting limit order's categorical market position transitioned
+   *  (best / behind_best / mid_spread / level_empty / crossed).
+   *  Backtest only. */
+  onMarketPositionChange?(ctx: SymbolContext, ev: OrderEventData, emit: EmitMethods): void;
 }
 
 // ── Extension hooks ──────────────────────────────────────────────────

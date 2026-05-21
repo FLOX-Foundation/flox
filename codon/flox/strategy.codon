@@ -83,13 +83,14 @@ class Strategy:
         self._symbol_names = list[str]()
         self._symbol_map = dict[str, int]()
         self._reverse_map = dict[int, str]()
-        # FloxStrategyCallbacks is a 9-pointer struct on 64-bit
+        # FloxStrategyCallbacks is a 10-pointer struct on 64-bit
         # (on_trade, on_book, on_bar, on_start, on_stop, on_fill,
-        # on_order_update, on_queue_position_change, user_data).
-        # Zero-initialise — overrides happen on the C++ side via the
-        # BridgeStrategy that the runner attaches to this handle.
-        self._callbacks_buf = Ptr[byte](72)
-        for i in range(72):
+        # on_order_update, on_queue_position_change,
+        # on_market_position_change, user_data). Zero-initialise —
+        # overrides happen on the C++ side via the BridgeStrategy that
+        # the runner attaches to this handle.
+        self._callbacks_buf = Ptr[byte](80)
+        for i in range(80):
             self._callbacks_buf[i] = byte(0)
         if registry == cobj():
             # No registry attached; downstream `Runner.add_strategy`
@@ -143,6 +144,14 @@ class Strategy:
         """Resting limit order's queue position moved without any
         other lifecycle transition. `ev.queue_ahead` and
         `ev.queue_total` carry the current snapshot. Backtest only."""
+        pass
+
+    def on_market_position_change(self, ctx: SymbolContext, ev):
+        """Resting limit order's categorical market position
+        transitioned (best, behind_best, mid_spread, level_empty,
+        crossed). `ev.market_position` is the new state;
+        `ev.distance_to_best_ticks` is signed ticks from best on our
+        side. Backtest only."""
         pass
 
     # ------------------------------------------------------------------

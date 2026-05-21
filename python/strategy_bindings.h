@@ -119,8 +119,10 @@ struct PyOrderEventData
   int64_t rejected_at_ns{0};
   int64_t triggered_at_ns{0};
   int64_t expired_at_ns{0};
-  bool is_maker{false};   // fill statuses only
-  std::string fill_role;  // "maker" | "taker" | "" if not a fill
+  bool is_maker{false};         // fill statuses only
+  std::string fill_role;        // "maker" | "taker" | "" if not a fill
+  std::string market_position;  // "best" | "behind_best" | "mid_spread" | "level_empty" | "crossed" | ""
+  int32_t distance_to_best_ticks{0};
 };
 
 inline Side parseSide(const std::string& s)
@@ -142,6 +144,8 @@ class PyStrategyBase
   virtual void on_order_update(const PySymbolCtx& ctx, const PyOrderEventData& ev) {}
   virtual void on_queue_position_change(const PySymbolCtx& ctx,
                                         const PyOrderEventData& ev) {}
+  virtual void on_market_position_change(const PySymbolCtx& ctx,
+                                         const PyOrderEventData& ev) {}
   virtual void on_start() {}
   virtual void on_stop() {}
 
@@ -665,6 +669,12 @@ class PyStrategyTrampoline : public PyStrategyBase
     PYBIND11_OVERRIDE(void, PyStrategyBase, on_queue_position_change, ctx, ev);
   }
 
+  void on_market_position_change(const PySymbolCtx& ctx,
+                                 const PyOrderEventData& ev) override
+  {
+    PYBIND11_OVERRIDE(void, PyStrategyBase, on_market_position_change, ctx, ev);
+  }
+
   void on_start() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_start); }
 
   void on_stop() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_stop); }
@@ -741,6 +751,7 @@ struct PyStrategyHost
     cbs.on_fill = &PyStrategyHost::onFill;
     cbs.on_order_update = &PyStrategyHost::onOrderUpdate;
     cbs.on_queue_position_change = &PyStrategyHost::onQueuePositionChange;
+    cbs.on_market_position_change = &PyStrategyHost::onMarketPositionChange;
 
     const auto& syms = strat->symbols();
     bridge = std::make_unique<BridgeStrategy>(
@@ -892,6 +903,8 @@ struct PyStrategyHost
     {
       pe.fill_role = pe.is_maker ? "maker" : "taker";
     }
+    pe.market_position = marketPositionName(ev->market_position);
+    pe.distance_to_best_ticks = ev->distance_to_best_ticks;
     return pe;
   }
 
@@ -950,8 +963,29 @@ struct PyStrategyHost
         return "TRAILING_UPDATED";
       case 13:
         return "QUEUE_POSITION_UPDATED";
+      case 14:
+        return "MARKET_POSITION_CHANGED";
       default:
         return "UNKNOWN";
+    }
+  }
+
+  static const char* marketPositionName(uint8_t p)
+  {
+    switch (p)
+    {
+      case 1:
+        return "best";
+      case 2:
+        return "behind_best";
+      case 3:
+        return "mid_spread";
+      case 4:
+        return "level_empty";
+      case 5:
+        return "crossed";
+      default:
+        return "";
     }
   }
 
@@ -1024,6 +1058,34 @@ struct PyStrategyHost
       pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_queue_position_change(pc, pe);
+    };
+    if (self->with_gil)
+    {
+      py::gil_scoped_acquire gil;
+      call();
+    }
+    else
+    {
+      call();
+    }
+  }
+
+  static void onMarketPositionChange(void* ud, const FloxSymbolContext* ctx,
+                                     const FloxOrderEventData* ev)
+  {
+    auto* self = static_cast<PyStrategyHost*>(ud);
+    auto call = [self, ctx, ev]()
+    {
+      PySymbolCtx pc{};
+      pc.symbol_id = ctx->symbol_id;
+      pc.position = flox_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
+      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
+      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      PyOrderEventData pe = toPyOrderEvent(ev);
+      self->strategy.load(std::memory_order_acquire)
+          ->on_market_position_change(pc, pe);
     };
     if (self->with_gil)
     {
@@ -2486,7 +2548,9 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("triggered_at_ns", &PyOrderEventData::triggered_at_ns)
       .def_readwrite("expired_at_ns", &PyOrderEventData::expired_at_ns)
       .def_readwrite("is_maker", &PyOrderEventData::is_maker)
-      .def_readwrite("fill_role", &PyOrderEventData::fill_role);
+      .def_readwrite("fill_role", &PyOrderEventData::fill_role)
+      .def_readwrite("market_position", &PyOrderEventData::market_position)
+      .def_readwrite("distance_to_best_ticks", &PyOrderEventData::distance_to_best_ticks);
 
   py::class_<PyStrategyBase, PyStrategyTrampoline>(m, "Strategy")
       .def(py::init([](py::list symbols)
@@ -2498,6 +2562,9 @@ inline void bindStrategy(py::module_& m)
       .def("on_fill", &PyStrategyBase::on_fill, py::arg("ctx"), py::arg("event"))
       .def("on_order_update", &PyStrategyBase::on_order_update, py::arg("ctx"), py::arg("event"))
       .def("on_queue_position_change", &PyStrategyBase::on_queue_position_change,
+           py::arg("ctx"), py::arg("event"))
+      .def("on_market_position_change",
+           &PyStrategyBase::on_market_position_change,
            py::arg("ctx"), py::arg("event"))
       .def("on_start", &PyStrategyBase::on_start)
       .def("on_stop", &PyStrategyBase::on_stop)

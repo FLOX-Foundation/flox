@@ -52,6 +52,15 @@ class IOrderExecutionListener : public ISubscriber
   virtual void onOrderQueuePositionChange(const Order&, Quantity /*queueAhead*/,
                                           Quantity /*queueTotal*/) {}
 
+  // Resting-order categorical market position transitioned (best /
+  // behind_best / mid_spread / level_empty / crossed). The position
+  // value lives in events/order_event.h (MarketPosition enum); a
+  // forward int8 is used here to keep this header free of that
+  // include. distanceToBestTicks is signed ticks from best on our
+  // side. Backtest only.
+  virtual void onOrderMarketPositionChange(const Order&, uint8_t /*position*/,
+                                           int32_t /*distanceToBestTicks*/) {}
+
   // Raw OrderEvent fan-out for listeners that need access to all
   // payload fields at once (queue position + timestamps + maker/taker
   // + reject reason). Default empty so existing listeners that only

@@ -34,7 +34,23 @@ enum class OrderEventStatus
   // Queue position changed without any other lifecycle transition.
   // Backtest-only: surfaces movement of `queueAhead` as proportional
   // shrink / queue-consumption fills happen at the order's level.
-  QUEUE_POSITION_UPDATED
+  QUEUE_POSITION_UPDATED,
+  // Market position of a resting order moved across categorical
+  // states (best, behind_best, mid_spread, level_empty, crossed).
+  // Backtest-only.
+  MARKET_POSITION_CHANGED
+};
+
+// Categorical position of a resting limit order relative to the
+// current top-of-book on its side.
+enum class MarketPosition : uint8_t
+{
+  Unknown = 0,
+  Best,        // our level is best on our side
+  BehindBest,  // there is a better level on our side
+  MidSpread,   // our price is strictly between best bid and best ask
+  LevelEmpty,  // only our orders remain at this level
+  Crossed,     // our price crosses the opposite side
 };
 
 // Per-lifecycle-stage timestamps stamped by the engine when the
@@ -77,6 +93,13 @@ struct OrderEvent
   // events and on non-limit orders.
   Quantity queueAhead{0};
   Quantity queueTotal{0};
+
+  // For MARKET_POSITION_CHANGED and every event on a resting limit
+  // order: categorical position relative to top-of-book and signed
+  // distance in ticks from best on our side. Positive = behind best,
+  // negative = ahead of best (mid-spread / crossed).
+  MarketPosition marketPosition{MarketPosition::Unknown};
+  int32_t distanceToBestTicks{0};
 
   // Snapshot of per-lifecycle-stage timestamps for the order at the
   // moment this event was emitted. The slot corresponding to the
@@ -134,6 +157,10 @@ struct OrderEvent
         break;
       case OrderEventStatus::QUEUE_POSITION_UPDATED:
         listener.onOrderQueuePositionChange(order, queueAhead, queueTotal);
+        break;
+      case OrderEventStatus::MARKET_POSITION_CHANGED:
+        listener.onOrderMarketPositionChange(
+            order, static_cast<uint8_t>(marketPosition), distanceToBestTicks);
         break;
     }
   }

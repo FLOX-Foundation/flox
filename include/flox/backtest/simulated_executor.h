@@ -139,6 +139,18 @@ class SimulatedExecutor : public IOrderExecutor
   void resolveLateCancelOnFill(const Order& order);
   int64_t sampleCancelAckLatency();
 
+  // Market position tracking. Recomputes MarketPosition for every
+  // resting limit order after a book or trade event and emits
+  // MARKET_POSITION_CHANGED on categorical transitions.
+  void maybeEmitMarketPositionChanges();
+  MarketPosition computeMarketPosition(const Order& order,
+                                       const MarketState& state,
+                                       Quantity ourRemaining,
+                                       Quantity queueTotal) const;
+  int32_t computeDistanceToBestTicks(const Order& order,
+                                     const MarketState& state) const;
+  void forgetMarketPosition(OrderId orderId);
+
   Order* findPendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
 
@@ -189,6 +201,11 @@ class SimulatedExecutor : public IOrderExecutor
   int64_t _cancelAckLatencyNs{0};
   int64_t _cancelAckJitterNs{0};
   std::mt19937_64 _cancelAckRng{42};
+
+  // Last emitted MarketPosition per resting order. Used to debounce
+  // MARKET_POSITION_CHANGED emission so it fires only on categorical
+  // transitions, not on every tick.
+  std::unordered_map<OrderId, MarketPosition> _lastEmittedMarketPosition;
 };
 
 }  // namespace flox

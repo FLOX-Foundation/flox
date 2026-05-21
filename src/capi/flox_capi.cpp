@@ -3789,6 +3789,16 @@ class CapiExecutionListener : public flox::IOrderExecutionListener
                                          queueTotal.raw());
     }
   }
+  void onOrderMarketPositionChange(const flox::Order& o, uint8_t position,
+                                   int32_t distanceToBestTicks) override
+  {
+    if (_impl && _impl->cb.on_market_position_change)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_market_position_change(_impl->cb.user_data, &fo, position,
+                                          distanceToBestTicks);
+    }
+  }
 
  private:
   FloxExecutionListenerImpl* _impl;
