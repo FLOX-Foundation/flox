@@ -152,6 +152,64 @@
       "return_type": "void"
     },
     {
+      "name": "FloxExecListenerOnReplaceAcceptedFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecListenerOnReplaceRejectedFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxExecListenerOnReplaceSubmittedFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "name": "FloxExecListenerOnReplacedFn",
       "params": [
         {
@@ -11384,6 +11442,18 @@
         {
           "name": "on_market_position_change",
           "type": "FloxExecListenerOnMarketPositionChangeFn"
+        },
+        {
+          "name": "on_replace_submitted",
+          "type": "FloxExecListenerOnReplaceSubmittedFn"
+        },
+        {
+          "name": "on_replace_accepted",
+          "type": "FloxExecListenerOnReplaceAcceptedFn"
+        },
+        {
+          "name": "on_replace_rejected",
+          "type": "FloxExecListenerOnReplaceRejectedFn"
         },
         {
           "name": "user_data",

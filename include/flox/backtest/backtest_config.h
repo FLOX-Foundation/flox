@@ -76,6 +76,15 @@ struct BacktestConfig
   int64_t cancelAckJitterNs{0};
   uint64_t cancelAckSeed{42};
 
+  // Replace ack model. Mirrors the cancel ack model. Zero (default)
+  // preserves the legacy synchronous replace; positive values turn
+  // replace async (REPLACE_SUBMITTED fires immediately, REPLACE_
+  // ACCEPTED + REPLACED fire when the ack deadline elapses), and
+  // REPLACE_REJECTED fires when the original order has already
+  // filled within the ack window. Sampling shares cancelAckSeed.
+  int64_t replaceAckLatencyNs{0};
+  int64_t replaceAckJitterNs{0};
+
   double riskFreeRate{0.0};
   double metricsAnnualizationFactor{252.0};  // daily-equivalent sampling
 };

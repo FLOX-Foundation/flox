@@ -61,6 +61,21 @@ class IOrderExecutionListener : public ISubscriber
   virtual void onOrderMarketPositionChange(const Order&, uint8_t /*position*/,
                                            int32_t /*distanceToBestTicks*/) {}
 
+  // Replace-in-flight lifecycle. SUBMITTED fires immediately on
+  // replaceOrder(); ACCEPTED fires after the ack latency on
+  // successful replacement; REJECTED fires when the replace cannot
+  // complete (typically because the original order filled in the
+  // ack window). The terminal REPLACED status still fires through
+  // onOrderReplaced(). Backtest only — live exchanges have their
+  // own replace semantics.
+  virtual void onOrderReplaceSubmitted(const Order& /*oldOrder*/,
+                                       const Order& /*newOrder*/) {}
+  virtual void onOrderReplaceAccepted(const Order& /*oldOrder*/,
+                                      const Order& /*newOrder*/) {}
+  virtual void onOrderReplaceRejected(const Order& /*oldOrder*/,
+                                      const Order& /*newOrder*/,
+                                      const std::string& /*reason*/) {}
+
   // Raw OrderEvent fan-out for listeners that need access to all
   // payload fields at once (queue position + timestamps + maker/taker
   // + reject reason). Default empty so existing listeners that only

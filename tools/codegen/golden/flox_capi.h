@@ -667,6 +667,9 @@ extern "C"
   typedef void (*FloxExecListenerOnTrailingUpdateFn)(void*, const FloxOrder*, int64_t);
   typedef void (*FloxExecListenerOnQueuePositionChangeFn)(void*, const FloxOrder*, int64_t, int64_t);
   typedef void (*FloxExecListenerOnMarketPositionChangeFn)(void*, const FloxOrder*, uint8_t, int32_t);
+  typedef void (*FloxExecListenerOnReplaceSubmittedFn)(void*, const FloxOrder*, const FloxOrder*);
+  typedef void (*FloxExecListenerOnReplaceAcceptedFn)(void*, const FloxOrder*, const FloxOrder*);
+  typedef void (*FloxExecListenerOnReplaceRejectedFn)(void*, const FloxOrder*, const FloxOrder*, const char*);
   typedef void (*FloxExecutorSubmitFn)(void*, const FloxOrder*);
   typedef void (*FloxExecutorCancelFn)(void*, uint64_t);
   typedef void (*FloxExecutorCancelAllFn)(void*, uint32_t);
@@ -760,6 +763,9 @@ extern "C"
     FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
     FloxExecListenerOnQueuePositionChangeFn on_queue_position_change;
     FloxExecListenerOnMarketPositionChangeFn on_market_position_change;
+    FloxExecListenerOnReplaceSubmittedFn on_replace_submitted;
+    FloxExecListenerOnReplaceAcceptedFn on_replace_accepted;
+    FloxExecListenerOnReplaceRejectedFn on_replace_rejected;
     void* user_data;
   } FloxExecutionListenerCallbacks;
 

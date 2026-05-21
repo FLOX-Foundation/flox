@@ -2215,6 +2215,16 @@ extern "C"
                                                            const FloxOrder* order,
                                                            uint8_t market_position,
                                                            int32_t distance_to_best_ticks);
+  typedef void (*FloxExecListenerOnReplaceSubmittedFn)(void* user_data,
+                                                       const FloxOrder* old_order,
+                                                       const FloxOrder* new_order);
+  typedef void (*FloxExecListenerOnReplaceAcceptedFn)(void* user_data,
+                                                      const FloxOrder* old_order,
+                                                      const FloxOrder* new_order);
+  typedef void (*FloxExecListenerOnReplaceRejectedFn)(void* user_data,
+                                                      const FloxOrder* old_order,
+                                                      const FloxOrder* new_order,
+                                                      const char* reason);
 
   typedef struct
   {
@@ -2232,6 +2242,9 @@ extern "C"
     FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
     FloxExecListenerOnQueuePositionChangeFn on_queue_position_change;
     FloxExecListenerOnMarketPositionChangeFn on_market_position_change;
+    FloxExecListenerOnReplaceSubmittedFn on_replace_submitted;
+    FloxExecListenerOnReplaceAcceptedFn on_replace_accepted;
+    FloxExecListenerOnReplaceRejectedFn on_replace_rejected;
     void* user_data;
   } FloxExecutionListenerCallbacks;
 
