@@ -16,6 +16,8 @@
 namespace flox
 {
 
+struct OrderEvent;  // fwd decl — full definition lives in events/order_event.h
+
 class IOrderExecutionListener : public ISubscriber
 {
   SubscriberId _id{};
@@ -49,6 +51,13 @@ class IOrderExecutionListener : public ISubscriber
   // exchanges do not generally publish queue position.
   virtual void onOrderQueuePositionChange(const Order&, Quantity /*queueAhead*/,
                                           Quantity /*queueTotal*/) {}
+
+  // Raw OrderEvent fan-out for listeners that need access to all
+  // payload fields at once (queue position + timestamps + maker/taker
+  // + reject reason). Default empty so existing listeners that only
+  // override the typed callbacks above keep working unchanged.
+  // Fires AFTER the typed dispatch — see BacktestRunner.
+  virtual void onOrderEvent(const OrderEvent& /*ev*/) {}
 };
 
 }  // namespace flox
