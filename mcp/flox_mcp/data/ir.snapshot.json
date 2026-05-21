@@ -1198,6 +1198,21 @@
       "return_type": "void"
     },
     {
+      "group": "order_journey_tracer",
+      "name": "flox_backtest_runner_add_journey_tracer",
+      "params": [
+        {
+          "name": "runner",
+          "type": "FloxBacktestRunnerHandle"
+        },
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "backtestrunner_replay",
       "name": "flox_backtest_runner_create",
       "params": [
@@ -6760,6 +6775,159 @@
       "return_type": "uint8_t"
     },
     {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_cancel_race_loss_rate",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_clear",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_create",
+      "params": [
+        {
+          "name": "max_orders",
+          "type": "uint64_t"
+        },
+        {
+          "name": "max_records_per_order",
+          "type": "uint64_t"
+        },
+        {
+          "name": "sample_rate",
+          "type": "double"
+        },
+        {
+          "name": "sample_salt",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxOrderJourneyTracerHandle"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_destroy",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_journey",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "out",
+          "type": "FloxOrderTraceRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_maker_fill_ratio",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_median_ack_latency_ns",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_median_time_to_first_fill_ns",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_order_count",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_record_count",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "order_journey_tracer",
+      "name": "flox_order_journey_tracer_result",
+      "params": [
+        {
+          "name": "tracer",
+          "type": "FloxOrderJourneyTracerHandle"
+        },
+        {
+          "name": "out",
+          "type": "FloxOrderTraceRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
       "group": "order_tracker",
       "name": "flox_order_tracker_active_count",
       "params": [
@@ -11947,6 +12115,83 @@
     {
       "fields": [
         {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "seq",
+          "type": "uint32_t"
+        },
+        {
+          "name": "status",
+          "type": "uint8_t"
+        },
+        {
+          "name": "is_maker",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad",
+          "type": "uint8_t[2]"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "fill_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "fill_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "queue_ahead_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "queue_total_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "submitted_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "accepted_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "first_fill_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "last_fill_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "canceled_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "rejected_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "triggered_at_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "expired_at_ns",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxOrderTraceRow"
+    },
+    {
+      "fields": [
+        {
           "name": "validate",
           "type": "FloxOrderValidatorValidateFn"
         },
@@ -12745,6 +12990,10 @@
     },
     {
       "name": "FloxOrderGroupHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxOrderJourneyTracerHandle",
       "target": "void*"
     },
     {

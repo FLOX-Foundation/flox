@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 520 functions, 45 handles, 57 structs, 43 callback typedefs, 3 enums, 60 groups.
+**Surface:** 532 functions, 46 handles, 58 structs, 43 callback typedefs, 3 enums, 61 groups.
 
 ## Opaque handles
 
@@ -15,6 +15,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxPositionTrackerHandle`
 - `FloxPositionGroupHandle`
 - `FloxOrderTrackerHandle`
+- `FloxOrderJourneyTracerHandle`
 - `FloxFootprintHandle`
 - `FloxVolumeProfileHandle`
 - `FloxMarketProfileHandle`
@@ -246,6 +247,29 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `volume_raw` | `int64_t` |
 | `buy_volume_raw` | `int64_t` |
 | `trade_count` | `uint32_t` |
+
+### `FloxOrderTraceRow`
+
+| field | type |
+|---|---|
+| `order_id` | `uint64_t` |
+| `seq` | `uint32_t` |
+| `status` | `uint8_t` |
+| `is_maker` | `uint8_t` |
+| `_pad` | `uint8_t[2]` |
+| `ts_ns` | `int64_t` |
+| `fill_qty_raw` | `int64_t` |
+| `fill_price_raw` | `int64_t` |
+| `queue_ahead_raw` | `int64_t` |
+| `queue_total_raw` | `int64_t` |
+| `submitted_at_ns` | `int64_t` |
+| `accepted_at_ns` | `int64_t` |
+| `first_fill_at_ns` | `int64_t` |
+| `last_fill_at_ns` | `int64_t` |
+| `canceled_at_ns` | `int64_t` |
+| `rejected_at_ns` | `int64_t` |
+| `triggered_at_ns` | `int64_t` |
+| `expired_at_ns` | `int64_t` |
 
 ### `FloxFill`
 
@@ -1253,6 +1277,21 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equity, const int64_t * market_ref_prices_raw, uint32_t market_ref_prices_len, char * rule_out, size_t rule_capacity, char * detail_out, size_t detail_capacity)`
 - `void flox_order_group_set_pair_latency_budget_ns(FloxOrderGroupHandle h, int64_t budget_ns)`
 - `uint8_t flox_order_group_pair_latency_decision(FloxOrderGroupHandle h, int64_t leader_submit_ts_ns, int64_t leader_ack_ts_ns, uint8_t ack_received)`
+
+### order_journey_tracer
+
+- `FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(uint64_t max_orders, uint64_t max_records_per_order, double sample_rate, uint64_t sample_salt)`
+- `void flox_order_journey_tracer_destroy(FloxOrderJourneyTracerHandle tracer)`
+- `uint64_t flox_order_journey_tracer_order_count(FloxOrderJourneyTracerHandle tracer)`
+- `uint64_t flox_order_journey_tracer_record_count(FloxOrderJourneyTracerHandle tracer)`
+- `double flox_order_journey_tracer_median_ack_latency_ns(FloxOrderJourneyTracerHandle tracer)`
+- `double flox_order_journey_tracer_median_time_to_first_fill_ns(FloxOrderJourneyTracerHandle tracer)`
+- `double flox_order_journey_tracer_maker_fill_ratio(FloxOrderJourneyTracerHandle tracer)`
+- `double flox_order_journey_tracer_cancel_race_loss_rate(FloxOrderJourneyTracerHandle tracer)`
+- `uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle tracer, FloxOrderTraceRow * out, uint64_t max_rows)`
+- `uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle tracer, uint64_t order_id, FloxOrderTraceRow * out, uint64_t max_rows)`
+- `void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle tracer)`
+- `void flox_backtest_runner_add_journey_tracer(FloxBacktestRunnerHandle runner, FloxOrderJourneyTracerHandle tracer)`
 
 ### order_tracker
 

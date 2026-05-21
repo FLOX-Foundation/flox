@@ -1092,6 +1092,49 @@ export class OrderTracker {
   prune(): void;
 }
 
+/** One row of an order-journey trace. */
+export interface OrderTraceRow {
+  orderId: number;
+  seq: number;
+  status: number;
+  isMaker: boolean;
+  tsNs: number;
+  fillQty: number;
+  fillPrice: number;
+  queueAhead: number;
+  queueTotal: number;
+  submittedAtNs: number;
+  acceptedAtNs: number;
+  firstFillAtNs: number;
+  lastFillAtNs: number;
+  canceledAtNs: number;
+  rejectedAtNs: number;
+  triggeredAtNs: number;
+  expiredAtNs: number;
+}
+
+/** Execution listener that records the full event sequence of every
+ *  order it observes. Attach to a BacktestRunner via
+ *  addJourneyTracer(); produces structured traces for post-trade
+ *  forensics. */
+export class OrderJourneyTracer {
+  constructor(opts?: {
+    maxOrders?: number;
+    maxRecordsPerOrder?: number;
+    sampleRate?: number;
+    sampleSalt?: number;
+  });
+  orderCount(): number;
+  recordCount(): number;
+  medianAckLatencyNs(): number;
+  medianTimeToFirstFillNs(): number;
+  makerFillRatio(): number;
+  cancelRaceLossRate(): number;
+  result(): OrderTraceRow[];
+  journey(orderId: number): OrderTraceRow[];
+  clear(): void;
+}
+
 // ── Profiles ──────────────────────────────────────────────────────────
 
 export class VolumeProfile {

@@ -465,6 +465,45 @@ declare class OrderTracker {
     prune(): void;
 }
 
+declare interface OrderTraceRow {
+    orderId: number;
+    seq: number;
+    status: number;
+    isMaker: boolean;
+    tsNs: number;
+    fillQty: number;
+    fillPrice: number;
+    queueAhead: number;
+    queueTotal: number;
+    submittedAtNs: number;
+    acceptedAtNs: number;
+    firstFillAtNs: number;
+    lastFillAtNs: number;
+    canceledAtNs: number;
+    rejectedAtNs: number;
+    triggeredAtNs: number;
+    expiredAtNs: number;
+}
+
+declare class OrderJourneyTracer {
+    constructor(opts?: {
+        maxOrders?: number;
+        maxRecordsPerOrder?: number;
+        sampleRate?: number;
+        sampleSalt?: number;
+    });
+    destroy(): void;
+    orderCount(): number;
+    recordCount(): number;
+    medianAckLatencyNs(): number;
+    medianTimeToFirstFillNs(): number;
+    makerFillRatio(): number;
+    cancelRaceLossRate(): number;
+    result(): OrderTraceRow[];
+    journey(orderId: number): OrderTraceRow[];
+    clear(): void;
+}
+
 declare class VolumeProfile {
     constructor(tickSize?: number);
     destroy(): void;

@@ -265,6 +265,27 @@ void FloxJsStrategy::loadStdlib()
       prune() { __flox_ot_prune(this._h); }
     }
 
+    class OrderJourneyTracer {
+      constructor(opts) {
+        opts = opts || {};
+        this._h = __flox_ojt_create(
+          opts.maxOrders || 1000000,
+          opts.maxRecordsPerOrder || 64,
+          opts.sampleRate === undefined ? 1.0 : opts.sampleRate,
+          opts.sampleSalt || 0);
+      }
+      destroy() { __flox_ojt_destroy(this._h); }
+      orderCount() { return __flox_ojt_order_count(this._h); }
+      recordCount() { return __flox_ojt_record_count(this._h); }
+      medianAckLatencyNs() { return __flox_ojt_median_ack(this._h); }
+      medianTimeToFirstFillNs() { return __flox_ojt_median_ttf(this._h); }
+      makerFillRatio() { return __flox_ojt_maker_ratio(this._h); }
+      cancelRaceLossRate() { return __flox_ojt_cancel_race(this._h); }
+      result() { return __flox_ojt_result(this._h); }
+      journey(orderId) { return __flox_ojt_journey(this._h, orderId); }
+      clear() { __flox_ojt_clear(this._h); }
+    }
+
     class PositionGroupTracker {
       constructor() { this._h = __flox_pg_create(); }
       destroy() { __flox_pg_destroy(this._h); }

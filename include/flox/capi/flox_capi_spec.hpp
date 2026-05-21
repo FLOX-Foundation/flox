@@ -36,6 +36,7 @@ extern "C"
   typedef void* FloxPositionTrackerHandle;
   typedef void* FloxPositionGroupHandle;
   typedef void* FloxOrderTrackerHandle;
+  typedef void* FloxOrderJourneyTracerHandle;
   typedef void* FloxFootprintHandle;
   typedef void* FloxVolumeProfileHandle;
   typedef void* FloxMarketProfileHandle;
@@ -902,6 +903,73 @@ extern "C"
   double flox_stat_profit_factor(const double* pnl, size_t len);
   FLOX_EXPORT(group = "statistics")
   double flox_stat_win_rate(const double* pnl, size_t len);
+
+  // ============================================================
+  // Order journey tracer
+  // ============================================================
+
+  // One row of the order-journey trace. Mirrors flox::OrderTraceRecord.
+  typedef struct
+  {
+    uint64_t order_id;
+    uint32_t seq;
+    uint8_t status;
+    uint8_t is_maker;
+    uint8_t _pad[2];
+    int64_t ts_ns;
+    int64_t fill_qty_raw;
+    int64_t fill_price_raw;
+    int64_t queue_ahead_raw;
+    int64_t queue_total_raw;
+    int64_t submitted_at_ns;
+    int64_t accepted_at_ns;
+    int64_t first_fill_at_ns;
+    int64_t last_fill_at_ns;
+    int64_t canceled_at_ns;
+    int64_t rejected_at_ns;
+    int64_t triggered_at_ns;
+    int64_t expired_at_ns;
+  } FloxOrderTraceRow;
+
+  FLOX_EXPORT(group = "order_journey_tracer")
+  FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(
+      uint64_t max_orders, uint64_t max_records_per_order, double sample_rate,
+      uint64_t sample_salt);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  void flox_order_journey_tracer_destroy(FloxOrderJourneyTracerHandle tracer);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  uint64_t flox_order_journey_tracer_order_count(FloxOrderJourneyTracerHandle tracer);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  uint64_t flox_order_journey_tracer_record_count(FloxOrderJourneyTracerHandle tracer);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  double flox_order_journey_tracer_median_ack_latency_ns(
+      FloxOrderJourneyTracerHandle tracer);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  double flox_order_journey_tracer_median_time_to_first_fill_ns(
+      FloxOrderJourneyTracerHandle tracer);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  double flox_order_journey_tracer_maker_fill_ratio(
+      FloxOrderJourneyTracerHandle tracer);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  double flox_order_journey_tracer_cancel_race_loss_rate(
+      FloxOrderJourneyTracerHandle tracer);
+  // Fills out (up to max_rows) with the full trace; returns the actual row
+  // count written. Pass max_rows = 0 to query the required size only.
+  FLOX_EXPORT(group = "order_journey_tracer")
+  uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle tracer,
+                                            FloxOrderTraceRow* out,
+                                            uint64_t max_rows);
+  // Same shape for a single order's trace.
+  FLOX_EXPORT(group = "order_journey_tracer")
+  uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle tracer,
+                                             uint64_t order_id,
+                                             FloxOrderTraceRow* out,
+                                             uint64_t max_rows);
+  FLOX_EXPORT(group = "order_journey_tracer")
+  void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle tracer);
+  // Attach a journey tracer to a BacktestRunner. The runner takes the
+  // handle by void* to keep this declaration position-independent; see
+  // flox_backtest_runner_add_journey_tracer in the backtest section.
 
   // ============================================================
   // Order tracker
@@ -2668,6 +2736,13 @@ extern "C"
   FLOX_EXPORT(group = "execution")
   void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle runner,
                                                    FloxExecutionListenerHandle listener);
+
+  // Attach an OrderJourneyTracer (an IOrderExecutionListener internally) to
+  // the runner. The runner does not take ownership; the caller must keep
+  // the tracer alive across the run.
+  FLOX_EXPORT(group = "order_journey_tracer")
+  void flox_backtest_runner_add_journey_tracer(FloxBacktestRunnerHandle runner,
+                                               FloxOrderJourneyTracerHandle tracer);
 
   // Attach (or detach with NULL) a binding-supplied executor. When set,
   // emitted signals are routed to the executor instead of the built-in

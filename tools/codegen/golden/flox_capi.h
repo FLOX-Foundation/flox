@@ -32,6 +32,7 @@ extern "C"
   typedef void* FloxPositionTrackerHandle;
   typedef void* FloxPositionGroupHandle;
   typedef void* FloxOrderTrackerHandle;
+  typedef void* FloxOrderJourneyTracerHandle;
   typedef void* FloxFootprintHandle;
   typedef void* FloxVolumeProfileHandle;
   typedef void* FloxMarketProfileHandle;
@@ -200,6 +201,28 @@ extern "C"
     int64_t buy_volume_raw;
     uint32_t trade_count;
   } FloxBar;
+
+  typedef struct
+  {
+    uint64_t order_id;
+    uint32_t seq;
+    uint8_t status;
+    uint8_t is_maker;
+    uint8_t _pad[2];
+    int64_t ts_ns;
+    int64_t fill_qty_raw;
+    int64_t fill_price_raw;
+    int64_t queue_ahead_raw;
+    int64_t queue_total_raw;
+    int64_t submitted_at_ns;
+    int64_t accepted_at_ns;
+    int64_t first_fill_at_ns;
+    int64_t last_fill_at_ns;
+    int64_t canceled_at_ns;
+    int64_t rejected_at_ns;
+    int64_t triggered_at_ns;
+    int64_t expired_at_ns;
+  } FloxOrderTraceRow;
 
   typedef struct
   {
@@ -1548,6 +1571,29 @@ extern "C"
   void flox_order_group_set_pair_latency_budget_ns(FloxOrderGroupHandle h, int64_t budget_ns);
   uint8_t flox_order_group_pair_latency_decision(FloxOrderGroupHandle h, int64_t leader_submit_ts_ns,
                                                  int64_t leader_ack_ts_ns, uint8_t ack_received);
+
+  // ============================================================
+  // Order Journey Tracer
+  // ============================================================
+
+  FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(uint64_t max_orders,
+                                                                uint64_t max_records_per_order,
+                                                                double sample_rate,
+                                                                uint64_t sample_salt);
+  void flox_order_journey_tracer_destroy(FloxOrderJourneyTracerHandle tracer);
+  uint64_t flox_order_journey_tracer_order_count(FloxOrderJourneyTracerHandle tracer);
+  uint64_t flox_order_journey_tracer_record_count(FloxOrderJourneyTracerHandle tracer);
+  double flox_order_journey_tracer_median_ack_latency_ns(FloxOrderJourneyTracerHandle tracer);
+  double flox_order_journey_tracer_median_time_to_first_fill_ns(FloxOrderJourneyTracerHandle tracer);
+  double flox_order_journey_tracer_maker_fill_ratio(FloxOrderJourneyTracerHandle tracer);
+  double flox_order_journey_tracer_cancel_race_loss_rate(FloxOrderJourneyTracerHandle tracer);
+  uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle tracer,
+                                            FloxOrderTraceRow* out, uint64_t max_rows);
+  uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle tracer, uint64_t order_id,
+                                             FloxOrderTraceRow* out, uint64_t max_rows);
+  void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle tracer);
+  void flox_backtest_runner_add_journey_tracer(FloxBacktestRunnerHandle runner,
+                                               FloxOrderJourneyTracerHandle tracer);
 
   // ============================================================
   // Order Tracker
