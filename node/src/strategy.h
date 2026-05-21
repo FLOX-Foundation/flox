@@ -139,6 +139,7 @@ struct NodeStrategyHost
   Napi::FunctionReference on_stop_fn;
   Napi::FunctionReference on_fill_fn;
   Napi::FunctionReference on_order_update_fn;
+  Napi::FunctionReference on_queue_position_change_fn;
   Napi::ObjectReference emitter;
   std::vector<uint32_t> syms;
   std::unique_ptr<BridgeStrategy> bridge;
@@ -166,6 +167,13 @@ struct NodeStrategyHost
     FloxBarData bar;
     NodeStrategyHost* host;
   };
+  enum OrderEventKind : uint8_t
+  {
+    kOrderEventKindFill = 0,
+    kOrderEventKindUpdate = 1,
+    kOrderEventKindQueuePosition = 2,
+  };
+
   struct OrderEventCallData
   {
     FloxSymbolContext ctx;
@@ -174,7 +182,7 @@ struct NodeStrategyHost
     // it onto the heap so the TSFN consumer can outlive the caller.
     std::string reject_reason_owned;
     NodeStrategyHost* host;
-    bool is_fill;
+    OrderEventKind kind;
   };
 
   void enableThreaded()
@@ -220,6 +228,7 @@ struct NodeStrategyHost
     on_stop_fn = get("onStop");
     on_fill_fn = get("onFill");
     on_order_update_fn = get("onOrderUpdate");
+    on_queue_position_change_fn = get("onQueuePositionChange");
     if (on_start_fn)
     {
       on_start_fn.Call({});
@@ -247,6 +256,7 @@ struct NodeStrategyHost
     on_stop_fn = get("onStop");
     on_fill_fn = get("onFill");
     on_order_update_fn = get("onOrderUpdate");
+    on_queue_position_change_fn = get("onQueuePositionChange");
 
     FloxStrategyCallbacks cbs{};
     cbs.user_data = this;
@@ -257,6 +267,7 @@ struct NodeStrategyHost
     cbs.on_stop = &NodeStrategyHost::onStop;
     cbs.on_fill = &NodeStrategyHost::onFill;
     cbs.on_order_update = &NodeStrategyHost::onOrderUpdate;
+    cbs.on_queue_position_change = &NodeStrategyHost::onQueuePositionChange;
 
     bridge = std::make_unique<BridgeStrategy>(
         static_cast<SubscriberId>(id), syms, *reg, cbs);
@@ -559,6 +570,8 @@ struct NodeStrategyHost
         return "TRIGGERED";
       case 12:
         return "TRAILING_UPDATED";
+      case 13:
+        return "QUEUE_POSITION_UPDATED";
       default:
         return "UNKNOWN";
     }
@@ -599,6 +612,8 @@ struct NodeStrategyHost
     o.Set("fillQty", Napi::Number::New(env, flox_quantity_to_double(ev->fill_qty_raw)));
     o.Set("fillPrice", Napi::Number::New(env, flox_price_to_double(ev->fill_price_raw)));
     o.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(ev->exchange_ts_ns)));
+    o.Set("queueAhead", Napi::Number::New(env, flox_quantity_to_double(ev->queue_ahead_raw)));
+    o.Set("queueTotal", Napi::Number::New(env, flox_quantity_to_double(ev->queue_total_raw)));
     if (reject_owned && !reject_owned->empty())
     {
       o.Set("rejectReason", Napi::String::New(env, *reject_owned));
@@ -613,10 +628,24 @@ struct NodeStrategyHost
     }
   }
 
+  static Napi::FunctionReference& pickFnRef(NodeStrategyHost* self, OrderEventKind kind)
+  {
+    switch (kind)
+    {
+      case kOrderEventKindFill:
+        return self->on_fill_fn;
+      case kOrderEventKindQueuePosition:
+        return self->on_queue_position_change_fn;
+      case kOrderEventKindUpdate:
+      default:
+        return self->on_order_update_fn;
+    }
+  }
+
   static void callOnOrderEvent(Napi::Env env, Napi::Function, OrderEventCallData* d)
   {
     auto* self = d->host;
-    auto& fn = d->is_fill ? self->on_fill_fn : self->on_order_update_fn;
+    auto& fn = pickFnRef(self, d->kind);
     if (!fn.IsEmpty())
     {
       auto ctxObj = Napi::Object::New(env);
@@ -631,9 +660,9 @@ struct NodeStrategyHost
   static void dispatchOrderEvent(NodeStrategyHost* self,
                                  const FloxSymbolContext* ctx,
                                  const FloxOrderEventData* ev,
-                                 bool is_fill)
+                                 OrderEventKind kind)
   {
-    auto& fn = is_fill ? self->on_fill_fn : self->on_order_update_fn;
+    auto& fn = pickFnRef(self, kind);
     if (fn.IsEmpty())
     {
       return;
@@ -643,7 +672,7 @@ struct NodeStrategyHost
       auto* d = new OrderEventCallData{
           *ctx, *ev,
           ev->reject_reason ? std::string(ev->reject_reason) : std::string{},
-          self, is_fill};
+          self, kind};
       self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnOrderEvent);
     }
     else
@@ -660,13 +689,20 @@ struct NodeStrategyHost
   static void onFill(void* ud, const FloxSymbolContext* ctx,
                      const FloxOrderEventData* ev)
   {
-    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev, true);
+    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev, kOrderEventKindFill);
   }
 
   static void onOrderUpdate(void* ud, const FloxSymbolContext* ctx,
                             const FloxOrderEventData* ev)
   {
-    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev, false);
+    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev, kOrderEventKindUpdate);
+  }
+
+  static void onQueuePositionChange(void* ud, const FloxSymbolContext* ctx,
+                                    const FloxOrderEventData* ev)
+  {
+    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev,
+                       kOrderEventKindQueuePosition);
   }
 
   struct LifecycleCallData

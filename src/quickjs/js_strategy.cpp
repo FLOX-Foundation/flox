@@ -920,6 +920,7 @@ FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
   cb.on_stop = FloxJsStrategy::onStop;
   cb.on_fill = FloxJsStrategy::onFill;
   cb.on_order_update = FloxJsStrategy::onOrderUpdate;
+  cb.on_queue_position_change = FloxJsStrategy::onQueuePositionChange;
   cb.user_data = this;
   return cb;
 }
@@ -1161,6 +1162,8 @@ const char* jsOrderEventStatusName(uint8_t s)
       return "TRIGGERED";
     case 12:
       return "TRAILING_UPDATED";
+    case 13:
+      return "QUEUE_POSITION_UPDATED";
     default:
       return "UNKNOWN";
   }
@@ -1216,6 +1219,10 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
   {
     JS_SetPropertyStr(c, obj, "rejectReason", JS_NULL);
   }
+  JS_SetPropertyStr(c, obj, "queueAhead",
+                    JS_NewFloat64(c, flox_quantity_to_double(ev->queue_ahead_raw)));
+  JS_SetPropertyStr(c, obj, "queueTotal",
+                    JS_NewFloat64(c, flox_quantity_to_double(ev->queue_total_raw)));
   return obj;
 }
 
@@ -1258,6 +1265,31 @@ void FloxJsStrategy::onOrderUpdate(void* userData, const FloxSymbolContext* ctx,
     if (JS_IsException(ret))
     {
       std::cerr << "[flox-js] Error in onOrderUpdate: "
+                << self->_engine.getErrorMessage() << std::endl;
+    }
+    JS_FreeValue(jsCtx, ret);
+  }
+  JS_FreeValue(jsCtx, method);
+  JS_FreeValue(jsCtx, ctxObj);
+  JS_FreeValue(jsCtx, evObj);
+}
+
+void FloxJsStrategy::onQueuePositionChange(void* userData, const FloxSymbolContext* ctx,
+                                           const FloxOrderEventData* ev)
+{
+  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* jsCtx = self->_engine.context();
+  JSValue ctxObj = self->makeCtxObject(ctx);
+  JSValue evObj = self->makeOrderEventObject(ev);
+  JSValue method =
+      JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchQueuePositionChange");
+  if (JS_IsFunction(jsCtx, method))
+  {
+    JSValue args[2] = {ctxObj, evObj};
+    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
+    if (JS_IsException(ret))
+    {
+      std::cerr << "[flox-js] Error in onQueuePositionChange: "
                 << self->_engine.getErrorMessage() << std::endl;
     }
     JS_FreeValue(jsCtx, ret);

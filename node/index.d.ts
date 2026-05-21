@@ -111,9 +111,11 @@ export type OrderEventStatus =
   | "PENDING_TRIGGER"
   | "TRIGGERED"
   | "TRAILING_UPDATED"
+  | "QUEUE_POSITION_UPDATED"
   | "UNKNOWN";
 
-/** Order-event payload delivered to `onFill` / `onOrderUpdate`. */
+/** Order-event payload delivered to `onFill` / `onOrderUpdate` /
+ *  `onQueuePositionChange`. */
 export interface OrderEventData {
   orderId: number;
   symbolId: number;
@@ -135,6 +137,10 @@ export interface OrderEventData {
   exchangeTsNs: number;
   /** Set only when status === "REJECTED". */
   rejectReason: string | null;
+  /** Backtest only: volume ahead of this order at its price level. */
+  queueAhead: number;
+  /** Backtest only: total quantity at the order's price level. */
+  queueTotal: number;
 }
 
 /** Order-emission helper passed as the third arg to strategy callbacks. */
@@ -173,6 +179,10 @@ export interface Strategy {
    *  CANCELED / REJECTED / REPLACED / TRIGGERED / TRAILING_UPDATED.
    *  Includes fills too — pick `onFill` if you only care about those. */
   onOrderUpdate?(ctx: SymbolContext, ev: OrderEventData, emit: EmitMethods): void;
+  /** Resting limit order's queue position moved without any other
+   *  lifecycle transition. `ev.queueAhead` and `ev.queueTotal` carry
+   *  the current snapshot. Backtest only. */
+  onQueuePositionChange?(ctx: SymbolContext, ev: OrderEventData, emit: EmitMethods): void;
 }
 
 // ── Extension hooks ──────────────────────────────────────────────────
