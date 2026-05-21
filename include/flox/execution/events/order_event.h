@@ -65,6 +65,12 @@ struct OrderEvent
   Price fillPrice{};
   Price newTrailingPrice{};
 
+  // For PARTIALLY_FILLED / FILLED: true if the order rested in the
+  // book and was consumed by an aggressive opposite trade (maker);
+  // false if the order arrived marketable and crossed the book
+  // (taker). Meaningless for non-fill statuses.
+  bool isMaker{false};
+
   // For QUEUE_POSITION_UPDATED, PARTIALLY_FILLED, FILLED events on
   // backtest limit orders: volume ahead and total volume at the
   // order's level at the time the event was emitted. Zero on live

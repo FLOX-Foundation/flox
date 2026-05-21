@@ -1239,6 +1239,19 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
                     JS_NewFloat64(c, static_cast<double>(ev->triggered_at_ns)));
   JS_SetPropertyStr(c, obj, "expiredAtNs",
                     JS_NewFloat64(c, static_cast<double>(ev->expired_at_ns)));
+  const bool isMaker = ev->is_maker != 0;
+  JS_SetPropertyStr(c, obj, "isMaker", JS_NewBool(c, isMaker));
+  const bool isFill = (ev->status == 3 /* PARTIALLY_FILLED */ ||
+                       ev->status == 4 /* FILLED */);
+  if (isFill)
+  {
+    JS_SetPropertyStr(c, obj, "fillRole",
+                      JS_NewString(c, isMaker ? "maker" : "taker"));
+  }
+  else
+  {
+    JS_SetPropertyStr(c, obj, "fillRole", JS_NULL);
+  }
   return obj;
 }
 

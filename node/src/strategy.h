@@ -622,6 +622,13 @@ struct NodeStrategyHost
     o.Set("rejectedAtNs", Napi::Number::New(env, static_cast<double>(ev->rejected_at_ns)));
     o.Set("triggeredAtNs", Napi::Number::New(env, static_cast<double>(ev->triggered_at_ns)));
     o.Set("expiredAtNs", Napi::Number::New(env, static_cast<double>(ev->expired_at_ns)));
+    const bool isMaker = ev->is_maker != 0;
+    o.Set("isMaker", Napi::Boolean::New(env, isMaker));
+    const bool isFill = (ev->status == 3 /* PARTIALLY_FILLED */ ||
+                         ev->status == 4 /* FILLED */);
+    o.Set("fillRole",
+          isFill ? Napi::String::New(env, isMaker ? "maker" : "taker").As<Napi::Value>()
+                 : env.Null().As<Napi::Value>());
     if (reject_owned && !reject_owned->empty())
     {
       o.Set("rejectReason", Napi::String::New(env, *reject_owned));

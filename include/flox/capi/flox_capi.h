@@ -182,6 +182,8 @@ extern "C"
     int64_t rejected_at_ns;
     int64_t triggered_at_ns;
     int64_t expired_at_ns;
+    uint8_t is_maker;
+    uint8_t _pad2[7];
   } FloxOrderEventData;
 
   typedef struct

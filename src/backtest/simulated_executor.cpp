@@ -413,7 +413,9 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       {
         continue;
       }
-      executeFill(*ord, price, fillQty);
+      // Fill came from queue consumption — our order rested and an
+      // aggressive opposite trade walked into it.
+      executeFill(*ord, price, fillQty, /*isMaker=*/true);
     }
     // Remove fully-filled queued orders and drop their queue
     // position + timestamp tracking entries.
@@ -576,7 +578,7 @@ void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState&
   }
 }
 
-void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty)
+void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, bool isMaker)
 {
   const UnixNanos now = _clock.nowNs();
 
@@ -593,6 +595,7 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty)
   ev.order = order;
   ev.fillQty = qty;
   ev.fillPrice = price;
+  ev.isMaker = isMaker;
   ev.exchangeTsNs = now;
   ev.status =
       (order.filledQuantity >= order.quantity) ? OrderEventStatus::FILLED : OrderEventStatus::PARTIALLY_FILLED;

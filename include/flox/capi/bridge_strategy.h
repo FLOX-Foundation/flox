@@ -282,6 +282,7 @@ class BridgeStrategy : public Strategy
     fev.rejected_at_ns = ev.timestamps.rejectedAtNs;
     fev.triggered_at_ns = ev.timestamps.triggeredAtNs;
     fev.expired_at_ns = ev.timestamps.expiredAtNs;
+    fev.is_maker = ev.isMaker ? 1 : 0;
     return fev;
   }
   static FloxBookSnapshot toBookSnapshot(const SymbolContext& c)
