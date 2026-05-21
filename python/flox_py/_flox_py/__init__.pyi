@@ -1273,6 +1273,8 @@ class OrderBook:
         Bid-ask spread or None
         """
 class OrderEventData:
+    fill_role: str
+    is_maker: bool
     order_type: str
     reject_reason: str
     side: str

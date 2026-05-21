@@ -208,6 +208,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `rejected_at_ns` | `int64_t` |
 | `triggered_at_ns` | `int64_t` |
 | `expired_at_ns` | `int64_t` |
+| `is_maker` | `uint8_t` |
+| `_pad2` | `uint8_t[7]` |
 
 ### `FloxStrategyCallbacks`
 

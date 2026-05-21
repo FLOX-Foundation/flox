@@ -11810,6 +11810,14 @@
         {
           "name": "expired_at_ns",
           "type": "int64_t"
+        },
+        {
+          "name": "is_maker",
+          "type": "uint8_t"
+        },
+        {
+          "name": "_pad2",
+          "type": "uint8_t[7]"
         }
       ],
       "name": "FloxOrderEventData"

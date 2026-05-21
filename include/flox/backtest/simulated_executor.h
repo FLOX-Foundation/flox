@@ -117,7 +117,7 @@ class SimulatedExecutor : public IOrderExecutor
                                 const MarketState& state) const;
   void triggerConditionalOrder(Order& order);
   bool isConditionalOrder(OrderType type) const;
-  void executeFill(Order& order, Price price, Quantity qty);
+  void executeFill(Order& order, Price price, Quantity qty, bool isMaker = false);
   void emitEvent(OrderEventStatus status, const Order& order);
   void emitTrailingUpdate(const Order& order, Price newTrigger);
 

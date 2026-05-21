@@ -119,6 +119,8 @@ struct PyOrderEventData
   int64_t rejected_at_ns{0};
   int64_t triggered_at_ns{0};
   int64_t expired_at_ns{0};
+  bool is_maker{false};   // fill statuses only
+  std::string fill_role;  // "maker" | "taker" | "" if not a fill
 };
 
 inline Side parseSide(const std::string& s)
@@ -885,6 +887,11 @@ struct PyStrategyHost
     pe.rejected_at_ns = ev->rejected_at_ns;
     pe.triggered_at_ns = ev->triggered_at_ns;
     pe.expired_at_ns = ev->expired_at_ns;
+    pe.is_maker = (ev->is_maker != 0);
+    if (ev->status == 3 /* PARTIALLY_FILLED */ || ev->status == 4 /* FILLED */)
+    {
+      pe.fill_role = pe.is_maker ? "maker" : "taker";
+    }
     return pe;
   }
 
@@ -2477,7 +2484,9 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("canceled_at_ns", &PyOrderEventData::canceled_at_ns)
       .def_readwrite("rejected_at_ns", &PyOrderEventData::rejected_at_ns)
       .def_readwrite("triggered_at_ns", &PyOrderEventData::triggered_at_ns)
-      .def_readwrite("expired_at_ns", &PyOrderEventData::expired_at_ns);
+      .def_readwrite("expired_at_ns", &PyOrderEventData::expired_at_ns)
+      .def_readwrite("is_maker", &PyOrderEventData::is_maker)
+      .def_readwrite("fill_role", &PyOrderEventData::fill_role);
 
   py::class_<PyStrategyBase, PyStrategyTrampoline>(m, "Strategy")
       .def(py::init([](py::list symbols)

@@ -8989,6 +8989,8 @@ Time-bucketed price OHLC over trade events. For each cell, records open (earlies
 
 **Members**
 
+- *attr* `fill_role: str`
+- *attr* `is_maker: bool`
 - *attr* `order_type: str`
 - *attr* `reject_reason: str`
 - *attr* `side: str`

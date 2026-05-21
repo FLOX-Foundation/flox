@@ -151,6 +151,13 @@ export interface OrderEventData {
   rejectedAtNs: number;
   triggeredAtNs: number;
   expiredAtNs: number;
+  /** True when the fill came from the order resting in the book and
+   *  being consumed by an aggressive opposite trade; false when the
+   *  order arrived marketable and crossed the book. Meaningful only
+   *  for fill statuses. */
+  isMaker: boolean;
+  /** "maker" | "taker" for fill statuses; null otherwise. */
+  fillRole: "maker" | "taker" | null;
 }
 
 /** Order-emission helper passed as the third arg to strategy callbacks. */
