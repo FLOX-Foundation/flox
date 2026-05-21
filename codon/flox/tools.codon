@@ -55,6 +55,16 @@ from C import flox_order_tracker_active_count(cobj) -> u32
 from C import flox_order_tracker_total_count(cobj) -> u32
 from C import flox_order_tracker_prune(cobj)
 
+from C import flox_order_journey_tracer_create(u64, u64, f64, u64) -> cobj
+from C import flox_order_journey_tracer_destroy(cobj)
+from C import flox_order_journey_tracer_order_count(cobj) -> u64
+from C import flox_order_journey_tracer_record_count(cobj) -> u64
+from C import flox_order_journey_tracer_median_ack_latency_ns(cobj) -> f64
+from C import flox_order_journey_tracer_median_time_to_first_fill_ns(cobj) -> f64
+from C import flox_order_journey_tracer_maker_fill_ratio(cobj) -> f64
+from C import flox_order_journey_tracer_cancel_race_loss_rate(cobj) -> f64
+from C import flox_order_journey_tracer_clear(cobj)
+
 from C import flox_position_group_create() -> cobj
 from C import flox_position_group_destroy(cobj)
 from C import flox_position_group_open(cobj, u64, u32, u8, f64, f64) -> u64
@@ -377,6 +387,39 @@ class OrderTracker:
 
     def prune(self):
         flox_order_tracker_prune(self._h)
+
+
+class OrderJourneyTracer:
+    _h: cobj
+
+    def __init__(self, max_orders: int = 1_000_000,
+                 max_records_per_order: int = 64,
+                 sample_rate: float = 1.0,
+                 sample_salt: int = 0):
+        self._h = flox_order_journey_tracer_create(
+            u64(max_orders), u64(max_records_per_order),
+            sample_rate, u64(sample_salt))
+
+    def order_count(self) -> int:
+        return int(flox_order_journey_tracer_order_count(self._h))
+
+    def record_count(self) -> int:
+        return int(flox_order_journey_tracer_record_count(self._h))
+
+    def median_ack_latency_ns(self) -> float:
+        return flox_order_journey_tracer_median_ack_latency_ns(self._h)
+
+    def median_time_to_first_fill_ns(self) -> float:
+        return flox_order_journey_tracer_median_time_to_first_fill_ns(self._h)
+
+    def maker_fill_ratio(self) -> float:
+        return flox_order_journey_tracer_maker_fill_ratio(self._h)
+
+    def cancel_race_loss_rate(self) -> float:
+        return flox_order_journey_tracer_cancel_race_loss_rate(self._h)
+
+    def clear(self):
+        flox_order_journey_tracer_clear(self._h)
 
 
 class PositionGroupTracker:

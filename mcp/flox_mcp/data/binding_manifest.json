@@ -83,6 +83,11 @@
           "name": "flox_backtest_runner_add_execution_listener"
         },
         {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_backtest_runner_add_journey_tracer"
+        },
+        {
           "group": "backtestrunner_replay",
           "kind": "function",
           "name": "flox_backtest_runner_create"
@@ -1561,6 +1566,61 @@
           "group": "order_group",
           "kind": "function",
           "name": "flox_order_group_state"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_cancel_race_loss_rate"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_clear"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_create"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_destroy"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_journey"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_maker_fill_ratio"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_median_ack_latency_ns"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_median_time_to_first_fill_ns"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_order_count"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_record_count"
+        },
+        {
+          "group": "order_journey_tracer",
+          "kind": "function",
+          "name": "flox_order_journey_tracer_result"
         },
         {
           "group": "order_tracker",
@@ -2732,6 +2792,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxOrderTraceRow"
+        },
+        {
+          "kind": "struct",
           "name": "FloxOrderValidatorCallbacks"
         },
         {
@@ -2948,6 +3012,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxOrderJourneyTracerHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxOrderTrackerHandle"
         },
         {
@@ -3062,6 +3130,7 @@
         "multi_tf_helpers",
         "order_book",
         "order_group",
+        "order_journey_tracer",
         "order_tracker",
         "partitioner",
         "pointer_out",
@@ -3151,6 +3220,10 @@
         {
           "kind": "function",
           "name": "flox_backtest_runner_add_execution_listener"
+        },
+        {
+          "kind": "function",
+          "name": "flox_backtest_runner_add_journey_tracer"
         },
         {
           "kind": "function",
@@ -4335,6 +4408,50 @@
         {
           "kind": "function",
           "name": "flox_order_group_state"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_cancel_race_loss_rate"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_clear"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_journey"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_maker_fill_ratio"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_median_ack_latency_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_median_time_to_first_fill_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_order_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_record_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_journey_tracer_result"
         },
         {
           "kind": "function",
@@ -5519,6 +5636,14 @@
         {
           "kind": "class",
           "name": "OrderGroupRevertAction"
+        },
+        {
+          "kind": "class",
+          "name": "OrderJourneyTracer"
+        },
+        {
+          "kind": "class",
+          "name": "OrderTraceRow"
         },
         {
           "kind": "class",
@@ -7834,6 +7959,40 @@
       "pybind11": {
         "classes": [
           "OrderGroup"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "order_journey_tracer": {
+      "capi_functions": [
+        "flox_backtest_runner_add_journey_tracer",
+        "flox_order_journey_tracer_cancel_race_loss_rate",
+        "flox_order_journey_tracer_clear",
+        "flox_order_journey_tracer_create",
+        "flox_order_journey_tracer_destroy",
+        "flox_order_journey_tracer_journey",
+        "flox_order_journey_tracer_maker_fill_ratio",
+        "flox_order_journey_tracer_median_ack_latency_ns",
+        "flox_order_journey_tracer_median_time_to_first_fill_ns",
+        "flox_order_journey_tracer_order_count",
+        "flox_order_journey_tracer_record_count",
+        "flox_order_journey_tracer_result"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "OrderJourneyTracer"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "OrderJourneyTracer"
         ],
         "functions": [],
         "status": "required"

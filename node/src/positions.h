@@ -125,11 +125,175 @@ class OrderTrackerWrap : public Napi::ObjectWrap<OrderTrackerWrap>
   FloxOrderTrackerHandle _h;
 };
 
+class OrderJourneyTracerWrap : public Napi::ObjectWrap<OrderJourneyTracerWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(
+        env, "OrderJourneyTracer",
+        {InstanceMethod("orderCount", &OrderJourneyTracerWrap::OrderCount),
+         InstanceMethod("recordCount", &OrderJourneyTracerWrap::RecordCount),
+         InstanceMethod("medianAckLatencyNs",
+                        &OrderJourneyTracerWrap::MedianAckLatencyNs),
+         InstanceMethod("medianTimeToFirstFillNs",
+                        &OrderJourneyTracerWrap::MedianTimeToFirstFillNs),
+         InstanceMethod("makerFillRatio",
+                        &OrderJourneyTracerWrap::MakerFillRatio),
+         InstanceMethod("cancelRaceLossRate",
+                        &OrderJourneyTracerWrap::CancelRaceLossRate),
+         InstanceMethod("result", &OrderJourneyTracerWrap::Result),
+         InstanceMethod("journey", &OrderJourneyTracerWrap::Journey),
+         InstanceMethod("clear", &OrderJourneyTracerWrap::Clear)});
+  }
+
+  OrderJourneyTracerWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<OrderJourneyTracerWrap>(info)
+  {
+    uint64_t maxOrders = 1'000'000;
+    uint64_t maxRecordsPerOrder = 64;
+    double sampleRate = 1.0;
+    uint64_t sampleSalt = 0x9E3779B97F4A7C15ULL;
+    if (info.Length() > 0 && info[0].IsObject())
+    {
+      Napi::Object cfg = info[0].As<Napi::Object>();
+      if (cfg.Has("maxOrders"))
+      {
+        maxOrders = cfg.Get("maxOrders").As<Napi::Number>().Int64Value();
+      }
+      if (cfg.Has("maxRecordsPerOrder"))
+      {
+        maxRecordsPerOrder =
+            cfg.Get("maxRecordsPerOrder").As<Napi::Number>().Int64Value();
+      }
+      if (cfg.Has("sampleRate"))
+      {
+        sampleRate = cfg.Get("sampleRate").As<Napi::Number>().DoubleValue();
+      }
+      if (cfg.Has("sampleSalt"))
+      {
+        sampleSalt = cfg.Get("sampleSalt").As<Napi::Number>().Int64Value();
+      }
+    }
+    _h = flox_order_journey_tracer_create(maxOrders, maxRecordsPerOrder,
+                                          sampleRate, sampleSalt);
+  }
+  ~OrderJourneyTracerWrap()
+  {
+    if (_h)
+    {
+      flox_order_journey_tracer_destroy(_h);
+    }
+  }
+
+  FloxOrderJourneyTracerHandle handle() const { return _h; }
+
+ private:
+  Napi::Value OrderCount(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), flox_order_journey_tracer_order_count(_h));
+  }
+  Napi::Value RecordCount(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(), flox_order_journey_tracer_record_count(_h));
+  }
+  Napi::Value MedianAckLatencyNs(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(),
+                             flox_order_journey_tracer_median_ack_latency_ns(_h));
+  }
+  Napi::Value MedianTimeToFirstFillNs(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(
+        info.Env(), flox_order_journey_tracer_median_time_to_first_fill_ns(_h));
+  }
+  Napi::Value MakerFillRatio(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(),
+                             flox_order_journey_tracer_maker_fill_ratio(_h));
+  }
+  Napi::Value CancelRaceLossRate(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(),
+                             flox_order_journey_tracer_cancel_race_loss_rate(_h));
+  }
+  static Napi::Value rowToObj(Napi::Env env, const FloxOrderTraceRow& r)
+  {
+    auto o = Napi::Object::New(env);
+    o.Set("orderId", Napi::Number::New(env, static_cast<double>(r.order_id)));
+    o.Set("seq", Napi::Number::New(env, r.seq));
+    o.Set("status", Napi::Number::New(env, r.status));
+    o.Set("isMaker", Napi::Boolean::New(env, r.is_maker != 0));
+    o.Set("tsNs", Napi::Number::New(env, static_cast<double>(r.ts_ns)));
+    o.Set("fillQty",
+          Napi::Number::New(env, static_cast<double>(r.fill_qty_raw) / 1e8));
+    o.Set("fillPrice",
+          Napi::Number::New(env, static_cast<double>(r.fill_price_raw) / 1e8));
+    o.Set("queueAhead",
+          Napi::Number::New(env, static_cast<double>(r.queue_ahead_raw) / 1e8));
+    o.Set("queueTotal",
+          Napi::Number::New(env, static_cast<double>(r.queue_total_raw) / 1e8));
+    o.Set("submittedAtNs",
+          Napi::Number::New(env, static_cast<double>(r.submitted_at_ns)));
+    o.Set("acceptedAtNs",
+          Napi::Number::New(env, static_cast<double>(r.accepted_at_ns)));
+    o.Set("firstFillAtNs",
+          Napi::Number::New(env, static_cast<double>(r.first_fill_at_ns)));
+    o.Set("lastFillAtNs",
+          Napi::Number::New(env, static_cast<double>(r.last_fill_at_ns)));
+    o.Set("canceledAtNs",
+          Napi::Number::New(env, static_cast<double>(r.canceled_at_ns)));
+    o.Set("rejectedAtNs",
+          Napi::Number::New(env, static_cast<double>(r.rejected_at_ns)));
+    o.Set("triggeredAtNs",
+          Napi::Number::New(env, static_cast<double>(r.triggered_at_ns)));
+    o.Set("expiredAtNs",
+          Napi::Number::New(env, static_cast<double>(r.expired_at_ns)));
+    return o;
+  }
+  Napi::Value Result(const Napi::CallbackInfo& info)
+  {
+    const uint64_t n = flox_order_journey_tracer_result(_h, nullptr, 0);
+    std::vector<FloxOrderTraceRow> buf(n);
+    if (n > 0)
+    {
+      flox_order_journey_tracer_result(_h, buf.data(), n);
+    }
+    auto arr = Napi::Array::New(info.Env(), n);
+    for (uint64_t i = 0; i < n; ++i)
+    {
+      arr.Set(i, rowToObj(info.Env(), buf[i]));
+    }
+    return arr;
+  }
+  Napi::Value Journey(const Napi::CallbackInfo& info)
+  {
+    uint64_t orderId = info[0].As<Napi::Number>().Int64Value();
+    const uint64_t n =
+        flox_order_journey_tracer_journey(_h, orderId, nullptr, 0);
+    std::vector<FloxOrderTraceRow> buf(n);
+    if (n > 0)
+    {
+      flox_order_journey_tracer_journey(_h, orderId, buf.data(), n);
+    }
+    auto arr = Napi::Array::New(info.Env(), n);
+    for (uint64_t i = 0; i < n; ++i)
+    {
+      arr.Set(i, rowToObj(info.Env(), buf[i]));
+    }
+    return arr;
+  }
+  void Clear(const Napi::CallbackInfo&) { flox_order_journey_tracer_clear(_h); }
+
+  FloxOrderJourneyTracerHandle _h;
+};
+
 inline void registerPositions(Napi::Env env, Napi::Object exports)
 {
   exports.Set("PositionTracker", PositionTrackerWrap::Init(env));
   exports.Set("PositionGroupTracker", PositionGroupTrackerWrap::Init(env));
   exports.Set("OrderTracker", OrderTrackerWrap::Init(env));
+  exports.Set("OrderJourneyTracer", OrderJourneyTracerWrap::Init(env));
   exports.Set("POSITION_FIFO", Napi::Number::New(env, 0));
   exports.Set("POSITION_AVG_COST", Napi::Number::New(env, 1));
 }

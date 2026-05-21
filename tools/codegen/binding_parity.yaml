@@ -99,6 +99,11 @@ groups:
     napi: { status: required, classes: [OrderTracker] }
     codon: { status: required }
 
+  order_journey_tracer:
+    pybind11: { status: required, classes: [OrderJourneyTracer] }
+    napi: { status: required, classes: [OrderJourneyTracer] }
+    codon: { status: required }
+
   position:
     pybind11: { status: required, classes: [PositionTracker] }
     napi: { status: required, classes: [PositionTracker] }

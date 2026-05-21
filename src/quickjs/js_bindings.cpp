@@ -3387,6 +3387,135 @@ static JSValue js_ot_prune(JSContext* c, JSValueConst, int, JSValueConst* a)
 }
 
 // ============================================================
+// OrderJourneyTracer
+// ============================================================
+
+static JSValue js_ojt_create(JSContext* c, JSValueConst, int argc, JSValueConst* a)
+{
+  uint64_t maxOrders = (argc > 0) ? static_cast<uint64_t>(toInt64(c, a[0])) : 1000000;
+  uint64_t maxRecords = (argc > 1) ? static_cast<uint64_t>(toInt64(c, a[1])) : 64;
+  double sampleRate = (argc > 2) ? toDouble(c, a[2]) : 1.0;
+  uint64_t sampleSalt =
+      (argc > 3) ? static_cast<uint64_t>(toInt64(c, a[3])) : 0x9E3779B97F4A7C15ULL;
+  return createHandleObject(c, flox_order_journey_tracer_create(
+                                   maxOrders, maxRecords, sampleRate, sampleSalt));
+}
+
+static JSValue js_ojt_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  flox_order_journey_tracer_destroy(
+      static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_ojt_order_count(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  return JS_NewInt64(c, static_cast<int64_t>(flox_order_journey_tracer_order_count(
+                            static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])))));
+}
+
+static JSValue js_ojt_record_count(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  return JS_NewInt64(c, static_cast<int64_t>(flox_order_journey_tracer_record_count(
+                            static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])))));
+}
+
+static JSValue js_ojt_median_ack(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  return JS_NewFloat64(
+      c, flox_order_journey_tracer_median_ack_latency_ns(
+             static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+}
+
+static JSValue js_ojt_median_ttf(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  return JS_NewFloat64(
+      c, flox_order_journey_tracer_median_time_to_first_fill_ns(
+             static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+}
+
+static JSValue js_ojt_maker_ratio(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  return JS_NewFloat64(c, flox_order_journey_tracer_maker_fill_ratio(
+                              static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+}
+
+static JSValue js_ojt_cancel_race(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  return JS_NewFloat64(c, flox_order_journey_tracer_cancel_race_loss_rate(
+                              static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]))));
+}
+
+static JSValue js_ojt_row_to_obj(JSContext* c, const FloxOrderTraceRow& r)
+{
+  JSValue o = JS_NewObject(c);
+  JS_SetPropertyStr(c, o, "orderId", JS_NewInt64(c, static_cast<int64_t>(r.order_id)));
+  JS_SetPropertyStr(c, o, "seq", JS_NewUint32(c, r.seq));
+  JS_SetPropertyStr(c, o, "status", JS_NewUint32(c, r.status));
+  JS_SetPropertyStr(c, o, "isMaker", JS_NewBool(c, r.is_maker != 0));
+  JS_SetPropertyStr(c, o, "tsNs", JS_NewInt64(c, r.ts_ns));
+  JS_SetPropertyStr(c, o, "fillQty",
+                    JS_NewFloat64(c, static_cast<double>(r.fill_qty_raw) / 1e8));
+  JS_SetPropertyStr(c, o, "fillPrice",
+                    JS_NewFloat64(c, static_cast<double>(r.fill_price_raw) / 1e8));
+  JS_SetPropertyStr(c, o, "queueAhead",
+                    JS_NewFloat64(c, static_cast<double>(r.queue_ahead_raw) / 1e8));
+  JS_SetPropertyStr(c, o, "queueTotal",
+                    JS_NewFloat64(c, static_cast<double>(r.queue_total_raw) / 1e8));
+  JS_SetPropertyStr(c, o, "submittedAtNs", JS_NewInt64(c, r.submitted_at_ns));
+  JS_SetPropertyStr(c, o, "acceptedAtNs", JS_NewInt64(c, r.accepted_at_ns));
+  JS_SetPropertyStr(c, o, "firstFillAtNs", JS_NewInt64(c, r.first_fill_at_ns));
+  JS_SetPropertyStr(c, o, "lastFillAtNs", JS_NewInt64(c, r.last_fill_at_ns));
+  JS_SetPropertyStr(c, o, "canceledAtNs", JS_NewInt64(c, r.canceled_at_ns));
+  JS_SetPropertyStr(c, o, "rejectedAtNs", JS_NewInt64(c, r.rejected_at_ns));
+  JS_SetPropertyStr(c, o, "triggeredAtNs", JS_NewInt64(c, r.triggered_at_ns));
+  JS_SetPropertyStr(c, o, "expiredAtNs", JS_NewInt64(c, r.expired_at_ns));
+  return o;
+}
+
+static JSValue js_ojt_result(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]));
+  const uint64_t n = flox_order_journey_tracer_result(h, nullptr, 0);
+  std::vector<FloxOrderTraceRow> buf(n);
+  if (n > 0)
+  {
+    flox_order_journey_tracer_result(h, buf.data(), n);
+  }
+  JSValue arr = JS_NewArray(c);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    JS_SetPropertyUint32(c, arr, static_cast<uint32_t>(i), js_ojt_row_to_obj(c, buf[i]));
+  }
+  return arr;
+}
+
+static JSValue js_ojt_journey(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0]));
+  uint64_t orderId = static_cast<uint64_t>(toInt64(c, a[1]));
+  const uint64_t n = flox_order_journey_tracer_journey(h, orderId, nullptr, 0);
+  std::vector<FloxOrderTraceRow> buf(n);
+  if (n > 0)
+  {
+    flox_order_journey_tracer_journey(h, orderId, buf.data(), n);
+  }
+  JSValue arr = JS_NewArray(c);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    JS_SetPropertyUint32(c, arr, static_cast<uint32_t>(i), js_ojt_row_to_obj(c, buf[i]));
+  }
+  return arr;
+}
+
+static JSValue js_ojt_clear(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  flox_order_journey_tracer_clear(
+      static_cast<FloxOrderJourneyTracerHandle>(getHandle(c, a[0])));
+  return JS_UNDEFINED;
+}
+
+// ============================================================
 // PositionGroupTracker
 // ============================================================
 
@@ -5157,6 +5286,19 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_ot_active_count", js_ot_active_count, 1);
   addGlobalFunc(ctx, "__flox_ot_total_count", js_ot_total_count, 1);
   addGlobalFunc(ctx, "__flox_ot_prune", js_ot_prune, 1);
+
+  // OrderJourneyTracer
+  addGlobalFunc(ctx, "__flox_ojt_create", js_ojt_create, 4);
+  addGlobalFunc(ctx, "__flox_ojt_destroy", js_ojt_destroy, 1);
+  addGlobalFunc(ctx, "__flox_ojt_order_count", js_ojt_order_count, 1);
+  addGlobalFunc(ctx, "__flox_ojt_record_count", js_ojt_record_count, 1);
+  addGlobalFunc(ctx, "__flox_ojt_median_ack", js_ojt_median_ack, 1);
+  addGlobalFunc(ctx, "__flox_ojt_median_ttf", js_ojt_median_ttf, 1);
+  addGlobalFunc(ctx, "__flox_ojt_maker_ratio", js_ojt_maker_ratio, 1);
+  addGlobalFunc(ctx, "__flox_ojt_cancel_race", js_ojt_cancel_race, 1);
+  addGlobalFunc(ctx, "__flox_ojt_result", js_ojt_result, 1);
+  addGlobalFunc(ctx, "__flox_ojt_journey", js_ojt_journey, 2);
+  addGlobalFunc(ctx, "__flox_ojt_clear", js_ojt_clear, 1);
 
   // PositionGroupTracker
   addGlobalFunc(ctx, "__flox_pg_create", js_pg_create, 0);

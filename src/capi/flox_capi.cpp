@@ -95,6 +95,7 @@
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/exchange_capabilities.h"
 #include "flox/execution/order.h"
+#include "flox/execution/order_journey_tracer.h"
 #include "flox/execution/order_tracker.h"
 #include "flox/position/position_group.h"
 #include "flox/position/position_tracker.h"
@@ -1784,6 +1785,140 @@ double flox_stat_win_rate(const double* pnl, size_t len)
     }
   }
   return static_cast<double>(wins) / static_cast<double>(len);
+}
+
+// ============================================================
+// Order journey tracer
+// ============================================================
+
+namespace
+{
+flox::OrderJourneyTracer* asTracer(FloxOrderJourneyTracerHandle h)
+{
+  return static_cast<flox::OrderJourneyTracer*>(h);
+}
+
+FloxOrderTraceRow toCapiRow(const flox::OrderTraceRecord& r)
+{
+  FloxOrderTraceRow row{};
+  row.order_id = r.orderId;
+  row.seq = r.seq;
+  row.status = r.status;
+  row.is_maker = r.isMaker;
+  row.ts_ns = r.tsNs;
+  row.fill_qty_raw = r.fillQtyRaw;
+  row.fill_price_raw = r.fillPriceRaw;
+  row.queue_ahead_raw = r.queueAheadRaw;
+  row.queue_total_raw = r.queueTotalRaw;
+  row.submitted_at_ns = r.timestamps.submittedAtNs;
+  row.accepted_at_ns = r.timestamps.acceptedAtNs;
+  row.first_fill_at_ns = r.timestamps.firstFillAtNs;
+  row.last_fill_at_ns = r.timestamps.lastFillAtNs;
+  row.canceled_at_ns = r.timestamps.canceledAtNs;
+  row.rejected_at_ns = r.timestamps.rejectedAtNs;
+  row.triggered_at_ns = r.timestamps.triggeredAtNs;
+  row.expired_at_ns = r.timestamps.expiredAtNs;
+  return row;
+}
+}  // namespace
+
+FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(
+    uint64_t max_orders, uint64_t max_records_per_order, double sample_rate,
+    uint64_t sample_salt)
+{
+  flox::OrderJourneyTracer::Config cfg{};
+  cfg.maxOrders = max_orders;
+  cfg.maxRecordsPerOrder = max_records_per_order;
+  cfg.sampleRate = sample_rate;
+  cfg.sampleSalt = sample_salt;
+  return new flox::OrderJourneyTracer(cfg);
+}
+
+void flox_order_journey_tracer_destroy(FloxOrderJourneyTracerHandle h)
+{
+  delete asTracer(h);
+}
+
+uint64_t flox_order_journey_tracer_order_count(FloxOrderJourneyTracerHandle h)
+{
+  return asTracer(h) ? asTracer(h)->orderCount() : 0u;
+}
+
+uint64_t flox_order_journey_tracer_record_count(FloxOrderJourneyTracerHandle h)
+{
+  return asTracer(h) ? asTracer(h)->recordCount() : 0u;
+}
+
+double flox_order_journey_tracer_median_ack_latency_ns(FloxOrderJourneyTracerHandle h)
+{
+  return asTracer(h) ? asTracer(h)->medianAckLatencyNs() : 0.0;
+}
+
+double flox_order_journey_tracer_median_time_to_first_fill_ns(
+    FloxOrderJourneyTracerHandle h)
+{
+  return asTracer(h) ? asTracer(h)->medianTimeToFirstFillNs() : 0.0;
+}
+
+double flox_order_journey_tracer_maker_fill_ratio(FloxOrderJourneyTracerHandle h)
+{
+  return asTracer(h) ? asTracer(h)->makerFillRatio() : 0.0;
+}
+
+double flox_order_journey_tracer_cancel_race_loss_rate(FloxOrderJourneyTracerHandle h)
+{
+  return asTracer(h) ? asTracer(h)->cancelRaceLossRate() : 0.0;
+}
+
+uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle h,
+                                          FloxOrderTraceRow* out, uint64_t max_rows)
+{
+  auto* tracer = asTracer(h);
+  if (!tracer)
+  {
+    return 0u;
+  }
+  auto rows = tracer->result();
+  if (out == nullptr || max_rows == 0)
+  {
+    return rows.size();
+  }
+  const uint64_t n = std::min<uint64_t>(rows.size(), max_rows);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    out[i] = toCapiRow(rows[i]);
+  }
+  return n;
+}
+
+uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle h,
+                                           uint64_t order_id, FloxOrderTraceRow* out,
+                                           uint64_t max_rows)
+{
+  auto* tracer = asTracer(h);
+  if (!tracer)
+  {
+    return 0u;
+  }
+  auto rows = tracer->journey(static_cast<flox::OrderId>(order_id));
+  if (out == nullptr || max_rows == 0)
+  {
+    return rows.size();
+  }
+  const uint64_t n = std::min<uint64_t>(rows.size(), max_rows);
+  for (uint64_t i = 0; i < n; ++i)
+  {
+    out[i] = toCapiRow(rows[i]);
+  }
+  return n;
+}
+
+void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle h)
+{
+  if (auto* tracer = asTracer(h))
+  {
+    tracer->clear();
+  }
 }
 
 // ============================================================
@@ -6289,6 +6424,17 @@ void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle h,
 {
   toBacktestRunner(h)->addExecutionListener(
       static_cast<capi_impl::FloxExecutionListenerImpl*>(listener));
+}
+
+void flox_backtest_runner_add_journey_tracer(FloxBacktestRunnerHandle h,
+                                             FloxOrderJourneyTracerHandle tracer)
+{
+  if (h == nullptr || tracer == nullptr)
+  {
+    return;
+  }
+  auto* runner = toBacktestRunner(h)->runner.get();
+  runner->addExecutionListener(static_cast<flox::OrderJourneyTracer*>(tracer));
 }
 
 void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle h,

@@ -412,6 +412,20 @@ from C import flox_order_group_precheck_submission(cobj, float, Ptr[i64], u32, c
 from C import flox_order_group_set_pair_latency_budget_ns(cobj, i64)
 from C import flox_order_group_pair_latency_decision(cobj, i64, i64, u8) -> u8
 
+# ── order_journey_tracer ──
+from C import flox_order_journey_tracer_create(u64, u64, float, u64) -> cobj
+from C import flox_order_journey_tracer_destroy(cobj)
+from C import flox_order_journey_tracer_order_count(cobj) -> u64
+from C import flox_order_journey_tracer_record_count(cobj) -> u64
+from C import flox_order_journey_tracer_median_ack_latency_ns(cobj) -> float
+from C import flox_order_journey_tracer_median_time_to_first_fill_ns(cobj) -> float
+from C import flox_order_journey_tracer_maker_fill_ratio(cobj) -> float
+from C import flox_order_journey_tracer_cancel_race_loss_rate(cobj) -> float
+from C import flox_order_journey_tracer_result(cobj, cobj, u64) -> u64
+from C import flox_order_journey_tracer_journey(cobj, u64, cobj, u64) -> u64
+from C import flox_order_journey_tracer_clear(cobj)
+from C import flox_backtest_runner_add_journey_tracer(cobj, cobj)
+
 # ── order_tracker ──
 from C import flox_order_tracker_create() -> cobj
 from C import flox_order_tracker_destroy(cobj)
