@@ -37,6 +37,21 @@ enum class OrderEventStatus
   QUEUE_POSITION_UPDATED
 };
 
+// Per-lifecycle-stage timestamps stamped by the engine when the
+// corresponding status transition fires. Zero means "not reached
+// yet". Engine-time on backtests, exchange-time on live.
+struct OrderTimestamps
+{
+  int64_t submittedAtNs{0};
+  int64_t acceptedAtNs{0};
+  int64_t firstFillAtNs{0};
+  int64_t lastFillAtNs{0};
+  int64_t canceledAtNs{0};
+  int64_t rejectedAtNs{0};
+  int64_t triggeredAtNs{0};
+  int64_t expiredAtNs{0};
+};
+
 struct OrderEvent
 {
   using Listener = IOrderExecutionListener;
@@ -56,6 +71,12 @@ struct OrderEvent
   // events and on non-limit orders.
   Quantity queueAhead{0};
   Quantity queueTotal{0};
+
+  // Snapshot of per-lifecycle-stage timestamps for the order at the
+  // moment this event was emitted. The slot corresponding to the
+  // current status is the freshest; earlier stages carry their
+  // historical timestamps. Unreached stages read zero.
+  OrderTimestamps timestamps{};
 
   uint64_t tickSequence{0};  // internal, set by bus
 

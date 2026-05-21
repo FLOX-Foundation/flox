@@ -1278,10 +1278,28 @@ class OrderEventData:
     side: str
     status: str
     @property
+    def accepted_at_ns(self) -> int:
+        ...
+    @accepted_at_ns.setter
+    def accepted_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def canceled_at_ns(self) -> int:
+        ...
+    @canceled_at_ns.setter
+    def canceled_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
     def exchange_ts_ns(self) -> int:
         ...
     @exchange_ts_ns.setter
     def exchange_ts_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def expired_at_ns(self) -> int:
+        ...
+    @expired_at_ns.setter
+    def expired_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     @property
     def fill_price(self) -> float:
@@ -1294,6 +1312,18 @@ class OrderEventData:
         ...
     @fill_qty.setter
     def fill_qty(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def first_fill_at_ns(self) -> int:
+        ...
+    @first_fill_at_ns.setter
+    def first_fill_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def last_fill_at_ns(self) -> int:
+        ...
+    @last_fill_at_ns.setter
+    def last_fill_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     @property
     def order_id(self) -> int:
@@ -1314,10 +1344,28 @@ class OrderEventData:
     def queue_total(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
         ...
     @property
+    def rejected_at_ns(self) -> int:
+        ...
+    @rejected_at_ns.setter
+    def rejected_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def submitted_at_ns(self) -> int:
+        ...
+    @submitted_at_ns.setter
+    def submitted_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
     def symbol_id(self) -> int:
         ...
     @symbol_id.setter
     def symbol_id(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def triggered_at_ns(self) -> int:
+        ...
+    @triggered_at_ns.setter
+    def triggered_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
 class OrderEventKind:
     """

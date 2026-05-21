@@ -1223,6 +1223,22 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
                     JS_NewFloat64(c, flox_quantity_to_double(ev->queue_ahead_raw)));
   JS_SetPropertyStr(c, obj, "queueTotal",
                     JS_NewFloat64(c, flox_quantity_to_double(ev->queue_total_raw)));
+  JS_SetPropertyStr(c, obj, "submittedAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->submitted_at_ns)));
+  JS_SetPropertyStr(c, obj, "acceptedAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->accepted_at_ns)));
+  JS_SetPropertyStr(c, obj, "firstFillAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->first_fill_at_ns)));
+  JS_SetPropertyStr(c, obj, "lastFillAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->last_fill_at_ns)));
+  JS_SetPropertyStr(c, obj, "canceledAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->canceled_at_ns)));
+  JS_SetPropertyStr(c, obj, "rejectedAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->rejected_at_ns)));
+  JS_SetPropertyStr(c, obj, "triggeredAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->triggered_at_ns)));
+  JS_SetPropertyStr(c, obj, "expiredAtNs",
+                    JS_NewFloat64(c, static_cast<double>(ev->expired_at_ns)));
   return obj;
 }
 

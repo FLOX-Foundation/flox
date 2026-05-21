@@ -109,6 +109,16 @@ struct PyOrderEventData
   std::string reject_reason;  // empty unless status == "REJECTED"
   double queue_ahead{0.0};    // backtest only: volume ahead at level
   double queue_total{0.0};    // backtest only: total quantity at level
+  // Per-lifecycle-stage timestamps. Zero means the stage has not
+  // fired yet for this order.
+  int64_t submitted_at_ns{0};
+  int64_t accepted_at_ns{0};
+  int64_t first_fill_at_ns{0};
+  int64_t last_fill_at_ns{0};
+  int64_t canceled_at_ns{0};
+  int64_t rejected_at_ns{0};
+  int64_t triggered_at_ns{0};
+  int64_t expired_at_ns{0};
 };
 
 inline Side parseSide(const std::string& s)
@@ -867,6 +877,14 @@ struct PyStrategyHost
     pe.reject_reason = ev->reject_reason ? std::string(ev->reject_reason) : "";
     pe.queue_ahead = flox_quantity_to_double(ev->queue_ahead_raw);
     pe.queue_total = flox_quantity_to_double(ev->queue_total_raw);
+    pe.submitted_at_ns = ev->submitted_at_ns;
+    pe.accepted_at_ns = ev->accepted_at_ns;
+    pe.first_fill_at_ns = ev->first_fill_at_ns;
+    pe.last_fill_at_ns = ev->last_fill_at_ns;
+    pe.canceled_at_ns = ev->canceled_at_ns;
+    pe.rejected_at_ns = ev->rejected_at_ns;
+    pe.triggered_at_ns = ev->triggered_at_ns;
+    pe.expired_at_ns = ev->expired_at_ns;
     return pe;
   }
 
@@ -2451,7 +2469,15 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("exchange_ts_ns", &PyOrderEventData::exchange_ts_ns)
       .def_readwrite("reject_reason", &PyOrderEventData::reject_reason)
       .def_readwrite("queue_ahead", &PyOrderEventData::queue_ahead)
-      .def_readwrite("queue_total", &PyOrderEventData::queue_total);
+      .def_readwrite("queue_total", &PyOrderEventData::queue_total)
+      .def_readwrite("submitted_at_ns", &PyOrderEventData::submitted_at_ns)
+      .def_readwrite("accepted_at_ns", &PyOrderEventData::accepted_at_ns)
+      .def_readwrite("first_fill_at_ns", &PyOrderEventData::first_fill_at_ns)
+      .def_readwrite("last_fill_at_ns", &PyOrderEventData::last_fill_at_ns)
+      .def_readwrite("canceled_at_ns", &PyOrderEventData::canceled_at_ns)
+      .def_readwrite("rejected_at_ns", &PyOrderEventData::rejected_at_ns)
+      .def_readwrite("triggered_at_ns", &PyOrderEventData::triggered_at_ns)
+      .def_readwrite("expired_at_ns", &PyOrderEventData::expired_at_ns);
 
   py::class_<PyStrategyBase, PyStrategyTrampoline>(m, "Strategy")
       .def(py::init([](py::list symbols)

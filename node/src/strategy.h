@@ -614,6 +614,14 @@ struct NodeStrategyHost
     o.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(ev->exchange_ts_ns)));
     o.Set("queueAhead", Napi::Number::New(env, flox_quantity_to_double(ev->queue_ahead_raw)));
     o.Set("queueTotal", Napi::Number::New(env, flox_quantity_to_double(ev->queue_total_raw)));
+    o.Set("submittedAtNs", Napi::Number::New(env, static_cast<double>(ev->submitted_at_ns)));
+    o.Set("acceptedAtNs", Napi::Number::New(env, static_cast<double>(ev->accepted_at_ns)));
+    o.Set("firstFillAtNs", Napi::Number::New(env, static_cast<double>(ev->first_fill_at_ns)));
+    o.Set("lastFillAtNs", Napi::Number::New(env, static_cast<double>(ev->last_fill_at_ns)));
+    o.Set("canceledAtNs", Napi::Number::New(env, static_cast<double>(ev->canceled_at_ns)));
+    o.Set("rejectedAtNs", Napi::Number::New(env, static_cast<double>(ev->rejected_at_ns)));
+    o.Set("triggeredAtNs", Napi::Number::New(env, static_cast<double>(ev->triggered_at_ns)));
+    o.Set("expiredAtNs", Napi::Number::New(env, static_cast<double>(ev->expired_at_ns)));
     if (reject_owned && !reject_owned->empty())
     {
       o.Set("rejectReason", Napi::String::New(env, *reject_owned));

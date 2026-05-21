@@ -274,6 +274,14 @@ class BridgeStrategy : public Strategy
     fev.reject_reason = ev.rejectReason.empty() ? nullptr : ev.rejectReason.c_str();
     fev.queue_ahead_raw = ev.queueAhead.raw();
     fev.queue_total_raw = ev.queueTotal.raw();
+    fev.submitted_at_ns = ev.timestamps.submittedAtNs;
+    fev.accepted_at_ns = ev.timestamps.acceptedAtNs;
+    fev.first_fill_at_ns = ev.timestamps.firstFillAtNs;
+    fev.last_fill_at_ns = ev.timestamps.lastFillAtNs;
+    fev.canceled_at_ns = ev.timestamps.canceledAtNs;
+    fev.rejected_at_ns = ev.timestamps.rejectedAtNs;
+    fev.triggered_at_ns = ev.timestamps.triggeredAtNs;
+    fev.expired_at_ns = ev.timestamps.expiredAtNs;
     return fev;
   }
   static FloxBookSnapshot toBookSnapshot(const SymbolContext& c)

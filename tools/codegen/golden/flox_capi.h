@@ -174,6 +174,14 @@ extern "C"
     const char* reject_reason;
     int64_t queue_ahead_raw;
     int64_t queue_total_raw;
+    int64_t submitted_at_ns;
+    int64_t accepted_at_ns;
+    int64_t first_fill_at_ns;
+    int64_t last_fill_at_ns;
+    int64_t canceled_at_ns;
+    int64_t rejected_at_ns;
+    int64_t triggered_at_ns;
+    int64_t expired_at_ns;
   } FloxOrderEventData;
 
   typedef struct
