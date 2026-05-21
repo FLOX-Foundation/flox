@@ -44,6 +44,9 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   }
   setQueueModel(config.queueModel, config.queueDepth);
   _queuePosMinFraction = config.queuePositionMinChangeFraction;
+  _cancelAckLatencyNs = config.cancelAckLatencyNs;
+  _cancelAckJitterNs = config.cancelAckJitterNs;
+  _cancelAckRng.seed(config.cancelAckSeed);
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -235,6 +238,32 @@ void SimulatedExecutor::submitOrder(const Order& order)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
+  // Async path: emit PENDING_CANCEL and defer CANCELED until the
+  // sampled ack deadline. Leave the order in the book so it can
+  // still fill in the race window.
+  if (_cancelAckLatencyNs > 0)
+  {
+    for (const auto& o : _pending_orders)
+    {
+      if (o.id == orderId)
+      {
+        emitEvent(OrderEventStatus::PENDING_CANCEL, o);
+        enqueuePendingCancel(o);
+        return;
+      }
+    }
+    for (const auto& o : _conditional_orders)
+    {
+      if (o.id == orderId)
+      {
+        emitEvent(OrderEventStatus::PENDING_CANCEL, o);
+        enqueuePendingCancel(o);
+        return;
+      }
+    }
+    return;
+  }
+
   for (auto it = _pending_orders.begin(); it != _pending_orders.end(); ++it)
   {
     if (it->id == orderId)
@@ -387,6 +416,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
     maybeEmitQueuePositionChanges();
   }
 
+  finalizePendingCancels();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
 }
@@ -436,6 +466,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
 
   maybeEmitQueuePositionChanges();
 
+  finalizePendingCancels();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -451,6 +482,7 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price price)
   state.hasBid = true;
   state.hasAsk = true;
   state.hasTrade = true;
+  finalizePendingCancels();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -619,6 +651,7 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
 
   if (ev.status == OrderEventStatus::FILLED)
   {
+    resolveLateCancelOnFill(order);
     _compositeLogic.onOrderFilled(order);
   }
 }
@@ -704,6 +737,110 @@ void SimulatedExecutor::maybeEmitQueuePositionChanges()
 void SimulatedExecutor::forgetQueuePosition(OrderId orderId)
 {
   _lastEmittedQueueAheadRaw.erase(orderId);
+}
+
+int64_t SimulatedExecutor::sampleCancelAckLatency()
+{
+  if (_cancelAckJitterNs <= 0)
+  {
+    return _cancelAckLatencyNs;
+  }
+  std::uniform_int_distribution<int64_t> dist(-_cancelAckJitterNs,
+                                              _cancelAckJitterNs);
+  return std::max<int64_t>(0, _cancelAckLatencyNs + dist(_cancelAckRng));
+}
+
+void SimulatedExecutor::enqueuePendingCancel(const Order& order)
+{
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  _pendingCancels.push_back(
+      PendingCancel{.orderId = order.id,
+                    .ackAtNs = now + sampleCancelAckLatency(),
+                    .orderSnapshot = order});
+}
+
+void SimulatedExecutor::finalizePendingCancels()
+{
+  if (_pendingCancels.empty())
+  {
+    return;
+  }
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  size_t i = 0;
+  while (i < _pendingCancels.size())
+  {
+    if (_pendingCancels[i].ackAtNs > now)
+    {
+      ++i;
+      continue;
+    }
+    const OrderId orderId = _pendingCancels[i].orderId;
+    Order* live = findPendingOrder(orderId);
+    Order snapshot = _pendingCancels[i].orderSnapshot;
+    _pendingCancels[i] = _pendingCancels.back();
+    _pendingCancels.pop_back();
+
+    if (live)
+    {
+      Order canceled = *live;
+      emitEvent(OrderEventStatus::CANCELED, canceled);
+      for (auto it = _pending_orders.begin(); it != _pending_orders.end(); ++it)
+      {
+        if (it->id == orderId)
+        {
+          *it = _pending_orders.back();
+          _pending_orders.pop_back();
+          break;
+        }
+      }
+      _queueTracker.removeOrder(orderId);
+      forgetQueuePosition(orderId);
+      forgetTimestamps(orderId);
+      _compositeLogic.onOrderCanceled(canceled);
+      continue;
+    }
+    // Order not in book any more — typically it filled mid-window.
+    // The fill path already emitted REJECTED on the cancel attempt.
+    // Conditional orders cancel synchronously below if still present.
+    for (auto it = _conditional_orders.begin(); it != _conditional_orders.end();
+         ++it)
+    {
+      if (it->id == orderId)
+      {
+        Order canceled = *it;
+        emitEvent(OrderEventStatus::CANCELED, canceled);
+        *it = _conditional_orders.back();
+        _conditional_orders.pop_back();
+        _compositeLogic.onOrderCanceled(canceled);
+        break;
+      }
+    }
+  }
+}
+
+void SimulatedExecutor::resolveLateCancelOnFill(const Order& order)
+{
+  if (_pendingCancels.empty() || !_callback)
+  {
+    return;
+  }
+  for (auto it = _pendingCancels.begin(); it != _pendingCancels.end(); ++it)
+  {
+    if (it->orderId != order.id)
+    {
+      continue;
+    }
+    OrderEvent ev;
+    ev.status = OrderEventStatus::REJECTED;
+    ev.order = order;
+    ev.rejectReason = "late_cancel_after_fill";
+    ev.exchangeTsNs = _clock.nowNs();
+    ev.timestamps = timestampsFor(order.id);
+    _callback(ev);
+    *it = _pendingCancels.back();
+    _pendingCancels.pop_back();
+    return;
+  }
 }
 
 OrderTimestamps& SimulatedExecutor::timestampsFor(OrderId id)

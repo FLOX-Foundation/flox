@@ -19,6 +19,7 @@
 
 #include <array>
 #include <functional>
+#include <random>
 #include <unordered_map>
 #include <vector>
 
@@ -128,6 +129,16 @@ class SimulatedExecutor : public IOrderExecutor
   void maybeEmitQueuePositionChanges();
   void forgetQueuePosition(OrderId orderId);
 
+  // Asynchronous cancel ack support. enqueuePendingCancel records the
+  // ack deadline; finalizePendingCancels walks the queue and CANCELs
+  // any whose deadline has passed. resolveLateCancelOnFill drops a
+  // pending cancel when its order has just filled and emits the
+  // late-cancel-after-fill REJECTED notification.
+  void enqueuePendingCancel(const Order& order);
+  void finalizePendingCancels();
+  void resolveLateCancelOnFill(const Order& order);
+  int64_t sampleCancelAckLatency();
+
   Order* findPendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
 
@@ -167,6 +178,17 @@ class SimulatedExecutor : public IOrderExecutor
 
   OrderTimestamps& timestampsFor(OrderId id);
   void forgetTimestamps(OrderId id);
+
+  struct PendingCancel
+  {
+    OrderId orderId;
+    int64_t ackAtNs;
+    Order orderSnapshot;  // copy at the moment of cancelOrder()
+  };
+  std::vector<PendingCancel> _pendingCancels;
+  int64_t _cancelAckLatencyNs{0};
+  int64_t _cancelAckJitterNs{0};
+  std::mt19937_64 _cancelAckRng{42};
 };
 
 }  // namespace flox

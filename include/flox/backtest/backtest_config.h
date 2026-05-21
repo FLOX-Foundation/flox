@@ -63,6 +63,19 @@ struct BacktestConfig
   // `aheadAtArrival` so a single threshold applies to all sizes.
   double queuePositionMinChangeFraction{0.05};
 
+  // Cancellation ack model. cancelAckLatencyNs is the base round-trip
+  // delay between cancelOrder() and CANCELED firing. Zero (default)
+  // preserves the legacy synchronous behavior. Positive values turn
+  // cancels async: PENDING_CANCEL fires immediately, CANCELED fires
+  // when sim time reaches `now + sampled_latency`, and the order may
+  // still fill in that window (late-cancel-after-fill race).
+  // cancelAckJitterNs adds a uniform jitter band; sampled latency is
+  // drawn from [base - jitter, base + jitter]. cancelAckSeed makes
+  // the sampling reproducible across runs.
+  int64_t cancelAckLatencyNs{0};
+  int64_t cancelAckJitterNs{0};
+  uint64_t cancelAckSeed{42};
+
   double riskFreeRate{0.0};
   double metricsAnnualizationFactor{252.0};  // daily-equivalent sampling
 };
