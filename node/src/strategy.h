@@ -140,6 +140,7 @@ struct NodeStrategyHost
   Napi::FunctionReference on_fill_fn;
   Napi::FunctionReference on_order_update_fn;
   Napi::FunctionReference on_queue_position_change_fn;
+  Napi::FunctionReference on_market_position_change_fn;
   Napi::ObjectReference emitter;
   std::vector<uint32_t> syms;
   std::unique_ptr<BridgeStrategy> bridge;
@@ -172,6 +173,7 @@ struct NodeStrategyHost
     kOrderEventKindFill = 0,
     kOrderEventKindUpdate = 1,
     kOrderEventKindQueuePosition = 2,
+    kOrderEventKindMarketPosition = 3,
   };
 
   struct OrderEventCallData
@@ -229,6 +231,7 @@ struct NodeStrategyHost
     on_fill_fn = get("onFill");
     on_order_update_fn = get("onOrderUpdate");
     on_queue_position_change_fn = get("onQueuePositionChange");
+    on_market_position_change_fn = get("onMarketPositionChange");
     if (on_start_fn)
     {
       on_start_fn.Call({});
@@ -257,6 +260,7 @@ struct NodeStrategyHost
     on_fill_fn = get("onFill");
     on_order_update_fn = get("onOrderUpdate");
     on_queue_position_change_fn = get("onQueuePositionChange");
+    on_market_position_change_fn = get("onMarketPositionChange");
 
     FloxStrategyCallbacks cbs{};
     cbs.user_data = this;
@@ -268,6 +272,7 @@ struct NodeStrategyHost
     cbs.on_fill = &NodeStrategyHost::onFill;
     cbs.on_order_update = &NodeStrategyHost::onOrderUpdate;
     cbs.on_queue_position_change = &NodeStrategyHost::onQueuePositionChange;
+    cbs.on_market_position_change = &NodeStrategyHost::onMarketPositionChange;
 
     bridge = std::make_unique<BridgeStrategy>(
         static_cast<SubscriberId>(id), syms, *reg, cbs);
@@ -572,8 +577,29 @@ struct NodeStrategyHost
         return "TRAILING_UPDATED";
       case 13:
         return "QUEUE_POSITION_UPDATED";
+      case 14:
+        return "MARKET_POSITION_CHANGED";
       default:
         return "UNKNOWN";
+    }
+  }
+
+  static const char* marketPositionName(uint8_t p)
+  {
+    switch (p)
+    {
+      case 1:
+        return "best";
+      case 2:
+        return "behind_best";
+      case 3:
+        return "mid_spread";
+      case 4:
+        return "level_empty";
+      case 5:
+        return "crossed";
+      default:
+        return "";
     }
   }
 
@@ -614,6 +640,17 @@ struct NodeStrategyHost
     o.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(ev->exchange_ts_ns)));
     o.Set("queueAhead", Napi::Number::New(env, flox_quantity_to_double(ev->queue_ahead_raw)));
     o.Set("queueTotal", Napi::Number::New(env, flox_quantity_to_double(ev->queue_total_raw)));
+    const char* mpName = marketPositionName(ev->market_position);
+    if (mpName[0] != '\0')
+    {
+      o.Set("marketPosition", Napi::String::New(env, mpName));
+    }
+    else
+    {
+      o.Set("marketPosition", env.Null());
+    }
+    o.Set("distanceToBestTicks",
+          Napi::Number::New(env, static_cast<double>(ev->distance_to_best_ticks)));
     o.Set("submittedAtNs", Napi::Number::New(env, static_cast<double>(ev->submitted_at_ns)));
     o.Set("acceptedAtNs", Napi::Number::New(env, static_cast<double>(ev->accepted_at_ns)));
     o.Set("firstFillAtNs", Napi::Number::New(env, static_cast<double>(ev->first_fill_at_ns)));
@@ -651,6 +688,8 @@ struct NodeStrategyHost
         return self->on_fill_fn;
       case kOrderEventKindQueuePosition:
         return self->on_queue_position_change_fn;
+      case kOrderEventKindMarketPosition:
+        return self->on_market_position_change_fn;
       case kOrderEventKindUpdate:
       default:
         return self->on_order_update_fn;
@@ -718,6 +757,13 @@ struct NodeStrategyHost
   {
     dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev,
                        kOrderEventKindQueuePosition);
+  }
+
+  static void onMarketPositionChange(void* ud, const FloxSymbolContext* ctx,
+                                     const FloxOrderEventData* ev)
+  {
+    dispatchOrderEvent(static_cast<NodeStrategyHost*>(ud), ctx, ev,
+                       kOrderEventKindMarketPosition);
   }
 
   struct LifecycleCallData

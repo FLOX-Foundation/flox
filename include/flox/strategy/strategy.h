@@ -159,6 +159,10 @@ class Strategy : public IStrategy
     {
       onSymbolQueuePositionChange(c, ev);
     }
+    else if (ev.status == OrderEventStatus::MARKET_POSITION_CHANGED)
+    {
+      onSymbolMarketPositionChange(c, ev);
+    }
     else
     {
       onSymbolOrderUpdate(c, ev);
@@ -187,6 +191,12 @@ class Strategy : public IStrategy
   // the level's total quantity. Backtest only — live exchanges do
   // not publish queue position.
   virtual void onSymbolQueuePositionChange(SymbolContext& ctx, const OrderEvent& ev) {}
+
+  // Resting limit order's categorical market position transitioned.
+  // `ev.marketPosition` is the new state (Best, BehindBest,
+  // MidSpread, LevelEmpty, Crossed); `ev.distanceToBestTicks` is
+  // signed ticks from best on our side. Backtest only.
+  virtual void onSymbolMarketPositionChange(SymbolContext& ctx, const OrderEvent& ev) {}
 
   SymbolContext& ctx(SymbolId sym) noexcept { return _contexts[sym]; }
   const SymbolContext& ctx(SymbolId sym) const noexcept { return _contexts[sym]; }

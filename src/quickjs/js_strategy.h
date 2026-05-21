@@ -39,6 +39,8 @@ class FloxJsStrategy
                             const FloxOrderEventData* ev);
   static void onQueuePositionChange(void* userData, const FloxSymbolContext* ctx,
                                     const FloxOrderEventData* ev);
+  static void onMarketPositionChange(void* userData, const FloxSymbolContext* ctx,
+                                     const FloxOrderEventData* ev);
   static void onStart(void* userData);
   static void onStop(void* userData);
 

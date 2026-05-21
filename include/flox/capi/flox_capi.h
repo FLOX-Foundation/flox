@@ -183,7 +183,9 @@ extern "C"
     int64_t triggered_at_ns;
     int64_t expired_at_ns;
     uint8_t is_maker;
-    uint8_t _pad2[7];
+    uint8_t market_position;
+    int32_t distance_to_best_ticks;
+    uint8_t _pad2[2];
   } FloxOrderEventData;
 
   typedef struct
@@ -662,6 +664,7 @@ extern "C"
   typedef void (*FloxExecListenerOnReplacedFn)(void*, const FloxOrder*, const FloxOrder*);
   typedef void (*FloxExecListenerOnTrailingUpdateFn)(void*, const FloxOrder*, int64_t);
   typedef void (*FloxExecListenerOnQueuePositionChangeFn)(void*, const FloxOrder*, int64_t, int64_t);
+  typedef void (*FloxExecListenerOnMarketPositionChangeFn)(void*, const FloxOrder*, uint8_t, int32_t);
   typedef void (*FloxExecutorSubmitFn)(void*, const FloxOrder*);
   typedef void (*FloxExecutorCancelFn)(void*, uint64_t);
   typedef void (*FloxExecutorCancelAllFn)(void*, uint32_t);
@@ -679,6 +682,8 @@ extern "C"
 
   typedef void (*FloxOnQueuePositionChangeCallback)(void*, const FloxSymbolContext*,
                                                     const FloxOrderEventData*);
+  typedef void (*FloxOnMarketPositionChangeCallback)(void*, const FloxSymbolContext*,
+                                                     const FloxOrderEventData*);
 
   typedef struct
   {
@@ -690,6 +695,7 @@ extern "C"
     FloxOnFillCallback on_fill;
     FloxOnOrderUpdateCallback on_order_update;
     FloxOnQueuePositionChangeCallback on_queue_position_change;
+    FloxOnMarketPositionChangeCallback on_market_position_change;
     void* user_data;
   } FloxStrategyCallbacks;
 
@@ -756,6 +762,7 @@ extern "C"
     FloxExecListenerOnOrderFn on_triggered;
     FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
     FloxExecListenerOnQueuePositionChangeFn on_queue_position_change;
+    FloxExecListenerOnMarketPositionChangeFn on_market_position_change;
     void* user_data;
   } FloxExecutionListenerCallbacks;
 

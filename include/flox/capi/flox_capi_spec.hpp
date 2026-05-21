@@ -136,8 +136,10 @@ extern "C"
     int64_t rejected_at_ns;
     int64_t triggered_at_ns;
     int64_t expired_at_ns;
-    uint8_t is_maker;  // 0 taker, 1 maker; meaningful only for fill statuses
-    uint8_t _pad2[7];
+    uint8_t is_maker;         // 0 taker, 1 maker; meaningful only for fill statuses
+    uint8_t market_position;  // 0 unknown, 1 best, 2 behind_best, 3 mid_spread, 4 level_empty, 5 crossed
+    int32_t distance_to_best_ticks;
+    uint8_t _pad2[2];
   } FloxOrderEventData;
 
   typedef void (*FloxOnTradeCallback)(void* user_data, const FloxSymbolContext* ctx,
@@ -156,6 +158,9 @@ extern "C"
   typedef void (*FloxOnQueuePositionChangeCallback)(void* user_data,
                                                     const FloxSymbolContext* ctx,
                                                     const FloxOrderEventData* ev);
+  typedef void (*FloxOnMarketPositionChangeCallback)(void* user_data,
+                                                     const FloxSymbolContext* ctx,
+                                                     const FloxOrderEventData* ev);
 
   typedef struct
   {
@@ -167,6 +172,7 @@ extern "C"
     FloxOnFillCallback on_fill;
     FloxOnOrderUpdateCallback on_order_update;
     FloxOnQueuePositionChangeCallback on_queue_position_change;
+    FloxOnMarketPositionChangeCallback on_market_position_change;
     void* user_data;
   } FloxStrategyCallbacks;
 
@@ -2205,6 +2211,10 @@ extern "C"
                                                           const FloxOrder* order,
                                                           int64_t queue_ahead_raw,
                                                           int64_t queue_total_raw);
+  typedef void (*FloxExecListenerOnMarketPositionChangeFn)(void* user_data,
+                                                           const FloxOrder* order,
+                                                           uint8_t market_position,
+                                                           int32_t distance_to_best_ticks);
 
   typedef struct
   {
@@ -2221,6 +2231,7 @@ extern "C"
     FloxExecListenerOnOrderFn on_triggered;
     FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
     FloxExecListenerOnQueuePositionChangeFn on_queue_position_change;
+    FloxExecListenerOnMarketPositionChangeFn on_market_position_change;
     void* user_data;
   } FloxExecutionListenerCallbacks;
 

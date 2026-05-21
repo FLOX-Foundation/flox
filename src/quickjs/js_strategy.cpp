@@ -921,6 +921,7 @@ FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
   cb.on_fill = FloxJsStrategy::onFill;
   cb.on_order_update = FloxJsStrategy::onOrderUpdate;
   cb.on_queue_position_change = FloxJsStrategy::onQueuePositionChange;
+  cb.on_market_position_change = FloxJsStrategy::onMarketPositionChange;
   cb.user_data = this;
   return cb;
 }
@@ -1164,8 +1165,28 @@ const char* jsOrderEventStatusName(uint8_t s)
       return "TRAILING_UPDATED";
     case 13:
       return "QUEUE_POSITION_UPDATED";
+    case 14:
+      return "MARKET_POSITION_CHANGED";
     default:
       return "UNKNOWN";
+  }
+}
+const char* jsMarketPositionName(uint8_t p)
+{
+  switch (p)
+  {
+    case 1:
+      return "best";
+    case 2:
+      return "behind_best";
+    case 3:
+      return "mid_spread";
+    case 4:
+      return "level_empty";
+    case 5:
+      return "crossed";
+    default:
+      return "";
   }
 }
 const char* jsOrderTypeName(uint8_t t)
@@ -1223,6 +1244,17 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
                     JS_NewFloat64(c, flox_quantity_to_double(ev->queue_ahead_raw)));
   JS_SetPropertyStr(c, obj, "queueTotal",
                     JS_NewFloat64(c, flox_quantity_to_double(ev->queue_total_raw)));
+  const char* mpName = jsMarketPositionName(ev->market_position);
+  if (mpName[0] != '\0')
+  {
+    JS_SetPropertyStr(c, obj, "marketPosition", JS_NewString(c, mpName));
+  }
+  else
+  {
+    JS_SetPropertyStr(c, obj, "marketPosition", JS_NULL);
+  }
+  JS_SetPropertyStr(c, obj, "distanceToBestTicks",
+                    JS_NewInt32(c, ev->distance_to_best_ticks));
   JS_SetPropertyStr(c, obj, "submittedAtNs",
                     JS_NewFloat64(c, static_cast<double>(ev->submitted_at_ns)));
   JS_SetPropertyStr(c, obj, "acceptedAtNs",
@@ -1319,6 +1351,32 @@ void FloxJsStrategy::onQueuePositionChange(void* userData, const FloxSymbolConte
     if (JS_IsException(ret))
     {
       std::cerr << "[flox-js] Error in onQueuePositionChange: "
+                << self->_engine.getErrorMessage() << std::endl;
+    }
+    JS_FreeValue(jsCtx, ret);
+  }
+  JS_FreeValue(jsCtx, method);
+  JS_FreeValue(jsCtx, ctxObj);
+  JS_FreeValue(jsCtx, evObj);
+}
+
+void FloxJsStrategy::onMarketPositionChange(void* userData,
+                                            const FloxSymbolContext* ctx,
+                                            const FloxOrderEventData* ev)
+{
+  auto* self = static_cast<FloxJsStrategy*>(userData);
+  auto* jsCtx = self->_engine.context();
+  JSValue ctxObj = self->makeCtxObject(ctx);
+  JSValue evObj = self->makeOrderEventObject(ev);
+  JSValue method =
+      JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchMarketPositionChange");
+  if (JS_IsFunction(jsCtx, method))
+  {
+    JSValue args[2] = {ctxObj, evObj};
+    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
+    if (JS_IsException(ret))
+    {
+      std::cerr << "[flox-js] Error in onMarketPositionChange: "
                 << self->_engine.getErrorMessage() << std::endl;
     }
     JS_FreeValue(jsCtx, ret);

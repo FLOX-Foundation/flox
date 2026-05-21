@@ -79,6 +79,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_market_position.py",
+      "sha256": "608c58f639158ebb232d3c30eaaaeaef335cae647e0f7c62f4c49c1c6f625900",
+      "size_bytes": 666,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_multi_symbol.py",
       "sha256": "524c3c289215c0404ad7dcc2919ff8d2bb6ebb608954588c20fdcf97dd1f7b21",
       "size_bytes": 3285,

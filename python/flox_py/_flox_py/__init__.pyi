@@ -1275,6 +1275,7 @@ class OrderBook:
 class OrderEventData:
     fill_role: str
     is_maker: bool
+    market_position: str
     order_type: str
     reject_reason: str
     side: str
@@ -1290,6 +1291,12 @@ class OrderEventData:
         ...
     @canceled_at_ns.setter
     def canceled_at_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def distance_to_best_ticks(self) -> int:
+        ...
+    @distance_to_best_ticks.setter
+    def distance_to_best_ticks(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     @property
     def exchange_ts_ns(self) -> int:
@@ -2328,6 +2335,8 @@ class Strategy:
     def on_book_update(self, ctx: SymbolContext) -> None:
         ...
     def on_fill(self, ctx: SymbolContext, event: OrderEventData) -> None:
+        ...
+    def on_market_position_change(self, ctx: SymbolContext, event: OrderEventData) -> None:
         ...
     def on_order_update(self, ctx: SymbolContext, event: OrderEventData) -> None:
         ...

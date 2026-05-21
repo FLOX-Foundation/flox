@@ -58,6 +58,28 @@
   ],
   "function_pointers": [
     {
+      "name": "FloxExecListenerOnMarketPositionChangeFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "uint8_t"
+        },
+        {
+          "name": "",
+          "type": "int32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "name": "FloxExecListenerOnOrderFn",
       "params": [
         {
@@ -385,6 +407,24 @@
     },
     {
       "name": "FloxOnFillCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrderEventData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnMarketPositionChangeCallback",
       "params": [
         {
           "name": "",
@@ -11342,6 +11382,10 @@
           "type": "FloxExecListenerOnQueuePositionChangeFn"
         },
         {
+          "name": "on_market_position_change",
+          "type": "FloxExecListenerOnMarketPositionChangeFn"
+        },
+        {
           "name": "user_data",
           "type": "void *"
         }
@@ -11816,8 +11860,16 @@
           "type": "uint8_t"
         },
         {
+          "name": "market_position",
+          "type": "uint8_t"
+        },
+        {
+          "name": "distance_to_best_ticks",
+          "type": "int32_t"
+        },
+        {
           "name": "_pad2",
-          "type": "uint8_t[7]"
+          "type": "uint8_t[2]"
         }
       ],
       "name": "FloxOrderEventData"
@@ -12262,6 +12314,10 @@
         {
           "name": "on_queue_position_change",
           "type": "FloxOnQueuePositionChangeCallback"
+        },
+        {
+          "name": "on_market_position_change",
+          "type": "FloxOnMarketPositionChangeCallback"
         },
         {
           "name": "user_data",

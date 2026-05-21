@@ -8991,6 +8991,7 @@ Time-bucketed price OHLC over trade events. For each cell, records open (earlies
 
 - *attr* `fill_role: str`
 - *attr* `is_maker: bool`
+- *attr* `market_position: str`
 - *attr* `order_type: str`
 - *attr* `reject_reason: str`
 - *attr* `side: str`
@@ -8999,6 +9000,8 @@ Time-bucketed price OHLC over trade events. For each cell, records open (earlies
 - *property* `accepted_at_ns: None`
 - *property* `canceled_at_ns: int`
 - *property* `canceled_at_ns: None`
+- *property* `distance_to_best_ticks: int`
+- *property* `distance_to_best_ticks: None`
 - *property* `exchange_ts_ns: int`
 - *property* `exchange_ts_ns: None`
 - *property* `expired_at_ns: int`
@@ -9622,6 +9625,7 @@ Window-count distribution + quantile lookup. For each window_ns, observes the co
 - `on_bar(self, ctx: SymbolContext, bar: BarData) -> None`
 - `on_book_update(self, ctx: SymbolContext) -> None`
 - `on_fill(self, ctx: SymbolContext, event: OrderEventData) -> None`
+- `on_market_position_change(self, ctx: SymbolContext, event: OrderEventData) -> None`
 - `on_order_update(self, ctx: SymbolContext, event: OrderEventData) -> None`
 - `on_queue_position_change(self, ctx: SymbolContext, event: OrderEventData) -> None`
 - `on_start(self) -> None`

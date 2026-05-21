@@ -275,6 +275,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
       _queueTracker.removeOrder(orderId);
       forgetQueuePosition(orderId);
       forgetTimestamps(orderId);
+      forgetMarketPosition(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       return;
     }
@@ -317,6 +318,7 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
       _queueTracker.removeOrder(_pending_orders[i].id);
       forgetQueuePosition(_pending_orders[i].id);
       forgetTimestamps(_pending_orders[i].id);
+      forgetMarketPosition(_pending_orders[i].id);
       _pending_orders[i] = _pending_orders.back();
       _pending_orders.pop_back();
     }
@@ -415,6 +417,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
     }
     maybeEmitQueuePositionChanges();
   }
+  maybeEmitMarketPositionChanges();
 
   finalizePendingCancels();
   processPendingOrders(symbol, state);
@@ -455,6 +458,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       {
         forgetQueuePosition(o.id);
         forgetTimestamps(o.id);
+        forgetMarketPosition(o.id);
       }
     }
     _pending_orders.erase(
@@ -465,6 +469,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   }
 
   maybeEmitQueuePositionChanges();
+  maybeEmitMarketPositionChanges();
 
   finalizePendingCancels();
   processPendingOrders(symbol, state);
@@ -739,6 +744,134 @@ void SimulatedExecutor::forgetQueuePosition(OrderId orderId)
   _lastEmittedQueueAheadRaw.erase(orderId);
 }
 
+void SimulatedExecutor::forgetMarketPosition(OrderId orderId)
+{
+  _lastEmittedMarketPosition.erase(orderId);
+}
+
+MarketPosition SimulatedExecutor::computeMarketPosition(
+    const Order& order, const MarketState& state, Quantity ourRemaining,
+    Quantity queueTotal) const
+{
+  const int64_t p = order.price.raw();
+  const bool isBuy = (order.side == Side::BUY);
+  const bool hasBid = state.hasBid;
+  const bool hasAsk = state.hasAsk;
+  const int64_t bid = state.bestBidRaw;
+  const int64_t ask = state.bestAskRaw;
+
+  if (isBuy)
+  {
+    if (hasAsk && p >= ask)
+    {
+      return MarketPosition::Crossed;
+    }
+    if (hasBid && p == bid)
+    {
+      if (queueTotal.raw() > 0 && queueTotal.raw() <= ourRemaining.raw())
+      {
+        return MarketPosition::LevelEmpty;
+      }
+      return MarketPosition::Best;
+    }
+    if (hasBid && p < bid)
+    {
+      return MarketPosition::BehindBest;
+    }
+    // p > bid (or no bid) and p < ask → mid-spread.
+    if (hasAsk && (!hasBid || p > bid) && p < ask)
+    {
+      return MarketPosition::MidSpread;
+    }
+    return MarketPosition::Unknown;
+  }
+  // SELL side.
+  if (hasBid && p <= bid)
+  {
+    return MarketPosition::Crossed;
+  }
+  if (hasAsk && p == ask)
+  {
+    if (queueTotal.raw() > 0 && queueTotal.raw() <= ourRemaining.raw())
+    {
+      return MarketPosition::LevelEmpty;
+    }
+    return MarketPosition::Best;
+  }
+  if (hasAsk && p > ask)
+  {
+    return MarketPosition::BehindBest;
+  }
+  if (hasBid && (!hasAsk || p < ask) && p > bid)
+  {
+    return MarketPosition::MidSpread;
+  }
+  return MarketPosition::Unknown;
+}
+
+int32_t SimulatedExecutor::computeDistanceToBestTicks(
+    const Order& order, const MarketState& state) const
+{
+  // One raw price unit per "tick" is the safe fallback if the engine
+  // has no symbol tick-size handy. Strategies that care about this
+  // value typically know their own tick size.
+  const int64_t p = order.price.raw();
+  if (order.side == Side::BUY)
+  {
+    if (!state.hasBid)
+    {
+      return 0;
+    }
+    return static_cast<int32_t>(state.bestBidRaw - p);  // positive = behind
+  }
+  if (!state.hasAsk)
+  {
+    return 0;
+  }
+  return static_cast<int32_t>(p - state.bestAskRaw);
+}
+
+void SimulatedExecutor::maybeEmitMarketPositionChanges()
+{
+  if (!_callback || _pending_orders.empty())
+  {
+    return;
+  }
+  for (const Order& o : _pending_orders)
+  {
+    if (o.type != OrderType::LIMIT)
+    {
+      continue;
+    }
+    const MarketState& state = getMarketState(o.symbol);
+    Quantity queueTotal{0};
+    if (auto snap = _queueTracker.snapshot(o.id))
+    {
+      queueTotal = snap->total;
+    }
+    const Quantity remaining =
+        Quantity::fromRaw(o.quantity.raw() - o.filledQuantity.raw());
+    const MarketPosition pos = computeMarketPosition(o, state, remaining, queueTotal);
+    const int32_t dist = computeDistanceToBestTicks(o, state);
+
+    auto it = _lastEmittedMarketPosition.find(o.id);
+    if (it != _lastEmittedMarketPosition.end() && it->second == pos)
+    {
+      continue;
+    }
+    _lastEmittedMarketPosition[o.id] = pos;
+
+    OrderEvent ev;
+    ev.status = OrderEventStatus::MARKET_POSITION_CHANGED;
+    ev.order = o;
+    ev.marketPosition = pos;
+    ev.distanceToBestTicks = dist;
+    ev.exchangeTsNs = _clock.nowNs();
+    ev.timestamps = timestampsFor(o.id);
+    _callback(ev);
+  }
+}
+
 int64_t SimulatedExecutor::sampleCancelAckLatency()
 {
   if (_cancelAckJitterNs <= 0)
@@ -796,6 +929,7 @@ void SimulatedExecutor::finalizePendingCancels()
       _queueTracker.removeOrder(orderId);
       forgetQueuePosition(orderId);
       forgetTimestamps(orderId);
+      forgetMarketPosition(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       continue;
     }
