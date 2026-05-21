@@ -153,6 +153,86 @@ TEST(MarketPosition, EmitsOnlyOnCategoricalTransition)
   EXPECT_EQ(mpEvents, 1u);
 }
 
+TEST(MarketPosition, LevelEmptyWhenAloneAtPrice)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  std::vector<OrderEvent> events;
+  exec.setOrderEventCallback([&events](const OrderEvent& ev)
+                             { events.push_back(ev); });
+
+  // Order arrives at a price where no other resting qty exists.
+  pushBook(exec, 1, 100.0, 0.0, 101.0, 5.0);
+  exec.submitOrder(limitBuy(1, 1, 100.0, 1.0));
+  // Trigger recompute.
+  pushBook(exec, 1, 100.0, 0.0, 101.0, 5.0);
+
+  const OrderEvent* ev = findMarketPositionEvent(events, 1);
+  ASSERT_NE(ev, nullptr);
+  EXPECT_EQ(ev->marketPosition, MarketPosition::LevelEmpty);
+}
+
+TEST(MarketPosition, NotLevelEmptyWhenOthersRestAtSamePrice)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  std::vector<OrderEvent> events;
+  exec.setOrderEventCallback([&events](const OrderEvent& ev)
+                             { events.push_back(ev); });
+
+  // 5 lots of OTHER resting qty at our price.
+  pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
+  exec.submitOrder(limitBuy(1, 1, 100.0, 1.0));
+  pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
+
+  const OrderEvent* ev = findMarketPositionEvent(events, 1);
+  ASSERT_NE(ev, nullptr);
+  EXPECT_EQ(ev->marketPosition, MarketPosition::Best);
+}
+
+TEST(MarketPosition, TransitionsToLevelEmptyWhenOthersCancel)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  std::vector<OrderEvent> events;
+  exec.setOrderEventCallback([&events](const OrderEvent& ev)
+                             { events.push_back(ev); });
+
+  // Start: 5 lots ahead, we are Best (but not LevelEmpty).
+  pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
+  exec.submitOrder(limitBuy(1, 1, 100.0, 1.0));
+  pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
+
+  // Others cancel: level drops to zero.
+  pushBook(exec, 1, 100.0, 0.0, 101.0, 5.0);
+
+  bool sawBest = false;
+  bool sawLevelEmpty = false;
+  for (const auto& ev : events)
+  {
+    if (ev.status != OrderEventStatus::MARKET_POSITION_CHANGED)
+    {
+      continue;
+    }
+    if (ev.marketPosition == MarketPosition::Best)
+    {
+      sawBest = true;
+    }
+    if (ev.marketPosition == MarketPosition::LevelEmpty)
+    {
+      sawLevelEmpty = true;
+    }
+  }
+  EXPECT_TRUE(sawBest);
+  EXPECT_TRUE(sawLevelEmpty);
+}
+
 TEST(MarketPosition, DistanceToBestTicksReflectsGap)
 {
   SimulatedClock clock;

@@ -211,6 +211,27 @@ void OrderQueueTracker::snapshotAll(std::vector<QueueSnapshot>& out) const
   }
 }
 
+void OrderQueueTracker::trackedPrices(SymbolId symbol, Side side,
+                                      std::vector<Price>& out) const
+{
+  if (!_enabled)
+  {
+    return;
+  }
+  for (const auto& level : _levels)
+  {
+    if (level.key.symbol != symbol || level.key.side != side)
+    {
+      continue;
+    }
+    if (level.entries.empty())
+    {
+      continue;
+    }
+    out.push_back(Price::fromRaw(level.key.priceRaw));
+  }
+}
+
 std::optional<QueueSnapshot> OrderQueueTracker::snapshot(OrderId orderId) const
 {
   if (!_enabled)

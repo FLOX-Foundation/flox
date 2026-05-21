@@ -71,6 +71,12 @@ class OrderQueueTracker
   // Vector is cleared before append. Order is undefined.
   void snapshotAll(std::vector<QueueSnapshot>& out) const;
 
+  // Append every (price) the tracker currently holds at the given
+  // (symbol, side). Caller can compare against the latest book
+  // snapshot to detect levels that have disappeared and zero them
+  // via onLevelUpdate(symbol, side, price, 0).
+  void trackedPrices(SymbolId symbol, Side side, std::vector<Price>& out) const;
+
   // Return the current queue snapshot for `orderId`, or std::nullopt
   // if the order is not currently resting.
   std::optional<QueueSnapshot> snapshot(OrderId orderId) const;
