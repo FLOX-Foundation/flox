@@ -155,6 +155,10 @@ class Strategy : public IStrategy
     {
       onSymbolFill(c, ev);
     }
+    else if (ev.status == OrderEventStatus::QUEUE_POSITION_UPDATED)
+    {
+      onSymbolQueuePositionChange(c, ev);
+    }
     else
     {
       onSymbolOrderUpdate(c, ev);
@@ -176,6 +180,13 @@ class Strategy : public IStrategy
   // strategy to learn its stop fired.
   virtual void onSymbolFill(SymbolContext& ctx, const OrderEvent& ev) {}
   virtual void onSymbolOrderUpdate(SymbolContext& ctx, const OrderEvent& ev) {}
+
+  // Resting limit order's queue position moved without any other
+  // lifecycle transition. `ev.queueAhead` is the volume in front of
+  // the order at its price level at this moment; `ev.queueTotal` is
+  // the level's total quantity. Backtest only — live exchanges do
+  // not publish queue position.
+  virtual void onSymbolQueuePositionChange(SymbolContext& ctx, const OrderEvent& ev) {}
 
   SymbolContext& ctx(SymbolId sym) noexcept { return _contexts[sym]; }
   const SymbolContext& ctx(SymbolId sym) const noexcept { return _contexts[sym]; }

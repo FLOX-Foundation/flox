@@ -90,6 +90,28 @@
       "return_type": "void"
     },
     {
+      "name": "FloxExecListenerOnQueuePositionChangeFn",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrder *"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        },
+        {
+          "name": "",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "name": "FloxExecListenerOnRejectedFn",
       "params": [
         {
@@ -381,6 +403,24 @@
     },
     {
       "name": "FloxOnOrderUpdateCallback",
+      "params": [
+        {
+          "name": "",
+          "type": "void *"
+        },
+        {
+          "name": "",
+          "type": "const FloxSymbolContext *"
+        },
+        {
+          "name": "",
+          "type": "const FloxOrderEventData *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "name": "FloxOnQueuePositionChangeCallback",
       "params": [
         {
           "name": "",
@@ -11298,6 +11338,10 @@
           "type": "FloxExecListenerOnTrailingUpdateFn"
         },
         {
+          "name": "on_queue_position_change",
+          "type": "FloxExecListenerOnQueuePositionChangeFn"
+        },
+        {
           "name": "user_data",
           "type": "void *"
         }
@@ -11726,6 +11770,14 @@
         {
           "name": "reject_reason",
           "type": "const char *"
+        },
+        {
+          "name": "queue_ahead_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "queue_total_raw",
+          "type": "int64_t"
         }
       ],
       "name": "FloxOrderEventData"
@@ -12166,6 +12218,10 @@
         {
           "name": "on_order_update",
           "type": "FloxOnOrderUpdateCallback"
+        },
+        {
+          "name": "on_queue_position_change",
+          "type": "FloxOnQueuePositionChangeCallback"
         },
         {
           "name": "user_data",

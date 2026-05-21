@@ -1302,6 +1302,18 @@ class OrderEventData:
     def order_id(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     @property
+    def queue_ahead(self) -> float:
+        ...
+    @queue_ahead.setter
+    def queue_ahead(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    @property
+    def queue_total(self) -> float:
+        ...
+    @queue_total.setter
+    def queue_total(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    @property
     def symbol_id(self) -> int:
         ...
     @symbol_id.setter
@@ -2016,6 +2028,10 @@ class SimulatedExecutor:
         """
         Configure queue simulation. model: none|tob|full
         """
+    def set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        Minimum fractional change in queue-ahead required to emit a queue-position event. 0.0 = every change, 1.0 = disable.
+        """
     def set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
         """
         Configure slippage for a specific symbol
@@ -2239,6 +2255,8 @@ class Strategy:
     def on_fill(self, ctx: SymbolContext, event: OrderEventData) -> None:
         ...
     def on_order_update(self, ctx: SymbolContext, event: OrderEventData) -> None:
+        ...
+    def on_queue_position_change(self, ctx: SymbolContext, event: OrderEventData) -> None:
         ...
     def on_start(self) -> None:
         ...

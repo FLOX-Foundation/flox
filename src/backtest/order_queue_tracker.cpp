@@ -192,4 +192,45 @@ void OrderQueueTracker::onLevelUpdate(SymbolId symbol, Side side, Price price,
   level->totalQty = newQty;
 }
 
+void OrderQueueTracker::snapshotAll(std::vector<QueueSnapshot>& out) const
+{
+  out.clear();
+  if (!_enabled)
+  {
+    return;
+  }
+  for (const auto& level : _levels)
+  {
+    for (const auto& entry : level.entries)
+    {
+      out.push_back(QueueSnapshot{.orderId = entry.orderId,
+                                  .ahead = entry.aheadRemaining,
+                                  .total = level.totalQty,
+                                  .aheadAtArrival = entry.aheadAtArrival});
+    }
+  }
+}
+
+std::optional<QueueSnapshot> OrderQueueTracker::snapshot(OrderId orderId) const
+{
+  if (!_enabled)
+  {
+    return std::nullopt;
+  }
+  for (const auto& level : _levels)
+  {
+    for (const auto& entry : level.entries)
+    {
+      if (entry.orderId == orderId)
+      {
+        return QueueSnapshot{.orderId = entry.orderId,
+                             .ahead = entry.aheadRemaining,
+                             .total = level.totalQty,
+                             .aheadAtArrival = entry.aheadAtArrival};
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace flox

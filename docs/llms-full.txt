@@ -9001,6 +9001,10 @@ Time-bucketed price OHLC over trade events. For each cell, records open (earlies
 - *property* `fill_qty: None`
 - *property* `order_id: int`
 - *property* `order_id: None`
+- *property* `queue_ahead: float`
+- *property* `queue_ahead: None`
+- *property* `queue_total: float`
+- *property* `queue_total: None`
 - *property* `symbol_id: int`
 - *property* `symbol_id: None`
 
@@ -9450,6 +9454,7 @@ Window-count distribution + quantile lookup. For each window_ns, observes the co
 - `on_trade_qty(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool) -> None`
 - `set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `set_queue_model(self, model: str, depth: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
+- `set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
 - *property* `fill_count: int`
@@ -9582,6 +9587,7 @@ Window-count distribution + quantile lookup. For each window_ns, observes the co
 - `on_book_update(self, ctx: SymbolContext) -> None`
 - `on_fill(self, ctx: SymbolContext, event: OrderEventData) -> None`
 - `on_order_update(self, ctx: SymbolContext, event: OrderEventData) -> None`
+- `on_queue_position_change(self, ctx: SymbolContext, event: OrderEventData) -> None`
 - `on_start(self) -> None`
 - `on_stop(self) -> None`
 - `on_trade(self, ctx: SymbolContext, trade: TradeData) -> None`

@@ -3779,6 +3779,16 @@ class CapiExecutionListener : public flox::IOrderExecutionListener
       _impl->cb.on_trailing_stop_updated(_impl->cb.user_data, &fo, newTrigger.raw());
     }
   }
+  void onOrderQueuePositionChange(const flox::Order& o, flox::Quantity queueAhead,
+                                  flox::Quantity queueTotal) override
+  {
+    if (_impl && _impl->cb.on_queue_position_change)
+    {
+      auto fo = packOrder(o);
+      _impl->cb.on_queue_position_change(_impl->cb.user_data, &fo, queueAhead.raw(),
+                                         queueTotal.raw());
+    }
+  }
 
  private:
   FloxExecutionListenerImpl* _impl;

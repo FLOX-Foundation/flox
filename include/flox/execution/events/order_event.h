@@ -30,7 +30,11 @@ enum class OrderEventStatus
   // Conditional order statuses
   PENDING_TRIGGER,
   TRIGGERED,
-  TRAILING_UPDATED
+  TRAILING_UPDATED,
+  // Queue position changed without any other lifecycle transition.
+  // Backtest-only: surfaces movement of `queueAhead` as proportional
+  // shrink / queue-consumption fills happen at the order's level.
+  QUEUE_POSITION_UPDATED
 };
 
 struct OrderEvent
@@ -45,6 +49,13 @@ struct OrderEvent
   // For fills and trailing updates
   Price fillPrice{};
   Price newTrailingPrice{};
+
+  // For QUEUE_POSITION_UPDATED, PARTIALLY_FILLED, FILLED events on
+  // backtest limit orders: volume ahead and total volume at the
+  // order's level at the time the event was emitted. Zero on live
+  // events and on non-limit orders.
+  Quantity queueAhead{0};
+  Quantity queueTotal{0};
 
   uint64_t tickSequence{0};  // internal, set by bus
 
@@ -93,6 +104,9 @@ struct OrderEvent
         break;
       case OrderEventStatus::TRAILING_UPDATED:
         listener.onTrailingStopUpdated(order, newTrailingPrice);
+        break;
+      case OrderEventStatus::QUEUE_POSITION_UPDATED:
+        listener.onOrderQueuePositionChange(order, queueAhead, queueTotal);
         break;
     }
   }

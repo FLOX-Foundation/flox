@@ -124,6 +124,8 @@ extern "C"
     int64_t fill_price_raw;
     int64_t exchange_ts_ns;
     const char* reject_reason;  // null when status != REJECTED
+    int64_t queue_ahead_raw;    // queue position (backtest limit orders only)
+    int64_t queue_total_raw;    // total quantity at the order's price level
   } FloxOrderEventData;
 
   typedef void (*FloxOnTradeCallback)(void* user_data, const FloxSymbolContext* ctx,
@@ -139,6 +141,10 @@ extern "C"
   typedef void (*FloxOnStartCallback)(void* user_data);
   typedef void (*FloxOnStopCallback)(void* user_data);
 
+  typedef void (*FloxOnQueuePositionChangeCallback)(void* user_data,
+                                                    const FloxSymbolContext* ctx,
+                                                    const FloxOrderEventData* ev);
+
   typedef struct
   {
     FloxOnTradeCallback on_trade;
@@ -148,6 +154,7 @@ extern "C"
     FloxOnStopCallback on_stop;
     FloxOnFillCallback on_fill;
     FloxOnOrderUpdateCallback on_order_update;
+    FloxOnQueuePositionChangeCallback on_queue_position_change;
     void* user_data;
   } FloxStrategyCallbacks;
 
@@ -2182,6 +2189,10 @@ extern "C"
   typedef void (*FloxExecListenerOnTrailingUpdateFn)(void* user_data,
                                                      const FloxOrder* order,
                                                      int64_t new_trigger_price_raw);
+  typedef void (*FloxExecListenerOnQueuePositionChangeFn)(void* user_data,
+                                                          const FloxOrder* order,
+                                                          int64_t queue_ahead_raw,
+                                                          int64_t queue_total_raw);
 
   typedef struct
   {
@@ -2197,6 +2208,7 @@ extern "C"
     FloxExecListenerOnOrderFn on_pending_trigger;
     FloxExecListenerOnOrderFn on_triggered;
     FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
+    FloxExecListenerOnQueuePositionChangeFn on_queue_position_change;
     void* user_data;
   } FloxExecutionListenerCallbacks;
 

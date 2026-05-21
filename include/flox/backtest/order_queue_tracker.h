@@ -15,6 +15,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,14 @@ struct QueueEntry
   Quantity remaining{};       // order qty left to fill
   Quantity aheadRemaining{};  // volume in queue ahead of this order
   Quantity aheadAtArrival{};  // snapshot at registration (for proportional shrink)
+};
+
+struct QueueSnapshot
+{
+  OrderId orderId{};
+  Quantity ahead{};
+  Quantity total{};
+  Quantity aheadAtArrival{};
 };
 
 // Tracks order queue position per price level for limit-order fill simulation.
@@ -57,6 +66,14 @@ class OrderQueueTracker
   // A price level changed quantity. Shrinks `aheadRemaining` proportionally
   // when qty decreases (trade-ahead heuristic). Growth adds only behind us.
   void onLevelUpdate(SymbolId symbol, Side side, Price price, Quantity newQty);
+
+  // Fill `out` with the current queue snapshot of every resting order.
+  // Vector is cleared before append. Order is undefined.
+  void snapshotAll(std::vector<QueueSnapshot>& out) const;
+
+  // Return the current queue snapshot for `orderId`, or std::nullopt
+  // if the order is not currently resting.
+  std::optional<QueueSnapshot> snapshot(OrderId orderId) const;
 
   bool enabled() const { return _enabled; }
 

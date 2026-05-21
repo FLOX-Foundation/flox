@@ -43,6 +43,7 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
     setSymbolSlippage(sym, prof);
   }
   setQueueModel(config.queueModel, config.queueDepth);
+  _queuePosMinFraction = config.queuePositionMinChangeFraction;
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -73,6 +74,11 @@ void SimulatedExecutor::setQueueModel(QueueModel model, size_t depth)
 {
   _queueModel = model;
   _queueTracker.setModel(model, depth);
+}
+
+void SimulatedExecutor::setQueuePositionMinChangeFraction(double fraction)
+{
+  _queuePosMinFraction = fraction;
 }
 
 const SlippageProfile& SimulatedExecutor::slippageFor(SymbolId symbol) const
@@ -213,6 +219,9 @@ void SimulatedExecutor::submitOrder(const Order& order)
       }
       _queueTracker.addOrder(accepted.symbol, accepted.side, accepted.price,
                              accepted.id, accepted.quantity, levelQty);
+      // Seed last-emitted with the arrival ahead so the first
+      // queue-position event fires only after a real movement.
+      _lastEmittedQueueAheadRaw[accepted.id] = levelQty.raw();
       _pending_orders.push_back(accepted);
       return;
     }
@@ -235,6 +244,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
       *it = _pending_orders.back();
       _pending_orders.pop_back();
       _queueTracker.removeOrder(orderId);
+      forgetQueuePosition(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       return;
     }
@@ -275,6 +285,7 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
     {
       emitEvent(OrderEventStatus::CANCELED, _pending_orders[i]);
       _queueTracker.removeOrder(_pending_orders[i].id);
+      forgetQueuePosition(_pending_orders[i].id);
       _pending_orders[i] = _pending_orders.back();
       _pending_orders.pop_back();
     }
@@ -371,6 +382,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
     {
       _queueTracker.onLevelUpdate(symbol, Side::SELL, lvl.price, lvl.quantity);
     }
+    maybeEmitQueuePositionChanges();
   }
 
   processPendingOrders(symbol, state);
@@ -401,13 +413,23 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       }
       executeFill(*ord, price, fillQty);
     }
-    // Remove fully-filled queued orders
+    // Remove fully-filled queued orders and drop their queue
+    // position tracking entries.
+    for (const auto& o : _pending_orders)
+    {
+      if (o.filledQuantity.raw() >= o.quantity.raw())
+      {
+        forgetQueuePosition(o.id);
+      }
+    }
     _pending_orders.erase(
         std::remove_if(_pending_orders.begin(), _pending_orders.end(),
                        [](const Order& o)
                        { return o.filledQuantity.raw() >= o.quantity.raw(); }),
         _pending_orders.end());
   }
+
+  maybeEmitQueuePositionChanges();
 
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
@@ -571,6 +593,11 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty)
   ev.exchangeTsNs = now;
   ev.status =
       (order.filledQuantity >= order.quantity) ? OrderEventStatus::FILLED : OrderEventStatus::PARTIALLY_FILLED;
+  if (auto snap = _queueTracker.snapshot(order.id))
+  {
+    ev.queueAhead = snap->ahead;
+    ev.queueTotal = snap->total;
+  }
 
   if (_callback)
   {
@@ -593,6 +620,49 @@ void SimulatedExecutor::emitEvent(OrderEventStatus status, const Order& order)
     ev.exchangeTsNs = _clock.nowNs();
     _callback(ev);
   }
+}
+
+void SimulatedExecutor::maybeEmitQueuePositionChanges()
+{
+  if (!_queueTracker.enabled() || !_callback || _queuePosMinFraction >= 1.0)
+  {
+    return;
+  }
+  _queueTracker.snapshotAll(_queueSnapshotBuffer);
+  for (const auto& snap : _queueSnapshotBuffer)
+  {
+    auto it = _lastEmittedQueueAheadRaw.find(snap.orderId);
+    const int64_t lastRaw = (it == _lastEmittedQueueAheadRaw.end())
+                                ? snap.aheadAtArrival.raw()
+                                : it->second;
+    const int64_t deltaRaw =
+        (snap.ahead.raw() > lastRaw) ? (snap.ahead.raw() - lastRaw) : (lastRaw - snap.ahead.raw());
+    const int64_t denomRaw = (snap.aheadAtArrival.raw() > 0) ? snap.aheadAtArrival.raw() : 1;
+    if (_queuePosMinFraction > 0.0 &&
+        static_cast<double>(deltaRaw) <
+            _queuePosMinFraction * static_cast<double>(denomRaw))
+    {
+      continue;
+    }
+    Order* ord = findPendingOrder(snap.orderId);
+    if (!ord)
+    {
+      continue;
+    }
+    OrderEvent ev;
+    ev.status = OrderEventStatus::QUEUE_POSITION_UPDATED;
+    ev.order = *ord;
+    ev.queueAhead = snap.ahead;
+    ev.queueTotal = snap.total;
+    ev.exchangeTsNs = _clock.nowNs();
+    _callback(ev);
+    _lastEmittedQueueAheadRaw[snap.orderId] = snap.ahead.raw();
+  }
+}
+
+void SimulatedExecutor::forgetQueuePosition(OrderId orderId)
+{
+  _lastEmittedQueueAheadRaw.erase(orderId);
 }
 
 void SimulatedExecutor::emitTrailingUpdate(const Order& order, Price newTrigger)

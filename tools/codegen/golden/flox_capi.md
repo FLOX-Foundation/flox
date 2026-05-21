@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 520 functions, 45 handles, 57 structs, 36 callback typedefs, 3 enums, 60 groups.
+**Surface:** 520 functions, 45 handles, 57 structs, 38 callback typedefs, 3 enums, 60 groups.
 
 ## Opaque handles
 
@@ -84,6 +84,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxOnOrderUpdateCallback)(void *, const FloxSymbolContext *, const FloxOrderEventData *);`
 - `typedef void (*FloxOnStartCallback)(void *);`
 - `typedef void (*FloxOnStopCallback)(void *);`
+- `typedef void (*FloxOnQueuePositionChangeCallback)(void *, const FloxSymbolContext *, const FloxOrderEventData *);`
 - `typedef const double * (*FloxGraphNodeFn)(void *, FloxIndicatorGraphHandle, uint32_t, size_t *);`
 - `typedef void (*FloxOnSignalCallback)(void *, const FloxSignal *);`
 - `typedef uint8_t (*FloxRiskManagerAllowFn)(void *, const FloxSignal *);`
@@ -103,6 +104,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxExecListenerOnRejectedFn)(void *, const FloxOrder *, const char *);`
 - `typedef void (*FloxExecListenerOnReplacedFn)(void *, const FloxOrder *, const FloxOrder *);`
 - `typedef void (*FloxExecListenerOnTrailingUpdateFn)(void *, const FloxOrder *, int64_t);`
+- `typedef void (*FloxExecListenerOnQueuePositionChangeFn)(void *, const FloxOrder *, int64_t, int64_t);`
 - `typedef void (*FloxExecutorSubmitFn)(void *, const FloxOrder *);`
 - `typedef void (*FloxExecutorCancelFn)(void *, uint64_t);`
 - `typedef void (*FloxExecutorCancelAllFn)(void *, uint32_t);`
@@ -196,6 +198,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `fill_price_raw` | `int64_t` |
 | `exchange_ts_ns` | `int64_t` |
 | `reject_reason` | `const char *` |
+| `queue_ahead_raw` | `int64_t` |
+| `queue_total_raw` | `int64_t` |
 
 ### `FloxStrategyCallbacks`
 
@@ -208,6 +212,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `on_stop` | `FloxOnStopCallback` |
 | `on_fill` | `FloxOnFillCallback` |
 | `on_order_update` | `FloxOnOrderUpdateCallback` |
+| `on_queue_position_change` | `FloxOnQueuePositionChangeCallback` |
 | `user_data` | `void *` |
 
 ### `FloxBar`
@@ -581,6 +586,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `on_pending_trigger` | `FloxExecListenerOnOrderFn` |
 | `on_triggered` | `FloxExecListenerOnOrderFn` |
 | `on_trailing_stop_updated` | `FloxExecListenerOnTrailingUpdateFn` |
+| `on_queue_position_change` | `FloxExecListenerOnQueuePositionChangeFn` |
 | `user_data` | `void *` |
 
 ### `FloxExchangeCapabilities`

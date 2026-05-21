@@ -221,6 +221,11 @@ class PySimulatedExecutor
     _executor.setQueueModel(qm, depth);
   }
 
+  void setQueuePositionMinChangeFraction(double fraction)
+  {
+    _executor.setQueuePositionMinChangeFraction(fraction);
+  }
+
   py::array_t<PyFill> fills() const
   {
     const auto& f = _executor.fills();
@@ -443,6 +448,11 @@ inline void bindBacktest(py::module_& m)
       .def("set_queue_model", &PySimulatedExecutor::setQueueModel,
            "Configure queue simulation. model: none|tob|full",
            py::arg("model"), py::arg("depth") = 1)
+      .def("set_queue_position_min_change_fraction",
+           &PySimulatedExecutor::setQueuePositionMinChangeFraction,
+           "Minimum fractional change in queue-ahead required to emit a "
+           "queue-position event. 0.0 = every change, 1.0 = disable.",
+           py::arg("fraction"))
       .def("fills", &PySimulatedExecutor::fills,
            "Get all fills as numpy structured array")
       .def("fills_list", &PySimulatedExecutor::fillsList,

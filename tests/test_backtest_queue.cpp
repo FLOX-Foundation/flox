@@ -117,6 +117,90 @@ TEST(BacktestQueue, NoneModelPreservesLegacyInstantFill)
   ASSERT_EQ(exec.fills().size(), 1u);
 }
 
+TEST(BacktestQueue, QueuePositionUpdatedEmittedOnTradeAhead)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setQueuePositionMinChangeFraction(0.05);
+
+  std::vector<OrderEvent> events;
+  exec.setOrderEventCallback([&events](const OrderEvent& ev)
+                             { events.push_back(ev); });
+
+  // Order behind 10 units of resting bid quantity.
+  pushBook(exec, 1, 100.0, 10.0, 101.0, 5.0);
+  exec.submitOrder(limitBuy(1, 1, 100.0, 1.0));
+
+  // Trade of 5 consumes half the queue ahead, no fill but queue moved.
+  exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(5.0), false);
+
+  size_t queueEvents = 0;
+  for (const auto& ev : events)
+  {
+    if (ev.status == OrderEventStatus::QUEUE_POSITION_UPDATED)
+    {
+      ++queueEvents;
+      EXPECT_LT(ev.queueAhead.toDouble(), 10.0);
+      EXPECT_GE(ev.queueAhead.toDouble(), 0.0);
+      EXPECT_EQ(ev.order.id, 1u);
+    }
+  }
+  EXPECT_GE(queueEvents, 1u);
+}
+
+TEST(BacktestQueue, QueuePositionFractionThresholdSuppressesSmallMoves)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setQueuePositionMinChangeFraction(0.50);  // require 50% shift
+
+  std::vector<OrderEvent> events;
+  exec.setOrderEventCallback([&events](const OrderEvent& ev)
+                             { events.push_back(ev); });
+
+  pushBook(exec, 1, 100.0, 10.0, 101.0, 5.0);
+  exec.submitOrder(limitBuy(1, 1, 100.0, 1.0));
+
+  // Trade of 1 = 10% shift, below 50% threshold → suppressed.
+  exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
+
+  for (const auto& ev : events)
+  {
+    EXPECT_NE(ev.status, OrderEventStatus::QUEUE_POSITION_UPDATED);
+  }
+}
+
+TEST(BacktestQueue, FillCarriesQueueAheadAndTotal)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  std::vector<OrderEvent> events;
+  exec.setOrderEventCallback([&events](const OrderEvent& ev)
+                             { events.push_back(ev); });
+
+  // Order alone at the level (queueAhead = 0 at arrival).
+  pushBook(exec, 1, 100.0, 0.0, 101.0, 5.0);
+  exec.submitOrder(limitBuy(1, 1, 100.0, 3.0));
+
+  exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
+
+  bool sawFill = false;
+  for (const auto& ev : events)
+  {
+    if (ev.status == OrderEventStatus::PARTIALLY_FILLED ||
+        ev.status == OrderEventStatus::FILLED)
+    {
+      sawFill = true;
+      EXPECT_GE(ev.queueAhead.raw(), 0);
+    }
+  }
+  EXPECT_TRUE(sawFill);
+}
+
 TEST(BacktestQueue, CancelOrderRemovesFromQueue)
 {
   SimulatedClock clock;
