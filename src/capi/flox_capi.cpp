@@ -3799,6 +3799,37 @@ class CapiExecutionListener : public flox::IOrderExecutionListener
                                           distanceToBestTicks);
     }
   }
+  void onOrderReplaceSubmitted(const flox::Order& oldOrder,
+                               const flox::Order& newOrder) override
+  {
+    if (_impl && _impl->cb.on_replace_submitted)
+    {
+      auto fo_old = packOrder(oldOrder);
+      auto fo_new = packOrder(newOrder);
+      _impl->cb.on_replace_submitted(_impl->cb.user_data, &fo_old, &fo_new);
+    }
+  }
+  void onOrderReplaceAccepted(const flox::Order& oldOrder,
+                              const flox::Order& newOrder) override
+  {
+    if (_impl && _impl->cb.on_replace_accepted)
+    {
+      auto fo_old = packOrder(oldOrder);
+      auto fo_new = packOrder(newOrder);
+      _impl->cb.on_replace_accepted(_impl->cb.user_data, &fo_old, &fo_new);
+    }
+  }
+  void onOrderReplaceRejected(const flox::Order& oldOrder, const flox::Order& newOrder,
+                              const std::string& reason) override
+  {
+    if (_impl && _impl->cb.on_replace_rejected)
+    {
+      auto fo_old = packOrder(oldOrder);
+      auto fo_new = packOrder(newOrder);
+      _impl->cb.on_replace_rejected(_impl->cb.user_data, &fo_old, &fo_new,
+                                    reason.c_str());
+    }
+  }
 
  private:
   FloxExecutionListenerImpl* _impl;

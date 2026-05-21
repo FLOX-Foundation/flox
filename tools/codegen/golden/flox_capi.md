@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 520 functions, 45 handles, 57 structs, 40 callback typedefs, 3 enums, 60 groups.
+**Surface:** 520 functions, 45 handles, 57 structs, 43 callback typedefs, 3 enums, 60 groups.
 
 ## Opaque handles
 
@@ -107,6 +107,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `typedef void (*FloxExecListenerOnTrailingUpdateFn)(void *, const FloxOrder *, int64_t);`
 - `typedef void (*FloxExecListenerOnQueuePositionChangeFn)(void *, const FloxOrder *, int64_t, int64_t);`
 - `typedef void (*FloxExecListenerOnMarketPositionChangeFn)(void *, const FloxOrder *, uint8_t, int32_t);`
+- `typedef void (*FloxExecListenerOnReplaceSubmittedFn)(void *, const FloxOrder *, const FloxOrder *);`
+- `typedef void (*FloxExecListenerOnReplaceAcceptedFn)(void *, const FloxOrder *, const FloxOrder *);`
+- `typedef void (*FloxExecListenerOnReplaceRejectedFn)(void *, const FloxOrder *, const FloxOrder *, const char *);`
 - `typedef void (*FloxExecutorSubmitFn)(void *, const FloxOrder *);`
 - `typedef void (*FloxExecutorCancelFn)(void *, uint64_t);`
 - `typedef void (*FloxExecutorCancelAllFn)(void *, uint32_t);`
@@ -603,6 +606,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `on_trailing_stop_updated` | `FloxExecListenerOnTrailingUpdateFn` |
 | `on_queue_position_change` | `FloxExecListenerOnQueuePositionChangeFn` |
 | `on_market_position_change` | `FloxExecListenerOnMarketPositionChangeFn` |
+| `on_replace_submitted` | `FloxExecListenerOnReplaceSubmittedFn` |
+| `on_replace_accepted` | `FloxExecListenerOnReplaceAcceptedFn` |
+| `on_replace_rejected` | `FloxExecListenerOnReplaceRejectedFn` |
 | `user_data` | `void *` |
 
 ### `FloxExchangeCapabilities`
