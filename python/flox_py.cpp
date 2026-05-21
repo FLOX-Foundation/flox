@@ -24,6 +24,7 @@
 #include "latency_bindings.h"
 #include "optimizer_bindings.h"
 #include "order_group_bindings.h"
+#include "order_journey_tracer_bindings.h"
 #include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
 #include "profile_bindings.h"
@@ -803,6 +804,7 @@ PYBIND11_MODULE(_flox_py, m)
   bindStrategy(m);
   bindTargets(m);
   bindIndicatorGraph(m);
+  registerOrderJourneyTracer(m);
 
   // Slippage model constants
   m.attr("SLIPPAGE_NONE") = 0;

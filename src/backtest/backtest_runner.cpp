@@ -46,6 +46,7 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
         for (auto* listener : _executionListeners)
         {
           ev.dispatchTo(*listener);
+          listener->onOrderEvent(ev);
         }
         // Forward to the attached strategy so user-side `on_fill` /
         // `on_order_update` hooks fire. Without this the strategy

@@ -6254,6 +6254,10 @@
         },
         {
           "kind": "class",
+          "name": "OrderJourneyTracer"
+        },
+        {
+          "kind": "class",
           "name": "OrderTracker"
         },
         {
