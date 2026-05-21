@@ -19,6 +19,7 @@
 
 #include <array>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 
 namespace flox
@@ -61,6 +62,7 @@ class SimulatedExecutor : public IOrderExecutor
   void setDefaultSlippage(const SlippageProfile& profile);
   void setSymbolSlippage(SymbolId symbol, const SlippageProfile& profile);
   void setQueueModel(QueueModel model, size_t depth);
+  void setQueuePositionMinChangeFraction(double fraction);
 
   void start() override {}
   void stop() override {}
@@ -119,6 +121,13 @@ class SimulatedExecutor : public IOrderExecutor
   void emitEvent(OrderEventStatus status, const Order& order);
   void emitTrailingUpdate(const Order& order, Price newTrigger);
 
+  // Emit QUEUE_POSITION_UPDATED for every resting order whose
+  // `queueAhead` has shifted by at least the configured fractional
+  // threshold since the last emission. Call after any operation
+  // that may shift queue positions (onTrade, onBookUpdate, addOrder).
+  void maybeEmitQueuePositionChanges();
+  void forgetQueuePosition(OrderId orderId);
+
   Order* findPendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
 
@@ -147,6 +156,9 @@ class SimulatedExecutor : public IOrderExecutor
   OrderQueueTracker _queueTracker;
   QueueModel _queueModel{};
   std::vector<std::pair<OrderId, Quantity>> _queueFillBuffer;  // reused scratch
+  std::vector<QueueSnapshot> _queueSnapshotBuffer;             // reused scratch
+  std::unordered_map<OrderId, int64_t> _lastEmittedQueueAheadRaw;
+  double _queuePosMinFraction{0.05};
 };
 
 }  // namespace flox

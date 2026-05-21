@@ -247,6 +247,18 @@ class BridgeStrategy : public Strategy
     cb->on_order_update(cb->user_data, &fctx, &fev);
   }
 
+  void onSymbolQueuePositionChange(SymbolContext& c, const OrderEvent& ev) override
+  {
+    auto* cb = _cb.load(std::memory_order_acquire);
+    if (!cb || !cb->on_queue_position_change)
+    {
+      return;
+    }
+    FloxSymbolContext fctx = toFloxContext(c);
+    FloxOrderEventData fev = toFloxOrderEvent(ev);
+    cb->on_queue_position_change(cb->user_data, &fctx, &fev);
+  }
+
  private:
   static FloxOrderEventData toFloxOrderEvent(const OrderEvent& ev)
   {
@@ -260,6 +272,8 @@ class BridgeStrategy : public Strategy
     fev.fill_price_raw = ev.fillPrice.raw();
     fev.exchange_ts_ns = ev.exchangeTsNs;
     fev.reject_reason = ev.rejectReason.empty() ? nullptr : ev.rejectReason.c_str();
+    fev.queue_ahead_raw = ev.queueAhead.raw();
+    fev.queue_total_raw = ev.queueTotal.raw();
     return fev;
   }
   static FloxBookSnapshot toBookSnapshot(const SymbolContext& c)

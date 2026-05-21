@@ -41,6 +41,14 @@ class IOrderExecutionListener : public ISubscriber
   virtual void onOrderPendingTrigger(const Order&) {}
   virtual void onOrderTriggered(const Order&) {}
   virtual void onTrailingStopUpdated(const Order&, Price /*newTriggerPrice*/) {}
+
+  // Resting-order queue position moved without any other lifecycle
+  // transition. `queueAhead` is the volume currently in front of the
+  // order at its price level; `queueTotal` is the level's total
+  // quantity. Both are in raw fixed-point units. Backtest only — live
+  // exchanges do not generally publish queue position.
+  virtual void onOrderQueuePositionChange(const Order&, Quantity /*queueAhead*/,
+                                          Quantity /*queueTotal*/) {}
 };
 
 }  // namespace flox

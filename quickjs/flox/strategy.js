@@ -28,6 +28,7 @@ class Strategy {
     onBar(ctx, bar) {}
     onFill(ctx, ev) {}
     onOrderUpdate(ctx, ev) {}
+    onQueuePositionChange(ctx, ev) {}
     onStart() {}
     onStop() {}
 
@@ -176,5 +177,10 @@ class Strategy {
     _dispatchOrderUpdate(rawCtx, rawEv) {
         rawCtx.symbol = this._reverseMap[rawCtx.symbolId] || "";
         this.onOrderUpdate(rawCtx, rawEv);
+    }
+
+    _dispatchQueuePositionChange(rawCtx, rawEv) {
+        rawCtx.symbol = this._reverseMap[rawCtx.symbolId] || "";
+        this.onQueuePositionChange(rawCtx, rawEv);
     }
 }

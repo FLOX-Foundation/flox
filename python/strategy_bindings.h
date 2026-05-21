@@ -107,6 +107,8 @@ struct PyOrderEventData
   double fill_price;
   int64_t exchange_ts_ns;
   std::string reject_reason;  // empty unless status == "REJECTED"
+  double queue_ahead{0.0};    // backtest only: volume ahead at level
+  double queue_total{0.0};    // backtest only: total quantity at level
 };
 
 inline Side parseSide(const std::string& s)
@@ -126,6 +128,8 @@ class PyStrategyBase
   virtual void on_bar(const PySymbolCtx& ctx, const PyBarData& bar) {}
   virtual void on_fill(const PySymbolCtx& ctx, const PyOrderEventData& ev) {}
   virtual void on_order_update(const PySymbolCtx& ctx, const PyOrderEventData& ev) {}
+  virtual void on_queue_position_change(const PySymbolCtx& ctx,
+                                        const PyOrderEventData& ev) {}
   virtual void on_start() {}
   virtual void on_stop() {}
 
@@ -643,6 +647,12 @@ class PyStrategyTrampoline : public PyStrategyBase
     PYBIND11_OVERRIDE(void, PyStrategyBase, on_order_update, ctx, ev);
   }
 
+  void on_queue_position_change(const PySymbolCtx& ctx,
+                                const PyOrderEventData& ev) override
+  {
+    PYBIND11_OVERRIDE(void, PyStrategyBase, on_queue_position_change, ctx, ev);
+  }
+
   void on_start() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_start); }
 
   void on_stop() override { PYBIND11_OVERRIDE(void, PyStrategyBase, on_stop); }
@@ -718,6 +728,7 @@ struct PyStrategyHost
     cbs.on_stop = &PyStrategyHost::onStop;
     cbs.on_fill = &PyStrategyHost::onFill;
     cbs.on_order_update = &PyStrategyHost::onOrderUpdate;
+    cbs.on_queue_position_change = &PyStrategyHost::onQueuePositionChange;
 
     const auto& syms = strat->symbols();
     bridge = std::make_unique<BridgeStrategy>(
@@ -854,6 +865,8 @@ struct PyStrategyHost
     pe.fill_price = flox_price_to_double(ev->fill_price_raw);
     pe.exchange_ts_ns = ev->exchange_ts_ns;
     pe.reject_reason = ev->reject_reason ? std::string(ev->reject_reason) : "";
+    pe.queue_ahead = flox_quantity_to_double(ev->queue_ahead_raw);
+    pe.queue_total = flox_quantity_to_double(ev->queue_total_raw);
     return pe;
   }
 
@@ -910,6 +923,8 @@ struct PyStrategyHost
         return "TRIGGERED";
       case 12:
         return "TRAILING_UPDATED";
+      case 13:
+        return "QUEUE_POSITION_UPDATED";
       default:
         return "UNKNOWN";
     }
@@ -957,6 +972,33 @@ struct PyStrategyHost
       pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_order_update(pc, pe);
+    };
+    if (self->with_gil)
+    {
+      py::gil_scoped_acquire gil;
+      call();
+    }
+    else
+    {
+      call();
+    }
+  }
+
+  static void onQueuePositionChange(void* ud, const FloxSymbolContext* ctx,
+                                    const FloxOrderEventData* ev)
+  {
+    auto* self = static_cast<PyStrategyHost*>(ud);
+    auto call = [self, ctx, ev]()
+    {
+      PySymbolCtx pc{};
+      pc.symbol_id = ctx->symbol_id;
+      pc.position = flox_quantity_to_double(ctx->position_raw);
+      pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
+      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
+      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
+      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      PyOrderEventData pe = toPyOrderEvent(ev);
+      self->strategy.load(std::memory_order_acquire)->on_queue_position_change(pc, pe);
     };
     if (self->with_gil)
     {
@@ -2407,7 +2449,9 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("fill_qty", &PyOrderEventData::fill_qty)
       .def_readwrite("fill_price", &PyOrderEventData::fill_price)
       .def_readwrite("exchange_ts_ns", &PyOrderEventData::exchange_ts_ns)
-      .def_readwrite("reject_reason", &PyOrderEventData::reject_reason);
+      .def_readwrite("reject_reason", &PyOrderEventData::reject_reason)
+      .def_readwrite("queue_ahead", &PyOrderEventData::queue_ahead)
+      .def_readwrite("queue_total", &PyOrderEventData::queue_total);
 
   py::class_<PyStrategyBase, PyStrategyTrampoline>(m, "Strategy")
       .def(py::init([](py::list symbols)
@@ -2418,6 +2462,8 @@ inline void bindStrategy(py::module_& m)
       .def("on_bar", &PyStrategyBase::on_bar, py::arg("ctx"), py::arg("bar"))
       .def("on_fill", &PyStrategyBase::on_fill, py::arg("ctx"), py::arg("event"))
       .def("on_order_update", &PyStrategyBase::on_order_update, py::arg("ctx"), py::arg("event"))
+      .def("on_queue_position_change", &PyStrategyBase::on_queue_position_change,
+           py::arg("ctx"), py::arg("event"))
       .def("on_start", &PyStrategyBase::on_start)
       .def("on_stop", &PyStrategyBase::on_stop)
       .def("emit_market_buy", &PyStrategyBase::emit_market_buy, py::arg("symbol"),

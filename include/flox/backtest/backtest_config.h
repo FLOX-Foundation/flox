@@ -56,6 +56,13 @@ struct BacktestConfig
   QueueModel queueModel{QueueModel::NONE};
   size_t queueDepth{8};
 
+  // Minimum fractional change in `queueAhead` required to emit a
+  // QUEUE_POSITION_UPDATED event. 0.0 fires on every change (lossless,
+  // very chatty on liquid books); 1.0 disables emission entirely. A
+  // typical value is 0.05 (5%). Computed against the order's
+  // `aheadAtArrival` so a single threshold applies to all sizes.
+  double queuePositionMinChangeFraction{0.05};
+
   double riskFreeRate{0.0};
   double metricsAnnualizationFactor{252.0};  // daily-equivalent sampling
 };

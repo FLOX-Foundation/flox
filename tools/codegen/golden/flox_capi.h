@@ -172,6 +172,8 @@ extern "C"
     int64_t fill_price_raw;
     int64_t exchange_ts_ns;
     const char* reject_reason;
+    int64_t queue_ahead_raw;
+    int64_t queue_total_raw;
   } FloxOrderEventData;
 
   typedef struct
@@ -630,6 +632,7 @@ extern "C"
   typedef void (*FloxOnOrderUpdateCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
   typedef void (*FloxOnStartCallback)(void*);
   typedef void (*FloxOnStopCallback)(void*);
+  typedef void (*FloxOnQueuePositionChangeCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
   typedef const double* (*FloxGraphNodeFn)(void*, FloxIndicatorGraphHandle, uint32_t, size_t*);
   typedef void (*FloxOnSignalCallback)(void*, const FloxSignal*);
   typedef uint8_t (*FloxRiskManagerAllowFn)(void*, const FloxSignal*);
@@ -649,6 +652,7 @@ extern "C"
   typedef void (*FloxExecListenerOnRejectedFn)(void*, const FloxOrder*, const char*);
   typedef void (*FloxExecListenerOnReplacedFn)(void*, const FloxOrder*, const FloxOrder*);
   typedef void (*FloxExecListenerOnTrailingUpdateFn)(void*, const FloxOrder*, int64_t);
+  typedef void (*FloxExecListenerOnQueuePositionChangeFn)(void*, const FloxOrder*, int64_t, int64_t);
   typedef void (*FloxExecutorSubmitFn)(void*, const FloxOrder*);
   typedef void (*FloxExecutorCancelFn)(void*, uint64_t);
   typedef void (*FloxExecutorCancelAllFn)(void*, uint32_t);
@@ -673,6 +677,7 @@ extern "C"
     FloxOnStopCallback on_stop;
     FloxOnFillCallback on_fill;
     FloxOnOrderUpdateCallback on_order_update;
+    FloxOnQueuePositionChangeCallback on_queue_position_change;
     void* user_data;
   } FloxStrategyCallbacks;
 
@@ -738,6 +743,7 @@ extern "C"
     FloxExecListenerOnOrderFn on_pending_trigger;
     FloxExecListenerOnOrderFn on_triggered;
     FloxExecListenerOnTrailingUpdateFn on_trailing_stop_updated;
+    FloxExecListenerOnQueuePositionChangeFn on_queue_position_change;
     void* user_data;
   } FloxExecutionListenerCallbacks;
 
