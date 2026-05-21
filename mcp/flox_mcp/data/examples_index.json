@@ -93,6 +93,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_order_journey_forensics.py",
+      "sha256": "095d919de53e18f1a937ce62e153df05948b07bf532f33da71a77a3e1855930c",
+      "size_bytes": 1045,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_orderbook_iterator.py",
       "sha256": "1485c853b0f4372fde84e11fccef09942a396d4679930c479898e52ed8638992",
       "size_bytes": 2521,
