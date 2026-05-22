@@ -8303,6 +8303,137 @@
       "return_type": "double"
     },
     {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_add_bucket",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "window_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "capacity",
+          "type": "uint32_t"
+        },
+        {
+          "name": "submit_weight",
+          "type": "uint32_t"
+        },
+        {
+          "name": "cancel_weight",
+          "type": "uint32_t"
+        },
+        {
+          "name": "replace_weight",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_ban_until_ns",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_bucket_state",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "out_buf",
+          "type": "int64_t *"
+        },
+        {
+          "name": "max_buckets",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_consecutive_rejects",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_create",
+      "params": [],
+      "return_type": "FloxRateLimitPolicyHandle"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_load_profile",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        },
+        {
+          "name": "profile_name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_rate_limit_policy_set_ban",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        },
+        {
+          "name": "after_consecutive_rejects",
+          "type": "uint32_t"
+        },
+        {
+          "name": "ban_duration_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "symbol_registry",
       "name": "flox_registry_add_symbol",
       "params": [
@@ -10027,6 +10158,17 @@
       "return_type": "void"
     },
     {
+      "group": "rate_limit",
+      "name": "flox_simulated_executor_clear_rate_limit_policy",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "simulated_executor",
       "name": "flox_simulated_executor_create",
       "params": [],
@@ -10292,6 +10434,21 @@
         {
           "name": "depth",
           "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "rate_limit",
+      "name": "flox_simulated_executor_set_rate_limit_policy",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "policy",
+          "type": "FloxRateLimitPolicyHandle"
         }
       ],
       "return_type": "void"
@@ -13531,6 +13688,10 @@
     },
     {
       "name": "FloxPositionTrackerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxRateLimitPolicyHandle",
       "target": "void*"
     },
     {

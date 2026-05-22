@@ -29,6 +29,7 @@
 #include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
 #include "profile_bindings.h"
+#include "rate_limit_bindings.h"
 #include "replay_bindings.h"
 #include "run_trace_bindings.h"
 #include "segment_ops_bindings.h"
@@ -795,6 +796,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindTapeDiff(m);
   flox_py::bindPortfolioRisk(m);
   flox_py::bindOrderGroup(m);
+  flox_py::bindRateLimitPolicy(m);
   flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);

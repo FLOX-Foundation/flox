@@ -527,6 +527,18 @@ from C import flox_position_group_total_pnl(cobj) -> float
 from C import flox_position_group_open_count(cobj, u32) -> u32
 from C import flox_position_group_prune(cobj)
 
+# ── rate_limit ──
+from C import flox_rate_limit_policy_create() -> cobj
+from C import flox_rate_limit_policy_destroy(cobj)
+from C import flox_rate_limit_policy_add_bucket(cobj, cobj, i64, u32, u32, u32, u32)
+from C import flox_rate_limit_policy_set_ban(cobj, u32, i64)
+from C import flox_rate_limit_policy_load_profile(cobj, cobj)
+from C import flox_rate_limit_policy_ban_until_ns(cobj) -> i64
+from C import flox_rate_limit_policy_consecutive_rejects(cobj) -> u32
+from C import flox_rate_limit_policy_bucket_state(cobj, i64, Ptr[i64], u32) -> u32
+from C import flox_simulated_executor_set_rate_limit_policy(cobj, cobj)
+from C import flox_simulated_executor_clear_rate_limit_policy(cobj)
+
 # ── recorder ──
 from C import flox_market_data_recorder_create(cobj) -> cobj
 from C import flox_market_data_recorder_create_p(cobj) -> cobj

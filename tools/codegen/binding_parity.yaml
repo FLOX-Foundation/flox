@@ -55,6 +55,11 @@ groups:
     napi: { status: required, classes: [SimulatedExecutor, BacktestResult, LatencyDistribution] }
     codon: { status: required }
 
+  rate_limit:
+    pybind11: { status: required, classes: [RateLimitPolicy] }
+    napi: { status: required, classes: [RateLimitPolicy] }
+    codon: { status: required }
+
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
     napi: { status: required, classes: [WalkForwardRunner] }

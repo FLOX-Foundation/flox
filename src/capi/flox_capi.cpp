@@ -2742,6 +2742,113 @@ void flox_simulated_executor_set_replace_ack_latency_distribution(
       *toDist(dist));
 }
 
+// ====== Rate-limit policy bridging ======
+
+#include "flox/backtest/rate_limit_policy.h"
+
+namespace
+{
+inline flox::RateLimitPolicy* toRateLimit(FloxRateLimitPolicyHandle h)
+{
+  return static_cast<flox::RateLimitPolicy*>(h);
+}
+}  // namespace
+
+extern "C" FloxRateLimitPolicyHandle flox_rate_limit_policy_create(void)
+{
+  return new flox::RateLimitPolicy();
+}
+
+extern "C" void flox_rate_limit_policy_destroy(FloxRateLimitPolicyHandle h)
+{
+  delete toRateLimit(h);
+}
+
+extern "C" void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h,
+                                                  const char* name, int64_t window_ns,
+                                                  uint32_t capacity, uint32_t submit_w,
+                                                  uint32_t cancel_w, uint32_t replace_w)
+{
+  toRateLimit(h)->addBucket(name ? std::string(name) : std::string("bucket"), window_ns,
+                            capacity, submit_w, cancel_w, replace_w);
+}
+
+extern "C" void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
+                                               uint32_t after_consecutive_rejects,
+                                               int64_t ban_duration_ns)
+{
+  toRateLimit(h)->setBan(after_consecutive_rejects, ban_duration_ns);
+}
+
+extern "C" void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
+                                                    const char* name)
+{
+  if (!h || !name)
+  {
+    return;
+  }
+  std::string n = name;
+  if (n == "binance_um_futures")
+  {
+    *toRateLimit(h) = flox::RateLimitPolicy::binance_um_futures();
+  }
+  else if (n == "bybit_linear")
+  {
+    *toRateLimit(h) = flox::RateLimitPolicy::bybit_linear();
+  }
+  else if (n == "okx_swap")
+  {
+    *toRateLimit(h) = flox::RateLimitPolicy::okx_swap();
+  }
+  else if (n == "deribit")
+  {
+    *toRateLimit(h) = flox::RateLimitPolicy::deribit();
+  }
+}
+
+extern "C" int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h)
+{
+  return toRateLimit(h)->banUntilNs();
+}
+
+extern "C" uint32_t flox_rate_limit_policy_consecutive_rejects(FloxRateLimitPolicyHandle h)
+{
+  return toRateLimit(h)->consecutiveRejects();
+}
+
+extern "C" uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandle h,
+                                                        int64_t now_ns, int64_t* out_buf,
+                                                        uint32_t max_buckets)
+{
+  auto states = toRateLimit(h)->bucketStates(now_ns);
+  if (out_buf == nullptr || max_buckets == 0)
+  {
+    return static_cast<uint32_t>(states.size());
+  }
+  uint32_t n = std::min<uint32_t>(max_buckets, static_cast<uint32_t>(states.size()));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    out_buf[i * 4 + 0] = states[i].windowNs;
+    out_buf[i * 4 + 1] = static_cast<int64_t>(states[i].used);
+    out_buf[i * 4 + 2] = static_cast<int64_t>(states[i].capacity);
+    out_buf[i * 4 + 3] = 0;
+  }
+  return n;
+}
+
+extern "C" void flox_simulated_executor_set_rate_limit_policy(
+    FloxSimulatedExecutorHandle exec_h, FloxRateLimitPolicyHandle policy_h)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.setRateLimitPolicy(
+      *toRateLimit(policy_h));
+}
+
+extern "C" void flox_simulated_executor_clear_rate_limit_policy(
+    FloxSimulatedExecutorHandle exec_h)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.clearRateLimitPolicy();
+}
+
 void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle h, uint32_t symbol, double price,
                                           double quantity, uint8_t is_buy)
 {

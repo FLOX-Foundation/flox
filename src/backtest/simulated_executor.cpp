@@ -169,6 +169,18 @@ void SimulatedExecutor::applyLatencyProfile(const char* name)
   setReplaceAckLatency(cfg.replaceAckLatencyNs, cfg.replaceAckJitterNs);
 }
 
+void SimulatedExecutor::setRateLimitPolicy(const RateLimitPolicy& policy)
+{
+  _rateLimit = policy;
+  _hasRateLimit = _rateLimit.bucketCount() > 0;
+}
+
+void SimulatedExecutor::clearRateLimitPolicy()
+{
+  _rateLimit = RateLimitPolicy{};
+  _hasRateLimit = false;
+}
+
 const SlippageProfile& SimulatedExecutor::slippageFor(SymbolId symbol) const
 {
   if (symbol < kMaxSymbols && _slippageSetFlat[symbol])
@@ -228,6 +240,14 @@ void SimulatedExecutor::submitOrder(const Order& order)
 {
   Order accepted = order;
   accepted.createdAt = fromUnixNs(_clock.nowNs());
+
+  if (_hasRateLimit &&
+      !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Submit,
+                             static_cast<int64_t>(_clock.nowNs())))
+  {
+    emitEvent(OrderEventStatus::REJECTED_RATE_LIMIT, accepted);
+    return;
+  }
 
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
 
@@ -351,6 +371,21 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
+  if (_hasRateLimit &&
+      !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Cancel,
+                             static_cast<int64_t>(_clock.nowNs())))
+  {
+    for (const auto& o : _pending_orders)
+    {
+      if (o.id == orderId)
+      {
+        emitEvent(OrderEventStatus::REJECTED_RATE_LIMIT, o);
+        return;
+      }
+    }
+    return;
+  }
+
   // Async path: emit PENDING_CANCEL and defer CANCELED until the
   // sampled ack deadline. Leave the order in the book so it can
   // still fill in the race window.
@@ -474,6 +509,21 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 
 void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
+  if (_hasRateLimit &&
+      !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Replace,
+                             static_cast<int64_t>(_clock.nowNs())))
+  {
+    for (const auto& o : _pending_orders)
+    {
+      if (o.id == oldOrderId)
+      {
+        emitEvent(OrderEventStatus::REJECTED_RATE_LIMIT, o);
+        return;
+      }
+    }
+    return;
+  }
+
   // Async path: emit REPLACE_SUBMITTED immediately and defer the
   // ACCEPTED + REPLACED transition until the ack deadline. The
   // original order stays in the book and can still fill in the

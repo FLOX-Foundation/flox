@@ -644,14 +644,28 @@ export class BacktestRunner {
   trades(): BacktestTrades;
 }
 
-export class LatencyDistribution {
+export interface RateLimitBucketState {
+  windowNs: number;
+  used: number;
+  capacity: number;
+}
+
+export class RateLimitPolicy {
   constructor();
-  setConstant(ns: number): void;
-  setUniform(loNs: number, hiNs: number): void;
-  setLognormal(medianNs: number, sigma: number): void;
-  setEmpirical(samplesNs: number[]): void;
-  setBurstCorrelation(rho: number): void;
-  medianNs(): number;
+  addBucket(
+    name: string,
+    windowNs: number,
+    capacity: number,
+    submitWeight?: number,
+    cancelWeight?: number,
+    replaceWeight?: number,
+  ): void;
+  setBan(afterConsecutiveRejects: number, banDurationNs: number): void;
+  /** Canned profile: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'deribit'. */
+  loadProfile(name: string): void;
+  banUntilNs(): number;
+  consecutiveRejects(): number;
+  bucketStates(nowNs: number): RateLimitBucketState[];
 }
 
 export class SimulatedExecutor {
@@ -684,13 +698,13 @@ export class SimulatedExecutor {
   setCancelAckLatency(latencyNs: number, jitterNs?: number): void;
   /** Configure replace ack latency. */
   setReplaceAckLatency(latencyNs: number, jitterNs?: number): void;
-  /** Distribution-based ack latency setters. Distribution is copied. */
-  setSubmitAckLatencyDistribution(dist: LatencyDistribution): void;
-  setCancelAckLatencyDistribution(dist: LatencyDistribution): void;
-  setReplaceAckLatencyDistribution(dist: LatencyDistribution): void;
   /** Apply a named latency profile. Names: "binance_um_futures",
    *  "bybit_linear", "okx_swap", "deribit", "idealized", "adversarial". */
   applyLatencyProfile(name: string): void;
+  /** Attach a client-side rate-limit policy. Submit / cancel / replace
+   *  consult the policy first; an overflow emits a rate-limit reject. */
+  setRateLimitPolicy(policy: RateLimitPolicy): void;
+  clearRateLimitPolicy(): void;
   readonly fillCount: number;
 }
 

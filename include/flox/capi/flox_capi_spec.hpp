@@ -1351,6 +1351,52 @@ extern "C"
   void flox_simulated_executor_set_replace_ack_latency_distribution(
       FloxSimulatedExecutorHandle executor, FloxLatencyDistributionHandle dist);
 
+  // Client-side rate-limit policy. Simulator copies the policy on
+  // set_rate_limit_policy; caller still owns + destroys the handle.
+  typedef void* FloxRateLimitPolicyHandle;
+
+  FLOX_EXPORT(group = "rate_limit")
+  FloxRateLimitPolicyHandle flox_rate_limit_policy_create(void);
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_rate_limit_policy_destroy(FloxRateLimitPolicyHandle h);
+
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h, const char* name,
+                                         int64_t window_ns, uint32_t capacity,
+                                         uint32_t submit_weight, uint32_t cancel_weight,
+                                         uint32_t replace_weight);
+
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
+                                      uint32_t after_consecutive_rejects,
+                                      int64_t ban_duration_ns);
+
+  // Canned profiles: "binance_um_futures", "bybit_linear",
+  // "okx_swap", "deribit". Unknown names are a no-op.
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
+                                           const char* profile_name);
+
+  FLOX_EXPORT(group = "rate_limit")
+  int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h);
+  FLOX_EXPORT(group = "rate_limit")
+  uint32_t flox_rate_limit_policy_consecutive_rejects(FloxRateLimitPolicyHandle h);
+
+  // Per-bucket readback. Two-call: pass out_buf=NULL to learn the
+  // count; pass a buffer with `max_buckets * 4` int64 slots laid as
+  // [window_ns, used, capacity, _pad] per bucket to read. Bucket
+  // names are not surfaced via this call; use the bucket index +
+  // your original add_bucket ordering.
+  FLOX_EXPORT(group = "rate_limit")
+  uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandle h, int64_t now_ns,
+                                               int64_t* out_buf, uint32_t max_buckets);
+
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_simulated_executor_set_rate_limit_policy(FloxSimulatedExecutorHandle executor,
+                                                     FloxRateLimitPolicyHandle policy);
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_simulated_executor_clear_rate_limit_policy(FloxSimulatedExecutorHandle executor);
+
   // Feed a trade with quantity (enables queue-fill simulation for limit orders).
   FLOX_EXPORT(group = "backtest_slippage")
   void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,

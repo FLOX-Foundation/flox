@@ -3,6 +3,7 @@
 #pragma once
 #include <napi.h>
 #include "flox/capi/flox_capi.h"
+#include "rate_limit.h"
 
 namespace node_flox
 {
@@ -104,6 +105,10 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("setReplaceAckLatencyDistribution",
                                        &SimulatedExecutorWrap::SetReplaceAckDist),
                         InstanceMethod("applyLatencyProfile", &SimulatedExecutorWrap::ApplyLatencyProfile),
+                        InstanceMethod("setRateLimitPolicy",
+                                       &SimulatedExecutorWrap::SetRateLimitPolicy),
+                        InstanceMethod("clearRateLimitPolicy",
+                                       &SimulatedExecutorWrap::ClearRateLimitPolicy),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -217,6 +222,16 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     auto* w = Napi::ObjectWrap<LatencyDistributionWrap>::Unwrap(
         info[0].As<Napi::Object>());
     flox_simulated_executor_set_replace_ack_latency_distribution(_h, w->handle());
+  }
+  void SetRateLimitPolicy(const Napi::CallbackInfo& info)
+  {
+    auto* w = Napi::ObjectWrap<RateLimitPolicyWrap>::Unwrap(
+        info[0].As<Napi::Object>());
+    flox_simulated_executor_set_rate_limit_policy(_h, w->handle());
+  }
+  void ClearRateLimitPolicy(const Napi::CallbackInfo&)
+  {
+    flox_simulated_executor_clear_rate_limit_policy(_h);
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;

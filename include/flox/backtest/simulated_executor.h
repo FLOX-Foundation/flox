@@ -13,6 +13,7 @@
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/latency_distribution.h"
 #include "flox/backtest/order_queue_tracker.h"
+#include "flox/backtest/rate_limit_policy.h"
 #include "flox/book/book_update.h"
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/composite_order_logic.h"
@@ -77,6 +78,16 @@ class SimulatedExecutor : public IOrderExecutor
   void setReplaceAckLatencyDistribution(const LatencyDistribution& dist);
 
   void applyLatencyProfile(const char* name);
+
+  // Attach a rate-limit policy. Submit / cancel / replace consult the
+  // policy first; an overflow emits OrderEventStatus::REJECTED_RATE_LIMIT
+  // and the action is not committed to the simulator. Passing an
+  // empty policy disables enforcement.
+  void setRateLimitPolicy(const RateLimitPolicy& policy);
+  void clearRateLimitPolicy();
+  bool hasRateLimitPolicy() const noexcept { return _hasRateLimit; }
+  RateLimitPolicy& rateLimitPolicy() { return _rateLimit; }
+  const RateLimitPolicy& rateLimitPolicy() const { return _rateLimit; }
 
   void start() override {}
   void stop() override {}
@@ -254,6 +265,9 @@ class SimulatedExecutor : public IOrderExecutor
   };
   std::vector<PendingSubmission> _pendingSubmissions;
   LatencyDistribution _submitAckDist;
+
+  RateLimitPolicy _rateLimit;
+  bool _hasRateLimit{false};
 };
 
 }  // namespace flox

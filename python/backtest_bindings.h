@@ -254,6 +254,11 @@ class PySimulatedExecutor
   {
     _executor.setReplaceAckLatencyDistribution(d);
   }
+  void setRateLimitPolicy(const flox::RateLimitPolicy& p)
+  {
+    _executor.setRateLimitPolicy(p);
+  }
+  void clearRateLimitPolicy() { _executor.clearRateLimitPolicy(); }
 
   py::array_t<PyFill> fills() const
   {
@@ -522,6 +527,9 @@ inline void bindBacktest(py::module_& m)
            "Get all fills as numpy structured array")
       .def("fills_list", &PySimulatedExecutor::fillsList,
            "Get all fills as list of dicts")
+      .def("set_rate_limit_policy", &PySimulatedExecutor::setRateLimitPolicy,
+           py::arg("policy"))
+      .def("clear_rate_limit_policy", &PySimulatedExecutor::clearRateLimitPolicy)
       .def_property_readonly("fill_count", &PySimulatedExecutor::fillCount);
 
   py::class_<PyBacktestResult>(m, "BacktestResult")

@@ -229,3 +229,7 @@ docs/how-to/floxrun-auto-capture.md
 # plus an abstract event-routing pseudocode block; runtime path
 # exercised by tests/test_order_group_replace.cpp.
 docs/how-to/order-group-replace.md
+
+# How-to: Rate-limit policy. Polyglot tabs + a back-off pseudocode
+# snippet; runtime path exercised by tests/test_rate_limit_policy.cpp.
+docs/how-to/rate-limits.md
