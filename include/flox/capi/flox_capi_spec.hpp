@@ -1306,6 +1306,51 @@ extern "C"
   void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
                                                      const char* profile_name);
 
+  // Latency-distribution handle. The simulator copies the distribution
+  // on set_*_distribution; the caller still owns and destroys the
+  // handle. kind: 0=Constant, 1=Uniform, 2=Lognormal, 3=Empirical.
+  typedef void* FloxLatencyDistributionHandle;
+
+  FLOX_EXPORT(group = "backtest_slippage")
+  FloxLatencyDistributionHandle flox_latency_distribution_create(void);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h);
+
+  // Mutate the held distribution to one of the four shapes. Subsequent
+  // calls overwrite. Each leaves burst-correlation at its current
+  // value.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_latency_distribution_set_uniform(FloxLatencyDistributionHandle h, int64_t lo_ns,
+                                             int64_t hi_ns);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_latency_distribution_set_lognormal(FloxLatencyDistributionHandle h,
+                                               int64_t median_ns, double sigma);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_latency_distribution_set_empirical(FloxLatencyDistributionHandle h,
+                                               const int64_t* samples_ns, uint32_t n_samples);
+
+  // Burst correlation in [0, 1). Higher = stronger autocorrelation
+  // between consecutive draws (AR(1) on log-residuals for Lognormal).
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_latency_distribution_set_burst_correlation(FloxLatencyDistributionHandle h,
+                                                       double rho);
+
+  FLOX_EXPORT(group = "backtest_slippage")
+  int64_t flox_latency_distribution_median_ns(FloxLatencyDistributionHandle h);
+
+  // Distribution-based ack-latency setters on SimulatedExecutor.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_submit_ack_latency_distribution(
+      FloxSimulatedExecutorHandle executor, FloxLatencyDistributionHandle dist);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_cancel_ack_latency_distribution(
+      FloxSimulatedExecutorHandle executor, FloxLatencyDistributionHandle dist);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_replace_ack_latency_distribution(
+      FloxSimulatedExecutorHandle executor, FloxLatencyDistributionHandle dist);
+
   // Feed a trade with quantity (enables queue-fill simulation for limit orders).
   FLOX_EXPORT(group = "backtest_slippage")
   void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,

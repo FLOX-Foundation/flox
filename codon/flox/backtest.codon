@@ -23,6 +23,17 @@ from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_apply_latency_profile(cobj, cobj)
+from C import flox_latency_distribution_create() -> cobj
+from C import flox_latency_distribution_destroy(cobj)
+from C import flox_latency_distribution_set_constant(cobj, i64)
+from C import flox_latency_distribution_set_uniform(cobj, i64, i64)
+from C import flox_latency_distribution_set_lognormal(cobj, i64, f64)
+from C import flox_latency_distribution_set_empirical(cobj, cobj, u32)
+from C import flox_latency_distribution_set_burst_correlation(cobj, f64)
+from C import flox_latency_distribution_median_ns(cobj) -> i64
+from C import flox_simulated_executor_set_submit_ack_latency_distribution(cobj, cobj)
+from C import flox_simulated_executor_set_cancel_ack_latency_distribution(cobj, cobj)
+from C import flox_simulated_executor_set_replace_ack_latency_distribution(cobj, cobj)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
@@ -83,6 +94,56 @@ SLIPPAGE_VOLUME_IMPACT: int = 3
 QUEUE_NONE: int = 0
 QUEUE_TOB: int = 1
 QUEUE_FULL: int = 2
+
+
+class LatencyDistribution:
+    """Ack-latency distribution. Build via class methods, attach via
+    `SimulatedExecutor.set_*_ack_latency_distribution(d)`."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_latency_distribution_create()
+
+    def close(self):
+        if self._h != cobj():
+            flox_latency_distribution_destroy(self._h)
+            self._h = cobj()
+
+    @staticmethod
+    def constant(ns: int):
+        d = LatencyDistribution()
+        flox_latency_distribution_set_constant(d._h, i64(ns))
+        return d
+
+    @staticmethod
+    def uniform(lo_ns: int, hi_ns: int):
+        d = LatencyDistribution()
+        flox_latency_distribution_set_uniform(d._h, i64(lo_ns), i64(hi_ns))
+        return d
+
+    @staticmethod
+    def lognormal(median_ns: int, sigma: float):
+        d = LatencyDistribution()
+        flox_latency_distribution_set_lognormal(d._h, i64(median_ns), f64(sigma))
+        return d
+
+    @staticmethod
+    def empirical(samples_ns: List[int]):
+        d = LatencyDistribution()
+        buf = [i64(s) for s in samples_ns]
+        flox_latency_distribution_set_empirical(
+            d._h, cobj() if len(buf) == 0 else cobj(buf.arr.ptr), u32(len(buf)))
+        return d
+
+    def set_burst_correlation(self, rho: float):
+        flox_latency_distribution_set_burst_correlation(self._h, f64(rho))
+
+    def median_ns(self) -> int:
+        return int(flox_latency_distribution_median_ns(self._h))
+
+    def handle(self) -> cobj:
+        return self._h
 
 
 class SimulatedExecutor:
@@ -179,6 +240,18 @@ class SimulatedExecutor:
             buf[i] = byte(ord(name[i]))
         buf[n] = byte(0)
         flox_simulated_executor_apply_latency_profile(self._handle, cobj(buf))
+
+    def set_submit_ack_latency_distribution(self, dist: LatencyDistribution):
+        flox_simulated_executor_set_submit_ack_latency_distribution(
+            self._handle, dist.handle())
+
+    def set_cancel_ack_latency_distribution(self, dist: LatencyDistribution):
+        flox_simulated_executor_set_cancel_ack_latency_distribution(
+            self._handle, dist.handle())
+
+    def set_replace_ack_latency_distribution(self, dist: LatencyDistribution):
+        flox_simulated_executor_set_replace_ack_latency_distribution(
+            self._handle, dist.handle())
 
     def handle(self) -> cobj:
         return self._handle

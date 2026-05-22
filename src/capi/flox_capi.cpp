@@ -2654,6 +2654,94 @@ void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle h
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.applyLatencyProfile(profile_name);
 }
 
+// Latency distribution handle bridging.
+
+namespace
+{
+inline LatencyDistribution* toDist(FloxLatencyDistributionHandle h)
+{
+  return static_cast<LatencyDistribution*>(h);
+}
+}  // namespace
+
+FloxLatencyDistributionHandle flox_latency_distribution_create(void)
+{
+  return new LatencyDistribution();
+}
+
+void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h)
+{
+  delete toDist(h);
+}
+
+void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns)
+{
+  const double rho = toDist(h)->burstCorrelation();
+  *toDist(h) = LatencyDistribution::constant(ns);
+  toDist(h)->setBurstCorrelation(rho);
+}
+
+void flox_latency_distribution_set_uniform(FloxLatencyDistributionHandle h, int64_t lo_ns,
+                                           int64_t hi_ns)
+{
+  const double rho = toDist(h)->burstCorrelation();
+  *toDist(h) = LatencyDistribution::uniform(lo_ns, hi_ns);
+  toDist(h)->setBurstCorrelation(rho);
+}
+
+void flox_latency_distribution_set_lognormal(FloxLatencyDistributionHandle h,
+                                             int64_t median_ns, double sigma)
+{
+  const double rho = toDist(h)->burstCorrelation();
+  *toDist(h) = LatencyDistribution::lognormal(median_ns, sigma);
+  toDist(h)->setBurstCorrelation(rho);
+}
+
+void flox_latency_distribution_set_empirical(FloxLatencyDistributionHandle h,
+                                             const int64_t* samples_ns, uint32_t n_samples)
+{
+  const double rho = toDist(h)->burstCorrelation();
+  std::vector<int64_t> samples;
+  samples.reserve(n_samples);
+  for (uint32_t i = 0; i < n_samples; ++i)
+  {
+    samples.push_back(samples_ns ? samples_ns[i] : 0);
+  }
+  *toDist(h) = LatencyDistribution::empirical(samples);
+  toDist(h)->setBurstCorrelation(rho);
+}
+
+void flox_latency_distribution_set_burst_correlation(FloxLatencyDistributionHandle h, double rho)
+{
+  toDist(h)->setBurstCorrelation(rho);
+}
+
+int64_t flox_latency_distribution_median_ns(FloxLatencyDistributionHandle h)
+{
+  return toDist(h)->medianNs();
+}
+
+void flox_simulated_executor_set_submit_ack_latency_distribution(
+    FloxSimulatedExecutorHandle h, FloxLatencyDistributionHandle dist)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSubmitAckLatencyDistribution(
+      *toDist(dist));
+}
+
+void flox_simulated_executor_set_cancel_ack_latency_distribution(
+    FloxSimulatedExecutorHandle h, FloxLatencyDistributionHandle dist)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setCancelAckLatencyDistribution(
+      *toDist(dist));
+}
+
+void flox_simulated_executor_set_replace_ack_latency_distribution(
+    FloxSimulatedExecutorHandle h, FloxLatencyDistributionHandle dist)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setReplaceAckLatencyDistribution(
+      *toDist(dist));
+}
+
 void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle h, uint32_t symbol, double price,
                                           double quantity, uint8_t is_buy)
 {

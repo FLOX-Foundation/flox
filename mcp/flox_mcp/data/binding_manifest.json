@@ -1208,6 +1208,46 @@
           "name": "flox_latency_destroy"
         },
         {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_create"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_destroy"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_median_ns"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_set_burst_correlation"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_set_constant"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_set_empirical"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_set_lognormal"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_latency_distribution_set_uniform"
+        },
+        {
           "group": "latency_models",
           "kind": "function",
           "name": "flox_latency_empirical_create"
@@ -2455,6 +2495,11 @@
         {
           "group": "backtest_slippage",
           "kind": "function",
+          "name": "flox_simulated_executor_set_cancel_ack_latency_distribution"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
           "name": "flox_simulated_executor_set_default_slippage"
         },
         {
@@ -2470,7 +2515,17 @@
         {
           "group": "backtest_slippage",
           "kind": "function",
+          "name": "flox_simulated_executor_set_replace_ack_latency_distribution"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
           "name": "flox_simulated_executor_set_submit_ack_latency"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_submit_ack_latency_distribution"
         },
         {
           "group": "backtest_slippage",
@@ -3075,6 +3130,10 @@
         {
           "kind": "handle",
           "name": "FloxL3BookHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxLatencyDistributionHandle"
         },
         {
           "kind": "handle",
@@ -4218,6 +4277,38 @@
         },
         {
           "kind": "function",
+          "name": "flox_latency_distribution_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_median_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_set_burst_correlation"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_set_constant"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_set_empirical"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_set_lognormal"
+        },
+        {
+          "kind": "function",
+          "name": "flox_latency_distribution_set_uniform"
+        },
+        {
+          "kind": "function",
           "name": "flox_latency_empirical_create"
         },
         {
@@ -5214,6 +5305,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_cancel_ack_latency_distribution"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_default_slippage"
         },
         {
@@ -5226,7 +5321,15 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_replace_ack_latency_distribution"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_submit_ack_latency"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_submit_ack_latency_distribution"
         },
         {
           "kind": "function",
@@ -5719,6 +5822,10 @@
         {
           "kind": "class",
           "name": "L3Book"
+        },
+        {
+          "kind": "class",
+          "name": "LatencyDistribution"
         },
         {
           "kind": "class",
@@ -6490,6 +6597,10 @@
         },
         {
           "kind": "class",
+          "name": "LatencyDistribution"
+        },
+        {
+          "kind": "class",
           "name": "LatencyModel"
         },
         {
@@ -7064,15 +7175,26 @@
         "flox_backtest_result_stats",
         "flox_backtest_result_trades",
         "flox_backtest_result_write_equity_curve_csv",
+        "flox_latency_distribution_create",
+        "flox_latency_distribution_destroy",
+        "flox_latency_distribution_median_ns",
+        "flox_latency_distribution_set_burst_correlation",
+        "flox_latency_distribution_set_constant",
+        "flox_latency_distribution_set_empirical",
+        "flox_latency_distribution_set_lognormal",
+        "flox_latency_distribution_set_uniform",
         "flox_simulated_executor_apply_latency_profile",
         "flox_simulated_executor_on_best_levels",
         "flox_simulated_executor_on_book_snapshot",
         "flox_simulated_executor_on_trade_qty",
         "flox_simulated_executor_set_cancel_ack_latency",
+        "flox_simulated_executor_set_cancel_ack_latency_distribution",
         "flox_simulated_executor_set_default_slippage",
         "flox_simulated_executor_set_queue_model",
         "flox_simulated_executor_set_replace_ack_latency",
+        "flox_simulated_executor_set_replace_ack_latency_distribution",
         "flox_simulated_executor_set_submit_ack_latency",
+        "flox_simulated_executor_set_submit_ack_latency_distribution",
         "flox_simulated_executor_set_symbol_slippage"
       ],
       "codon": {
@@ -7082,7 +7204,8 @@
       "napi": {
         "classes": [
           "SimulatedExecutor",
-          "BacktestResult"
+          "BacktestResult",
+          "LatencyDistribution"
         ],
         "functions": [],
         "status": "required"
@@ -7090,7 +7213,8 @@
       "pybind11": {
         "classes": [
           "SimulatedExecutor",
-          "BacktestResult"
+          "BacktestResult",
+          "LatencyDistribution"
         ],
         "functions": [],
         "status": "required"

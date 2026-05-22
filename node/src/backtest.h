@@ -7,6 +7,79 @@
 namespace node_flox
 {
 
+class LatencyDistributionWrap : public Napi::ObjectWrap<LatencyDistributionWrap>
+{
+ public:
+  static Napi::Function Init(Napi::Env env)
+  {
+    return DefineClass(
+        env, "LatencyDistribution",
+        {InstanceMethod("setConstant", &LatencyDistributionWrap::SetConstant),
+         InstanceMethod("setUniform", &LatencyDistributionWrap::SetUniform),
+         InstanceMethod("setLognormal", &LatencyDistributionWrap::SetLognormal),
+         InstanceMethod("setEmpirical", &LatencyDistributionWrap::SetEmpirical),
+         InstanceMethod("setBurstCorrelation",
+                        &LatencyDistributionWrap::SetBurstCorrelation),
+         InstanceMethod("medianNs", &LatencyDistributionWrap::MedianNs)});
+  }
+
+  LatencyDistributionWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<LatencyDistributionWrap>(info),
+        _h(flox_latency_distribution_create())
+  {
+  }
+  ~LatencyDistributionWrap()
+  {
+    if (_h)
+    {
+      flox_latency_distribution_destroy(_h);
+    }
+  }
+  FloxLatencyDistributionHandle handle() const { return _h; }
+
+ private:
+  void SetConstant(const Napi::CallbackInfo& info)
+  {
+    flox_latency_distribution_set_constant(_h, info[0].As<Napi::Number>().Int64Value());
+  }
+  void SetUniform(const Napi::CallbackInfo& info)
+  {
+    flox_latency_distribution_set_uniform(_h, info[0].As<Napi::Number>().Int64Value(),
+                                          info[1].As<Napi::Number>().Int64Value());
+  }
+  void SetLognormal(const Napi::CallbackInfo& info)
+  {
+    flox_latency_distribution_set_lognormal(_h,
+                                            info[0].As<Napi::Number>().Int64Value(),
+                                            info[1].As<Napi::Number>().DoubleValue());
+  }
+  void SetEmpirical(const Napi::CallbackInfo& info)
+  {
+    auto arr = info[0].As<Napi::Array>();
+    std::vector<int64_t> samples;
+    samples.reserve(arr.Length());
+    for (uint32_t i = 0; i < arr.Length(); ++i)
+    {
+      samples.push_back(arr.Get(i).As<Napi::Number>().Int64Value());
+    }
+    flox_latency_distribution_set_empirical(
+        _h, samples.empty() ? nullptr : samples.data(),
+        static_cast<uint32_t>(samples.size()));
+  }
+  void SetBurstCorrelation(const Napi::CallbackInfo& info)
+  {
+    flox_latency_distribution_set_burst_correlation(
+        _h, info[0].As<Napi::Number>().DoubleValue());
+  }
+  Napi::Value MedianNs(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(),
+                             static_cast<double>(flox_latency_distribution_median_ns(_h)));
+  }
+
+  FloxLatencyDistributionHandle _h;
+};
+
 class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
 {
  public:
@@ -24,6 +97,12 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("setSubmitAckLatency", &SimulatedExecutorWrap::SetSubmitAck),
                         InstanceMethod("setCancelAckLatency", &SimulatedExecutorWrap::SetCancelAck),
                         InstanceMethod("setReplaceAckLatency", &SimulatedExecutorWrap::SetReplaceAck),
+                        InstanceMethod("setSubmitAckLatencyDistribution",
+                                       &SimulatedExecutorWrap::SetSubmitAckDist),
+                        InstanceMethod("setCancelAckLatencyDistribution",
+                                       &SimulatedExecutorWrap::SetCancelAckDist),
+                        InstanceMethod("setReplaceAckLatencyDistribution",
+                                       &SimulatedExecutorWrap::SetReplaceAckDist),
                         InstanceMethod("applyLatencyProfile", &SimulatedExecutorWrap::ApplyLatencyProfile),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
@@ -121,6 +200,24 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     std::string name = info[0].As<Napi::String>().Utf8Value();
     flox_simulated_executor_apply_latency_profile(_h, name.c_str());
   }
+  void SetSubmitAckDist(const Napi::CallbackInfo& info)
+  {
+    auto* w = Napi::ObjectWrap<LatencyDistributionWrap>::Unwrap(
+        info[0].As<Napi::Object>());
+    flox_simulated_executor_set_submit_ack_latency_distribution(_h, w->handle());
+  }
+  void SetCancelAckDist(const Napi::CallbackInfo& info)
+  {
+    auto* w = Napi::ObjectWrap<LatencyDistributionWrap>::Unwrap(
+        info[0].As<Napi::Object>());
+    flox_simulated_executor_set_cancel_ack_latency_distribution(_h, w->handle());
+  }
+  void SetReplaceAckDist(const Napi::CallbackInfo& info)
+  {
+    auto* w = Napi::ObjectWrap<LatencyDistributionWrap>::Unwrap(
+        info[0].As<Napi::Object>());
+    flox_simulated_executor_set_replace_ack_latency_distribution(_h, w->handle());
+  }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;
 };
@@ -197,6 +294,7 @@ class BacktestResultWrap : public Napi::ObjectWrap<BacktestResultWrap>
 
 inline void registerBacktest(Napi::Env env, Napi::Object exports)
 {
+  exports.Set("LatencyDistribution", LatencyDistributionWrap::Init(env));
   exports.Set("SimulatedExecutor", SimulatedExecutorWrap::Init(env));
   exports.Set("BacktestResult", BacktestResultWrap::Init(env));
 

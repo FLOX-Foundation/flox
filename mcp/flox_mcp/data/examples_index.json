@@ -86,6 +86,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_latency_distribution.py",
+      "sha256": "e1f48b681bb33b6c491e7dd3af62eda8bba3de6ee56a649aa2ca85a4e2322246",
+      "size_bytes": 1001,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_live_queue_position.py",
       "sha256": "652aa78ac528ba95f1a6ac6d1d5933f9add184ba893a36bc4b0ca5b00b72d39b",
       "size_bytes": 1114,

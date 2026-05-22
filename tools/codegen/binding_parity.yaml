@@ -51,8 +51,8 @@ groups:
     codon: { status: required }
 
   backtest_slippage:
-    pybind11: { status: required, classes: [SimulatedExecutor, BacktestResult] }
-    napi: { status: required, classes: [SimulatedExecutor, BacktestResult] }
+    pybind11: { status: required, classes: [SimulatedExecutor, BacktestResult, LatencyDistribution] }
+    napi: { status: required, classes: [SimulatedExecutor, BacktestResult, LatencyDistribution] }
     codon: { status: required }
 
   walk_forward:
