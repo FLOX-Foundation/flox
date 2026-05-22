@@ -336,6 +336,19 @@ from C import flox_latency_fill_delay(cobj) -> i64
 from C import flox_latency_sample(cobj, cobj)
 from C import flox_latency_reset(cobj, u64)
 
+# ── live_queue_position ──
+from C import flox_live_queue_position_create() -> cobj
+from C import flox_live_queue_position_destroy(cobj)
+from C import flox_live_queue_position_set_confidence_half_life_ns(cobj, i64)
+from C import flox_live_queue_position_set_shrink_factor(cobj, float)
+from C import flox_live_queue_position_on_order_placed(cobj, u32, u8, i64, u64, i64, i64, i64)
+from C import flox_live_queue_position_on_order_cancelled(cobj, u64, i64)
+from C import flox_live_queue_position_on_order_filled(cobj, u64, i64, i64)
+from C import flox_live_queue_position_on_trade(cobj, u32, i64, i64, i64)
+from C import flox_live_queue_position_on_level_update(cobj, u32, u8, i64, i64, i64)
+from C import flox_live_queue_position_snapshot(cobj, u64, i64, Ptr[i64]) -> u8
+from C import flox_live_queue_position_tracked_count(cobj) -> u32
+
 # ── logger ──
 from C import flox_set_log_callback(cobj, cobj)
 

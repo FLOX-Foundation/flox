@@ -3803,6 +3803,79 @@ extern "C"
                                      FloxQuantileRow* rows_out,
                                      uint32_t max_rows);
 
+  // ---- Live queue position estimator -----------------------------
+  //
+  // Client-side estimator: feed it order placements, trades, book
+  // updates and (our) fills, read back estimated queue-ahead per
+  // resting order. The estimator wraps OrderQueueTracker; see
+  // include/flox/execution/live_queue_position_estimator.h for the
+  // heuristic and its limits.
+
+  typedef void* FloxLiveQueuePositionHandle;
+
+  FLOX_EXPORT(group = "live_queue_position")
+  FloxLiveQueuePositionHandle flox_live_queue_position_create(void);
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_destroy(FloxLiveQueuePositionHandle h);
+
+  // halfLifeNs: confidence decays as `exp(-elapsed * ln(2) / halfLife)`.
+  // Zero disables time decay. Default ≈ 60s.
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_set_confidence_half_life_ns(
+      FloxLiveQueuePositionHandle h, int64_t half_life_ns);
+
+  // Per-shrink confidence multiplier (proportional-shrink heuristic).
+  // Default 0.85.
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_set_shrink_factor(FloxLiveQueuePositionHandle h,
+                                                  double factor);
+
+  // side: 0 = BUY, 1 = SELL.
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_on_order_placed(FloxLiveQueuePositionHandle h,
+                                                uint32_t symbol, uint8_t side,
+                                                int64_t price_raw, uint64_t order_id,
+                                                int64_t order_qty_raw,
+                                                int64_t level_qty_raw, int64_t ts_ns);
+
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_on_order_cancelled(FloxLiveQueuePositionHandle h,
+                                                   uint64_t order_id, int64_t ts_ns);
+
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_on_order_filled(FloxLiveQueuePositionHandle h,
+                                                uint64_t order_id,
+                                                int64_t cumulative_fill_raw,
+                                                int64_t ts_ns);
+
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h, uint32_t symbol,
+                                         int64_t price_raw, int64_t qty_raw,
+                                         int64_t ts_ns);
+
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_on_level_update(FloxLiveQueuePositionHandle h,
+                                                uint32_t symbol, uint8_t side,
+                                                int64_t price_raw, int64_t new_qty_raw,
+                                                int64_t ts_ns);
+
+  // Snapshot out is laid out as 4 i64 + 1 f64 slots in a single int64
+  // buffer (the f64 is bit-cast). The caller provides storage for 5
+  // slots:
+  //   [0] order_id
+  //   [1] queue_ahead_raw
+  //   [2] total_raw
+  //   [3] last_update_ns
+  //   [4] confidence as f64 bit-cast (use memcpy to read)
+  // Returns 1 if the order is tracked, 0 otherwise.
+  FLOX_EXPORT(group = "live_queue_position")
+  uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h,
+                                            uint64_t order_id, int64_t now_ns,
+                                            int64_t* out_slots);
+
+  FLOX_EXPORT(group = "live_queue_position")
+  uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h);
+
 #ifdef __cplusplus
 }
 #endif

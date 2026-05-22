@@ -2018,6 +2018,31 @@ export class OrderGroup {
   recommendedActions(): OrderGroupAction[];
 }
 
+// ── Live queue position estimator ────────────────────────────────
+
+export interface LiveQueueSnapshot {
+  orderId: number;
+  queueAheadEst: number;
+  total: number;
+  confidence: number;
+  lastUpdateNs: number;
+}
+
+export class LiveQueuePositionEstimator {
+  constructor();
+  setConfidenceHalfLifeNs(halfLifeNs: number): void;
+  setShrinkAttributionFactor(factor: number): void;
+  onOrderPlaced(symbol: number, side: 0 | 1, price: number, orderId: number,
+                orderQty: number, levelQtyNow: number, tsNs?: number): void;
+  onOrderCancelled(orderId: number, tsNs?: number): void;
+  onOrderFilled(orderId: number, cumulativeFill: number, tsNs?: number): void;
+  onTrade(symbol: number, price: number, qty: number, tsNs?: number): void;
+  onLevelUpdate(symbol: number, side: 0 | 1, price: number, newQty: number,
+                tsNs?: number): void;
+  snapshot(orderId: number, nowNs?: number): LiveQueueSnapshot | null;
+  trackedOrderCount(): number;
+}
+
 // ── Bar-close dispatch recorder (cross-binding parity test fixture) ──
 
 export class BarDispatchRecorder {

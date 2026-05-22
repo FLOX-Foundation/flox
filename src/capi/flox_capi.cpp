@@ -8721,3 +8721,102 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
   }
   return n;
 }
+
+// ============================================================
+// Live queue position estimator
+// ============================================================
+
+#include "flox/execution/live_queue_position_estimator.h"
+
+namespace
+{
+inline flox::LiveQueuePositionEstimator* toLiveQ(FloxLiveQueuePositionHandle h)
+{
+  return static_cast<flox::LiveQueuePositionEstimator*>(h);
+}
+}  // namespace
+
+extern "C" FloxLiveQueuePositionHandle flox_live_queue_position_create(void)
+{
+  return new flox::LiveQueuePositionEstimator();
+}
+
+extern "C" void flox_live_queue_position_destroy(FloxLiveQueuePositionHandle h)
+{
+  delete toLiveQ(h);
+}
+
+extern "C" void flox_live_queue_position_set_confidence_half_life_ns(
+    FloxLiveQueuePositionHandle h, int64_t half_life_ns)
+{
+  toLiveQ(h)->setConfidenceHalfLifeNs(half_life_ns);
+}
+
+extern "C" void flox_live_queue_position_set_shrink_factor(
+    FloxLiveQueuePositionHandle h, double factor)
+{
+  toLiveQ(h)->setShrinkAttributionFactor(factor);
+}
+
+extern "C" void flox_live_queue_position_on_order_placed(
+    FloxLiveQueuePositionHandle h, uint32_t symbol, uint8_t side, int64_t price_raw,
+    uint64_t order_id, int64_t order_qty_raw, int64_t level_qty_raw, int64_t ts_ns)
+{
+  toLiveQ(h)->onOrderPlaced(symbol, static_cast<flox::Side>(side),
+                            flox::Price::fromRaw(price_raw), order_id,
+                            flox::Quantity::fromRaw(order_qty_raw),
+                            flox::Quantity::fromRaw(level_qty_raw), ts_ns);
+}
+
+extern "C" void flox_live_queue_position_on_order_cancelled(
+    FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t ts_ns)
+{
+  toLiveQ(h)->onOrderCancelled(order_id, ts_ns);
+}
+
+extern "C" void flox_live_queue_position_on_order_filled(
+    FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t cumulative_fill_raw,
+    int64_t ts_ns)
+{
+  toLiveQ(h)->onOrderFilled(order_id, flox::Quantity::fromRaw(cumulative_fill_raw), ts_ns);
+}
+
+extern "C" void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h,
+                                                  uint32_t symbol, int64_t price_raw,
+                                                  int64_t qty_raw, int64_t ts_ns)
+{
+  toLiveQ(h)->onTrade(symbol, flox::Price::fromRaw(price_raw),
+                      flox::Quantity::fromRaw(qty_raw), ts_ns);
+}
+
+extern "C" void flox_live_queue_position_on_level_update(
+    FloxLiveQueuePositionHandle h, uint32_t symbol, uint8_t side, int64_t price_raw,
+    int64_t new_qty_raw, int64_t ts_ns)
+{
+  toLiveQ(h)->onLevelUpdate(symbol, static_cast<flox::Side>(side),
+                            flox::Price::fromRaw(price_raw),
+                            flox::Quantity::fromRaw(new_qty_raw), ts_ns);
+}
+
+extern "C" uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h,
+                                                     uint64_t order_id, int64_t now_ns,
+                                                     int64_t* out_slots)
+{
+  auto snap = toLiveQ(h)->snapshot(order_id, now_ns);
+  if (!snap.has_value() || out_slots == nullptr)
+  {
+    return 0;
+  }
+  out_slots[0] = static_cast<int64_t>(snap->orderId);
+  out_slots[1] = snap->queueAheadEst.raw();
+  out_slots[2] = snap->total.raw();
+  out_slots[3] = snap->lastUpdateNs;
+  double conf = snap->confidence;
+  std::memcpy(&out_slots[4], &conf, sizeof(double));
+  return 1;
+}
+
+extern "C" uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h)
+{
+  return static_cast<uint32_t>(toLiveQ(h)->trackedOrderCount());
+}

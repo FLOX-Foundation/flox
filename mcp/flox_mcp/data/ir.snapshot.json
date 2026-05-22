@@ -5960,6 +5960,226 @@
       "return_type": "void"
     },
     {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_create",
+      "params": [],
+      "return_type": "FloxLiveQueuePositionHandle"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_on_level_update",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "new_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_on_order_cancelled",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_on_order_filled",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "cumulative_fill_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_on_order_placed",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "order_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "level_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_on_trade",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_set_confidence_half_life_ns",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "half_life_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_set_shrink_factor",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "factor",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_snapshot",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "out_slots",
+          "type": "int64_t *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_tracked_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "recorder",
       "name": "flox_market_data_recorder_create",
       "params": [
@@ -13095,6 +13315,10 @@
     },
     {
       "name": "FloxLiveEngineHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxLiveQueuePositionHandle",
       "target": "void*"
     },
     {

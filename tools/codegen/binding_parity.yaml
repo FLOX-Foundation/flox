@@ -313,6 +313,11 @@ groups:
     napi: { status: required, classes: [OrderGroup] }
     codon: { status: required }
 
+  live_queue_position:
+    pybind11: { status: required, classes: [LiveQueuePositionEstimator] }
+    napi: { status: required, classes: [LiveQueuePositionEstimator] }
+    codon: { status: required }
+
   bar_dispatch:
     pybind11: { status: required, classes: [BarDispatchRecorder] }
     napi: { status: required, classes: [BarDispatchRecorder] }
