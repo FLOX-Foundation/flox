@@ -788,6 +788,56 @@
           "name": "flox_executor_get_capabilities"
         },
         {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_add_tier"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_create"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_current_tier"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_destroy"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_fee_for"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_load_profile"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_record_fill"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_reset_rolling"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_rolling_notional"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_tier_transitions"
+        },
+        {
           "group": "feed_clock",
           "kind": "function",
           "name": "flox_feed_clock_create"
@@ -3214,6 +3264,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxFeeScheduleHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxFeedClockHandle"
         },
         {
@@ -3377,6 +3431,7 @@
         "execution",
         "execution_algos",
         "executor_fill",
+        "fee_schedule",
         "feed_clock",
         "fixed_point",
         "floxliveengine_disruptor",
@@ -4053,6 +4108,46 @@
         {
           "kind": "function",
           "name": "flox_executor_get_capabilities"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_add_tier"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_current_tier"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_fee_for"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_load_profile"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_record_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_reset_rolling"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_rolling_notional"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_tier_transitions"
         },
         {
           "kind": "function",
@@ -5964,6 +6059,10 @@
         },
         {
           "kind": "class",
+          "name": "FeeSchedule"
+        },
+        {
+          "kind": "class",
           "name": "FeedClockSnapshot"
         },
         {
@@ -6765,6 +6864,14 @@
         {
           "kind": "class",
           "name": "ExponentialLatency"
+        },
+        {
+          "kind": "class",
+          "name": "FeeSchedule"
+        },
+        {
+          "kind": "class",
+          "name": "FeeTier"
         },
         {
           "kind": "class",
@@ -7866,6 +7973,38 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      }
+    },
+    "fee_schedule": {
+      "capi_functions": [
+        "flox_fee_schedule_add_tier",
+        "flox_fee_schedule_create",
+        "flox_fee_schedule_current_tier",
+        "flox_fee_schedule_destroy",
+        "flox_fee_schedule_fee_for",
+        "flox_fee_schedule_load_profile",
+        "flox_fee_schedule_record_fill",
+        "flox_fee_schedule_reset_rolling",
+        "flox_fee_schedule_rolling_notional",
+        "flox_fee_schedule_tier_transitions"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "FeeSchedule"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "FeeSchedule"
+        ],
+        "functions": [],
+        "status": "required"
       }
     },
     "feed_clock": {

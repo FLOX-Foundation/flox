@@ -185,6 +185,18 @@ from C import flox_exec_is_done(cobj) -> u8
 # ── executor_fill ──
 from C import flox_simulated_executor_get_fills(cobj, cobj, u32) -> u32
 
+# ── fee_schedule ──
+from C import flox_fee_schedule_create() -> cobj
+from C import flox_fee_schedule_destroy(cobj)
+from C import flox_fee_schedule_add_tier(cobj, float, float, float)
+from C import flox_fee_schedule_load_profile(cobj, cobj)
+from C import flox_fee_schedule_record_fill(cobj, i64, float)
+from C import flox_fee_schedule_fee_for(cobj, i64, float, u8) -> float
+from C import flox_fee_schedule_current_tier(cobj) -> u32
+from C import flox_fee_schedule_rolling_notional(cobj) -> float
+from C import flox_fee_schedule_tier_transitions(cobj, Ptr[i64], u32) -> u32
+from C import flox_fee_schedule_reset_rolling(cobj)
+
 # ── feed_clock ──
 from C import flox_feed_clock_create(Ptr[u32], u32, u8, i64, u32, i64) -> cobj
 from C import flox_feed_clock_destroy(cobj)

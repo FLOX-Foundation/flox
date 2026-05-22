@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 582 functions, 50 handles, 58 structs, 43 callback typedefs, 3 enums, 64 groups.
+**Surface:** 592 functions, 51 handles, 58 structs, 43 callback typedefs, 3 enums, 65 groups.
 
 ## Opaque handles
 
@@ -56,6 +56,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxRunReaderHandle`
 - `FloxBarDispatchRecorderHandle`
 - `FloxAggregatorHandle`
+- `FloxFeeScheduleHandle`
 - `FloxFundingScheduleHandle`
 - `FloxLiveQueuePositionHandle`
 
@@ -1035,6 +1036,19 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 ### executor_fill
 
 - `uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle executor, FloxFill * fills_out, uint32_t max_fills)`
+
+### fee_schedule
+
+- `FloxFeeScheduleHandle flox_fee_schedule_create(void)`
+- `void flox_fee_schedule_destroy(FloxFeeScheduleHandle h)`
+- `void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h, double min_notional_30d, double maker_bps, double taker_bps)`
+- `void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char * profile_name)`
+- `void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns, double notional)`
+- `double flox_fee_schedule_fee_for(FloxFeeScheduleHandle h, int64_t ts_ns, double notional, uint8_t is_maker)`
+- `uint32_t flox_fee_schedule_current_tier(FloxFeeScheduleHandle h)`
+- `double flox_fee_schedule_rolling_notional(FloxFeeScheduleHandle h)`
+- `uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h, int64_t * out_buf, uint32_t max_events)`
+- `void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h)`
 
 ### feed_clock
 

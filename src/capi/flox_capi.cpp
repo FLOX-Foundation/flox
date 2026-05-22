@@ -8944,6 +8944,7 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
 // Live queue position estimator
 // ============================================================
 
+#include "flox/backtest/fee_schedule.h"
 #include "flox/backtest/funding_schedule.h"
 #include "flox/execution/live_queue_position_estimator.h"
 
@@ -8957,7 +8958,88 @@ inline flox::FundingSchedule* toFunding(FloxFundingScheduleHandle h)
 {
   return static_cast<flox::FundingSchedule*>(h);
 }
+inline flox::FeeSchedule* toFee(FloxFeeScheduleHandle h)
+{
+  return static_cast<flox::FeeSchedule*>(h);
+}
 }  // namespace
+
+extern "C" FloxFeeScheduleHandle flox_fee_schedule_create(void)
+{
+  return new flox::FeeSchedule();
+}
+extern "C" void flox_fee_schedule_destroy(FloxFeeScheduleHandle h)
+{
+  delete toFee(h);
+}
+extern "C" void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h,
+                                           double min_notional_30d, double maker_bps,
+                                           double taker_bps)
+{
+  toFee(h)->addTier(min_notional_30d, maker_bps, taker_bps);
+}
+extern "C" void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* name)
+{
+  if (!h || !name)
+  {
+    return;
+  }
+  std::string n = name;
+  if (n == "binance_um_futures")
+  {
+    *toFee(h) = flox::FeeSchedule::binance_um_futures();
+  }
+  else if (n == "bybit_linear")
+  {
+    *toFee(h) = flox::FeeSchedule::bybit_linear();
+  }
+  else if (n == "okx_swap")
+  {
+    *toFee(h) = flox::FeeSchedule::okx_swap();
+  }
+  else if (n == "deribit")
+  {
+    *toFee(h) = flox::FeeSchedule::deribit();
+  }
+}
+extern "C" void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns,
+                                              double notional)
+{
+  toFee(h)->recordFill(ts_ns, notional);
+}
+extern "C" double flox_fee_schedule_fee_for(FloxFeeScheduleHandle h, int64_t ts_ns,
+                                            double notional, uint8_t is_maker)
+{
+  return toFee(h)->feeFor(ts_ns, notional, is_maker != 0);
+}
+extern "C" uint32_t flox_fee_schedule_current_tier(FloxFeeScheduleHandle h)
+{
+  return static_cast<uint32_t>(toFee(h)->currentTierIndex());
+}
+extern "C" double flox_fee_schedule_rolling_notional(FloxFeeScheduleHandle h)
+{
+  return toFee(h)->rollingNotional30d();
+}
+extern "C" uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h,
+                                                       int64_t* out_buf,
+                                                       uint32_t max_events)
+{
+  const auto& v = toFee(h)->tierTransitionTsNs();
+  if (out_buf == nullptr || max_events == 0)
+  {
+    return static_cast<uint32_t>(v.size());
+  }
+  uint32_t n = std::min<uint32_t>(max_events, static_cast<uint32_t>(v.size()));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    out_buf[i] = v[i];
+  }
+  return n;
+}
+extern "C" void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h)
+{
+  toFee(h)->resetRolling();
+}
 
 extern "C" FloxFundingScheduleHandle flox_funding_schedule_create(void)
 {

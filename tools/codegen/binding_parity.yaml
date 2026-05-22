@@ -65,6 +65,11 @@ groups:
     napi: { status: required, classes: [FundingSchedule] }
     codon: { status: required }
 
+  fee_schedule:
+    pybind11: { status: required, classes: [FeeSchedule] }
+    napi: { status: required, classes: [FeeSchedule] }
+    codon: { status: required }
+
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
     napi: { status: required, classes: [WalkForwardRunner] }

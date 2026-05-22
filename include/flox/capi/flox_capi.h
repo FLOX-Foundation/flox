@@ -73,6 +73,7 @@ extern "C"
   typedef void* FloxRunReaderHandle;
   typedef void* FloxBarDispatchRecorderHandle;
   typedef void* FloxAggregatorHandle;
+  typedef void* FloxFeeScheduleHandle;
   typedef void* FloxFundingScheduleHandle;
   typedef void* FloxLiveQueuePositionHandle;
   // ============================================================
@@ -1175,6 +1176,24 @@ extern "C"
 
   uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle executor,
                                              FloxFill* fills_out, uint32_t max_fills);
+
+  // ============================================================
+  // Fee Schedule
+  // ============================================================
+
+  FloxFeeScheduleHandle flox_fee_schedule_create(void);
+  void flox_fee_schedule_destroy(FloxFeeScheduleHandle h);
+  void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h, double min_notional_30d, double maker_bps,
+                                  double taker_bps);
+  void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* profile_name);
+  void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns, double notional);
+  double flox_fee_schedule_fee_for(FloxFeeScheduleHandle h, int64_t ts_ns, double notional,
+                                   uint8_t is_maker);
+  uint32_t flox_fee_schedule_current_tier(FloxFeeScheduleHandle h);
+  double flox_fee_schedule_rolling_notional(FloxFeeScheduleHandle h);
+  uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h, int64_t* out_buf,
+                                              uint32_t max_events);
+  void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h);
 
   // ============================================================
   // Feed Clock
