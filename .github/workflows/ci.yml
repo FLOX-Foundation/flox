@@ -52,6 +52,8 @@ jobs:
         python3 scripts/check_binding_parity.py
     - name: Verify error codes have docs and pages aren't stale
       run: python3 scripts/check_error_codes.py
+    - name: Verify test gating against backtest / capi headers
+      run: python3 scripts/check_test_gating.py
     - name: Verify Python API index is in sync with .pyi
       run: python3 scripts/gen_api_index.py --check
     - name: Verify doc snippets follow the --8<-- include pattern

@@ -70,8 +70,6 @@ add_flox_test(test_multi_symbol_strategy)
 
 add_flox_test(test_order_group_replace)
 
-add_flox_test(test_rate_limit_policy)
-
 add_flox_test(test_position_aggregator)
 
 # CEX coordination tests
@@ -103,6 +101,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_extended_tif)
   add_flox_test(test_hidden_order_attribution)
   add_flox_test(test_funding_schedule)
+  add_flox_test(test_rate_limit_policy)
 endif()
 
 add_flox_test(test_indicators)
