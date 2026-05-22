@@ -714,6 +714,17 @@ extern "C"
   void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index);
   FLOX_EXPORT(group = "order_group")
   void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index);
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_record_replace_accepted(FloxOrderGroupHandle h, uint32_t leg_index,
+                                                uint64_t new_order_id);
+  FLOX_EXPORT(group = "order_group")
+  void flox_order_group_record_replace_rejected(FloxOrderGroupHandle h, uint32_t leg_index);
+
+  // Returns leg index for the given exchange order id, or UINT32_MAX
+  // if no leg owns this id. Used to route a replace/fill event from
+  // an executor back to the correct OrderGroup leg.
+  FLOX_EXPORT(group = "order_group")
+  uint32_t flox_order_group_find_leg_by_order_id(FloxOrderGroupHandle h, uint64_t order_id);
 
   FLOX_EXPORT(group = "order_group")
   uint8_t flox_order_group_state(FloxOrderGroupHandle h);

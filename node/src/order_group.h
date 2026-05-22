@@ -29,6 +29,12 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
                         InstanceMethod("recordFill", &OrderGroupWrap::RecordFill),
                         InstanceMethod("recordCancel", &OrderGroupWrap::RecordCancel),
                         InstanceMethod("recordFailure", &OrderGroupWrap::RecordFailure),
+                        InstanceMethod("recordReplaceAccepted",
+                                       &OrderGroupWrap::RecordReplaceAccepted),
+                        InstanceMethod("recordReplaceRejected",
+                                       &OrderGroupWrap::RecordReplaceRejected),
+                        InstanceMethod("findLegByOrderId",
+                                       &OrderGroupWrap::FindLegByOrderId),
                         InstanceMethod("state", &OrderGroupWrap::State),
                         InstanceMethod("recommendedActions",
                                        &OrderGroupWrap::RecommendedActions),
@@ -177,6 +183,30 @@ class OrderGroupWrap : public Napi::ObjectWrap<OrderGroupWrap>
   void RecordFailure(const Napi::CallbackInfo& info)
   {
     flox_order_group_record_failure(_h, info[0].As<Napi::Number>().Uint32Value());
+  }
+
+  void RecordReplaceAccepted(const Napi::CallbackInfo& info)
+  {
+    uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
+    uint64_t new_id = static_cast<uint64_t>(info[1].As<Napi::Number>().Int64Value());
+    flox_order_group_record_replace_accepted(_h, idx, new_id);
+  }
+
+  void RecordReplaceRejected(const Napi::CallbackInfo& info)
+  {
+    flox_order_group_record_replace_rejected(_h,
+                                             info[0].As<Napi::Number>().Uint32Value());
+  }
+
+  Napi::Value FindLegByOrderId(const Napi::CallbackInfo& info)
+  {
+    uint64_t order_id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
+    uint32_t idx = flox_order_group_find_leg_by_order_id(_h, order_id);
+    if (idx == UINT32_MAX)
+    {
+      return info.Env().Null();
+    }
+    return Napi::Number::New(info.Env(), idx);
   }
 
   Napi::Value State(const Napi::CallbackInfo& info)

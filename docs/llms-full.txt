@@ -9060,6 +9060,7 @@ Members:
 - `add_limit_leg(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `add_market_leg(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `auto_dispatch(self, strategy: typing.Any) -> int`
+- `find_leg_by_order_id(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> typing.Any`
 - `leg_count(self) -> int`
 - `leg_filled(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> float`
 - `leg_order_id(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> int`
@@ -9073,6 +9074,8 @@ Members:
 - `record_cancel(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `record_failure(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `record_fill(self, leg_index: typing.SupportsInt | typing.SupportsIndex, cumulative_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `record_replace_accepted(self, leg_index: typing.SupportsInt | typing.SupportsIndex, new_order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `record_replace_rejected(self, leg_index: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `record_submit(self, leg_index: typing.SupportsInt | typing.SupportsIndex, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_pair_latency_budget_ns(self, budget_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_risk_limits(self, max_gross_notional: typing.SupportsFloat | typing.SupportsIndex = 0.0, max_concentration_pct: typing.SupportsFloat | typing.SupportsIndex = 0.0, max_leg_qty: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`

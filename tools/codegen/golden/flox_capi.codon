@@ -408,6 +408,9 @@ from C import flox_order_group_record_submit(cobj, u32, u64)
 from C import flox_order_group_record_fill(cobj, u32, i64)
 from C import flox_order_group_record_cancel(cobj, u32)
 from C import flox_order_group_record_failure(cobj, u32)
+from C import flox_order_group_record_replace_accepted(cobj, u32, u64)
+from C import flox_order_group_record_replace_rejected(cobj, u32)
+from C import flox_order_group_find_leg_by_order_id(cobj, u64) -> u32
 from C import flox_order_group_state(cobj) -> u8
 from C import flox_order_group_recommended_actions(cobj, Ptr[i64], u32) -> u32
 from C import flox_order_group_mark_action_dispatched(cobj, u32, u8)

@@ -311,6 +311,38 @@ class OrderGroup
     _legs.at(legIdx).state = LegState::Failed;
   }
 
+  // Replace-ack landed. Swap in the new exchange order id; the leg
+  // keeps its current LegState (Submitted / PartiallyFilled) so the
+  // policy state machine continues to track the same leg slot.
+  void recordReplaceAccepted(size_t legIdx, OrderId newOrderId)
+  {
+    auto& l = _legs.at(legIdx);
+    if (l.state == LegState::Submitted || l.state == LegState::PartiallyFilled)
+    {
+      l.orderId = newOrderId;
+    }
+  }
+
+  // Replace was rejected (late-replace race, post-only crossed, etc.).
+  // The existing order on the leg stays live; no state change. Kept
+  // as a no-op for API symmetry and as a hook for future telemetry.
+  void recordReplaceRejected(size_t /*legIdx*/) noexcept {}
+
+  // Map an exchange order id back to a leg slot. Returns nullopt if
+  // no leg owns this id. Used by strategies routing an executor
+  // replace event back to the OrderGroup.
+  std::optional<size_t> findLegByOrderId(OrderId orderId) const noexcept
+  {
+    for (size_t i = 0; i < _legs.size(); ++i)
+    {
+      if (_legs[i].orderId == orderId)
+      {
+        return i;
+      }
+    }
+    return std::nullopt;
+  }
+
   OrderGroupState state() const noexcept
   {
     if (_legs.empty())

@@ -2325,6 +2325,38 @@ static JSValue js_order_group_record_failure(JSContext* ctx, JSValueConst, int,
   return JS_UNDEFINED;
 }
 
+static JSValue js_order_group_record_replace_accepted(JSContext* ctx, JSValueConst, int,
+                                                      JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  uint64_t new_id = static_cast<uint64_t>(toInt64(ctx, argv[2]));
+  flox_order_group_record_replace_accepted(h, i, new_id);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_record_replace_rejected(JSContext* ctx, JSValueConst, int,
+                                                      JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint32_t i = toUint32(ctx, argv[1]);
+  flox_order_group_record_replace_rejected(h, i);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_order_group_find_leg_by_order_id(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
+  uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
+  uint32_t idx = flox_order_group_find_leg_by_order_id(h, order_id);
+  if (idx == UINT32_MAX)
+  {
+    return JS_NULL;
+  }
+  return JS_NewUint32(ctx, idx);
+}
+
 static JSValue js_order_group_state(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
@@ -5069,6 +5101,12 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_order_group_record_fill", js_order_group_record_fill, 3);
   addGlobalFunc(ctx, "__flox_order_group_record_cancel", js_order_group_record_cancel, 2);
   addGlobalFunc(ctx, "__flox_order_group_record_failure", js_order_group_record_failure, 2);
+  addGlobalFunc(ctx, "__flox_order_group_record_replace_accepted",
+                js_order_group_record_replace_accepted, 3);
+  addGlobalFunc(ctx, "__flox_order_group_record_replace_rejected",
+                js_order_group_record_replace_rejected, 2);
+  addGlobalFunc(ctx, "__flox_order_group_find_leg_by_order_id",
+                js_order_group_find_leg_by_order_id, 2);
   addGlobalFunc(ctx, "__flox_order_group_state", js_order_group_state, 1);
   addGlobalFunc(ctx, "__flox_order_group_recommended_actions",
                 js_order_group_recommended_actions, 1);
