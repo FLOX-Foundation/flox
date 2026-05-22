@@ -205,6 +205,28 @@ extern "C"
   typedef struct
   {
     uint64_t order_id;
+    uint32_t seq;
+    uint8_t status;
+    uint8_t is_maker;
+    uint8_t _pad[2];
+    int64_t ts_ns;
+    int64_t fill_qty_raw;
+    int64_t fill_price_raw;
+    int64_t queue_ahead_raw;
+    int64_t queue_total_raw;
+    int64_t submitted_at_ns;
+    int64_t accepted_at_ns;
+    int64_t first_fill_at_ns;
+    int64_t last_fill_at_ns;
+    int64_t canceled_at_ns;
+    int64_t rejected_at_ns;
+    int64_t triggered_at_ns;
+    int64_t expired_at_ns;
+  } FloxOrderTraceRow;
+
+  typedef struct
+  {
+    uint64_t order_id;
     uint32_t symbol;
     uint8_t side;
     int64_t price_raw;
@@ -645,6 +667,8 @@ extern "C"
   typedef void (*FloxOnOrderUpdateCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
   typedef void (*FloxOnStartCallback)(void*);
   typedef void (*FloxOnStopCallback)(void*);
+  typedef void (*FloxOnQueuePositionChangeCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
+  typedef void (*FloxOnMarketPositionChangeCallback)(void*, const FloxSymbolContext*, const FloxOrderEventData*);
   typedef const double* (*FloxGraphNodeFn)(void*, FloxIndicatorGraphHandle, uint32_t, size_t*);
   typedef void (*FloxOnSignalCallback)(void*, const FloxSignal*);
   typedef uint8_t (*FloxRiskManagerAllowFn)(void*, const FloxSignal*);
@@ -683,11 +707,6 @@ extern "C"
   // ============================================================
   // Callback bundles
   // ============================================================
-
-  typedef void (*FloxOnQueuePositionChangeCallback)(void*, const FloxSymbolContext*,
-                                                    const FloxOrderEventData*);
-  typedef void (*FloxOnMarketPositionChangeCallback)(void*, const FloxSymbolContext*,
-                                                     const FloxOrderEventData*);
 
   typedef struct
   {
@@ -1545,6 +1564,10 @@ extern "C"
                                     int64_t cumulative_qty_raw);
   void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index);
   void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index);
+  void flox_order_group_record_replace_accepted(FloxOrderGroupHandle h, uint32_t leg_index,
+                                                uint64_t new_order_id);
+  void flox_order_group_record_replace_rejected(FloxOrderGroupHandle h, uint32_t leg_index);
+  uint32_t flox_order_group_find_leg_by_order_id(FloxOrderGroupHandle h, uint64_t order_id);
   uint8_t flox_order_group_state(FloxOrderGroupHandle h);
   uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h, int64_t* actions_out,
                                                 uint32_t max_actions);
@@ -1562,34 +1585,13 @@ extern "C"
                                                  int64_t leader_ack_ts_ns, uint8_t ack_received);
 
   // ============================================================
-  // Order Tracker
+  // Order Journey Tracer
   // ============================================================
 
-  typedef struct
-  {
-    uint64_t order_id;
-    uint32_t seq;
-    uint8_t status;
-    uint8_t is_maker;
-    uint8_t _pad[2];
-    int64_t ts_ns;
-    int64_t fill_qty_raw;
-    int64_t fill_price_raw;
-    int64_t queue_ahead_raw;
-    int64_t queue_total_raw;
-    int64_t submitted_at_ns;
-    int64_t accepted_at_ns;
-    int64_t first_fill_at_ns;
-    int64_t last_fill_at_ns;
-    int64_t canceled_at_ns;
-    int64_t rejected_at_ns;
-    int64_t triggered_at_ns;
-    int64_t expired_at_ns;
-  } FloxOrderTraceRow;
-
-  FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(
-      uint64_t max_orders, uint64_t max_records_per_order, double sample_rate,
-      uint64_t sample_salt);
+  FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(uint64_t max_orders,
+                                                                uint64_t max_records_per_order,
+                                                                double sample_rate,
+                                                                uint64_t sample_salt);
   void flox_order_journey_tracer_destroy(FloxOrderJourneyTracerHandle tracer);
   uint64_t flox_order_journey_tracer_order_count(FloxOrderJourneyTracerHandle tracer);
   uint64_t flox_order_journey_tracer_record_count(FloxOrderJourneyTracerHandle tracer);
@@ -1599,12 +1601,15 @@ extern "C"
   double flox_order_journey_tracer_cancel_race_loss_rate(FloxOrderJourneyTracerHandle tracer);
   uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle tracer,
                                             FloxOrderTraceRow* out, uint64_t max_rows);
-  uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle tracer,
-                                             uint64_t order_id,
+  uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle tracer, uint64_t order_id,
                                              FloxOrderTraceRow* out, uint64_t max_rows);
   void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle tracer);
   void flox_backtest_runner_add_journey_tracer(FloxBacktestRunnerHandle runner,
                                                FloxOrderJourneyTracerHandle tracer);
+
+  // ============================================================
+  // Order Tracker
+  // ============================================================
 
   FloxOrderTrackerHandle flox_order_tracker_create(void);
   void flox_order_tracker_destroy(FloxOrderTrackerHandle tracker);

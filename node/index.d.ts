@@ -2011,6 +2011,9 @@ export class OrderGroup {
   recordFill(legIndex: number, cumulativeQty: number): void;
   recordCancel(legIndex: number): void;
   recordFailure(legIndex: number): void;
+  recordReplaceAccepted(legIndex: number, newOrderId: number): void;
+  recordReplaceRejected(legIndex: number): void;
+  findLegByOrderId(orderId: number): number | null;
   state(): OrderGroupStateName;
   recommendedActions(): OrderGroupAction[];
 }

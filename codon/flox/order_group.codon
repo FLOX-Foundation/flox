@@ -18,6 +18,9 @@ from C import flox_order_group_record_submit(cobj, u32, u64)
 from C import flox_order_group_record_fill(cobj, u32, i64)
 from C import flox_order_group_record_cancel(cobj, u32)
 from C import flox_order_group_record_failure(cobj, u32)
+from C import flox_order_group_record_replace_accepted(cobj, u32, u64)
+from C import flox_order_group_record_replace_rejected(cobj, u32)
+from C import flox_order_group_find_leg_by_order_id(cobj, u64) -> u32
 from C import flox_order_group_state(cobj) -> u8
 from C import flox_order_group_recommended_actions(cobj, cobj, u32) -> u32
 from C import flox_order_group_mark_action_dispatched(cobj, u32, u8)
@@ -107,6 +110,21 @@ class OrderGroup:
 
     def record_failure(self, idx: int):
         flox_order_group_record_failure(self._h, u32(idx))
+
+    def record_replace_accepted(self, idx: int, new_order_id: int):
+        flox_order_group_record_replace_accepted(self._h, u32(idx), u64(new_order_id))
+
+    def record_replace_rejected(self, idx: int):
+        flox_order_group_record_replace_rejected(self._h, u32(idx))
+
+    def find_leg_by_order_id(self, order_id: int) -> int:
+        """Returns the leg index that owns this exchange order id, or
+        -1 if no leg matches. Used to route a replace / fill event
+        from an executor back to the correct leg slot."""
+        idx = flox_order_group_find_leg_by_order_id(self._h, u64(order_id))
+        if int(idx) == 0xFFFFFFFF:
+            return -1
+        return int(idx)
 
     def state(self) -> int:
         return int(flox_order_group_state(self._h))

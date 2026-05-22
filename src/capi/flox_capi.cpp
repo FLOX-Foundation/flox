@@ -1353,6 +1353,27 @@ void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index)
   toOrderGroup(h)->recordFailure(leg_index);
 }
 
+void flox_order_group_record_replace_accepted(FloxOrderGroupHandle h, uint32_t leg_index,
+                                              uint64_t new_order_id)
+{
+  toOrderGroup(h)->recordReplaceAccepted(leg_index, new_order_id);
+}
+
+void flox_order_group_record_replace_rejected(FloxOrderGroupHandle h, uint32_t leg_index)
+{
+  toOrderGroup(h)->recordReplaceRejected(leg_index);
+}
+
+uint32_t flox_order_group_find_leg_by_order_id(FloxOrderGroupHandle h, uint64_t order_id)
+{
+  auto idx = toOrderGroup(h)->findLegByOrderId(order_id);
+  if (idx.has_value())
+  {
+    return static_cast<uint32_t>(*idx);
+  }
+  return UINT32_MAX;
+}
+
 uint8_t flox_order_group_state(FloxOrderGroupHandle h)
 {
   return static_cast<uint8_t>(toOrderGroup(h)->state());

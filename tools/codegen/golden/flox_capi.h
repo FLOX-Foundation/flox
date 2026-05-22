@@ -1564,6 +1564,10 @@ extern "C"
                                     int64_t cumulative_qty_raw);
   void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index);
   void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index);
+  void flox_order_group_record_replace_accepted(FloxOrderGroupHandle h, uint32_t leg_index,
+                                                uint64_t new_order_id);
+  void flox_order_group_record_replace_rejected(FloxOrderGroupHandle h, uint32_t leg_index);
+  uint32_t flox_order_group_find_leg_by_order_id(FloxOrderGroupHandle h, uint64_t order_id);
   uint8_t flox_order_group_state(FloxOrderGroupHandle h);
   uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h, int64_t* actions_out,
                                                 uint32_t max_actions);

@@ -70,6 +70,14 @@ inline void bindOrderGroup(py::module_& m)
            { g.recordFill(idx, flox::Quantity::fromDouble(cumulative_qty)); }, py::arg("leg_index"), py::arg("cumulative_qty"))
       .def("record_cancel", &flox::OrderGroup::recordCancel, py::arg("leg_index"))
       .def("record_failure", &flox::OrderGroup::recordFailure, py::arg("leg_index"))
+      .def("record_replace_accepted", &flox::OrderGroup::recordReplaceAccepted, py::arg("leg_index"), py::arg("new_order_id"))
+      .def("record_replace_rejected", &flox::OrderGroup::recordReplaceRejected, py::arg("leg_index"))
+      .def("find_leg_by_order_id", [](const flox::OrderGroup& g, uint64_t order_id) -> py::object
+           {
+            auto idx = g.findLegByOrderId(order_id);
+            if (idx.has_value()){ return py::cast(*idx);
+}
+            return py::none(); }, py::arg("order_id"))
       .def("mark_action_dispatched", [](flox::OrderGroup& g, size_t idx, const std::string& kind)
            {
             auto k = (kind == "cancel") ? flox::OrderGroupAction::Kind::CancelLeg

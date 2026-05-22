@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 536 functions, 46 handles, 58 structs, 43 callback typedefs, 3 enums, 61 groups.
+**Surface:** 539 functions, 46 handles, 58 structs, 43 callback typedefs, 3 enums, 61 groups.
 
 ## Opaque handles
 
@@ -1274,6 +1274,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_order_group_record_fill(FloxOrderGroupHandle h, uint32_t leg_index, int64_t cumulative_qty_raw)`
 - `void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index)`
 - `void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `void flox_order_group_record_replace_accepted(FloxOrderGroupHandle h, uint32_t leg_index, uint64_t new_order_id)`
+- `void flox_order_group_record_replace_rejected(FloxOrderGroupHandle h, uint32_t leg_index)`
+- `uint32_t flox_order_group_find_leg_by_order_id(FloxOrderGroupHandle h, uint64_t order_id)`
 - `uint8_t flox_order_group_state(FloxOrderGroupHandle h)`
 - `uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h, int64_t * actions_out, uint32_t max_actions)`
 - `void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index, uint8_t kind)`

@@ -1495,6 +1495,11 @@
         {
           "group": "order_group",
           "kind": "function",
+          "name": "flox_order_group_find_leg_by_order_id"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
           "name": "flox_order_group_leg_count"
         },
         {
@@ -1546,6 +1551,16 @@
           "group": "order_group",
           "kind": "function",
           "name": "flox_order_group_record_fill"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_record_replace_accepted"
+        },
+        {
+          "group": "order_group",
+          "kind": "function",
+          "name": "flox_order_group_record_replace_rejected"
         },
         {
           "group": "order_group",
@@ -4371,6 +4386,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_order_group_find_leg_by_order_id"
+        },
+        {
+          "kind": "function",
           "name": "flox_order_group_leg_count"
         },
         {
@@ -4412,6 +4431,14 @@
         {
           "kind": "function",
           "name": "flox_order_group_record_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_record_replace_accepted"
+        },
+        {
+          "kind": "function",
+          "name": "flox_order_group_record_replace_rejected"
         },
         {
           "kind": "function",
@@ -7969,6 +7996,7 @@
         "flox_order_group_add_market_leg",
         "flox_order_group_create",
         "flox_order_group_destroy",
+        "flox_order_group_find_leg_by_order_id",
         "flox_order_group_leg_count",
         "flox_order_group_leg_filled_raw",
         "flox_order_group_leg_order_id",
@@ -7980,6 +8008,8 @@
         "flox_order_group_record_cancel",
         "flox_order_group_record_failure",
         "flox_order_group_record_fill",
+        "flox_order_group_record_replace_accepted",
+        "flox_order_group_record_replace_rejected",
         "flox_order_group_record_submit",
         "flox_order_group_set_pair_latency_budget_ns",
         "flox_order_group_set_risk_limits",

@@ -224,3 +224,8 @@ docs/how-to/multi-feed-clock.md
 # usage examples; the runtime path is exercised by
 # python/tests/test_runner_attach_trace.py + node/test/test_trace_attach.js.
 docs/how-to/floxrun-auto-capture.md
+
+# How-to: Replace a leg of an active OrderGroup. Polyglot API tabs
+# plus an abstract event-routing pseudocode block; runtime path
+# exercised by tests/test_order_group_replace.cpp.
+docs/how-to/order-group-replace.md
