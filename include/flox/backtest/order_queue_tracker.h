@@ -51,6 +51,12 @@ class OrderQueueTracker
 
   void setModel(QueueModel model, size_t depth);
 
+  // For PRO_RATA_WITH_FIFO mode: the first N entries at a level
+  // consume the trade FIFO; only the remainder is split pro-rata
+  // across the rest. Ignored in NONE / TOB / FULL / PRO_RATA modes.
+  void setFifoTopN(size_t n) noexcept { _fifoTopN = n; }
+  size_t fifoTopN() const noexcept { return _fifoTopN; }
+
   // Register a limit order with its current level depth.
   void addOrder(SymbolId symbol, Side side, Price levelPrice, OrderId orderId,
                 Quantity qty, Quantity levelQtyNow);
@@ -109,6 +115,8 @@ class OrderQueueTracker
 
   bool _enabled{false};
   size_t _depth{1};
+  QueueModel _model{QueueModel::NONE};
+  size_t _fifoTopN{0};
 
   std::vector<Level> _levels;
 };

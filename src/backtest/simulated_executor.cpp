@@ -83,6 +83,11 @@ void SimulatedExecutor::setQueueModel(QueueModel model, size_t depth)
   _queueTracker.setModel(model, depth);
 }
 
+void SimulatedExecutor::setQueueFifoTopN(size_t topN)
+{
+  _queueTracker.setFifoTopN(topN);
+}
+
 void SimulatedExecutor::setQueuePositionMinChangeFraction(double fraction)
 {
   _queuePosMinFraction = fraction;

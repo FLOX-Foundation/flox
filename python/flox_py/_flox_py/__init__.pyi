@@ -2298,9 +2298,13 @@ class SimulatedExecutor:
         """
         Configure default slippage. model: none|fixed_ticks|fixed_bps|volume_impact. tick_size is in price units (0.0 falls back to one raw price unit).
         """
+    def set_queue_fifo_top_n(self, top_n: typing.SupportsInt | typing.SupportsIndex) -> None:
+        """
+        For pro_rata_with_fifo: first N orders at a level consume the trade FIFO; the rest is split pro-rata.
+        """
     def set_queue_model(self, model: str, depth: typing.SupportsInt | typing.SupportsIndex = 1) -> None:
         """
-        Configure queue simulation. model: none|tob|full
+        Configure queue simulation. model: none|tob|full|pro_rata|pro_rata_with_fifo
         """
     def set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """

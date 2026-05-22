@@ -2653,6 +2653,11 @@ void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle h, int3
       static_cast<QueueModel>(model), depth);
 }
 
+void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle h, uint32_t top_n)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setQueueFifoTopN(top_n);
+}
+
 void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle h,
                                                     int64_t latency_ns, int64_t jitter_ns)
 {

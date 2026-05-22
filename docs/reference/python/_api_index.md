@@ -1570,6 +1570,7 @@ Window-count distribution + quantile lookup. For each window_ns, observes the co
 - `set_cancel_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
+- `set_queue_fifo_top_n(self, top_n: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_queue_model(self, model: str, depth: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
 - `set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_rate_limit_policy(self, policy: ...) -> None`

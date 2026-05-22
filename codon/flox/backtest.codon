@@ -20,6 +20,7 @@ from C import flox_simulated_executor_fill_count(cobj) -> u32
 from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_queue_model(cobj, i32, u32)
+from C import flox_simulated_executor_set_queue_fifo_top_n(cobj, u32)
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
@@ -254,6 +255,9 @@ class SimulatedExecutor:
 
     def set_queue_model(self, model: int, depth: int = 1):
         flox_simulated_executor_set_queue_model(self._handle, i32(model), u32(depth))
+
+    def set_queue_fifo_top_n(self, top_n: int):
+        flox_simulated_executor_set_queue_fifo_top_n(self._handle, u32(top_n))
 
     def set_submit_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
         flox_simulated_executor_set_submit_ack_latency(

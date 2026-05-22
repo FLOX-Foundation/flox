@@ -10,13 +10,72 @@
 #include "flox/backtest/order_queue_tracker.h"
 
 #include <algorithm>
+#include <cstdint>
+
+#if defined(_WIN32) && defined(_M_X64)
+#include <intrin.h>
+#endif
 
 namespace flox
 {
 
+namespace
+{
+// Portable 64x64 -> 64 multiply-then-divide via a 128-bit
+// intermediate. Windows toolchains (MSVC, clang-cl) lack __int128,
+// and clang-cl does not expose MSVC's _div128 intrinsic. On Windows
+// x64 we use _umul128 for the multiply and a hand-written
+// shift-subtract long division for the 128/64 -> 64 divide. Unix
+// builds use __int128 directly. Inputs are non-negative in all call
+// sites here (queue sizes and trade quantities).
+inline int64_t mulDiv64(int64_t a, int64_t b, int64_t c) noexcept
+{
+#if defined(__SIZEOF_INT128__) && !defined(_WIN32)
+  return static_cast<int64_t>((static_cast<__int128>(a) *
+                               static_cast<__int128>(b)) /
+                              static_cast<__int128>(c));
+#elif defined(_WIN32) && defined(_M_X64)
+  uint64_t hi = 0;
+  uint64_t lo = _umul128(static_cast<uint64_t>(a), static_cast<uint64_t>(b), &hi);
+  const uint64_t divisor = static_cast<uint64_t>(c);
+  uint64_t quot = 0;
+  uint64_t rem = 0;
+  for (int i = 127; i >= 0; --i)
+  {
+    const uint64_t bit =
+        (i >= 64) ? ((hi >> (i - 64)) & 1ULL) : ((lo >> i) & 1ULL);
+    rem = (rem << 1) | bit;
+    if (rem >= divisor)
+    {
+      rem -= divisor;
+      if (i >= 64)
+      {
+        quot |= (1ULL << (i - 64));
+      }
+      else
+      {
+        quot |= (1ULL << i);
+      }
+    }
+  }
+  return static_cast<int64_t>(quot);
+#else
+  // Fall back to long double on platforms without a wide multiply
+  // primitive. Acceptable because the result is immediately
+  // clamped to entry.remaining and re-checked against distributeRaw;
+  // any lost precision shows up as a few raw units of
+  // under-allocation, never over-allocation.
+  return static_cast<int64_t>((static_cast<long double>(a) *
+                               static_cast<long double>(b)) /
+                              static_cast<long double>(c));
+#endif
+}
+}  // namespace
+
 void OrderQueueTracker::setModel(QueueModel model, size_t depth)
 {
   _enabled = (model != QueueModel::NONE);
+  _model = model;
   _depth = (model == QueueModel::FULL) ? std::max<size_t>(depth, 1) : 1;
 }
 
@@ -105,28 +164,68 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
     }
 
     int64_t remainingRaw = tradeQty.raw();
-    for (auto& entry : level.entries)
-    {
-      if (remainingRaw <= 0)
-      {
-        break;
-      }
 
+    // FIFO portion: applies to all entries in NONE/TOB/FULL, and to
+    // the first _fifoTopN entries in PRO_RATA_WITH_FIFO. Pure
+    // PRO_RATA skips this loop entirely (fifoCount=0).
+    const size_t fifoCount =
+        (_model == QueueModel::PRO_RATA)             ? 0
+        : (_model == QueueModel::PRO_RATA_WITH_FIFO) ? std::min(_fifoTopN, level.entries.size())
+                                                     : level.entries.size();
+    for (size_t i = 0; i < fifoCount && remainingRaw > 0; ++i)
+    {
+      auto& entry = level.entries[i];
       const int64_t aheadConsumed = std::min(entry.aheadRemaining.raw(), remainingRaw);
       entry.aheadRemaining = Quantity::fromRaw(entry.aheadRemaining.raw() - aheadConsumed);
       remainingRaw -= aheadConsumed;
-
       if (remainingRaw <= 0 || entry.aheadRemaining.raw() > 0)
       {
         continue;
       }
-
       const int64_t fillRaw = std::min(entry.remaining.raw(), remainingRaw);
       if (fillRaw > 0)
       {
         entry.remaining = Quantity::fromRaw(entry.remaining.raw() - fillRaw);
         remainingRaw -= fillRaw;
         filled.emplace_back(entry.orderId, Quantity::fromRaw(fillRaw));
+      }
+    }
+
+    // Pro-rata portion: distribute remainingRaw across entries from
+    // fifoCount onward, weighted by entry.remaining.
+    if (remainingRaw > 0 && fifoCount < level.entries.size() &&
+        (_model == QueueModel::PRO_RATA || _model == QueueModel::PRO_RATA_WITH_FIFO))
+    {
+      int64_t totalRest = 0;
+      for (size_t i = fifoCount; i < level.entries.size(); ++i)
+      {
+        totalRest += level.entries[i].remaining.raw();
+      }
+      if (totalRest > 0)
+      {
+        const int64_t distributeRaw = std::min(remainingRaw, totalRest);
+        int64_t allocated = 0;
+        for (size_t i = fifoCount; i < level.entries.size() && allocated < distributeRaw; ++i)
+        {
+          auto& entry = level.entries[i];
+          // Proportional share rounded down to the nearest raw unit.
+          int64_t share = mulDiv64(entry.remaining.raw(), distributeRaw, totalRest);
+          if (share > entry.remaining.raw())
+          {
+            share = entry.remaining.raw();
+          }
+          if (allocated + share > distributeRaw)
+          {
+            share = distributeRaw - allocated;
+          }
+          if (share > 0)
+          {
+            entry.remaining = Quantity::fromRaw(entry.remaining.raw() - share);
+            allocated += share;
+            filled.emplace_back(entry.orderId, Quantity::fromRaw(share));
+          }
+        }
+        remainingRaw -= allocated;
       }
     }
 

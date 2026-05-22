@@ -1380,6 +1380,14 @@ static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
                                           toUint32(ctx, argv[2]));
   return JS_UNDEFINED;
 }
+static JSValue js_executor_set_queue_fifo_top_n(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  flox_simulated_executor_set_queue_fifo_top_n(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toUint32(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_set_submit_ack(JSContext* ctx, JSValueConst, int argc,
                                           JSValueConst* argv)
 {
