@@ -49,6 +49,8 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   _cancelAckRng.seed(config.cancelAckSeed);
   _replaceAckLatencyNs = config.replaceAckLatencyNs;
   _replaceAckJitterNs = config.replaceAckJitterNs;
+  _submitAckLatencyNs = config.submitAckLatencyNs;
+  _submitAckJitterNs = config.submitAckJitterNs;
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -147,6 +149,21 @@ void SimulatedExecutor::submitOrder(const Order& order)
   accepted.createdAt = fromUnixNs(_clock.nowNs());
 
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
+
+  if (_submitAckLatencyNs > 0)
+  {
+    // Async path: ACCEPTED defers until the sampled deadline. The
+    // order is held aside; finishSubmission runs the existing
+    // book-add / queue-tracker / try-fill logic when ack arrives.
+    enqueuePendingSubmission(accepted);
+    return;
+  }
+
+  finishSubmission(std::move(accepted), /*fromAck=*/false);
+}
+
+void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
+{
   emitEvent(OrderEventStatus::ACCEPTED, accepted);
 
   // POST_ONLY: reject any limit that would cross the book (taker semantics
@@ -162,7 +179,20 @@ void SimulatedExecutor::submitOrder(const Order& order)
         (accepted.side == Side::SELL && state.hasBid && orderPriceRaw <= state.bestBidRaw);
     if (crosses)
     {
-      emitEvent(OrderEventStatus::REJECTED, accepted);
+      if (_callback)
+      {
+        OrderEvent ev;
+        ev.status = OrderEventStatus::REJECTED;
+        ev.order = accepted;
+        ev.exchangeTsNs = _clock.nowNs();
+        ev.timestamps = timestampsFor(accepted.id);
+        ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
+        if (fromAck)
+        {
+          ev.rejectReason = "late_post_only_crossed";
+        }
+        _callback(ev);
+      }
       return;
     }
   }
@@ -491,6 +521,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
   }
   maybeEmitMarketPositionChanges();
 
+  finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
   processPendingOrders(symbol, state);
@@ -545,6 +576,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   maybeEmitQueuePositionChanges();
   maybeEmitMarketPositionChanges();
 
+  finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
   processPendingOrders(symbol, state);
@@ -562,6 +594,7 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price price)
   state.hasBid = true;
   state.hasAsk = true;
   state.hasTrade = true;
+  finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
   processPendingOrders(symbol, state);
@@ -909,6 +942,45 @@ void SimulatedExecutor::finalizePendingReplaces()
     replaced.exchangeTsNs = now;
     replaced.timestamps = timestampsFor(orderId);
     _callback(replaced);
+  }
+}
+
+int64_t SimulatedExecutor::sampleSubmitAckLatency()
+{
+  if (_submitAckJitterNs <= 0)
+  {
+    return _submitAckLatencyNs;
+  }
+  std::uniform_int_distribution<int64_t> dist(-_submitAckJitterNs, _submitAckJitterNs);
+  return std::max<int64_t>(0, _submitAckLatencyNs + dist(_cancelAckRng));
+}
+
+void SimulatedExecutor::enqueuePendingSubmission(const Order& order)
+{
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  _pendingSubmissions.push_back(
+      PendingSubmission{.ackAtNs = now + sampleSubmitAckLatency(), .order = order});
+}
+
+void SimulatedExecutor::finalizePendingSubmissions()
+{
+  if (_pendingSubmissions.empty())
+  {
+    return;
+  }
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  size_t i = 0;
+  while (i < _pendingSubmissions.size())
+  {
+    if (_pendingSubmissions[i].ackAtNs > now)
+    {
+      ++i;
+      continue;
+    }
+    Order accepted = _pendingSubmissions[i].order;
+    _pendingSubmissions[i] = _pendingSubmissions.back();
+    _pendingSubmissions.pop_back();
+    finishSubmission(std::move(accepted), /*fromAck=*/true);
   }
 }
 
