@@ -9710,6 +9710,7 @@ Members:
 - `fills(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `fills_list(self) -> list`
 - `fok_mode(self) -> str`
+- `iceberg_hidden_remaining_raw(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_best_levels(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_price: typing.SupportsFloat | typing.SupportsIndex, bid_qty: typing.SupportsFloat | typing.SupportsIndex, ask_price: typing.SupportsFloat | typing.SupportsIndex, ask_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_book_snapshot(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], ask_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]]) -> None`
@@ -9720,6 +9721,7 @@ Members:
 - `set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `set_fok_mode(self, mode: str) -> None`
+- `set_iceberg_refresh_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_lmm_bonus_multiplier(self, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_lmm_orders(self, ids: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex]) -> None`
 - `set_order_priority_multiplier(self, order_id: typing.SupportsInt | typing.SupportsIndex, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None`
@@ -9738,6 +9740,7 @@ Members:
 - `set_venue_availability(self, availability: ...) -> None`
 - `stp_group_for(self, account_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `submit_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, entry_side: str, entry_type: str, entry_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, tp_side: str, tp_type: str, tp_price: typing.SupportsFloat | typing.SupportsIndex, stop_side: str, stop_type: str, stop_trigger_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `submit_iceberg(self, order_id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, total_quantity: typing.SupportsFloat | typing.SupportsIndex, visible_quantity: typing.SupportsFloat | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
 - `submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0, account_id: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - *property* `fill_count: int`
 

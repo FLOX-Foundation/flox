@@ -1368,6 +1368,31 @@ static JSValue js_executor_set_bracket_child_arm_mode(JSContext* ctx, JSValueCon
       static_cast<uint8_t>(toUint32(ctx, argv[1])));
   return JS_UNDEFINED;
 }
+static JSValue js_executor_submit_iceberg(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  flox_simulated_executor_submit_iceberg(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])),
+      static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]),
+      toDouble(ctx, argv[4]), toDouble(ctx, argv[5]), toUint32(ctx, argv[6]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_iceberg_refresh_latency(JSContext* ctx, JSValueConst, int,
+                                                       JSValueConst* argv)
+{
+  flox_simulated_executor_set_iceberg_refresh_latency(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_iceberg_hidden_remaining_raw(JSContext* ctx, JSValueConst, int,
+                                                        JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, flox_simulated_executor_iceberg_hidden_remaining_raw(
+                              static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+                              static_cast<uint64_t>(toInt64(ctx, argv[1]))));
+}
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
@@ -6137,6 +6162,12 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_bracket_state, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_bracket_child_arm_mode",
                 js_executor_set_bracket_child_arm_mode, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_submit_iceberg",
+                js_executor_submit_iceberg, 7);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_refresh_latency",
+                js_executor_set_iceberg_refresh_latency, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_iceberg_hidden_remaining_raw",
+                js_executor_iceberg_hidden_remaining_raw, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);

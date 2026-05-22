@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 649 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 652 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1566,6 +1566,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_simulated_executor_cancel_bracket(FloxSimulatedExecutorHandle executor, uint64_t bracket_id)`
 - `uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor, uint64_t bracket_id)`
 - `void flox_simulated_executor_set_bracket_child_arm_mode(FloxSimulatedExecutorHandle executor, uint8_t mode)`
+- `void flox_simulated_executor_submit_iceberg(FloxSimulatedExecutorHandle executor, uint64_t id, uint8_t side, double price, double total_quantity, double visible_quantity, uint32_t symbol)`
+- `void flox_simulated_executor_set_iceberg_refresh_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns)`
+- `int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(FloxSimulatedExecutorHandle executor, uint64_t id)`
 - `void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id)`
 - `void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol)`
 - `void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol, double close_price)`

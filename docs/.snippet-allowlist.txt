@@ -250,27 +250,8 @@ docs/how-to/perpetual-funding.md
 # tests/test_fee_schedule.cpp.
 docs/how-to/tiered-fees.md
 
-# How-to: Native bracket orders. Polyglot tabs configuring
-# SimulatedExecutor's bracket primitive; runtime path exercised by
-# tests/test_bracket_orders.cpp.
-docs/how-to/bracket-orders.md
-
-# How-to: Liquidation cascades + insurance fund + ADL. Polyglot
-# tabs configuring LiquidationEngine; runtime path exercised by
-# tests/test_liquidation_engine.cpp.
-docs/how-to/liquidation-and-adl.md
-
-# How-to: Live queue position calibration. Python-only research
-# surface; runtime path exercised by
-# python/tests/test_live_queue_calibrator.py.
-docs/how-to/calibrate-live-queue.md
-
-# How-to: Matching modes (FIFO / pro-rata / hybrid). Polyglot tabs
-# configuring SimulatedExecutor; runtime path exercised by
-# tests/test_pro_rata_matching.cpp.
-docs/how-to/matching-modes.md
-
-# How-to: Venue downtime simulation. Polyglot tabs configuring a
-# VenueAvailability + SimulatedExecutor; runtime path exercised by
-# tests/test_venue_availability.cpp.
-docs/how-to/venue-downtime.md
+# How-to: Native iceberg orders. Polyglot tabs configuring
+# SimulatedExecutor + a runnable Python example. Runtime path
+# exercised by tests/test_iceberg_orders.cpp.
+docs/how-to/iceberg-orders.md
+docs/how-to/calibrate-live-queue.md  # T048 fit-method examples — abstract API shapes

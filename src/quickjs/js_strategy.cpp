@@ -184,6 +184,16 @@ void FloxJsStrategy::loadStdlib()
         const names = ["pending_entry","entry_filled","tp_filled","stop_filled","canceled"];
         return names[s] || "pending_entry";
       }
+      submitIceberg(id, side, price, total, visible, symbol) {
+        __flox_simulated_executor_submit_iceberg(this._h, id, side === "buy" ? 0 : 1,
+          price, total, visible, symbol || 1);
+      }
+      setIcebergRefreshLatency(latencyNs) {
+        __flox_simulated_executor_set_iceberg_refresh_latency(this._h, latencyNs || 0);
+      }
+      icebergHiddenRemainingRaw(id) {
+        return __flox_simulated_executor_iceberg_hidden_remaining_raw(this._h, id);
+      }
       get fillCount() { return __flox_simulated_executor_fill_count(this._h); }
       get handle() { return this._h; }
     }

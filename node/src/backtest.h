@@ -130,6 +130,11 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                                        &SimulatedExecutorWrap::BracketState),
                         InstanceMethod("setBracketChildArmMode",
                                        &SimulatedExecutorWrap::SetBracketChildArmMode),
+                        InstanceMethod("submitIceberg", &SimulatedExecutorWrap::SubmitIceberg),
+                        InstanceMethod("setIcebergRefreshLatency",
+                                       &SimulatedExecutorWrap::SetIcebergRefreshLatency),
+                        InstanceMethod("icebergHiddenRemainingRaw",
+                                       &SimulatedExecutorWrap::IcebergHiddenRemainingRaw),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -460,6 +465,29 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     const std::string mode = info[0].As<Napi::String>().Utf8Value();
     flox_simulated_executor_set_bracket_child_arm_mode(
         _h, mode == "on_partial_fill" ? 1 : 0);
+  }
+  void SubmitIceberg(const Napi::CallbackInfo& info)
+  {
+    uint64_t id = info[0].As<Napi::Number>().Int64Value();
+    std::string side = info[1].As<Napi::String>().Utf8Value();
+    double price = info[2].As<Napi::Number>().DoubleValue();
+    double total = info[3].As<Napi::Number>().DoubleValue();
+    double visible = info[4].As<Napi::Number>().DoubleValue();
+    uint32_t sym = info.Length() > 5 ? info[5].As<Napi::Number>().Uint32Value() : 1;
+    uint8_t s = side == "buy" ? 0 : 1;
+    flox_simulated_executor_submit_iceberg(_h, id, s, price, total, visible, sym);
+  }
+  void SetIcebergRefreshLatency(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_iceberg_refresh_latency(
+        _h, info[0].As<Napi::Number>().Int64Value());
+  }
+  Napi::Value IcebergHiddenRemainingRaw(const Napi::CallbackInfo& info)
+  {
+    int64_t id = info[0].As<Napi::Number>().Int64Value();
+    return Napi::Number::New(info.Env(),
+                             static_cast<double>(
+                                 flox_simulated_executor_iceberg_hidden_remaining_raw(_h, id)));
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;

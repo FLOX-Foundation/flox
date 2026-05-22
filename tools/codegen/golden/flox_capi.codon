@@ -673,6 +673,9 @@ from C import flox_simulated_executor_submit_bracket(cobj, u64, u32, u8, u8, flo
 from C import flox_simulated_executor_cancel_bracket(cobj, u64)
 from C import flox_simulated_executor_bracket_state(cobj, u64) -> u8
 from C import flox_simulated_executor_set_bracket_child_arm_mode(cobj, u8)
+from C import flox_simulated_executor_submit_iceberg(cobj, u64, u8, float, float, float, u32)
+from C import flox_simulated_executor_set_iceberg_refresh_latency(cobj, i64)
+from C import flox_simulated_executor_iceberg_hidden_remaining_raw(cobj, u64) -> i64
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, float)

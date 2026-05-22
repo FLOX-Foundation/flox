@@ -1179,6 +1179,34 @@ void flox_simulated_executor_set_bracket_child_arm_mode(FloxSimulatedExecutorHan
                 : SimulatedExecutor::BracketArmMode::OnFullFill);
 }
 
+void flox_simulated_executor_submit_iceberg(FloxSimulatedExecutorHandle h, uint64_t id,
+                                            uint8_t side, double price,
+                                            double total_quantity, double visible_quantity,
+                                            uint32_t symbol)
+{
+  Order order{};
+  order.id = id;
+  order.side = side == 0 ? Side::BUY : Side::SELL;
+  order.price = Price::fromDouble(price);
+  order.quantity = Quantity::fromDouble(total_quantity);
+  order.visibleQuantity = Quantity::fromDouble(visible_quantity);
+  order.type = OrderType::ICEBERG;
+  order.symbol = symbol;
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.submitOrder(order);
+}
+
+void flox_simulated_executor_set_iceberg_refresh_latency(FloxSimulatedExecutorHandle h,
+                                                         int64_t latency_ns)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergRefreshLatency(latency_ns);
+}
+
+int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(FloxSimulatedExecutorHandle h,
+                                                             uint64_t id)
+{
+  return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.icebergHiddenRemainingRaw(id);
+}
+
 void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);

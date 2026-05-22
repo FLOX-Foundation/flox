@@ -648,6 +648,29 @@ extern "C"
   void flox_simulated_executor_set_bracket_child_arm_mode(
       FloxSimulatedExecutorHandle executor, uint8_t mode);
 
+  // Submit a native iceberg order. order_type is forced to ICEBERG
+  // internally. `visible_quantity` is the slice exposed to the book;
+  // the hidden remainder (total - visible) refreshes automatically
+  // as the visible tranche fills. Refresh latency is configured via
+  // flox_simulated_executor_set_iceberg_refresh_latency.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_submit_iceberg(FloxSimulatedExecutorHandle executor,
+                                              uint64_t id, uint8_t side, double price,
+                                              double total_quantity,
+                                              double visible_quantity, uint32_t symbol);
+
+  // Set the default refresh latency in nanoseconds for native
+  // iceberg orders submitted after this call. Most venues are
+  // instant (0); a few inject 1-2ms.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_set_iceberg_refresh_latency(
+      FloxSimulatedExecutorHandle executor, int64_t latency_ns);
+
+  // Diagnostic: hidden remainder (raw fixed-point) for an iceberg
+  // order, or 0 if the order is not an iceberg or has been removed.
+  FLOX_EXPORT(group = "simulated_executor")
+  int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(
+      FloxSimulatedExecutorHandle executor, uint64_t id);
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   FLOX_EXPORT(group = "simulated_executor")

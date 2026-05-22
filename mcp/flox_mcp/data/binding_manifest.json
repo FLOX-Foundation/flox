@@ -2775,6 +2775,11 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_iceberg_hidden_remaining_raw"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_on_bar"
         },
         {
@@ -2821,6 +2826,11 @@
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_set_fok_mode"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_refresh_latency"
         },
         {
           "group": "backtest_slippage",
@@ -2906,6 +2916,11 @@
           "group": "simulated_executor",
           "kind": "function",
           "name": "flox_simulated_executor_submit_bracket"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_iceberg"
         },
         {
           "group": "simulated_executor",
@@ -5994,6 +6009,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_iceberg_hidden_remaining_raw"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_on_bar"
         },
         {
@@ -6031,6 +6050,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_fok_mode"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_refresh_latency"
         },
         {
           "kind": "function",
@@ -6099,6 +6122,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_submit_bracket"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_iceberg"
         },
         {
           "kind": "function",
@@ -9743,10 +9770,13 @@
         "flox_simulated_executor_create",
         "flox_simulated_executor_destroy",
         "flox_simulated_executor_fill_count",
+        "flox_simulated_executor_iceberg_hidden_remaining_raw",
         "flox_simulated_executor_on_bar",
         "flox_simulated_executor_on_trade",
         "flox_simulated_executor_set_bracket_child_arm_mode",
+        "flox_simulated_executor_set_iceberg_refresh_latency",
         "flox_simulated_executor_submit_bracket",
+        "flox_simulated_executor_submit_iceberg",
         "flox_simulated_executor_submit_order",
         "flox_simulated_executor_submit_order_ex"
       ],
