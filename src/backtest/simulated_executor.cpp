@@ -249,6 +249,92 @@ void SimulatedExecutor::submitOrder(const Order& order)
     return;
   }
 
+  // Self-trade prevention. Walk pending orders for an opposite-side
+  // crossing match on the same symbol; apply the configured mode.
+  // Empty / None mode is a no-op.
+  if (_stpMode != STPMode::None && !_pending_orders.empty())
+  {
+    for (size_t i = 0; i < _pending_orders.size(); ++i)
+    {
+      Order& existing = _pending_orders[i];
+      if (existing.symbol != accepted.symbol || existing.side == accepted.side)
+      {
+        continue;
+      }
+      const int64_t aPrice = accepted.price.raw();
+      const int64_t ePrice = existing.price.raw();
+      const bool crosses =
+          (accepted.side == Side::BUY && aPrice >= ePrice) ||
+          (accepted.side == Side::SELL && aPrice <= ePrice);
+      if (!crosses)
+      {
+        continue;
+      }
+
+      auto rejectAccepted = [&](const char* reason)
+      {
+        OrderEvent ev;
+        ev.status = OrderEventStatus::REJECTED;
+        ev.order = accepted;
+        ev.exchangeTsNs = _clock.nowNs();
+        ev.timestamps = timestampsFor(accepted.id);
+        ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
+        ev.rejectReason = reason;
+        if (_callback)
+        {
+          _callback(ev);
+        }
+      };
+
+      auto cancelExisting = [&]()
+      {
+        Order cancelled = existing;
+        _queueTracker.removeOrder(cancelled.id);
+        forgetQueuePosition(cancelled.id);
+        forgetMarketPosition(cancelled.id);
+        _pending_orders.erase(_pending_orders.begin() + static_cast<long>(i));
+        emitEvent(OrderEventStatus::CANCELED, cancelled);
+      };
+
+      switch (_stpMode)
+      {
+        case STPMode::CancelNewest:
+          rejectAccepted("stp_cancel_newest");
+          return;
+        case STPMode::CancelOldest:
+          cancelExisting();
+          // Fall through to normal submit path for the accepted order.
+          goto stp_done;
+        case STPMode::CancelBoth:
+          cancelExisting();
+          rejectAccepted("stp_cancel_both");
+          return;
+        case STPMode::Decrement:
+        {
+          const int64_t aQty = accepted.quantity.raw();
+          const int64_t eQty = existing.quantity.raw() - existing.filledQuantity.raw();
+          if (aQty <= eQty)
+          {
+            // Smaller side is the new order. Cancel it; shrink existing by aQty.
+            existing.quantity = Quantity::fromRaw(existing.quantity.raw() - aQty);
+            rejectAccepted("stp_decrement_newest");
+            return;
+          }
+          else
+          {
+            // Smaller side is the existing order. Cancel it; shrink new by eQty.
+            cancelExisting();
+            accepted.quantity = Quantity::fromRaw(aQty - eQty);
+            goto stp_done;
+          }
+        }
+        case STPMode::None:
+          break;
+      }
+    }
+  }
+stp_done:
+
   // reduce_only: order may only reduce existing position. Computed
   // against the simulator-side net position (updated in executeFill).
   // If the order would open or grow the position it is rejected; if

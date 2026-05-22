@@ -37,6 +37,7 @@ from C import flox_simulated_executor_set_cancel_ack_latency_distribution(cobj, 
 from C import flox_simulated_executor_set_replace_ack_latency_distribution(cobj, cobj)
 from C import flox_simulated_executor_set_rate_limit_policy(cobj, cobj)
 from C import flox_simulated_executor_clear_rate_limit_policy(cobj)
+from C import flox_simulated_executor_set_stp_mode(cobj, u8)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
@@ -295,6 +296,16 @@ class SimulatedExecutor:
 
     def clear_rate_limit_policy(self):
         flox_simulated_executor_clear_rate_limit_policy(self._handle)
+
+    def set_stp_mode(self, mode: str):
+        """Self-trade prevention mode. mode in {none, cancel_newest,
+        cancel_oldest, cancel_both, decrement}."""
+        m = 0
+        if mode == "cancel_newest": m = 1
+        elif mode == "cancel_oldest": m = 2
+        elif mode == "cancel_both": m = 3
+        elif mode == "decrement": m = 4
+        flox_simulated_executor_set_stp_mode(self._handle, u8(m))
 
     def handle(self) -> cobj:
         return self._handle

@@ -2677,6 +2677,12 @@ void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle h
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.applyLatencyProfile(profile_name);
 }
 
+void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle h, uint8_t mode)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSTPMode(
+      static_cast<STPMode>(mode));
+}
+
 // Latency distribution handle bridging.
 
 namespace

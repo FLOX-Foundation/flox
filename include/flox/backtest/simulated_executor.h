@@ -79,6 +79,15 @@ class SimulatedExecutor : public IOrderExecutor
 
   void applyLatencyProfile(const char* name);
 
+  // Self-trade prevention. When set, submitOrder consults pending
+  // resting orders and applies the configured mode if the incoming
+  // order would cross one of the same account's resting orders. The
+  // simulator currently treats every order on this executor as
+  // belonging to one logical account; cross-account STP is filed as
+  // a follow-up if multi-account workflows arrive.
+  void setSTPMode(STPMode mode) noexcept { _stpMode = mode; }
+  STPMode stpMode() const noexcept { return _stpMode; }
+
   // Attach a rate-limit policy. Submit / cancel / replace consult the
   // policy first; an overflow emits OrderEventStatus::REJECTED_RATE_LIMIT
   // and the action is not committed to the simulator. Passing an
@@ -279,6 +288,8 @@ class SimulatedExecutor : public IOrderExecutor
 
   RateLimitPolicy _rateLimit;
   bool _hasRateLimit{false};
+
+  STPMode _stpMode{STPMode::None};
 };
 
 }  // namespace flox

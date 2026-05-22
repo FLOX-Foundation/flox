@@ -1575,6 +1575,7 @@ Window-count distribution + quantile lookup. For each window_ns, observes the co
 - `set_rate_limit_policy(self, policy: ...) -> None`
 - `set_replace_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_replace_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
+- `set_stp_mode(self, mode: str) -> None`
 - `set_submit_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_submit_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`

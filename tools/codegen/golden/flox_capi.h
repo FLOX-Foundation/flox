@@ -864,6 +864,7 @@ extern "C"
                                                        int64_t latency_ns, int64_t jitter_ns);
   void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
                                                      const char* profile_name);
+  void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
   FloxLatencyDistributionHandle flox_latency_distribution_create(void);
   void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h);
   void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns);

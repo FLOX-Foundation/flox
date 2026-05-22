@@ -271,6 +271,27 @@ class PySimulatedExecutor
   {
     _executor.applyLatencyProfile(name.c_str());
   }
+  void setSTPMode(const std::string& mode)
+  {
+    flox::STPMode m = flox::STPMode::None;
+    if (mode == "cancel_newest")
+    {
+      m = flox::STPMode::CancelNewest;
+    }
+    else if (mode == "cancel_oldest")
+    {
+      m = flox::STPMode::CancelOldest;
+    }
+    else if (mode == "cancel_both")
+    {
+      m = flox::STPMode::CancelBoth;
+    }
+    else if (mode == "decrement")
+    {
+      m = flox::STPMode::Decrement;
+    }
+    _executor.setSTPMode(m);
+  }
   void setSubmitAckLatencyDistribution(const flox::LatencyDistribution& d)
   {
     _executor.setSubmitAckLatencyDistribution(d);
@@ -561,6 +582,10 @@ inline void bindBacktest(py::module_& m)
            "Get all fills as list of dicts")
       .def("set_rate_limit_policy", &PySimulatedExecutor::setRateLimitPolicy,
            py::arg("policy"))
+      .def("set_stp_mode", &PySimulatedExecutor::setSTPMode,
+           "Self-trade prevention mode: none | cancel_newest | cancel_oldest | "
+           "cancel_both | decrement.",
+           py::arg("mode"))
       .def("clear_rate_limit_policy", &PySimulatedExecutor::clearRateLimitPolicy)
       .def_property_readonly("fill_count", &PySimulatedExecutor::fillCount);
 

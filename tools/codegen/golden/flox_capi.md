@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 592 functions, 51 handles, 58 structs, 43 callback typedefs, 3 enums, 65 groups.
+**Surface:** 593 functions, 51 handles, 58 structs, 43 callback typedefs, 3 enums, 65 groups.
 
 ## Opaque handles
 
@@ -861,6 +861,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
 - `void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
 - `void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor, const char * profile_name)`
+- `void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor, uint8_t mode)`
 - `FloxLatencyDistributionHandle flox_latency_distribution_create(void)`
 - `void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h)`
 - `void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns)`

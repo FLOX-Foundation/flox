@@ -2312,6 +2312,10 @@ class SimulatedExecutor:
         ...
     def set_replace_ack_latency_distribution(self, dist: LatencyDistribution) -> None:
         ...
+    def set_stp_mode(self, mode: str) -> None:
+        """
+        Self-trade prevention mode: none | cancel_newest | cancel_oldest | cancel_both | decrement.
+        """
     def set_submit_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
     def set_submit_ack_latency_distribution(self, dist: LatencyDistribution) -> None:
