@@ -438,6 +438,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
 
   if (_queueTracker.enabled())
   {
+    // First update every level present in the snapshot.
     for (const auto& lvl : bids)
     {
       _queueTracker.onLevelUpdate(symbol, Side::BUY, lvl.price, lvl.quantity);
@@ -445,6 +446,46 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
     for (const auto& lvl : asks)
     {
       _queueTracker.onLevelUpdate(symbol, Side::SELL, lvl.price, lvl.quantity);
+    }
+    // Then zero-out any tracked level that disappeared from the snapshot.
+    // Book providers usually drop empty levels rather than reporting qty=0;
+    // without this pass, our queue tracker would keep stale `level.totalQty`
+    // values for those levels and LevelEmpty would never fire.
+    std::vector<Price> trackedBids;
+    _queueTracker.trackedPrices(symbol, Side::BUY, trackedBids);
+    for (const Price& p : trackedBids)
+    {
+      bool present = false;
+      for (const auto& lvl : bids)
+      {
+        if (lvl.price.raw() == p.raw())
+        {
+          present = true;
+          break;
+        }
+      }
+      if (!present)
+      {
+        _queueTracker.onLevelUpdate(symbol, Side::BUY, p, Quantity::fromRaw(0));
+      }
+    }
+    std::vector<Price> trackedAsks;
+    _queueTracker.trackedPrices(symbol, Side::SELL, trackedAsks);
+    for (const Price& p : trackedAsks)
+    {
+      bool present = false;
+      for (const auto& lvl : asks)
+      {
+        if (lvl.price.raw() == p.raw())
+        {
+          present = true;
+          break;
+        }
+      }
+      if (!present)
+      {
+        _queueTracker.onLevelUpdate(symbol, Side::SELL, p, Quantity::fromRaw(0));
+      }
     }
     maybeEmitQueuePositionChanges();
   }
@@ -898,8 +939,8 @@ void SimulatedExecutor::resolveLateReplaceOnFill(const Order& order)
 }
 
 MarketPosition SimulatedExecutor::computeMarketPosition(
-    const Order& order, const MarketState& state, Quantity ourRemaining,
-    Quantity queueTotal) const
+    const Order& order, const MarketState& state, Quantity /*ourRemaining*/,
+    Quantity nonOurLevelQty) const
 {
   const int64_t p = order.price.raw();
   const bool isBuy = (order.side == Side::BUY);
@@ -907,6 +948,11 @@ MarketPosition SimulatedExecutor::computeMarketPosition(
   const bool hasAsk = state.hasAsk;
   const int64_t bid = state.bestBidRaw;
   const int64_t ask = state.bestAskRaw;
+  // nonOurLevelQty is the queue tracker's view of "others' quantity at this
+  // order's price level". Meaningful only when the queue tracker is enabled
+  // and our order is registered with it. Otherwise it is zero and cannot
+  // distinguish "no others at level" from "no tracker info".
+  const bool queueInfo = _queueTracker.enabled();
 
   if (isBuy)
   {
@@ -914,20 +960,37 @@ MarketPosition SimulatedExecutor::computeMarketPosition(
     {
       return MarketPosition::Crossed;
     }
-    if (hasBid && p == bid)
+    // No bid level on the book: we are the only resting buy at our
+    // price (or a worse one). If the queue tracker confirms no
+    // others share our exact level, we are LevelEmpty.
+    if (!hasBid)
     {
-      if (queueTotal.raw() > 0 && queueTotal.raw() <= ourRemaining.raw())
+      if (queueInfo && nonOurLevelQty.raw() == 0)
+      {
+        return MarketPosition::LevelEmpty;
+      }
+      if (hasAsk && p < ask)
+      {
+        return MarketPosition::MidSpread;
+      }
+      return MarketPosition::Unknown;
+    }
+    if (p == bid)
+    {
+      if (queueInfo && nonOurLevelQty.raw() == 0)
       {
         return MarketPosition::LevelEmpty;
       }
       return MarketPosition::Best;
     }
-    if (hasBid && p < bid)
+    if (p < bid)
     {
       return MarketPosition::BehindBest;
     }
-    // p > bid (or no bid) and p < ask → mid-spread.
-    if (hasAsk && (!hasBid || p > bid) && p < ask)
+    // p > bid and p < ask → mid-spread (our order is bid-side but
+    // above the current best bid yet below best ask — improving the
+    // book without crossing).
+    if (hasAsk && p < ask)
     {
       return MarketPosition::MidSpread;
     }
@@ -938,19 +1001,31 @@ MarketPosition SimulatedExecutor::computeMarketPosition(
   {
     return MarketPosition::Crossed;
   }
-  if (hasAsk && p == ask)
+  if (!hasAsk)
   {
-    if (queueTotal.raw() > 0 && queueTotal.raw() <= ourRemaining.raw())
+    if (queueInfo && nonOurLevelQty.raw() == 0)
+    {
+      return MarketPosition::LevelEmpty;
+    }
+    if (hasBid && p > bid)
+    {
+      return MarketPosition::MidSpread;
+    }
+    return MarketPosition::Unknown;
+  }
+  if (p == ask)
+  {
+    if (queueInfo && nonOurLevelQty.raw() == 0)
     {
       return MarketPosition::LevelEmpty;
     }
     return MarketPosition::Best;
   }
-  if (hasAsk && p > ask)
+  if (p > ask)
   {
     return MarketPosition::BehindBest;
   }
-  if (hasBid && (!hasAsk || p < ask) && p > bid)
+  if (hasBid && p > bid)
   {
     return MarketPosition::MidSpread;
   }
