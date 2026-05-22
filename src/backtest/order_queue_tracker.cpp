@@ -10,9 +10,41 @@
 #include "flox/backtest/order_queue_tracker.h"
 
 #include <algorithm>
+#include <cstdint>
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace flox
 {
+
+namespace
+{
+// Portable 64x64 -> 64 multiply-then-divide via a 128-bit intermediate.
+// MSVC lacks __int128, so route through _mul128 / _udiv128 on Windows.
+inline int64_t mulDiv64(int64_t a, int64_t b, int64_t c) noexcept
+{
+#if defined(__SIZEOF_INT128__)
+  return static_cast<int64_t>((static_cast<__int128>(a) *
+                               static_cast<__int128>(b)) /
+                              static_cast<__int128>(c));
+#elif defined(_MSC_VER) && defined(_M_X64)
+  int64_t hi = 0;
+  const int64_t lo = _mul128(a, b, &hi);
+  int64_t rem = 0;
+  return _div128(hi, lo, c, &rem);
+#else
+  // Fall back to long double on platforms without a wide multiply
+  // primitive. Acceptable here because the result is immediately
+  // clamped and re-distributed if it overshoots; we lose only a few
+  // raw units at most.
+  return static_cast<int64_t>((static_cast<long double>(a) *
+                               static_cast<long double>(b)) /
+                              static_cast<long double>(c));
+#endif
+}
+}  // namespace
 
 void OrderQueueTracker::setModel(QueueModel model, size_t depth)
 {
@@ -151,10 +183,7 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
         {
           auto& entry = level.entries[i];
           // Proportional share rounded down to the nearest raw unit.
-          int64_t share = static_cast<int64_t>(
-              (static_cast<__int128>(entry.remaining.raw()) *
-               static_cast<__int128>(distributeRaw)) /
-              static_cast<__int128>(totalRest));
+          int64_t share = mulDiv64(entry.remaining.raw(), distributeRaw, totalRest);
           if (share > entry.remaining.raw())
           {
             share = entry.remaining.raw();
