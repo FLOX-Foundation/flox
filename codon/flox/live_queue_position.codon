@@ -16,6 +16,8 @@ from C import flox_live_queue_position_on_order_placed(cobj, u32, u8, i64, u64, 
 from C import flox_live_queue_position_on_order_cancelled(cobj, u64, i64)
 from C import flox_live_queue_position_on_order_filled(cobj, u64, i64, i64)
 from C import flox_live_queue_position_on_trade(cobj, u32, i64, i64, i64)
+from C import flox_live_queue_position_on_trade_with_flag(cobj, u32, i64, i64, i64, u8)
+from C import flox_live_queue_position_set_hidden_order_policy(cobj, u8)
 from C import flox_live_queue_position_on_level_update(cobj, u32, u8, i64, i64, i64)
 from C import flox_live_queue_position_snapshot(cobj, u64, i64, cobj) -> u8
 from C import flox_live_queue_position_tracked_count(cobj) -> u32
@@ -30,6 +32,7 @@ class LiveQueueSnapshot:
     total: float
     confidence: float
     last_update_ns: int
+    hidden_volume_seen: float
 
 
 class LiveQueuePositionEstimator:
@@ -75,6 +78,22 @@ class LiveQueuePositionEstimator:
             self._h, u32(symbol), Price.from_double(price).raw(),
             Quantity.from_double(qty).raw(), i64(ts_ns))
 
+    def on_trade_with_flag(self, symbol: int, price: float, qty: float,
+                            ts_ns: int = 0, is_hidden: bool = False):
+        flox_live_queue_position_on_trade_with_flag(
+            self._h, u32(symbol), Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw(), i64(ts_ns),
+            u8(1 if is_hidden else 0))
+
+    def set_hidden_order_policy(self, policy: str):
+        """policy: 'ignore' | 'trust_trade_flag' | 'infer_if_trade_exceeds_visible'."""
+        p = 0
+        if policy == "trust_trade_flag":
+            p = 1
+        elif policy == "infer_if_trade_exceeds_visible":
+            p = 2
+        flox_live_queue_position_set_hidden_order_policy(self._h, u8(p))
+
     def on_level_update(self, symbol: int, side: int, price: float, new_qty: float,
                          ts_ns: int = 0):
         flox_live_queue_position_on_level_update(
@@ -83,7 +102,7 @@ class LiveQueuePositionEstimator:
 
     def snapshot(self, order_id: int, now_ns: int = 0):
         """Returns LiveQueueSnapshot or None if the order is not tracked."""
-        buf = [i64(0)] * 5
+        buf = [i64(0)] * 6
         ok = int(flox_live_queue_position_snapshot(
             self._h, u64(order_id), i64(now_ns), cobj(buf.arr.ptr)))
         if ok == 0:
@@ -94,7 +113,8 @@ class LiveQueuePositionEstimator:
             queue_ahead_est=float(buf[1]) / 1e8,
             total=float(buf[2]) / 1e8,
             last_update_ns=int(buf[3]),
-            confidence=float(fp[4]))
+            confidence=float(fp[4]),
+            hidden_volume_seen=float(buf[5]) / 1e8)
 
     def tracked_order_count(self) -> int:
         return int(flox_live_queue_position_tracked_count(self._h))

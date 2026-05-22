@@ -9007,6 +9007,20 @@ extern "C" void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h,
                       flox::Quantity::fromRaw(qty_raw), ts_ns);
 }
 
+extern "C" void flox_live_queue_position_on_trade_with_flag(
+    FloxLiveQueuePositionHandle h, uint32_t symbol, int64_t price_raw, int64_t qty_raw,
+    int64_t ts_ns, uint8_t is_hidden)
+{
+  toLiveQ(h)->onTradeWithFlag(symbol, flox::Price::fromRaw(price_raw),
+                              flox::Quantity::fromRaw(qty_raw), ts_ns, is_hidden != 0);
+}
+
+extern "C" void flox_live_queue_position_set_hidden_order_policy(
+    FloxLiveQueuePositionHandle h, uint8_t policy)
+{
+  toLiveQ(h)->setHiddenOrderPolicy(static_cast<flox::HiddenOrderPolicy>(policy));
+}
+
 extern "C" void flox_live_queue_position_on_level_update(
     FloxLiveQueuePositionHandle h, uint32_t symbol, uint8_t side, int64_t price_raw,
     int64_t new_qty_raw, int64_t ts_ns)
@@ -9031,6 +9045,7 @@ extern "C" uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle
   out_slots[3] = snap->lastUpdateNs;
   double conf = snap->confidence;
   std::memcpy(&out_slots[4], &conf, sizeof(double));
+  out_slots[5] = snap->hiddenVolumeSeen.raw();
   return 1;
 }
 

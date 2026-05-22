@@ -25,10 +25,28 @@ namespace flox
 struct LiveQueueSnapshot
 {
   OrderId orderId{};
-  Quantity queueAheadEst{};  // estimated volume ahead of our order
-  Quantity total{};          // estimated current level total
-  double confidence{1.0};    // [0..1], decays with time / proportional-shrink count
-  int64_t lastUpdateNs{0};   // feed timestamp of the most recent attribution
+  Quantity queueAheadEst{};     // estimated volume ahead of our order
+  Quantity total{};             // estimated current level total
+  double confidence{1.0};       // [0..1], decays with time / proportional-shrink count
+  int64_t lastUpdateNs{0};      // feed timestamp of the most recent attribution
+  Quantity hiddenVolumeSeen{};  // cumulative volume attributed to hidden / iceberg
+};
+
+// Policy for how the estimator handles trades that may have come from
+// hidden / iceberg liquidity rather than the visible book.
+enum class HiddenOrderPolicy : uint8_t
+{
+  // Every trade deducts visible queue. Original behaviour; over-attributes
+  // when hidden flow is present on a venue.
+  Ignore = 0,
+  // Caller passes is_hidden flag on the trade; flagged trades do not
+  // deduct queue or feed the proportional-shrink path. Use this on
+  // venues that ship a per-trade `is_hidden` field (Bybit some products).
+  TrustTradeFlag = 1,
+  // Inference: if reported trade volume exceeds the pre-trade visible
+  // level total, attribute the excess to hidden flow. Useful on venues
+  // that do not flag hidden but where the math is observable.
+  InferIfTradeExceedsVisible = 2,
 };
 
 // Client-side queue-position estimator. Exchanges normally don't
@@ -70,6 +88,13 @@ class LiveQueuePositionEstimator
   }
   double shrinkAttributionFactor() const noexcept { return _shrinkFactor; }
 
+  // Hidden-order attribution policy. See enum above. Default: Ignore.
+  void setHiddenOrderPolicy(HiddenOrderPolicy policy) noexcept
+  {
+    _hiddenPolicy = policy;
+  }
+  HiddenOrderPolicy hiddenOrderPolicy() const noexcept { return _hiddenPolicy; }
+
   // Order lifecycle ------------------------------------------------
 
   void onOrderPlaced(SymbolId symbol, Side side, Price levelPrice, OrderId orderId,
@@ -80,7 +105,11 @@ class LiveQueuePositionEstimator
     st.placedNs = tsNs;
     st.lastUpdateNs = tsNs;
     st.confidence = 1.0;
+    st.symbol = symbol;
+    st.side = side;
+    st.levelPriceRaw = levelPrice.raw();
     _orders[orderId] = st;
+    _lastLevelQty[{symbol, side, levelPrice.raw()}] = levelQtyNow.raw();
   }
 
   void onOrderCancelled(OrderId orderId, int64_t /*tsNs*/)
@@ -116,24 +145,18 @@ class LiveQueuePositionEstimator
 
   void onTrade(SymbolId symbol, Price price, Quantity tradeQty, int64_t tsNs)
   {
-    std::vector<std::pair<OrderId, Quantity>> filled;
-    _tracker.onTrade(symbol, price, tradeQty, filled);
-    for (const auto& f : filled)
-    {
-      auto it = _orders.find(f.first);
-      if (it != _orders.end())
-      {
-        it->second.lastUpdateNs = tsNs;
-        // Trade-attributed deductions don't drop confidence — we
-        // know what happened. (They DO drop queue_ahead, via the
-        // tracker.)
-      }
-    }
-    // Trades at our price level also reduce queue-ahead for orders
-    // sitting on that level even if they're not the fill recipient,
-    // because the tracker subtracted the trade qty from the level
-    // total. Bump lastUpdateNs for any orders on the touched level.
-    touchOrdersAtPrice(symbol, price, tsNs);
+    onTradeImpl(symbol, price, tradeQty, tsNs, /*isHiddenFlag=*/false);
+  }
+
+  // Trade overload that carries the venue's per-trade `is_hidden` flag.
+  // Behaviour depends on hiddenOrderPolicy():
+  //   Ignore                       — flag ignored, trade deducts as normal
+  //   TrustTradeFlag               — when true, no deduction + hidden accumulator
+  //   InferIfTradeExceedsVisible   — flag ignored, inference handles it
+  void onTradeWithFlag(SymbolId symbol, Price price, Quantity tradeQty, int64_t tsNs,
+                       bool isHidden)
+  {
+    onTradeImpl(symbol, price, tradeQty, tsNs, isHidden);
   }
 
   void onLevelUpdate(SymbolId symbol, Side side, Price price, Quantity newQty,
@@ -153,6 +176,7 @@ class LiveQueuePositionEstimator
       preTotals[oid] = snap.has_value() ? snap->total.raw() : 0;
     }
     _tracker.onLevelUpdate(symbol, side, price, newQty);
+    _lastLevelQty[{symbol, side, price.raw()}] = newQty.raw();
     for (auto& [oid, state] : _orders)
     {
       auto snap = _tracker.snapshot(oid);
@@ -186,6 +210,7 @@ class LiveQueuePositionEstimator
     out.total = q->total;
     out.confidence = it->second.confidence;
     out.lastUpdateNs = it->second.lastUpdateNs;
+    out.hiddenVolumeSeen = Quantity::fromRaw(it->second.hiddenVolumeSeenRaw);
     if (_halfLifeNs > 0 && nowNs > it->second.placedNs)
     {
       const double elapsed = static_cast<double>(nowNs - it->second.placedNs);
@@ -211,6 +236,30 @@ class LiveQueuePositionEstimator
     int64_t placedNs{0};
     int64_t lastUpdateNs{0};
     double confidence{1.0};
+    int64_t hiddenVolumeSeenRaw{0};
+    SymbolId symbol{};
+    Side side{};
+    int64_t levelPriceRaw{0};
+  };
+
+  struct LevelKey
+  {
+    SymbolId symbol;
+    Side side;
+    int64_t priceRaw;
+    bool operator==(const LevelKey& o) const noexcept
+    {
+      return symbol == o.symbol && side == o.side && priceRaw == o.priceRaw;
+    }
+  };
+  struct LevelKeyHash
+  {
+    size_t operator()(const LevelKey& k) const noexcept
+    {
+      return std::hash<int64_t>{}(k.priceRaw) ^
+             (static_cast<size_t>(k.symbol) << 1) ^
+             (static_cast<size_t>(k.side) << 16);
+    }
   };
 
   void touchOrdersAtPrice(SymbolId /*symbol*/, Price /*price*/, int64_t tsNs)
@@ -226,10 +275,83 @@ class LiveQueuePositionEstimator
     }
   }
 
+  void onTradeImpl(SymbolId symbol, Price price, Quantity tradeQty, int64_t tsNs,
+                   bool isHiddenFlag)
+  {
+    int64_t visibleTradeRaw = tradeQty.raw();
+    int64_t hiddenAttributedRaw = 0;
+
+    if (_hiddenPolicy == HiddenOrderPolicy::TrustTradeFlag && isHiddenFlag)
+    {
+      hiddenAttributedRaw = tradeQty.raw();
+      visibleTradeRaw = 0;
+    }
+    else if (_hiddenPolicy == HiddenOrderPolicy::InferIfTradeExceedsVisible)
+    {
+      // Compare reported trade volume against the last-known visible
+      // level total on either side at this price. We do not know which
+      // side the trade hit, so we check both and pick the smaller
+      // cached visible (conservative: under-attribute to hidden).
+      const int64_t cachedBid =
+          lookupLevel({symbol, Side::BUY, price.raw()});
+      const int64_t cachedAsk =
+          lookupLevel({symbol, Side::SELL, price.raw()});
+      const int64_t cachedVisible = (cachedBid > 0 && cachedAsk > 0)
+                                        ? std::min(cachedBid, cachedAsk)
+                                        : (cachedBid > 0 ? cachedBid : cachedAsk);
+      if (cachedVisible > 0 && tradeQty.raw() > cachedVisible)
+      {
+        hiddenAttributedRaw = tradeQty.raw() - cachedVisible;
+        visibleTradeRaw = cachedVisible;
+      }
+    }
+
+    if (visibleTradeRaw > 0)
+    {
+      std::vector<std::pair<OrderId, Quantity>> filled;
+      _tracker.onTrade(symbol, price, Quantity::fromRaw(visibleTradeRaw), filled);
+      for (const auto& f : filled)
+      {
+        auto it = _orders.find(f.first);
+        if (it != _orders.end())
+        {
+          it->second.lastUpdateNs = tsNs;
+        }
+      }
+    }
+
+    if (hiddenAttributedRaw > 0)
+    {
+      // Accumulate hidden volume on every tracked order at this price
+      // on either side — we don't know which side the hidden order
+      // sat on, so we credit it to all orders at the same price.
+      for (auto& [oid, state] : _orders)
+      {
+        if (state.symbol == symbol && state.levelPriceRaw == price.raw())
+        {
+          state.hiddenVolumeSeenRaw += hiddenAttributedRaw;
+        }
+      }
+    }
+
+    touchOrdersAtPrice(symbol, price, tsNs);
+  }
+
+  int64_t lookupLevel(const LevelKey& k) const
+  {
+    auto it = _lastLevelQty.find(k);
+    return it == _lastLevelQty.end() ? 0 : it->second;
+  }
+
   OrderQueueTracker _tracker;
   std::unordered_map<OrderId, OrderState> _orders;
   int64_t _halfLifeNs{60'000'000'000LL};  // 60s default
   double _shrinkFactor{0.85};
+  HiddenOrderPolicy _hiddenPolicy{HiddenOrderPolicy::Ignore};
+  // Cache of last-known level totals keyed by (symbol, side, price).
+  // Used by InferIfTradeExceedsVisible to decide how much of a trade
+  // was hidden vs visible.
+  std::unordered_map<LevelKey, int64_t, LevelKeyHash> _lastLevelQty;
 };
 
 }  // namespace flox

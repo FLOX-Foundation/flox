@@ -3958,20 +3958,35 @@ extern "C"
                                          int64_t price_raw, int64_t qty_raw,
                                          int64_t ts_ns);
 
+  // Trade with the venue's per-trade `is_hidden` flag. Behaviour
+  // depends on the configured hidden-order policy.
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_on_trade_with_flag(FloxLiveQueuePositionHandle h,
+                                                   uint32_t symbol, int64_t price_raw,
+                                                   int64_t qty_raw, int64_t ts_ns,
+                                                   uint8_t is_hidden);
+
+  // Hidden-order attribution policy.
+  // 0 = Ignore (default), 1 = TrustTradeFlag, 2 = InferIfTradeExceedsVisible.
+  FLOX_EXPORT(group = "live_queue_position")
+  void flox_live_queue_position_set_hidden_order_policy(FloxLiveQueuePositionHandle h,
+                                                        uint8_t policy);
+
   FLOX_EXPORT(group = "live_queue_position")
   void flox_live_queue_position_on_level_update(FloxLiveQueuePositionHandle h,
                                                 uint32_t symbol, uint8_t side,
                                                 int64_t price_raw, int64_t new_qty_raw,
                                                 int64_t ts_ns);
 
-  // Snapshot out is laid out as 4 i64 + 1 f64 slots in a single int64
-  // buffer (the f64 is bit-cast). The caller provides storage for 5
+  // Snapshot out is laid out as 5 i64 + 1 f64 slots in a single int64
+  // buffer (the f64 is bit-cast). The caller provides storage for 6
   // slots:
   //   [0] order_id
   //   [1] queue_ahead_raw
   //   [2] total_raw
   //   [3] last_update_ns
   //   [4] confidence as f64 bit-cast (use memcpy to read)
+  //   [5] hidden_volume_seen_raw
   // Returns 1 if the order is tracked, 0 otherwise.
   FLOX_EXPORT(group = "live_queue_position")
   uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h,

@@ -6232,6 +6232,37 @@
     },
     {
       "group": "live_queue_position",
+      "name": "flox_live_queue_position_on_trade_with_flag",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "is_hidden",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
       "name": "flox_live_queue_position_set_confidence_half_life_ns",
       "params": [
         {
@@ -6241,6 +6272,21 @@
         {
           "name": "half_life_ns",
           "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "live_queue_position",
+      "name": "flox_live_queue_position_set_hidden_order_policy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "name": "policy",
+          "type": "uint8_t"
         }
       ],
       "return_type": "void"

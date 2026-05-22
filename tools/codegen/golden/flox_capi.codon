@@ -356,6 +356,8 @@ from C import flox_live_queue_position_on_order_placed(cobj, u32, u8, i64, u64, 
 from C import flox_live_queue_position_on_order_cancelled(cobj, u64, i64)
 from C import flox_live_queue_position_on_order_filled(cobj, u64, i64, i64)
 from C import flox_live_queue_position_on_trade(cobj, u32, i64, i64, i64)
+from C import flox_live_queue_position_on_trade_with_flag(cobj, u32, i64, i64, i64, u8)
+from C import flox_live_queue_position_set_hidden_order_policy(cobj, u8)
 from C import flox_live_queue_position_on_level_update(cobj, u32, u8, i64, i64, i64)
 from C import flox_live_queue_position_snapshot(cobj, u64, i64, Ptr[i64]) -> u8
 from C import flox_live_queue_position_tracked_count(cobj) -> u32

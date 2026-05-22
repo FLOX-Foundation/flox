@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 572 functions, 49 handles, 58 structs, 43 callback typedefs, 3 enums, 63 groups.
+**Surface:** 574 functions, 49 handles, 58 structs, 43 callback typedefs, 3 enums, 63 groups.
 
 ## Opaque handles
 
@@ -1219,6 +1219,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_live_queue_position_on_order_cancelled(FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t ts_ns)`
 - `void flox_live_queue_position_on_order_filled(FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t cumulative_fill_raw, int64_t ts_ns)`
 - `void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h, uint32_t symbol, int64_t price_raw, int64_t qty_raw, int64_t ts_ns)`
+- `void flox_live_queue_position_on_trade_with_flag(FloxLiveQueuePositionHandle h, uint32_t symbol, int64_t price_raw, int64_t qty_raw, int64_t ts_ns, uint8_t is_hidden)`
+- `void flox_live_queue_position_set_hidden_order_policy(FloxLiveQueuePositionHandle h, uint8_t policy)`
 - `void flox_live_queue_position_on_level_update(FloxLiveQueuePositionHandle h, uint32_t symbol, uint8_t side, int64_t price_raw, int64_t new_qty_raw, int64_t ts_ns)`
 - `uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t now_ns, int64_t * out_slots)`
 - `uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h)`
