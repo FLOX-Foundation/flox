@@ -667,6 +667,16 @@ export class SimulatedExecutor {
     impactCoeff: number,
   ): void;
   setQueueModel(model: QueueModel | number, depth: number): void;
+  /** Configure submit ack latency for backtest realism. Zero disables the
+   *  async submit path. */
+  setSubmitAckLatency(latencyNs: number, jitterNs?: number): void;
+  /** Configure cancel ack latency. */
+  setCancelAckLatency(latencyNs: number, jitterNs?: number): void;
+  /** Configure replace ack latency. */
+  setReplaceAckLatency(latencyNs: number, jitterNs?: number): void;
+  /** Apply a named latency profile. Names: "binance_um_futures",
+   *  "bybit_linear", "okx_swap", "deribit", "idealized", "adversarial". */
+  applyLatencyProfile(name: string): void;
   readonly fillCount: number;
 }
 

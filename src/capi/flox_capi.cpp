@@ -2609,6 +2609,30 @@ void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle h, int3
       static_cast<QueueModel>(model), depth);
 }
 
+void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle h,
+                                                    int64_t latency_ns, int64_t jitter_ns)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSubmitAckLatency(latency_ns, jitter_ns);
+}
+
+void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle h,
+                                                    int64_t latency_ns, int64_t jitter_ns)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setCancelAckLatency(latency_ns, jitter_ns);
+}
+
+void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle h,
+                                                     int64_t latency_ns, int64_t jitter_ns)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setReplaceAckLatency(latency_ns, jitter_ns);
+}
+
+void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle h,
+                                                   const char* profile_name)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.applyLatencyProfile(profile_name);
+}
+
 void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle h, uint32_t symbol, double price,
                                           double quantity, uint8_t is_buy)
 {

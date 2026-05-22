@@ -226,6 +226,23 @@ class PySimulatedExecutor
     _executor.setQueuePositionMinChangeFraction(fraction);
   }
 
+  void setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs)
+  {
+    _executor.setSubmitAckLatency(latencyNs, jitterNs);
+  }
+  void setCancelAckLatency(int64_t latencyNs, int64_t jitterNs)
+  {
+    _executor.setCancelAckLatency(latencyNs, jitterNs);
+  }
+  void setReplaceAckLatency(int64_t latencyNs, int64_t jitterNs)
+  {
+    _executor.setReplaceAckLatency(latencyNs, jitterNs);
+  }
+  void applyLatencyProfile(const std::string& name)
+  {
+    _executor.applyLatencyProfile(name.c_str());
+  }
+
   py::array_t<PyFill> fills() const
   {
     const auto& f = _executor.fills();
@@ -453,6 +470,20 @@ inline void bindBacktest(py::module_& m)
            "Minimum fractional change in queue-ahead required to emit a "
            "queue-position event. 0.0 = every change, 1.0 = disable.",
            py::arg("fraction"))
+      .def("set_submit_ack_latency",
+           &PySimulatedExecutor::setSubmitAckLatency,
+           py::arg("latency_ns"), py::arg("jitter_ns") = 0)
+      .def("set_cancel_ack_latency",
+           &PySimulatedExecutor::setCancelAckLatency,
+           py::arg("latency_ns"), py::arg("jitter_ns") = 0)
+      .def("set_replace_ack_latency",
+           &PySimulatedExecutor::setReplaceAckLatency,
+           py::arg("latency_ns"), py::arg("jitter_ns") = 0)
+      .def("apply_latency_profile",
+           &PySimulatedExecutor::applyLatencyProfile,
+           "Apply a named latency profile: binance_um_futures, "
+           "bybit_linear, okx_swap, deribit, idealized, adversarial.",
+           py::arg("name"))
       .def("fills", &PySimulatedExecutor::fills,
            "Get all fills as numpy structured array")
       .def("fills_list", &PySimulatedExecutor::fillsList,

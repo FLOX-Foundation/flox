@@ -9598,6 +9598,21 @@
       "return_type": "void"
     },
     {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_apply_latency_profile",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "profile_name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "simulated_executor",
       "name": "flox_simulated_executor_cancel_all",
       "params": [
@@ -9815,6 +9830,25 @@
     },
     {
       "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_cancel_ack_latency",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "latency_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "jitter_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
       "name": "flox_simulated_executor_set_default_slippage",
       "params": [
         {
@@ -9859,6 +9893,44 @@
         {
           "name": "depth",
           "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_replace_ack_latency",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "latency_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "jitter_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_submit_ack_latency",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "latency_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "jitter_ns",
+          "type": "int64_t"
         }
       ],
       "return_type": "void"

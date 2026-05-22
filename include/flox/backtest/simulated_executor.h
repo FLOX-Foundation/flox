@@ -64,6 +64,10 @@ class SimulatedExecutor : public IOrderExecutor
   void setSymbolSlippage(SymbolId symbol, const SlippageProfile& profile);
   void setQueueModel(QueueModel model, size_t depth);
   void setQueuePositionMinChangeFraction(double fraction);
+  void setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs);
+  void setCancelAckLatency(int64_t latencyNs, int64_t jitterNs);
+  void setReplaceAckLatency(int64_t latencyNs, int64_t jitterNs);
+  void applyLatencyProfile(const char* name);
 
   void start() override {}
   void stop() override {}

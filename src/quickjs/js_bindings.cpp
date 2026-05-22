@@ -1369,6 +1369,42 @@ static JSValue js_executor_set_queue_model(JSContext* ctx, JSValueConst, int,
                                           toUint32(ctx, argv[2]));
   return JS_UNDEFINED;
 }
+static JSValue js_executor_set_submit_ack(JSContext* ctx, JSValueConst, int argc,
+                                          JSValueConst* argv)
+{
+  flox_simulated_executor_set_submit_ack_latency(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_cancel_ack(JSContext* ctx, JSValueConst, int argc,
+                                          JSValueConst* argv)
+{
+  flox_simulated_executor_set_cancel_ack_latency(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_replace_ack(JSContext* ctx, JSValueConst, int argc,
+                                           JSValueConst* argv)
+{
+  flox_simulated_executor_set_replace_ack_latency(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  const char* name = JS_ToCString(ctx, argv[1]);
+  flox_simulated_executor_apply_latency_profile(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), name);
+  if (name)
+  {
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
@@ -4966,6 +5002,11 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_symbol_slippage",
                 js_executor_set_symbol_slippage, 7);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_model", js_executor_set_queue_model, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_submit_ack", js_executor_set_submit_ack, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_cancel_ack", js_executor_set_cancel_ack, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack", js_executor_set_replace_ack, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_apply_latency_profile",
+                js_executor_apply_latency_profile, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
 

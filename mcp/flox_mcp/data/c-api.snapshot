@@ -464,6 +464,7 @@ flox_segment_validate_full|FloxSegmentValidation|const char *|uint8_t|uint8_t
 flox_segment_validate_full_p|void|const char *|uint8_t|uint8_t|void *
 flox_set_log_callback|void|FloxLogCallback|void *
 flox_simulated_executor_advance_clock|void|FloxSimulatedExecutorHandle|int64_t
+flox_simulated_executor_apply_latency_profile|void|FloxSimulatedExecutorHandle|const char *
 flox_simulated_executor_cancel_all|void|FloxSimulatedExecutorHandle|uint32_t
 flox_simulated_executor_cancel_order|void|FloxSimulatedExecutorHandle|uint64_t
 flox_simulated_executor_create|FloxSimulatedExecutorHandle
@@ -475,8 +476,11 @@ flox_simulated_executor_on_best_levels|void|FloxSimulatedExecutorHandle|uint32_t
 flox_simulated_executor_on_book_snapshot|void|FloxSimulatedExecutorHandle|uint32_t|const double *|const double *|uint32_t|const double *|const double *|uint32_t
 flox_simulated_executor_on_trade|void|FloxSimulatedExecutorHandle|uint32_t|double|uint8_t
 flox_simulated_executor_on_trade_qty|void|FloxSimulatedExecutorHandle|uint32_t|double|double|uint8_t
+flox_simulated_executor_set_cancel_ack_latency|void|FloxSimulatedExecutorHandle|int64_t|int64_t
 flox_simulated_executor_set_default_slippage|void|FloxSimulatedExecutorHandle|int32_t|int32_t|double|double|double
 flox_simulated_executor_set_queue_model|void|FloxSimulatedExecutorHandle|int32_t|uint32_t
+flox_simulated_executor_set_replace_ack_latency|void|FloxSimulatedExecutorHandle|int64_t|int64_t
+flox_simulated_executor_set_submit_ack_latency|void|FloxSimulatedExecutorHandle|int64_t|int64_t
 flox_simulated_executor_set_symbol_slippage|void|FloxSimulatedExecutorHandle|uint32_t|int32_t|int32_t|double|double|double
 flox_simulated_executor_submit_order|void|FloxSimulatedExecutorHandle|uint64_t|uint8_t|double|double|uint8_t|uint32_t
 flox_stat_bootstrap_ci|void|const double *|size_t|double|uint32_t|double *|double *|double *

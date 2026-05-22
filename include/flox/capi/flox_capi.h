@@ -832,6 +832,14 @@ extern "C"
                                                    double tick_size, double bps, double impact_coeff);
   void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model,
                                                uint32_t depth);
+  void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor,
+                                                      int64_t latency_ns, int64_t jitter_ns);
+  void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor,
+                                                      int64_t latency_ns, int64_t jitter_ns);
+  void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor,
+                                                       int64_t latency_ns, int64_t jitter_ns);
+  void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
+                                                     const char* profile_name);
   void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                             double price, double quantity, uint8_t is_buy);
   void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle executor, uint32_t symbol,

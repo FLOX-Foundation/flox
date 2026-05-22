@@ -2070,6 +2070,10 @@ class SimulatedExecutor:
         """
         Advance simulation clock to timestamp
         """
+    def apply_latency_profile(self, name: str) -> None:
+        """
+        Apply a named latency profile: binance_um_futures, bybit_linear, okx_swap, deribit, idealized, adversarial.
+        """
     def cancel_all(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     def cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -2102,6 +2106,8 @@ class SimulatedExecutor:
         """
         Feed a trade with quantity (enables queue-fill simulation)
         """
+    def set_cancel_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
     def set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
         """
         Configure default slippage. model: none|fixed_ticks|fixed_bps|volume_impact. tick_size is in price units (0.0 falls back to one raw price unit).
@@ -2114,6 +2120,10 @@ class SimulatedExecutor:
         """
         Minimum fractional change in queue-ahead required to emit a queue-position event. 0.0 = every change, 1.0 = disable.
         """
+    def set_replace_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
+    def set_submit_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        ...
     def set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
         """
         Configure slippage for a specific symbol

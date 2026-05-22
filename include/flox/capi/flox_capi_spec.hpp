@@ -1275,6 +1275,26 @@ extern "C"
   void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model,
                                                uint32_t depth);
 
+  // Set submit / cancel / replace ack latency knobs directly (without
+  // touching queue model or slippage). Jitter is the uniform band on
+  // top of the base latency; both are in nanoseconds.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor,
+                                                      int64_t latency_ns, int64_t jitter_ns);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor,
+                                                      int64_t latency_ns, int64_t jitter_ns);
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor,
+                                                       int64_t latency_ns, int64_t jitter_ns);
+
+  // Apply a named latency profile. Valid names: binance_um_futures,
+  // bybit_linear, okx_swap, deribit, idealized, adversarial. Unknown
+  // names are a no-op.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
+                                                     const char* profile_name);
+
   // Feed a trade with quantity (enables queue-fill simulation for limit orders).
   FLOX_EXPORT(group = "backtest_slippage")
   void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,

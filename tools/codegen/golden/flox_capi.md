@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 532 functions, 46 handles, 58 structs, 43 callback typedefs, 3 enums, 61 groups.
+**Surface:** 536 functions, 46 handles, 58 structs, 43 callback typedefs, 3 enums, 61 groups.
 
 ## Opaque handles
 
@@ -852,6 +852,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle executor, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
 - `void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor, uint32_t symbol, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
 - `void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model, uint32_t depth)`
+- `void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
+- `void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
+- `void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
+- `void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor, const char * profile_name)`
 - `void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol, double price, double quantity, uint8_t is_buy)`
 - `void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle executor, uint32_t symbol, double bid_price, double bid_qty, double ask_price, double ask_qty)`
 - `void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle executor, uint32_t symbol, const double * bid_prices, const double * bid_qtys, uint32_t n_bids, const double * ask_prices, const double * ask_qtys, uint32_t n_asks)`

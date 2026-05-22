@@ -9,8 +9,11 @@
 
 #include "flox/backtest/simulated_executor.h"
 
+#include "flox/backtest/latency_profiles.h"
+
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace flox
 {
@@ -86,6 +89,65 @@ void SimulatedExecutor::setQueueModel(QueueModel model, size_t depth)
 void SimulatedExecutor::setQueuePositionMinChangeFraction(double fraction)
 {
   _queuePosMinFraction = fraction;
+}
+
+void SimulatedExecutor::setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs)
+{
+  _submitAckLatencyNs = latencyNs;
+  _submitAckJitterNs = jitterNs;
+}
+
+void SimulatedExecutor::setCancelAckLatency(int64_t latencyNs, int64_t jitterNs)
+{
+  _cancelAckLatencyNs = latencyNs;
+  _cancelAckJitterNs = jitterNs;
+}
+
+void SimulatedExecutor::setReplaceAckLatency(int64_t latencyNs, int64_t jitterNs)
+{
+  _replaceAckLatencyNs = latencyNs;
+  _replaceAckJitterNs = jitterNs;
+}
+
+void SimulatedExecutor::applyLatencyProfile(const char* name)
+{
+  if (name == nullptr)
+  {
+    return;
+  }
+  std::string n(name);
+  BacktestConfig cfg{};
+  if (n == "binance_um_futures")
+  {
+    LatencyProfiles::binance_um_futures(cfg);
+  }
+  else if (n == "bybit_linear")
+  {
+    LatencyProfiles::bybit_linear(cfg);
+  }
+  else if (n == "okx_swap")
+  {
+    LatencyProfiles::okx_swap(cfg);
+  }
+  else if (n == "deribit")
+  {
+    LatencyProfiles::deribit(cfg);
+  }
+  else if (n == "idealized")
+  {
+    LatencyProfiles::idealized(cfg);
+  }
+  else if (n == "adversarial")
+  {
+    LatencyProfiles::adversarial(cfg);
+  }
+  else
+  {
+    return;
+  }
+  setSubmitAckLatency(cfg.submitAckLatencyNs, cfg.submitAckJitterNs);
+  setCancelAckLatency(cfg.cancelAckLatencyNs, cfg.cancelAckJitterNs);
+  setReplaceAckLatency(cfg.replaceAckLatencyNs, cfg.replaceAckJitterNs);
 }
 
 const SlippageProfile& SimulatedExecutor::slippageFor(SymbolId symbol) const

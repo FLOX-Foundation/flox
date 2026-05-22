@@ -2318,6 +2318,11 @@
           "name": "flox_simulated_executor_advance_clock"
         },
         {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_apply_latency_profile"
+        },
+        {
           "group": "simulated_executor",
           "kind": "function",
           "name": "flox_simulated_executor_cancel_all"
@@ -2375,12 +2380,27 @@
         {
           "group": "backtest_slippage",
           "kind": "function",
+          "name": "flox_simulated_executor_set_cancel_ack_latency"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
           "name": "flox_simulated_executor_set_default_slippage"
         },
         {
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_set_queue_model"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_replace_ack_latency"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_submit_ack_latency"
         },
         {
           "group": "backtest_slippage",
@@ -5011,6 +5031,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_apply_latency_profile"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_cancel_all"
         },
         {
@@ -5055,11 +5079,23 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_cancel_ack_latency"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_default_slippage"
         },
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_queue_model"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_replace_ack_latency"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_submit_ack_latency"
         },
         {
           "kind": "function",
@@ -6885,11 +6921,15 @@
         "flox_backtest_result_stats",
         "flox_backtest_result_trades",
         "flox_backtest_result_write_equity_curve_csv",
+        "flox_simulated_executor_apply_latency_profile",
         "flox_simulated_executor_on_best_levels",
         "flox_simulated_executor_on_book_snapshot",
         "flox_simulated_executor_on_trade_qty",
+        "flox_simulated_executor_set_cancel_ack_latency",
         "flox_simulated_executor_set_default_slippage",
         "flox_simulated_executor_set_queue_model",
+        "flox_simulated_executor_set_replace_ack_latency",
+        "flox_simulated_executor_set_submit_ack_latency",
         "flox_simulated_executor_set_symbol_slippage"
       ],
       "codon": {

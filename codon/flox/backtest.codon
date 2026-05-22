@@ -19,6 +19,10 @@ from C import flox_simulated_executor_fill_count(cobj) -> u32
 from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_queue_model(cobj, i32, u32)
+from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
+from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
+from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
+from C import flox_simulated_executor_apply_latency_profile(cobj, cobj)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
@@ -152,6 +156,29 @@ class SimulatedExecutor:
 
     def set_queue_model(self, model: int, depth: int = 1):
         flox_simulated_executor_set_queue_model(self._handle, i32(model), u32(depth))
+
+    def set_submit_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
+        flox_simulated_executor_set_submit_ack_latency(
+            self._handle, i64(latency_ns), i64(jitter_ns))
+
+    def set_cancel_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
+        flox_simulated_executor_set_cancel_ack_latency(
+            self._handle, i64(latency_ns), i64(jitter_ns))
+
+    def set_replace_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
+        flox_simulated_executor_set_replace_ack_latency(
+            self._handle, i64(latency_ns), i64(jitter_ns))
+
+    def apply_latency_profile(self, name: str):
+        # Codon strings are utf-8; pass as cobj pointer to bytes.
+        # The C side reads name as const char*.
+        from internal.gc import sys_alloc
+        n = len(name)
+        buf = Ptr[byte](sys_alloc(n + 1))
+        for i in range(n):
+            buf[i] = byte(ord(name[i]))
+        buf[n] = byte(0)
+        flox_simulated_executor_apply_latency_profile(self._handle, cobj(buf))
 
     def handle(self) -> cobj:
         return self._handle
