@@ -1,0 +1,100 @@
+# Live queue position estimator for Codon strategies.
+# Mirrors the C++ engine class in
+# include/flox/execution/live_queue_position_estimator.h and the
+# pybind11 / NAPI / QuickJS surfaces.
+#
+# Wraps the C ABI flox_live_queue_position_* exports through Codon's
+# FFI. Client-side heuristic: feed it order placements + trades +
+# book updates + our fills, read back estimated queue-ahead per
+# resting order with a confidence score.
+
+from C import flox_live_queue_position_create() -> cobj
+from C import flox_live_queue_position_destroy(cobj)
+from C import flox_live_queue_position_set_confidence_half_life_ns(cobj, i64)
+from C import flox_live_queue_position_set_shrink_factor(cobj, f64)
+from C import flox_live_queue_position_on_order_placed(cobj, u32, u8, i64, u64, i64, i64, i64)
+from C import flox_live_queue_position_on_order_cancelled(cobj, u64, i64)
+from C import flox_live_queue_position_on_order_filled(cobj, u64, i64, i64)
+from C import flox_live_queue_position_on_trade(cobj, u32, i64, i64, i64)
+from C import flox_live_queue_position_on_level_update(cobj, u32, u8, i64, i64, i64)
+from C import flox_live_queue_position_snapshot(cobj, u64, i64, cobj) -> u8
+from C import flox_live_queue_position_tracked_count(cobj) -> u32
+
+from flox.types import Quantity, Price
+
+
+@dataclass
+class LiveQueueSnapshot:
+    order_id: int
+    queue_ahead_est: float
+    total: float
+    confidence: float
+    last_update_ns: int
+
+
+class LiveQueuePositionEstimator:
+    """Client-side queue-position estimator. Exchanges don't publish
+    per-order queue position, but it can be approximated from the
+    order book and trade tape. See the C++ header for the heuristic
+    and its limitations."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_live_queue_position_create()
+
+    def __del__(self):
+        if self._h != cobj():
+            flox_live_queue_position_destroy(self._h)
+            self._h = cobj()
+
+    def set_confidence_half_life_ns(self, half_life_ns: int):
+        flox_live_queue_position_set_confidence_half_life_ns(self._h, i64(half_life_ns))
+
+    def set_shrink_attribution_factor(self, factor: float):
+        flox_live_queue_position_set_shrink_factor(self._h, f64(factor))
+
+    def on_order_placed(self, symbol: int, side: int, price: float, order_id: int,
+                         order_qty: float, level_qty_now: float, ts_ns: int = 0):
+        flox_live_queue_position_on_order_placed(
+            self._h, u32(symbol), u8(side),
+            Price.from_double(price).raw(), u64(order_id),
+            Quantity.from_double(order_qty).raw(),
+            Quantity.from_double(level_qty_now).raw(), i64(ts_ns))
+
+    def on_order_cancelled(self, order_id: int, ts_ns: int = 0):
+        flox_live_queue_position_on_order_cancelled(self._h, u64(order_id), i64(ts_ns))
+
+    def on_order_filled(self, order_id: int, cumulative_fill: float, ts_ns: int = 0):
+        flox_live_queue_position_on_order_filled(
+            self._h, u64(order_id),
+            Quantity.from_double(cumulative_fill).raw(), i64(ts_ns))
+
+    def on_trade(self, symbol: int, price: float, qty: float, ts_ns: int = 0):
+        flox_live_queue_position_on_trade(
+            self._h, u32(symbol), Price.from_double(price).raw(),
+            Quantity.from_double(qty).raw(), i64(ts_ns))
+
+    def on_level_update(self, symbol: int, side: int, price: float, new_qty: float,
+                         ts_ns: int = 0):
+        flox_live_queue_position_on_level_update(
+            self._h, u32(symbol), u8(side), Price.from_double(price).raw(),
+            Quantity.from_double(new_qty).raw(), i64(ts_ns))
+
+    def snapshot(self, order_id: int, now_ns: int = 0):
+        """Returns LiveQueueSnapshot or None if the order is not tracked."""
+        buf = [i64(0)] * 5
+        ok = int(flox_live_queue_position_snapshot(
+            self._h, u64(order_id), i64(now_ns), cobj(buf.arr.ptr)))
+        if ok == 0:
+            return None
+        fp = Ptr[f64](buf.arr.ptr)
+        return LiveQueueSnapshot(
+            order_id=int(buf[0]),
+            queue_ahead_est=float(buf[1]) / 1e8,
+            total=float(buf[2]) / 1e8,
+            last_update_ns=int(buf[3]),
+            confidence=float(fp[4]))
+
+    def tracked_order_count(self) -> int:
+        return int(flox_live_queue_position_tracked_count(self._h))

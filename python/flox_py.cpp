@@ -22,6 +22,7 @@
 #include "heatmap_bindings.h"
 #include "indicator_bindings.h"
 #include "latency_bindings.h"
+#include "live_queue_position_bindings.h"
 #include "optimizer_bindings.h"
 #include "order_group_bindings.h"
 #include "order_journey_tracer_bindings.h"
@@ -794,6 +795,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindTapeDiff(m);
   flox_py::bindPortfolioRisk(m);
   flox_py::bindOrderGroup(m);
+  flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);
   flox_py::bindExecutionAlgos(m);

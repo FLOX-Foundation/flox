@@ -1323,6 +1323,61 @@
           "name": "flox_live_engine_stop"
         },
         {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_create"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_destroy"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_on_level_update"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_on_order_cancelled"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_on_order_filled"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_on_order_placed"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_on_trade"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_set_confidence_half_life_ns"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_set_shrink_factor"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_snapshot"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_tracked_count"
+        },
+        {
           "group": "recorder",
           "kind": "function",
           "name": "flox_market_data_recorder_create"
@@ -3031,6 +3086,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxLiveQueuePositionHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxMarketDataRecorderHandle"
         },
         {
@@ -3158,6 +3217,7 @@
         "indicatorgraph",
         "l3_order",
         "latency_models",
+        "live_queue_position",
         "logger",
         "market_profile",
         "merged_tape_reader",
@@ -4247,6 +4307,50 @@
         {
           "kind": "function",
           "name": "flox_live_engine_stop"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_on_level_update"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_on_order_cancelled"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_on_order_filled"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_on_order_placed"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_on_trade"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_set_confidence_half_life_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_set_shrink_factor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_snapshot"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_tracked_count"
         },
         {
           "kind": "function",
@@ -5626,6 +5730,14 @@
         },
         {
           "kind": "class",
+          "name": "LiveQueuePositionEstimator"
+        },
+        {
+          "kind": "class",
+          "name": "LiveQueueSnapshot"
+        },
+        {
+          "kind": "class",
           "name": "MACD"
         },
         {
@@ -6387,6 +6499,10 @@
         {
           "kind": "class",
           "name": "LegState"
+        },
+        {
+          "kind": "class",
+          "name": "LiveQueuePositionEstimator"
         },
         {
           "kind": "class",
@@ -7810,6 +7926,39 @@
           "GaussianLatency",
           "ExponentialLatency",
           "EmpiricalLatency"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "live_queue_position": {
+      "capi_functions": [
+        "flox_live_queue_position_create",
+        "flox_live_queue_position_destroy",
+        "flox_live_queue_position_on_level_update",
+        "flox_live_queue_position_on_order_cancelled",
+        "flox_live_queue_position_on_order_filled",
+        "flox_live_queue_position_on_order_placed",
+        "flox_live_queue_position_on_trade",
+        "flox_live_queue_position_set_confidence_half_life_ns",
+        "flox_live_queue_position_set_shrink_factor",
+        "flox_live_queue_position_snapshot",
+        "flox_live_queue_position_tracked_count"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "LiveQueuePositionEstimator"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "LiveQueuePositionEstimator"
         ],
         "functions": [],
         "status": "required"

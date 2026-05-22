@@ -71,6 +71,7 @@ extern "C"
   typedef void* FloxRunReaderHandle;
   typedef void* FloxBarDispatchRecorderHandle;
   typedef void* FloxAggregatorHandle;
+  typedef void* FloxLiveQueuePositionHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -1445,6 +1446,32 @@ extern "C"
   int64_t flox_latency_fill_delay(FloxLatencyModelHandle model);
   void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample* out);
   void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed);
+
+  // ============================================================
+  // Live Queue Position
+  // ============================================================
+
+  FloxLiveQueuePositionHandle flox_live_queue_position_create(void);
+  void flox_live_queue_position_destroy(FloxLiveQueuePositionHandle h);
+  void flox_live_queue_position_set_confidence_half_life_ns(FloxLiveQueuePositionHandle h,
+                                                            int64_t half_life_ns);
+  void flox_live_queue_position_set_shrink_factor(FloxLiveQueuePositionHandle h, double factor);
+  void flox_live_queue_position_on_order_placed(FloxLiveQueuePositionHandle h, uint32_t symbol,
+                                                uint8_t side, int64_t price_raw, uint64_t order_id,
+                                                int64_t order_qty_raw, int64_t level_qty_raw,
+                                                int64_t ts_ns);
+  void flox_live_queue_position_on_order_cancelled(FloxLiveQueuePositionHandle h, uint64_t order_id,
+                                                   int64_t ts_ns);
+  void flox_live_queue_position_on_order_filled(FloxLiveQueuePositionHandle h, uint64_t order_id,
+                                                int64_t cumulative_fill_raw, int64_t ts_ns);
+  void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h, uint32_t symbol,
+                                         int64_t price_raw, int64_t qty_raw, int64_t ts_ns);
+  void flox_live_queue_position_on_level_update(FloxLiveQueuePositionHandle h, uint32_t symbol,
+                                                uint8_t side, int64_t price_raw, int64_t new_qty_raw,
+                                                int64_t ts_ns);
+  uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h, uint64_t order_id,
+                                            int64_t now_ns, int64_t* out_slots);
+  uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h);
 
   // ============================================================
   // Logger

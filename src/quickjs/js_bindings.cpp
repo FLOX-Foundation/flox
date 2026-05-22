@@ -2478,6 +2478,145 @@ static JSValue js_order_group_pair_latency_decision(JSContext* ctx, JSValueConst
 }
 
 // ============================================================
+// Live queue position estimator
+// ============================================================
+
+static JSValue js_live_queue_position_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_live_queue_position_create());
+}
+
+static JSValue js_live_queue_position_destroy(JSContext* ctx, JSValueConst, int,
+                                              JSValueConst* argv)
+{
+  flox_live_queue_position_destroy(
+      static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_set_half_life(JSContext* ctx, JSValueConst, int,
+                                                    JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  flox_live_queue_position_set_confidence_half_life_ns(h, toInt64(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_set_shrink_factor(JSContext* ctx, JSValueConst, int,
+                                                        JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  double factor = 0.0;
+  JS_ToFloat64(ctx, &factor, argv[1]);
+  flox_live_queue_position_set_shrink_factor(h, factor);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_on_order_placed(JSContext* ctx, JSValueConst, int,
+                                                      JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[2]));
+  double price = 0.0, order_qty = 0.0, level_qty = 0.0;
+  JS_ToFloat64(ctx, &price, argv[3]);
+  uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[4]));
+  JS_ToFloat64(ctx, &order_qty, argv[5]);
+  JS_ToFloat64(ctx, &level_qty, argv[6]);
+  int64_t ts_ns = toInt64(ctx, argv[7]);
+  flox_live_queue_position_on_order_placed(
+      h, symbol, side, flox_price_from_double(price), order_id,
+      flox_quantity_from_double(order_qty), flox_quantity_from_double(level_qty),
+      ts_ns);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_on_order_cancelled(JSContext* ctx, JSValueConst,
+                                                         int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
+  int64_t ts_ns = toInt64(ctx, argv[2]);
+  flox_live_queue_position_on_order_cancelled(h, order_id, ts_ns);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_on_order_filled(JSContext* ctx, JSValueConst, int,
+                                                      JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
+  double cum = 0.0;
+  JS_ToFloat64(ctx, &cum, argv[2]);
+  int64_t ts_ns = toInt64(ctx, argv[3]);
+  flox_live_queue_position_on_order_filled(h, order_id,
+                                           flox_quantity_from_double(cum), ts_ns);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_on_trade(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  double price = 0.0, qty = 0.0;
+  JS_ToFloat64(ctx, &price, argv[2]);
+  JS_ToFloat64(ctx, &qty, argv[3]);
+  int64_t ts_ns = toInt64(ctx, argv[4]);
+  flox_live_queue_position_on_trade(h, symbol, flox_price_from_double(price),
+                                    flox_quantity_from_double(qty), ts_ns);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_on_level_update(JSContext* ctx, JSValueConst, int,
+                                                      JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  uint8_t side = static_cast<uint8_t>(toUint32(ctx, argv[2]));
+  double price = 0.0, new_qty = 0.0;
+  JS_ToFloat64(ctx, &price, argv[3]);
+  JS_ToFloat64(ctx, &new_qty, argv[4]);
+  int64_t ts_ns = toInt64(ctx, argv[5]);
+  flox_live_queue_position_on_level_update(h, symbol, side,
+                                           flox_price_from_double(price),
+                                           flox_quantity_from_double(new_qty), ts_ns);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_snapshot(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
+  int64_t now_ns = toInt64(ctx, argv[2]);
+  int64_t slots[5] = {0};
+  uint8_t ok = flox_live_queue_position_snapshot(h, order_id, now_ns, slots);
+  if (!ok)
+  {
+    return JS_NULL;
+  }
+  double conf = 0.0;
+  std::memcpy(&conf, &slots[4], sizeof(double));
+  JSValue obj = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, obj, "orderId", JS_NewInt64(ctx, slots[0]));
+  JS_SetPropertyStr(ctx, obj, "queueAheadEst",
+                    JS_NewFloat64(ctx, flox_quantity_to_double(slots[1])));
+  JS_SetPropertyStr(ctx, obj, "total",
+                    JS_NewFloat64(ctx, flox_quantity_to_double(slots[2])));
+  JS_SetPropertyStr(ctx, obj, "lastUpdateNs", JS_NewInt64(ctx, slots[3]));
+  JS_SetPropertyStr(ctx, obj, "confidence", JS_NewFloat64(ctx, conf));
+  return obj;
+}
+
+static JSValue js_live_queue_position_tracked_count(JSContext* ctx, JSValueConst, int,
+                                                    JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  return JS_NewUint32(ctx, flox_live_queue_position_tracked_count(h));
+}
+
+// ============================================================
 // Bar dispatch recorder (cross-binding parity test fixture)
 // ============================================================
 
@@ -5119,6 +5258,30 @@ void registerFloxBindings(JSContext* ctx)
                 js_order_group_set_pair_latency_budget_ns, 2);
   addGlobalFunc(ctx, "__flox_order_group_pair_latency_decision",
                 js_order_group_pair_latency_decision, 4);
+
+  // Live queue position estimator
+  addGlobalFunc(ctx, "__flox_live_queue_position_create",
+                js_live_queue_position_create, 0);
+  addGlobalFunc(ctx, "__flox_live_queue_position_destroy",
+                js_live_queue_position_destroy, 1);
+  addGlobalFunc(ctx, "__flox_live_queue_position_set_confidence_half_life_ns",
+                js_live_queue_position_set_half_life, 2);
+  addGlobalFunc(ctx, "__flox_live_queue_position_set_shrink_factor",
+                js_live_queue_position_set_shrink_factor, 2);
+  addGlobalFunc(ctx, "__flox_live_queue_position_on_order_placed",
+                js_live_queue_position_on_order_placed, 8);
+  addGlobalFunc(ctx, "__flox_live_queue_position_on_order_cancelled",
+                js_live_queue_position_on_order_cancelled, 3);
+  addGlobalFunc(ctx, "__flox_live_queue_position_on_order_filled",
+                js_live_queue_position_on_order_filled, 4);
+  addGlobalFunc(ctx, "__flox_live_queue_position_on_trade",
+                js_live_queue_position_on_trade, 5);
+  addGlobalFunc(ctx, "__flox_live_queue_position_on_level_update",
+                js_live_queue_position_on_level_update, 6);
+  addGlobalFunc(ctx, "__flox_live_queue_position_snapshot",
+                js_live_queue_position_snapshot, 3);
+  addGlobalFunc(ctx, "__flox_live_queue_position_tracked_count",
+                js_live_queue_position_tracked_count, 1);
 
   // Bar dispatch recorder (cross-binding parity test fixture)
   addGlobalFunc(ctx, "__flox_bar_dispatch_recorder_create", js_bar_dispatch_recorder_create, 0);
