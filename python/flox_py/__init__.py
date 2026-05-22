@@ -7,3 +7,10 @@ top level. Type information is shipped via `flox_py/__init__.pyi`
 and the PEP 561 marker `flox_py/py.typed`.
 """
 from ._flox_py import *  # noqa: F401,F403  # also brings in the `targets` submodule
+
+# Pure-Python research surfaces that sit on top of the compiled bindings.
+from .live_queue_calibrator import (  # noqa: F401
+    CalibrationResult,
+    LiveQueueCalibrator,
+    TestOrderHelper,
+)

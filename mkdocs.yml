@@ -127,6 +127,7 @@ nav:
           - Heatmap rendering: how-to/heatmap.md
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
           - Liquidation cascades + insurance + ADL: how-to/liquidation-and-adl.md
+          - Calibrate live queue estimator: how-to/calibrate-live-queue.md
           - Matching modes (FIFO / pro-rata / hybrid): how-to/matching-modes.md
           - Venue downtime simulation: how-to/venue-downtime.md
           - Native bracket orders: how-to/bracket-orders.md

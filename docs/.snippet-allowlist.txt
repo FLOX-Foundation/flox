@@ -260,6 +260,11 @@ docs/how-to/bracket-orders.md
 # tests/test_liquidation_engine.cpp.
 docs/how-to/liquidation-and-adl.md
 
+# How-to: Live queue position calibration. Python-only research
+# surface; runtime path exercised by
+# python/tests/test_live_queue_calibrator.py.
+docs/how-to/calibrate-live-queue.md
+
 # How-to: Matching modes (FIFO / pro-rata / hybrid). Polyglot tabs
 # configuring SimulatedExecutor; runtime path exercised by
 # tests/test_pro_rata_matching.cpp.
