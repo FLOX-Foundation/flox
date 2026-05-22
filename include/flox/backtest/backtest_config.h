@@ -31,7 +31,15 @@ enum class QueueModel : uint8_t
 {
   NONE,
   TOB,
-  FULL
+  FULL,
+  // Pure pro-rata: every order at the price level receives a share
+  // of the trade proportional to its size. Use on venues where the
+  // matching engine distributes a trade across all orders at the
+  // best price (most options venues; some hybrid spot venues).
+  PRO_RATA,
+  // FIFO top-N, then pro-rata across the remainder. Models hybrid
+  // venues that reward queue front but distribute the rest.
+  PRO_RATA_WITH_FIFO,
 };
 
 struct SlippageProfile

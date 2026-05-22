@@ -65,6 +65,10 @@ class SimulatedExecutor : public IOrderExecutor
   void setDefaultSlippage(const SlippageProfile& profile);
   void setSymbolSlippage(SymbolId symbol, const SlippageProfile& profile);
   void setQueueModel(QueueModel model, size_t depth);
+  // For QueueModel::PRO_RATA_WITH_FIFO: the first N orders at a
+  // level consume the trade FIFO; the remainder is split pro-rata
+  // across the rest. Ignored in other queue models.
+  void setQueueFifoTopN(size_t topN);
   void setQueuePositionMinChangeFraction(double fraction);
   void setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs);
   void setCancelAckLatency(int64_t latencyNs, int64_t jitterNs);

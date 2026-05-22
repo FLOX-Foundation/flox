@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 593 functions, 51 handles, 58 structs, 43 callback typedefs, 3 enums, 65 groups.
+**Surface:** 594 functions, 51 handles, 58 structs, 43 callback typedefs, 3 enums, 65 groups.
 
 ## Opaque handles
 
@@ -74,6 +74,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FLOX_QUEUE_NONE` = `0`
 - `FLOX_QUEUE_TOB` = `1`
 - `FLOX_QUEUE_FULL` = `2`
+- `FLOX_QUEUE_PRO_RATA` = `3`
+- `FLOX_QUEUE_PRO_RATA_WITH_FIFO` = `4`
 
 ### `FloxAggregatorEventFilter`
 
@@ -857,6 +859,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle executor, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
 - `void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor, uint32_t symbol, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
 - `void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model, uint32_t depth)`
+- `void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle executor, uint32_t top_n)`
 - `void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
 - `void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
 - `void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`

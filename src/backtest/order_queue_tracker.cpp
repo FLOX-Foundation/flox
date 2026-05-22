@@ -17,6 +17,7 @@ namespace flox
 void OrderQueueTracker::setModel(QueueModel model, size_t depth)
 {
   _enabled = (model != QueueModel::NONE);
+  _model = model;
   _depth = (model == QueueModel::FULL) ? std::max<size_t>(depth, 1) : 1;
 }
 
@@ -105,28 +106,71 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
     }
 
     int64_t remainingRaw = tradeQty.raw();
-    for (auto& entry : level.entries)
-    {
-      if (remainingRaw <= 0)
-      {
-        break;
-      }
 
+    // FIFO portion: applies to all entries in NONE/TOB/FULL, and to
+    // the first _fifoTopN entries in PRO_RATA_WITH_FIFO. Pure
+    // PRO_RATA skips this loop entirely (fifoCount=0).
+    const size_t fifoCount =
+        (_model == QueueModel::PRO_RATA)             ? 0
+        : (_model == QueueModel::PRO_RATA_WITH_FIFO) ? std::min(_fifoTopN, level.entries.size())
+                                                     : level.entries.size();
+    for (size_t i = 0; i < fifoCount && remainingRaw > 0; ++i)
+    {
+      auto& entry = level.entries[i];
       const int64_t aheadConsumed = std::min(entry.aheadRemaining.raw(), remainingRaw);
       entry.aheadRemaining = Quantity::fromRaw(entry.aheadRemaining.raw() - aheadConsumed);
       remainingRaw -= aheadConsumed;
-
       if (remainingRaw <= 0 || entry.aheadRemaining.raw() > 0)
       {
         continue;
       }
-
       const int64_t fillRaw = std::min(entry.remaining.raw(), remainingRaw);
       if (fillRaw > 0)
       {
         entry.remaining = Quantity::fromRaw(entry.remaining.raw() - fillRaw);
         remainingRaw -= fillRaw;
         filled.emplace_back(entry.orderId, Quantity::fromRaw(fillRaw));
+      }
+    }
+
+    // Pro-rata portion: distribute remainingRaw across entries from
+    // fifoCount onward, weighted by entry.remaining.
+    if (remainingRaw > 0 && fifoCount < level.entries.size() &&
+        (_model == QueueModel::PRO_RATA || _model == QueueModel::PRO_RATA_WITH_FIFO))
+    {
+      int64_t totalRest = 0;
+      for (size_t i = fifoCount; i < level.entries.size(); ++i)
+      {
+        totalRest += level.entries[i].remaining.raw();
+      }
+      if (totalRest > 0)
+      {
+        const int64_t distributeRaw = std::min(remainingRaw, totalRest);
+        int64_t allocated = 0;
+        for (size_t i = fifoCount; i < level.entries.size() && allocated < distributeRaw; ++i)
+        {
+          auto& entry = level.entries[i];
+          // Proportional share rounded down to the nearest raw unit.
+          int64_t share = static_cast<int64_t>(
+              (static_cast<__int128>(entry.remaining.raw()) *
+               static_cast<__int128>(distributeRaw)) /
+              static_cast<__int128>(totalRest));
+          if (share > entry.remaining.raw())
+          {
+            share = entry.remaining.raw();
+          }
+          if (allocated + share > distributeRaw)
+          {
+            share = distributeRaw - allocated;
+          }
+          if (share > 0)
+          {
+            entry.remaining = Quantity::fromRaw(entry.remaining.raw() - share);
+            allocated += share;
+            filled.emplace_back(entry.orderId, Quantity::fromRaw(share));
+          }
+        }
+        remainingRaw -= allocated;
       }
     }
 

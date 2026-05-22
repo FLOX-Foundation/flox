@@ -54,7 +54,12 @@ export type SlippageModel =
   | "volume_impact";
 
 /** Limit-order queue model name accepted by `SimulatedExecutor.setQueueModel`. */
-export type QueueModel = "none" | "tob" | "full";
+export type QueueModel =
+  | "none"
+  | "tob"
+  | "full"
+  | "pro_rata"
+  | "pro_rata_with_fifo";
 
 /** Position cost-basis mode accepted by `PositionTracker`. */
 export type PositionMode = 0 | 1;
@@ -744,6 +749,10 @@ export class SimulatedExecutor {
     impactCoeff: number,
   ): void;
   setQueueModel(model: QueueModel | number, depth: number): void;
+  /** For 'pro_rata_with_fifo': the first N orders at a price level
+   *  consume the trade FIFO; the remainder is split pro-rata across
+   *  the rest. Ignored in 'none' / 'tob' / 'full' / 'pro_rata'. */
+  setQueueFifoTopN(topN: number): void;
   /** Configure submit ack latency for backtest realism. Zero disables the
    *  async submit path. */
   setSubmitAckLatency(latencyNs: number, jitterNs?: number): void;

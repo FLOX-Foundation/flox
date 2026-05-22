@@ -163,6 +163,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_pro_rata_matching.py",
+      "sha256": "e4ced582ca83083619a28959c9a1155e0def4becb6108432dce5148224337e38",
+      "size_bytes": 516,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_rate_limit_policy.py",
       "sha256": "79e0aa16a32263f839173fce00b76259495278d16db5b91bd0e85f47c04b4dda",
       "size_bytes": 722,

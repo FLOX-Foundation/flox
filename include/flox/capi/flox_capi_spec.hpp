@@ -1277,7 +1277,9 @@ extern "C"
   {
     FLOX_QUEUE_NONE = 0,
     FLOX_QUEUE_TOB = 1,
-    FLOX_QUEUE_FULL = 2
+    FLOX_QUEUE_FULL = 2,
+    FLOX_QUEUE_PRO_RATA = 3,
+    FLOX_QUEUE_PRO_RATA_WITH_FIFO = 4
   } FloxQueueModel;
 
   // Configure slippage. Applies to market-style fills on all symbols unless
@@ -1299,6 +1301,13 @@ extern "C"
   FLOX_EXPORT(group = "backtest_slippage")
   void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model,
                                                uint32_t depth);
+
+  // For FLOX_QUEUE_PRO_RATA_WITH_FIFO: the first N orders at a level
+  // consume the trade FIFO; the remainder is split pro-rata across
+  // the rest. Ignored in NONE / TOB / FULL / PRO_RATA modes.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle executor,
+                                                    uint32_t top_n);
 
   // Set submit / cancel / replace ack latency knobs directly (without
   // touching queue model or slippage). Jitter is the uniform band on

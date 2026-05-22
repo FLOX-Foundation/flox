@@ -123,7 +123,7 @@ void FloxJsStrategy::loadStdlib()
     }
 
     const _slippageMap = { none: 0, fixed_ticks: 1, fixed_bps: 2, volume_impact: 3 };
-    const _queueMap = { none: 0, tob: 1, full: 2 };
+    const _queueMap = { none: 0, tob: 1, full: 2, pro_rata: 3, pro_rata_with_fifo: 4 };
 
     class SimulatedExecutor {
       constructor() { this._h = __flox_simulated_executor_create(); }
@@ -155,6 +155,9 @@ void FloxJsStrategy::loadStdlib()
       }
       setQueueModel(model, depth) {
         __flox_simulated_executor_set_queue_model(this._h, _queueMap[model] || 0, depth || 1);
+      }
+      setQueueFifoTopN(topN) {
+        __flox_simulated_executor_set_queue_fifo_top_n(this._h, topN || 0);
       }
       get fillCount() { return __flox_simulated_executor_fill_count(this._h); }
       get handle() { return this._h; }

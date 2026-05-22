@@ -93,6 +93,8 @@ extern "C"
     FLOX_QUEUE_NONE = 0,
     FLOX_QUEUE_TOB = 1,
     FLOX_QUEUE_FULL = 2,
+    FLOX_QUEUE_PRO_RATA = 3,
+    FLOX_QUEUE_PRO_RATA_WITH_FIFO = 4,
   } FloxQueueModel;
 
   typedef enum
@@ -856,6 +858,8 @@ extern "C"
                                                    double tick_size, double bps, double impact_coeff);
   void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model,
                                                uint32_t depth);
+  void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle executor,
+                                                    uint32_t top_n);
   void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor,
                                                       int64_t latency_ns, int64_t jitter_ns);
   void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor,

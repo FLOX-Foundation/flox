@@ -104,6 +104,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_rate_limit_policy)
   add_flox_test(test_fee_schedule)
   add_flox_test(test_stp_modes)
+  add_flox_test(test_pro_rata_matching)
 endif()
 
 add_flox_test(test_indicators)

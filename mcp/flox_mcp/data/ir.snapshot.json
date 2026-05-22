@@ -31,6 +31,14 @@
         {
           "name": "FLOX_QUEUE_FULL",
           "value": 2
+        },
+        {
+          "name": "FLOX_QUEUE_PRO_RATA",
+          "value": 3
+        },
+        {
+          "name": "FLOX_QUEUE_PRO_RATA_WITH_FIFO",
+          "value": 4
         }
       ]
     },
@@ -10749,6 +10757,21 @@
         {
           "name": "impact_coeff",
           "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_queue_fifo_top_n",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "top_n",
+          "type": "uint32_t"
         }
       ],
       "return_type": "void"

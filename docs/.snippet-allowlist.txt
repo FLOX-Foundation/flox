@@ -249,3 +249,8 @@ docs/how-to/perpetual-funding.md
 # pseudocode snippet; runtime path exercised by
 # tests/test_fee_schedule.cpp.
 docs/how-to/tiered-fees.md
+
+# How-to: Matching modes (FIFO / pro-rata / hybrid). Polyglot tabs
+# configuring SimulatedExecutor; runtime path exercised by
+# tests/test_pro_rata_matching.cpp.
+docs/how-to/matching-modes.md

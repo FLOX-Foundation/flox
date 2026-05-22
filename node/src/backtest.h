@@ -95,6 +95,7 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("advanceClock", &SimulatedExecutorWrap::AdvanceClock),
                         InstanceMethod("setDefaultSlippage", &SimulatedExecutorWrap::SetDefaultSlippage),
                         InstanceMethod("setQueueModel", &SimulatedExecutorWrap::SetQueueModel),
+                        InstanceMethod("setQueueFifoTopN", &SimulatedExecutorWrap::SetQueueFifoTopN),
                         InstanceMethod("setSubmitAckLatency", &SimulatedExecutorWrap::SetSubmitAck),
                         InstanceMethod("setCancelAckLatency", &SimulatedExecutorWrap::SetCancelAck),
                         InstanceMethod("setReplaceAckLatency", &SimulatedExecutorWrap::SetReplaceAck),
@@ -219,8 +220,21 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     {
       m = 2;
     }
+    else if (model == "pro_rata")
+    {
+      m = 3;
+    }
+    else if (model == "pro_rata_with_fifo")
+    {
+      m = 4;
+    }
     uint32_t depth = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
     flox_simulated_executor_set_queue_model(_h, m, depth);
+  }
+  void SetQueueFifoTopN(const Napi::CallbackInfo& info)
+  {
+    uint32_t topN = info[0].As<Napi::Number>().Uint32Value();
+    flox_simulated_executor_set_queue_fifo_top_n(_h, topN);
   }
   void SetSubmitAck(const Napi::CallbackInfo& info)
   {

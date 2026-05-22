@@ -247,7 +247,20 @@ class PySimulatedExecutor
     {
       qm = QueueModel::FULL;
     }
+    else if (model == "pro_rata")
+    {
+      qm = QueueModel::PRO_RATA;
+    }
+    else if (model == "pro_rata_with_fifo")
+    {
+      qm = QueueModel::PRO_RATA_WITH_FIFO;
+    }
     _executor.setQueueModel(qm, depth);
+  }
+
+  void setQueueFifoTopN(uint32_t topN)
+  {
+    _executor.setQueueFifoTopN(topN);
   }
 
   void setQueuePositionMinChangeFraction(double fraction)
@@ -549,8 +562,12 @@ inline void bindBacktest(py::module_& m)
            py::arg("tick_size") = 0.0, py::arg("bps") = 0.0,
            py::arg("impact_coeff") = 0.0)
       .def("set_queue_model", &PySimulatedExecutor::setQueueModel,
-           "Configure queue simulation. model: none|tob|full",
+           "Configure queue simulation. model: none|tob|full|pro_rata|pro_rata_with_fifo",
            py::arg("model"), py::arg("depth") = 1)
+      .def("set_queue_fifo_top_n", &PySimulatedExecutor::setQueueFifoTopN,
+           "For pro_rata_with_fifo: first N orders at a level consume the trade "
+           "FIFO; the rest is split pro-rata.",
+           py::arg("top_n"))
       .def("set_queue_position_min_change_fraction",
            &PySimulatedExecutor::setQueuePositionMinChangeFraction,
            "Minimum fractional change in queue-ahead required to emit a "
