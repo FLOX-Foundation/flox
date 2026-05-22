@@ -5920,6 +5920,10 @@
         },
         {
           "kind": "class",
+          "name": "LatencyDistribution"
+        },
+        {
+          "kind": "class",
           "name": "LatencyModel"
         },
         {
@@ -6693,6 +6697,10 @@
         {
           "kind": "class",
           "name": "L3Book"
+        },
+        {
+          "kind": "class",
+          "name": "LatencyDistribution"
         },
         {
           "kind": "class",
