@@ -2670,6 +2670,11 @@
         {
           "group": "backtest_slippage",
           "kind": "function",
+          "name": "flox_simulated_executor_set_stp_mode"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
           "name": "flox_simulated_executor_set_submit_ack_latency"
         },
         {
@@ -5615,6 +5620,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_stp_mode"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_submit_ack_latency"
         },
         {
@@ -7527,6 +7536,7 @@
         "flox_simulated_executor_set_queue_model",
         "flox_simulated_executor_set_replace_ack_latency",
         "flox_simulated_executor_set_replace_ack_latency_distribution",
+        "flox_simulated_executor_set_stp_mode",
         "flox_simulated_executor_set_submit_ack_latency",
         "flox_simulated_executor_set_submit_ack_latency_distribution",
         "flox_simulated_executor_set_symbol_slippage"

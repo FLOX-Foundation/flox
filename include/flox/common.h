@@ -56,6 +56,18 @@ enum class TimeInForce : uint8_t
   POST_ONLY = 4,  // Maker only
 };
 
+// Self-trade prevention modes. Real venues apply these when a new
+// order from the same account would cross an existing resting order
+// of the same account.
+enum class STPMode : uint8_t
+{
+  None = 0,          // self-match allowed (default)
+  CancelNewest = 1,  // cancel the incoming order
+  CancelOldest = 2,  // cancel the resting order; new one goes through
+  CancelBoth = 3,    // cancel both legs
+  Decrement = 4,     // cancel smaller side fully; reduce larger by smaller qty
+};
+
 enum class Side
 {
   BUY,

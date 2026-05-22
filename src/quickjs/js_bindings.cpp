@@ -1514,6 +1514,14 @@ static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, i
   }
   return JS_UNDEFINED;
 }
+static JSValue js_executor_set_stp_mode(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  uint8_t mode = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  flox_simulated_executor_set_stp_mode(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), mode);
+  return JS_UNDEFINED;
+}
 static JSValue js_rate_limit_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
   return createHandleObject(ctx, flox_rate_limit_policy_create());
@@ -5573,6 +5581,8 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack", js_executor_set_replace_ack, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_apply_latency_profile",
                 js_executor_apply_latency_profile, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_stp_mode",
+                js_executor_set_stp_mode, 2);
   addGlobalFunc(ctx, "__flox_latency_distribution_create", js_latency_dist_create, 0);
   addGlobalFunc(ctx, "__flox_latency_distribution_destroy", js_latency_dist_destroy, 1);
   addGlobalFunc(ctx, "__flox_latency_distribution_set_constant",

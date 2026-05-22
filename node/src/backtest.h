@@ -109,6 +109,7 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                                        &SimulatedExecutorWrap::SetRateLimitPolicy),
                         InstanceMethod("clearRateLimitPolicy",
                                        &SimulatedExecutorWrap::ClearRateLimitPolicy),
+                        InstanceMethod("setSTPMode", &SimulatedExecutorWrap::SetSTPMode),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -271,6 +272,28 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   void ClearRateLimitPolicy(const Napi::CallbackInfo&)
   {
     flox_simulated_executor_clear_rate_limit_policy(_h);
+  }
+  void SetSTPMode(const Napi::CallbackInfo& info)
+  {
+    std::string mode = info[0].As<Napi::String>().Utf8Value();
+    uint8_t m = 0;
+    if (mode == "cancel_newest")
+    {
+      m = 1;
+    }
+    else if (mode == "cancel_oldest")
+    {
+      m = 2;
+    }
+    else if (mode == "cancel_both")
+    {
+      m = 3;
+    }
+    else if (mode == "decrement")
+    {
+      m = 4;
+    }
+    flox_simulated_executor_set_stp_mode(_h, m);
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;

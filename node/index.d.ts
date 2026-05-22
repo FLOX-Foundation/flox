@@ -762,6 +762,11 @@ export class SimulatedExecutor {
    *  consult the policy first; an overflow emits a rate-limit reject. */
   setRateLimitPolicy(policy: RateLimitPolicy): void;
   clearRateLimitPolicy(): void;
+  /** Self-trade prevention mode. 'none' | 'cancel_newest' | 'cancel_oldest'
+   *  | 'cancel_both' | 'decrement'. Default 'none'. */
+  setSTPMode(
+    mode: 'none' | 'cancel_newest' | 'cancel_oldest' | 'cancel_both' | 'decrement',
+  ): void;
   readonly fillCount: number;
 }
 

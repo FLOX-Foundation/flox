@@ -1320,6 +1320,12 @@ extern "C"
   void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
                                                      const char* profile_name);
 
+  // Self-trade prevention mode. 0=None, 1=CancelNewest, 2=CancelOldest,
+  // 3=CancelBoth, 4=Decrement. Default None.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor,
+                                            uint8_t mode);
+
   // Latency-distribution handle. The simulator copies the distribution
   // on set_*_distribution; the caller still owns and destroys the
   // handle. kind: 0=Constant, 1=Uniform, 2=Lognormal, 3=Empirical.

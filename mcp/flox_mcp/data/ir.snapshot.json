@@ -10823,6 +10823,21 @@
     },
     {
       "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_stp_mode",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "mode",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
       "name": "flox_simulated_executor_set_submit_ack_latency",
       "params": [
         {
