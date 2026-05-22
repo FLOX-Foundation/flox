@@ -1393,6 +1393,104 @@ static JSValue js_executor_set_replace_ack(JSContext* ctx, JSValueConst, int arg
       toInt64(ctx, argv[1]), argc > 2 ? toInt64(ctx, argv[2]) : 0);
   return JS_UNDEFINED;
 }
+static JSValue js_latency_dist_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_latency_distribution_create());
+}
+static JSValue js_latency_dist_destroy(JSContext* ctx, JSValueConst, int,
+                                       JSValueConst* argv)
+{
+  flox_latency_distribution_destroy(
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_latency_dist_set_constant(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  flox_latency_distribution_set_constant(
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+static JSValue js_latency_dist_set_uniform(JSContext* ctx, JSValueConst, int,
+                                           JSValueConst* argv)
+{
+  flox_latency_distribution_set_uniform(
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), toInt64(ctx, argv[2]));
+  return JS_UNDEFINED;
+}
+static JSValue js_latency_dist_set_lognormal(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  double sigma = 0.0;
+  JS_ToFloat64(ctx, &sigma, argv[2]);
+  flox_latency_distribution_set_lognormal(
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), sigma);
+  return JS_UNDEFINED;
+}
+static JSValue js_latency_dist_set_empirical(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  auto h = static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0]));
+  uint32_t n = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
+  JS_ToUint32(ctx, &n, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  std::vector<int64_t> samples;
+  samples.reserve(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue v = JS_GetPropertyUint32(ctx, argv[1], i);
+    samples.push_back(toInt64(ctx, v));
+    JS_FreeValue(ctx, v);
+  }
+  flox_latency_distribution_set_empirical(
+      h, samples.empty() ? nullptr : samples.data(), n);
+  return JS_UNDEFINED;
+}
+static JSValue js_latency_dist_set_burst(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  double rho = 0.0;
+  JS_ToFloat64(ctx, &rho, argv[1]);
+  flox_latency_distribution_set_burst_correlation(
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[0])), rho);
+  return JS_UNDEFINED;
+}
+static JSValue js_latency_dist_median_ns(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, flox_latency_distribution_median_ns(
+                              static_cast<FloxLatencyDistributionHandle>(
+                                  getHandle(ctx, argv[0]))));
+}
+static JSValue js_executor_set_submit_ack_dist(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  flox_simulated_executor_set_submit_ack_latency_distribution(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_cancel_ack_dist(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  flox_simulated_executor_set_cancel_ack_latency_distribution(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_replace_ack_dist(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  flox_simulated_executor_set_replace_ack_latency_distribution(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxLatencyDistributionHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+
 static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
@@ -5178,6 +5276,26 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack", js_executor_set_replace_ack, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_apply_latency_profile",
                 js_executor_apply_latency_profile, 2);
+  addGlobalFunc(ctx, "__flox_latency_distribution_create", js_latency_dist_create, 0);
+  addGlobalFunc(ctx, "__flox_latency_distribution_destroy", js_latency_dist_destroy, 1);
+  addGlobalFunc(ctx, "__flox_latency_distribution_set_constant",
+                js_latency_dist_set_constant, 2);
+  addGlobalFunc(ctx, "__flox_latency_distribution_set_uniform",
+                js_latency_dist_set_uniform, 3);
+  addGlobalFunc(ctx, "__flox_latency_distribution_set_lognormal",
+                js_latency_dist_set_lognormal, 3);
+  addGlobalFunc(ctx, "__flox_latency_distribution_set_empirical",
+                js_latency_dist_set_empirical, 2);
+  addGlobalFunc(ctx, "__flox_latency_distribution_set_burst_correlation",
+                js_latency_dist_set_burst, 2);
+  addGlobalFunc(ctx, "__flox_latency_distribution_median_ns",
+                js_latency_dist_median_ns, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_submit_ack_latency_distribution",
+                js_executor_set_submit_ack_dist, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_cancel_ack_latency_distribution",
+                js_executor_set_cancel_ack_dist, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack_latency_distribution",
+                js_executor_set_replace_ack_dist, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
 

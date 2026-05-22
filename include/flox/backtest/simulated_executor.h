@@ -11,6 +11,7 @@
 
 #include "flox/backtest/abstract_clock.h"
 #include "flox/backtest/backtest_config.h"
+#include "flox/backtest/latency_distribution.h"
 #include "flox/backtest/order_queue_tracker.h"
 #include "flox/book/book_update.h"
 #include "flox/execution/abstract_executor.h"
@@ -67,6 +68,14 @@ class SimulatedExecutor : public IOrderExecutor
   void setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs);
   void setCancelAckLatency(int64_t latencyNs, int64_t jitterNs);
   void setReplaceAckLatency(int64_t latencyNs, int64_t jitterNs);
+
+  // Distribution-based variants. The scalar setters above delegate
+  // to these: zero jitter → Constant, non-zero → Uniform with the
+  // legacy [base-jitter, base+jitter] window.
+  void setSubmitAckLatencyDistribution(const LatencyDistribution& dist);
+  void setCancelAckLatencyDistribution(const LatencyDistribution& dist);
+  void setReplaceAckLatencyDistribution(const LatencyDistribution& dist);
+
   void applyLatencyProfile(const char* name);
 
   void start() override {}
@@ -220,8 +229,7 @@ class SimulatedExecutor : public IOrderExecutor
     Order orderSnapshot;  // copy at the moment of cancelOrder()
   };
   std::vector<PendingCancel> _pendingCancels;
-  int64_t _cancelAckLatencyNs{0};
-  int64_t _cancelAckJitterNs{0};
+  LatencyDistribution _cancelAckDist;
   std::mt19937_64 _cancelAckRng{42};
 
   // Last emitted MarketPosition per resting order. Used to debounce
@@ -237,8 +245,7 @@ class SimulatedExecutor : public IOrderExecutor
     Order newOrder;
   };
   std::vector<PendingReplace> _pendingReplaces;
-  int64_t _replaceAckLatencyNs{0};
-  int64_t _replaceAckJitterNs{0};
+  LatencyDistribution _replaceAckDist;
 
   struct PendingSubmission
   {
@@ -246,8 +253,7 @@ class SimulatedExecutor : public IOrderExecutor
     Order order;
   };
   std::vector<PendingSubmission> _pendingSubmissions;
-  int64_t _submitAckLatencyNs{0};
-  int64_t _submitAckJitterNs{0};
+  LatencyDistribution _submitAckDist;
 };
 
 }  // namespace flox

@@ -47,13 +47,10 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   }
   setQueueModel(config.queueModel, config.queueDepth);
   _queuePosMinFraction = config.queuePositionMinChangeFraction;
-  _cancelAckLatencyNs = config.cancelAckLatencyNs;
-  _cancelAckJitterNs = config.cancelAckJitterNs;
+  setCancelAckLatency(config.cancelAckLatencyNs, config.cancelAckJitterNs);
   _cancelAckRng.seed(config.cancelAckSeed);
-  _replaceAckLatencyNs = config.replaceAckLatencyNs;
-  _replaceAckJitterNs = config.replaceAckJitterNs;
-  _submitAckLatencyNs = config.submitAckLatencyNs;
-  _submitAckJitterNs = config.submitAckJitterNs;
+  setReplaceAckLatency(config.replaceAckLatencyNs, config.replaceAckJitterNs);
+  setSubmitAckLatency(config.submitAckLatencyNs, config.submitAckJitterNs);
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -91,22 +88,44 @@ void SimulatedExecutor::setQueuePositionMinChangeFraction(double fraction)
   _queuePosMinFraction = fraction;
 }
 
+static LatencyDistribution makeLegacyDist(int64_t latencyNs, int64_t jitterNs)
+{
+  if (jitterNs <= 0)
+  {
+    return LatencyDistribution::constant(latencyNs);
+  }
+  return LatencyDistribution::uniform(std::max<int64_t>(0, latencyNs - jitterNs),
+                                      latencyNs + jitterNs);
+}
+
 void SimulatedExecutor::setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs)
 {
-  _submitAckLatencyNs = latencyNs;
-  _submitAckJitterNs = jitterNs;
+  _submitAckDist = makeLegacyDist(latencyNs, jitterNs);
 }
 
 void SimulatedExecutor::setCancelAckLatency(int64_t latencyNs, int64_t jitterNs)
 {
-  _cancelAckLatencyNs = latencyNs;
-  _cancelAckJitterNs = jitterNs;
+  _cancelAckDist = makeLegacyDist(latencyNs, jitterNs);
 }
 
 void SimulatedExecutor::setReplaceAckLatency(int64_t latencyNs, int64_t jitterNs)
 {
-  _replaceAckLatencyNs = latencyNs;
-  _replaceAckJitterNs = jitterNs;
+  _replaceAckDist = makeLegacyDist(latencyNs, jitterNs);
+}
+
+void SimulatedExecutor::setSubmitAckLatencyDistribution(const LatencyDistribution& dist)
+{
+  _submitAckDist = dist;
+}
+
+void SimulatedExecutor::setCancelAckLatencyDistribution(const LatencyDistribution& dist)
+{
+  _cancelAckDist = dist;
+}
+
+void SimulatedExecutor::setReplaceAckLatencyDistribution(const LatencyDistribution& dist)
+{
+  _replaceAckDist = dist;
 }
 
 void SimulatedExecutor::applyLatencyProfile(const char* name)
@@ -212,7 +231,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
 
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
 
-  if (_submitAckLatencyNs > 0)
+  if (_submitAckDist.medianNs() > 0)
   {
     // Async path: ACCEPTED defers until the sampled deadline. The
     // order is held aside; finishSubmission runs the existing
@@ -335,7 +354,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
   // Async path: emit PENDING_CANCEL and defer CANCELED until the
   // sampled ack deadline. Leave the order in the book so it can
   // still fill in the race window.
-  if (_cancelAckLatencyNs > 0)
+  if (_cancelAckDist.medianNs() > 0)
   {
     for (const auto& o : _pending_orders)
     {
@@ -459,7 +478,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
   // ACCEPTED + REPLACED transition until the ack deadline. The
   // original order stays in the book and can still fill in the
   // race window.
-  if (_replaceAckLatencyNs > 0)
+  if (_replaceAckDist.medianNs() > 0)
   {
     for (const auto& order : _pending_orders)
     {
@@ -923,13 +942,7 @@ void SimulatedExecutor::forgetMarketPosition(OrderId orderId)
 
 int64_t SimulatedExecutor::sampleReplaceAckLatency()
 {
-  if (_replaceAckJitterNs <= 0)
-  {
-    return _replaceAckLatencyNs;
-  }
-  std::uniform_int_distribution<int64_t> dist(-_replaceAckJitterNs,
-                                              _replaceAckJitterNs);
-  return std::max<int64_t>(0, _replaceAckLatencyNs + dist(_cancelAckRng));
+  return _replaceAckDist.sample(_cancelAckRng);
 }
 
 void SimulatedExecutor::enqueuePendingReplace(const Order& oldOrder,
@@ -1009,12 +1022,7 @@ void SimulatedExecutor::finalizePendingReplaces()
 
 int64_t SimulatedExecutor::sampleSubmitAckLatency()
 {
-  if (_submitAckJitterNs <= 0)
-  {
-    return _submitAckLatencyNs;
-  }
-  std::uniform_int_distribution<int64_t> dist(-_submitAckJitterNs, _submitAckJitterNs);
-  return std::max<int64_t>(0, _submitAckLatencyNs + dist(_cancelAckRng));
+  return _submitAckDist.sample(_cancelAckRng);
 }
 
 void SimulatedExecutor::enqueuePendingSubmission(const Order& order)
@@ -1231,13 +1239,7 @@ void SimulatedExecutor::maybeEmitMarketPositionChanges()
 
 int64_t SimulatedExecutor::sampleCancelAckLatency()
 {
-  if (_cancelAckJitterNs <= 0)
-  {
-    return _cancelAckLatencyNs;
-  }
-  std::uniform_int_distribution<int64_t> dist(-_cancelAckJitterNs,
-                                              _cancelAckJitterNs);
-  return std::max<int64_t>(0, _cancelAckLatencyNs + dist(_cancelAckRng));
+  return _cancelAckDist.sample(_cancelAckRng);
 }
 
 void SimulatedExecutor::enqueuePendingCancel(const Order& order)

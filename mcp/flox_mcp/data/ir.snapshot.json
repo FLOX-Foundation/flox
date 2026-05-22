@@ -5499,6 +5499,121 @@
       "return_type": "void"
     },
     {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_create",
+      "params": [],
+      "return_type": "FloxLatencyDistributionHandle"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_median_ns",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_set_burst_correlation",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        },
+        {
+          "name": "rho",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_set_constant",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        },
+        {
+          "name": "ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_set_empirical",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        },
+        {
+          "name": "samples_ns",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "n_samples",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_set_lognormal",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        },
+        {
+          "name": "median_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "sigma",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_latency_distribution_set_uniform",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLatencyDistributionHandle"
+        },
+        {
+          "name": "lo_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "hi_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "latency_models",
       "name": "flox_latency_empirical_create",
       "params": [
@@ -10118,6 +10233,21 @@
     },
     {
       "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_cancel_ack_latency_distribution",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "dist",
+          "type": "FloxLatencyDistributionHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
       "name": "flox_simulated_executor_set_default_slippage",
       "params": [
         {
@@ -10187,6 +10317,21 @@
     },
     {
       "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_replace_ack_latency_distribution",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "dist",
+          "type": "FloxLatencyDistributionHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
       "name": "flox_simulated_executor_set_submit_ack_latency",
       "params": [
         {
@@ -10200,6 +10345,21 @@
         {
           "name": "jitter_ns",
           "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_submit_ack_latency_distribution",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "dist",
+          "type": "FloxLatencyDistributionHandle"
         }
       ],
       "return_type": "void"
@@ -13307,6 +13467,10 @@
     },
     {
       "name": "FloxL3BookHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxLatencyDistributionHandle",
       "target": "void*"
     },
     {

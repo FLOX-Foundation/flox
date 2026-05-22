@@ -242,6 +242,18 @@ class PySimulatedExecutor
   {
     _executor.applyLatencyProfile(name.c_str());
   }
+  void setSubmitAckLatencyDistribution(const flox::LatencyDistribution& d)
+  {
+    _executor.setSubmitAckLatencyDistribution(d);
+  }
+  void setCancelAckLatencyDistribution(const flox::LatencyDistribution& d)
+  {
+    _executor.setCancelAckLatencyDistribution(d);
+  }
+  void setReplaceAckLatencyDistribution(const flox::LatencyDistribution& d)
+  {
+    _executor.setReplaceAckLatencyDistribution(d);
+  }
 
   py::array_t<PyFill> fills() const
   {
@@ -420,6 +432,22 @@ class PyBacktestResult
 
 inline void bindBacktest(py::module_& m)
 {
+  py::class_<flox::LatencyDistribution>(m, "LatencyDistribution")
+      .def(py::init<>())
+      .def_static("constant", &flox::LatencyDistribution::constant, py::arg("ns"))
+      .def_static("uniform", &flox::LatencyDistribution::uniform,
+                  py::arg("lo_ns"), py::arg("hi_ns"))
+      .def_static("lognormal", &flox::LatencyDistribution::lognormal,
+                  py::arg("median_ns"), py::arg("sigma"))
+      .def_static("empirical", &flox::LatencyDistribution::empirical,
+                  py::arg("samples_ns"))
+      .def("set_burst_correlation",
+           &flox::LatencyDistribution::setBurstCorrelation, py::arg("rho"))
+      .def_property("burst_correlation",
+                    &flox::LatencyDistribution::burstCorrelation,
+                    &flox::LatencyDistribution::setBurstCorrelation)
+      .def("median_ns", &flox::LatencyDistribution::medianNs);
+
   PYBIND11_NUMPY_DTYPE(PyFill, order_id, symbol, side, price_raw, quantity_raw, timestamp_ns);
   PYBIND11_NUMPY_DTYPE(PyTradeRecord, symbol, side, entry_price_raw, exit_price_raw,
                        quantity_raw, entry_time_ns, exit_time_ns, pnl_raw, fee_raw);
@@ -479,6 +507,12 @@ inline void bindBacktest(py::module_& m)
       .def("set_replace_ack_latency",
            &PySimulatedExecutor::setReplaceAckLatency,
            py::arg("latency_ns"), py::arg("jitter_ns") = 0)
+      .def("set_submit_ack_latency_distribution",
+           &PySimulatedExecutor::setSubmitAckLatencyDistribution, py::arg("dist"))
+      .def("set_cancel_ack_latency_distribution",
+           &PySimulatedExecutor::setCancelAckLatencyDistribution, py::arg("dist"))
+      .def("set_replace_ack_latency_distribution",
+           &PySimulatedExecutor::setReplaceAckLatencyDistribution, py::arg("dist"))
       .def("apply_latency_profile",
            &PySimulatedExecutor::applyLatencyProfile,
            "Apply a named latency profile: binance_um_futures, "
