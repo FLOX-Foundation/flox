@@ -11,6 +11,7 @@
 
 #include "flox/backtest/abstract_clock.h"
 #include "flox/backtest/backtest_config.h"
+#include "flox/backtest/bracket_order.h"
 #include "flox/backtest/latency_distribution.h"
 #include "flox/backtest/order_queue_tracker.h"
 #include "flox/backtest/rate_limit_policy.h"
@@ -121,6 +122,18 @@ class SimulatedExecutor : public IOrderExecutor
 
   // OCO: one-cancels-other
   void submitOCO(const OCOParams& params) override;
+
+  // Native bracket primitive: a single call that submits the entry
+  // leg and arms a take-profit + stop pair on entry fill. The
+  // simulator manages the state machine: the first child to fill
+  // cancels the other; cancelling the bracket cancels every still-
+  // live leg. Returns the bracketId for later lookup / cancel.
+  // The bracket assumes order_ids for the entry / TP / stop are
+  // chosen by the caller: entry_id = bracketId * 3 + 0,
+  // tp_id = bracketId * 3 + 1, stop_id = bracketId * 3 + 2.
+  void submitBracket(const BracketOrder& bracket);
+  void cancelBracket(uint64_t bracketId);
+  BracketStatus bracketStatus(uint64_t bracketId) const;
 
   ExchangeCapabilities capabilities() const override { return ExchangeCapabilities::simulated(); }
 
@@ -305,8 +318,6 @@ class SimulatedExecutor : public IOrderExecutor
   STPMode _stpMode{STPMode::None};
 
   VenueAvailability* _venue{nullptr};
-  // Requests buffered while the venue is down. Replayed in FIFO order
-  // at the recovery edge subject to rate-limit policy.
   enum class BufferedAction : uint8_t
   {
     SUBMIT = 0,
@@ -317,21 +328,20 @@ class SimulatedExecutor : public IOrderExecutor
   struct BufferedRequest
   {
     BufferedAction action{BufferedAction::SUBMIT};
-    Order order{};                // SUBMIT, REPLACE (new order)
-    OrderId oldOrderId{0};        // CANCEL, REPLACE
-    SymbolId cancelAllSymbol{0};  // CANCEL_ALL_SYMBOL
+    Order order{};
+    OrderId oldOrderId{0};
+    SymbolId cancelAllSymbol{0};
   };
   std::vector<BufferedRequest> _outageBuffer;
-  // Apply the outage policy at the moment of disconnect: cancel-all
-  // walks _pending_orders and emits CANCELED with reason "outage".
   void applyOutagePolicy();
-  // Flush buffered requests in arrival order; respects current rate
-  // limit and venue state.
   void flushOutageBuffer();
-  // Last observed venue state for edge detection inside the executor
-  // (separate from VenueAvailability's own edge bookkeeping so
-  // strategies can read recovery edges independently).
   bool _venueWasUp{true};
+
+  // Native bracket state. Keyed by user-provided bracketId.
+  std::unordered_map<uint64_t, BracketStatus> _brackets;
+  std::unordered_map<OrderId, uint64_t> _legToBracket;
+  std::unordered_map<uint64_t, BracketOrder> _bracketTemplates;
+  void onBracketFillEvent(const Order& filledOrder);
 };
 
 }  // namespace flox

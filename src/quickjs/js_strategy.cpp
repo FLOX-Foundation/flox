@@ -163,6 +163,27 @@ void FloxJsStrategy::loadStdlib()
         __flox_simulated_executor_set_venue_availability(
           this._h, va && va.handle ? va.handle : 0);
       }
+      submitBracket(opts) {
+        const sideU = (s) => s === "buy" ? 0 : 1;
+        const typeU = (t) => {
+          if (t === "market") return 1;
+          if (t === "stop_market") return 2;
+          if (t === "stop_limit") return 3;
+          return 0;
+        };
+        __flox_simulated_executor_submit_bracket(
+          this._h, opts.bracketId, opts.symbol || 1,
+          sideU(opts.entrySide), typeU(opts.entryType),
+          opts.entryPrice, opts.quantity,
+          sideU(opts.tpSide), typeU(opts.tpType), opts.tpPrice,
+          sideU(opts.stopSide), typeU(opts.stopType), opts.stopTriggerPrice);
+      }
+      cancelBracket(bracketId) { __flox_simulated_executor_cancel_bracket(this._h, bracketId); }
+      bracketState(bracketId) {
+        const s = __flox_simulated_executor_bracket_state(this._h, bracketId);
+        const names = ["pending_entry","entry_filled","tp_filled","stop_filled","canceled"];
+        return names[s] || "pending_entry";
+      }
       get fillCount() { return __flox_simulated_executor_fill_count(this._h); }
       get handle() { return this._h; }
     }

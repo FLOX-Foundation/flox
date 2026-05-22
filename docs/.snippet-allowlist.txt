@@ -250,6 +250,11 @@ docs/how-to/perpetual-funding.md
 # tests/test_fee_schedule.cpp.
 docs/how-to/tiered-fees.md
 
+# How-to: Native bracket orders. Polyglot tabs configuring
+# SimulatedExecutor's bracket primitive; runtime path exercised by
+# tests/test_bracket_orders.cpp.
+docs/how-to/bracket-orders.md
+
 # How-to: Matching modes (FIFO / pro-rata / hybrid). Polyglot tabs
 # configuring SimulatedExecutor; runtime path exercised by
 # tests/test_pro_rata_matching.cpp.

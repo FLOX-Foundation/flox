@@ -808,12 +808,27 @@ export class SimulatedExecutor {
   setSTPMode(
     mode: 'none' | 'cancel_newest' | 'cancel_oldest' | 'cancel_both' | 'decrement',
   ): void;
-  /** Attach a VenueAvailability model. Submit / cancel / replace
-   *  during an outage are buffered and flushed at the recovery edge
-   *  in FIFO order; market-data callbacks during an outage are
-   *  silently dropped so the strategy sees a feed gap. Pass null
-   *  to detach. */
+  /** Attach a VenueAvailability model. Pass null to detach. */
   setVenueAvailability(availability: VenueAvailability | null): void;
+  /** Submit a native bracket order (entry + take-profit + stop). */
+  submitBracket(opts: {
+    bracketId: number;
+    symbol?: number;
+    entrySide: Side;
+    entryType: 'limit' | 'market' | 'stop_market' | 'stop_limit';
+    entryPrice: number;
+    quantity: number;
+    tpSide: Side;
+    tpType: 'limit' | 'market' | 'stop_market' | 'stop_limit';
+    tpPrice: number;
+    stopSide: Side;
+    stopType: 'limit' | 'market' | 'stop_market' | 'stop_limit';
+    stopTriggerPrice: number;
+  }): void;
+  cancelBracket(bracketId: number): void;
+  bracketState(
+    bracketId: number,
+  ): 'pending_entry' | 'entry_filled' | 'tp_filled' | 'stop_filled' | 'canceled';
   readonly fillCount: number;
 }
 

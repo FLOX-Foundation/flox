@@ -176,6 +176,52 @@ class PySimulatedExecutor
   void cancelOrder(uint64_t id) { _executor.cancelOrder(id); }
   void cancelAll(uint32_t symbol) { _executor.cancelAllOrders(symbol); }
 
+  void submitBracket(uint64_t bracketId, uint32_t symbol,
+                     const std::string& entrySide, const std::string& entryType,
+                     double entryPrice, double quantity,
+                     const std::string& tpSide, const std::string& tpType, double tpPrice,
+                     const std::string& stopSide, const std::string& stopType,
+                     double stopTriggerPrice)
+  {
+    BracketOrder b;
+    b.bracketId = bracketId;
+    b.symbol = symbol;
+    auto parseSide = [](const std::string& s)
+    { return s == "buy" ? Side::BUY : Side::SELL; };
+    b.entry.side = parseSide(entrySide);
+    b.entry.type = parseOrderType(entryType);
+    b.entry.price = Price::fromDouble(entryPrice);
+    b.entry.quantity = Quantity::fromDouble(quantity);
+    b.takeProfit.side = parseSide(tpSide);
+    b.takeProfit.type = parseOrderType(tpType);
+    b.takeProfit.price = Price::fromDouble(tpPrice);
+    b.takeProfit.quantity = Quantity::fromDouble(quantity);
+    b.stop.side = parseSide(stopSide);
+    b.stop.type = parseOrderType(stopType);
+    b.stop.triggerPrice = Price::fromDouble(stopTriggerPrice);
+    b.stop.quantity = Quantity::fromDouble(quantity);
+    _executor.submitBracket(b);
+  }
+  void cancelBracket(uint64_t bracketId) { _executor.cancelBracket(bracketId); }
+  std::string bracketState(uint64_t bracketId) const
+  {
+    auto st = _executor.bracketStatus(bracketId).state;
+    switch (st)
+    {
+      case BracketState::PENDING_ENTRY:
+        return "pending_entry";
+      case BracketState::ENTRY_FILLED:
+        return "entry_filled";
+      case BracketState::TP_FILLED:
+        return "tp_filled";
+      case BracketState::STOP_FILLED:
+        return "stop_filled";
+      case BracketState::CANCELED:
+        return "canceled";
+    }
+    return "pending_entry";
+  }
+
   void onBar(uint32_t symbol, double closePrice)
   {
     _executor.onBar(symbol, Price::fromDouble(closePrice));
@@ -538,6 +584,19 @@ inline void bindBacktest(py::module_& m)
            py::arg("expires_at_ns") = 0)
       .def("cancel_order", &PySimulatedExecutor::cancelOrder, py::arg("order_id"))
       .def("cancel_all", &PySimulatedExecutor::cancelAll, py::arg("symbol"))
+      .def("submit_bracket", &PySimulatedExecutor::submitBracket,
+           "Submit a native bracket order (entry + take-profit + stop). "
+           "The simulator manages the state machine: first child to fill "
+           "cancels the other; cancelling cancels every live leg.",
+           py::arg("bracket_id"), py::arg("symbol"), py::arg("entry_side"),
+           py::arg("entry_type"), py::arg("entry_price"), py::arg("quantity"),
+           py::arg("tp_side"), py::arg("tp_type"), py::arg("tp_price"),
+           py::arg("stop_side"), py::arg("stop_type"), py::arg("stop_trigger_price"))
+      .def("cancel_bracket", &PySimulatedExecutor::cancelBracket,
+           py::arg("bracket_id"))
+      .def("bracket_state", &PySimulatedExecutor::bracketState,
+           "Bracket state: pending_entry | entry_filled | tp_filled | stop_filled | canceled.",
+           py::arg("bracket_id"))
       .def("on_bar", &PySimulatedExecutor::onBar,
            "Feed a bar close price for order matching",
            py::arg("symbol"), py::arg("close_price"))

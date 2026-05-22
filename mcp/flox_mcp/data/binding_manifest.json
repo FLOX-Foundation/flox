@@ -2575,7 +2575,17 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_bracket_state"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_cancel_all"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_cancel_bracket"
         },
         {
           "group": "simulated_executor",
@@ -2696,6 +2706,11 @@
           "group": "venue_availability",
           "kind": "function",
           "name": "flox_simulated_executor_set_venue_availability"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_bracket"
         },
         {
           "group": "simulated_executor",
@@ -5584,7 +5599,15 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_bracket_state"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_cancel_all"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_cancel_bracket"
         },
         {
           "kind": "function",
@@ -5681,6 +5704,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_venue_availability"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_bracket"
         },
         {
           "kind": "function",
@@ -9210,13 +9237,16 @@
     "simulated_executor": {
       "capi_functions": [
         "flox_simulated_executor_advance_clock",
+        "flox_simulated_executor_bracket_state",
         "flox_simulated_executor_cancel_all",
+        "flox_simulated_executor_cancel_bracket",
         "flox_simulated_executor_cancel_order",
         "flox_simulated_executor_create",
         "flox_simulated_executor_destroy",
         "flox_simulated_executor_fill_count",
         "flox_simulated_executor_on_bar",
         "flox_simulated_executor_on_trade",
+        "flox_simulated_executor_submit_bracket",
         "flox_simulated_executor_submit_order",
         "flox_simulated_executor_submit_order_ex"
       ],

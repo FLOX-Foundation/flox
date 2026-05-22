@@ -2256,7 +2256,13 @@ class SimulatedExecutor:
         """
         Apply a named latency profile: binance_um_futures, bybit_linear, okx_swap, deribit, idealized, adversarial.
         """
+    def bracket_state(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> str:
+        """
+        Bracket state: pending_entry | entry_filled | tp_filled | stop_filled | canceled.
+        """
     def cancel_all(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def cancel_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     def cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -2331,6 +2337,10 @@ class SimulatedExecutor:
     def set_venue_availability(self, availability: ...) -> None:
         """
         Attach a VenueAvailability model. None to detach.
+        """
+    def submit_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, entry_side: str, entry_type: str, entry_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, tp_side: str, tp_type: str, tp_price: typing.SupportsFloat | typing.SupportsIndex, stop_side: str, stop_type: str, stop_trigger_price: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        Submit a native bracket order (entry + take-profit + stop). The simulator manages the state machine: first child to fill cancels the other; cancelling cancels every live leg.
         """
     def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         """

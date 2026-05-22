@@ -65,6 +65,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_bracket_orders.py",
+      "sha256": "ff3194920b4e7fe9698856fbebed9fab4e9445edf49f585f48f1b9cdbc9bfc7c",
+      "size_bytes": 835,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_bybit_archive.py",
       "sha256": "6680978e94b2f8aa592b4a42d0b01764f181cad007697ee32fc9881e0013f332",
       "size_bytes": 2218,

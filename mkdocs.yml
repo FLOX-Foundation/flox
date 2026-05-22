@@ -128,6 +128,7 @@ nav:
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
           - Matching modes (FIFO / pro-rata / hybrid): how-to/matching-modes.md
           - Venue downtime simulation: how-to/venue-downtime.md
+          - Native bracket orders: how-to/bracket-orders.md
           - Record and replay market data: how-to/tape-record.md
           - Merge multiple tapes on read: how-to/multi-tape.md
           - Import Binance public archives: how-to/import-binance-archive.md

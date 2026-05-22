@@ -114,6 +114,12 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("setSTPMode", &SimulatedExecutorWrap::SetSTPMode),
                         InstanceMethod("setVenueAvailability",
                                        &SimulatedExecutorWrap::SetVenueAvailability),
+                        InstanceMethod("submitBracket",
+                                       &SimulatedExecutorWrap::SubmitBracket),
+                        InstanceMethod("cancelBracket",
+                                       &SimulatedExecutorWrap::CancelBracket),
+                        InstanceMethod("bracketState",
+                                       &SimulatedExecutorWrap::BracketState),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -321,6 +327,60 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     }
     auto* w = Napi::ObjectWrap<VenueAvailabilityWrap>::Unwrap(info[0].As<Napi::Object>());
     flox_simulated_executor_set_venue_availability(_h, w->handle());
+  }
+  void SubmitBracket(const Napi::CallbackInfo& info)
+  {
+    auto opts = info[0].As<Napi::Object>();
+    uint64_t bracketId = opts.Get("bracketId").As<Napi::Number>().Int64Value();
+    uint32_t sym = opts.Has("symbol") ? opts.Get("symbol").As<Napi::Number>().Uint32Value() : 1;
+    auto sideOf = [&](const std::string& key)
+    {
+      return opts.Get(key).As<Napi::String>().Utf8Value() == "buy" ? 0 : 1;
+    };
+    auto typeOf = [&](const std::string& key)
+    {
+      const std::string s = opts.Get(key).As<Napi::String>().Utf8Value();
+      if (s == "market")
+      {
+        return 1;
+      }
+      if (s == "stop_market")
+      {
+        return 2;
+      }
+      if (s == "stop_limit")
+      {
+        return 3;
+      }
+      return 0;
+    };
+    double entryPrice = opts.Get("entryPrice").As<Napi::Number>().DoubleValue();
+    double qty = opts.Get("quantity").As<Napi::Number>().DoubleValue();
+    double tpPrice = opts.Get("tpPrice").As<Napi::Number>().DoubleValue();
+    double stopTriggerPrice = opts.Get("stopTriggerPrice").As<Napi::Number>().DoubleValue();
+    flox_simulated_executor_submit_bracket(
+        _h, bracketId, sym,
+        static_cast<uint8_t>(sideOf("entrySide")),
+        static_cast<uint8_t>(typeOf("entryType")),
+        entryPrice, qty,
+        static_cast<uint8_t>(sideOf("tpSide")),
+        static_cast<uint8_t>(typeOf("tpType")),
+        tpPrice,
+        static_cast<uint8_t>(sideOf("stopSide")),
+        static_cast<uint8_t>(typeOf("stopType")),
+        stopTriggerPrice);
+  }
+  void CancelBracket(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_cancel_bracket(_h, info[0].As<Napi::Number>().Int64Value());
+  }
+  Napi::Value BracketState(const Napi::CallbackInfo& info)
+  {
+    const uint8_t s = flox_simulated_executor_bracket_state(
+        _h, info[0].As<Napi::Number>().Int64Value());
+    const char* names[] = {"pending_entry", "entry_filled", "tp_filled",
+                           "stop_filled", "canceled"};
+    return Napi::String::New(info.Env(), s < 5 ? names[s] : "pending_entry");
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;
