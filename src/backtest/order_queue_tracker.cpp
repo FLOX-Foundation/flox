@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 
-#if defined(_MSC_VER)
+#if defined(_WIN32) && defined(_M_X64)
 #include <intrin.h>
 #endif
 
@@ -22,18 +22,21 @@ namespace flox
 namespace
 {
 // Portable 64x64 -> 64 multiply-then-divide via a 128-bit intermediate.
-// MSVC lacks __int128, so route through _mul128 / _udiv128 on Windows.
+// Windows toolchains (both MSVC and clang-cl) lack a usable
+// __int128 / __divti3 in the C runtime; route through _mul128 /
+// _div128 on x64 instead. Unix builds use the compiler's native
+// __int128.
 inline int64_t mulDiv64(int64_t a, int64_t b, int64_t c) noexcept
 {
-#if defined(__SIZEOF_INT128__)
-  return static_cast<int64_t>((static_cast<__int128>(a) *
-                               static_cast<__int128>(b)) /
-                              static_cast<__int128>(c));
-#elif defined(_MSC_VER) && defined(_M_X64)
+#if defined(_WIN32) && defined(_M_X64)
   int64_t hi = 0;
   const int64_t lo = _mul128(a, b, &hi);
   int64_t rem = 0;
   return _div128(hi, lo, c, &rem);
+#elif defined(__SIZEOF_INT128__)
+  return static_cast<int64_t>((static_cast<__int128>(a) *
+                               static_cast<__int128>(b)) /
+                              static_cast<__int128>(c));
 #else
   // Fall back to long double on platforms without a wide multiply
   // primitive. Acceptable here because the result is immediately
