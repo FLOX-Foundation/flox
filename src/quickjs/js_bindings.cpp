@@ -1316,6 +1316,17 @@ static JSValue js_executor_submit(JSContext* ctx, JSValueConst, int, JSValueCons
                                        toUint32(ctx, argv[6]));
   return JS_UNDEFINED;
 }
+static JSValue js_executor_submit_ex(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
+  flox_simulated_executor_submit_order_ex(
+      h, static_cast<uint64_t>(toInt64(ctx, argv[1])),
+      static_cast<uint8_t>(toUint32(ctx, argv[2])), toDouble(ctx, argv[3]),
+      toDouble(ctx, argv[4]), static_cast<uint8_t>(toUint32(ctx, argv[5])),
+      toUint32(ctx, argv[6]), static_cast<uint8_t>(toUint32(ctx, argv[7])),
+      static_cast<uint8_t>(toUint32(ctx, argv[8])), toInt64(ctx, argv[9]));
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
@@ -5338,6 +5349,7 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_create", js_executor_create, 0);
   addGlobalFunc(ctx, "__flox_simulated_executor_destroy", js_executor_destroy, 1);
   addGlobalFunc(ctx, "__flox_simulated_executor_submit", js_executor_submit, 7);
+  addGlobalFunc(ctx, "__flox_simulated_executor_submit_ex", js_executor_submit_ex, 10);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);

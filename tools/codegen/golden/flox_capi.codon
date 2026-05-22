@@ -602,6 +602,7 @@ from C import flox_emit_close_position(cobj, u32) -> u64
 from C import flox_simulated_executor_create() -> cobj
 from C import flox_simulated_executor_destroy(cobj)
 from C import flox_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import flox_simulated_executor_submit_order_ex(cobj, u64, u8, float, float, u8, u32, u8, u8, i64)
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, float)

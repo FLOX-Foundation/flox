@@ -687,6 +687,11 @@ export class SimulatedExecutor {
     qty: number,
     type: OrderType,
     symbol: number,
+    opts?: {
+      tif?: 'gtc' | 'ioc' | 'fok' | 'gtd' | 'post_only';
+      reduceOnly?: boolean;
+      expiresAtNs?: number;
+    },
   ): void;
   cancelOrder(orderId: number): void;
   cancelAll(symbol: number): void;

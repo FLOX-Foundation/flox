@@ -10592,6 +10592,53 @@
       "return_type": "void"
     },
     {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_submit_order_ex",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "order_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "tif",
+          "type": "uint8_t"
+        },
+        {
+          "name": "reduce_only",
+          "type": "uint8_t"
+        },
+        {
+          "name": "expires_at_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "additional_stats",
       "name": "flox_stat_bootstrap_ci",
       "params": [

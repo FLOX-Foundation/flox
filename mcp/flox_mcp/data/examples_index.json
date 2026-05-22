@@ -86,6 +86,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_extended_tif.py",
+      "sha256": "e2efdb608237b2e96b83047a3fbe325f2571a574c44bd29afaeee1656057c5e1",
+      "size_bytes": 1235,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_latency_distribution.py",
       "sha256": "e1f48b681bb33b6c491e7dd3af62eda8bba3de6ee56a649aa2ca85a4e2322246",
       "size_bytes": 1001,

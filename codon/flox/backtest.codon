@@ -8,6 +8,7 @@
 from C import flox_simulated_executor_create() -> cobj
 from C import flox_simulated_executor_destroy(cobj)
 from C import flox_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
+from C import flox_simulated_executor_submit_order_ex(cobj, u64, u8, float, float, u8, u32, u8, u8, i64)
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, float)
@@ -179,6 +180,39 @@ class SimulatedExecutor:
             t = 6
         flox_simulated_executor_submit_order(self._handle, u64(id), side_u, price, quantity,
                                    u8(t), u32(symbol))
+
+    def submit_order_ex(self, id: int, side: str, price: float, quantity: float,
+                         order_type: str = "market", symbol: int = 1,
+                         tif: str = "gtc", reduce_only: bool = False,
+                         expires_at_ns: int = 0):
+        """Extended submit with TIF / reduce_only / GTD deadline.
+        tif: gtc | ioc | fok | gtd | post_only."""
+        side_u = u8(0 if side == "buy" else 1)
+        t = 1
+        if order_type == "limit":
+            t = 0
+        elif order_type == "stop_market":
+            t = 2
+        elif order_type == "stop_limit":
+            t = 3
+        elif order_type == "take_profit_market":
+            t = 4
+        elif order_type == "take_profit_limit":
+            t = 5
+        elif order_type == "trailing_stop":
+            t = 6
+        tif_u = 0
+        if tif == "ioc":
+            tif_u = 1
+        elif tif == "fok":
+            tif_u = 2
+        elif tif == "gtd":
+            tif_u = 3
+        elif tif == "post_only":
+            tif_u = 4
+        flox_simulated_executor_submit_order_ex(
+            self._handle, u64(id), side_u, price, quantity, u8(t), u32(symbol),
+            u8(tif_u), u8(1 if reduce_only else 0), i64(expires_at_ns))
 
     def cancel_order(self, order_id: int):
         flox_simulated_executor_cancel_order(self._handle, u64(order_id))

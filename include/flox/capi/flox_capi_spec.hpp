@@ -602,6 +602,20 @@ extern "C"
   void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor, uint64_t id, uint8_t side,
                                             double price, double quantity, uint8_t order_type,
                                             uint32_t symbol);
+
+  // Extended submit with explicit TIF / reduce-only / GTD expiry.
+  // tif: 0=GTC, 1=IOC, 2=FOK, 3=GTD, 4=POST_ONLY.
+  // reduce_only: 1 to enforce reduce-only against the simulator
+  // net position; rejects if would open/grow, truncates if would
+  // overshoot flat.
+  // expires_at_ns: absolute deadline (nanoseconds since epoch) for
+  // GTD; ignored for other TIFs.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle executor,
+                                               uint64_t id, uint8_t side, double price,
+                                               double quantity, uint8_t order_type,
+                                               uint32_t symbol, uint8_t tif,
+                                               uint8_t reduce_only, int64_t expires_at_ns);
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   FLOX_EXPORT(group = "simulated_executor")

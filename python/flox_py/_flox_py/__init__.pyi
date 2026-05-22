@@ -2219,9 +2219,9 @@ class SimulatedExecutor:
         """
         Configure slippage for a specific symbol
         """
-    def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1) -> None:
+    def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         """
-        Submit an order to the simulated exchange
+        Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. reduce_only: only reduce existing position. expires_at_ns: GTD deadline.
         """
     @property
     def fill_count(self) -> int:

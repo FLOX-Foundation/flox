@@ -2588,6 +2588,11 @@
           "name": "flox_simulated_executor_submit_order"
         },
         {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_order_ex"
+        },
+        {
           "group": "additional_stats",
           "kind": "function",
           "name": "flox_stat_bootstrap_ci"
@@ -5433,6 +5438,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_submit_order"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_submit_order_ex"
         },
         {
           "kind": "function",
@@ -8839,7 +8848,8 @@
         "flox_simulated_executor_fill_count",
         "flox_simulated_executor_on_bar",
         "flox_simulated_executor_on_trade",
-        "flox_simulated_executor_submit_order"
+        "flox_simulated_executor_submit_order",
+        "flox_simulated_executor_submit_order_ex"
       ],
       "codon": {
         "present": true,
