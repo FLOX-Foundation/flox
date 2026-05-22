@@ -18,6 +18,7 @@
 #include "hooks.h"
 #include "indicators.h"
 #include "latency.h"
+#include "liquidation_engine.h"
 #include "live_queue_position.h"
 #include "order_group.h"
 #include "portfolio_risk.h"
@@ -57,6 +58,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerVenueAvailability(env, exports);
   node_flox::registerFundingSchedule(env, exports);
   node_flox::registerFeeSchedule(env, exports);
+  node_flox::registerLiquidationEngine(env, exports);
   node_flox::registerLiveQueuePositionEstimator(env, exports);
   node_flox::registerBarDispatchRecorder(env, exports);
   node_flox::registerFeedClock(env, exports);

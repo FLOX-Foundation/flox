@@ -681,6 +681,37 @@ export interface FundingPaymentEvent {
   amount: number;
 }
 
+/** Liquidation engine + insurance fund + auto-deleverage (ADL).
+ *  Holds maintenance-margin tiers, an insurance fund balance, and
+ *  the open-position book. `onMark(symbol, mark)` walks every
+ *  position, fires liquidations / ADL where required, and updates
+ *  cumulative stats. Returns the number of accounts liquidated on
+ *  this tick. */
+export class LiquidationEngine {
+  constructor();
+  addTier(minNotional: number, mmFraction: number): void;
+  setInsuranceFundCapital(capital: number): void;
+  insuranceFundBalance(): number;
+  setAdlEnabled(enabled: boolean): void;
+  setLiquidationSlippageBps(bps: number): void;
+  /** Open a position the engine should watch. Side is encoded in
+   *  signed `quantity` (positive = long, negative = short). */
+  openPosition(
+    accountId: number,
+    symbol: number,
+    quantity: number,
+    entryPrice: number,
+    equity: number,
+  ): void;
+  closePosition(accountId: number, symbol: number): void;
+  onMark(symbol: number, markPrice: number): number;
+  liquidationsCount(): number;
+  insurancePaymentsCount(): number;
+  adlCloseoutsCount(): number;
+  /** Canned profiles: 'binance_um_futures' | 'bybit_linear' | 'okx_swap'. */
+  loadProfile(name: string): void;
+}
+
 export class FundingSchedule {
   constructor();
   setConstant(intervalNs: number, rate: number): void;

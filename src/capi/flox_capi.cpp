@@ -9035,6 +9035,7 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
 
 #include "flox/backtest/fee_schedule.h"
 #include "flox/backtest/funding_schedule.h"
+#include "flox/backtest/liquidation_engine.h"
 #include "flox/execution/live_queue_position_estimator.h"
 
 namespace
@@ -9321,4 +9322,112 @@ extern "C" uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle
 extern "C" uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h)
 {
   return static_cast<uint32_t>(toLiveQ(h)->trackedOrderCount());
+}
+
+// ============================================================
+// Liquidation engine
+// ============================================================
+
+namespace
+{
+LiquidationEngine* toLiqEngine(FloxLiquidationEngineHandle h)
+{
+  return static_cast<LiquidationEngine*>(h);
+}
+}  // namespace
+
+extern "C" FloxLiquidationEngineHandle flox_liquidation_engine_create(void)
+{
+  return new LiquidationEngine();
+}
+
+extern "C" void flox_liquidation_engine_destroy(FloxLiquidationEngineHandle h)
+{
+  delete toLiqEngine(h);
+}
+
+extern "C" void flox_liquidation_engine_add_tier(FloxLiquidationEngineHandle h,
+                                                 double min_notional, double mm_fraction)
+{
+  toLiqEngine(h)->addTier(min_notional, mm_fraction);
+}
+
+extern "C" void flox_liquidation_engine_set_insurance_fund_capital(
+    FloxLiquidationEngineHandle h, double capital)
+{
+  toLiqEngine(h)->setInsuranceFundCapital(capital);
+}
+
+extern "C" double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->insuranceFundBalance();
+}
+
+extern "C" void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h,
+                                                        uint8_t enabled)
+{
+  toLiqEngine(h)->setAdlEnabled(enabled != 0);
+}
+
+extern "C" void flox_liquidation_engine_set_liquidation_slippage_bps(
+    FloxLiquidationEngineHandle h, double bps)
+{
+  toLiqEngine(h)->setLiquidationSlippageBps(bps);
+}
+
+extern "C" void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h,
+                                                      uint64_t account_id, uint32_t symbol,
+                                                      double quantity, double entry_price,
+                                                      double equity)
+{
+  toLiqEngine(h)->openPosition(LeveragedPosition{
+      .accountId = account_id, .symbol = symbol, .quantity = quantity, .entryPrice = entry_price, .equity = equity});
+}
+
+extern "C" void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h,
+                                                       uint64_t account_id, uint32_t symbol)
+{
+  toLiqEngine(h)->closePosition(account_id, symbol);
+}
+
+extern "C" uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h,
+                                                    uint32_t symbol, double mark_price)
+{
+  return static_cast<uint32_t>(toLiqEngine(h)->onMark(symbol, mark_price).liquidationsCount);
+}
+
+extern "C" uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->liquidationsCount();
+}
+extern "C" uint64_t flox_liquidation_engine_insurance_payments_count(
+    FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->insurancePaymentsCount();
+}
+extern "C" uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->adlCloseoutsCount();
+}
+
+extern "C" void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h,
+                                                     uint8_t profile)
+{
+  auto* eng = toLiqEngine(h);
+  LiquidationEngine canned;
+  switch (profile)
+  {
+    case 0:
+      canned = LiquidationEngine::binance_um_futures();
+      break;
+    case 1:
+      canned = LiquidationEngine::bybit_linear();
+      break;
+    case 2:
+      canned = LiquidationEngine::okx_swap();
+      break;
+    default:
+      return;
+  }
+  *eng = canned;
 }

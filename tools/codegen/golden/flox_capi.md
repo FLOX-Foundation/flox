@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 603 functions, 52 handles, 58 structs, 43 callback typedefs, 3 enums, 66 groups.
+**Surface:** 617 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -60,6 +60,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxFeeScheduleHandle`
 - `FloxFundingScheduleHandle`
 - `FloxLiveQueuePositionHandle`
+- `FloxLiquidationEngineHandle`
 
 ## Enums
 
@@ -1239,6 +1240,23 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `int64_t flox_latency_fill_delay(FloxLatencyModelHandle model)`
 - `void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample * out)`
 - `void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed)`
+
+### liquidation_engine
+
+- `FloxLiquidationEngineHandle flox_liquidation_engine_create(void)`
+- `void flox_liquidation_engine_destroy(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_add_tier(FloxLiquidationEngineHandle h, double min_notional, double mm_fraction)`
+- `void flox_liquidation_engine_set_insurance_fund_capital(FloxLiquidationEngineHandle h, double capital)`
+- `double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled)`
+- `void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h, double bps)`
+- `void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h, uint64_t account_id, uint32_t symbol, double quantity, double entry_price, double equity)`
+- `void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h, uint64_t account_id, uint32_t symbol)`
+- `uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h, uint32_t symbol, double mark_price)`
+- `uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h)`
+- `uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h)`
+- `uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile)`
 
 ### live_queue_position
 

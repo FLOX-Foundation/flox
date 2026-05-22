@@ -371,6 +371,22 @@ from C import flox_latency_fill_delay(cobj) -> i64
 from C import flox_latency_sample(cobj, cobj)
 from C import flox_latency_reset(cobj, u64)
 
+# ── liquidation_engine ──
+from C import flox_liquidation_engine_create() -> cobj
+from C import flox_liquidation_engine_destroy(cobj)
+from C import flox_liquidation_engine_add_tier(cobj, float, float)
+from C import flox_liquidation_engine_set_insurance_fund_capital(cobj, float)
+from C import flox_liquidation_engine_insurance_fund_balance(cobj) -> float
+from C import flox_liquidation_engine_set_adl_enabled(cobj, u8)
+from C import flox_liquidation_engine_set_liquidation_slippage_bps(cobj, float)
+from C import flox_liquidation_engine_open_position(cobj, u64, u32, float, float, float)
+from C import flox_liquidation_engine_close_position(cobj, u64, u32)
+from C import flox_liquidation_engine_on_mark(cobj, u32, float) -> u32
+from C import flox_liquidation_engine_liquidations_count(cobj) -> u64
+from C import flox_liquidation_engine_insurance_payments_count(cobj) -> u64
+from C import flox_liquidation_engine_adl_closeouts_count(cobj) -> u64
+from C import flox_liquidation_engine_load_profile(cobj, u8)
+
 # ── live_queue_position ──
 from C import flox_live_queue_position_create() -> cobj
 from C import flox_live_queue_position_destroy(cobj)

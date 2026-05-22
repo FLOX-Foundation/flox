@@ -128,6 +128,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_liquidation_engine.py",
+      "sha256": "6b75d6b07e59f0f3f62ddd4abd82f3b9a4df5441a6472f5154417678935f7088",
+      "size_bytes": 1567,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_live_queue_position.py",
       "sha256": "652aa78ac528ba95f1a6ac6d1d5933f9add184ba893a36bc4b0ca5b00b72d39b",
       "size_bytes": 1114,
