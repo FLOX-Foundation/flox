@@ -135,6 +135,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_rate_limit_policy.py",
+      "sha256": "79e0aa16a32263f839173fce00b76259495278d16db5b91bd0e85f47c04b4dda",
+      "size_bytes": 722,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_rolling_top_k.py",
       "sha256": "640757bc47a624b4f849692608b9fc93c8f6854881f178a831111aad9d079d24",
       "size_bytes": 1842,

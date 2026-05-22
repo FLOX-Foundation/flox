@@ -45,6 +45,7 @@ extern "C"
   typedef void* FloxDataWriterHandle;
   typedef void* FloxDataReaderHandle;
   typedef void* FloxLatencyDistributionHandle;
+  typedef void* FloxRateLimitPolicyHandle;
   typedef void* FloxBacktestResultHandle;
   typedef void* FloxMergedTapeReaderHandle;
   typedef void* FloxPartitionerHandle;
@@ -1763,6 +1764,27 @@ extern "C"
   double flox_position_group_total_pnl(FloxPositionGroupHandle tracker);
   uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol);
   void flox_position_group_prune(FloxPositionGroupHandle tracker);
+
+  // ============================================================
+  // Rate Limit
+  // ============================================================
+
+  FloxRateLimitPolicyHandle flox_rate_limit_policy_create(void);
+  void flox_rate_limit_policy_destroy(FloxRateLimitPolicyHandle h);
+  void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h, const char* name,
+                                         int64_t window_ns, uint32_t capacity,
+                                         uint32_t submit_weight, uint32_t cancel_weight,
+                                         uint32_t replace_weight);
+  void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
+                                      uint32_t after_consecutive_rejects, int64_t ban_duration_ns);
+  void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h, const char* profile_name);
+  int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h);
+  uint32_t flox_rate_limit_policy_consecutive_rejects(FloxRateLimitPolicyHandle h);
+  uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandle h, int64_t now_ns,
+                                               int64_t* out_buf, uint32_t max_buckets);
+  void flox_simulated_executor_set_rate_limit_policy(FloxSimulatedExecutorHandle executor,
+                                                     FloxRateLimitPolicyHandle policy);
+  void flox_simulated_executor_clear_rate_limit_policy(FloxSimulatedExecutorHandle executor);
 
   // ============================================================
   // Recorder

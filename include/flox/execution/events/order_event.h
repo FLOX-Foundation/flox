@@ -45,7 +45,10 @@ enum class OrderEventStatus
   // replaced. REPLACED stays the terminal "old gone, new alive".
   REPLACE_SUBMITTED,
   REPLACE_ACCEPTED,
-  REPLACE_REJECTED
+  REPLACE_REJECTED,
+  // Rejected pre-submission by client-side rate-limit enforcement.
+  // See RateLimitPolicy + SimulatedExecutor::setRateLimitPolicy.
+  REJECTED_RATE_LIMIT
 };
 
 // Categorical position of a resting limit order relative to the
@@ -177,6 +180,9 @@ struct OrderEvent
         break;
       case OrderEventStatus::REPLACE_REJECTED:
         listener.onOrderReplaceRejected(order, newOrder, rejectReason);
+        break;
+      case OrderEventStatus::REJECTED_RATE_LIMIT:
+        listener.onOrderRejected(order, rejectReason);
         break;
     }
   }

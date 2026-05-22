@@ -1503,6 +1503,82 @@ static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, i
   }
   return JS_UNDEFINED;
 }
+static JSValue js_rate_limit_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_rate_limit_policy_create());
+}
+static JSValue js_rate_limit_destroy(JSContext* ctx, JSValueConst, int,
+                                     JSValueConst* argv)
+{
+  flox_rate_limit_policy_destroy(
+      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_rate_limit_add_bucket(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  auto h = static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  int64_t window = toInt64(ctx, argv[2]);
+  uint32_t cap = toUint32(ctx, argv[3]);
+  uint32_t sw = toUint32(ctx, argv[4]);
+  uint32_t cw = toUint32(ctx, argv[5]);
+  uint32_t rw = toUint32(ctx, argv[6]);
+  flox_rate_limit_policy_add_bucket(h, name ? name : "bucket", window, cap, sw, cw, rw);
+  if (name)
+  {
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
+static JSValue js_rate_limit_set_ban(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_rate_limit_policy_set_ban(
+      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])),
+      toUint32(ctx, argv[1]), toInt64(ctx, argv[2]));
+  return JS_UNDEFINED;
+}
+static JSValue js_rate_limit_load_profile(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  const char* name = JS_ToCString(ctx, argv[1]);
+  flox_rate_limit_policy_load_profile(
+      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])), name);
+  if (name)
+  {
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
+static JSValue js_rate_limit_ban_until_ns(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, flox_rate_limit_policy_ban_until_ns(
+                              static_cast<FloxRateLimitPolicyHandle>(
+                                  getHandle(ctx, argv[0]))));
+}
+static JSValue js_rate_limit_consecutive_rejects(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  return JS_NewUint32(ctx, flox_rate_limit_policy_consecutive_rejects(
+                               static_cast<FloxRateLimitPolicyHandle>(
+                                   getHandle(ctx, argv[0]))));
+}
+static JSValue js_executor_set_rate_limit_policy(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  flox_simulated_executor_set_rate_limit_policy(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_clear_rate_limit_policy(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  flox_simulated_executor_clear_rate_limit_policy(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
@@ -5296,6 +5372,21 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_set_cancel_ack_dist, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack_latency_distribution",
                 js_executor_set_replace_ack_dist, 2);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_create", js_rate_limit_create, 0);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_destroy", js_rate_limit_destroy, 1);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_add_bucket",
+                js_rate_limit_add_bucket, 7);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_set_ban", js_rate_limit_set_ban, 3);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_load_profile",
+                js_rate_limit_load_profile, 2);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_ban_until_ns",
+                js_rate_limit_ban_until_ns, 1);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_consecutive_rejects",
+                js_rate_limit_consecutive_rejects, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_rate_limit_policy",
+                js_executor_set_rate_limit_policy, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_clear_rate_limit_policy",
+                js_executor_clear_rate_limit_policy, 1);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
 

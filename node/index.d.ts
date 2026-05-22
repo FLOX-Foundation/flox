@@ -654,6 +654,30 @@ export class LatencyDistribution {
   medianNs(): number;
 }
 
+export interface RateLimitBucketState {
+  windowNs: number;
+  used: number;
+  capacity: number;
+}
+
+export class RateLimitPolicy {
+  constructor();
+  addBucket(
+    name: string,
+    windowNs: number,
+    capacity: number,
+    submitWeight?: number,
+    cancelWeight?: number,
+    replaceWeight?: number,
+  ): void;
+  setBan(afterConsecutiveRejects: number, banDurationNs: number): void;
+  /** Canned profile: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'deribit'. */
+  loadProfile(name: string): void;
+  banUntilNs(): number;
+  consecutiveRejects(): number;
+  bucketStates(nowNs: number): RateLimitBucketState[];
+}
+
 export class SimulatedExecutor {
   constructor();
   submitOrder(
@@ -691,6 +715,10 @@ export class SimulatedExecutor {
   /** Apply a named latency profile. Names: "binance_um_futures",
    *  "bybit_linear", "okx_swap", "deribit", "idealized", "adversarial". */
   applyLatencyProfile(name: string): void;
+  /** Attach a client-side rate-limit policy. Submit / cancel / replace
+   *  consult the policy first; an overflow emits a rate-limit reject. */
+  setRateLimitPolicy(policy: RateLimitPolicy): void;
+  clearRateLimitPolicy(): void;
   readonly fillCount: number;
 }
 

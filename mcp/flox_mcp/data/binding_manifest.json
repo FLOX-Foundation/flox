@@ -2048,6 +2048,46 @@
           "name": "flox_quantity_to_double"
         },
         {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_add_bucket"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_ban_until_ns"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_bucket_state"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_consecutive_rejects"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_create"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_destroy"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_load_profile"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_rate_limit_policy_set_ban"
+        },
+        {
           "group": "symbol_registry",
           "kind": "function",
           "name": "flox_registry_add_symbol"
@@ -2443,6 +2483,11 @@
           "name": "flox_simulated_executor_cancel_order"
         },
         {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_simulated_executor_clear_rate_limit_policy"
+        },
+        {
           "group": "simulated_executor",
           "kind": "function",
           "name": "flox_simulated_executor_create"
@@ -2506,6 +2551,11 @@
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_set_queue_model"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_rate_limit_policy"
         },
         {
           "group": "backtest_slippage",
@@ -3197,6 +3247,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxRateLimitPolicyHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxRegistryHandle"
         },
         {
@@ -3291,6 +3345,7 @@
         "portfolio_risk",
         "position",
         "position_group",
+        "rate_limit",
         "recorder",
         "replay",
         "risk",
@@ -4949,6 +5004,38 @@
         },
         {
           "kind": "function",
+          "name": "flox_rate_limit_policy_add_bucket"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_ban_until_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_bucket_state"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_consecutive_rejects"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_load_profile"
+        },
+        {
+          "kind": "function",
+          "name": "flox_rate_limit_policy_set_ban"
+        },
+        {
+          "kind": "function",
           "name": "flox_registry_add_symbol"
         },
         {
@@ -5265,6 +5352,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_clear_rate_limit_policy"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_create"
         },
         {
@@ -5314,6 +5405,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_queue_model"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_rate_limit_policy"
         },
         {
           "kind": "function",
@@ -6021,6 +6116,14 @@
         },
         {
           "kind": "class",
+          "name": "RateLimitBucketState"
+        },
+        {
+          "kind": "class",
+          "name": "RateLimitPolicy"
+        },
+        {
+          "kind": "class",
           "name": "ReplayEvent"
         },
         {
@@ -6714,6 +6817,10 @@
         {
           "kind": "class",
           "name": "RSI"
+        },
+        {
+          "kind": "class",
+          "name": "RateLimitPolicy"
         },
         {
           "kind": "class",
@@ -8521,6 +8628,38 @@
       "pybind11": {
         "classes": [
           "PositionGroupTracker"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "rate_limit": {
+      "capi_functions": [
+        "flox_rate_limit_policy_add_bucket",
+        "flox_rate_limit_policy_ban_until_ns",
+        "flox_rate_limit_policy_bucket_state",
+        "flox_rate_limit_policy_consecutive_rejects",
+        "flox_rate_limit_policy_create",
+        "flox_rate_limit_policy_destroy",
+        "flox_rate_limit_policy_load_profile",
+        "flox_rate_limit_policy_set_ban",
+        "flox_simulated_executor_clear_rate_limit_policy",
+        "flox_simulated_executor_set_rate_limit_policy"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "RateLimitPolicy"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "RateLimitPolicy"
         ],
         "functions": [],
         "status": "required"

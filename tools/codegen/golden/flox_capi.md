@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 561 functions, 48 handles, 58 structs, 43 callback typedefs, 3 enums, 62 groups.
+**Surface:** 571 functions, 49 handles, 58 structs, 43 callback typedefs, 3 enums, 63 groups.
 
 ## Opaque handles
 
@@ -28,6 +28,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxDataWriterHandle`
 - `FloxDataReaderHandle`
 - `FloxLatencyDistributionHandle`
+- `FloxRateLimitPolicyHandle`
 - `FloxBacktestResultHandle`
 - `FloxMergedTapeReaderHandle`
 - `FloxPartitionerHandle`
@@ -1402,6 +1403,19 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_position_group_total_pnl(FloxPositionGroupHandle tracker)`
 - `uint32_t flox_position_group_open_count(FloxPositionGroupHandle tracker, uint32_t symbol)`
 - `void flox_position_group_prune(FloxPositionGroupHandle tracker)`
+
+### rate_limit
+
+- `FloxRateLimitPolicyHandle flox_rate_limit_policy_create(void)`
+- `void flox_rate_limit_policy_destroy(FloxRateLimitPolicyHandle h)`
+- `void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h, const char * name, int64_t window_ns, uint32_t capacity, uint32_t submit_weight, uint32_t cancel_weight, uint32_t replace_weight)`
+- `void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h, uint32_t after_consecutive_rejects, int64_t ban_duration_ns)`
+- `void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h, const char * profile_name)`
+- `int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h)`
+- `uint32_t flox_rate_limit_policy_consecutive_rejects(FloxRateLimitPolicyHandle h)`
+- `uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandle h, int64_t now_ns, int64_t * out_buf, uint32_t max_buckets)`
+- `void flox_simulated_executor_set_rate_limit_policy(FloxSimulatedExecutorHandle executor, FloxRateLimitPolicyHandle policy)`
+- `void flox_simulated_executor_clear_rate_limit_policy(FloxSimulatedExecutorHandle executor)`
 
 ### recorder
 
