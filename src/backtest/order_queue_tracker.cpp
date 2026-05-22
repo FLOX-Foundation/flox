@@ -21,27 +21,50 @@ namespace flox
 
 namespace
 {
-// Portable 64x64 -> 64 multiply-then-divide via a 128-bit intermediate.
-// Windows toolchains (both MSVC and clang-cl) lack a usable
-// __int128 / __divti3 in the C runtime; route through _mul128 /
-// _div128 on x64 instead. Unix builds use the compiler's native
-// __int128.
+// Portable 64x64 -> 64 multiply-then-divide via a 128-bit
+// intermediate. Windows toolchains (MSVC, clang-cl) lack __int128,
+// and clang-cl does not expose MSVC's _div128 intrinsic. On Windows
+// x64 we use _umul128 for the multiply and a hand-written
+// shift-subtract long division for the 128/64 -> 64 divide. Unix
+// builds use __int128 directly. Inputs are non-negative in all call
+// sites here (queue sizes and trade quantities).
 inline int64_t mulDiv64(int64_t a, int64_t b, int64_t c) noexcept
 {
-#if defined(_WIN32) && defined(_M_X64)
-  int64_t hi = 0;
-  const int64_t lo = _mul128(a, b, &hi);
-  int64_t rem = 0;
-  return _div128(hi, lo, c, &rem);
-#elif defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_WIN32)
   return static_cast<int64_t>((static_cast<__int128>(a) *
                                static_cast<__int128>(b)) /
                               static_cast<__int128>(c));
+#elif defined(_WIN32) && defined(_M_X64)
+  uint64_t hi = 0;
+  uint64_t lo = _umul128(static_cast<uint64_t>(a), static_cast<uint64_t>(b), &hi);
+  const uint64_t divisor = static_cast<uint64_t>(c);
+  uint64_t quot = 0;
+  uint64_t rem = 0;
+  for (int i = 127; i >= 0; --i)
+  {
+    const uint64_t bit =
+        (i >= 64) ? ((hi >> (i - 64)) & 1ULL) : ((lo >> i) & 1ULL);
+    rem = (rem << 1) | bit;
+    if (rem >= divisor)
+    {
+      rem -= divisor;
+      if (i >= 64)
+      {
+        quot |= (1ULL << (i - 64));
+      }
+      else
+      {
+        quot |= (1ULL << i);
+      }
+    }
+  }
+  return static_cast<int64_t>(quot);
 #else
   // Fall back to long double on platforms without a wide multiply
-  // primitive. Acceptable here because the result is immediately
-  // clamped and re-distributed if it overshoots; we lose only a few
-  // raw units at most.
+  // primitive. Acceptable because the result is immediately
+  // clamped to entry.remaining and re-checked against distributeRaw;
+  // any lost precision shows up as a few raw units of
+  // under-allocation, never over-allocation.
   return static_cast<int64_t>((static_cast<long double>(a) *
                                static_cast<long double>(b)) /
                               static_cast<long double>(c));
