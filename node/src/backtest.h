@@ -4,6 +4,7 @@
 #include <napi.h>
 #include "flox/capi/flox_capi.h"
 #include "rate_limit.h"
+#include "venue_availability.h"
 
 namespace node_flox
 {
@@ -111,6 +112,8 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("clearRateLimitPolicy",
                                        &SimulatedExecutorWrap::ClearRateLimitPolicy),
                         InstanceMethod("setSTPMode", &SimulatedExecutorWrap::SetSTPMode),
+                        InstanceMethod("setVenueAvailability",
+                                       &SimulatedExecutorWrap::SetVenueAvailability),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -308,6 +311,16 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
       m = 4;
     }
     flox_simulated_executor_set_stp_mode(_h, m);
+  }
+  void SetVenueAvailability(const Napi::CallbackInfo& info)
+  {
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      flox_simulated_executor_set_venue_availability(_h, nullptr);
+      return;
+    }
+    auto* w = Napi::ObjectWrap<VenueAvailabilityWrap>::Unwrap(info[0].As<Napi::Object>());
+    flox_simulated_executor_set_venue_availability(_h, w->handle());
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;

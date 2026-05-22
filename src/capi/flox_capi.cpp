@@ -2779,6 +2779,7 @@ void flox_simulated_executor_set_replace_ack_latency_distribution(
 // ====== Rate-limit policy bridging ======
 
 #include "flox/backtest/rate_limit_policy.h"
+#include "flox/backtest/venue_availability.h"
 
 namespace
 {
@@ -2881,6 +2882,47 @@ extern "C" void flox_simulated_executor_clear_rate_limit_policy(
     FloxSimulatedExecutorHandle exec_h)
 {
   static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.clearRateLimitPolicy();
+}
+
+extern "C" FloxVenueAvailabilityHandle flox_venue_availability_create(void)
+{
+  return new VenueAvailability();
+}
+
+extern "C" void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h)
+{
+  delete static_cast<VenueAvailability*>(h);
+}
+
+extern "C" void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h,
+                                                        int64_t start_ns, int64_t duration_ns,
+                                                        uint8_t policy, int64_t gtc_ttl_ns)
+{
+  static_cast<VenueAvailability*>(h)->scheduleOutage(start_ns, duration_ns,
+                                                     static_cast<OnOutage>(policy),
+                                                     gtc_ttl_ns);
+}
+
+extern "C" void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h,
+                                                            double per_day,
+                                                            int64_t mean_duration_ns,
+                                                            uint8_t policy, uint64_t seed)
+{
+  static_cast<VenueAvailability*>(h)->autoRandomOutages(per_day, mean_duration_ns,
+                                                        static_cast<OnOutage>(policy),
+                                                        seed);
+}
+
+extern "C" uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns)
+{
+  return static_cast<VenueAvailability*>(h)->isUp(now_ns) ? 1 : 0;
+}
+
+extern "C" void flox_simulated_executor_set_venue_availability(
+    FloxSimulatedExecutorHandle exec_h, FloxVenueAvailabilityHandle va_h)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.setVenueAvailability(
+      static_cast<VenueAvailability*>(va_h));
 }
 
 void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle h, uint32_t symbol, double price,

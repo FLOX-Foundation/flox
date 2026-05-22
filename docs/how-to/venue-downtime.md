@@ -1,0 +1,143 @@
+# Simulate venue downtime and reconnects
+
+Real exchanges go down — scheduled maintenance, surprise outages,
+matching-engine restarts. A strategy that ignores this is brittle
+in production. flox lets you model both planned and random outages
+inside the backtest so you can measure their PnL impact and harden
+the recovery path before live trading.
+
+## What an outage does
+
+When a venue is "down" inside the simulator:
+
+- Submit / cancel / replace requests **buffer** locally and flush in
+  FIFO order at the recovery edge. They never reach the matching
+  engine while the venue is down.
+- Market-data callbacks (`onTrade`, `onBookUpdate`, `onBar`) are
+  **silently dropped** so the strategy sees a feed gap. No fills,
+  no level updates, no trades during the outage.
+- The venue applies an **on-open-orders policy** at outage start:
+  - `cancel_all` — every resting order is cancelled immediately
+  - `hold` — resting orders stay put and wake up on recovery
+  - `expire_gtc_after` — orders older than a TTL are dropped at outage
+    start; the rest are held
+
+Both planned (scheduled) and random (Poisson-arrival) outages are
+supported. Random outages are deterministic given a seed.
+
+## Configure
+
+A worked example (Python):
+
+```python
+--8<-- "examples/python_venue_downtime.py"
+```
+
+=== "Python"
+
+    ```python
+    import flox_py as flox
+
+    va = flox.VenueAvailability()
+    # 2-minute maintenance window, kill every resting order on disconnect
+    va.schedule_outage(start_ns=t0 + 3600 * 10**9,
+                       duration_ns=120 * 10**9,
+                       on_open_orders="cancel_all")
+    # plus 0.5 random outages per day, 30s mean duration, hold open orders
+    va.auto_random_outages(per_day=0.5,
+                           mean_duration_ns=30 * 10**9,
+                           on_open_orders="hold",
+                           seed=42)
+
+    exec = flox.SimulatedExecutor()
+    exec.set_venue_availability(va)
+    ```
+
+=== "TypeScript (Node)"
+
+    ```typescript
+    import { SimulatedExecutor, VenueAvailability } from "flox";
+
+    const va = new VenueAvailability();
+    va.scheduleOutage(t0 + 3600 * 1e9, 120 * 1e9, "cancel_all");
+    va.autoRandomOutages(0.5, 30 * 1e9, "hold", 42);
+
+    const exec = new SimulatedExecutor();
+    exec.setVenueAvailability(va);
+    ```
+
+=== "TypeScript (QuickJS)"
+
+    ```typescript
+    const va = new VenueAvailability();
+    va.scheduleOutage(t0 + 3600 * 1e9, 120 * 1e9, "cancel_all");
+    va.autoRandomOutages(0.5, 30 * 1e9, "hold", 42);
+
+    const exec = new SimulatedExecutor();
+    exec.setVenueAvailability(va);
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.backtest import (SimulatedExecutor, VenueAvailability,
+                               OUTAGE_CANCEL_ALL, OUTAGE_HOLD)
+
+    va = VenueAvailability()
+    va.schedule_outage(t0 + 3600 * 10**9, 120 * 10**9, OUTAGE_CANCEL_ALL)
+    va.auto_random_outages(0.5, 30 * 10**9, OUTAGE_HOLD, 42)
+
+    exec = SimulatedExecutor()
+    exec.set_venue_availability(va)
+    ```
+
+=== "C"
+
+    ```c
+    FloxVenueAvailabilityHandle va = flox_venue_availability_create();
+    flox_venue_availability_schedule_outage(va, t0 + 3600e9, 120e9,
+                                            /*policy=*/0, /*gtc_ttl_ns=*/0);
+    flox_venue_availability_auto_random_outages(va, 0.5, 30e9,
+                                                /*policy=*/1, /*seed=*/42);
+
+    FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+    flox_simulated_executor_set_venue_availability(exec, va);
+    /* later: */
+    flox_simulated_executor_set_venue_availability(exec, NULL);
+    flox_venue_availability_destroy(va);
+    ```
+
+## What this catches
+
+Stress-testing a backtest with a downtime profile surfaces failure
+modes that a clean tape can't:
+
+- Strategies that rely on cancel-on-fill atomicity (one leg fills,
+  the other should auto-cancel) — under HOLD, the cancel buffers
+  during the outage and the second leg may fill against an old
+  price.
+- Reconnect storms: 100 strategies hitting the venue at recovery
+  edge all at once. Combined with `RateLimitPolicy` (T022), you see
+  realistic rate-limit rejects on flush.
+- GTC orders that get dropped server-side after a long outage —
+  `expire_gtc_after` models the typical venue TTL (e.g. 24h on
+  Binance, 7 days on Bybit).
+
+## Verifying with isUp
+
+Strategy code can poll `va.is_up(now_ns)` to gate optional actions
+during known outage windows (e.g., skip recomputing risk while the
+feed is gapped). The same `VenueAvailability` instance is the source
+of truth for both the simulator and the strategy, so there is no
+desync.
+
+## Notes
+
+- Random outages realise lazily on the first `isUp` call after each
+  time advance; sampling is reproducible given the seed.
+- Random outages assume a Poisson process with constant rate
+  `perDay`. Real venues cluster outages around upgrade windows; for
+  fine-grained scheduling, layer scheduled outages on top.
+- The buffer for in-flight requests during an outage is unbounded.
+  If your strategy generates 10k orders per second and the outage
+  lasts 10 minutes, the recovery-edge flush will be huge.

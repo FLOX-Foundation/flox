@@ -1607,6 +1607,55 @@ static JSValue js_executor_clear_rate_limit_policy(JSContext* ctx, JSValueConst,
   return JS_UNDEFINED;
 }
 
+// Venue availability.
+static JSValue js_venue_availability_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_venue_availability_create());
+}
+static JSValue js_venue_availability_destroy(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  flox_venue_availability_destroy(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_venue_availability_schedule_outage(JSContext* ctx, JSValueConst, int argc,
+                                                     JSValueConst* argv)
+{
+  flox_venue_availability_schedule_outage(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), toInt64(ctx, argv[2]),
+      argc > 3 ? static_cast<uint8_t>(toInt64(ctx, argv[3])) : 0,
+      argc > 4 ? toInt64(ctx, argv[4]) : 0);
+  return JS_UNDEFINED;
+}
+static JSValue js_venue_availability_auto_random_outages(JSContext* ctx, JSValueConst,
+                                                         int argc, JSValueConst* argv)
+{
+  flox_venue_availability_auto_random_outages(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toDouble(ctx, argv[1]), toInt64(ctx, argv[2]),
+      argc > 3 ? static_cast<uint8_t>(toInt64(ctx, argv[3])) : 0,
+      argc > 4 ? static_cast<uint64_t>(toInt64(ctx, argv[4])) : 0xC0FFEEULL);
+  return JS_UNDEFINED;
+}
+static JSValue js_venue_availability_is_up(JSContext* ctx, JSValueConst, int,
+                                           JSValueConst* argv)
+{
+  const uint8_t up = flox_venue_availability_is_up(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_NewBool(ctx, up != 0);
+}
+static JSValue js_executor_set_venue_availability(JSContext* ctx, JSValueConst, int,
+                                                  JSValueConst* argv)
+{
+  flox_simulated_executor_set_venue_availability(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+
 // Fee schedule.
 static JSValue js_fee_schedule_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
@@ -5626,6 +5675,18 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_set_rate_limit_policy, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_clear_rate_limit_policy",
                 js_executor_clear_rate_limit_policy, 1);
+  addGlobalFunc(ctx, "__flox_venue_availability_create",
+                js_venue_availability_create, 0);
+  addGlobalFunc(ctx, "__flox_venue_availability_destroy",
+                js_venue_availability_destroy, 1);
+  addGlobalFunc(ctx, "__flox_venue_availability_schedule_outage",
+                js_venue_availability_schedule_outage, 5);
+  addGlobalFunc(ctx, "__flox_venue_availability_auto_random_outages",
+                js_venue_availability_auto_random_outages, 5);
+  addGlobalFunc(ctx, "__flox_venue_availability_is_up",
+                js_venue_availability_is_up, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_venue_availability",
+                js_executor_set_venue_availability, 2);
   addGlobalFunc(ctx, "__flox_fee_schedule_create", js_fee_schedule_create, 0);
   addGlobalFunc(ctx, "__flox_fee_schedule_destroy", js_fee_schedule_destroy, 1);
   addGlobalFunc(ctx, "__flox_fee_schedule_add_tier", js_fee_schedule_add_tier, 4);

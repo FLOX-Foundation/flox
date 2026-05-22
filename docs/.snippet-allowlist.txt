@@ -254,3 +254,8 @@ docs/how-to/tiered-fees.md
 # configuring SimulatedExecutor; runtime path exercised by
 # tests/test_pro_rata_matching.cpp.
 docs/how-to/matching-modes.md
+
+# How-to: Venue downtime simulation. Polyglot tabs configuring a
+# VenueAvailability + SimulatedExecutor; runtime path exercised by
+# tests/test_venue_availability.cpp.
+docs/how-to/venue-downtime.md

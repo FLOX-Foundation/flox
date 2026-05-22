@@ -46,6 +46,7 @@ extern "C"
   typedef void* FloxDataReaderHandle;
   typedef void* FloxLatencyDistributionHandle;
   typedef void* FloxRateLimitPolicyHandle;
+  typedef void* FloxVenueAvailabilityHandle;
   typedef void* FloxBacktestResultHandle;
   typedef void* FloxMergedTapeReaderHandle;
   typedef void* FloxPartitionerHandle;
@@ -2119,6 +2120,22 @@ extern "C"
   FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
                                                    uint8_t verify_timestamps);
   FloxDatasetValidation flox_dataset_validate(const char* data_dir);
+
+  // ============================================================
+  // Venue Availability
+  // ============================================================
+
+  FloxVenueAvailabilityHandle flox_venue_availability_create(void);
+  void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h);
+  void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h, int64_t start_ns,
+                                               int64_t duration_ns, uint8_t policy,
+                                               int64_t gtc_ttl_ns);
+  void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h, double per_day,
+                                                   int64_t mean_duration_ns, uint8_t policy,
+                                                   uint64_t seed);
+  uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns);
+  void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor,
+                                                      FloxVenueAvailabilityHandle availability);
 
   // ============================================================
   // Volume Profile

@@ -159,7 +159,30 @@ void FloxJsStrategy::loadStdlib()
       setQueueFifoTopN(topN) {
         __flox_simulated_executor_set_queue_fifo_top_n(this._h, topN || 0);
       }
+      setVenueAvailability(va) {
+        __flox_simulated_executor_set_venue_availability(
+          this._h, va && va.handle ? va.handle : 0);
+      }
       get fillCount() { return __flox_simulated_executor_fill_count(this._h); }
+      get handle() { return this._h; }
+    }
+
+    const _outageMap = { cancel_all: 0, hold: 1, expire_gtc_after: 2 };
+
+    class VenueAvailability {
+      constructor() { this._h = __flox_venue_availability_create(); }
+      destroy() { __flox_venue_availability_destroy(this._h); }
+      scheduleOutage(startNs, durationNs, onOpenOrders, gtcTtlNs) {
+        __flox_venue_availability_schedule_outage(
+          this._h, startNs, durationNs,
+          _outageMap[onOpenOrders || "cancel_all"] || 0, gtcTtlNs || 0);
+      }
+      autoRandomOutages(perDay, meanDurationNs, onOpenOrders, seed) {
+        __flox_venue_availability_auto_random_outages(
+          this._h, perDay, meanDurationNs,
+          _outageMap[onOpenOrders || "cancel_all"] || 0, seed || 0xC0FFEE);
+      }
+      isUp(nowNs) { return __flox_venue_availability_is_up(this._h, nowNs); }
       get handle() { return this._h; }
     }
 

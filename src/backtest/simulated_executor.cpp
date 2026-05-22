@@ -246,6 +246,13 @@ void SimulatedExecutor::submitOrder(const Order& order)
   Order accepted = order;
   accepted.createdAt = fromUnixNs(_clock.nowNs());
 
+  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  {
+    _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::SUBMIT,
+                                            .order = accepted});
+    return;
+  }
+
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Submit,
                              static_cast<int64_t>(_clock.nowNs())))
@@ -561,6 +568,12 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
+  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  {
+    _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL,
+                                            .oldOrderId = orderId});
+    return;
+  }
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Cancel,
                              static_cast<int64_t>(_clock.nowNs())))
@@ -648,6 +661,12 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
 
 void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 {
+  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  {
+    _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL_ALL_SYMBOL,
+                                            .cancelAllSymbol = symbol});
+    return;
+  }
   size_t i = 0;
   while (i < _pending_orders.size())
   {
@@ -699,6 +718,13 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 
 void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
+  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  {
+    _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::REPLACE,
+                                            .order = newOrder,
+                                            .oldOrderId = oldOrderId});
+    return;
+  }
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Replace,
                              static_cast<int64_t>(_clock.nowNs())))
@@ -772,6 +798,25 @@ void SimulatedExecutor::submitOCO(const OCOParams& params)
 void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<BookLevel>& bids,
                                      const std::pmr::vector<BookLevel>& asks)
 {
+  if (_venue)
+  {
+    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const bool up = _venue->isUp(now);
+    if (!up && _venueWasUp)
+    {
+      applyOutagePolicy();
+      _venueWasUp = false;
+    }
+    else if (up && !_venueWasUp)
+    {
+      _venueWasUp = true;
+      flushOutageBuffer();
+    }
+    if (!up)
+    {
+      return;  // feed gap
+    }
+  }
   MarketState& state = getMarketState(symbol);
 
   state.hasBid = !bids.empty();
@@ -857,6 +902,25 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, bool isBuy)
 
 void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool /*isBuy*/)
 {
+  if (_venue)
+  {
+    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const bool up = _venue->isUp(now);
+    if (!up && _venueWasUp)
+    {
+      applyOutagePolicy();
+      _venueWasUp = false;
+    }
+    else if (up && !_venueWasUp)
+    {
+      _venueWasUp = true;
+      flushOutageBuffer();
+    }
+    if (!up)
+    {
+      return;
+    }
+  }
   MarketState& state = getMarketState(symbol);
   state.lastTradeRaw = price.raw();
   state.hasTrade = true;
@@ -909,6 +973,25 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
 
 void SimulatedExecutor::onBar(SymbolId symbol, Price price)
 {
+  if (_venue)
+  {
+    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const bool up = _venue->isUp(now);
+    if (!up && _venueWasUp)
+    {
+      applyOutagePolicy();
+      _venueWasUp = false;
+    }
+    else if (up && !_venueWasUp)
+    {
+      _venueWasUp = true;
+      flushOutageBuffer();
+    }
+    if (!up)
+    {
+      return;
+    }
+  }
   MarketState& state = getMarketState(symbol);
   const int64_t priceRaw = price.raw();
   state.bestBidRaw = priceRaw;
@@ -1865,6 +1948,99 @@ void SimulatedExecutor::processExpiredOrders()
       }
     }
     ++it;
+  }
+}
+
+void SimulatedExecutor::applyOutagePolicy()
+{
+  if (!_venue)
+  {
+    return;
+  }
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const auto* outage = _venue->activeOutage(now);
+  if (!outage)
+  {
+    return;
+  }
+  switch (outage->policy)
+  {
+    case OnOutage::HOLD:
+      // Orders stay; nothing to do.
+      break;
+    case OnOutage::CANCEL_ALL:
+    {
+      // Cancel every resting order at outage start.
+      for (auto& o : _pending_orders)
+      {
+        emitEvent(OrderEventStatus::CANCELED, o);
+        _queueTracker.removeOrder(o.id);
+        forgetQueuePosition(o.id);
+        forgetTimestamps(o.id);
+        forgetMarketPosition(o.id);
+        forgetPendingReplace(o.id);
+      }
+      _pending_orders.clear();
+      break;
+    }
+    case OnOutage::EXPIRE_GTC_AFTER:
+    {
+      // Drop orders whose age in flight exceeds the venue TTL.
+      const int64_t ttlNs = outage->gtcTtlNs;
+      if (ttlNs <= 0)
+      {
+        return;
+      }
+      size_t i = 0;
+      while (i < _pending_orders.size())
+      {
+        auto& o = _pending_orders[i];
+        const int64_t createdNs = o.createdAt.time_since_epoch().count();
+        const int64_t ageNs = now - createdNs;
+        if (ageNs >= ttlNs)
+        {
+          emitEvent(OrderEventStatus::CANCELED, o);
+          _queueTracker.removeOrder(o.id);
+          forgetQueuePosition(o.id);
+          forgetTimestamps(o.id);
+          forgetMarketPosition(o.id);
+          forgetPendingReplace(o.id);
+          _pending_orders[i] = _pending_orders.back();
+          _pending_orders.pop_back();
+          continue;
+        }
+        ++i;
+      }
+      break;
+    }
+  }
+}
+
+void SimulatedExecutor::flushOutageBuffer()
+{
+  if (_outageBuffer.empty())
+  {
+    return;
+  }
+  std::vector<BufferedRequest> drained;
+  drained.swap(_outageBuffer);
+  for (const auto& req : drained)
+  {
+    switch (req.action)
+    {
+      case BufferedAction::SUBMIT:
+        submitOrder(req.order);
+        break;
+      case BufferedAction::CANCEL:
+        cancelOrder(req.oldOrderId);
+        break;
+      case BufferedAction::REPLACE:
+        replaceOrder(req.oldOrderId, req.order);
+        break;
+      case BufferedAction::CANCEL_ALL_SYMBOL:
+        cancelAllOrders(req.cancelAllSymbol);
+        break;
+    }
   }
 }
 

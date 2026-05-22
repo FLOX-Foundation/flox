@@ -38,6 +38,7 @@
 #include "strategy_bindings.h"
 #include "tape_diff_bindings.h"
 #include "target_bindings.h"
+#include "venue_availability_bindings.h"
 #include "walk_forward_bindings.h"
 
 #include <algorithm>
@@ -799,6 +800,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindPortfolioRisk(m);
   flox_py::bindOrderGroup(m);
   flox_py::bindRateLimitPolicy(m);
+  flox_py::bindVenueAvailability(m);
   flox_py::bindFundingSchedule(m);
   flox_py::bindFeeSchedule(m);
   flox_py::bindLiveQueuePositionEstimator(m);

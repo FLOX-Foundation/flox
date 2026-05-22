@@ -30,6 +30,7 @@
 #include "tape_aggregators.h"
 #include "tape_diff.h"
 #include "targets.h"
+#include "venue_availability.h"
 
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
@@ -53,6 +54,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerPortfolioRisk(env, exports);
   node_flox::registerOrderGroup(env, exports);
   node_flox::registerRateLimitPolicy(env, exports);
+  node_flox::registerVenueAvailability(env, exports);
   node_flox::registerFundingSchedule(env, exports);
   node_flox::registerFeeSchedule(env, exports);
   node_flox::registerLiveQueuePositionEstimator(env, exports);
