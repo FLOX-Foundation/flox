@@ -160,6 +160,15 @@ class SimulatedExecutor : public IOrderExecutor
   int64_t sampleReplaceAckLatency();
   void forgetPendingReplace(OrderId orderId);
 
+  // Submit ack: when cfg.submitAckLatencyNs > 0, SUBMITTED fires
+  // immediately, ACCEPTED defers until the sampled deadline. The
+  // order is held aside until ACCEPTED, then runs through the
+  // existing book-add / queue-tracker / try-fill path.
+  void enqueuePendingSubmission(const Order& order);
+  void finalizePendingSubmissions();
+  int64_t sampleSubmitAckLatency();
+  void finishSubmission(Order accepted, bool fromAck);
+
   Order* findPendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
 
@@ -226,6 +235,15 @@ class SimulatedExecutor : public IOrderExecutor
   std::vector<PendingReplace> _pendingReplaces;
   int64_t _replaceAckLatencyNs{0};
   int64_t _replaceAckJitterNs{0};
+
+  struct PendingSubmission
+  {
+    int64_t ackAtNs;
+    Order order;
+  };
+  std::vector<PendingSubmission> _pendingSubmissions;
+  int64_t _submitAckLatencyNs{0};
+  int64_t _submitAckJitterNs{0};
 };
 
 }  // namespace flox

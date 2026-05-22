@@ -85,6 +85,16 @@ struct BacktestConfig
   int64_t replaceAckLatencyNs{0};
   int64_t replaceAckJitterNs{0};
 
+  // Submit ack model. Symmetric to cancel / replace. Zero (default)
+  // preserves the legacy synchronous flow (SUBMITTED + ACCEPTED in
+  // the same tick); positive values defer ACCEPTED until the
+  // sampled deadline elapses. POST_ONLY orders that become
+  // marketable during the ack window are REJECTED with
+  // reject_reason = "late_post_only_crossed". The order does not
+  // participate in queue matching or fills until ACCEPTED.
+  int64_t submitAckLatencyNs{0};
+  int64_t submitAckJitterNs{0};
+
   double riskFreeRate{0.0};
   double metricsAnnualizationFactor{252.0};  // daily-equivalent sampling
 };

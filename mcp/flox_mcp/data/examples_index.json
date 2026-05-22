@@ -121,6 +121,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_submit_latency_watcher.py",
+      "sha256": "690ed49657e46fc251d04eb519b4fff9d879c316a647a5c6befb8f1ac1f496ab",
+      "size_bytes": 407,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_tape_roundtrip.py",
       "sha256": "1d2bcbc67df849e9de564d524db885d1a72397fe55d599942e2756ccb9b1acf8",
       "size_bytes": 2446,
