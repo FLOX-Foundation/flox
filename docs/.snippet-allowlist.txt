@@ -88,6 +88,12 @@ docs/tutorials/first-backtest.md
 docs/contributors/adding-a-c-api-export.md
 docs/contributors/extension-hook-pattern.md
 
+# Contributor: NAPI d.ts class-member coverage rule. Fix-recipe
+# TypeScript snippet shows the literal change a PR author would make
+# after a check_dts_class_members.py failure; intentionally not a
+# runnable example.
+docs/contributors/dts-class-members.md
+
 # How-to: CCXT adapter — quickstart contains illustrative snippets;
 # the runnable end-to-end example lives in docs/examples/python_ccxt_live.py.
 docs/how-to/ccxt-adapter.md

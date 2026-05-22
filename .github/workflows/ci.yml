@@ -46,6 +46,8 @@ jobs:
       run: python3 scripts/gen_llms_txt.py --check
     - name: Verify node/index.d.ts exports match the C++ binding
       run: python3 scripts/check_dts_exports.py
+    - name: Verify node/index.d.ts class members cover every NAPI wrap method
+      run: python3 scripts/check_dts_class_members.py
     - name: Verify cross-binding parity (pybind11/napi/codon)
       run: |
         pip install pyyaml

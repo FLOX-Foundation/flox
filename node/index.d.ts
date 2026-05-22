@@ -2088,6 +2088,29 @@ export class OrderGroup {
   findLegByOrderId(orderId: number): number | null;
   state(): OrderGroupStateName;
   recommendedActions(): OrderGroupAction[];
+  markActionDispatched(legIndex: number, kind: 'cancel' | 'revert'): void;
+  /** Dispatch every queued recommended action through the strategy's
+   *  emitCancel / emitMarketBuy / emitMarketSell helpers. Idempotent. */
+  autoDispatch(strategy: {
+    emitCancel: (orderId: number) => void;
+    emitMarketBuy?: (symbol: number, qty: number) => void;
+    emitMarketSell?: (symbol: number, qty: number) => void;
+  }): number;
+  setRiskLimits(opts: {
+    maxGrossNotional?: number;
+    maxConcentrationPct?: number;
+    maxLegQty?: number;
+  }): void;
+  precheckSubmission(opts?: {
+    equity?: number;
+    marketRefPrices?: number[];
+  }): { denied: boolean; rule: string; detail: string };
+  setPairLatencyBudgetNs(budgetNs: number): void;
+  pairLatencyDecision(opts: {
+    leaderSubmitTsNs: number;
+    leaderAckTsNs: number;
+    ackReceived?: boolean;
+  }): 'wait' | 'submit_follower' | 'cancel_leader';
 }
 
 // ── Live queue position estimator ────────────────────────────────
