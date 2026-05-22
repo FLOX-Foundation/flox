@@ -30,6 +30,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_apply_latency_profile.py",
+      "sha256": "5fb6d836b0ac2330974e09bce773231a1e5a68fa8c0ca19951d2aec807752279",
+      "size_bytes": 388,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_backtest_vs_live.py",
       "sha256": "add890b38b0eeea214d4df8fcf792bbafcb1852c9907fccaf6d7505428f3f817",
       "size_bytes": 4611,

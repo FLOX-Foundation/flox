@@ -21,6 +21,10 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("advanceClock", &SimulatedExecutorWrap::AdvanceClock),
                         InstanceMethod("setDefaultSlippage", &SimulatedExecutorWrap::SetDefaultSlippage),
                         InstanceMethod("setQueueModel", &SimulatedExecutorWrap::SetQueueModel),
+                        InstanceMethod("setSubmitAckLatency", &SimulatedExecutorWrap::SetSubmitAck),
+                        InstanceMethod("setCancelAckLatency", &SimulatedExecutorWrap::SetCancelAck),
+                        InstanceMethod("setReplaceAckLatency", &SimulatedExecutorWrap::SetReplaceAck),
+                        InstanceMethod("applyLatencyProfile", &SimulatedExecutorWrap::ApplyLatencyProfile),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -93,6 +97,29 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     }
     uint32_t depth = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
     flox_simulated_executor_set_queue_model(_h, m, depth);
+  }
+  void SetSubmitAck(const Napi::CallbackInfo& info)
+  {
+    int64_t latency = info[0].As<Napi::Number>().Int64Value();
+    int64_t jitter = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    flox_simulated_executor_set_submit_ack_latency(_h, latency, jitter);
+  }
+  void SetCancelAck(const Napi::CallbackInfo& info)
+  {
+    int64_t latency = info[0].As<Napi::Number>().Int64Value();
+    int64_t jitter = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    flox_simulated_executor_set_cancel_ack_latency(_h, latency, jitter);
+  }
+  void SetReplaceAck(const Napi::CallbackInfo& info)
+  {
+    int64_t latency = info[0].As<Napi::Number>().Int64Value();
+    int64_t jitter = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    flox_simulated_executor_set_replace_ack_latency(_h, latency, jitter);
+  }
+  void ApplyLatencyProfile(const Napi::CallbackInfo& info)
+  {
+    std::string name = info[0].As<Napi::String>().Utf8Value();
+    flox_simulated_executor_apply_latency_profile(_h, name.c_str());
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;
