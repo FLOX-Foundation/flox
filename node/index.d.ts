@@ -703,6 +703,38 @@ export interface RateLimitBucketState {
   capacity: number;
 }
 
+/** Outage policy for orders open when a venue outage begins. */
+export type OnOutage = 'cancel_all' | 'hold' | 'expire_gtc_after';
+
+/** Models venue downtime — scheduled maintenance windows and random
+ *  disconnects. Attach to a `SimulatedExecutor` via
+ *  `setVenueAvailability` to make submit / cancel / replace buffer
+ *  during outages and market-data callbacks be dropped (feed gap).
+ *  Buffered requests flush at the recovery edge in FIFO order. */
+export class VenueAvailability {
+  constructor();
+  /** Schedule a one-shot outage at `startNs` lasting `durationNs`.
+   *  `gtcTtlNs` is honored only when `onOpenOrders` is
+   *  `'expire_gtc_after'`. */
+  scheduleOutage(
+    startNs: number,
+    durationNs: number,
+    onOpenOrders?: OnOutage,
+    gtcTtlNs?: number,
+  ): void;
+  /** Enable Poisson random outages. `perDay` is the expected number
+   *  of outages per UTC day; `meanDurationNs` is the mean of the
+   *  exponential outage duration. `seed` makes sampling
+   *  reproducible. */
+  autoRandomOutages(
+    perDay: number,
+    meanDurationNs: number,
+    onOpenOrders?: OnOutage,
+    seed?: number,
+  ): void;
+  isUp(nowNs: number): boolean;
+}
+
 export class RateLimitPolicy {
   constructor();
   addBucket(
@@ -776,6 +808,12 @@ export class SimulatedExecutor {
   setSTPMode(
     mode: 'none' | 'cancel_newest' | 'cancel_oldest' | 'cancel_both' | 'decrement',
   ): void;
+  /** Attach a VenueAvailability model. Submit / cancel / replace
+   *  during an outage are buffered and flushed at the recovery edge
+   *  in FIFO order; market-data callbacks during an outage are
+   *  silently dropped so the strategy sees a feed gap. Pass null
+   *  to detach. */
+  setVenueAvailability(availability: VenueAvailability | null): void;
   readonly fillCount: number;
 }
 

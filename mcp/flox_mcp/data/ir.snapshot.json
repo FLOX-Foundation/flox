@@ -10929,6 +10929,21 @@
       "return_type": "void"
     },
     {
+      "group": "venue_availability",
+      "name": "flox_simulated_executor_set_venue_availability",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "availability",
+          "type": "FloxVenueAvailabilityHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "simulated_executor",
       "name": "flox_simulated_executor_submit_order",
       "params": [
@@ -11768,6 +11783,92 @@
         {
           "name": "output",
           "type": "double *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_auto_random_outages",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "per_day",
+          "type": "double"
+        },
+        {
+          "name": "mean_duration_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "policy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "seed",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_create",
+      "params": [],
+      "return_type": "FloxVenueAvailabilityHandle"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_is_up",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_schedule_outage",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "start_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "duration_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "policy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "gtc_ttl_ns",
+          "type": "int64_t"
         }
       ],
       "return_type": "void"
@@ -14163,6 +14264,10 @@
     },
     {
       "name": "FloxTapeDiffHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxVenueAvailabilityHandle",
       "target": "void*"
     },
     {

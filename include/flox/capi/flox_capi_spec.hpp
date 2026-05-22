@@ -1426,6 +1426,39 @@ extern "C"
   FLOX_EXPORT(group = "rate_limit")
   void flox_simulated_executor_clear_rate_limit_policy(FloxSimulatedExecutorHandle executor);
 
+  // Venue downtime model. Caller owns + destroys the handle; the
+  // simulator holds a non-owning pointer that lives as long as the
+  // executor uses it. set_venue_availability(executor, NULL) detaches.
+  typedef void* FloxVenueAvailabilityHandle;
+
+  FLOX_EXPORT(group = "venue_availability")
+  FloxVenueAvailabilityHandle flox_venue_availability_create(void);
+  FLOX_EXPORT(group = "venue_availability")
+  void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h);
+
+  // Add a scheduled outage. policy: 0=CANCEL_ALL, 1=HOLD,
+  // 2=EXPIRE_GTC_AFTER. gtc_ttl_ns is honored for EXPIRE_GTC_AFTER
+  // only.
+  FLOX_EXPORT(group = "venue_availability")
+  void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h,
+                                               int64_t start_ns, int64_t duration_ns,
+                                               uint8_t policy, int64_t gtc_ttl_ns);
+
+  // Enable Poisson random outages. per_day is the expected number of
+  // outages per UTC day; mean_duration_ns is the mean exponential
+  // duration. seed makes sampling reproducible.
+  FLOX_EXPORT(group = "venue_availability")
+  void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h,
+                                                   double per_day, int64_t mean_duration_ns,
+                                                   uint8_t policy, uint64_t seed);
+
+  FLOX_EXPORT(group = "venue_availability")
+  uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns);
+
+  FLOX_EXPORT(group = "venue_availability")
+  void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor,
+                                                      FloxVenueAvailabilityHandle availability);
+
   // Feed a trade with quantity (enables queue-fill simulation for limit orders).
   FLOX_EXPORT(group = "backtest_slippage")
   void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle executor, uint32_t symbol,

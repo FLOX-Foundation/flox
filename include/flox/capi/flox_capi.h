@@ -1835,6 +1835,22 @@ extern "C"
   void flox_simulated_executor_clear_rate_limit_policy(FloxSimulatedExecutorHandle executor);
 
   // ============================================================
+  // Venue downtime / availability
+  // ============================================================
+  typedef void* FloxVenueAvailabilityHandle;
+  FloxVenueAvailabilityHandle flox_venue_availability_create(void);
+  void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h);
+  void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h,
+                                               int64_t start_ns, int64_t duration_ns,
+                                               uint8_t policy, int64_t gtc_ttl_ns);
+  void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h,
+                                                   double per_day, int64_t mean_duration_ns,
+                                                   uint8_t policy, uint64_t seed);
+  uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns);
+  void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor,
+                                                      FloxVenueAvailabilityHandle availability);
+
+  // ============================================================
   // Recorder
   // ============================================================
 

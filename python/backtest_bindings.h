@@ -10,6 +10,7 @@
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
+#include "flox/backtest/venue_availability.h"
 #include "flox/common.h"
 
 #include <cstring>
@@ -323,6 +324,11 @@ class PySimulatedExecutor
   }
   void clearRateLimitPolicy() { _executor.clearRateLimitPolicy(); }
 
+  void setVenueAvailability(flox::VenueAvailability* va)
+  {
+    _executor.setVenueAvailability(va);
+  }
+
   py::array_t<PyFill> fills() const
   {
     const auto& f = _executor.fills();
@@ -604,6 +610,9 @@ inline void bindBacktest(py::module_& m)
            "cancel_both | decrement.",
            py::arg("mode"))
       .def("clear_rate_limit_policy", &PySimulatedExecutor::clearRateLimitPolicy)
+      .def("set_venue_availability", &PySimulatedExecutor::setVenueAvailability,
+           "Attach a VenueAvailability model. None to detach.",
+           py::arg("availability"), py::keep_alive<1, 2>())
       .def_property_readonly("fill_count", &PySimulatedExecutor::fillCount);
 
   py::class_<PyBacktestResult>(m, "BacktestResult")

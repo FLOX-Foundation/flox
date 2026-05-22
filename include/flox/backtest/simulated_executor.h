@@ -14,6 +14,7 @@
 #include "flox/backtest/latency_distribution.h"
 #include "flox/backtest/order_queue_tracker.h"
 #include "flox/backtest/rate_limit_policy.h"
+#include "flox/backtest/venue_availability.h"
 #include "flox/book/book_update.h"
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/composite_order_logic.h"
@@ -91,6 +92,14 @@ class SimulatedExecutor : public IOrderExecutor
   // a follow-up if multi-account workflows arrive.
   void setSTPMode(STPMode mode) noexcept { _stpMode = mode; }
   STPMode stpMode() const noexcept { return _stpMode; }
+
+  // Attach a venue-availability model. Submit / cancel / replace
+  // issued while the venue is down are buffered and flushed at the
+  // recovery edge in FIFO order. Market-data callbacks (onTrade /
+  // onBookUpdate / onBar) are silently dropped during an outage so
+  // the strategy sees a feed gap. Passing nullptr disables outages.
+  void setVenueAvailability(VenueAvailability* availability) { _venue = availability; }
+  VenueAvailability* venueAvailability() noexcept { return _venue; }
 
   // Attach a rate-limit policy. Submit / cancel / replace consult the
   // policy first; an overflow emits OrderEventStatus::REJECTED_RATE_LIMIT
@@ -294,6 +303,35 @@ class SimulatedExecutor : public IOrderExecutor
   bool _hasRateLimit{false};
 
   STPMode _stpMode{STPMode::None};
+
+  VenueAvailability* _venue{nullptr};
+  // Requests buffered while the venue is down. Replayed in FIFO order
+  // at the recovery edge subject to rate-limit policy.
+  enum class BufferedAction : uint8_t
+  {
+    SUBMIT = 0,
+    CANCEL = 1,
+    REPLACE = 2,
+    CANCEL_ALL_SYMBOL = 3,
+  };
+  struct BufferedRequest
+  {
+    BufferedAction action{BufferedAction::SUBMIT};
+    Order order{};                // SUBMIT, REPLACE (new order)
+    OrderId oldOrderId{0};        // CANCEL, REPLACE
+    SymbolId cancelAllSymbol{0};  // CANCEL_ALL_SYMBOL
+  };
+  std::vector<BufferedRequest> _outageBuffer;
+  // Apply the outage policy at the moment of disconnect: cancel-all
+  // walks _pending_orders and emits CANCELED with reason "outage".
+  void applyOutagePolicy();
+  // Flush buffered requests in arrival order; respects current rate
+  // limit and venue state.
+  void flushOutageBuffer();
+  // Last observed venue state for edge detection inside the executor
+  // (separate from VenueAvailability's own edge bookkeeping so
+  // strategies can read recovery edges independently).
+  bool _venueWasUp{true};
 };
 
 }  // namespace flox

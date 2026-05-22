@@ -38,6 +38,12 @@ from C import flox_simulated_executor_set_cancel_ack_latency_distribution(cobj, 
 from C import flox_simulated_executor_set_replace_ack_latency_distribution(cobj, cobj)
 from C import flox_simulated_executor_set_rate_limit_policy(cobj, cobj)
 from C import flox_simulated_executor_clear_rate_limit_policy(cobj)
+from C import flox_venue_availability_create() -> cobj
+from C import flox_venue_availability_destroy(cobj)
+from C import flox_venue_availability_schedule_outage(cobj, i64, i64, u8, i64)
+from C import flox_venue_availability_auto_random_outages(cobj, f64, i64, u8, u64)
+from C import flox_venue_availability_is_up(cobj, i64) -> u8
+from C import flox_simulated_executor_set_venue_availability(cobj, cobj)
 from C import flox_simulated_executor_set_stp_mode(cobj, u8)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
@@ -99,6 +105,46 @@ SLIPPAGE_VOLUME_IMPACT: int = 3
 QUEUE_NONE: int = 0
 QUEUE_TOB: int = 1
 QUEUE_FULL: int = 2
+
+OUTAGE_CANCEL_ALL: int = 0
+OUTAGE_HOLD: int = 1
+OUTAGE_EXPIRE_GTC_AFTER: int = 2
+
+
+class VenueAvailability:
+    """Venue downtime model. Attach to `SimulatedExecutor` via
+    `set_venue_availability(va)` to make submit / cancel / replace
+    buffer during outages and market-data callbacks be silently
+    dropped (feed gap). Buffered requests flush at the recovery edge
+    in FIFO order."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_venue_availability_create()
+
+    def close(self):
+        if self._h != cobj():
+            flox_venue_availability_destroy(self._h)
+            self._h = cobj()
+
+    def schedule_outage(self, start_ns: int, duration_ns: int,
+                        on_open_orders: int = 0, gtc_ttl_ns: int = 0):
+        flox_venue_availability_schedule_outage(
+            self._h, i64(start_ns), i64(duration_ns), u8(on_open_orders),
+            i64(gtc_ttl_ns))
+
+    def auto_random_outages(self, per_day: float, mean_duration_ns: int,
+                            on_open_orders: int = 0, seed: int = 0xC0FFEE):
+        flox_venue_availability_auto_random_outages(
+            self._h, f64(per_day), i64(mean_duration_ns), u8(on_open_orders),
+            u64(seed))
+
+    def is_up(self, now_ns: int) -> bool:
+        return int(flox_venue_availability_is_up(self._h, i64(now_ns))) != 0
+
+    def handle(self) -> cobj:
+        return self._h
 
 
 class LatencyDistribution:
@@ -258,6 +304,9 @@ class SimulatedExecutor:
 
     def set_queue_fifo_top_n(self, top_n: int):
         flox_simulated_executor_set_queue_fifo_top_n(self._handle, u32(top_n))
+
+    def set_venue_availability(self, va: VenueAvailability):
+        flox_simulated_executor_set_venue_availability(self._handle, va.handle())
 
     def set_submit_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
         flox_simulated_executor_set_submit_ack_latency(

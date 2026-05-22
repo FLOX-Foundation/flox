@@ -205,6 +205,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_venue_downtime.py",
+      "sha256": "7891f8858f11e7b661c5ff005f049e5b9343d77aaeed4fb0a55da53be196af54",
+      "size_bytes": 1293,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_xs_panel.py",
       "sha256": "8e58215f23c03247bf001802408f0676305176d2714b9f61bc04da04aa8c9f24",
       "size_bytes": 2679,
