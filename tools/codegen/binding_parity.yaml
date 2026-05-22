@@ -60,6 +60,11 @@ groups:
     napi: { status: required, classes: [RateLimitPolicy] }
     codon: { status: required }
 
+  funding_schedule:
+    pybind11: { status: required, classes: [FundingSchedule] }
+    napi: { status: required, classes: [FundingSchedule] }
+    codon: { status: required }
+
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
     napi: { status: required, classes: [WalkForwardRunner] }

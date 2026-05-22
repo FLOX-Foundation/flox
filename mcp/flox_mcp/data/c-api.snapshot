@@ -175,6 +175,14 @@ flox_footprint_destroy|void|FloxFootprintHandle
 flox_footprint_num_levels|uint32_t|FloxFootprintHandle
 flox_footprint_total_delta|double|FloxFootprintHandle
 flox_footprint_total_volume|double|FloxFootprintHandle
+flox_funding_schedule_create|FloxFundingScheduleHandle
+flox_funding_schedule_destroy|void|FloxFundingScheduleHandle
+flox_funding_schedule_load_profile|void|FloxFundingScheduleHandle|const char *
+flox_funding_schedule_reset|void|FloxFundingScheduleHandle
+flox_funding_schedule_set_constant|void|FloxFundingScheduleHandle|int64_t|double
+flox_funding_schedule_set_constant_rate|void|FloxFundingScheduleHandle|double
+flox_funding_schedule_set_tape|void|FloxFundingScheduleHandle|const int64_t *|const double *|uint32_t
+flox_funding_schedule_tick|uint32_t|FloxFundingScheduleHandle|int64_t|const uint32_t *|const double *|const double *|uint32_t|double *|uint32_t
 flox_get_order_status|int32_t|FloxStrategyHandle|uint64_t
 flox_get_symbol_context|void|FloxStrategyHandle|uint32_t|FloxSymbolContext *
 flox_grid_search_add_axis|void|FloxGridSearchHandle|const double *|uint32_t

@@ -4057,6 +4057,145 @@
       "return_type": "double"
     },
     {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_create",
+      "params": [],
+      "return_type": "FloxFundingScheduleHandle"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_load_profile",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "profile_name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_reset",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_set_constant",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "interval_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "rate",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_set_constant_rate",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "rate",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_set_tape",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "timestamps_ns",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "rates",
+          "type": "const double *"
+        },
+        {
+          "name": "n_events",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_tick",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "positions",
+          "type": "const double *"
+        },
+        {
+          "name": "mark_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "n_symbols",
+          "type": "uint32_t"
+        },
+        {
+          "name": "out_buf",
+          "type": "double *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "context_queries",
       "name": "flox_get_order_status",
       "params": [
@@ -13701,6 +13840,10 @@
     },
     {
       "name": "FloxFootprintHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxFundingScheduleHandle",
       "target": "void*"
     },
     {

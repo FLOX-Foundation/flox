@@ -233,3 +233,8 @@ docs/how-to/order-group-replace.md
 # How-to: Rate-limit policy. Polyglot tabs + a back-off pseudocode
 # snippet; runtime path exercised by tests/test_rate_limit_policy.cpp.
 docs/how-to/rate-limits.md
+
+# How-to: Perpetual funding. Polyglot tabs + a tick-loop pseudocode
+# integration snippet; runtime path exercised by
+# tests/test_funding_schedule.cpp.
+docs/how-to/perpetual-funding.md

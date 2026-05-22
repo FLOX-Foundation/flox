@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 574 functions, 49 handles, 58 structs, 43 callback typedefs, 3 enums, 63 groups.
+**Surface:** 582 functions, 50 handles, 58 structs, 43 callback typedefs, 3 enums, 64 groups.
 
 ## Opaque handles
 
@@ -56,6 +56,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxRunReaderHandle`
 - `FloxBarDispatchRecorderHandle`
 - `FloxAggregatorHandle`
+- `FloxFundingScheduleHandle`
 - `FloxLiveQueuePositionHandle`
 
 ## Enums
@@ -1104,6 +1105,17 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_footprint_total_volume(FloxFootprintHandle footprint)`
 - `uint32_t flox_footprint_num_levels(FloxFootprintHandle footprint)`
 - `void flox_footprint_clear(FloxFootprintHandle footprint)`
+
+### funding_schedule
+
+- `FloxFundingScheduleHandle flox_funding_schedule_create(void)`
+- `void flox_funding_schedule_destroy(FloxFundingScheduleHandle h)`
+- `void flox_funding_schedule_set_constant(FloxFundingScheduleHandle h, int64_t interval_ns, double rate)`
+- `void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h, const int64_t * timestamps_ns, const double * rates, uint32_t n_events)`
+- `void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h, const char * profile_name)`
+- `void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h, double rate)`
+- `void flox_funding_schedule_reset(FloxFundingScheduleHandle h)`
+- `uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int64_t now_ns, const uint32_t * symbols, const double * positions, const double * mark_prices, uint32_t n_symbols, double * out_buf, uint32_t max_events)`
 
 ### grid_search
 
