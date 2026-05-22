@@ -255,6 +255,11 @@ docs/how-to/tiered-fees.md
 # tests/test_bracket_orders.cpp.
 docs/how-to/bracket-orders.md
 
+# How-to: Liquidation cascades + insurance fund + ADL. Polyglot
+# tabs configuring LiquidationEngine; runtime path exercised by
+# tests/test_liquidation_engine.cpp.
+docs/how-to/liquidation-and-adl.md
+
 # How-to: Matching modes (FIFO / pro-rata / hybrid). Polyglot tabs
 # configuring SimulatedExecutor; runtime path exercised by
 # tests/test_pro_rata_matching.cpp.

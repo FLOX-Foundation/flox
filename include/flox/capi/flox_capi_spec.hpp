@@ -4169,6 +4169,57 @@ extern "C"
   FLOX_EXPORT(group = "live_queue_position")
   uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h);
 
+  // ============================================================
+  // Liquidation engine + insurance fund + ADL
+  // ============================================================
+  typedef void* FloxLiquidationEngineHandle;
+
+  FLOX_EXPORT(group = "liquidation_engine")
+  FloxLiquidationEngineHandle flox_liquidation_engine_create(void);
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_destroy(FloxLiquidationEngineHandle h);
+
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_add_tier(FloxLiquidationEngineHandle h,
+                                        double min_notional, double mm_fraction);
+
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_insurance_fund_capital(FloxLiquidationEngineHandle h,
+                                                          double capital);
+  FLOX_EXPORT(group = "liquidation_engine")
+  double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h);
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled);
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h,
+                                                            double bps);
+
+  // Side is encoded in signed `quantity` (+long, -short).
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h,
+                                             uint64_t account_id, uint32_t symbol,
+                                             double quantity, double entry_price,
+                                             double equity);
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h,
+                                              uint64_t account_id, uint32_t symbol);
+
+  // Apply a mark; returns liquidations on this tick.
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h,
+                                           uint32_t symbol, double mark_price);
+
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h);
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h);
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h);
+
+  // Canned profiles: 0=binance_um_futures, 1=bybit_linear, 2=okx_swap.
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile);
+
 #ifdef __cplusplus
 }
 #endif

@@ -49,6 +49,21 @@ from C import flox_venue_availability_is_up(cobj, i64) -> u8
 from C import flox_simulated_executor_set_venue_availability(cobj, cobj)
 from C import flox_simulated_executor_set_stp_mode(cobj, u8)
 
+from C import flox_liquidation_engine_create() -> cobj
+from C import flox_liquidation_engine_destroy(cobj)
+from C import flox_liquidation_engine_add_tier(cobj, f64, f64)
+from C import flox_liquidation_engine_set_insurance_fund_capital(cobj, f64)
+from C import flox_liquidation_engine_insurance_fund_balance(cobj) -> f64
+from C import flox_liquidation_engine_set_adl_enabled(cobj, u8)
+from C import flox_liquidation_engine_set_liquidation_slippage_bps(cobj, f64)
+from C import flox_liquidation_engine_open_position(cobj, u64, u32, f64, f64, f64)
+from C import flox_liquidation_engine_close_position(cobj, u64, u32)
+from C import flox_liquidation_engine_on_mark(cobj, u32, f64) -> u32
+from C import flox_liquidation_engine_liquidations_count(cobj) -> u64
+from C import flox_liquidation_engine_insurance_payments_count(cobj) -> u64
+from C import flox_liquidation_engine_adl_closeouts_count(cobj) -> u64
+from C import flox_liquidation_engine_load_profile(cobj, u8)
+
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
@@ -398,6 +413,63 @@ class SimulatedExecutor:
 
     def fill_count(self) -> int:
         return int(flox_simulated_executor_fill_count(self._handle))
+
+
+class LiquidationEngine:
+    """Liquidation + insurance fund + ADL engine. Open positions via
+    `open_position` then call `on_mark(symbol, mark)` on each tick;
+    the engine fires liquidations + ADL where required and updates
+    cumulative stats."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_liquidation_engine_create()
+
+    def close(self):
+        if self._h != cobj():
+            flox_liquidation_engine_destroy(self._h)
+            self._h = cobj()
+
+    def add_tier(self, min_notional: float, mm_fraction: float):
+        flox_liquidation_engine_add_tier(self._h, f64(min_notional), f64(mm_fraction))
+
+    def set_insurance_fund_capital(self, capital: float):
+        flox_liquidation_engine_set_insurance_fund_capital(self._h, f64(capital))
+
+    def insurance_fund_balance(self) -> float:
+        return float(flox_liquidation_engine_insurance_fund_balance(self._h))
+
+    def set_adl_enabled(self, enabled: bool):
+        flox_liquidation_engine_set_adl_enabled(self._h, u8(1 if enabled else 0))
+
+    def set_liquidation_slippage_bps(self, bps: float):
+        flox_liquidation_engine_set_liquidation_slippage_bps(self._h, f64(bps))
+
+    def open_position(self, account_id: int, symbol: int, quantity: float,
+                      entry_price: float, equity: float):
+        flox_liquidation_engine_open_position(
+            self._h, u64(account_id), u32(symbol),
+            f64(quantity), f64(entry_price), f64(equity))
+
+    def close_position(self, account_id: int, symbol: int):
+        flox_liquidation_engine_close_position(self._h, u64(account_id), u32(symbol))
+
+    def on_mark(self, symbol: int, mark_price: float) -> int:
+        return int(flox_liquidation_engine_on_mark(self._h, u32(symbol), f64(mark_price)))
+
+    def liquidations_count(self) -> int:
+        return int(flox_liquidation_engine_liquidations_count(self._h))
+
+    def insurance_payments_count(self) -> int:
+        return int(flox_liquidation_engine_insurance_payments_count(self._h))
+
+    def adl_closeouts_count(self) -> int:
+        return int(flox_liquidation_engine_adl_closeouts_count(self._h))
+
+    def load_profile(self, profile: int):
+        """Profile: 0=binance_um_futures, 1=bybit_linear, 2=okx_swap."""
+        flox_liquidation_engine_load_profile(self._h, u8(profile))
 
 
 class BacktestResult:

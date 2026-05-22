@@ -6066,6 +6066,215 @@
       "return_type": "void"
     },
     {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_add_tier",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "min_notional",
+          "type": "double"
+        },
+        {
+          "name": "mm_fraction",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_adl_closeouts_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_close_position",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "account_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_create",
+      "params": [],
+      "return_type": "FloxLiquidationEngineHandle"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_insurance_fund_balance",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_insurance_payments_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_liquidations_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_load_profile",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "profile",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_on_mark",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "mark_price",
+          "type": "double"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_open_position",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "account_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "entry_price",
+          "type": "double"
+        },
+        {
+          "name": "equity",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_adl_enabled",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "enabled",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_insurance_fund_capital",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "capital",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_liquidation_slippage_bps",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "bps",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
       "group": "floxliveengine_disruptor",
       "name": "flox_live_engine_add_strategy",
       "params": [
@@ -14249,6 +14458,10 @@
     },
     {
       "name": "FloxLatencyModelHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxLiquidationEngineHandle",
       "target": "void*"
     },
     {

@@ -1378,6 +1378,76 @@
           "name": "flox_latency_sample"
         },
         {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_add_tier"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_adl_closeouts_count"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_close_position"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_create"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_destroy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_insurance_fund_balance"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_insurance_payments_count"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_liquidations_count"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_load_profile"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_on_mark"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_open_position"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_adl_enabled"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_insurance_fund_capital"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_liquidation_slippage_bps"
+        },
+        {
           "group": "floxliveengine_disruptor",
           "kind": "function",
           "name": "flox_live_engine_add_strategy"
@@ -3359,6 +3429,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxLiquidationEngineHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxLiveEngineHandle"
         },
         {
@@ -3504,6 +3578,7 @@
         "indicatorgraph",
         "l3_order",
         "latency_models",
+        "liquidation_engine",
         "live_queue_position",
         "logger",
         "market_profile",
@@ -4640,6 +4715,62 @@
         {
           "kind": "function",
           "name": "flox_latency_sample"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_add_tier"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_adl_closeouts_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_close_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_insurance_fund_balance"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_insurance_payments_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_liquidations_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_load_profile"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_on_mark"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_open_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_adl_enabled"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_insurance_fund_capital"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_liquidation_slippage_bps"
         },
         {
           "kind": "function",
@@ -6247,6 +6378,10 @@
         },
         {
           "kind": "class",
+          "name": "LiquidationEngine"
+        },
+        {
+          "kind": "class",
           "name": "LiveQueuePositionEstimator"
         },
         {
@@ -7048,6 +7183,10 @@
         {
           "kind": "class",
           "name": "LegState"
+        },
+        {
+          "kind": "class",
+          "name": "LiquidationEngine"
         },
         {
           "kind": "class",
@@ -8560,6 +8699,42 @@
           "GaussianLatency",
           "ExponentialLatency",
           "EmpiricalLatency"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "liquidation_engine": {
+      "capi_functions": [
+        "flox_liquidation_engine_add_tier",
+        "flox_liquidation_engine_adl_closeouts_count",
+        "flox_liquidation_engine_close_position",
+        "flox_liquidation_engine_create",
+        "flox_liquidation_engine_destroy",
+        "flox_liquidation_engine_insurance_fund_balance",
+        "flox_liquidation_engine_insurance_payments_count",
+        "flox_liquidation_engine_liquidations_count",
+        "flox_liquidation_engine_load_profile",
+        "flox_liquidation_engine_on_mark",
+        "flox_liquidation_engine_open_position",
+        "flox_liquidation_engine_set_adl_enabled",
+        "flox_liquidation_engine_set_insurance_fund_capital",
+        "flox_liquidation_engine_set_liquidation_slippage_bps"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "LiquidationEngine"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "LiquidationEngine"
         ],
         "functions": [],
         "status": "required"

@@ -1,0 +1,149 @@
+# Model liquidation cascades, insurance fund, and ADL
+
+A real perpetual venue has a three-step liquidation pipeline:
+
+1. **Liquidation engine** takes over the underwater position at the
+   bankruptcy price and walks the book to close it.
+2. If the close generates a loss the trader's posted equity cannot
+   cover, the **insurance fund** absorbs the deficit.
+3. If the fund is depleted, **ADL** (auto-deleveraging) activates:
+   profitable opposite-side traders are force-closed at the
+   bankruptcy price, ranked by their PnL ratio.
+
+flox's default backtest treats liquidation as a hard stop — the
+position disappears at the maintenance-margin-breach price. For
+research that needs to know whether a portfolio survives a 5%
+adverse move vs cascades INTO a -8% liquidation, that's a
+comforting fiction. `LiquidationEngine` models the full pipeline.
+
+## Configure
+
+A worked example (Python):
+
+```python
+--8<-- "examples/python_liquidation_engine.py"
+```
+
+=== "Python"
+
+    ```python
+    import flox_py as flox
+
+    eng = flox.LiquidationEngine()
+    eng.add_tier(min_notional=0,         mm_fraction=0.005)
+    eng.add_tier(min_notional=250_000,   mm_fraction=0.01)
+    eng.add_tier(min_notional=1_000_000, mm_fraction=0.025)
+    eng.set_insurance_fund_capital(10_000_000)
+    eng.set_adl_enabled(True)
+
+    # Open a 5 BTC long at 50k, equity 1000 USDT.
+    eng.open_position(account_id=42, symbol=1, quantity=5.0,
+                       entry_price=50_000.0, equity=1000.0)
+
+    # On each tick, feed the new mark price.
+    outcome = eng.on_mark(symbol=1, mark_price=49_500.0)
+    if outcome["liquidated"]:
+        print("liquidated:", outcome["liquidated"])
+    ```
+
+=== "TypeScript (Node)"
+
+    ```typescript
+    import { LiquidationEngine } from "flox";
+
+    const eng = new LiquidationEngine();
+    eng.addTier(0, 0.005);
+    eng.addTier(250_000, 0.01);
+    eng.setInsuranceFundCapital(10_000_000);
+    eng.setAdlEnabled(true);
+
+    eng.openPosition(42, 1, 5.0, 50_000.0, 1000.0);
+    const liquidated = eng.onMark(1, 49_500.0);
+    ```
+
+=== "TypeScript (QuickJS)"
+
+    ```typescript
+    const eng = __flox_liquidation_engine_create();
+    __flox_liquidation_engine_add_tier(eng, 0, 0.005);
+    __flox_liquidation_engine_set_insurance_fund_capital(eng, 10_000_000);
+    __flox_liquidation_engine_open_position(eng, 42, 1, 5.0, 50000.0, 1000.0);
+    const n = __flox_liquidation_engine_on_mark(eng, 1, 49500.0);
+    ```
+
+=== "Codon"
+
+    ```python
+    from flox.backtest import LiquidationEngine
+
+    eng = LiquidationEngine()
+    eng.add_tier(0.0, 0.005)
+    eng.set_insurance_fund_capital(10_000_000.0)
+    eng.open_position(42, 1, 5.0, 50000.0, 1000.0)
+    n = eng.on_mark(1, 49500.0)
+    ```
+
+=== "C"
+
+    ```c
+    FloxLiquidationEngineHandle eng = flox_liquidation_engine_create();
+    flox_liquidation_engine_add_tier(eng, 0.0, 0.005);
+    flox_liquidation_engine_set_insurance_fund_capital(eng, 10000000.0);
+    flox_liquidation_engine_open_position(eng, 42, 1, 5.0, 50000.0, 1000.0);
+    uint32_t n = flox_liquidation_engine_on_mark(eng, 1, 49500.0);
+    ```
+
+## Canned profiles
+
+| Profile               | Tiers | Insurance fund cap | Slippage |
+|-----------------------|-------|--------------------|----------|
+| `binance_um_futures`  | 6     | 900M USDT          | 15 bps   |
+| `bybit_linear`        | 4     | 100M USDT          | 20 bps   |
+| `okx_swap`            | 3     | 150M USDT          | 20 bps   |
+
+Numbers approximate the published values; tune for your engagement.
+
+## What the engine does on each tick
+
+For every open position on the symbol being marked:
+
+1. Compute notional = `|quantity| * mark_price` and resolve the
+   maintenance-margin rate from the tier ladder.
+2. If `equity + unrealized_PnL < notional * mm_fraction`, the
+   position is liquidated at `mark * (1 - sign(qty) * slippage_bps/10000)`.
+3. Compute realized loss vs entry; deficit beyond posted equity
+   accumulates.
+4. Insurance fund pays as much of the total deficit as it can.
+5. If `adl_enabled` and deficit remains, rank profitable
+   opposite-side positions by PnL ratio (PnL / equity) and
+   force-close from the top until the deficit is absorbed.
+
+Cumulative counters track liquidations / insurance payments / ADL
+closeouts across the engine's lifetime.
+
+## Cascade modelling
+
+To reproduce a flash-crash cascade:
+
+1. Open a portfolio of leveraged positions at various entry prices
+   and equity levels.
+2. Step the mark price down (or up) in small increments, calling
+   `on_mark` each step.
+3. Watch the cumulative counters: each tick that liquidates
+   positions feeds back into the next as the insurance fund drains
+   and ADL activates.
+
+The engine is deliberately decoupled from `SimulatedExecutor`:
+research workflows that need to model cascade dynamics use it
+standalone; integrating cascade simulation with the live order
+book is a separate task.
+
+## Notes
+
+- The engine is per-venue (per-margin-pool). For cross-margin or
+  multi-asset accounts, instantiate one engine per pool.
+- The slippage knob is a flat bps haircut on the bankruptcy
+  price; for venue-specific book-walk simulation, layer the
+  existing `SlippageProfile` on top.
+- ADL ranking is currently PnL ratio (PnL / equity). Some venues
+  use position-size only; that variant is filed as a follow-up.

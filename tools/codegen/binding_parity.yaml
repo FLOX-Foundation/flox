@@ -65,6 +65,11 @@ groups:
     napi: { status: required, classes: [VenueAvailability, SimulatedExecutor] }
     codon: { status: required }
 
+  liquidation_engine:
+    pybind11: { status: required, classes: [LiquidationEngine] }
+    napi: { status: required, classes: [LiquidationEngine] }
+    codon: { status: required }
+
   funding_schedule:
     pybind11: { status: required, classes: [FundingSchedule] }
     napi: { status: required, classes: [FundingSchedule] }

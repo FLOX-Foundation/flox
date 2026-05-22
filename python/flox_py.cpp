@@ -24,6 +24,7 @@
 #include "heatmap_bindings.h"
 #include "indicator_bindings.h"
 #include "latency_bindings.h"
+#include "liquidation_engine_bindings.h"
 #include "live_queue_position_bindings.h"
 #include "optimizer_bindings.h"
 #include "order_group_bindings.h"
@@ -803,6 +804,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindVenueAvailability(m);
   flox_py::bindFundingSchedule(m);
   flox_py::bindFeeSchedule(m);
+  flox_py::bindLiquidationEngine(m);
   flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);

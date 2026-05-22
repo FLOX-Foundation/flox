@@ -1725,6 +1725,113 @@ static JSValue js_fee_schedule_load_profile(JSContext* ctx, JSValueConst, int,
   }
   return JS_UNDEFINED;
 }
+// Liquidation engine.
+static JSValue js_liquidation_engine_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_liquidation_engine_create());
+}
+static JSValue js_liquidation_engine_destroy(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  flox_liquidation_engine_destroy(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_add_tier(JSContext* ctx, JSValueConst, int,
+                                              JSValueConst* argv)
+{
+  flox_liquidation_engine_add_tier(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      toDouble(ctx, argv[1]), toDouble(ctx, argv[2]));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_set_insurance_fund_capital(
+    JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_liquidation_engine_set_insurance_fund_capital(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      toDouble(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_insurance_fund_balance(
+    JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_liquidation_engine_insurance_fund_balance(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_liquidation_engine_set_adl_enabled(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  flox_liquidation_engine_set_adl_enabled(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint8_t>(toUint32(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_set_liquidation_slippage_bps(
+    JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_liquidation_engine_set_liquidation_slippage_bps(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      toDouble(ctx, argv[1]));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_open_position(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  flox_liquidation_engine_open_position(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])),
+      toUint32(ctx, argv[2]), toDouble(ctx, argv[3]),
+      toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_close_position(JSContext* ctx, JSValueConst, int,
+                                                    JSValueConst* argv)
+{
+  flox_liquidation_engine_close_position(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])),
+      toUint32(ctx, argv[2]));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_on_mark(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  return JS_NewUint32(ctx, flox_liquidation_engine_on_mark(
+                               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+                               toUint32(ctx, argv[1]), toDouble(ctx, argv[2])));
+}
+static JSValue js_liquidation_engine_liquidations_count(JSContext* ctx, JSValueConst, int,
+                                                        JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, static_cast<double>(flox_liquidation_engine_liquidations_count(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+}
+static JSValue js_liquidation_engine_insurance_payments_count(JSContext* ctx, JSValueConst, int,
+                                                              JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, static_cast<double>(flox_liquidation_engine_insurance_payments_count(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+}
+static JSValue js_liquidation_engine_adl_closeouts_count(JSContext* ctx, JSValueConst, int,
+                                                         JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, static_cast<double>(flox_liquidation_engine_adl_closeouts_count(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+}
+static JSValue js_liquidation_engine_load_profile(JSContext* ctx, JSValueConst, int,
+                                                  JSValueConst* argv)
+{
+  flox_liquidation_engine_load_profile(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint8_t>(toUint32(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+
 static JSValue js_fee_schedule_record_fill(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
 {
@@ -5731,6 +5838,34 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_fee_schedule_add_tier", js_fee_schedule_add_tier, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_load_profile",
                 js_fee_schedule_load_profile, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_create",
+                js_liquidation_engine_create, 0);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_destroy",
+                js_liquidation_engine_destroy, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_add_tier",
+                js_liquidation_engine_add_tier, 3);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_insurance_fund_capital",
+                js_liquidation_engine_set_insurance_fund_capital, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_insurance_fund_balance",
+                js_liquidation_engine_insurance_fund_balance, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_adl_enabled",
+                js_liquidation_engine_set_adl_enabled, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_liquidation_slippage_bps",
+                js_liquidation_engine_set_liquidation_slippage_bps, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_open_position",
+                js_liquidation_engine_open_position, 6);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_close_position",
+                js_liquidation_engine_close_position, 3);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_on_mark",
+                js_liquidation_engine_on_mark, 3);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_liquidations_count",
+                js_liquidation_engine_liquidations_count, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_insurance_payments_count",
+                js_liquidation_engine_insurance_payments_count, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_adl_closeouts_count",
+                js_liquidation_engine_adl_closeouts_count, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_load_profile",
+                js_liquidation_engine_load_profile, 2);
   addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
   addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",
