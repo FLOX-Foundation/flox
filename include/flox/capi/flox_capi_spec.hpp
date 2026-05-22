@@ -3908,6 +3908,50 @@ extern "C"
                                      FloxQuantileRow* rows_out,
                                      uint32_t max_rows);
 
+  // ---- Tiered fee schedule ---------------------------------------
+  //
+  // Volume-tiered maker/taker fee ladder. Add tiers + record fills;
+  // the schedule maintains a 30-day rolling notional and resolves
+  // the active tier on lookup.
+
+  typedef void* FloxFeeScheduleHandle;
+
+  FLOX_EXPORT(group = "fee_schedule")
+  FloxFeeScheduleHandle flox_fee_schedule_create(void);
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_destroy(FloxFeeScheduleHandle h);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h, double min_notional_30d,
+                                  double maker_bps, double taker_bps);
+
+  // Canned profile: "binance_um_futures" | "bybit_linear" | "okx_swap" |
+  // "deribit". Unknown names are a no-op.
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h,
+                                      const char* profile_name);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns,
+                                     double notional);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  double flox_fee_schedule_fee_for(FloxFeeScheduleHandle h, int64_t ts_ns,
+                                   double notional, uint8_t is_maker);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  uint32_t flox_fee_schedule_current_tier(FloxFeeScheduleHandle h);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  double flox_fee_schedule_rolling_notional(FloxFeeScheduleHandle h);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h,
+                                              int64_t* out_buf, uint32_t max_events);
+
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h);
+
   // ---- Funding schedule ------------------------------------------
   //
   // Models perpetual-futures funding payments. Build via constant

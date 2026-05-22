@@ -93,6 +93,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_fee_schedule.py",
+      "sha256": "05866e63ea4706c32fffe3204d8c5717e24ff9257e9106f84997519ddb31c8fc",
+      "size_bytes": 1291,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_funding_schedule.py",
       "sha256": "dd58c2bcbb09f3016a1ba7bc307c1a5345786a85097f963b485ea0f144ee17de",
       "size_bytes": 965,

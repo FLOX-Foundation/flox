@@ -102,6 +102,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_hidden_order_attribution)
   add_flox_test(test_funding_schedule)
   add_flox_test(test_rate_limit_policy)
+  add_flox_test(test_fee_schedule)
 endif()
 
 add_flox_test(test_indicators)

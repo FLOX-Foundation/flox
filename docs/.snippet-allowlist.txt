@@ -244,3 +244,8 @@ docs/how-to/rate-limits.md
 # integration snippet; runtime path exercised by
 # tests/test_funding_schedule.cpp.
 docs/how-to/perpetual-funding.md
+
+# How-to: Tiered fee schedule. Polyglot tabs + a fee-integration
+# pseudocode snippet; runtime path exercised by
+# tests/test_fee_schedule.cpp.
+docs/how-to/tiered-fees.md

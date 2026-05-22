@@ -10,6 +10,7 @@
 #include "delta_book.h"
 #include "engine.h"
 #include "execution_algos.h"
+#include "fee_schedule.h"
 #include "feed_clock.h"
 #include "funding_schedule.h"
 #include "graph.h"
@@ -53,6 +54,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerOrderGroup(env, exports);
   node_flox::registerRateLimitPolicy(env, exports);
   node_flox::registerFundingSchedule(env, exports);
+  node_flox::registerFeeSchedule(env, exports);
   node_flox::registerLiveQueuePositionEstimator(env, exports);
   node_flox::registerBarDispatchRecorder(env, exports);
   node_flox::registerFeedClock(env, exports);

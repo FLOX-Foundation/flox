@@ -654,6 +654,19 @@ export class LatencyDistribution {
   medianNs(): number;
 }
 
+export class FeeSchedule {
+  constructor();
+  addTier(minNotional30d: number, makerBps: number, takerBps: number): void;
+  /** Canned: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'deribit'. */
+  loadProfile(name: string): void;
+  recordFill(tsNs: number, notional: number): void;
+  feeFor(tsNs: number, notional: number, isMaker: boolean): number;
+  currentTierIndex(): number;
+  rollingNotional30d(): number;
+  tierTransitions(): number[];
+  resetRolling(): void;
+}
+
 export interface FundingPaymentEvent {
   timestampNs: number;
   symbol: number;

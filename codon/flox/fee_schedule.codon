@@ -1,0 +1,71 @@
+# Tiered maker/taker fee ladder for Codon strategies.
+# Mirrors include/flox/backtest/fee_schedule.h.
+
+from C import flox_fee_schedule_create() -> cobj
+from C import flox_fee_schedule_destroy(cobj)
+from C import flox_fee_schedule_add_tier(cobj, f64, f64, f64)
+from C import flox_fee_schedule_load_profile(cobj, cobj)
+from C import flox_fee_schedule_record_fill(cobj, i64, f64)
+from C import flox_fee_schedule_fee_for(cobj, i64, f64, u8) -> f64
+from C import flox_fee_schedule_current_tier(cobj) -> u32
+from C import flox_fee_schedule_rolling_notional(cobj) -> f64
+from C import flox_fee_schedule_tier_transitions(cobj, cobj, u32) -> u32
+from C import flox_fee_schedule_reset_rolling(cobj)
+
+
+def _cstr(s: str) -> cobj:
+    from internal.gc import sys_alloc
+    n = len(s)
+    buf = Ptr[byte](sys_alloc(n + 1))
+    for i in range(n):
+        buf[i] = byte(ord(s[i]))
+    buf[n] = byte(0)
+    return cobj(buf)
+
+
+class FeeSchedule:
+    """Volume-tiered maker/taker fee ladder. Add tiers (or load a canned
+    profile), call record_fill on every fill, query fee_for to compute
+    the fee for a new fill at the active tier."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_fee_schedule_create()
+
+    def close(self):
+        if self._h != cobj():
+            flox_fee_schedule_destroy(self._h)
+            self._h = cobj()
+
+    def add_tier(self, min_notional_30d: float, maker_bps: float, taker_bps: float):
+        flox_fee_schedule_add_tier(self._h, f64(min_notional_30d),
+                                    f64(maker_bps), f64(taker_bps))
+
+    def load_profile(self, name: str):
+        """name: binance_um_futures | bybit_linear | okx_swap | deribit."""
+        flox_fee_schedule_load_profile(self._h, _cstr(name))
+
+    def record_fill(self, ts_ns: int, notional: float):
+        flox_fee_schedule_record_fill(self._h, i64(ts_ns), f64(notional))
+
+    def fee_for(self, ts_ns: int, notional: float, is_maker: bool) -> float:
+        return float(flox_fee_schedule_fee_for(
+            self._h, i64(ts_ns), f64(notional), u8(1 if is_maker else 0)))
+
+    def current_tier_index(self) -> int:
+        return int(flox_fee_schedule_current_tier(self._h))
+
+    def rolling_notional_30d(self) -> float:
+        return float(flox_fee_schedule_rolling_notional(self._h))
+
+    def tier_transition_ts_ns(self) -> List[int]:
+        n = int(flox_fee_schedule_tier_transitions(self._h, cobj(), u32(0)))
+        if n == 0:
+            return []
+        buf = [i64(0)] * n
+        flox_fee_schedule_tier_transitions(self._h, cobj(buf.arr.ptr), u32(n))
+        return [int(buf[i]) for i in range(n)]
+
+    def reset_rolling(self):
+        flox_fee_schedule_reset_rolling(self._h)

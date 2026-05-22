@@ -1591,6 +1591,85 @@ static JSValue js_executor_clear_rate_limit_policy(JSContext* ctx, JSValueConst,
   return JS_UNDEFINED;
 }
 
+// Fee schedule.
+static JSValue js_fee_schedule_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_fee_schedule_create());
+}
+static JSValue js_fee_schedule_destroy(JSContext* ctx, JSValueConst, int,
+                                       JSValueConst* argv)
+{
+  flox_fee_schedule_destroy(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_fee_schedule_add_tier(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  double min_notional = 0.0, maker = 0.0, taker = 0.0;
+  JS_ToFloat64(ctx, &min_notional, argv[1]);
+  JS_ToFloat64(ctx, &maker, argv[2]);
+  JS_ToFloat64(ctx, &taker, argv[3]);
+  flox_fee_schedule_add_tier(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])), min_notional, maker,
+      taker);
+  return JS_UNDEFINED;
+}
+static JSValue js_fee_schedule_load_profile(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  const char* name = JS_ToCString(ctx, argv[1]);
+  flox_fee_schedule_load_profile(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])), name);
+  if (name)
+  {
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
+static JSValue js_fee_schedule_record_fill(JSContext* ctx, JSValueConst, int,
+                                           JSValueConst* argv)
+{
+  double notional = 0.0;
+  JS_ToFloat64(ctx, &notional, argv[2]);
+  flox_fee_schedule_record_fill(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]), notional);
+  return JS_UNDEFINED;
+}
+static JSValue js_fee_schedule_fee_for(JSContext* ctx, JSValueConst, int,
+                                       JSValueConst* argv)
+{
+  double notional = 0.0;
+  JS_ToFloat64(ctx, &notional, argv[2]);
+  uint8_t is_maker = static_cast<uint8_t>(toUint32(ctx, argv[3]));
+  return JS_NewFloat64(ctx, flox_fee_schedule_fee_for(
+                                static_cast<FloxFeeScheduleHandle>(
+                                    getHandle(ctx, argv[0])),
+                                toInt64(ctx, argv[1]), notional, is_maker));
+}
+static JSValue js_fee_schedule_current_tier(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  return JS_NewUint32(ctx, flox_fee_schedule_current_tier(
+                               static_cast<FloxFeeScheduleHandle>(
+                                   getHandle(ctx, argv[0]))));
+}
+static JSValue js_fee_schedule_rolling_notional(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  return JS_NewFloat64(ctx, flox_fee_schedule_rolling_notional(
+                                static_cast<FloxFeeScheduleHandle>(
+                                    getHandle(ctx, argv[0]))));
+}
+static JSValue js_fee_schedule_reset(JSContext* ctx, JSValueConst, int,
+                                     JSValueConst* argv)
+{
+  flox_fee_schedule_reset_rolling(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+
 // Funding schedule.
 static JSValue js_funding_schedule_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
@@ -5529,6 +5608,18 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_set_rate_limit_policy, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_clear_rate_limit_policy",
                 js_executor_clear_rate_limit_policy, 1);
+  addGlobalFunc(ctx, "__flox_fee_schedule_create", js_fee_schedule_create, 0);
+  addGlobalFunc(ctx, "__flox_fee_schedule_destroy", js_fee_schedule_destroy, 1);
+  addGlobalFunc(ctx, "__flox_fee_schedule_add_tier", js_fee_schedule_add_tier, 4);
+  addGlobalFunc(ctx, "__flox_fee_schedule_load_profile",
+                js_fee_schedule_load_profile, 2);
+  addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
+  addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
+  addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",
+                js_fee_schedule_current_tier, 1);
+  addGlobalFunc(ctx, "__flox_fee_schedule_rolling_notional",
+                js_fee_schedule_rolling_notional, 1);
+  addGlobalFunc(ctx, "__flox_fee_schedule_reset_rolling", js_fee_schedule_reset, 1);
   addGlobalFunc(ctx, "__flox_funding_schedule_create", js_funding_schedule_create, 0);
   addGlobalFunc(ctx, "__flox_funding_schedule_destroy", js_funding_schedule_destroy, 1);
   addGlobalFunc(ctx, "__flox_funding_schedule_set_constant",

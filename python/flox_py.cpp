@@ -11,6 +11,7 @@
 #include "composite_book_bindings.h"
 #include "delta_book_bindings.h"
 #include "execution_algos_bindings.h"
+#include "fee_schedule_bindings.h"
 #include "feed_clock_bindings.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
@@ -799,6 +800,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindOrderGroup(m);
   flox_py::bindRateLimitPolicy(m);
   flox_py::bindFundingSchedule(m);
+  flox_py::bindFeeSchedule(m);
   flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);

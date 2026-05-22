@@ -3818,6 +3818,155 @@
       "return_type": "void"
     },
     {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_add_tier",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        },
+        {
+          "name": "min_notional_30d",
+          "type": "double"
+        },
+        {
+          "name": "maker_bps",
+          "type": "double"
+        },
+        {
+          "name": "taker_bps",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_create",
+      "params": [],
+      "return_type": "FloxFeeScheduleHandle"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_current_tier",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_fee_for",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "notional",
+          "type": "double"
+        },
+        {
+          "name": "is_maker",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_load_profile",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        },
+        {
+          "name": "profile_name",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_record_fill",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "notional",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_reset_rolling",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_rolling_notional",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_tier_transitions",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        },
+        {
+          "name": "out_buf",
+          "type": "int64_t *"
+        },
+        {
+          "name": "max_events",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "feed_clock",
       "name": "flox_feed_clock_create",
       "params": [
@@ -13832,6 +13981,10 @@
     },
     {
       "name": "FloxExecutorHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxFeeScheduleHandle",
       "target": "void*"
     },
     {
