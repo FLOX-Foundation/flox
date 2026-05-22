@@ -135,6 +135,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_live_queue_calibration.py",
+      "sha256": "592e04982cb39e118a16ad532bb8fa2eea56f8eb3a51e56b871e0d3d7ab8ca05",
+      "size_bytes": 1383,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_live_queue_position.py",
       "sha256": "652aa78ac528ba95f1a6ac6d1d5933f9add184ba893a36bc4b0ca5b00b72d39b",
       "size_bytes": 1114,
