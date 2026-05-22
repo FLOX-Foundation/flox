@@ -10471,6 +10471,21 @@
     },
     {
       "group": "simulated_executor",
+      "name": "flox_simulated_executor_bracket_state",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "bracket_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "simulated_executor",
       "name": "flox_simulated_executor_cancel_all",
       "params": [
         {
@@ -10480,6 +10495,21 @@
         {
           "name": "symbol",
           "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_cancel_bracket",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "bracket_id",
+          "type": "uint64_t"
         }
       ],
       "return_type": "void"
@@ -10939,6 +10969,65 @@
         {
           "name": "availability",
           "type": "FloxVenueAvailabilityHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_submit_bracket",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "bracket_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "entry_side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "entry_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "entry_price",
+          "type": "double"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "tp_side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "tp_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "tp_price",
+          "type": "double"
+        },
+        {
+          "name": "stop_side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "stop_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "stop_trigger_price",
+          "type": "double"
         }
       ],
       "return_type": "void"

@@ -20,6 +20,9 @@ from C import flox_simulated_executor_fill_count(cobj) -> u32
 from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_queue_model(cobj, i32, u32)
+from C import flox_simulated_executor_submit_bracket(cobj, u64, u32, u8, u8, float, float, u8, u8, float, u8, u8, float)
+from C import flox_simulated_executor_cancel_bracket(cobj, u64)
+from C import flox_simulated_executor_bracket_state(cobj, u64) -> u8
 from C import flox_simulated_executor_set_queue_fifo_top_n(cobj, u32)
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
@@ -301,6 +304,36 @@ class SimulatedExecutor:
 
     def set_queue_model(self, model: int, depth: int = 1):
         flox_simulated_executor_set_queue_model(self._handle, i32(model), u32(depth))
+
+    def submit_bracket(self, bracket_id: int, symbol: int,
+                       entry_side: str, entry_type: str, entry_price: float,
+                       quantity: float,
+                       tp_side: str, tp_type: str, tp_price: float,
+                       stop_side: str, stop_type: str, stop_trigger_price: float):
+        """Submit a native bracket (entry + take-profit + stop). The
+        simulator manages the state machine: first child to fill
+        cancels the other."""
+        def side_u(s: str) -> int:
+            return 0 if s == "buy" else 1
+        def type_u(t: str) -> int:
+            if t == "market": return 1
+            if t == "stop_market": return 2
+            if t == "stop_limit": return 3
+            return 0  # limit
+        flox_simulated_executor_submit_bracket(
+            self._handle, u64(bracket_id), u32(symbol),
+            u8(side_u(entry_side)), u8(type_u(entry_type)),
+            entry_price, quantity,
+            u8(side_u(tp_side)), u8(type_u(tp_type)), tp_price,
+            u8(side_u(stop_side)), u8(type_u(stop_type)), stop_trigger_price)
+
+    def cancel_bracket(self, bracket_id: int):
+        flox_simulated_executor_cancel_bracket(self._handle, u64(bracket_id))
+
+    def bracket_state(self, bracket_id: int) -> str:
+        s = int(flox_simulated_executor_bracket_state(self._handle, u64(bracket_id)))
+        names = ["pending_entry", "entry_filled", "tp_filled", "stop_filled", "canceled"]
+        return names[s] if 0 <= s < len(names) else "pending_entry"
 
     def set_queue_fifo_top_n(self, top_n: int):
         flox_simulated_executor_set_queue_fifo_top_n(self._handle, u32(top_n))

@@ -1135,6 +1135,42 @@ void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle h, uint
   impl->executor.submitOrder(order);
 }
 
+void flox_simulated_executor_submit_bracket(FloxSimulatedExecutorHandle h, uint64_t bracket_id,
+                                            uint32_t symbol, uint8_t entry_side,
+                                            uint8_t entry_type, double entry_price,
+                                            double quantity, uint8_t tp_side, uint8_t tp_type,
+                                            double tp_price, uint8_t stop_side,
+                                            uint8_t stop_type, double stop_trigger_price)
+{
+  BracketOrder b;
+  b.bracketId = bracket_id;
+  b.symbol = symbol;
+  b.entry.side = entry_side == 0 ? Side::BUY : Side::SELL;
+  b.entry.type = static_cast<OrderType>(entry_type);
+  b.entry.price = Price::fromDouble(entry_price);
+  b.entry.quantity = Quantity::fromDouble(quantity);
+  b.takeProfit.side = tp_side == 0 ? Side::BUY : Side::SELL;
+  b.takeProfit.type = static_cast<OrderType>(tp_type);
+  b.takeProfit.price = Price::fromDouble(tp_price);
+  b.takeProfit.quantity = Quantity::fromDouble(quantity);
+  b.stop.side = stop_side == 0 ? Side::BUY : Side::SELL;
+  b.stop.type = static_cast<OrderType>(stop_type);
+  b.stop.triggerPrice = Price::fromDouble(stop_trigger_price);
+  b.stop.quantity = Quantity::fromDouble(quantity);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.submitBracket(b);
+}
+
+void flox_simulated_executor_cancel_bracket(FloxSimulatedExecutorHandle h, uint64_t bracket_id)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelBracket(bracket_id);
+}
+
+uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle h, uint64_t bracket_id)
+{
+  return static_cast<uint8_t>(
+      static_cast<FloxSimulatedExecutorImpl*>(h)->executor.bracketStatus(bracket_id).state);
+}
+
 void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);

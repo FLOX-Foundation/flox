@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 600 functions, 52 handles, 58 structs, 43 callback typedefs, 3 enums, 66 groups.
+**Surface:** 603 functions, 52 handles, 58 structs, 43 callback typedefs, 3 enums, 66 groups.
 
 ## Opaque handles
 
@@ -1520,6 +1520,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor)`
 - `void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor, uint64_t id, uint8_t side, double price, double quantity, uint8_t order_type, uint32_t symbol)`
 - `void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle executor, uint64_t id, uint8_t side, double price, double quantity, uint8_t order_type, uint32_t symbol, uint8_t tif, uint8_t reduce_only, int64_t expires_at_ns)`
+- `void flox_simulated_executor_submit_bracket(FloxSimulatedExecutorHandle executor, uint64_t bracket_id, uint32_t symbol, uint8_t entry_side, uint8_t entry_type, double entry_price, double quantity, uint8_t tp_side, uint8_t tp_type, double tp_price, uint8_t stop_side, uint8_t stop_type, double stop_trigger_price)`
+- `void flox_simulated_executor_cancel_bracket(FloxSimulatedExecutorHandle executor, uint64_t bracket_id)`
+- `uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor, uint64_t bracket_id)`
 - `void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id)`
 - `void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol)`
 - `void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol, double close_price)`

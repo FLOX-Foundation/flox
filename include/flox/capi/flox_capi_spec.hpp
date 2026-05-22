@@ -616,6 +616,33 @@ extern "C"
                                                double quantity, uint8_t order_type,
                                                uint32_t symbol, uint8_t tif,
                                                uint8_t reduce_only, int64_t expires_at_ns);
+
+  // Native bracket primitive. Submits the entry leg and arms a
+  // take-profit + stop pair on entry fill. The simulator manages
+  // the state machine: first child to fill cancels the other;
+  // cancelling the bracket cancels every still-live leg.
+  // OrderIds for the legs are derived: entry = bracket_id*3+0,
+  // take-profit = bracket_id*3+1, stop = bracket_id*3+2.
+  // entry_type / tp_type / stop_type follow the OrderType enum
+  // (0=LIMIT, 1=MARKET, 2=STOP_MARKET, 3=STOP_LIMIT).
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_submit_bracket(
+      FloxSimulatedExecutorHandle executor, uint64_t bracket_id, uint32_t symbol,
+      uint8_t entry_side, uint8_t entry_type, double entry_price, double quantity,
+      uint8_t tp_side, uint8_t tp_type, double tp_price,
+      uint8_t stop_side, uint8_t stop_type, double stop_trigger_price);
+
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_cancel_bracket(FloxSimulatedExecutorHandle executor,
+                                              uint64_t bracket_id);
+
+  // Read the bracket state. Returns 0=PENDING_ENTRY, 1=ENTRY_FILLED,
+  // 2=TP_FILLED, 3=STOP_FILLED, 4=CANCELED. Unknown bracketId
+  // returns PENDING_ENTRY.
+  FLOX_EXPORT(group = "simulated_executor")
+  uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor,
+                                                uint64_t bracket_id);
+
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   FLOX_EXPORT(group = "simulated_executor")

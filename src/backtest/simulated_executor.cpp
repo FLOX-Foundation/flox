@@ -795,6 +795,122 @@ void SimulatedExecutor::submitOCO(const OCOParams& params)
   submitOrder(params.order2);
 }
 
+namespace
+{
+Order legToOrder(const BracketLeg& leg, OrderId id, SymbolId symbol, Quantity qty)
+{
+  Order o;
+  o.id = id;
+  o.side = leg.side;
+  o.type = leg.type;
+  o.price = leg.price;
+  o.triggerPrice = leg.triggerPrice;
+  o.quantity = qty;
+  o.symbol = symbol;
+  return o;
+}
+}  // namespace
+
+void SimulatedExecutor::submitBracket(const BracketOrder& bracket)
+{
+  const OrderId entryId = bracket.bracketId * 3 + 0;
+  const OrderId tpId = bracket.bracketId * 3 + 1;
+  const OrderId stopId = bracket.bracketId * 3 + 2;
+
+  BracketStatus st;
+  st.bracketId = bracket.bracketId;
+  st.state = BracketState::PENDING_ENTRY;
+  st.entryOrderId = entryId;
+  st.tpOrderId = tpId;
+  st.stopOrderId = stopId;
+  _brackets[bracket.bracketId] = st;
+  _bracketTemplates[bracket.bracketId] = bracket;
+  _legToBracket[entryId] = bracket.bracketId;
+
+  submitOrder(legToOrder(bracket.entry, entryId, bracket.symbol,
+                         bracket.entry.quantity));
+}
+
+void SimulatedExecutor::cancelBracket(uint64_t bracketId)
+{
+  auto it = _brackets.find(bracketId);
+  if (it == _brackets.end())
+  {
+    return;
+  }
+  const auto& st = it->second;
+  // Cancel every leg that is still resting in the book.
+  if (st.state == BracketState::PENDING_ENTRY)
+  {
+    cancelOrder(st.entryOrderId);
+  }
+  if (st.state == BracketState::ENTRY_FILLED)
+  {
+    cancelOrder(st.tpOrderId);
+    cancelOrder(st.stopOrderId);
+  }
+  // ENTRY_FILLED → TP_FILLED/STOP_FILLED transitions already cancel the sibling.
+  it->second.state = BracketState::CANCELED;
+  _legToBracket.erase(st.entryOrderId);
+  _legToBracket.erase(st.tpOrderId);
+  _legToBracket.erase(st.stopOrderId);
+  _bracketTemplates.erase(bracketId);
+}
+
+BracketStatus SimulatedExecutor::bracketStatus(uint64_t bracketId) const
+{
+  auto it = _brackets.find(bracketId);
+  return it == _brackets.end() ? BracketStatus{} : it->second;
+}
+
+void SimulatedExecutor::onBracketFillEvent(const Order& filledOrder)
+{
+  auto legIt = _legToBracket.find(filledOrder.id);
+  if (legIt == _legToBracket.end())
+  {
+    return;
+  }
+  const uint64_t bracketId = legIt->second;
+  auto stIt = _brackets.find(bracketId);
+  auto tplIt = _bracketTemplates.find(bracketId);
+  if (stIt == _brackets.end() || tplIt == _bracketTemplates.end())
+  {
+    return;
+  }
+  auto& st = stIt->second;
+  const BracketOrder& tpl = tplIt->second;
+
+  if (filledOrder.id == st.entryOrderId &&
+      st.state == BracketState::PENDING_ENTRY &&
+      filledOrder.filledQuantity.raw() >= filledOrder.quantity.raw())
+  {
+    // Entry fully filled: submit TP + stop scaled to the actual
+    // entry fill (matches partial-fill semantics in real venues).
+    st.entryFilled = filledOrder.filledQuantity;
+    st.state = BracketState::ENTRY_FILLED;
+    _legToBracket[st.tpOrderId] = bracketId;
+    _legToBracket[st.stopOrderId] = bracketId;
+    submitOrder(legToOrder(tpl.takeProfit, st.tpOrderId, tpl.symbol,
+                           st.entryFilled));
+    submitOrder(legToOrder(tpl.stop, st.stopOrderId, tpl.symbol,
+                           st.entryFilled));
+    return;
+  }
+
+  if (filledOrder.id == st.tpOrderId && st.state == BracketState::ENTRY_FILLED)
+  {
+    st.state = BracketState::TP_FILLED;
+    cancelOrder(st.stopOrderId);
+    return;
+  }
+  if (filledOrder.id == st.stopOrderId && st.state == BracketState::ENTRY_FILLED)
+  {
+    st.state = BracketState::STOP_FILLED;
+    cancelOrder(st.tpOrderId);
+    return;
+  }
+}
+
 void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<BookLevel>& bids,
                                      const std::pmr::vector<BookLevel>& asks)
 {
@@ -1179,6 +1295,7 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
     resolveLateCancelOnFill(order);
     resolveLateReplaceOnFill(order);
     _compositeLogic.onOrderFilled(order);
+    onBracketFillEvent(order);
   }
 }
 

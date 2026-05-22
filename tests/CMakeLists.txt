@@ -106,6 +106,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_stp_modes)
   add_flox_test(test_pro_rata_matching)
   add_flox_test(test_venue_availability)
+  add_flox_test(test_bracket_orders)
 endif()
 
 add_flox_test(test_indicators)
