@@ -8944,6 +8944,7 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
 // Live queue position estimator
 // ============================================================
 
+#include "flox/backtest/funding_schedule.h"
 #include "flox/execution/live_queue_position_estimator.h"
 
 namespace
@@ -8952,7 +8953,104 @@ inline flox::LiveQueuePositionEstimator* toLiveQ(FloxLiveQueuePositionHandle h)
 {
   return static_cast<flox::LiveQueuePositionEstimator*>(h);
 }
+inline flox::FundingSchedule* toFunding(FloxFundingScheduleHandle h)
+{
+  return static_cast<flox::FundingSchedule*>(h);
+}
 }  // namespace
+
+extern "C" FloxFundingScheduleHandle flox_funding_schedule_create(void)
+{
+  return new flox::FundingSchedule();
+}
+extern "C" void flox_funding_schedule_destroy(FloxFundingScheduleHandle h)
+{
+  delete toFunding(h);
+}
+extern "C" void flox_funding_schedule_set_constant(FloxFundingScheduleHandle h,
+                                                   int64_t interval_ns, double rate)
+{
+  *toFunding(h) = flox::FundingSchedule::constant(interval_ns, rate);
+}
+extern "C" void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h,
+                                               const int64_t* timestamps_ns,
+                                               const double* rates, uint32_t n)
+{
+  std::vector<std::pair<int64_t, double>> events;
+  events.reserve(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    events.emplace_back(timestamps_ns ? timestamps_ns[i] : 0, rates ? rates[i] : 0.0);
+  }
+  *toFunding(h) = flox::FundingSchedule::tape(std::move(events));
+}
+extern "C" void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
+                                                   const char* name)
+{
+  if (!h || !name)
+  {
+    return;
+  }
+  std::string n = name;
+  if (n == "binance_um_futures")
+  {
+    *toFunding(h) = flox::FundingSchedule::binance_um_futures();
+  }
+  else if (n == "bybit_linear")
+  {
+    *toFunding(h) = flox::FundingSchedule::bybit_linear();
+  }
+  else if (n == "okx_swap")
+  {
+    *toFunding(h) = flox::FundingSchedule::okx_swap();
+  }
+  else if (n == "bitget_hourly")
+  {
+    *toFunding(h) = flox::FundingSchedule::bitget_hourly();
+  }
+}
+extern "C" void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h,
+                                                        double rate)
+{
+  toFunding(h)->setConstantRate(rate);
+}
+extern "C" void flox_funding_schedule_reset(FloxFundingScheduleHandle h)
+{
+  toFunding(h)->reset();
+}
+extern "C" uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int64_t now_ns,
+                                               const uint32_t* symbols,
+                                               const double* positions,
+                                               const double* mark_prices,
+                                               uint32_t n_symbols, double* out_buf,
+                                               uint32_t max_events)
+{
+  std::vector<flox::SymbolId> syms(n_symbols);
+  std::vector<double> pos(n_symbols);
+  std::vector<double> mark(n_symbols);
+  for (uint32_t i = 0; i < n_symbols; ++i)
+  {
+    syms[i] = symbols ? symbols[i] : 0;
+    pos[i] = positions ? positions[i] : 0.0;
+    mark[i] = mark_prices ? mark_prices[i] : 0.0;
+  }
+  auto events = toFunding(h)->tick(now_ns, syms, pos, mark);
+  if (out_buf == nullptr || max_events == 0)
+  {
+    return static_cast<uint32_t>(events.size());
+  }
+  uint32_t n = std::min<uint32_t>(max_events, static_cast<uint32_t>(events.size()));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    out_buf[i * 6 + 0] = static_cast<double>(events[i].timestampNs);
+    out_buf[i * 6 + 1] = static_cast<double>(events[i].symbol);
+    out_buf[i * 6 + 2] = events[i].rate;
+    out_buf[i * 6 + 3] = events[i].markPrice;
+    out_buf[i * 6 + 4] = events[i].positionSigned;
+    out_buf[i * 6 + 5] = events[i].amount;
+  }
+  return n;
+}
 
 extern "C" FloxLiveQueuePositionHandle flox_live_queue_position_create(void)
 {

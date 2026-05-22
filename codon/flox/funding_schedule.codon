@@ -1,0 +1,89 @@
+# Perpetual funding rate schedule for Codon strategies.
+# Mirrors include/flox/backtest/funding_schedule.h.
+
+from C import flox_funding_schedule_create() -> cobj
+from C import flox_funding_schedule_destroy(cobj)
+from C import flox_funding_schedule_set_constant(cobj, i64, f64)
+from C import flox_funding_schedule_load_profile(cobj, cobj)
+from C import flox_funding_schedule_set_constant_rate(cobj, f64)
+from C import flox_funding_schedule_reset(cobj)
+from C import flox_funding_schedule_tick(cobj, i64, cobj, cobj, cobj, u32, cobj, u32) -> u32
+
+
+def _cstr(s: str) -> cobj:
+    from internal.gc import sys_alloc
+    n = len(s)
+    buf = Ptr[byte](sys_alloc(n + 1))
+    for i in range(n):
+        buf[i] = byte(ord(s[i]))
+    buf[n] = byte(0)
+    return cobj(buf)
+
+
+@dataclass
+class FundingPayment:
+    timestamp_ns: int
+    symbol: int
+    rate: float
+    mark_price: float
+    position_signed: float
+    amount: float
+
+
+class FundingSchedule:
+    """Perpetual funding-rate schedule. Build constant-interval or load
+    a canned profile, then call `tick(now_ns, symbols, positions, marks)`
+    to walk funding events."""
+
+    _h: cobj
+
+    def __init__(self):
+        self._h = flox_funding_schedule_create()
+
+    def close(self):
+        if self._h != cobj():
+            flox_funding_schedule_destroy(self._h)
+            self._h = cobj()
+
+    def set_constant(self, interval_ns: int, rate: float):
+        flox_funding_schedule_set_constant(self._h, i64(interval_ns), f64(rate))
+
+    def load_profile(self, name: str):
+        """name: binance_um_futures | bybit_linear | okx_swap | bitget_hourly."""
+        flox_funding_schedule_load_profile(self._h, _cstr(name))
+
+    def set_constant_rate(self, rate: float):
+        flox_funding_schedule_set_constant_rate(self._h, f64(rate))
+
+    def reset(self):
+        flox_funding_schedule_reset(self._h)
+
+    def tick(self, now_ns: int, symbols: List[int], positions: List[float],
+             mark_prices: List[float]) -> List[FundingPayment]:
+        n = len(symbols)
+        if n == 0:
+            return []
+        sy = [u32(s) for s in symbols]
+        ps = [f64(p) for p in positions]
+        mp = [f64(m) for m in mark_prices]
+        # First call: learn the event count.
+        count = int(flox_funding_schedule_tick(
+            self._h, i64(now_ns), cobj(sy.arr.ptr), cobj(ps.arr.ptr),
+            cobj(mp.arr.ptr), u32(n), cobj(), u32(0)))
+        if count == 0:
+            return []
+        buf = [f64(0.0)] * (count * 6)
+        flox_funding_schedule_tick(
+            self._h, i64(now_ns), cobj(sy.arr.ptr), cobj(ps.arr.ptr),
+            cobj(mp.arr.ptr), u32(n), cobj(buf.arr.ptr), u32(count))
+        out = list[FundingPayment]()
+        for i in range(count):
+            base = i * 6
+            out.append(FundingPayment(
+                timestamp_ns=int(buf[base + 0]),
+                symbol=int(buf[base + 1]),
+                rate=float(buf[base + 2]),
+                mark_price=float(buf[base + 3]),
+                position_signed=float(buf[base + 4]),
+                amount=float(buf[base + 5])))
+        return out

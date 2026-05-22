@@ -17,6 +17,7 @@
 #include "flox/backtest/simulated_executor.h"
 #include "flox/common.h"
 #include "flox/error/flox_error.h"
+#include "funding_schedule_bindings.h"
 #include "graph_bindings.h"
 #include "grid_search_bindings.h"
 #include "heatmap_bindings.h"
@@ -797,6 +798,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindPortfolioRisk(m);
   flox_py::bindOrderGroup(m);
   flox_py::bindRateLimitPolicy(m);
+  flox_py::bindFundingSchedule(m);
   flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);

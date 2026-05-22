@@ -1590,6 +1590,108 @@ static JSValue js_executor_clear_rate_limit_policy(JSContext* ctx, JSValueConst,
       static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
+
+// Funding schedule.
+static JSValue js_funding_schedule_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
+{
+  return createHandleObject(ctx, flox_funding_schedule_create());
+}
+static JSValue js_funding_schedule_destroy(JSContext* ctx, JSValueConst, int,
+                                           JSValueConst* argv)
+{
+  flox_funding_schedule_destroy(
+      static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_funding_schedule_set_constant(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  int64_t interval = toInt64(ctx, argv[1]);
+  double rate = 0.0;
+  JS_ToFloat64(ctx, &rate, argv[2]);
+  flox_funding_schedule_set_constant(h, interval, rate);
+  return JS_UNDEFINED;
+}
+static JSValue js_funding_schedule_load_profile(JSContext* ctx, JSValueConst, int,
+                                                JSValueConst* argv)
+{
+  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  flox_funding_schedule_load_profile(h, name);
+  if (name)
+  {
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
+static JSValue js_funding_schedule_set_constant_rate(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  double rate = 0.0;
+  JS_ToFloat64(ctx, &rate, argv[1]);
+  flox_funding_schedule_set_constant_rate(h, rate);
+  return JS_UNDEFINED;
+}
+static JSValue js_funding_schedule_reset(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  flox_funding_schedule_reset(
+      static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_funding_schedule_tick(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  int64_t nowNs = toInt64(ctx, argv[1]);
+  auto syms = argv[2];
+  auto pos = argv[3];
+  auto mk = argv[4];
+  uint32_t n = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, syms, "length");
+  JS_ToUint32(ctx, &n, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  std::vector<uint32_t> sy(n);
+  std::vector<double> ps(n);
+  std::vector<double> mp(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue v = JS_GetPropertyUint32(ctx, syms, i);
+    sy[i] = toUint32(ctx, v);
+    JS_FreeValue(ctx, v);
+    v = JS_GetPropertyUint32(ctx, pos, i);
+    double d = 0.0;
+    JS_ToFloat64(ctx, &d, v);
+    ps[i] = d;
+    JS_FreeValue(ctx, v);
+    v = JS_GetPropertyUint32(ctx, mk, i);
+    d = 0.0;
+    JS_ToFloat64(ctx, &d, v);
+    mp[i] = d;
+    JS_FreeValue(ctx, v);
+  }
+  uint32_t count =
+      flox_funding_schedule_tick(h, nowNs, sy.data(), ps.data(), mp.data(), n, nullptr, 0);
+  std::vector<double> buf(count * 6, 0.0);
+  flox_funding_schedule_tick(h, nowNs, sy.data(), ps.data(), mp.data(), n, buf.data(),
+                             count);
+  JSValue arr = JS_NewArray(ctx);
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "timestampNs",
+                      JS_NewInt64(ctx, static_cast<int64_t>(buf[i * 6 + 0])));
+    JS_SetPropertyStr(ctx, obj, "symbol", JS_NewFloat64(ctx, buf[i * 6 + 1]));
+    JS_SetPropertyStr(ctx, obj, "rate", JS_NewFloat64(ctx, buf[i * 6 + 2]));
+    JS_SetPropertyStr(ctx, obj, "markPrice", JS_NewFloat64(ctx, buf[i * 6 + 3]));
+    JS_SetPropertyStr(ctx, obj, "positionSigned", JS_NewFloat64(ctx, buf[i * 6 + 4]));
+    JS_SetPropertyStr(ctx, obj, "amount", JS_NewFloat64(ctx, buf[i * 6 + 5]));
+    JS_SetPropertyUint32(ctx, arr, i, obj);
+  }
+  return arr;
+}
 static JSValue js_executor_on_trade_qty(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
@@ -5427,6 +5529,16 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_set_rate_limit_policy, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_clear_rate_limit_policy",
                 js_executor_clear_rate_limit_policy, 1);
+  addGlobalFunc(ctx, "__flox_funding_schedule_create", js_funding_schedule_create, 0);
+  addGlobalFunc(ctx, "__flox_funding_schedule_destroy", js_funding_schedule_destroy, 1);
+  addGlobalFunc(ctx, "__flox_funding_schedule_set_constant",
+                js_funding_schedule_set_constant, 3);
+  addGlobalFunc(ctx, "__flox_funding_schedule_load_profile",
+                js_funding_schedule_load_profile, 2);
+  addGlobalFunc(ctx, "__flox_funding_schedule_set_constant_rate",
+                js_funding_schedule_set_constant_rate, 2);
+  addGlobalFunc(ctx, "__flox_funding_schedule_reset", js_funding_schedule_reset, 1);
+  addGlobalFunc(ctx, "__flox_funding_schedule_tick", js_funding_schedule_tick, 5);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade_qty", js_executor_on_trade_qty, 5);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_best_levels", js_executor_on_best_levels, 6);
 

@@ -3908,6 +3908,60 @@ extern "C"
                                      FloxQuantileRow* rows_out,
                                      uint32_t max_rows);
 
+  // ---- Funding schedule ------------------------------------------
+  //
+  // Models perpetual-futures funding payments. Build via constant
+  // interval + rate or via a recorded tape, then call `tick` to walk
+  // funding events between the last tick and now.
+
+  typedef void* FloxFundingScheduleHandle;
+
+  FLOX_EXPORT(group = "funding_schedule")
+  FloxFundingScheduleHandle flox_funding_schedule_create(void);
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_destroy(FloxFundingScheduleHandle h);
+
+  // Configure as constant-interval with the given fixed rate.
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_set_constant(FloxFundingScheduleHandle h, int64_t interval_ns,
+                                          double rate);
+
+  // Configure as a tape: timestamps_ns and rates arrays must have
+  // length n_events.
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h,
+                                      const int64_t* timestamps_ns, const double* rates,
+                                      uint32_t n_events);
+
+  // Load a canned profile: "binance_um_futures" | "bybit_linear" |
+  // "okx_swap" | "bitget_hourly". Rate defaults to zero; override
+  // with set_constant_rate or use a tape.
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
+                                          const char* profile_name);
+
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h, double rate);
+
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_reset(FloxFundingScheduleHandle h);
+
+  // Walk funding events in (last_tick, now_ns]. The caller supplies
+  // per-symbol positions (signed, long positive) and mark prices.
+  // Output is laid out as 6 doubles per event in `out_buf`:
+  //   [0] timestamp_ns (as f64 — cast to int64 to recover)
+  //   [1] symbol_id    (as f64)
+  //   [2] rate
+  //   [3] mark_price
+  //   [4] position_signed
+  //   [5] amount
+  // First call with out_buf=NULL returns the event count.
+  FLOX_EXPORT(group = "funding_schedule")
+  uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int64_t now_ns,
+                                      const uint32_t* symbols, const double* positions,
+                                      const double* mark_prices, uint32_t n_symbols,
+                                      double* out_buf, uint32_t max_events);
+
   // ---- Live queue position estimator -----------------------------
   //
   // Client-side estimator: feed it order placements, trades, book

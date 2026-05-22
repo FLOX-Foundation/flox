@@ -654,6 +654,31 @@ export class LatencyDistribution {
   medianNs(): number;
 }
 
+export interface FundingPaymentEvent {
+  timestampNs: number;
+  symbol: number;
+  rate: number;
+  markPrice: number;
+  positionSigned: number;
+  amount: number;
+}
+
+export class FundingSchedule {
+  constructor();
+  setConstant(intervalNs: number, rate: number): void;
+  setTape(timestampsNs: number[], rates: number[]): void;
+  /** Canned: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'bitget_hourly'. */
+  loadProfile(name: string): void;
+  setConstantRate(rate: number): void;
+  reset(): void;
+  tick(
+    nowNs: number,
+    symbols: number[],
+    positions: number[],
+    markPrices: number[],
+  ): FundingPaymentEvent[];
+}
+
 export interface RateLimitBucketState {
   windowNs: number;
   used: number;

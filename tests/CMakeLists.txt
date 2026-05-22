@@ -102,6 +102,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_live_queue_position)
   add_flox_test(test_extended_tif)
   add_flox_test(test_hidden_order_attribution)
+  add_flox_test(test_funding_schedule)
 endif()
 
 add_flox_test(test_indicators)

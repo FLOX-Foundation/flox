@@ -873,6 +873,46 @@
           "name": "flox_footprint_total_volume"
         },
         {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_create"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_destroy"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_load_profile"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_reset"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_set_constant"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_set_constant_rate"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_set_tape"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_tick"
+        },
+        {
           "group": "context_queries",
           "kind": "function",
           "name": "flox_get_order_status"
@@ -3182,6 +3222,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxFundingScheduleHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxGridSearchHandle"
         },
         {
@@ -3338,6 +3382,7 @@
         "floxliveengine_disruptor",
         "floxrun",
         "footprint_bar",
+        "funding_schedule",
         "grid_search",
         "heatmap",
         "heikin_ashi",
@@ -4076,6 +4121,38 @@
         {
           "kind": "function",
           "name": "flox_footprint_total_volume"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_load_profile"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_reset"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_set_constant"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_set_constant_rate"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_set_tape"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_tick"
         },
         {
           "kind": "function",
@@ -5899,6 +5976,14 @@
         },
         {
           "kind": "class",
+          "name": "FundingPaymentEvent"
+        },
+        {
+          "kind": "class",
+          "name": "FundingSchedule"
+        },
+        {
+          "kind": "class",
           "name": "GaussianLatency"
         },
         {
@@ -6696,6 +6781,14 @@
         {
           "kind": "class",
           "name": "FootprintBar"
+        },
+        {
+          "kind": "class",
+          "name": "FundingPayment"
+        },
+        {
+          "kind": "class",
+          "name": "FundingSchedule"
         },
         {
           "kind": "class",
@@ -7933,6 +8026,36 @@
       "pybind11": {
         "classes": [
           "FootprintBar"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "funding_schedule": {
+      "capi_functions": [
+        "flox_funding_schedule_create",
+        "flox_funding_schedule_destroy",
+        "flox_funding_schedule_load_profile",
+        "flox_funding_schedule_reset",
+        "flox_funding_schedule_set_constant",
+        "flox_funding_schedule_set_constant_rate",
+        "flox_funding_schedule_set_tape",
+        "flox_funding_schedule_tick"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "FundingSchedule"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "FundingSchedule"
         ],
         "functions": [],
         "status": "required"
