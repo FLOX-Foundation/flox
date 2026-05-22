@@ -1112,6 +1112,29 @@ void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle h, uint64_
   impl->executor.submitOrder(order);
 }
 
+void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle h, uint64_t id,
+                                             uint8_t side, double price, double quantity,
+                                             uint8_t order_type, uint32_t symbol,
+                                             uint8_t tif, uint8_t reduce_only,
+                                             int64_t expires_at_ns)
+{
+  auto* impl = static_cast<FloxSimulatedExecutorImpl*>(h);
+  Order order{};
+  order.id = id;
+  order.side = side == 0 ? Side::BUY : Side::SELL;
+  order.price = Price::fromDouble(price);
+  order.quantity = Quantity::fromDouble(quantity);
+  order.type = static_cast<OrderType>(order_type);
+  order.symbol = symbol;
+  order.timeInForce = static_cast<TimeInForce>(tif);
+  order.flags.reduceOnly = reduce_only ? 1 : 0;
+  if (expires_at_ns > 0)
+  {
+    order.expiresAfter = TimePoint(std::chrono::nanoseconds(expires_at_ns));
+  }
+  impl->executor.submitOrder(order);
+}
+
 void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);

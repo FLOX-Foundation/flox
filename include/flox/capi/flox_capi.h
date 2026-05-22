@@ -1890,6 +1890,10 @@ extern "C"
   void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle executor, uint64_t id,
                                             uint8_t side, double price, double quantity,
                                             uint8_t order_type, uint32_t symbol);
+  void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle executor, uint64_t id,
+                                               uint8_t side, double price, double quantity,
+                                               uint8_t order_type, uint32_t symbol, uint8_t tif,
+                                               uint8_t reduce_only, int64_t expires_at_ns);
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,

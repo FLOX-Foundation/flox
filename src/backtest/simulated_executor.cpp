@@ -249,6 +249,42 @@ void SimulatedExecutor::submitOrder(const Order& order)
     return;
   }
 
+  // reduce_only: order may only reduce existing position. Computed
+  // against the simulator-side net position (updated in executeFill).
+  // If the order would open or grow the position it is rejected; if
+  // it would overshoot zero, the size is truncated to flat.
+  if (accepted.flags.reduceOnly)
+  {
+    const int64_t netRaw = netPositionRaw(accepted.symbol);
+    const int64_t qtyRaw = accepted.quantity.raw();
+    const int64_t signedQtyRaw = (accepted.side == Side::BUY) ? qtyRaw : -qtyRaw;
+
+    // No open position → reduce-only can't reduce anything.
+    if (netRaw == 0 || (netRaw > 0 && signedQtyRaw > 0) ||
+        (netRaw < 0 && signedQtyRaw < 0))
+    {
+      OrderEvent ev;
+      ev.status = OrderEventStatus::REJECTED;
+      ev.order = accepted;
+      ev.exchangeTsNs = _clock.nowNs();
+      ev.timestamps = timestampsFor(accepted.id);
+      ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
+      ev.rejectReason = "reduce_only";
+      if (_callback)
+      {
+        _callback(ev);
+      }
+      return;
+    }
+
+    // Truncate so we don't flip sign.
+    const int64_t maxReductionRaw = (netRaw > 0) ? netRaw : -netRaw;
+    if (qtyRaw > maxReductionRaw)
+    {
+      accepted.quantity = Quantity::fromRaw(maxReductionRaw);
+    }
+  }
+
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
 
   if (_submitAckDist.medianNs() > 0)
@@ -298,6 +334,52 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
     }
   }
 
+  // FOK: must fully fill or reject. Available crossing liquidity is
+  // approximated by the best-level qty (TOB). The simulator does not
+  // walk multi-level liquidity for a single submit, so this is a
+  // best-effort check; deeper-walk FOK is on the spec follow-up list.
+  if (accepted.type == OrderType::LIMIT &&
+      accepted.timeInForce == TimeInForce::FOK)
+  {
+    const MarketState& state = getMarketState(accepted.symbol);
+    int64_t availRaw = 0;
+    bool canCross = false;
+    if (accepted.side == Side::BUY && state.hasAsk &&
+        accepted.price.raw() >= state.bestAskRaw)
+    {
+      availRaw = state.bestAskQtyRaw;
+      canCross = true;
+    }
+    else if (accepted.side == Side::SELL && state.hasBid &&
+             accepted.price.raw() <= state.bestBidRaw)
+    {
+      availRaw = state.bestBidQtyRaw;
+      canCross = true;
+    }
+    if (!canCross || availRaw < accepted.quantity.raw())
+    {
+      OrderEvent ev;
+      ev.status = OrderEventStatus::REJECTED;
+      ev.order = accepted;
+      ev.exchangeTsNs = _clock.nowNs();
+      ev.timestamps = timestampsFor(accepted.id);
+      ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
+      ev.rejectReason = "fok_not_fillable";
+      if (_callback)
+      {
+        _callback(ev);
+      }
+      return;
+    }
+    // Fall through to tryFillOrder which will take the crossing
+    // liquidity at the limit price (or better).
+  }
+
+  // IOC: take whatever crosses now; cancel any remainder. We tag it
+  // so the post-fill path skips resting the order.
+  bool isIOC = (accepted.type == OrderType::LIMIT &&
+                accepted.timeInForce == TimeInForce::IOC);
+
   // Handle conditional orders (stop, TP, trailing)
   if (isConditionalOrder(accepted.type))
   {
@@ -344,6 +426,13 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
     if (!crosses)
     {
+      if (isIOC)
+      {
+        // IOC limit that does not cross — nothing to fill now and
+        // nothing to rest. Cancel immediately.
+        emitEvent(OrderEventStatus::CANCELED, accepted);
+        return;
+      }
       Quantity levelQty = Quantity::fromRaw(0);
       if (accepted.side == Side::BUY && state.hasBid && orderPriceRaw == state.bestBidRaw)
       {
@@ -363,7 +452,17 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
     }
   }
 
-  if (!tryFillOrder(accepted))
+  const bool filled = tryFillOrder(accepted);
+  if (!filled && isIOC)
+  {
+    // IOC: cancel the unfilled remainder instead of resting. The
+    // CANCELED event carries the IOC tag on the order itself; no
+    // free-text reason field on cancel today (rejectReason would
+    // be misleading).
+    emitEvent(OrderEventStatus::CANCELED, accepted);
+    return;
+  }
+  if (!filled)
   {
     _pending_orders.push_back(accepted);
   }
@@ -655,6 +754,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
   finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
+  processExpiredOrders();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
 }
@@ -710,6 +810,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
+  processExpiredOrders();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -728,6 +829,7 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price price)
   finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
+  processExpiredOrders();
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -865,6 +967,10 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
                     .price = price,
                     .quantity = qty,
                     .timestampNs = now});
+
+  // Update simulator-side net position for reduce_only enforcement.
+  const int64_t signedRaw = (order.side == Side::BUY) ? qty.raw() : -qty.raw();
+  _netPositionRaw[order.symbol] += signedRaw;
 
   order.filledQuantity = Quantity::fromRaw(order.filledQuantity.raw() + qty.raw());
 
@@ -1637,6 +1743,38 @@ void SimulatedExecutor::drainQueueFills(SymbolId /*symbol*/)
 {
   // Reserved for future heartbeat-driven draining. Queue fills currently drain
   // inside onTrade(symbol, price, qty, isBuy).
+}
+
+int64_t SimulatedExecutor::netPositionRaw(SymbolId symbol) const
+{
+  auto it = _netPositionRaw.find(symbol);
+  return it == _netPositionRaw.end() ? 0 : it->second;
+}
+
+void SimulatedExecutor::processExpiredOrders()
+{
+  const int64_t nowNs = static_cast<int64_t>(_clock.nowNs());
+  for (auto it = _pending_orders.begin(); it != _pending_orders.end();)
+  {
+    if (it->timeInForce == TimeInForce::GTD && it->expiresAfter.has_value())
+    {
+      // expiresAfter is a TimePoint (nanoseconds since epoch). Compare
+      // against the simulator clock; expired orders are dropped with
+      // EXPIRED, removed from the book, and forgotten from trackers.
+      const int64_t expiresNs = it->expiresAfter->time_since_epoch().count();
+      if (nowNs >= expiresNs)
+      {
+        Order expired = *it;
+        _queueTracker.removeOrder(expired.id);
+        forgetQueuePosition(expired.id);
+        forgetMarketPosition(expired.id);
+        emitEvent(OrderEventStatus::EXPIRED, expired);
+        it = _pending_orders.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
 }
 
 }  // namespace flox

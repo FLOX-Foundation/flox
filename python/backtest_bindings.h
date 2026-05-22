@@ -131,7 +131,9 @@ class PySimulatedExecutor
   PySimulatedExecutor() : _executor(_clock) { _executor.start(); }
 
   void submitOrder(uint64_t id, const std::string& sideStr, double price, double qty,
-                   const std::string& typeStr, uint32_t symbol)
+                   const std::string& typeStr, uint32_t symbol,
+                   const std::string& tifStr = "gtc", bool reduceOnly = false,
+                   int64_t expiresAtNs = 0)
   {
     Order order;
     order.id = id;
@@ -140,7 +142,34 @@ class PySimulatedExecutor
     order.quantity = Quantity::fromDouble(qty);
     order.symbol = symbol;
     order.type = parseOrderType(typeStr);
+    order.timeInForce = parseTimeInForce(tifStr);
+    order.flags.reduceOnly = reduceOnly ? 1 : 0;
+    if (expiresAtNs > 0)
+    {
+      order.expiresAfter = TimePoint(std::chrono::nanoseconds(expiresAtNs));
+    }
     _executor.submitOrder(order);
+  }
+
+  static TimeInForce parseTimeInForce(const std::string& s)
+  {
+    if (s == "ioc")
+    {
+      return TimeInForce::IOC;
+    }
+    if (s == "fok")
+    {
+      return TimeInForce::FOK;
+    }
+    if (s == "gtd")
+    {
+      return TimeInForce::GTD;
+    }
+    if (s == "post_only")
+    {
+      return TimeInForce::POST_ONLY;
+    }
+    return TimeInForce::GTC;
   }
 
   void cancelOrder(uint64_t id) { _executor.cancelOrder(id); }
@@ -461,9 +490,12 @@ inline void bindBacktest(py::module_& m)
   py::class_<PySimulatedExecutor>(m, "SimulatedExecutor")
       .def(py::init<>())
       .def("submit_order", &PySimulatedExecutor::submitOrder,
-           "Submit an order to the simulated exchange",
+           "Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. "
+           "reduce_only: only reduce existing position. expires_at_ns: GTD deadline.",
            py::arg("id"), py::arg("side"), py::arg("price"), py::arg("quantity"),
-           py::arg("type") = "market", py::arg("symbol") = 1)
+           py::arg("type") = "market", py::arg("symbol") = 1,
+           py::arg("tif") = "gtc", py::arg("reduce_only") = false,
+           py::arg("expires_at_ns") = 0)
       .def("cancel_order", &PySimulatedExecutor::cancelOrder, py::arg("order_id"))
       .def("cancel_all", &PySimulatedExecutor::cancelAll, py::arg("symbol"))
       .def("on_bar", &PySimulatedExecutor::onBar,

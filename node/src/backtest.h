@@ -138,6 +138,45 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     {
       t = 1;
     }
+    // Optional opts object as the 7th argument: { tif, reduceOnly, expiresAtNs }.
+    if (info.Length() > 6 && info[6].IsObject())
+    {
+      auto opts = info[6].As<Napi::Object>();
+      uint8_t tif = 0;
+      bool reduceOnly = false;
+      int64_t expiresAtNs = 0;
+      if (opts.Has("tif"))
+      {
+        std::string tifStr = opts.Get("tif").As<Napi::String>().Utf8Value();
+        if (tifStr == "ioc")
+        {
+          tif = 1;
+        }
+        else if (tifStr == "fok")
+        {
+          tif = 2;
+        }
+        else if (tifStr == "gtd")
+        {
+          tif = 3;
+        }
+        else if (tifStr == "post_only")
+        {
+          tif = 4;
+        }
+      }
+      if (opts.Has("reduceOnly"))
+      {
+        reduceOnly = opts.Get("reduceOnly").As<Napi::Boolean>().Value();
+      }
+      if (opts.Has("expiresAtNs"))
+      {
+        expiresAtNs = opts.Get("expiresAtNs").As<Napi::Number>().Int64Value();
+      }
+      flox_simulated_executor_submit_order_ex(_h, id, s, price, qty, t, sym, tif,
+                                              reduceOnly ? 1 : 0, expiresAtNs);
+      return;
+    }
     flox_simulated_executor_submit_order(_h, id, s, price, qty, t, sym);
   }
   void CancelOrder(const Napi::CallbackInfo& info) { flox_simulated_executor_cancel_order(_h, info[0].As<Napi::Number>().Int64Value()); }

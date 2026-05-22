@@ -196,6 +196,17 @@ class SimulatedExecutor : public IOrderExecutor
   Order* findPendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
 
+  // GTD: expire any pending order whose expiresAfter has passed. Called
+  // alongside the ack finalizers from onBookUpdate / onTrade so the
+  // expiry fires deterministically at the next event boundary.
+  void processExpiredOrders();
+
+  // reduce_only enforcement: simulator-side net position per symbol,
+  // updated in executeFill. A reduce-only submit that would open or
+  // grow the position is rejected; one that overshoots is truncated.
+  std::unordered_map<SymbolId, int64_t> _netPositionRaw;
+  int64_t netPositionRaw(SymbolId symbol) const;
+
   IClock& _clock;
   OrderEventCallback _callback;
 
