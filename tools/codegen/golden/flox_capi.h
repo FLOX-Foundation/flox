@@ -1485,6 +1485,11 @@ extern "C"
                                                 int64_t cumulative_fill_raw, int64_t ts_ns);
   void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h, uint32_t symbol,
                                          int64_t price_raw, int64_t qty_raw, int64_t ts_ns);
+  void flox_live_queue_position_on_trade_with_flag(FloxLiveQueuePositionHandle h, uint32_t symbol,
+                                                   int64_t price_raw, int64_t qty_raw, int64_t ts_ns,
+                                                   uint8_t is_hidden);
+  void flox_live_queue_position_set_hidden_order_policy(FloxLiveQueuePositionHandle h,
+                                                        uint8_t policy);
   void flox_live_queue_position_on_level_update(FloxLiveQueuePositionHandle h, uint32_t symbol,
                                                 uint8_t side, int64_t price_raw, int64_t new_qty_raw,
                                                 int64_t ts_ns);

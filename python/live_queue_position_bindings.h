@@ -62,21 +62,33 @@ inline void bindLiveQueuePositionEstimator(py::module_& m)
           },
           py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("ts_ns") = 0)
       .def(
-          "on_level_update",
-          [](flox::LiveQueuePositionEstimator& e, uint32_t symbol, uint8_t side,
-             double price, double new_qty, int64_t ts_ns)
+          "on_trade_with_flag",
+          [](flox::LiveQueuePositionEstimator& e, uint32_t symbol, double price,
+             double qty, int64_t ts_ns, bool is_hidden)
           {
-            e.onLevelUpdate(symbol, static_cast<flox::Side>(side),
-                            flox::Price::fromDouble(price),
-                            flox::Quantity::fromDouble(new_qty), ts_ns);
+            e.onTradeWithFlag(symbol, flox::Price::fromDouble(price),
+                              flox::Quantity::fromDouble(qty), ts_ns, is_hidden);
           },
-          py::arg("symbol"), py::arg("side"), py::arg("price"), py::arg("new_qty"),
-          py::arg("ts_ns") = 0)
-      .def(
-          "snapshot",
-          [](const flox::LiveQueuePositionEstimator& e, uint64_t order_id,
-             int64_t now_ns) -> py::object
-          {
+          py::arg("symbol"), py::arg("price"), py::arg("qty"), py::arg("ts_ns") = 0,
+          py::arg("is_hidden") = false)
+      .def("set_hidden_order_policy", [](flox::LiveQueuePositionEstimator& e, const std::string& policy)
+           {
+             flox::HiddenOrderPolicy p = flox::HiddenOrderPolicy::Ignore;
+             if (policy == "trust_trade_flag")
+             {
+               p = flox::HiddenOrderPolicy::TrustTradeFlag;
+             }
+             else if (policy == "infer_if_trade_exceeds_visible")
+             {
+               p = flox::HiddenOrderPolicy::InferIfTradeExceedsVisible;
+             }
+             e.setHiddenOrderPolicy(p); }, py::arg("policy"))
+      .def("on_level_update", [](flox::LiveQueuePositionEstimator& e, uint32_t symbol, uint8_t side, double price, double new_qty, int64_t ts_ns)
+           { e.onLevelUpdate(symbol, static_cast<flox::Side>(side),
+                             flox::Price::fromDouble(price),
+                             flox::Quantity::fromDouble(new_qty), ts_ns); }, py::arg("symbol"), py::arg("side"), py::arg("price"), py::arg("new_qty"), py::arg("ts_ns") = 0)
+      .def("snapshot", [](const flox::LiveQueuePositionEstimator& e, uint64_t order_id, int64_t now_ns) -> py::object
+           {
             auto s = e.snapshot(order_id, now_ns);
             if (!s.has_value())
             {
@@ -88,9 +100,8 @@ inline void bindLiveQueuePositionEstimator(py::module_& m)
             d["total"] = s->total.toDouble();
             d["confidence"] = s->confidence;
             d["last_update_ns"] = s->lastUpdateNs;
-            return d;
-          },
-          py::arg("order_id"), py::arg("now_ns") = 0)
+            d["hidden_volume_seen"] = s->hiddenVolumeSeen.toDouble();
+            return d; }, py::arg("order_id"), py::arg("now_ns") = 0)
       .def("tracked_order_count", &flox::LiveQueuePositionEstimator::trackedOrderCount);
 }
 

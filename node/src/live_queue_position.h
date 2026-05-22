@@ -35,6 +35,10 @@ class LiveQueuePositionEstimatorWrap
          InstanceMethod("onOrderFilled",
                         &LiveQueuePositionEstimatorWrap::OnOrderFilled),
          InstanceMethod("onTrade", &LiveQueuePositionEstimatorWrap::OnTrade),
+         InstanceMethod("onTradeWithFlag",
+                        &LiveQueuePositionEstimatorWrap::OnTradeWithFlag),
+         InstanceMethod("setHiddenOrderPolicy",
+                        &LiveQueuePositionEstimatorWrap::SetHiddenOrderPolicy),
          InstanceMethod("onLevelUpdate",
                         &LiveQueuePositionEstimatorWrap::OnLevelUpdate),
          InstanceMethod("snapshot", &LiveQueuePositionEstimatorWrap::Snapshot),
@@ -116,6 +120,33 @@ class LiveQueuePositionEstimatorWrap
                                       flox_quantity_from_double(qty), ts_ns);
   }
 
+  void OnTradeWithFlag(const Napi::CallbackInfo& info)
+  {
+    uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
+    double price = info[1].As<Napi::Number>().DoubleValue();
+    double qty = info[2].As<Napi::Number>().DoubleValue();
+    int64_t ts_ns = info[3].As<Napi::Number>().Int64Value();
+    bool is_hidden = info[4].As<Napi::Boolean>().Value();
+    flox_live_queue_position_on_trade_with_flag(
+        _h, symbol, flox_price_from_double(price), flox_quantity_from_double(qty),
+        ts_ns, is_hidden ? 1 : 0);
+  }
+
+  void SetHiddenOrderPolicy(const Napi::CallbackInfo& info)
+  {
+    std::string s = info[0].As<Napi::String>().Utf8Value();
+    uint8_t p = 0;
+    if (s == "trust_trade_flag")
+    {
+      p = 1;
+    }
+    else if (s == "infer_if_trade_exceeds_visible")
+    {
+      p = 2;
+    }
+    flox_live_queue_position_set_hidden_order_policy(_h, p);
+  }
+
   void OnLevelUpdate(const Napi::CallbackInfo& info)
   {
     uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
@@ -134,7 +165,7 @@ class LiveQueuePositionEstimatorWrap
     uint64_t order_id =
         static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
     int64_t now_ns = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
-    int64_t slots[5] = {0};
+    int64_t slots[6] = {0};
     uint8_t ok = flox_live_queue_position_snapshot(_h, order_id, now_ns, slots);
     if (!ok)
     {
@@ -150,6 +181,8 @@ class LiveQueuePositionEstimatorWrap
     out.Set("lastUpdateNs",
             Napi::Number::New(env, static_cast<double>(slots[3])));
     out.Set("confidence", Napi::Number::New(env, conf));
+    out.Set("hiddenVolumeSeen",
+            Napi::Number::New(env, flox_quantity_to_double(slots[5])));
     return out;
   }
 

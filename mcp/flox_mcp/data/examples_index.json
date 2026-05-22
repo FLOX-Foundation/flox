@@ -93,6 +93,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_hidden_order_attribution.py",
+      "sha256": "0b0888c62f7f31edfd9baeeaee3c79ec313f5b2e7f7d44337cbcd6fdbe62eccf",
+      "size_bytes": 1534,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_latency_distribution.py",
       "sha256": "e1f48b681bb33b6c491e7dd3af62eda8bba3de6ee56a649aa2ca85a4e2322246",
       "size_bytes": 1001,

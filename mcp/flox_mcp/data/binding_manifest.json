@@ -1400,7 +1400,17 @@
         {
           "group": "live_queue_position",
           "kind": "function",
+          "name": "flox_live_queue_position_on_trade_with_flag"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
           "name": "flox_live_queue_position_set_confidence_half_life_ns"
+        },
+        {
+          "group": "live_queue_position",
+          "kind": "function",
+          "name": "flox_live_queue_position_set_hidden_order_policy"
         },
         {
           "group": "live_queue_position",
@@ -4489,7 +4499,15 @@
         },
         {
           "kind": "function",
+          "name": "flox_live_queue_position_on_trade_with_flag"
+        },
+        {
+          "kind": "function",
           "name": "flox_live_queue_position_set_confidence_half_life_ns"
+        },
+        {
+          "kind": "function",
+          "name": "flox_live_queue_position_set_hidden_order_policy"
         },
         {
           "kind": "function",
@@ -8180,7 +8198,9 @@
         "flox_live_queue_position_on_order_filled",
         "flox_live_queue_position_on_order_placed",
         "flox_live_queue_position_on_trade",
+        "flox_live_queue_position_on_trade_with_flag",
         "flox_live_queue_position_set_confidence_half_life_ns",
+        "flox_live_queue_position_set_hidden_order_policy",
         "flox_live_queue_position_set_shrink_factor",
         "flox_live_queue_position_snapshot",
         "flox_live_queue_position_tracked_count"

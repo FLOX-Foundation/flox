@@ -2073,17 +2073,26 @@ export interface LiveQueueSnapshot {
   total: number;
   confidence: number;
   lastUpdateNs: number;
+  hiddenVolumeSeen: number;
 }
+
+export type HiddenOrderPolicyName =
+  | 'ignore'
+  | 'trust_trade_flag'
+  | 'infer_if_trade_exceeds_visible';
 
 export class LiveQueuePositionEstimator {
   constructor();
   setConfidenceHalfLifeNs(halfLifeNs: number): void;
   setShrinkAttributionFactor(factor: number): void;
+  setHiddenOrderPolicy(policy: HiddenOrderPolicyName): void;
   onOrderPlaced(symbol: number, side: 0 | 1, price: number, orderId: number,
                 orderQty: number, levelQtyNow: number, tsNs?: number): void;
   onOrderCancelled(orderId: number, tsNs?: number): void;
   onOrderFilled(orderId: number, cumulativeFill: number, tsNs?: number): void;
   onTrade(symbol: number, price: number, qty: number, tsNs?: number): void;
+  onTradeWithFlag(symbol: number, price: number, qty: number, tsNs: number,
+                  isHidden: boolean): void;
   onLevelUpdate(symbol: number, side: 0 | 1, price: number, newQty: number,
                 tsNs?: number): void;
   snapshot(orderId: number, nowNs?: number): LiveQueueSnapshot | null;

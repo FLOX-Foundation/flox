@@ -2753,6 +2753,32 @@ static JSValue js_live_queue_position_on_trade(JSContext* ctx, JSValueConst, int
   return JS_UNDEFINED;
 }
 
+static JSValue js_live_queue_position_on_trade_with_flag(JSContext* ctx, JSValueConst,
+                                                         int, JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint32_t symbol = toUint32(ctx, argv[1]);
+  double price = 0.0, qty = 0.0;
+  JS_ToFloat64(ctx, &price, argv[2]);
+  JS_ToFloat64(ctx, &qty, argv[3]);
+  int64_t ts_ns = toInt64(ctx, argv[4]);
+  uint8_t is_hidden = static_cast<uint8_t>(toUint32(ctx, argv[5]));
+  flox_live_queue_position_on_trade_with_flag(
+      h, symbol, flox_price_from_double(price), flox_quantity_from_double(qty), ts_ns,
+      is_hidden);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_live_queue_position_set_hidden_order_policy(JSContext* ctx,
+                                                              JSValueConst, int,
+                                                              JSValueConst* argv)
+{
+  auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
+  uint8_t policy = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  flox_live_queue_position_set_hidden_order_policy(h, policy);
+  return JS_UNDEFINED;
+}
+
 static JSValue js_live_queue_position_on_level_update(JSContext* ctx, JSValueConst, int,
                                                       JSValueConst* argv)
 {
@@ -2775,7 +2801,7 @@ static JSValue js_live_queue_position_snapshot(JSContext* ctx, JSValueConst, int
   auto h = static_cast<FloxLiveQueuePositionHandle>(getHandle(ctx, argv[0]));
   uint64_t order_id = static_cast<uint64_t>(toInt64(ctx, argv[1]));
   int64_t now_ns = toInt64(ctx, argv[2]);
-  int64_t slots[5] = {0};
+  int64_t slots[6] = {0};
   uint8_t ok = flox_live_queue_position_snapshot(h, order_id, now_ns, slots);
   if (!ok)
   {
@@ -2791,6 +2817,8 @@ static JSValue js_live_queue_position_snapshot(JSContext* ctx, JSValueConst, int
                     JS_NewFloat64(ctx, flox_quantity_to_double(slots[2])));
   JS_SetPropertyStr(ctx, obj, "lastUpdateNs", JS_NewInt64(ctx, slots[3]));
   JS_SetPropertyStr(ctx, obj, "confidence", JS_NewFloat64(ctx, conf));
+  JS_SetPropertyStr(ctx, obj, "hiddenVolumeSeen",
+                    JS_NewFloat64(ctx, flox_quantity_to_double(slots[5])));
   return obj;
 }
 
@@ -5497,6 +5525,10 @@ void registerFloxBindings(JSContext* ctx)
                 js_live_queue_position_on_order_filled, 4);
   addGlobalFunc(ctx, "__flox_live_queue_position_on_trade",
                 js_live_queue_position_on_trade, 5);
+  addGlobalFunc(ctx, "__flox_live_queue_position_on_trade_with_flag",
+                js_live_queue_position_on_trade_with_flag, 6);
+  addGlobalFunc(ctx, "__flox_live_queue_position_set_hidden_order_policy",
+                js_live_queue_position_set_hidden_order_policy, 2);
   addGlobalFunc(ctx, "__flox_live_queue_position_on_level_update",
                 js_live_queue_position_on_level_update, 6);
   addGlobalFunc(ctx, "__flox_live_queue_position_snapshot",

@@ -8855,7 +8855,9 @@ Members:
 - `on_order_filled(self, order_id: typing.SupportsInt | typing.SupportsIndex, cumulative_fill: typing.SupportsFloat | typing.SupportsIndex, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `on_order_placed(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, order_id: typing.SupportsInt | typing.SupportsIndex, order_qty: typing.SupportsFloat | typing.SupportsIndex, level_qty_now: typing.SupportsFloat | typing.SupportsIndex, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `on_trade(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `on_trade_with_flag(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0, is_hidden: bool = False) -> None`
 - `set_confidence_half_life_ns(self, half_life_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `set_hidden_order_policy(self, policy: str) -> None`
 - `set_shrink_attribution_factor(self, factor: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `snapshot(self, order_id: typing.SupportsInt | typing.SupportsIndex, now_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> typing.Any`
 - `tracked_order_count(self) -> int`
