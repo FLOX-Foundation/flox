@@ -644,6 +644,16 @@ export class BacktestRunner {
   trades(): BacktestTrades;
 }
 
+export class LatencyDistribution {
+  constructor();
+  setConstant(ns: number): void;
+  setUniform(loNs: number, hiNs: number): void;
+  setLognormal(medianNs: number, sigma: number): void;
+  setEmpirical(samplesNs: number[]): void;
+  setBurstCorrelation(rho: number): void;
+  medianNs(): number;
+}
+
 export interface RateLimitBucketState {
   windowNs: number;
   used: number;
@@ -698,6 +708,10 @@ export class SimulatedExecutor {
   setCancelAckLatency(latencyNs: number, jitterNs?: number): void;
   /** Configure replace ack latency. */
   setReplaceAckLatency(latencyNs: number, jitterNs?: number): void;
+  /** Distribution-based ack latency setters. Distribution is copied. */
+  setSubmitAckLatencyDistribution(dist: LatencyDistribution): void;
+  setCancelAckLatencyDistribution(dist: LatencyDistribution): void;
+  setReplaceAckLatencyDistribution(dist: LatencyDistribution): void;
   /** Apply a named latency profile. Names: "binance_um_futures",
    *  "bybit_linear", "okx_swap", "deribit", "idealized", "adversarial". */
   applyLatencyProfile(name: string): void;
