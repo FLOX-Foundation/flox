@@ -43,6 +43,23 @@ struct LeveragedPosition
   double equity{0.0};  // margin posted backing this position
 };
 
+// ADL ranking strategy. Real venues compute the closeout queue
+// differently; pick the one that matches the venue being modeled.
+//   PnlRatio    — `upnl / equity`. Cheap, leverage-agnostic. Default.
+//   Binance     — `upnl × leverage` where `leverage = notional / equity`.
+//                 High-leverage profitable positions get ADL'd ahead of
+//                 low-leverage positions with the same PnL.
+//   Bybit       — alias for Binance (same formula).
+//   PositionSize — `|quantity|`. Biggest profitable position first,
+//                 regardless of leverage or PnL ratio.
+enum class AdlRanking : uint8_t
+{
+  PnlRatio = 0,
+  Binance = 1,
+  Bybit = 2,
+  PositionSize = 3,
+};
+
 // Outcome of the engine's check at a given (mark, tick) snapshot.
 struct LiquidationOutcome
 {
@@ -97,6 +114,16 @@ class LiquidationEngine
   // absorbed.
   void setAdlEnabled(bool enabled) noexcept { _adlEnabled = enabled; }
   bool adlEnabled() const noexcept { return _adlEnabled; }
+
+  // ADL ranking strategy: how the engine orders the closeout queue
+  // when the insurance fund is exhausted. See `AdlRanking` for the
+  // formulas. Default is `PnlRatio`.
+  void setAdlRanking(AdlRanking ranking) noexcept { _adlRanking = ranking; }
+  AdlRanking adlRanking() const noexcept { return _adlRanking; }
+  // String form for codegen / bindings. Accepts "pnl_ratio", "binance",
+  // "bybit", "position_size" (case-insensitive). Unknown values are
+  // ignored and the prior ranking remains in effect.
+  void setAdlRankingByName(const std::string& name);
 
   // Liquidation slippage in basis points applied to the bankruptcy
   // close when no executor is attached. Default 25 bps.
@@ -163,6 +190,7 @@ class LiquidationEngine
   std::vector<LeveragedPosition> _positions;
   double _insuranceFund{0.0};
   bool _adlEnabled{true};
+  AdlRanking _adlRanking{AdlRanking::PnlRatio};
   double _slippageBps{25.0};
 
   uint64_t _statLiquidations{0};

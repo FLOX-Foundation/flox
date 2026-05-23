@@ -6097,6 +6097,17 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_adl_ranking",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_close_position",
       "params": [
         {
@@ -6239,6 +6250,21 @@
         },
         {
           "name": "enabled",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_adl_ranking",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "ranking",
           "type": "uint8_t"
         }
       ],

@@ -378,6 +378,8 @@ from C import flox_liquidation_engine_add_tier(cobj, float, float)
 from C import flox_liquidation_engine_set_insurance_fund_capital(cobj, float)
 from C import flox_liquidation_engine_insurance_fund_balance(cobj) -> float
 from C import flox_liquidation_engine_set_adl_enabled(cobj, u8)
+from C import flox_liquidation_engine_set_adl_ranking(cobj, u8)
+from C import flox_liquidation_engine_adl_ranking(cobj) -> u8
 from C import flox_liquidation_engine_set_liquidation_slippage_bps(cobj, float)
 from C import flox_liquidation_engine_open_position(cobj, u64, u32, float, float, float)
 from C import flox_liquidation_engine_close_position(cobj, u64, u32)

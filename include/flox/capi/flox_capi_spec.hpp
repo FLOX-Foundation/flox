@@ -4190,6 +4190,11 @@ extern "C"
   double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h);
   FLOX_EXPORT(group = "liquidation_engine")
   void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled);
+  // ADL ranking strategy: 0=pnl_ratio, 1=binance, 2=bybit, 3=position_size.
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHandle h, uint8_t ranking);
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint8_t flox_liquidation_engine_adl_ranking(FloxLiquidationEngineHandle h);
   FLOX_EXPORT(group = "liquidation_engine")
   void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h,
                                                             double bps);

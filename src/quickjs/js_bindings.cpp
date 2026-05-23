@@ -1768,6 +1768,46 @@ static JSValue js_liquidation_engine_set_adl_enabled(JSContext* ctx, JSValueCons
       static_cast<uint8_t>(toUint32(ctx, argv[1])));
   return JS_UNDEFINED;
 }
+static JSValue js_liquidation_engine_set_adl_ranking(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  uint8_t code = 0;
+  if (JS_IsString(argv[1]))
+  {
+    const char* s = JS_ToCString(ctx, argv[1]);
+    if (s != nullptr)
+    {
+      std::string name(s);
+      JS_FreeCString(ctx, s);
+      if (name == "binance")
+      {
+        code = 1;
+      }
+      else if (name == "bybit")
+      {
+        code = 2;
+      }
+      else if (name == "position_size")
+      {
+        code = 3;
+      }
+    }
+  }
+  else
+  {
+    code = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  }
+  flox_liquidation_engine_set_adl_ranking(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), code);
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_adl_ranking(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  const uint8_t code = flox_liquidation_engine_adl_ranking(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  return JS_NewUint32(ctx, code);
+}
 static JSValue js_liquidation_engine_set_liquidation_slippage_bps(
     JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
@@ -5862,6 +5902,10 @@ void registerFloxBindings(JSContext* ctx)
                 js_liquidation_engine_insurance_fund_balance, 1);
   addGlobalFunc(ctx, "__flox_liquidation_engine_set_adl_enabled",
                 js_liquidation_engine_set_adl_enabled, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_adl_ranking",
+                js_liquidation_engine_set_adl_ranking, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_adl_ranking",
+                js_liquidation_engine_adl_ranking, 1);
   addGlobalFunc(ctx, "__flox_liquidation_engine_set_liquidation_slippage_bps",
                 js_liquidation_engine_set_liquidation_slippage_bps, 2);
   addGlobalFunc(ctx, "__flox_liquidation_engine_open_position",

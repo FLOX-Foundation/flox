@@ -22,6 +22,12 @@ namespace flox_py
 
 inline void bindLiquidationEngine(py::module_& m)
 {
+  py::enum_<flox::AdlRanking>(m, "AdlRanking")
+      .value("PnlRatio", flox::AdlRanking::PnlRatio)
+      .value("Binance", flox::AdlRanking::Binance)
+      .value("Bybit", flox::AdlRanking::Bybit)
+      .value("PositionSize", flox::AdlRanking::PositionSize)
+      .export_values();
   py::class_<flox::LiquidationEngine>(m, "LiquidationEngine")
       .def(py::init<>())
       .def("add_tier", [](flox::LiquidationEngine& self, double min_notional, double mm_fraction)
@@ -32,6 +38,20 @@ inline void bindLiquidationEngine(py::module_& m)
       .def("insurance_fund_balance", &flox::LiquidationEngine::insuranceFundBalance)
       .def("set_adl_enabled", &flox::LiquidationEngine::setAdlEnabled, py::arg("enabled"))
       .def("adl_enabled", &flox::LiquidationEngine::adlEnabled)
+      .def("set_adl_ranking", [](flox::LiquidationEngine& self, py::object ranking)
+           {
+             if (py::isinstance<py::str>(ranking))
+             {
+               self.setAdlRankingByName(ranking.cast<std::string>());
+             }
+             else
+             {
+               self.setAdlRanking(ranking.cast<flox::AdlRanking>());
+             } },
+           "Set the ADL queue ordering. Accepts an AdlRanking enum or a "
+           "string name (pnl_ratio, binance, bybit, position_size).",
+           py::arg("ranking"))
+      .def("adl_ranking", &flox::LiquidationEngine::adlRanking)
       .def("set_liquidation_slippage_bps", &flox::LiquidationEngine::setLiquidationSlippageBps, py::arg("bps"))
       .def("open_position", [](flox::LiquidationEngine& self, uint64_t account_id, uint32_t symbol, double quantity, double entry_price, double equity)
            { self.openPosition(flox::LeveragedPosition{

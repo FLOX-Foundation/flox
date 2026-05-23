@@ -9369,6 +9369,33 @@ extern "C" void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHan
   toLiqEngine(h)->setAdlEnabled(enabled != 0);
 }
 
+extern "C" void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHandle h,
+                                                        uint8_t ranking)
+{
+  AdlRanking r = AdlRanking::PnlRatio;
+  switch (ranking)
+  {
+    case 1:
+      r = AdlRanking::Binance;
+      break;
+    case 2:
+      r = AdlRanking::Bybit;
+      break;
+    case 3:
+      r = AdlRanking::PositionSize;
+      break;
+    default:
+      r = AdlRanking::PnlRatio;
+      break;
+  }
+  toLiqEngine(h)->setAdlRanking(r);
+}
+
+extern "C" uint8_t flox_liquidation_engine_adl_ranking(FloxLiquidationEngineHandle h)
+{
+  return static_cast<uint8_t>(toLiqEngine(h)->adlRanking());
+}
+
 extern "C" void flox_liquidation_engine_set_liquidation_slippage_bps(
     FloxLiquidationEngineHandle h, double bps)
 {
