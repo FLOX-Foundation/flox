@@ -1599,6 +1599,27 @@ static JSValue js_rate_limit_add_bucket(JSContext* ctx, JSValueConst, int,
   }
   return JS_UNDEFINED;
 }
+static JSValue js_rate_limit_add_bucket_family(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  // (handle, name, window_ns, capacity, submit_w, cancel_w, replace_w, family, query_w)
+  auto h = static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
+  const char* name = JS_ToCString(ctx, argv[1]);
+  int64_t window = toInt64(ctx, argv[2]);
+  uint32_t cap = toUint32(ctx, argv[3]);
+  uint32_t sw = toUint32(ctx, argv[4]);
+  uint32_t cw = toUint32(ctx, argv[5]);
+  uint32_t rw = toUint32(ctx, argv[6]);
+  uint8_t family = static_cast<uint8_t>(toUint32(ctx, argv[7]));
+  uint32_t qw = toUint32(ctx, argv[8]);
+  flox_rate_limit_policy_add_bucket_family(h, name ? name : "bucket", window, cap,
+                                           sw, cw, rw, family, qw);
+  if (name)
+  {
+    JS_FreeCString(ctx, name);
+  }
+  return JS_UNDEFINED;
+}
 static JSValue js_rate_limit_set_ban(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_rate_limit_policy_set_ban(
@@ -5953,6 +5974,8 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_set_replace_ack_dist, 2);
   addGlobalFunc(ctx, "__flox_rate_limit_policy_create", js_rate_limit_create, 0);
   addGlobalFunc(ctx, "__flox_rate_limit_policy_destroy", js_rate_limit_destroy, 1);
+  addGlobalFunc(ctx, "__flox_rate_limit_policy_add_bucket_family",
+                js_rate_limit_add_bucket_family, 9);
   addGlobalFunc(ctx, "__flox_rate_limit_policy_add_bucket",
                 js_rate_limit_add_bucket, 7);
   addGlobalFunc(ctx, "__flox_rate_limit_policy_set_ban", js_rate_limit_set_ban, 3);

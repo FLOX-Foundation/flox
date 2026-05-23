@@ -2852,6 +2852,28 @@ extern "C" void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h,
                             capacity, submit_w, cancel_w, replace_w);
 }
 
+extern "C" void flox_rate_limit_policy_add_bucket_family(
+    FloxRateLimitPolicyHandle h, const char* name, int64_t window_ns,
+    uint32_t capacity, uint32_t submit_w, uint32_t cancel_w, uint32_t replace_w,
+    uint8_t family, uint32_t query_w)
+{
+  RateLimitPolicy::EndpointFamily f = RateLimitPolicy::EndpointFamily::Trading;
+  switch (family)
+  {
+    case 1:
+      f = RateLimitPolicy::EndpointFamily::MarketData;
+      break;
+    case 2:
+      f = RateLimitPolicy::EndpointFamily::Account;
+      break;
+    default:
+      f = RateLimitPolicy::EndpointFamily::Trading;
+      break;
+  }
+  toRateLimit(h)->addBucket(name ? std::string(name) : std::string("bucket"), window_ns,
+                            capacity, submit_w, cancel_w, replace_w, f, query_w);
+}
+
 extern "C" void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
                                                uint32_t after_consecutive_rejects,
                                                int64_t ban_duration_ns)

@@ -23,6 +23,7 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
     return DefineClass(
         env, "RateLimitPolicy",
         {InstanceMethod("addBucket", &RateLimitPolicyWrap::AddBucket),
+         InstanceMethod("addFamilyBucket", &RateLimitPolicyWrap::AddFamilyBucket),
          InstanceMethod("setBan", &RateLimitPolicyWrap::SetBan),
          InstanceMethod("loadProfile", &RateLimitPolicyWrap::LoadProfile),
          InstanceMethod("banUntilNs", &RateLimitPolicyWrap::BanUntilNs),
@@ -55,6 +56,33 @@ class RateLimitPolicyWrap : public Napi::ObjectWrap<RateLimitPolicyWrap>
     uint32_t cw = info.Length() > 4 ? info[4].As<Napi::Number>().Uint32Value() : 1;
     uint32_t rw = info.Length() > 5 ? info[5].As<Napi::Number>().Uint32Value() : 2;
     flox_rate_limit_policy_add_bucket(_h, name.c_str(), window_ns, capacity, sw, cw, rw);
+  }
+  void AddFamilyBucket(const Napi::CallbackInfo& info)
+  {
+    // (family, name, windowNs, capacity, queryWeight=1)
+    uint8_t family = 0;
+    if (info[0].IsString())
+    {
+      const std::string f = info[0].As<Napi::String>().Utf8Value();
+      if (f == "market_data")
+      {
+        family = 1;
+      }
+      else if (f == "account")
+      {
+        family = 2;
+      }
+    }
+    else if (info[0].IsNumber())
+    {
+      family = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+    }
+    std::string name = info[1].As<Napi::String>().Utf8Value();
+    int64_t window_ns = info[2].As<Napi::Number>().Int64Value();
+    uint32_t capacity = info[3].As<Napi::Number>().Uint32Value();
+    uint32_t qw = info.Length() > 4 ? info[4].As<Napi::Number>().Uint32Value() : 1;
+    flox_rate_limit_policy_add_bucket_family(_h, name.c_str(), window_ns, capacity,
+                                             1, 1, 2, family, qw);
   }
   void SetBan(const Napi::CallbackInfo& info)
   {

@@ -129,7 +129,8 @@ TEST(RateLimitPolicy, BucketStatesReportUsage)
 TEST(RateLimitPolicy, CannedProfileBinanceUmFutures)
 {
   auto p = RateLimitPolicy::binance_um_futures();
-  EXPECT_EQ(p.bucketCount(), 2u);
+  // 2 trading + 1 market_data + 1 account.
+  EXPECT_EQ(p.bucketCount(), 4u);
   // Consume 50 orders rapidly — exactly the 10s cap.
   for (int i = 0; i < 50; ++i)
   {
@@ -153,4 +154,88 @@ TEST(RateLimitPolicy, AtomicityAcrossBucketsOnReject)
   ASSERT_EQ(states.size(), 2u);
   EXPECT_EQ(states[0].used, 1u);  // A: only the first accepted call
   EXPECT_EQ(states[1].used, 1u);  // B: full
+}
+
+// === T049: per-endpoint-family pools ===
+
+using Family = RateLimitPolicy::EndpointFamily;
+
+TEST(RateLimitPolicy, TradingPoolDoesNotChargeMarketDataBucket)
+{
+  // Exhaust the trading pool; market_data is independent.
+  RateLimitPolicy p;
+  p.addBucket("trading", 10 * SEC, 1);
+  p.addFamilyBucket(Family::MarketData, "md", 10 * SEC, 1);
+
+  EXPECT_TRUE(p.tryConsume(Action::Submit, 0));
+  // Trading pool full — submit rejected.
+  EXPECT_FALSE(p.tryConsume(Action::Submit, 1 * SEC));
+  // Market-data query is independent — still goes through.
+  EXPECT_TRUE(p.tryConsume(Action::QueryMarketData, 2 * SEC));
+  // Account family has no bucket → still allowed (no enforcement
+  // configured for that family).
+  EXPECT_TRUE(p.tryConsume(Action::QueryAccount, 3 * SEC));
+}
+
+TEST(RateLimitPolicy, MarketDataPoolDoesNotChargeTradingBucket)
+{
+  // Exhaust market-data pool, then submit a trade.
+  RateLimitPolicy p;
+  p.addBucket("trading", 10 * SEC, 5);
+  p.addFamilyBucket(Family::MarketData, "md", 10 * SEC, 1);
+
+  EXPECT_TRUE(p.tryConsume(Action::QueryMarketData, 0));
+  EXPECT_FALSE(p.tryConsume(Action::QueryMarketData, 1 * SEC));
+  // Trading pool untouched.
+  EXPECT_TRUE(p.tryConsume(Action::Submit, 2 * SEC));
+  EXPECT_TRUE(p.tryConsume(Action::Submit, 3 * SEC));
+}
+
+TEST(RateLimitPolicy, AccountPoolIndependent)
+{
+  RateLimitPolicy p;
+  p.addBucket("trading", 10 * SEC, 5);
+  p.addFamilyBucket(Family::Account, "account", 10 * SEC, 2);
+
+  EXPECT_TRUE(p.tryConsume(Action::QueryAccount, 0));
+  EXPECT_TRUE(p.tryConsume(Action::QueryAccount, 1 * SEC));
+  // 3rd account query: rejected.
+  EXPECT_FALSE(p.tryConsume(Action::QueryAccount, 2 * SEC));
+  // Trading still good.
+  EXPECT_TRUE(p.tryConsume(Action::Submit, 3 * SEC));
+}
+
+TEST(RateLimitPolicy, BinanceProfilePopulatesAllThreeFamilies)
+{
+  auto p = RateLimitPolicy::binance_um_futures();
+  auto states = p.bucketStates(0);
+  size_t trading = 0, md = 0, acct = 0;
+  for (const auto& s : states)
+  {
+    switch (s.endpointFamily)
+    {
+      case Family::Trading:
+        ++trading;
+        break;
+      case Family::MarketData:
+        ++md;
+        break;
+      case Family::Account:
+        ++acct;
+        break;
+    }
+  }
+  EXPECT_GE(trading, 2u);
+  EXPECT_GE(md, 1u);
+  EXPECT_GE(acct, 1u);
+}
+
+TEST(RateLimitPolicy, FamilyOfActionIsCorrect)
+{
+  using K = RateLimitPolicy::ActionKind;
+  EXPECT_EQ(RateLimitPolicy::familyOf(K::Submit), Family::Trading);
+  EXPECT_EQ(RateLimitPolicy::familyOf(K::Cancel), Family::Trading);
+  EXPECT_EQ(RateLimitPolicy::familyOf(K::Replace), Family::Trading);
+  EXPECT_EQ(RateLimitPolicy::familyOf(K::QueryAccount), Family::Account);
+  EXPECT_EQ(RateLimitPolicy::familyOf(K::QueryMarketData), Family::MarketData);
 }

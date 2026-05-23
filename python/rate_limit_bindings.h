@@ -21,13 +21,21 @@ namespace flox_py
 
 inline void bindRateLimitPolicy(py::module_& m)
 {
+  py::enum_<flox::RateLimitPolicy::EndpointFamily>(m, "RateLimitEndpointFamily")
+      .value("Trading", flox::RateLimitPolicy::EndpointFamily::Trading)
+      .value("MarketData", flox::RateLimitPolicy::EndpointFamily::MarketData)
+      .value("Account", flox::RateLimitPolicy::EndpointFamily::Account)
+      .export_values();
   py::class_<flox::RateLimitPolicy>(m, "RateLimitPolicy")
       .def(py::init<>())
       .def("add_bucket", &flox::RateLimitPolicy::addBucket, py::arg("name"),
            py::arg("window_ns"), py::arg("capacity"), py::arg("submit_weight") = 1,
-           py::arg("cancel_weight") = 1, py::arg("replace_weight") = 2)
-      .def("set_ban", &flox::RateLimitPolicy::setBan,
-           py::arg("after_consecutive_rejects"), py::arg("ban_duration_ns"))
+           py::arg("cancel_weight") = 1, py::arg("replace_weight") = 2,
+           py::arg("family") = flox::RateLimitPolicy::EndpointFamily::Trading,
+           py::arg("query_weight") = 1)
+      .def("add_family_bucket", [](flox::RateLimitPolicy& p, flox::RateLimitPolicy::EndpointFamily family, const std::string& name, int64_t window_ns, uint32_t capacity, uint32_t query_weight)
+           { p.addFamilyBucket(family, name, window_ns, capacity, query_weight); }, py::arg("family"), py::arg("name"), py::arg("window_ns"), py::arg("capacity"), py::arg("query_weight") = 1)
+      .def("set_ban", &flox::RateLimitPolicy::setBan, py::arg("after_consecutive_rejects"), py::arg("ban_duration_ns"))
       .def("try_consume", [](flox::RateLimitPolicy& p, const std::string& action, int64_t now_ns)
            {
              flox::RateLimitPolicy::ActionKind a =
@@ -40,6 +48,14 @@ inline void bindRateLimitPolicy(py::module_& m)
              {
                a = flox::RateLimitPolicy::ActionKind::Replace;
              }
+             else if (action == "query_account")
+             {
+               a = flox::RateLimitPolicy::ActionKind::QueryAccount;
+             }
+             else if (action == "query_market_data")
+             {
+               a = flox::RateLimitPolicy::ActionKind::QueryMarketData;
+             }
              return p.tryConsume(a, now_ns); }, py::arg("action"), py::arg("now_ns"))
       .def("bucket_states", [](flox::RateLimitPolicy& p, int64_t now_ns)
            {
@@ -48,6 +64,7 @@ inline void bindRateLimitPolicy(py::module_& m)
              {
                py::dict d;
                d["name"] = s.name;
+               d["endpoint_family"] = s.endpointFamily;
                d["window_ns"] = s.windowNs;
                d["used"] = s.used;
                d["capacity"] = s.capacity;

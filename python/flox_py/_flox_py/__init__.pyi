@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VenueAvailability', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarketData', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'Trading', 'VOLUME_SCALE', 'VenueAvailability', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -2065,6 +2065,46 @@ class RSI:
     @property
     def value(self) -> float | None:
         ...
+class RateLimitEndpointFamily:
+    """
+    Members:
+    
+      Trading
+    
+      MarketData
+    
+      Account
+    """
+    Account: typing.ClassVar[RateLimitEndpointFamily]  # value = <RateLimitEndpointFamily.Account: 2>
+    MarketData: typing.ClassVar[RateLimitEndpointFamily]  # value = <RateLimitEndpointFamily.MarketData: 1>
+    Trading: typing.ClassVar[RateLimitEndpointFamily]  # value = <RateLimitEndpointFamily.Trading: 0>
+    __members__: typing.ClassVar[dict[str, RateLimitEndpointFamily]]  # value = {'Trading': <RateLimitEndpointFamily.Trading: 0>, 'MarketData': <RateLimitEndpointFamily.MarketData: 1>, 'Account': <RateLimitEndpointFamily.Account: 2>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
 class RateLimitPolicy:
     @staticmethod
     def binance_um_futures() -> RateLimitPolicy:
@@ -2080,7 +2120,9 @@ class RateLimitPolicy:
         ...
     def __init__(self) -> None:
         ...
-    def add_bucket(self, name: str, window_ns: typing.SupportsInt | typing.SupportsIndex, capacity: typing.SupportsInt | typing.SupportsIndex, submit_weight: typing.SupportsInt | typing.SupportsIndex = 1, cancel_weight: typing.SupportsInt | typing.SupportsIndex = 1, replace_weight: typing.SupportsInt | typing.SupportsIndex = 2) -> None:
+    def add_bucket(self, name: str, window_ns: typing.SupportsInt | typing.SupportsIndex, capacity: typing.SupportsInt | typing.SupportsIndex, submit_weight: typing.SupportsInt | typing.SupportsIndex = 1, cancel_weight: typing.SupportsInt | typing.SupportsIndex = 1, replace_weight: typing.SupportsInt | typing.SupportsIndex = 2, family: RateLimitEndpointFamily = ..., query_weight: typing.SupportsInt | typing.SupportsIndex = 1) -> None:
+        ...
+    def add_family_bucket(self, family: RateLimitEndpointFamily, name: str, window_ns: typing.SupportsInt | typing.SupportsIndex, capacity: typing.SupportsInt | typing.SupportsIndex, query_weight: typing.SupportsInt | typing.SupportsIndex = 1) -> None:
         ...
     def ban_until_ns(self) -> int:
         ...
@@ -3290,6 +3332,7 @@ def whites_reality_check(returns: typing.Annotated[numpy.typing.ArrayLike, numpy
 def win_rate(trade_pnls: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> float:
     ...
 ALL_OR_NOTHING: OrderGroupPolicy  # value = <OrderGroupPolicy.ALL_OR_NOTHING: 1>
+Account: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.Account: 2>
 BEST_EFFORT: OrderGroupPolicy  # value = <OrderGroupPolicy.BEST_EFFORT: 0>
 Binance: AdlRanking  # value = <AdlRanking.Binance: 1>
 Bybit: AdlRanking  # value = <AdlRanking.Bybit: 2>
@@ -3298,6 +3341,7 @@ FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
 FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>
 FIRE_ON_ANY: FeedClockPolicy  # value = <FeedClockPolicy.FIRE_ON_ANY: 1>
 LEADER_FOLLOWER: FeedClockPolicy  # value = <FeedClockPolicy.LEADER_FOLLOWER: 2>
+MarketData: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.MarketData: 1>
 ONE_SIDED: OrderGroupPolicy  # value = <OrderGroupPolicy.ONE_SIDED: 2>
 ORDER_FLAG_IOC: int = 4
 ORDER_FLAG_POST_ONLY: int = 1
@@ -3320,6 +3364,7 @@ SLIPPAGE_FIXED_TICKS: int = 1
 SLIPPAGE_NONE: int = 0
 SLIPPAGE_VOLUME_IMPACT: int = 3
 SUBMITTED: OrderGroupState  # value = <OrderGroupState.SUBMITTED: 1>
+Trading: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.Trading: 0>
 VOLUME_SCALE: int = 100000000
 WAIT_FOR_ALL: FeedClockPolicy  # value = <FeedClockPolicy.WAIT_FOR_ALL: 0>
 StreamingIndicatorGraph = IndicatorGraph

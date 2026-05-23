@@ -795,6 +795,17 @@ export class RateLimitPolicy {
     cancelWeight?: number,
     replaceWeight?: number,
   ): void;
+  /** Add a bucket scoped to a specific endpoint family. The
+   *  Trading-family weights are not consumed by Account /
+   *  MarketData traffic, so a strategy that pounds position queries
+   *  can't exhaust its trading quota. */
+  addFamilyBucket(
+    family: 'trading' | 'market_data' | 'account' | number,
+    name: string,
+    windowNs: number,
+    capacity: number,
+    queryWeight?: number,
+  ): void;
   setBan(afterConsecutiveRejects: number, banDurationNs: number): void;
   /** Canned profile: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'deribit'. */
   loadProfile(name: string): void;
