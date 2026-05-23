@@ -363,6 +363,16 @@ class PySimulatedExecutor
     }
     _executor.setSTPMode(m);
   }
+  void setFokMode(const std::string& mode)
+  {
+    _executor.setFokModeByName(mode);
+  }
+  std::string fokMode() const
+  {
+    return (_executor.fokMode() == flox::SimulatedExecutor::FokMode::SinglePrice)
+               ? "single_price"
+               : "any_price";
+  }
   void setSubmitAckLatencyDistribution(const flox::LatencyDistribution& d)
   {
     _executor.setSubmitAckLatencyDistribution(d);
@@ -685,6 +695,10 @@ inline void bindBacktest(py::module_& m)
            "Self-trade prevention mode: none | cancel_newest | cancel_oldest | "
            "cancel_both | decrement.",
            py::arg("mode"))
+      .def("set_fok_mode", &PySimulatedExecutor::setFokMode,
+           "FOK fill semantic: any_price (default) or single_price.",
+           py::arg("mode"))
+      .def("fok_mode", &PySimulatedExecutor::fokMode)
       .def("clear_rate_limit_policy", &PySimulatedExecutor::clearRateLimitPolicy)
       .def("set_venue_availability", &PySimulatedExecutor::setVenueAvailability,
            "Attach a VenueAvailability model. None to detach.",

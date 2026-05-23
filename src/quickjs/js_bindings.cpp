@@ -1571,6 +1571,38 @@ static JSValue js_executor_set_stp_mode(JSContext* ctx, JSValueConst, int,
       static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), mode);
   return JS_UNDEFINED;
 }
+static JSValue js_executor_set_fok_mode(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  uint8_t code = 0;
+  if (JS_IsString(argv[1]))
+  {
+    const char* s = JS_ToCString(ctx, argv[1]);
+    if (s != nullptr)
+    {
+      std::string name(s);
+      JS_FreeCString(ctx, s);
+      if (name == "single_price")
+      {
+        code = 1;
+      }
+    }
+  }
+  else
+  {
+    code = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  }
+  flox_simulated_executor_set_fok_mode(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), code);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_fok_mode(JSContext* ctx, JSValueConst, int,
+                                    JSValueConst* argv)
+{
+  const uint8_t code = flox_simulated_executor_fok_mode(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_NewUint32(ctx, code);
+}
 static JSValue js_rate_limit_create(JSContext* ctx, JSValueConst, int, JSValueConst*)
 {
   return createHandleObject(ctx, flox_rate_limit_policy_create());
@@ -5952,6 +5984,10 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_apply_latency_profile, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_stp_mode",
                 js_executor_set_stp_mode, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_fok_mode",
+                js_executor_set_fok_mode, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_fok_mode",
+                js_executor_fok_mode, 1);
   addGlobalFunc(ctx, "__flox_latency_distribution_create", js_latency_dist_create, 0);
   addGlobalFunc(ctx, "__flox_latency_distribution_destroy", js_latency_dist_destroy, 1);
   addGlobalFunc(ctx, "__flox_latency_distribution_set_constant",

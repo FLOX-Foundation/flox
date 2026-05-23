@@ -1641,6 +1641,7 @@ Members:
 - `clear_rate_limit_policy(self) -> None`
 - `fills(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `fills_list(self) -> list`
+- `fok_mode(self) -> str`
 - `on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_best_levels(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_price: typing.SupportsFloat | typing.SupportsIndex, bid_qty: typing.SupportsFloat | typing.SupportsIndex, ask_price: typing.SupportsFloat | typing.SupportsIndex, ask_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_book_snapshot(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], ask_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]]) -> None`
@@ -1650,6 +1651,7 @@ Members:
 - `set_cancel_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
+- `set_fok_mode(self, mode: str) -> None`
 - `set_queue_fifo_top_n(self, top_n: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_queue_model(self, model: str, depth: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
 - `set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None`

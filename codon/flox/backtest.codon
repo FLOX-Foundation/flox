@@ -49,6 +49,8 @@ from C import flox_venue_availability_auto_random_outages(cobj, f64, i64, u8, u6
 from C import flox_venue_availability_is_up(cobj, i64) -> u8
 from C import flox_simulated_executor_set_venue_availability(cobj, cobj)
 from C import flox_simulated_executor_set_stp_mode(cobj, u8)
+from C import flox_simulated_executor_set_fok_mode(cobj, u8)
+from C import flox_simulated_executor_fok_mode(cobj) -> u8
 
 from C import flox_liquidation_engine_create() -> cobj
 from C import flox_liquidation_engine_destroy(cobj)
@@ -418,6 +420,20 @@ class SimulatedExecutor:
         elif mode == "cancel_both": m = 3
         elif mode == "decrement": m = 4
         flox_simulated_executor_set_stp_mode(self._handle, u8(m))
+
+    def set_fok_mode(self, mode):
+        """FOK fill semantic: 'any_price' (default) or 'single_price'."""
+        code = u8(0)
+        if isinstance(mode, str):
+            if mode.lower() == "single_price":
+                code = u8(1)
+        else:
+            code = u8(int(mode))
+        flox_simulated_executor_set_fok_mode(self._handle, code)
+
+    def fok_mode(self) -> str:
+        code = int(flox_simulated_executor_fok_mode(self._handle))
+        return "single_price" if code == 1 else "any_price"
 
     def handle(self) -> cobj:
         return self._handle

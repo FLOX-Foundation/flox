@@ -2732,6 +2732,20 @@ void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle h, uint8_t
       static_cast<STPMode>(mode));
 }
 
+void flox_simulated_executor_set_fok_mode(FloxSimulatedExecutorHandle h, uint8_t mode)
+{
+  const SimulatedExecutor::FokMode m =
+      (mode == 1) ? SimulatedExecutor::FokMode::SinglePrice
+                  : SimulatedExecutor::FokMode::AnyPrice;
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setFokMode(m);
+}
+
+uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle h)
+{
+  return static_cast<uint8_t>(
+      static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fokMode());
+}
+
 // Latency distribution handle bridging.
 
 namespace

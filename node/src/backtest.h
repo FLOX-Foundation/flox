@@ -112,6 +112,8 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("clearRateLimitPolicy",
                                        &SimulatedExecutorWrap::ClearRateLimitPolicy),
                         InstanceMethod("setSTPMode", &SimulatedExecutorWrap::SetSTPMode),
+                        InstanceMethod("setFokMode", &SimulatedExecutorWrap::SetFokMode),
+                        InstanceMethod("fokMode", &SimulatedExecutorWrap::FokMode),
                         InstanceMethod("setVenueAvailability",
                                        &SimulatedExecutorWrap::SetVenueAvailability),
                         InstanceMethod("submitBracket",
@@ -319,6 +321,22 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
       m = 4;
     }
     flox_simulated_executor_set_stp_mode(_h, m);
+  }
+  void SetFokMode(const Napi::CallbackInfo& info)
+  {
+    std::string mode = info[0].As<Napi::String>().Utf8Value();
+    uint8_t m = 0;
+    if (mode == "single_price")
+    {
+      m = 1;
+    }
+    flox_simulated_executor_set_fok_mode(_h, m);
+  }
+  Napi::Value FokMode(const Napi::CallbackInfo& info)
+  {
+    const uint8_t code = flox_simulated_executor_fok_mode(_h);
+    return Napi::String::New(info.Env(),
+                             code == 1 ? "single_price" : "any_price");
   }
   void SetVenueAvailability(const Napi::CallbackInfo& info)
   {

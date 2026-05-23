@@ -94,6 +94,26 @@ class SimulatedExecutor : public IOrderExecutor
   void setSTPMode(STPMode mode) noexcept { _stpMode = mode; }
   STPMode stpMode() const noexcept { return _stpMode; }
 
+  // FOK fill semantics. Real venues split:
+  //   AnyPrice    — fill if cumulative liquidity along the book (at
+  //                 prices crossing the order's limit) >= order qty.
+  //                 Walks through multiple price levels.
+  //   SinglePrice — fill if the level at the order's limit price
+  //                 holds >= order qty in one trade. Reject otherwise.
+  // Default is AnyPrice (matches crypto venues). CME / Eurex / most
+  // US equities use SinglePrice. The simulator currently consults
+  // top-of-book qty only; deeper book walks are a follow-up.
+  enum class FokMode : uint8_t
+  {
+    AnyPrice = 0,
+    SinglePrice = 1,
+  };
+  void setFokMode(FokMode mode) noexcept { _fokMode = mode; }
+  FokMode fokMode() const noexcept { return _fokMode; }
+  // String form for codegen / bindings. Accepts "any_price" or
+  // "single_price" (case-insensitive). Unknown values are ignored.
+  void setFokModeByName(const std::string& name);
+
   // Attach a venue-availability model. Submit / cancel / replace
   // issued while the venue is down are buffered and flushed at the
   // recovery edge in FIFO order. Market-data callbacks (onTrade /
@@ -316,6 +336,7 @@ class SimulatedExecutor : public IOrderExecutor
   bool _hasRateLimit{false};
 
   STPMode _stpMode{STPMode::None};
+  FokMode _fokMode{FokMode::AnyPrice};
 
   VenueAvailability* _venue{nullptr};
   enum class BufferedAction : uint8_t

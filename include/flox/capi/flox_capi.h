@@ -871,6 +871,8 @@ extern "C"
   void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
                                                      const char* profile_name);
   void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
+  void flox_simulated_executor_set_fok_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
+  uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle executor);
   FloxLatencyDistributionHandle flox_latency_distribution_create(void);
   void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h);
   void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns);
@@ -2003,8 +2005,8 @@ extern "C"
                                               uint64_t bracket_id);
   uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor,
                                                 uint64_t bracket_id);
-  void flox_simulated_executor_set_bracket_child_arm_mode(
-      FloxSimulatedExecutorHandle executor, uint8_t mode);
+  void flox_simulated_executor_set_bracket_child_arm_mode(FloxSimulatedExecutorHandle executor,
+                                                          uint8_t mode);
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,
