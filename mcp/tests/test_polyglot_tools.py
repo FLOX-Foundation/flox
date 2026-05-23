@@ -19,6 +19,7 @@ from flox_mcp.tools import (
     docs_search as docs_search_tool,
     examples,
     lookup,
+    overview,
     scaffold,
 )
 
@@ -369,3 +370,44 @@ def test_docs_search_clamps_k():
     # Result must still be Markdown; specific row count depends on
     # corpus, just verify we got *something* and not an error.
     assert "docs_search" in out or "## " in out
+
+
+# ── flox_overview (T066) ──────────────────────────────────────────────
+
+
+def test_flox_overview_returns_markdown_catalogue():
+    """T066: overview is the 'what can you do?' tool. Must be a
+    standalone markdown narrative covering every tool category and
+    the canonical workflows."""
+    out = overview.flox_overview()
+    assert len(out) > 500
+    # Categories.
+    assert "Discovery" in out
+    assert "Building a backtest" in out
+    assert "Live engine inspection" in out
+    assert "Calibration" in out
+    # Workflow callouts.
+    assert "realistic backtest" in out
+    assert "VenueStack" in out
+    # Hard-pointed tool names that should always be listed.
+    for tool_name in (
+        "docs_search",
+        "lookup_symbol",
+        "examples_search",
+        "scaffold_strategy",
+        "validate_strategy",
+        "run_backtest",
+        "explain_decision",
+        "place_order",
+    ):
+        assert tool_name in out, f"flox_overview missing tool reference: {tool_name}"
+
+
+def test_flox_overview_lists_recent_w15_additions():
+    """The recent-additions section keeps the toolkit's most-recent
+    surface visible without forcing the agent to crawl every
+    individual tool description."""
+    out = overview.flox_overview()
+    assert "VenueStack" in out
+    assert "on_marks" in out
+    assert "cross-margin" in out.lower()
