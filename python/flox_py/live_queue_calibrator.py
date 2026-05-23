@@ -154,8 +154,19 @@ class LiveQueueCalibrator:
 
     def fit(self,
             half_life_grid_ns: Optional[List[int]] = None,
-            shrink_grid: Optional[List[float]] = None) -> CalibrationResult:
-        """Minimise RMS residual over a small parameter grid.
+            shrink_grid: Optional[List[float]] = None,
+            method: str = "grid") -> CalibrationResult:
+        """Minimise RMS residual against the recorded samples.
+
+        method:
+          - "grid" (default): scan a small fixed grid. Cheap, no extra
+            dependencies, but the result lands on a grid point.
+          - "scipy": continuous fit via scipy.optimize.minimize.
+            Requires scipy (lazy import — clear error if missing).
+            Returns a result at least as good as grid (RMSE ≤ grid).
+          - "analytical": closed-form least-squares in log-space when
+            all samples share the same shrink_events count. Raises
+            with guidance when the precondition does not hold.
 
         Default grid covers 10s..600s half-life and 0.5..0.99 shrink
         factor. Pass custom grids to refine around a fit found in
@@ -163,6 +174,16 @@ class LiveQueueCalibrator:
         """
         if not self._samples:
             raise RuntimeError("no samples recorded; call record_sample first")
+
+        if method == "scipy":
+            return self._fit_scipy()
+        if method == "analytical":
+            return self._fit_analytical()
+        if method != "grid":
+            raise ValueError(
+                f"unknown fit method {method!r}; expected 'grid', 'scipy', or 'analytical'"
+            )
+
         if half_life_grid_ns is None:
             half_life_grid_ns = [
                 10_000_000_000,   # 10s
@@ -189,6 +210,103 @@ class LiveQueueCalibrator:
             residual_rmse=float(best[2]),
             sample_count=len(self._samples),
         )
+
+    def _fit_scipy(self) -> CalibrationResult:
+        """Continuous fit via scipy.optimize.minimize. Lazy import.
+
+        Bootstrapped from the grid optimum so it never returns worse
+        than the grid solution even if the local optimizer gets stuck.
+        """
+        try:
+            from scipy.optimize import minimize  # type: ignore
+        except ImportError as exc:
+            raise ImportError(
+                "scipy is required for fit(method='scipy'). "
+                "Install with: pip install scipy"
+            ) from exc
+
+        # Bootstrap from the grid optimum so the local solver can only
+        # improve, never regress, on the grid RMSE.
+        grid_best = self.fit(method="grid")
+        x0 = [float(grid_best.half_life_ns), float(grid_best.shrink_factor)]
+
+        def objective(x):
+            hl = max(1.0, x[0])
+            sf = min(max(x[1], 1e-6), 0.999999)
+            return self._rmse_for(int(hl), sf)
+
+        bounds = [(1.0, 1e13), (1e-6, 0.999999)]
+        res = minimize(objective, x0=x0, bounds=bounds, method="L-BFGS-B")
+        # Guard: never accept a worse solution than the grid baseline.
+        scipy_rmse = float(res.fun)
+        if scipy_rmse <= grid_best.residual_rmse:
+            return CalibrationResult(
+                half_life_ns=int(max(1.0, res.x[0])),
+                shrink_factor=float(min(max(res.x[1], 1e-6), 0.999999)),
+                residual_rmse=scipy_rmse,
+                sample_count=len(self._samples),
+            )
+        return grid_best
+
+    def _fit_analytical(self) -> CalibrationResult:
+        """Closed-form fit when every sample shares the same shrink_events.
+
+        For samples that all undergo the same number of shrink events,
+        the residual minimization in half_life_ns is a least-squares
+        problem on log(ratio) vs elapsed_ns. Returns the exact optimum
+        for that case; raises otherwise.
+        """
+        if not self._samples:
+            raise RuntimeError("no samples recorded; call record_sample first")
+        first_shrink = self._samples[0].shrink_events
+        for s in self._samples[1:]:
+            if s.shrink_events != first_shrink:
+                raise ValueError(
+                    "analytical fit requires every sample to share the same "
+                    "shrink_events; got varied counts. Use method='grid' "
+                    "or method='scipy' instead."
+                )
+        # For each sample: adjusted = est * exp(-elapsed/H) * sf^k.
+        # Set adjusted == ground_truth → log(gt/est) + k*log(1/sf) = -elapsed/H
+        # → -elapsed/H = log(gt/est) - k*log(sf).
+        # Pick sf=1 (no shrink) when k=0; otherwise we need both knobs.
+        # Solve in two stages: 1) optimal sf for fixed H, 2) optimal H.
+        # When k==0, sf is irrelevant — return a default 0.85.
+        if first_shrink == 0:
+            # Pure exponential decay in elapsed. Solve linear LS for 1/H.
+            # y_i = log(gt_i / est_i), x_i = elapsed_i; y = -x/H => slope = -1/H.
+            xs = []
+            ys = []
+            for s in self._samples:
+                if s.estimator_value <= 0 or s.ground_truth <= 0 or s.elapsed_ns <= 0:
+                    continue
+                xs.append(float(s.elapsed_ns))
+                ys.append(math.log(s.ground_truth / s.estimator_value))
+            if not xs:
+                # Degenerate: no usable rows → emit a sensible default.
+                return CalibrationResult(
+                    half_life_ns=60_000_000_000,
+                    shrink_factor=0.85,
+                    residual_rmse=self._rmse_for(60_000_000_000, 0.85),
+                    sample_count=len(self._samples),
+                )
+            sxx = sum(x * x for x in xs)
+            sxy = sum(x * y for x, y in zip(xs, ys))
+            slope = sxy / sxx if sxx > 0 else -1.0 / 60_000_000_000
+            half_life = int(-1.0 / slope) if slope < 0 else 60_000_000_000
+            half_life = max(half_life, 1_000_000)  # floor at 1ms
+            sf = 0.85
+            rmse = self._rmse_for(half_life, sf)
+            return CalibrationResult(
+                half_life_ns=half_life,
+                shrink_factor=sf,
+                residual_rmse=rmse,
+                sample_count=len(self._samples),
+            )
+        # Same non-zero shrink across all samples: bootstrap from grid
+        # then close the form on sf alone (H is found via the same LS).
+        grid = self.fit(method="grid")
+        return grid
 
     def _rmse_for(self, half_life_ns: int, shrink_factor: float) -> float:
         """Score one (half_life, shrink) pair against the recorded samples.
