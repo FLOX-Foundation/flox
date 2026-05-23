@@ -89,6 +89,21 @@ def _node_local_name_for(group: str, manifest: dict) -> Tuple[List[str], List[st
     return list(nd.get("classes") or []), list(nd.get("functions") or [])
 
 
+def _class_to_group_index(manifest: dict, binding_key: str) -> Dict[str, str]:
+    """Build a `class_name → group_name` index from the manifest's
+    per-group binding metadata. Used to find a polyglot class
+    (Account, VenueStack, LiquidationEngine, ...) when the IR has
+    no matching C-ABI symbol with that spelling."""
+    out: Dict[str, str] = {}
+    for group_name, grp in (manifest.get("groups") or {}).items():
+        binding = (grp or {}).get(binding_key) or {}
+        for cls in binding.get("classes") or []:
+            out[cls] = group_name
+        for fn in binding.get("functions") or []:
+            out.setdefault(fn, group_name)
+    return out
+
+
 # ── lookup_symbol ─────────────────────────────────────────────────────
 
 
@@ -130,6 +145,13 @@ def _resolve_python(name: str, manifest: dict, ir_match: Optional[dict]) -> Opti
             return {"name": c, "kind": "class", "from_group": ir_match["group"]}
         for f in fns:
             return {"name": f, "kind": "function", "from_group": ir_match["group"]}
+    # Fallback: scan the inverted class→group index. Catches polyglot
+    # classes like Account / VenueStack / LiquidationEngine that
+    # have no C-ABI symbol by that spelling.
+    py_idx = _class_to_group_index(manifest, _PYBIND_KEY)
+    if name in py_idx:
+        return {"name": name, "kind": "class",
+                "from_group": py_idx[name]}
     return None
 
 
@@ -143,6 +165,10 @@ def _resolve_node(name: str, manifest: dict, ir_match: Optional[dict]) -> Option
             return {"name": c, "kind": "class", "from_group": ir_match["group"]}
         for f in fns:
             return {"name": f, "kind": "function", "from_group": ir_match["group"]}
+    napi_idx = _class_to_group_index(manifest, _NAPI_KEY)
+    if name in napi_idx:
+        return {"name": name, "kind": "class",
+                "from_group": napi_idx[name]}
     return None
 
 

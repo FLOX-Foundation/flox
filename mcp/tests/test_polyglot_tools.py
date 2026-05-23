@@ -95,6 +95,35 @@ def test_lookup_symbol_attaches_gotcha_when_resolved():
     assert "subscribed" in out.lower()
 
 
+@pytest.mark.parametrize(
+    "klass",
+    [
+        "Account",
+        "VenueStack",
+        "LiquidationEngine",
+        "FeeSchedule",
+        "FundingSchedule",
+        "RateLimitPolicy",
+        "VenueAvailability",
+        "SimulatedExecutor",
+    ],
+)
+def test_lookup_symbol_finds_polyglot_classes(klass: str):
+    """W15-T063: polyglot classes (Account, VenueStack, LiquidationEngine,
+    ...) have no C-ABI symbol with that exact spelling. The resolver
+    must consult the inverted class->group index from
+    binding_manifest.json so an AI agent searching for the class name
+    actually finds it."""
+    out = lookup.lookup_symbol(klass)
+    assert "no match" not in out.lower(), (
+        f"polyglot class {klass!r} unresolved; lookup_symbol returned:\n{out}"
+    )
+    assert "python" in out
+    # napi should also list it (every polyglot class registered in
+    # T037/T052 lives in both pybind11 and napi manifests).
+    assert "node" in out
+
+
 # ── list_bindings ─────────────────────────────────────────────────────
 
 
