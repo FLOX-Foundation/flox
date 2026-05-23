@@ -113,6 +113,112 @@ TEST(ExtendedTIF, FOK_FillsAtomicallyWhenEnoughLiquidity)
   EXPECT_FALSE(cap.hasStatus(OrderEventStatus::REJECTED));
 }
 
+// === T042: FOK fill semantics variants ===
+
+TEST(ExtendedTIF, FOK_DefaultModeIsAnyPrice)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  EXPECT_EQ(exec.fokMode(), SimulatedExecutor::FokMode::AnyPrice);
+}
+
+TEST(ExtendedTIF, FOK_SetFokModeByNameAcceptsKnownStrings)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setFokModeByName("single_price");
+  EXPECT_EQ(exec.fokMode(), SimulatedExecutor::FokMode::SinglePrice);
+  exec.setFokModeByName("any_price");
+  EXPECT_EQ(exec.fokMode(), SimulatedExecutor::FokMode::AnyPrice);
+  // Unknown name is a no-op.
+  exec.setFokModeByName("not-a-mode");
+  EXPECT_EQ(exec.fokMode(), SimulatedExecutor::FokMode::AnyPrice);
+}
+
+TEST(ExtendedTIF, FOK_SinglePriceRejectsCrossingAtDifferentLevel)
+{
+  // Book has best ask at 50001. SinglePrice FOK with limit 50002 (more
+  // aggressive than TOB) crosses but at a different price level than
+  // the limit — single_price semantics reject this.
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setFokMode(SimulatedExecutor::FokMode::SinglePrice);
+
+  EventCapture cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.record(e); });
+
+  pushBook(exec, BTC, 50000.0, 1.0, 50001.0, 2.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 50002.0, 1.0, TimeInForce::FOK));
+
+  EXPECT_TRUE(cap.hasStatus(OrderEventStatus::REJECTED));
+  EXPECT_EQ(cap.lastRejectReason(), "fok_unfillable");
+}
+
+TEST(ExtendedTIF, FOK_SinglePriceFillsAtExactLevel)
+{
+  // SinglePrice FOK with limit == TOB price and enough size → fills.
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setFokMode(SimulatedExecutor::FokMode::SinglePrice);
+
+  EventCapture cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.record(e); });
+
+  pushBook(exec, BTC, 50000.0, 1.0, 50001.0, 2.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 50001.0, 1.0, TimeInForce::FOK));
+
+  EXPECT_TRUE(cap.hasStatus(OrderEventStatus::FILLED));
+  EXPECT_FALSE(cap.hasStatus(OrderEventStatus::REJECTED));
+}
+
+TEST(ExtendedTIF, FOK_SinglePriceRejectsWhenLevelSizeInsufficient)
+{
+  // SinglePrice FOK with limit == TOB price but qty exceeds level size.
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setFokMode(SimulatedExecutor::FokMode::SinglePrice);
+
+  EventCapture cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.record(e); });
+
+  pushBook(exec, BTC, 50000.0, 0.5, 50001.0, 0.5);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 50001.0, 1.0, TimeInForce::FOK));
+
+  EXPECT_TRUE(cap.hasStatus(OrderEventStatus::REJECTED));
+  // Level size insufficient → existing fok_not_fillable reason.
+  EXPECT_EQ(cap.lastRejectReason(), "fok_not_fillable");
+}
+
+TEST(ExtendedTIF, FOK_AnyPriceParityWithDefaultBehaviour)
+{
+  // Sanity: explicitly setting AnyPrice keeps the existing T028
+  // semantics from the first two FOK tests above.
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setFokMode(SimulatedExecutor::FokMode::AnyPrice);
+
+  EventCapture cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.record(e); });
+
+  // Crossing but with limit above TOB price — AnyPrice walks any
+  // acceptable price and fills.
+  pushBook(exec, BTC, 50000.0, 1.0, 50001.0, 2.0);
+  exec.submitOrder(makeLimit(1, Side::BUY, 50002.0, 1.0, TimeInForce::FOK));
+  EXPECT_TRUE(cap.hasStatus(OrderEventStatus::FILLED));
+  EXPECT_FALSE(cap.hasStatus(OrderEventStatus::REJECTED));
+}
+
 TEST(ExtendedTIF, IOC_CancelsWhenNoCross)
 {
   SimulatedClock clock;

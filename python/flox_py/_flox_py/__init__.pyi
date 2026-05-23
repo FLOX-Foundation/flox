@@ -2421,6 +2421,8 @@ class SimulatedExecutor:
         """
         Get all fills as list of dicts
         """
+    def fok_mode(self) -> str:
+        ...
     def on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
         Feed a bar close price for order matching
@@ -2452,6 +2454,10 @@ class SimulatedExecutor:
     def set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
         """
         Configure default slippage. model: none|fixed_ticks|fixed_bps|volume_impact. tick_size is in price units (0.0 falls back to one raw price unit).
+        """
+    def set_fok_mode(self, mode: str) -> None:
+        """
+        FOK fill semantic: any_price (default) or single_price.
         """
     def set_queue_fifo_top_n(self, top_n: typing.SupportsInt | typing.SupportsIndex) -> None:
         """

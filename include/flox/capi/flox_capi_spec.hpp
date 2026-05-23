@@ -1367,6 +1367,15 @@ extern "C"
   void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor,
                                             uint8_t mode);
 
+  // FOK fill semantics. 0=any_price (default; multi-level walk), 1=single_price
+  // (only the limit-price level counts). See FokMode in
+  // flox/backtest/simulated_executor.h for details.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_fok_mode(FloxSimulatedExecutorHandle executor,
+                                            uint8_t mode);
+  FLOX_EXPORT(group = "backtest_slippage")
+  uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle executor);
+
   // Latency-distribution handle. The simulator copies the distribution
   // on set_*_distribution; the caller still owns and destroys the
   // handle. kind: 0=Constant, 1=Uniform, 2=Lognormal, 3=Empirical.

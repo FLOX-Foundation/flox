@@ -12,6 +12,7 @@
 #include "flox/backtest/latency_profiles.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <string>
 
@@ -184,6 +185,24 @@ void SimulatedExecutor::clearRateLimitPolicy()
 {
   _rateLimit = RateLimitPolicy{};
   _hasRateLimit = false;
+}
+
+void SimulatedExecutor::setFokModeByName(const std::string& name)
+{
+  std::string lower;
+  lower.reserve(name.size());
+  for (char c : name)
+  {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (lower == "any_price" || lower == "anyprice")
+  {
+    _fokMode = FokMode::AnyPrice;
+  }
+  else if (lower == "single_price" || lower == "singleprice")
+  {
+    _fokMode = FokMode::SinglePrice;
+  }
 }
 
 const SlippageProfile& SimulatedExecutor::slippageFor(SymbolId symbol) const
@@ -432,29 +451,39 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
     }
   }
 
-  // FOK: must fully fill or reject. Available crossing liquidity is
-  // approximated by the best-level qty (TOB). The simulator does not
-  // walk multi-level liquidity for a single submit, so this is a
-  // best-effort check; deeper-walk FOK is on the spec follow-up list.
+  // FOK: must fully fill or reject. The simulator only tracks top-of-
+  // book qty, so multi-level walking is approximated.
+  //   AnyPrice    — accept if TOB crosses the order's limit and TOB
+  //                 qty >= order qty. Deeper walks are a follow-up.
+  //   SinglePrice — accept only if TOB price exactly matches the
+  //                 order's limit AND TOB qty >= order qty; otherwise
+  //                 reject with "fok_unfillable".
   if (accepted.type == OrderType::LIMIT &&
       accepted.timeInForce == TimeInForce::FOK)
   {
     const MarketState& state = getMarketState(accepted.symbol);
     int64_t availRaw = 0;
     bool canCross = false;
+    bool exactLevel = false;
     if (accepted.side == Side::BUY && state.hasAsk &&
         accepted.price.raw() >= state.bestAskRaw)
     {
       availRaw = state.bestAskQtyRaw;
       canCross = true;
+      exactLevel = (accepted.price.raw() == state.bestAskRaw);
     }
     else if (accepted.side == Side::SELL && state.hasBid &&
              accepted.price.raw() <= state.bestBidRaw)
     {
       availRaw = state.bestBidQtyRaw;
       canCross = true;
+      exactLevel = (accepted.price.raw() == state.bestBidRaw);
     }
-    if (!canCross || availRaw < accepted.quantity.raw())
+    const bool sizeOk = availRaw >= accepted.quantity.raw();
+    const bool fillable =
+        canCross && sizeOk &&
+        (_fokMode == FokMode::AnyPrice || exactLevel);
+    if (!fillable)
     {
       OrderEvent ev;
       ev.status = OrderEventStatus::REJECTED;
@@ -462,7 +491,9 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
       ev.exchangeTsNs = _clock.nowNs();
       ev.timestamps = timestampsFor(accepted.id);
       ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
-      ev.rejectReason = "fok_not_fillable";
+      ev.rejectReason = (_fokMode == FokMode::SinglePrice && canCross && !exactLevel)
+                            ? "fok_unfillable"
+                            : "fok_not_fillable";
       if (_callback)
       {
         _callback(ev);

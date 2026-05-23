@@ -20,6 +20,34 @@ options) accept.
 The TOB liquidity assumption for FOK is a simplification — only the
 best level is consulted. Deeper-walk FOK is a follow-up.
 
+### FOK mode (any-price vs single-price)
+
+Real venues differ on what FOK means when crossing liquidity sits at
+a different price than the order's limit:
+
+| Mode           | Behaviour                                                  | Used by                       |
+|----------------|------------------------------------------------------------|-------------------------------|
+| `any_price`    | Fill if TOB qty ≥ order qty and TOB crosses the limit.      | Default; most crypto venues   |
+| `single_price` | Fill only if TOB price equals the order's limit and TOB qty ≥ order qty. | CME, Eurex, most US equities  |
+
+Single-price rejects with `fok_unfillable` when crossing liquidity
+sits at a more aggressive level than the limit. `any_price` accepts
+that same scenario.
+
+=== "Python"
+
+    ```python
+    exec.set_fok_mode("single_price")
+    print(exec.fok_mode())  # 'single_price'
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    exec.setFokMode("single_price");
+    exec.fokMode();  // 'single_price'
+    ```
+
 ## Apply from a strategy
 
 === "Python"

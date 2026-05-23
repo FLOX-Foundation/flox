@@ -2753,6 +2753,11 @@
           "name": "flox_simulated_executor_fill_count"
         },
         {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_fok_mode"
+        },
+        {
           "group": "executor_fill",
           "kind": "function",
           "name": "flox_simulated_executor_get_fills"
@@ -2801,6 +2806,11 @@
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_set_default_slippage"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_fok_mode"
         },
         {
           "group": "backtest_slippage",
@@ -5893,6 +5903,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_fok_mode"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_get_fills"
         },
         {
@@ -5930,6 +5944,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_default_slippage"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_fok_mode"
         },
         {
           "kind": "function",
@@ -7912,12 +7930,14 @@
         "flox_latency_distribution_set_lognormal",
         "flox_latency_distribution_set_uniform",
         "flox_simulated_executor_apply_latency_profile",
+        "flox_simulated_executor_fok_mode",
         "flox_simulated_executor_on_best_levels",
         "flox_simulated_executor_on_book_snapshot",
         "flox_simulated_executor_on_trade_qty",
         "flox_simulated_executor_set_cancel_ack_latency",
         "flox_simulated_executor_set_cancel_ack_latency_distribution",
         "flox_simulated_executor_set_default_slippage",
+        "flox_simulated_executor_set_fok_mode",
         "flox_simulated_executor_set_queue_fifo_top_n",
         "flox_simulated_executor_set_queue_model",
         "flox_simulated_executor_set_replace_ack_latency",

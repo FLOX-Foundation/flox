@@ -869,6 +869,11 @@ export class SimulatedExecutor {
   setSTPMode(
     mode: 'none' | 'cancel_newest' | 'cancel_oldest' | 'cancel_both' | 'decrement',
   ): void;
+  /** FOK fill semantic. 'any_price' (default) walks crossing book qty;
+   *  'single_price' requires the level at the limit price to hold the
+   *  full order qty. */
+  setFokMode(mode: 'any_price' | 'single_price'): void;
+  fokMode(): 'any_price' | 'single_price';
   /** Attach a VenueAvailability model. Pass null to detach. */
   setVenueAvailability(availability: VenueAvailability | null): void;
   /** Submit a native bracket order (entry + take-profit + stop). */

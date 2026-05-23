@@ -11004,6 +11004,17 @@
       "return_type": "uint32_t"
     },
     {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_fok_mode",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "executor_fill",
       "name": "flox_simulated_executor_get_fills",
       "params": [
@@ -11237,6 +11248,21 @@
         {
           "name": "impact_coeff",
           "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_fok_mode",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "mode",
+          "type": "uint8_t"
         }
       ],
       "return_type": "void"
