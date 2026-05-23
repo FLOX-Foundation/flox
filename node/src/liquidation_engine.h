@@ -50,7 +50,17 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
                         &LiquidationEngineWrap::FundBalanceHistory),
          InstanceMethod("ticksToFirstAdl",
                         &LiquidationEngineWrap::TicksToFirstAdl),
-         InstanceMethod("resetStats", &LiquidationEngineWrap::ResetStats)});
+         InstanceMethod("resetStats", &LiquidationEngineWrap::ResetStats),
+         InstanceMethod("setMarkImpactModel",
+                        &LiquidationEngineWrap::SetMarkImpactModel),
+         InstanceMethod("markImpactModel",
+                        &LiquidationEngineWrap::MarkImpactModel),
+         InstanceMethod("markImpactWeight",
+                        &LiquidationEngineWrap::MarkImpactWeight),
+         InstanceMethod("setMaxCascadeDepth",
+                        &LiquidationEngineWrap::SetMaxCascadeDepth),
+         InstanceMethod("maxCascadeDepth",
+                        &LiquidationEngineWrap::MaxCascadeDepth)});
   }
 
   LiquidationEngineWrap(const Napi::CallbackInfo& info)
@@ -257,6 +267,65 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   void ResetStats(const Napi::CallbackInfo& info)
   {
     flox_liquidation_engine_reset_stats(_h);
+  }
+  void SetMarkImpactModel(const Napi::CallbackInfo& info)
+  {
+    uint8_t code = 0;
+    if (info.Length() >= 1 && info[0].IsString())
+    {
+      const std::string name = info[0].As<Napi::String>().Utf8Value();
+      if (name == "book_anchored")
+      {
+        code = 1;
+      }
+      else if (name == "book_only")
+      {
+        code = 2;
+      }
+    }
+    else if (info.Length() >= 1 && info[0].IsNumber())
+    {
+      code = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+    }
+    double weight = 0.3;
+    if (info.Length() >= 2 && info[1].IsNumber())
+    {
+      weight = info[1].As<Napi::Number>().DoubleValue();
+    }
+    flox_liquidation_engine_set_mark_impact_model(_h, code, weight);
+  }
+  Napi::Value MarkImpactModel(const Napi::CallbackInfo& info)
+  {
+    const uint8_t code = flox_liquidation_engine_mark_impact_model(_h);
+    const char* name = "none";
+    switch (code)
+    {
+      case 1:
+        name = "book_anchored";
+        break;
+      case 2:
+        name = "book_only";
+        break;
+      default:
+        name = "none";
+        break;
+    }
+    return Napi::String::New(info.Env(), name);
+  }
+  Napi::Value MarkImpactWeight(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(),
+                             flox_liquidation_engine_mark_impact_weight(_h));
+  }
+  void SetMaxCascadeDepth(const Napi::CallbackInfo& info)
+  {
+    flox_liquidation_engine_set_max_cascade_depth(
+        _h, info[0].As<Napi::Number>().Uint32Value());
+  }
+  Napi::Value MaxCascadeDepth(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(info.Env(),
+                             flox_liquidation_engine_max_cascade_depth(_h));
   }
 
   FloxLiquidationEngineHandle _h;

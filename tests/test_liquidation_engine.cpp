@@ -432,3 +432,116 @@ TEST(LiquidationEngine, StatsResetClears)
   EXPECT_EQ(e.insurancePaymentsCount(), 0u);
   EXPECT_EQ(e.ticksToFirstAdl(), UINT64_MAX);
 }
+
+// === T038: mark-impact feedback + intra-tick cascades ===
+
+TEST(LiquidationEngine, MarkImpactDefaultsToNoneNoCascade)
+{
+  // Without an impact model, a single onMark call performs exactly
+  // one liquidation pass even if the book mid would have moved.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setExecutor(&ex);
+  EXPECT_EQ(e.markImpactModel(), LiquidationEngine::MarkImpactModel::None);
+
+  feedBook(ex, BTC, {{80.0, 100.0}}, {{81.0, 100.0}});
+  e.openPosition(pos(1, 10.0, 100.0, 10.0));
+  const auto out = e.onMark(BTC, 80.0);
+  // Single pass: cascade list has exactly one entry.
+  EXPECT_EQ(out.liquidationsCount, 1u);
+  EXPECT_EQ(e.cascadeSizesPerTick().size(), 1u);
+}
+
+TEST(LiquidationEngine, MarkImpactByNameAcceptsKnownStrings)
+{
+  LiquidationEngine e;
+  e.setMarkImpactModelByName("book_anchored", 0.5);
+  EXPECT_EQ(e.markImpactModel(),
+            LiquidationEngine::MarkImpactModel::BookAnchored);
+  EXPECT_DOUBLE_EQ(e.markImpactWeight(), 0.5);
+  e.setMarkImpactModelByName("book_only");
+  EXPECT_EQ(e.markImpactModel(), LiquidationEngine::MarkImpactModel::BookOnly);
+  e.setMarkImpactModelByName("none");
+  EXPECT_EQ(e.markImpactModel(), LiquidationEngine::MarkImpactModel::None);
+  // Unknown name → no-op, prior model + weight retained.
+  e.setMarkImpactModelByName("book_anchored", 0.7);
+  e.setMarkImpactModelByName("garbage", 0.1);
+  EXPECT_EQ(e.markImpactModel(),
+            LiquidationEngine::MarkImpactModel::BookAnchored);
+  EXPECT_DOUBLE_EQ(e.markImpactWeight(), 0.7);
+}
+
+TEST(LiquidationEngine, MaxCascadeDepthZeroDisablesCascading)
+{
+  // Even with BookOnly model, depth 0 → one pass only.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setExecutor(&ex);
+  e.setMarkImpactModel(LiquidationEngine::MarkImpactModel::BookOnly);
+  e.setMaxCascadeDepth(0);
+  feedBook(ex, BTC, {{80.0, 100.0}}, {{81.0, 100.0}});
+  e.openPosition(pos(1, 10.0, 100.0, 10.0));
+  const auto out = e.onMark(BTC, 80.0);
+  EXPECT_EQ(out.liquidationsCount, 1u);
+  EXPECT_EQ(e.cascadeSizesPerTick().size(), 1u);
+}
+
+TEST(LiquidationEngine, BookOnlyImpactCascadesSecondOrderLiquidation)
+{
+  // Stronger setup: position 2 is healthy under the initial tape
+  // mark (80) but tips underwater once the book-mid (40.5) becomes
+  // the new mark after pass 1. With BookOnly + depth>0, the engine
+  // should hit pass 2 and liquidate it within the same onMark call.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setAdlEnabled(false);
+  e.setExecutor(&ex);
+  e.setMarkImpactModel(LiquidationEngine::MarkImpactModel::BookOnly);
+  e.setMaxCascadeDepth(3);
+
+  // Book mid is 40.5 — far below the tape mark of 80.
+  feedBook(ex, BTC, {{40.0, 100.0}}, {{41.0, 100.0}});
+
+  // Position 1: deeply underwater at tape mark 80 (entry 100, equity 10).
+  e.openPosition(pos(1, 10.0, 100.0, 10.0));
+  // Position 2: marginally underwater at 80 (equity 220), but
+  // healthy enough that pass 1 selection picks both — to isolate
+  // cascade behaviour, give position 2 enough equity to survive at
+  // mark=80 and lose at mark=40.5.
+  // notional@80 = 800, MM 0.5% → req = 4. equity+upnl = 220-200 = 20 > 4. OK.
+  // notional@40.5 = 405, req = 2.025. equity+upnl = 220-595 < 0. Liquidate.
+  e.openPosition(pos(2, 10.0, 100.0, 220.0));
+
+  const auto out = e.onMark(BTC, 80.0);
+  // Two passes recorded (one per liquidation round).
+  EXPECT_EQ(e.cascadeSizesPerTick().size(), 2u);
+  EXPECT_EQ(out.liquidationsCount, 2u);
+}
+
+TEST(LiquidationEngine, BookAnchoredImpactBlendsMarks)
+{
+  // BookAnchored weight 1.0 ≡ BookOnly; weight 0.0 ≡ None. Test the
+  // 1.0 case to confirm wiring; the parametric blend is exercised
+  // implicitly in cascade tests.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setAdlEnabled(false);
+  e.setExecutor(&ex);
+  e.setMarkImpactModel(LiquidationEngine::MarkImpactModel::BookAnchored, 1.0);
+  e.setMaxCascadeDepth(3);
+
+  feedBook(ex, BTC, {{40.0, 100.0}}, {{41.0, 100.0}});
+  e.openPosition(pos(1, 10.0, 100.0, 10.0));
+  e.openPosition(pos(2, 10.0, 100.0, 220.0));
+
+  e.onMark(BTC, 80.0);
+  EXPECT_EQ(e.cascadeSizesPerTick().size(), 2u);
+}

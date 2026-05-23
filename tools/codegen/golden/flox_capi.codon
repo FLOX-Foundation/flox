@@ -409,6 +409,11 @@ from C import flox_liquidation_engine_fund_balance_history_size(cobj) -> u32
 from C import flox_liquidation_engine_fund_balance_history_copy(cobj, Ptr[float], u32) -> u32
 from C import flox_liquidation_engine_ticks_to_first_adl(cobj) -> u64
 from C import flox_liquidation_engine_reset_stats(cobj)
+from C import flox_liquidation_engine_set_mark_impact_model(cobj, u8, float)
+from C import flox_liquidation_engine_mark_impact_model(cobj) -> u8
+from C import flox_liquidation_engine_mark_impact_weight(cobj) -> float
+from C import flox_liquidation_engine_set_max_cascade_depth(cobj, u32)
+from C import flox_liquidation_engine_max_cascade_depth(cobj) -> u32
 
 # ── live_queue_position ──
 from C import flox_live_queue_position_create() -> cobj

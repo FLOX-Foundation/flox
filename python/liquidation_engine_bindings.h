@@ -28,6 +28,11 @@ inline void bindLiquidationEngine(py::module_& m)
       .value("Bybit", flox::AdlRanking::Bybit)
       .value("PositionSize", flox::AdlRanking::PositionSize)
       .export_values();
+  py::enum_<flox::LiquidationEngine::MarkImpactModel>(m, "MarkImpactModel")
+      .value("None_", flox::LiquidationEngine::MarkImpactModel::None)
+      .value("BookAnchored", flox::LiquidationEngine::MarkImpactModel::BookAnchored)
+      .value("BookOnly", flox::LiquidationEngine::MarkImpactModel::BookOnly)
+      .export_values();
   py::class_<flox::LiquidationEngine>(m, "LiquidationEngine")
       .def(py::init<>())
       .def("add_tier", [](flox::LiquidationEngine& self, double min_notional, double mm_fraction)
@@ -95,6 +100,25 @@ inline void bindLiquidationEngine(py::module_& m)
            { return self.fundBalanceHistory(); })
       .def("ticks_to_first_adl", &flox::LiquidationEngine::ticksToFirstAdl)
       .def("reset_stats", &flox::LiquidationEngine::resetStats)
+      .def("set_mark_impact_model", [](flox::LiquidationEngine& self, py::object model, double weight)
+           {
+             if (py::isinstance<py::str>(model))
+             {
+               self.setMarkImpactModelByName(model.cast<std::string>(), weight);
+             }
+             else
+             {
+               self.setMarkImpactModel(
+                   model.cast<flox::LiquidationEngine::MarkImpactModel>(), weight);
+             } },
+           "Configure mark-impact feedback after liquidations. Accepts a "
+           "MarkImpactModel enum or a string name (none, book_anchored, "
+           "book_only). `weight` is the blend factor used by book_anchored.",
+           py::arg("model"), py::arg("weight") = 0.3)
+      .def("mark_impact_model", &flox::LiquidationEngine::markImpactModel)
+      .def("mark_impact_weight", &flox::LiquidationEngine::markImpactWeight)
+      .def("set_max_cascade_depth", &flox::LiquidationEngine::setMaxCascadeDepth, py::arg("depth"))
+      .def("max_cascade_depth", &flox::LiquidationEngine::maxCascadeDepth)
       .def_static("binance_um_futures", &flox::LiquidationEngine::binance_um_futures)
       .def_static("bybit_linear", &flox::LiquidationEngine::bybit_linear)
       .def_static("okx_swap", &flox::LiquidationEngine::okx_swap);

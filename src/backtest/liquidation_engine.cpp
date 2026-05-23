@@ -32,6 +32,42 @@ OrderId nextLiquidationOrderId()
 }
 }  // namespace
 
+namespace
+{
+std::string toLower(const std::string& s)
+{
+  std::string lower;
+  lower.reserve(s.size());
+  for (char c : s)
+  {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  return lower;
+}
+}  // namespace
+
+void LiquidationEngine::setMarkImpactModelByName(const std::string& name, double weight)
+{
+  const std::string lower = toLower(name);
+  if (lower == "none")
+  {
+    _markImpactModel = MarkImpactModel::None;
+  }
+  else if (lower == "book_anchored" || lower == "bookanchored" || lower == "anchored")
+  {
+    _markImpactModel = MarkImpactModel::BookAnchored;
+  }
+  else if (lower == "book_only" || lower == "bookonly")
+  {
+    _markImpactModel = MarkImpactModel::BookOnly;
+  }
+  else
+  {
+    return;
+  }
+  _markImpactWeight = weight;
+}
+
 void LiquidationEngine::setAdlRankingByName(const std::string& name)
 {
   std::string lower;
@@ -94,11 +130,78 @@ void LiquidationEngine::resetStats() noexcept
 
 LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
 {
+  LiquidationOutcome aggregated;
+  if (markPrice <= 0.0)
+  {
+    return aggregated;
+  }
   const uint64_t tickIdx = _onMarkTickCounter++;
-  LiquidationOutcome out;
+
+  double mark = markPrice;
+  const uint32_t maxRounds =
+      (_markImpactModel == MarkImpactModel::None || _executor == nullptr)
+          ? 1u
+          : (_maxCascadeDepth == 0u ? 1u : (_maxCascadeDepth + 1u));
+
+  for (uint32_t round = 0; round < maxRounds; ++round)
+  {
+    OnMarkPass pass = onMarkOnce(symbol, mark, tickIdx);
+    // Aggregate per-pass results into the call-level outcome.
+    aggregated.liquidated.insert(aggregated.liquidated.end(),
+                                 pass.outcome.liquidated.begin(),
+                                 pass.outcome.liquidated.end());
+    aggregated.adlClosedOut.insert(aggregated.adlClosedOut.end(),
+                                   pass.outcome.adlClosedOut.begin(),
+                                   pass.outcome.adlClosedOut.end());
+    aggregated.insuranceFundDelta += pass.outcome.insuranceFundDelta;
+    aggregated.liquidationsCount += pass.outcome.liquidationsCount;
+    aggregated.insurancePaymentsCount += pass.outcome.insurancePaymentsCount;
+    aggregated.adlCloseoutsCount += pass.outcome.adlCloseoutsCount;
+    // Stop conditions: no fills this pass, no impact model, or no
+    // executor (book mid unavailable).
+    if (pass.outcome.liquidationsCount == 0)
+    {
+      break;
+    }
+    if (_markImpactModel == MarkImpactModel::None || _executor == nullptr)
+    {
+      break;
+    }
+    // Recompute the mark from the post-cascade book.
+    const Price midPx = _executor->bookMidPrice(symbol);
+    if (midPx.raw() <= 0)
+    {
+      break;  // book mid unavailable; fall back to current mark.
+    }
+    const double bookMid = midPx.toDouble();
+    double nextMark = mark;
+    if (_markImpactModel == MarkImpactModel::BookAnchored)
+    {
+      const double w = std::clamp(_markImpactWeight, 0.0, 1.0);
+      nextMark = (1.0 - w) * markPrice + w * bookMid;
+    }
+    else if (_markImpactModel == MarkImpactModel::BookOnly)
+    {
+      nextMark = bookMid;
+    }
+    if (std::abs(nextMark - mark) < 1e-12)
+    {
+      break;  // mark didn't move; no point retrying.
+    }
+    mark = nextMark;
+  }
+  return aggregated;
+}
+
+LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
+                                                            double markPrice,
+                                                            uint64_t tickIdx)
+{
+  OnMarkPass pass;
+  LiquidationOutcome& out = pass.outcome;
   if (_positions.empty() || markPrice <= 0.0)
   {
-    return out;
+    return pass;
   }
 
   // Step 1: collect every position on this symbol that's underwater.
@@ -122,7 +225,7 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
   }
   if (underwater.empty())
   {
-    return out;
+    return pass;
   }
 
   // Step 2: liquidate each underwater position. With an executor
@@ -193,7 +296,7 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
 
   if (totalDeficit <= 0.0)
   {
-    return out;
+    return pass;
   }
 
   // Step 3: insurance fund absorbs as much as it can.
@@ -210,7 +313,7 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
   }
   if (totalDeficit <= 0.0 || !_adlEnabled)
   {
-    return out;
+    return pass;
   }
 
   // Step 4: ADL. Rank opposite-side profitable positions by PnL
@@ -291,7 +394,7 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     _positions.erase(_positions.begin() + static_cast<long>(i));
   }
 
-  return out;
+  return pass;
 }
 
 LiquidationEngine::ExecutorClose LiquidationEngine::closeThroughExecutor(

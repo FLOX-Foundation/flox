@@ -1313,6 +1313,51 @@ SimulatedExecutor::MarketState& SimulatedExecutor::getMarketState(SymbolId symbo
   return _marketStatesOverflow.back().second;
 }
 
+Price SimulatedExecutor::bestBidPrice(SymbolId symbol) const
+{
+  if (symbol < kMaxSymbols)
+  {
+    const auto& s = _marketStatesFlat[symbol];
+    return s.hasBid ? Price::fromRaw(s.bestBidRaw) : Price::fromRaw(0);
+  }
+  for (const auto& [id, s] : _marketStatesOverflow)
+  {
+    if (id == symbol)
+    {
+      return s.hasBid ? Price::fromRaw(s.bestBidRaw) : Price::fromRaw(0);
+    }
+  }
+  return Price::fromRaw(0);
+}
+
+Price SimulatedExecutor::bestAskPrice(SymbolId symbol) const
+{
+  if (symbol < kMaxSymbols)
+  {
+    const auto& s = _marketStatesFlat[symbol];
+    return s.hasAsk ? Price::fromRaw(s.bestAskRaw) : Price::fromRaw(0);
+  }
+  for (const auto& [id, s] : _marketStatesOverflow)
+  {
+    if (id == symbol)
+    {
+      return s.hasAsk ? Price::fromRaw(s.bestAskRaw) : Price::fromRaw(0);
+    }
+  }
+  return Price::fromRaw(0);
+}
+
+Price SimulatedExecutor::bookMidPrice(SymbolId symbol) const
+{
+  const Price bid = bestBidPrice(symbol);
+  const Price ask = bestAskPrice(symbol);
+  if (bid.raw() <= 0 || ask.raw() <= 0)
+  {
+    return Price::fromRaw(0);
+  }
+  return Price::fromRaw((bid.raw() + ask.raw()) / 2);
+}
+
 Order* SimulatedExecutor::findPendingOrder(OrderId orderId)
 {
   for (auto& order : _pending_orders)

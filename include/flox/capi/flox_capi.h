@@ -1573,6 +1573,12 @@ extern "C"
                                                              double* out, uint32_t max);
   uint64_t flox_liquidation_engine_ticks_to_first_adl(FloxLiquidationEngineHandle h);
   void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_set_mark_impact_model(FloxLiquidationEngineHandle h, uint8_t model,
+                                                     double weight);
+  uint8_t flox_liquidation_engine_mark_impact_model(FloxLiquidationEngineHandle h);
+  double flox_liquidation_engine_mark_impact_weight(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_set_max_cascade_depth(FloxLiquidationEngineHandle h, uint32_t depth);
+  uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h);
 
   // ============================================================
   // Live Queue Position

@@ -731,6 +731,25 @@ export class LiquidationEngine {
   /** Ordinal of the first ADL tick; very large value if no ADL yet. */
   ticksToFirstAdl(): number;
   resetStats(): void;
+  /**
+   * Configure mark-impact feedback after liquidation fills. When the
+   * model is not 'none' and an executor is attached, the engine
+   * recomputes the mark from the post-cascade book mid and may
+   * trigger additional liquidations within the same onMark call.
+   *
+   *   none           — mark stays at the tape input (default).
+   *   book_anchored  — mark = (1 - weight) * tape + weight * book_mid.
+   *   book_only      — mark = book_mid (falls back to tape if no book).
+   */
+  setMarkImpactModel(
+    model: 'none' | 'book_anchored' | 'book_only' | number,
+    weight?: number,
+  ): void;
+  markImpactModel(): 'none' | 'book_anchored' | 'book_only';
+  markImpactWeight(): number;
+  /** Bound on second-order cascade depth in a single onMark call. 0 disables. */
+  setMaxCascadeDepth(depth: number): void;
+  maxCascadeDepth(): number;
 }
 
 export class FundingSchedule {

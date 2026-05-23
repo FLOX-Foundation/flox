@@ -147,6 +147,33 @@ class LiquidationEngine
   }
   SimulatedExecutor* executor() const noexcept { return _executor; }
 
+  // T038: mark-impact feedback. After liquidation fills, real venues
+  // recompute the mark from the post-cascade book and may trigger
+  // second-order liquidations within the same tick.
+  //   None          — mark stays at the tape input (T036 behaviour).
+  //   BookAnchored  — mark = (1 - weight) * tape_mark + weight * book_mid.
+  //                   weight in [0, 1]; matches Binance's blend.
+  //   BookOnly      — mark = book_mid post-liquidation (when book mid
+  //                   is available; otherwise falls back to tape).
+  enum class MarkImpactModel : uint8_t
+  {
+    None = 0,
+    BookAnchored = 1,
+    BookOnly = 2,
+  };
+  void setMarkImpactModel(MarkImpactModel model, double weight = 0.3) noexcept
+  {
+    _markImpactModel = model;
+    _markImpactWeight = weight;
+  }
+  void setMarkImpactModelByName(const std::string& name, double weight = 0.3);
+  MarkImpactModel markImpactModel() const noexcept { return _markImpactModel; }
+  double markImpactWeight() const noexcept { return _markImpactWeight; }
+  // Bound on second-order cascade depth within a single onMark call.
+  // Default 5; set to 0 to disable cascading altogether.
+  void setMaxCascadeDepth(uint32_t depth) noexcept { _maxCascadeDepth = depth; }
+  uint32_t maxCascadeDepth() const noexcept { return _maxCascadeDepth; }
+
   // Open a new position the engine should track.
   void openPosition(const LeveragedPosition& position)
   {
@@ -168,6 +195,12 @@ class LiquidationEngine
   // maintenance margin are liquidated at
   // `markPrice * (1 - sign(qty) * slippageBps/10000)`; deficits hit
   // the insurance fund, then ADL.
+  //
+  // When a non-`None` MarkImpactModel is configured and an executor
+  // is attached, the mark is recomputed from the post-fill book mid
+  // after each liquidation pass. If the recomputed mark forces more
+  // positions underwater, the engine cascades within the same call
+  // up to `maxCascadeDepth` rounds.
   LiquidationOutcome onMark(SymbolId symbol, double markPrice);
 
   // Cumulative stats across all onMark calls since construction.
@@ -222,6 +255,10 @@ class LiquidationEngine
   uint64_t _firstAdlTickIdx{UINT64_MAX};
   uint64_t _onMarkTickCounter{0};
 
+  MarkImpactModel _markImpactModel{MarkImpactModel::None};
+  double _markImpactWeight{0.3};
+  uint32_t _maxCascadeDepth{5};
+
   // Route a liquidation through the attached executor as a market
   // order; return realized close-price + filled qty. Returns
   // (-1, 0) when the executor was unable to fill any quantity this
@@ -233,6 +270,16 @@ class LiquidationEngine
     double filledQty{0.0};
   };
   ExecutorClose closeThroughExecutor(const LeveragedPosition& p, double markPrice);
+
+  // One pass of the underwater-detect + liquidate + insurance/ADL
+  // pipeline. The mark-impact feedback loop in `onMark` calls this
+  // repeatedly, each time recomputing the mark from the post-fill
+  // book before re-checking maintenance margin.
+  struct OnMarkPass
+  {
+    LiquidationOutcome outcome;
+  };
+  OnMarkPass onMarkOnce(SymbolId symbol, double markPrice, uint64_t tickIdx);
 };
 
 }  // namespace flox

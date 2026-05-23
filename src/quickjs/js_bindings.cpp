@@ -2156,6 +2156,89 @@ static JSValue js_liquidation_engine_reset_stats(JSContext* ctx, JSValueConst, i
       static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
+static JSValue js_liquidation_engine_set_mark_impact_model(
+    JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
+{
+  uint8_t code = 0;
+  if (argc >= 2 && JS_IsString(argv[1]))
+  {
+    const char* s = JS_ToCString(ctx, argv[1]);
+    if (s != nullptr)
+    {
+      const std::string name(s);
+      if (name == "book_anchored")
+      {
+        code = 1;
+      }
+      else if (name == "book_only")
+      {
+        code = 2;
+      }
+      JS_FreeCString(ctx, s);
+    }
+  }
+  else if (argc >= 2 && JS_IsNumber(argv[1]))
+  {
+    uint32_t v = 0;
+    JS_ToUint32(ctx, &v, argv[1]);
+    code = static_cast<uint8_t>(v);
+  }
+  double weight = 0.3;
+  if (argc >= 3 && JS_IsNumber(argv[2]))
+  {
+    JS_ToFloat64(ctx, &weight, argv[2]);
+  }
+  flox_liquidation_engine_set_mark_impact_model(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), code,
+      weight);
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_mark_impact_model(JSContext* ctx,
+                                                       JSValueConst, int,
+                                                       JSValueConst* argv)
+{
+  const uint8_t code = flox_liquidation_engine_mark_impact_model(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  const char* name = "none";
+  switch (code)
+  {
+    case 1:
+      name = "book_anchored";
+      break;
+    case 2:
+      name = "book_only";
+      break;
+    default:
+      name = "none";
+      break;
+  }
+  return JS_NewString(ctx, name);
+}
+static JSValue js_liquidation_engine_mark_impact_weight(JSContext* ctx,
+                                                        JSValueConst, int,
+                                                        JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_liquidation_engine_mark_impact_weight(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_liquidation_engine_set_max_cascade_depth(
+    JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  uint32_t depth = 0;
+  JS_ToUint32(ctx, &depth, argv[1]);
+  flox_liquidation_engine_set_max_cascade_depth(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), depth);
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_max_cascade_depth(JSContext* ctx,
+                                                       JSValueConst, int,
+                                                       JSValueConst* argv)
+{
+  return JS_NewUint32(
+      ctx, flox_liquidation_engine_max_cascade_depth(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
+}
 template <typename T, typename SizeFn, typename CopyFn>
 static JSValue copyVecToJs(JSContext* ctx, void* handle, SizeFn sizeFn, CopyFn copyFn)
 {
@@ -6363,6 +6446,16 @@ void registerFloxBindings(JSContext* ctx)
                 js_liquidation_engine_cascade_sizes, 1);
   addGlobalFunc(ctx, "__flox_liquidation_engine_fund_balance_history",
                 js_liquidation_engine_fund_balance_history, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_mark_impact_model",
+                js_liquidation_engine_set_mark_impact_model, 3);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_mark_impact_model",
+                js_liquidation_engine_mark_impact_model, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_mark_impact_weight",
+                js_liquidation_engine_mark_impact_weight, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_max_cascade_depth",
+                js_liquidation_engine_set_max_cascade_depth, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_max_cascade_depth",
+                js_liquidation_engine_max_cascade_depth, 1);
   addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
   addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",
