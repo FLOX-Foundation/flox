@@ -285,7 +285,18 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     {
       continue;
     }
-    acct->setMark(symbol, markPrice);
+    // Preserve a ts already stamped by an outer onMarks(...) call;
+    // bare onMark callers default ts=0 (treated as fresh by the
+    // stale-mark guard).
+    const int64_t existingTs = acct->markTsFor(symbol);
+    if (existingTs > INT64_MIN)
+    {
+      acct->setMark(symbol, markPrice, existingTs);
+    }
+    else
+    {
+      acct->setMark(symbol, markPrice);
+    }
     if (acct->marginMode() == MarginMode::Cross)
     {
       const auto walked = walkCrossAccount(*acct, symbol, markPrice);
