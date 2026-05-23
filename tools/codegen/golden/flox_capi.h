@@ -1536,6 +1536,8 @@ extern "C"
   uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h);
   uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h);
   void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile);
+  void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
+                                            FloxSimulatedExecutorHandle executor);
 
   // ============================================================
   // Live Queue Position

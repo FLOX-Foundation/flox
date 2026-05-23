@@ -1831,6 +1831,18 @@ static JSValue js_liquidation_engine_load_profile(JSContext* ctx, JSValueConst, 
       static_cast<uint8_t>(toUint32(ctx, argv[1])));
   return JS_UNDEFINED;
 }
+static JSValue js_liquidation_engine_set_executor(JSContext* ctx, JSValueConst, int argc,
+                                                  JSValueConst* argv)
+{
+  FloxSimulatedExecutorHandle exec_h = nullptr;
+  if (argc >= 2 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]))
+  {
+    exec_h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[1]));
+  }
+  flox_liquidation_engine_set_executor(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), exec_h);
+  return JS_UNDEFINED;
+}
 
 static JSValue js_fee_schedule_record_fill(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
@@ -5866,6 +5878,8 @@ void registerFloxBindings(JSContext* ctx)
                 js_liquidation_engine_adl_closeouts_count, 1);
   addGlobalFunc(ctx, "__flox_liquidation_engine_load_profile",
                 js_liquidation_engine_load_profile, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_set_executor",
+                js_liquidation_engine_set_executor, 2);
   addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
   addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",

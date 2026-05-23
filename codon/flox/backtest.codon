@@ -63,6 +63,7 @@ from C import flox_liquidation_engine_liquidations_count(cobj) -> u64
 from C import flox_liquidation_engine_insurance_payments_count(cobj) -> u64
 from C import flox_liquidation_engine_adl_closeouts_count(cobj) -> u64
 from C import flox_liquidation_engine_load_profile(cobj, u8)
+from C import flox_liquidation_engine_set_executor(cobj, cobj)
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
@@ -470,6 +471,14 @@ class LiquidationEngine:
     def load_profile(self, profile: int):
         """Profile: 0=binance_um_futures, 1=bybit_linear, 2=okx_swap."""
         flox_liquidation_engine_load_profile(self._h, u8(profile))
+
+    def set_executor(self, executor: SimulatedExecutor):
+        """Attach a SimulatedExecutor so liquidation orders route
+        through it as market orders. Pass None to detach (caller
+        passes a default-constructed executor with closed handle
+        for explicit detach; passing this method is the wiring,
+        detach via setExecutor on a fresh engine)."""
+        flox_liquidation_engine_set_executor(self._h, executor._handle)
 
 
 class BacktestResult:

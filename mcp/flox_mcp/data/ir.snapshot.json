@@ -6246,6 +6246,21 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_executor",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_set_insurance_fund_capital",
       "params": [
         {
