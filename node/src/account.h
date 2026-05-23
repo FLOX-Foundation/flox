@@ -33,6 +33,8 @@ class AccountWrap : public Napi::ObjectWrap<AccountWrap>
          InstanceMethod("totalNotional", &AccountWrap::TotalNotional),
          InstanceMethod("totalUnrealisedPnl", &AccountWrap::TotalUpnl),
          InstanceMethod("recordFill", &AccountWrap::RecordFill),
+         InstanceMethod("rollingNotionalBySymbol30d",
+                        &AccountWrap::RollingNotionalBySymbol),
          InstanceMethod("rollingNotional30d", &AccountWrap::RollingNotional),
          InstanceMethod("resetRolling", &AccountWrap::ResetRolling)});
   }
@@ -158,8 +160,34 @@ class AccountWrap : public Napi::ObjectWrap<AccountWrap>
   }
   void RecordFill(const Napi::CallbackInfo& info)
   {
-    flox_account_record_fill(_h, info[0].As<Napi::Number>().Int64Value(),
-                             info[1].As<Napi::Number>().DoubleValue());
+    const int64_t ts = info[0].As<Napi::Number>().Int64Value();
+    const double notional = info[1].As<Napi::Number>().DoubleValue();
+    if (info.Length() >= 3 && info[2].IsNumber())
+    {
+      flox_account_record_fill_ex(_h, ts, notional,
+                                  info[2].As<Napi::Number>().Uint32Value());
+    }
+    else
+    {
+      flox_account_record_fill(_h, ts, notional);
+    }
+  }
+  Napi::Value RollingNotionalBySymbol(const Napi::CallbackInfo& info)
+  {
+    const uint32_t n = flox_account_rolling_notional_by_symbol_size(_h);
+    std::vector<uint32_t> syms(n);
+    std::vector<double> totals(n);
+    flox_account_rolling_notional_by_symbol_copy(_h, syms.data(),
+                                                 totals.data(), n);
+    Napi::Array arr = Napi::Array::New(info.Env(), n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      Napi::Object pair = Napi::Object::New(info.Env());
+      pair.Set("symbol", Napi::Number::New(info.Env(), syms[i]));
+      pair.Set("notional", Napi::Number::New(info.Env(), totals[i]));
+      arr.Set(i, pair);
+    }
+    return arr;
   }
   Napi::Value RollingNotional(const Napi::CallbackInfo& info)
   {

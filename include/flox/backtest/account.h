@@ -109,9 +109,16 @@ class Account
 
   // 30-day rolling notional counter. recordFill pushes a fill into
   // the window; rollingNotional30d returns the current sum. Used by
-  // FeeSchedule when bound.
-  void recordFill(int64_t tsNs, double notional);
+  // FeeSchedule when bound. `symbol` (default 0, "unknown") lets the
+  // caller break down rolling notional by symbol for venue tier
+  // overrides or analytics; FeeSchedule still reads the aggregate.
+  void recordFill(int64_t tsNs, double notional, SymbolId symbol = 0);
   double rollingNotional30d() const noexcept { return _rollingTotal; }
+  // Per-symbol rolling notional within the current 30d window.
+  // Symbols never seen by recordFill (or whose fills have all been
+  // evicted) are absent from the result. The fallback `symbol = 0`
+  // bucket carries fills recorded without an explicit symbol.
+  std::vector<std::pair<SymbolId, double>> rollingNotionalBySymbol30d() const;
   void resetRolling() noexcept
   {
     _rolling.clear();
@@ -143,7 +150,13 @@ class Account
     int64_t tsNs;
   };
   std::vector<Mark> _marks;
-  std::deque<std::pair<int64_t, double>> _rolling;
+  struct RollingFill
+  {
+    int64_t tsNs;
+    double notional;
+    SymbolId symbol;
+  };
+  std::deque<RollingFill> _rolling;
   double _rollingTotal{0.0};
 };
 

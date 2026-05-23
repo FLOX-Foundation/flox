@@ -125,19 +125,43 @@ bool Account::hasStaleMarks(int64_t nowNs, int64_t budgetNs) const
   return false;
 }
 
-void Account::recordFill(int64_t tsNs, double notional)
+void Account::recordFill(int64_t tsNs, double notional, SymbolId symbol)
 {
-  _rolling.emplace_back(tsNs, notional);
+  _rolling.push_back(RollingFill{tsNs, notional, symbol});
   _rollingTotal += notional;
   evictExpired(tsNs);
+}
+
+std::vector<std::pair<SymbolId, double>>
+Account::rollingNotionalBySymbol30d() const
+{
+  std::vector<std::pair<SymbolId, double>> out;
+  for (const auto& f : _rolling)
+  {
+    bool found = false;
+    for (auto& [sym, total] : out)
+    {
+      if (sym == f.symbol)
+      {
+        total += f.notional;
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+    {
+      out.emplace_back(f.symbol, f.notional);
+    }
+  }
+  return out;
 }
 
 void Account::evictExpired(int64_t nowNs)
 {
   const int64_t cutoff = nowNs - kThirtyDaysNs;
-  while (!_rolling.empty() && _rolling.front().first <= cutoff)
+  while (!_rolling.empty() && _rolling.front().tsNs <= cutoff)
   {
-    _rollingTotal -= _rolling.front().second;
+    _rollingTotal -= _rolling.front().notional;
     _rolling.pop_front();
   }
   if (_rollingTotal < 0.0)

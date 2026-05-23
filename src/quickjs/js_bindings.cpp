@@ -2454,16 +2454,45 @@ static JSValue js_account_total_upnl(JSContext* ctx, JSValueConst, int,
       ctx, flox_account_total_unrealised_pnl(
                static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
 }
-static JSValue js_account_record_fill(JSContext* ctx, JSValueConst, int,
+static JSValue js_account_record_fill(JSContext* ctx, JSValueConst, int argc,
                                       JSValueConst* argv)
 {
   int64_t ts = 0;
   double n = 0.0;
   JS_ToInt64(ctx, &ts, argv[1]);
   JS_ToFloat64(ctx, &n, argv[2]);
-  flox_account_record_fill(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), ts, n);
+  if (argc >= 4 && JS_IsNumber(argv[3]))
+  {
+    uint32_t sym = 0;
+    JS_ToUint32(ctx, &sym, argv[3]);
+    flox_account_record_fill_ex(
+        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), ts, n, sym);
+  }
+  else
+  {
+    flox_account_record_fill(
+        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), ts, n);
+  }
   return JS_UNDEFINED;
+}
+static JSValue js_account_rolling_notional_by_symbol(JSContext* ctx,
+                                                     JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  auto h = static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]));
+  const uint32_t n = flox_account_rolling_notional_by_symbol_size(h);
+  std::vector<uint32_t> syms(n);
+  std::vector<double> totals(n);
+  flox_account_rolling_notional_by_symbol_copy(h, syms.data(), totals.data(), n);
+  JSValue arr = JS_NewArray(ctx);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue pair = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, pair, "symbol", JS_NewUint32(ctx, syms[i]));
+    JS_SetPropertyStr(ctx, pair, "notional", JS_NewFloat64(ctx, totals[i]));
+    JS_SetPropertyUint32(ctx, arr, i, pair);
+  }
+  return arr;
 }
 static JSValue js_account_rolling_notional_30d(JSContext* ctx, JSValueConst, int,
                                                JSValueConst* argv)
@@ -6835,7 +6864,9 @@ void registerFloxBindings(JSContext* ctx)
                 js_account_total_notional, 1);
   addGlobalFunc(ctx, "__flox_account_total_unrealised_pnl",
                 js_account_total_upnl, 1);
-  addGlobalFunc(ctx, "__flox_account_record_fill", js_account_record_fill, 3);
+  addGlobalFunc(ctx, "__flox_account_record_fill", js_account_record_fill, 4);
+  addGlobalFunc(ctx, "__flox_account_rolling_notional_by_symbol",
+                js_account_rolling_notional_by_symbol, 1);
   addGlobalFunc(ctx, "__flox_account_rolling_notional_30d",
                 js_account_rolling_notional_30d, 1);
   addGlobalFunc(ctx, "__flox_account_reset_rolling",

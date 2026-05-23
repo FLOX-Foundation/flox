@@ -430,6 +430,53 @@ TEST(Account, FeeScheduleCrossSymbolNotionalTriggersTier)
   EXPECT_GE(ethSched.currentTierIndex(), 1u);
 }
 
+// === T059: per-symbol record_fill breakdown ===
+
+TEST(Account, RecordFillDefaultsToZeroSymbol)
+{
+  Account a(1, 0.0);
+  a.recordFill(0, 100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+  const auto by = a.rollingNotionalBySymbol30d();
+  ASSERT_EQ(by.size(), 1u);
+  EXPECT_EQ(by[0].first, 0u);
+  EXPECT_DOUBLE_EQ(by[0].second, 100'000.0);
+}
+
+TEST(Account, RecordFillTagsBySymbol)
+{
+  Account a(1, 0.0);
+  a.recordFill(0, 100'000.0, BTC);
+  a.recordFill(0, 50'000.0, ETH);
+  a.recordFill(0, 25'000.0, BTC);  // second BTC fill
+
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 175'000.0);
+  const auto by = a.rollingNotionalBySymbol30d();
+  ASSERT_EQ(by.size(), 2u);
+  EXPECT_EQ(by[0].first, BTC);
+  EXPECT_DOUBLE_EQ(by[0].second, 125'000.0);
+  EXPECT_EQ(by[1].first, ETH);
+  EXPECT_DOUBLE_EQ(by[1].second, 50'000.0);
+}
+
+TEST(Account, PerSymbolBreakdownRespectsEviction)
+{
+  Account a(1, 0.0);
+  const int64_t day = 24LL * 3600LL * 1'000'000'000LL;
+  a.recordFill(0, 100'000.0, BTC);
+  a.recordFill(15LL * day, 50'000.0, ETH);
+
+  auto by = a.rollingNotionalBySymbol30d();
+  ASSERT_EQ(by.size(), 2u);
+
+  // 35 days later: BTC fill (t=0) past cutoff, evicted.
+  a.recordFill(35LL * day, 10'000.0, ETH);
+  by = a.rollingNotionalBySymbol30d();
+  ASSERT_EQ(by.size(), 1u);
+  EXPECT_EQ(by[0].first, ETH);
+  EXPECT_DOUBLE_EQ(by[0].second, 50'000.0 + 10'000.0);
+}
+
 TEST(Account, FeeScheduleUnboundCounterUnaffectedByAccount)
 {
   Account a(1, 100'000.0);

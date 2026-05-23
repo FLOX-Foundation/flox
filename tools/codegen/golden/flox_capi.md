@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 695 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 69 groups.
+**Surface:** 698 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 69 groups.
 
 ## Opaque handles
 
@@ -868,6 +868,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_account_total_notional(FloxAccountHandle h)`
 - `double flox_account_total_unrealised_pnl(FloxAccountHandle h)`
 - `void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional)`
+- `void flox_account_record_fill_ex(FloxAccountHandle h, int64_t ts_ns, double notional, uint32_t symbol)`
+- `uint32_t flox_account_rolling_notional_by_symbol_size(FloxAccountHandle h)`
+- `uint32_t flox_account_rolling_notional_by_symbol_copy(FloxAccountHandle h, uint32_t * symbols_out, double * notionals_out, uint32_t max)`
 - `double flox_account_rolling_notional_30d(FloxAccountHandle h)`
 - `void flox_account_reset_rolling(FloxAccountHandle h)`
 

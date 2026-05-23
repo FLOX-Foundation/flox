@@ -26,6 +26,9 @@ from C import flox_account_has_stale_marks(cobj, i64, i64) -> u8
 from C import flox_account_total_notional(cobj) -> float
 from C import flox_account_total_unrealised_pnl(cobj) -> float
 from C import flox_account_record_fill(cobj, i64, float)
+from C import flox_account_record_fill_ex(cobj, i64, float, u32)
+from C import flox_account_rolling_notional_by_symbol_size(cobj) -> u32
+from C import flox_account_rolling_notional_by_symbol_copy(cobj, Ptr[u32], Ptr[float], u32) -> u32
 from C import flox_account_rolling_notional_30d(cobj) -> float
 from C import flox_account_reset_rolling(cobj)
 

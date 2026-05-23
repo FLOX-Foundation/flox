@@ -990,6 +990,29 @@
     },
     {
       "group": "account",
+      "name": "flox_account_record_fill_ex",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "notional",
+          "type": "double"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
       "name": "flox_account_reset_rolling",
       "params": [
         {
@@ -1009,6 +1032,40 @@
         }
       ],
       "return_type": "double"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_rolling_notional_by_symbol_copy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "symbols_out",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "notionals_out",
+          "type": "double *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_rolling_notional_by_symbol_size",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "uint32_t"
     },
     {
       "group": "account",

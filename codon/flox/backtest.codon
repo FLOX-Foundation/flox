@@ -117,6 +117,9 @@ from C import flox_account_set_mark(cobj, u32, f64)
 from C import flox_account_total_notional(cobj) -> f64
 from C import flox_account_total_unrealised_pnl(cobj) -> f64
 from C import flox_account_record_fill(cobj, i64, f64)
+from C import flox_account_record_fill_ex(cobj, i64, f64, u32)
+from C import flox_account_rolling_notional_by_symbol_size(cobj) -> u32
+from C import flox_account_rolling_notional_by_symbol_copy(cobj, Ptr[u32], Ptr[f64], u32) -> u32
 from C import flox_account_rolling_notional_30d(cobj) -> f64
 from C import flox_account_reset_rolling(cobj)
 from C import flox_liquidation_engine_attach_account(cobj, cobj)
@@ -808,8 +811,23 @@ class Account:
     def total_unrealised_pnl(self) -> float:
         return float(flox_account_total_unrealised_pnl(self._h))
 
-    def record_fill(self, ts_ns: int, notional: float):
-        flox_account_record_fill(self._h, i64(ts_ns), f64(notional))
+    def record_fill(self, ts_ns: int, notional: float, symbol: int = 0):
+        if symbol == 0:
+            flox_account_record_fill(self._h, i64(ts_ns), f64(notional))
+        else:
+            flox_account_record_fill_ex(self._h, i64(ts_ns), f64(notional),
+                                        u32(symbol))
+
+    def rolling_notional_by_symbol_30d(self) -> List[Tuple[int, float]]:
+        n = int(flox_account_rolling_notional_by_symbol_size(self._h))
+        if n == 0:
+            return []
+        syms = [u32(0) for _ in range(n)]
+        totals = [f64(0.0) for _ in range(n)]
+        flox_account_rolling_notional_by_symbol_copy(
+            self._h, Ptr[u32](syms.arr.ptr), Ptr[f64](totals.arr.ptr),
+            u32(n))
+        return [(int(syms[i]), float(totals[i])) for i in range(n)]
 
     def rolling_notional_30d(self) -> float:
         return float(flox_account_rolling_notional_30d(self._h))
