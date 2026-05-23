@@ -68,6 +68,13 @@ struct Order
 
   // Iceberg
   Quantity visibleQuantity{};  // visible size (0 = full)
+
+  // STP account routing. Zero = the default account; the simulator
+  // applies self-trade prevention only when two orders share the same
+  // accountId. Configure group-level STP via
+  // SimulatedExecutor::setSTPGroupMembership to extend the match to
+  // every account in the group.
+  uint64_t accountId{0};
 };
 
 }  // namespace flox

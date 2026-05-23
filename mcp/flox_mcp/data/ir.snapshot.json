@@ -11447,6 +11447,25 @@
     },
     {
       "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_stp_group_membership",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "account_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "group_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
       "name": "flox_simulated_executor_set_stp_mode",
       "params": [
         {
@@ -11558,6 +11577,21 @@
         }
       ],
       "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_stp_group_for",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "account_id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "uint64_t"
     },
     {
       "group": "simulated_executor",

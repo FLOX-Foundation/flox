@@ -138,7 +138,7 @@ class PySimulatedExecutor
   void submitOrder(uint64_t id, const std::string& sideStr, double price, double qty,
                    const std::string& typeStr, uint32_t symbol,
                    const std::string& tifStr = "gtc", bool reduceOnly = false,
-                   int64_t expiresAtNs = 0)
+                   int64_t expiresAtNs = 0, uint64_t accountId = 0)
   {
     Order order;
     order.id = id;
@@ -149,11 +149,21 @@ class PySimulatedExecutor
     order.type = parseOrderType(typeStr);
     order.timeInForce = parseTimeInForce(tifStr);
     order.flags.reduceOnly = reduceOnly ? 1 : 0;
+    order.accountId = accountId;
     if (expiresAtNs > 0)
     {
       order.expiresAfter = TimePoint(std::chrono::nanoseconds(expiresAtNs));
     }
     _executor.submitOrder(order);
+  }
+
+  void setSTPGroupMembership(uint64_t account_id, uint64_t group_id)
+  {
+    _executor.setSTPGroupMembership(account_id, group_id);
+  }
+  uint64_t stpGroupFor(uint64_t account_id) const
+  {
+    return _executor.stpGroupFor(account_id);
   }
 
   static TimeInForce parseTimeInForce(const std::string& s)
@@ -614,11 +624,17 @@ inline void bindBacktest(py::module_& m)
       .def(py::init<>())
       .def("submit_order", &PySimulatedExecutor::submitOrder,
            "Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. "
-           "reduce_only: only reduce existing position. expires_at_ns: GTD deadline.",
+           "reduce_only: only reduce existing position. expires_at_ns: GTD deadline. "
+           "account_id: optional STP account identifier (default 0).",
            py::arg("id"), py::arg("side"), py::arg("price"), py::arg("quantity"),
            py::arg("type") = "market", py::arg("symbol") = 1,
            py::arg("tif") = "gtc", py::arg("reduce_only") = false,
-           py::arg("expires_at_ns") = 0)
+           py::arg("expires_at_ns") = 0, py::arg("account_id") = 0)
+      .def("set_stp_group_membership", &PySimulatedExecutor::setSTPGroupMembership,
+           "Opt an STP account into a group. group_id=0 removes the mapping.",
+           py::arg("account_id"), py::arg("group_id"))
+      .def("stp_group_for", &PySimulatedExecutor::stpGroupFor,
+           py::arg("account_id"))
       .def("cancel_order", &PySimulatedExecutor::cancelOrder, py::arg("order_id"))
       .def("cancel_all", &PySimulatedExecutor::cancelAll, py::arg("symbol"))
       .def("submit_bracket", &PySimulatedExecutor::submitBracket,

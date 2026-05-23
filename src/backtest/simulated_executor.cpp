@@ -207,6 +207,35 @@ void SimulatedExecutor::clearRateLimitPolicy()
   _hasRateLimit = false;
 }
 
+void SimulatedExecutor::setSTPGroupMembership(uint64_t accountId, uint64_t groupId)
+{
+  if (groupId == 0)
+  {
+    _stpGroupMembership.erase(accountId);
+  }
+  else
+  {
+    _stpGroupMembership[accountId] = groupId;
+  }
+}
+
+uint64_t SimulatedExecutor::stpGroupFor(uint64_t accountId) const
+{
+  auto it = _stpGroupMembership.find(accountId);
+  return it == _stpGroupMembership.end() ? 0 : it->second;
+}
+
+bool SimulatedExecutor::sameStpScope(uint64_t a, uint64_t b) const
+{
+  if (a == b)
+  {
+    return true;
+  }
+  const uint64_t ga = stpGroupFor(a);
+  const uint64_t gb = stpGroupFor(b);
+  return ga != 0 && ga == gb;
+}
+
 void SimulatedExecutor::setFokModeByName(const std::string& name)
 {
   std::string lower;
@@ -309,6 +338,14 @@ void SimulatedExecutor::submitOrder(const Order& order)
     {
       Order& existing = _pending_orders[i];
       if (existing.symbol != accepted.symbol || existing.side == accepted.side)
+      {
+        continue;
+      }
+      // Multi-account STP scope: STP only fires when the two orders
+      // share an STP scope (same accountId, or both accounts in the
+      // same explicit STP group). Default accountId=0 keeps the
+      // single-account semantics from T025.
+      if (!sameStpScope(existing.accountId, accepted.accountId))
       {
         continue;
       }

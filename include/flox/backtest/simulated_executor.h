@@ -99,12 +99,23 @@ class SimulatedExecutor : public IOrderExecutor
 
   // Self-trade prevention. When set, submitOrder consults pending
   // resting orders and applies the configured mode if the incoming
-  // order would cross one of the same account's resting orders. The
-  // simulator currently treats every order on this executor as
-  // belonging to one logical account; cross-account STP is filed as
-  // a follow-up if multi-account workflows arrive.
+  // order would cross one of the same account's resting orders.
+  // Multi-account workflows: STP keys on (Order::accountId, optional
+  // STP group). Two orders share an STP scope when either their
+  // accountIds match, or their accounts belong to the same explicit
+  // STP group (configure via setSTPGroupMembership).
   void setSTPMode(STPMode mode) noexcept { _stpMode = mode; }
   STPMode stpMode() const noexcept { return _stpMode; }
+
+  // Opt an account into an STP group. Group id 0 removes any prior
+  // mapping. Two orders belong to the same STP scope when either
+  // their accountIds match (and are equal), or both accounts map to
+  // the same non-zero group.
+  void setSTPGroupMembership(uint64_t accountId, uint64_t groupId);
+  uint64_t stpGroupFor(uint64_t accountId) const;
+  // True when the simulator should treat two orders as candidates for
+  // STP (same direct account, or both in the same non-zero group).
+  bool sameStpScope(uint64_t a, uint64_t b) const;
 
   // FOK fill semantics. Real venues split:
   //   AnyPrice    — fill if cumulative liquidity along the book (at
@@ -348,6 +359,7 @@ class SimulatedExecutor : public IOrderExecutor
   bool _hasRateLimit{false};
 
   STPMode _stpMode{STPMode::None};
+  std::unordered_map<uint64_t, uint64_t> _stpGroupMembership;
   FokMode _fokMode{FokMode::AnyPrice};
 
   VenueAvailability* _venue{nullptr};

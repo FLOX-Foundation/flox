@@ -1400,6 +1400,16 @@ extern "C"
   FLOX_EXPORT(group = "backtest_slippage")
   uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle executor);
 
+  // Multi-account STP group membership. Two orders share an STP scope
+  // when their accountIds match OR both accounts map into the same
+  // non-zero group. group_id=0 removes any prior mapping.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_stp_group_membership(
+      FloxSimulatedExecutorHandle executor, uint64_t account_id, uint64_t group_id);
+  FLOX_EXPORT(group = "backtest_slippage")
+  uint64_t flox_simulated_executor_stp_group_for(FloxSimulatedExecutorHandle executor,
+                                                 uint64_t account_id);
+
   // Latency-distribution handle. The simulator copies the distribution
   // on set_*_distribution; the caller still owns and destroys the
   // handle. kind: 0=Constant, 1=Uniform, 2=Lognormal, 3=Empirical.

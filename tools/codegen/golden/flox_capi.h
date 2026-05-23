@@ -881,6 +881,10 @@ extern "C"
   void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
   void flox_simulated_executor_set_fok_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
   uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_set_stp_group_membership(FloxSimulatedExecutorHandle executor,
+                                                        uint64_t account_id, uint64_t group_id);
+  uint64_t flox_simulated_executor_stp_group_for(FloxSimulatedExecutorHandle executor,
+                                                 uint64_t account_id);
   FloxLatencyDistributionHandle flox_latency_distribution_create(void);
   void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h);
   void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns);
