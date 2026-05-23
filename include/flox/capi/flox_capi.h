@@ -839,6 +839,8 @@ extern "C"
   void flox_account_set_margin_mode(FloxAccountHandle h, uint8_t mode);
   void flox_account_open_position(FloxAccountHandle h, uint32_t symbol, double quantity,
                                   double entry_price);
+  void flox_account_open_position_isolated(FloxAccountHandle h, uint32_t symbol, double quantity,
+                                           double entry_price, double isolated_equity);
   void flox_account_close_position(FloxAccountHandle h, uint32_t symbol);
   uint32_t flox_account_position_count(FloxAccountHandle h);
   void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price);

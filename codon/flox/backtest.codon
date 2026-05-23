@@ -110,6 +110,7 @@ from C import flox_account_add_equity(cobj, f64)
 from C import flox_account_margin_mode(cobj) -> u8
 from C import flox_account_set_margin_mode(cobj, u8)
 from C import flox_account_open_position(cobj, u32, f64, f64)
+from C import flox_account_open_position_isolated(cobj, u32, f64, f64, f64)
 from C import flox_account_close_position(cobj, u32)
 from C import flox_account_position_count(cobj) -> u32
 from C import flox_account_set_mark(cobj, u32, f64)
@@ -773,8 +774,15 @@ class Account:
             code = u8(int(mode))
         flox_account_set_margin_mode(self._h, code)
 
-    def open_position(self, symbol: int, quantity: float, entry_price: float):
-        flox_account_open_position(self._h, u32(symbol), f64(quantity), f64(entry_price))
+    def open_position(self, symbol: int, quantity: float, entry_price: float,
+                      isolated_equity: float = 0.0):
+        if isolated_equity == 0.0:
+            flox_account_open_position(self._h, u32(symbol), f64(quantity),
+                                       f64(entry_price))
+        else:
+            flox_account_open_position_isolated(
+                self._h, u32(symbol), f64(quantity), f64(entry_price),
+                f64(isolated_equity))
 
     def close_position(self, symbol: int):
         flox_account_close_position(self._h, u32(symbol))

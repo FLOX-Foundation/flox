@@ -45,7 +45,7 @@ inline void bindAccount(py::module_& m)
              {
                self.setMarginMode(mode.cast<flox::MarginMode>());
              } }, "Accepts a MarginMode enum or a string name (cross, isolated).", py::arg("mode"))
-      .def("open_position", &flox::Account::openPosition, py::arg("symbol"), py::arg("quantity"), py::arg("entry_price"))
+      .def("open_position", &flox::Account::openPosition, py::arg("symbol"), py::arg("quantity"), py::arg("entry_price"), py::arg("isolated_equity") = 0.0)
       .def("close_position", &flox::Account::closePosition, py::arg("symbol"))
       .def("position_count", &flox::Account::positionCount)
       .def("set_mark", &flox::Account::setMark, py::arg("symbol"), py::arg("price"), py::arg("ts_ns") = int64_t{0})

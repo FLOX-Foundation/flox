@@ -70,8 +70,15 @@ class Account
   // are ignored.
   void setMarginModeByName(const std::string& name);
 
-  // Open / close positions. Side encoded in signed `quantity`.
-  void openPosition(SymbolId symbol, double quantity, double entryPrice);
+  // Open a position. Side encoded in signed `quantity`. The
+  // `isolatedEquity` slice is the margin posted backing this
+  // position when the account runs in MarginMode::Isolated; it is
+  // ignored in Cross mode (shared account equity is used instead).
+  // Default 0.0 keeps backwards-compatible call sites; isolated-
+  // mode callers MUST pass the slice or the position survives any
+  // mark move (no equity backing → trivially solvent).
+  void openPosition(SymbolId symbol, double quantity, double entryPrice,
+                    double isolatedEquity = 0.0);
   void closePosition(SymbolId symbol);
   const std::vector<LeveragedPosition>& positions() const noexcept { return _positions; }
   std::vector<LeveragedPosition>& positionsMut() noexcept { return _positions; }

@@ -320,6 +320,13 @@ class LiquidationEngine
   };
   AccountWalkOutcome walkCrossAccount(Account& account, SymbolId symbol,
                                       double markPrice);
+  // Isolated-mode walk: each position liquidates independently using
+  // the per-position equity slice posted at openPosition. Returns
+  // any per-position residuals after equity exhausted (currently the
+  // engine treats unfilled isolated deficits the same as orphan-
+  // position deficits and routes them to insurance/ADL).
+  AccountWalkOutcome walkIsolatedAccount(Account& account, SymbolId symbol,
+                                         double markPrice);
 };
 
 }  // namespace flox

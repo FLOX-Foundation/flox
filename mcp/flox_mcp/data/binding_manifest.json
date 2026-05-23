@@ -55,6 +55,11 @@
         {
           "group": "account",
           "kind": "function",
+          "name": "flox_account_open_position_isolated"
+        },
+        {
+          "group": "account",
+          "kind": "function",
           "name": "flox_account_position_count"
         },
         {
@@ -4050,6 +4055,10 @@
         {
           "kind": "function",
           "name": "flox_account_open_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_open_position_isolated"
         },
         {
           "kind": "function",
@@ -8446,6 +8455,7 @@
         "flox_account_margin_mode",
         "flox_account_mark_ts",
         "flox_account_open_position",
+        "flox_account_open_position_isolated",
         "flox_account_position_count",
         "flox_account_record_fill",
         "flox_account_reset_rolling",

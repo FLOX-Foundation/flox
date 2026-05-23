@@ -2327,7 +2327,7 @@ static JSValue js_account_set_margin_mode(JSContext* ctx, JSValueConst, int argc
       static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), code);
   return JS_UNDEFINED;
 }
-static JSValue js_account_open_position(JSContext* ctx, JSValueConst, int,
+static JSValue js_account_open_position(JSContext* ctx, JSValueConst, int argc,
                                         JSValueConst* argv)
 {
   uint32_t sym = 0;
@@ -2335,8 +2335,20 @@ static JSValue js_account_open_position(JSContext* ctx, JSValueConst, int,
   JS_ToUint32(ctx, &sym, argv[1]);
   JS_ToFloat64(ctx, &qty, argv[2]);
   JS_ToFloat64(ctx, &entry, argv[3]);
-  flox_account_open_position(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, qty, entry);
+  if (argc >= 5 && JS_IsNumber(argv[4]))
+  {
+    double iso = 0.0;
+    JS_ToFloat64(ctx, &iso, argv[4]);
+    flox_account_open_position_isolated(
+        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, qty,
+        entry, iso);
+  }
+  else
+  {
+    flox_account_open_position(
+        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, qty,
+        entry);
+  }
   return JS_UNDEFINED;
 }
 static JSValue js_account_close_position(JSContext* ctx, JSValueConst, int,

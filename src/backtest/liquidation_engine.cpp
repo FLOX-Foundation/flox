@@ -295,6 +295,18 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
       out.liquidationsCount += walked.outcome.liquidationsCount;
       accountDeficit += walked.deficit;
     }
+    else
+    {
+      // Isolated: per-position MM check using the equity slice
+      // posted at openPosition.
+      const auto walked = walkIsolatedAccount(*acct, symbol, markPrice);
+      for (uint64_t id : walked.outcome.liquidated)
+      {
+        out.liquidated.push_back(id);
+      }
+      out.liquidationsCount += walked.outcome.liquidationsCount;
+      accountDeficit += walked.deficit;
+    }
   }
 
   if (_positions.empty() && accountDeficit == 0.0)
@@ -631,6 +643,92 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
   {
     result.deficit = -account.equity();
     account.setEquity(0.0);
+  }
+  return result;
+}
+
+LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
+    Account& account, SymbolId symbol, double markPrice)
+{
+  AccountWalkOutcome result;
+  if (account.positionCount() == 0)
+  {
+    return result;
+  }
+
+  // Mirror the per-position logic from `onMarkOnce` but iterate the
+  // account's own position book. Each position carries its own
+  // isolated equity slice; underwater positions liquidate
+  // independently.
+  auto& book = account.positionsMut();
+  std::vector<size_t> liquidated;
+  for (size_t i = 0; i < book.size(); ++i)
+  {
+    auto& p = book[i];
+    if (p.symbol != symbol || p.quantity == 0.0)
+    {
+      continue;
+    }
+    const double notional = std::abs(p.quantity) * markPrice;
+    const double mm = mmFractionFor(notional);
+    const double mmReq = notional * mm;
+    const double upnl = p.quantity * (markPrice - p.entryPrice);
+    if (p.equity + upnl >= mmReq)
+    {
+      continue;  // healthy
+    }
+
+    // Underwater: close through executor (when attached) or via
+    // flat-bps slippage on the bankruptcy price.
+    double closePrice = 0.0;
+    double filledQty = 0.0;
+    if (_executor != nullptr)
+    {
+      const auto exClose = closeThroughExecutor(p, markPrice);
+      closePrice = exClose.closePrice;
+      filledQty = exClose.filledQty;
+      if (filledQty <= 0.0)
+      {
+        // Executor couldn't fill; retry next tick. Do not count as
+        // a liquidation.
+        continue;
+      }
+    }
+    else
+    {
+      const double signQ = (p.quantity > 0.0) ? 1.0 : -1.0;
+      const double slip = _slippageBps / 10000.0;
+      closePrice = markPrice * (1.0 - signQ * slip);
+      filledQty = std::abs(p.quantity);
+    }
+    const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
+    const double realized = signedFilled * (closePrice - p.entryPrice);
+    const double filledEquity = p.equity * (filledQty / std::abs(p.quantity));
+    const double residualEquity = filledEquity + realized;
+    result.outcome.liquidated.push_back(account.accountId());
+    ++_statLiquidations;
+    ++result.outcome.liquidationsCount;
+    if (residualEquity < 0.0)
+    {
+      result.deficit += -residualEquity;
+    }
+    if (filledQty >= std::abs(p.quantity) - 1e-12)
+    {
+      liquidated.push_back(i);
+    }
+    else
+    {
+      const double remaining = std::abs(p.quantity) - filledQty;
+      p.quantity = (p.quantity > 0.0) ? remaining : -remaining;
+      p.equity -= filledEquity;
+    }
+  }
+  // Remove fully-liquidated positions descending so erase indexes
+  // stay valid.
+  std::sort(liquidated.begin(), liquidated.end(), std::greater<size_t>());
+  for (size_t i : liquidated)
+  {
+    book.erase(book.begin() + static_cast<long>(i));
   }
   return result;
 }

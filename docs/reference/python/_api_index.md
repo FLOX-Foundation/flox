@@ -154,7 +154,7 @@ Surface: 110 classes, 58 functions, 39 constants.
 - `margin_mode(self) -> MarginMode`
 - `mark_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> float`
 - `mark_ts_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> int`
-- `open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, isolated_equity: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `position_count(self) -> int`
 - `record_fill(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, notional: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `reset_rolling(self) -> None`

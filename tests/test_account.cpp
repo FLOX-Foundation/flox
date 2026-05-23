@@ -135,28 +135,79 @@ TEST(Account, CrossMarginLiquidatesWorstLegWhenBothUnderwater)
   EXPECT_FALSE(ethStillOpen) << "ETH (worst leg) should liquidate first";
 }
 
-TEST(Account, IsolatedModeDoesNotShareEquity)
+TEST(Account, IsolatedModePositionLiquidatesIndependently)
 {
-  // Isolated mode: account-level cross check is skipped. Per-position
-  // liquidation still works via the engine's standalone position book
-  // — this asserts that attaching an Isolated account does NOT trigger
-  // cross-margin liquidation of an otherwise-survivable account.
-  Account a(1, 1'000.0);
+  // Isolated mode: each position carries its own posted-margin slice.
+  // The engine walks them per-position; netting across symbols does
+  // NOT happen.
+  Account a(1, 0.0);  // account equity unused in isolated mode
   a.setMarginMode(MarginMode::Isolated);
-  a.openPosition(BTC, 1.0, 50'000.0);
+  // BTC long with 1000 isolated equity at entry 50k.
+  a.openPosition(BTC, 1.0, 50'000.0, /*isolated_equity=*/1'000.0);
+  // ETH short with 500 isolated equity at entry 3k.
+  a.openPosition(ETH, -10.0, 3'000.0, /*isolated_equity=*/500.0);
 
   LiquidationEngine e;
   e.addTier(0.0, 0.005);
   e.attachAccount(&a);
 
-  // BTC drops 1% (-500). In Cross mode equity 1000 - 500 = 500
-  // would still survive; here Isolated mode means the engine
-  // doesn't run the cross check at all. The position lacks a
-  // per-position equity slice → it survives because there's no
-  // cross-trigger.
-  const auto out = e.onMark(BTC, 49'500.0);
-  EXPECT_EQ(out.liquidationsCount, 0u);
+  // BTC drops 5% (-2500 uPnL) → 1000 + (-2500) < req → liquidate.
+  // ETH untouched (separate symbol; mark not called).
+  const auto out = e.onMark(BTC, 47'500.0);
+  EXPECT_GE(out.liquidationsCount, 1u);
+  // ETH still in book.
   EXPECT_EQ(a.positionCount(), 1u);
+  EXPECT_EQ(a.positions().front().symbol, ETH);
+}
+
+TEST(Account, IsolatedModeNettingDoesNotShelter)
+{
+  // Same scenario as CrossMarginSurvivesWhenOneLegProfitable but
+  // in isolated mode: the profitable ETH short does NOT shelter the
+  // underwater BTC long.
+  Account a(1, 0.0);
+  a.setMarginMode(MarginMode::Isolated);
+  a.openPosition(BTC, 1.0, 50'000.0, /*isolated_equity=*/100.0);
+  a.openPosition(ETH, -10.0, 3'000.0, /*isolated_equity=*/10'000.0);
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.attachAccount(&a);
+
+  // BTC drops 1% (-500 uPnL); 100 + (-500) underwater. ETH stays
+  // healthy in its own bucket. Engine should liquidate only BTC.
+  a.setMark(ETH, 3'000.0);
+  const auto out = e.onMark(BTC, 49'500.0);
+  EXPECT_GE(out.liquidationsCount, 1u);
+  EXPECT_EQ(a.positionCount(), 1u);
+  EXPECT_EQ(a.positions().front().symbol, ETH);
+}
+
+TEST(Account, IsolatedAndCrossAccountsCoexist)
+{
+  // One cross account, one isolated account on the same engine.
+  // Engine should walk each correctly under its own rules.
+  Account aCross(1, 5'000.0);
+  aCross.openPosition(BTC, 1.0, 50'000.0);
+  aCross.openPosition(ETH, -10.0, 3'000.0);
+
+  Account aIsolated(2, 0.0);
+  aIsolated.setMarginMode(MarginMode::Isolated);
+  aIsolated.openPosition(BTC, 1.0, 50'000.0, /*isolated_equity=*/200.0);
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.attachAccount(&aCross);
+  e.attachAccount(&aIsolated);
+
+  // BTC down 1% (-500): cross sees net (-500 + profitable ETH);
+  // 5000 equity easily covers. Isolated sees -500 vs 200 equity →
+  // liquidate.
+  aCross.setMark(ETH, 3'000.0);
+  const auto out = e.onMark(BTC, 49'500.0);
+  EXPECT_GE(out.liquidationsCount, 1u);
+  EXPECT_EQ(aCross.positionCount(), 2u);     // cross survives
+  EXPECT_EQ(aIsolated.positionCount(), 0u);  // isolated liquidated
 }
 
 // === Cross-account 30d notional binding for FeeSchedule ===

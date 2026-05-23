@@ -42,17 +42,18 @@ void Account::setMarginModeByName(const std::string& name)
   }
 }
 
-void Account::openPosition(SymbolId symbol, double quantity, double entryPrice)
+void Account::openPosition(SymbolId symbol, double quantity, double entryPrice,
+                           double isolatedEquity)
 {
   LeveragedPosition p;
   p.accountId = _accountId;
   p.symbol = symbol;
   p.quantity = quantity;
   p.entryPrice = entryPrice;
-  // For cross accounts, per-position equity is ignored; populated
-  // here so isolated-mode call paths keep working without a second
-  // openPosition signature.
-  p.equity = 0.0;
+  // Cross mode ignores per-position equity (LiquidationEngine reads
+  // Account::equity instead). Isolated mode uses this field as the
+  // posted margin backing this leg.
+  p.equity = isolatedEquity;
   _positions.push_back(p);
 }
 

@@ -16,6 +16,7 @@ from C import flox_account_add_equity(cobj, float)
 from C import flox_account_margin_mode(cobj) -> u8
 from C import flox_account_set_margin_mode(cobj, u8)
 from C import flox_account_open_position(cobj, u32, float, float)
+from C import flox_account_open_position_isolated(cobj, u32, float, float, float)
 from C import flox_account_close_position(cobj, u32)
 from C import flox_account_position_count(cobj) -> u32
 from C import flox_account_set_mark(cobj, u32, float)
