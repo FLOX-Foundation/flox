@@ -272,6 +272,19 @@ the worst-PnL leg first when underwater.
     liq.attachAccount(acct);
     ```
 
+When a cross-margin account is underwater past what its own equity
+can absorb, the engine routes the residual deficit through the same
+two-step fallback used for orphan positions:
+
+1. Insurance fund covers what it can.
+2. If `set_adl_enabled(True)` and a residual remains, ADL scans
+   every profitable opposite-side position **across every attached
+   account plus the orphan position book**, ranks them by the
+   configured `AdlRanking`, and force-closes from the top until the
+   deficit is absorbed. ADL-closed account positions credit their
+   owning account's equity (cross mode) or the leg's
+   isolated_equity slice (isolated mode) with the realised PnL.
+
 See [Cross-margin accounts](cross-margin.md) for the full guide.
 
 ## Notes
