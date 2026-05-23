@@ -1429,6 +1429,52 @@ static JSValue js_executor_set_queue_fifo_top_n(JSContext* ctx, JSValueConst, in
       toUint32(ctx, argv[1]));
   return JS_UNDEFINED;
 }
+static JSValue js_executor_set_top_priority_share(JSContext* ctx, JSValueConst, int,
+                                                  JSValueConst* argv)
+{
+  double share = 0.40;
+  JS_ToFloat64(ctx, &share, argv[1]);
+  flox_simulated_executor_set_top_priority_share(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), share);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_lmm_orders(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  auto h = static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0]));
+  uint32_t n = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
+  JS_ToUint32(ctx, &n, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  std::vector<uint64_t> ids(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue v = JS_GetPropertyUint32(ctx, argv[1], i);
+    JS_ToInt64(ctx, reinterpret_cast<int64_t*>(&ids[i]), v);
+    JS_FreeValue(ctx, v);
+  }
+  flox_simulated_executor_set_lmm_orders(h, ids.data(), n);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_lmm_bonus_multiplier(JSContext* ctx, JSValueConst, int,
+                                                    JSValueConst* argv)
+{
+  double m = 1.5;
+  JS_ToFloat64(ctx, &m, argv[1]);
+  flox_simulated_executor_set_lmm_bonus_multiplier(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), m);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_order_priority_multiplier(JSContext* ctx, JSValueConst,
+                                                         int, JSValueConst* argv)
+{
+  double m = 1.0;
+  JS_ToFloat64(ctx, &m, argv[2]);
+  flox_simulated_executor_set_order_priority_multiplier(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])), m);
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_set_submit_ack(JSContext* ctx, JSValueConst, int argc,
                                           JSValueConst* argv)
 {
@@ -6083,6 +6129,14 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_symbol_slippage",
                 js_executor_set_symbol_slippage, 7);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_model", js_executor_set_queue_model, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_top_priority_share",
+                js_executor_set_top_priority_share, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_lmm_orders",
+                js_executor_set_lmm_orders, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_lmm_bonus_multiplier",
+                js_executor_set_lmm_bonus_multiplier, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_order_priority_multiplier",
+                js_executor_set_order_priority_multiplier, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_submit_ack", js_executor_set_submit_ack, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_cancel_ack", js_executor_set_cancel_ack, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_replace_ack", js_executor_set_replace_ack, 3);

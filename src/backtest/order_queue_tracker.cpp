@@ -167,11 +167,23 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
 
     // FIFO portion: applies to all entries in NONE/TOB/FULL, and to
     // the first _fifoTopN entries in PRO_RATA_WITH_FIFO. Pure
-    // PRO_RATA skips this loop entirely (fifoCount=0).
-    const size_t fifoCount =
-        (_model == QueueModel::PRO_RATA)             ? 0
-        : (_model == QueueModel::PRO_RATA_WITH_FIFO) ? std::min(_fifoTopN, level.entries.size())
-                                                     : level.entries.size();
+    // PRO_RATA, TOP_PRO_LMM, and PRO_RATA_WITH_PRIORITY skip this
+    // loop entirely (fifoCount=0).
+    size_t fifoCount = 0;
+    switch (_model)
+    {
+      case QueueModel::PRO_RATA:
+      case QueueModel::TOP_PRO_LMM:
+      case QueueModel::PRO_RATA_WITH_PRIORITY:
+        fifoCount = 0;
+        break;
+      case QueueModel::PRO_RATA_WITH_FIFO:
+        fifoCount = std::min(_fifoTopN, level.entries.size());
+        break;
+      default:
+        fifoCount = level.entries.size();
+        break;
+    }
     for (size_t i = 0; i < fifoCount && remainingRaw > 0; ++i)
     {
       auto& entry = level.entries[i];
@@ -217,6 +229,118 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
           if (allocated + share > distributeRaw)
           {
             share = distributeRaw - allocated;
+          }
+          if (share > 0)
+          {
+            entry.remaining = Quantity::fromRaw(entry.remaining.raw() - share);
+            allocated += share;
+            filled.emplace_back(entry.orderId, Quantity::fromRaw(share));
+          }
+        }
+        remainingRaw -= allocated;
+      }
+    }
+
+    // TOP_PRO_LMM: head order gets up to topShare * tradeQty (capped
+    // by its remaining); the rest distributes pro-rata across the
+    // tail with each entry's weight = remaining × priorityMultiplier,
+    // and LMM ids carry an additional bonus multiplier.
+    if (remainingRaw > 0 && !level.entries.empty() &&
+        _model == QueueModel::TOP_PRO_LMM)
+    {
+      auto& topEntry = level.entries.front();
+      const int64_t topShareRaw = static_cast<int64_t>(
+          static_cast<double>(tradeQty.raw()) * _topPriorityShare);
+      int64_t topAlloc = std::min(topShareRaw, topEntry.remaining.raw());
+      if (topAlloc > remainingRaw)
+      {
+        topAlloc = remainingRaw;
+      }
+      if (topAlloc > 0)
+      {
+        topEntry.remaining = Quantity::fromRaw(topEntry.remaining.raw() - topAlloc);
+        remainingRaw -= topAlloc;
+        filled.emplace_back(topEntry.orderId, Quantity::fromRaw(topAlloc));
+      }
+      // Tail pro-rata with priority + LMM bonus.
+      if (remainingRaw > 0 && level.entries.size() > 1)
+      {
+        double totalWeight = 0.0;
+        for (size_t i = 1; i < level.entries.size(); ++i)
+        {
+          const auto& e = level.entries[i];
+          double mult = orderPriorityMultiplier(e.orderId);
+          if (isLmm(e.orderId))
+          {
+            mult *= _lmmBonusMultiplier;
+          }
+          totalWeight += static_cast<double>(e.remaining.raw()) * mult;
+        }
+        if (totalWeight > 0.0)
+        {
+          const int64_t distribute = remainingRaw;
+          int64_t allocated = 0;
+          for (size_t i = 1; i < level.entries.size() && allocated < distribute; ++i)
+          {
+            auto& entry = level.entries[i];
+            double mult = orderPriorityMultiplier(entry.orderId);
+            if (isLmm(entry.orderId))
+            {
+              mult *= _lmmBonusMultiplier;
+            }
+            const double weight = static_cast<double>(entry.remaining.raw()) * mult;
+            int64_t share = static_cast<int64_t>(
+                static_cast<double>(distribute) * weight / totalWeight);
+            if (share > entry.remaining.raw())
+            {
+              share = entry.remaining.raw();
+            }
+            if (allocated + share > distribute)
+            {
+              share = distribute - allocated;
+            }
+            if (share > 0)
+            {
+              entry.remaining = Quantity::fromRaw(entry.remaining.raw() - share);
+              allocated += share;
+              filled.emplace_back(entry.orderId, Quantity::fromRaw(share));
+            }
+          }
+          remainingRaw -= allocated;
+        }
+      }
+    }
+
+    // PRO_RATA_WITH_PRIORITY: every entry gets weight = remaining ×
+    // priorityMultiplier (defaults to 1.0). Distribution is otherwise
+    // identical to PRO_RATA.
+    if (remainingRaw > 0 && !level.entries.empty() &&
+        _model == QueueModel::PRO_RATA_WITH_PRIORITY)
+    {
+      double totalWeight = 0.0;
+      for (const auto& e : level.entries)
+      {
+        const double mult = orderPriorityMultiplier(e.orderId);
+        totalWeight += static_cast<double>(e.remaining.raw()) * mult;
+      }
+      if (totalWeight > 0.0)
+      {
+        const int64_t distribute = remainingRaw;
+        int64_t allocated = 0;
+        for (size_t i = 0; i < level.entries.size() && allocated < distribute; ++i)
+        {
+          auto& entry = level.entries[i];
+          const double mult = orderPriorityMultiplier(entry.orderId);
+          const double weight = static_cast<double>(entry.remaining.raw()) * mult;
+          int64_t share = static_cast<int64_t>(
+              static_cast<double>(distribute) * weight / totalWeight);
+          if (share > entry.remaining.raw())
+          {
+            share = entry.remaining.raw();
+          }
+          if (allocated + share > distribute)
+          {
+            share = distribute - allocated;
           }
           if (share > 0)
           {

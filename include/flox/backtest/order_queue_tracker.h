@@ -16,6 +16,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -56,6 +58,42 @@ class OrderQueueTracker
   // across the rest. Ignored in NONE / TOB / FULL / PRO_RATA modes.
   void setFifoTopN(size_t n) noexcept { _fifoTopN = n; }
   size_t fifoTopN() const noexcept { return _fifoTopN; }
+
+  // TOP_PRO_LMM: fraction of each incoming trade reserved for the
+  // order at the front of the queue (capped by that order's remaining
+  // size). Default 0.40 (40%, matches CME Globex options).
+  void setTopPriorityShare(double s) noexcept { _topPriorityShare = s; }
+  double topPriorityShare() const noexcept { return _topPriorityShare; }
+
+  // TOP_PRO_LMM: mark these order ids as Lead Market Makers. LMM
+  // orders carry an implicit priority multiplier during the pro-rata
+  // remainder distribution (default LMM bonus 1.5x; override via
+  // setLmmBonusMultiplier). Replaces any prior LMM set.
+  void setLmmOrders(const std::vector<OrderId>& ids)
+  {
+    _lmmOrderIds.clear();
+    for (OrderId id : ids)
+    {
+      _lmmOrderIds.insert(id);
+    }
+  }
+  void setLmmBonusMultiplier(double m) noexcept { _lmmBonusMultiplier = m; }
+  double lmmBonusMultiplier() const noexcept { return _lmmBonusMultiplier; }
+  bool isLmm(OrderId id) const { return _lmmOrderIds.count(id) > 0; }
+
+  // PRO_RATA_WITH_PRIORITY / TOP_PRO_LMM: per-order priority
+  // multiplier. Effective allocation weight in pro-rata distribution
+  // = remaining × priorityMultiplier. Default 1.0 for any order
+  // without a set value.
+  void setOrderPriorityMultiplier(OrderId id, double multiplier)
+  {
+    _priorityMultiplier[id] = multiplier;
+  }
+  double orderPriorityMultiplier(OrderId id) const
+  {
+    auto it = _priorityMultiplier.find(id);
+    return it == _priorityMultiplier.end() ? 1.0 : it->second;
+  }
 
   // Register a limit order with its current level depth.
   void addOrder(SymbolId symbol, Side side, Price levelPrice, OrderId orderId,
@@ -117,6 +155,12 @@ class OrderQueueTracker
   size_t _depth{1};
   QueueModel _model{QueueModel::NONE};
   size_t _fifoTopN{0};
+
+  // TOP_PRO_LMM / PRO_RATA_WITH_PRIORITY configuration.
+  double _topPriorityShare{0.40};
+  std::unordered_set<OrderId> _lmmOrderIds;
+  double _lmmBonusMultiplier{1.5};
+  std::unordered_map<OrderId, double> _priorityMultiplier;
 
   std::vector<Level> _levels;
 };

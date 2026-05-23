@@ -5,11 +5,13 @@ gets distributed across resting limit orders. The default is FIFO —
 the order at the front of the queue eats first. Real venues do not
 all behave that way.
 
-| Venue family                       | Real matching        | Closest model      |
-|------------------------------------|----------------------|--------------------|
-| Most spot crypto, US equities      | Price-time FIFO      | `tob` / `full`     |
-| Options exchanges (CME, Eurex)     | Pure pro-rata        | `pro_rata`         |
-| Some hybrid futures / fee tiers    | FIFO top-N, pro-rata | `pro_rata_with_fifo` |
+| Venue family                       | Real matching                  | Closest model              |
+|------------------------------------|--------------------------------|----------------------------|
+| Most spot crypto, US equities      | Price-time FIFO                | `tob` / `full`             |
+| Options exchanges (CME, Eurex)     | Pure pro-rata                  | `pro_rata`                 |
+| Some hybrid futures / fee tiers    | FIFO top-N, pro-rata           | `pro_rata_with_fifo`       |
+| CME Globex options (TOP-PRO-LMM)   | Top fixed share + pro-rata tail | `top_pro_lmm`              |
+| ICE options size-pro-rata          | Pure pro-rata weighted by priority | `pro_rata_with_priority` |
 
 A pro-rata venue splits the trade across every resting order at the
 level, weighted by order size. The front of the queue carries no
@@ -93,6 +95,57 @@ A worked example (Python):
 ```python
 --8<-- "examples/python_pro_rata_matching.py"
 ```
+
+## TOP-PRO-LMM (CME Globex options)
+
+The order at the front of the queue receives a fixed share of every
+incoming trade (capped by its remaining), and the rest of the trade
+distributes pro-rata across the tail. LMM (Lead Market Maker) orders
+in the tail carry a bonus multiplier.
+
+=== "Python"
+
+    ```python
+    exec.set_queue_model("top_pro_lmm", depth=4)
+    exec.set_top_priority_share(0.40)        # TOP gets 40% of each trade
+    exec.set_lmm_orders([order_id_a, order_id_b])
+    exec.set_lmm_bonus_multiplier(1.5)        # LMM bonus
+    # Optional per-order multiplier on top of LMM bonus:
+    exec.set_order_priority_multiplier(order_id_a, 1.25)
+    ```
+
+=== "Node"
+
+    ```javascript
+    exec.setQueueModel("top_pro_lmm", 4);
+    exec.setTopPriorityShare(0.40);
+    exec.setLmmOrders([orderIdA, orderIdB]);
+    exec.setLmmBonusMultiplier(1.5);
+    ```
+
+If the LMM list is empty, the tail distributes as pure pro-rata
+weighted by the per-order priority multiplier (default 1.0).
+
+## PRO_RATA_WITH_PRIORITY (ICE options)
+
+Every order at the level gets an effective weight of
+`remaining × priorityMultiplier`. Used to model ICE-style options
+matching where pinned MM agreements carry a static priority
+multiplier (e.g. 1.5) on top of raw size.
+
+=== "Python"
+
+    ```python
+    exec.set_queue_model("pro_rata_with_priority", depth=4)
+    exec.set_order_priority_multiplier(pinned_mm_id, 1.5)
+    ```
+
+=== "Node"
+
+    ```javascript
+    exec.setQueueModel("pro_rata_with_priority", 4);
+    exec.setOrderPriorityMultiplier(pinnedMmId, 1.5);
+    ```
 
 ## What the simulator guarantees
 

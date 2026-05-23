@@ -2491,13 +2491,25 @@ class SimulatedExecutor:
         """
         FOK fill semantic: any_price (default) or single_price.
         """
+    def set_lmm_bonus_multiplier(self, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        TOP_PRO_LMM: LMM bonus multiplier on tail pro-rata distribution.
+        """
+    def set_lmm_orders(self, ids: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex]) -> None:
+        """
+        TOP_PRO_LMM: mark these order ids as Lead Market Makers.
+        """
+    def set_order_priority_multiplier(self, order_id: typing.SupportsInt | typing.SupportsIndex, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        TOP_PRO_LMM / PRO_RATA_WITH_PRIORITY: per-order priority weight (default 1.0).
+        """
     def set_queue_fifo_top_n(self, top_n: typing.SupportsInt | typing.SupportsIndex) -> None:
         """
         For pro_rata_with_fifo: first N orders at a level consume the trade FIFO; the rest is split pro-rata.
         """
     def set_queue_model(self, model: str, depth: typing.SupportsInt | typing.SupportsIndex = 1) -> None:
         """
-        Configure queue simulation. model: none|tob|full|pro_rata|pro_rata_with_fifo
+        Configure queue simulation. model: none|tob|full|pro_rata|pro_rata_with_fifo|top_pro_lmm|pro_rata_with_priority
         """
     def set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
@@ -2520,6 +2532,10 @@ class SimulatedExecutor:
     def set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
         """
         Configure slippage for a specific symbol
+        """
+    def set_top_priority_share(self, share: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        TOP_PRO_LMM: fraction of each trade reserved for the queue-front order.
         """
     def set_venue_availability(self, availability: ...) -> None:
         """
