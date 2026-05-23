@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "flox/backtest/account.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <deque>
@@ -63,12 +65,30 @@ class FeeSchedule
               { return a.minNotional30d < b.minNotional30d; });
   }
 
+  // Bind an Account so the 30d rolling notional that drives tier
+  // resolution comes from the account's cross-symbol aggregate
+  // counter, not this schedule's internal one. Subsequent
+  // `recordFill` calls push into the bound account; `currentBps` /
+  // `currentTierIndex` resolve against the account's total. Pass
+  // nullptr (or call `clearAccountBinding`) to revert to the
+  // internal counter.
+  void bindAccount(Account* account) noexcept { _boundAccount = account; }
+  void clearAccountBinding() noexcept { _boundAccount = nullptr; }
+  Account* boundAccount() const noexcept { return _boundAccount; }
+
   // Note: notional is unsigned. Sum into the 30-day rolling window.
   void recordFill(int64_t tsNs, double notional)
   {
-    _rolling.emplace_back(tsNs, notional);
-    _rollingTotal += notional;
-    evictExpired(tsNs);
+    if (_boundAccount != nullptr)
+    {
+      _boundAccount->recordFill(tsNs, notional);
+    }
+    else
+    {
+      _rolling.emplace_back(tsNs, notional);
+      _rollingTotal += notional;
+      evictExpired(tsNs);
+    }
     const size_t newTier = resolveTierIndex();
     if (_tiers.empty())
     {
@@ -86,7 +106,10 @@ class FeeSchedule
   // `nowNs`. Evicts expired entries first.
   std::pair<double, double> currentBps(int64_t nowNs)
   {
-    evictExpired(nowNs);
+    if (_boundAccount == nullptr)
+    {
+      evictExpired(nowNs);
+    }
     size_t idx = resolveTierIndex();
     if (_tiers.empty())
     {
@@ -105,14 +128,28 @@ class FeeSchedule
     return notional * bps * 1e-4;
   }
 
-  size_t currentTierIndex() const noexcept { return _currentTier; }
+  size_t currentTierIndex() const
+  {
+    // When bound to an account the cached `_currentTier` may be stale
+    // — another schedule sharing the same account could have pushed
+    // notional in between recordFill calls. Resolve on-demand.
+    if (_boundAccount != nullptr)
+    {
+      return resolveTierIndex();
+    }
+    return _currentTier;
+  }
   size_t tierCount() const noexcept { return _tiers.size(); }
   const std::vector<FeeTier>& tiers() const noexcept { return _tiers; }
   const std::vector<int64_t>& tierTransitionTsNs() const noexcept
   {
     return _tierTransitions;
   }
-  double rollingNotional30d() const noexcept { return _rollingTotal; }
+  double rollingNotional30d() const noexcept
+  {
+    return _boundAccount != nullptr ? _boundAccount->rollingNotional30d()
+                                    : _rollingTotal;
+  }
 
   // Canned profiles. Numbers approximate published rules; tune for
   // your actual VIP tier. Maker negative = rebate received.
@@ -182,10 +219,13 @@ class FeeSchedule
     {
       return 0;
     }
+    const double rolling = (_boundAccount != nullptr)
+                               ? _boundAccount->rollingNotional30d()
+                               : _rollingTotal;
     size_t idx = 0;
     for (size_t i = 0; i < _tiers.size(); ++i)
     {
-      if (_rollingTotal >= _tiers[i].minNotional30d)
+      if (rolling >= _tiers[i].minNotional30d)
       {
         idx = i;
       }
@@ -216,6 +256,7 @@ class FeeSchedule
   double _rollingTotal{0.0};
   size_t _currentTier{0};
   std::vector<int64_t> _tierTransitions;
+  Account* _boundAccount{nullptr};
 };
 
 }  // namespace flox

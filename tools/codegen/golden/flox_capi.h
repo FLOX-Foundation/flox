@@ -78,6 +78,7 @@ extern "C"
   typedef void* FloxFundingScheduleHandle;
   typedef void* FloxLiveQueuePositionHandle;
   typedef void* FloxLiquidationEngineHandle;
+  typedef void* FloxAccountHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -824,6 +825,29 @@ extern "C"
   double flox_quantity_to_double(int64_t raw);
 
   // ============================================================
+  // Account
+  // ============================================================
+
+  FloxAccountHandle flox_account_create(uint64_t account_id, double equity);
+  void flox_account_destroy(FloxAccountHandle h);
+  uint64_t flox_account_id(FloxAccountHandle h);
+  double flox_account_equity(FloxAccountHandle h);
+  void flox_account_set_equity(FloxAccountHandle h, double equity);
+  void flox_account_add_equity(FloxAccountHandle h, double delta);
+  uint8_t flox_account_margin_mode(FloxAccountHandle h);
+  void flox_account_set_margin_mode(FloxAccountHandle h, uint8_t mode);
+  void flox_account_open_position(FloxAccountHandle h, uint32_t symbol, double quantity,
+                                  double entry_price);
+  void flox_account_close_position(FloxAccountHandle h, uint32_t symbol);
+  uint32_t flox_account_position_count(FloxAccountHandle h);
+  void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price);
+  double flox_account_total_notional(FloxAccountHandle h);
+  double flox_account_total_unrealised_pnl(FloxAccountHandle h);
+  void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional);
+  double flox_account_rolling_notional_30d(FloxAccountHandle h);
+  void flox_account_reset_rolling(FloxAccountHandle h);
+
+  // ============================================================
   // Additional Bar
   // ============================================================
 
@@ -1215,6 +1239,8 @@ extern "C"
   uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h, int64_t* out_buf,
                                               uint32_t max_events);
   void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h);
+  void flox_fee_schedule_bind_account(FloxFeeScheduleHandle h, FloxAccountHandle account);
+  void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h);
 
   // ============================================================
   // Feed Clock
@@ -1579,6 +1605,9 @@ extern "C"
   double flox_liquidation_engine_mark_impact_weight(FloxLiquidationEngineHandle h);
   void flox_liquidation_engine_set_max_cascade_depth(FloxLiquidationEngineHandle h, uint32_t depth);
   uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_attach_account(FloxLiquidationEngineHandle h,
+                                              FloxAccountHandle account);
+  void flox_liquidation_engine_detach_account(FloxLiquidationEngineHandle h, uint64_t account_id);
 
   // ============================================================
   // Live Queue Position

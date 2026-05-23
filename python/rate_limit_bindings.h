@@ -21,11 +21,13 @@ namespace flox_py
 
 inline void bindRateLimitPolicy(py::module_& m)
 {
+  // Note: no .export_values() here — `Account` collides with the
+  // top-level `flox.Account` class added in T037. Access via
+  // `flox.RateLimitEndpointFamily.{Trading,MarketData,Account}`.
   py::enum_<flox::RateLimitPolicy::EndpointFamily>(m, "RateLimitEndpointFamily")
       .value("Trading", flox::RateLimitPolicy::EndpointFamily::Trading)
       .value("MarketData", flox::RateLimitPolicy::EndpointFamily::MarketData)
-      .value("Account", flox::RateLimitPolicy::EndpointFamily::Account)
-      .export_values();
+      .value("Account", flox::RateLimitPolicy::EndpointFamily::Account);
   py::class_<flox::RateLimitPolicy>(m, "RateLimitPolicy")
       .def(py::init<>())
       .def("add_bucket", &flox::RateLimitPolicy::addBucket, py::arg("name"),

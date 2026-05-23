@@ -672,6 +672,33 @@ export class FeeSchedule {
   rollingNotional30d(): number;
   tierTransitions(): number[];
   resetRolling(): void;
+  /** Bind an Account so 30d rolling notional reads from the account's
+   *  cross-symbol aggregate counter instead of this schedule's
+   *  internal one. */
+  bindAccount(account: Account | null): void;
+  clearAccountBinding(): void;
+}
+
+/** Cross-margin shared state owned by an account. Attach to a
+ *  LiquidationEngine and/or FeeSchedule to share equity, positions,
+ *  and 30d notional across symbols. */
+export class Account {
+  constructor(accountId?: number, equity?: number);
+  accountId(): number;
+  equity(): number;
+  setEquity(equity: number): void;
+  addEquity(delta: number): void;
+  marginMode(): 'cross' | 'isolated';
+  setMarginMode(mode: 'cross' | 'isolated' | number): void;
+  openPosition(symbol: number, quantity: number, entryPrice: number): void;
+  closePosition(symbol: number): void;
+  positionCount(): number;
+  setMark(symbol: number, price: number): void;
+  totalNotional(): number;
+  totalUnrealisedPnl(): number;
+  recordFill(tsNs: number, notional: number): void;
+  rollingNotional30d(): number;
+  resetRolling(): void;
 }
 
 export interface FundingPaymentEvent {
@@ -750,6 +777,10 @@ export class LiquidationEngine {
   /** Bound on second-order cascade depth in a single onMark call. 0 disables. */
   setMaxCascadeDepth(depth: number): void;
   maxCascadeDepth(): number;
+  /** Attach an Account so its positions participate in cross-margin
+   *  MM checks. Multiple accounts may be attached. */
+  attachAccount(account: Account): void;
+  detachAccount(accountId: number): void;
 }
 
 export class FundingSchedule {

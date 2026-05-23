@@ -3,6 +3,91 @@
     "capi": {
       "symbols": [
         {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_add_equity"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_close_position"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_create"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_destroy"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_equity"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_id"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_margin_mode"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_open_position"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_position_count"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_record_fill"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_reset_rolling"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_rolling_notional_30d"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_set_equity"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_set_margin_mode"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_set_mark"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_total_notional"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_total_unrealised_pnl"
+        },
+        {
           "group": "heikin_ashi",
           "kind": "function",
           "name": "flox_aggregate_heikin_ashi_bars"
@@ -795,6 +880,16 @@
         {
           "group": "fee_schedule",
           "kind": "function",
+          "name": "flox_fee_schedule_bind_account"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
+          "name": "flox_fee_schedule_clear_account_binding"
+        },
+        {
+          "group": "fee_schedule",
+          "kind": "function",
           "name": "flox_fee_schedule_create"
         },
         {
@@ -1405,6 +1500,11 @@
         {
           "group": "liquidation_engine",
           "kind": "function",
+          "name": "flox_liquidation_engine_attach_account"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
           "name": "flox_liquidation_engine_cascade_sizes_copy"
         },
         {
@@ -1446,6 +1546,11 @@
           "group": "liquidation_engine",
           "kind": "function",
           "name": "flox_liquidation_engine_destroy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_detach_account"
         },
         {
           "group": "liquidation_engine",
@@ -3548,6 +3653,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxAccountHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxAggregatorHandle"
         },
         {
@@ -3762,6 +3871,7 @@
     },
     "codon": {
       "groups_present": [
+        "account",
         "additional_bar",
         "additional_stats",
         "backtest_slippage",
@@ -3831,6 +3941,74 @@
         "walk_forward"
       ],
       "symbols": [
+        {
+          "kind": "function",
+          "name": "flox_account_add_equity"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_close_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_equity"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_id"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_margin_mode"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_open_position"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_position_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_record_fill"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_reset_rolling"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_rolling_notional_30d"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_set_equity"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_set_margin_mode"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_set_mark"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_total_notional"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_total_unrealised_pnl"
+        },
         {
           "kind": "function",
           "name": "flox_aggregate_heikin_ashi_bars"
@@ -4465,6 +4643,14 @@
         },
         {
           "kind": "function",
+          "name": "flox_fee_schedule_bind_account"
+        },
+        {
+          "kind": "function",
+          "name": "flox_fee_schedule_clear_account_binding"
+        },
+        {
+          "kind": "function",
           "name": "flox_fee_schedule_create"
         },
         {
@@ -4953,6 +5139,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_liquidation_engine_attach_account"
+        },
+        {
+          "kind": "function",
           "name": "flox_liquidation_engine_cascade_sizes_copy"
         },
         {
@@ -4986,6 +5176,10 @@
         {
           "kind": "function",
           "name": "flox_liquidation_engine_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_detach_account"
         },
         {
           "kind": "function",
@@ -6481,6 +6675,10 @@
         },
         {
           "kind": "class",
+          "name": "Account"
+        },
+        {
+          "kind": "class",
           "name": "AggregatedBar"
         },
         {
@@ -7393,6 +7591,10 @@
         },
         {
           "kind": "class",
+          "name": "Account"
+        },
+        {
+          "kind": "class",
           "name": "AdlRanking"
         },
         {
@@ -7590,6 +7792,10 @@
         {
           "kind": "class",
           "name": "MACD"
+        },
+        {
+          "kind": "class",
+          "name": "MarginMode"
         },
         {
           "kind": "class",
@@ -8098,6 +8304,45 @@
     }
   },
   "groups": {
+    "account": {
+      "capi_functions": [
+        "flox_account_add_equity",
+        "flox_account_close_position",
+        "flox_account_create",
+        "flox_account_destroy",
+        "flox_account_equity",
+        "flox_account_id",
+        "flox_account_margin_mode",
+        "flox_account_open_position",
+        "flox_account_position_count",
+        "flox_account_record_fill",
+        "flox_account_reset_rolling",
+        "flox_account_rolling_notional_30d",
+        "flox_account_set_equity",
+        "flox_account_set_margin_mode",
+        "flox_account_set_mark",
+        "flox_account_total_notional",
+        "flox_account_total_unrealised_pnl"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Account"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Account"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
     "additional_bar": {
       "capi_functions": [
         "flox_aggregate_range_bars",
@@ -8642,6 +8887,8 @@
     "fee_schedule": {
       "capi_functions": [
         "flox_fee_schedule_add_tier",
+        "flox_fee_schedule_bind_account",
+        "flox_fee_schedule_clear_account_binding",
         "flox_fee_schedule_create",
         "flox_fee_schedule_current_tier",
         "flox_fee_schedule_destroy",
@@ -9122,6 +9369,7 @@
         "flox_liquidation_engine_add_tier",
         "flox_liquidation_engine_adl_closeouts_count",
         "flox_liquidation_engine_adl_ranking",
+        "flox_liquidation_engine_attach_account",
         "flox_liquidation_engine_cascade_sizes_copy",
         "flox_liquidation_engine_cascade_sizes_size",
         "flox_liquidation_engine_close_position",
@@ -9131,6 +9379,7 @@
         "flox_liquidation_engine_deficits_paid_by_fund_copy",
         "flox_liquidation_engine_deficits_paid_by_fund_size",
         "flox_liquidation_engine_destroy",
+        "flox_liquidation_engine_detach_account",
         "flox_liquidation_engine_fund_balance_history_copy",
         "flox_liquidation_engine_fund_balance_history_size",
         "flox_liquidation_engine_insurance_fund_balance",

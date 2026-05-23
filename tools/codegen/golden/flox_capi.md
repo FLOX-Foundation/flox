@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 660 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 681 functions, 54 handles, 58 structs, 43 callback typedefs, 3 enums, 68 groups.
 
 ## Opaque handles
 
@@ -61,6 +61,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxFundingScheduleHandle`
 - `FloxLiveQueuePositionHandle`
 - `FloxLiquidationEngineHandle`
+- `FloxAccountHandle`
 
 ## Enums
 
@@ -845,6 +846,26 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 ## Functions
 
+### account
+
+- `FloxAccountHandle flox_account_create(uint64_t account_id, double equity)`
+- `void flox_account_destroy(FloxAccountHandle h)`
+- `uint64_t flox_account_id(FloxAccountHandle h)`
+- `double flox_account_equity(FloxAccountHandle h)`
+- `void flox_account_set_equity(FloxAccountHandle h, double equity)`
+- `void flox_account_add_equity(FloxAccountHandle h, double delta)`
+- `uint8_t flox_account_margin_mode(FloxAccountHandle h)`
+- `void flox_account_set_margin_mode(FloxAccountHandle h, uint8_t mode)`
+- `void flox_account_open_position(FloxAccountHandle h, uint32_t symbol, double quantity, double entry_price)`
+- `void flox_account_close_position(FloxAccountHandle h, uint32_t symbol)`
+- `uint32_t flox_account_position_count(FloxAccountHandle h)`
+- `void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price)`
+- `double flox_account_total_notional(FloxAccountHandle h)`
+- `double flox_account_total_unrealised_pnl(FloxAccountHandle h)`
+- `void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional)`
+- `double flox_account_rolling_notional_30d(FloxAccountHandle h)`
+- `void flox_account_reset_rolling(FloxAccountHandle h)`
+
 ### additional_bar
 
 - `uint32_t flox_aggregate_range_bars(const int64_t * timestamps, const double * prices, const double * quantities, const uint8_t * is_buy, size_t len, double range_size, FloxBar * bars_out, uint32_t max_bars)`
@@ -1063,6 +1084,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_fee_schedule_rolling_notional(FloxFeeScheduleHandle h)`
 - `uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h, int64_t * out_buf, uint32_t max_events)`
 - `void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h)`
+- `void flox_fee_schedule_bind_account(FloxFeeScheduleHandle h, FloxAccountHandle account)`
+- `void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h)`
 
 ### feed_clock
 
@@ -1285,6 +1308,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_liquidation_engine_mark_impact_weight(FloxLiquidationEngineHandle h)`
 - `void flox_liquidation_engine_set_max_cascade_depth(FloxLiquidationEngineHandle h, uint32_t depth)`
 - `uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_attach_account(FloxLiquidationEngineHandle h, FloxAccountHandle account)`
+- `void flox_liquidation_engine_detach_account(FloxLiquidationEngineHandle h, uint64_t account_id)`
 
 ### live_queue_position
 

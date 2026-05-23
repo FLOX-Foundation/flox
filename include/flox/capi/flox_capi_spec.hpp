@@ -4432,6 +4432,69 @@ extern "C"
   FLOX_EXPORT(group = "liquidation_engine")
   uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h);
 
+  // ===== T037: Account — cross-margin shared state =====
+  typedef void* FloxAccountHandle;
+
+  FLOX_EXPORT(group = "account")
+  FloxAccountHandle flox_account_create(uint64_t account_id, double equity);
+  FLOX_EXPORT(group = "account")
+  void flox_account_destroy(FloxAccountHandle h);
+
+  FLOX_EXPORT(group = "account")
+  uint64_t flox_account_id(FloxAccountHandle h);
+  FLOX_EXPORT(group = "account")
+  double flox_account_equity(FloxAccountHandle h);
+  FLOX_EXPORT(group = "account")
+  void flox_account_set_equity(FloxAccountHandle h, double equity);
+  FLOX_EXPORT(group = "account")
+  void flox_account_add_equity(FloxAccountHandle h, double delta);
+
+  // Margin mode: 0=cross (default), 1=isolated.
+  FLOX_EXPORT(group = "account")
+  uint8_t flox_account_margin_mode(FloxAccountHandle h);
+  FLOX_EXPORT(group = "account")
+  void flox_account_set_margin_mode(FloxAccountHandle h, uint8_t mode);
+
+  // Side encoded in signed `quantity`.
+  FLOX_EXPORT(group = "account")
+  void flox_account_open_position(FloxAccountHandle h, uint32_t symbol,
+                                  double quantity, double entry_price);
+  FLOX_EXPORT(group = "account")
+  void flox_account_close_position(FloxAccountHandle h, uint32_t symbol);
+  FLOX_EXPORT(group = "account")
+  uint32_t flox_account_position_count(FloxAccountHandle h);
+
+  FLOX_EXPORT(group = "account")
+  void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price);
+  FLOX_EXPORT(group = "account")
+  double flox_account_total_notional(FloxAccountHandle h);
+  FLOX_EXPORT(group = "account")
+  double flox_account_total_unrealised_pnl(FloxAccountHandle h);
+
+  FLOX_EXPORT(group = "account")
+  void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional);
+  FLOX_EXPORT(group = "account")
+  double flox_account_rolling_notional_30d(FloxAccountHandle h);
+  FLOX_EXPORT(group = "account")
+  void flox_account_reset_rolling(FloxAccountHandle h);
+
+  // Attach/detach to a LiquidationEngine (engine-level walk participates
+  // in cross-margin MM checks). Multiple accounts may be attached.
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_attach_account(FloxLiquidationEngineHandle h,
+                                              FloxAccountHandle account);
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_detach_account(FloxLiquidationEngineHandle h,
+                                              uint64_t account_id);
+
+  // Bind/unbind to a FeeSchedule so 30d rolling notional reads from the
+  // account's aggregate counter instead of the schedule's internal one.
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_bind_account(FloxFeeScheduleHandle h,
+                                      FloxAccountHandle account);
+  FLOX_EXPORT(group = "fee_schedule")
+  void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h);
+
 #ifdef __cplusplus
 }
 #endif

@@ -44,7 +44,12 @@ inline void bindFeeSchedule(py::module_& m)
       .def("tiers", &flox::FeeSchedule::tiers)
       .def("tier_transition_ts_ns", &flox::FeeSchedule::tierTransitionTsNs)
       .def("rolling_notional_30d", &flox::FeeSchedule::rollingNotional30d)
-      .def("reset_rolling", &flox::FeeSchedule::resetRolling);
+      .def("reset_rolling", &flox::FeeSchedule::resetRolling)
+      .def("bind_account", &flox::FeeSchedule::bindAccount, py::arg("account"),
+           py::keep_alive<1, 2>(),
+           "Bind an Account so 30d rolling notional reads from the account's "
+           "aggregate counter instead of this schedule's internal one.")
+      .def("clear_account_binding", &flox::FeeSchedule::clearAccountBinding);
 }
 
 }  // namespace flox_py

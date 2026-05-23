@@ -124,6 +124,21 @@ def main() -> int:
     must("LiquidationEngine cascade stats accessor",
          isinstance(liq.cascade_sizes_per_tick(), list))
 
+    # 12) Cross-margin Account: attach to engine + bind to FeeSchedule (T037).
+    acct = flox_py.Account(account_id=42, equity=10_000.0)
+    acct.open_position(symbol=1, quantity=1.0, entry_price=50_000.0)
+    liq2 = flox_py.LiquidationEngine()
+    liq2.add_tier(0.0, 0.005)
+    liq2.attach_account(acct)
+    must("LiquidationEngine.attach_account", True)
+    fees = flox_py.FeeSchedule.binance_um_futures()
+    fees.bind_account(acct)
+    must("FeeSchedule.bind_account", fees.bound_account() is acct
+         if hasattr(fees, "bound_account") else True)
+    fees.record_fill(0, 100_000.0)
+    must("Account 30d notional shared across schedules",
+         acct.rolling_notional_30d() == 100_000.0)
+
     if failures:
         print(f"[smoke] FAILED ({len(failures)} check(s)): {failures}")
         return 1

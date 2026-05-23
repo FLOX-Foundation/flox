@@ -20,6 +20,7 @@ namespace flox
 {
 
 class SimulatedExecutor;
+class Account;
 
 // One maintenance-margin tier. `minNotional` is the lower bound of
 // the bracket (inclusive); `mmFraction` is the maintenance-margin
@@ -174,6 +175,15 @@ class LiquidationEngine
   void setMaxCascadeDepth(uint32_t depth) noexcept { _maxCascadeDepth = depth; }
   uint32_t maxCascadeDepth() const noexcept { return _maxCascadeDepth; }
 
+  // Attach an account whose positions participate in cross-margin
+  // MM checks. Multiple accounts may be attached; the engine walks
+  // all of them on each onMark call. Lifetime is the caller's
+  // responsibility. Detach by passing the same accountId to
+  // `detachAccount`.
+  void attachAccount(Account* account);
+  void detachAccount(uint64_t accountId);
+  const std::vector<Account*>& accounts() const noexcept { return _accounts; }
+
   // Open a new position the engine should track.
   void openPosition(const LeveragedPosition& position)
   {
@@ -259,6 +269,8 @@ class LiquidationEngine
   double _markImpactWeight{0.3};
   uint32_t _maxCascadeDepth{5};
 
+  std::vector<Account*> _accounts;
+
   // Route a liquidation through the attached executor as a market
   // order; return realized close-price + filled qty. Returns
   // (-1, 0) when the executor was unable to fill any quantity this
@@ -280,6 +292,19 @@ class LiquidationEngine
     LiquidationOutcome outcome;
   };
   OnMarkPass onMarkOnce(SymbolId symbol, double markPrice, uint64_t tickIdx);
+
+  // Cross-margin walk for one attached account. Returns the
+  // outcome additions and the deficit that the per-account
+  // liquidations could not cover from the account's own equity.
+  // Caller routes the deficit through insurance / ADL after
+  // aggregating across all accounts.
+  struct AccountWalkOutcome
+  {
+    LiquidationOutcome outcome;
+    double deficit{0.0};
+  };
+  AccountWalkOutcome walkCrossAccount(Account& account, SymbolId symbol,
+                                      double markPrice);
 };
 
 }  // namespace flox

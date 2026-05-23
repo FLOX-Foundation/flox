@@ -2239,6 +2239,205 @@ static JSValue js_liquidation_engine_max_cascade_depth(JSContext* ctx,
       ctx, flox_liquidation_engine_max_cascade_depth(
                static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
 }
+
+// ===== T037 Account =====
+static JSValue js_account_create(JSContext* ctx, JSValueConst, int argc,
+                                 JSValueConst* argv)
+{
+  int64_t id = 0;
+  double equity = 0.0;
+  if (argc >= 1)
+  {
+    JS_ToInt64(ctx, &id, argv[0]);
+  }
+  if (argc >= 2)
+  {
+    JS_ToFloat64(ctx, &equity, argv[1]);
+  }
+  return createHandleObject(
+      ctx, flox_account_create(static_cast<uint64_t>(id), equity));
+}
+static JSValue js_account_destroy(JSContext* ctx, JSValueConst, int,
+                                  JSValueConst* argv)
+{
+  flox_account_destroy(static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_account_id(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewInt64(ctx, static_cast<int64_t>(flox_account_id(
+                              static_cast<FloxAccountHandle>(
+                                  getHandle(ctx, argv[0])))));
+}
+static JSValue js_account_equity(JSContext* ctx, JSValueConst, int,
+                                 JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_account_equity(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_account_set_equity(JSContext* ctx, JSValueConst, int,
+                                     JSValueConst* argv)
+{
+  double v = 0.0;
+  JS_ToFloat64(ctx, &v, argv[1]);
+  flox_account_set_equity(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), v);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_add_equity(JSContext* ctx, JSValueConst, int,
+                                     JSValueConst* argv)
+{
+  double v = 0.0;
+  JS_ToFloat64(ctx, &v, argv[1]);
+  flox_account_add_equity(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), v);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_margin_mode(JSContext* ctx, JSValueConst, int,
+                                      JSValueConst* argv)
+{
+  const uint8_t m = flox_account_margin_mode(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])));
+  return JS_NewString(ctx, m == 1 ? "isolated" : "cross");
+}
+static JSValue js_account_set_margin_mode(JSContext* ctx, JSValueConst, int argc,
+                                          JSValueConst* argv)
+{
+  uint8_t code = 0;
+  if (argc >= 2 && JS_IsString(argv[1]))
+  {
+    const char* s = JS_ToCString(ctx, argv[1]);
+    if (s != nullptr)
+    {
+      if (std::string(s) == "isolated")
+      {
+        code = 1;
+      }
+      JS_FreeCString(ctx, s);
+    }
+  }
+  else if (argc >= 2 && JS_IsNumber(argv[1]))
+  {
+    uint32_t v = 0;
+    JS_ToUint32(ctx, &v, argv[1]);
+    code = static_cast<uint8_t>(v);
+  }
+  flox_account_set_margin_mode(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), code);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_open_position(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  uint32_t sym = 0;
+  double qty = 0.0, entry = 0.0;
+  JS_ToUint32(ctx, &sym, argv[1]);
+  JS_ToFloat64(ctx, &qty, argv[2]);
+  JS_ToFloat64(ctx, &entry, argv[3]);
+  flox_account_open_position(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, qty, entry);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_close_position(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  uint32_t sym = 0;
+  JS_ToUint32(ctx, &sym, argv[1]);
+  flox_account_close_position(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_position_count(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  return JS_NewUint32(
+      ctx, flox_account_position_count(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_account_set_mark(JSContext* ctx, JSValueConst, int,
+                                   JSValueConst* argv)
+{
+  uint32_t sym = 0;
+  double px = 0.0;
+  JS_ToUint32(ctx, &sym, argv[1]);
+  JS_ToFloat64(ctx, &px, argv[2]);
+  flox_account_set_mark(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_total_notional(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_account_total_notional(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_account_total_upnl(JSContext* ctx, JSValueConst, int,
+                                     JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_account_total_unrealised_pnl(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_account_record_fill(JSContext* ctx, JSValueConst, int,
+                                      JSValueConst* argv)
+{
+  int64_t ts = 0;
+  double n = 0.0;
+  JS_ToInt64(ctx, &ts, argv[1]);
+  JS_ToFloat64(ctx, &n, argv[2]);
+  flox_account_record_fill(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), ts, n);
+  return JS_UNDEFINED;
+}
+static JSValue js_account_rolling_notional_30d(JSContext* ctx, JSValueConst, int,
+                                               JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_account_rolling_notional_30d(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_account_reset_rolling(JSContext* ctx, JSValueConst, int,
+                                        JSValueConst* argv)
+{
+  flox_account_reset_rolling(
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_attach_account(JSContext* ctx, JSValueConst,
+                                                    int, JSValueConst* argv)
+{
+  flox_liquidation_engine_attach_account(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_liquidation_engine_detach_account(JSContext* ctx, JSValueConst,
+                                                    int, JSValueConst* argv)
+{
+  int64_t id = 0;
+  JS_ToInt64(ctx, &id, argv[1]);
+  flox_liquidation_engine_detach_account(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(id));
+  return JS_UNDEFINED;
+}
+static JSValue js_fee_schedule_bind_account(JSContext* ctx, JSValueConst, int,
+                                            JSValueConst* argv)
+{
+  flox_fee_schedule_bind_account(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])),
+      static_cast<FloxAccountHandle>(getHandle(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
+static JSValue js_fee_schedule_clear_account_binding(JSContext* ctx, JSValueConst,
+                                                     int, JSValueConst* argv)
+{
+  flox_fee_schedule_clear_account_binding(
+      static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
 template <typename T, typename SizeFn, typename CopyFn>
 static JSValue copyVecToJs(JSContext* ctx, void* handle, SizeFn sizeFn, CopyFn copyFn)
 {
@@ -6456,6 +6655,40 @@ void registerFloxBindings(JSContext* ctx)
                 js_liquidation_engine_set_max_cascade_depth, 2);
   addGlobalFunc(ctx, "__flox_liquidation_engine_max_cascade_depth",
                 js_liquidation_engine_max_cascade_depth, 1);
+  // T037 — Account + cross-margin bindings.
+  addGlobalFunc(ctx, "__flox_account_create", js_account_create, 2);
+  addGlobalFunc(ctx, "__flox_account_destroy", js_account_destroy, 1);
+  addGlobalFunc(ctx, "__flox_account_id", js_account_id, 1);
+  addGlobalFunc(ctx, "__flox_account_equity", js_account_equity, 1);
+  addGlobalFunc(ctx, "__flox_account_set_equity", js_account_set_equity, 2);
+  addGlobalFunc(ctx, "__flox_account_add_equity", js_account_add_equity, 2);
+  addGlobalFunc(ctx, "__flox_account_margin_mode", js_account_margin_mode, 1);
+  addGlobalFunc(ctx, "__flox_account_set_margin_mode",
+                js_account_set_margin_mode, 2);
+  addGlobalFunc(ctx, "__flox_account_open_position",
+                js_account_open_position, 4);
+  addGlobalFunc(ctx, "__flox_account_close_position",
+                js_account_close_position, 2);
+  addGlobalFunc(ctx, "__flox_account_position_count",
+                js_account_position_count, 1);
+  addGlobalFunc(ctx, "__flox_account_set_mark", js_account_set_mark, 3);
+  addGlobalFunc(ctx, "__flox_account_total_notional",
+                js_account_total_notional, 1);
+  addGlobalFunc(ctx, "__flox_account_total_unrealised_pnl",
+                js_account_total_upnl, 1);
+  addGlobalFunc(ctx, "__flox_account_record_fill", js_account_record_fill, 3);
+  addGlobalFunc(ctx, "__flox_account_rolling_notional_30d",
+                js_account_rolling_notional_30d, 1);
+  addGlobalFunc(ctx, "__flox_account_reset_rolling",
+                js_account_reset_rolling, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_attach_account",
+                js_liquidation_engine_attach_account, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_detach_account",
+                js_liquidation_engine_detach_account, 2);
+  addGlobalFunc(ctx, "__flox_fee_schedule_bind_account",
+                js_fee_schedule_bind_account, 2);
+  addGlobalFunc(ctx, "__flox_fee_schedule_clear_account_binding",
+                js_fee_schedule_clear_account_binding, 1);
   addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
   addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",
