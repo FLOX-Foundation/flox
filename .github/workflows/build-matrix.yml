@@ -118,3 +118,8 @@ jobs:
 
     - name: Build
       run: cmake --build build -j$(nproc)
+
+    - name: W15 composition smoke
+      if: matrix.name == 'python-only' || matrix.name == 'production-typical'
+      run: |
+        cd build/python && PYTHONPATH=. python3 ../../scripts/smoke_composition.py
