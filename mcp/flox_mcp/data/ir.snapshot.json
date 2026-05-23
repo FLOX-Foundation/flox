@@ -6108,6 +6108,36 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_cascade_sizes_copy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "out",
+          "type": "uint32_t *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_cascade_sizes_size",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_close_position",
       "params": [
         {
@@ -6133,6 +6163,66 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_deficits_paid_by_adl_copy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "out",
+          "type": "double *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_deficits_paid_by_adl_size",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_deficits_paid_by_fund_copy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "out",
+          "type": "double *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_deficits_paid_by_fund_size",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_destroy",
       "params": [
         {
@@ -6141,6 +6231,36 @@
         }
       ],
       "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_fund_balance_history_copy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "out",
+          "type": "double *"
+        },
+        {
+          "name": "max",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_fund_balance_history_size",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint32_t"
     },
     {
       "group": "liquidation_engine",
@@ -6242,6 +6362,17 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_reset_stats",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_set_adl_enabled",
       "params": [
         {
@@ -6314,6 +6445,17 @@
         }
       ],
       "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_ticks_to_first_adl",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint64_t"
     },
     {
       "group": "floxliveengine_disruptor",

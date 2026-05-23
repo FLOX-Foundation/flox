@@ -79,8 +79,22 @@ double LiquidationEngine::mmFractionFor(double notional) const
   return mm;
 }
 
+void LiquidationEngine::resetStats() noexcept
+{
+  _statLiquidations = 0;
+  _statInsurancePayments = 0;
+  _statAdlCloseouts = 0;
+  _deficitsPaidByFund.clear();
+  _deficitsPaidByAdl.clear();
+  _cascadeSizesPerTick.clear();
+  _fundBalanceHistory.clear();
+  _firstAdlTickIdx = UINT64_MAX;
+  _onMarkTickCounter = 0;
+}
+
 LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
 {
+  const uint64_t tickIdx = _onMarkTickCounter++;
   LiquidationOutcome out;
   if (_positions.empty() || markPrice <= 0.0)
   {
@@ -175,6 +189,7 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
   {
     _positions.erase(_positions.begin() + static_cast<long>(i));
   }
+  _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
 
   if (totalDeficit <= 0.0)
   {
@@ -190,6 +205,8 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     out.insuranceFundDelta -= insurancePayment;
     ++_statInsurancePayments;
     ++out.insurancePaymentsCount;
+    _deficitsPaidByFund.push_back(insurancePayment);
+    _fundBalanceHistory.push_back(_insuranceFund);
   }
   if (totalDeficit <= 0.0 || !_adlEnabled)
   {
@@ -261,6 +278,11 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     totalDeficit -= c.upnl;
     ++_statAdlCloseouts;
     ++out.adlCloseoutsCount;
+    _deficitsPaidByAdl.push_back(c.upnl);
+    if (_firstAdlTickIdx == UINT64_MAX)
+    {
+      _firstAdlTickIdx = tickIdx;
+    }
   }
   // Remove ADL-closed positions descending.
   std::sort(closeIdxs.begin(), closeIdxs.end(), std::greater<size_t>());

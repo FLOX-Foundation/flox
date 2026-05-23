@@ -356,3 +356,79 @@ TEST(LiquidationEngine, BybitPresetUsesBybitAdlRanking)
   auto e = LiquidationEngine::bybit_linear();
   EXPECT_EQ(e.adlRanking(), AdlRanking::Bybit);
 }
+
+// === T039: cascade statistics ===
+
+TEST(LiquidationEngine, StatsEmptyOnFreshEngine)
+{
+  LiquidationEngine e;
+  EXPECT_TRUE(e.deficitsPaidByFund().empty());
+  EXPECT_TRUE(e.deficitsPaidByAdl().empty());
+  EXPECT_TRUE(e.cascadeSizesPerTick().empty());
+  EXPECT_TRUE(e.fundBalanceHistory().empty());
+  EXPECT_EQ(e.ticksToFirstAdl(), UINT64_MAX);
+}
+
+TEST(LiquidationEngine, StatsSingleLiquidationNoAdl)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(1000.0);
+  e.setAdlEnabled(false);
+  e.setLiquidationSlippageBps(0.0);
+  e.openPosition(pos(1, 10.0, 100.0, 50.0));
+
+  e.onMark(BTC, 40.0);
+  // 1 liquidation, fund absorbed 550 deficit, no ADL.
+  ASSERT_EQ(e.cascadeSizesPerTick().size(), 1u);
+  EXPECT_EQ(e.cascadeSizesPerTick().front(), 1u);
+  ASSERT_EQ(e.deficitsPaidByFund().size(), 1u);
+  EXPECT_NEAR(e.deficitsPaidByFund().front(), 550.0, 1e-6);
+  EXPECT_TRUE(e.deficitsPaidByAdl().empty());
+  EXPECT_EQ(e.ticksToFirstAdl(), UINT64_MAX);
+  ASSERT_EQ(e.fundBalanceHistory().size(), 1u);
+  EXPECT_NEAR(e.fundBalanceHistory().front(), 450.0, 1e-6);
+}
+
+TEST(LiquidationEngine, StatsCascadeTriggersAdlAndRecordsTickIdx)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+
+  // 10 BTC long at 100, equity 300 → safe at mark=99, underwater at 40.
+  e.openPosition(pos(1, 10.0, 100.0, 300.0));
+  // Profitable short at 40.
+  e.openPosition(pos(2, -10.0, 100.0, 100.0));
+
+  // Tick 0: both healthy at mark=99. No liquidations.
+  e.onMark(BTC, 99.0);
+  EXPECT_EQ(e.ticksToFirstAdl(), UINT64_MAX);
+  EXPECT_TRUE(e.cascadeSizesPerTick().empty());
+
+  // Tick 1: long underwater → liquidate, deficit 300, ADL fires.
+  e.onMark(BTC, 40.0);
+  EXPECT_EQ(e.ticksToFirstAdl(), 1u);
+  EXPECT_FALSE(e.deficitsPaidByAdl().empty());
+}
+
+TEST(LiquidationEngine, StatsResetClears)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(1000.0);
+  e.setAdlEnabled(false);
+  e.setLiquidationSlippageBps(0.0);
+  e.openPosition(pos(1, 10.0, 100.0, 50.0));
+  e.onMark(BTC, 40.0);
+  EXPECT_FALSE(e.cascadeSizesPerTick().empty());
+
+  e.resetStats();
+  EXPECT_TRUE(e.cascadeSizesPerTick().empty());
+  EXPECT_TRUE(e.deficitsPaidByFund().empty());
+  EXPECT_EQ(e.liquidationsCount(), 0u);
+  EXPECT_EQ(e.insurancePaymentsCount(), 0u);
+  EXPECT_EQ(e.ticksToFirstAdl(), UINT64_MAX);
+}

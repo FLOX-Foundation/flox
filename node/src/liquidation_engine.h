@@ -39,7 +39,18 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
          InstanceMethod("adlCloseoutsCount",
                         &LiquidationEngineWrap::AdlCloseoutsCount),
          InstanceMethod("loadProfile", &LiquidationEngineWrap::LoadProfile),
-         InstanceMethod("setExecutor", &LiquidationEngineWrap::SetExecutor)});
+         InstanceMethod("setExecutor", &LiquidationEngineWrap::SetExecutor),
+         InstanceMethod("deficitsPaidByFund",
+                        &LiquidationEngineWrap::DeficitsPaidByFund),
+         InstanceMethod("deficitsPaidByAdl",
+                        &LiquidationEngineWrap::DeficitsPaidByAdl),
+         InstanceMethod("cascadeSizesPerTick",
+                        &LiquidationEngineWrap::CascadeSizesPerTick),
+         InstanceMethod("fundBalanceHistory",
+                        &LiquidationEngineWrap::FundBalanceHistory),
+         InstanceMethod("ticksToFirstAdl",
+                        &LiquidationEngineWrap::TicksToFirstAdl),
+         InstanceMethod("resetStats", &LiquidationEngineWrap::ResetStats)});
   }
 
   LiquidationEngineWrap(const Napi::CallbackInfo& info)
@@ -188,6 +199,64 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
     auto* w = Napi::ObjectWrap<SimulatedExecutorWrap>::Unwrap(
         info[0].As<Napi::Object>());
     flox_liquidation_engine_set_executor(_h, w->handle());
+  }
+  Napi::Value DeficitsPaidByFund(const Napi::CallbackInfo& info)
+  {
+    const uint32_t n = flox_liquidation_engine_deficits_paid_by_fund_size(_h);
+    std::vector<double> buf(n);
+    flox_liquidation_engine_deficits_paid_by_fund_copy(_h, buf.data(), n);
+    Napi::Array arr = Napi::Array::New(info.Env(), n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      arr.Set(i, Napi::Number::New(info.Env(), buf[i]));
+    }
+    return arr;
+  }
+  Napi::Value DeficitsPaidByAdl(const Napi::CallbackInfo& info)
+  {
+    const uint32_t n = flox_liquidation_engine_deficits_paid_by_adl_size(_h);
+    std::vector<double> buf(n);
+    flox_liquidation_engine_deficits_paid_by_adl_copy(_h, buf.data(), n);
+    Napi::Array arr = Napi::Array::New(info.Env(), n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      arr.Set(i, Napi::Number::New(info.Env(), buf[i]));
+    }
+    return arr;
+  }
+  Napi::Value CascadeSizesPerTick(const Napi::CallbackInfo& info)
+  {
+    const uint32_t n = flox_liquidation_engine_cascade_sizes_size(_h);
+    std::vector<uint32_t> buf(n);
+    flox_liquidation_engine_cascade_sizes_copy(_h, buf.data(), n);
+    Napi::Array arr = Napi::Array::New(info.Env(), n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      arr.Set(i, Napi::Number::New(info.Env(), buf[i]));
+    }
+    return arr;
+  }
+  Napi::Value FundBalanceHistory(const Napi::CallbackInfo& info)
+  {
+    const uint32_t n = flox_liquidation_engine_fund_balance_history_size(_h);
+    std::vector<double> buf(n);
+    flox_liquidation_engine_fund_balance_history_copy(_h, buf.data(), n);
+    Napi::Array arr = Napi::Array::New(info.Env(), n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      arr.Set(i, Napi::Number::New(info.Env(), buf[i]));
+    }
+    return arr;
+  }
+  Napi::Value TicksToFirstAdl(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(
+        info.Env(),
+        static_cast<double>(flox_liquidation_engine_ticks_to_first_adl(_h)));
+  }
+  void ResetStats(const Napi::CallbackInfo& info)
+  {
+    flox_liquidation_engine_reset_stats(_h);
   }
 
   FloxLiquidationEngineHandle _h;

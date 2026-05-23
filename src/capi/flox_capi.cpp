@@ -9477,3 +9477,69 @@ extern "C" void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle
   }
   toLiqEngine(h)->setExecutor(ex);
 }
+
+// T039: cascade statistics.
+namespace
+{
+template <typename T>
+uint32_t copyVec(const std::vector<T>& src, T* out, uint32_t max)
+{
+  if (out == nullptr || max == 0)
+  {
+    return 0;
+  }
+  const uint32_t n = std::min<uint32_t>(max, static_cast<uint32_t>(src.size()));
+  std::copy(src.begin(), src.begin() + n, out);
+  return n;
+}
+}  // namespace
+
+extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_fund_size(
+    FloxLiquidationEngineHandle h)
+{
+  return static_cast<uint32_t>(toLiqEngine(h)->deficitsPaidByFund().size());
+}
+extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_fund_copy(
+    FloxLiquidationEngineHandle h, double* out, uint32_t max)
+{
+  return copyVec(toLiqEngine(h)->deficitsPaidByFund(), out, max);
+}
+extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_adl_size(
+    FloxLiquidationEngineHandle h)
+{
+  return static_cast<uint32_t>(toLiqEngine(h)->deficitsPaidByAdl().size());
+}
+extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_adl_copy(
+    FloxLiquidationEngineHandle h, double* out, uint32_t max)
+{
+  return copyVec(toLiqEngine(h)->deficitsPaidByAdl(), out, max);
+}
+extern "C" uint32_t flox_liquidation_engine_cascade_sizes_size(
+    FloxLiquidationEngineHandle h)
+{
+  return static_cast<uint32_t>(toLiqEngine(h)->cascadeSizesPerTick().size());
+}
+extern "C" uint32_t flox_liquidation_engine_cascade_sizes_copy(
+    FloxLiquidationEngineHandle h, uint32_t* out, uint32_t max)
+{
+  return copyVec(toLiqEngine(h)->cascadeSizesPerTick(), out, max);
+}
+extern "C" uint32_t flox_liquidation_engine_fund_balance_history_size(
+    FloxLiquidationEngineHandle h)
+{
+  return static_cast<uint32_t>(toLiqEngine(h)->fundBalanceHistory().size());
+}
+extern "C" uint32_t flox_liquidation_engine_fund_balance_history_copy(
+    FloxLiquidationEngineHandle h, double* out, uint32_t max)
+{
+  return copyVec(toLiqEngine(h)->fundBalanceHistory(), out, max);
+}
+extern "C" uint64_t flox_liquidation_engine_ticks_to_first_adl(
+    FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->ticksToFirstAdl();
+}
+extern "C" void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h)
+{
+  toLiqEngine(h)->resetStats();
+}
