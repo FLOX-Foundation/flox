@@ -127,6 +127,16 @@ nav:
           - Heatmap rendering: how-to/heatmap.md
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
           - Native iceberg orders: how-to/iceberg-orders.md
+          - Realistic backtest in one call: how-to/realistic-backtest.md
+          - Cross-margin accounts: how-to/cross-margin.md
+          - Liquidation and ADL: how-to/liquidation-and-adl.md
+          - Perpetual funding: how-to/perpetual-funding.md
+          - Order TIF flags: how-to/order-tif-flags.md
+          - Self-match prevention: how-to/self-match-prevention.md
+          - Matching modes: how-to/matching-modes.md
+          - Rate limits: how-to/rate-limits.md
+          - Venue downtime: how-to/venue-downtime.md
+          - Calibrate live queue: how-to/calibrate-live-queue.md
           - Record and replay market data: how-to/tape-record.md
           - Merge multiple tapes on read: how-to/multi-tape.md
           - Import Binance public archives: how-to/import-binance-archive.md
