@@ -37,6 +37,31 @@ VenueAvailability& VenueAvailability::scheduleOutage(int64_t startNs, int64_t du
   return *this;
 }
 
+VenueAvailability& VenueAvailability::scheduleOutageEx(int64_t startNs, int64_t durationNs,
+                                                       OutageType outageType,
+                                                       OnOutage policy, int64_t gtcTtlNs,
+                                                       double degradationLatencyMultiplier,
+                                                       double wrongSideRecoveryBps)
+{
+  if (durationNs <= 0)
+  {
+    return *this;
+  }
+  Outage o;
+  o.startNs = startNs;
+  o.endNs = startNs + durationNs;
+  o.policy = policy;
+  o.gtcTtlNs = gtcTtlNs;
+  o.outageType = outageType;
+  o.degradationLatencyMultiplier = degradationLatencyMultiplier;
+  o.wrongSideRecoveryBps = wrongSideRecoveryBps;
+  _outages.push_back(o);
+  std::sort(_outages.begin(), _outages.end(),
+            [](const Outage& a, const Outage& b)
+            { return a.startNs < b.startNs; });
+  return *this;
+}
+
 VenueAvailability& VenueAvailability::autoRandomOutages(double perDay,
                                                         int64_t meanDurationNs,
                                                         OnOutage policy, uint64_t seed)
@@ -118,7 +143,110 @@ const VenueAvailability::Outage* VenueAvailability::activeOutage(int64_t nowNs)
 
 bool VenueAvailability::isUp(int64_t nowNs)
 {
-  return activeOutage(nowNs) == nullptr;
+  const Outage* o = activeOutage(nowNs);
+  // Partial-outage variants are still "up" at the binary level —
+  // their finer behaviour is exposed through the per-action / per-
+  // feed gates below. Total outages remain hard-down.
+  if (o == nullptr)
+  {
+    return true;
+  }
+  switch (o->outageType)
+  {
+    case OutageType::Total:
+    case OutageType::WrongSideRecovery:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool VenueAvailability::submitsAllowed(int64_t nowNs)
+{
+  const Outage* o = activeOutage(nowNs);
+  if (o == nullptr)
+  {
+    return true;
+  }
+  switch (o->outageType)
+  {
+    case OutageType::Total:
+    case OutageType::WrongSideRecovery:
+    case OutageType::SubmitOnlyDown:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool VenueAvailability::cancelsAllowed(int64_t nowNs)
+{
+  const Outage* o = activeOutage(nowNs);
+  if (o == nullptr)
+  {
+    return true;
+  }
+  switch (o->outageType)
+  {
+    case OutageType::Total:
+    case OutageType::WrongSideRecovery:
+    case OutageType::CancelOnlyDown:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool VenueAvailability::bookUpdatesAllowed(int64_t nowNs)
+{
+  const Outage* o = activeOutage(nowNs);
+  if (o == nullptr)
+  {
+    return true;
+  }
+  switch (o->outageType)
+  {
+    case OutageType::Total:
+    case OutageType::WrongSideRecovery:
+    case OutageType::StaleBook:
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool VenueAvailability::tradesAllowed(int64_t nowNs)
+{
+  const Outage* o = activeOutage(nowNs);
+  if (o == nullptr)
+  {
+    return true;
+  }
+  switch (o->outageType)
+  {
+    case OutageType::Total:
+    case OutageType::WrongSideRecovery:
+      return false;
+    default:
+      return true;
+  }
+}
+
+double VenueAvailability::latencyMultiplier(int64_t nowNs)
+{
+  const Outage* o = activeOutage(nowNs);
+  if (o == nullptr || o->outageType != OutageType::SlowDegradation)
+  {
+    return 1.0;
+  }
+  return o->degradationLatencyMultiplier;
+}
+
+double VenueAvailability::consumeWrongSideRecoveryBps()
+{
+  const double v = _pendingWrongSideRecoveryBps;
+  _pendingWrongSideRecoveryBps = 0.0;
+  return v;
 }
 
 bool VenueAvailability::consumeRecoveryEdge(int64_t nowNs)
@@ -126,6 +254,25 @@ bool VenueAvailability::consumeRecoveryEdge(int64_t nowNs)
   const bool up = isUp(nowNs);
   const bool edge = up && !_wasUpLast;
   _wasUpLast = up;
+  if (edge)
+  {
+    // Walk completed outages whose endNs is just before nowNs; for
+    // each WrongSideRecovery outage we haven't accounted for yet,
+    // accumulate its bps into the pending offset.
+    for (const auto& o : _outages)
+    {
+      if (o.endNs > nowNs)
+      {
+        break;  // sorted by start; once we pass nowNs we're done
+      }
+      if (o.outageType == OutageType::WrongSideRecovery &&
+          o.endNs > _lastConsumedRecoveryEndNs)
+      {
+        _pendingWrongSideRecoveryBps += o.wrongSideRecoveryBps;
+        _lastConsumedRecoveryEndNs = o.endNs;
+      }
+    }
+  }
   return edge;
 }
 

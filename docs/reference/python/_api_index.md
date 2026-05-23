@@ -1973,8 +1973,15 @@ Members:
 **Members**
 
 - `auto_random_outages(self, per_day: typing.SupportsFloat | typing.SupportsIndex, mean_duration_ns: typing.SupportsInt | typing.SupportsIndex, on_open_orders: str = 'cancel_all', seed: typing.SupportsInt | typing.SupportsIndex = 12648430) -> VenueAvailability`
+- `book_updates_allowed(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
+- `cancels_allowed(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
+- `consume_wrong_side_recovery_bps(self) -> float`
 - `is_up(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
+- `latency_multiplier(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> float`
 - `schedule_outage(self, start_ns: typing.SupportsInt | typing.SupportsIndex, duration_ns: typing.SupportsInt | typing.SupportsIndex, on_open_orders: str = 'cancel_all', gtc_ttl_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> VenueAvailability`
+- `schedule_outage_ex(self, start_ns: typing.SupportsInt | typing.SupportsIndex, duration_ns: typing.SupportsInt | typing.SupportsIndex, outage_type: str = 'total', on_open_orders: str = 'cancel_all', gtc_ttl_ns: typing.SupportsInt | typing.SupportsIndex = 0, degradation_latency_multiplier: typing.SupportsFloat | typing.SupportsIndex = 1.0, wrong_side_recovery_bps: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> VenueAvailability`
+- `submits_allowed(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
+- `trades_allowed(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
 
 ### `class VolumeBinAggregator(_AggregatorHandle)`
 

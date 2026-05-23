@@ -795,7 +795,36 @@ export class VenueAvailability {
     onOpenOrders?: OnOutage,
     seed?: number,
   ): void;
+  /** Extended schedule with outage pathology. outageType:
+   *  'total' (default) | 'submit_only_down' | 'cancel_only_down' |
+   *  'slow_degradation' | 'stale_book' | 'wrong_side_recovery'. */
+  scheduleOutageEx(
+    startNs: number,
+    durationNs: number,
+    outageType?:
+      | 'total'
+      | 'submit_only_down'
+      | 'cancel_only_down'
+      | 'slow_degradation'
+      | 'stale_book'
+      | 'wrong_side_recovery',
+    onOpenOrders?: OnOutage,
+    gtcTtlNs?: number,
+    degradationLatencyMultiplier?: number,
+    wrongSideRecoveryBps?: number,
+  ): void;
   isUp(nowNs: number): boolean;
+  submitsAllowed(nowNs: number): boolean;
+  cancelsAllowed(nowNs: number): boolean;
+  bookUpdatesAllowed(nowNs: number): boolean;
+  tradesAllowed(nowNs: number): boolean;
+  /** Latency multiplier applied to submit/cancel/replace ack times
+   *  while a SlowDegradation outage is active; 1.0 otherwise. */
+  latencyMultiplier(nowNs: number): number;
+  /** Pop the wrong-side-recovery bps accumulated when a
+   *  WrongSideRecovery outage just ended. Idempotent — subsequent
+   *  calls return 0 until the next such outage ends. */
+  consumeWrongSideRecoveryBps(): number;
 }
 
 export class RateLimitPolicy {

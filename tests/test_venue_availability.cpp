@@ -213,3 +213,80 @@ TEST(VenueAvailability, EmptyConfigStaysUpForever)
   EXPECT_TRUE(va.isUp(1'000'000'000'000LL));
   EXPECT_TRUE(va.outages().empty());
 }
+
+// === T046: richer downtime pathology ===
+
+TEST(VenueAvailability, OutageTypeTotalKeepsLegacySemantics)
+{
+  VenueAvailability va;
+  va.scheduleOutageEx(100, 100, OutageType::Total);
+  EXPECT_FALSE(va.isUp(150));
+  EXPECT_FALSE(va.submitsAllowed(150));
+  EXPECT_FALSE(va.cancelsAllowed(150));
+  EXPECT_FALSE(va.bookUpdatesAllowed(150));
+  EXPECT_FALSE(va.tradesAllowed(150));
+  EXPECT_DOUBLE_EQ(va.latencyMultiplier(150), 1.0);
+}
+
+TEST(VenueAvailability, SubmitOnlyDownGatesSubmitsButNotCancels)
+{
+  VenueAvailability va;
+  va.scheduleOutageEx(100, 100, OutageType::SubmitOnlyDown);
+  // Binary isUp remains true — the venue is technically reachable.
+  EXPECT_TRUE(va.isUp(150));
+  EXPECT_FALSE(va.submitsAllowed(150));
+  EXPECT_TRUE(va.cancelsAllowed(150));
+  EXPECT_TRUE(va.bookUpdatesAllowed(150));
+  EXPECT_TRUE(va.tradesAllowed(150));
+}
+
+TEST(VenueAvailability, CancelOnlyDownGatesCancelsButNotSubmits)
+{
+  VenueAvailability va;
+  va.scheduleOutageEx(100, 100, OutageType::CancelOnlyDown);
+  EXPECT_TRUE(va.submitsAllowed(150));
+  EXPECT_FALSE(va.cancelsAllowed(150));
+}
+
+TEST(VenueAvailability, StaleBookDropsBookUpdatesButLetsTradesThrough)
+{
+  VenueAvailability va;
+  va.scheduleOutageEx(100, 100, OutageType::StaleBook);
+  EXPECT_TRUE(va.submitsAllowed(150));
+  EXPECT_TRUE(va.cancelsAllowed(150));
+  EXPECT_FALSE(va.bookUpdatesAllowed(150));
+  EXPECT_TRUE(va.tradesAllowed(150));
+}
+
+TEST(VenueAvailability, SlowDegradationKeepsActionsButRaisesLatencyMultiplier)
+{
+  VenueAvailability va;
+  va.scheduleOutageEx(100, 100, OutageType::SlowDegradation, OnOutage::HOLD,
+                      /*gtcTtlNs=*/0,
+                      /*degradationLatencyMultiplier=*/50.0);
+  EXPECT_TRUE(va.submitsAllowed(150));
+  EXPECT_TRUE(va.cancelsAllowed(150));
+  EXPECT_TRUE(va.bookUpdatesAllowed(150));
+  EXPECT_DOUBLE_EQ(va.latencyMultiplier(150), 50.0);
+  // Outside the window the multiplier drops back to 1.0.
+  EXPECT_DOUBLE_EQ(va.latencyMultiplier(250), 1.0);
+}
+
+TEST(VenueAvailability, WrongSideRecoveryAccumulatesBpsAtRecoveryEdge)
+{
+  VenueAvailability va;
+  va.scheduleOutageEx(100, 100, OutageType::WrongSideRecovery, OnOutage::HOLD,
+                      /*gtcTtlNs=*/0,
+                      /*degradationLatencyMultiplier=*/1.0,
+                      /*wrongSideRecoveryBps=*/25.0);
+  // Mid-outage: hard-down behaves like Total for action gates.
+  EXPECT_FALSE(va.isUp(150));
+  EXPECT_FALSE(va.submitsAllowed(150));
+  EXPECT_FALSE(va.cancelsAllowed(150));
+  // Walk past the end so we cross the recovery edge.
+  EXPECT_FALSE(va.consumeRecoveryEdge(150));
+  EXPECT_TRUE(va.consumeRecoveryEdge(250));
+  EXPECT_DOUBLE_EQ(va.consumeWrongSideRecoveryBps(), 25.0);
+  // Idempotent.
+  EXPECT_DOUBLE_EQ(va.consumeWrongSideRecoveryBps(), 0.0);
+}

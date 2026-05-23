@@ -12423,6 +12423,47 @@
     },
     {
       "group": "venue_availability",
+      "name": "flox_venue_availability_book_updates_allowed",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_cancels_allowed",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_consume_wrong_side_recovery_bps",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "venue_availability",
       "name": "flox_venue_availability_create",
       "params": [],
       "return_type": "FloxVenueAvailabilityHandle"
@@ -12455,6 +12496,21 @@
     },
     {
       "group": "venue_availability",
+      "name": "flox_venue_availability_latency_multiplier",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "venue_availability",
       "name": "flox_venue_availability_schedule_outage",
       "params": [
         {
@@ -12479,6 +12535,75 @@
         }
       ],
       "return_type": "void"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_schedule_outage_ex",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "start_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "duration_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "outage_type",
+          "type": "uint8_t"
+        },
+        {
+          "name": "policy",
+          "type": "uint8_t"
+        },
+        {
+          "name": "gtc_ttl_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "degradation_latency_multiplier",
+          "type": "double"
+        },
+        {
+          "name": "wrong_side_recovery_bps",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_submits_allowed",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "venue_availability",
+      "name": "flox_venue_availability_trades_allowed",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueAvailabilityHandle"
+        },
+        {
+          "name": "now_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "uint8_t"
     },
     {
       "group": "tape_aggregator",

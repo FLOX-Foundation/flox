@@ -2998,6 +2998,53 @@ extern "C" uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, 
   return static_cast<VenueAvailability*>(h)->isUp(now_ns) ? 1 : 0;
 }
 
+extern "C" void flox_venue_availability_schedule_outage_ex(
+    FloxVenueAvailabilityHandle h, int64_t start_ns, int64_t duration_ns,
+    uint8_t outage_type, uint8_t policy, int64_t gtc_ttl_ns,
+    double degradation_latency_multiplier, double wrong_side_recovery_bps)
+{
+  static_cast<VenueAvailability*>(h)->scheduleOutageEx(
+      start_ns, duration_ns, static_cast<OutageType>(outage_type),
+      static_cast<OnOutage>(policy), gtc_ttl_ns,
+      degradation_latency_multiplier, wrong_side_recovery_bps);
+}
+
+extern "C" uint8_t flox_venue_availability_submits_allowed(FloxVenueAvailabilityHandle h,
+                                                           int64_t now_ns)
+{
+  return static_cast<VenueAvailability*>(h)->submitsAllowed(now_ns) ? 1 : 0;
+}
+
+extern "C" uint8_t flox_venue_availability_cancels_allowed(FloxVenueAvailabilityHandle h,
+                                                           int64_t now_ns)
+{
+  return static_cast<VenueAvailability*>(h)->cancelsAllowed(now_ns) ? 1 : 0;
+}
+
+extern "C" uint8_t flox_venue_availability_book_updates_allowed(
+    FloxVenueAvailabilityHandle h, int64_t now_ns)
+{
+  return static_cast<VenueAvailability*>(h)->bookUpdatesAllowed(now_ns) ? 1 : 0;
+}
+
+extern "C" uint8_t flox_venue_availability_trades_allowed(FloxVenueAvailabilityHandle h,
+                                                          int64_t now_ns)
+{
+  return static_cast<VenueAvailability*>(h)->tradesAllowed(now_ns) ? 1 : 0;
+}
+
+extern "C" double flox_venue_availability_latency_multiplier(
+    FloxVenueAvailabilityHandle h, int64_t now_ns)
+{
+  return static_cast<VenueAvailability*>(h)->latencyMultiplier(now_ns);
+}
+
+extern "C" double flox_venue_availability_consume_wrong_side_recovery_bps(
+    FloxVenueAvailabilityHandle h)
+{
+  return static_cast<VenueAvailability*>(h)->consumeWrongSideRecoveryBps();
+}
+
 extern "C" void flox_simulated_executor_set_venue_availability(
     FloxSimulatedExecutorHandle exec_h, FloxVenueAvailabilityHandle va_h)
 {
