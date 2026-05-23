@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "account.h"
 #include "backtest.h"
 #include "flox/capi/flox_capi.h"
 
@@ -60,7 +61,11 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
          InstanceMethod("setMaxCascadeDepth",
                         &LiquidationEngineWrap::SetMaxCascadeDepth),
          InstanceMethod("maxCascadeDepth",
-                        &LiquidationEngineWrap::MaxCascadeDepth)});
+                        &LiquidationEngineWrap::MaxCascadeDepth),
+         InstanceMethod("attachAccount",
+                        &LiquidationEngineWrap::AttachAccount),
+         InstanceMethod("detachAccount",
+                        &LiquidationEngineWrap::DetachAccount)});
   }
 
   LiquidationEngineWrap(const Napi::CallbackInfo& info)
@@ -326,6 +331,20 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   {
     return Napi::Number::New(info.Env(),
                              flox_liquidation_engine_max_cascade_depth(_h));
+  }
+  void AttachAccount(const Napi::CallbackInfo& info)
+  {
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      return;
+    }
+    auto* w = Napi::ObjectWrap<AccountWrap>::Unwrap(info[0].As<Napi::Object>());
+    flox_liquidation_engine_attach_account(_h, w->handle());
+  }
+  void DetachAccount(const Napi::CallbackInfo& info)
+  {
+    flox_liquidation_engine_detach_account(
+        _h, info[0].As<Napi::Number>().Int64Value());
   }
 
   FloxLiquidationEngineHandle _h;

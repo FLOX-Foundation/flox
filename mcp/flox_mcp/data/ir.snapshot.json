@@ -786,6 +786,241 @@
   ],
   "functions": [
     {
+      "group": "account",
+      "name": "flox_account_add_equity",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "delta",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_close_position",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_create",
+      "params": [
+        {
+          "name": "account_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "equity",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxAccountHandle"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_equity",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_id",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "uint64_t"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_margin_mode",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_open_position",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "entry_price",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_position_count",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_record_fill",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "notional",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_reset_rolling",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_rolling_notional_30d",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_set_equity",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "equity",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_set_margin_mode",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "mode",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_set_mark",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_total_notional",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "account",
+      "name": "flox_account_total_unrealised_pnl",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
       "group": "heikin_ashi",
       "name": "flox_aggregate_heikin_ashi_bars",
       "params": [
@@ -3850,6 +4085,32 @@
     },
     {
       "group": "fee_schedule",
+      "name": "flox_fee_schedule_bind_account",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        },
+        {
+          "name": "account",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
+      "name": "flox_fee_schedule_clear_account_binding",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFeeScheduleHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "fee_schedule",
       "name": "flox_fee_schedule_create",
       "params": [],
       "return_type": "FloxFeeScheduleHandle"
@@ -6150,6 +6411,21 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_attach_account",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "account",
+          "type": "FloxAccountHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_cascade_sizes_copy",
       "params": [
         {
@@ -6270,6 +6546,21 @@
         {
           "name": "h",
           "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_detach_account",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "account_id",
+          "type": "uint64_t"
         }
       ],
       "return_type": "void"
@@ -15077,6 +15368,10 @@
     }
   ],
   "typedefs": [
+    {
+      "name": "FloxAccountHandle",
+      "target": "void*"
+    },
     {
       "name": "FloxAggregatorHandle",
       "target": "void*"

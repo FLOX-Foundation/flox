@@ -6,6 +6,25 @@
 # Re-exported through `codon/flox/<module>.codon` files; this
 # file is the flat reference, not directly imported by user code.
 
+# ── account ──
+from C import flox_account_create(u64, float) -> cobj
+from C import flox_account_destroy(cobj)
+from C import flox_account_id(cobj) -> u64
+from C import flox_account_equity(cobj) -> float
+from C import flox_account_set_equity(cobj, float)
+from C import flox_account_add_equity(cobj, float)
+from C import flox_account_margin_mode(cobj) -> u8
+from C import flox_account_set_margin_mode(cobj, u8)
+from C import flox_account_open_position(cobj, u32, float, float)
+from C import flox_account_close_position(cobj, u32)
+from C import flox_account_position_count(cobj) -> u32
+from C import flox_account_set_mark(cobj, u32, float)
+from C import flox_account_total_notional(cobj) -> float
+from C import flox_account_total_unrealised_pnl(cobj) -> float
+from C import flox_account_record_fill(cobj, i64, float)
+from C import flox_account_rolling_notional_30d(cobj) -> float
+from C import flox_account_reset_rolling(cobj)
+
 # ── additional_bar ──
 from C import flox_aggregate_range_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
 from C import flox_aggregate_renko_bars(Ptr[i64], Ptr[float], Ptr[float], Ptr[u8], int, float, cobj, u32) -> u32
@@ -206,6 +225,8 @@ from C import flox_fee_schedule_current_tier(cobj) -> u32
 from C import flox_fee_schedule_rolling_notional(cobj) -> float
 from C import flox_fee_schedule_tier_transitions(cobj, Ptr[i64], u32) -> u32
 from C import flox_fee_schedule_reset_rolling(cobj)
+from C import flox_fee_schedule_bind_account(cobj, cobj)
+from C import flox_fee_schedule_clear_account_binding(cobj)
 
 # ── feed_clock ──
 from C import flox_feed_clock_create(Ptr[u32], u32, u8, i64, u32, i64) -> cobj
@@ -414,6 +435,8 @@ from C import flox_liquidation_engine_mark_impact_model(cobj) -> u8
 from C import flox_liquidation_engine_mark_impact_weight(cobj) -> float
 from C import flox_liquidation_engine_set_max_cascade_depth(cobj, u32)
 from C import flox_liquidation_engine_max_cascade_depth(cobj) -> u32
+from C import flox_liquidation_engine_attach_account(cobj, cobj)
+from C import flox_liquidation_engine_detach_account(cobj, u64)
 
 # ── live_queue_position ──
 from C import flox_live_queue_position_create() -> cobj

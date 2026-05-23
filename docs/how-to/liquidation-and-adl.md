@@ -245,6 +245,35 @@ The per-round count is recorded in `cascade_sizes_per_tick`, so
 distribution-level reports can separate first-order from
 second-order liquidations.
 
+## Cross-margin accounts
+
+For account-level cross-margin (the real-world default on most
+prop accounts), attach a [`flox.Account`](cross-margin.md) so the
+engine walks aggregate equity + uPnL across all symbols and closes
+the worst-PnL leg first when underwater.
+
+=== "Python"
+
+    ```python
+    acct = flox.Account(account_id=42, equity=10_000.0)
+    acct.open_position(1, 5.0, 50_000.0)
+    acct.open_position(2, -30.0, 3_000.0)
+
+    liq = flox.LiquidationEngine.binance_um_futures()
+    liq.attach_account(acct)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    const acct = new flox.Account(42, 10_000);
+    acct.openPosition(1, 5.0, 50_000);
+    acct.openPosition(2, -30.0, 3_000);
+    liq.attachAccount(acct);
+    ```
+
+See [Cross-margin accounts](cross-margin.md) for the full guide.
+
 ## Notes
 
 - The engine is per-venue (per-margin-pool). For cross-margin or

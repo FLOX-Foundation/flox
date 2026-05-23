@@ -13,6 +13,7 @@
 #include <pybind11/stl.h>
 
 #include "backtest_bindings.h"
+#include "flox/backtest/account.h"
 #include "flox/backtest/liquidation_engine.h"
 
 namespace py = pybind11;
@@ -119,6 +120,12 @@ inline void bindLiquidationEngine(py::module_& m)
       .def("mark_impact_weight", &flox::LiquidationEngine::markImpactWeight)
       .def("set_max_cascade_depth", &flox::LiquidationEngine::setMaxCascadeDepth, py::arg("depth"))
       .def("max_cascade_depth", &flox::LiquidationEngine::maxCascadeDepth)
+      .def("attach_account", &flox::LiquidationEngine::attachAccount, py::arg("account"), py::keep_alive<1, 2>(),
+           "Attach an Account so its positions participate in cross-margin "
+           "MM checks. Multiple accounts may be attached.")
+      .def("detach_account", &flox::LiquidationEngine::detachAccount, py::arg("account_id"))
+      .def("account_count", [](const flox::LiquidationEngine& self)
+           { return self.accounts().size(); })
       .def_static("binance_um_futures", &flox::LiquidationEngine::binance_um_futures)
       .def_static("bybit_linear", &flox::LiquidationEngine::bybit_linear)
       .def_static("okx_swap", &flox::LiquidationEngine::okx_swap);

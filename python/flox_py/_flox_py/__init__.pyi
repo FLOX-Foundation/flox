@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarkImpactModel', 'MarketData', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'Trading', 'VOLUME_SCALE', 'VenueAvailability', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'Cross', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'Isolated', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarginMode', 'MarkImpactModel', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VenueAvailability', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -26,6 +26,43 @@ class ATR:
         ...
     @property
     def value(self) -> float | None:
+        ...
+class Account:
+    def __init__(self, account_id: typing.SupportsInt | typing.SupportsIndex = 0, equity: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None:
+        ...
+    def account_id(self) -> int:
+        ...
+    def add_equity(self, delta: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def close_position(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def equity(self) -> float:
+        ...
+    def margin_mode(self) -> MarginMode:
+        ...
+    def mark_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> float:
+        ...
+    def open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def position_count(self) -> int:
+        ...
+    def record_fill(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, notional: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def reset_rolling(self) -> None:
+        ...
+    def rolling_notional_30d(self) -> float:
+        ...
+    def set_equity(self, equity: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def set_margin_mode(self, mode: typing.Any) -> None:
+        """
+        Accepts a MarginMode enum or a string name (cross, isolated).
+        """
+    def set_mark(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def total_notional(self) -> float:
+        ...
+    def total_unrealised_pnl(self) -> float:
         ...
 class AdlRanking:
     """
@@ -739,6 +776,12 @@ class FeeSchedule:
         ...
     def add_tier(self, min_notional_30d: typing.SupportsFloat | typing.SupportsIndex, maker_bps: typing.SupportsFloat | typing.SupportsIndex, taker_bps: typing.SupportsFloat | typing.SupportsIndex) -> None:
         ...
+    def bind_account(self, account: Account) -> None:
+        """
+        Bind an Account so 30d rolling notional reads from the account's aggregate counter instead of this schedule's internal one.
+        """
+    def clear_account_binding(self) -> None:
+        ...
     def current_bps(self, now_ns: typing.SupportsInt | typing.SupportsIndex) -> tuple[float, float]:
         ...
     def current_tier_index(self) -> int:
@@ -1219,6 +1262,8 @@ class LiquidationEngine:
         ...
     def __init__(self) -> None:
         ...
+    def account_count(self) -> int:
+        ...
     def add_tier(self, min_notional: typing.SupportsFloat | typing.SupportsIndex, mm_fraction: typing.SupportsFloat | typing.SupportsIndex) -> LiquidationEngine:
         ...
     def adl_closeouts_count(self) -> int:
@@ -1227,6 +1272,10 @@ class LiquidationEngine:
         ...
     def adl_ranking(self) -> AdlRanking:
         ...
+    def attach_account(self, account: Account) -> None:
+        """
+        Attach an Account so its positions participate in cross-margin MM checks. Multiple accounts may be attached.
+        """
     def cascade_sizes_per_tick(self) -> list[int]:
         ...
     def close_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex) -> None:
@@ -1234,6 +1283,8 @@ class LiquidationEngine:
     def deficits_paid_by_adl(self) -> list[float]:
         ...
     def deficits_paid_by_fund(self) -> list[float]:
+        ...
+    def detach_account(self, account_id: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     def fund_balance_history(self) -> list[float]:
         ...
@@ -1330,6 +1381,43 @@ class MACD:
         ...
     @property
     def value(self) -> float | None:
+        ...
+class MarginMode:
+    """
+    Members:
+    
+      Cross
+    
+      Isolated
+    """
+    Cross: typing.ClassVar[MarginMode]  # value = <MarginMode.Cross: 0>
+    Isolated: typing.ClassVar[MarginMode]  # value = <MarginMode.Isolated: 1>
+    __members__: typing.ClassVar[dict[str, MarginMode]]  # value = {'Cross': <MarginMode.Cross: 0>, 'Isolated': <MarginMode.Isolated: 1>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
         ...
 class MarkImpactModel:
     """
@@ -3482,18 +3570,18 @@ def whites_reality_check(returns: typing.Annotated[numpy.typing.ArrayLike, numpy
 def win_rate(trade_pnls: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> float:
     ...
 ALL_OR_NOTHING: OrderGroupPolicy  # value = <OrderGroupPolicy.ALL_OR_NOTHING: 1>
-Account: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.Account: 2>
 BEST_EFFORT: OrderGroupPolicy  # value = <OrderGroupPolicy.BEST_EFFORT: 0>
 Binance: AdlRanking  # value = <AdlRanking.Binance: 1>
 BookAnchored: MarkImpactModel  # value = <MarkImpactModel.BookAnchored: 1>
 BookOnly: MarkImpactModel  # value = <MarkImpactModel.BookOnly: 2>
 Bybit: AdlRanking  # value = <AdlRanking.Bybit: 2>
 CANCELLED: OrderGroupState  # value = <OrderGroupState.CANCELLED: 4>
+Cross: MarginMode  # value = <MarginMode.Cross: 0>
 FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
 FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>
 FIRE_ON_ANY: FeedClockPolicy  # value = <FeedClockPolicy.FIRE_ON_ANY: 1>
+Isolated: MarginMode  # value = <MarginMode.Isolated: 1>
 LEADER_FOLLOWER: FeedClockPolicy  # value = <FeedClockPolicy.LEADER_FOLLOWER: 2>
-MarketData: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.MarketData: 1>
 None_: MarkImpactModel  # value = <MarkImpactModel.None_: 0>
 ONE_SIDED: OrderGroupPolicy  # value = <OrderGroupPolicy.ONE_SIDED: 2>
 ORDER_FLAG_IOC: int = 4
@@ -3517,7 +3605,6 @@ SLIPPAGE_FIXED_TICKS: int = 1
 SLIPPAGE_NONE: int = 0
 SLIPPAGE_VOLUME_IMPACT: int = 3
 SUBMITTED: OrderGroupState  # value = <OrderGroupState.SUBMITTED: 1>
-Trading: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.Trading: 0>
 VOLUME_SCALE: int = 100000000
 WAIT_FOR_ALL: FeedClockPolicy  # value = <FeedClockPolicy.WAIT_FOR_ALL: 0>
 StreamingIndicatorGraph = IndicatorGraph

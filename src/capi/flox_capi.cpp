@@ -9218,6 +9218,7 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
 // Live queue position estimator
 // ============================================================
 
+#include "flox/backtest/account.h"
 #include "flox/backtest/fee_schedule.h"
 #include "flox/backtest/funding_schedule.h"
 #include "flox/backtest/liquidation_engine.h"
@@ -9236,6 +9237,10 @@ inline flox::FundingSchedule* toFunding(FloxFundingScheduleHandle h)
 inline flox::FeeSchedule* toFee(FloxFeeScheduleHandle h)
 {
   return static_cast<flox::FeeSchedule*>(h);
+}
+inline flox::Account* toAccount(FloxAccountHandle h)
+{
+  return static_cast<flox::Account*>(h);
 }
 }  // namespace
 
@@ -9780,4 +9785,100 @@ extern "C" uint32_t flox_liquidation_engine_max_cascade_depth(
     FloxLiquidationEngineHandle h)
 {
   return toLiqEngine(h)->maxCascadeDepth();
+}
+
+// ============================================================
+// T037: Account
+// ============================================================
+
+extern "C" FloxAccountHandle flox_account_create(uint64_t account_id, double equity)
+{
+  return new flox::Account(account_id, equity);
+}
+extern "C" void flox_account_destroy(FloxAccountHandle h)
+{
+  delete toAccount(h);
+}
+extern "C" uint64_t flox_account_id(FloxAccountHandle h)
+{
+  return toAccount(h)->accountId();
+}
+extern "C" double flox_account_equity(FloxAccountHandle h)
+{
+  return toAccount(h)->equity();
+}
+extern "C" void flox_account_set_equity(FloxAccountHandle h, double equity)
+{
+  toAccount(h)->setEquity(equity);
+}
+extern "C" void flox_account_add_equity(FloxAccountHandle h, double delta)
+{
+  toAccount(h)->addEquity(delta);
+}
+extern "C" uint8_t flox_account_margin_mode(FloxAccountHandle h)
+{
+  return static_cast<uint8_t>(toAccount(h)->marginMode());
+}
+extern "C" void flox_account_set_margin_mode(FloxAccountHandle h, uint8_t mode)
+{
+  using M = flox::MarginMode;
+  toAccount(h)->setMarginMode(mode == 1 ? M::Isolated : M::Cross);
+}
+extern "C" void flox_account_open_position(FloxAccountHandle h, uint32_t symbol,
+                                           double quantity, double entry_price)
+{
+  toAccount(h)->openPosition(symbol, quantity, entry_price);
+}
+extern "C" void flox_account_close_position(FloxAccountHandle h, uint32_t symbol)
+{
+  toAccount(h)->closePosition(symbol);
+}
+extern "C" uint32_t flox_account_position_count(FloxAccountHandle h)
+{
+  return static_cast<uint32_t>(toAccount(h)->positionCount());
+}
+extern "C" void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price)
+{
+  toAccount(h)->setMark(symbol, price);
+}
+extern "C" double flox_account_total_notional(FloxAccountHandle h)
+{
+  return toAccount(h)->totalNotional();
+}
+extern "C" double flox_account_total_unrealised_pnl(FloxAccountHandle h)
+{
+  return toAccount(h)->totalUnrealisedPnl();
+}
+extern "C" void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns,
+                                         double notional)
+{
+  toAccount(h)->recordFill(ts_ns, notional);
+}
+extern "C" double flox_account_rolling_notional_30d(FloxAccountHandle h)
+{
+  return toAccount(h)->rollingNotional30d();
+}
+extern "C" void flox_account_reset_rolling(FloxAccountHandle h)
+{
+  toAccount(h)->resetRolling();
+}
+
+extern "C" void flox_liquidation_engine_attach_account(
+    FloxLiquidationEngineHandle h, FloxAccountHandle account)
+{
+  toLiqEngine(h)->attachAccount(toAccount(account));
+}
+extern "C" void flox_liquidation_engine_detach_account(
+    FloxLiquidationEngineHandle h, uint64_t account_id)
+{
+  toLiqEngine(h)->detachAccount(account_id);
+}
+extern "C" void flox_fee_schedule_bind_account(FloxFeeScheduleHandle h,
+                                               FloxAccountHandle account)
+{
+  toFee(h)->bindAccount(toAccount(account));
+}
+extern "C" void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h)
+{
+  toFee(h)->clearAccountBinding();
 }

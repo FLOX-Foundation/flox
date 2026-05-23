@@ -4,6 +4,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "account_bindings.h"
 #include "aggregator_bindings.h"
 #include "backtest_bindings.h"
 #include "bar_dispatch_bindings.h"
@@ -803,6 +804,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindRateLimitPolicy(m);
   flox_py::bindVenueAvailability(m);
   flox_py::bindFundingSchedule(m);
+  flox_py::bindAccount(m);
   flox_py::bindFeeSchedule(m);
   flox_py::bindLiquidationEngine(m);
   flox_py::bindLiveQueuePositionEstimator(m);

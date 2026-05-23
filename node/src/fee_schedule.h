@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "account.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -25,7 +26,9 @@ class FeeScheduleWrap : public Napi::ObjectWrap<FeeScheduleWrap>
          InstanceMethod("currentTierIndex", &FeeScheduleWrap::CurrentTier),
          InstanceMethod("rollingNotional30d", &FeeScheduleWrap::RollingNotional),
          InstanceMethod("tierTransitions", &FeeScheduleWrap::TierTransitions),
-         InstanceMethod("resetRolling", &FeeScheduleWrap::ResetRolling)});
+         InstanceMethod("resetRolling", &FeeScheduleWrap::ResetRolling),
+         InstanceMethod("bindAccount", &FeeScheduleWrap::BindAccount),
+         InstanceMethod("clearAccountBinding", &FeeScheduleWrap::ClearAccountBinding)});
   }
 
   FeeScheduleWrap(const Napi::CallbackInfo& info)
@@ -87,6 +90,20 @@ class FeeScheduleWrap : public Napi::ObjectWrap<FeeScheduleWrap>
     return arr;
   }
   void ResetRolling(const Napi::CallbackInfo&) { flox_fee_schedule_reset_rolling(_h); }
+  void BindAccount(const Napi::CallbackInfo& info)
+  {
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      flox_fee_schedule_bind_account(_h, nullptr);
+      return;
+    }
+    auto* w = Napi::ObjectWrap<AccountWrap>::Unwrap(info[0].As<Napi::Object>());
+    flox_fee_schedule_bind_account(_h, w->handle());
+  }
+  void ClearAccountBinding(const Napi::CallbackInfo&)
+  {
+    flox_fee_schedule_clear_account_binding(_h);
+  }
 
   FloxFeeScheduleHandle _h;
 };

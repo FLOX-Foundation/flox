@@ -9,6 +9,7 @@
 
 #include "flox/backtest/liquidation_engine.h"
 
+#include "flox/backtest/account.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/execution/order.h"
 
@@ -66,6 +67,31 @@ void LiquidationEngine::setMarkImpactModelByName(const std::string& name, double
     return;
   }
   _markImpactWeight = weight;
+}
+
+void LiquidationEngine::attachAccount(Account* account)
+{
+  if (account == nullptr)
+  {
+    return;
+  }
+  for (Account* a : _accounts)
+  {
+    if (a == account)
+    {
+      return;  // already attached
+    }
+  }
+  _accounts.push_back(account);
+}
+
+void LiquidationEngine::detachAccount(uint64_t accountId)
+{
+  _accounts.erase(
+      std::remove_if(_accounts.begin(), _accounts.end(),
+                     [&](const Account* a)
+                     { return a != nullptr && a->accountId() == accountId; }),
+      _accounts.end());
 }
 
 void LiquidationEngine::setAdlRankingByName(const std::string& name)
@@ -199,8 +225,70 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
 {
   OnMarkPass pass;
   LiquidationOutcome& out = pass.outcome;
-  if (_positions.empty() || markPrice <= 0.0)
+  if (markPrice <= 0.0)
   {
+    return pass;
+  }
+
+  double accountDeficit = 0.0;
+  // Account walk: cross-margin accounts evaluate the account-level
+  // MM check and close worst-PnL legs first. Isolated accounts let
+  // each position liquidate independently via the per-position
+  // logic below (positions are visible via account.positionsMut()).
+  for (Account* acct : _accounts)
+  {
+    if (acct == nullptr)
+    {
+      continue;
+    }
+    acct->setMark(symbol, markPrice);
+    if (acct->marginMode() == MarginMode::Cross)
+    {
+      const auto walked = walkCrossAccount(*acct, symbol, markPrice);
+      for (uint64_t id : walked.outcome.liquidated)
+      {
+        out.liquidated.push_back(id);
+      }
+      out.liquidationsCount += walked.outcome.liquidationsCount;
+      accountDeficit += walked.deficit;
+    }
+  }
+
+  if (_positions.empty() && accountDeficit == 0.0)
+  {
+    // Nothing more to do: no orphan positions and no leftover
+    // account deficit. Record the cascade size for stats parity
+    // with the legacy path.
+    if (out.liquidationsCount > 0)
+    {
+      _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
+    }
+    return pass;
+  }
+  if (_positions.empty())
+  {
+    // Have orphan-side deficit only; jump straight to fund/ADL.
+    if (out.liquidationsCount > 0)
+    {
+      _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
+    }
+    // Reuse insurance fund + ADL path; orphan _positions is empty
+    // but the deficit needs to be paid down.
+    double totalDeficit = accountDeficit;
+    const double insurancePayment = std::min(totalDeficit, _insuranceFund);
+    if (insurancePayment > 0.0)
+    {
+      _insuranceFund -= insurancePayment;
+      totalDeficit -= insurancePayment;
+      out.insuranceFundDelta -= insurancePayment;
+      ++_statInsurancePayments;
+      ++out.insurancePaymentsCount;
+      _deficitsPaidByFund.push_back(insurancePayment);
+      _fundBalanceHistory.push_back(_insuranceFund);
+    }
+    // ADL on orphan positions is not applicable here (none exist);
+    // residual deficit hits the fund's balance only (logged above).
+    (void)tickIdx;
     return pass;
   }
 
@@ -395,6 +483,113 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
   }
 
   return pass;
+}
+
+LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
+    Account& account, SymbolId symbol, double markPrice)
+{
+  AccountWalkOutcome result;
+  if (account.positionCount() == 0)
+  {
+    return result;
+  }
+
+  // Drive the cross-margin liquidation loop. While the account is
+  // underwater (cross-headroom < 0 at the total-notional tier), close
+  // the position with the most negative uPnL first; recheck. Stop
+  // when the account is solvent or no positions remain.
+  while (account.positionCount() > 0)
+  {
+    const double notional = account.totalNotional();
+    const double mm = mmFractionFor(notional);
+    const double headroom = account.crossHeadroom(mm);
+    if (headroom >= 0.0)
+    {
+      break;
+    }
+
+    // Pick the worst-PnL position (most negative uPnL). If tied,
+    // pick the one with the largest absolute notional.
+    auto& book = account.positionsMut();
+    int worstIdx = -1;
+    double worstUpnl = 0.0;
+    double worstNotional = 0.0;
+    for (size_t i = 0; i < book.size(); ++i)
+    {
+      const auto& p = book[i];
+      const double mark = account.markFor(p.symbol);
+      const double px = mark > 0.0 ? mark : p.entryPrice;
+      const double upnl = p.quantity * (px - p.entryPrice);
+      const double n = std::abs(p.quantity) * px;
+      const bool better = (worstIdx < 0) ||
+                          (upnl < worstUpnl) ||
+                          (upnl == worstUpnl && n > worstNotional);
+      if (better)
+      {
+        worstIdx = static_cast<int>(i);
+        worstUpnl = upnl;
+        worstNotional = n;
+      }
+    }
+    if (worstIdx < 0)
+    {
+      break;
+    }
+
+    LeveragedPosition victim = book[static_cast<size_t>(worstIdx)];
+    const double victimMark = account.markFor(victim.symbol) > 0.0
+                                  ? account.markFor(victim.symbol)
+                                  : markPrice;
+    double closePrice = 0.0;
+    double filledQty = 0.0;
+    if (_executor != nullptr)
+    {
+      const auto exClose = closeThroughExecutor(victim, victimMark);
+      closePrice = exClose.closePrice;
+      filledQty = exClose.filledQty;
+      if (filledQty <= 0.0)
+      {
+        // Executor couldn't fill (empty book). Stop trying this
+        // tick; caller retries on the next mark.
+        break;
+      }
+    }
+    else
+    {
+      const double signQ = (victim.quantity > 0.0) ? 1.0 : -1.0;
+      const double slip = _slippageBps / 10000.0;
+      closePrice = victimMark * (1.0 - signQ * slip);
+      filledQty = std::abs(victim.quantity);
+    }
+
+    const double signedFilled = (victim.quantity > 0.0) ? filledQty : -filledQty;
+    const double realized = signedFilled * (closePrice - victim.entryPrice);
+    account.addEquity(realized);
+    result.outcome.liquidated.push_back(account.accountId());
+    ++_statLiquidations;
+    ++result.outcome.liquidationsCount;
+
+    auto& mut = account.positionsMut();
+    const size_t idx = static_cast<size_t>(worstIdx);
+    if (filledQty >= std::abs(victim.quantity) - 1e-12)
+    {
+      mut.erase(mut.begin() + static_cast<long>(idx));
+    }
+    else
+    {
+      const double remaining = std::abs(victim.quantity) - filledQty;
+      mut[idx].quantity = (victim.quantity > 0.0) ? remaining : -remaining;
+    }
+  }
+
+  // Any negative equity remaining is the account's contribution to
+  // the deficit pool that the caller routes through insurance + ADL.
+  if (account.equity() < 0.0)
+  {
+    result.deficit = -account.equity();
+    account.setEquity(0.0);
+  }
+  return result;
 }
 
 LiquidationEngine::ExecutorClose LiquidationEngine::closeThroughExecutor(

@@ -96,6 +96,29 @@ from C import flox_liquidation_engine_mark_impact_weight(cobj) -> f64
 from C import flox_liquidation_engine_set_max_cascade_depth(cobj, u32)
 from C import flox_liquidation_engine_max_cascade_depth(cobj) -> u32
 
+# T037 — Account
+from C import flox_account_create(u64, f64) -> cobj
+from C import flox_account_destroy(cobj)
+from C import flox_account_id(cobj) -> u64
+from C import flox_account_equity(cobj) -> f64
+from C import flox_account_set_equity(cobj, f64)
+from C import flox_account_add_equity(cobj, f64)
+from C import flox_account_margin_mode(cobj) -> u8
+from C import flox_account_set_margin_mode(cobj, u8)
+from C import flox_account_open_position(cobj, u32, f64, f64)
+from C import flox_account_close_position(cobj, u32)
+from C import flox_account_position_count(cobj) -> u32
+from C import flox_account_set_mark(cobj, u32, f64)
+from C import flox_account_total_notional(cobj) -> f64
+from C import flox_account_total_unrealised_pnl(cobj) -> f64
+from C import flox_account_record_fill(cobj, i64, f64)
+from C import flox_account_rolling_notional_30d(cobj) -> f64
+from C import flox_account_reset_rolling(cobj)
+from C import flox_liquidation_engine_attach_account(cobj, cobj)
+from C import flox_liquidation_engine_detach_account(cobj, u64)
+from C import flox_fee_schedule_bind_account(cobj, cobj)
+from C import flox_fee_schedule_clear_account_binding(cobj)
+
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
@@ -666,6 +689,85 @@ class LiquidationEngine:
 
     def max_cascade_depth(self) -> int:
         return int(flox_liquidation_engine_max_cascade_depth(self._h))
+
+    def attach_account(self, account):
+        """Attach an Account so its positions participate in cross-margin
+        MM checks. Multiple accounts may be attached. Codon does not
+        accept the forward type annotation here because Account is
+        defined below; duck-typed via `_h`."""
+        flox_liquidation_engine_attach_account(self._h, account._h)
+
+    def detach_account(self, account_id: int):
+        flox_liquidation_engine_detach_account(self._h, u64(account_id))
+
+
+class Account:
+    """Cross-margin shared state owned by an account. Attach to a
+    LiquidationEngine and/or FeeSchedule to share equity, positions,
+    and 30d rolling notional across symbols."""
+
+    _h: cobj
+
+    def __init__(self, account_id: int = 0, equity: float = 0.0):
+        self._h = flox_account_create(u64(account_id), f64(equity))
+
+    def close(self):
+        if self._h != cobj():
+            flox_account_destroy(self._h)
+            self._h = cobj()
+
+    def account_id(self) -> int:
+        return int(flox_account_id(self._h))
+
+    def equity(self) -> float:
+        return float(flox_account_equity(self._h))
+
+    def set_equity(self, equity: float):
+        flox_account_set_equity(self._h, f64(equity))
+
+    def add_equity(self, delta: float):
+        flox_account_add_equity(self._h, f64(delta))
+
+    def margin_mode(self) -> int:
+        return int(flox_account_margin_mode(self._h))
+
+    def set_margin_mode(self, mode):
+        # mode: int code (0=cross, 1=isolated) or a string name.
+        code = u8(0)
+        if isinstance(mode, str):
+            name = mode.lower()
+            if name == "isolated":
+                code = u8(1)
+        else:
+            code = u8(int(mode))
+        flox_account_set_margin_mode(self._h, code)
+
+    def open_position(self, symbol: int, quantity: float, entry_price: float):
+        flox_account_open_position(self._h, u32(symbol), f64(quantity), f64(entry_price))
+
+    def close_position(self, symbol: int):
+        flox_account_close_position(self._h, u32(symbol))
+
+    def position_count(self) -> int:
+        return int(flox_account_position_count(self._h))
+
+    def set_mark(self, symbol: int, price: float):
+        flox_account_set_mark(self._h, u32(symbol), f64(price))
+
+    def total_notional(self) -> float:
+        return float(flox_account_total_notional(self._h))
+
+    def total_unrealised_pnl(self) -> float:
+        return float(flox_account_total_unrealised_pnl(self._h))
+
+    def record_fill(self, ts_ns: int, notional: float):
+        flox_account_record_fill(self._h, i64(ts_ns), f64(notional))
+
+    def rolling_notional_30d(self) -> float:
+        return float(flox_account_rolling_notional_30d(self._h))
+
+    def reset_rolling(self):
+        flox_account_reset_rolling(self._h)
 
 
 class BacktestResult:

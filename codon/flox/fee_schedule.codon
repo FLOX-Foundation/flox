@@ -11,6 +11,8 @@ from C import flox_fee_schedule_current_tier(cobj) -> u32
 from C import flox_fee_schedule_rolling_notional(cobj) -> f64
 from C import flox_fee_schedule_tier_transitions(cobj, cobj, u32) -> u32
 from C import flox_fee_schedule_reset_rolling(cobj)
+from C import flox_fee_schedule_bind_account(cobj, cobj)
+from C import flox_fee_schedule_clear_account_binding(cobj)
 
 
 def _cstr(s: str) -> cobj:
@@ -69,3 +71,12 @@ class FeeSchedule:
 
     def reset_rolling(self):
         flox_fee_schedule_reset_rolling(self._h)
+
+    def bind_account(self, account):
+        """Bind an Account so 30d rolling notional reads from the
+        account's aggregate counter instead of this schedule's
+        internal one. Pass an Account from flox.backtest."""
+        flox_fee_schedule_bind_account(self._h, account._h)
+
+    def clear_account_binding(self):
+        flox_fee_schedule_clear_account_binding(self._h)
