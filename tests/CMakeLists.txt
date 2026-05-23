@@ -108,6 +108,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_venue_availability)
   add_flox_test(test_bracket_orders)
   add_flox_test(test_liquidation_engine)
+  add_flox_test(test_w15_composition)
 endif()
 
 add_flox_test(test_indicators)
