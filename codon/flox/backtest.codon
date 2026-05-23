@@ -60,6 +60,8 @@ from C import flox_venue_availability_latency_multiplier(cobj, i64) -> f64
 from C import flox_venue_availability_consume_wrong_side_recovery_bps(cobj) -> f64
 from C import flox_simulated_executor_set_venue_availability(cobj, cobj)
 from C import flox_simulated_executor_set_stp_mode(cobj, u8)
+from C import flox_simulated_executor_set_stp_group_membership(cobj, u64, u64)
+from C import flox_simulated_executor_stp_group_for(cobj, u64) -> u64
 from C import flox_simulated_executor_set_fok_mode(cobj, u8)
 from C import flox_simulated_executor_fok_mode(cobj) -> u8
 
@@ -481,6 +483,14 @@ class SimulatedExecutor:
         elif mode == "cancel_both": m = 3
         elif mode == "decrement": m = 4
         flox_simulated_executor_set_stp_mode(self._handle, u8(m))
+
+    def set_stp_group_membership(self, account_id: int, group_id: int):
+        """Opt an STP account into a group. group_id=0 removes mapping."""
+        flox_simulated_executor_set_stp_group_membership(
+            self._handle, u64(account_id), u64(group_id))
+
+    def stp_group_for(self, account_id: int) -> int:
+        return int(flox_simulated_executor_stp_group_for(self._handle, u64(account_id)))
 
     def set_fok_mode(self, mode):
         """FOK fill semantic: 'any_price' (default) or 'single_price'."""

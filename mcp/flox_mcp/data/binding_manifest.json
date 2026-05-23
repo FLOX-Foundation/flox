@@ -2865,6 +2865,11 @@
         {
           "group": "backtest_slippage",
           "kind": "function",
+          "name": "flox_simulated_executor_set_stp_group_membership"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
           "name": "flox_simulated_executor_set_stp_mode"
         },
         {
@@ -2891,6 +2896,11 @@
           "group": "venue_availability",
           "kind": "function",
           "name": "flox_simulated_executor_set_venue_availability"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_stp_group_for"
         },
         {
           "group": "simulated_executor",
@@ -6056,6 +6066,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_stp_group_membership"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_stp_mode"
         },
         {
@@ -6077,6 +6091,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_venue_availability"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_stp_group_for"
         },
         {
           "kind": "function",
@@ -8066,11 +8084,13 @@
         "flox_simulated_executor_set_queue_model",
         "flox_simulated_executor_set_replace_ack_latency",
         "flox_simulated_executor_set_replace_ack_latency_distribution",
+        "flox_simulated_executor_set_stp_group_membership",
         "flox_simulated_executor_set_stp_mode",
         "flox_simulated_executor_set_submit_ack_latency",
         "flox_simulated_executor_set_submit_ack_latency_distribution",
         "flox_simulated_executor_set_symbol_slippage",
-        "flox_simulated_executor_set_top_priority_share"
+        "flox_simulated_executor_set_top_priority_share",
+        "flox_simulated_executor_stp_group_for"
       ],
       "codon": {
         "present": true,

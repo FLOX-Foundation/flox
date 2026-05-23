@@ -924,6 +924,11 @@ export class SimulatedExecutor {
   setSTPMode(
     mode: 'none' | 'cancel_newest' | 'cancel_oldest' | 'cancel_both' | 'decrement',
   ): void;
+  /** Opt an STP account into a group. groupId=0 removes the mapping.
+   *  Two orders share an STP scope when their accountIds match OR
+   *  both accounts map into the same non-zero group. */
+  setSTPGroupMembership(accountId: number, groupId: number): void;
+  stpGroupFor(accountId: number): number;
   /** FOK fill semantic. 'any_price' (default) walks crossing book qty;
    *  'single_price' requires the level at the limit price to hold the
    *  full order qty. */

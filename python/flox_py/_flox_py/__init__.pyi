@@ -2521,6 +2521,10 @@ class SimulatedExecutor:
         ...
     def set_replace_ack_latency_distribution(self, dist: LatencyDistribution) -> None:
         ...
+    def set_stp_group_membership(self, account_id: typing.SupportsInt | typing.SupportsIndex, group_id: typing.SupportsInt | typing.SupportsIndex) -> None:
+        """
+        Opt an STP account into a group. group_id=0 removes the mapping.
+        """
     def set_stp_mode(self, mode: str) -> None:
         """
         Self-trade prevention mode: none | cancel_newest | cancel_oldest | cancel_both | decrement.
@@ -2541,13 +2545,15 @@ class SimulatedExecutor:
         """
         Attach a VenueAvailability model. None to detach.
         """
+    def stp_group_for(self, account_id: typing.SupportsInt | typing.SupportsIndex) -> int:
+        ...
     def submit_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, entry_side: str, entry_type: str, entry_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, tp_side: str, tp_type: str, tp_price: typing.SupportsFloat | typing.SupportsIndex, stop_side: str, stop_type: str, stop_trigger_price: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
         Submit a native bracket order (entry + take-profit + stop). The simulator manages the state machine: first child to fill cancels the other; cancelling cancels every live leg.
         """
-    def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+    def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0, account_id: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         """
-        Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. reduce_only: only reduce existing position. expires_at_ns: GTD deadline.
+        Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. reduce_only: only reduce existing position. expires_at_ns: GTD deadline. account_id: optional STP account identifier (default 0).
         """
     @property
     def fill_count(self) -> int:

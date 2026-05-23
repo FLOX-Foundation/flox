@@ -230,3 +230,121 @@ TEST(STPModes, SameSideNeverTriggers)
 
   EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 0u);
 }
+
+// === T044: multi-account STP ===
+
+TEST(STPModes, DifferentAccountsDoNotTrigger)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::CancelNewest);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 49000.0, 5.0, 51000.0, 5.0);
+
+  // Two separate accounts crossing at 50500. With no group mapping,
+  // they're considered independent — no STP.
+  Order a = makeLimit(1, Side::BUY, 50500.0, 1.0);
+  a.accountId = 42;
+  exec.submitOrder(a);
+  cap.events.clear();
+  Order b = makeLimit(2, Side::SELL, 50500.0, 1.0);
+  b.accountId = 43;
+  exec.submitOrder(b);
+
+  EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 0u);
+}
+
+TEST(STPModes, SameAccountStillTriggers)
+{
+  // Same accountId — STP still fires (parity with existing T025 default).
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::CancelNewest);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 49000.0, 5.0, 51000.0, 5.0);
+
+  Order a = makeLimit(1, Side::BUY, 50500.0, 1.0);
+  a.accountId = 42;
+  exec.submitOrder(a);
+  cap.events.clear();
+  Order b = makeLimit(2, Side::SELL, 50500.0, 1.0);
+  b.accountId = 42;
+  exec.submitOrder(b);
+
+  EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 1u);
+  EXPECT_EQ(cap.lastReject(), "stp_cancel_newest");
+}
+
+TEST(STPModes, SameGroupTriggersAcrossAccounts)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::CancelNewest);
+  exec.setSTPGroupMembership(42, 100);
+  exec.setSTPGroupMembership(43, 100);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 49000.0, 5.0, 51000.0, 5.0);
+
+  Order a = makeLimit(1, Side::BUY, 50500.0, 1.0);
+  a.accountId = 42;
+  exec.submitOrder(a);
+  cap.events.clear();
+  Order b = makeLimit(2, Side::SELL, 50500.0, 1.0);
+  b.accountId = 43;
+  exec.submitOrder(b);
+
+  EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 1u);
+}
+
+TEST(STPModes, MixedGroupAndUngroupedDoesNotTrigger)
+{
+  // One account is in a group, the other isn't. They don't share an
+  // STP scope → no STP.
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::CancelNewest);
+  exec.setSTPGroupMembership(42, 100);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 49000.0, 5.0, 51000.0, 5.0);
+
+  Order a = makeLimit(1, Side::BUY, 50500.0, 1.0);
+  a.accountId = 42;
+  exec.submitOrder(a);
+  cap.events.clear();
+  Order b = makeLimit(2, Side::SELL, 50500.0, 1.0);
+  b.accountId = 43;  // no group
+  exec.submitOrder(b);
+
+  EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 0u);
+}
+
+TEST(STPModes, DefaultAccountIdZeroPreservesLegacySemantics)
+{
+  // No accountId set anywhere → both orders default to 0 → STP fires.
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::CancelNewest);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 49000.0, 5.0, 51000.0, 5.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 50500.0, 1.0));
+  cap.events.clear();
+  exec.submitOrder(makeLimit(2, Side::SELL, 50500.0, 1.0));
+
+  EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 1u);
+}

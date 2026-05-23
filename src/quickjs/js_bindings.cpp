@@ -1617,6 +1617,23 @@ static JSValue js_executor_set_stp_mode(JSContext* ctx, JSValueConst, int,
       static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), mode);
   return JS_UNDEFINED;
 }
+static JSValue js_executor_set_stp_group_membership(JSContext* ctx, JSValueConst, int,
+                                                    JSValueConst* argv)
+{
+  flox_simulated_executor_set_stp_group_membership(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])),
+      static_cast<uint64_t>(toInt64(ctx, argv[2])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_stp_group_for(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  uint64_t g = flox_simulated_executor_stp_group_for(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])));
+  return JS_NewFloat64(ctx, static_cast<double>(g));
+}
 static JSValue js_executor_set_fok_mode(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
@@ -6144,6 +6161,10 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_apply_latency_profile, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_stp_mode",
                 js_executor_set_stp_mode, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_stp_group_membership",
+                js_executor_set_stp_group_membership, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_stp_group_for",
+                js_executor_stp_group_for, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_fok_mode",
                 js_executor_set_fok_mode, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_fok_mode",

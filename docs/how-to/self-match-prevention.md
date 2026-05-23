@@ -55,6 +55,39 @@ either reject or cancel.
     sim.setSTPMode(flox::STPMode::CancelNewest);
     ```
 
+## Multi-account STP
+
+The simulator keys STP on `Order::accountId` (default 0). Two orders
+share an STP scope when:
+
+1. their `accountId` values match, OR
+2. both accounts map into the same explicit STP group (configured
+   via `setSTPGroupMembership(account_id, group_id)`).
+
+Master / sub-account topologies use the group mechanism: every
+sub-account opts into the same group id, and crossings between any
+two sub-accounts in that group count as self-trade.
+
+=== "Python"
+
+    ```python
+    exec.set_stp_group_membership(42, 100)
+    exec.set_stp_group_membership(43, 100)
+    # Submit with account_id keyword:
+    exec.submit_order(id=1, side='buy', price=50000, quantity=1,
+                       symbol=1, account_id=42)
+    exec.submit_order(id=2, side='sell', price=50000, quantity=1,
+                       symbol=1, account_id=43)
+    # → STP fires (same group 100)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    exec.setSTPGroupMembership(42, 100);
+    exec.setSTPGroupMembership(43, 100);
+    ```
+
 ## Notes
 
 - The crossing check uses limit price only. A market order against

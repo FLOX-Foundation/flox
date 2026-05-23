@@ -1680,14 +1680,16 @@ Members:
 - `set_rate_limit_policy(self, policy: ...) -> None`
 - `set_replace_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_replace_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
+- `set_stp_group_membership(self, account_id: typing.SupportsInt | typing.SupportsIndex, group_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_stp_mode(self, mode: str) -> None`
 - `set_submit_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_submit_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `set_top_priority_share(self, share: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_venue_availability(self, availability: ...) -> None`
+- `stp_group_for(self, account_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `submit_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, entry_side: str, entry_type: str, entry_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, tp_side: str, tp_type: str, tp_price: typing.SupportsFloat | typing.SupportsIndex, stop_side: str, stop_type: str, stop_trigger_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
-- `submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0, account_id: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - *property* `fill_count: int`
 
 ### `class Skewness`

@@ -116,6 +116,8 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("clearRateLimitPolicy",
                                        &SimulatedExecutorWrap::ClearRateLimitPolicy),
                         InstanceMethod("setSTPMode", &SimulatedExecutorWrap::SetSTPMode),
+                        InstanceMethod("setSTPGroupMembership", &SimulatedExecutorWrap::SetStpGroupMembership),
+                        InstanceMethod("stpGroupFor", &SimulatedExecutorWrap::StpGroupFor),
                         InstanceMethod("setFokMode", &SimulatedExecutorWrap::SetFokMode),
                         InstanceMethod("fokMode", &SimulatedExecutorWrap::FokMode),
                         InstanceMethod("setVenueAvailability",
@@ -360,6 +362,18 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
       m = 4;
     }
     flox_simulated_executor_set_stp_mode(_h, m);
+  }
+  void SetStpGroupMembership(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_stp_group_membership(
+        _h, info[0].As<Napi::Number>().Int64Value(),
+        info[1].As<Napi::Number>().Int64Value());
+  }
+  Napi::Value StpGroupFor(const Napi::CallbackInfo& info)
+  {
+    uint64_t v = flox_simulated_executor_stp_group_for(
+        _h, info[0].As<Napi::Number>().Int64Value());
+    return Napi::Number::New(info.Env(), static_cast<double>(v));
   }
   void SetFokMode(const Napi::CallbackInfo& info)
   {

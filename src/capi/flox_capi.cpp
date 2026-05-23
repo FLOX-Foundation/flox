@@ -2778,6 +2778,20 @@ uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle h)
       static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fokMode());
 }
 
+void flox_simulated_executor_set_stp_group_membership(FloxSimulatedExecutorHandle h,
+                                                      uint64_t account_id,
+                                                      uint64_t group_id)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSTPGroupMembership(
+      account_id, group_id);
+}
+
+uint64_t flox_simulated_executor_stp_group_for(FloxSimulatedExecutorHandle h,
+                                               uint64_t account_id)
+{
+  return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.stpGroupFor(account_id);
+}
+
 // Latency distribution handle bridging.
 
 namespace
