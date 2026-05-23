@@ -29,6 +29,9 @@ from C import flox_simulated_executor_set_top_priority_share(cobj, f64)
 from C import flox_simulated_executor_set_lmm_orders(cobj, cobj, u32)
 from C import flox_simulated_executor_set_lmm_bonus_multiplier(cobj, f64)
 from C import flox_simulated_executor_set_order_priority_multiplier(cobj, u64, f64)
+from C import flox_simulated_executor_submit_iceberg(cobj, u64, u8, float, float, float, u32)
+from C import flox_simulated_executor_set_iceberg_refresh_latency(cobj, i64)
+from C import flox_simulated_executor_iceberg_hidden_remaining_raw(cobj, u64) -> i64
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
@@ -431,6 +434,23 @@ class SimulatedExecutor:
 
     def set_venue_availability(self, va: VenueAvailability):
         flox_simulated_executor_set_venue_availability(self._handle, va.handle())
+
+    def submit_iceberg(self, id: int, side: str, price: float,
+                       total_quantity: float, visible_quantity: float,
+                       symbol: int = 1):
+        """Submit a native iceberg. Only `visible_quantity` is exposed;
+        the hidden remainder auto-refreshes as the visible tranche fills."""
+        side_u = u8(0 if side == "buy" else 1)
+        flox_simulated_executor_submit_iceberg(
+            self._handle, u64(id), side_u, price, total_quantity,
+            visible_quantity, u32(symbol))
+
+    def set_iceberg_refresh_latency(self, latency_ns: int):
+        flox_simulated_executor_set_iceberg_refresh_latency(self._handle, i64(latency_ns))
+
+    def iceberg_hidden_remaining_raw(self, id: int) -> int:
+        return int(flox_simulated_executor_iceberg_hidden_remaining_raw(
+            self._handle, u64(id)))
 
     def set_submit_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
         flox_simulated_executor_set_submit_ack_latency(

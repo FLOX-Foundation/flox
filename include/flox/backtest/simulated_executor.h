@@ -231,6 +231,15 @@ class SimulatedExecutor : public IOrderExecutor
   void maybeEmitQueuePositionChanges();
   void forgetQueuePosition(OrderId orderId);
 
+  // Native iceberg refresh. If `order` has an iceberg state, the
+  // visible tranche is fully filled, the refresh deadline has
+  // elapsed, and there is hidden remainder, expose another visible
+  // tranche by increasing `order.quantity` by the lesser of the
+  // hidden remainder and the configured visible slice. Re-adds the
+  // refreshed slice to the queue tracker. No-op for non-iceberg
+  // orders or when the refresh isn't due yet.
+  void maybeRefreshIceberg(Order& order);
+
   // Asynchronous cancel ack support. enqueuePendingCancel records the
   // ack deadline; finalizePendingCancels walks the queue and CANCELs
   // any whose deadline has passed. resolveLateCancelOnFill drops a
@@ -388,6 +397,21 @@ class SimulatedExecutor : public IOrderExecutor
   std::unordered_map<uint64_t, BracketOrder> _bracketTemplates;
   void onBracketFillEvent(const Order& filledOrder);
 
+  // Native iceberg state. Keyed by parent OrderId. `hiddenRaw` is
+  // the remaining hidden quantity that has not yet been exposed to
+  // the book. `visibleRaw` is the slice size used on each refresh.
+  // `refreshLatencyNs` is the configured delay between a visible
+  // tranche filling and the next one being exposed (0 = instant).
+  struct IcebergState
+  {
+    int64_t hiddenRaw{0};
+    int64_t visibleRaw{0};
+    int64_t refreshLatencyNs{0};
+    int64_t refreshDueNs{0};  // when the next refresh becomes eligible
+  };
+  std::unordered_map<OrderId, IcebergState> _iceberg;
+  int64_t _icebergRefreshLatencyNs{0};
+
  public:
   // T040: child-arm policy. "on_full_fill" (default) arms TP+stop
   // once at the moment of full entry fill. "on_partial_fill" arms
@@ -400,6 +424,23 @@ class SimulatedExecutor : public IOrderExecutor
   };
   void setBracketChildArmMode(BracketArmMode mode) noexcept { _bracketArmMode = mode; }
   BracketArmMode bracketChildArmMode() const noexcept { return _bracketArmMode; }
+
+  // Configure the default native-iceberg refresh latency (the delay
+  // between a visible tranche fully filling and the next one being
+  // exposed to the book). Applies to orders of type
+  // OrderType::ICEBERG submitted after this call.
+  void setIcebergRefreshLatency(int64_t latencyNs) noexcept
+  {
+    _icebergRefreshLatencyNs = latencyNs;
+  }
+  int64_t icebergRefreshLatencyNs() const noexcept { return _icebergRefreshLatencyNs; }
+  // Diagnostic: remaining hidden quantity for an iceberg order, or 0
+  // if none.
+  int64_t icebergHiddenRemainingRaw(OrderId id) const
+  {
+    auto it = _iceberg.find(id);
+    return it == _iceberg.end() ? 0 : it->second.hiddenRaw;
+  }
 
  private:
   BracketArmMode _bracketArmMode{BracketArmMode::OnFullFill};

@@ -11077,6 +11077,21 @@
     },
     {
       "group": "simulated_executor",
+      "name": "flox_simulated_executor_iceberg_hidden_remaining_raw",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "id",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "int64_t"
+    },
+    {
+      "group": "simulated_executor",
       "name": "flox_simulated_executor_on_bar",
       "params": [
         {
@@ -11305,6 +11320,21 @@
         {
           "name": "mode",
           "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_set_iceberg_refresh_latency",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "latency_ns",
+          "type": "int64_t"
         }
       ],
       "return_type": "void"
@@ -11648,6 +11678,41 @@
         {
           "name": "stop_trigger_price",
           "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_submit_iceberg",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t"
+        },
+        {
+          "name": "price",
+          "type": "double"
+        },
+        {
+          "name": "total_quantity",
+          "type": "double"
+        },
+        {
+          "name": "visible_quantity",
+          "type": "double"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
         }
       ],
       "return_type": "void"

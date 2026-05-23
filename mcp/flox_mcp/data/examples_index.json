@@ -121,6 +121,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_iceberg_orders.py",
+      "sha256": "13f0f2ef190b8389a46d535dae18cdf5023b86e120b7fdfee79078a4ad411b29",
+      "size_bytes": 698,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_latency_distribution.py",
       "sha256": "e1f48b681bb33b6c491e7dd3af62eda8bba3de6ee56a649aa2ca85a4e2322246",
       "size_bytes": 1001,

@@ -126,11 +126,7 @@ nav:
           - Backtest HTML report: how-to/backtest-html-report.md
           - Heatmap rendering: how-to/heatmap.md
           - Realistic Backtest Fills: how-to/backtest-realistic-fills.md
-          - Liquidation cascades + insurance + ADL: how-to/liquidation-and-adl.md
-          - Calibrate live queue estimator: how-to/calibrate-live-queue.md
-          - Matching modes (FIFO / pro-rata / hybrid): how-to/matching-modes.md
-          - Venue downtime simulation: how-to/venue-downtime.md
-          - Native bracket orders: how-to/bracket-orders.md
+          - Native iceberg orders: how-to/iceberg-orders.md
           - Record and replay market data: how-to/tape-record.md
           - Merge multiple tapes on read: how-to/multi-tape.md
           - Import Binance public archives: how-to/import-binance-archive.md

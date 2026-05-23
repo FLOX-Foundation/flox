@@ -321,6 +321,26 @@ void SimulatedExecutor::submitOrder(const Order& order)
     return;
   }
 
+  // Native iceberg: replace order.quantity with the visible tranche
+  // and stash the hidden remainder. Subsequent fills against the
+  // visible portion trigger refreshes via maybeRefreshIceberg.
+  if (accepted.type == OrderType::ICEBERG &&
+      accepted.visibleQuantity.raw() > 0 &&
+      accepted.visibleQuantity.raw() < accepted.quantity.raw())
+  {
+    const int64_t totalRaw = accepted.quantity.raw();
+    const int64_t visibleRaw = accepted.visibleQuantity.raw();
+    _iceberg[accepted.id] = IcebergState{
+        .hiddenRaw = totalRaw - visibleRaw,
+        .visibleRaw = visibleRaw,
+        .refreshLatencyNs = _icebergRefreshLatencyNs,
+        .refreshDueNs = 0};
+    accepted.quantity = Quantity::fromRaw(visibleRaw);
+    // Treat as a LIMIT for matching; iceberg type stays on the order
+    // for diagnostics and event payloads.
+    accepted.type = OrderType::LIMIT;
+  }
+
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Submit,
                              static_cast<int64_t>(_clock.nowNs())))
@@ -716,6 +736,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
       forgetTimestamps(orderId);
       forgetMarketPosition(orderId);
       forgetPendingReplace(orderId);
+      _iceberg.erase(orderId);
       _compositeLogic.onOrderCanceled(canceled);
       return;
     }
@@ -1187,22 +1208,40 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       // aggressive opposite trade walked into it.
       executeFill(*ord, price, fillQty, /*isMaker=*/true);
     }
+    // Native iceberg: top up visible tranche from hidden remainder
+    // before the fully-filled-orders cleanup pass.
+    for (auto& o : _pending_orders)
+    {
+      maybeRefreshIceberg(o);
+    }
     // Remove fully-filled queued orders and drop their queue
-    // position + timestamp tracking entries.
+    // position + timestamp tracking entries. Iceberg orders with
+    // hidden remainder or a pending refresh deadline are kept alive
+    // so the next tick can finalize the refresh.
+    auto icebergPending = [this](const Order& o)
+    {
+      auto it = _iceberg.find(o.id);
+      return it != _iceberg.end() &&
+             (it->second.hiddenRaw > 0 || it->second.refreshDueNs > 0);
+    };
     for (const auto& o : _pending_orders)
     {
-      if (o.filledQuantity.raw() >= o.quantity.raw())
+      if (o.filledQuantity.raw() >= o.quantity.raw() && !icebergPending(o))
       {
         forgetQueuePosition(o.id);
         forgetTimestamps(o.id);
         forgetMarketPosition(o.id);
         forgetPendingReplace(o.id);
+        _iceberg.erase(o.id);
       }
     }
     _pending_orders.erase(
         std::remove_if(_pending_orders.begin(), _pending_orders.end(),
-                       [](const Order& o)
-                       { return o.filledQuantity.raw() >= o.quantity.raw(); }),
+                       [&](const Order& o)
+                       {
+                         return o.filledQuantity.raw() >= o.quantity.raw() &&
+                                !icebergPending(o);
+                       }),
         _pending_orders.end());
   }
 
@@ -1375,6 +1414,43 @@ void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState&
     {
       ++i;
     }
+  }
+}
+
+void SimulatedExecutor::maybeRefreshIceberg(Order& order)
+{
+  auto it = _iceberg.find(order.id);
+  if (it == _iceberg.end())
+  {
+    return;
+  }
+  auto& st = it->second;
+  // Refresh only when the visible tranche is fully consumed and
+  // there is hidden remainder.
+  if (order.filledQuantity.raw() < order.quantity.raw() || st.hiddenRaw <= 0)
+  {
+    return;
+  }
+  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  if (st.refreshDueNs == 0)
+  {
+    st.refreshDueNs = now + st.refreshLatencyNs;
+  }
+  if (now < st.refreshDueNs)
+  {
+    return;
+  }
+  const int64_t slice = std::min<int64_t>(st.visibleRaw, st.hiddenRaw);
+  st.hiddenRaw -= slice;
+  st.refreshDueNs = 0;
+  order.quantity = Quantity::fromRaw(order.quantity.raw() + slice);
+  // Re-add the refreshed slice to the queue tracker (back of the
+  // queue, since hidden refresh creates a new visible entry on the
+  // venue book).
+  if (_queueTracker.enabled())
+  {
+    _queueTracker.addOrder(order.symbol, order.side, order.price, order.id,
+                           Quantity::fromRaw(slice), Quantity{});
   }
 }
 

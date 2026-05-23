@@ -243,6 +243,30 @@ class PySimulatedExecutor
     return "pending_entry";
   }
 
+  void submitIceberg(uint64_t id, const std::string& sideStr, double price,
+                     double totalQty, double visibleQty, uint32_t symbol)
+  {
+    Order o;
+    o.id = id;
+    o.side = (sideStr == "buy") ? Side::BUY : Side::SELL;
+    o.price = Price::fromDouble(price);
+    o.quantity = Quantity::fromDouble(totalQty);
+    o.visibleQuantity = Quantity::fromDouble(visibleQty);
+    o.type = OrderType::ICEBERG;
+    o.symbol = symbol;
+    _executor.submitOrder(o);
+  }
+
+  void setIcebergRefreshLatency(int64_t latencyNs)
+  {
+    _executor.setIcebergRefreshLatency(latencyNs);
+  }
+
+  int64_t icebergHiddenRemainingRaw(uint64_t id) const
+  {
+    return _executor.icebergHiddenRemainingRaw(id);
+  }
+
   void onBar(uint32_t symbol, double closePrice)
   {
     _executor.onBar(symbol, Price::fromDouble(closePrice));
@@ -656,6 +680,20 @@ inline void bindBacktest(py::module_& m)
       .def("bracket_state", &PySimulatedExecutor::bracketState,
            "Bracket state: pending_entry | entry_filled | tp_filled | stop_filled | canceled.",
            py::arg("bracket_id"))
+      .def("submit_iceberg", &PySimulatedExecutor::submitIceberg,
+           "Submit a native iceberg order. Only visible_quantity is exposed; "
+           "the hidden remainder refreshes automatically as the visible slice fills.",
+           py::arg("order_id"), py::arg("side"), py::arg("price"),
+           py::arg("total_quantity"), py::arg("visible_quantity"),
+           py::arg("symbol") = 1)
+      .def("set_iceberg_refresh_latency", &PySimulatedExecutor::setIcebergRefreshLatency,
+           "Default refresh latency (ns) between a visible tranche filling "
+           "and the next one being exposed. 0 = instant (most venues).",
+           py::arg("latency_ns"))
+      .def("iceberg_hidden_remaining_raw",
+           &PySimulatedExecutor::icebergHiddenRemainingRaw,
+           "Remaining hidden quantity (raw fixed-point) for an iceberg order.",
+           py::arg("order_id"))
       .def("on_bar", &PySimulatedExecutor::onBar,
            "Feed a bar close price for order matching",
            py::arg("symbol"), py::arg("close_price"))

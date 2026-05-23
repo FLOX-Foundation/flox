@@ -2455,6 +2455,10 @@ class SimulatedExecutor:
         """
     def fok_mode(self) -> str:
         ...
+    def iceberg_hidden_remaining_raw(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> int:
+        """
+        Remaining hidden quantity (raw fixed-point) for an iceberg order.
+        """
     def on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
         Feed a bar close price for order matching
@@ -2490,6 +2494,10 @@ class SimulatedExecutor:
     def set_fok_mode(self, mode: str) -> None:
         """
         FOK fill semantic: any_price (default) or single_price.
+        """
+    def set_iceberg_refresh_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex) -> None:
+        """
+        Default refresh latency (ns) between a visible tranche filling and the next one being exposed. 0 = instant (most venues).
         """
     def set_lmm_bonus_multiplier(self, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
@@ -2550,6 +2558,10 @@ class SimulatedExecutor:
     def submit_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, entry_side: str, entry_type: str, entry_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, tp_side: str, tp_type: str, tp_price: typing.SupportsFloat | typing.SupportsIndex, stop_side: str, stop_type: str, stop_trigger_price: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
         Submit a native bracket order (entry + take-profit + stop). The simulator manages the state machine: first child to fill cancels the other; cancelling cancels every live leg.
+        """
+    def submit_iceberg(self, order_id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, total_quantity: typing.SupportsFloat | typing.SupportsIndex, visible_quantity: typing.SupportsFloat | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex = 1) -> None:
+        """
+        Submit a native iceberg order. Only visible_quantity is exposed; the hidden remainder refreshes automatically as the visible slice fills.
         """
     def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0, account_id: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         """

@@ -959,6 +959,23 @@ export class SimulatedExecutor {
    *  once on full entry fill; 'on_partial_fill' arms / resizes
    *  children incrementally on every partial entry fill. */
   setBracketChildArmMode(mode: 'on_full_fill' | 'on_partial_fill'): void;
+  /** Submit a native iceberg order. Only `visibleQuantity` is exposed
+   *  to the book; the hidden remainder (total - visible) refreshes
+   *  automatically as the visible tranche fills. */
+  submitIceberg(
+    orderId: number,
+    side: Side,
+    price: number,
+    totalQuantity: number,
+    visibleQuantity: number,
+    symbol?: number,
+  ): void;
+  /** Default refresh latency (ns) between a visible tranche filling
+   *  and the next one being exposed to the book. Zero = instant. */
+  setIcebergRefreshLatency(latencyNs: number): void;
+  /** Diagnostic: remaining hidden quantity (raw fixed-point) for an
+   *  iceberg order, or 0 if none. */
+  icebergHiddenRemainingRaw(orderId: number): number;
   readonly fillCount: number;
 }
 
