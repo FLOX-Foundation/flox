@@ -1869,6 +1869,11 @@ extern "C"
                                          int64_t window_ns, uint32_t capacity,
                                          uint32_t submit_weight, uint32_t cancel_weight,
                                          uint32_t replace_weight);
+  void flox_rate_limit_policy_add_bucket_family(FloxRateLimitPolicyHandle h, const char* name,
+                                                int64_t window_ns, uint32_t capacity,
+                                                uint32_t submit_weight, uint32_t cancel_weight,
+                                                uint32_t replace_weight, uint8_t family,
+                                                uint32_t query_weight);
   void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
                                       uint32_t after_consecutive_rejects, int64_t ban_duration_ns);
   void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h, const char* profile_name);

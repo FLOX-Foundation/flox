@@ -34,27 +34,70 @@ namespace flox
 class RateLimitPolicy
 {
  public:
+  // Endpoint families that real venues budget separately. A bucket
+  // belongs to exactly one family; tryConsume only charges buckets
+  // whose family matches the action's family. Default everywhere is
+  // Trading, so a single-bucket policy keeps T022 semantics.
+  enum class EndpointFamily : uint8_t
+  {
+    Trading = 0,
+    MarketData = 1,
+    Account = 2,
+  };
+
   enum class ActionKind : uint8_t
   {
     Submit = 0,
     Cancel = 1,
     Replace = 2,
+    QueryAccount = 3,
+    QueryMarketData = 4,
   };
 
   // Add a sliding-window bucket. Per-action weight defaults are 1
   // for submit / cancel, 2 for replace (the typical venue weight).
+  // Bucket defaults to the Trading family (matches T022 semantics).
   void addBucket(std::string name, int64_t windowNs, uint32_t capacity,
                  uint32_t submitWeight = 1, uint32_t cancelWeight = 1,
-                 uint32_t replaceWeight = 2)
+                 uint32_t replaceWeight = 2,
+                 EndpointFamily family = EndpointFamily::Trading,
+                 uint32_t queryWeight = 1)
   {
     Bucket b{};
     b.name = std::move(name);
+    b.endpointFamily = family;
     b.windowNs = windowNs;
     b.capacity = capacity;
     b.submitWeight = submitWeight;
     b.cancelWeight = cancelWeight;
     b.replaceWeight = replaceWeight;
+    b.queryWeight = queryWeight;
     _buckets.push_back(std::move(b));
+  }
+
+  // Convenience for non-Trading families: only the query weight is
+  // meaningful, so don't force callers to specify the trading weights.
+  void addFamilyBucket(EndpointFamily family, std::string name, int64_t windowNs,
+                       uint32_t capacity, uint32_t queryWeight = 1)
+  {
+    addBucket(std::move(name), windowNs, capacity, 1, 1, 2, family, queryWeight);
+  }
+
+  // Endpoint family that an action consumes from.
+  static EndpointFamily familyOf(ActionKind action) noexcept
+  {
+    switch (action)
+    {
+      case ActionKind::Submit:
+      case ActionKind::Cancel:
+      case ActionKind::Replace:
+        return EndpointFamily::Trading;
+      case ActionKind::QueryAccount:
+        return EndpointFamily::Account;
+      case ActionKind::QueryMarketData:
+        return EndpointFamily::MarketData;
+    }
+    return EndpointFamily::Trading;
   }
 
   // After N consecutive REJECTED_RATE_LIMIT outcomes, ban every
@@ -76,12 +119,16 @@ class RateLimitPolicy
       ++_consecutiveRejects;
       return false;
     }
-    // Compute per-bucket weight up front.
-    uint32_t weight = 1;
+    const EndpointFamily family = familyOf(action);
+    // Check every matching bucket atomically — we only commit if all
+    // of them accept the charge.
     for (auto& b : _buckets)
     {
+      if (b.endpointFamily != family)
+      {
+        continue;
+      }
       const uint32_t w = pickWeight(b, action);
-      // Evict expired entries.
       while (!b.consumed.empty() && b.consumed.front().first <= nowNs - b.windowNs)
       {
         b.used -= b.consumed.front().second;
@@ -89,17 +136,18 @@ class RateLimitPolicy
       }
       if (b.used + w > b.capacity)
       {
-        // Reject. Do not modify any bucket — atomicity across buckets.
         ++_consecutiveRejects;
         maybeArmBan(nowNs);
         return false;
       }
-      weight = w;  // not really; just to silence unused-variable
     }
-    (void)weight;
-    // Commit on every bucket.
+    // Commit on every matching bucket.
     for (auto& b : _buckets)
     {
+      if (b.endpointFamily != family)
+      {
+        continue;
+      }
       const uint32_t w = pickWeight(b, action);
       b.consumed.emplace_back(nowNs, w);
       b.used += w;
@@ -111,6 +159,7 @@ class RateLimitPolicy
   struct BucketState
   {
     std::string name;
+    EndpointFamily endpointFamily{EndpointFamily::Trading};
     int64_t windowNs;
     uint32_t used;
     uint32_t capacity;
@@ -128,7 +177,7 @@ class RateLimitPolicy
         b.used -= b.consumed.front().second;
         b.consumed.pop_front();
       }
-      out.push_back({b.name, b.windowNs, b.used, b.capacity});
+      out.push_back({b.name, b.endpointFamily, b.windowNs, b.used, b.capacity});
     }
     return out;
   }
@@ -142,9 +191,15 @@ class RateLimitPolicy
   static RateLimitPolicy binance_um_futures()
   {
     RateLimitPolicy p;
-    // 50 orders / 10s rolling, 300 orders / 60s rolling.
+    // Trading pool: 50 orders / 10s, 300 orders / 60s.
     p.addBucket("orders_10s", 10'000'000'000LL, 50);
     p.addBucket("orders_60s", 60'000'000'000LL, 300);
+    // Market-data pool: ~6000 weight / min (independent of trading).
+    p.addFamilyBucket(EndpointFamily::MarketData, "market_data_60s",
+                      60'000'000'000LL, 6000);
+    // Account pool: ~1200 weight / min for position/balance queries.
+    p.addFamilyBucket(EndpointFamily::Account, "account_60s",
+                      60'000'000'000LL, 1200);
     p.setBan(/*afterRejects=*/3, /*banNs=*/180'000'000'000LL);  // 3 min ban
     return p;
   }
@@ -154,6 +209,10 @@ class RateLimitPolicy
     // 10 orders/s + 100/min (approximate retail tier).
     p.addBucket("orders_1s", 1'000'000'000LL, 10);
     p.addBucket("orders_60s", 60'000'000'000LL, 100);
+    p.addFamilyBucket(EndpointFamily::MarketData, "market_data_60s",
+                      60'000'000'000LL, 1200);
+    p.addFamilyBucket(EndpointFamily::Account, "account_60s",
+                      60'000'000'000LL, 600);
     p.setBan(5, 60'000'000'000LL);
     return p;
   }
@@ -161,6 +220,10 @@ class RateLimitPolicy
   {
     RateLimitPolicy p;
     p.addBucket("orders_2s", 2'000'000'000LL, 60);
+    p.addFamilyBucket(EndpointFamily::MarketData, "market_data_2s",
+                      2'000'000'000LL, 40);
+    p.addFamilyBucket(EndpointFamily::Account, "account_2s",
+                      2'000'000'000LL, 20);
     p.setBan(3, 120'000'000'000LL);
     return p;
   }
@@ -170,6 +233,10 @@ class RateLimitPolicy
     // 5 orders / 0.5s burst, 60 / 60s sustained.
     p.addBucket("orders_burst", 500'000'000LL, 5);
     p.addBucket("orders_60s", 60'000'000'000LL, 60);
+    p.addFamilyBucket(EndpointFamily::MarketData, "market_data_60s",
+                      60'000'000'000LL, 500);
+    p.addFamilyBucket(EndpointFamily::Account, "account_60s",
+                      60'000'000'000LL, 120);
     p.setBan(3, 60'000'000'000LL);
     return p;
   }
@@ -178,11 +245,13 @@ class RateLimitPolicy
   struct Bucket
   {
     std::string name;
+    EndpointFamily endpointFamily{EndpointFamily::Trading};
     int64_t windowNs;
     uint32_t capacity;
     uint32_t submitWeight;
     uint32_t cancelWeight;
     uint32_t replaceWeight;
+    uint32_t queryWeight{1};
     uint32_t used{0};
     std::deque<std::pair<int64_t, uint32_t>> consumed;
   };
@@ -197,6 +266,9 @@ class RateLimitPolicy
         return b.cancelWeight;
       case ActionKind::Replace:
         return b.replaceWeight;
+      case ActionKind::QueryAccount:
+      case ActionKind::QueryMarketData:
+        return b.queryWeight;
     }
     return 1;
   }

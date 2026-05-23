@@ -458,6 +458,7 @@ flox_quantile_read_result|uint32_t|FloxAggregatorHandle|FloxQuantileRow *|uint32
 flox_quantity_from_double|int64_t|double
 flox_quantity_to_double|double|int64_t
 flox_rate_limit_policy_add_bucket|void|FloxRateLimitPolicyHandle|const char *|int64_t|uint32_t|uint32_t|uint32_t|uint32_t
+flox_rate_limit_policy_add_bucket_family|void|FloxRateLimitPolicyHandle|const char *|int64_t|uint32_t|uint32_t|uint32_t|uint32_t|uint8_t|uint32_t
 flox_rate_limit_policy_ban_until_ns|int64_t|FloxRateLimitPolicyHandle
 flox_rate_limit_policy_bucket_state|uint32_t|FloxRateLimitPolicyHandle|int64_t|int64_t *|uint32_t
 flox_rate_limit_policy_consecutive_rejects|uint32_t|FloxRateLimitPolicyHandle

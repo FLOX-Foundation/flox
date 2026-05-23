@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 631 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 632 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1473,6 +1473,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxRateLimitPolicyHandle flox_rate_limit_policy_create(void)`
 - `void flox_rate_limit_policy_destroy(FloxRateLimitPolicyHandle h)`
 - `void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h, const char * name, int64_t window_ns, uint32_t capacity, uint32_t submit_weight, uint32_t cancel_weight, uint32_t replace_weight)`
+- `void flox_rate_limit_policy_add_bucket_family(FloxRateLimitPolicyHandle h, const char * name, int64_t window_ns, uint32_t capacity, uint32_t submit_weight, uint32_t cancel_weight, uint32_t replace_weight, uint8_t family, uint32_t query_weight)`
 - `void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h, uint32_t after_consecutive_rejects, int64_t ban_duration_ns)`
 - `void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h, const char * profile_name)`
 - `int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h)`

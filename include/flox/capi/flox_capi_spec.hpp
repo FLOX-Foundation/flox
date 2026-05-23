@@ -1427,6 +1427,17 @@ extern "C"
                                          uint32_t submit_weight, uint32_t cancel_weight,
                                          uint32_t replace_weight);
 
+  // Add a bucket scoped to an endpoint family. `family`: 0=Trading,
+  // 1=MarketData, 2=Account. `query_weight` applies when the action
+  // is QueryAccount / QueryMarketData; the submit / cancel / replace
+  // weights only apply when family=Trading.
+  FLOX_EXPORT(group = "rate_limit")
+  void flox_rate_limit_policy_add_bucket_family(FloxRateLimitPolicyHandle h, const char* name,
+                                                int64_t window_ns, uint32_t capacity,
+                                                uint32_t submit_weight, uint32_t cancel_weight,
+                                                uint32_t replace_weight,
+                                                uint8_t family, uint32_t query_weight);
+
   FLOX_EXPORT(group = "rate_limit")
   void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
                                       uint32_t after_consecutive_rejects,

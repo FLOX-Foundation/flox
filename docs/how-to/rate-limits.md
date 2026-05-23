@@ -87,6 +87,42 @@ for s in policy.bucket_states(now_ns):
         pass
 ```
 
+## Per-endpoint families
+
+Real venues split quotas across families — trading endpoints,
+market-data feeds, and account-state queries don't share the same
+bucket. A strategy that polls position state aggressively can
+exhaust its account quota while the trading quota is barely touched.
+
+`RateLimitPolicy` reflects that: each bucket belongs to a family
+(default `Trading`), and `try_consume(action, now_ns)` only charges
+buckets whose family matches the action. Canned profiles populate
+all three families with realistic numbers.
+
+| Action                  | Family        |
+|-------------------------|---------------|
+| `submit` / `cancel` / `replace` | Trading |
+| `query_account`         | Account       |
+| `query_market_data`     | MarketData    |
+
+=== "Python"
+
+    ```python
+    p.add_family_bucket(
+        family=flox_py.RateLimitEndpointFamily.MarketData,
+        name="md_60s",
+        window_ns=60_000_000_000,
+        capacity=6000,
+    )
+    p.try_consume("query_market_data", now_ns)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    p.addFamilyBucket("market_data", "md_60s", 60_000_000_000, 6000);
+    ```
+
 ## Notes
 
 - Reject-check is atomic across buckets: if any single bucket would

@@ -2290,6 +2290,11 @@
         {
           "group": "rate_limit",
           "kind": "function",
+          "name": "flox_rate_limit_policy_add_bucket_family"
+        },
+        {
+          "group": "rate_limit",
+          "kind": "function",
           "name": "flox_rate_limit_policy_ban_until_ns"
         },
         {
@@ -5516,6 +5521,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_rate_limit_policy_add_bucket_family"
+        },
+        {
+          "kind": "function",
           "name": "flox_rate_limit_policy_ban_until_ns"
         },
         {
@@ -7421,6 +7430,10 @@
         {
           "kind": "class",
           "name": "RSI"
+        },
+        {
+          "kind": "class",
+          "name": "RateLimitEndpointFamily"
         },
         {
           "kind": "class",
@@ -9359,6 +9372,7 @@
     "rate_limit": {
       "capi_functions": [
         "flox_rate_limit_policy_add_bucket",
+        "flox_rate_limit_policy_add_bucket_family",
         "flox_rate_limit_policy_ban_until_ns",
         "flox_rate_limit_policy_bucket_state",
         "flox_rate_limit_policy_consecutive_rejects",

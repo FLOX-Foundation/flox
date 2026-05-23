@@ -9073,6 +9073,49 @@
     },
     {
       "group": "rate_limit",
+      "name": "flox_rate_limit_policy_add_bucket_family",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxRateLimitPolicyHandle"
+        },
+        {
+          "name": "name",
+          "type": "const char *"
+        },
+        {
+          "name": "window_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "capacity",
+          "type": "uint32_t"
+        },
+        {
+          "name": "submit_weight",
+          "type": "uint32_t"
+        },
+        {
+          "name": "cancel_weight",
+          "type": "uint32_t"
+        },
+        {
+          "name": "replace_weight",
+          "type": "uint32_t"
+        },
+        {
+          "name": "family",
+          "type": "uint8_t"
+        },
+        {
+          "name": "query_weight",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "rate_limit",
       "name": "flox_rate_limit_policy_ban_until_ns",
       "params": [
         {
