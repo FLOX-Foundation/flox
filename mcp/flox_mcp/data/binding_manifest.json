@@ -2825,6 +2825,21 @@
         {
           "group": "backtest_slippage",
           "kind": "function",
+          "name": "flox_simulated_executor_set_lmm_bonus_multiplier"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_lmm_orders"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_order_priority_multiplier"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
           "name": "flox_simulated_executor_set_queue_fifo_top_n"
         },
         {
@@ -2866,6 +2881,11 @@
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_set_symbol_slippage"
+        },
+        {
+          "group": "backtest_slippage",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_top_priority_share"
         },
         {
           "group": "venue_availability",
@@ -6004,6 +6024,18 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_lmm_bonus_multiplier"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_lmm_orders"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_order_priority_multiplier"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_queue_fifo_top_n"
         },
         {
@@ -6037,6 +6069,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_set_symbol_slippage"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_top_priority_share"
         },
         {
           "kind": "function",
@@ -8023,6 +8059,9 @@
         "flox_simulated_executor_set_cancel_ack_latency_distribution",
         "flox_simulated_executor_set_default_slippage",
         "flox_simulated_executor_set_fok_mode",
+        "flox_simulated_executor_set_lmm_bonus_multiplier",
+        "flox_simulated_executor_set_lmm_orders",
+        "flox_simulated_executor_set_order_priority_multiplier",
         "flox_simulated_executor_set_queue_fifo_top_n",
         "flox_simulated_executor_set_queue_model",
         "flox_simulated_executor_set_replace_ack_latency",
@@ -8030,7 +8069,8 @@
         "flox_simulated_executor_set_stp_mode",
         "flox_simulated_executor_set_submit_ack_latency",
         "flox_simulated_executor_set_submit_ack_latency_distribution",
-        "flox_simulated_executor_set_symbol_slippage"
+        "flox_simulated_executor_set_symbol_slippage",
+        "flox_simulated_executor_set_top_priority_share"
       ],
       "codon": {
         "present": true,

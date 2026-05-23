@@ -2702,6 +2702,38 @@ void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle h,
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setQueueFifoTopN(top_n);
 }
 
+void flox_simulated_executor_set_top_priority_share(FloxSimulatedExecutorHandle h,
+                                                    double share)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setTopPriorityShare(share);
+}
+
+void flox_simulated_executor_set_lmm_orders(FloxSimulatedExecutorHandle h,
+                                            const uint64_t* ids, uint32_t n_ids)
+{
+  std::vector<OrderId> v;
+  v.reserve(n_ids);
+  for (uint32_t i = 0; i < n_ids; ++i)
+  {
+    v.push_back(static_cast<OrderId>(ids ? ids[i] : 0));
+  }
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setLmmOrders(v);
+}
+
+void flox_simulated_executor_set_lmm_bonus_multiplier(FloxSimulatedExecutorHandle h,
+                                                      double multiplier)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setLmmBonusMultiplier(multiplier);
+}
+
+void flox_simulated_executor_set_order_priority_multiplier(FloxSimulatedExecutorHandle h,
+                                                           uint64_t order_id,
+                                                           double multiplier)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setOrderPriorityMultiplier(
+      static_cast<OrderId>(order_id), multiplier);
+}
+
 void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle h,
                                                     int64_t latency_ns, int64_t jitter_ns)
 {

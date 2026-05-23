@@ -59,7 +59,9 @@ export type QueueModel =
   | "tob"
   | "full"
   | "pro_rata"
-  | "pro_rata_with_fifo";
+  | "pro_rata_with_fifo"
+  | "top_pro_lmm"
+  | "pro_rata_with_priority";
 
 /** Position cost-basis mode accepted by `PositionTracker`. */
 export type PositionMode = 0 | 1;
@@ -888,6 +890,17 @@ export class SimulatedExecutor {
    *  consume the trade FIFO; the remainder is split pro-rata across
    *  the rest. Ignored in 'none' / 'tob' / 'full' / 'pro_rata'. */
   setQueueFifoTopN(topN: number): void;
+  /** TOP_PRO_LMM: fraction of each trade reserved for the queue-front
+   *  order (capped by its remaining). Default 0.40. */
+  setTopPriorityShare(share: number): void;
+  /** TOP_PRO_LMM: mark these order ids as Lead Market Makers. LMM
+   *  orders get an implicit bonus multiplier during tail pro-rata. */
+  setLmmOrders(ids: number[]): void;
+  /** TOP_PRO_LMM: LMM bonus multiplier on tail pro-rata distribution. Default 1.5. */
+  setLmmBonusMultiplier(multiplier: number): void;
+  /** TOP_PRO_LMM / PRO_RATA_WITH_PRIORITY: per-order priority weight
+   *  (default 1.0). Effective allocation weight = remaining × multiplier. */
+  setOrderPriorityMultiplier(orderId: number, multiplier: number): void;
   /** Configure submit ack latency for backtest realism. Zero disables the
    *  async submit path. */
   setSubmitAckLatency(latencyNs: number, jitterNs?: number): void;

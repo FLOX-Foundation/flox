@@ -25,6 +25,10 @@ from C import flox_simulated_executor_cancel_bracket(cobj, u64)
 from C import flox_simulated_executor_bracket_state(cobj, u64) -> u8
 from C import flox_simulated_executor_set_bracket_child_arm_mode(cobj, u8)
 from C import flox_simulated_executor_set_queue_fifo_top_n(cobj, u32)
+from C import flox_simulated_executor_set_top_priority_share(cobj, f64)
+from C import flox_simulated_executor_set_lmm_orders(cobj, cobj, u32)
+from C import flox_simulated_executor_set_lmm_bonus_multiplier(cobj, f64)
+from C import flox_simulated_executor_set_order_priority_multiplier(cobj, u64, f64)
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
@@ -403,6 +407,25 @@ class SimulatedExecutor:
 
     def set_queue_fifo_top_n(self, top_n: int):
         flox_simulated_executor_set_queue_fifo_top_n(self._handle, u32(top_n))
+
+    def set_top_priority_share(self, share: float):
+        flox_simulated_executor_set_top_priority_share(self._handle, f64(share))
+
+    def set_lmm_orders(self, ids: List[int]):
+        n = len(ids)
+        if n == 0:
+            flox_simulated_executor_set_lmm_orders(self._handle, cobj(), u32(0))
+            return
+        buf = [u64(i) for i in ids]
+        flox_simulated_executor_set_lmm_orders(
+            self._handle, cobj(buf.arr.ptr), u32(n))
+
+    def set_lmm_bonus_multiplier(self, multiplier: float):
+        flox_simulated_executor_set_lmm_bonus_multiplier(self._handle, f64(multiplier))
+
+    def set_order_priority_multiplier(self, order_id: int, multiplier: float):
+        flox_simulated_executor_set_order_priority_multiplier(
+            self._handle, u64(order_id), f64(multiplier))
 
     def set_venue_availability(self, va: VenueAvailability):
         flox_simulated_executor_set_venue_availability(self._handle, va.handle())

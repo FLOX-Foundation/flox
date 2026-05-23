@@ -71,6 +71,18 @@ class SimulatedExecutor : public IOrderExecutor
   // level consume the trade FIFO; the remainder is split pro-rata
   // across the rest. Ignored in other queue models.
   void setQueueFifoTopN(size_t topN);
+  // TOP_PRO_LMM: fraction of each incoming trade reserved for the
+  // queue-front order. Default 0.40. Ignored in other queue models.
+  void setTopPriorityShare(double share);
+  // TOP_PRO_LMM: identify these orders as Lead Market Makers. LMM
+  // orders get an implicit bonus multiplier during the pro-rata
+  // remainder distribution.
+  void setLmmOrders(const std::vector<OrderId>& ids);
+  void setLmmBonusMultiplier(double multiplier);
+  // TOP_PRO_LMM / PRO_RATA_WITH_PRIORITY: per-order priority weight.
+  // Defaults to 1.0. Effective allocation weight in pro-rata
+  // distribution = remaining × priorityMultiplier.
+  void setOrderPriorityMultiplier(OrderId id, double multiplier);
   void setQueuePositionMinChangeFraction(double fraction);
   void setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs);
   void setCancelAckLatency(int64_t latencyNs, int64_t jitterNs);

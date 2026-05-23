@@ -89,6 +89,26 @@ void SimulatedExecutor::setQueueFifoTopN(size_t topN)
   _queueTracker.setFifoTopN(topN);
 }
 
+void SimulatedExecutor::setTopPriorityShare(double share)
+{
+  _queueTracker.setTopPriorityShare(share);
+}
+
+void SimulatedExecutor::setLmmOrders(const std::vector<OrderId>& ids)
+{
+  _queueTracker.setLmmOrders(ids);
+}
+
+void SimulatedExecutor::setLmmBonusMultiplier(double multiplier)
+{
+  _queueTracker.setLmmBonusMultiplier(multiplier);
+}
+
+void SimulatedExecutor::setOrderPriorityMultiplier(OrderId id, double multiplier)
+{
+  _queueTracker.setOrderPriorityMultiplier(id, multiplier);
+}
+
 void SimulatedExecutor::setQueuePositionMinChangeFraction(double fraction)
 {
   _queuePosMinFraction = fraction;

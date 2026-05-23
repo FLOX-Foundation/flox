@@ -1341,6 +1341,30 @@ extern "C"
   void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle executor,
                                                     uint32_t top_n);
 
+  // TOP_PRO_LMM: fraction of each trade reserved for the queue-front
+  // order; default 0.40. Ignored in other queue models.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_top_priority_share(FloxSimulatedExecutorHandle executor,
+                                                      double share);
+
+  // TOP_PRO_LMM: mark these order ids as Lead Market Makers.
+  // `ids` is an array of `n_ids` order ids.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_lmm_orders(FloxSimulatedExecutorHandle executor,
+                                              const uint64_t* ids, uint32_t n_ids);
+
+  // TOP_PRO_LMM: LMM bonus multiplier applied during the tail
+  // pro-rata distribution. Default 1.5.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_lmm_bonus_multiplier(
+      FloxSimulatedExecutorHandle executor, double multiplier);
+
+  // TOP_PRO_LMM / PRO_RATA_WITH_PRIORITY: per-order priority weight.
+  // Defaults to 1.0 when unset.
+  FLOX_EXPORT(group = "backtest_slippage")
+  void flox_simulated_executor_set_order_priority_multiplier(
+      FloxSimulatedExecutorHandle executor, uint64_t order_id, double multiplier);
+
   // Set submit / cancel / replace ack latency knobs directly (without
   // touching queue model or slippage). Jitter is the uniform band on
   // top of the base latency; both are in nanoseconds.

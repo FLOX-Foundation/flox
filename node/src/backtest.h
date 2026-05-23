@@ -97,6 +97,10 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("setDefaultSlippage", &SimulatedExecutorWrap::SetDefaultSlippage),
                         InstanceMethod("setQueueModel", &SimulatedExecutorWrap::SetQueueModel),
                         InstanceMethod("setQueueFifoTopN", &SimulatedExecutorWrap::SetQueueFifoTopN),
+                        InstanceMethod("setTopPriorityShare", &SimulatedExecutorWrap::SetTopPriorityShare),
+                        InstanceMethod("setLmmOrders", &SimulatedExecutorWrap::SetLmmOrders),
+                        InstanceMethod("setLmmBonusMultiplier", &SimulatedExecutorWrap::SetLmmBonusMultiplier),
+                        InstanceMethod("setOrderPriorityMultiplier", &SimulatedExecutorWrap::SetOrderPriorityMultiplier),
                         InstanceMethod("setSubmitAckLatency", &SimulatedExecutorWrap::SetSubmitAck),
                         InstanceMethod("setCancelAckLatency", &SimulatedExecutorWrap::SetCancelAck),
                         InstanceMethod("setReplaceAckLatency", &SimulatedExecutorWrap::SetReplaceAck),
@@ -241,6 +245,14 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     {
       m = 4;
     }
+    else if (model == "top_pro_lmm")
+    {
+      m = 5;
+    }
+    else if (model == "pro_rata_with_priority")
+    {
+      m = 6;
+    }
     uint32_t depth = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
     flox_simulated_executor_set_queue_model(_h, m, depth);
   }
@@ -248,6 +260,33 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   {
     uint32_t topN = info[0].As<Napi::Number>().Uint32Value();
     flox_simulated_executor_set_queue_fifo_top_n(_h, topN);
+  }
+  void SetTopPriorityShare(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_top_priority_share(
+        _h, info[0].As<Napi::Number>().DoubleValue());
+  }
+  void SetLmmOrders(const Napi::CallbackInfo& info)
+  {
+    auto arr = info[0].As<Napi::Array>();
+    std::vector<uint64_t> ids(arr.Length());
+    for (uint32_t i = 0; i < arr.Length(); ++i)
+    {
+      ids[i] = arr.Get(i).As<Napi::Number>().Int64Value();
+    }
+    flox_simulated_executor_set_lmm_orders(_h, ids.data(),
+                                           static_cast<uint32_t>(ids.size()));
+  }
+  void SetLmmBonusMultiplier(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_lmm_bonus_multiplier(
+        _h, info[0].As<Napi::Number>().DoubleValue());
+  }
+  void SetOrderPriorityMultiplier(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_order_priority_multiplier(
+        _h, info[0].As<Napi::Number>().Int64Value(),
+        info[1].As<Napi::Number>().DoubleValue());
   }
   void SetSubmitAck(const Napi::CallbackInfo& info)
   {

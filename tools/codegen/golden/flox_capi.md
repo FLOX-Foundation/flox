@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 643 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 647 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -862,6 +862,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle executor, uint32_t symbol, int32_t model, int32_t ticks, double tick_size, double bps, double impact_coeff)`
 - `void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor, int32_t model, uint32_t depth)`
 - `void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle executor, uint32_t top_n)`
+- `void flox_simulated_executor_set_top_priority_share(FloxSimulatedExecutorHandle executor, double share)`
+- `void flox_simulated_executor_set_lmm_orders(FloxSimulatedExecutorHandle executor, const uint64_t * ids, uint32_t n_ids)`
+- `void flox_simulated_executor_set_lmm_bonus_multiplier(FloxSimulatedExecutorHandle executor, double multiplier)`
+- `void flox_simulated_executor_set_order_priority_multiplier(FloxSimulatedExecutorHandle executor, uint64_t order_id, double multiplier)`
 - `void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
 - `void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`
 - `void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor, int64_t latency_ns, int64_t jitter_ns)`

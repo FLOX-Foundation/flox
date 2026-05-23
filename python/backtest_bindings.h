@@ -313,12 +313,28 @@ class PySimulatedExecutor
     {
       qm = QueueModel::PRO_RATA_WITH_FIFO;
     }
+    else if (model == "top_pro_lmm")
+    {
+      qm = QueueModel::TOP_PRO_LMM;
+    }
+    else if (model == "pro_rata_with_priority")
+    {
+      qm = QueueModel::PRO_RATA_WITH_PRIORITY;
+    }
     _executor.setQueueModel(qm, depth);
   }
 
   void setQueueFifoTopN(uint32_t topN)
   {
     _executor.setQueueFifoTopN(topN);
+  }
+
+  void setTopPriorityShare(double share) { _executor.setTopPriorityShare(share); }
+  void setLmmOrders(const std::vector<flox::OrderId>& ids) { _executor.setLmmOrders(ids); }
+  void setLmmBonusMultiplier(double m) { _executor.setLmmBonusMultiplier(m); }
+  void setOrderPriorityMultiplier(flox::OrderId id, double m)
+  {
+    _executor.setOrderPriorityMultiplier(id, m);
   }
 
   void setQueuePositionMinChangeFraction(double fraction)
@@ -654,12 +670,26 @@ inline void bindBacktest(py::module_& m)
            py::arg("tick_size") = 0.0, py::arg("bps") = 0.0,
            py::arg("impact_coeff") = 0.0)
       .def("set_queue_model", &PySimulatedExecutor::setQueueModel,
-           "Configure queue simulation. model: none|tob|full|pro_rata|pro_rata_with_fifo",
+           "Configure queue simulation. model: none|tob|full|pro_rata|pro_rata_with_fifo|"
+           "top_pro_lmm|pro_rata_with_priority",
            py::arg("model"), py::arg("depth") = 1)
       .def("set_queue_fifo_top_n", &PySimulatedExecutor::setQueueFifoTopN,
            "For pro_rata_with_fifo: first N orders at a level consume the trade "
            "FIFO; the rest is split pro-rata.",
            py::arg("top_n"))
+      .def("set_top_priority_share", &PySimulatedExecutor::setTopPriorityShare,
+           "TOP_PRO_LMM: fraction of each trade reserved for the queue-front order.",
+           py::arg("share"))
+      .def("set_lmm_orders", &PySimulatedExecutor::setLmmOrders,
+           "TOP_PRO_LMM: mark these order ids as Lead Market Makers.",
+           py::arg("ids"))
+      .def("set_lmm_bonus_multiplier", &PySimulatedExecutor::setLmmBonusMultiplier,
+           "TOP_PRO_LMM: LMM bonus multiplier on tail pro-rata distribution.",
+           py::arg("multiplier"))
+      .def("set_order_priority_multiplier",
+           &PySimulatedExecutor::setOrderPriorityMultiplier,
+           "TOP_PRO_LMM / PRO_RATA_WITH_PRIORITY: per-order priority weight (default 1.0).",
+           py::arg("order_id"), py::arg("multiplier"))
       .def("set_queue_position_min_change_fraction",
            &PySimulatedExecutor::setQueuePositionMinChangeFraction,
            "Minimum fractional change in queue-ahead required to emit a "

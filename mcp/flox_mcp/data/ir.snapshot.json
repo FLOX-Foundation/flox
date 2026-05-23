@@ -11311,6 +11311,59 @@
     },
     {
       "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_lmm_bonus_multiplier",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "multiplier",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_lmm_orders",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "ids",
+          "type": "const uint64_t *"
+        },
+        {
+          "name": "n_ids",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_order_priority_multiplier",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "order_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "multiplier",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
       "name": "flox_simulated_executor_set_queue_fifo_top_n",
       "params": [
         {
@@ -11471,6 +11524,21 @@
         },
         {
           "name": "impact_coeff",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "backtest_slippage",
+      "name": "flox_simulated_executor_set_top_priority_share",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "share",
           "type": "double"
         }
       ],

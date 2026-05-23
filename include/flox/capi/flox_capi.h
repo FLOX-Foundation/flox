@@ -862,6 +862,14 @@ extern "C"
                                                uint32_t depth);
   void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle executor,
                                                     uint32_t top_n);
+  void flox_simulated_executor_set_top_priority_share(FloxSimulatedExecutorHandle executor,
+                                                      double share);
+  void flox_simulated_executor_set_lmm_orders(FloxSimulatedExecutorHandle executor,
+                                              const uint64_t* ids, uint32_t n_ids);
+  void flox_simulated_executor_set_lmm_bonus_multiplier(FloxSimulatedExecutorHandle executor,
+                                                        double multiplier);
+  void flox_simulated_executor_set_order_priority_multiplier(FloxSimulatedExecutorHandle executor,
+                                                             uint64_t order_id, double multiplier);
   void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle executor,
                                                       int64_t latency_ns, int64_t jitter_ns);
   void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle executor,

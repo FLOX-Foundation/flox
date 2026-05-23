@@ -40,6 +40,18 @@ enum class QueueModel : uint8_t
   // FIFO top-N, then pro-rata across the remainder. Models hybrid
   // venues that reward queue front but distribute the rest.
   PRO_RATA_WITH_FIFO,
+  // CME TOP-PRO-LMM (Globex options): the order at the front of the
+  // queue ("TOP") receives a fixed share of the incoming trade (e.g.
+  // 40%), capped by its remaining size. The remainder distributes
+  // pro-rata, with LMM (Lead Market Maker) orders receiving a bonus
+  // priority multiplier. Use `setTopPriorityShare`,
+  // `setLmmOrders`, and `setOrderPriorityMultiplier` to configure.
+  TOP_PRO_LMM,
+  // ICE-style size-pro-rata-with-priority-multiplier: every order at
+  // the level gets effective weight `remaining × priorityMultiplier`,
+  // distributed proportionally. Per-order multiplier defaults to 1.0
+  // (set via `setOrderPriorityMultiplier`).
+  PRO_RATA_WITH_PRIORITY,
 };
 
 struct SlippageProfile
