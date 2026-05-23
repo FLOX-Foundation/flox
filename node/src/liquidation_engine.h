@@ -25,6 +25,8 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
          InstanceMethod("insuranceFundBalance",
                         &LiquidationEngineWrap::InsuranceFundBalance),
          InstanceMethod("setAdlEnabled", &LiquidationEngineWrap::SetAdlEnabled),
+         InstanceMethod("setAdlRanking", &LiquidationEngineWrap::SetAdlRanking),
+         InstanceMethod("adlRanking", &LiquidationEngineWrap::AdlRanking),
          InstanceMethod("setLiquidationSlippageBps",
                         &LiquidationEngineWrap::SetLiquidationSlippageBps),
          InstanceMethod("openPosition", &LiquidationEngineWrap::OpenPosition),
@@ -73,6 +75,52 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
   {
     flox_liquidation_engine_set_adl_enabled(
         _h, info[0].As<Napi::Boolean>().Value() ? 1 : 0);
+  }
+  void SetAdlRanking(const Napi::CallbackInfo& info)
+  {
+    uint8_t code = 0;
+    if (info.Length() >= 1 && info[0].IsString())
+    {
+      const std::string name = info[0].As<Napi::String>().Utf8Value();
+      if (name == "binance")
+      {
+        code = 1;
+      }
+      else if (name == "bybit")
+      {
+        code = 2;
+      }
+      else if (name == "position_size")
+      {
+        code = 3;
+      }
+    }
+    else if (info.Length() >= 1 && info[0].IsNumber())
+    {
+      code = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+    }
+    flox_liquidation_engine_set_adl_ranking(_h, code);
+  }
+  Napi::Value AdlRanking(const Napi::CallbackInfo& info)
+  {
+    const uint8_t code = flox_liquidation_engine_adl_ranking(_h);
+    const char* name = "pnl_ratio";
+    switch (code)
+    {
+      case 1:
+        name = "binance";
+        break;
+      case 2:
+        name = "bybit";
+        break;
+      case 3:
+        name = "position_size";
+        break;
+      default:
+        name = "pnl_ratio";
+        break;
+    }
+    return Napi::String::New(info.Env(), name);
   }
   void SetLiquidationSlippageBps(const Napi::CallbackInfo& info)
   {

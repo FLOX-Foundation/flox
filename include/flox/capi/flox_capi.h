@@ -46,6 +46,7 @@ extern "C"
   typedef void* FloxDataReaderHandle;
   typedef void* FloxLatencyDistributionHandle;
   typedef void* FloxRateLimitPolicyHandle;
+  typedef void* FloxVenueAvailabilityHandle;
   typedef void* FloxBacktestResultHandle;
   typedef void* FloxMergedTapeReaderHandle;
   typedef void* FloxPartitionerHandle;
@@ -76,6 +77,7 @@ extern "C"
   typedef void* FloxFeeScheduleHandle;
   typedef void* FloxFundingScheduleHandle;
   typedef void* FloxLiveQueuePositionHandle;
+  typedef void* FloxLiquidationEngineHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -1510,6 +1512,36 @@ extern "C"
   void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed);
 
   // ============================================================
+  // Liquidation Engine
+  // ============================================================
+
+  FloxLiquidationEngineHandle flox_liquidation_engine_create(void);
+  void flox_liquidation_engine_destroy(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_add_tier(FloxLiquidationEngineHandle h, double min_notional,
+                                        double mm_fraction);
+  void flox_liquidation_engine_set_insurance_fund_capital(FloxLiquidationEngineHandle h,
+                                                          double capital);
+  double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled);
+  void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHandle h, uint8_t ranking);
+  uint8_t flox_liquidation_engine_adl_ranking(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h,
+                                                            double bps);
+  void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h, uint64_t account_id,
+                                             uint32_t symbol, double quantity, double entry_price,
+                                             double equity);
+  void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h, uint64_t account_id,
+                                              uint32_t symbol);
+  uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h, uint32_t symbol,
+                                           double mark_price);
+  uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h);
+  uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h);
+  uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h);
+  void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile);
+  void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
+                                            FloxSimulatedExecutorHandle executor);
+
+  // ============================================================
   // Live Queue Position
   // ============================================================
 
@@ -1539,35 +1571,6 @@ extern "C"
   uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h, uint64_t order_id,
                                             int64_t now_ns, int64_t* out_slots);
   uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h);
-
-  // ============================================================
-  // Liquidation engine + insurance fund + ADL
-  // ============================================================
-  typedef void* FloxLiquidationEngineHandle;
-  FloxLiquidationEngineHandle flox_liquidation_engine_create(void);
-  void flox_liquidation_engine_destroy(FloxLiquidationEngineHandle h);
-  void flox_liquidation_engine_add_tier(FloxLiquidationEngineHandle h,
-                                        double min_notional, double mm_fraction);
-  void flox_liquidation_engine_set_insurance_fund_capital(FloxLiquidationEngineHandle h,
-                                                          double capital);
-  double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h);
-  void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled);
-  void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h,
-                                                            double bps);
-  void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h,
-                                             uint64_t account_id, uint32_t symbol,
-                                             double quantity, double entry_price,
-                                             double equity);
-  void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h,
-                                              uint64_t account_id, uint32_t symbol);
-  uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h,
-                                           uint32_t symbol, double mark_price);
-  uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h);
-  uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h);
-  uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h);
-  void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile);
-  void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
-                                            FloxSimulatedExecutorHandle executor);
 
   // ============================================================
   // Logger
@@ -1864,22 +1867,6 @@ extern "C"
   void flox_simulated_executor_clear_rate_limit_policy(FloxSimulatedExecutorHandle executor);
 
   // ============================================================
-  // Venue downtime / availability
-  // ============================================================
-  typedef void* FloxVenueAvailabilityHandle;
-  FloxVenueAvailabilityHandle flox_venue_availability_create(void);
-  void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h);
-  void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h,
-                                               int64_t start_ns, int64_t duration_ns,
-                                               uint8_t policy, int64_t gtc_ttl_ns);
-  void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h,
-                                                   double per_day, int64_t mean_duration_ns,
-                                                   uint8_t policy, uint64_t seed);
-  uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns);
-  void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor,
-                                                      FloxVenueAvailabilityHandle availability);
-
-  // ============================================================
   // Recorder
   // ============================================================
 
@@ -1987,11 +1974,12 @@ extern "C"
                                                uint8_t side, double price, double quantity,
                                                uint8_t order_type, uint32_t symbol, uint8_t tif,
                                                uint8_t reduce_only, int64_t expires_at_ns);
-  void flox_simulated_executor_submit_bracket(
-      FloxSimulatedExecutorHandle executor, uint64_t bracket_id, uint32_t symbol,
-      uint8_t entry_side, uint8_t entry_type, double entry_price, double quantity,
-      uint8_t tp_side, uint8_t tp_type, double tp_price,
-      uint8_t stop_side, uint8_t stop_type, double stop_trigger_price);
+  void flox_simulated_executor_submit_bracket(FloxSimulatedExecutorHandle executor,
+                                              uint64_t bracket_id, uint32_t symbol,
+                                              uint8_t entry_side, uint8_t entry_type,
+                                              double entry_price, double quantity, uint8_t tp_side,
+                                              uint8_t tp_type, double tp_price, uint8_t stop_side,
+                                              uint8_t stop_type, double stop_trigger_price);
   void flox_simulated_executor_cancel_bracket(FloxSimulatedExecutorHandle executor,
                                               uint64_t bracket_id);
   uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor,
@@ -2173,6 +2161,22 @@ extern "C"
   FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
                                                    uint8_t verify_timestamps);
   FloxDatasetValidation flox_dataset_validate(const char* data_dir);
+
+  // ============================================================
+  // Venue Availability
+  // ============================================================
+
+  FloxVenueAvailabilityHandle flox_venue_availability_create(void);
+  void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h);
+  void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h, int64_t start_ns,
+                                               int64_t duration_ns, uint8_t policy,
+                                               int64_t gtc_ttl_ns);
+  void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h, double per_day,
+                                                   int64_t mean_duration_ns, uint8_t policy,
+                                                   uint64_t seed);
+  uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns);
+  void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor,
+                                                      FloxVenueAvailabilityHandle availability);
 
   // ============================================================
   // Volume Profile

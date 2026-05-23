@@ -693,6 +693,10 @@ export class LiquidationEngine {
   setInsuranceFundCapital(capital: number): void;
   insuranceFundBalance(): number;
   setAdlEnabled(enabled: boolean): void;
+  /** ADL queue ordering. Accepts a string name or a numeric code:
+   *  'pnl_ratio' | 'binance' | 'bybit' | 'position_size' (0..3). */
+  setAdlRanking(ranking: 'pnl_ratio' | 'binance' | 'bybit' | 'position_size' | number): void;
+  adlRanking(): 'pnl_ratio' | 'binance' | 'bybit' | 'position_size';
   setLiquidationSlippageBps(bps: number): void;
   /** Open a position the engine should watch. Side is encoded in
    *  signed `quantity` (positive = long, negative = short). */

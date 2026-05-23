@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 618 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 620 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1249,6 +1249,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_liquidation_engine_set_insurance_fund_capital(FloxLiquidationEngineHandle h, double capital)`
 - `double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h)`
 - `void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled)`
+- `void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHandle h, uint8_t ranking)`
+- `uint8_t flox_liquidation_engine_adl_ranking(FloxLiquidationEngineHandle h)`
 - `void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h, double bps)`
 - `void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h, uint64_t account_id, uint32_t symbol, double quantity, double entry_price, double equity)`
 - `void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h, uint64_t account_id, uint32_t symbol)`

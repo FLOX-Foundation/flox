@@ -1523,6 +1523,8 @@ extern "C"
                                                           double capital);
   double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h);
   void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h, uint8_t enabled);
+  void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHandle h, uint8_t ranking);
+  uint8_t flox_liquidation_engine_adl_ranking(FloxLiquidationEngineHandle h);
   void flox_liquidation_engine_set_liquidation_slippage_bps(FloxLiquidationEngineHandle h,
                                                             double bps);
   void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h, uint64_t account_id,

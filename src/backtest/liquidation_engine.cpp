@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 
 namespace flox
@@ -30,6 +31,32 @@ OrderId nextLiquidationOrderId()
   return g_liquidationOrderIdCounter.fetch_add(1, std::memory_order_relaxed);
 }
 }  // namespace
+
+void LiquidationEngine::setAdlRankingByName(const std::string& name)
+{
+  std::string lower;
+  lower.reserve(name.size());
+  for (char c : name)
+  {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (lower == "pnl_ratio" || lower == "pnlratio")
+  {
+    _adlRanking = AdlRanking::PnlRatio;
+  }
+  else if (lower == "binance")
+  {
+    _adlRanking = AdlRanking::Binance;
+  }
+  else if (lower == "bybit")
+  {
+    _adlRanking = AdlRanking::Bybit;
+  }
+  else if (lower == "position_size" || lower == "positionsize")
+  {
+    _adlRanking = AdlRanking::PositionSize;
+  }
+}
 
 double LiquidationEngine::mmFractionFor(double notional) const
 {
@@ -183,7 +210,7 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
   struct AdlCandidate
   {
     size_t idx;
-    double pnlRatio;
+    double score;
     double upnl;
   };
   std::vector<AdlCandidate> candidates;
@@ -197,13 +224,30 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     const double upnl = p.quantity * (markPrice - p.entryPrice);
     if (upnl > 0.0)
     {
-      const double ratio = (p.equity > 0.0) ? (upnl / p.equity) : upnl;
-      candidates.push_back({i, ratio, upnl});
+      double score = 0.0;
+      switch (_adlRanking)
+      {
+        case AdlRanking::PnlRatio:
+          score = (p.equity > 0.0) ? (upnl / p.equity) : upnl;
+          break;
+        case AdlRanking::Binance:
+        case AdlRanking::Bybit:
+        {
+          const double notional = std::abs(p.quantity) * markPrice;
+          const double leverage = (p.equity > 0.0) ? (notional / p.equity) : 0.0;
+          score = upnl * leverage;
+          break;
+        }
+        case AdlRanking::PositionSize:
+          score = std::abs(p.quantity);
+          break;
+      }
+      candidates.push_back({i, score, upnl});
     }
   }
   std::sort(candidates.begin(), candidates.end(),
             [](const AdlCandidate& a, const AdlCandidate& b)
-            { return a.pnlRatio > b.pnlRatio; });
+            { return a.score > b.score; });
 
   std::vector<size_t> closeIdxs;
   for (const auto& c : candidates)
@@ -290,6 +334,7 @@ LiquidationEngine LiquidationEngine::binance_um_futures()
   e.setInsuranceFundCapital(900'000'000.0);  // approximate Binance fund
   e.setLiquidationSlippageBps(15.0);
   e.setAdlEnabled(true);
+  e.setAdlRanking(AdlRanking::Binance);
   return e;
 }
 
@@ -303,6 +348,7 @@ LiquidationEngine LiquidationEngine::bybit_linear()
   e.setInsuranceFundCapital(100'000'000.0);
   e.setLiquidationSlippageBps(20.0);
   e.setAdlEnabled(true);
+  e.setAdlRanking(AdlRanking::Bybit);
   return e;
 }
 
@@ -315,6 +361,7 @@ LiquidationEngine LiquidationEngine::okx_swap()
   e.setInsuranceFundCapital(150'000'000.0);
   e.setLiquidationSlippageBps(20.0);
   e.setAdlEnabled(true);
+  e.setAdlRanking(AdlRanking::PnlRatio);
   return e;
 }
 

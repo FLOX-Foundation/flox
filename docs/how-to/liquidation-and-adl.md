@@ -115,8 +115,40 @@ For every open position on the symbol being marked:
    accumulates.
 4. Insurance fund pays as much of the total deficit as it can.
 5. If `adl_enabled` and deficit remains, rank profitable
-   opposite-side positions by PnL ratio (PnL / equity) and
-   force-close from the top until the deficit is absorbed.
+   opposite-side positions by the configured **ADL ranking strategy**
+   (default PnL ratio) and force-close from the top until the
+   deficit is absorbed.
+
+## ADL ranking strategies
+
+Real venues compute the ADL queue with different formulas; pick the
+one that matches the venue being modeled. Each canned profile sets
+the strategy its venue actually uses.
+
+| Strategy        | Formula                            | Used by                |
+|-----------------|------------------------------------|------------------------|
+| `pnl_ratio`     | `upnl / equity`                    | default; OKX preset    |
+| `binance`       | `upnl × leverage` (lev = notional/equity) | Binance UM preset |
+| `bybit`         | same as `binance` (alias)          | Bybit linear preset    |
+| `position_size` | `|quantity|`                       | small DEX perps        |
+
+Higher score = closer to the front of the ADL queue. Set via
+`set_adl_ranking(...)` with a string name or the `AdlRanking` enum:
+
+=== "Python"
+
+    ```python
+    liq.set_adl_ranking("binance")
+    # or
+    liq.set_adl_ranking(flox_py.AdlRanking.PositionSize)
+    ```
+
+=== "TypeScript (Node)"
+
+    ```typescript
+    liq.setAdlRanking("position_size");
+    // or numeric: 0=pnl_ratio, 1=binance, 2=bybit, 3=position_size
+    ```
 
 Cumulative counters track liquidations / insurance payments / ADL
 closeouts across the engine's lifetime.
@@ -178,5 +210,5 @@ behaviour.
 - The slippage knob is a flat bps haircut on the bankruptcy
   price; for venue-specific book-walk simulation, layer the
   existing `SlippageProfile` on top.
-- ADL ranking is currently PnL ratio (PnL / equity). Some venues
-  use position-size only; that variant is filed as a follow-up.
+- ADL ranking is configurable per-engine; see the ranking table
+  above. Custom ranking via a user-supplied callback is not in scope.

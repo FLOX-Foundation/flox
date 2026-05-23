@@ -1390,6 +1390,11 @@
         {
           "group": "liquidation_engine",
           "kind": "function",
+          "name": "flox_liquidation_engine_adl_ranking"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
           "name": "flox_liquidation_engine_close_position"
         },
         {
@@ -1436,6 +1441,11 @@
           "group": "liquidation_engine",
           "kind": "function",
           "name": "flox_liquidation_engine_set_adl_enabled"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_adl_ranking"
         },
         {
           "group": "liquidation_engine",
@@ -4731,6 +4741,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_liquidation_engine_adl_ranking"
+        },
+        {
+          "kind": "function",
           "name": "flox_liquidation_engine_close_position"
         },
         {
@@ -4768,6 +4782,10 @@
         {
           "kind": "function",
           "name": "flox_liquidation_engine_set_adl_enabled"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_adl_ranking"
         },
         {
           "kind": "function",
@@ -7015,6 +7033,10 @@
         },
         {
           "kind": "class",
+          "name": "AdlRanking"
+        },
+        {
+          "kind": "class",
           "name": "AggregatorEventFilter"
         },
         {
@@ -8717,6 +8739,7 @@
       "capi_functions": [
         "flox_liquidation_engine_add_tier",
         "flox_liquidation_engine_adl_closeouts_count",
+        "flox_liquidation_engine_adl_ranking",
         "flox_liquidation_engine_close_position",
         "flox_liquidation_engine_create",
         "flox_liquidation_engine_destroy",
@@ -8727,6 +8750,7 @@
         "flox_liquidation_engine_on_mark",
         "flox_liquidation_engine_open_position",
         "flox_liquidation_engine_set_adl_enabled",
+        "flox_liquidation_engine_set_adl_ranking",
         "flox_liquidation_engine_set_executor",
         "flox_liquidation_engine_set_insurance_fund_capital",
         "flox_liquidation_engine_set_liquidation_slippage_bps"

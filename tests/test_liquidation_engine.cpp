@@ -235,3 +235,124 @@ TEST(LiquidationEngine, DetachedExecutorPreservesFlatBpsBehaviour)
   EXPECT_EQ(out.liquidationsCount, 1u);
   EXPECT_NEAR(out.insuranceFundDelta, -550.0, 1e-6);
 }
+
+// === T045: ADL ranking variants ===
+
+TEST(LiquidationEngine, AdlRankingDefaultsToPnlRatio)
+{
+  LiquidationEngine e;
+  EXPECT_EQ(e.adlRanking(), AdlRanking::PnlRatio);
+}
+
+TEST(LiquidationEngine, AdlRankingByNameAcceptsKnownStrings)
+{
+  LiquidationEngine e;
+  e.setAdlRankingByName("binance");
+  EXPECT_EQ(e.adlRanking(), AdlRanking::Binance);
+  e.setAdlRankingByName("BYBIT");
+  EXPECT_EQ(e.adlRanking(), AdlRanking::Bybit);
+  e.setAdlRankingByName("position_size");
+  EXPECT_EQ(e.adlRanking(), AdlRanking::PositionSize);
+  e.setAdlRankingByName("pnl_ratio");
+  EXPECT_EQ(e.adlRanking(), AdlRanking::PnlRatio);
+  // Unknown name leaves prior ranking in place.
+  e.setAdlRankingByName("not-a-real-mode");
+  EXPECT_EQ(e.adlRanking(), AdlRanking::PnlRatio);
+}
+
+TEST(LiquidationEngine, AdlRankingBinancePicksHigherNotionalFirst)
+{
+  // Both A and B are profitable opposite-side; deficit fits inside
+  // either one alone. PnlRatio picks A (higher upnl/equity).
+  // Binance picks B (higher upnl × leverage_via_notional).
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+
+  // Underwater long: 5 BTC at 100, equity 50; mark 40
+  // → realized = -300, residual = -250, deficit = 250.
+  e.openPosition(pos(/*acct=*/1, 5.0, 100.0, 50.0));
+  // Profitable A: short -1 BTC at 100, equity 10. At mark 40
+  // → upnl = +60. PnlRatio = 60/10 = 6.0. Binance = 60 × (40/10) = 240.
+  e.openPosition(pos(/*acct=*/2, -1.0, 100.0, 10.0));
+  // Profitable B: short -5 BTC at 100, equity 100. At mark 40
+  // → upnl = +300. PnlRatio = 300/100 = 3.0. Binance = 300 × (200/100) = 600.
+  e.openPosition(pos(/*acct=*/3, -5.0, 100.0, 100.0));
+
+  // Default ranking (PnlRatio): A comes first (60), needs 190 more
+  // → also closes B. Two closeouts.
+  {
+    auto e1 = e;
+    const auto out = e1.onMark(BTC, 40.0);
+    EXPECT_EQ(out.liquidationsCount, 1u);
+    EXPECT_EQ(out.adlCloseoutsCount, 2u);
+  }
+
+  // Binance ranking: B alone (300) covers 250. Single closeout, acct=3.
+  {
+    auto e2 = e;
+    e2.setAdlRanking(AdlRanking::Binance);
+    const auto out = e2.onMark(BTC, 40.0);
+    EXPECT_EQ(out.liquidationsCount, 1u);
+    EXPECT_EQ(out.adlCloseoutsCount, 1u);
+    EXPECT_EQ(out.adlClosedOut.front(), 3u);
+  }
+
+  // Bybit (alias of Binance): same behaviour.
+  {
+    auto e3 = e;
+    e3.setAdlRanking(AdlRanking::Bybit);
+    const auto out = e3.onMark(BTC, 40.0);
+    EXPECT_EQ(out.adlCloseoutsCount, 1u);
+    EXPECT_EQ(out.adlClosedOut.front(), 3u);
+  }
+}
+
+TEST(LiquidationEngine, AdlRankingPositionSizeIgnoresPnlRatio)
+{
+  // Deficit small enough that either A or B alone closes it.
+  // PnlRatio picks A (small position, large ratio).
+  // PositionSize picks B (large position, tiny ratio).
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+
+  // Underwater long: 2 BTC at 100, equity 20; mark 40
+  // → realized = -120, residual = -100, deficit = 100.
+  e.openPosition(pos(/*acct=*/1, 2.0, 100.0, 20.0));
+  // A: short -3 BTC at 100, equity 30. upnl=+180, ratio=6, size=3.
+  e.openPosition(pos(/*acct=*/2, -3.0, 100.0, 30.0));
+  // B: short -10 BTC at 50, equity 500. upnl=+100, ratio=0.2, size=10.
+  e.openPosition(pos(/*acct=*/3, -10.0, 50.0, 500.0));
+
+  {
+    auto e1 = e;
+    e1.setAdlRanking(AdlRanking::PnlRatio);
+    const auto out = e1.onMark(BTC, 40.0);
+    EXPECT_EQ(out.adlCloseoutsCount, 1u);
+    EXPECT_EQ(out.adlClosedOut.front(), 2u);
+  }
+  {
+    auto e2 = e;
+    e2.setAdlRanking(AdlRanking::PositionSize);
+    const auto out = e2.onMark(BTC, 40.0);
+    EXPECT_EQ(out.adlCloseoutsCount, 1u);
+    EXPECT_EQ(out.adlClosedOut.front(), 3u);
+  }
+}
+
+TEST(LiquidationEngine, BinancePresetUsesBinanceAdlRanking)
+{
+  auto e = LiquidationEngine::binance_um_futures();
+  EXPECT_EQ(e.adlRanking(), AdlRanking::Binance);
+}
+
+TEST(LiquidationEngine, BybitPresetUsesBybitAdlRanking)
+{
+  auto e = LiquidationEngine::bybit_linear();
+  EXPECT_EQ(e.adlRanking(), AdlRanking::Bybit);
+}

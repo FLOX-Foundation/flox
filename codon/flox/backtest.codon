@@ -55,6 +55,8 @@ from C import flox_liquidation_engine_add_tier(cobj, f64, f64)
 from C import flox_liquidation_engine_set_insurance_fund_capital(cobj, f64)
 from C import flox_liquidation_engine_insurance_fund_balance(cobj) -> f64
 from C import flox_liquidation_engine_set_adl_enabled(cobj, u8)
+from C import flox_liquidation_engine_set_adl_ranking(cobj, u8)
+from C import flox_liquidation_engine_adl_ranking(cobj) -> u8
 from C import flox_liquidation_engine_set_liquidation_slippage_bps(cobj, f64)
 from C import flox_liquidation_engine_open_position(cobj, u64, u32, f64, f64, f64)
 from C import flox_liquidation_engine_close_position(cobj, u64, u32)
@@ -443,6 +445,24 @@ class LiquidationEngine:
 
     def set_adl_enabled(self, enabled: bool):
         flox_liquidation_engine_set_adl_enabled(self._h, u8(1 if enabled else 0))
+
+    def set_adl_ranking(self, ranking):
+        # Accepts an int code (0..3) or a string name.
+        code = u8(0)
+        if isinstance(ranking, str):
+            name = ranking.lower()
+            if name == "binance":
+                code = u8(1)
+            elif name == "bybit":
+                code = u8(2)
+            elif name == "position_size":
+                code = u8(3)
+        else:
+            code = u8(int(ranking))
+        flox_liquidation_engine_set_adl_ranking(self._h, code)
+
+    def adl_ranking(self) -> int:
+        return int(flox_liquidation_engine_adl_ranking(self._h))
 
     def set_liquidation_slippage_bps(self, bps: float):
         flox_liquidation_engine_set_liquidation_slippage_bps(self._h, f64(bps))
