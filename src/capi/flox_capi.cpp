@@ -9200,6 +9200,32 @@ extern "C" void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h,
   }
   *toFunding(h) = flox::FundingSchedule::tape(std::move(events));
 }
+extern "C" void flox_funding_schedule_set_tape_by_symbol(
+    FloxFundingScheduleHandle h, const int64_t* timestamps_ns,
+    const uint32_t* symbols, const double* rates, uint32_t n)
+{
+  std::vector<flox::FundingTapeEntry> entries;
+  entries.reserve(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    flox::FundingTapeEntry e;
+    e.timestampNs = timestamps_ns ? timestamps_ns[i] : 0;
+    e.symbol = symbols ? static_cast<flox::SymbolId>(symbols[i])
+                       : flox::FundingTapeEntry::kAnySymbol;
+    e.rate = rates ? rates[i] : 0.0;
+    entries.push_back(e);
+  }
+  *toFunding(h) = flox::FundingSchedule::tapeBySymbol(std::move(entries));
+}
+extern "C" uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h,
+                                                   const char* path)
+{
+  if (!h || !path)
+  {
+    return 0;
+  }
+  return toFunding(h)->loadTape(std::string(path)) ? 1 : 0;
+}
 extern "C" void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
                                                    const char* name)
 {

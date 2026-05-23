@@ -2105,6 +2105,45 @@ static JSValue js_funding_schedule_load_profile(JSContext* ctx, JSValueConst, in
   }
   return JS_UNDEFINED;
 }
+static JSValue js_funding_schedule_load_tape(JSContext* ctx, JSValueConst, int,
+                                             JSValueConst* argv)
+{
+  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  const char* path = JS_ToCString(ctx, argv[1]);
+  const uint8_t ok = flox_funding_schedule_load_tape(h, path);
+  if (path)
+  {
+    JS_FreeCString(ctx, path);
+  }
+  return JS_NewBool(ctx, ok != 0);
+}
+static JSValue js_funding_schedule_set_tape_by_symbol(JSContext* ctx, JSValueConst,
+                                                      int, JSValueConst* argv)
+{
+  // (handle, timestamps_array, symbols_array, rates_array)
+  auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
+  uint32_t n = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
+  JS_ToUint32(ctx, &n, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  std::vector<int64_t> ts(n);
+  std::vector<uint32_t> sy(n);
+  std::vector<double> rates(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue tv = JS_GetPropertyUint32(ctx, argv[1], i);
+    JS_ToInt64(ctx, &ts[i], tv);
+    JS_FreeValue(ctx, tv);
+    JSValue sv = JS_GetPropertyUint32(ctx, argv[2], i);
+    JS_ToUint32(ctx, &sy[i], sv);
+    JS_FreeValue(ctx, sv);
+    JSValue rv = JS_GetPropertyUint32(ctx, argv[3], i);
+    JS_ToFloat64(ctx, &rates[i], rv);
+    JS_FreeValue(ctx, rv);
+  }
+  flox_funding_schedule_set_tape_by_symbol(h, ts.data(), sy.data(), rates.data(), n);
+  return JS_UNDEFINED;
+}
 static JSValue js_funding_schedule_set_constant_rate(JSContext* ctx, JSValueConst, int,
                                                      JSValueConst* argv)
 {
@@ -6101,6 +6140,10 @@ void registerFloxBindings(JSContext* ctx)
                 js_funding_schedule_set_constant, 3);
   addGlobalFunc(ctx, "__flox_funding_schedule_load_profile",
                 js_funding_schedule_load_profile, 2);
+  addGlobalFunc(ctx, "__flox_funding_schedule_load_tape",
+                js_funding_schedule_load_tape, 2);
+  addGlobalFunc(ctx, "__flox_funding_schedule_set_tape_by_symbol",
+                js_funding_schedule_set_tape_by_symbol, 4);
   addGlobalFunc(ctx, "__flox_funding_schedule_set_constant_rate",
                 js_funding_schedule_set_constant_rate, 2);
   addGlobalFunc(ctx, "__flox_funding_schedule_reset", js_funding_schedule_reset, 1);

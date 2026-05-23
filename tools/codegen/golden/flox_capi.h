@@ -1330,6 +1330,11 @@ extern "C"
                                           double rate);
   void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h, const int64_t* timestamps_ns,
                                       const double* rates, uint32_t n_events);
+  void flox_funding_schedule_set_tape_by_symbol(FloxFundingScheduleHandle h,
+                                                const int64_t* timestamps_ns,
+                                                const uint32_t* symbols, const double* rates,
+                                                uint32_t n_entries);
+  uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h, const char* path);
   void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h, const char* profile_name);
   void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h, double rate);
   void flox_funding_schedule_reset(FloxFundingScheduleHandle h);

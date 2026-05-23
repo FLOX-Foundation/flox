@@ -13,11 +13,26 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <fstream>
+#include <set>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace flox
 {
+
+// One row of a per-symbol funding-rate tape. A `symbol` value of
+// `kAnySymbol` (0) means "applies to every symbol at this timestamp"
+// — convenient when an archive carries a single rate for the venue.
+struct FundingTapeEntry
+{
+  static constexpr SymbolId kAnySymbol = 0;
+  int64_t timestampNs{0};
+  SymbolId symbol{kAnySymbol};
+  double rate{0.0};
+};
 
 // One funding payment as recorded by FundingSchedule::tick.
 //
@@ -70,7 +85,95 @@ class FundingSchedule
     std::sort(s._tape.begin(), s._tape.end(),
               [](const auto& a, const auto& b)
               { return a.first < b.first; });
+    s.rebuildPerSymbolFromLegacyTape();
     return s;
+  }
+
+  // Per-symbol tape: each (ts, symbol, rate) row settles only the
+  // matching symbol at that timestamp. Symbols not represented at a
+  // given settlement fall back to the constant rate (which is 0 by
+  // default; override with setConstantRate).
+  static FundingSchedule tapeBySymbol(std::vector<FundingTapeEntry> entries)
+  {
+    FundingSchedule s;
+    s._perSymbolTape = std::move(entries);
+    s.rebuildSettlementsFromPerSymbolTape();
+    return s;
+  }
+
+  // Parse a CSV with columns timestamp_ns, symbol, funding_rate (in
+  // that order). Lines starting with '#' or matching the header are
+  // skipped. Whitespace is trimmed. Returns true on success; false if
+  // the file could not be opened (existing tape state preserved on
+  // error).
+  bool loadTape(const std::string& path)
+  {
+    std::ifstream in(path);
+    if (!in.is_open())
+    {
+      return false;
+    }
+    std::vector<FundingTapeEntry> rows;
+    std::string line;
+    while (std::getline(in, line))
+    {
+      if (line.empty() || line[0] == '#')
+      {
+        continue;
+      }
+      // Header sniff: first non-empty, non-comment line containing
+      // alphabetic chars but no digits.
+      bool isHeader = false;
+      if (rows.empty())
+      {
+        bool hasAlpha = false;
+        bool hasDigit = false;
+        for (char c : line)
+        {
+          if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+          {
+            hasAlpha = true;
+          }
+          else if (c >= '0' && c <= '9')
+          {
+            hasDigit = true;
+          }
+        }
+        if (hasAlpha && !hasDigit)
+        {
+          isHeader = true;
+        }
+      }
+      if (isHeader)
+      {
+        continue;
+      }
+      std::stringstream ss(line);
+      std::string tsStr;
+      std::string symStr;
+      std::string rateStr;
+      if (!std::getline(ss, tsStr, ',') || !std::getline(ss, symStr, ',') ||
+          !std::getline(ss, rateStr, ','))
+      {
+        continue;
+      }
+      try
+      {
+        FundingTapeEntry e;
+        e.timestampNs = static_cast<int64_t>(std::stoll(tsStr));
+        e.symbol = static_cast<SymbolId>(std::stoul(symStr));
+        e.rate = std::stod(rateStr);
+        rows.push_back(e);
+      }
+      catch (...)
+      {
+        // Malformed line — skip.
+      }
+    }
+    _perSymbolTape = std::move(rows);
+    _intervalNs = 0;
+    rebuildSettlementsFromPerSymbolTape();
+    return true;
   }
 
   static FundingSchedule binance_um_futures()
@@ -97,6 +200,15 @@ class FundingSchedule
   const std::vector<std::pair<int64_t, double>>& tapeEvents() const noexcept
   {
     return _tape;
+  }
+  const std::vector<FundingTapeEntry>& perSymbolTape() const noexcept
+  {
+    return _perSymbolTape;
+  }
+  // Settlement timestamps in the per-symbol tape — unique, sorted.
+  const std::vector<int64_t>& settlementTimestamps() const noexcept
+  {
+    return _settlementTimestamps;
   }
 
   void setConstantRate(double rate) noexcept { _constantRate = rate; }
@@ -147,8 +259,10 @@ class FundingSchedule
     }
     else
     {
-      // Tape mode: walk recorded events.
-      for (const auto& [ts, rate] : _tape)
+      // Tape mode: walk settlement timestamps. At each ts, every
+      // symbol with an open position gets a payment; the rate is
+      // looked up per-(symbol, ts) with fallback to the constant rate.
+      for (int64_t ts : _settlementTimestamps)
       {
         if (ts <= _lastTickNs || ts > nowNs)
         {
@@ -160,6 +274,7 @@ class FundingSchedule
           {
             continue;
           }
+          const double rate = rateFor(symbols[i], ts);
           FundingPayment p;
           p.timestampNs = ts;
           p.symbol = symbols[i];
@@ -183,7 +298,69 @@ class FundingSchedule
   int64_t _intervalNs{0};
   double _constantRate{0.0};
   std::vector<std::pair<int64_t, double>> _tape;
+  std::vector<FundingTapeEntry> _perSymbolTape;
+  std::vector<int64_t> _settlementTimestamps;
   int64_t _lastTickNs{0};
+
+  // Resolve rate for a (symbol, ts) pair. Search per-symbol tape for
+  // an exact match; fall back to a wildcard (symbol == kAnySymbol)
+  // entry at that ts; fall back to the constant rate.
+  double rateFor(SymbolId symbol, int64_t ts) const noexcept
+  {
+    double wildcard = _constantRate;
+    bool wildcardSet = false;
+    for (const auto& e : _perSymbolTape)
+    {
+      if (e.timestampNs != ts)
+      {
+        continue;
+      }
+      if (e.symbol == symbol)
+      {
+        return e.rate;
+      }
+      if (e.symbol == FundingTapeEntry::kAnySymbol)
+      {
+        wildcard = e.rate;
+        wildcardSet = true;
+      }
+    }
+    (void)wildcardSet;
+    return wildcard;
+  }
+
+  void rebuildSettlementsFromPerSymbolTape()
+  {
+    std::sort(_perSymbolTape.begin(), _perSymbolTape.end(),
+              [](const FundingTapeEntry& a, const FundingTapeEntry& b)
+              { return a.timestampNs < b.timestampNs; });
+    _settlementTimestamps.clear();
+    for (const auto& e : _perSymbolTape)
+    {
+      if (_settlementTimestamps.empty() ||
+          _settlementTimestamps.back() != e.timestampNs)
+      {
+        _settlementTimestamps.push_back(e.timestampNs);
+      }
+    }
+  }
+
+  // For backwards compatibility with the legacy tape(events) API: map
+  // each (ts, rate) into a per-symbol entry with symbol == kAnySymbol.
+  void rebuildPerSymbolFromLegacyTape()
+  {
+    _perSymbolTape.clear();
+    _perSymbolTape.reserve(_tape.size());
+    for (const auto& [ts, rate] : _tape)
+    {
+      FundingTapeEntry e;
+      e.timestampNs = ts;
+      e.symbol = FundingTapeEntry::kAnySymbol;
+      e.rate = rate;
+      _perSymbolTape.push_back(e);
+    }
+    rebuildSettlementsFromPerSymbolTape();
+  }
 };
 
 }  // namespace flox

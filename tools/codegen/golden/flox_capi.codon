@@ -271,6 +271,8 @@ from C import flox_funding_schedule_create() -> cobj
 from C import flox_funding_schedule_destroy(cobj)
 from C import flox_funding_schedule_set_constant(cobj, i64, float)
 from C import flox_funding_schedule_set_tape(cobj, Ptr[i64], Ptr[float], u32)
+from C import flox_funding_schedule_set_tape_by_symbol(cobj, Ptr[i64], Ptr[u32], Ptr[float], u32)
+from C import flox_funding_schedule_load_tape(cobj, cobj) -> u8
 from C import flox_funding_schedule_load_profile(cobj, cobj)
 from C import flox_funding_schedule_set_constant_rate(cobj, float)
 from C import flox_funding_schedule_reset(cobj)

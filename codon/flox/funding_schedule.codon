@@ -4,6 +4,8 @@
 from C import flox_funding_schedule_create() -> cobj
 from C import flox_funding_schedule_destroy(cobj)
 from C import flox_funding_schedule_set_constant(cobj, i64, f64)
+from C import flox_funding_schedule_set_tape_by_symbol(cobj, cobj, cobj, cobj, u32)
+from C import flox_funding_schedule_load_tape(cobj, cobj) -> u8
 from C import flox_funding_schedule_load_profile(cobj, cobj)
 from C import flox_funding_schedule_set_constant_rate(cobj, f64)
 from C import flox_funding_schedule_reset(cobj)
@@ -47,6 +49,23 @@ class FundingSchedule:
 
     def set_constant(self, interval_ns: int, rate: float):
         flox_funding_schedule_set_constant(self._h, i64(interval_ns), f64(rate))
+
+    def set_tape_by_symbol(self, timestamps_ns: List[int], symbols: List[int],
+                           rates: List[float]):
+        """Per-symbol tape: each (ts, symbol, rate) row settles only the
+        matching symbol at that timestamp. symbol == 0 acts as a wildcard."""
+        n = len(timestamps_ns)
+        if n == 0:
+            return
+        ts = [i64(t) for t in timestamps_ns]
+        sy = [u32(s) for s in symbols]
+        rs = [f64(r) for r in rates]
+        flox_funding_schedule_set_tape_by_symbol(
+            self._h, cobj(ts.arr.ptr), cobj(sy.arr.ptr), cobj(rs.arr.ptr), u32(n))
+
+    def load_tape(self, path: str) -> bool:
+        """Read CSV with columns timestamp_ns, symbol, funding_rate."""
+        return bool(int(flox_funding_schedule_load_tape(self._h, _cstr(path))))
 
     def load_profile(self, name: str):
         """name: binance_um_futures | bybit_linear | okx_swap | bitget_hourly."""
