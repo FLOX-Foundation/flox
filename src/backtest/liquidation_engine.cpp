@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cctype>
 #include <cmath>
+#include <unordered_map>
 
 namespace flox
 {
@@ -309,45 +310,7 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     }
   }
 
-  if (_positions.empty() && accountDeficit == 0.0)
-  {
-    // Nothing more to do: no orphan positions and no leftover
-    // account deficit. Record the cascade size for stats parity
-    // with the legacy path.
-    if (out.liquidationsCount > 0)
-    {
-      _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
-    }
-    return pass;
-  }
-  if (_positions.empty())
-  {
-    // Have orphan-side deficit only; jump straight to fund/ADL.
-    if (out.liquidationsCount > 0)
-    {
-      _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
-    }
-    // Reuse insurance fund + ADL path; orphan _positions is empty
-    // but the deficit needs to be paid down.
-    double totalDeficit = accountDeficit;
-    const double insurancePayment = std::min(totalDeficit, _insuranceFund);
-    if (insurancePayment > 0.0)
-    {
-      _insuranceFund -= insurancePayment;
-      totalDeficit -= insurancePayment;
-      out.insuranceFundDelta -= insurancePayment;
-      ++_statInsurancePayments;
-      ++out.insurancePaymentsCount;
-      _deficitsPaidByFund.push_back(insurancePayment);
-      _fundBalanceHistory.push_back(_insuranceFund);
-    }
-    // ADL on orphan positions is not applicable here (none exist);
-    // residual deficit hits the fund's balance only (logged above).
-    (void)tickIdx;
-    return pass;
-  }
-
-  // Step 1: collect every position on this symbol that's underwater.
+  // Step 1: collect every orphan position on this symbol that's underwater.
   std::vector<size_t> underwater;
   for (size_t i = 0; i < _positions.size(); ++i)
   {
@@ -366,8 +329,19 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
       underwater.push_back(i);
     }
   }
+  if (underwater.empty() && accountDeficit == 0.0 && out.liquidationsCount == 0)
+  {
+    return pass;
+  }
   if (underwater.empty())
   {
+    // No orphan work this tick, but accounts may have generated a
+    // deficit and/or cascade-size stats need recording.
+    if (out.liquidationsCount > 0)
+    {
+      _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
+    }
+    runInsuranceAndAdlPhase(symbol, markPrice, accountDeficit, tickIdx, out);
     return pass;
   }
 
@@ -437,12 +411,28 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
   }
   _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
 
+  // Unified deficit covers orphan + account walks. T055 lifted ADL
+  // routing to scan the combined candidate pool.
+  totalDeficit += accountDeficit;
   if (totalDeficit <= 0.0)
   {
     return pass;
   }
+  runInsuranceAndAdlPhase(symbol, markPrice, totalDeficit, tickIdx, out);
+  return pass;
+}
 
-  // Step 3: insurance fund absorbs as much as it can.
+void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
+                                                double markPrice,
+                                                double totalDeficit,
+                                                uint64_t tickIdx,
+                                                LiquidationOutcome& out)
+{
+  if (totalDeficit <= 0.0)
+  {
+    return;
+  }
+  // Step 1: insurance fund covers what it can.
   const double insurancePayment = std::min(totalDeficit, _insuranceFund);
   if (insurancePayment > 0.0)
   {
@@ -456,27 +446,45 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
   }
   if (totalDeficit <= 0.0 || !_adlEnabled)
   {
-    return pass;
+    return;
   }
 
-  // Step 4: ADL. Rank opposite-side profitable positions by PnL
-  // ratio (PnL / equity) and force-close from the top until the
-  // deficit is absorbed.
-  // The "opposite" side relative to the cascade: the liquidations
-  // above were on positions that ran against the mark move, so
-  // their cohort is one direction; ADL hits the cohort that
-  // profited from the same move. We pick all profitable positions
-  // on this symbol regardless of side: a long-direction cascade
-  // means underwater shorts (PnL > 0 on rally), so the ADL pool is
-  // longs in profit (also PnL > 0). The selection criterion is
-  // simply "current PnL > 0 on this symbol".
+  // Step 2: ADL across orphan + every attached account. Selection
+  // criterion is "current PnL > 0 on this symbol"; ranking per the
+  // configured AdlRanking. When ADL closes an account-owned
+  // position, the realised PnL credits the owning account's equity
+  // (cross mode) or the position's isolated_equity (isolated mode).
   struct AdlCandidate
   {
+    Account* owner;  // nullptr → orphan position
     size_t idx;
     double score;
     double upnl;
   };
   std::vector<AdlCandidate> candidates;
+
+  auto scorePosition = [this, markPrice](const LeveragedPosition& p,
+                                         double upnl) -> double
+  {
+    switch (_adlRanking)
+    {
+      case AdlRanking::PnlRatio:
+        return (p.equity > 0.0) ? (upnl / p.equity) : upnl;
+      case AdlRanking::Binance:
+      case AdlRanking::Bybit:
+      {
+        const double notional = std::abs(p.quantity) * markPrice;
+        const double leverage =
+            (p.equity > 0.0) ? (notional / p.equity) : 0.0;
+        return upnl * leverage;
+      }
+      case AdlRanking::PositionSize:
+        return std::abs(p.quantity);
+    }
+    return upnl;
+  };
+
+  // Orphan candidates.
   for (size_t i = 0; i < _positions.size(); ++i)
   {
     const auto& p = _positions[i];
@@ -487,40 +495,70 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     const double upnl = p.quantity * (markPrice - p.entryPrice);
     if (upnl > 0.0)
     {
-      double score = 0.0;
-      switch (_adlRanking)
-      {
-        case AdlRanking::PnlRatio:
-          score = (p.equity > 0.0) ? (upnl / p.equity) : upnl;
-          break;
-        case AdlRanking::Binance:
-        case AdlRanking::Bybit:
-        {
-          const double notional = std::abs(p.quantity) * markPrice;
-          const double leverage = (p.equity > 0.0) ? (notional / p.equity) : 0.0;
-          score = upnl * leverage;
-          break;
-        }
-        case AdlRanking::PositionSize:
-          score = std::abs(p.quantity);
-          break;
-      }
-      candidates.push_back({i, score, upnl});
+      candidates.push_back({nullptr, i, scorePosition(p, upnl), upnl});
     }
   }
+  // Account candidates.
+  for (Account* acct : _accounts)
+  {
+    if (acct == nullptr)
+    {
+      continue;
+    }
+    auto& book = acct->positionsMut();
+    for (size_t i = 0; i < book.size(); ++i)
+    {
+      const auto& p = book[i];
+      if (p.symbol != symbol || p.quantity == 0.0)
+      {
+        continue;
+      }
+      const double upnl = p.quantity * (markPrice - p.entryPrice);
+      if (upnl > 0.0)
+      {
+        candidates.push_back({acct, i, scorePosition(p, upnl), upnl});
+      }
+    }
+  }
+
   std::sort(candidates.begin(), candidates.end(),
             [](const AdlCandidate& a, const AdlCandidate& b)
             { return a.score > b.score; });
 
-  std::vector<size_t> closeIdxs;
+  // Track indexes per source so we can erase descending after the
+  // close loop.
+  std::vector<size_t> orphanClose;
+  std::unordered_map<Account*, std::vector<size_t>> acctClose;
   for (const auto& c : candidates)
   {
     if (totalDeficit <= 0.0)
     {
       break;
     }
-    out.adlClosedOut.push_back(_positions[c.idx].accountId);
-    closeIdxs.push_back(c.idx);
+    if (c.owner == nullptr)
+    {
+      const auto& p = _positions[c.idx];
+      out.adlClosedOut.push_back(p.accountId);
+      orphanClose.push_back(c.idx);
+    }
+    else
+    {
+      auto& p = c.owner->positionsMut()[c.idx];
+      // Credit the account's equity (cross mode) or the leg's
+      // isolated_equity (isolated mode) with the realised PnL. The
+      // mark price is the close benchmark for ADL — no executor
+      // routing on ADL closes by spec.
+      if (c.owner->marginMode() == MarginMode::Cross)
+      {
+        c.owner->addEquity(c.upnl);
+      }
+      else
+      {
+        p.equity += c.upnl;
+      }
+      out.adlClosedOut.push_back(p.accountId);
+      acctClose[c.owner].push_back(c.idx);
+    }
     totalDeficit -= c.upnl;
     ++_statAdlCloseouts;
     ++out.adlCloseoutsCount;
@@ -530,14 +568,22 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
       _firstAdlTickIdx = tickIdx;
     }
   }
-  // Remove ADL-closed positions descending.
-  std::sort(closeIdxs.begin(), closeIdxs.end(), std::greater<size_t>());
-  for (size_t i : closeIdxs)
+  // Erase orphan positions descending.
+  std::sort(orphanClose.begin(), orphanClose.end(), std::greater<size_t>());
+  for (size_t i : orphanClose)
   {
     _positions.erase(_positions.begin() + static_cast<long>(i));
   }
-
-  return pass;
+  // Erase account positions descending per account.
+  for (auto& [acct, idxs] : acctClose)
+  {
+    std::sort(idxs.begin(), idxs.end(), std::greater<size_t>());
+    auto& book = acct->positionsMut();
+    for (size_t i : idxs)
+    {
+      book.erase(book.begin() + static_cast<long>(i));
+    }
+  }
 }
 
 LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(

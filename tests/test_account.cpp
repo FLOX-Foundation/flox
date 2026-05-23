@@ -183,6 +183,66 @@ TEST(Account, IsolatedModeNettingDoesNotShelter)
   EXPECT_EQ(a.positions().front().symbol, ETH);
 }
 
+// === T055: cross-account ADL routing ===
+
+TEST(Account, CrossAccountDeficitDepletesInsuranceFund)
+{
+  // One underwater cross-margin account, no opposite-side ADL pool
+  // available. Insurance fund covers some of the deficit; the rest
+  // (with ADL disabled here for isolation) goes unmet, which is
+  // visible via insurance_fund_balance.
+  Account a(1, 0.0);
+  a.openPosition(BTC, 1.0, 50'000.0);
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(5'000.0);
+  e.setAdlEnabled(false);
+  e.attachAccount(&a);
+
+  // BTC drops 20% (-10000). Account: equity 0 + (-10000) far below
+  // mmReq. Liquidates the BTC leg, leaves a 10k deficit. Insurance
+  // fund covers 5k; ADL disabled so the rest is unmet.
+  const auto out = e.onMark(BTC, 40'000.0);
+  EXPECT_GE(out.liquidationsCount, 1u);
+  EXPECT_DOUBLE_EQ(e.insuranceFundBalance(), 0.0);
+  EXPECT_GE(out.insurancePaymentsCount, 1u);
+}
+
+TEST(Account, CrossAccountDeficitTriggersAdlAcrossAccounts)
+{
+  // Two cross accounts: one is liquidated and leaves a deficit, the
+  // other holds a profitable opposite-side position on the same
+  // symbol. After insurance is depleted, ADL closes the profitable
+  // position on the other account and credits its equity with the
+  // realised PnL.
+  Account aLong(1, 0.0);
+  aLong.openPosition(BTC, 1.0, 50'000.0);  // gets liquidated
+
+  Account aShort(2, 5'000.0);
+  aShort.openPosition(BTC, -1.0, 50'000.0);  // profits on drop
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);  // no insurance — straight to ADL
+  e.setAdlEnabled(true);
+  e.attachAccount(&aLong);
+  e.attachAccount(&aShort);
+
+  // BTC drops 20% (-10000 for aLong, +10000 for aShort). aLong
+  // liquidates with 10k deficit. ADL closes aShort's profitable
+  // BTC short to absorb the deficit; aShort's equity is credited
+  // with the realised +10k.
+  const double aShortEquityBefore = aShort.equity();
+  const auto out = e.onMark(BTC, 40'000.0);
+  EXPECT_GE(out.liquidationsCount, 1u);
+  EXPECT_GE(out.adlCloseoutsCount, 1u);
+  // aShort's BTC position should be gone (ADL'd).
+  EXPECT_EQ(aShort.positionCount(), 0u);
+  // aShort's equity rose by the realised +10k from the ADL close.
+  EXPECT_GT(aShort.equity(), aShortEquityBefore);
+}
+
 TEST(Account, IsolatedAndCrossAccountsCoexist)
 {
   // One cross account, one isolated account on the same engine.

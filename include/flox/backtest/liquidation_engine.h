@@ -327,6 +327,16 @@ class LiquidationEngine
   // position deficits and routes them to insurance/ADL).
   AccountWalkOutcome walkIsolatedAccount(Account& account, SymbolId symbol,
                                          double markPrice);
+
+  // T055: unified insurance + ADL phase. Called after orphan +
+  // attached-account walks; `totalDeficit` aggregates per-position
+  // residuals across both pools. Insurance covers first, then ADL
+  // scans profitable opposite-side positions across the orphan book
+  // AND every attached account. Account-owned positions credit
+  // their account's equity on close.
+  void runInsuranceAndAdlPhase(SymbolId symbol, double markPrice,
+                               double totalDeficit, uint64_t tickIdx,
+                               LiquidationOutcome& out);
 };
 
 }  // namespace flox
