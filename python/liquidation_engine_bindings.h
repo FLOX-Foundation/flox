@@ -12,6 +12,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "backtest_bindings.h"
 #include "flox/backtest/liquidation_engine.h"
 
 namespace py = pybind11;
@@ -52,6 +53,18 @@ inline void bindLiquidationEngine(py::module_& m)
       .def("adl_closeouts_count", &flox::LiquidationEngine::adlCloseoutsCount)
       .def("position_count", [](const flox::LiquidationEngine& self)
            { return self.positions().size(); })
+      .def("set_executor", [](flox::LiquidationEngine& self, py::object py_exec)
+           {
+             if (py_exec.is_none())
+             {
+               self.setExecutor(nullptr);
+               return;
+             }
+             auto* w = py_exec.cast<PySimulatedExecutor*>();
+             self.setExecutor(&w->executor()); },
+           "Attach a SimulatedExecutor so liquidation orders route "
+           "through it as market orders. Pass None to detach.",
+           py::arg("executor"), py::keep_alive<1, 2>())
       .def_static("binance_um_futures", &flox::LiquidationEngine::binance_um_futures)
       .def_static("bybit_linear", &flox::LiquidationEngine::bybit_linear)
       .def_static("okx_swap", &flox::LiquidationEngine::okx_swap);

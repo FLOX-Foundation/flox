@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "backtest.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -35,7 +36,8 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
                         &LiquidationEngineWrap::InsurancePaymentsCount),
          InstanceMethod("adlCloseoutsCount",
                         &LiquidationEngineWrap::AdlCloseoutsCount),
-         InstanceMethod("loadProfile", &LiquidationEngineWrap::LoadProfile)});
+         InstanceMethod("loadProfile", &LiquidationEngineWrap::LoadProfile),
+         InstanceMethod("setExecutor", &LiquidationEngineWrap::SetExecutor)});
   }
 
   LiquidationEngineWrap(const Napi::CallbackInfo& info)
@@ -127,6 +129,17 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
       p = 2;
     }
     flox_liquidation_engine_load_profile(_h, p);
+  }
+  void SetExecutor(const Napi::CallbackInfo& info)
+  {
+    if (info.Length() == 0 || info[0].IsNull() || info[0].IsUndefined())
+    {
+      flox_liquidation_engine_set_executor(_h, nullptr);
+      return;
+    }
+    auto* w = Napi::ObjectWrap<SimulatedExecutorWrap>::Unwrap(
+        info[0].As<Napi::Object>());
+    flox_liquidation_engine_set_executor(_h, w->handle());
   }
 
   FloxLiquidationEngineHandle _h;

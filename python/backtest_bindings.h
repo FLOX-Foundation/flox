@@ -131,6 +131,10 @@ class PySimulatedExecutor
  public:
   PySimulatedExecutor() : _executor(_clock) { _executor.start(); }
 
+  // For other bindings that need to wire the same executor into
+  // their own subsystem (e.g. LiquidationEngine::setExecutor).
+  SimulatedExecutor& executor() { return _executor; }
+
   void submitOrder(uint64_t id, const std::string& sideStr, double price, double qty,
                    const std::string& typeStr, uint32_t symbol,
                    const std::string& tifStr = "gtc", bool reduceOnly = false,

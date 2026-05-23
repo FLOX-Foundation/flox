@@ -9,6 +9,9 @@
 
 #include "flox/backtest/liquidation_engine.h"
 
+#include "flox/backtest/simulated_clock.h"
+#include "flox/backtest/simulated_executor.h"
+
 #include <gtest/gtest.h>
 
 using namespace flox;
@@ -144,4 +147,91 @@ TEST(LiquidationEngine, CannedProfileBinanceUmFutures)
   EXPECT_GE(e.tiers().size(), 5u);
   EXPECT_GT(e.insuranceFundBalance(), 0.0);
   EXPECT_TRUE(e.adlEnabled());
+}
+
+// === T036: executor-routed liquidation ===
+
+namespace
+{
+// Helper: feed a book snapshot through the executor so resting
+// liquidity exists for liquidation market orders to walk.
+void feedBook(SimulatedExecutor& ex, SymbolId sym,
+              const std::vector<std::pair<double, double>>& bids,
+              const std::vector<std::pair<double, double>>& asks)
+{
+  std::pmr::monotonic_buffer_resource pool(1024);
+  std::pmr::vector<BookLevel> b(&pool);
+  std::pmr::vector<BookLevel> a(&pool);
+  for (const auto& [px, qty] : bids)
+  {
+    b.emplace_back(Price::fromDouble(px), Quantity::fromDouble(qty));
+  }
+  for (const auto& [px, qty] : asks)
+  {
+    a.emplace_back(Price::fromDouble(px), Quantity::fromDouble(qty));
+  }
+  ex.onBookUpdate(sym, b, a);
+}
+}  // namespace
+
+TEST(LiquidationEngine, ExecutorRoutedClosesAgainstBook)
+{
+  // Engine attached to executor; populated book → liquidation should
+  // fill at the bid (closing a long) without using flat slippage.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setExecutor(&ex);
+
+  feedBook(ex, BTC, {{80.0, 100.0}}, {{81.0, 100.0}});
+
+  // 10 BTC long at 100, equity 10 → underwater at 80.
+  e.openPosition(pos(1, 10.0, 100.0, 10.0));
+
+  const auto out = e.onMark(BTC, 80.0);
+  EXPECT_EQ(out.liquidationsCount, 1u);
+  EXPECT_EQ(out.liquidated.front(), 1u);
+  EXPECT_TRUE(e.positions().empty());
+}
+
+// Note: the simulator's market-order matching currently fills at
+// full quantity at the best-level price (no book walk / no
+// depth-cap). When that limitation is closed (filed as a follow-up
+// because it's an Executor concern, not a LiquidationEngine one),
+// the engine's partial-fill rollover path — already exercised
+// implicitly here via the closeThroughExecutor() return value — will
+// produce partial liquidations on thin books that roll to the next
+// tick.
+
+TEST(LiquidationEngine, ExecutorRoutedEmptyBookSkipsLiquidation)
+{
+  // Empty book: executor can't fill. Position stays.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setExecutor(&ex);
+
+  // No book fed.
+  e.openPosition(pos(1, 10.0, 100.0, 10.0));
+
+  const auto out = e.onMark(BTC, 80.0);
+  EXPECT_EQ(out.liquidationsCount, 0u);
+  ASSERT_EQ(e.positions().size(), 1u);
+}
+
+TEST(LiquidationEngine, DetachedExecutorPreservesFlatBpsBehaviour)
+{
+  // Default (no executor) → existing T032 semantics.
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(1000.0);
+  e.setAdlEnabled(false);
+  e.setLiquidationSlippageBps(0.0);
+  e.openPosition(pos(1, 10.0, 100.0, 50.0));
+
+  const auto out = e.onMark(BTC, 40.0);
+  EXPECT_EQ(out.liquidationsCount, 1u);
+  EXPECT_NEAR(out.insuranceFundDelta, -550.0, 1e-6);
 }

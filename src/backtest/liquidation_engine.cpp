@@ -9,11 +9,27 @@
 
 #include "flox/backtest/liquidation_engine.h"
 
+#include "flox/backtest/simulated_executor.h"
+#include "flox/execution/order.h"
+
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 namespace flox
 {
+
+namespace
+{
+// Allocate synthetic order IDs for liquidation orders out of the
+// top half of the OrderId space so they don't collide with
+// strategy-issued IDs.
+std::atomic<uint64_t> g_liquidationOrderIdCounter{1ULL << 62};
+OrderId nextLiquidationOrderId()
+{
+  return g_liquidationOrderIdCounter.fetch_add(1, std::memory_order_relaxed);
+}
+}  // namespace
 
 double LiquidationEngine::mmFractionFor(double notional) const
 {
@@ -68,18 +84,42 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     return out;
   }
 
-  // Step 2: liquidate each underwater position at the slippage-
-  // adjusted bankruptcy price; book the deficit, if any.
+  // Step 2: liquidate each underwater position. With an executor
+  // attached, route through it as a market order; without one,
+  // fall back to the flat-bps slippage close.
   double totalDeficit = 0.0;
+  std::vector<size_t> liquidated;
+  liquidated.reserve(underwater.size());
   for (size_t idx : underwater)
   {
-    const auto& p = _positions[idx];
-    const double signQ = (p.quantity > 0.0) ? 1.0 : -1.0;
-    // Adverse slippage walks the price against the closer.
-    const double slip = _slippageBps / 10000.0;
-    const double closePrice = markPrice * (1.0 - signQ * slip);
-    const double realized = p.quantity * (closePrice - p.entryPrice);
-    const double residualEquity = p.equity + realized;
+    auto& p = _positions[idx];
+    double closePrice = 0.0;
+    double filledQty = 0.0;
+    if (_executor != nullptr)
+    {
+      const auto exClose = closeThroughExecutor(p, markPrice);
+      closePrice = exClose.closePrice;
+      filledQty = exClose.filledQty;
+      if (filledQty <= 0.0)
+      {
+        // Executor couldn't fill any of this position this tick
+        // (e.g. empty book). Leave the position in place; the next
+        // onMark call will retry. Do not count as a liquidation.
+        continue;
+      }
+    }
+    else
+    {
+      const double signQ = (p.quantity > 0.0) ? 1.0 : -1.0;
+      const double slip = _slippageBps / 10000.0;
+      closePrice = markPrice * (1.0 - signQ * slip);
+      filledQty = std::abs(p.quantity);
+    }
+    const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
+    const double realized = signedFilled * (closePrice - p.entryPrice);
+    // Equity attributed to the filled portion (proportional).
+    const double filledEquity = p.equity * (filledQty / std::abs(p.quantity));
+    const double residualEquity = filledEquity + realized;
     out.liquidated.push_back(p.accountId);
     ++_statLiquidations;
     ++out.liquidationsCount;
@@ -87,12 +127,26 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     {
       totalDeficit += -residualEquity;
     }
+    // If the executor partial-filled, leave the unfilled remainder
+    // in place for the next tick. Otherwise mark the whole position
+    // for removal.
+    if (filledQty >= std::abs(p.quantity) - 1e-12)
+    {
+      liquidated.push_back(idx);
+    }
+    else
+    {
+      const double remaining = std::abs(p.quantity) - filledQty;
+      p.quantity = (p.quantity > 0.0) ? remaining : -remaining;
+      p.equity -= filledEquity;
+    }
   }
-  // Remove liquidated positions from the book. Iterate descending
+  // Remove fully-liquidated positions from the book. Iterate descending
   // so erase indexes stay valid.
-  for (auto it = underwater.rbegin(); it != underwater.rend(); ++it)
+  std::sort(liquidated.begin(), liquidated.end(), std::greater<size_t>());
+  for (size_t i : liquidated)
   {
-    _positions.erase(_positions.begin() + static_cast<long>(*it));
+    _positions.erase(_positions.begin() + static_cast<long>(i));
   }
 
   if (totalDeficit <= 0.0)
@@ -171,6 +225,55 @@ LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
     _positions.erase(_positions.begin() + static_cast<long>(i));
   }
 
+  return out;
+}
+
+LiquidationEngine::ExecutorClose LiquidationEngine::closeThroughExecutor(
+    const LeveragedPosition& p, double markPrice)
+{
+  ExecutorClose out;
+  if (_executor == nullptr || p.quantity == 0.0)
+  {
+    return out;
+  }
+  // Snapshot fill count before submitting; new fills above this
+  // index are attributable to the liquidation order.
+  const size_t fillsBefore = _executor->fills().size();
+  Order order;
+  order.id = nextLiquidationOrderId();
+  order.symbol = p.symbol;
+  // Side that closes the position.
+  order.side = (p.quantity > 0.0) ? Side::SELL : Side::BUY;
+  order.type = OrderType::MARKET;
+  order.quantity = Quantity::fromDouble(std::abs(p.quantity));
+  order.price = Price::fromDouble(markPrice);
+  _executor->submitOrder(order);
+  const auto& fills = _executor->fills();
+  if (fills.size() <= fillsBefore)
+  {
+    return out;  // executor didn't fill anything (empty book)
+  }
+  // Aggregate fills attributable to this liquidation order.
+  double totalQty = 0.0;
+  double notional = 0.0;
+  for (size_t i = fillsBefore; i < fills.size(); ++i)
+  {
+    const auto& f = fills[i];
+    if (f.orderId != order.id)
+    {
+      continue;
+    }
+    const double q = f.quantity.toDouble();
+    const double px = f.price.toDouble();
+    totalQty += q;
+    notional += q * px;
+  }
+  if (totalQty <= 0.0)
+  {
+    return out;
+  }
+  out.filledQty = totalQty;
+  out.closePrice = notional / totalQty;
   return out;
 }
 

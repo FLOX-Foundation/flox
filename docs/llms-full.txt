@@ -8927,6 +8927,7 @@ Members:
 - `open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `position_count(self) -> int`
 - `set_adl_enabled(self, enabled: bool) -> None`
+- `set_executor(self, executor: typing.Any) -> None`
 - `set_insurance_fund_capital(self, capital: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_liquidation_slippage_bps(self, bps: typing.SupportsFloat | typing.SupportsIndex) -> None`
 

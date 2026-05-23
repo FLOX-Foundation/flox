@@ -4220,6 +4220,12 @@ extern "C"
   FLOX_EXPORT(group = "liquidation_engine")
   void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile);
 
+  // Attach a SimulatedExecutor so liquidation orders route through
+  // it as market orders. Pass NULL to detach.
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
+                                            FloxSimulatedExecutorHandle executor);
+
 #ifdef __cplusplus
 }
 #endif

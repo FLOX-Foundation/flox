@@ -1166,6 +1166,10 @@ class LiquidationEngine:
         ...
     def set_adl_enabled(self, enabled: bool) -> None:
         ...
+    def set_executor(self, executor: typing.Any) -> None:
+        """
+        Attach a SimulatedExecutor so liquidation orders route through it as market orders. Pass None to detach.
+        """
     def set_insurance_fund_capital(self, capital: typing.SupportsFloat | typing.SupportsIndex) -> None:
         ...
     def set_liquidation_slippage_bps(self, bps: typing.SupportsFloat | typing.SupportsIndex) -> None:

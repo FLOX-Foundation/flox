@@ -386,6 +386,7 @@ from C import flox_liquidation_engine_liquidations_count(cobj) -> u64
 from C import flox_liquidation_engine_insurance_payments_count(cobj) -> u64
 from C import flox_liquidation_engine_adl_closeouts_count(cobj) -> u64
 from C import flox_liquidation_engine_load_profile(cobj, u8)
+from C import flox_liquidation_engine_set_executor(cobj, cobj)
 
 # ── live_queue_position ──
 from C import flox_live_queue_position_create() -> cobj

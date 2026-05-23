@@ -133,10 +133,43 @@ To reproduce a flash-crash cascade:
    positions feeds back into the next as the insurance fund drains
    and ADL activates.
 
-The engine is deliberately decoupled from `SimulatedExecutor`:
-research workflows that need to model cascade dynamics use it
-standalone; integrating cascade simulation with the live order
-book is a separate task.
+## Integrate with the order book
+
+By default the engine closes underwater positions at a flat-bps
+slippage from the mark — fine for portfolio-level research, but
+the close price ignores the actual book depth.
+
+Attach a `SimulatedExecutor` to route liquidation orders through
+the matching engine. The liquidation becomes a real market order
+that consumes book liquidity, pays venue fees, and samples
+configured latency:
+
+=== "Python"
+
+    ```python
+    exec = flox.SimulatedExecutor()
+    # ... set up book updates, fees, latency on exec ...
+    liq = flox.LiquidationEngine.binance_um_futures()
+    liq.set_executor(exec)  # detach: pass None
+    ```
+
+=== "TypeScript (Node)"
+
+    ```typescript
+    const exec = new SimulatedExecutor();
+    const liq = new LiquidationEngine();
+    liq.loadProfile("binance_um_futures");
+    liq.setExecutor(exec);
+    ```
+
+With an executor attached, the close price reflects the
+post-walk-the-book average instead of a flat-bps haircut. When
+the book is too thin to fill the entire position in one tick, the
+remainder stays on the engine's books for the next `on_mark` tick
+to retry.
+
+Detach by passing `None` / `null`; engine falls back to flat-bps
+behaviour.
 
 ## Notes
 

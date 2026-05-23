@@ -19,6 +19,8 @@
 namespace flox
 {
 
+class SimulatedExecutor;
+
 // One maintenance-margin tier. `minNotional` is the lower bound of
 // the bracket (inclusive); `mmFraction` is the maintenance-margin
 // rate at that bracket (e.g. 0.005 = 0.5%).
@@ -97,13 +99,26 @@ class LiquidationEngine
   bool adlEnabled() const noexcept { return _adlEnabled; }
 
   // Liquidation slippage in basis points applied to the bankruptcy
-  // close. Default 25 bps. Use higher values for venues with thin
-  // books or volatile derivatives.
+  // close when no executor is attached. Default 25 bps.
   void setLiquidationSlippageBps(double bps) noexcept
   {
     _slippageBps = bps;
   }
   double liquidationSlippageBps() const noexcept { return _slippageBps; }
+
+  // Optional integration: when an executor is attached, liquidation
+  // orders route through it as real market orders, consuming book
+  // liquidity, paying fees, and sampling latency. When detached
+  // (nullptr / never set), the engine falls back to flat-bps
+  // slippage close at the bankruptcy price.
+  //
+  // The executor is non-owning; caller manages lifetime. Detach by
+  // passing nullptr.
+  void setExecutor(SimulatedExecutor* executor) noexcept
+  {
+    _executor = executor;
+  }
+  SimulatedExecutor* executor() const noexcept { return _executor; }
 
   // Open a new position the engine should track.
   void openPosition(const LeveragedPosition& position)
@@ -153,6 +168,20 @@ class LiquidationEngine
   uint64_t _statLiquidations{0};
   uint64_t _statInsurancePayments{0};
   uint64_t _statAdlCloseouts{0};
+
+  SimulatedExecutor* _executor{nullptr};
+
+  // Route a liquidation through the attached executor as a market
+  // order; return realized close-price + filled qty. Returns
+  // (-1, 0) when the executor was unable to fill any quantity this
+  // tick. Updates _statLiquidations + _adlPending for any
+  // unfilled remainder (caller handles ADL on the leftover).
+  struct ExecutorClose
+  {
+    double closePrice{0.0};
+    double filledQty{0.0};
+  };
+  ExecutorClose closeThroughExecutor(const LeveragedPosition& p, double markPrice);
 };
 
 }  // namespace flox

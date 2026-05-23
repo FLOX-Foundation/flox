@@ -710,6 +710,10 @@ export class LiquidationEngine {
   adlCloseoutsCount(): number;
   /** Canned profiles: 'binance_um_futures' | 'bybit_linear' | 'okx_swap'. */
   loadProfile(name: string): void;
+  /** Attach a SimulatedExecutor so liquidation orders route through
+   *  it as market orders (consuming book liquidity, paying fees,
+   *  sampling latency). Pass null to detach. */
+  setExecutor(executor: SimulatedExecutor | null): void;
 }
 
 export class FundingSchedule {

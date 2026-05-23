@@ -9431,3 +9431,14 @@ extern "C" void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle
   }
   *eng = canned;
 }
+
+extern "C" void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
+                                                     FloxSimulatedExecutorHandle exec_h)
+{
+  SimulatedExecutor* ex = nullptr;
+  if (exec_h != nullptr)
+  {
+    ex = &static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor;
+  }
+  toLiqEngine(h)->setExecutor(ex);
+}

@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 617 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 618 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1257,6 +1257,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h)`
 - `uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h)`
 - `void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile)`
+- `void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h, FloxSimulatedExecutorHandle executor)`
 
 ### live_queue_position
 
