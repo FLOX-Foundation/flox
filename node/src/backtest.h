@@ -135,6 +135,12 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                                        &SimulatedExecutorWrap::SetIcebergRefreshLatency),
                         InstanceMethod("icebergHiddenRemainingRaw",
                                        &SimulatedExecutorWrap::IcebergHiddenRemainingRaw),
+                        InstanceMethod("setIcebergSizeRandomisationPct",
+                                       &SimulatedExecutorWrap::SetIcebergSizeRandomisationPct),
+                        InstanceMethod("setIcebergPriorityMode",
+                                       &SimulatedExecutorWrap::SetIcebergPriorityMode),
+                        InstanceMethod("setIcebergJitterSeed",
+                                       &SimulatedExecutorWrap::SetIcebergJitterSeed),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -488,6 +494,21 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     return Napi::Number::New(info.Env(),
                              static_cast<double>(
                                  flox_simulated_executor_iceberg_hidden_remaining_raw(_h, id)));
+  }
+  void SetIcebergSizeRandomisationPct(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_iceberg_size_randomisation_pct(
+        _h, info[0].As<Napi::Number>().DoubleValue());
+  }
+  void SetIcebergPriorityMode(const Napi::CallbackInfo& info)
+  {
+    const std::string mode = info[0].As<Napi::String>().Utf8Value();
+    flox_simulated_executor_set_iceberg_priority_mode(_h, mode == "retain" ? 1 : 0);
+  }
+  void SetIcebergJitterSeed(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_set_iceberg_jitter_seed(
+        _h, static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value()));
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;

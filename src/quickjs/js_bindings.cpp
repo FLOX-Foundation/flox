@@ -1393,6 +1393,49 @@ static JSValue js_executor_iceberg_hidden_remaining_raw(JSContext* ctx, JSValueC
                               static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                               static_cast<uint64_t>(toInt64(ctx, argv[1]))));
 }
+static JSValue js_executor_set_iceberg_size_randomisation_pct(JSContext* ctx,
+                                                              JSValueConst, int,
+                                                              JSValueConst* argv)
+{
+  double pct = 0.0;
+  JS_ToFloat64(ctx, &pct, argv[1]);
+  flox_simulated_executor_set_iceberg_size_randomisation_pct(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), pct);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_iceberg_priority_mode(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  uint8_t code = 0;
+  if (JS_IsString(argv[1]))
+  {
+    const char* s = JS_ToCString(ctx, argv[1]);
+    if (s != nullptr)
+    {
+      std::string name(s);
+      JS_FreeCString(ctx, s);
+      if (name == "retain")
+      {
+        code = 1;
+      }
+    }
+  }
+  else
+  {
+    code = static_cast<uint8_t>(toUint32(ctx, argv[1]));
+  }
+  flox_simulated_executor_set_iceberg_priority_mode(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), code);
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_set_iceberg_jitter_seed(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  flox_simulated_executor_set_iceberg_jitter_seed(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint64_t>(toInt64(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
@@ -6168,6 +6211,12 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_set_iceberg_refresh_latency, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_iceberg_hidden_remaining_raw",
                 js_executor_iceberg_hidden_remaining_raw, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_size_randomisation_pct",
+                js_executor_set_iceberg_size_randomisation_pct, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_priority_mode",
+                js_executor_set_iceberg_priority_mode, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_jitter_seed",
+                js_executor_set_iceberg_jitter_seed, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);

@@ -1672,7 +1672,10 @@ Members:
 - `set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_default_slippage(self, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `set_fok_mode(self, mode: str) -> None`
+- `set_iceberg_jitter_seed(self, seed: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `set_iceberg_priority_mode(self, mode: str) -> None`
 - `set_iceberg_refresh_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `set_iceberg_size_randomisation_pct(self, pct: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_lmm_bonus_multiplier(self, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_lmm_orders(self, ids: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex]) -> None`
 - `set_order_priority_multiplier(self, order_id: typing.SupportsInt | typing.SupportsIndex, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None`

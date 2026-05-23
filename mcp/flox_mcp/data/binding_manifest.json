@@ -2830,7 +2830,22 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_jitter_seed"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_priority_mode"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_set_iceberg_refresh_latency"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_size_randomisation_pct"
         },
         {
           "group": "backtest_slippage",
@@ -6053,7 +6068,19 @@
         },
         {
           "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_jitter_seed"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_priority_mode"
+        },
+        {
+          "kind": "function",
           "name": "flox_simulated_executor_set_iceberg_refresh_latency"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_iceberg_size_randomisation_pct"
         },
         {
           "kind": "function",
@@ -9774,7 +9801,10 @@
         "flox_simulated_executor_on_bar",
         "flox_simulated_executor_on_trade",
         "flox_simulated_executor_set_bracket_child_arm_mode",
+        "flox_simulated_executor_set_iceberg_jitter_seed",
+        "flox_simulated_executor_set_iceberg_priority_mode",
         "flox_simulated_executor_set_iceberg_refresh_latency",
+        "flox_simulated_executor_set_iceberg_size_randomisation_pct",
         "flox_simulated_executor_submit_bracket",
         "flox_simulated_executor_submit_iceberg",
         "flox_simulated_executor_submit_order",

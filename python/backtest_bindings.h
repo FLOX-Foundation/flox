@@ -261,6 +261,18 @@ class PySimulatedExecutor
   {
     _executor.setIcebergRefreshLatency(latencyNs);
   }
+  void setIcebergSizeRandomisationPct(double pct)
+  {
+    _executor.setIcebergSizeRandomisationPct(pct);
+  }
+  void setIcebergPriorityMode(const std::string& mode)
+  {
+    _executor.setIcebergPriorityModeByName(mode);
+  }
+  void setIcebergJitterSeed(uint64_t seed)
+  {
+    _executor.setIcebergJitterSeed(seed);
+  }
 
   int64_t icebergHiddenRemainingRaw(uint64_t id) const
   {
@@ -694,6 +706,19 @@ inline void bindBacktest(py::module_& m)
            &PySimulatedExecutor::icebergHiddenRemainingRaw,
            "Remaining hidden quantity (raw fixed-point) for an iceberg order.",
            py::arg("order_id"))
+      .def("set_iceberg_size_randomisation_pct",
+           &PySimulatedExecutor::setIcebergSizeRandomisationPct,
+           "Per-refresh size jitter as a fraction (0.0 deterministic, "
+           "0.10 = ±10% uniform).",
+           py::arg("pct"))
+      .def("set_iceberg_priority_mode",
+           &PySimulatedExecutor::setIcebergPriorityMode,
+           "Queue priority on refresh: 'back' (default) or 'retain' (CME-style).",
+           py::arg("mode"))
+      .def("set_iceberg_jitter_seed",
+           &PySimulatedExecutor::setIcebergJitterSeed,
+           "Seed the size-jitter RNG for reproducible refresh sequences.",
+           py::arg("seed"))
       .def("on_bar", &PySimulatedExecutor::onBar,
            "Feed a bar close price for order matching",
            py::arg("symbol"), py::arg("close_price"))

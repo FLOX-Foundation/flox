@@ -671,6 +671,24 @@ extern "C"
   FLOX_EXPORT(group = "simulated_executor")
   int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(
       FloxSimulatedExecutorHandle executor, uint64_t id);
+
+  // T041: per-refresh visible-slice size jitter as a fraction
+  // (0.0 = deterministic, 0.10 = ±10% uniform). Default 0.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_set_iceberg_size_randomisation_pct(
+      FloxSimulatedExecutorHandle executor, double pct);
+
+  // T041: queue priority on refresh. 0=Back (default, T029 behaviour),
+  // 1=Retain (CME options).
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_set_iceberg_priority_mode(
+      FloxSimulatedExecutorHandle executor, uint8_t mode);
+
+  // T041: seed the size-jitter RNG for reproducible refresh
+  // sequences. Default seed is fixed at construction time.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_set_iceberg_jitter_seed(
+      FloxSimulatedExecutorHandle executor, uint64_t seed);
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   FLOX_EXPORT(group = "simulated_executor")
