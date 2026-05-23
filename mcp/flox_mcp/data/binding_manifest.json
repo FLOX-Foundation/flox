@@ -8304,6 +8304,45 @@
     }
   },
   "groups": {
+    "account": {
+      "capi_functions": [
+        "flox_account_add_equity",
+        "flox_account_close_position",
+        "flox_account_create",
+        "flox_account_destroy",
+        "flox_account_equity",
+        "flox_account_id",
+        "flox_account_margin_mode",
+        "flox_account_open_position",
+        "flox_account_position_count",
+        "flox_account_record_fill",
+        "flox_account_reset_rolling",
+        "flox_account_rolling_notional_30d",
+        "flox_account_set_equity",
+        "flox_account_set_margin_mode",
+        "flox_account_set_mark",
+        "flox_account_total_notional",
+        "flox_account_total_unrealised_pnl"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "Account"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "Account"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
     "additional_bar": {
       "capi_functions": [
         "flox_aggregate_range_bars",
