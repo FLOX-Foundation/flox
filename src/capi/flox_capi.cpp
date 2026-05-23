@@ -1171,6 +1171,14 @@ uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle h, uin
       static_cast<FloxSimulatedExecutorImpl*>(h)->executor.bracketStatus(bracket_id).state);
 }
 
+void flox_simulated_executor_set_bracket_child_arm_mode(FloxSimulatedExecutorHandle h,
+                                                        uint8_t mode)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setBracketChildArmMode(
+      mode == 1 ? SimulatedExecutor::BracketArmMode::OnPartialFill
+                : SimulatedExecutor::BracketArmMode::OnFullFill);
+}
+
 void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);

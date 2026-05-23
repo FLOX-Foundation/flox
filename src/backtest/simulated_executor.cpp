@@ -880,20 +880,60 @@ void SimulatedExecutor::onBracketFillEvent(const Order& filledOrder)
   auto& st = stIt->second;
   const BracketOrder& tpl = tplIt->second;
 
-  if (filledOrder.id == st.entryOrderId &&
-      st.state == BracketState::PENDING_ENTRY &&
-      filledOrder.filledQuantity.raw() >= filledOrder.quantity.raw())
+  if (filledOrder.id == st.entryOrderId)
   {
-    // Entry fully filled: submit TP + stop scaled to the actual
-    // entry fill (matches partial-fill semantics in real venues).
-    st.entryFilled = filledOrder.filledQuantity;
-    st.state = BracketState::ENTRY_FILLED;
-    _legToBracket[st.tpOrderId] = bracketId;
-    _legToBracket[st.stopOrderId] = bracketId;
-    submitOrder(legToOrder(tpl.takeProfit, st.tpOrderId, tpl.symbol,
-                           st.entryFilled));
-    submitOrder(legToOrder(tpl.stop, st.stopOrderId, tpl.symbol,
-                           st.entryFilled));
+    const bool entryFullyFilled =
+        filledOrder.filledQuantity.raw() >= filledOrder.quantity.raw();
+
+    if (_bracketArmMode == BracketArmMode::OnFullFill)
+    {
+      if (st.state != BracketState::PENDING_ENTRY || !entryFullyFilled)
+      {
+        return;
+      }
+      // Entry fully filled: submit TP + stop scaled to the actual
+      // entry fill quantity.
+      st.entryFilled = filledOrder.filledQuantity;
+      st.state = BracketState::ENTRY_FILLED;
+      _legToBracket[st.tpOrderId] = bracketId;
+      _legToBracket[st.stopOrderId] = bracketId;
+      submitOrder(legToOrder(tpl.takeProfit, st.tpOrderId, tpl.symbol,
+                             st.entryFilled));
+      submitOrder(legToOrder(tpl.stop, st.stopOrderId, tpl.symbol,
+                             st.entryFilled));
+      return;
+    }
+
+    // T040 OnPartialFill mode: arm / resize children incrementally
+    // on every partial fill.
+    if (st.state == BracketState::PENDING_ENTRY)
+    {
+      // First fill (partial or full): arm both children at the
+      // current entry-fill quantity.
+      st.entryFilled = filledOrder.filledQuantity;
+      st.state = BracketState::ENTRY_FILLED;
+      _legToBracket[st.tpOrderId] = bracketId;
+      _legToBracket[st.stopOrderId] = bracketId;
+      submitOrder(legToOrder(tpl.takeProfit, st.tpOrderId, tpl.symbol,
+                             st.entryFilled));
+      submitOrder(legToOrder(tpl.stop, st.stopOrderId, tpl.symbol,
+                             st.entryFilled));
+      return;
+    }
+    if (st.state == BracketState::ENTRY_FILLED &&
+        filledOrder.filledQuantity.raw() > st.entryFilled.raw())
+    {
+      // Subsequent partial / final fill: resize children to the new
+      // entry-fill quantity via replace.
+      st.entryFilled = filledOrder.filledQuantity;
+      Order tpReplace = legToOrder(tpl.takeProfit, st.tpOrderId,
+                                   tpl.symbol, st.entryFilled);
+      Order stopReplace = legToOrder(tpl.stop, st.stopOrderId,
+                                     tpl.symbol, st.entryFilled);
+      replaceOrder(st.tpOrderId, tpReplace);
+      replaceOrder(st.stopOrderId, stopReplace);
+      return;
+    }
     return;
   }
 
@@ -1295,6 +1335,13 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
     resolveLateCancelOnFill(order);
     resolveLateReplaceOnFill(order);
     _compositeLogic.onOrderFilled(order);
+    onBracketFillEvent(order);
+  }
+  else if (ev.status == OrderEventStatus::PARTIALLY_FILLED)
+  {
+    // Bracket child-arm mode "on_partial_fill" arms / resizes
+    // children on every partial entry fill; OnFullFill mode
+    // returns early in the handler.
     onBracketFillEvent(order);
   }
 }

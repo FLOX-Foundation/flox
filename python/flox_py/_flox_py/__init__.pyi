@@ -2387,6 +2387,10 @@ class SimulatedExecutor:
         """
         Feed a trade with quantity (enables queue-fill simulation)
         """
+    def set_bracket_child_arm_mode(self, mode: str) -> None:
+        """
+        Child-arm policy: 'on_full_fill' (default) arms TP+stop once on full entry fill; 'on_partial_fill' arms / resizes children incrementally on every partial.
+        """
     def set_cancel_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
     def set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None:

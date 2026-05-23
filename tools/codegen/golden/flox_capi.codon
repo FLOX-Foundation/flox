@@ -651,6 +651,7 @@ from C import flox_simulated_executor_submit_order_ex(cobj, u64, u8, float, floa
 from C import flox_simulated_executor_submit_bracket(cobj, u64, u32, u8, u8, float, float, u8, u8, float, u8, u8, float)
 from C import flox_simulated_executor_cancel_bracket(cobj, u64)
 from C import flox_simulated_executor_bracket_state(cobj, u64) -> u8
+from C import flox_simulated_executor_set_bracket_child_arm_mode(cobj, u8)
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, float)

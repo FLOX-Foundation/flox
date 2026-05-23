@@ -643,6 +643,11 @@ extern "C"
   uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor,
                                                 uint64_t bracket_id);
 
+  // Bracket child-arm policy (T040). 0=OnFullFill (default), 1=OnPartialFill.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_set_bracket_child_arm_mode(
+      FloxSimulatedExecutorHandle executor, uint8_t mode);
+
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   FLOX_EXPORT(group = "simulated_executor")

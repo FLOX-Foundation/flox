@@ -1360,6 +1360,14 @@ static JSValue js_executor_bracket_state(JSContext* ctx, JSValueConst, int,
                                static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                static_cast<uint64_t>(toInt64(ctx, argv[1]))));
 }
+static JSValue js_executor_set_bracket_child_arm_mode(JSContext* ctx, JSValueConst, int,
+                                                      JSValueConst* argv)
+{
+  flox_simulated_executor_set_bracket_child_arm_mode(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      static_cast<uint8_t>(toUint32(ctx, argv[1])));
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
@@ -5822,6 +5830,8 @@ void registerFloxBindings(JSContext* ctx)
                 js_executor_cancel_bracket, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_bracket_state",
                 js_executor_bracket_state, 2);
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_bracket_child_arm_mode",
+                js_executor_set_bracket_child_arm_mode, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);
