@@ -34,6 +34,9 @@ NEXT_STEPS = (
      'where strategy / data / backtest live in a flox project'),
     ('record tape',
      'capture market data into a `.floxlog`, including historical backfill'),
+    ('realistic backtest',
+     'wire a venue-realistic backtest (fees + funding + liquidation + '
+     'rate limits) in one call via `flox.VenueStack.binance_um_futures(...)`'),
     ('backtest',
      'drive the strategy off a recorded tape'),
 )
