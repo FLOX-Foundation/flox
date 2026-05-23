@@ -868,6 +868,10 @@ export class SimulatedExecutor {
   bracketState(
     bracketId: number,
   ): 'pending_entry' | 'entry_filled' | 'tp_filled' | 'stop_filled' | 'canceled';
+  /** Bracket child-arm policy: 'on_full_fill' (default) arms TP+stop
+   *  once on full entry fill; 'on_partial_fill' arms / resizes
+   *  children incrementally on every partial entry fill. */
+  setBracketChildArmMode(mode: 'on_full_fill' | 'on_partial_fill'): void;
   readonly fillCount: number;
 }
 

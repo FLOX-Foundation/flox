@@ -2728,6 +2728,11 @@
           "name": "flox_simulated_executor_on_trade_qty"
         },
         {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_set_bracket_child_arm_mode"
+        },
+        {
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_set_cancel_ack_latency"
@@ -5810,6 +5815,10 @@
         {
           "kind": "function",
           "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "kind": "function",
+          "name": "flox_simulated_executor_set_bracket_child_arm_mode"
         },
         {
           "kind": "function",
@@ -9455,6 +9464,7 @@
         "flox_simulated_executor_fill_count",
         "flox_simulated_executor_on_bar",
         "flox_simulated_executor_on_trade",
+        "flox_simulated_executor_set_bracket_child_arm_mode",
         "flox_simulated_executor_submit_bracket",
         "flox_simulated_executor_submit_order",
         "flox_simulated_executor_submit_order_ex"

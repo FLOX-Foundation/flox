@@ -1984,6 +1984,8 @@ extern "C"
                                               uint64_t bracket_id);
   uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor,
                                                 uint64_t bracket_id);
+  void flox_simulated_executor_set_bracket_child_arm_mode(FloxSimulatedExecutorHandle executor,
+                                                          uint8_t mode);
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,

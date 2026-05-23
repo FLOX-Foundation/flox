@@ -207,6 +207,13 @@ class PySimulatedExecutor
     _executor.submitBracket(b);
   }
   void cancelBracket(uint64_t bracketId) { _executor.cancelBracket(bracketId); }
+  void setBracketChildArmMode(const std::string& mode)
+  {
+    _executor.setBracketChildArmMode(
+        mode == "on_partial_fill"
+            ? SimulatedExecutor::BracketArmMode::OnPartialFill
+            : SimulatedExecutor::BracketArmMode::OnFullFill);
+  }
   std::string bracketState(uint64_t bracketId) const
   {
     auto st = _executor.bracketStatus(bracketId).state;
@@ -598,6 +605,12 @@ inline void bindBacktest(py::module_& m)
            py::arg("stop_side"), py::arg("stop_type"), py::arg("stop_trigger_price"))
       .def("cancel_bracket", &PySimulatedExecutor::cancelBracket,
            py::arg("bracket_id"))
+      .def("set_bracket_child_arm_mode",
+           &PySimulatedExecutor::setBracketChildArmMode,
+           "Child-arm policy: 'on_full_fill' (default) arms TP+stop once on "
+           "full entry fill; 'on_partial_fill' arms / resizes children "
+           "incrementally on every partial.",
+           py::arg("mode"))
       .def("bracket_state", &PySimulatedExecutor::bracketState,
            "Bracket state: pending_entry | entry_filled | tp_filled | stop_filled | canceled.",
            py::arg("bracket_id"))

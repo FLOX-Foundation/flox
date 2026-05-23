@@ -23,6 +23,7 @@ from C import flox_simulated_executor_set_queue_model(cobj, i32, u32)
 from C import flox_simulated_executor_submit_bracket(cobj, u64, u32, u8, u8, float, float, u8, u8, float, u8, u8, float)
 from C import flox_simulated_executor_cancel_bracket(cobj, u64)
 from C import flox_simulated_executor_bracket_state(cobj, u64) -> u8
+from C import flox_simulated_executor_set_bracket_child_arm_mode(cobj, u8)
 from C import flox_simulated_executor_set_queue_fifo_top_n(cobj, u32)
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
@@ -352,6 +353,11 @@ class SimulatedExecutor:
         s = int(flox_simulated_executor_bracket_state(self._handle, u64(bracket_id)))
         names = ["pending_entry", "entry_filled", "tp_filled", "stop_filled", "canceled"]
         return names[s] if 0 <= s < len(names) else "pending_entry"
+
+    def set_bracket_child_arm_mode(self, mode: str):
+        """Mode: 'on_full_fill' (default) | 'on_partial_fill'."""
+        v = 1 if mode == "on_partial_fill" else 0
+        flox_simulated_executor_set_bracket_child_arm_mode(self._handle, u8(v))
 
     def set_queue_fifo_top_n(self, top_n: int):
         flox_simulated_executor_set_queue_fifo_top_n(self._handle, u32(top_n))

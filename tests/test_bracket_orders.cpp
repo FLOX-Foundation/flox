@@ -158,3 +158,43 @@ TEST(BracketOrders, BracketStatusReturnsEmptyForUnknownId)
   EXPECT_EQ(st.bracketId, 0u);
   EXPECT_EQ(st.state, BracketState::PENDING_ENTRY);
 }
+
+// === T040: child-arm modes ===
+
+TEST(BracketOrders, OnFullFillModeIsDefault)
+{
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  EXPECT_EQ(ex.bracketChildArmMode(),
+            SimulatedExecutor::BracketArmMode::OnFullFill);
+}
+
+TEST(BracketOrders, ArmModeSwitchesAtRuntime)
+{
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  ex.setBracketChildArmMode(SimulatedExecutor::BracketArmMode::OnPartialFill);
+  EXPECT_EQ(ex.bracketChildArmMode(),
+            SimulatedExecutor::BracketArmMode::OnPartialFill);
+  ex.setBracketChildArmMode(SimulatedExecutor::BracketArmMode::OnFullFill);
+  EXPECT_EQ(ex.bracketChildArmMode(),
+            SimulatedExecutor::BracketArmMode::OnFullFill);
+}
+
+TEST(BracketOrders, OnPartialFillPreservesHappyPath)
+{
+  // Mode toggle must not break full-fill happy path.
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  Capture cap;
+  wire(ex, cap);
+  ex.setBracketChildArmMode(SimulatedExecutor::BracketArmMode::OnPartialFill);
+
+  BracketOrder b = makeBracket(10, 100.0, 110.0, 90.0, 1.0);
+  ex.submitBracket(b);
+  ex.onBar(BTC, Price::fromDouble(100.0));
+  EXPECT_EQ(ex.bracketStatus(10).state, BracketState::ENTRY_FILLED);
+
+  ex.onBar(BTC, Price::fromDouble(110.0));
+  EXPECT_EQ(ex.bracketStatus(10).state, BracketState::TP_FILLED);
+}

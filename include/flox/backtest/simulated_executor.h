@@ -342,6 +342,22 @@ class SimulatedExecutor : public IOrderExecutor
   std::unordered_map<OrderId, uint64_t> _legToBracket;
   std::unordered_map<uint64_t, BracketOrder> _bracketTemplates;
   void onBracketFillEvent(const Order& filledOrder);
+
+ public:
+  // T040: child-arm policy. "on_full_fill" (default) arms TP+stop
+  // once at the moment of full entry fill. "on_partial_fill" arms
+  // children at the running entry-fill quantity on every partial,
+  // resizing via replace as more entry quantity fills.
+  enum class BracketArmMode : uint8_t
+  {
+    OnFullFill = 0,
+    OnPartialFill = 1,
+  };
+  void setBracketChildArmMode(BracketArmMode mode) noexcept { _bracketArmMode = mode; }
+  BracketArmMode bracketChildArmMode() const noexcept { return _bracketArmMode; }
+
+ private:
+  BracketArmMode _bracketArmMode{BracketArmMode::OnFullFill};
 };
 
 }  // namespace flox

@@ -120,6 +120,8 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                                        &SimulatedExecutorWrap::CancelBracket),
                         InstanceMethod("bracketState",
                                        &SimulatedExecutorWrap::BracketState),
+                        InstanceMethod("setBracketChildArmMode",
+                                       &SimulatedExecutorWrap::SetBracketChildArmMode),
                         InstanceAccessor("fillCount", &SimulatedExecutorWrap::FillCount, nullptr)});
   }
 
@@ -381,6 +383,12 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     const char* names[] = {"pending_entry", "entry_filled", "tp_filled",
                            "stop_filled", "canceled"};
     return Napi::String::New(info.Env(), s < 5 ? names[s] : "pending_entry");
+  }
+  void SetBracketChildArmMode(const Napi::CallbackInfo& info)
+  {
+    const std::string mode = info[0].As<Napi::String>().Utf8Value();
+    flox_simulated_executor_set_bracket_child_arm_mode(
+        _h, mode == "on_partial_fill" ? 1 : 0);
   }
   Napi::Value FillCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_simulated_executor_fill_count(_h)); }
   FloxSimulatedExecutorHandle _h;
