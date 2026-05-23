@@ -107,6 +107,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_funding_aware_perp_strategy.py",
+      "sha256": "71a23eda62f84ddd74436aeda74adf0b809bdcf575f6552399805835414b4fc6",
+      "size_bytes": 1695,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_funding_schedule.py",
       "sha256": "dd58c2bcbb09f3016a1ba7bc307c1a5345786a85097f963b485ea0f144ee17de",
       "size_bytes": 965,
@@ -170,6 +177,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_multi_symbol_cross_margin.py",
+      "sha256": "879831337535e7dfe44a46345857f2f1b6ff47aaa7b60652f05872e4760a380f",
+      "size_bytes": 2072,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_okx_archive.py",
       "sha256": "776c7cd4df2d4bc02f44af163c128b5cec90b19cc416f0352c6324fd0aeabfea",
       "size_bytes": 1928,
@@ -198,10 +212,24 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_rate_limit_aware_market_maker.py",
+      "sha256": "1e43b14c8395324851847d2dd12e1e4abd8fcedad75084c0e60580ba56346e95",
+      "size_bytes": 2159,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_rate_limit_policy.py",
       "sha256": "79e0aa16a32263f839173fce00b76259495278d16db5b91bd0e85f47c04b4dda",
       "size_bytes": 722,
       "topic": "strategy"
+    },
+    {
+      "language": "python",
+      "path": "docs/examples/python_realistic_backtest.py",
+      "sha256": "060dd80cf14951da75380c16ff9fb60104e471c7b0de5a03e6d6c2505cb39e5c",
+      "size_bytes": 2290,
+      "topic": "backtest"
     },
     {
       "language": "python",
