@@ -79,9 +79,26 @@ Default grids cover 10s..10m half-life and 0.50..0.99 shrink
 factor. Pass `half_life_grid_ns=[...]` / `shrink_grid=[...]` to
 `fit()` to refine around a found minimum.
 
-For continuous online calibration or scipy-based fitting, wrap the
-public `record_sample` surface in your own loop — the toolkit is
-deliberately dependency-free so flox_py stays light.
+## Fit methods
+
+`fit(method=...)` picks the optimiser. Choose based on the
+trade-off between dependencies and precision:
+
+| method          | dependencies | result quality                                | when to use                       |
+|-----------------|--------------|-----------------------------------------------|-----------------------------------|
+| `grid` (default)| none         | lands on grid point; RMSE ≈ grid spacing      | quick first pass, no extra deps  |
+| `scipy`         | scipy        | continuous; RMSE ≤ grid (bootstrapped from grid)| precise off-grid fits           |
+| `analytical`    | none         | closed-form when every sample shares `shrink_events`; exact on noiseless data | stationary scenarios with uniform shrink |
+
+```python
+result = cal.fit(method="grid")        # default
+result = cal.fit(method="scipy")       # continuous; raises clear error if scipy missing
+result = cal.fit(method="analytical")  # closed form; raises if shrink_events varies
+```
+
+`scipy` is imported lazily — the toolkit stays dependency-free for
+the default path. `analytical` raises with guidance pointing you to
+`grid` or `scipy` when its preconditions don't hold.
 
 ## Export / import
 
