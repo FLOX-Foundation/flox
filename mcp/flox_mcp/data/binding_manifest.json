@@ -3100,6 +3100,21 @@
         {
           "group": "venue_availability",
           "kind": "function",
+          "name": "flox_venue_availability_book_updates_allowed"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
+          "name": "flox_venue_availability_cancels_allowed"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
+          "name": "flox_venue_availability_consume_wrong_side_recovery_bps"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
           "name": "flox_venue_availability_create"
         },
         {
@@ -3115,7 +3130,27 @@
         {
           "group": "venue_availability",
           "kind": "function",
+          "name": "flox_venue_availability_latency_multiplier"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
           "name": "flox_venue_availability_schedule_outage"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
+          "name": "flox_venue_availability_schedule_outage_ex"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
+          "name": "flox_venue_availability_submits_allowed"
+        },
+        {
+          "group": "venue_availability",
+          "kind": "function",
+          "name": "flox_venue_availability_trades_allowed"
         },
         {
           "group": "tape_aggregator",
@@ -6189,6 +6224,18 @@
         },
         {
           "kind": "function",
+          "name": "flox_venue_availability_book_updates_allowed"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_availability_cancels_allowed"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_availability_consume_wrong_side_recovery_bps"
+        },
+        {
+          "kind": "function",
           "name": "flox_venue_availability_create"
         },
         {
@@ -6201,7 +6248,23 @@
         },
         {
           "kind": "function",
+          "name": "flox_venue_availability_latency_multiplier"
+        },
+        {
+          "kind": "function",
           "name": "flox_venue_availability_schedule_outage"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_availability_schedule_outage_ex"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_availability_submits_allowed"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_availability_trades_allowed"
         },
         {
           "kind": "function",
@@ -9929,10 +9992,17 @@
       "capi_functions": [
         "flox_simulated_executor_set_venue_availability",
         "flox_venue_availability_auto_random_outages",
+        "flox_venue_availability_book_updates_allowed",
+        "flox_venue_availability_cancels_allowed",
+        "flox_venue_availability_consume_wrong_side_recovery_bps",
         "flox_venue_availability_create",
         "flox_venue_availability_destroy",
         "flox_venue_availability_is_up",
-        "flox_venue_availability_schedule_outage"
+        "flox_venue_availability_latency_multiplier",
+        "flox_venue_availability_schedule_outage",
+        "flox_venue_availability_schedule_outage_ex",
+        "flox_venue_availability_submits_allowed",
+        "flox_venue_availability_trades_allowed"
       ],
       "codon": {
         "present": true,

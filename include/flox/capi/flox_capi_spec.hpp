@@ -1496,6 +1496,35 @@ extern "C"
                                                int64_t start_ns, int64_t duration_ns,
                                                uint8_t policy, int64_t gtc_ttl_ns);
 
+  // Extended schedule with outage pathology. outage_type:
+  // 0=Total (legacy), 1=SubmitOnlyDown, 2=CancelOnlyDown,
+  // 3=SlowDegradation, 4=StaleBook, 5=WrongSideRecovery.
+  FLOX_EXPORT(group = "venue_availability")
+  void flox_venue_availability_schedule_outage_ex(
+      FloxVenueAvailabilityHandle h, int64_t start_ns, int64_t duration_ns,
+      uint8_t outage_type, uint8_t policy, int64_t gtc_ttl_ns,
+      double degradation_latency_multiplier, double wrong_side_recovery_bps);
+
+  // Per-action / per-feed gates.
+  FLOX_EXPORT(group = "venue_availability")
+  uint8_t flox_venue_availability_submits_allowed(FloxVenueAvailabilityHandle h,
+                                                  int64_t now_ns);
+  FLOX_EXPORT(group = "venue_availability")
+  uint8_t flox_venue_availability_cancels_allowed(FloxVenueAvailabilityHandle h,
+                                                  int64_t now_ns);
+  FLOX_EXPORT(group = "venue_availability")
+  uint8_t flox_venue_availability_book_updates_allowed(FloxVenueAvailabilityHandle h,
+                                                       int64_t now_ns);
+  FLOX_EXPORT(group = "venue_availability")
+  uint8_t flox_venue_availability_trades_allowed(FloxVenueAvailabilityHandle h,
+                                                 int64_t now_ns);
+  FLOX_EXPORT(group = "venue_availability")
+  double flox_venue_availability_latency_multiplier(FloxVenueAvailabilityHandle h,
+                                                    int64_t now_ns);
+  FLOX_EXPORT(group = "venue_availability")
+  double flox_venue_availability_consume_wrong_side_recovery_bps(
+      FloxVenueAvailabilityHandle h);
+
   // Enable Poisson random outages. per_day is the expected number of
   // outages per UTC day; mean_duration_ns is the mean exponential
   // duration. seed makes sampling reproducible.

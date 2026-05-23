@@ -1741,6 +1741,73 @@ static JSValue js_venue_availability_is_up(JSContext* ctx, JSValueConst, int,
       toInt64(ctx, argv[1]));
   return JS_NewBool(ctx, up != 0);
 }
+static JSValue js_venue_availability_schedule_outage_ex(JSContext* ctx, JSValueConst,
+                                                        int, JSValueConst* argv)
+{
+  // (handle, start_ns, duration_ns, outage_type, policy, gtc_ttl_ns,
+  //  degradation_latency_multiplier, wrong_side_recovery_bps)
+  auto h = static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0]));
+  const int64_t start = toInt64(ctx, argv[1]);
+  const int64_t dur = toInt64(ctx, argv[2]);
+  const uint8_t outageType = static_cast<uint8_t>(toUint32(ctx, argv[3]));
+  const uint8_t policy = static_cast<uint8_t>(toUint32(ctx, argv[4]));
+  const int64_t ttl = toInt64(ctx, argv[5]);
+  double degr = 1.0;
+  JS_ToFloat64(ctx, &degr, argv[6]);
+  double wsBps = 0.0;
+  JS_ToFloat64(ctx, &wsBps, argv[7]);
+  flox_venue_availability_schedule_outage_ex(h, start, dur, outageType, policy, ttl,
+                                             degr, wsBps);
+  return JS_UNDEFINED;
+}
+static JSValue js_venue_availability_submits_allowed(JSContext* ctx, JSValueConst,
+                                                     int, JSValueConst* argv)
+{
+  const uint8_t v = flox_venue_availability_submits_allowed(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_NewBool(ctx, v != 0);
+}
+static JSValue js_venue_availability_cancels_allowed(JSContext* ctx, JSValueConst,
+                                                     int, JSValueConst* argv)
+{
+  const uint8_t v = flox_venue_availability_cancels_allowed(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_NewBool(ctx, v != 0);
+}
+static JSValue js_venue_availability_book_updates_allowed(JSContext* ctx, JSValueConst,
+                                                          int, JSValueConst* argv)
+{
+  const uint8_t v = flox_venue_availability_book_updates_allowed(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_NewBool(ctx, v != 0);
+}
+static JSValue js_venue_availability_trades_allowed(JSContext* ctx, JSValueConst,
+                                                    int, JSValueConst* argv)
+{
+  const uint8_t v = flox_venue_availability_trades_allowed(
+      static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+      toInt64(ctx, argv[1]));
+  return JS_NewBool(ctx, v != 0);
+}
+static JSValue js_venue_availability_latency_multiplier(JSContext* ctx, JSValueConst,
+                                                        int, JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx,
+      flox_venue_availability_latency_multiplier(
+          static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0])),
+          toInt64(ctx, argv[1])));
+}
+static JSValue js_venue_availability_consume_wrong_side_recovery_bps(
+    JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, flox_venue_availability_consume_wrong_side_recovery_bps(
+               static_cast<FloxVenueAvailabilityHandle>(getHandle(ctx, argv[0]))));
+}
 static JSValue js_executor_set_venue_availability(JSContext* ctx, JSValueConst, int,
                                                   JSValueConst* argv)
 {
@@ -6068,6 +6135,20 @@ void registerFloxBindings(JSContext* ctx)
                 js_venue_availability_create, 0);
   addGlobalFunc(ctx, "__flox_venue_availability_destroy",
                 js_venue_availability_destroy, 1);
+  addGlobalFunc(ctx, "__flox_venue_availability_schedule_outage_ex",
+                js_venue_availability_schedule_outage_ex, 8);
+  addGlobalFunc(ctx, "__flox_venue_availability_submits_allowed",
+                js_venue_availability_submits_allowed, 2);
+  addGlobalFunc(ctx, "__flox_venue_availability_cancels_allowed",
+                js_venue_availability_cancels_allowed, 2);
+  addGlobalFunc(ctx, "__flox_venue_availability_book_updates_allowed",
+                js_venue_availability_book_updates_allowed, 2);
+  addGlobalFunc(ctx, "__flox_venue_availability_trades_allowed",
+                js_venue_availability_trades_allowed, 2);
+  addGlobalFunc(ctx, "__flox_venue_availability_latency_multiplier",
+                js_venue_availability_latency_multiplier, 2);
+  addGlobalFunc(ctx, "__flox_venue_availability_consume_wrong_side_recovery_bps",
+                js_venue_availability_consume_wrong_side_recovery_bps, 1);
   addGlobalFunc(ctx, "__flox_venue_availability_schedule_outage",
                 js_venue_availability_schedule_outage, 5);
   addGlobalFunc(ctx, "__flox_venue_availability_auto_random_outages",

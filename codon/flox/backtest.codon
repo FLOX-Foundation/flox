@@ -45,8 +45,15 @@ from C import flox_simulated_executor_clear_rate_limit_policy(cobj)
 from C import flox_venue_availability_create() -> cobj
 from C import flox_venue_availability_destroy(cobj)
 from C import flox_venue_availability_schedule_outage(cobj, i64, i64, u8, i64)
+from C import flox_venue_availability_schedule_outage_ex(cobj, i64, i64, u8, u8, i64, f64, f64)
 from C import flox_venue_availability_auto_random_outages(cobj, f64, i64, u8, u64)
 from C import flox_venue_availability_is_up(cobj, i64) -> u8
+from C import flox_venue_availability_submits_allowed(cobj, i64) -> u8
+from C import flox_venue_availability_cancels_allowed(cobj, i64) -> u8
+from C import flox_venue_availability_book_updates_allowed(cobj, i64) -> u8
+from C import flox_venue_availability_trades_allowed(cobj, i64) -> u8
+from C import flox_venue_availability_latency_multiplier(cobj, i64) -> f64
+from C import flox_venue_availability_consume_wrong_side_recovery_bps(cobj) -> f64
 from C import flox_simulated_executor_set_venue_availability(cobj, cobj)
 from C import flox_simulated_executor_set_stp_mode(cobj, u8)
 from C import flox_simulated_executor_set_fok_mode(cobj, u8)
@@ -168,6 +175,37 @@ class VenueAvailability:
 
     def is_up(self, now_ns: int) -> bool:
         return int(flox_venue_availability_is_up(self._h, i64(now_ns))) != 0
+
+    def schedule_outage_ex(self, start_ns: int, duration_ns: int,
+                           outage_type: int = 0, on_open_orders: int = 0,
+                           gtc_ttl_ns: int = 0,
+                           degradation_latency_multiplier: float = 1.0,
+                           wrong_side_recovery_bps: float = 0.0):
+        """outage_type: 0=Total, 1=SubmitOnlyDown, 2=CancelOnlyDown,
+        3=SlowDegradation, 4=StaleBook, 5=WrongSideRecovery."""
+        flox_venue_availability_schedule_outage_ex(
+            self._h, i64(start_ns), i64(duration_ns), u8(outage_type),
+            u8(on_open_orders), i64(gtc_ttl_ns),
+            f64(degradation_latency_multiplier), f64(wrong_side_recovery_bps))
+
+    def submits_allowed(self, now_ns: int) -> bool:
+        return int(flox_venue_availability_submits_allowed(self._h, i64(now_ns))) != 0
+
+    def cancels_allowed(self, now_ns: int) -> bool:
+        return int(flox_venue_availability_cancels_allowed(self._h, i64(now_ns))) != 0
+
+    def book_updates_allowed(self, now_ns: int) -> bool:
+        return int(flox_venue_availability_book_updates_allowed(
+            self._h, i64(now_ns))) != 0
+
+    def trades_allowed(self, now_ns: int) -> bool:
+        return int(flox_venue_availability_trades_allowed(self._h, i64(now_ns))) != 0
+
+    def latency_multiplier(self, now_ns: int) -> float:
+        return float(flox_venue_availability_latency_multiplier(self._h, i64(now_ns)))
+
+    def consume_wrong_side_recovery_bps(self) -> float:
+        return float(flox_venue_availability_consume_wrong_side_recovery_bps(self._h))
 
     def handle(self) -> cobj:
         return self._h

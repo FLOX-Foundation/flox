@@ -28,6 +28,31 @@ inline uint8_t parseOnOutage(const std::string& s)
   return 0;  // cancel_all
 }
 
+inline uint8_t parseOutageType(const std::string& s)
+{
+  if (s == "submit_only_down" || s == "submit_only")
+  {
+    return 1;
+  }
+  if (s == "cancel_only_down" || s == "cancel_only")
+  {
+    return 2;
+  }
+  if (s == "slow_degradation")
+  {
+    return 3;
+  }
+  if (s == "stale_book")
+  {
+    return 4;
+  }
+  if (s == "wrong_side_recovery")
+  {
+    return 5;
+  }
+  return 0;  // total
+}
+
 class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
 {
  public:
@@ -36,8 +61,18 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
     return DefineClass(
         env, "VenueAvailability",
         {InstanceMethod("scheduleOutage", &VenueAvailabilityWrap::ScheduleOutage),
+         InstanceMethod("scheduleOutageEx", &VenueAvailabilityWrap::ScheduleOutageEx),
          InstanceMethod("autoRandomOutages", &VenueAvailabilityWrap::AutoRandomOutages),
-         InstanceMethod("isUp", &VenueAvailabilityWrap::IsUp)});
+         InstanceMethod("isUp", &VenueAvailabilityWrap::IsUp),
+         InstanceMethod("submitsAllowed", &VenueAvailabilityWrap::SubmitsAllowed),
+         InstanceMethod("cancelsAllowed", &VenueAvailabilityWrap::CancelsAllowed),
+         InstanceMethod("bookUpdatesAllowed",
+                        &VenueAvailabilityWrap::BookUpdatesAllowed),
+         InstanceMethod("tradesAllowed", &VenueAvailabilityWrap::TradesAllowed),
+         InstanceMethod("latencyMultiplier",
+                        &VenueAvailabilityWrap::LatencyMultiplier),
+         InstanceMethod("consumeWrongSideRecoveryBps",
+                        &VenueAvailabilityWrap::ConsumeWrongSideRecoveryBps)});
   }
 
   VenueAvailabilityWrap(const Napi::CallbackInfo& info)
@@ -81,6 +116,58 @@ class VenueAvailabilityWrap : public Napi::ObjectWrap<VenueAvailabilityWrap>
   {
     int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
     return Napi::Boolean::New(info.Env(), flox_venue_availability_is_up(_h, nowNs) != 0);
+  }
+  void ScheduleOutageEx(const Napi::CallbackInfo& info)
+  {
+    int64_t start = info[0].As<Napi::Number>().Int64Value();
+    int64_t duration = info[1].As<Napi::Number>().Int64Value();
+    std::string outageType = info.Length() > 2 && info[2].IsString()
+                                 ? info[2].As<Napi::String>().Utf8Value()
+                                 : "total";
+    std::string policy = info.Length() > 3 && info[3].IsString()
+                             ? info[3].As<Napi::String>().Utf8Value()
+                             : "cancel_all";
+    int64_t ttl = info.Length() > 4 ? info[4].As<Napi::Number>().Int64Value() : 0;
+    double degr = info.Length() > 5 ? info[5].As<Napi::Number>().DoubleValue() : 1.0;
+    double wsBps = info.Length() > 6 ? info[6].As<Napi::Number>().DoubleValue() : 0.0;
+    flox_venue_availability_schedule_outage_ex(
+        _h, start, duration, parseOutageType(outageType), parseOnOutage(policy),
+        ttl, degr, wsBps);
+  }
+  Napi::Value SubmitsAllowed(const Napi::CallbackInfo& info)
+  {
+    int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
+    return Napi::Boolean::New(
+        info.Env(), flox_venue_availability_submits_allowed(_h, nowNs) != 0);
+  }
+  Napi::Value CancelsAllowed(const Napi::CallbackInfo& info)
+  {
+    int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
+    return Napi::Boolean::New(
+        info.Env(), flox_venue_availability_cancels_allowed(_h, nowNs) != 0);
+  }
+  Napi::Value BookUpdatesAllowed(const Napi::CallbackInfo& info)
+  {
+    int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
+    return Napi::Boolean::New(
+        info.Env(), flox_venue_availability_book_updates_allowed(_h, nowNs) != 0);
+  }
+  Napi::Value TradesAllowed(const Napi::CallbackInfo& info)
+  {
+    int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
+    return Napi::Boolean::New(
+        info.Env(), flox_venue_availability_trades_allowed(_h, nowNs) != 0);
+  }
+  Napi::Value LatencyMultiplier(const Napi::CallbackInfo& info)
+  {
+    int64_t nowNs = info[0].As<Napi::Number>().Int64Value();
+    return Napi::Number::New(info.Env(),
+                             flox_venue_availability_latency_multiplier(_h, nowNs));
+  }
+  Napi::Value ConsumeWrongSideRecoveryBps(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(
+        info.Env(), flox_venue_availability_consume_wrong_side_recovery_bps(_h));
   }
 
   FloxVenueAvailabilityHandle _h;

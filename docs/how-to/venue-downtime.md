@@ -131,6 +131,41 @@ feed is gapped). The same `VenueAvailability` instance is the source
 of truth for both the simulator and the strategy, so there is no
 desync.
 
+## Outage pathology variants
+
+`schedule_outage` produces a total outage — everything blocks. Real
+incidents are messier. Use `schedule_outage_ex` to pick a pathology:
+
+| outage_type           | What happens                                                                       |
+|-----------------------|------------------------------------------------------------------------------------|
+| `total` (default)     | Existing behaviour: submit/cancel/replace buffered, market data dropped.            |
+| `submit_only_down`    | Cancels still work, submits buffered until recovery. Common during rolling restarts.|
+| `cancel_only_down`    | Submits still work, cancels buffered.                                              |
+| `slow_degradation`    | Every submit/cancel/replace ack latency multiplied by `degradation_latency_multiplier`. Market data still flows. |
+| `stale_book`          | `onBookUpdate` is dropped during the window; trades continue. Orders match against the frozen book. |
+| `wrong_side_recovery` | On recovery, accumulates `wrong_side_recovery_bps` for the next mark feed (consume via `consume_wrong_side_recovery_bps`). |
+
+=== "Python"
+
+    ```python
+    va.schedule_outage_ex(
+        start_ns=t0, duration_ns=120 * 10**9,
+        outage_type="slow_degradation",
+        degradation_latency_multiplier=50.0,
+    )
+    print(va.latency_multiplier(t0 + 10**9))  # 50.0
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    va.scheduleOutageEx(
+      startNs, durationNs,
+      "stale_book",  // book updates dropped, trades flow
+      "hold",
+    );
+    ```
+
 ## Notes
 
 - Random outages realise lazily on the first `isUp` call after each

@@ -265,7 +265,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
   Order accepted = order;
   accepted.createdAt = fromUnixNs(_clock.nowNs());
 
-  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  if (_venue && !_venue->submitsAllowed(static_cast<int64_t>(_clock.nowNs())))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::SUBMIT,
                                             .order = accepted});
@@ -599,7 +599,7 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
-  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  if (_venue && !_venue->cancelsAllowed(static_cast<int64_t>(_clock.nowNs())))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL,
                                             .oldOrderId = orderId});
@@ -692,7 +692,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
 
 void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 {
-  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  if (_venue && !_venue->cancelsAllowed(static_cast<int64_t>(_clock.nowNs())))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL_ALL_SYMBOL,
                                             .cancelAllSymbol = symbol});
@@ -749,7 +749,10 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 
 void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
-  if (_venue && !_venue->isUp(static_cast<int64_t>(_clock.nowNs())))
+  // Replace is a cancel + submit pair; if either action is currently
+  // gated we have to buffer the whole request until both are open.
+  const int64_t nowNs = static_cast<int64_t>(_clock.nowNs());
+  if (_venue && (!_venue->cancelsAllowed(nowNs) || !_venue->submitsAllowed(nowNs)))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::REPLACE,
                                             .order = newOrder,
@@ -999,9 +1002,9 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
       _venueWasUp = true;
       flushOutageBuffer();
     }
-    if (!up)
+    if (!_venue->bookUpdatesAllowed(now))
     {
-      return;  // feed gap
+      return;  // book feed dropped (Total or StaleBook outage)
     }
   }
   MarketState& state = getMarketState(symbol);
@@ -1103,7 +1106,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       _venueWasUp = true;
       flushOutageBuffer();
     }
-    if (!up)
+    if (!_venue->tradesAllowed(now))
     {
       return;
     }
@@ -1467,7 +1470,16 @@ void SimulatedExecutor::forgetMarketPosition(OrderId orderId)
 
 int64_t SimulatedExecutor::sampleReplaceAckLatency()
 {
-  return _replaceAckDist.sample(_cancelAckRng);
+  int64_t base = _replaceAckDist.sample(_cancelAckRng);
+  if (_venue)
+  {
+    const double mult = _venue->latencyMultiplier(static_cast<int64_t>(_clock.nowNs()));
+    if (mult > 1.0)
+    {
+      base = static_cast<int64_t>(static_cast<double>(base) * mult);
+    }
+  }
+  return base;
 }
 
 void SimulatedExecutor::enqueuePendingReplace(const Order& oldOrder,
@@ -1547,7 +1559,16 @@ void SimulatedExecutor::finalizePendingReplaces()
 
 int64_t SimulatedExecutor::sampleSubmitAckLatency()
 {
-  return _submitAckDist.sample(_cancelAckRng);
+  int64_t base = _submitAckDist.sample(_cancelAckRng);
+  if (_venue)
+  {
+    const double mult = _venue->latencyMultiplier(static_cast<int64_t>(_clock.nowNs()));
+    if (mult > 1.0)
+    {
+      base = static_cast<int64_t>(static_cast<double>(base) * mult);
+    }
+  }
+  return base;
 }
 
 void SimulatedExecutor::enqueuePendingSubmission(const Order& order)
@@ -1764,7 +1785,16 @@ void SimulatedExecutor::maybeEmitMarketPositionChanges()
 
 int64_t SimulatedExecutor::sampleCancelAckLatency()
 {
-  return _cancelAckDist.sample(_cancelAckRng);
+  int64_t base = _cancelAckDist.sample(_cancelAckRng);
+  if (_venue)
+  {
+    const double mult = _venue->latencyMultiplier(static_cast<int64_t>(_clock.nowNs()));
+    if (mult > 1.0)
+    {
+      base = static_cast<int64_t>(static_cast<double>(base) * mult);
+    }
+  }
+  return base;
 }
 
 void SimulatedExecutor::enqueuePendingCancel(const Order& order)

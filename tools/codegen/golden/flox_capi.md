@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 636 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 643 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1661,6 +1661,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxVenueAvailabilityHandle flox_venue_availability_create(void)`
 - `void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h)`
 - `void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h, int64_t start_ns, int64_t duration_ns, uint8_t policy, int64_t gtc_ttl_ns)`
+- `void flox_venue_availability_schedule_outage_ex(FloxVenueAvailabilityHandle h, int64_t start_ns, int64_t duration_ns, uint8_t outage_type, uint8_t policy, int64_t gtc_ttl_ns, double degradation_latency_multiplier, double wrong_side_recovery_bps)`
+- `uint8_t flox_venue_availability_submits_allowed(FloxVenueAvailabilityHandle h, int64_t now_ns)`
+- `uint8_t flox_venue_availability_cancels_allowed(FloxVenueAvailabilityHandle h, int64_t now_ns)`
+- `uint8_t flox_venue_availability_book_updates_allowed(FloxVenueAvailabilityHandle h, int64_t now_ns)`
+- `uint8_t flox_venue_availability_trades_allowed(FloxVenueAvailabilityHandle h, int64_t now_ns)`
+- `double flox_venue_availability_latency_multiplier(FloxVenueAvailabilityHandle h, int64_t now_ns)`
+- `double flox_venue_availability_consume_wrong_side_recovery_bps(FloxVenueAvailabilityHandle h)`
 - `void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h, double per_day, int64_t mean_duration_ns, uint8_t policy, uint64_t seed)`
 - `uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns)`
 - `void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor, FloxVenueAvailabilityHandle availability)`
