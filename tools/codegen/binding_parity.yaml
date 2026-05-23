@@ -80,6 +80,11 @@ groups:
     napi: { status: required, classes: [FeeSchedule] }
     codon: { status: required }
 
+  account:
+    pybind11: { status: required, classes: [Account] }
+    napi: { status: required, classes: [Account] }
+    codon: { status: required }
+
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
     napi: { status: required, classes: [WalkForwardRunner] }
