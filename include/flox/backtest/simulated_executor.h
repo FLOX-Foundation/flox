@@ -190,6 +190,12 @@ class SimulatedExecutor : public IOrderExecutor
   std::vector<Fill> extractFills() { return std::move(_fills); }
   const std::vector<Order>& conditionalOrders() const { return _conditional_orders; }
 
+  // Top-of-book accessors. Return 0 when the side is empty.
+  Price bestBidPrice(SymbolId symbol) const;
+  Price bestAskPrice(SymbolId symbol) const;
+  // Mid of best bid and best ask. Returns 0 when either side is empty.
+  Price bookMidPrice(SymbolId symbol) const;
+
   CompositeOrderLogic& compositeLogic() { return _compositeLogic; }
 
  private:

@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarketData', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'Trading', 'VOLUME_SCALE', 'VenueAvailability', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarkImpactModel', 'MarketData', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'Trading', 'VOLUME_SCALE', 'VenueAvailability', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -1243,6 +1243,12 @@ class LiquidationEngine:
         ...
     def liquidations_count(self) -> int:
         ...
+    def mark_impact_model(self) -> MarkImpactModel:
+        ...
+    def mark_impact_weight(self) -> float:
+        ...
+    def max_cascade_depth(self) -> int:
+        ...
     def on_mark(self, symbol: typing.SupportsInt | typing.SupportsIndex, mark_price: typing.SupportsFloat | typing.SupportsIndex) -> dict:
         ...
     def open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex) -> None:
@@ -1264,6 +1270,12 @@ class LiquidationEngine:
     def set_insurance_fund_capital(self, capital: typing.SupportsFloat | typing.SupportsIndex) -> None:
         ...
     def set_liquidation_slippage_bps(self, bps: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        ...
+    def set_mark_impact_model(self, model: typing.Any, weight: typing.SupportsFloat | typing.SupportsIndex = 0.3) -> None:
+        """
+        Configure mark-impact feedback after liquidations. Accepts a MarkImpactModel enum or a string name (none, book_anchored, book_only). `weight` is the blend factor used by book_anchored.
+        """
+    def set_max_cascade_depth(self, depth: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     def ticks_to_first_adl(self) -> int:
         ...
@@ -1318,6 +1330,46 @@ class MACD:
         ...
     @property
     def value(self) -> float | None:
+        ...
+class MarkImpactModel:
+    """
+    Members:
+    
+      None_
+    
+      BookAnchored
+    
+      BookOnly
+    """
+    BookAnchored: typing.ClassVar[MarkImpactModel]  # value = <MarkImpactModel.BookAnchored: 1>
+    BookOnly: typing.ClassVar[MarkImpactModel]  # value = <MarkImpactModel.BookOnly: 2>
+    None_: typing.ClassVar[MarkImpactModel]  # value = <MarkImpactModel.None_: 0>
+    __members__: typing.ClassVar[dict[str, MarkImpactModel]]  # value = {'None_': <MarkImpactModel.None_: 0>, 'BookAnchored': <MarkImpactModel.BookAnchored: 1>, 'BookOnly': <MarkImpactModel.BookOnly: 2>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
         ...
 class MarketDataRecorderHook:
     def __init__(self) -> None:
@@ -3433,6 +3485,8 @@ ALL_OR_NOTHING: OrderGroupPolicy  # value = <OrderGroupPolicy.ALL_OR_NOTHING: 1>
 Account: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.Account: 2>
 BEST_EFFORT: OrderGroupPolicy  # value = <OrderGroupPolicy.BEST_EFFORT: 0>
 Binance: AdlRanking  # value = <AdlRanking.Binance: 1>
+BookAnchored: MarkImpactModel  # value = <MarkImpactModel.BookAnchored: 1>
+BookOnly: MarkImpactModel  # value = <MarkImpactModel.BookOnly: 2>
 Bybit: AdlRanking  # value = <AdlRanking.Bybit: 2>
 CANCELLED: OrderGroupState  # value = <OrderGroupState.CANCELLED: 4>
 FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
@@ -3440,6 +3494,7 @@ FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>
 FIRE_ON_ANY: FeedClockPolicy  # value = <FeedClockPolicy.FIRE_ON_ANY: 1>
 LEADER_FOLLOWER: FeedClockPolicy  # value = <FeedClockPolicy.LEADER_FOLLOWER: 2>
 MarketData: RateLimitEndpointFamily  # value = <RateLimitEndpointFamily.MarketData: 1>
+None_: MarkImpactModel  # value = <MarkImpactModel.None_: 0>
 ONE_SIDED: OrderGroupPolicy  # value = <OrderGroupPolicy.ONE_SIDED: 2>
 ORDER_FLAG_IOC: int = 4
 ORDER_FLAG_POST_ONLY: int = 1

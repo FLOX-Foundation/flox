@@ -9746,3 +9746,38 @@ extern "C" void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle 
 {
   toLiqEngine(h)->resetStats();
 }
+extern "C" void flox_liquidation_engine_set_mark_impact_model(
+    FloxLiquidationEngineHandle h, uint8_t model, double weight)
+{
+  using M = flox::LiquidationEngine::MarkImpactModel;
+  M m = M::None;
+  if (model == 1)
+  {
+    m = M::BookAnchored;
+  }
+  else if (model == 2)
+  {
+    m = M::BookOnly;
+  }
+  toLiqEngine(h)->setMarkImpactModel(m, weight);
+}
+extern "C" uint8_t flox_liquidation_engine_mark_impact_model(
+    FloxLiquidationEngineHandle h)
+{
+  return static_cast<uint8_t>(toLiqEngine(h)->markImpactModel());
+}
+extern "C" double flox_liquidation_engine_mark_impact_weight(
+    FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->markImpactWeight();
+}
+extern "C" void flox_liquidation_engine_set_max_cascade_depth(
+    FloxLiquidationEngineHandle h, uint32_t depth)
+{
+  toLiqEngine(h)->setMaxCascadeDepth(depth);
+}
+extern "C" uint32_t flox_liquidation_engine_max_cascade_depth(
+    FloxLiquidationEngineHandle h)
+{
+  return toLiqEngine(h)->maxCascadeDepth();
+}

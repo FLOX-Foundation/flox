@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 655 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 660 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1280,6 +1280,11 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint32_t flox_liquidation_engine_fund_balance_history_copy(FloxLiquidationEngineHandle h, double * out, uint32_t max)`
 - `uint64_t flox_liquidation_engine_ticks_to_first_adl(FloxLiquidationEngineHandle h)`
 - `void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_set_mark_impact_model(FloxLiquidationEngineHandle h, uint8_t model, double weight)`
+- `uint8_t flox_liquidation_engine_mark_impact_model(FloxLiquidationEngineHandle h)`
+- `double flox_liquidation_engine_mark_impact_weight(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_set_max_cascade_depth(FloxLiquidationEngineHandle h, uint32_t depth)`
+- `uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h)`
 
 ### live_queue_position
 

@@ -90,6 +90,11 @@ from C import flox_liquidation_engine_load_profile(cobj, u8)
 from C import flox_liquidation_engine_set_executor(cobj, cobj)
 from C import flox_liquidation_engine_ticks_to_first_adl(cobj) -> u64
 from C import flox_liquidation_engine_reset_stats(cobj)
+from C import flox_liquidation_engine_set_mark_impact_model(cobj, u8, f64)
+from C import flox_liquidation_engine_mark_impact_model(cobj) -> u8
+from C import flox_liquidation_engine_mark_impact_weight(cobj) -> f64
+from C import flox_liquidation_engine_set_max_cascade_depth(cobj, u32)
+from C import flox_liquidation_engine_max_cascade_depth(cobj) -> u32
 
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
@@ -636,6 +641,31 @@ class LiquidationEngine:
 
     def reset_stats(self):
         flox_liquidation_engine_reset_stats(self._h)
+
+    def set_mark_impact_model(self, model, weight: float = 0.3):
+        # model: int code (0..2) or a string name (none, book_anchored, book_only).
+        code = u8(0)
+        if isinstance(model, str):
+            name = model.lower()
+            if name == "book_anchored":
+                code = u8(1)
+            elif name == "book_only":
+                code = u8(2)
+        else:
+            code = u8(int(model))
+        flox_liquidation_engine_set_mark_impact_model(self._h, code, f64(weight))
+
+    def mark_impact_model(self) -> int:
+        return int(flox_liquidation_engine_mark_impact_model(self._h))
+
+    def mark_impact_weight(self) -> float:
+        return float(flox_liquidation_engine_mark_impact_weight(self._h))
+
+    def set_max_cascade_depth(self, depth: int):
+        flox_liquidation_engine_set_max_cascade_depth(self._h, u32(depth))
+
+    def max_cascade_depth(self) -> int:
+        return int(flox_liquidation_engine_max_cascade_depth(self._h))
 
 
 class BacktestResult:

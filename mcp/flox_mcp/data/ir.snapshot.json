@@ -6354,6 +6354,39 @@
     },
     {
       "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_mark_impact_model",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_mark_impact_weight",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "double"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_max_cascade_depth",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "liquidation_engine",
       "name": "flox_liquidation_engine_on_mark",
       "params": [
         {
@@ -6484,6 +6517,40 @@
         {
           "name": "bps",
           "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_mark_impact_model",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "model",
+          "type": "uint8_t"
+        },
+        {
+          "name": "weight",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "liquidation_engine",
+      "name": "flox_liquidation_engine_set_max_cascade_depth",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxLiquidationEngineHandle"
+        },
+        {
+          "name": "depth",
+          "type": "uint32_t"
         }
       ],
       "return_type": "void"

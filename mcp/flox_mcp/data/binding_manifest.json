@@ -1480,6 +1480,21 @@
         {
           "group": "liquidation_engine",
           "kind": "function",
+          "name": "flox_liquidation_engine_mark_impact_model"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_mark_impact_weight"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_max_cascade_depth"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
           "name": "flox_liquidation_engine_on_mark"
         },
         {
@@ -1516,6 +1531,16 @@
           "group": "liquidation_engine",
           "kind": "function",
           "name": "flox_liquidation_engine_set_liquidation_slippage_bps"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_mark_impact_model"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_max_cascade_depth"
         },
         {
           "group": "liquidation_engine",
@@ -4988,6 +5013,18 @@
         },
         {
           "kind": "function",
+          "name": "flox_liquidation_engine_mark_impact_model"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_mark_impact_weight"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_max_cascade_depth"
+        },
+        {
+          "kind": "function",
           "name": "flox_liquidation_engine_on_mark"
         },
         {
@@ -5017,6 +5054,14 @@
         {
           "kind": "function",
           "name": "flox_liquidation_engine_set_liquidation_slippage_bps"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_mark_impact_model"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_set_max_cascade_depth"
         },
         {
           "kind": "function",
@@ -7548,6 +7593,10 @@
         },
         {
           "kind": "class",
+          "name": "MarkImpactModel"
+        },
+        {
+          "kind": "class",
           "name": "MarketDataRecorderHook"
         },
         {
@@ -9088,6 +9137,9 @@
         "flox_liquidation_engine_insurance_payments_count",
         "flox_liquidation_engine_liquidations_count",
         "flox_liquidation_engine_load_profile",
+        "flox_liquidation_engine_mark_impact_model",
+        "flox_liquidation_engine_mark_impact_weight",
+        "flox_liquidation_engine_max_cascade_depth",
         "flox_liquidation_engine_on_mark",
         "flox_liquidation_engine_open_position",
         "flox_liquidation_engine_reset_stats",
@@ -9096,6 +9148,8 @@
         "flox_liquidation_engine_set_executor",
         "flox_liquidation_engine_set_insurance_fund_capital",
         "flox_liquidation_engine_set_liquidation_slippage_bps",
+        "flox_liquidation_engine_set_mark_impact_model",
+        "flox_liquidation_engine_set_max_cascade_depth",
         "flox_liquidation_engine_ticks_to_first_adl"
       ],
       "codon": {

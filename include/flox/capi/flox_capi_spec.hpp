@@ -4412,6 +4412,26 @@ extern "C"
   FLOX_EXPORT(group = "liquidation_engine")
   void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h);
 
+  // T038: mark-impact feedback. After liquidation fills, the engine
+  // recomputes the mark from the post-cascade book and may trigger
+  // additional liquidations within the same on_mark call.
+  //   model: 0=none (default), 1=book_anchored, 2=book_only.
+  //   weight: blend factor in [0,1] used by book_anchored.
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_mark_impact_model(FloxLiquidationEngineHandle h,
+                                                     uint8_t model, double weight);
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint8_t flox_liquidation_engine_mark_impact_model(FloxLiquidationEngineHandle h);
+  FLOX_EXPORT(group = "liquidation_engine")
+  double flox_liquidation_engine_mark_impact_weight(FloxLiquidationEngineHandle h);
+  // Bound on second-order cascade depth within a single on_mark call.
+  // Set to 0 to disable cascading.
+  FLOX_EXPORT(group = "liquidation_engine")
+  void flox_liquidation_engine_set_max_cascade_depth(FloxLiquidationEngineHandle h,
+                                                     uint32_t depth);
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h);
+
 #ifdef __cplusplus
 }
 #endif

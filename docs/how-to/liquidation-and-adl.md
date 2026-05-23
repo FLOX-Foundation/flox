@@ -203,6 +203,48 @@ to retry.
 Detach by passing `None` / `null`; engine falls back to flat-bps
 behaviour.
 
+## Mark-impact feedback and intra-tick cascades
+
+When liquidation orders walk a thin book, the realized close-price
+drifts away from the tape mark. On real venues that drift feeds
+back into the mark-price formula and can underwater positions that
+were healthy at the tape input. The engine models this via
+`set_mark_impact_model`:
+
+=== "Python"
+
+    ```python
+    liq.set_executor(exec)
+    liq.set_mark_impact_model("book_anchored", weight=0.3)
+    liq.set_max_cascade_depth(5)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    liq.setExecutor(exec);
+    liq.setMarkImpactModel("book_anchored", 0.3);
+    liq.setMaxCascadeDepth(5);
+    ```
+
+| Model           | Formula                                          | Notes                                         |
+| --------------- | ------------------------------------------------ | --------------------------------------------- |
+| `none`          | mark = tape input                                | Default. No feedback, T036 behaviour.         |
+| `book_anchored` | mark = (1 − w) · tape + w · book_mid             | Matches Binance's index/mark blend.           |
+| `book_only`     | mark = book_mid                                  | Worst-case cascade test; falls back to tape when the book mid is unavailable. |
+
+After each liquidation round the engine queries the executor's
+post-fill `book_mid_price(symbol)`, recomputes the mark per the
+selected model, and re-runs maintenance-margin checks. If new
+positions go underwater, the engine cascades within the same
+`on_mark` call up to `max_cascade_depth` rounds (default 5). Set
+the depth to `0` to disable cascading; without an executor the
+model is a no-op (no book mid available).
+
+The per-round count is recorded in `cascade_sizes_per_tick`, so
+distribution-level reports can separate first-order from
+second-order liquidations.
+
 ## Notes
 
 - The engine is per-venue (per-margin-pool). For cross-margin or
