@@ -11326,6 +11326,36 @@
     },
     {
       "group": "simulated_executor",
+      "name": "flox_simulated_executor_set_iceberg_jitter_seed",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "seed",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_set_iceberg_priority_mode",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "mode",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
       "name": "flox_simulated_executor_set_iceberg_refresh_latency",
       "params": [
         {
@@ -11335,6 +11365,21 @@
         {
           "name": "latency_ns",
           "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_set_iceberg_size_randomisation_pct",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "pct",
+          "type": "double"
         }
       ],
       "return_type": "void"

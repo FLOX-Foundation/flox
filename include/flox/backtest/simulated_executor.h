@@ -413,6 +413,23 @@ class SimulatedExecutor : public IOrderExecutor
   int64_t _icebergRefreshLatencyNs{0};
 
  public:
+  // T041: queue priority on refresh. "back" (default, T029) sends
+  // the refreshed slice to the back of the queue. "retain" keeps the
+  // refresh in the same queue position as the prior slice (CME-style).
+  enum class IcebergPriorityMode : uint8_t
+  {
+    Back = 0,
+    Retain = 1,
+  };
+
+ private:
+  // T041: per-refresh size jitter as a fraction (0.0 disables;
+  // 0.10 = ±10% uniform). Default 0 keeps T029 deterministic slicing.
+  double _icebergSizeRandomisationPct{0.0};
+  IcebergPriorityMode _icebergPriorityMode{IcebergPriorityMode::Back};
+  std::mt19937_64 _icebergJitterRng{0xC0FFEEC0FFEEULL};
+
+ public:
   // T040: child-arm policy. "on_full_fill" (default) arms TP+stop
   // once at the moment of full entry fill. "on_partial_fill" arms
   // children at the running entry-fill quantity on every partial,
@@ -434,6 +451,37 @@ class SimulatedExecutor : public IOrderExecutor
     _icebergRefreshLatencyNs = latencyNs;
   }
   int64_t icebergRefreshLatencyNs() const noexcept { return _icebergRefreshLatencyNs; }
+
+  // T041: per-refresh visible-slice size jitter as a fraction
+  // (0.0 = deterministic = T029 behaviour; 0.10 = ±10% uniform).
+  // The jitter is sampled from an internal RNG seeded deterministically;
+  // call setIcebergJitterSeed to reproduce a specific draw sequence.
+  void setIcebergSizeRandomisationPct(double pct) noexcept
+  {
+    _icebergSizeRandomisationPct = pct;
+  }
+  double icebergSizeRandomisationPct() const noexcept
+  {
+    return _icebergSizeRandomisationPct;
+  }
+  void setIcebergJitterSeed(uint64_t seed) noexcept
+  {
+    _icebergJitterRng.seed(seed);
+  }
+  // T041: queue priority on refresh.
+  //   Back    — refreshed slice goes to the back of the queue (T029
+  //             default; matches most crypto venues).
+  //   Retain  — refreshed slice keeps the same queue position as the
+  //             prior slice (CME options + some Eurex contracts).
+  void setIcebergPriorityMode(IcebergPriorityMode mode) noexcept
+  {
+    _icebergPriorityMode = mode;
+  }
+  IcebergPriorityMode icebergPriorityMode() const noexcept
+  {
+    return _icebergPriorityMode;
+  }
+  void setIcebergPriorityModeByName(const std::string& name) noexcept;
   // Diagnostic: remaining hidden quantity for an iceberg order, or 0
   // if none.
   int64_t icebergHiddenRemainingRaw(OrderId id) const

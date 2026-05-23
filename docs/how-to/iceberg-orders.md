@@ -90,10 +90,38 @@ A worked example (Python):
   unless a refresh latency is configured, in which case the next
   slice is exposed at `fill_time + latency` instead.
 - The refreshed slice goes to the **back** of the queue at that
-  price level — the venue treats each refresh as a new resting
-  entry, not as one continuous order.
+  price level by default (override via `set_iceberg_priority_mode`).
 - Cancel cancels both the visible portion and the hidden remainder
   in one call.
+
+## Refresh variants
+
+Real venues differ on two iceberg knobs that materially change the
+fill profile for queue-position strategies:
+
+| Knob                  | Default      | Other modes                              | Models                          |
+|-----------------------|--------------|------------------------------------------|---------------------------------|
+| Size randomisation    | 0% (off)     | up to ±100% uniform per refresh          | Anti-detection ±10% on liquid spot |
+| Refresh queue priority| `back`       | `retain`                                 | CME options + some Eurex contracts |
+
+=== "Python"
+
+    ```python
+    # Anti-detection: jitter each refreshed slice ±10% around visible.
+    exec.set_iceberg_size_randomisation_pct(0.10)
+    exec.set_iceberg_jitter_seed(42)  # reproducible draws
+
+    # CME-style: refreshed slice keeps the same queue position.
+    exec.set_iceberg_priority_mode("retain")
+    ```
+
+=== "TypeScript (Node)"
+
+    ```typescript
+    exec.setIcebergSizeRandomisationPct(0.10);
+    exec.setIcebergJitterSeed(42);
+    exec.setIcebergPriorityMode("retain");
+    ```
 
 ## Inspect remaining hidden quantity
 

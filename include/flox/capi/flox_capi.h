@@ -2031,6 +2031,12 @@ extern "C"
                                                            int64_t latency_ns);
   int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(FloxSimulatedExecutorHandle executor,
                                                                uint64_t id);
+  void flox_simulated_executor_set_iceberg_size_randomisation_pct(FloxSimulatedExecutorHandle executor,
+                                                                  double pct);
+  void flox_simulated_executor_set_iceberg_priority_mode(FloxSimulatedExecutorHandle executor,
+                                                         uint8_t mode);
+  void flox_simulated_executor_set_iceberg_jitter_seed(FloxSimulatedExecutorHandle executor,
+                                                       uint64_t seed);
   void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle executor, uint64_t order_id);
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,

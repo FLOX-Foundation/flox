@@ -32,6 +32,9 @@ from C import flox_simulated_executor_set_order_priority_multiplier(cobj, u64, f
 from C import flox_simulated_executor_submit_iceberg(cobj, u64, u8, float, float, float, u32)
 from C import flox_simulated_executor_set_iceberg_refresh_latency(cobj, i64)
 from C import flox_simulated_executor_iceberg_hidden_remaining_raw(cobj, u64) -> i64
+from C import flox_simulated_executor_set_iceberg_size_randomisation_pct(cobj, f64)
+from C import flox_simulated_executor_set_iceberg_priority_mode(cobj, u8)
+from C import flox_simulated_executor_set_iceberg_jitter_seed(cobj, u64)
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
@@ -451,6 +454,19 @@ class SimulatedExecutor:
     def iceberg_hidden_remaining_raw(self, id: int) -> int:
         return int(flox_simulated_executor_iceberg_hidden_remaining_raw(
             self._handle, u64(id)))
+
+    def set_iceberg_size_randomisation_pct(self, pct: float):
+        """Per-refresh visible-slice size jitter (0.0 deterministic; 0.10 = ±10%)."""
+        flox_simulated_executor_set_iceberg_size_randomisation_pct(
+            self._handle, f64(pct))
+
+    def set_iceberg_priority_mode(self, mode: str):
+        """Queue priority on refresh: 'back' (default) | 'retain'."""
+        code = u8(1 if mode == "retain" else 0)
+        flox_simulated_executor_set_iceberg_priority_mode(self._handle, code)
+
+    def set_iceberg_jitter_seed(self, seed: int):
+        flox_simulated_executor_set_iceberg_jitter_seed(self._handle, u64(seed))
 
     def set_submit_ack_latency(self, latency_ns: int, jitter_ns: int = 0):
         flox_simulated_executor_set_submit_ack_latency(

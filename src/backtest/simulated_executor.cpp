@@ -1440,17 +1440,59 @@ void SimulatedExecutor::maybeRefreshIceberg(Order& order)
   {
     return;
   }
-  const int64_t slice = std::min<int64_t>(st.visibleRaw, st.hiddenRaw);
+  int64_t slice = std::min<int64_t>(st.visibleRaw, st.hiddenRaw);
+  // T041 size randomisation: jitter the visible-slice size by a
+  // uniform fraction in [-pct, +pct] of st.visibleRaw, then clamp to
+  // [1, hiddenRaw]. Mean is preserved so a long sample sequence
+  // averages back to st.visibleRaw.
+  if (_icebergSizeRandomisationPct > 0.0)
+  {
+    std::uniform_real_distribution<double> u(-_icebergSizeRandomisationPct,
+                                             _icebergSizeRandomisationPct);
+    const double frac = u(_icebergJitterRng);
+    int64_t jittered = static_cast<int64_t>(
+        static_cast<double>(st.visibleRaw) * (1.0 + frac));
+    if (jittered < 1)
+    {
+      jittered = 1;
+    }
+    if (jittered > st.hiddenRaw)
+    {
+      jittered = st.hiddenRaw;
+    }
+    slice = jittered;
+  }
   st.hiddenRaw -= slice;
   st.refreshDueNs = 0;
   order.quantity = Quantity::fromRaw(order.quantity.raw() + slice);
-  // Re-add the refreshed slice to the queue tracker (back of the
-  // queue, since hidden refresh creates a new visible entry on the
-  // venue book).
-  if (_queueTracker.enabled())
+  // T041 priority mode: Back (default) re-adds the slice with an
+  // empty level-qty so it lands at the back of the queue. Retain
+  // keeps the slice at its previous queue depth (in our model: the
+  // already-tracked entry's queue-ahead is left intact when we don't
+  // re-add).
+  if (_queueTracker.enabled() &&
+      _icebergPriorityMode == IcebergPriorityMode::Back)
   {
     _queueTracker.addOrder(order.symbol, order.side, order.price, order.id,
                            Quantity::fromRaw(slice), Quantity{});
+  }
+}
+
+void SimulatedExecutor::setIcebergPriorityModeByName(const std::string& name) noexcept
+{
+  std::string lower;
+  lower.reserve(name.size());
+  for (char c : name)
+  {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (lower == "retain")
+  {
+    _icebergPriorityMode = IcebergPriorityMode::Retain;
+  }
+  else if (lower == "back")
+  {
+    _icebergPriorityMode = IcebergPriorityMode::Back;
   }
 }
 

@@ -1207,6 +1207,26 @@ int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(FloxSimulatedExecut
   return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.icebergHiddenRemainingRaw(id);
 }
 
+void flox_simulated_executor_set_iceberg_size_randomisation_pct(
+    FloxSimulatedExecutorHandle h, double pct)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergSizeRandomisationPct(pct);
+}
+
+void flox_simulated_executor_set_iceberg_priority_mode(FloxSimulatedExecutorHandle h,
+                                                       uint8_t mode)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergPriorityMode(
+      mode == 1 ? SimulatedExecutor::IcebergPriorityMode::Retain
+                : SimulatedExecutor::IcebergPriorityMode::Back);
+}
+
+void flox_simulated_executor_set_iceberg_jitter_seed(FloxSimulatedExecutorHandle h,
+                                                     uint64_t seed)
+{
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergJitterSeed(seed);
+}
+
 void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);

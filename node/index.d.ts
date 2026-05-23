@@ -976,6 +976,15 @@ export class SimulatedExecutor {
   /** Diagnostic: remaining hidden quantity (raw fixed-point) for an
    *  iceberg order, or 0 if none. */
   icebergHiddenRemainingRaw(orderId: number): number;
+  /** Per-refresh visible-slice size jitter as a fraction.
+   *  0.0 = deterministic (default); 0.10 = ±10% uniform. */
+  setIcebergSizeRandomisationPct(pct: number): void;
+  /** Queue priority on refresh. 'back' (default) sends the refreshed
+   *  slice to the back of the queue; 'retain' keeps it in the prior
+   *  slice's position (CME-style). */
+  setIcebergPriorityMode(mode: 'back' | 'retain'): void;
+  /** Seed the size-jitter RNG for reproducible refresh sequences. */
+  setIcebergJitterSeed(seed: number): void;
   readonly fillCount: number;
 }
 

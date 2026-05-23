@@ -2495,9 +2495,21 @@ class SimulatedExecutor:
         """
         FOK fill semantic: any_price (default) or single_price.
         """
+    def set_iceberg_jitter_seed(self, seed: typing.SupportsInt | typing.SupportsIndex) -> None:
+        """
+        Seed the size-jitter RNG for reproducible refresh sequences.
+        """
+    def set_iceberg_priority_mode(self, mode: str) -> None:
+        """
+        Queue priority on refresh: 'back' (default) or 'retain' (CME-style).
+        """
     def set_iceberg_refresh_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex) -> None:
         """
         Default refresh latency (ns) between a visible tranche filling and the next one being exposed. 0 = instant (most venues).
+        """
+    def set_iceberg_size_randomisation_pct(self, pct: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        Per-refresh size jitter as a fraction (0.0 deterministic, 0.10 = ±10% uniform).
         """
     def set_lmm_bonus_multiplier(self, multiplier: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
