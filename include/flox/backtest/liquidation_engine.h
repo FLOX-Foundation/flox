@@ -175,6 +175,21 @@ class LiquidationEngine
   uint64_t insurancePaymentsCount() const noexcept { return _statInsurancePayments; }
   uint64_t adlCloseoutsCount() const noexcept { return _statAdlCloseouts; }
 
+  // Distribution-level cascade statistics. Cumulative counters tell
+  // you *how many*; these tell you *what they looked like*.
+  const std::vector<double>& deficitsPaidByFund() const noexcept { return _deficitsPaidByFund; }
+  const std::vector<double>& deficitsPaidByAdl() const noexcept { return _deficitsPaidByAdl; }
+  const std::vector<uint32_t>& cascadeSizesPerTick() const noexcept { return _cascadeSizesPerTick; }
+  // Ordinal of the onMark call that fired the first ADL closeout;
+  // UINT64_MAX (no ADL yet).
+  uint64_t ticksToFirstAdl() const noexcept { return _firstAdlTickIdx; }
+  // Snapshot of insurance fund balance after each onMark tick that
+  // touched the fund.
+  const std::vector<double>& fundBalanceHistory() const noexcept { return _fundBalanceHistory; }
+  // Reset all stats (cumulative counters + distribution vectors).
+  // Position book + tier config preserved.
+  void resetStats() noexcept;
+
   // Resolve the maintenance-margin fraction for a given notional.
   // Walks the tier list and returns the rate for the highest tier
   // whose minNotional <= notional. Returns 0 if no tiers configured.
@@ -198,6 +213,14 @@ class LiquidationEngine
   uint64_t _statAdlCloseouts{0};
 
   SimulatedExecutor* _executor{nullptr};
+
+  // Distribution-level cascade stats (T039).
+  std::vector<double> _deficitsPaidByFund;
+  std::vector<double> _deficitsPaidByAdl;
+  std::vector<uint32_t> _cascadeSizesPerTick;
+  std::vector<double> _fundBalanceHistory;
+  uint64_t _firstAdlTickIdx{UINT64_MAX};
+  uint64_t _onMarkTickCounter{0};
 
   // Route a liquidation through the attached executor as a market
   // order; return realized close-price + filled qty. Returns

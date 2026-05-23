@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 621 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 631 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1260,6 +1260,16 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h)`
 - `void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h, uint8_t profile)`
 - `void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h, FloxSimulatedExecutorHandle executor)`
+- `uint32_t flox_liquidation_engine_deficits_paid_by_fund_size(FloxLiquidationEngineHandle h)`
+- `uint32_t flox_liquidation_engine_deficits_paid_by_fund_copy(FloxLiquidationEngineHandle h, double * out, uint32_t max)`
+- `uint32_t flox_liquidation_engine_deficits_paid_by_adl_size(FloxLiquidationEngineHandle h)`
+- `uint32_t flox_liquidation_engine_deficits_paid_by_adl_copy(FloxLiquidationEngineHandle h, double * out, uint32_t max)`
+- `uint32_t flox_liquidation_engine_cascade_sizes_size(FloxLiquidationEngineHandle h)`
+- `uint32_t flox_liquidation_engine_cascade_sizes_copy(FloxLiquidationEngineHandle h, uint32_t * out, uint32_t max)`
+- `uint32_t flox_liquidation_engine_fund_balance_history_size(FloxLiquidationEngineHandle h)`
+- `uint32_t flox_liquidation_engine_fund_balance_history_copy(FloxLiquidationEngineHandle h, double * out, uint32_t max)`
+- `uint64_t flox_liquidation_engine_ticks_to_first_adl(FloxLiquidationEngineHandle h)`
+- `void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h)`
 
 ### live_queue_position
 

@@ -718,6 +718,17 @@ export class LiquidationEngine {
    *  it as market orders (consuming book liquidity, paying fees,
    *  sampling latency). Pass null to detach. */
   setExecutor(executor: SimulatedExecutor | null): void;
+  /** Per-payment USD covered by the insurance fund. */
+  deficitsPaidByFund(): number[];
+  /** Per-closeout USD absorbed by an ADL force-close. */
+  deficitsPaidByAdl(): number[];
+  /** Liquidations per onMark tick that liquidated anything. */
+  cascadeSizesPerTick(): number[];
+  /** Insurance fund balance after each tick that touched it. */
+  fundBalanceHistory(): number[];
+  /** Ordinal of the first ADL tick; very large value if no ADL yet. */
+  ticksToFirstAdl(): number;
+  resetStats(): void;
 }
 
 export class FundingSchedule {

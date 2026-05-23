@@ -1891,6 +1891,89 @@ static JSValue js_liquidation_engine_set_executor(JSContext* ctx, JSValueConst, 
       static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), exec_h);
   return JS_UNDEFINED;
 }
+static JSValue js_liquidation_engine_ticks_to_first_adl(JSContext* ctx, JSValueConst, int,
+                                                        JSValueConst* argv)
+{
+  return JS_NewFloat64(
+      ctx, static_cast<double>(flox_liquidation_engine_ticks_to_first_adl(
+               static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])))));
+}
+static JSValue js_liquidation_engine_reset_stats(JSContext* ctx, JSValueConst, int,
+                                                 JSValueConst* argv)
+{
+  flox_liquidation_engine_reset_stats(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+template <typename T, typename SizeFn, typename CopyFn>
+static JSValue copyVecToJs(JSContext* ctx, void* handle, SizeFn sizeFn, CopyFn copyFn)
+{
+  const uint32_t n = sizeFn(handle);
+  std::vector<T> buf(n);
+  copyFn(handle, buf.data(), n);
+  JSValue arr = JS_NewArray(ctx);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JS_SetPropertyUint32(ctx, arr, i, JS_NewFloat64(ctx, static_cast<double>(buf[i])));
+  }
+  return arr;
+}
+static JSValue js_liquidation_engine_deficits_paid_by_fund(JSContext* ctx, JSValueConst, int,
+                                                           JSValueConst* argv)
+{
+  return copyVecToJs<double>(
+      ctx, getHandle(ctx, argv[0]),
+      [](void* h)
+      { return flox_liquidation_engine_deficits_paid_by_fund_size(
+            static_cast<FloxLiquidationEngineHandle>(h)); },
+      [](void* h, double* o, uint32_t n)
+      {
+        flox_liquidation_engine_deficits_paid_by_fund_copy(
+            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+      });
+}
+static JSValue js_liquidation_engine_deficits_paid_by_adl(JSContext* ctx, JSValueConst, int,
+                                                          JSValueConst* argv)
+{
+  return copyVecToJs<double>(
+      ctx, getHandle(ctx, argv[0]),
+      [](void* h)
+      { return flox_liquidation_engine_deficits_paid_by_adl_size(
+            static_cast<FloxLiquidationEngineHandle>(h)); },
+      [](void* h, double* o, uint32_t n)
+      {
+        flox_liquidation_engine_deficits_paid_by_adl_copy(
+            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+      });
+}
+static JSValue js_liquidation_engine_cascade_sizes(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  return copyVecToJs<uint32_t>(
+      ctx, getHandle(ctx, argv[0]),
+      [](void* h)
+      { return flox_liquidation_engine_cascade_sizes_size(
+            static_cast<FloxLiquidationEngineHandle>(h)); },
+      [](void* h, uint32_t* o, uint32_t n)
+      {
+        flox_liquidation_engine_cascade_sizes_copy(
+            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+      });
+}
+static JSValue js_liquidation_engine_fund_balance_history(JSContext* ctx, JSValueConst, int,
+                                                          JSValueConst* argv)
+{
+  return copyVecToJs<double>(
+      ctx, getHandle(ctx, argv[0]),
+      [](void* h)
+      { return flox_liquidation_engine_fund_balance_history_size(
+            static_cast<FloxLiquidationEngineHandle>(h)); },
+      [](void* h, double* o, uint32_t n)
+      {
+        flox_liquidation_engine_fund_balance_history_copy(
+            static_cast<FloxLiquidationEngineHandle>(h), o, n);
+      });
+}
 
 static JSValue js_fee_schedule_record_fill(JSContext* ctx, JSValueConst, int,
                                            JSValueConst* argv)
@@ -5934,6 +6017,18 @@ void registerFloxBindings(JSContext* ctx)
                 js_liquidation_engine_load_profile, 2);
   addGlobalFunc(ctx, "__flox_liquidation_engine_set_executor",
                 js_liquidation_engine_set_executor, 2);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_ticks_to_first_adl",
+                js_liquidation_engine_ticks_to_first_adl, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_reset_stats",
+                js_liquidation_engine_reset_stats, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_deficits_paid_by_fund",
+                js_liquidation_engine_deficits_paid_by_fund, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_deficits_paid_by_adl",
+                js_liquidation_engine_deficits_paid_by_adl, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_cascade_sizes",
+                js_liquidation_engine_cascade_sizes, 1);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_fund_balance_history",
+                js_liquidation_engine_fund_balance_history, 1);
   addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
   addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",

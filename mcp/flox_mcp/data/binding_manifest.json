@@ -1395,6 +1395,16 @@
         {
           "group": "liquidation_engine",
           "kind": "function",
+          "name": "flox_liquidation_engine_cascade_sizes_copy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_cascade_sizes_size"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
           "name": "flox_liquidation_engine_close_position"
         },
         {
@@ -1405,7 +1415,37 @@
         {
           "group": "liquidation_engine",
           "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_adl_copy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_adl_size"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_fund_copy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_fund_size"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
           "name": "flox_liquidation_engine_destroy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_fund_balance_history_copy"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_fund_balance_history_size"
         },
         {
           "group": "liquidation_engine",
@@ -1440,6 +1480,11 @@
         {
           "group": "liquidation_engine",
           "kind": "function",
+          "name": "flox_liquidation_engine_reset_stats"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
           "name": "flox_liquidation_engine_set_adl_enabled"
         },
         {
@@ -1461,6 +1506,11 @@
           "group": "liquidation_engine",
           "kind": "function",
           "name": "flox_liquidation_engine_set_liquidation_slippage_bps"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_ticks_to_first_adl"
         },
         {
           "group": "floxliveengine_disruptor",
@@ -4750,6 +4800,14 @@
         },
         {
           "kind": "function",
+          "name": "flox_liquidation_engine_cascade_sizes_copy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_cascade_sizes_size"
+        },
+        {
+          "kind": "function",
           "name": "flox_liquidation_engine_close_position"
         },
         {
@@ -4758,7 +4816,31 @@
         },
         {
           "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_adl_copy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_adl_size"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_fund_copy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_deficits_paid_by_fund_size"
+        },
+        {
+          "kind": "function",
           "name": "flox_liquidation_engine_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_fund_balance_history_copy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_fund_balance_history_size"
         },
         {
           "kind": "function",
@@ -4786,6 +4868,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_liquidation_engine_reset_stats"
+        },
+        {
+          "kind": "function",
           "name": "flox_liquidation_engine_set_adl_enabled"
         },
         {
@@ -4803,6 +4889,10 @@
         {
           "kind": "function",
           "name": "flox_liquidation_engine_set_liquidation_slippage_bps"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_ticks_to_first_adl"
         },
         {
           "kind": "function",
@@ -8749,20 +8839,30 @@
         "flox_liquidation_engine_add_tier",
         "flox_liquidation_engine_adl_closeouts_count",
         "flox_liquidation_engine_adl_ranking",
+        "flox_liquidation_engine_cascade_sizes_copy",
+        "flox_liquidation_engine_cascade_sizes_size",
         "flox_liquidation_engine_close_position",
         "flox_liquidation_engine_create",
+        "flox_liquidation_engine_deficits_paid_by_adl_copy",
+        "flox_liquidation_engine_deficits_paid_by_adl_size",
+        "flox_liquidation_engine_deficits_paid_by_fund_copy",
+        "flox_liquidation_engine_deficits_paid_by_fund_size",
         "flox_liquidation_engine_destroy",
+        "flox_liquidation_engine_fund_balance_history_copy",
+        "flox_liquidation_engine_fund_balance_history_size",
         "flox_liquidation_engine_insurance_fund_balance",
         "flox_liquidation_engine_insurance_payments_count",
         "flox_liquidation_engine_liquidations_count",
         "flox_liquidation_engine_load_profile",
         "flox_liquidation_engine_on_mark",
         "flox_liquidation_engine_open_position",
+        "flox_liquidation_engine_reset_stats",
         "flox_liquidation_engine_set_adl_enabled",
         "flox_liquidation_engine_set_adl_ranking",
         "flox_liquidation_engine_set_executor",
         "flox_liquidation_engine_set_insurance_fund_capital",
-        "flox_liquidation_engine_set_liquidation_slippage_bps"
+        "flox_liquidation_engine_set_liquidation_slippage_bps",
+        "flox_liquidation_engine_ticks_to_first_adl"
       ],
       "codon": {
         "present": true,

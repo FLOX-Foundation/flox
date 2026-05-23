@@ -85,6 +85,16 @@ inline void bindLiquidationEngine(py::module_& m)
            "Attach a SimulatedExecutor so liquidation orders route "
            "through it as market orders. Pass None to detach.",
            py::arg("executor"), py::keep_alive<1, 2>())
+      .def("deficits_paid_by_fund", [](const flox::LiquidationEngine& self)
+           { return self.deficitsPaidByFund(); })
+      .def("deficits_paid_by_adl", [](const flox::LiquidationEngine& self)
+           { return self.deficitsPaidByAdl(); })
+      .def("cascade_sizes_per_tick", [](const flox::LiquidationEngine& self)
+           { return self.cascadeSizesPerTick(); })
+      .def("fund_balance_history", [](const flox::LiquidationEngine& self)
+           { return self.fundBalanceHistory(); })
+      .def("ticks_to_first_adl", &flox::LiquidationEngine::ticksToFirstAdl)
+      .def("reset_stats", &flox::LiquidationEngine::resetStats)
       .def_static("binance_um_futures", &flox::LiquidationEngine::binance_um_futures)
       .def_static("bybit_linear", &flox::LiquidationEngine::bybit_linear)
       .def_static("okx_swap", &flox::LiquidationEngine::okx_swap);
