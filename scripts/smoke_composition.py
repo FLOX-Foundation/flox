@@ -139,6 +139,16 @@ def main() -> int:
     must("Account 30d notional shared across schedules",
          acct.rolling_notional_30d() == 100_000.0)
 
+    # 13) VenueStack single-call factory (T052).
+    stack = flox_py.VenueStack.binance_um_futures(account_id=7, equity=5_000.0)
+    must("VenueStack.binance_um_futures", stack.venue_name() == "binance_um_futures")
+    must("VenueStack.account wired", stack.account().account_id() == 7)
+    must("VenueStack.liquidation Binance ADL",
+         stack.liquidation().adl_ranking() == flox_py.AdlRanking.Binance)
+    must("VenueStack from_venue dispatch",
+         flox_py.VenueStack.from_venue("bybit_linear", 1, 1.0).venue_name()
+         == "bybit_linear")
+
     if failures:
         print(f"[smoke] FAILED ({len(failures)} check(s)): {failures}")
         return 1

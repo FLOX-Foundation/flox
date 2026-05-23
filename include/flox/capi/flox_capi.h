@@ -79,6 +79,7 @@ extern "C"
   typedef void* FloxLiveQueuePositionHandle;
   typedef void* FloxLiquidationEngineHandle;
   typedef void* FloxAccountHandle;
+  typedef void* FloxVenueStackHandle;
   // ============================================================
   // Enums
   // ============================================================
@@ -2276,6 +2277,20 @@ extern "C"
   uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns);
   void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor,
                                                       FloxVenueAvailabilityHandle availability);
+
+  // ============================================================
+  // Venue Stack
+  // ============================================================
+
+  FloxVenueStackHandle flox_venue_stack_create(uint8_t venue, uint64_t account_id, double equity);
+  void flox_venue_stack_destroy(FloxVenueStackHandle h);
+  FloxSimulatedExecutorHandle flox_venue_stack_executor(FloxVenueStackHandle h);
+  FloxAccountHandle flox_venue_stack_account(FloxVenueStackHandle h);
+  FloxLiquidationEngineHandle flox_venue_stack_liquidation(FloxVenueStackHandle h);
+  FloxFeeScheduleHandle flox_venue_stack_fees(FloxVenueStackHandle h);
+  FloxFundingScheduleHandle flox_venue_stack_funding(FloxVenueStackHandle h);
+  FloxVenueAvailabilityHandle flox_venue_stack_venue(FloxVenueStackHandle h);
+  const char* flox_venue_stack_venue_name(FloxVenueStackHandle h);
 
   // ============================================================
   // Volume Profile

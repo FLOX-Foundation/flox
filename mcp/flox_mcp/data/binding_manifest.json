@@ -3343,6 +3343,51 @@
           "name": "flox_venue_availability_trades_allowed"
         },
         {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_account"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_create"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_destroy"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_executor"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_fees"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_funding"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_liquidation"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_venue"
+        },
+        {
+          "group": "venue_stack",
+          "kind": "function",
+          "name": "flox_venue_stack_venue_name"
+        },
+        {
           "group": "tape_aggregator",
           "kind": "function",
           "name": "flox_volume_bin_aggregator_create"
@@ -3865,6 +3910,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxVenueStackHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxVolumeProfileHandle"
         }
       ]
@@ -3937,6 +3986,7 @@
         "trace_attach",
         "validation",
         "venue_availability",
+        "venue_stack",
         "volume_profile",
         "walk_forward"
       ],
@@ -6615,6 +6665,42 @@
         },
         {
           "kind": "function",
+          "name": "flox_venue_stack_account"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_executor"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_fees"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_funding"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_liquidation"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_venue"
+        },
+        {
+          "kind": "function",
+          "name": "flox_venue_stack_venue_name"
+        },
+        {
+          "kind": "function",
           "name": "flox_volume_bin_aggregator_create"
         },
         {
@@ -7339,6 +7425,10 @@
         },
         {
           "kind": "class",
+          "name": "VenueStack"
+        },
+        {
+          "kind": "class",
           "name": "VolumeBinAggregator"
         },
         {
@@ -8008,6 +8098,10 @@
         {
           "kind": "class",
           "name": "VenueAvailability"
+        },
+        {
+          "kind": "class",
+          "name": "VenueStack"
         },
         {
           "kind": "class",
@@ -10443,6 +10537,37 @@
         "classes": [
           "VenueAvailability",
           "SimulatedExecutor"
+        ],
+        "functions": [],
+        "status": "required"
+      }
+    },
+    "venue_stack": {
+      "capi_functions": [
+        "flox_venue_stack_account",
+        "flox_venue_stack_create",
+        "flox_venue_stack_destroy",
+        "flox_venue_stack_executor",
+        "flox_venue_stack_fees",
+        "flox_venue_stack_funding",
+        "flox_venue_stack_liquidation",
+        "flox_venue_stack_venue",
+        "flox_venue_stack_venue_name"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [
+          "VenueStack"
+        ],
+        "functions": [],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "VenueStack"
         ],
         "functions": [],
         "status": "required"

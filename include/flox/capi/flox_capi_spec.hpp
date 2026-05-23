@@ -4495,6 +4495,41 @@ extern "C"
   FLOX_EXPORT(group = "fee_schedule")
   void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h);
 
+  // ===== T052: VenueStack — single-call venue-realistic backtest =====
+  // Each factory returns a fully-wired stack containing the
+  // executor, account, liquidation engine, fee schedule, funding
+  // schedule, rate-limit policy, and venue-availability instance.
+  // Use the *_subhandle accessors to obtain non-owning handles to
+  // each subsystem; destroying the venue stack invalidates them.
+  typedef void* FloxVenueStackHandle;
+
+  // Venue codes: 0=binance_um_futures (default), 1=bybit_linear,
+  // 2=okx_swap, 3=deribit.
+  FLOX_EXPORT(group = "venue_stack")
+  FloxVenueStackHandle flox_venue_stack_create(uint8_t venue, uint64_t account_id,
+                                               double equity);
+  FLOX_EXPORT(group = "venue_stack")
+  void flox_venue_stack_destroy(FloxVenueStackHandle h);
+
+  // Non-owning sub-handle accessors.
+  FLOX_EXPORT(group = "venue_stack")
+  FloxSimulatedExecutorHandle flox_venue_stack_executor(FloxVenueStackHandle h);
+  FLOX_EXPORT(group = "venue_stack")
+  FloxAccountHandle flox_venue_stack_account(FloxVenueStackHandle h);
+  FLOX_EXPORT(group = "venue_stack")
+  FloxLiquidationEngineHandle flox_venue_stack_liquidation(FloxVenueStackHandle h);
+  FLOX_EXPORT(group = "venue_stack")
+  FloxFeeScheduleHandle flox_venue_stack_fees(FloxVenueStackHandle h);
+  FLOX_EXPORT(group = "venue_stack")
+  FloxFundingScheduleHandle flox_venue_stack_funding(FloxVenueStackHandle h);
+  FLOX_EXPORT(group = "venue_stack")
+  FloxVenueAvailabilityHandle flox_venue_stack_venue(FloxVenueStackHandle h);
+
+  // Venue name, NUL-terminated. Caller must not free; the pointer
+  // is valid until destroy. Returns empty string for unknown venue.
+  FLOX_EXPORT(group = "venue_stack")
+  const char* flox_venue_stack_venue_name(FloxVenueStackHandle h);
+
 #ifdef __cplusplus
 }
 #endif
