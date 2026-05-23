@@ -85,6 +85,11 @@ groups:
     napi: { status: required, classes: [Account] }
     codon: { status: required }
 
+  venue_stack:
+    pybind11: { status: required, classes: [VenueStack] }
+    napi: { status: required, classes: [VenueStack] }
+    codon: { status: required }
+
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
     napi: { status: required, classes: [WalkForwardRunner] }

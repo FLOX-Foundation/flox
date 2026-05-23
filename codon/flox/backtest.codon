@@ -119,6 +119,17 @@ from C import flox_liquidation_engine_detach_account(cobj, u64)
 from C import flox_fee_schedule_bind_account(cobj, cobj)
 from C import flox_fee_schedule_clear_account_binding(cobj)
 
+# T052 — VenueStack
+from C import flox_venue_stack_create(u8, u64, f64) -> cobj
+from C import flox_venue_stack_destroy(cobj)
+from C import flox_venue_stack_executor(cobj) -> cobj
+from C import flox_venue_stack_account(cobj) -> cobj
+from C import flox_venue_stack_liquidation(cobj) -> cobj
+from C import flox_venue_stack_fees(cobj) -> cobj
+from C import flox_venue_stack_funding(cobj) -> cobj
+from C import flox_venue_stack_venue(cobj) -> cobj
+from C import flox_venue_stack_venue_name(cobj) -> cobj
+
 from C import flox_backtest_result_create(float, float, u8, float, float, float) -> cobj
 from C import flox_backtest_result_destroy(cobj)
 from C import flox_backtest_result_record_fill(cobj, u64, u32, u8, float, float, i64)
@@ -768,6 +779,81 @@ class Account:
 
     def reset_rolling(self):
         flox_account_reset_rolling(self._h)
+
+
+class VenueStack:
+    """Single-call venue-realistic backtest stack.
+
+    Use one of the factory class-methods to obtain a fully-wired
+    stack (executor + account + liquidation + fees + funding +
+    rate limits + venue availability). For backtests of real
+    strategies always go through a venue factory — bare
+    SimulatedExecutor() remains only for unit tests of the executor
+    itself.
+
+    Venue codes: 0=binance_um_futures, 1=bybit_linear, 2=okx_swap,
+    3=deribit. Use `from_venue(name, ...)` to dispatch by string."""
+
+    _h: cobj
+
+    def __init__(self, venue_code: int = 0, account_id: int = 0,
+                 equity: float = 0.0):
+        self._h = flox_venue_stack_create(u8(venue_code), u64(account_id),
+                                          f64(equity))
+
+    def close(self):
+        if self._h != cobj():
+            flox_venue_stack_destroy(self._h)
+            self._h = cobj()
+
+    @classmethod
+    def binance_um_futures(cls, account_id: int, equity: float):
+        return cls(0, account_id, equity)
+
+    @classmethod
+    def bybit_linear(cls, account_id: int, equity: float):
+        return cls(1, account_id, equity)
+
+    @classmethod
+    def okx_swap(cls, account_id: int, equity: float):
+        return cls(2, account_id, equity)
+
+    @classmethod
+    def deribit(cls, account_id: int, equity: float):
+        return cls(3, account_id, equity)
+
+    @classmethod
+    def from_venue(cls, name: str, account_id: int, equity: float):
+        n = name.lower()
+        if n == "bybit_linear" or n == "bybit":
+            return cls(1, account_id, equity)
+        if n == "okx_swap" or n == "okx":
+            return cls(2, account_id, equity)
+        if n == "deribit":
+            return cls(3, account_id, equity)
+        return cls(0, account_id, equity)  # default binance_um_futures
+
+    # Sub-handle accessors — return raw cobj. Wrap on the user side
+    # if needed using the matching codon class. Provided for parity
+    # with the C ABI; high-level workflows use the proxy methods
+    # below to avoid the rewrap dance.
+    def executor_handle(self) -> cobj:
+        return flox_venue_stack_executor(self._h)
+
+    def account_handle(self) -> cobj:
+        return flox_venue_stack_account(self._h)
+
+    def liquidation_handle(self) -> cobj:
+        return flox_venue_stack_liquidation(self._h)
+
+    def fees_handle(self) -> cobj:
+        return flox_venue_stack_fees(self._h)
+
+    def funding_handle(self) -> cobj:
+        return flox_venue_stack_funding(self._h)
+
+    def venue_handle(self) -> cobj:
+        return flox_venue_stack_venue(self._h)
 
 
 class BacktestResult:

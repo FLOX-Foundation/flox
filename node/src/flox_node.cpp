@@ -33,6 +33,7 @@
 #include "tape_diff.h"
 #include "targets.h"
 #include "venue_availability.h"
+#include "venue_stack.h"
 
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
@@ -57,6 +58,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerOrderGroup(env, exports);
   node_flox::registerRateLimitPolicy(env, exports);
   node_flox::registerVenueAvailability(env, exports);
+  node_flox::registerVenueStack(env, exports);
   node_flox::registerFundingSchedule(env, exports);
   node_flox::registerAccount(env, exports);
   node_flox::registerFeeSchedule(env, exports);

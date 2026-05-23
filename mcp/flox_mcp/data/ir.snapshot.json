@@ -13176,6 +13176,113 @@
       "return_type": "uint8_t"
     },
     {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_account",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "FloxAccountHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_create",
+      "params": [
+        {
+          "name": "venue",
+          "type": "uint8_t"
+        },
+        {
+          "name": "account_id",
+          "type": "uint64_t"
+        },
+        {
+          "name": "equity",
+          "type": "double"
+        }
+      ],
+      "return_type": "FloxVenueStackHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_destroy",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_executor",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "FloxSimulatedExecutorHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_fees",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "FloxFeeScheduleHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_funding",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "FloxFundingScheduleHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_liquidation",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "FloxLiquidationEngineHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_venue",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "FloxVenueAvailabilityHandle"
+    },
+    {
+      "group": "venue_stack",
+      "name": "flox_venue_stack_venue_name",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxVenueStackHandle"
+        }
+      ],
+      "return_type": "const char *"
+    },
+    {
       "group": "tape_aggregator",
       "name": "flox_volume_bin_aggregator_create",
       "params": [
@@ -15578,6 +15685,10 @@
     },
     {
       "name": "FloxVenueAvailabilityHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxVenueStackHandle",
       "target": "void*"
     },
     {

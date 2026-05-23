@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 681 functions, 54 handles, 58 structs, 43 callback typedefs, 3 enums, 68 groups.
+**Surface:** 690 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 69 groups.
 
 ## Opaque handles
 
@@ -62,6 +62,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxLiveQueuePositionHandle`
 - `FloxLiquidationEngineHandle`
 - `FloxAccountHandle`
+- `FloxVenueStackHandle`
 
 ## Enums
 
@@ -1713,6 +1714,18 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h, double per_day, int64_t mean_duration_ns, uint8_t policy, uint64_t seed)`
 - `uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns)`
 - `void flox_simulated_executor_set_venue_availability(FloxSimulatedExecutorHandle executor, FloxVenueAvailabilityHandle availability)`
+
+### venue_stack
+
+- `FloxVenueStackHandle flox_venue_stack_create(uint8_t venue, uint64_t account_id, double equity)`
+- `void flox_venue_stack_destroy(FloxVenueStackHandle h)`
+- `FloxSimulatedExecutorHandle flox_venue_stack_executor(FloxVenueStackHandle h)`
+- `FloxAccountHandle flox_venue_stack_account(FloxVenueStackHandle h)`
+- `FloxLiquidationEngineHandle flox_venue_stack_liquidation(FloxVenueStackHandle h)`
+- `FloxFeeScheduleHandle flox_venue_stack_fees(FloxVenueStackHandle h)`
+- `FloxFundingScheduleHandle flox_venue_stack_funding(FloxVenueStackHandle h)`
+- `FloxVenueAvailabilityHandle flox_venue_stack_venue(FloxVenueStackHandle h)`
+- `const char * flox_venue_stack_venue_name(FloxVenueStackHandle h)`
 
 ### volume_profile
 

@@ -9882,3 +9882,72 @@ extern "C" void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h)
 {
   toFee(h)->clearAccountBinding();
 }
+
+// ============================================================
+// T052: VenueStack
+// ============================================================
+
+#include "flox/backtest/venue_stack.h"
+
+namespace
+{
+inline flox::VenueStack* toVenueStack(FloxVenueStackHandle h)
+{
+  return static_cast<flox::VenueStack*>(h);
+}
+}  // namespace
+
+extern "C" FloxVenueStackHandle flox_venue_stack_create(uint8_t venue,
+                                                        uint64_t account_id,
+                                                        double equity)
+{
+  using flox::VenueStack;
+  switch (venue)
+  {
+    case 1:
+      return new VenueStack(VenueStack::bybit_linear(account_id, equity));
+    case 2:
+      return new VenueStack(VenueStack::okx_swap(account_id, equity));
+    case 3:
+      return new VenueStack(VenueStack::deribit(account_id, equity));
+    case 0:
+    default:
+      return new VenueStack(VenueStack::binance_um_futures(account_id, equity));
+  }
+}
+extern "C" void flox_venue_stack_destroy(FloxVenueStackHandle h)
+{
+  delete toVenueStack(h);
+}
+extern "C" FloxSimulatedExecutorHandle flox_venue_stack_executor(
+    FloxVenueStackHandle h)
+{
+  return &toVenueStack(h)->executor();
+}
+extern "C" FloxAccountHandle flox_venue_stack_account(FloxVenueStackHandle h)
+{
+  return &toVenueStack(h)->account();
+}
+extern "C" FloxLiquidationEngineHandle flox_venue_stack_liquidation(
+    FloxVenueStackHandle h)
+{
+  return &toVenueStack(h)->liquidation();
+}
+extern "C" FloxFeeScheduleHandle flox_venue_stack_fees(FloxVenueStackHandle h)
+{
+  return &toVenueStack(h)->fees();
+}
+extern "C" FloxFundingScheduleHandle flox_venue_stack_funding(
+    FloxVenueStackHandle h)
+{
+  return &toVenueStack(h)->funding();
+}
+extern "C" FloxVenueAvailabilityHandle flox_venue_stack_venue(
+    FloxVenueStackHandle h)
+{
+  return &toVenueStack(h)->venue();
+}
+extern "C" const char* flox_venue_stack_venue_name(FloxVenueStackHandle h)
+{
+  return toVenueStack(h)->venueName().c_str();
+}

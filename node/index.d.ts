@@ -701,6 +701,54 @@ export class Account {
   resetRolling(): void;
 }
 
+/** Single-call venue-realistic backtest stack.
+ *
+ *  Use one of the static factories to obtain a fully-wired stack
+ *  (executor + account + liquidation + fees + funding + rate limits +
+ *  venue availability). For backtests of real strategies always go
+ *  through a venue factory — the bare SimulatedExecutor() constructor
+ *  is for unit tests of the executor itself.
+ *
+ *  TypeScript exposes a flat proxy surface (accountOpenPosition,
+ *  liquidationOnMark, feesRecordFill, etc.) instead of returning
+ *  non-owning subsystem wraps. */
+export class VenueStack {
+  /** Construct via static factory; the raw constructor takes
+   *  (venueCode, accountId, equity) where venueCode is
+   *  0=binance_um_futures, 1=bybit_linear, 2=okx_swap, 3=deribit. */
+  constructor(venueCode: number, accountId: number, equity: number);
+  static binanceUmFutures(accountId: number, equity: number): VenueStack;
+  static bybitLinear(accountId: number, equity: number): VenueStack;
+  static okxSwap(accountId: number, equity: number): VenueStack;
+  static deribit(accountId: number, equity: number): VenueStack;
+  static fromVenue(
+    name: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'deribit' | string,
+    accountId: number,
+    equity: number,
+  ): VenueStack;
+  venueName(): string;
+  // Account proxies.
+  accountId(): number;
+  accountEquity(): number;
+  accountSetEquity(equity: number): void;
+  accountAddEquity(delta: number): void;
+  accountOpenPosition(symbol: number, quantity: number, entryPrice: number): void;
+  accountClosePosition(symbol: number): void;
+  accountPositionCount(): number;
+  accountSetMark(symbol: number, price: number): void;
+  accountTotalNotional(): number;
+  accountTotalUnrealisedPnl(): number;
+  accountRollingNotional30d(): number;
+  // Liquidation proxies.
+  liquidationOnMark(symbol: number, markPrice: number): number;
+  liquidationsCount(): number;
+  insuranceFundBalance(): number;
+  // Fees proxies.
+  feesRecordFill(tsNs: number, notional: number): void;
+  feesCurrentTierIndex(): number;
+  feesFor(tsNs: number, notional: number, isMaker: boolean): number;
+}
+
 export interface FundingPaymentEvent {
   timestampNs: number;
   symbol: number;

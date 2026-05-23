@@ -2438,6 +2438,86 @@ static JSValue js_fee_schedule_clear_account_binding(JSContext* ctx, JSValueCons
       static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
+
+// ===== T052 VenueStack =====
+static JSValue js_venue_stack_create(JSContext* ctx, JSValueConst, int argc,
+                                     JSValueConst* argv)
+{
+  uint32_t venueCode = 0;
+  int64_t accountId = 0;
+  double equity = 0.0;
+  if (argc >= 1)
+  {
+    JS_ToUint32(ctx, &venueCode, argv[0]);
+  }
+  if (argc >= 2)
+  {
+    JS_ToInt64(ctx, &accountId, argv[1]);
+  }
+  if (argc >= 3)
+  {
+    JS_ToFloat64(ctx, &equity, argv[2]);
+  }
+  return createHandleObject(
+      ctx, flox_venue_stack_create(static_cast<uint8_t>(venueCode),
+                                   static_cast<uint64_t>(accountId), equity));
+}
+static JSValue js_venue_stack_destroy(JSContext* ctx, JSValueConst, int,
+                                      JSValueConst* argv)
+{
+  flox_venue_stack_destroy(
+      static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_venue_stack_executor(JSContext* ctx, JSValueConst, int,
+                                       JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_venue_stack_executor(
+               static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_venue_stack_account(JSContext* ctx, JSValueConst, int,
+                                      JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_venue_stack_account(
+               static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_venue_stack_liquidation(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_venue_stack_liquidation(
+               static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_venue_stack_fees(JSContext* ctx, JSValueConst, int,
+                                   JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_venue_stack_fees(
+               static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_venue_stack_funding(JSContext* ctx, JSValueConst, int,
+                                      JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_venue_stack_funding(
+               static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_venue_stack_venue(JSContext* ctx, JSValueConst, int,
+                                    JSValueConst* argv)
+{
+  return createHandleObject(
+      ctx, flox_venue_stack_venue(
+               static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0]))));
+}
+static JSValue js_venue_stack_venue_name(JSContext* ctx, JSValueConst, int,
+                                         JSValueConst* argv)
+{
+  const char* name = flox_venue_stack_venue_name(
+      static_cast<FloxVenueStackHandle>(getHandle(ctx, argv[0])));
+  return JS_NewString(ctx, name ? name : "");
+}
 template <typename T, typename SizeFn, typename CopyFn>
 static JSValue copyVecToJs(JSContext* ctx, void* handle, SizeFn sizeFn, CopyFn copyFn)
 {
@@ -6689,6 +6769,18 @@ void registerFloxBindings(JSContext* ctx)
                 js_fee_schedule_bind_account, 2);
   addGlobalFunc(ctx, "__flox_fee_schedule_clear_account_binding",
                 js_fee_schedule_clear_account_binding, 1);
+  // T052 — VenueStack.
+  addGlobalFunc(ctx, "__flox_venue_stack_create", js_venue_stack_create, 3);
+  addGlobalFunc(ctx, "__flox_venue_stack_destroy", js_venue_stack_destroy, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_executor", js_venue_stack_executor, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_account", js_venue_stack_account, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_liquidation",
+                js_venue_stack_liquidation, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_fees", js_venue_stack_fees, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_funding", js_venue_stack_funding, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_venue", js_venue_stack_venue, 1);
+  addGlobalFunc(ctx, "__flox_venue_stack_venue_name",
+                js_venue_stack_venue_name, 1);
   addGlobalFunc(ctx, "__flox_fee_schedule_record_fill", js_fee_schedule_record_fill, 3);
   addGlobalFunc(ctx, "__flox_fee_schedule_fee_for", js_fee_schedule_fee_for, 4);
   addGlobalFunc(ctx, "__flox_fee_schedule_current_tier",

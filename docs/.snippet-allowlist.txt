@@ -255,3 +255,4 @@ docs/how-to/tiered-fees.md
 # exercised by tests/test_iceberg_orders.cpp.
 docs/how-to/iceberg-orders.md
 docs/how-to/calibrate-live-queue.md  # T048 fit-method examples — abstract API shapes
+docs/how-to/realistic-backtest.md  # T052 venue-factory how-to — abstract API shapes

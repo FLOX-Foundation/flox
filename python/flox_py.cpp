@@ -41,6 +41,7 @@
 #include "tape_diff_bindings.h"
 #include "target_bindings.h"
 #include "venue_availability_bindings.h"
+#include "venue_stack_bindings.h"
 #include "walk_forward_bindings.h"
 
 #include <algorithm>
@@ -807,6 +808,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindAccount(m);
   flox_py::bindFeeSchedule(m);
   flox_py::bindLiquidationEngine(m);
+  flox_py::bindVenueStack(m);
   flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);
   flox_py::bindFeedClock(m);

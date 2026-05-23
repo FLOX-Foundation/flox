@@ -808,6 +808,17 @@ from C import flox_venue_availability_auto_random_outages(cobj, float, i64, u8, 
 from C import flox_venue_availability_is_up(cobj, i64) -> u8
 from C import flox_simulated_executor_set_venue_availability(cobj, cobj)
 
+# ── venue_stack ──
+from C import flox_venue_stack_create(u8, u64, float) -> cobj
+from C import flox_venue_stack_destroy(cobj)
+from C import flox_venue_stack_executor(cobj) -> cobj
+from C import flox_venue_stack_account(cobj) -> cobj
+from C import flox_venue_stack_liquidation(cobj) -> cobj
+from C import flox_venue_stack_fees(cobj) -> cobj
+from C import flox_venue_stack_funding(cobj) -> cobj
+from C import flox_venue_stack_venue(cobj) -> cobj
+from C import flox_venue_stack_venue_name(cobj) -> cobj
+
 # ── volume_profile ──
 from C import flox_volume_profile_create(float) -> cobj
 from C import flox_volume_profile_destroy(cobj)
