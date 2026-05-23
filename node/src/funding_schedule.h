@@ -20,6 +20,8 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
         env, "FundingSchedule",
         {InstanceMethod("setConstant", &FundingScheduleWrap::SetConstant),
          InstanceMethod("setTape", &FundingScheduleWrap::SetTape),
+         InstanceMethod("setTapeBySymbol", &FundingScheduleWrap::SetTapeBySymbol),
+         InstanceMethod("loadTape", &FundingScheduleWrap::LoadTape),
          InstanceMethod("loadProfile", &FundingScheduleWrap::LoadProfile),
          InstanceMethod("setConstantRate", &FundingScheduleWrap::SetConstantRate),
          InstanceMethod("reset", &FundingScheduleWrap::Reset),
@@ -62,6 +64,30 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
     }
     flox_funding_schedule_set_tape(_h, ts.data(), rates.data(),
                                    static_cast<uint32_t>(ts.size()));
+  }
+  void SetTapeBySymbol(const Napi::CallbackInfo& info)
+  {
+    // (timestampsNs[], symbols[], rates[])
+    auto tsArr = info[0].As<Napi::Array>();
+    auto symArr = info[1].As<Napi::Array>();
+    auto rateArr = info[2].As<Napi::Array>();
+    const uint32_t n = tsArr.Length();
+    std::vector<int64_t> ts(n);
+    std::vector<uint32_t> sy(n);
+    std::vector<double> rates(n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      ts[i] = tsArr.Get(i).As<Napi::Number>().Int64Value();
+      sy[i] = symArr.Get(i).As<Napi::Number>().Uint32Value();
+      rates[i] = rateArr.Get(i).As<Napi::Number>().DoubleValue();
+    }
+    flox_funding_schedule_set_tape_by_symbol(_h, ts.data(), sy.data(), rates.data(), n);
+  }
+  Napi::Value LoadTape(const Napi::CallbackInfo& info)
+  {
+    std::string path = info[0].As<Napi::String>().Utf8Value();
+    const uint8_t ok = flox_funding_schedule_load_tape(_h, path.c_str());
+    return Napi::Boolean::New(info.Env(), ok != 0);
   }
   void LoadProfile(const Napi::CallbackInfo& info)
   {

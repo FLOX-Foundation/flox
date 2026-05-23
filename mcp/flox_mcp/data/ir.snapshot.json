@@ -4247,6 +4247,21 @@
     },
     {
       "group": "funding_schedule",
+      "name": "flox_funding_schedule_load_tape",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "path",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "funding_schedule",
       "name": "flox_funding_schedule_reset",
       "params": [
         {
@@ -4308,6 +4323,33 @@
         },
         {
           "name": "n_events",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "funding_schedule",
+      "name": "flox_funding_schedule_set_tape_by_symbol",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxFundingScheduleHandle"
+        },
+        {
+          "name": "timestamps_ns",
+          "type": "const int64_t *"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "rates",
+          "type": "const double *"
+        },
+        {
+          "name": "n_entries",
           "type": "uint32_t"
         }
       ],

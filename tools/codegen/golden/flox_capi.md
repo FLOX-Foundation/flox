@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 634 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
+**Surface:** 636 functions, 53 handles, 58 structs, 43 callback typedefs, 3 enums, 67 groups.
 
 ## Opaque handles
 
@@ -1134,6 +1134,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_funding_schedule_destroy(FloxFundingScheduleHandle h)`
 - `void flox_funding_schedule_set_constant(FloxFundingScheduleHandle h, int64_t interval_ns, double rate)`
 - `void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h, const int64_t * timestamps_ns, const double * rates, uint32_t n_events)`
+- `void flox_funding_schedule_set_tape_by_symbol(FloxFundingScheduleHandle h, const int64_t * timestamps_ns, const uint32_t * symbols, const double * rates, uint32_t n_entries)`
+- `uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h, const char * path)`
 - `void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h, const char * profile_name)`
 - `void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h, double rate)`
 - `void flox_funding_schedule_reset(FloxFundingScheduleHandle h)`

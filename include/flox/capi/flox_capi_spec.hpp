@@ -4077,6 +4077,25 @@ extern "C"
                                       const int64_t* timestamps_ns, const double* rates,
                                       uint32_t n_events);
 
+  // Configure as a per-symbol tape. Each of the three arrays must
+  // hold `n_entries` elements: timestamps_ns[i], symbols[i], rates[i]
+  // describe row i. symbol == 0 acts as a wildcard (every symbol gets
+  // this rate at that timestamp).
+  FLOX_EXPORT(group = "funding_schedule")
+  void flox_funding_schedule_set_tape_by_symbol(FloxFundingScheduleHandle h,
+                                                const int64_t* timestamps_ns,
+                                                const uint32_t* symbols,
+                                                const double* rates,
+                                                uint32_t n_entries);
+
+  // Read a CSV with columns timestamp_ns, symbol, funding_rate. Lines
+  // starting with '#' and a leading alphabetic header row are
+  // skipped. Returns 1 on success, 0 if the file could not be opened
+  // (existing tape state preserved on failure).
+  FLOX_EXPORT(group = "funding_schedule")
+  uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h,
+                                          const char* path);
+
   // Load a canned profile: "binance_um_futures" | "bybit_linear" |
   // "okx_swap" | "bitget_hourly". Rate defaults to zero; override
   // with set_constant_rate or use a tape.

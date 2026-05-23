@@ -86,6 +86,40 @@ For research that wants the exchange's actually-published rates
 (not a flat assumption), use `FundingSchedule.tape([(ts, rate),
 ...])`. Each tape event triggers one payment at its timestamp.
 
+### Per-symbol tape
+
+Real venues publish different rates per symbol per settlement. To
+capture that, use a per-symbol tape: each row is
+`(timestamp_ns, symbol, funding_rate)`. Symbols without an entry at
+a given settlement timestamp fall back to the constant rate (which
+defaults to 0; override with `set_constant_rate`).
+
+Sample CSV:
+
+```csv
+timestamp_ns,symbol,funding_rate
+1700000000000000000,1,0.0001
+1700000000000000000,2,-0.0002
+1700028800000000000,1,0.0003
+```
+
+=== "Python"
+
+    ```python
+    sched = FundingSchedule()
+    sched.load_tape("funding.csv")
+    sched.set_constant_rate(0.00005)  # fallback for missing rows
+    payments = sched.tick(now_ns, [1, 2], [pos1, pos2], [mark1, mark2])
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const sched = new flox.FundingSchedule();
+    sched.loadTape("funding.csv");
+    sched.setConstantRate(0.00005);
+    ```
+
 ## Integration recipe
 
 A typical backtest tick loop:

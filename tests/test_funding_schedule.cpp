@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+
 using namespace flox;
 
 namespace
@@ -129,4 +131,113 @@ TEST(FundingSchedule, CannedProfilesHaveCorrectIntervals)
   EXPECT_EQ(FundingSchedule::bybit_linear().intervalNs(), 8 * HOUR);
   EXPECT_EQ(FundingSchedule::okx_swap().intervalNs(), 8 * HOUR);
   EXPECT_EQ(FundingSchedule::bitget_hourly().intervalNs(), HOUR);
+}
+
+// === T047: per-symbol tape ===
+
+TEST(FundingSchedule, TapeBySymbolPicksRatePerSymbolPerSettlement)
+{
+  // Two symbols, two settlements, four (sym, ts) rates.
+  std::vector<FundingTapeEntry> entries = {
+      {8 * HOUR, BTC, 0.0001},
+      {8 * HOUR, ETH, -0.0002},
+      {16 * HOUR, BTC, 0.0003},
+      {16 * HOUR, ETH, 0.00015},
+  };
+  auto sched = FundingSchedule::tapeBySymbol(entries);
+
+  auto p = sched.tick(20 * HOUR, {BTC, ETH}, {1.0, 2.0}, {50000.0, 3000.0});
+  ASSERT_EQ(p.size(), 4u);
+  // Order is by ts asc; within a ts, the order matches the symbols
+  // vector. So: BTC@8h, ETH@8h, BTC@16h, ETH@16h.
+  EXPECT_EQ(p[0].symbol, BTC);
+  EXPECT_NEAR(p[0].rate, 0.0001, 1e-12);
+  EXPECT_EQ(p[1].symbol, ETH);
+  EXPECT_NEAR(p[1].rate, -0.0002, 1e-12);
+  EXPECT_EQ(p[2].symbol, BTC);
+  EXPECT_NEAR(p[2].rate, 0.0003, 1e-12);
+  EXPECT_EQ(p[3].symbol, ETH);
+  EXPECT_NEAR(p[3].rate, 0.00015, 1e-12);
+}
+
+TEST(FundingSchedule, TapeBySymbolFallsBackToConstantWhenSymbolMissing)
+{
+  // BTC has both settlements; ETH only the second. The first
+  // settlement uses the constant-rate fallback for ETH (which we
+  // override to a non-zero value to make the difference visible).
+  std::vector<FundingTapeEntry> entries = {
+      {8 * HOUR, BTC, 0.0001},
+      {16 * HOUR, BTC, 0.0003},
+      {16 * HOUR, ETH, 0.00015},
+  };
+  auto sched = FundingSchedule::tapeBySymbol(entries);
+  sched.setConstantRate(0.00005);  // fallback for missing (sym, ts)
+
+  auto p = sched.tick(20 * HOUR, {BTC, ETH}, {1.0, 2.0}, {50000.0, 3000.0});
+  ASSERT_EQ(p.size(), 4u);
+  // ETH at 8h has no entry → falls back to constant rate.
+  EXPECT_EQ(p[1].symbol, ETH);
+  EXPECT_NEAR(p[1].rate, 0.00005, 1e-12);
+  // BTC at 8h uses tape rate.
+  EXPECT_NEAR(p[0].rate, 0.0001, 1e-12);
+}
+
+TEST(FundingSchedule, EmptyTapeProducesNoPayments)
+{
+  auto sched = FundingSchedule::tapeBySymbol({});
+  auto p = sched.tick(20 * HOUR, {BTC, ETH}, {1.0, 1.0}, {50000.0, 3000.0});
+  EXPECT_TRUE(p.empty());
+}
+
+TEST(FundingSchedule, LoadTapeReadsCsvWithHeader)
+{
+  // Build a CSV in a temp file, load it, then run a tick.
+  const std::string path = ::testing::TempDir() + "/funding_t047.csv";
+  {
+    std::ofstream out(path);
+    out << "timestamp_ns,symbol,funding_rate\n";
+    out << (8 * HOUR) << "," << static_cast<int>(BTC) << ",0.0001\n";
+    out << (8 * HOUR) << "," << static_cast<int>(ETH) << ",-0.0002\n";
+    out << "# a comment row should be ignored\n";
+    out << (16 * HOUR) << "," << static_cast<int>(BTC) << ",0.0003\n";
+  }
+  FundingSchedule sched;
+  ASSERT_TRUE(sched.loadTape(path));
+  EXPECT_FALSE(sched.isInterval());
+  ASSERT_EQ(sched.perSymbolTape().size(), 3u);
+  EXPECT_EQ(sched.settlementTimestamps().size(), 2u);
+
+  auto p = sched.tick(20 * HOUR, {BTC, ETH}, {1.0, 1.0}, {50000.0, 3000.0});
+  // 8h: both symbols. 16h: BTC (entry) + ETH (constant fallback = 0).
+  // ETH at 16h with rate 0 → amount 0; payment still emitted.
+  ASSERT_EQ(p.size(), 4u);
+  EXPECT_EQ(p[0].symbol, BTC);
+  EXPECT_NEAR(p[0].rate, 0.0001, 1e-12);
+  EXPECT_EQ(p[2].symbol, BTC);
+  EXPECT_NEAR(p[2].rate, 0.0003, 1e-12);
+  EXPECT_EQ(p[3].symbol, ETH);
+  EXPECT_NEAR(p[3].rate, 0.0, 1e-12);  // fallback
+}
+
+TEST(FundingSchedule, LoadTapeReturnsFalseForMissingFile)
+{
+  FundingSchedule sched;
+  EXPECT_FALSE(sched.loadTape("/definitely/not/here/funding.csv"));
+}
+
+TEST(FundingSchedule, LegacyTapeStillWorksAsWildcard)
+{
+  // Existing tape(events) API treats each (ts, rate) as a wildcard
+  // entry; every symbol gets the same rate at that ts.
+  auto sched = FundingSchedule::tape({
+      {8 * HOUR, 0.0001},
+      {16 * HOUR, 0.0002},
+  });
+
+  auto p = sched.tick(20 * HOUR, {BTC, ETH}, {1.0, 1.0}, {50000.0, 3000.0});
+  ASSERT_EQ(p.size(), 4u);
+  EXPECT_NEAR(p[0].rate, 0.0001, 1e-12);
+  EXPECT_NEAR(p[1].rate, 0.0001, 1e-12);
+  EXPECT_NEAR(p[2].rate, 0.0002, 1e-12);
+  EXPECT_NEAR(p[3].rate, 0.0002, 1e-12);
 }

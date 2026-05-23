@@ -940,6 +940,11 @@
         {
           "group": "funding_schedule",
           "kind": "function",
+          "name": "flox_funding_schedule_load_tape"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
           "name": "flox_funding_schedule_reset"
         },
         {
@@ -956,6 +961,11 @@
           "group": "funding_schedule",
           "kind": "function",
           "name": "flox_funding_schedule_set_tape"
+        },
+        {
+          "group": "funding_schedule",
+          "kind": "function",
+          "name": "flox_funding_schedule_set_tape_by_symbol"
         },
         {
           "group": "funding_schedule",
@@ -4451,6 +4461,10 @@
         },
         {
           "kind": "function",
+          "name": "flox_funding_schedule_load_tape"
+        },
+        {
+          "kind": "function",
           "name": "flox_funding_schedule_reset"
         },
         {
@@ -4464,6 +4478,10 @@
         {
           "kind": "function",
           "name": "flox_funding_schedule_set_tape"
+        },
+        {
+          "kind": "function",
+          "name": "flox_funding_schedule_set_tape_by_symbol"
         },
         {
           "kind": "function",
@@ -7299,6 +7317,10 @@
         },
         {
           "kind": "class",
+          "name": "FundingTapeEntry"
+        },
+        {
+          "kind": "class",
           "name": "GaussianLatency"
         },
         {
@@ -8591,10 +8613,12 @@
         "flox_funding_schedule_create",
         "flox_funding_schedule_destroy",
         "flox_funding_schedule_load_profile",
+        "flox_funding_schedule_load_tape",
         "flox_funding_schedule_reset",
         "flox_funding_schedule_set_constant",
         "flox_funding_schedule_set_constant_rate",
         "flox_funding_schedule_set_tape",
+        "flox_funding_schedule_set_tape_by_symbol",
         "flox_funding_schedule_tick"
       ],
       "codon": {

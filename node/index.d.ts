@@ -735,6 +735,19 @@ export class FundingSchedule {
   constructor();
   setConstant(intervalNs: number, rate: number): void;
   setTape(timestampsNs: number[], rates: number[]): void;
+  /** Per-symbol tape: each row settles only the matching symbol at that
+   *  timestamp. symbols[i] == 0 acts as a wildcard. Symbols without an
+   *  entry at a given settlement timestamp fall back to the constant
+   *  rate (defaults to 0). */
+  setTapeBySymbol(
+    timestampsNs: number[],
+    symbols: number[],
+    rates: number[],
+  ): void;
+  /** Load a CSV with columns timestamp_ns,symbol,funding_rate. Lines
+   *  starting with '#' and a leading alphabetic header row are skipped.
+   *  Returns true on success, false if the file couldn't be opened. */
+  loadTape(path: string): boolean;
   /** Canned: 'binance_um_futures' | 'bybit_linear' | 'okx_swap' | 'bitget_hourly'. */
   loadProfile(name: string): void;
   setConstantRate(rate: number): void;
