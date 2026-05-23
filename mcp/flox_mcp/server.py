@@ -21,6 +21,7 @@ from .tools import (
     init_project as init_project_tool,
     lookahead as lookahead_tool,
     lookup,
+    overview,
     positions,
     record_data as record_data_tool,
     runtime,
@@ -38,6 +39,20 @@ def build_server() -> Server:
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
         return [
+            Tool(
+                name="flox_overview",
+                description=(
+                    "Call this FIRST when you don't know which FLOX MCP tool "
+                    "to use. Returns a Markdown narrative of the toolkit "
+                    "organised by category (discovery, building a backtest, "
+                    "live engine inspection, calibration), with canonical "
+                    "workflows for the most common tasks and a recent-"
+                    "additions section. No arguments. Cheap; pure bundled "
+                    "text. Cuts the AI-agent cycles spent rediscovering "
+                    "what the surface is on every fresh session."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
             Tool(
                 name="list_indicators",
                 description=(
@@ -1019,7 +1034,9 @@ def build_server() -> Server:
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         try:
-            if name == "list_indicators":
+            if name == "flox_overview":
+                text = overview.flox_overview()
+            elif name == "list_indicators":
                 text = indicators.list_indicators(filter=arguments.get("filter"))
             elif name == "lookup_error_code":
                 text = errors.lookup_error_code(arguments["code"])
