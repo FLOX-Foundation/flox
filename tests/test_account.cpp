@@ -183,6 +183,118 @@ TEST(Account, IsolatedModeNettingDoesNotShelter)
   EXPECT_EQ(a.positions().front().symbol, ETH);
 }
 
+// === T060: 30-day rolling-window eviction ===
+
+namespace
+{
+constexpr int64_t k30dNs = 30LL * 24LL * 3600LL * 1'000'000'000LL;
+}  // namespace
+
+TEST(Account, RollingNotionalSingleFillNoEviction)
+{
+  Account a(1, 0.0);
+  a.recordFill(/*tsNs=*/0, /*notional=*/100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+
+  // Second fill within 30d → both counted.
+  a.recordFill(/*tsNs=*/k30dNs / 2, /*notional=*/50'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 150'000.0);
+}
+
+TEST(Account, RollingNotionalEvictsExactlyAtBoundary)
+{
+  Account a(1, 0.0);
+  a.recordFill(/*tsNs=*/0, /*notional=*/100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+
+  // A new fill at exactly 30d after the first triggers eviction of
+  // the first (evictExpired uses `ts <= cutoff` where
+  // cutoff = nowNs - 30d, so a fill at nowNs = 30d makes cutoff = 0
+  // and the t=0 fill drops).
+  a.recordFill(/*tsNs=*/k30dNs, /*notional=*/40'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 40'000.0);
+}
+
+TEST(Account, RollingNotionalEvictsMultipleAcrossBoundary)
+{
+  Account a(1, 0.0);
+  // Three fills sprinkled across the early window.
+  a.recordFill(0, 10'000.0);
+  a.recordFill(k30dNs / 4, 20'000.0);  // 7.5d
+  a.recordFill(k30dNs / 2, 30'000.0);  // 15d
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 60'000.0);
+
+  // Jump 31 days forward → cutoff = 1d, only t=0 fill evicted.
+  // t=7.5d and t=15d stay (both > 1d before now=31d).
+  const int64_t day = 24LL * 3600LL * 1'000'000'000LL;
+  a.recordFill(31LL * day, 5'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 20'000.0 + 30'000.0 + 5'000.0);
+
+  // Jump further (100d total) — every prior fill is past cutoff
+  // (100d - 30d = 70d; all fills below 70d are dropped).
+  a.recordFill(100LL * day, 1'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 1'000.0);
+}
+
+TEST(Account, RollingNotionalLargeFarFutureClearsWindow)
+{
+  Account a(1, 0.0);
+  for (int i = 0; i < 10; ++i)
+  {
+    a.recordFill(static_cast<int64_t>(i) * 1'000'000'000LL, 10'000.0);
+  }
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+
+  // Fill 100 days later evicts everything prior.
+  a.recordFill(100LL * 24LL * 3600LL * 1'000'000'000LL, 7.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 7.0);
+}
+
+TEST(Account, RollingNotionalResetClearsCounter)
+{
+  Account a(1, 0.0);
+  a.recordFill(0, 500'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 500'000.0);
+  a.resetRolling();
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 0.0);
+}
+
+TEST(Account, FeeScheduleRollingNotionalEvicts)
+{
+  // FeeSchedule has its own copy of the rolling-window logic; verify
+  // eviction works there too. Same eviction policy as Account.
+  FeeSchedule s = FeeSchedule::binance_um_futures();
+  s.recordFill(0, 200'000.0);
+  EXPECT_DOUBLE_EQ(s.rollingNotional30d(), 200'000.0);
+
+  // Fill 31 days later evicts the earlier one.
+  s.recordFill(31LL * 24LL * 3600LL * 1'000'000'000LL, 50'000.0);
+  EXPECT_DOUBLE_EQ(s.rollingNotional30d(), 50'000.0);
+
+  // After eviction we no longer qualify for VIP 1 (>=250k).
+  EXPECT_EQ(s.currentTierIndex(), 0u);
+}
+
+TEST(Account, BoundAccountEvictionVisibleViaFeeSchedule)
+{
+  // When a FeeSchedule is bound to an Account, the schedule reads
+  // the account's rolling notional. Eviction on the account-side
+  // should be reflected in the schedule's tier resolution.
+  Account a(1, 0.0);
+  FeeSchedule s = FeeSchedule::binance_um_futures();
+  s.bindAccount(&a);
+
+  s.recordFill(0, 300'000.0);
+  EXPECT_GE(s.currentTierIndex(), 1u);  // crossed VIP 1
+
+  // 31 days later: eviction kicks the earlier fill out. Record a
+  // small fill at the far end to trigger eviction (which only
+  // happens on recordFill).
+  s.recordFill(31LL * 24LL * 3600LL * 1'000'000'000LL, 1'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 1'000.0);
+  EXPECT_EQ(s.currentTierIndex(), 0u);
+}
+
 // === T055: cross-account ADL routing ===
 
 TEST(Account, CrossAccountDeficitDepletesInsuranceFund)
