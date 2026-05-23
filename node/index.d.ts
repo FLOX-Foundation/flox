@@ -693,7 +693,12 @@ export class Account {
   openPosition(symbol: number, quantity: number, entryPrice: number): void;
   closePosition(symbol: number): void;
   positionCount(): number;
-  setMark(symbol: number, price: number): void;
+  setMark(symbol: number, price: number, tsNs?: number): void;
+  /** Last timestamp the symbol was marked. Very negative when never marked. */
+  markTsFor(symbol: number): number;
+  /** Returns true when any position's mark is older than budgetNs
+   *  relative to nowNs, or has never been marked. */
+  hasStaleMarks(nowNs: number, budgetNs: number): boolean;
   totalNotional(): number;
   totalUnrealisedPnl(): number;
   recordFill(tsNs: number, notional: number): void;
@@ -786,6 +791,10 @@ export class LiquidationEngine {
   ): void;
   closePosition(accountId: number, symbol: number): void;
   onMark(symbol: number, markPrice: number): number;
+  /** Multi-symbol atomic mark update + liquidation walk. Pass tuples
+   *  `[symbol, price]` and an optional ts_ns for the stale-mark guard.
+   *  Returns aggregated liquidations count across all walked symbols. */
+  onMarks(marks: Array<[number, number]>, tsNs?: number): number;
   liquidationsCount(): number;
   insurancePaymentsCount(): number;
   adlCloseoutsCount(): number;

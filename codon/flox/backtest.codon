@@ -83,6 +83,10 @@ from C import flox_liquidation_engine_set_liquidation_slippage_bps(cobj, f64)
 from C import flox_liquidation_engine_open_position(cobj, u64, u32, f64, f64, f64)
 from C import flox_liquidation_engine_close_position(cobj, u64, u32)
 from C import flox_liquidation_engine_on_mark(cobj, u32, f64) -> u32
+from C import flox_liquidation_engine_on_marks(cobj, u32, Ptr[u32], Ptr[f64], i64) -> u32
+from C import flox_account_set_mark_at(cobj, u32, f64, i64)
+from C import flox_account_mark_ts(cobj, u32) -> i64
+from C import flox_account_has_stale_marks(cobj, i64, i64) -> u8
 from C import flox_liquidation_engine_liquidations_count(cobj) -> u64
 from C import flox_liquidation_engine_insurance_payments_count(cobj) -> u64
 from C import flox_liquidation_engine_adl_closeouts_count(cobj) -> u64
@@ -649,6 +653,22 @@ class LiquidationEngine:
     def on_mark(self, symbol: int, mark_price: float) -> int:
         return int(flox_liquidation_engine_on_mark(self._h, u32(symbol), f64(mark_price)))
 
+    def on_marks(self, marks: List[Tuple[int, float]], ts_ns: int = 0) -> int:
+        """Multi-symbol atomic mark update + liquidation walk. Pass a
+        list of (symbol, price) tuples. Returns total liquidations
+        across all walked symbols."""
+        n = len(marks)
+        if n == 0:
+            return 0
+        syms = [u32(0) for _ in range(n)]
+        prices = [f64(0.0) for _ in range(n)]
+        for i in range(n):
+            syms[i] = u32(marks[i][0])
+            prices[i] = f64(marks[i][1])
+        return int(flox_liquidation_engine_on_marks(
+            self._h, u32(n), Ptr[u32](syms.arr.ptr), Ptr[f64](prices.arr.ptr),
+            i64(ts_ns)))
+
     def liquidations_count(self) -> int:
         return int(flox_liquidation_engine_liquidations_count(self._h))
 
@@ -762,8 +782,17 @@ class Account:
     def position_count(self) -> int:
         return int(flox_account_position_count(self._h))
 
-    def set_mark(self, symbol: int, price: float):
-        flox_account_set_mark(self._h, u32(symbol), f64(price))
+    def set_mark(self, symbol: int, price: float, ts_ns: int = 0):
+        if ts_ns == 0:
+            flox_account_set_mark(self._h, u32(symbol), f64(price))
+        else:
+            flox_account_set_mark_at(self._h, u32(symbol), f64(price), i64(ts_ns))
+
+    def mark_ts_for(self, symbol: int) -> int:
+        return int(flox_account_mark_ts(self._h, u32(symbol)))
+
+    def has_stale_marks(self, now_ns: int, budget_ns: int) -> bool:
+        return int(flox_account_has_stale_marks(self._h, i64(now_ns), i64(budget_ns))) != 0
 
     def total_notional(self) -> float:
         return float(flox_account_total_notional(self._h))

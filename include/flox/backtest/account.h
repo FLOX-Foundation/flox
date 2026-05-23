@@ -81,8 +81,24 @@ class Account
   // attached LiquidationEngine updates the mark for the current
   // symbol before walking the account. Positions on symbols without
   // a mark are valued at entry price (zero uPnL).
-  void setMark(SymbolId symbol, double price);
+  //
+  // `tsNs` records the timestamp of the mark update; callers using
+  // the stale-mark guard (T053) must pass a real timestamp. The
+  // default 0 keeps backwards compatibility with callers that don't
+  // care about staleness checks.
+  void setMark(SymbolId symbol, double price, int64_t tsNs = 0);
   double markFor(SymbolId symbol) const;
+  // Last timestamp any setMark was called for `symbol`. Returns
+  // INT64_MIN when the symbol has never been marked. Used by the
+  // stale-mark guard.
+  int64_t markTsFor(SymbolId symbol) const;
+
+  // Stale-mark guard. Returns true when any position in the
+  // account is for a symbol whose last mark is older than
+  // `budgetNs` relative to `nowNs`, or when the symbol has never
+  // been marked. Use this BEFORE invoking onMark / onMarks if the
+  // backtest must refuse to walk under stale data.
+  bool hasStaleMarks(int64_t nowNs, int64_t budgetNs) const;
 
   // 30-day rolling notional counter. recordFill pushes a fill into
   // the window; rollingNotional30d returns the current sum. Used by
@@ -110,7 +126,16 @@ class Account
   double _equity{0.0};
   MarginMode _mode{MarginMode::Cross};
   std::vector<LeveragedPosition> _positions;
-  std::vector<std::pair<SymbolId, double>> _marks;
+  // Marks are stored as (symbol, price, last-update ts). ts is
+  // INT64_MIN when unset; callers that don't pass a ts to setMark
+  // keep ts at 0 and the stale-mark guard treats them as fresh.
+  struct Mark
+  {
+    SymbolId symbol;
+    double price;
+    int64_t tsNs;
+  };
+  std::vector<Mark> _marks;
   std::deque<std::pair<int64_t, double>> _rolling;
   double _rollingTotal{0.0};
 };

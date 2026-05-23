@@ -2355,16 +2355,78 @@ static JSValue js_account_position_count(JSContext* ctx, JSValueConst, int,
       ctx, flox_account_position_count(
                static_cast<FloxAccountHandle>(getHandle(ctx, argv[0]))));
 }
-static JSValue js_account_set_mark(JSContext* ctx, JSValueConst, int,
+static JSValue js_account_set_mark(JSContext* ctx, JSValueConst, int argc,
                                    JSValueConst* argv)
 {
   uint32_t sym = 0;
   double px = 0.0;
   JS_ToUint32(ctx, &sym, argv[1]);
   JS_ToFloat64(ctx, &px, argv[2]);
-  flox_account_set_mark(
-      static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px);
+  if (argc >= 4 && JS_IsNumber(argv[3]))
+  {
+    int64_t ts = 0;
+    JS_ToInt64(ctx, &ts, argv[3]);
+    flox_account_set_mark_at(
+        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px, ts);
+  }
+  else
+  {
+    flox_account_set_mark(
+        static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px);
+  }
   return JS_UNDEFINED;
+}
+static JSValue js_account_mark_ts(JSContext* ctx, JSValueConst, int,
+                                  JSValueConst* argv)
+{
+  uint32_t sym = 0;
+  JS_ToUint32(ctx, &sym, argv[1]);
+  return JS_NewInt64(
+      ctx, flox_account_mark_ts(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym));
+}
+static JSValue js_account_has_stale_marks(JSContext* ctx, JSValueConst, int,
+                                          JSValueConst* argv)
+{
+  int64_t now = 0, budget = 0;
+  JS_ToInt64(ctx, &now, argv[1]);
+  JS_ToInt64(ctx, &budget, argv[2]);
+  return JS_NewBool(
+      ctx, flox_account_has_stale_marks(
+               static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), now,
+               budget) != 0);
+}
+static JSValue js_liquidation_engine_on_marks(JSContext* ctx, JSValueConst,
+                                              int argc, JSValueConst* argv)
+{
+  // argv[0]: engine handle, argv[1]: array of [sym, price] pairs,
+  // argv[2]: optional ts_ns.
+  uint32_t n = 0;
+  JSValue lenVal = JS_GetPropertyStr(ctx, argv[1], "length");
+  JS_ToUint32(ctx, &n, lenVal);
+  JS_FreeValue(ctx, lenVal);
+  std::vector<uint32_t> syms(n);
+  std::vector<double> prices(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    JSValue pair = JS_GetPropertyUint32(ctx, argv[1], i);
+    JSValue s = JS_GetPropertyUint32(ctx, pair, 0);
+    JSValue p = JS_GetPropertyUint32(ctx, pair, 1);
+    JS_ToUint32(ctx, &syms[i], s);
+    JS_ToFloat64(ctx, &prices[i], p);
+    JS_FreeValue(ctx, s);
+    JS_FreeValue(ctx, p);
+    JS_FreeValue(ctx, pair);
+  }
+  int64_t ts = 0;
+  if (argc >= 3 && JS_IsNumber(argv[2]))
+  {
+    JS_ToInt64(ctx, &ts, argv[2]);
+  }
+  const uint32_t total = flox_liquidation_engine_on_marks(
+      static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), n,
+      syms.data(), prices.data(), ts);
+  return JS_NewUint32(ctx, total);
 }
 static JSValue js_account_total_notional(JSContext* ctx, JSValueConst, int,
                                          JSValueConst* argv)
@@ -6751,7 +6813,12 @@ void registerFloxBindings(JSContext* ctx)
                 js_account_close_position, 2);
   addGlobalFunc(ctx, "__flox_account_position_count",
                 js_account_position_count, 1);
-  addGlobalFunc(ctx, "__flox_account_set_mark", js_account_set_mark, 3);
+  addGlobalFunc(ctx, "__flox_account_set_mark", js_account_set_mark, 4);
+  addGlobalFunc(ctx, "__flox_account_mark_ts", js_account_mark_ts, 2);
+  addGlobalFunc(ctx, "__flox_account_has_stale_marks",
+                js_account_has_stale_marks, 3);
+  addGlobalFunc(ctx, "__flox_liquidation_engine_on_marks",
+                js_liquidation_engine_on_marks, 3);
   addGlobalFunc(ctx, "__flox_account_total_notional",
                 js_account_total_notional, 1);
   addGlobalFunc(ctx, "__flox_account_total_unrealised_pnl",

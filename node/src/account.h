@@ -28,6 +28,8 @@ class AccountWrap : public Napi::ObjectWrap<AccountWrap>
          InstanceMethod("closePosition", &AccountWrap::ClosePosition),
          InstanceMethod("positionCount", &AccountWrap::PositionCount),
          InstanceMethod("setMark", &AccountWrap::SetMark),
+         InstanceMethod("markTsFor", &AccountWrap::MarkTsFor),
+         InstanceMethod("hasStaleMarks", &AccountWrap::HasStaleMarks),
          InstanceMethod("totalNotional", &AccountWrap::TotalNotional),
          InstanceMethod("totalUnrealisedPnl", &AccountWrap::TotalUpnl),
          InstanceMethod("recordFill", &AccountWrap::RecordFill),
@@ -111,8 +113,31 @@ class AccountWrap : public Napi::ObjectWrap<AccountWrap>
   }
   void SetMark(const Napi::CallbackInfo& info)
   {
-    flox_account_set_mark(_h, info[0].As<Napi::Number>().Uint32Value(),
-                          info[1].As<Napi::Number>().DoubleValue());
+    const uint32_t sym = info[0].As<Napi::Number>().Uint32Value();
+    const double price = info[1].As<Napi::Number>().DoubleValue();
+    if (info.Length() >= 3 && info[2].IsNumber())
+    {
+      flox_account_set_mark_at(_h, sym, price,
+                               info[2].As<Napi::Number>().Int64Value());
+    }
+    else
+    {
+      flox_account_set_mark(_h, sym, price);
+    }
+  }
+  Napi::Value MarkTsFor(const Napi::CallbackInfo& info)
+  {
+    return Napi::Number::New(
+        info.Env(),
+        static_cast<double>(flox_account_mark_ts(
+            _h, info[0].As<Napi::Number>().Uint32Value())));
+  }
+  Napi::Value HasStaleMarks(const Napi::CallbackInfo& info)
+  {
+    return Napi::Boolean::New(
+        info.Env(),
+        flox_account_has_stale_marks(_h, info[0].As<Napi::Number>().Int64Value(),
+                                     info[1].As<Napi::Number>().Int64Value()) != 0);
   }
   Napi::Value TotalNotional(const Napi::CallbackInfo& info)
   {

@@ -213,6 +213,21 @@ class LiquidationEngine
   // up to `maxCascadeDepth` rounds.
   LiquidationOutcome onMark(SymbolId symbol, double markPrice);
 
+  // Multi-symbol atomic mark update. Updates every attached
+  // account's mark for each (symbol, price) pair, then runs the
+  // liquidation walk once per symbol in the order provided.
+  // Returns the aggregated outcome across all walks. This is the
+  // recommended entry point for multi-position cross-margin
+  // accounts; it prevents the silent-footgun where forgetting to
+  // update one symbol's mark leaves cross-margin walks evaluating
+  // against stale data.
+  //
+  // `tsNs` is recorded on each mark for the stale-mark guard
+  // (Account::hasStaleMarks). Pass 0 if the backtest does not use
+  // staleness checks.
+  LiquidationOutcome onMarks(
+      const std::vector<std::pair<SymbolId, double>>& marks, int64_t tsNs = 0);
+
   // Cumulative stats across all onMark calls since construction.
   uint64_t liquidationsCount() const noexcept { return _statLiquidations; }
   uint64_t insurancePaymentsCount() const noexcept { return _statInsurancePayments; }

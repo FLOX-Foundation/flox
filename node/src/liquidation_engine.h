@@ -33,6 +33,7 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
          InstanceMethod("openPosition", &LiquidationEngineWrap::OpenPosition),
          InstanceMethod("closePosition", &LiquidationEngineWrap::ClosePosition),
          InstanceMethod("onMark", &LiquidationEngineWrap::OnMark),
+         InstanceMethod("onMarks", &LiquidationEngineWrap::OnMarks),
          InstanceMethod("liquidationsCount",
                         &LiquidationEngineWrap::LiquidationsCount),
          InstanceMethod("insurancePaymentsCount",
@@ -174,6 +175,26 @@ class LiquidationEngineWrap : public Napi::ObjectWrap<LiquidationEngineWrap>
         _h, info[0].As<Napi::Number>().Uint32Value(),
         info[1].As<Napi::Number>().DoubleValue());
     return Napi::Number::New(info.Env(), n);
+  }
+  Napi::Value OnMarks(const Napi::CallbackInfo& info)
+  {
+    // Expects (marks: Array<[symbol, price]>, tsNs?: number).
+    Napi::Array arr = info[0].As<Napi::Array>();
+    const uint32_t n = arr.Length();
+    std::vector<uint32_t> symbols(n);
+    std::vector<double> prices(n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      Napi::Array pair = arr.Get(i).As<Napi::Array>();
+      symbols[i] = pair.Get(uint32_t{0}).As<Napi::Number>().Uint32Value();
+      prices[i] = pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue();
+    }
+    const int64_t tsNs = info.Length() >= 2 && info[1].IsNumber()
+                             ? info[1].As<Napi::Number>().Int64Value()
+                             : 0;
+    const uint32_t total = flox_liquidation_engine_on_marks(
+        _h, n, symbols.data(), prices.data(), tsNs);
+    return Napi::Number::New(info.Env(), total);
   }
   Napi::Value LiquidationsCount(const Napi::CallbackInfo& info)
   {

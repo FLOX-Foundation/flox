@@ -842,6 +842,9 @@ extern "C"
   void flox_account_close_position(FloxAccountHandle h, uint32_t symbol);
   uint32_t flox_account_position_count(FloxAccountHandle h);
   void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price);
+  void flox_account_set_mark_at(FloxAccountHandle h, uint32_t symbol, double price, int64_t ts_ns);
+  int64_t flox_account_mark_ts(FloxAccountHandle h, uint32_t symbol);
+  uint8_t flox_account_has_stale_marks(FloxAccountHandle h, int64_t now_ns, int64_t budget_ns);
   double flox_account_total_notional(FloxAccountHandle h);
   double flox_account_total_unrealised_pnl(FloxAccountHandle h);
   void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional);
@@ -1580,6 +1583,9 @@ extern "C"
                                               uint32_t symbol);
   uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h, uint32_t symbol,
                                            double mark_price);
+  uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle h, uint32_t n,
+                                            const uint32_t* symbols, const double* prices,
+                                            int64_t ts_ns);
   uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h);
   uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h);
   uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h);

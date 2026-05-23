@@ -9639,6 +9639,22 @@ extern "C" uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle 
   return static_cast<uint32_t>(toLiqEngine(h)->onMark(symbol, mark_price).liquidationsCount);
 }
 
+extern "C" uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle h,
+                                                     uint32_t n,
+                                                     const uint32_t* symbols,
+                                                     const double* prices,
+                                                     int64_t ts_ns)
+{
+  std::vector<std::pair<flox::SymbolId, double>> marks;
+  marks.reserve(n);
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    marks.emplace_back(symbols[i], prices[i]);
+  }
+  return static_cast<uint32_t>(
+      toLiqEngine(h)->onMarks(marks, ts_ns).liquidationsCount);
+}
+
 extern "C" uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h)
 {
   return toLiqEngine(h)->liquidationsCount();
@@ -9840,6 +9856,20 @@ extern "C" uint32_t flox_account_position_count(FloxAccountHandle h)
 extern "C" void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price)
 {
   toAccount(h)->setMark(symbol, price);
+}
+extern "C" void flox_account_set_mark_at(FloxAccountHandle h, uint32_t symbol,
+                                         double price, int64_t ts_ns)
+{
+  toAccount(h)->setMark(symbol, price, ts_ns);
+}
+extern "C" int64_t flox_account_mark_ts(FloxAccountHandle h, uint32_t symbol)
+{
+  return toAccount(h)->markTsFor(symbol);
+}
+extern "C" uint8_t flox_account_has_stale_marks(FloxAccountHandle h,
+                                                int64_t now_ns, int64_t budget_ns)
+{
+  return toAccount(h)->hasStaleMarks(now_ns, budget_ns) ? 1 : 0;
 }
 extern "C" double flox_account_total_notional(FloxAccountHandle h)
 {
