@@ -806,32 +806,8 @@ class VenueStack:
             flox_venue_stack_destroy(self._h)
             self._h = cobj()
 
-    @classmethod
-    def binance_um_futures(cls, account_id: int, equity: float):
-        return cls(0, account_id, equity)
-
-    @classmethod
-    def bybit_linear(cls, account_id: int, equity: float):
-        return cls(1, account_id, equity)
-
-    @classmethod
-    def okx_swap(cls, account_id: int, equity: float):
-        return cls(2, account_id, equity)
-
-    @classmethod
-    def deribit(cls, account_id: int, equity: float):
-        return cls(3, account_id, equity)
-
-    @classmethod
-    def from_venue(cls, name: str, account_id: int, equity: float):
-        n = name.lower()
-        if n == "bybit_linear" or n == "bybit":
-            return cls(1, account_id, equity)
-        if n == "okx_swap" or n == "okx":
-            return cls(2, account_id, equity)
-        if n == "deribit":
-            return cls(3, account_id, equity)
-        return cls(0, account_id, equity)  # default binance_um_futures
+    # Codon does not provide @classmethod / @staticmethod; the
+    # factories below are module-level helpers (see end of file).
 
     # Sub-handle accessors — return raw cobj. Wrap on the user side
     # if needed using the matching codon class. Provided for parity
@@ -930,3 +906,39 @@ class BacktestResult:
             start_time_ns=int(buf[27]),
             end_time_ns=int(buf[28])
         )
+
+
+# Module-level factories for VenueStack. Codon does not have
+# @classmethod, so the canonical entry points live here. Users call
+# `flox.backtest.binance_um_futures(account_id, equity)` etc.
+def binance_um_futures(account_id: int, equity: float) -> VenueStack:
+    """Build a venue-realistic backtest stack for Binance UM futures."""
+    return VenueStack(0, account_id, equity)
+
+
+def bybit_linear(account_id: int, equity: float) -> VenueStack:
+    """Build a venue-realistic backtest stack for Bybit linear."""
+    return VenueStack(1, account_id, equity)
+
+
+def okx_swap(account_id: int, equity: float) -> VenueStack:
+    """Build a venue-realistic backtest stack for OKX swap."""
+    return VenueStack(2, account_id, equity)
+
+
+def deribit(account_id: int, equity: float) -> VenueStack:
+    """Build a venue-realistic backtest stack for Deribit."""
+    return VenueStack(3, account_id, equity)
+
+
+def from_venue(name: str, account_id: int, equity: float) -> VenueStack:
+    """Dispatch a venue stack by string name. Unknown names default
+    to binance_um_futures (parity with the C ABI behaviour)."""
+    n = name.lower()
+    if n == "bybit_linear" or n == "bybit":
+        return VenueStack(1, account_id, equity)
+    if n == "okx_swap" or n == "okx":
+        return VenueStack(2, account_id, equity)
+    if n == "deribit":
+        return VenueStack(3, account_id, equity)
+    return VenueStack(0, account_id, equity)
