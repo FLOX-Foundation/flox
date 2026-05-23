@@ -4468,6 +4468,14 @@ extern "C"
   FLOX_EXPORT(group = "account")
   void flox_account_open_position(FloxAccountHandle h, uint32_t symbol,
                                   double quantity, double entry_price);
+  // T054: open a position with an isolated-equity slice. Required
+  // when the account runs in MarginMode::Isolated; the slice backs
+  // the position in the per-position MM check. Cross-mode accounts
+  // ignore the slice.
+  FLOX_EXPORT(group = "account")
+  void flox_account_open_position_isolated(FloxAccountHandle h, uint32_t symbol,
+                                           double quantity, double entry_price,
+                                           double isolated_equity);
   FLOX_EXPORT(group = "account")
   void flox_account_close_position(FloxAccountHandle h, uint32_t symbol);
   FLOX_EXPORT(group = "account")

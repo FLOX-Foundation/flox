@@ -933,6 +933,33 @@
     },
     {
       "group": "account",
+      "name": "flox_account_open_position_isolated",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAccountHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "quantity",
+          "type": "double"
+        },
+        {
+          "name": "entry_price",
+          "type": "double"
+        },
+        {
+          "name": "isolated_equity",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "account",
       "name": "flox_account_position_count",
       "params": [
         {

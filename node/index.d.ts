@@ -690,7 +690,12 @@ export class Account {
   addEquity(delta: number): void;
   marginMode(): 'cross' | 'isolated';
   setMarginMode(mode: 'cross' | 'isolated' | number): void;
-  openPosition(symbol: number, quantity: number, entryPrice: number): void;
+  openPosition(
+    symbol: number,
+    quantity: number,
+    entryPrice: number,
+    isolatedEquity?: number,
+  ): void;
   closePosition(symbol: number): void;
   positionCount(): number;
   setMark(symbol: number, price: number, tsNs?: number): void;

@@ -99,9 +99,18 @@ class AccountWrap : public Napi::ObjectWrap<AccountWrap>
   }
   void OpenPosition(const Napi::CallbackInfo& info)
   {
-    flox_account_open_position(_h, info[0].As<Napi::Number>().Uint32Value(),
-                               info[1].As<Napi::Number>().DoubleValue(),
-                               info[2].As<Napi::Number>().DoubleValue());
+    const uint32_t sym = info[0].As<Napi::Number>().Uint32Value();
+    const double qty = info[1].As<Napi::Number>().DoubleValue();
+    const double entry = info[2].As<Napi::Number>().DoubleValue();
+    if (info.Length() >= 4 && info[3].IsNumber())
+    {
+      flox_account_open_position_isolated(
+          _h, sym, qty, entry, info[3].As<Napi::Number>().DoubleValue());
+    }
+    else
+    {
+      flox_account_open_position(_h, sym, qty, entry);
+    }
   }
   void ClosePosition(const Napi::CallbackInfo& info)
   {

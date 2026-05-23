@@ -144,21 +144,35 @@ automatically (matching the venue's window).
 
 ## Isolated mode
 
-Isolated accounts skip the cross-margin walk in the engine — each
-position liquidates against its own posted margin via the existing
-per-position path. Switch via the margin mode:
+Isolated accounts skip the cross-margin netting walk — each
+position carries its own posted-margin slice and liquidates
+independently. Switch via the margin mode and pass
+`isolated_equity` when opening each position:
 
 === "Python"
 
     ```python
+    acct = flox.Account(account_id=42, equity=0.0)
     acct.set_margin_mode("isolated")
+    acct.open_position(symbol=1, quantity=5.0, entry_price=50_000.0,
+                       isolated_equity=2_500.0)
+    acct.open_position(symbol=2, quantity=-10.0, entry_price=3_000.0,
+                       isolated_equity=1_500.0)
     ```
 
 === "TypeScript"
 
     ```typescript
+    const acct = new flox.Account(42, 0);
     acct.setMarginMode("isolated");
+    acct.openPosition(1, 5.0, 50_000, 2_500);
+    acct.openPosition(2, -10.0, 3_000, 1_500);
     ```
+
+In isolated mode the account's `equity` field is unused; each
+position's `isolated_equity` slice is what backs it under the
+maintenance-margin check. A profitable position on one symbol
+does NOT shelter an underwater position on another.
 
 ## Notes
 

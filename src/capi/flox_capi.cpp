@@ -9845,6 +9845,14 @@ extern "C" void flox_account_open_position(FloxAccountHandle h, uint32_t symbol,
 {
   toAccount(h)->openPosition(symbol, quantity, entry_price);
 }
+extern "C" void flox_account_open_position_isolated(FloxAccountHandle h,
+                                                    uint32_t symbol,
+                                                    double quantity,
+                                                    double entry_price,
+                                                    double isolated_equity)
+{
+  toAccount(h)->openPosition(symbol, quantity, entry_price, isolated_equity);
+}
 extern "C" void flox_account_close_position(FloxAccountHandle h, uint32_t symbol)
 {
   toAccount(h)->closePosition(symbol);
