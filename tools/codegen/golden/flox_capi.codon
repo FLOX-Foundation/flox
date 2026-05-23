@@ -19,6 +19,9 @@ from C import flox_account_open_position(cobj, u32, float, float)
 from C import flox_account_close_position(cobj, u32)
 from C import flox_account_position_count(cobj) -> u32
 from C import flox_account_set_mark(cobj, u32, float)
+from C import flox_account_set_mark_at(cobj, u32, float, i64)
+from C import flox_account_mark_ts(cobj, u32) -> i64
+from C import flox_account_has_stale_marks(cobj, i64, i64) -> u8
 from C import flox_account_total_notional(cobj) -> float
 from C import flox_account_total_unrealised_pnl(cobj) -> float
 from C import flox_account_record_fill(cobj, i64, float)
@@ -415,6 +418,7 @@ from C import flox_liquidation_engine_set_liquidation_slippage_bps(cobj, float)
 from C import flox_liquidation_engine_open_position(cobj, u64, u32, float, float, float)
 from C import flox_liquidation_engine_close_position(cobj, u64, u32)
 from C import flox_liquidation_engine_on_mark(cobj, u32, float) -> u32
+from C import flox_liquidation_engine_on_marks(cobj, u32, Ptr[u32], Ptr[float], i64) -> u32
 from C import flox_liquidation_engine_liquidations_count(cobj) -> u64
 from C import flox_liquidation_engine_insurance_payments_count(cobj) -> u64
 from C import flox_liquidation_engine_adl_closeouts_count(cobj) -> u64

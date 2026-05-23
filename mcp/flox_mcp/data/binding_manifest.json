@@ -30,12 +30,22 @@
         {
           "group": "account",
           "kind": "function",
+          "name": "flox_account_has_stale_marks"
+        },
+        {
+          "group": "account",
+          "kind": "function",
           "name": "flox_account_id"
         },
         {
           "group": "account",
           "kind": "function",
           "name": "flox_account_margin_mode"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_mark_ts"
         },
         {
           "group": "account",
@@ -76,6 +86,11 @@
           "group": "account",
           "kind": "function",
           "name": "flox_account_set_mark"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_set_mark_at"
         },
         {
           "group": "account",
@@ -1601,6 +1616,11 @@
           "group": "liquidation_engine",
           "kind": "function",
           "name": "flox_liquidation_engine_on_mark"
+        },
+        {
+          "group": "liquidation_engine",
+          "kind": "function",
+          "name": "flox_liquidation_engine_on_marks"
         },
         {
           "group": "liquidation_engine",
@@ -4013,11 +4033,19 @@
         },
         {
           "kind": "function",
+          "name": "flox_account_has_stale_marks"
+        },
+        {
+          "kind": "function",
           "name": "flox_account_id"
         },
         {
           "kind": "function",
           "name": "flox_account_margin_mode"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_mark_ts"
         },
         {
           "kind": "function",
@@ -4050,6 +4078,10 @@
         {
           "kind": "function",
           "name": "flox_account_set_mark"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_set_mark_at"
         },
         {
           "kind": "function",
@@ -5270,6 +5302,10 @@
         {
           "kind": "function",
           "name": "flox_liquidation_engine_on_mark"
+        },
+        {
+          "kind": "function",
+          "name": "flox_liquidation_engine_on_marks"
         },
         {
           "kind": "function",
@@ -8405,8 +8441,10 @@
         "flox_account_create",
         "flox_account_destroy",
         "flox_account_equity",
+        "flox_account_has_stale_marks",
         "flox_account_id",
         "flox_account_margin_mode",
+        "flox_account_mark_ts",
         "flox_account_open_position",
         "flox_account_position_count",
         "flox_account_record_fill",
@@ -8415,6 +8453,7 @@
         "flox_account_set_equity",
         "flox_account_set_margin_mode",
         "flox_account_set_mark",
+        "flox_account_set_mark_at",
         "flox_account_total_notional",
         "flox_account_total_unrealised_pnl"
       ],
@@ -9484,6 +9523,7 @@
         "flox_liquidation_engine_mark_impact_weight",
         "flox_liquidation_engine_max_cascade_depth",
         "flox_liquidation_engine_on_mark",
+        "flox_liquidation_engine_on_marks",
         "flox_liquidation_engine_open_position",
         "flox_liquidation_engine_reset_stats",
         "flox_liquidation_engine_set_adl_enabled",

@@ -10,6 +10,7 @@
 #include "flox/backtest/account.h"
 
 #include <cctype>
+#include <climits>
 
 namespace flox
 {
@@ -64,29 +65,63 @@ void Account::closePosition(SymbolId symbol)
       _positions.end());
 }
 
-void Account::setMark(SymbolId symbol, double price)
+void Account::setMark(SymbolId symbol, double price, int64_t tsNs)
 {
-  for (auto& [sym, px] : _marks)
+  for (auto& m : _marks)
   {
-    if (sym == symbol)
+    if (m.symbol == symbol)
     {
-      px = price;
+      m.price = price;
+      m.tsNs = tsNs;
       return;
     }
   }
-  _marks.emplace_back(symbol, price);
+  _marks.push_back(Mark{symbol, price, tsNs});
 }
 
 double Account::markFor(SymbolId symbol) const
 {
-  for (const auto& [sym, px] : _marks)
+  for (const auto& m : _marks)
   {
-    if (sym == symbol)
+    if (m.symbol == symbol)
     {
-      return px;
+      return m.price;
     }
   }
   return 0.0;
+}
+
+int64_t Account::markTsFor(SymbolId symbol) const
+{
+  for (const auto& m : _marks)
+  {
+    if (m.symbol == symbol)
+    {
+      return m.tsNs;
+    }
+  }
+  return INT64_MIN;
+}
+
+bool Account::hasStaleMarks(int64_t nowNs, int64_t budgetNs) const
+{
+  for (const auto& p : _positions)
+  {
+    if (p.quantity == 0.0)
+    {
+      continue;
+    }
+    const int64_t ts = markTsFor(p.symbol);
+    if (ts == INT64_MIN)
+    {
+      return true;  // never marked
+    }
+    if (nowNs - ts > budgetNs)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Account::recordFill(int64_t tsNs, double notional)

@@ -74,6 +74,27 @@ inline void bindLiquidationEngine(py::module_& m)
              d["insurance_payments_count"] = outcome.insurancePaymentsCount;
              d["adl_closeouts_count"] = outcome.adlCloseoutsCount;
              return d; }, py::arg("symbol"), py::arg("mark_price"))
+      .def("on_marks", [](flox::LiquidationEngine& self, const std::vector<std::pair<uint32_t, double>>& marks, int64_t ts_ns)
+           {
+             std::vector<std::pair<flox::SymbolId, double>> casted;
+             casted.reserve(marks.size());
+             for (const auto& [s, p] : marks)
+             {
+               casted.emplace_back(s, p);
+             }
+             auto outcome = self.onMarks(casted, ts_ns);
+             py::dict d;
+             d["liquidated"] = outcome.liquidated;
+             d["adl_closed_out"] = outcome.adlClosedOut;
+             d["insurance_fund_delta"] = outcome.insuranceFundDelta;
+             d["liquidations_count"] = outcome.liquidationsCount;
+             d["insurance_payments_count"] = outcome.insurancePaymentsCount;
+             d["adl_closeouts_count"] = outcome.adlCloseoutsCount;
+             return d; },
+           "Atomically update every attached account's mark for each "
+           "(symbol, price) pair, then walk liquidations once per symbol. "
+           "Returns aggregated outcome.",
+           py::arg("marks"), py::arg("ts_ns") = int64_t{0})
       .def("liquidations_count", &flox::LiquidationEngine::liquidationsCount)
       .def("insurance_payments_count", &flox::LiquidationEngine::insurancePaymentsCount)
       .def("adl_closeouts_count", &flox::LiquidationEngine::adlCloseoutsCount)

@@ -41,10 +41,17 @@ with `set_margin_mode("isolated")` / `setMarginMode("isolated")`.
 ## Cross-margin liquidation
 
 Attach the account to a `LiquidationEngine`. The engine walks
-attached accounts on every `on_mark` tick: for accounts in cross
+attached accounts on every `on_marks` tick: for accounts in cross
 mode, it evaluates the account-level maintenance-margin check
 (`equity + total_uPnL` vs `total_notional * mm_fraction`) and, when
 the account is underwater, closes the worst-PnL position first.
+
+Use `on_marks(...)` (T053) with the full set of current marks per
+tick — it updates every attached account's marks atomically before
+walking. The legacy single-symbol `on_mark(...)` is still
+available but is a footgun for multi-symbol accounts: forgetting
+to set the other symbols' marks leaves the cross-margin check
+evaluating against stale data.
 
 === "Python"
 
@@ -52,11 +59,9 @@ the account is underwater, closes the worst-PnL position first.
     liq = flox.LiquidationEngine.binance_um_futures()
     liq.attach_account(acct)
 
-    # Update marks across symbols. The engine sets the mark for the
-    # called symbol automatically; set the others explicitly so the
-    # cross calculation is complete.
-    acct.set_mark(symbol=2, price=2_800.0)
-    out = liq.on_mark(symbol=1, mark_price=47_000.0)
+    # Atomic multi-symbol update; engine walks every attached
+    # account once it has fresh marks for every position.
+    out = liq.on_marks([(1, 47_000.0), (2, 2_800.0)], ts_ns=now)
     print(out["liquidations_count"])
     ```
 
@@ -67,8 +72,30 @@ the account is underwater, closes the worst-PnL position first.
     liq.loadProfile("binance_um_futures");
     liq.attachAccount(acct);
 
-    acct.setMark(2, 2_800);
-    const out = liq.onMark(1, 47_000);
+    const n = liq.onMarks([[1, 47_000], [2, 2_800]], now);
+    ```
+
+### Stale-mark guard
+
+When a backtest must refuse to walk on stale data, set timestamps
+explicitly via `set_mark(sym, price, ts_ns)` (or pass `ts_ns` to
+`on_marks`) and check the account before driving the engine:
+
+=== "Python"
+
+    ```python
+    if acct.has_stale_marks(now_ns=now, budget_ns=60_000_000_000):
+        raise RuntimeError("refresh marks before walking")
+    liq.on_marks(current_marks, ts_ns=now)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    if (acct.hasStaleMarks(now, 60_000_000_000)) {
+        throw new Error("refresh marks before walking");
+    }
+    liq.onMarks(currentMarks, now);
     ```
 
 When a profitable short backs a losing long, the account stays

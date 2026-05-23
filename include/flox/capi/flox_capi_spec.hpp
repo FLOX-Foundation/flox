@@ -4362,6 +4362,15 @@ extern "C"
   uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h,
                                            uint32_t symbol, double mark_price);
 
+  // T053: multi-symbol atomic mark update + walk. `symbols` and
+  // `prices` are parallel arrays of length `n`. `ts_ns` is recorded
+  // on each account's mark for the stale-mark guard. Returns
+  // aggregated liquidation count across all symbols walked.
+  FLOX_EXPORT(group = "liquidation_engine")
+  uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle h,
+                                            uint32_t n, const uint32_t* symbols,
+                                            const double* prices, int64_t ts_ns);
+
   FLOX_EXPORT(group = "liquidation_engine")
   uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h);
   FLOX_EXPORT(group = "liquidation_engine")
@@ -4466,6 +4475,17 @@ extern "C"
 
   FLOX_EXPORT(group = "account")
   void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price);
+  // T053: set_mark with timestamp for stale-mark guard.
+  FLOX_EXPORT(group = "account")
+  void flox_account_set_mark_at(FloxAccountHandle h, uint32_t symbol,
+                                double price, int64_t ts_ns);
+  FLOX_EXPORT(group = "account")
+  int64_t flox_account_mark_ts(FloxAccountHandle h, uint32_t symbol);
+  // Returns 1 when any position in the account has a mark older
+  // than `budget_ns` relative to `now_ns`, or no mark at all.
+  FLOX_EXPORT(group = "account")
+  uint8_t flox_account_has_stale_marks(FloxAccountHandle h, int64_t now_ns,
+                                       int64_t budget_ns);
   FLOX_EXPORT(group = "account")
   double flox_account_total_notional(FloxAccountHandle h);
   FLOX_EXPORT(group = "account")

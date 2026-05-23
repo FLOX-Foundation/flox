@@ -8199,8 +8199,10 @@ Surface: 110 classes, 58 functions, 39 constants.
 - `add_equity(self, delta: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `close_position(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `equity(self) -> float`
+- `has_stale_marks(self, now_ns: typing.SupportsInt | typing.SupportsIndex, budget_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
 - `margin_mode(self) -> MarginMode`
 - `mark_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> float`
+- `mark_ts_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `position_count(self) -> int`
 - `record_fill(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, notional: typing.SupportsFloat | typing.SupportsIndex) -> None`
@@ -8208,7 +8210,7 @@ Surface: 110 classes, 58 functions, 39 constants.
 - `rolling_notional_30d(self) -> float`
 - `set_equity(self, equity: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `set_margin_mode(self, mode: typing.Any) -> None`
-- `set_mark(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `set_mark(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `total_notional(self) -> float`
 - `total_unrealised_pnl(self) -> float`
 
@@ -9008,6 +9010,7 @@ Members:
 - `mark_impact_weight(self) -> float`
 - `max_cascade_depth(self) -> int`
 - `on_mark(self, symbol: typing.SupportsInt | typing.SupportsIndex, mark_price: typing.SupportsFloat | typing.SupportsIndex) -> dict`
+- `on_marks(self, marks: collections.abc.Sequence[tuple[typing.SupportsInt | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> dict`
 - `open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `position_count(self) -> int`
 - `reset_stats(self) -> None`

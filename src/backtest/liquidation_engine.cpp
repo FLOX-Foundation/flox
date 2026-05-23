@@ -154,6 +154,49 @@ void LiquidationEngine::resetStats() noexcept
   _onMarkTickCounter = 0;
 }
 
+LiquidationOutcome LiquidationEngine::onMarks(
+    const std::vector<std::pair<SymbolId, double>>& marks, int64_t tsNs)
+{
+  // Phase 1: atomically update every attached account's mark for
+  // every (symbol, price) pair. This is the headline T053 fix —
+  // cross-margin walks below see ALL fresh marks instead of being
+  // run with one fresh symbol and the rest stale.
+  for (Account* acct : _accounts)
+  {
+    if (acct == nullptr)
+    {
+      continue;
+    }
+    for (const auto& [sym, px] : marks)
+    {
+      acct->setMark(sym, px, tsNs);
+    }
+  }
+
+  // Phase 2: drive the liquidation walk once per symbol. Aggregate
+  // outcomes across walks; cascade behaviour for each symbol is
+  // preserved as it would be under per-symbol onMark.
+  LiquidationOutcome aggregated;
+  for (const auto& [sym, px] : marks)
+  {
+    if (px <= 0.0)
+    {
+      continue;
+    }
+    const LiquidationOutcome part = onMark(sym, px);
+    aggregated.liquidated.insert(aggregated.liquidated.end(),
+                                 part.liquidated.begin(), part.liquidated.end());
+    aggregated.adlClosedOut.insert(aggregated.adlClosedOut.end(),
+                                   part.adlClosedOut.begin(),
+                                   part.adlClosedOut.end());
+    aggregated.insuranceFundDelta += part.insuranceFundDelta;
+    aggregated.liquidationsCount += part.liquidationsCount;
+    aggregated.insurancePaymentsCount += part.insurancePaymentsCount;
+    aggregated.adlCloseoutsCount += part.adlCloseoutsCount;
+  }
+  return aggregated;
+}
+
 LiquidationOutcome LiquidationEngine::onMark(SymbolId symbol, double markPrice)
 {
   LiquidationOutcome aggregated;

@@ -219,3 +219,67 @@ TEST(Account, FeeScheduleUnboundCounterUnaffectedByAccount)
   EXPECT_DOUBLE_EQ(s.rollingNotional30d(), 100'000.0);
   EXPECT_EQ(s.currentTierIndex(), 0u);
 }
+
+// === T053: multi-symbol marks auto-sync + stale-mark guard ===
+
+TEST(Account, MarkTsRecordedOnSetMark)
+{
+  Account a(1, 1000.0);
+  a.setMark(BTC, 50'000.0, /*tsNs=*/12345);
+  EXPECT_EQ(a.markTsFor(BTC), 12345);
+  EXPECT_EQ(a.markTsFor(ETH), INT64_MIN);  // never marked
+
+  // Re-marking overwrites both price and ts.
+  a.setMark(BTC, 51'000.0, /*tsNs=*/67890);
+  EXPECT_DOUBLE_EQ(a.markFor(BTC), 51'000.0);
+  EXPECT_EQ(a.markTsFor(BTC), 67890);
+}
+
+TEST(Account, HasStaleMarksFlagsUnmarkedSymbols)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 1.0, 50'000.0);
+  // No marks set → BTC position counts as stale.
+  EXPECT_TRUE(a.hasStaleMarks(/*nowNs=*/1'000'000'000, /*budgetNs=*/60'000'000'000));
+
+  a.setMark(BTC, 50'000.0, /*tsNs=*/500'000'000);
+  EXPECT_FALSE(
+      a.hasStaleMarks(/*nowNs=*/1'000'000'000, /*budgetNs=*/60'000'000'000));
+}
+
+TEST(Account, HasStaleMarksFlagsBeyondBudget)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 1.0, 50'000.0);
+  a.setMark(BTC, 50'000.0, /*tsNs=*/0);
+  // Budget is 1 second; now is 2 seconds in future → stale.
+  EXPECT_TRUE(
+      a.hasStaleMarks(/*nowNs=*/2'000'000'000, /*budgetNs=*/1'000'000'000));
+  // Fresh enough.
+  EXPECT_FALSE(
+      a.hasStaleMarks(/*nowNs=*/500'000'000, /*budgetNs=*/1'000'000'000));
+}
+
+TEST(Account, MultiSymbolOnMarksUpdatesAllAccountsAtomically)
+{
+  // Cross-margin survival depends on knowing BOTH BTC and ETH
+  // marks. With per-symbol onMark, the ETH leg would stay stale
+  // until the caller manually called set_mark for ETH. onMarks
+  // batches the update so the walk sees all current marks at once.
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 1.0, 50'000.0);   // long BTC
+  a.openPosition(ETH, -10.0, 3'000.0);  // short ETH
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.attachAccount(&a);
+
+  // BTC drops 6% (-3000 uPnL); ETH drops 25% (+7500 uPnL).
+  // Net account uPnL: +4500. Equity 10k + 4500 = 14.5k. Safe.
+  std::vector<std::pair<SymbolId, double>> marks = {{BTC, 47'000.0}, {ETH, 2'250.0}};
+  const auto out = e.onMarks(marks);
+  EXPECT_EQ(out.liquidationsCount, 0u);
+  EXPECT_EQ(a.positionCount(), 2u);
+  EXPECT_DOUBLE_EQ(a.markFor(BTC), 47'000.0);
+  EXPECT_DOUBLE_EQ(a.markFor(ETH), 2'250.0);
+}

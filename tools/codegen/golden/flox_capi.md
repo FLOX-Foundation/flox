@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 690 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 69 groups.
+**Surface:** 694 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 69 groups.
 
 ## Opaque handles
 
@@ -861,6 +861,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_account_close_position(FloxAccountHandle h, uint32_t symbol)`
 - `uint32_t flox_account_position_count(FloxAccountHandle h)`
 - `void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price)`
+- `void flox_account_set_mark_at(FloxAccountHandle h, uint32_t symbol, double price, int64_t ts_ns)`
+- `int64_t flox_account_mark_ts(FloxAccountHandle h, uint32_t symbol)`
+- `uint8_t flox_account_has_stale_marks(FloxAccountHandle h, int64_t now_ns, int64_t budget_ns)`
 - `double flox_account_total_notional(FloxAccountHandle h)`
 - `double flox_account_total_unrealised_pnl(FloxAccountHandle h)`
 - `void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional)`
@@ -1289,6 +1292,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h, uint64_t account_id, uint32_t symbol, double quantity, double entry_price, double equity)`
 - `void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h, uint64_t account_id, uint32_t symbol)`
 - `uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h, uint32_t symbol, double mark_price)`
+- `uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle h, uint32_t n, const uint32_t * symbols, const double * prices, int64_t ts_ns)`
 - `uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h)`
 - `uint64_t flox_liquidation_engine_insurance_payments_count(FloxLiquidationEngineHandle h)`
 - `uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h)`
