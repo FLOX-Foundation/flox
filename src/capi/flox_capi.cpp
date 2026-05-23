@@ -9892,6 +9892,29 @@ extern "C" void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns,
 {
   toAccount(h)->recordFill(ts_ns, notional);
 }
+extern "C" void flox_account_record_fill_ex(FloxAccountHandle h, int64_t ts_ns,
+                                            double notional, uint32_t symbol)
+{
+  toAccount(h)->recordFill(ts_ns, notional, symbol);
+}
+extern "C" uint32_t flox_account_rolling_notional_by_symbol_size(FloxAccountHandle h)
+{
+  return static_cast<uint32_t>(toAccount(h)->rollingNotionalBySymbol30d().size());
+}
+extern "C" uint32_t flox_account_rolling_notional_by_symbol_copy(
+    FloxAccountHandle h, uint32_t* symbols_out, double* notionals_out,
+    uint32_t max)
+{
+  const auto pairs = toAccount(h)->rollingNotionalBySymbol30d();
+  const uint32_t n = static_cast<uint32_t>(
+      std::min<size_t>(pairs.size(), static_cast<size_t>(max)));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    symbols_out[i] = pairs[i].first;
+    notionals_out[i] = pairs[i].second;
+  }
+  return n;
+}
 extern "C" double flox_account_rolling_notional_30d(FloxAccountHandle h)
 {
   return toAccount(h)->rollingNotional30d();

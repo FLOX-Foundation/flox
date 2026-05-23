@@ -4501,6 +4501,22 @@ extern "C"
 
   FLOX_EXPORT(group = "account")
   void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional);
+  // T059: per-symbol fill recording. Same as record_fill but tags
+  // the fill with a symbol so rollingNotionalBySymbol30d can break
+  // the aggregate down.
+  FLOX_EXPORT(group = "account")
+  void flox_account_record_fill_ex(FloxAccountHandle h, int64_t ts_ns,
+                                   double notional, uint32_t symbol);
+  // Returns the number of unique symbols in the rolling window.
+  // Use rolling_notional_by_symbol_copy to read them.
+  FLOX_EXPORT(group = "account")
+  uint32_t flox_account_rolling_notional_by_symbol_size(FloxAccountHandle h);
+  // Copies up to `max` (symbol, notional) pairs into the caller's
+  // buffers. Returns the number actually copied.
+  FLOX_EXPORT(group = "account")
+  uint32_t flox_account_rolling_notional_by_symbol_copy(
+      FloxAccountHandle h, uint32_t* symbols_out, double* notionals_out,
+      uint32_t max);
   FLOX_EXPORT(group = "account")
   double flox_account_rolling_notional_30d(FloxAccountHandle h);
   FLOX_EXPORT(group = "account")

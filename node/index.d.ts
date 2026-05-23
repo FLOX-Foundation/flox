@@ -706,7 +706,11 @@ export class Account {
   hasStaleMarks(nowNs: number, budgetNs: number): boolean;
   totalNotional(): number;
   totalUnrealisedPnl(): number;
-  recordFill(tsNs: number, notional: number): void;
+  recordFill(tsNs: number, notional: number, symbol?: number): void;
+  /** Per-symbol breakdown of rolling 30d notional. Returned as a list
+   *  of `{ symbol, notional }` pairs. Symbol 0 is the "unknown / no
+   *  symbol" bucket used by recordFill calls without a symbol arg. */
+  rollingNotionalBySymbol30d(): Array<{ symbol: number; notional: number }>;
   rollingNotional30d(): number;
   resetRolling(): void;
 }

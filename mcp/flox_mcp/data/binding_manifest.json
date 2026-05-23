@@ -70,12 +70,27 @@
         {
           "group": "account",
           "kind": "function",
+          "name": "flox_account_record_fill_ex"
+        },
+        {
+          "group": "account",
+          "kind": "function",
           "name": "flox_account_reset_rolling"
         },
         {
           "group": "account",
           "kind": "function",
           "name": "flox_account_rolling_notional_30d"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_rolling_notional_by_symbol_copy"
+        },
+        {
+          "group": "account",
+          "kind": "function",
+          "name": "flox_account_rolling_notional_by_symbol_size"
         },
         {
           "group": "account",
@@ -4070,11 +4085,23 @@
         },
         {
           "kind": "function",
+          "name": "flox_account_record_fill_ex"
+        },
+        {
+          "kind": "function",
           "name": "flox_account_reset_rolling"
         },
         {
           "kind": "function",
           "name": "flox_account_rolling_notional_30d"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_rolling_notional_by_symbol_copy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_account_rolling_notional_by_symbol_size"
         },
         {
           "kind": "function",
@@ -8458,8 +8485,11 @@
         "flox_account_open_position_isolated",
         "flox_account_position_count",
         "flox_account_record_fill",
+        "flox_account_record_fill_ex",
         "flox_account_reset_rolling",
         "flox_account_rolling_notional_30d",
+        "flox_account_rolling_notional_by_symbol_copy",
+        "flox_account_rolling_notional_by_symbol_size",
         "flox_account_set_equity",
         "flox_account_set_margin_mode",
         "flox_account_set_mark",

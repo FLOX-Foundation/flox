@@ -54,7 +54,8 @@ inline void bindAccount(py::module_& m)
       .def("has_stale_marks", &flox::Account::hasStaleMarks, py::arg("now_ns"), py::arg("budget_ns"))
       .def("total_notional", &flox::Account::totalNotional)
       .def("total_unrealised_pnl", &flox::Account::totalUnrealisedPnl)
-      .def("record_fill", &flox::Account::recordFill, py::arg("ts_ns"), py::arg("notional"))
+      .def("record_fill", &flox::Account::recordFill, py::arg("ts_ns"), py::arg("notional"), py::arg("symbol") = flox::SymbolId{0})
+      .def("rolling_notional_by_symbol_30d", &flox::Account::rollingNotionalBySymbol30d)
       .def("rolling_notional_30d", &flox::Account::rollingNotional30d)
       .def("reset_rolling", &flox::Account::resetRolling);
 }

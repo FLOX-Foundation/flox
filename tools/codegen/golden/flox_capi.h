@@ -850,6 +850,11 @@ extern "C"
   double flox_account_total_notional(FloxAccountHandle h);
   double flox_account_total_unrealised_pnl(FloxAccountHandle h);
   void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional);
+  void flox_account_record_fill_ex(FloxAccountHandle h, int64_t ts_ns, double notional,
+                                   uint32_t symbol);
+  uint32_t flox_account_rolling_notional_by_symbol_size(FloxAccountHandle h);
+  uint32_t flox_account_rolling_notional_by_symbol_copy(FloxAccountHandle h, uint32_t* symbols_out,
+                                                        double* notionals_out, uint32_t max);
   double flox_account_rolling_notional_30d(FloxAccountHandle h);
   void flox_account_reset_rolling(FloxAccountHandle h);
 
