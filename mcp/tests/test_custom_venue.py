@@ -9,12 +9,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD_PY = REPO_ROOT / "build" / "python"
 if BUILD_PY.exists():
     sys.path.insert(0, str(BUILD_PY))
 
-import flox_py as flox
+# The compiled flox_py module isn't installed in MCP-only CI jobs
+# (e.g. verify-docs-current). Skip rather than ImportError when the
+# build artifact isn't on the path.
+flox = pytest.importorskip("flox_py")
 
 
 def _build_custom():
