@@ -264,8 +264,68 @@ This:
 
 See [Configure CPU Affinity](../how-to/cpu-affinity.md).
 
+## Backtest realism stack
+
+Backtesting reuses the same `Engine`, the same buses, and the same strategy class as live. What changes is the executor and the surrounding sim objects.
+
+```mermaid
+flowchart LR
+    DATA[Tape / CSV / floxlog] --> EXE
+    subgraph stack["VenueStack (one call)"]
+        EXE[SimulatedExecutor]
+        ACC[Cross-margin Account]
+        LIQ[LiquidationEngine<br/>MM tiers + ADL]
+        FEE[VIP fee schedule]
+        FUND[Funding schedule]
+        RL[Rate-limit policy]
+        AVAIL[Venue-availability hook]
+    end
+    EXE --> ACC
+    LIQ -. on_marks .-> ACC
+    FEE -. records realized notional .-> ACC
+    FUND -. settles on interval .-> ACC
+    EXE --> RL
+    EXE --> AVAIL
+```
+
+`flox.VenueStack.binance_um_futures(...)` (and the other factories) wires the whole stack in one call. The strategy class doesn't know the difference between this and a live exchange. See [Realistic backtest in one call](../how-to/realistic-backtest.md) and [Cross-margin accounts](../how-to/cross-margin.md).
+
+The bare `BacktestRunner` skips everything except a flat fee — useful for indicator sanity checks, not for capital decisions.
+
+## Execution paths (broker pattern)
+
+One strategy class runs backtest, paper, and live. The piece that varies is the broker behind the signal callback:
+
+```mermaid
+flowchart LR
+    STRAT[Your Strategy] --> SIG[Signal]
+    SIG --> BR{Broker}
+    BR -->|backtest| SIM[SimulatedExecutor<br/>+ VenueStack]
+    BR -->|paper| PAPER[PaperBroker<br/>live feed -> SimulatedExecutor]
+    BR -->|live| CCXT[CcxtBroker<br/>ccxt.pro -> exchange]
+```
+
+`PaperBroker` runs the same `SimulatedExecutor` used in the realistic backtest, but on a live feed. `CcxtBroker` routes the same signals through a real exchange. Switching execution paths is a constructor change, not a code rewrite. See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+
+## MCP control plane
+
+FLOX ships an MCP server that exposes the engine to AI agents under scoped tokens. Read tokens see strategy state, decision logs, and event history. Paper tokens can also place orders against a `PaperBroker`. Live tokens can route real orders, but each one passes through an out-of-band approval step and is written to the audit log.
+
+```mermaid
+flowchart LR
+    AI[AI agent] -->|MCP, scoped token| SRV[FLOX MCP server]
+    SRV -->|read| STATE[Strategy state<br/>decisions, events]
+    SRV -->|paper / live| BR{Broker}
+    SRV -->|live order| OOB[Out-of-band approval]
+    OOB --> BR
+    SRV --> AUDIT[Audit log]
+```
+
+See [Control engine over MCP](../how-to/mcp-control-plane.md) and [MCP control plane](mcp-control-plane.md) for the design.
+
 ## Next Steps
 
 - [The Disruptor Pattern](disruptor.md) — Deep dive into event delivery
 - [Memory Model](memory-model.md) — Zero-allocation design
+- [MCP control plane](mcp-control-plane.md) — scoped AI control over the engine
 - [First Strategy](../tutorials/first-strategy.md) — Write your first strategy

@@ -186,6 +186,7 @@ nav:
       - Disruptor Pattern: explanation/disruptor.md
       - Memory Model: explanation/memory-model.md
       - Integration Flow: explanation/integration-flow.md
+      - MCP control plane: explanation/mcp-control-plane.md
       - Indicators: explanation/indicators.md
       - Connectors: explanation/connectors.md
       - Replay-equivalence gate: explanation/replay-equivalence-gate.md

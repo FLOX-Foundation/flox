@@ -1,21 +1,63 @@
 # Backtesting
 
-Run your strategy against recorded market data. Each language exposes the same `BacktestRunner` model.
+Run your strategy against recorded market data. FLOX gives you two
+paths — one bare, one venue-realistic. Pick the second by default
+unless you have a specific reason to skip the venue physics.
 
 ## Prerequisites
 
 - Completed [Recording Data](recording-data.md) (or have a CSV / `.floxlog` file)
 - Build / install with backtest support — see [Bindings](../bindings/README.md) for per-language details
 
-## Pipeline
+## Two pipelines
 
 ```
+data file → VenueStack ← Strategy → outcome with fees + funding + liquidation + rate limits
+                       (recommended)
+
 data file → BacktestRunner → Strategy → SimulatedExecutor → BacktestResult
+                       (minimal, no venue physics)
 ```
 
-## Minimal example
+The bare `BacktestRunner` path runs your strategy through a
+`SimulatedExecutor` with a flat fee rate and nothing else. Useful
+for indicator sanity checks. Numbers it produces ignore funding,
+liquidation, queue position, rate limits, and venue outages — the
+forces that decide whether a perp strategy survives in production.
 
-A strategy that buys when price crosses above a 20-period SMA.
+`VenueStack` wires the full venue physics in one call. Same
+strategy class, same fill model, same data source. The diff is
+what gets simulated around the fills.
+
+## Realistic backtest
+
+```python
+import flox_py as flox
+
+reg = flox.SymbolRegistry()
+btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+
+stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+# stack.executor() / stack.account() / stack.liquidation() / stack.fees() / stack.funding()
+```
+
+`stack.account()` is a cross-margin Account; `stack.liquidation()`
+holds the configured MM tier ladder and ADL ranking; `stack.fees()`
+binds to the account so 30d VIP tier moves with aggregate notional;
+`stack.funding()` settles on the venue's interval. Other factories:
+`bybit_linear`, `okx_swap`, `deribit`. For custom venues see
+[`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
+
+See [Realistic backtest in one call](../how-to/realistic-backtest.md)
+for the full pattern and [Cross-margin accounts](../how-to/cross-margin.md)
+for the account API.
+
+## Minimal example (bare path)
+
+A strategy that buys when price crosses above a 20-period SMA. This
+runs through `BacktestRunner` directly — the bare path. Match the
+output against a known baseline; do not size positions off these
+numbers.
 
 === "Python"
 
@@ -175,6 +217,25 @@ A strategy that buys when price crosses above a 20-period SMA.
 
 ## Next
 
+The `BacktestRunner` above is the bare path: flat fee rate, no
+funding, no liquidation, no rate limits. Good enough for a sanity
+check; not enough before live. The venue-realistic stack is one
+call away:
+
+```python
+stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000)
+```
+
+`stack.executor()` / `stack.account()` / `stack.liquidation()` /
+`stack.fees()` / `stack.funding()` — all wired with venue-realistic
+defaults. See the links below.
+
+- [Realistic backtest in one call](../how-to/realistic-backtest.md) — venue stack
+- [Cross-margin accounts](../how-to/cross-margin.md) — share equity across positions
+- [Liquidation and ADL](../how-to/liquidation-and-adl.md) — cascade behaviour
+- [Paper trading](../how-to/paper-trading.md) — same strategy class, live feed
+- [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
+- [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md)
 - [Running a Backtest](../how-to/backtest.md) — fuller SMA crossover walkthrough
 - [Grid search](../how-to/grid-search.md) — sweep parameters
 - [Realistic fills](../how-to/backtest-realistic-fills.md) — slippage and queue position

@@ -129,7 +129,9 @@ runner.on_book_snapshot(int(btc), bid_prices, bid_qtys, ask_prices, ask_qtys, ts
 runner.stop()
 ```
 
-## BacktestRunner
+## Backtest
+
+The Codon binding exposes the bare `BacktestRunner` — flat fee, no funding, no liquidation, no rate limits. Good for indicator sanity checks; not enough for a decision about real capital.
 
 ```python
 from flox.runner import BacktestRunner
@@ -146,6 +148,14 @@ Or pass raw arrays:
 ```python
 stats = bt.run_ohlcv(timestamps_ns, closes, "BTCUSDT")
 ```
+
+For the realistic venue stack (cross-margin Account, MM tier ladder + ADL, VIP fee schedule, funding settlement, rate limits, venue availability), drive the simulation from Python via [`flox.VenueStack.binance_um_futures(...)`](../how-to/realistic-backtest.md) and call the Codon strategy through the C API. The Codon strategy class itself is unchanged.
+
+## Paper and live
+
+The Python `PaperBroker` and `CcxtBroker` wrap any strategy that implements the C API contract — including Codon-compiled strategies. Compile once with `codon build`, then load the resulting `.so` from Python and pass it to the runner. See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+
+One strategy class runs backtest, paper, and live.
 
 ### BacktestStats fields
 

@@ -52,6 +52,14 @@ fees and the few losers — net result is a 1.2% drawdown. Useful as a
 sanity check and a baseline; also useful as a reminder that
 "SMA crossover" is not a strategy.
 
+!!! note "This is the unrealistic baseline"
+    The `research` template wires a bare `BacktestRunner` with a flat
+    fee rate and no funding, liquidation, rate limits, or queue
+    position. Numbers come back, but they ignore most of what makes
+    a real perp account lose money. For a backtest you can trust
+    enough to risk capital against, switch to the venue-realistic
+    stack: see [Realistic backtest in one call](../how-to/realistic-backtest.md).
+
 ## The strategy class
 
 `main.py` is one file. The class you edit:
@@ -80,10 +88,17 @@ MY_STRATEGY_DATA=/path/to/your/btcusdt_1h.csv python main.py
 
 ## Next steps
 
+- Go realistic: [`flox.VenueStack.binance_um_futures(...)`](../how-to/realistic-backtest.md)
+  wires fees, funding, liquidation, rate limits, and queue position
+  in one call.
+- Promote to paper trading against a live feed:
+  [Paper trading](../how-to/paper-trading.md).
+- Promote to live via ccxt:
+  [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
 - Replace the SMA crossover with your own indicators
   ([Indicator Graph](../how-to/indicator-graph.md)).
 - Parameter sweep via [Grid Search](../how-to/grid-search.md).
-- Run the same class against a live exchange:
-  [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+- Inspect a run visually:
+  [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md).
 - Longer hand-built version (without the scaffolder):
   [Python quickstart](python-quickstart.md).

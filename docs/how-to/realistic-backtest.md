@@ -101,9 +101,13 @@ stack.liquidation().set_adl_ranking("position_size")
 stack.liquidation().set_insurance_fund_capital(1_000.0)
 ```
 
-For a fully custom venue not covered by the canned factories, use
-`VenueStack.assemble(...)` (C++) or build the subsystems by hand
-and connect them with the same pattern the factory uses.
+## Fully custom venue
+
+For a venue not covered by the canned factories, the Python helper
+`flox.assemble_custom_venue(...)` builds the same stack from your own
+parameters — fee schedule, MM tiers, funding interval, rate limits,
+venue-availability hook. The C++ equivalent is `VenueStack.assemble(...)`.
+Same subsystems, same wiring, just no preset for the venue.
 
 ## See also
 

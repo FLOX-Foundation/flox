@@ -78,16 +78,70 @@ runner.stop()
 
 ### Backtest
 
+Two paths. The realistic one is one extra call; pick it by default.
+
+#### Realistic (venue stack)
+
+```python
+stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+
+bt = flox.BacktestRunner(registry, executor=stack.executor(), account=stack.account())
+bt.set_strategy(SMAcross([btc]))
+
+stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")
+print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
+```
+
+`VenueStack.binance_um_futures` wires the venue physics in one call: cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account, so realized notional moves the tier), funding settlement on the venue's interval, rate limits, and a venue-availability hook. Other factories: `bybit_linear`, `okx_swap`, `deribit`. Non-canonical venues go through [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
+
+Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
+
+#### Bare (flat fee, nothing else)
+
 ```python
 bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMAcross([btc]))
 
-stats = bt.run_csv("btcusdt_trades.csv")             # auto-detects symbol
-stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")  # explicit
+stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")
 print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
 ```
 
+Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Useful for an indicator sanity check; not enough for a decision about real capital.
+
 Stats dict keys: `return_pct`, `net_pnl`, `total_trades`, `win_rate`, `sharpe`, `max_drawdown_pct`.
+
+### Paper trading
+
+Same strategy class, live feed, simulated fills. The `PaperBroker` routes orders into a `SimulatedExecutor` configured the same way as the backtest stack — fills, fees, funding, and rate limits stay in-process.
+
+```python
+broker = flox.PaperBroker(stack.executor(), stack.account())
+runner = flox.Runner(registry, broker.on_signal)
+runner.add_strategy(SMAcross([btc]))
+runner.start()
+
+# Feed live trades from your data source (websocket, ccxt.pro, etc.)
+# runner.on_trade(btc, price, qty, is_buy, ts_ns)
+```
+
+See [Paper trading](../how-to/paper-trading.md) for the full feed-wiring pattern.
+
+### Live
+
+`CcxtBroker` is the same shape as `PaperBroker` but routes orders through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange instance. The strategy class is unchanged.
+
+```python
+import ccxt.pro as ccxt
+
+exchange = ccxt.binanceusdm({"apiKey": ..., "secret": ...})
+broker = flox.CcxtBroker(exchange, registry)
+
+runner = flox.Runner(registry, broker.on_signal)
+runner.add_strategy(SMAcross([btc]))
+runner.start()
+```
+
+One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
 
 ---
 
@@ -249,5 +303,10 @@ Benchmarked on Apple M-series, 100K bars, MA cross strategy:
 ## See Also
 
 - [Python API Reference](../reference/python/index.md) — complete Python API documentation
-- [Backtesting](../how-to/backtest.md) — C++ backtest guide
+- [Realistic backtest in one call](../how-to/realistic-backtest.md) — venue stack
+- [Cross-margin accounts](../how-to/cross-margin.md) — shared equity across positions
+- [Paper trading](../how-to/paper-trading.md) — same strategy class against a live feed
+- [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
+- [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md)
+- [Control engine over MCP](../how-to/mcp-control-plane.md) — scoped AI control
 - [Grid Search](../how-to/grid-search.md) — parameter optimization

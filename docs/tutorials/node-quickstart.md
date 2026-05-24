@@ -71,6 +71,10 @@ runner.stop();
 
 ## 4. Backtest
 
+Two paths. Pick the second by default.
+
+### Bare backtest
+
 ```javascript
 const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
@@ -78,6 +82,26 @@ bt.setStrategy(strategy);
 const stats = bt.runCsv('./data/btcusdt_trades.csv', 'BTCUSDT');
 console.log(stats.returnPct, stats.sharpeRatio, stats.maxDrawdownPct);
 ```
+
+Flat fee rate, no funding, no liquidation, no rate limits. Useful
+for an indicator sanity check; not enough to decide on live capital.
+
+### Realistic backtest
+
+```javascript
+const stack = flox.VenueStack.binanceUmFutures(42, 10_000);
+// stack.accountOpenPosition(symbolId, qty, entry)
+// stack.liquidationOnMark(symbolId, mark)
+// stack.feesRecordFill(tsNs, notional)
+```
+
+One call wires cross-margin Account, MM tier ladder, ADL ranking,
+30d VIP fee schedule (bound to the account), funding settlement,
+rate-limit policy, and venue-availability hook. Other factories:
+`bybitLinear`, `okxSwap`, `deribit`.
+
+See [Realistic backtest in one call](../how-to/realistic-backtest.md)
+for the full pattern.
 
 ---
 
@@ -114,5 +138,10 @@ const flox = require('./node/build/Release/flox_node');
 
 ## Next steps
 
+- [Realistic backtest in one call](../how-to/realistic-backtest.md) — venue stack
+- [Cross-margin accounts](../how-to/cross-margin.md) — shared equity across positions
+- [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) — promote to live
+- [Inspect a tape and run in the replay viewer](../how-to/replay-viewer.md)
+- [Control engine over MCP](../how-to/mcp-control-plane.md) — scoped AI control
 - [Indicators reference](../reference/node/indicators.md) — full indicator API
 - [Node.js bindings guide](../bindings/node.md) — runner, backtest runner, order types
