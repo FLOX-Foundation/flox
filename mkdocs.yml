@@ -1,5 +1,5 @@
 site_name: FLOX
-site_description: High-performance trading framework with Python, Node.js, Codon, and C++ bindings
+site_description: AI-native framework for building trading systems.
 site_url: https://flox-foundation.github.io/flox/
 repo_url: https://github.com/FLOX-Foundation/flox
 repo_name: FLOX-Foundation/flox

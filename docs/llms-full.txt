@@ -15,7 +15,12 @@ This file concatenates the curated documentation set listed in `llms.txt`. Each 
 
 # FLOX
 
-**High-performance trading framework with bindings for Python, Node.js, Codon, and C++.**
+**AI-native framework for building trading systems.**
+
+Strategies, backtests, paper trading, and live execution sit
+behind one toolkit. AI agents discover the surface and drive it
+end-to-end through an MCP control plane. One strategy class
+runs backtest, paper, and live.
 
 [![GitHub](https://img.shields.io/badge/GitHub-FLOX--Foundation%2Fflox-blue?logo=github)](https://github.com/FLOX-Foundation/flox)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/FLOX-Foundation/flox/blob/main/LICENSE)

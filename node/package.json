@@ -1,7 +1,7 @@
 {
   "name": "@flox-foundation/flox",
   "version": "0.6.1",
-  "description": "Node.js bindings for FLOX, a framework for building trading systems",
+  "description": "AI-native framework for building trading systems.",
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
@@ -16,11 +16,31 @@
   },
   "keywords": [
     "trading",
-    "strategy",
     "backtest",
-    "flox"
+    "crypto",
+    "perpetual",
+    "cross-margin",
+    "liquidation",
+    "funding",
+    "paper-trading",
+    "live-trading",
+    "ccxt",
+    "venue-realistic",
+    "execution",
+    "market-making",
+    "mcp",
+    "ai-agent",
+    "indicators",
+    "technical-analysis",
+    "walk-forward",
+    "reproducibility",
+    "FLOX"
   ],
   "license": "MIT",
+  "homepage": "https://flox-foundation.github.io/flox/",
+  "bugs": {
+    "url": "https://github.com/FLOX-Foundation/flox/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/FLOX-Foundation/flox.git"

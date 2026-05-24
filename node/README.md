@@ -1,6 +1,8 @@
 # @flox-foundation/flox
 
-Node.js bindings for [FLOX](https://github.com/FLOX-Foundation/flox), a modular framework for building trading systems with polyglot strategy bindings and AI-friendly developer tools. Same strategy code goes from backtest to live without a rewrite step.
+Node.js bindings for [FLOX](https://github.com/FLOX-Foundation/flox) — an AI-native framework for building trading systems.
+
+AI agents discover the surface and drive it end-to-end through an MCP control plane. One strategy class runs backtest, paper, and live.
 
 Prebuilt binaries included for Linux x64, macOS arm64, Windows x64.
 
