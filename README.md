@@ -5,8 +5,9 @@
 
 ## FLOX
 
-FLOX is a modular framework for building trading systems with polyglot strategy bindings and AI-friendly developer tools.
-Strategies run on one C++ core in Python, Node.js, Codon, or embedded JavaScript. Same strategy code goes from backtest to live without a rewrite step.
+FLOX is an AI-native framework for building trading systems.
+
+Strategies, backtests, paper trading, and live execution sit behind one toolkit. AI agents discover the surface and drive it end-to-end through an MCP control plane. One strategy class runs backtest, paper, and live. Bindings for Python, Node.js, Codon, embedded JavaScript, and a stable C API.
 
 Documentation is available at [flox-foundation.github.io/flox](https://flox-foundation.github.io/flox)
 
