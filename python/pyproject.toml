@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "flox-py"
-version = "0.6.1"
+version = "0.6.2"
 authors = [{name = "FLOX Foundation"}]
 description = "AI-native framework for building trading systems."
 readme = "README.md"
