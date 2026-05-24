@@ -103,11 +103,49 @@ stack.liquidation().set_insurance_fund_capital(1_000.0)
 
 ## Fully custom venue
 
-For a venue not covered by the canned factories, the Python helper
-`flox.assemble_custom_venue(...)` builds the same stack from your own
-parameters — fee schedule, MM tiers, funding interval, rate limits,
-venue-availability hook. The C++ equivalent is `VenueStack.assemble(...)`.
-Same subsystems, same wiring, just no preset for the venue.
+For venues outside the canned set — or configurations where one
+subsystem (fees, funding cadence, MM ladder) needs full
+replacement rather than tuning — `assemble_custom_venue` wires
+user-built subsystems into a venue-stack-shaped bundle:
+
+=== "Python"
+
+    ```python
+    import flox_py as flox
+
+    acct = flox.Account(account_id=42, equity=10_000)
+    fees = flox.FeeSchedule()
+    fees.add_tier(0, 1.0, 3.0)
+    fees.add_tier(50_000, 0.5, 2.5)
+    funding = flox.FundingSchedule()
+    funding.set_interval_ns(4 * 3600 * 1_000_000_000)  # 4h cadence
+    liq = flox.LiquidationEngine()
+    liq.add_tier(0.0, 0.004)
+    rate_limits = flox.RateLimitPolicy()
+    rate_limits.add_bucket("trading", 1_000_000_000, 50)
+
+    custom = flox.assemble_custom_venue(
+        account=acct, fees=fees, funding=funding, liquidation=liq,
+        rate_limits=rate_limits, venue_name="my_exchange",
+    )
+    # custom.executor(), custom.account(), custom.liquidation(), ...
+    ```
+
+The helper:
+
+- Creates a fresh executor and installs the rate limits + venue
+  availability on it
+- Binds fees to the account so 30d notional aggregates correctly
+- Attaches the account to liquidation and routes liquidation
+  orders through the executor
+
+`CustomVenue` has the same accessor surface as a `VenueStack`
+(`.executor()`, `.account()`, etc.) so downstream code is
+interchangeable with a canned factory's output.
+
+The C++ escape hatch is `VenueStack::assemble(AssembleArgs&&)`.
+Codon and QuickJS users assemble manually via the existing setter
+API.
 
 ## See also
 

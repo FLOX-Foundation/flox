@@ -411,3 +411,44 @@ def test_flox_overview_lists_recent_w15_additions():
     assert "VenueStack" in out
     assert "on_marks" in out
     assert "cross-margin" in out.lower()
+
+
+def test_flox_overview_covers_paper_and_live_trading():
+    """T068: overview must cover the full toolkit — not just MCP
+    tools. Paper trading (PaperBroker) and live trading (CcxtBroker)
+    are first-class paths an AI agent should know about when the
+    user moves beyond pure backtest."""
+    out = overview.flox_overview()
+    assert "PaperBroker" in out
+    assert "CcxtBroker" in out
+    assert "paper trading" in out.lower()
+    assert "live trading" in out.lower()
+
+
+def test_flox_overview_mentions_replay_viewer():
+    """The replay viewer is the visualisation path — agents directing
+    users to inspect a tape should reach for `flox tape view`."""
+    out = overview.flox_overview()
+    assert "replay viewer" in out.lower()
+    assert "flox tape view" in out
+
+
+def test_flox_overview_covers_cli_subcommands():
+    """The `flox` CLI carries half the toolkit (project scaffold,
+    tape ops, archive pulls, reports, bundles). Overview must list
+    the canonical subcommands."""
+    out = overview.flox_overview()
+    for cmd in ("flox new", "flox tape record", "flox tape view",
+                "flox report", "flox bundle", "flox archive"):
+        assert cmd in out, f"CLI subcommand missing from overview: {cmd}"
+
+
+def test_flox_overview_covers_control_plane_safety():
+    """The MCP control plane has explicit safety semantics (scoped
+    tokens, OOB approval, rate limits, audit). Agents directing
+    users to live trading must surface these — not just the tool
+    names."""
+    out = overview.flox_overview()
+    assert "scope" in out.lower()
+    assert "out-of-band" in out.lower() or "OOB" in out
+    assert "audit" in out.lower()
