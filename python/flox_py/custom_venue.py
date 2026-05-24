@@ -14,17 +14,25 @@ across user-owned subsystem objects.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from ._flox_py import (
-    Account,
-    FeeSchedule,
-    FundingSchedule,
-    LiquidationEngine,
-    RateLimitPolicy,
-    SimulatedExecutor,
-    VenueAvailability,
-)
+if TYPE_CHECKING:
+    # These imports run only under static type checking. At runtime the
+    # source tree (python/flox_py/) has no compiled `_flox_py` extension
+    # alongside `__init__.py` — only `build/python/flox_py/` has the
+    # `.so`. Eager imports at module-load time would crash CI jobs that
+    # walk the source layout (e.g. `python/tests/test_flox_new_cli.py`
+    # invoked from repo root). Defer to call-time imports inside
+    # `assemble_custom_venue`.
+    from ._flox_py import (
+        Account,
+        FeeSchedule,
+        FundingSchedule,
+        LiquidationEngine,
+        RateLimitPolicy,
+        SimulatedExecutor,
+        VenueAvailability,
+    )
 
 
 class CustomVenue:
@@ -117,6 +125,10 @@ def assemble_custom_venue(
     The returned `CustomVenue` holds references to every subsystem
     so the wiring pointers stay live.
     """
+    # Runtime imports (see TYPE_CHECKING guard at top for why these
+    # are deferred from module load).
+    from ._flox_py import SimulatedExecutor, VenueAvailability
+
     executor = SimulatedExecutor()
     venue_avail = venue_availability if venue_availability is not None else VenueAvailability()
 
