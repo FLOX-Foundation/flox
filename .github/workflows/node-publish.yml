@@ -83,6 +83,9 @@ jobs:
       always() &&
       needs.build.result == 'success' &&
       (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_npm == 'true')
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -98,6 +101,4 @@ jobs:
 
       - name: Publish
         working-directory: node
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
