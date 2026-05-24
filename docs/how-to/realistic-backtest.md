@@ -101,7 +101,7 @@ stack.liquidation().set_adl_ranking("position_size")
 stack.liquidation().set_insurance_fund_capital(1_000.0)
 ```
 
-### Fully custom venue (T067)
+## Fully custom venue
 
 For venues outside the canned set — or configurations where one
 subsystem (fees, funding cadence, MM ladder) needs full

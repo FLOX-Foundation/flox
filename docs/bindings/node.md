@@ -106,7 +106,26 @@ runner.stop();
 
 `btc` in feed methods accepts a `Symbol` object or a raw number.
 
-## BacktestRunner
+## Backtest
+
+Two paths. The realistic one is one extra call; pick it by default.
+
+### Realistic (venue stack)
+
+```javascript
+const stack = flox.VenueStack.binanceUmFutures(42, 10_000);
+
+const bt = new flox.BacktestRunner(registry, { executor: stack.executor(), account: stack.account() });
+bt.setStrategy(strategy);
+
+const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
+```
+
+`VenueStack.binanceUmFutures` wires the venue physics in one call — cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account so realized notional moves the tier), funding settlement, rate limits, and the venue-availability hook. Other factories: `bybitLinear`, `okxSwap`, `deribit`.
+
+Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
+
+### Bare (flat fee, nothing else)
 
 ```javascript
 const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
@@ -114,6 +133,8 @@ bt.setStrategy(strategy);
 
 const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
 ```
+
+Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Good for an indicator sanity check; not enough before live.
 
 ### Stats object
 
@@ -125,6 +146,38 @@ const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
 | `winRate` | Winning trade fraction |
 | `sharpeRatio` | Annualized Sharpe ratio |
 | `maxDrawdownPct` | Peak-to-trough drawdown (%) |
+
+## Paper trading
+
+Same strategy object, live feed, simulated fills. `PaperBroker` wraps the same `SimulatedExecutor` and `Account` you used for the realistic backtest.
+
+```javascript
+const broker = new flox.PaperBroker(stack.executor(), stack.account());
+const runner = new flox.Runner(registry, broker.onSignal);
+runner.addStrategy(strategy);
+runner.start();
+
+// Forward trades from your live feed:
+// runner.onTrade(btc, price, qty, isBuy, tsNs)
+```
+
+See [Paper trading](../how-to/paper-trading.md).
+
+## Live
+
+`CcxtBroker` has the same shape as `PaperBroker` but routes through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange. The strategy object is unchanged.
+
+```javascript
+const ccxt = require('ccxt');
+const exchange = new ccxt.pro.binanceusdm({ apiKey: '...', secret: '...' });
+
+const broker = new flox.CcxtBroker(exchange, registry);
+const runner = new flox.Runner(registry, broker.onSignal);
+runner.addStrategy(strategy);
+runner.start();
+```
+
+One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
 
 ## Full Example — SMA Crossover
 

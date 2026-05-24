@@ -333,6 +333,25 @@ int main() {
 }
 ```
 
+## Broker pattern (paper and live)
+
+The wiring above shows a C++ host with its own executor and connector. The broker pattern is a shorter version of the same thing — a connector reads a live feed, and a broker swaps in for the executor:
+
+```mermaid
+flowchart LR
+    FEED[Live feed<br/>ccxt.pro / WS] --> CONN[Connector]
+    CONN --> TB[TradeBus]
+    TB --> STRAT[Your Strategy]
+    STRAT --> SIG[Signal]
+    SIG --> BR{Broker}
+    BR -->|paper| SIM[SimulatedExecutor<br/>+ VenueStack]
+    BR -->|live| EXCH[Exchange]
+```
+
+`PaperBroker` plugs the realistic `SimulatedExecutor` behind the strategy's signal callback. `CcxtBroker` plugs a real exchange behind it. The strategy class, the buses, and the registry are untouched — only the broker swaps. One strategy class runs backtest, paper, and live.
+
+See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+
 ## Design Principles
 
 | Principle | Implementation |

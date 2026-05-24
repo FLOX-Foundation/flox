@@ -6,21 +6,62 @@ build-backend = "scikit_build_core.build"
 name = "flox-py"
 version = "0.6.1"
 authors = [{name = "FLOX Foundation"}]
-description = "Python bindings for the Flox indicator library"
+description = "AI-native framework for building trading systems."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = ["numpy"]
-keywords = ["trading", "backtest", "indicators", "technical-analysis"]
+keywords = [
+    "trading",
+    "backtest",
+    "crypto",
+    "perpetual",
+    "cross-margin",
+    "liquidation",
+    "funding",
+    "paper-trading",
+    "live-trading",
+    "ccxt",
+    "venue-realistic",
+    "execution",
+    "market-making",
+    "mcp",
+    "ai-agent",
+    "indicators",
+    "technical-analysis",
+    "walk-forward",
+    "monte-carlo",
+    "reproducibility",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
 ]
 
+[project.optional-dependencies]
+ccxt = ["ccxt[pro]>=4.0"]
+mlflow = ["mlflow>=2.0"]
+mcp = ["mcp>=1.0"]
+
 [project.urls]
+Homepage = "https://flox-foundation.github.io/flox/"
+Documentation = "https://flox-foundation.github.io/flox/"
 Repository = "https://github.com/FLOX-Foundation/flox"
+Issues = "https://github.com/FLOX-Foundation/flox/issues"
+Changelog = "https://github.com/FLOX-Foundation/flox/releases"
 
 [project.scripts]
 flox = "flox_py.cli:main"

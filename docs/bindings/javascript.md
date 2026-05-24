@@ -176,6 +176,8 @@ l3.removeOrder(1);
 
 ## Backtesting
 
+The QuickJS binding exposes the bare `SimulatedExecutor` — flat fee, no funding, no liquidation, no rate limits. Good for prototyping and indicator checks.
+
 ```javascript
 var executor = new SimulatedExecutor();
 executor.submitOrder(1, "buy", 50000, 1.0, 0, 1);  // id, side, price, qty, type, symbol
@@ -183,6 +185,10 @@ executor.onBar(1, 50100);   // symbol, close price
 executor.advanceClock(ts);
 executor.fillCount;         // number of fills
 ```
+
+For the realistic venue stack (cross-margin Account, MM tier ladder + ADL, VIP fee schedule, funding, rate limits) drive the same strategy file from Node.js via [`flox.VenueStack.binanceUmFutures(...)`](../how-to/realistic-backtest.md) — the QuickJS strategy class is unchanged. Paper trading and live (ccxt.pro) wrap the same executor; see [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+
+One strategy file runs backtest, paper, and live.
 
 ## Position Tracking
 
