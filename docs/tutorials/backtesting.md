@@ -31,15 +31,17 @@ what gets simulated around the fills.
 
 ## Realistic backtest
 
-```python
-import flox_py as flox
+=== "Python"
 
-reg = flox.SymbolRegistry()
-btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+    ```python
+    import flox_py as flox
 
-stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
-# stack.executor() / stack.account() / stack.liquidation() / stack.fees() / stack.funding()
-```
+    reg = flox.SymbolRegistry()
+    btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+
+    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+    # stack.executor() / stack.account() / stack.liquidation() / stack.fees() / stack.funding()
+    ```
 
 `stack.account()` is a cross-margin Account; `stack.liquidation()`
 holds the configured MM tier ladder and ADL ranking; `stack.fees()`
@@ -220,15 +222,9 @@ numbers.
 The `BacktestRunner` above is the bare path: flat fee rate, no
 funding, no liquidation, no rate limits. Good enough for a sanity
 check; not enough before live. The venue-realistic stack is one
-call away:
-
-```python
-stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000)
-```
-
-`stack.executor()` / `stack.account()` / `stack.liquidation()` /
-`stack.fees()` / `stack.funding()` — all wired with venue-realistic
-defaults. See the links below.
+call away — `flox.VenueStack.binance_um_futures(account_id=42, equity=10_000)`
+wires executor, account, liquidation engine, fees, and funding with
+venue defaults. See the links below.
 
 - [Realistic backtest in one call](../how-to/realistic-backtest.md) — venue stack
 - [Cross-margin accounts](../how-to/cross-margin.md) — share equity across positions
