@@ -214,6 +214,52 @@ runner.start()
 
 The model, builder, and decoder are byte-for-byte identical across all three modes; only the broker behind the signal callback differs. Anything the model learned about queue position, ack latency, fees, or funding in training will continue to apply in paper and live, because the underlying simulated executor is the same one the paper broker uses and the live broker mirrors.
 
+## Walk-forward training
+
+Training on the whole tape and reporting that number is the most common way RL trading projects fool themselves. `WalkForwardRL` ships the same anchored / sliding window discipline `WalkForwardRunner` uses for supervised backtests, with a fresh `VenueStack` per fold so no fee tier, rolling notional, or insurance fund state leaks across folds.
+
+```python
+import flox_py
+from flox_py.rl_env import WalkForwardRL
+from stable_baselines3 import PPO
+
+wf = WalkForwardRL(
+    venue_stack_factory=lambda: flox_py.VenueStack.binance_um_futures(42, 10_000.0),
+    tape="./tapes/btc-2026-05",
+    train_window_days=14,
+    test_window_days=3,
+    n_folds=6,
+    mode="anchored",     # or "sliding"
+    env_kwargs={
+        "qty": 0.01, "max_position": 0.05,
+        "window_size": 32, "tick_size": 0.01,
+        "max_price_offset_ticks": 50,
+        "n_open_slots": 4,
+    },
+)
+
+for train_env, test_env in wf:
+    model = PPO("MlpPolicy", train_env, verbose=0).learn(100_000)
+    metrics = wf.evaluate(model, test_env)
+    print(f"  fold return {metrics['return_pct']:+.2f}% "
+          f"sharpe {metrics['sharpe']:+.2f} "
+          f"dd {metrics['max_drawdown_pct']:.2f}%")
+
+agg = wf.aggregate()
+print(
+    f"\nfolds={agg['n_folds']}  "
+    f"mean={agg['mean_return_pct']:+.2f}%  std={agg['std_return_pct']:.2f}  "
+    f"sign-match={agg['sign_match']:.0%}  worst={agg['worst_return_pct']:+.2f}%"
+)
+```
+
+What the modes do:
+
+- **`anchored`** — the train window starts at the first trade and expands fold by fold. Test windows tile forward in `test_window_days` steps. Models trained on every fold see all prior history.
+- **`sliding`** — both windows slide forward together by `test_window_days` per fold. Each model sees only the most recent `train_window_days` of history. Use this when you suspect regime drift.
+
+The aggregate schema (`mean_return_pct`, `std_return_pct`, `sign_match`, `worst_return_pct`, `mean_sharpe`, `mean_max_drawdown_pct`, `n_folds`) matches the supervised walk-forward output, so RL and non-RL sweeps land in one comparison table.
+
 ## stable_baselines3 with continuous actions
 
 ```python

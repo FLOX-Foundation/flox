@@ -600,5 +600,140 @@ class MakeRLPolicyTests(unittest.TestCase):
         self.assertIsInstance(policy, flox_py.Strategy)
 
 
+class WalkForwardRLTests(unittest.TestCase):
+    """T037: WalkForwardRL harness — anchored / sliding folds, fresh
+    VenueStack per fold, DSR-aware aggregate."""
+
+    NS_PER_DAY = 86_400 * 1_000_000_000
+
+    def _stack_factory(self):
+        import flox_py
+        return lambda: flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+
+    def _synthetic_tape(self, n_days: int = 20):
+        trades = []
+        for d in range(n_days):
+            for h in range(24):
+                ts = d * self.NS_PER_DAY + h * 3600 * 1_000_000_000
+                trades.append((ts, 50_000.0 + d * 10 + h, 1.0, h % 2))
+        return trades
+
+    def test_invalid_mode_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            rl_env.WalkForwardRL(
+                venue_stack_factory=self._stack_factory(),
+                tape=self._synthetic_tape(),
+                train_window_days=5,
+                test_window_days=2,
+                n_folds=2,
+                mode="garbage",
+            )
+
+    def test_zero_folds_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            rl_env.WalkForwardRL(
+                venue_stack_factory=self._stack_factory(),
+                tape=self._synthetic_tape(),
+                train_window_days=5,
+                test_window_days=2,
+                n_folds=0,
+            )
+
+    def test_tape_too_short_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            rl_env.WalkForwardRL(
+                venue_stack_factory=self._stack_factory(),
+                tape=self._synthetic_tape(n_days=3),  # too short for 10+3
+                train_window_days=10,
+                test_window_days=3,
+                n_folds=2,
+            )
+
+    def test_anchored_train_starts_pin(self) -> None:
+        wf = rl_env.WalkForwardRL(
+            venue_stack_factory=self._stack_factory(),
+            tape=self._synthetic_tape(),
+            train_window_days=10,
+            test_window_days=3,
+            n_folds=3,
+            mode="anchored",
+        )
+        first_start = wf._folds[0].train_range[0]
+        for f in wf._folds:
+            self.assertEqual(f.train_range[0], first_start)
+
+    def test_sliding_train_starts_advance(self) -> None:
+        wf = rl_env.WalkForwardRL(
+            venue_stack_factory=self._stack_factory(),
+            tape=self._synthetic_tape(),
+            train_window_days=10,
+            test_window_days=3,
+            n_folds=3,
+            mode="sliding",
+        )
+        starts = [f.train_range[0] for f in wf._folds]
+        self.assertEqual(starts, sorted(starts))
+        self.assertGreater(starts[1], starts[0])
+
+    def test_yields_train_test_pairs_and_aggregate(self) -> None:
+        wf = rl_env.WalkForwardRL(
+            venue_stack_factory=self._stack_factory(),
+            tape=self._synthetic_tape(),
+            train_window_days=10,
+            test_window_days=3,
+            n_folds=3,
+            env_kwargs={
+                "qty": 0.01, "max_position": 0.02, "window_size": 4,
+                "tick_size": 0.5, "n_open_slots": 0,
+            },
+        )
+
+        class StubModel:
+            def predict(self, obs, deterministic=True):
+                return [0.0, 0.0, 0.0], None
+
+        model = StubModel()
+        n_seen = 0
+        for train_env, test_env in wf:
+            self.assertIsInstance(train_env, rl_env.FloxTradingEnv)
+            self.assertIsInstance(test_env, rl_env.FloxTradingEnv)
+            wf.evaluate(model, test_env)
+            n_seen += 1
+        self.assertEqual(n_seen, 3)
+
+        agg = wf.aggregate()
+        self.assertEqual(agg["n_folds"], 3)
+        self.assertIn("mean_return_pct", agg)
+        self.assertIn("std_return_pct", agg)
+        self.assertIn("sign_match", agg)
+        self.assertIn("worst_return_pct", agg)
+
+    def test_fresh_stack_per_fold(self) -> None:
+        # Each fold should construct a brand-new VenueStack; we count
+        # factory invocations.
+        import flox_py
+        count = {"n": 0}
+
+        def factory():
+            count["n"] += 1
+            return flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+
+        wf = rl_env.WalkForwardRL(
+            venue_stack_factory=factory,
+            tape=self._synthetic_tape(),
+            train_window_days=10,
+            test_window_days=3,
+            n_folds=3,
+            env_kwargs={
+                "qty": 0.01, "max_position": 0.02, "window_size": 4,
+                "tick_size": 0.5, "n_open_slots": 0,
+            },
+        )
+        for train_env, test_env in wf:
+            pass
+        # 3 folds * 2 envs per fold = 6 stack constructions
+        self.assertEqual(count["n"], 6)
+
+
 if __name__ == "__main__":
     unittest.main()

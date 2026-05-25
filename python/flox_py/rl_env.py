@@ -1084,9 +1084,248 @@ def make_rl_policy(
     return _RLPolicy()
 
 
+# ── Walk-forward harness ──────────────────────────────────────────
+
+
+_NS_PER_DAY = 86_400 * 1_000_000_000
+
+
+@dataclass
+class _Fold:
+    index: int
+    train_range: Tuple[int, int]
+    test_range: Tuple[int, int]
+
+
+class WalkForwardRL:
+    """Walk-forward training and evaluation harness for
+    ``FloxTradingEnv``. Splits a tape into ``n_folds`` train / test
+    windows (anchored — expanding train, fixed-size test — or
+    sliding — both windows slide). A fresh ``VenueStack`` is built
+    per fold via the user-supplied factory so no fee / funding /
+    notional / liquidation state leaks across folds.
+
+    Output schema mirrors the supervised ``WalkForwardRunner`` so RL
+    and non-RL sweeps land in the same comparison tables.
+
+    ```python
+    wf = WalkForwardRL(
+        venue_stack_factory=lambda: flox.VenueStack.binance_um_futures(42, 10_000.0),
+        tape=trades,                    # path or list of (ts_ns, price, qty, side)
+        train_window_days=14,
+        test_window_days=3,
+        n_folds=6,
+        mode="anchored",
+        env_kwargs={"qty": 0.01, "max_position": 0.05, "window_size": 32},
+    )
+
+    for train_env, test_env in wf:
+        model = PPO("MlpPolicy", train_env).learn(100_000)
+        metrics = wf.evaluate(model, test_env)
+
+    aggregate = wf.aggregate()
+    print(aggregate["mean_return_pct"], aggregate["sign_match"])
+    ```
+    """
+
+    def __init__(
+        self,
+        *,
+        venue_stack_factory: Callable[[], Any],
+        tape: str | Path | Sequence[Tuple[int, float, float, int]],
+        train_window_days: float,
+        test_window_days: float,
+        n_folds: int,
+        mode: str = "anchored",
+        env_kwargs: Optional[dict] = None,
+        symbol_id: int = 1,
+    ) -> None:
+        if mode not in ("anchored", "sliding"):
+            raise ValueError(
+                f"mode must be 'anchored' or 'sliding'; got {mode!r}"
+            )
+        if n_folds <= 0:
+            raise ValueError(f"n_folds must be positive; got {n_folds}")
+        if train_window_days <= 0 or test_window_days <= 0:
+            raise ValueError("window days must be positive")
+
+        self.venue_stack_factory = venue_stack_factory
+        self.train_window_days = float(train_window_days)
+        self.test_window_days = float(test_window_days)
+        self.n_folds = int(n_folds)
+        self.mode = mode
+        self.env_kwargs = dict(env_kwargs or {})
+        self.symbol_id = int(symbol_id)
+
+        self._trades = (
+            _load_tape_trades(tape)
+            if isinstance(tape, (str, Path))
+            else list(tape)
+        )
+        if not self._trades:
+            raise ValueError("WalkForwardRL needs a non-empty tape")
+
+        self._folds = self._build_folds()
+        self._metrics: List[dict] = []
+
+    def _build_folds(self) -> List[_Fold]:
+        train_ns = int(self.train_window_days * _NS_PER_DAY)
+        test_ns = int(self.test_window_days * _NS_PER_DAY)
+        first_ts = int(self._trades[0][0])
+        last_ts = int(self._trades[-1][0])
+        total_ns = last_ts - first_ts
+        if total_ns < train_ns + test_ns:
+            raise ValueError(
+                f"tape spans {total_ns / _NS_PER_DAY:.2f} days; need at "
+                f"least train+test = {(train_ns + test_ns) / _NS_PER_DAY:.2f}"
+            )
+
+        # Each fold advances by test_ns. Anchored mode pins train start
+        # at first_ts; sliding mode advances train start by test_ns too.
+        folds: List[_Fold] = []
+        for k in range(self.n_folds):
+            test_start = first_ts + train_ns + k * test_ns
+            test_end = test_start + test_ns
+            if test_end > last_ts:
+                break
+            if self.mode == "anchored":
+                train_start = first_ts
+            else:
+                train_start = first_ts + k * test_ns
+            train_end = test_start
+            folds.append(
+                _Fold(
+                    index=k,
+                    train_range=(train_start, train_end),
+                    test_range=(test_start, test_end),
+                )
+            )
+        if not folds:
+            raise ValueError(
+                "tape too short to produce a single fold at the configured "
+                "window sizes"
+            )
+        return folds
+
+    def _slice_trades(
+        self, lo_ts: int, hi_ts: int
+    ) -> List[Tuple[int, float, float, int]]:
+        return [t for t in self._trades if lo_ts <= int(t[0]) < hi_ts]
+
+    def _make_env(
+        self, sub_trades: Sequence[Tuple[int, float, float, int]]
+    ) -> "FloxTradingEnv":
+        stack = self.venue_stack_factory()
+        return FloxTradingEnv.from_venue_stack(
+            stack,
+            tape=sub_trades,
+            symbol_id=self.symbol_id,
+            **self.env_kwargs,
+        )
+
+    def __iter__(self) -> Any:
+        for fold in self._folds:
+            train_slice = self._slice_trades(*fold.train_range)
+            test_slice = self._slice_trades(*fold.test_range)
+            if not train_slice or not test_slice:
+                continue
+            train_env = self._make_env(train_slice)
+            test_env = self._make_env(test_slice)
+            yield train_env, test_env
+
+    def evaluate(self, model: Any, test_env: "FloxTradingEnv") -> dict:
+        """Run the model deterministically through one test env and
+        return a per-fold metrics dict. The dict shape mirrors the
+        supervised walk-forward output so cross-mode aggregations are
+        possible."""
+        obs, _ = test_env.reset(seed=0)
+        equities: List[float] = []
+        total_reward = 0.0
+        steps = 0
+        terminated = False
+        truncated = False
+        while not (terminated or truncated):
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = test_env.step(action)
+            total_reward += float(reward)
+            steps += 1
+            equity_at_mark = info.get("equity_at_mark", info.get("equity"))
+            if equity_at_mark is not None:
+                equities.append(float(equity_at_mark))
+
+        if equities:
+            start_eq = equities[0]
+            end_eq = equities[-1]
+            return_pct = (
+                (end_eq - start_eq) / start_eq * 100.0 if start_eq != 0 else 0.0
+            )
+            peak = start_eq
+            max_dd = 0.0
+            for e in equities:
+                peak = max(peak, e)
+                dd = (peak - e) / peak if peak > 0 else 0.0
+                max_dd = max(max_dd, dd)
+            mean_reward = total_reward / max(steps, 1)
+            variance = (
+                sum((r - mean_reward) ** 2 for r in equities) / max(steps, 1)
+            )
+            std = variance ** 0.5
+            sharpe = (
+                (mean_reward / std) if std > 0 else 0.0
+            )
+        else:
+            return_pct = 0.0
+            max_dd = 0.0
+            sharpe = 0.0
+
+        m = {
+            "fold": len(self._metrics),
+            "return_pct": return_pct,
+            "max_drawdown_pct": max_dd * 100.0,
+            "sharpe": sharpe,
+            "total_reward": total_reward,
+            "steps": steps,
+        }
+        self._metrics.append(m)
+        return m
+
+    def aggregate(self) -> dict:
+        if not self._metrics:
+            return {
+                "n_folds": 0,
+                "mean_return_pct": 0.0,
+                "std_return_pct": 0.0,
+                "sign_match": 0.0,
+                "worst_return_pct": 0.0,
+                "mean_sharpe": 0.0,
+                "mean_max_drawdown_pct": 0.0,
+            }
+        returns = [m["return_pct"] for m in self._metrics]
+        sharpes = [m["sharpe"] for m in self._metrics]
+        dds = [m["max_drawdown_pct"] for m in self._metrics]
+        n = len(returns)
+        mean_r = sum(returns) / n
+        var_r = sum((r - mean_r) ** 2 for r in returns) / max(n - 1, 1)
+        std_r = var_r ** 0.5
+        sign_match = sum(1 for r in returns if r > 0) / n
+        worst = min(returns)
+        mean_sharpe = sum(sharpes) / n
+        mean_dd = sum(dds) / n
+        return {
+            "n_folds": n,
+            "mean_return_pct": mean_r,
+            "std_return_pct": std_r,
+            "sign_match": sign_match,
+            "worst_return_pct": worst,
+            "mean_sharpe": mean_sharpe,
+            "mean_max_drawdown_pct": mean_dd,
+        }
+
+
 __all__ = [
     "FloxTradingEnv",
     "ObservationBuilder",
     "ActionDecoder",
     "make_rl_policy",
+    "WalkForwardRL",
 ]
