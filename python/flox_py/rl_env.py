@@ -54,6 +54,30 @@ class _DiscreteSpace:
 
 
 @dataclass
+class _DictSpace:
+    """Duck-typed `gymnasium.spaces.Dict`. Holds an ordered mapping of
+    name → sub-space. Used in multi-symbol mode where the observation
+    and action are per-symbol bundles plus an optional account-level
+    slot."""
+
+    spaces: Dict[str, Any]
+
+    @property
+    def dtype(self) -> str:
+        return "dict"
+
+    def sample(self) -> Dict[str, Any]:
+        return {k: v.sample() for k, v in self.spaces.items()}
+
+    def contains(self, x: Any) -> bool:
+        if not isinstance(x, dict):
+            return False
+        if set(x.keys()) != set(self.spaces.keys()):
+            return False
+        return all(self.spaces[k].contains(x[k]) for k in self.spaces)
+
+
+@dataclass
 class _BoxSpace:
     low: Sequence[float]
     high: Sequence[float]
@@ -167,6 +191,12 @@ class FloxTradingEnv:
     # leaves the behaviour unchanged.
     reject_penalty: float = 0.0
 
+    # Multi-symbol mode. When set, the env runs over a merged stream
+    # of per-symbol tapes and exposes Dict observation / action spaces
+    # keyed by symbol ID. Single-symbol behaviour is unchanged when
+    # this is None.
+    multi_tapes: Optional[Dict[int, Sequence[Tuple[int, float, float, int]]]] = None
+
     # Filled at __post_init__.
     action_space: Any = field(init=False)
     observation_space: _BoxSpace = field(init=False)
@@ -191,10 +221,28 @@ class FloxTradingEnv:
     # qty_remaining ≈ 0 or after explicit cancel.
     _open_orders: Dict[int, dict] = field(default_factory=dict, init=False)
 
+    # Multi-symbol mode internals. Each entry is the per-symbol slice
+    # of the state the single-symbol path tracks at the top level.
+    _merged_events: List[Tuple[int, int, float, float, int]] = field(
+        default_factory=list, init=False
+    )  # (ts_ns, symbol_id, price, qty, side) sorted by ts_ns
+    _multi_positions: Dict[int, float] = field(default_factory=dict, init=False)
+    _multi_entry_prices: Dict[int, float] = field(
+        default_factory=dict, init=False
+    )
+    _multi_open_orders: Dict[int, Dict[int, dict]] = field(
+        default_factory=dict, init=False
+    )
+    _multi_last_fill_idx: int = field(default=0, init=False)
+
     # Static metadata gymnasium learners look at.
     metadata: dict = field(default_factory=lambda: {"render_modes": []})
 
     def __post_init__(self) -> None:
+        if self.multi_tapes is not None:
+            self._init_multi_symbol()
+            return
+
         if not self.trades:
             raise ValueError(
                 "FloxTradingEnv needs a non-empty trade list; "
@@ -245,6 +293,106 @@ class FloxTradingEnv:
             dtype="float32",
         )
 
+    def _init_multi_symbol(self) -> None:
+        """Multi-symbol mode setup. The agent sees a Dict observation
+        keyed by symbol_id (string-coerced) plus an "account" slot;
+        the action space is Dict over the same symbols. One env step
+        consumes one event from the merged tape stream — at that
+        timestamp every symbol's action is decoded and applied. A
+        symbol whose target position is unchanged simply does not
+        emit an order."""
+        if not self.multi_tapes:
+            raise ValueError("multi_tapes must be a non-empty mapping")
+        if self.qty <= 0:
+            raise ValueError(f"qty must be positive; got {self.qty}")
+        if self.window_size <= 0:
+            raise ValueError(
+                f"window_size must be positive; got {self.window_size}"
+            )
+        if self.venue_stack is None:
+            raise ValueError(
+                "multi-symbol mode requires a VenueStack; use "
+                "FloxTradingEnv.from_venue_stack(stack, tapes={...})"
+            )
+        if self.n_open_slots is None:
+            self.n_open_slots = 2  # smaller default per symbol
+        if self.action_mode != "continuous":
+            raise ValueError(
+                "multi-symbol mode only supports continuous action_mode"
+            )
+
+        # Normalize keys to int symbol IDs; strings are also accepted
+        # but stored as ints. Action / obs dict keys mirror this — we
+        # use str(sym_id) so gymnasium's Dict accepts hashable keys
+        # cleanly.
+        normalised: Dict[int, List[Tuple[int, float, float, int]]] = {}
+        for k, v in self.multi_tapes.items():
+            normalised[int(k)] = list(v)
+            if not normalised[int(k)]:
+                raise ValueError(f"tape for symbol {k!r} is empty")
+        self.multi_tapes = normalised
+
+        # Build merged event stream sorted by ts_ns. Each entry carries
+        # symbol_id so step() knows which tape produced it.
+        merged: List[Tuple[int, int, float, float, int]] = []
+        for sym, tape in normalised.items():
+            for ts, p, q, s in tape:
+                merged.append((int(ts), sym, float(p), float(q), int(s)))
+        merged.sort(key=lambda r: r[0])
+        self._merged_events = merged
+        # trades remains valid for length checks elsewhere
+        self.trades = [
+            (ts, p, q, s) for ts, _sym, p, q, s in merged
+        ]
+
+        # Per-symbol observation builders.
+        self._multi_builders: Dict[int, ObservationBuilder] = {}
+        for sym in normalised:
+            self._multi_builders[sym] = ObservationBuilder(
+                window_size=self.window_size,
+                n_open_slots=int(self.n_open_slots),
+                tick_size=self.tick_size,
+                max_price_offset_ticks=self.max_price_offset_ticks,
+                max_position=self.max_position
+                if self.max_position
+                else self.qty,
+            )
+
+        # Per-symbol Box action — same shape as single-symbol.
+        offset = float(self.max_price_offset_ticks)
+        per_symbol_action = _BoxSpace(
+            low=[-1.0, -offset, 0.0],
+            high=[1.0, offset, 2.0],
+            shape=(3,),
+            dtype="float32",
+        )
+        self.action_space = _DictSpace(
+            spaces={str(sym): per_symbol_action for sym in normalised}
+        )
+
+        # Per-symbol Box observation — window + 2 + 4*n_open_slots.
+        slot_count = int(self.n_open_slots)
+        obs_dim = self.window_size + 2 + 4 * slot_count
+        pos_bound = max(float(self.qty), float(self.max_position or self.qty))
+        slot_low = [-1.0, 0.0, -1.0, 0.0] * slot_count
+        slot_high = [1.0, 10.0, 1.0, 1.0] * slot_count
+        per_symbol_obs = _BoxSpace(
+            low=[0.0] * self.window_size + [-pos_bound, -1e9] + slot_low,
+            high=[1e9] * self.window_size + [pos_bound, 1e9] + slot_high,
+            shape=(obs_dim,),
+            dtype="float32",
+        )
+        # Account-level slot: [equity, total_notional, total_unrealized_pnl].
+        account_obs = _BoxSpace(
+            low=[-1e12, 0.0, -1e12],
+            high=[1e12, 1e12, 1e12],
+            shape=(3,),
+            dtype="float32",
+        )
+        spaces = {str(sym): per_symbol_obs for sym in normalised}
+        spaces["account"] = account_obs
+        self.observation_space = _DictSpace(spaces=spaces)
+
     # ── Constructors ─────────────────────────────────────────────
 
     @classmethod
@@ -275,7 +423,12 @@ class FloxTradingEnv:
         cls,
         venue_stack: Any,
         *,
-        tape: str | Path | Sequence[Tuple[int, float, float, int]],
+        tape: Optional[
+            str | Path | Sequence[Tuple[int, float, float, int]]
+        ] = None,
+        tapes: Optional[
+            Dict[Any, str | Path | Sequence[Tuple[int, float, float, int]]]
+        ] = None,
         qty: float = 1.0,
         window_size: int = 8,
         symbol_id: int = 1,
@@ -304,6 +457,36 @@ class FloxTradingEnv:
         ``tape`` can be a path to a .floxlog directory or an
         in-memory sequence of ``(ts_ns, price, qty, side)`` tuples.
         """
+        if tapes is not None and tape is not None:
+            raise ValueError("pass either `tape` (single-symbol) or `tapes` (multi-symbol), not both")
+        if tapes is not None:
+            resolved: Dict[int, List[Tuple[int, float, float, int]]] = {}
+            for k, v in tapes.items():
+                resolved[int(k)] = (
+                    _load_tape_trades(v)
+                    if isinstance(v, (str, Path))
+                    else list(v)
+                )
+            return cls(
+                trades=[],  # placeholder; multi mode rebuilds from merged
+                multi_tapes=resolved,
+                qty=qty,
+                window_size=window_size,
+                reward_fn=reward_fn,
+                seed=seed,
+                venue_stack=venue_stack,
+                symbol_id=symbol_id,
+                is_maker=is_maker,
+                action_mode=action_mode,
+                max_position=float(max_position if max_position is not None else qty),
+                tick_size=tick_size,
+                max_price_offset_ticks=max_price_offset_ticks,
+                n_open_slots=n_open_slots,
+                reject_penalty=reject_penalty,
+            )
+
+        if tape is None:
+            raise ValueError("from_venue_stack needs either `tape` or `tapes`")
         trades = (
             _load_tape_trades(tape)
             if isinstance(tape, (str, Path))
@@ -330,18 +513,23 @@ class FloxTradingEnv:
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> Tuple[List[float], dict]:
+    ) -> Tuple[Any, dict]:
         if seed is not None:
             self.seed = seed
         self._idx = 0
+        self._next_order_id = 0
+        self._last_fill_idx = 0
+        self._multi_last_fill_idx = 0
+        self._last_outcome = {}
+
+        if self.multi_tapes is not None:
+            return self._reset_multi()
+
         self._position = 0.0
         self._entry_price = 0.0
         self._realized_pnl = 0.0
         self._last_total_pnl = 0.0
-        self._next_order_id = 0
-        self._last_fill_idx = 0
         self._venue_entry_price = 0.0
-        self._last_outcome = {}
         self._open_orders = {}
         self._price_window.clear()
         first_price = float(self.trades[0][1])
@@ -361,7 +549,9 @@ class FloxTradingEnv:
         info = {"step": self._idx, "position": self._position}
         return obs, info
 
-    def step(self, action: Any) -> Tuple[List[float], float, bool, bool, dict]:
+    def step(self, action: Any) -> Tuple[Any, float, bool, bool, dict]:
+        if self.multi_tapes is not None:
+            return self._step_multi(action)
         if self.action_mode == "discrete":
             try:
                 action_int = int(action)
@@ -385,6 +575,27 @@ class FloxTradingEnv:
         if self.venue_stack is None:
             return self._step_bare_continuous(clipped, was_clipped)
         return self._step_venue_stack_continuous(clipped, was_clipped)
+
+    def _reset_multi(self) -> Tuple[Any, dict]:
+        self._multi_positions = {sym: 0.0 for sym in self.multi_tapes}
+        self._multi_entry_prices = {sym: 0.0 for sym in self.multi_tapes}
+        self._multi_open_orders = {sym: {} for sym in self.multi_tapes}
+        for sym, builder in self._multi_builders.items():
+            tape = self.multi_tapes[sym]
+            first_price = float(tape[0][1]) if tape else 0.0
+            builder.reset(first_price=first_price)
+        if self.venue_stack is not None:
+            acct = self.venue_stack.account()
+            self._last_equity_at_mark = float(
+                acct.equity() + acct.total_unrealised_pnl()
+            )
+        obs = self._observation_multi(
+            event_price=float(self._merged_events[0][2])
+            if self._merged_events
+            else 0.0
+        )
+        info = {"step": 0, "positions": dict(self._multi_positions)}
+        return obs, info
 
     def render(self) -> None:
         # Render mode is intentionally a no-op for Phase 1; the
@@ -504,6 +715,231 @@ class FloxTradingEnv:
             tif=tif_name,
             was_clipped=was_clipped,
         )
+
+    def _step_multi(
+        self, action: Any
+    ) -> Tuple[Any, float, bool, bool, dict]:
+        if not isinstance(action, dict):
+            raise ValueError(
+                f"multi-symbol action must be a dict; got {type(action).__name__}"
+            )
+        if self._idx >= len(self._merged_events):
+            obs = self._observation_multi(event_price=0.0)
+            return obs, 0.0, False, True, {"step": self._idx}
+
+        ts_ns, sym_event, price_event, qty_event, side_event = (
+            self._merged_events[self._idx]
+        )
+
+        stack = self.venue_stack
+        exec_ = stack.executor()
+        acct = stack.account()
+        liq = stack.liquidation()
+        fees = stack.fees()
+
+        # 1. Decode actions per symbol; submit orders for non-zero
+        # deltas. Symbols not present in the action dict default to a
+        # hold.
+        for sym in self.multi_tapes:
+            sym_action = action.get(str(sym))
+            if sym_action is None:
+                continue
+            try:
+                signed_frac = float(sym_action[0])
+                offset_ticks = float(sym_action[1])
+                tif_axis = float(sym_action[2])
+            except (TypeError, IndexError) as exc:
+                raise ValueError(
+                    f"action for symbol {sym} must have length 3"
+                ) from exc
+
+            signed_frac = max(-1.0, min(1.0, signed_frac))
+            offset_int = int(round(offset_ticks))
+            tif_int = int(round(max(0.0, min(2.0, tif_axis))))
+            tif_name = {0: "gtc", 1: "ioc", 2: "post_only"}.get(tif_int, "gtc")
+
+            target_pos = signed_frac * float(self.max_position)
+            delta = target_pos - self._multi_positions[sym]
+            if abs(delta) <= 1e-12:
+                continue
+            side = "buy" if delta > 0 else "sell"
+
+            self._next_order_id += 1
+            oid = self._next_order_id
+            if offset_int == 0:
+                # market — submit at current event price for that symbol
+                latest_p = self._multi_builders[sym]._latest_price or price_event
+                exec_.submit_order(
+                    id=oid,
+                    side=side,
+                    price=float(latest_p),
+                    quantity=abs(delta),
+                    type="market",
+                    symbol=sym,
+                    tif="gtc",
+                    account_id=acct.account_id(),
+                )
+            else:
+                mid = self._multi_builders[sym]._latest_price or price_event
+                side_sign = 1.0 if side == "buy" else -1.0
+                limit_price = (
+                    float(mid) + offset_int * float(self.tick_size) * side_sign
+                )
+                exec_.submit_order(
+                    id=oid,
+                    side=side,
+                    price=float(limit_price),
+                    quantity=abs(delta),
+                    type="limit",
+                    symbol=sym,
+                    tif=tif_name,
+                    account_id=acct.account_id(),
+                )
+                self._multi_open_orders[sym][oid] = {
+                    "side": side, "type": "limit", "price": limit_price,
+                    "qty_remaining": abs(delta), "submit_step": self._idx,
+                    "tif": tif_name,
+                }
+                self._multi_builders[sym].add_open_order(
+                    oid, side=side, order_type="limit",
+                    price=limit_price, quantity=abs(delta), tif=tif_name,
+                )
+
+        # 2. Feed the current event's tick to the matching engine for
+        # the symbol whose event this is.
+        exec_.on_trade_qty(
+            sym_event, float(price_event), float(qty_event), side_event == 0
+        )
+
+        # 3. Drain fills produced this step. Each fill carries
+        # symbol; route bookkeeping to the right per-symbol state.
+        all_fills = exec_.fills_list()
+        new_fills = all_fills[self._multi_last_fill_idx :]
+        self._multi_last_fill_idx = len(all_fills)
+        for f in new_fills:
+            fsym = int(f["symbol"])
+            fill_qty = float(f["quantity"])
+            fill_price = float(f["price"])
+            signed = fill_qty if f["side"] == "buy" else -fill_qty
+            self._apply_fill_multi(acct, fsym, signed, fill_price)
+            notional = fill_price * fill_qty
+            fees.record_fill(int(ts_ns), notional)
+            fee = float(fees.fee_for(int(ts_ns), notional, self.is_maker))
+            acct.add_equity(-fee)
+            oid = int(f["order_id"])
+            if oid in self._multi_open_orders.get(fsym, {}):
+                self._multi_open_orders[fsym][oid]["qty_remaining"] -= fill_qty
+                if (
+                    self._multi_open_orders[fsym][oid]["qty_remaining"]
+                    <= 1e-12
+                ):
+                    del self._multi_open_orders[fsym][oid]
+                    self._multi_builders[fsym].remove_open_order(oid)
+                else:
+                    self._multi_builders[fsym].apply_fill(oid, fill_qty)
+
+        # 4. Update mark for the event's symbol and run liquidation
+        # walk on the cross-margin Account.
+        acct.set_mark(sym_event, float(price_event), int(ts_ns))
+        outcome = liq.on_mark(sym_event, float(price_event))
+        self._last_outcome = outcome
+        terminated = bool(outcome.get("liquidations_count", 0))
+
+        # 5. Update per-symbol builder with the new price tick (only
+        # the symbol whose event arrived; others keep their last
+        # known price in the window).
+        self._multi_builders[sym_event].on_trade(float(price_event))
+        for sym in self.multi_tapes:
+            self._multi_builders[sym].set_position(
+                self._multi_positions[sym], self._multi_entry_prices[sym]
+            )
+
+        equity_now = float(acct.equity() + acct.total_unrealised_pnl())
+        reward = equity_now - self._last_equity_at_mark
+        self._last_equity_at_mark = equity_now
+        if self.reward_fn is not None:
+            ctx = {
+                "ts_ns": ts_ns,
+                "event_symbol": sym_event,
+                "event_price": price_event,
+                "positions": dict(self._multi_positions),
+                "equity": acct.equity(),
+                "unrealized_pnl": acct.total_unrealised_pnl(),
+                "equity_at_mark": equity_now,
+                "liquidation_outcome": outcome,
+                "step": self._idx,
+            }
+            reward = float(self.reward_fn(self, ctx))
+
+        self._idx += 1
+        truncated = self._idx >= len(self._merged_events)
+        obs = self._observation_multi(event_price=float(price_event))
+        info = {
+            "ts_ns": ts_ns,
+            "event_symbol": sym_event,
+            "event_price": price_event,
+            "positions": dict(self._multi_positions),
+            "equity": acct.equity(),
+            "unrealized_pnl": acct.total_unrealised_pnl(),
+            "equity_at_mark": equity_now,
+            "fee_tier": fees.current_tier_index(),
+            "liquidation_outcome": outcome,
+            "step": self._idx,
+        }
+        return obs, reward, terminated, truncated, info
+
+    def _apply_fill_multi(
+        self, acct: Any, sym: int, signed: float, fill_price: float
+    ) -> None:
+        old_pos = self._multi_positions[sym]
+        new_pos = old_pos + signed
+        entry = self._multi_entry_prices[sym]
+
+        if abs(old_pos) < 1e-12:
+            if abs(new_pos) > 1e-12:
+                acct.open_position(sym, new_pos, fill_price)
+                self._multi_entry_prices[sym] = fill_price
+            else:
+                self._multi_entry_prices[sym] = 0.0
+        elif old_pos * signed > 0:
+            old_notional = entry * old_pos
+            new_notional = fill_price * signed
+            avg_entry = (old_notional + new_notional) / new_pos
+            self._multi_entry_prices[sym] = avg_entry
+            acct.close_position(sym)
+            acct.open_position(sym, new_pos, avg_entry)
+        elif old_pos * new_pos >= 0:
+            direction = 1.0 if old_pos > 0 else -1.0
+            realized = (fill_price - entry) * direction * abs(signed)
+            acct.add_equity(realized)
+            acct.close_position(sym)
+            if abs(new_pos) > 1e-12:
+                acct.open_position(sym, new_pos, entry)
+            else:
+                self._multi_entry_prices[sym] = 0.0
+        else:
+            direction = 1.0 if old_pos > 0 else -1.0
+            realized = (fill_price - entry) * direction * abs(old_pos)
+            acct.add_equity(realized)
+            acct.close_position(sym)
+            acct.open_position(sym, new_pos, fill_price)
+            self._multi_entry_prices[sym] = fill_price
+        self._multi_positions[sym] = new_pos
+
+    def _observation_multi(self, *, event_price: float) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for sym, builder in self._multi_builders.items():
+            out[str(sym)] = builder.build()
+        if self.venue_stack is not None:
+            acct = self.venue_stack.account()
+            out["account"] = [
+                float(acct.equity()),
+                float(acct.total_notional()),
+                float(acct.total_unrealised_pnl()),
+            ]
+        else:
+            out["account"] = [0.0, 0.0, 0.0]
+        return out
 
     def _step_venue_stack_common(
         self,

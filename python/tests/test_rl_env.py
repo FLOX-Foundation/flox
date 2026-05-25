@@ -735,5 +735,127 @@ class WalkForwardRLTests(unittest.TestCase):
         self.assertEqual(count["n"], 6)
 
 
+class MultiSymbolTests(unittest.TestCase):
+    """T036: Dict observation and action spaces over multiple tapes."""
+
+    def _stack(self):
+        import flox_py
+        return flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+
+    def _two_tapes(self, n=10):
+        btc = [(i * 100_000_000, 50_000.0 + i * 5.0, 1.0, i % 2) for i in range(n)]
+        eth = [(i * 100_000_000 + 50_000_000, 3_000.0 + i * 1.0, 1.0, i % 2) for i in range(n)]
+        return {1: btc, 2: eth}
+
+    def test_dict_spaces_when_tapes_passed(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        self.assertEqual(type(env.action_space).__name__, "_DictSpace")
+        self.assertEqual(type(env.observation_space).__name__, "_DictSpace")
+        self.assertEqual(set(env.action_space.spaces.keys()), {"1", "2"})
+        self.assertEqual(
+            set(env.observation_space.spaces.keys()), {"1", "2", "account"}
+        )
+
+    def test_passing_both_tape_and_tapes_rejected(self) -> None:
+        stack = self._stack()
+        with self.assertRaises(ValueError):
+            rl_env.FloxTradingEnv.from_venue_stack(
+                stack, tape=_RAMP_TRADES, tapes=self._two_tapes(), qty=0.01,
+            )
+
+    def test_empty_tape_dict_rejected(self) -> None:
+        stack = self._stack()
+        with self.assertRaises(ValueError):
+            rl_env.FloxTradingEnv.from_venue_stack(
+                stack, tapes={1: [], 2: [(0, 100.0, 1.0, 0)]}, qty=0.01,
+            )
+
+    def test_discrete_action_mode_rejected_for_multi(self) -> None:
+        stack = self._stack()
+        with self.assertRaises(ValueError):
+            rl_env.FloxTradingEnv.from_venue_stack(
+                stack, tapes=self._two_tapes(), qty=0.01,
+                action_mode="discrete",
+            )
+
+    def test_merged_events_sorted_by_ts(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        timestamps = [e[0] for e in env._merged_events]
+        self.assertEqual(timestamps, sorted(timestamps))
+        # Both symbols appear in the merged stream
+        syms = {e[1] for e in env._merged_events}
+        self.assertEqual(syms, {1, 2})
+
+    def test_step_returns_dict_obs(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        env.reset()
+        obs, _, _, _, _ = env.step({"1": [0.5, 0.0, 0.0], "2": [-0.5, 0.0, 0.0]})
+        self.assertIsInstance(obs, dict)
+        self.assertIn("1", obs)
+        self.assertIn("2", obs)
+        self.assertIn("account", obs)
+
+    def test_account_obs_carries_three_values(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        obs, _ = env.reset()
+        self.assertEqual(len(obs["account"]), 3)
+
+    def test_per_symbol_positions_independent(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(20), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        env.reset()
+        # Long BTC, short ETH
+        for _ in range(5):
+            env.step({"1": [1.0, 0.0, 0.0], "2": [-1.0, 0.0, 0.0]})
+        self.assertGreater(env._multi_positions[1], 0.0)
+        self.assertLess(env._multi_positions[2], 0.0)
+
+    def test_non_dict_action_rejected(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        env.reset()
+        with self.assertRaises(ValueError):
+            env.step([0.5, 0.0, 0.0])
+
+    def test_episode_truncates_when_merged_stream_exhausted(self) -> None:
+        stack = self._stack()
+        n = 6
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tapes=self._two_tapes(n), qty=0.01, max_position=0.02,
+            window_size=4, tick_size=0.5,
+        )
+        env.reset()
+        truncated = False
+        for _ in range(2 * n + 4):
+            _, _, _, truncated, _ = env.step(
+                {"1": [0.0, 0.0, 0.0], "2": [0.0, 0.0, 0.0]}
+            )
+            if truncated:
+                break
+        self.assertTrue(truncated)
+
+
 if __name__ == "__main__":
     unittest.main()
