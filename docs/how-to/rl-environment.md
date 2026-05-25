@@ -2,7 +2,7 @@
 
 `flox_py.rl_env.FloxTradingEnv` is a Gymnasium-compatible environment that drives an agent through the trades in a captured `.floxlog` tape. It speaks the standard `Env` protocol (`reset`, `step`, `render`, `close`, `action_space`, `observation_space`, `metadata`) without importing `gymnasium` itself, so plugging it into `stable_baselines3`, `RLlib`, or `CleanRL` does not pull gymnasium into flox's dependency surface. The user installs gymnasium and the learner of choice; the env works out of the box.
 
-Phase 1 stays narrow: trade-by-trade replay, scalar `qty`, three discrete actions (hold, long, short). Continuous action spaces, multi-instrument portfolios, and limit-order semantics are Phase 2 follow-ups.
+Two construction paths are available. `FloxTradingEnv.from_tape(...)` is the lightweight Phase 1 path — trade-by-trade replay with ideal fills, no fees, no funding, no liquidation. `FloxTradingEnv.from_venue_stack(stack, tape=...)` plugs the env on top of a `VenueStack` so every action routes through the same simulated executor used in backtest and paper trading; fees and funding feed back into the reward via the cross-margin Account, and liquidation terminates the episode. Phase 2 follow-ups will add continuous action spaces, limit-order semantics, and multi-symbol portfolios.
 
 ## Quick start
 
@@ -62,7 +62,34 @@ def risk_adjusted_reward(env, ctx):
 env = FloxTradingEnv.from_tape(path, reward_fn=risk_adjusted_reward)
 ```
 
-The default ignores transaction costs entirely. For honest training, layer fees and slippage into the reward function or compose this env with `flox_py.SimulatedExecutor` (which already handles fees and queue-aware fills) for the fill side.
+The default in the `from_tape` path ignores transaction costs entirely. For honest training, switch to `from_venue_stack` — the venue-stack path computes reward as the change in account equity at mark, with taker (or maker, if `is_maker=True`) fees deducted on each fill via the stack's fee schedule. Funding accrued by the schedule and realized PnL on close are folded into equity automatically.
+
+## Venue-stack backed env
+
+```python
+import flox_py
+from flox_py.rl_env import FloxTradingEnv
+
+stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+
+env = FloxTradingEnv.from_venue_stack(
+    stack,
+    tape="./tapes/btc-2026-05-07",
+    qty=0.01,
+    window_size=16,
+    symbol_id=1,
+)
+```
+
+What changes versus `from_tape`:
+
+- `step()` submits market orders through `stack.executor()` (the same `VenueExecutor` returned to any other Python caller of the stack), feeds the current trade tick to the matching engine, and drains the resulting fills.
+- Fees come from `stack.fees().fee_for(...)` and are deducted from account equity on every fill. The fee schedule's 30d rolling notional advances on each fill, so the tier moves with realized volume — same behavior as a backtest.
+- The cross-margin Account's `set_mark` is called every step, and `stack.liquidation().on_mark(...)` runs the liquidation walk. Episodes terminate on the first liquidation event.
+- Reward is the change in `account.equity() + account.total_unrealised_pnl()` since the previous step. Fees, funding accruals, realized PnL on close, and unrealized PnL on mark all fold in naturally.
+- `info` gains `equity`, `unrealized_pnl`, `equity_at_mark`, `fee_tier`, and `liquidation_outcome` fields so the agent's training loop can log the venue-side state.
+
+Same strategy class, same data, the only thing that differs from `from_tape` is the realism around the fills. Pick this path for any training that will hand the trained policy to `PaperBroker` or `CcxtBroker` — the physics will match.
 
 ## Plugging into stable_baselines3
 
@@ -82,9 +109,9 @@ model.learn(total_timesteps=100_000)
 
 ## What this is not
 
-- A backtest in the `flox_py.bundle` sense. The env replays trades and applies idealized fills (current trade price, instant). Realistic fills (slippage, queue position, latency) need `flox_py.SimulatedExecutor` and the latency-models module on top.
-- A multi-symbol portfolio simulator. One symbol per env. Multi-instrument is Phase 2.
+- A multi-symbol portfolio simulator. One symbol per env in both construction paths. Multi-instrument is Phase 2.
 - A live agent runtime. The env consumes a captured tape; for live RL you need an outer loop that feeds new trades and re-runs the policy. The same `step` / `reset` API applies, but the data plumbing is up to you.
+- A continuous-action interface. Phase 1 keeps `Discrete(3)` everywhere; Phase 2 adds a `Box` action space for signed quantity, price offset in ticks, and TIF.
 
 ## See also
 

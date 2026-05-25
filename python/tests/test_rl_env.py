@@ -188,5 +188,96 @@ class FromTapeTests(unittest.TestCase):
         self.assertEqual(len(obs), 5)
 
 
+class FromVenueStackTests(unittest.TestCase):
+    """T032: env routes orders through stack.executor(), reward
+    reflects fees and funding via account equity, liquidation
+    terminates the episode."""
+
+    def _stack(self):
+        import flox_py
+        return flox_py.VenueStack.binance_um_futures(
+            account_id=1, equity=10_000.0
+        )
+
+    def test_returns_venueexecutor(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        self.assertEqual(env.venue_stack, stack)
+        self.assertEqual(type(stack.executor()).__name__, "VenueExecutor")
+
+    def test_hold_only_does_not_submit_orders(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        env.reset()
+        for _ in range(len(_RAMP_TRADES) - 1):
+            env.step(0)
+        self.assertEqual(stack.executor().fill_count, 0)
+
+    def test_long_open_routes_through_executor(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        env.reset()
+        env.step(1)
+        self.assertGreaterEqual(stack.executor().fill_count, 1)
+
+    def test_fee_deduction_matches_schedule(self) -> None:
+        """T032 acceptance — known fee on a single market fill shifts
+        net reward by the expected delta. Buy 1 unit, then check the
+        equity dropped by exactly the schedule's fee for that notional."""
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        env.reset()
+        equity_before = stack.account().equity()
+        env.step(1)  # market buy
+        fills = stack.executor().fills_list()
+        self.assertGreaterEqual(len(fills), 1)
+        fill = fills[0]
+        notional = float(fill["price"]) * float(fill["quantity"])
+        # Taker fee on first fill (account has zero rolling notional →
+        # base tier). The schedule answer is the source of truth.
+        expected_fee = float(stack.fees().fee_for(0, notional, False))
+        # Equity reflects fee deduction.
+        self.assertAlmostEqual(
+            stack.account().equity(), equity_before - expected_fee, places=4
+        )
+
+    def test_reward_is_equity_at_mark_delta(self) -> None:
+        """Reward should equal the change in account equity plus
+        unrealized PnL between consecutive steps."""
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        env.reset()
+        acct = stack.account()
+        prev = acct.equity() + acct.total_unrealised_pnl()
+        for action in [1, 0, 0, 0]:
+            _, reward, _, _, _ = env.step(action)
+            current = acct.equity() + acct.total_unrealised_pnl()
+            self.assertAlmostEqual(reward, current - prev, places=6)
+            prev = current
+
+    def test_unrealized_pnl_visible_in_info(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        env.reset()
+        _, _, _, _, info = env.step(1)
+        self.assertIn("equity", info)
+        self.assertIn("unrealized_pnl", info)
+        self.assertIn("equity_at_mark", info)
+        self.assertIn("fee_tier", info)
+        self.assertIn("liquidation_outcome", info)
+
+
 if __name__ == "__main__":
     unittest.main()
