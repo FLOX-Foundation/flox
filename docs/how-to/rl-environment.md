@@ -260,6 +260,48 @@ What the modes do:
 
 The aggregate schema (`mean_return_pct`, `std_return_pct`, `sign_match`, `worst_return_pct`, `mean_sharpe`, `mean_max_drawdown_pct`, `n_folds`) matches the supervised walk-forward output, so RL and non-RL sweeps land in one comparison table.
 
+## Multi-symbol portfolios
+
+Pass `tapes={symbol_id: tape, ...}` instead of `tape=...` to switch the env into multi-symbol mode. Observation and action spaces become Dict-shaped, the cross-margin Account walks every event's mark, and the agent sees an account-level slot alongside the per-symbol slots.
+
+```python
+import flox_py
+from flox_py.rl_env import FloxTradingEnv
+
+stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+
+env = FloxTradingEnv.from_venue_stack(
+    stack,
+    tapes={
+        1: "./tapes/btcusdt-2026-05-07",   # symbol id 1
+        2: "./tapes/ethusdt-2026-05-07",   # symbol id 2
+    },
+    qty=0.01,
+    max_position=0.05,
+    window_size=32,
+    tick_size=0.01,
+    n_open_slots=2,           # per symbol
+)
+
+# Dict observation: {"1": Box((window+2+4*n_open,)), "2": Box(...), "account": Box((3,))}
+# Dict action:      {"1": Box((3,)), "2": Box((3,))}
+obs, info = env.reset(seed=0)
+
+# Long BTC, short ETH market orders
+action = {"1": [+1.0, 0.0, 0.0], "2": [-1.0, 0.0, 0.0]}
+obs, reward, terminated, truncated, info = env.step(action)
+```
+
+What the multi-symbol path does:
+
+- **Tape merge.** All per-symbol tapes are sorted into a single event stream by `ts_ns`. One env step consumes exactly one event; the event's symbol gets its mark and price-window updated.
+- **Per-symbol state.** Positions, entry prices, open orders, and observation builders are tracked separately for each symbol. Switching one symbol's position has no effect on another's bookkeeping.
+- **Cross-margin Account.** All positions share the stack's single Account. After every event the liquidation engine walks; the first liquidation event terminates the episode.
+- **Account-level observation.** The `"account"` key carries `[equity, total_notional, total_unrealized_pnl]`. The agent learns portfolio-level risk through this slot.
+- **Continuous-only action mode.** Multi-symbol mode requires `action_mode="continuous"`. The Discrete(3) shorthand does not generalise meaningfully to a dict-of-actions.
+
+Plugging this into Stable-Baselines3 needs `MultiInputPolicy` (Dict obs / Dict action support is built in). For RLlib see their `Multi-Agent` and `Dict` observation guides; for CleanRL roll a small wrapper that flattens to one big Box if your trainer needs it.
+
 ## Alpha-decay gate
 
 `scripts/rl_alpha_decay_gate.py` is the CI-enforceable counterpart to the "one policy, three deployment modes" claim. It generates a deterministic synthetic tape from a seed, runs a fixed stub policy through `FloxTradingEnv` and through `PaperBroker` (mirroring what `make_rl_policy` would do behind a runner), and asserts that the absolute equity change between the two paths stays within a configurable cap.
