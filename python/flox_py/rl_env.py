@@ -34,7 +34,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Deque, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Tuple
 
 
 # ── Minimal space implementations (duck-typed against gymnasium) ──
@@ -154,6 +154,19 @@ class FloxTradingEnv:
     tick_size: float = 0.01
     max_price_offset_ticks: int = 50
 
+    # Open-order observation slots. Each slot is four floats:
+    # [signed_qty_remaining / max_position, age_in_steps / window_size,
+    #  distance_from_latest_price_in_ticks / max_price_offset_ticks,
+    #  queue_position_proxy in [0, 1]]. Unused slots are zeros.
+    # None → default to 4 in venue-stack mode and 0 in the bare path
+    # (bare has no resting orders to track).
+    n_open_slots: Optional[int] = None
+    # Optional negative reward applied when our submit_order call did
+    # not produce a fill and there is no resting order — proxy for a
+    # rate-limit / post-only / venue-availability reject. Default 0
+    # leaves the behaviour unchanged.
+    reject_penalty: float = 0.0
+
     # Filled at __post_init__.
     action_space: Any = field(init=False)
     observation_space: _BoxSpace = field(init=False)
@@ -173,6 +186,10 @@ class FloxTradingEnv:
     _last_equity_at_mark: float = field(default=0.0, init=False)
     _venue_entry_price: float = field(default=0.0, init=False)
     _last_outcome: dict = field(default_factory=dict, init=False)
+    # order_id → dict(side, type, price, qty_remaining, submit_step,
+    # initial_qty). Maintained as fills land — orders disappear when
+    # qty_remaining ≈ 0 or after explicit cancel.
+    _open_orders: Dict[int, dict] = field(default_factory=dict, init=False)
 
     # Static metadata gymnasium learners look at.
     metadata: dict = field(default_factory=lambda: {"render_modes": []})
@@ -187,6 +204,9 @@ class FloxTradingEnv:
             raise ValueError(f"qty must be positive; got {self.qty}")
         if self.window_size <= 0:
             raise ValueError(f"window_size must be positive; got {self.window_size}")
+
+        if self.n_open_slots is None:
+            self.n_open_slots = 4 if self.venue_stack is not None else 0
 
         if self.action_mode not in ("discrete", "continuous"):
             raise ValueError(
@@ -209,12 +229,18 @@ class FloxTradingEnv:
             )
 
         # Observation bounds: prices are positive but unbounded;
-        # position is bounded by ±max_position; PnL is unbounded.
-        obs_dim = self.window_size + 2
+        # position is bounded by ±max_position; PnL is unbounded;
+        # open-order slots are normalised so each entry sits in
+        # roughly [-1, 1] but we leave headroom for early-step
+        # observations.
+        slot_count = max(0, int(self.n_open_slots))
+        obs_dim = self.window_size + 2 + 4 * slot_count
         pos_bound = max(float(self.qty), float(self.max_position))
+        slot_low = [-1.0, 0.0, -1.0, 0.0] * slot_count
+        slot_high = [1.0, 10.0, 1.0, 1.0] * slot_count
         self.observation_space = _BoxSpace(
-            low=[0.0] * self.window_size + [-pos_bound, -1e9],
-            high=[1e9] * self.window_size + [pos_bound, 1e9],
+            low=[0.0] * self.window_size + [-pos_bound, -1e9] + slot_low,
+            high=[1e9] * self.window_size + [pos_bound, 1e9] + slot_high,
             shape=(obs_dim,),
             dtype="float32",
         )
@@ -258,6 +284,8 @@ class FloxTradingEnv:
         max_position: Optional[float] = None,
         tick_size: float = 0.01,
         max_price_offset_ticks: int = 50,
+        n_open_slots: Optional[int] = None,
+        reject_penalty: float = 0.0,
         reward_fn: Optional[Callable[["FloxTradingEnv", Any], float]] = None,
         seed: Optional[int] = None,
     ) -> "FloxTradingEnv":
@@ -294,6 +322,8 @@ class FloxTradingEnv:
             max_position=float(max_position if max_position is not None else qty),
             tick_size=tick_size,
             max_price_offset_ticks=max_price_offset_ticks,
+            n_open_slots=n_open_slots,
+            reject_penalty=reject_penalty,
         )
 
     # ── Gymnasium API ────────────────────────────────────────────
@@ -312,6 +342,7 @@ class FloxTradingEnv:
         self._last_fill_idx = 0
         self._venue_entry_price = 0.0
         self._last_outcome = {}
+        self._open_orders = {}
         self._price_window.clear()
         first_price = float(self.trades[0][1])
         self._first_price = first_price
@@ -494,21 +525,33 @@ class FloxTradingEnv:
         if len(self._price_window) > self.window_size:
             self._price_window.popleft()
 
+        submitted_id: Optional[int] = None
         if abs(delta_qty) > 1e-12:
             side = "buy" if delta_qty > 0 else "sell"
             self._next_order_id += 1
+            submitted_id = self._next_order_id
+            submit_price = (
+                float(limit_price) if limit_price is not None else float(price)
+            )
             exec_.submit_order(
-                id=self._next_order_id,
+                id=submitted_id,
                 side=side,
-                price=float(limit_price)
-                if limit_price is not None
-                else float(price),
+                price=submit_price,
                 quantity=abs(delta_qty),
                 type=order_type,
                 symbol=self.symbol_id,
                 tif=tif,
                 account_id=acct.account_id(),
             )
+            self._open_orders[submitted_id] = {
+                "side": side,
+                "type": order_type,
+                "price": submit_price,
+                "qty_remaining": abs(delta_qty),
+                "initial_qty": abs(delta_qty),
+                "submit_step": self._idx,
+                "tif": tif,
+            }
 
         exec_.on_trade_qty(
             self.symbol_id, float(price), float(trade_qty), trade_side == 0
@@ -518,6 +561,7 @@ class FloxTradingEnv:
         all_fills = exec_.fills_list()
         new_fills = all_fills[self._last_fill_idx :]
         self._last_fill_idx = len(all_fills)
+        filled_this_step: Dict[int, float] = {}
         for f in new_fills:
             fill_qty = float(f["quantity"])
             fill_price = float(f["price"])
@@ -525,13 +569,30 @@ class FloxTradingEnv:
             self._apply_fill(acct, signed, fill_price)
 
             # Record notional for tier tracking and deduct the fee from
-            # account equity. record_fill bumps the 30d aggregate
-            # FeeSchedule uses; fee_for asks the schedule what the
-            # actual fee is at the current tier.
+            # account equity.
             notional = fill_price * fill_qty
             fees.record_fill(int(ts_ns), notional)
             fee = float(fees.fee_for(int(ts_ns), notional, self.is_maker))
             acct.add_equity(-fee)
+
+            oid = int(f["order_id"])
+            filled_this_step[oid] = filled_this_step.get(oid, 0.0) + fill_qty
+            if oid in self._open_orders:
+                self._open_orders[oid]["qty_remaining"] -= fill_qty
+                if self._open_orders[oid]["qty_remaining"] <= 1e-12:
+                    del self._open_orders[oid]
+
+        # Reject heuristic: we submitted an order this step but it
+        # neither filled nor sits in _open_orders any more. That happens
+        # when the executor rejected it pre-book (rate limit, venue
+        # outage, post-only cross). Penalise it once.
+        rejected_this_step = False
+        if (
+            submitted_id is not None
+            and submitted_id not in self._open_orders
+            and submitted_id not in filled_this_step
+        ):
+            rejected_this_step = True
 
         # Mark + liquidation walk.
         acct.set_mark(self.symbol_id, float(price), int(ts_ns))
@@ -544,6 +605,8 @@ class FloxTradingEnv:
         # deducted, and funding the schedule applied (if any).
         equity_now = float(acct.equity() + acct.total_unrealised_pnl())
         reward_default = equity_now - self._last_equity_at_mark
+        if rejected_this_step and self.reject_penalty:
+            reward_default -= float(self.reject_penalty)
         self._last_equity_at_mark = equity_now
 
         if self.reward_fn is not None:
@@ -575,6 +638,8 @@ class FloxTradingEnv:
             "liquidation_outcome": outcome,
             "action_clipped": was_clipped,
             "order_type": order_type,
+            "open_orders": len(self._open_orders),
+            "rejected": rejected_this_step,
             "step": self._idx,
         }
         return self._observation(), reward, terminated, truncated, info
@@ -691,7 +756,43 @@ class FloxTradingEnv:
         if self._position != 0.0 and self._idx < len(self.trades):
             cur_price = float(self.trades[self._idx][1])
             unreal = (cur_price - self._entry_price) * self._position
-        return list(normalized) + [self._position, unreal]
+        return list(normalized) + [self._position, unreal] + self._open_order_slots()
+
+    def _open_order_slots(self) -> List[float]:
+        n = int(self.n_open_slots)
+        if n <= 0:
+            return []
+
+        cur_price = (
+            float(self.trades[self._idx][1])
+            if self._idx < len(self.trades)
+            else self._first_price
+        )
+        max_offset_ticks = max(int(self.max_price_offset_ticks), 1)
+        tick = float(self.tick_size) if self.tick_size > 0 else 1.0
+        norm_qty = float(self.max_position) if self.max_position > 0 else 1.0
+        window = max(int(self.window_size), 1)
+
+        items = sorted(
+            self._open_orders.items(), key=lambda kv: kv[1]["submit_step"]
+        )[:n]
+
+        slots: List[float] = []
+        for _, od in items:
+            qty_signed = od["qty_remaining"] * (1.0 if od["side"] == "buy" else -1.0)
+            age = max(0, self._idx - od["submit_step"])
+            distance_ticks = (od["price"] - cur_price) / tick
+            queue_pos = 0.0 if od["type"] == "market" else 0.5
+            slots.extend([
+                qty_signed / norm_qty,
+                age / window,
+                max(-1.0, min(1.0, distance_ticks / max_offset_ticks)),
+                queue_pos,
+            ])
+
+        # Pad unused slots with zeros so the obs shape is constant.
+        slots.extend([0.0] * (4 * (n - len(items))))
+        return slots
 
 
 __all__ = [
