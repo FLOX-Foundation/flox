@@ -279,6 +279,7 @@ jobs:
         docs/examples/python_orderbook_iterator.py
         docs/examples/python_rolling_top_k.py
         docs/examples/python_xs_panel.py
+        docs/examples/python_rate_limit_aware_market_maker.py
 
     # Pyright is what Cursor / Pylance / VSCode actually run; mypy and
     # pyright sometimes disagree, and the AI-DX goal is the editor
@@ -322,6 +323,9 @@ jobs:
 
     - name: Run Python cross-sectional panel example
       run: PYTHONPATH=build/python python3 docs/examples/python_xs_panel.py
+
+    - name: Run Python rate-limit-aware market maker example
+      run: PYTHONPATH=build/python python3 docs/examples/python_rate_limit_aware_market_maker.py
 
     - name: Verify Codon binaries
       run: |

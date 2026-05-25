@@ -8173,6 +8173,10 @@
         },
         {
           "kind": "class",
+          "name": "VenueExecutor"
+        },
+        {
+          "kind": "class",
           "name": "VenueStack"
         },
         {
