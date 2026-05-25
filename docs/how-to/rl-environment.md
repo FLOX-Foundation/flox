@@ -91,6 +91,50 @@ What changes versus `from_tape`:
 
 Same strategy class, same data, the only thing that differs from `from_tape` is the realism around the fills. Pick this path for any training that will hand the trained policy to `PaperBroker` or `CcxtBroker` — the physics will match.
 
+## Continuous actions
+
+`from_venue_stack` defaults to a continuous action space — a `Box((3,))` with one axis for signed quantity, one for price offset in ticks, one for time-in-force. Discrete(3) stays available as `action_mode="discrete"` for Phase 1 compatibility.
+
+| Axis | Range | Meaning |
+|---|---|---|
+| 0 | `[-1.0, +1.0]` | Signed qty as a fraction of `max_position`. `+1.0` = full long, `-1.0` = full short, `0.0` = flat |
+| 1 | `[-N, +N]` ticks (`N = max_price_offset_ticks`, default 50) | Limit price offset from mid. `0` means market |
+| 2 | `[0.0, 2.0]` | TIF, rounded to int: `0=GTC`, `1=IOC`, `2=Post-only` |
+
+```python
+env = FloxTradingEnv.from_venue_stack(
+    stack, tape=tape,
+    qty=0.01, max_position=0.05,
+    tick_size=0.01,
+    max_price_offset_ticks=50,
+    # action_mode="continuous" is the default
+)
+# action: [signed_qty_fraction, price_offset_ticks, tif_flag]
+obs, reward, term, trunc, info = env.step([0.5, 0.0, 0.0])    # market buy 50% of max_position
+obs, reward, term, trunc, info = env.step([-1.0, 2.0, 2.0])   # post-only limit sell at mid + 2 ticks
+```
+
+Decode rules:
+
+- `price_offset_ticks == 0` (after rounding) means **market order** — TIF axis is ignored, the order routes through the executor at the most recent trade price.
+- `price_offset_ticks != 0` means **limit order**. The price is `mid + offset * tick_size * side_sign`, where mid is the latest trade price (Phase 1 approximation; T034 will swap in the best bid / best ask) and `side_sign` is `+1` for buys, `-1` for sells.
+- The TIF axis rounds to the nearest int. Out-of-range values are clipped to the box bounds.
+- Out-of-bounds actions are **clipped** (not raised). A `RuntimeWarning` is emitted and `info["action_clipped"] = True` so a learner that occasionally samples outside the box does not crash the env.
+
+For Phase 1 prototypes, pass `action_mode="discrete"` to keep the `Discrete(3)` interface — same semantics as before T033.
+
+## stable_baselines3 with continuous actions
+
+```python
+from stable_baselines3 import PPO
+
+env = FloxTradingEnv.from_venue_stack(stack, tape=tape, qty=0.01)
+model = PPO("MlpPolicy", env, verbose=1)
+model.learn(total_timesteps=100_000)
+```
+
+`MlpPolicy` handles the Box action space natively. For discrete-only runners (e.g. DQN), construct with `action_mode="discrete"`.
+
 ## Plugging into stable_baselines3
 
 ```python

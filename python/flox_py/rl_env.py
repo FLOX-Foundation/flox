@@ -145,8 +145,17 @@ class FloxTradingEnv:
     # market orders, so this defaults to taker.
     is_maker: bool = False
 
+    # Action mode: "discrete" → Discrete(3) (hold / long qty / short qty,
+    # Phase 1 default). "continuous" → Box((3,)) (signed qty fraction,
+    # price offset in ticks, TIF flag). from_venue_stack picks
+    # "continuous" by default; from_tape stays "discrete".
+    action_mode: str = "discrete"
+    max_position: float = 1.0
+    tick_size: float = 0.01
+    max_price_offset_ticks: int = 50
+
     # Filled at __post_init__.
-    action_space: _DiscreteSpace = field(init=False)
+    action_space: Any = field(init=False)
     observation_space: _BoxSpace = field(init=False)
 
     # Episode state.
@@ -179,14 +188,33 @@ class FloxTradingEnv:
         if self.window_size <= 0:
             raise ValueError(f"window_size must be positive; got {self.window_size}")
 
-        self.action_space = _DiscreteSpace(n=3)
+        if self.action_mode not in ("discrete", "continuous"):
+            raise ValueError(
+                f"action_mode must be 'discrete' or 'continuous'; "
+                f"got {self.action_mode!r}"
+            )
+        if self.action_mode == "discrete":
+            self.action_space = _DiscreteSpace(n=3)
+        else:
+            # Axes:
+            #   0 — signed quantity as a fraction of max_position [-1, 1]
+            #   1 — price offset from mid in ticks; 0 means market
+            #   2 — TIF flag, rounded to int: 0=GTC, 1=IOC, 2=Post-only
+            offset = float(self.max_price_offset_ticks)
+            self.action_space = _BoxSpace(
+                low=[-1.0, -offset, 0.0],
+                high=[1.0, offset, 2.0],
+                shape=(3,),
+                dtype="float32",
+            )
+
         # Observation bounds: prices are positive but unbounded;
-        # position is bounded by ±qty (Phase 1 single-step long/short
-        # only); PnL is unbounded.
+        # position is bounded by ±max_position; PnL is unbounded.
         obs_dim = self.window_size + 2
+        pos_bound = max(float(self.qty), float(self.max_position))
         self.observation_space = _BoxSpace(
-            low=[0.0] * self.window_size + [-self.qty, -1e9],
-            high=[1e9] * self.window_size + [self.qty, 1e9],
+            low=[0.0] * self.window_size + [-pos_bound, -1e9],
+            high=[1e9] * self.window_size + [pos_bound, 1e9],
             shape=(obs_dim,),
             dtype="float32",
         )
@@ -226,6 +254,10 @@ class FloxTradingEnv:
         window_size: int = 8,
         symbol_id: int = 1,
         is_maker: bool = False,
+        action_mode: str = "continuous",
+        max_position: Optional[float] = None,
+        tick_size: float = 0.01,
+        max_price_offset_ticks: int = 50,
         reward_fn: Optional[Callable[["FloxTradingEnv", Any], float]] = None,
         seed: Optional[int] = None,
     ) -> "FloxTradingEnv":
@@ -258,6 +290,10 @@ class FloxTradingEnv:
             venue_stack=venue_stack,
             symbol_id=symbol_id,
             is_maker=is_maker,
+            action_mode=action_mode,
+            max_position=float(max_position if max_position is not None else qty),
+            tick_size=tick_size,
+            max_price_offset_ticks=max_price_offset_ticks,
         )
 
     # ── Gymnasium API ────────────────────────────────────────────
@@ -294,15 +330,30 @@ class FloxTradingEnv:
         info = {"step": self._idx, "position": self._position}
         return obs, info
 
-    def step(self, action: int) -> Tuple[List[float], float, bool, bool, dict]:
-        if not self.action_space.contains(int(action)):
-            raise ValueError(
-                f"action {action!r} not in action_space (n=3)"
-            )
+    def step(self, action: Any) -> Tuple[List[float], float, bool, bool, dict]:
+        if self.action_mode == "discrete":
+            try:
+                action_int = int(action)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"action {action!r} is not a valid discrete action"
+                ) from exc
+            if not self.action_space.contains(action_int):
+                raise ValueError(
+                    f"action {action!r} not in action_space (n=3)"
+                )
+            if self.venue_stack is not None:
+                return self._step_venue_stack_discrete(action_int)
+            return self._step_bare(action_int)
 
-        if self.venue_stack is not None:
-            return self._step_venue_stack(int(action))
-        return self._step_bare(int(action))
+        # Continuous mode — Box((3,)). Clip out-of-bounds rather than
+        # reject so learners that occasionally sample outside the range
+        # do not crash the env; the clip is recorded in info.
+        seq = self._coerce_action(action)
+        clipped, was_clipped = self._clip_continuous(seq)
+        if self.venue_stack is None:
+            return self._step_bare_continuous(clipped, was_clipped)
+        return self._step_venue_stack_continuous(clipped, was_clipped)
 
     def render(self) -> None:
         # Render mode is intentionally a no-op for Phase 1; the
@@ -374,8 +425,63 @@ class FloxTradingEnv:
 
     # ── Internal — venue-stack path ─────────────────────────────
 
-    def _step_venue_stack(
+    def _step_venue_stack_discrete(
         self, action: int
+    ) -> Tuple[List[float], float, bool, bool, dict]:
+        target_position = {
+            0: self._position,
+            1: float(self.qty),
+            2: -float(self.qty),
+        }[action]
+        delta = target_position - self._position
+        return self._step_venue_stack_common(
+            delta_qty=delta,
+            order_type="market",
+            limit_price=None,
+            tif="gtc",
+            was_clipped=False,
+        )
+
+    def _step_venue_stack_continuous(
+        self, clipped: Tuple[float, float, float], was_clipped: bool
+    ) -> Tuple[List[float], float, bool, bool, dict]:
+        signed_frac, offset_ticks, tif_axis = clipped
+        target_position = float(signed_frac) * float(self.max_position)
+        delta = target_position - self._position
+        offset_int = int(round(offset_ticks))
+        tif_int = int(round(tif_axis))
+        tif_name = {0: "gtc", 1: "ioc", 2: "post_only"}.get(tif_int, "gtc")
+        if offset_int == 0:
+            return self._step_venue_stack_common(
+                delta_qty=delta,
+                order_type="market",
+                limit_price=None,
+                tif="gtc",  # market orders ignore TIF in practice
+                was_clipped=was_clipped,
+            )
+        # Limit order at mid ± offset_ticks * tick_size. Mid is
+        # approximated by the most recent trade price; once the env
+        # tracks best bid / best ask explicitly (T034) this becomes
+        # exact.
+        mid = float(self.trades[self._idx][1])
+        side_sign = 1.0 if delta > 0 else -1.0
+        limit_price = mid + offset_int * float(self.tick_size) * side_sign
+        return self._step_venue_stack_common(
+            delta_qty=delta,
+            order_type="limit",
+            limit_price=limit_price,
+            tif=tif_name,
+            was_clipped=was_clipped,
+        )
+
+    def _step_venue_stack_common(
+        self,
+        *,
+        delta_qty: float,
+        order_type: str,
+        limit_price: Optional[float],
+        tif: str,
+        was_clipped: bool,
     ) -> Tuple[List[float], float, bool, bool, dict]:
         stack = self.venue_stack
         exec_ = stack.executor()
@@ -388,32 +494,22 @@ class FloxTradingEnv:
         if len(self._price_window) > self.window_size:
             self._price_window.popleft()
 
-        # Translate action → order intent. The bare path uses a fixed
-        # target (long qty / short qty / hold); the venue path mirrors
-        # that, submitting market orders for the delta between current
-        # and target position.
-        target_position = {
-            0: self._position,
-            1: float(self.qty),
-            2: -float(self.qty),
-        }[action]
-        delta = target_position - self._position
-        if delta != 0.0:
-            side = "buy" if delta > 0 else "sell"
+        if abs(delta_qty) > 1e-12:
+            side = "buy" if delta_qty > 0 else "sell"
             self._next_order_id += 1
             exec_.submit_order(
                 id=self._next_order_id,
                 side=side,
-                price=float(price),
-                quantity=abs(delta),
-                type="market",
+                price=float(limit_price)
+                if limit_price is not None
+                else float(price),
+                quantity=abs(delta_qty),
+                type=order_type,
                 symbol=self.symbol_id,
-                tif="gtc",
+                tif=tif,
                 account_id=acct.account_id(),
             )
 
-        # Feed the current tick to the matching engine so any pending
-        # market or limit order can fill.
         exec_.on_trade_qty(
             self.symbol_id, float(price), float(trade_qty), trade_side == 0
         )
@@ -477,9 +573,70 @@ class FloxTradingEnv:
             "equity_at_mark": equity_now,
             "fee_tier": fees.current_tier_index(),
             "liquidation_outcome": outcome,
+            "action_clipped": was_clipped,
+            "order_type": order_type,
             "step": self._idx,
         }
         return self._observation(), reward, terminated, truncated, info
+
+    def _step_bare_continuous(
+        self, clipped: Tuple[float, float, float], was_clipped: bool
+    ) -> Tuple[List[float], float, bool, bool, dict]:
+        # The bare path ignores limit semantics — there is no executor
+        # to honour them — so continuous mode here collapses to the
+        # signed-qty axis interpreted against max_position. price
+        # offset and TIF are recorded in info but otherwise ignored.
+        signed_frac, _offset_ticks, _tif_axis = clipped
+        target_position = float(signed_frac) * float(self.max_position)
+        # Reuse the bare path's machinery by mapping the continuous
+        # target back onto the discrete {hold, long, short} buckets,
+        # since the bare path's _position bookkeeping is fixed-qty.
+        if target_position > 1e-12:
+            action_int = 1
+        elif target_position < -1e-12:
+            action_int = 2
+        else:
+            action_int = 0
+        obs, reward, terminated, truncated, info = self._step_bare(action_int)
+        info["action_clipped"] = was_clipped
+        return obs, reward, terminated, truncated, info
+
+    def _coerce_action(self, action: Any) -> Tuple[float, float, float]:
+        """Accept numpy arrays, lists, tuples — anything with three
+        float-coercible entries."""
+        try:
+            seq = list(action)
+        except TypeError as exc:
+            raise ValueError(
+                f"continuous action {action!r} is not iterable"
+            ) from exc
+        if len(seq) != 3:
+            raise ValueError(
+                f"continuous action must have length 3; got {len(seq)}"
+            )
+        return float(seq[0]), float(seq[1]), float(seq[2])
+
+    def _clip_continuous(
+        self, action: Tuple[float, float, float]
+    ) -> Tuple[Tuple[float, float, float], bool]:
+        lo = self.action_space.low
+        hi = self.action_space.high
+        clipped = (
+            min(max(action[0], float(lo[0])), float(hi[0])),
+            min(max(action[1], float(lo[1])), float(hi[1])),
+            min(max(action[2], float(lo[2])), float(hi[2])),
+        )
+        was_clipped = any(
+            abs(c - a) > 1e-12 for c, a in zip(clipped, action)
+        )
+        if was_clipped:
+            import warnings as _warnings
+            _warnings.warn(
+                f"continuous action {action} clipped to {clipped}",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+        return clipped, was_clipped
 
     def _apply_fill(self, acct: Any, signed: float, fill_price: float) -> None:
         """Update position, weighted entry, and realize PnL into account
