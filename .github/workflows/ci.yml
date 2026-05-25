@@ -327,6 +327,9 @@ jobs:
     - name: Run Python rate-limit-aware market maker example
       run: PYTHONPATH=build/python python3 docs/examples/python_rate_limit_aware_market_maker.py
 
+    - name: RL env→paper alpha-decay gate (synthetic)
+      run: PYTHONPATH=build/python python3 scripts/rl_alpha_decay_gate.py --max-decay 0.30
+
     - name: Verify Codon binaries
       run: |
         test -f build/codon/codon_sma_crossover
