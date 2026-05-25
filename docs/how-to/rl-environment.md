@@ -123,6 +123,37 @@ Decode rules:
 
 For Phase 1 prototypes, pass `action_mode="discrete"` to keep the `Discrete(3)` interface — same semantics as before T033.
 
+## Open-order observation slots
+
+In venue-stack mode the observation gains a configurable bank of open-order slots. Each slot is four floats — signed qty remaining (as a fraction of `max_position`), age in steps (as a fraction of `window_size`), distance from the latest price in ticks (as a fraction of `max_price_offset_ticks`, clipped to `[-1, 1]`), and a queue position proxy in `[0, 1]`. Unused slots are zero-padded so the observation shape stays constant.
+
+`n_open_slots` defaults to 4 in venue-stack mode and 0 in the bare `from_tape` path (no executor → no resting orders to track). Set it explicitly to override:
+
+```python
+env = FloxTradingEnv.from_venue_stack(
+    stack, tape=tape, qty=0.01,
+    n_open_slots=8,   # carry up to 8 resting orders in the obs
+)
+# observation_space.shape == (window_size + 2 + 4 * 8,)
+```
+
+When the agent submits a non-market order through the venue executor it is recorded; fills bump down the remaining quantity, and the entry drops off when `qty_remaining ≤ 0` or the order is canceled. The slot ordering is stable by submit step, so the same resting order keeps the same slot index across observations.
+
+`info["open_orders"]` exposes the count of currently-resting orders for logging.
+
+## Reject penalty
+
+The simulated executor silently drops orders that fail rate-limit, venue-availability, or post-only-cross checks. The env detects these as a submit that produced neither a fill nor a resting order entry and surfaces them as `info["rejected"] = True`. Set `reject_penalty=...` at construction to subtract that amount from the reward whenever a reject is detected:
+
+```python
+env = FloxTradingEnv.from_venue_stack(
+    stack, tape=tape, qty=0.01,
+    reject_penalty=10.0,   # subtract 10 from reward on each rejected submit
+)
+```
+
+Default `0.0` leaves the behaviour untouched. The penalty is on top of the usual equity-delta reward, not a replacement.
+
 ## stable_baselines3 with continuous actions
 
 ```python

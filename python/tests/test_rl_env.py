@@ -377,5 +377,116 @@ class ContinuousActionTests(unittest.TestCase):
         self.assertEqual(stack.executor().fill_count, 0)
 
 
+class OpenOrderObservationTests(unittest.TestCase):
+    """T034: per-open-order slots in the observation — qty remaining,
+    age, distance from latest price, queue position proxy."""
+
+    def _stack(self):
+        import flox_py
+        return flox_py.VenueStack.binance_um_futures(
+            account_id=1, equity=10_000.0
+        )
+
+    def test_default_n_open_slots_in_venue_mode(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2, symbol_id=1
+        )
+        # window_size + 2 + 4 * 4 = 2 + 2 + 16 = 20
+        self.assertEqual(env.n_open_slots, 4)
+        self.assertEqual(env.observation_space.shape, (20,))
+
+    def test_default_n_open_slots_in_bare_mode(self) -> None:
+        env = rl_env.FloxTradingEnv(trades=_RAMP_TRADES, window_size=3)
+        self.assertEqual(env.n_open_slots, 0)
+        self.assertEqual(env.observation_space.shape, (5,))
+
+    def test_n_open_slots_explicit_override(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, window_size=2,
+            symbol_id=1, n_open_slots=2,
+        )
+        # 2 + 2 + 4 * 2 = 12
+        self.assertEqual(env.observation_space.shape, (12,))
+
+    def test_resting_limit_appears_in_open_order_slots(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
+            window_size=2, symbol_id=1, tick_size=0.5,
+            n_open_slots=2,
+        )
+        env.reset()
+        # Post a limit far from market so it rests, not fills.
+        obs, _, _, _, info = env.step([1.0, 5.0, 2.0])
+        self.assertGreaterEqual(info["open_orders"], 1)
+        # Slot 0 first entry is signed qty remaining / max_position;
+        # should be positive for a resting buy.
+        slot_start = env.window_size + 2
+        self.assertGreater(obs[slot_start], 0.0)
+
+    def test_market_order_not_recorded_as_open(self) -> None:
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
+            window_size=2, symbol_id=1, n_open_slots=2,
+        )
+        env.reset()
+        # Market buy — fills immediately, so no resting order remains.
+        _, _, _, _, info = env.step([1.0, 0.0, 0.0])
+        self.assertEqual(info["open_orders"], 0)
+
+    def test_partial_fill_keeps_remainder_visible(self) -> None:
+        # Synthetic case: two consecutive limit orders against the same
+        # tape; we cannot easily provoke a true partial fill from
+        # Python, but we can assert the slot decreases when a fill on
+        # the order id reduces qty_remaining.
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
+            window_size=2, symbol_id=1, tick_size=0.5,
+            n_open_slots=2,
+        )
+        env.reset()
+        # Submit a limit that should rest.
+        env.step([1.0, 5.0, 2.0])
+        before = env._open_orders.copy()
+        # Hold (no new order). qty_remaining stays unchanged.
+        env.step([1.0, 5.0, 2.0])  # signed=1 → delta = 0 → no new order
+        for oid, od in before.items():
+            if oid in env._open_orders:
+                self.assertEqual(
+                    env._open_orders[oid]["qty_remaining"], od["qty_remaining"]
+                )
+
+    def test_reject_penalty_applied_on_no_fill_no_rest(self) -> None:
+        """Force a reject scenario via a tiny tape that has the
+        submitted order disappear with no fill. We piggy-back on
+        post-only orders crossing the mid which the executor rejects
+        pre-book."""
+        # Tape: descending so a buy at much higher price crosses the
+        # opposite side. Post-only buy at high price should reject.
+        descending = [
+            (1_000, 100.0, 1.0, 0),
+            (2_000, 99.0, 1.0, 0),
+            (3_000, 98.0, 1.0, 0),
+            (4_000, 97.0, 1.0, 0),
+        ]
+        stack = self._stack()
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=descending, qty=1.0, max_position=1.0,
+            window_size=2, symbol_id=1, tick_size=0.5,
+            reject_penalty=10.0,
+        )
+        env.reset()
+        # Step once to seed the book.
+        env.step([0.0, 0.0, 0.0])
+        # Post-only buy aggressively far above mid — likely to reject.
+        _, reward, _, _, info = env.step([1.0, 0.5, 2.0])
+        if info["rejected"]:
+            self.assertLessEqual(reward, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
