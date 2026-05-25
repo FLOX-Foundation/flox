@@ -154,6 +154,66 @@ env = FloxTradingEnv.from_venue_stack(
 
 Default `0.0` leaves the behaviour untouched. The penalty is on top of the usual equity-delta reward, not a replacement.
 
+## One policy, three deployment modes
+
+The point of the venue-stack-backed env is not training in isolation. It is producing a policy you can run unchanged through `PaperBroker` and `CcxtBroker`. `flox_py.rl_env` ships three small pieces to close that loop:
+
+- `ObservationBuilder` — stateful builder that turns a stream of trades plus a current position into the same observation vector the env uses. Plug live ticks via `on_trade(price)`, update position via `set_position`, and call `build()` whenever the model needs an input.
+- `ActionDecoder` — pure function that maps a continuous `Box((3,))` action to a structured intent (market or limit, side, quantity, price, TIF). Same decode logic the env uses internally.
+- `make_rl_policy` — produces a `flox.Strategy` subclass that on every `on_trade` updates the builder, runs `model.predict(obs)`, decodes, and emits the corresponding order through the runner's signal callback.
+
+```python
+import flox_py
+from flox_py.rl_env import (
+    FloxTradingEnv, ObservationBuilder, ActionDecoder, make_rl_policy,
+)
+from stable_baselines3 import PPO
+
+# 1. Train on a tape via the venue-stack-backed env
+stack = flox_py.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
+env = FloxTradingEnv.from_venue_stack(
+    stack, tape="./tapes/btc-2026-05-07",
+    qty=0.01, max_position=0.05,
+    tick_size=0.01, max_price_offset_ticks=50,
+    n_open_slots=4,
+)
+model = PPO("MlpPolicy", env, verbose=1).learn(total_timesteps=100_000)
+
+# 2. Wrap it as a flox.Strategy via the shared builder + decoder
+builder = ObservationBuilder(
+    window_size=env.window_size, n_open_slots=env.n_open_slots,
+    tick_size=env.tick_size,
+    max_price_offset_ticks=env.max_price_offset_ticks,
+    max_position=env.max_position,
+)
+decoder = ActionDecoder(
+    max_position=env.max_position,
+    tick_size=env.tick_size,
+    max_price_offset_ticks=env.max_price_offset_ticks,
+)
+policy = make_rl_policy(
+    model, symbol_id=1,
+    observation_builder=builder, action_decoder=decoder,
+)
+
+# 3a. Paper trading — same policy, live feed, simulated fills
+broker = flox_py.PaperBroker(registry)
+runner = flox_py.Runner(registry, broker.on_signal)
+runner.add_strategy(policy)
+runner.start()
+# feed trades from your live source: runner.on_trade(symbol_id, price, qty, is_buy, ts_ns)
+
+# 3b. Live — swap PaperBroker for CcxtBroker, everything else unchanged
+import ccxt.pro
+exchange = ccxt.pro.binanceusdm({"apiKey": "...", "secret": "..."})
+broker = flox_py.CcxtBroker(exchange, registry)
+runner = flox_py.Runner(registry, broker.on_signal)
+runner.add_strategy(policy)
+runner.start()
+```
+
+The model, builder, and decoder are byte-for-byte identical across all three modes; only the broker behind the signal callback differs. Anything the model learned about queue position, ack latency, fees, or funding in training will continue to apply in paper and live, because the underlying simulated executor is the same one the paper broker uses and the live broker mirrors.
+
 ## stable_baselines3 with continuous actions
 
 ```python
