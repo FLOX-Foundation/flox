@@ -260,6 +260,34 @@ What the modes do:
 
 The aggregate schema (`mean_return_pct`, `std_return_pct`, `sign_match`, `worst_return_pct`, `mean_sharpe`, `mean_max_drawdown_pct`, `n_folds`) matches the supervised walk-forward output, so RL and non-RL sweeps land in one comparison table.
 
+## Alpha-decay gate
+
+`scripts/rl_alpha_decay_gate.py` is the CI-enforceable counterpart to the "one policy, three deployment modes" claim. It generates a deterministic synthetic tape from a seed, runs a fixed stub policy through `FloxTradingEnv` and through `PaperBroker` (mirroring what `make_rl_policy` would do behind a runner), and asserts that the absolute equity change between the two paths stays within a configurable cap.
+
+```bash
+python scripts/rl_alpha_decay_gate.py --max-decay 0.30
+```
+
+Sample output:
+
+```
+# generated 4000 synthetic trades (seed=42)
+running env path...
+running paper path...
+
+env   start=10000.0000 end=9999.9306 return=-0.0007% sharpe=-0.0286
+paper start=10000.0000 end=9999.8890 return=-0.0011% sharpe=-0.0255
+Δequity_env=-0.0694 Δequity_paper=-0.1110
+decay=4.15% (cap=30.00%)
+PASS: decay within cap
+```
+
+The gate is wired into the Linux CI job alongside the Python example runs. A failure means some change inside the W15 stack or the RL adapter pipeline shifted the env's physics away from PaperBroker's, even though both nominally share the same simulated executor configuration.
+
+All inputs are synthetic to keep the repo free of redistributable market data. The optional `--tape /path/to/real.floxlog` flag exists for local sanity checks against private data; when set, the gate refuses to write CI artifacts so private market data can not leak into public logs.
+
+The gate measures the gap between training-time physics and broker-time physics, not absolute profitability. A deliberately mediocre stub policy is used as the fixture so the decay number stays stable across seeds and the gate catches drift rather than alpha.
+
 ## stable_baselines3 with continuous actions
 
 ```python
