@@ -488,5 +488,117 @@ class OpenOrderObservationTests(unittest.TestCase):
             self.assertLessEqual(reward, 0.0)
 
 
+class ObservationBuilderTests(unittest.TestCase):
+    """T035: standalone ObservationBuilder produces the same obs shape
+    and semantics as FloxTradingEnv so a trained policy sees the same
+    observation in env, paper, and live."""
+
+    def test_obs_shape_matches_env(self) -> None:
+        import flox_py
+        stack = flox_py.VenueStack.binance_um_futures(1, 10_000.0)
+        env = rl_env.FloxTradingEnv.from_venue_stack(
+            stack, tape=_RAMP_TRADES, qty=1.0, max_position=1.0,
+            window_size=4, symbol_id=1, n_open_slots=2, tick_size=0.5,
+        )
+        builder = rl_env.ObservationBuilder(
+            window_size=4, n_open_slots=2, tick_size=0.5,
+            max_price_offset_ticks=50, max_position=1.0,
+        )
+        env.reset()
+        builder.reset(first_price=_RAMP_TRADES[0][1])
+        env_obs, _ = env.reset()
+        self.assertEqual(len(env_obs), 4 + 2 + 4 * 2)
+        self.assertEqual(len(builder.build()), 4 + 2 + 4 * 2)
+
+    def test_price_window_normalised_to_first(self) -> None:
+        builder = rl_env.ObservationBuilder(window_size=3)
+        builder.reset(first_price=100.0)
+        builder.on_trade(110.0)
+        builder.on_trade(120.0)
+        obs = builder.build()
+        # First three entries are the (normalised) window
+        self.assertAlmostEqual(obs[2], 1.20, places=6)
+
+    def test_open_orders_visible_in_slots(self) -> None:
+        builder = rl_env.ObservationBuilder(
+            window_size=2, n_open_slots=2, tick_size=0.5,
+            max_price_offset_ticks=50, max_position=1.0,
+        )
+        builder.reset(first_price=100.0)
+        builder.on_trade(100.0)
+        builder.add_open_order(
+            order_id=1, side="buy", order_type="limit",
+            price=99.5, quantity=0.5,
+        )
+        obs = builder.build()
+        slot_start = builder.window_size + 2
+        self.assertGreater(obs[slot_start], 0.0)  # signed qty
+
+    def test_apply_fill_decrements_remaining(self) -> None:
+        builder = rl_env.ObservationBuilder(n_open_slots=1)
+        builder.reset(first_price=100.0)
+        builder.add_open_order(
+            order_id=1, side="buy", order_type="limit",
+            price=99.5, quantity=1.0,
+        )
+        builder.apply_fill(1, 0.4)
+        self.assertAlmostEqual(builder._open_orders[1]["qty_remaining"], 0.6)
+        builder.apply_fill(1, 0.6)
+        self.assertNotIn(1, builder._open_orders)
+
+
+class ActionDecoderTests(unittest.TestCase):
+    def test_hold_when_target_equals_current(self) -> None:
+        d = rl_env.ActionDecoder(max_position=1.0)
+        decoded = d.decode([0.5, 0.0, 0.0], mid_price=100.0, current_position=0.5)
+        self.assertEqual(decoded["order_type"], "hold")
+        self.assertEqual(decoded["quantity"], 0.0)
+
+    def test_market_buy_when_offset_zero(self) -> None:
+        d = rl_env.ActionDecoder(max_position=1.0)
+        decoded = d.decode([1.0, 0.0, 0.0], mid_price=100.0, current_position=0.0)
+        self.assertEqual(decoded["order_type"], "market")
+        self.assertEqual(decoded["side"], "buy")
+        self.assertAlmostEqual(decoded["quantity"], 1.0)
+
+    def test_limit_sell_uses_offset(self) -> None:
+        d = rl_env.ActionDecoder(
+            max_position=1.0, tick_size=0.5, max_price_offset_ticks=10
+        )
+        decoded = d.decode([-1.0, 4.0, 2.0], mid_price=100.0, current_position=0.0)
+        self.assertEqual(decoded["order_type"], "limit")
+        self.assertEqual(decoded["side"], "sell")
+        # Sell: limit above mid → mid + offset * tick * (-1) for "sell"
+        # so 100 + 4 * 0.5 * (-1) = 98.0
+        self.assertAlmostEqual(decoded["price"], 98.0)
+        self.assertEqual(decoded["tif"], "post_only")
+
+    def test_action_clipped_to_bounds(self) -> None:
+        d = rl_env.ActionDecoder(
+            max_position=1.0, max_price_offset_ticks=5,
+        )
+        decoded = d.decode([5.0, 100.0, 7.0], mid_price=100.0, current_position=0.0)
+        self.assertEqual(decoded["target_position"], 1.0)
+        # Limit since offset wasn't 0
+        self.assertEqual(decoded["order_type"], "limit")
+
+
+class MakeRLPolicyTests(unittest.TestCase):
+    def test_returns_strategy_subclass(self) -> None:
+        import flox_py
+        builder = rl_env.ObservationBuilder(window_size=2)
+        decoder = rl_env.ActionDecoder(max_position=1.0)
+
+        class StubModel:
+            def predict(self, obs, deterministic=True):
+                return [0.0, 0.0, 0.0], None
+
+        policy = rl_env.make_rl_policy(
+            StubModel(), symbol_id=1,
+            observation_builder=builder, action_decoder=decoder,
+        )
+        self.assertIsInstance(policy, flox_py.Strategy)
+
+
 if __name__ == "__main__":
     unittest.main()

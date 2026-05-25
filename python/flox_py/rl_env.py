@@ -795,6 +795,298 @@ class FloxTradingEnv:
         return slots
 
 
+# ── Reusable observation builder and action decoder ──────────────
+
+
+class ObservationBuilder:
+    """Stateful builder that turns a stream of trades + a current
+    position into the same observation vector ``FloxTradingEnv``
+    serves. Used by ``RLPolicy`` so a trained model sees the same
+    obs shape and semantics in env, paper, and live.
+
+    The price window is filled lazily — the first observed price
+    anchors normalisation, matching the env's ``reset`` behaviour.
+    Open orders are tracked by ID via ``add_open_order`` /
+    ``remove_open_order`` / ``apply_fill`` so the policy keeps the
+    same slot ordering the env used during training.
+    """
+
+    def __init__(
+        self,
+        *,
+        window_size: int = 8,
+        n_open_slots: int = 0,
+        tick_size: float = 0.01,
+        max_price_offset_ticks: int = 50,
+        max_position: float = 1.0,
+    ) -> None:
+        self.window_size = max(1, int(window_size))
+        self.n_open_slots = max(0, int(n_open_slots))
+        self.tick_size = float(tick_size) if tick_size > 0 else 1.0
+        self.max_price_offset_ticks = max(1, int(max_price_offset_ticks))
+        self.max_position = float(max_position) if max_position > 0 else 1.0
+
+        self._price_window: Deque[float] = deque()
+        self._first_price: float = 0.0
+        self._latest_price: float = 0.0
+        self._position: float = 0.0
+        self._entry_price: float = 0.0
+        self._open_orders: Dict[int, dict] = {}
+        self._step: int = 0
+
+    def reset(self, first_price: Optional[float] = None) -> None:
+        self._price_window.clear()
+        if first_price is not None:
+            self._first_price = float(first_price)
+            self._latest_price = float(first_price)
+            for _ in range(self.window_size):
+                self._price_window.append(float(first_price))
+        else:
+            self._first_price = 0.0
+            self._latest_price = 0.0
+        self._position = 0.0
+        self._entry_price = 0.0
+        self._open_orders.clear()
+        self._step = 0
+
+    def on_trade(self, price: float) -> None:
+        if self._first_price == 0.0:
+            self._first_price = float(price)
+            for _ in range(self.window_size):
+                self._price_window.append(float(price))
+        self._latest_price = float(price)
+        self._price_window.append(float(price))
+        if len(self._price_window) > self.window_size:
+            self._price_window.popleft()
+        self._step += 1
+
+    def set_position(self, position: float, entry_price: float = 0.0) -> None:
+        self._position = float(position)
+        self._entry_price = float(entry_price)
+
+    def add_open_order(
+        self,
+        order_id: int,
+        *,
+        side: str,
+        order_type: str,
+        price: float,
+        quantity: float,
+        tif: str = "gtc",
+    ) -> None:
+        self._open_orders[int(order_id)] = {
+            "side": side,
+            "type": order_type,
+            "price": float(price),
+            "qty_remaining": float(quantity),
+            "initial_qty": float(quantity),
+            "submit_step": self._step,
+            "tif": tif,
+        }
+
+    def apply_fill(self, order_id: int, fill_qty: float) -> None:
+        oid = int(order_id)
+        if oid not in self._open_orders:
+            return
+        self._open_orders[oid]["qty_remaining"] -= float(fill_qty)
+        if self._open_orders[oid]["qty_remaining"] <= 1e-12:
+            del self._open_orders[oid]
+
+    def remove_open_order(self, order_id: int) -> None:
+        self._open_orders.pop(int(order_id), None)
+
+    def build(self) -> List[float]:
+        denom = self._first_price if self._first_price > 0 else 1.0
+        normalized = [p / denom for p in self._price_window]
+        unreal = (
+            (self._latest_price - self._entry_price) * self._position
+            if self._position != 0.0
+            else 0.0
+        )
+        slots: List[float] = []
+        if self.n_open_slots > 0:
+            items = sorted(
+                self._open_orders.items(),
+                key=lambda kv: kv[1]["submit_step"],
+            )[: self.n_open_slots]
+            for _, od in items:
+                qty_signed = od["qty_remaining"] * (
+                    1.0 if od["side"] == "buy" else -1.0
+                )
+                age = max(0, self._step - od["submit_step"])
+                distance_ticks = (od["price"] - self._latest_price) / self.tick_size
+                queue_pos = 0.0 if od["type"] == "market" else 0.5
+                slots.extend([
+                    qty_signed / self.max_position,
+                    age / self.window_size,
+                    max(-1.0, min(1.0, distance_ticks / self.max_price_offset_ticks)),
+                    queue_pos,
+                ])
+            slots.extend([0.0] * (4 * (self.n_open_slots - len(items))))
+        return list(normalized) + [self._position, unreal] + slots
+
+
+class ActionDecoder:
+    """Decode a continuous Box((3,)) action into a structured order
+    intent the policy can emit through a broker. The decoded fields
+    mirror the env's interpretation: signed_qty is target position
+    expressed as a fraction of ``max_position``; price offset of 0
+    means market; TIF rounds to {GTC, IOC, Post-only}.
+    """
+
+    _TIF_BY_INDEX = {0: "gtc", 1: "ioc", 2: "post_only"}
+
+    def __init__(
+        self,
+        *,
+        max_position: float = 1.0,
+        tick_size: float = 0.01,
+        max_price_offset_ticks: int = 50,
+    ) -> None:
+        self.max_position = float(max_position)
+        self.tick_size = float(tick_size)
+        self.max_price_offset_ticks = max(1, int(max_price_offset_ticks))
+
+    def decode(
+        self, action: Sequence[float], mid_price: float, current_position: float
+    ) -> dict:
+        signed_frac = max(-1.0, min(1.0, float(action[0])))
+        offset_ticks = max(
+            -float(self.max_price_offset_ticks),
+            min(float(self.max_price_offset_ticks), float(action[1])),
+        )
+        tif_axis = max(0.0, min(2.0, float(action[2])))
+        target_position = signed_frac * self.max_position
+        delta = target_position - float(current_position)
+        offset_int = int(round(offset_ticks))
+        tif_int = int(round(tif_axis))
+        if abs(delta) < 1e-12:
+            return {
+                "order_type": "hold",
+                "side": None,
+                "quantity": 0.0,
+                "price": None,
+                "tif": "gtc",
+                "target_position": target_position,
+                "delta": 0.0,
+            }
+        side = "buy" if delta > 0 else "sell"
+        if offset_int == 0:
+            return {
+                "order_type": "market",
+                "side": side,
+                "quantity": abs(delta),
+                "price": None,
+                "tif": "gtc",
+                "target_position": target_position,
+                "delta": delta,
+            }
+        side_sign = 1.0 if side == "buy" else -1.0
+        limit_price = float(mid_price) + offset_int * self.tick_size * side_sign
+        return {
+            "order_type": "limit",
+            "side": side,
+            "quantity": abs(delta),
+            "price": limit_price,
+            "tif": self._TIF_BY_INDEX.get(tif_int, "gtc"),
+            "target_position": target_position,
+            "delta": delta,
+        }
+
+
+# ── RLPolicy adapter ──────────────────────────────────────────────
+
+
+def _import_strategy_base() -> Any:
+    """flox_py.Strategy is a C++-bound class. Importing it at module
+    load time would force every user of rl_env to pay for the engine
+    bindings even when they only use FloxTradingEnv. We resolve it
+    lazily so RLPolicy stays optional."""
+    import flox_py
+    return flox_py.Strategy
+
+
+def make_rl_policy(
+    model: Any,
+    symbol_id: int,
+    *,
+    observation_builder: ObservationBuilder,
+    action_decoder: ActionDecoder,
+    deterministic: bool = True,
+) -> Any:
+    """Build a ``flox.Strategy`` subclass instance that runs a trained
+    RL policy live. The same instance plugs into ``PaperBroker``
+    (live feed → simulated fills) and ``CcxtBroker`` (real exchange)
+    via the standard ``Runner.add_strategy`` flow — the strategy code
+    is the model + the builder + the decoder, nothing else changes
+    between modes.
+
+    ``model`` must expose ``.predict(observation, deterministic=...) ->
+    (action, state)``. Stable-Baselines3, RLlib, and CleanRL all
+    satisfy that contract.
+    """
+    Strategy = _import_strategy_base()
+
+    class _RLPolicy(Strategy):
+        def __init__(self) -> None:
+            super().__init__([int(symbol_id)])
+            self.model = model
+            self.observation_builder = observation_builder
+            self.action_decoder = action_decoder
+            self.deterministic = bool(deterministic)
+            self.symbol_id = int(symbol_id)
+            self._initialised = False
+
+        def on_start(self) -> None:
+            if not self._initialised:
+                self.observation_builder.reset()
+                self._initialised = True
+
+        def on_stop(self) -> None:
+            pass
+
+        def on_trade(self, ctx, trade) -> None:
+            price = float(trade.price)
+            self.observation_builder.on_trade(price)
+            self.observation_builder.set_position(
+                float(getattr(ctx, "position", 0.0)),
+                float(getattr(ctx, "avg_entry_price", 0.0)),
+            )
+            obs = self.observation_builder.build()
+            action, _state = self.model.predict(
+                obs, deterministic=self.deterministic
+            )
+            decoded = self.action_decoder.decode(
+                action, price, float(getattr(ctx, "position", 0.0))
+            )
+            self._emit(decoded)
+
+        def _emit(self, decoded: dict) -> None:
+            qty = float(decoded["quantity"])
+            if qty <= 0.0 or decoded["order_type"] == "hold":
+                return
+            side = decoded["side"]
+            otype = decoded["order_type"]
+            tif = decoded["tif"]
+            if otype == "market":
+                if side == "buy":
+                    self.emit_market_buy(self.symbol_id, qty)
+                else:
+                    self.emit_market_sell(self.symbol_id, qty)
+                return
+            # limit
+            price = float(decoded["price"])
+            if side == "buy":
+                self.emit_limit_buy_tif(self.symbol_id, price, qty, tif=tif)
+            else:
+                self.emit_limit_sell_tif(self.symbol_id, price, qty, tif=tif)
+
+    return _RLPolicy()
+
+
 __all__ = [
     "FloxTradingEnv",
+    "ObservationBuilder",
+    "ActionDecoder",
+    "make_rl_policy",
 ]
