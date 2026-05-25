@@ -8,6 +8,7 @@
 #include "aggregator_bindings.h"
 #include "backtest_bindings.h"
 #include "bar_dispatch_bindings.h"
+#include "bare_executor_bindings.h"
 #include "book_bindings.h"
 #include "composite_book_bindings.h"
 #include "delta_book_bindings.h"
@@ -808,6 +809,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindAccount(m);
   flox_py::bindFeeSchedule(m);
   flox_py::bindLiquidationEngine(m);
+  flox_py::bindBareExecutor(m);
   flox_py::bindVenueStack(m);
   flox_py::bindLiveQueuePositionEstimator(m);
   flox_py::bindBarDispatchRecorder(m);

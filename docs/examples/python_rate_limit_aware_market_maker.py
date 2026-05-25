@@ -3,13 +3,13 @@
 Real venues split rate budgets per endpoint family (trading vs market
 data vs account queries). A naive quote-cancel-replace loop bursts
 through the trading budget and produces a stream of REJECTED_RATE_LIMIT
-events. This recipe shows how to consult the policy before issuing
-each action.
+events. This recipe shows how to drive that scenario against the venue
+stack and inspect the resulting fills.
 
 Demonstrates:
 - VenueStack ships a venue-realistic RateLimitPolicy (T022/T049)
 - Per-endpoint budgets (Trading / MarketData / Account family)
-- Ban-after-N-consecutive-rejects logic
+- The VenueExecutor surface returned by stack.executor()
 """
 
 import flox_py as flox
@@ -20,40 +20,34 @@ BTC = 1
 def main():
     stack = flox.VenueStack.binance_um_futures(account_id=1, equity=10_000.0)
     # RateLimitPolicy is wired by the venue factory and attached to the
-    # executor. Inspect it for current ban / consecutive-reject state.
-    # (The wrap exposes ban-until and reject-count accessors via the
-    # SimulatedExecutor's policy proxy.)
+    # executor. Submits past the budget surface as REJECTED_RATE_LIMIT
+    # order events; the executor records fills only for accepted ones.
 
     exec_ = stack.executor()
 
-    # A quoting loop that issues a cancel + replace every tick. Real
-    # market makers do this thousands of times per second; without rate
-    # awareness the venue will ban the account.
-    submitted = 0
-    rejected = 0
-    for tick in range(200):
-        now_ns = tick * 100_000_000  # 100ms cadence
-        # Try a submit. The simulated executor consults its rate-limit
-        # policy on every submit; reject events surface via the order
-        # event callback (omitted here for brevity).
-        order = flox.Order()
-        order.id = tick
-        order.symbol = BTC
-        order.side = flox.Side.BUY
-        order.type = flox.OrderType.LIMIT
-        order.price = flox.Price.from_double(50_000.0 - tick * 0.5)
-        order.quantity = flox.Quantity.from_double(0.001)
-        try:
-            exec_.submit_order(order)
-            submitted += 1
-        except Exception:
-            rejected += 1
+    # Feed an initial trade so the matching engine has a price reference.
+    exec_.on_trade_qty(BTC, 50_000.0, 10.0, True)
 
-    print(f"submitted: {submitted}")
-    print(f"rejected: {rejected}")
-    # The venue factory's policy is shaped after Binance UM's published
-    # limits — depending on the cadence the loop may saturate the
-    # trading-family budget.
+    # A quoting loop that issues a limit order every tick. Real market
+    # makers do this thousands of times per second; without rate
+    # awareness the venue will ban the account.
+    for tick in range(200):
+        side = "buy" if tick % 2 == 0 else "sell"
+        price = 50_000.0 - tick * 0.5 if side == "buy" else 50_000.0 + tick * 0.5
+        exec_.submit_order(
+            id=tick + 1,
+            side=side,
+            price=price,
+            quantity=0.001,
+            type="limit",
+            symbol=BTC,
+            tif="gtc",
+        )
+
+    print(f"fills recorded: {exec_.fill_count}")
+    # Venue policy is shaped after Binance UM's published limits — at
+    # this cadence many submits typically get rejected before they
+    # reach the book, so fill_count stays well below 200.
 
 
 if __name__ == "__main__":

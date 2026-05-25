@@ -213,8 +213,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_rate_limit_aware_market_maker.py",
-      "sha256": "1e43b14c8395324851847d2dd12e1e4abd8fcedad75084c0e60580ba56346e95",
-      "size_bytes": 2159,
+      "sha256": "4efb6cb1b95cc350e588ffb7a5f7c47f9474bca41156dbb130858f2768e59cdf",
+      "size_bytes": 1941,
       "topic": "strategy"
     },
     {
