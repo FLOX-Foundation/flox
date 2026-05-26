@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flox-mcp"
-version = "0.6.3"
+version = "0.6.4"
 authors = [{name = "FLOX Foundation"}]
 description = "Model Context Protocol server for FLOX — gives AI agents grounded access to indicators, error codes, and the C API."
 readme = "README.md"
