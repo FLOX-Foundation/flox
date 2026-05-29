@@ -23,8 +23,17 @@ enum class EventType : uint8_t
 {
   Trade = 1,
   BookSnapshot = 2,
-  BookDelta = 3
+  BookDelta = 3,
+  // Option side-channel: mark price, implied vol, index price, open interest.
+  // Additive — readers that predate this type skip the frame via FrameHeader.size
+  // (see MmapSegmentReader::next unknown-type branch), so old tapes/readers are
+  // unaffected and no format-version bump is needed.
+  OptionQuote = 4
 };
+
+// Fixed-point scale for implied volatility stored in OptionQuoteRecord.iv_raw.
+// 0.65 (65 vol points) -> 65000000. Matches the 1e8 convention used elsewhere.
+inline constexpr int64_t kIvScale = 100000000;
 
 namespace SegmentFlags
 {
@@ -93,6 +102,25 @@ struct alignas(8) TradeRecord
   uint16_t exchange_id{0};
 };
 static_assert(sizeof(TradeRecord) == 48, "TradeRecord must be 48 bytes");
+
+// Option side-channel quote. price_raw / index_price_raw use the same
+// PRICE_SCALE as TradeRecord; iv_raw uses kIvScale; open_interest_raw uses the
+// venue's contract/quantity scale (QUANTITY_SCALE). Fields are independent of
+// any trade — emitted whenever the venue publishes a mark/IV snapshot.
+struct alignas(8) OptionQuoteRecord
+{
+  int64_t exchange_ts_ns{0};
+  int64_t recv_ts_ns{0};
+  int64_t mark_price_raw{0};
+  int64_t index_price_raw{0};
+  int64_t iv_raw{0};
+  int64_t open_interest_raw{0};
+  uint32_t symbol_id{0};
+  uint8_t instrument{0};
+  uint8_t _pad{0};
+  uint16_t exchange_id{0};
+};
+static_assert(sizeof(OptionQuoteRecord) == 56, "OptionQuoteRecord must be 56 bytes");
 
 struct alignas(8) BookLevel
 {
