@@ -7985,6 +7985,10 @@
         },
         {
           "kind": "class",
+          "name": "OptionType"
+        },
+        {
+          "kind": "class",
           "name": "Order"
         },
         {
@@ -8289,6 +8293,14 @@
         },
         {
           "kind": "function",
+          "name": "bs_price"
+        },
+        {
+          "kind": "function",
+          "name": "bs_vega"
+        },
+        {
+          "kind": "function",
           "name": "cci"
         },
         {
@@ -8325,7 +8337,15 @@
         },
         {
           "kind": "function",
+          "name": "forward_price"
+        },
+        {
+          "kind": "function",
           "name": "hurst_dfa"
+        },
+        {
+          "kind": "function",
+          "name": "implied_vol"
         },
         {
           "kind": "function",

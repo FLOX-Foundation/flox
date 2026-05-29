@@ -256,3 +256,8 @@ docs/how-to/tiered-fees.md
 docs/how-to/iceberg-orders.md
 docs/how-to/calibrate-live-queue.md  # T048 fit-method examples — abstract API shapes
 docs/how-to/realistic-backtest.md  # T052 venue-factory how-to — abstract API shapes
+
+# How-to: options pricing — focused teaching snippets interleaved with prose.
+# The full runnable path lives in docs/examples/python_options_pricing.py,
+# exercised by CI (mypy + run step).
+docs/how-to/options-pricing.md

@@ -280,6 +280,7 @@ jobs:
         docs/examples/python_rolling_top_k.py
         docs/examples/python_xs_panel.py
         docs/examples/python_rate_limit_aware_market_maker.py
+        docs/examples/python_options_pricing.py
 
     # Pyright is what Cursor / Pylance / VSCode actually run; mypy and
     # pyright sometimes disagree, and the AI-DX goal is the editor
@@ -296,6 +297,9 @@ jobs:
 
     - name: Run Python tape round-trip example
       run: PYTHONPATH=build/python python3 docs/examples/python_tape_roundtrip.py
+
+    - name: Run Python options pricing example
+      run: PYTHONPATH=build/python python3 docs/examples/python_options_pricing.py
 
     - name: Run Python Binance archive importer example
       run: PYTHONPATH=build/python python3 docs/examples/python_binance_archive.py
