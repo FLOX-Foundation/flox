@@ -14,6 +14,7 @@
 
 #include "flox/common.h"
 #include "flox/pricing/black_scholes.h"
+#include "flox/pricing/greeks.h"
 
 namespace py = pybind11;
 
@@ -75,4 +76,41 @@ inline void bindPricing(py::module_& m)
       { return flox::pricing::forwardPrice(spot, t, carry); },
       py::arg("spot"), py::arg("t"), py::arg("carry"),
       "Forward price spot * exp(carry * t).");
+
+  m.def(
+      "greeks",
+      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+         double carry) -> py::dict
+      {
+        const auto g = flox::pricing::greeks(type, spot, strike, t, rate, carry, vol);
+        py::dict d;
+        d["delta"] = g.delta;
+        d["gamma"] = g.gamma;
+        d["vega"] = g.vega;
+        d["theta"] = g.theta;  // per year
+        d["rho"] = g.rho;      // b-fixed dV/dr
+        return d;
+      },
+      py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
+      py::arg("rate") = 0.0, py::arg("carry") = 0.0,
+      "First-order greeks dict(delta, gamma, vega, theta, rho). theta is per year "
+      "(divide by 365 for per-day); rho is the b-fixed partial dV/dr. carry=b "
+      "(0 for crypto).");
+
+  m.def(
+      "second_order_greeks",
+      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+         double carry) -> py::dict
+      {
+        const auto s = flox::pricing::secondOrderGreeks(type, spot, strike, t, rate, carry, vol);
+        py::dict d;
+        d["vanna"] = s.vanna;  // d(delta)/d(vol)
+        d["volga"] = s.volga;  // d(vega)/d(vol)
+        d["charm"] = s.charm;  // d(delta)/d(time), per year
+        return d;
+      },
+      py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
+      py::arg("rate") = 0.0, py::arg("carry") = 0.0,
+      "Second-order greeks dict(vanna, volga, charm) for vol traders. vanna = "
+      "d(delta)/d(vol), volga = d(vega)/d(vol), charm = d(delta)/d(time) per year.");
 }
