@@ -149,6 +149,25 @@ struct PyBBO
 #pragma pack(pop)
 static_assert(sizeof(PyBBO) == 64);
 
+// Numpy-compatible option quote. Raw fixed-point fields mirror
+// OptionQuoteRecord: mark/index use PRICE_SCALE, iv uses kIvScale (1e8),
+// open_interest uses QUANTITY_SCALE. Consumers convert raw -> double.
+#pragma pack(push, 1)
+struct PyOptionQuote
+{
+  int64_t exchange_ts_ns;
+  int64_t recv_ts_ns;
+  int64_t mark_price_raw;
+  int64_t index_price_raw;
+  int64_t iv_raw;
+  int64_t open_interest_raw;
+  uint32_t symbol_id;
+  uint8_t instrument;
+  uint8_t _pad[3];
+};
+#pragma pack(pop)
+static_assert(sizeof(PyOptionQuote) == 56);
+
 // Per-event header for read_book_updates(); levels are in a separate flat array.
 #pragma pack(push, 1)
 struct PyBookUpdateHeader
@@ -360,6 +379,42 @@ class PyDataReader
     if (!trades.empty())
     {
       std::memcpy(result.mutable_data(), trades.data(), trades.size() * sizeof(PyTrade));
+    }
+    return result;
+  }
+
+  // Read option quotes (mark/iv/index/open-interest) as a structured numpy array.
+  py::array_t<PyOptionQuote> readOptionQuotesFrom(int64_t startTsNs)
+  {
+    std::vector<PyOptionQuote> quotes;
+    {
+      py::gil_scoped_release release;
+      _reader.forEachFrom(startTsNs,
+                          [&](const ReplayEvent& ev) -> bool
+                          {
+                            if (ev.type == EventType::OptionQuote)
+                            {
+                              const auto& q = ev.option_quote;
+                              PyOptionQuote p{};
+                              p.exchange_ts_ns = q.exchange_ts_ns;
+                              p.recv_ts_ns = q.recv_ts_ns;
+                              p.mark_price_raw = q.mark_price_raw;
+                              p.index_price_raw = q.index_price_raw;
+                              p.iv_raw = q.iv_raw;
+                              p.open_interest_raw = q.open_interest_raw;
+                              p.symbol_id = q.symbol_id;
+                              p.instrument = q.instrument;
+                              quotes.push_back(p);
+                            }
+                            return true;
+                          });
+    }
+
+    py::array_t<PyOptionQuote> result(quotes.size());
+    if (!quotes.empty())
+    {
+      std::memcpy(result.mutable_data(), quotes.data(),
+                  quotes.size() * sizeof(PyOptionQuote));
     }
     return result;
   }
@@ -681,6 +736,56 @@ class PyDataWriter
         tr.symbol_id = sid[i];
         tr.side = sd[i];
         if (_writer.writeTrade(tr))
+        {
+          ++written;
+        }
+      }
+    }
+    return written;
+  }
+
+  // Bulk option-quote write. mark_price / index_price are doubles converted via
+  // PRICE_SCALE; iv is a double (e.g. 0.65) scaled by kIvScale; open_interest is
+  // a double converted via QUANTITY_SCALE.
+  uint64_t writeOptionQuotes(py::array_t<int64_t> exchangeTsNs, py::array_t<int64_t> recvTsNs,
+                             py::array_t<double> markPrices, py::array_t<double> indexPrices,
+                             py::array_t<double> ivs, py::array_t<double> openInterest,
+                             py::array_t<uint32_t> symbolIds)
+  {
+    size_t n = exchangeTsNs.size();
+    if (recvTsNs.size() != static_cast<py::ssize_t>(n) ||
+        markPrices.size() != static_cast<py::ssize_t>(n) ||
+        indexPrices.size() != static_cast<py::ssize_t>(n) ||
+        ivs.size() != static_cast<py::ssize_t>(n) ||
+        openInterest.size() != static_cast<py::ssize_t>(n) ||
+        symbolIds.size() != static_cast<py::ssize_t>(n))
+    {
+      throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
+    }
+
+    const auto* ets = exchangeTsNs.data();
+    const auto* rts = recvTsNs.data();
+    const auto* mk = markPrices.data();
+    const auto* ix = indexPrices.data();
+    const auto* iv = ivs.data();
+    const auto* oi = openInterest.data();
+    const auto* sid = symbolIds.data();
+
+    uint64_t written = 0;
+    {
+      py::gil_scoped_release release;
+      for (size_t i = 0; i < n; ++i)
+      {
+        flox::replay::OptionQuoteRecord q{};
+        q.exchange_ts_ns = ets[i];
+        q.recv_ts_ns = rts[i];
+        q.mark_price_raw = flox::Price::fromDouble(mk[i]).raw();
+        q.index_price_raw = flox::Price::fromDouble(ix[i]).raw();
+        q.iv_raw = static_cast<int64_t>(iv[i] * flox::replay::kIvScale);
+        q.open_interest_raw = flox::Quantity::fromDouble(oi[i]).raw();
+        q.symbol_id = sid[i];
+        q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
+        if (_writer.writeOptionQuote(q))
         {
           ++written;
         }
@@ -1039,6 +1144,8 @@ inline void bindReplay(py::module_& m)
   PYBIND11_NUMPY_DTYPE(PyBookUpdateHeader, exchange_ts_ns, recv_ts_ns, seq, symbol_id,
                        bid_count, ask_count, level_offset, event_type);
   PYBIND11_NUMPY_DTYPE(PyLevel, price_raw, qty_raw, side);
+  PYBIND11_NUMPY_DTYPE(PyOptionQuote, exchange_ts_ns, recv_ts_ns, mark_price_raw,
+                       index_price_raw, iv_raw, open_interest_raw, symbol_id, instrument);
 
   // Fixed-point scales — match flox::Price/Quantity/Volume in flox/common.h.
   // Use these instead of hardcoding 1e8 in client code.
@@ -1141,6 +1248,11 @@ inline void bindReplay(py::module_& m)
       .def("read_trades_from", &PyDataReader::readTradesFrom,
            "Read trades starting from a given timestamp (nanoseconds)",
            py::arg("start_ts_ns"))
+      .def("read_option_quotes_from", &PyDataReader::readOptionQuotesFrom,
+           "Read option quotes (mark/iv/index/open-interest) from a given timestamp "
+           "(nanoseconds) as a numpy structured array (PyOptionQuote dtype). Raw "
+           "fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE.",
+           py::arg("start_ts_ns"))
       .def("read_bbo", &PyDataReader::readBBO,
            "Read best bid/ask from every book update as a numpy structured array (PyBBO dtype)")
       .def("read_bbo_from", &PyDataReader::readBBOFrom,
@@ -1209,6 +1321,13 @@ inline void bindReplay(py::module_& m)
            py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"),
            py::arg("prices"), py::arg("quantities"),
            py::arg("trade_ids"), py::arg("symbol_ids"), py::arg("sides"))
+      .def("write_option_quotes", &PyDataWriter::writeOptionQuotes,
+           "Bulk-write option quotes. mark_prices/index_prices are doubles "
+           "(PRICE_SCALE), ivs are doubles (e.g. 0.65), open_interest is a double "
+           "(QUANTITY_SCALE). Returns the count written.",
+           py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"), py::arg("mark_prices"),
+           py::arg("index_prices"), py::arg("ivs"), py::arg("open_interest"),
+           py::arg("symbol_ids"))
       .def("flush", &PyDataWriter::flush,
            "Flush buffered data to disk")
       .def("close", &PyDataWriter::close,
