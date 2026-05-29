@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 // Generalized Black-Scholes-Merton (cost-of-carry form). One model covers
 // every vanilla European case by varying the carry rate b:
@@ -20,13 +21,13 @@ namespace flox::pricing
 // Standard normal CDF via erfc (no external dependency).
 inline double normCdf(double x) noexcept
 {
-  return 0.5 * std::erfc(-x * M_SQRT1_2);
+  return 0.5 * std::erfc(-x / std::numbers::sqrt2);
 }
 
 // Standard normal PDF.
 inline double normPdf(double x) noexcept
 {
-  static const double inv_sqrt_2pi = 1.0 / std::sqrt(2.0 * M_PI);
+  static const double inv_sqrt_2pi = 1.0 / std::sqrt(2.0 * std::numbers::pi);
   return inv_sqrt_2pi * std::exp(-0.5 * x * x);
 }
 
@@ -126,7 +127,7 @@ inline ImpliedVolResult impliedVol(OptionType type, double price, double spot, d
   }
 
   // Brenner-Subrahmanyam ATM seed: sigma ~ price/S * sqrt(2pi/T).
-  double vol = (price / spot) * std::sqrt(2.0 * M_PI / t);
+  double vol = (price / spot) * std::sqrt(2.0 * std::numbers::pi / t);
   if (!(vol > volLo) || !(vol < volHi))
   {
     vol = 0.5 * (volLo + volHi);
