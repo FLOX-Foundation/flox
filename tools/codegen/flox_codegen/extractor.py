@@ -95,13 +95,48 @@ def _ensure_libclang_loaded() -> None:
 # ── System include path discovery ────────────────────────────────────
 
 
+def _run_clang(clang_bin: str, args: List[str], *, stdin: str = "",
+               timeout: float = 30.0, retries: int = 1):
+    """Run a clang subcommand, retrying once on timeout (CI runners under load
+    occasionally blow a tight deadline). Returns the CompletedProcess or None."""
+    for attempt in range(retries + 1):
+        try:
+            return subprocess.run(
+                [clang_bin, *args], input=stdin, capture_output=True,
+                text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            if attempt >= retries:
+                return None
+        except OSError:
+            return None
+    return None
+
+
+def _resource_dir_include(clang_bin: str) -> Optional[str]:
+    """The clang builtin-headers directory (stddef.h, stdint.h, ...). The PyPI
+    libclang ships no resource-dir, so this is the single most important include
+    to recover. `clang -print-resource-dir` is a fast, dedicated query, far less
+    flake-prone than scraping `-E -v` output."""
+    proc = _run_clang(clang_bin, ["-print-resource-dir"], timeout=15.0)
+    if proc is None or proc.returncode != 0:
+        return None
+    rd = proc.stdout.strip()
+    if not rd:
+        return None
+    inc = str(Path(rd) / "include")
+    return inc if Path(inc).is_dir() else None
+
+
 def _discover_system_includes() -> List[str]:
     """Return the system include directories the host clang would use.
 
     The libclang shipped with the PyPI `libclang` package does not ship a
-    resource-dir, so headers like <stddef.h> aren't found out of the box.
-    We invoke the system clang in `-E -v` mode and parse its include search
-    output. Cached per-process via `_DISCOVERED_INCLUDES`.
+    resource-dir, so headers like <stddef.h> aren't found out of the box. We
+    recover the search path two ways and merge them: a dedicated
+    `-print-resource-dir` query for the builtin headers (the critical piece),
+    and parsing `clang -E -v` for the full system search list. Both subcommands
+    retry on timeout. Cached per-process via `_DISCOVERED_INCLUDES`.
 
     Returns -I directories suitable for prepending to clang command-line args.
     """
@@ -113,14 +148,14 @@ def _discover_system_includes() -> List[str]:
     clang_bin = shutil.which("clang") or shutil.which("clang++")
     paths: List[str] = []
     if clang_bin:
-        try:
-            proc = subprocess.run(
-                [clang_bin, "-x", "c++", "-E", "-v", "-"],
-                input="",
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+        # 1) Builtin-headers (resource-dir/include) — the must-have.
+        rd_inc = _resource_dir_include(clang_bin)
+        if rd_inc:
+            paths.append(rd_inc)
+
+        # 2) Full system search list via -E -v (retries on timeout).
+        proc = _run_clang(clang_bin, ["-x", "c++", "-E", "-v", "-"], stdin="")
+        if proc is not None:
             collecting = False
             for raw in proc.stderr.splitlines():
                 line = raw.rstrip()
@@ -138,21 +173,24 @@ def _discover_system_includes() -> List[str]:
                     continue
                 if stripped.startswith("/") and Path(stripped).is_dir():
                     paths.append(stripped)
-        except (subprocess.TimeoutExpired, OSError):
-            pass
 
     # On macOS, also try the SDK explicitly via xcrun in case `clang -E` failed.
-    if sys.platform == "darwin" and not paths:
-        sdk = subprocess.run(
-            ["xcrun", "--show-sdk-path"],
-            capture_output=True,
-            text=True,
-        )
-        if sdk.returncode == 0 and sdk.stdout.strip():
+    if sys.platform == "darwin":
+        sdk = _run_clang("xcrun", ["--show-sdk-path"], timeout=15.0) \
+            if shutil.which("xcrun") else None
+        if sdk is not None and sdk.returncode == 0 and sdk.stdout.strip():
             paths.append(sdk.stdout.strip() + "/usr/include")
 
-    _DISCOVERED_INCLUDES = paths
-    return paths
+    # Dedup preserving order.
+    seen: set = set()
+    deduped: List[str] = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            deduped.append(p)
+
+    _DISCOVERED_INCLUDES = deduped
+    return deduped
 
 
 # ── Annotation parsing ───────────────────────────────────────────────
