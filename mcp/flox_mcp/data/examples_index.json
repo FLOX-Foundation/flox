@@ -191,6 +191,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_options_pricing.py",
+      "sha256": "221c2098a792e1899f310011e5a64b44d2e45267acd0fc9976229da3de99aeff",
+      "size_bytes": 1685,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_order_journey_forensics.py",
       "sha256": "095d919de53e18f1a937ce62e153df05948b07bf532f33da71a77a3e1855930c",
       "size_bytes": 1045,

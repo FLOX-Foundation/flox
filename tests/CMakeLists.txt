@@ -123,6 +123,7 @@ add_flox_test(test_streaming_parity)
 add_flox_test(test_targets)
 add_flox_test(test_adf)
 add_flox_test(test_autocorrelation)
+add_flox_test(test_black_scholes)
 
 if(FLOX_BUILD_CAPI)
   add_flox_test(test_capi_registry)

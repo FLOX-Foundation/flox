@@ -33,6 +33,7 @@
 #include "order_journey_tracer_bindings.h"
 #include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
+#include "pricing_bindings.h"
 #include "profile_bindings.h"
 #include "rate_limit_bindings.h"
 #include "replay_bindings.h"
@@ -788,6 +789,7 @@ PYBIND11_MODULE(_flox_py, m)
       .def("volume", &Engine::volumes, py::arg("symbol") = "");
 
   bindIndicators(m);
+  bindPricing(m);
   bindAggregators(m);
   bindBooks(m);
   bindProfiles(m);

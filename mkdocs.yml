@@ -131,6 +131,7 @@ nav:
           - Cross-margin accounts: how-to/cross-margin.md
           - Liquidation and ADL: how-to/liquidation-and-adl.md
           - Perpetual funding: how-to/perpetual-funding.md
+          - Price options and implied volatility: how-to/options-pricing.md
           - Order TIF flags: how-to/order-tif-flags.md
           - Self-match prevention: how-to/self-match-prevention.md
           - Matching modes: how-to/matching-modes.md
