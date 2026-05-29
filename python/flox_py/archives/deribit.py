@@ -22,10 +22,12 @@ is left as a follow-up — the simpler single-instrument convert covers
 backtest research that pins to a specific option contract or rolls
 through a known series sequentially.
 
-`mark_price`, `iv`, and `index_price` are not representable in the
-current floxlog ``TradeRecord`` schema. The importer drops them at
-read time; researchers needing those side channels should keep the
-source CSV alongside the tape and re-join in numpy when needed.
+For option instruments, the `mark_price`, `iv`, and `index_price`
+columns are preserved as OptionQuote frames alongside the trades and
+read back via ``DataReader.read_option_quotes_from``. `iv` is stored as
+the archive provides it (Deribit reports trade IV in percent), so the
+value round-trips the source and the consumer applies its own unit
+convention. Open interest is not in the trade archive and stays 0.
 """
 from __future__ import annotations
 
@@ -127,12 +129,16 @@ def _open_csv(path: Path) -> Tuple[io.TextIOBase, "object"]:
     return f, f
 
 
-def _iter_rows(path: Path) -> Iterator[Tuple[int, float, float, int, int]]:
-    """Yield ``(trade_id, price, qty, ts_ns, side)`` rows from a
-    Deribit archive CSV. Skips the leading header row.
+def _iter_rows(
+    path: Path,
+) -> Iterator[Tuple[int, float, float, int, int, float, float, float]]:
+    """Yield ``(trade_id, price, qty, ts_ns, side, mark, iv, index)`` rows from
+    a Deribit archive CSV. Skips the leading header row.
 
-    Deribit columns (post-2022): trade_id, timestamp_ms, instrument,
-    side, price, amount, mark_price, iv, index_price."""
+    Deribit columns (post-2022): trade_id, timestamp_ms, instrument, side,
+    price, amount, mark_price, iv, index_price. ``mark``/``index`` are prices;
+    ``iv`` is the implied volatility in percent (e.g. 65.5). Missing side
+    channels (older trade-only rows) yield NaN."""
     stream, ctx = _open_csv(path)
     try:
         reader = csv.reader(stream)
@@ -150,9 +156,19 @@ def _iter_rows(path: Path) -> Iterator[Tuple[int, float, float, int, int]]:
                 amount = float(row[5])
             except (ValueError, IndexError):
                 continue
+
+            def _opt(idx: int) -> float:
+                try:
+                    return float(row[idx]) if len(row) > idx and row[idx] != "" else float("nan")
+                except (ValueError, IndexError):
+                    return float("nan")
+
+            mark = _opt(6)
+            iv = _opt(7)
+            index = _opt(8)
             side = _SIDE_BUY if side_token == "buy" else _SIDE_SELL
             ts_ns = ts_ms * 1_000_000
-            yield (trade_id, price, amount, ts_ns, side)
+            yield (trade_id, price, amount, ts_ns, side, mark, iv, index)
     finally:
         try:
             ctx.close()
@@ -306,7 +322,7 @@ def trades_to_floxlog(
 
     last_id = _existing_max_trade_id(out_tape, symbol_id) if append else 0
 
-    rows: List[Tuple[int, float, float, int, int]] = []
+    rows: List[Tuple[int, float, float, int, int, float, float, float]] = []
     rows_read = 0
     rows_skipped = 0
     for r in _iter_rows(csv_path):
@@ -351,6 +367,26 @@ def trades_to_floxlog(
             prices=prices, quantities=qty,
             trade_ids=ids, symbol_ids=sym_ids, sides=sides,
         )
+        # For option instruments, preserve the mark/iv/index side channels as
+        # OptionQuote frames. iv is stored exactly as the Deribit archive
+        # provides it (Deribit reports trade IV in percent), so the tape value
+        # round-trips the source; a consumer applies its own unit convention.
+        # Open interest is not in the trade archive, so it stays 0. Rows
+        # missing every side channel (all NaN) are skipped.
+        if market == "option":
+            mark = np.fromiter((r[5] for r in rows), dtype=np.float64, count=n)
+            iv = np.fromiter((r[6] for r in rows), dtype=np.float64, count=n)
+            index = np.fromiter((r[7] for r in rows), dtype=np.float64, count=n)
+            valid = ~(np.isnan(mark) & np.isnan(iv) & np.isnan(index))
+            if valid.any():
+                writer.write_option_quotes(
+                    exchange_ts_ns=ts_ns[valid], recv_ts_ns=ts_ns[valid],
+                    mark_prices=np.nan_to_num(mark[valid]),
+                    index_prices=np.nan_to_num(index[valid]),
+                    ivs=np.nan_to_num(iv[valid]),
+                    open_interest=np.zeros(int(valid.sum()), dtype=np.float64),
+                    symbol_ids=sym_ids[valid],
+                )
     finally:
         writer.close()
 
