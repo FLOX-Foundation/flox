@@ -127,8 +127,7 @@ std::unique_ptr<SegmentBuffer> ParallelReader::readSegment(const SegmentInfo& se
     // Apply symbol filter
     if (!_config.symbols.empty())
     {
-      uint32_t symbol_id = (event.type == EventType::Trade) ? event.trade.symbol_id
-                                                            : event.book_header.symbol_id;
+      uint32_t symbol_id = event.symbolId();
       if (_config.symbols.find(symbol_id) == _config.symbols.end())
       {
         continue;
@@ -196,7 +195,7 @@ bool ParallelReader::passesFilter(const ReplayEvent& event) const
   if (!_config.symbols.empty())
   {
     uint32_t symbol_id =
-        (event.type == EventType::Trade) ? event.trade.symbol_id : event.book_header.symbol_id;
+        event.symbolId();
     if (_config.symbols.find(symbol_id) == _config.symbols.end())
     {
       return false;

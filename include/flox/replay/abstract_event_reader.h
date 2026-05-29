@@ -106,10 +106,7 @@ struct ReaderFilter
 
   bool passes(const ReplayEvent& event) const
   {
-    uint32_t symbol_id = (event.type == EventType::Trade)
-                             ? event.trade.symbol_id
-                             : event.book_header.symbol_id;
-    return passes(event.timestamp_ns, symbol_id);
+    return passes(event.timestamp_ns, event.symbolId());
   }
 };
 
