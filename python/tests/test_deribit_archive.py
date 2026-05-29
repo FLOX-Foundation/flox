@@ -117,6 +117,35 @@ class DeribitOptionTests(unittest.TestCase):
         self.assertEqual(sym["name"], "BTC-29MAR24-50000-C")
         self.assertEqual(sym["base_asset"], "BTC")
 
+    def test_option_quotes_preserved(self) -> None:
+        # mark/iv/index from the option CSV are kept as OptionQuote frames
+        # instead of dropped, and read back via read_option_quotes_from.
+        g = self.tmp / "BTC-29MAR24-50000-C-2024-01-15.csv.gz"
+        _build_gz(g, _ROWS_OPTION)
+        deribit.trades_to_floxlog(
+            g, self.tape, symbol_id=7,
+            symbol_name="BTC-29MAR24-50000-C", market="option",
+        )
+        reader = flox_py.DataReader(str(self.tape))
+        quotes = reader.read_option_quotes_from(0)
+        self.assertEqual(quotes.size, 2)
+        # Source row 200: mark=0.0498, iv=0.55, index=42000.0
+        self.assertAlmostEqual(quotes["mark_price_raw"][0] / 1e8, 0.0498, places=6)
+        self.assertAlmostEqual(quotes["iv_raw"][0] / 1e8, 0.55, places=6)
+        self.assertAlmostEqual(quotes["index_price_raw"][0] / 1e8, 42_000.0, places=2)
+        self.assertEqual(int(quotes["symbol_id"][0]), 7)
+        # Trades are still written alongside the quotes.
+        self.assertEqual(reader.read_trades().size, 2)
+
+    def test_perpetual_emits_no_option_quotes(self) -> None:
+        g = self.tmp / "BTC-PERPETUAL-2024-01-15.csv.gz"
+        _build_gz(g, _ROWS_PERP)
+        deribit.trades_to_floxlog(
+            g, self.tape, symbol_id=7, symbol_name="BTC-PERPETUAL", market="perpetual",
+        )
+        reader = flox_py.DataReader(str(self.tape))
+        self.assertEqual(reader.read_option_quotes_from(0).size, 0)
+
     def test_protocol_compliance(self) -> None:
         self.assertIsInstance(deribit, ArchiveReader)
 
