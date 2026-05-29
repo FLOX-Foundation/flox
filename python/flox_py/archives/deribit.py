@@ -45,7 +45,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple, Union
+from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
 from . import _cache
 
@@ -503,8 +503,118 @@ def range_to_floxlog(
     return agg
 
 
+# ─── Option chain loading ────────────────────────────────────────────────────
+
+def parse_option_instrument(name: str) -> Tuple[str, date, float, str]:
+    """Parse a Deribit option instrument id into (underlying, expiry, strike,
+    option_type). ``BTC-29MAR24-50000-C`` -> ("BTC", date(2024,3,29), 50000.0,
+    "C"). option_type is "C" (call) or "P" (put). Raises ValueError on a
+    non-option id (perp/future have a different shape)."""
+    parts = name.split("-")
+    if len(parts) != 4:
+        raise ValueError(f"not an option instrument: {name!r}")
+    underlying, expiry_s, strike_s, opt = parts
+    opt = opt.upper()
+    if opt not in ("C", "P"):
+        raise ValueError(f"unknown option type {opt!r} in {name!r}")
+    # Deribit expiry is DDMMMYY, e.g. 29MAR24. strptime wants title-case month.
+    expiry = datetime.strptime(expiry_s.title(), "%d%b%y").date()
+    return underlying, expiry, float(strike_s), opt
+
+
+@dataclass(frozen=True)
+class OptionContract:
+    instrument: str
+    underlying: str
+    expiry: date
+    strike: float
+    option_type: str  # "C" or "P"
+    tape: Path
+
+
+class OptionChain:
+    """A queryable set of option contracts, each backed by its own floxlog tape.
+    Filter by expiry / strike / type, take an as-of-date slice (contracts not
+    yet expired), and walk expiries for series rolls."""
+
+    def __init__(self, contracts: Sequence[OptionContract]) -> None:
+        self._contracts: List[OptionContract] = list(contracts)
+
+    def __len__(self) -> int:
+        return len(self._contracts)
+
+    def __iter__(self) -> Iterator[OptionContract]:
+        return iter(self._contracts)
+
+    def expiries(self) -> List[date]:
+        return sorted({c.expiry for c in self._contracts})
+
+    def strikes(self, expiry: Optional[date] = None) -> List[float]:
+        pool = self._contracts if expiry is None else [c for c in self._contracts
+                                                       if c.expiry == expiry]
+        return sorted({c.strike for c in pool})
+
+    def query(self, expiry: Optional[date] = None, strike: Optional[float] = None,
+              option_type: Optional[str] = None) -> List[OptionContract]:
+        opt = option_type.upper() if option_type else None
+        return [c for c in self._contracts
+                if (expiry is None or c.expiry == expiry)
+                and (strike is None or c.strike == strike)
+                and (opt is None or c.option_type == opt)]
+
+    def get(self, expiry: date, strike: float, option_type: str) -> Optional[OptionContract]:
+        hits = self.query(expiry=expiry, strike=strike, option_type=option_type)
+        return hits[0] if hits else None
+
+    def as_of(self, on: DateLike) -> "OptionChain":
+        """Contracts live on ``on`` (expiry on or after that date)."""
+        d = _coerce_day(on)
+        return OptionChain([c for c in self._contracts if c.expiry >= d])
+
+    def next_expiry_after(self, on: DateLike) -> Optional[date]:
+        """First expiry strictly after ``on`` — the contract a series rolls into."""
+        d = _coerce_day(on)
+        later = [e for e in self.expiries() if e > d]
+        return later[0] if later else None
+
+
+def load_option_chain(
+    instruments: Sequence[str],
+    day: DateLike,
+    out_root: Union[str, Path],
+    *,
+    mirror: Union[str, Path],
+    exchange_id: int = 0,
+    compression: str = "none",
+) -> OptionChain:
+    """Convert each option instrument's archive for ``day`` into its own tape
+    under ``out_root/<instrument>`` and return an OptionChain over them. CSVs are
+    read from ``mirror`` (Deribit layout) and downloaded there if absent. Each
+    instrument gets a distinct symbol_id (its index + 1)."""
+    day = _coerce_day(day)
+    out_root = Path(out_root).expanduser()
+    mirror = Path(mirror).expanduser()
+    contracts: List[OptionContract] = []
+    for i, inst in enumerate(instruments):
+        underlying, expiry, strike, opt = parse_option_instrument(inst)
+        csv_path = _mirror_path(mirror, inst, "option", day)
+        if not csv_path.exists():
+            _download(_archive_url(inst, "option", day), csv_path)
+        tape = out_root / inst
+        trades_to_floxlog(
+            csv_path, tape, symbol_id=i + 1, symbol_name=inst, market="option",
+            exchange_id=exchange_id, compression=compression,
+        )
+        contracts.append(OptionContract(inst, underlying, expiry, strike, opt, tape))
+    return OptionChain(contracts)
+
+
 __all__ = [
     "ConvertStats",
     "trades_to_floxlog",
     "range_to_floxlog",
+    "parse_option_instrument",
+    "OptionContract",
+    "OptionChain",
+    "load_option_chain",
 ]
