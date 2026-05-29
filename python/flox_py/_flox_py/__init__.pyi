@@ -531,6 +531,10 @@ class DataReader:
         """
         Read book updates starting from a given timestamp (nanoseconds). Same return shape as read_book_updates().
         """
+    def read_option_quotes_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
+        """
+        Read option quotes (mark/iv/index/open-interest) from a given timestamp (nanoseconds) as a numpy structured array (PyOptionQuote dtype). Raw fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE.
+        """
     def read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Read all trades as a numpy structured array (PyTrade dtype)
@@ -595,6 +599,10 @@ class DataWriter:
     def write_books(self, headers: typing.Annotated[numpy.typing.ArrayLike, ...], levels: typing.Annotated[numpy.typing.ArrayLike, ...]) -> int:
         """
         Batched book writer. Round-trip with DataReader.read_book_updates.
+        """
+    def write_option_quotes(self, exchange_ts_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], recv_ts_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], mark_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], index_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ivs: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], open_interest: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol_ids: typing.Annotated[numpy.typing.ArrayLike, numpy.uint32]) -> int:
+        """
+        Bulk-write option quotes. mark_prices/index_prices are doubles (PRICE_SCALE), ivs are doubles (e.g. 0.65), open_interest is a double (QUANTITY_SCALE). Returns the count written.
         """
     def write_trade(self, exchange_ts_ns: typing.SupportsInt | typing.SupportsIndex, recv_ts_ns: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, trade_id: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex) -> bool:
         """
