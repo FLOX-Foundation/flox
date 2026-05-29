@@ -8341,6 +8341,10 @@
         },
         {
           "kind": "function",
+          "name": "greeks"
+        },
+        {
+          "kind": "function",
           "name": "hurst_dfa"
         },
         {
@@ -8426,6 +8430,10 @@
         {
           "kind": "function",
           "name": "rsi"
+        },
+        {
+          "kind": "function",
+          "name": "second_order_greeks"
         },
         {
           "kind": "function",

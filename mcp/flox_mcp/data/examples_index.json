@@ -191,6 +191,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_options_greeks.py",
+      "sha256": "32cd077483b29b58b76c0754c0aeb241a7e643131b1e0c8fb39d72f2084a52f4",
+      "size_bytes": 1450,
+      "topic": "strategy"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_options_pricing.py",
       "sha256": "221c2098a792e1899f310011e5a64b44d2e45267acd0fc9976229da3de99aeff",
       "size_bytes": 1685,
