@@ -125,6 +125,7 @@ add_flox_test(test_adf)
 add_flox_test(test_autocorrelation)
 add_flox_test(test_black_scholes)
 add_flox_test(test_greeks)
+add_flox_test(test_option_quote_record)
 
 if(FLOX_BUILD_CAPI)
   add_flox_test(test_capi_registry)
