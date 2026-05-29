@@ -443,6 +443,76 @@ bool BinaryLogWriter::writeTrade(const TradeRecord& trade)
   return ok;
 }
 
+bool BinaryLogWriter::writeOptionQuote(const OptionQuoteRecord& quote)
+{
+  std::lock_guard lock(_mutex);
+
+  if (!ensureOpen())
+  {
+    return false;
+  }
+
+  bool ok;
+  if (isCompressed())
+  {
+    ok = writeFrameToBlock(EventType::OptionQuote, &quote, sizeof(quote), quote.exchange_ts_ns);
+  }
+  else
+  {
+    const size_t frame_size = sizeof(FrameHeader) + sizeof(quote);
+    if (!maybeRotate(frame_size))
+    {
+      return false;
+    }
+
+    uint64_t frame_offset = _segment_bytes;
+
+    FrameHeader header{};
+    header.size = static_cast<uint32_t>(sizeof(quote));
+    header.crc32 = Crc32::compute(&quote, sizeof(quote));
+    header.type = static_cast<uint8_t>(EventType::OptionQuote);
+    header.rec_version = 1;
+
+    if (std::fwrite(&header, sizeof(header), 1, _file) != 1)
+    {
+      return false;
+    }
+    if (std::fwrite(&quote, sizeof(quote), 1, _file) != 1)
+    {
+      return false;
+    }
+
+    _segment_bytes += frame_size;
+    _stats.bytes_written += frame_size;
+    ++_stats.events_written;
+
+    if (_segment_header.first_event_ns == 0)
+    {
+      _segment_header.first_event_ns = quote.exchange_ts_ns;
+    }
+    _segment_header.last_event_ns = quote.exchange_ts_ns;
+    ++_segment_header.event_count;
+
+    if (_config.create_index)
+    {
+      if (_index_entries.empty() || _events_since_last_index >= _config.index_interval)
+      {
+        _index_entries.push_back(
+            IndexEntry{.timestamp_ns = quote.exchange_ts_ns, .file_offset = frame_offset});
+        _events_since_last_index = 0;
+      }
+      ++_events_since_last_index;
+    }
+    ok = true;
+  }
+
+  if (ok)
+  {
+    ++_stats.option_quotes_written;
+  }
+  return ok;
+}
+
 bool BinaryLogWriter::writeBook(const BookRecordHeader& hdr, std::span<const BookLevel> bids,
                                 std::span<const BookLevel> asks)
 {

@@ -168,6 +168,23 @@ struct ReplayEvent
   BookRecordHeader book_header{};
   std::vector<BookLevel> bids;
   std::vector<BookLevel> asks;
+
+  OptionQuoteRecord option_quote{};
+
+  // Symbol id for the active record, whichever event type this is. Keeps
+  // symbol filtering correct as new record types are added.
+  uint32_t symbolId() const
+  {
+    switch (type)
+    {
+      case EventType::Trade:
+        return trade.symbol_id;
+      case EventType::OptionQuote:
+        return option_quote.symbol_id;
+      default:
+        return book_header.symbol_id;
+    }
+  }
 };
 
 struct SegmentInfo

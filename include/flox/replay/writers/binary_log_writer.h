@@ -55,6 +55,7 @@ struct WriterStats
   uint64_t segments_created{0};
   uint64_t trades_written{0};
   uint64_t book_updates_written{0};
+  uint64_t option_quotes_written{0};
   uint64_t blocks_written{0};
   uint64_t uncompressed_bytes{0};
   uint64_t compressed_bytes{0};
@@ -72,6 +73,7 @@ class BinaryLogWriter
   BinaryLogWriter& operator=(BinaryLogWriter&&) noexcept;
 
   bool writeTrade(const TradeRecord& trade);
+  bool writeOptionQuote(const OptionQuoteRecord& quote);
   bool writeBook(const BookRecordHeader& header, std::span<const BookLevel> bids,
                  std::span<const BookLevel> asks);
 

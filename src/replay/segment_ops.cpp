@@ -289,7 +289,7 @@ SplitResult SegmentOps::split(const std::filesystem::path& input_path, const Spl
     while (iter.next(event))
     {
       uint32_t symbol_id =
-          (event.type == EventType::Trade) ? event.trade.symbol_id : event.book_header.symbol_id;
+          event.symbolId();
       auto* writer = getOrCreateWriter(symbol_id);
 
       if (event.type == EventType::Trade)
@@ -531,7 +531,7 @@ ExportResult SegmentOps::exportDirectory(const std::filesystem::path& input_dir,
       if (!config.symbols.empty())
       {
         uint32_t sym =
-            (event.type == EventType::Trade) ? event.trade.symbol_id : event.book_header.symbol_id;
+            event.symbolId();
         if (config.symbols.find(sym) == config.symbols.end())
         {
           continue;
@@ -616,7 +616,7 @@ ExportResult SegmentOps::exportData(const std::filesystem::path& input_path,
       if (!config.symbols.empty())
       {
         uint32_t sym =
-            (event.type == EventType::Trade) ? event.trade.symbol_id : event.book_header.symbol_id;
+            event.symbolId();
         if (config.symbols.find(sym) == config.symbols.end())
         {
           return false;
@@ -691,7 +691,7 @@ ExportResult SegmentOps::exportData(const std::filesystem::path& input_path,
     if (!config.symbols.empty())
     {
       uint32_t sym =
-          (event.type == EventType::Trade) ? event.trade.symbol_id : event.book_header.symbol_id;
+          event.symbolId();
       if (config.symbols.find(sym) == config.symbols.end())
       {
         continue;
@@ -883,7 +883,7 @@ uint64_t SegmentOps::extractSymbols(const std::filesystem::path& input_path,
   auto predicate = [&symbols](const ReplayEvent& event)
   {
     uint32_t sym =
-        (event.type == EventType::Trade) ? event.trade.symbol_id : event.book_header.symbol_id;
+        event.symbolId();
     return symbols.find(sym) != symbols.end();
   };
 

@@ -58,6 +58,12 @@ int64_t firstTimestampInBlock(const std::vector<std::byte>& data)
       std::memcpy(&bh, data.data() + offset, sizeof(BookRecordHeader));
       ts = bh.exchange_ts_ns;
     }
+    else if (type == EventType::OptionQuote && frame.size >= sizeof(OptionQuoteRecord))
+    {
+      OptionQuoteRecord oq;
+      std::memcpy(&oq, data.data() + offset, sizeof(OptionQuoteRecord));
+      ts = oq.exchange_ts_ns;
+    }
     if (ts > 0)
     {
       return ts;
@@ -97,6 +103,12 @@ int64_t lastTimestampInBlock(const std::vector<std::byte>& data)
       BookRecordHeader bh;
       std::memcpy(&bh, data.data() + offset, sizeof(BookRecordHeader));
       ts = bh.exchange_ts_ns;
+    }
+    else if (type == EventType::OptionQuote && frame.size >= sizeof(OptionQuoteRecord))
+    {
+      OptionQuoteRecord oq;
+      std::memcpy(&oq, data.data() + offset, sizeof(OptionQuoteRecord));
+      ts = oq.exchange_ts_ns;
     }
     if (ts > 0)
     {
@@ -709,8 +721,7 @@ bool BinaryLogReader::passesFilter(const ReplayEvent& event) const
   // Symbol filter
   if (!_config.symbols.empty())
   {
-    uint32_t symbol_id = (event.type == EventType::Trade) ? event.trade.symbol_id
-                                                          : event.book_header.symbol_id;
+    uint32_t symbol_id = event.symbolId();
     if (_config.symbols.find(symbol_id) == _config.symbols.end())
     {
       return false;
@@ -1615,8 +1626,7 @@ DatasetSummary BinaryLogReader::inspectWithSymbols(const std::filesystem::path& 
 
   reader.forEach([&summary](const ReplayEvent& event)
                  {
-    uint32_t symbol_id = (event.type == EventType::Trade) ? event.trade.symbol_id
-                                                          : event.book_header.symbol_id;
+    uint32_t symbol_id = event.symbolId();
     summary.symbols.insert(symbol_id);
     return true; });
 
@@ -1685,8 +1695,7 @@ std::set<uint32_t> BinaryLogReader::availableSymbols()
 
   forEach([&symbols](const ReplayEvent& event)
           {
-    uint32_t symbol_id = (event.type == EventType::Trade) ? event.trade.symbol_id
-                                                          : event.book_header.symbol_id;
+    uint32_t symbol_id = event.symbolId();
     symbols.insert(symbol_id);
     return true; });
 
@@ -1943,6 +1952,18 @@ bool BinaryLogIterator::parseFrame(EventType type, const std::byte* data, size_t
     }
     std::memcpy(&out.trade, data, sizeof(TradeRecord));
     out.timestamp_ns = out.trade.exchange_ts_ns;
+    out.bids.clear();
+    out.asks.clear();
+    return true;
+  }
+  else if (type == EventType::OptionQuote)
+  {
+    if (size < sizeof(OptionQuoteRecord))
+    {
+      return false;
+    }
+    std::memcpy(&out.option_quote, data, sizeof(OptionQuoteRecord));
+    out.timestamp_ns = out.option_quote.exchange_ts_ns;
     out.bids.clear();
     out.asks.clear();
     return true;

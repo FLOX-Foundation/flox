@@ -331,6 +331,15 @@ bool MmapSegmentReader::next(ReplayEvent& out)
     std::memcpy(&out.trade, payload, sizeof(TradeRecord));
     out.timestamp_ns = out.trade.exchange_ts_ns;
   }
+  else if (frame->type == static_cast<uint8_t>(EventType::OptionQuote))
+  {
+    if (frame->size < sizeof(OptionQuoteRecord))
+    {
+      return false;
+    }
+    std::memcpy(&out.option_quote, payload, sizeof(OptionQuoteRecord));
+    out.timestamp_ns = out.option_quote.exchange_ts_ns;
+  }
   else if (frame->type == static_cast<uint8_t>(EventType::BookSnapshot) ||
            frame->type == static_cast<uint8_t>(EventType::BookDelta))
   {
@@ -536,8 +545,7 @@ uint64_t MmapReader::forEach(EventCallback callback)
 
     while (reader->next(event))
     {
-      uint32_t symbol_id = (event.type == EventType::Trade) ? event.trade.symbol_id
-                                                            : event.book_header.symbol_id;
+      uint32_t symbol_id = event.symbolId();
 
       if (!passesFilter(event.timestamp_ns, symbol_id))
       {
@@ -590,8 +598,7 @@ uint64_t MmapReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)
         continue;
       }
 
-      uint32_t symbol_id = (event.type == EventType::Trade) ? event.trade.symbol_id
-                                                            : event.book_header.symbol_id;
+      uint32_t symbol_id = event.symbolId();
 
       if (!passesFilter(event.timestamp_ns, symbol_id))
       {
