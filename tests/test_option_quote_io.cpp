@@ -19,8 +19,13 @@ OptionQuoteRecord makeQuote(int i, uint32_t sym = 7)
   q.index_price_raw = (3001LL + i) * 100000000LL;
   q.iv_raw = static_cast<int64_t>((0.5 + i * 0.001) * kIvScale);
   q.open_interest_raw = (1000LL + i) * 100000000LL;
+  q.underlying_price_raw = (3005LL + i) * 100000000LL;
   q.bid_price_raw = (2999LL + i) * 100000000LL;
   q.ask_price_raw = (3002LL + i) * 100000000LL;
+  q.bid_size_raw = (10LL + i) * 100000000LL;
+  q.ask_size_raw = (12LL + i) * 100000000LL;
+  q.bid_iv_raw = static_cast<int64_t>((0.49 + i * 0.001) * kIvScale);
+  q.ask_iv_raw = static_cast<int64_t>((0.51 + i * 0.001) * kIvScale);
   q.symbol_id = sym;
   q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
   return q;
@@ -65,8 +70,13 @@ TEST_F(OptionQuoteIoTest, WriteAndReadUncompressed)
         EXPECT_EQ(event.option_quote.mark_price_raw, expected.mark_price_raw);
         EXPECT_EQ(event.option_quote.iv_raw, expected.iv_raw);
         EXPECT_EQ(event.option_quote.open_interest_raw, expected.open_interest_raw);
+        EXPECT_EQ(event.option_quote.underlying_price_raw, expected.underlying_price_raw);
         EXPECT_EQ(event.option_quote.bid_price_raw, expected.bid_price_raw);
         EXPECT_EQ(event.option_quote.ask_price_raw, expected.ask_price_raw);
+        EXPECT_EQ(event.option_quote.bid_size_raw, expected.bid_size_raw);
+        EXPECT_EQ(event.option_quote.ask_size_raw, expected.ask_size_raw);
+        EXPECT_EQ(event.option_quote.bid_iv_raw, expected.bid_iv_raw);
+        EXPECT_EQ(event.option_quote.ask_iv_raw, expected.ask_iv_raw);
         EXPECT_EQ(event.option_quote.symbol_id, 7u);
         EXPECT_EQ(event.symbolId(), 7u);  // helper resolves option-quote symbol
         ++count;

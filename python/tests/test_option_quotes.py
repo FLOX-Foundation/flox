@@ -44,12 +44,18 @@ try:
     syms = np.full(n, 7, dtype=np.uint32)
     bids = marks - 1.0
     asks = marks + 1.0
+    fwds = indices + 10.0          # forward distinct from spot index
+    bid_sz = np.full(n, 5.0)
+    ask_sz = np.full(n, 7.0)
+    bid_ivs = ivs - 0.01
+    ask_ivs = ivs + 0.01
 
     w = flox.DataWriter(d, max_segment_mb=128, exchange_id=0)
     written = w.write_option_quotes(
         exchange_ts_ns=ts, recv_ts_ns=ts, mark_prices=marks,
         index_prices=indices, ivs=ivs, open_interest=oi, symbol_ids=syms,
-        bid_prices=bids, ask_prices=asks,
+        bid_prices=bids, ask_prices=asks, underlying_prices=fwds,
+        bid_sizes=bid_sz, ask_sizes=ask_sz, bid_ivs=bid_ivs, ask_ivs=ask_ivs,
     )
     w.close()
     check(written == n, f"wrote all {n} quotes (got {written})")
@@ -59,8 +65,9 @@ try:
     check(arr.size == n, f"read back {n} quotes (got {arr.size})")
 
     expected_fields = {"exchange_ts_ns", "mark_price_raw", "index_price_raw",
-                       "iv_raw", "open_interest_raw", "bid_price_raw", "ask_price_raw",
-                       "symbol_id", "instrument"}
+                       "underlying_price_raw", "iv_raw", "open_interest_raw",
+                       "bid_price_raw", "ask_price_raw", "bid_size_raw", "ask_size_raw",
+                       "bid_iv_raw", "ask_iv_raw", "symbol_id", "instrument"}
     check(expected_fields.issubset(set(arr.dtype.names)), "dtype has expected fields")
 
     # Raw -> double conversions.
@@ -68,6 +75,12 @@ try:
     check(abs(arr["bid_price_raw"][0] / 1e8 - bids[0]) < 1e-6, "bid round-trip")
     check(abs(arr["ask_price_raw"][0] / 1e8 - asks[0]) < 1e-6, "ask round-trip")
     check(arr["ask_price_raw"][0] > arr["bid_price_raw"][0], "ask > bid")
+    check(abs(arr["underlying_price_raw"][0] / 1e8 - fwds[0]) < 1e-6, "forward round-trip")
+    check(abs(arr["bid_size_raw"][0] / 1e8 - bid_sz[0]) < 1e-6, "bid size round-trip")
+    check(abs(arr["ask_size_raw"][0] / 1e8 - ask_sz[0]) < 1e-6, "ask size round-trip")
+    check(abs(arr["bid_iv_raw"][0] / 1e8 - bid_ivs[0]) < 1e-6, "bid iv round-trip")
+    check(abs(arr["ask_iv_raw"][0] / 1e8 - ask_ivs[0]) < 1e-6, "ask iv round-trip")
+    check(arr["ask_iv_raw"][0] > arr["bid_iv_raw"][0], "ask iv > bid iv")
     check(abs(arr["iv_raw"][0] / 1e8 - ivs[0]) < 1e-6, "iv round-trip")
     check(abs(arr["iv_raw"][-1] / 1e8 - ivs[-1]) < 1e-6, "iv round-trip last")
     check(abs(arr["open_interest_raw"][0] / 1e8 - oi[0]) < 1e-6, "oi round-trip")

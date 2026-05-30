@@ -103,28 +103,38 @@ struct alignas(8) TradeRecord
 };
 static_assert(sizeof(TradeRecord) == 48, "TradeRecord must be 48 bytes");
 
-// Option side-channel quote. mark / index / bid / ask price_raw use the same
-// PRICE_SCALE as TradeRecord; iv_raw uses kIvScale; open_interest_raw uses the
+// Option side-channel quote. All *_price_raw use the same PRICE_SCALE as
+// TradeRecord; *_iv_raw use kIvScale; *_size_raw / open_interest_raw use the
 // venue's contract/quantity scale (QUANTITY_SCALE). Fields are independent of
 // any trade — emitted whenever the venue publishes a mark/IV/quote snapshot.
-// bid/ask are the best quoted prices (0 when the venue does not publish them);
-// the realistic fill model needs the spread, which mark alone cannot give.
+// Every field is 0 when the venue does not publish it. The set is what an
+// options backtest actually consumes:
+//   - index   = spot index of the base coin (delta-hedge leg).
+//   - underlying = per-expiry FORWARD (pricing / greeks / log-moneyness).
+//   - bid/ask price + size = the touch the realistic fill model crosses.
+//   - mark_iv / bid_iv / ask_iv = vol at the mark and at each touch (the
+//     tradeable vol; the IV-vs-RV edge lives here).
 struct alignas(8) OptionQuoteRecord
 {
   int64_t exchange_ts_ns{0};
   int64_t recv_ts_ns{0};
   int64_t mark_price_raw{0};
-  int64_t index_price_raw{0};
-  int64_t iv_raw{0};
+  int64_t index_price_raw{0};       // spot index of the base coin
+  int64_t underlying_price_raw{0};  // per-expiry forward (pricing/moneyness)
+  int64_t iv_raw{0};                // implied vol at the mark
+  int64_t bid_price_raw{0};         // best bid; 0 when not published
+  int64_t ask_price_raw{0};         // best ask; 0 when not published
+  int64_t bid_size_raw{0};          // size at the bid
+  int64_t ask_size_raw{0};          // size at the ask
+  int64_t bid_iv_raw{0};            // implied vol at the bid
+  int64_t ask_iv_raw{0};            // implied vol at the ask
   int64_t open_interest_raw{0};
-  int64_t bid_price_raw{0};  // best bid; 0 when not published
-  int64_t ask_price_raw{0};  // best ask; 0 when not published
   uint32_t symbol_id{0};
   uint8_t instrument{0};
   uint8_t _pad{0};
   uint16_t exchange_id{0};
 };
-static_assert(sizeof(OptionQuoteRecord) == 72, "OptionQuoteRecord must be 72 bytes");
+static_assert(sizeof(OptionQuoteRecord) == 112, "OptionQuoteRecord must be 112 bytes");
 
 struct alignas(8) BookLevel
 {
