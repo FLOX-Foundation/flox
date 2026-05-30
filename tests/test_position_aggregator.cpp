@@ -479,6 +479,30 @@ TEST(PositionGroupTrackerTest, OpenAndClosePosition)
   EXPECT_NEAR(gt.totalRealizedPnl().toDouble(), 50.0, 0.01);
 }
 
+TEST(PositionGroupTrackerTest, ContractMultiplierScalesRealizedPnl)
+{
+  PositionGroupTracker gt;
+
+  // 5 units, entry 100, exit 110 -> base PnL 50; a 10x multiplier -> 500.
+  PositionId pid = gt.openPosition(42, 100, Side::BUY, Price::fromDouble(100.0),
+                                   Quantity::fromDouble(5.0), /*contractMultiplier=*/10.0);
+  gt.closePosition(pid, Price::fromDouble(110.0));
+  EXPECT_NEAR(gt.totalRealizedPnl().toDouble(), 500.0, 0.01);
+}
+
+TEST(PositionGroupTrackerTest, ContractMultiplierPartialClose)
+{
+  PositionGroupTracker gt;
+
+  PositionId pid = gt.openPosition(1, 100, Side::BUY, Price::fromDouble(100.0),
+                                   Quantity::fromDouble(10.0), /*contractMultiplier=*/10.0);
+  gt.partialClose(pid, Quantity::fromDouble(4.0), Price::fromDouble(120.0));
+
+  auto* pos = gt.getPosition(pid);
+  ASSERT_NE(pos, nullptr);
+  EXPECT_NEAR(pos->realizedPnl.toDouble(), 800.0, 0.01);  // 4 * 20 * 10
+}
+
 TEST(PositionGroupTrackerTest, PartialClosePosition)
 {
   PositionGroupTracker gt;

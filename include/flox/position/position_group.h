@@ -33,7 +33,8 @@ struct IndividualPosition
   Quantity quantity{};
   Price realizedPnl{};
   bool closed{false};
-  GroupId groupId{0};  // 0 = ungrouped
+  GroupId groupId{0};              // 0 = ungrouped
+  double contractMultiplier{1.0};  // scales realized PnL (options: 100, ES: 50)
 };
 
 struct PositionGroup
@@ -85,7 +86,7 @@ class PositionGroupTracker
 
   // Open a new individual position from an order fill
   PositionId openPosition(OrderId orderId, SymbolId symbol, Side side,
-                          Price entryPrice, Quantity qty)
+                          Price entryPrice, Quantity qty, double contractMultiplier = 1.0)
   {
     PositionId pid = _nextPositionId++;
     IndividualPosition pos{};
@@ -95,6 +96,7 @@ class PositionGroupTracker
     pos.side = side;
     pos.entryPrice = entryPrice;
     pos.quantity = qty;
+    pos.contractMultiplier = contractMultiplier;
     _positions[pid] = pos;
     _orderToPosition[orderId] = pid;
     int64_t signedQty = (side == Side::SELL) ? -qty.raw() : qty.raw();
@@ -113,12 +115,13 @@ class PositionGroupTracker
     auto& pos = it->second;
     Price priceDiff = exitPrice - pos.entryPrice;
     Volume pnl = pos.quantity * priceDiff;
+    int64_t pnlRaw = static_cast<int64_t>(static_cast<double>(pnl.raw()) * pos.contractMultiplier);
     if (pos.side == Side::SELL)
     {
-      pnl = Volume::fromRaw(-pnl.raw());
+      pnlRaw = -pnlRaw;
     }
-    pos.realizedPnl = Price::fromRaw(pos.realizedPnl.raw() + pnl.raw());
-    _symbolRealizedPnl[pos.symbol] += pnl.raw();
+    pos.realizedPnl = Price::fromRaw(pos.realizedPnl.raw() + pnlRaw);
+    _symbolRealizedPnl[pos.symbol] += pnlRaw;
     int64_t signedQty = (pos.side == Side::SELL) ? -pos.quantity.raw() : pos.quantity.raw();
     _symbolNetQty[pos.symbol] -= signedQty;
     pos.closed = true;
@@ -136,12 +139,13 @@ class PositionGroupTracker
 
     Price priceDiff = exitPrice - pos.entryPrice;
     Volume pnl = Quantity::fromRaw(closeRaw) * priceDiff;
+    int64_t pnlRaw = static_cast<int64_t>(static_cast<double>(pnl.raw()) * pos.contractMultiplier);
     if (pos.side == Side::SELL)
     {
-      pnl = Volume::fromRaw(-pnl.raw());
+      pnlRaw = -pnlRaw;
     }
-    pos.realizedPnl = Price::fromRaw(pos.realizedPnl.raw() + pnl.raw());
-    _symbolRealizedPnl[pos.symbol] += pnl.raw();
+    pos.realizedPnl = Price::fromRaw(pos.realizedPnl.raw() + pnlRaw);
+    _symbolRealizedPnl[pos.symbol] += pnlRaw;
     int64_t signedClose = (pos.side == Side::SELL) ? -closeRaw : closeRaw;
     _symbolNetQty[pos.symbol] -= signedClose;
     pos.quantity = Quantity::fromRaw(pos.quantity.raw() - closeRaw);
