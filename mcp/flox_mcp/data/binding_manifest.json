@@ -8309,6 +8309,10 @@
         },
         {
           "kind": "function",
+          "name": "bs_price_discrete_dividends"
+        },
+        {
+          "kind": "function",
           "name": "bs_vega"
         },
         {
@@ -8330,6 +8334,10 @@
         {
           "kind": "function",
           "name": "correlation"
+        },
+        {
+          "kind": "function",
+          "name": "cost_of_carry"
         },
         {
           "kind": "function",
