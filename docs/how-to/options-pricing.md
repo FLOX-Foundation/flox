@@ -125,6 +125,28 @@ surf = flox.build_surface_as_of(quotes, asof_ns=cutoff)
 Expiries with fewer than five quotes are skipped — too thin to identify the five SVI
 parameters.
 
+## Volatility cone (realized vs implied)
+
+A vol cone is the backdrop a trader reads implied against: for each horizon it slides
+a window across the price history, annualizes the realized vol in each window, and
+reports the distribution. Plot today's implied on it to see whether options are rich
+or cheap versus how the underlying has actually moved.
+
+```python
+# periods_per_year is 365 for 24/7 crypto, 252 for equities.
+cone = flox.vol_cone(prices, horizons=[10, 30, 60, 90], periods_per_year=365)
+cone[0]["p50"]  # median realized vol at the 10-period horizon
+```
+
+To place an implied quote in the cone, pull the realized samples for one horizon and
+ask what fraction sit below it — high means rich, low means cheap:
+
+```python
+samples = flox.vol_cone(prices, [30], 365)  # or compute realized_vol per window
+# implied_percentile_in_cone(realized_samples, implied_vol) -> 0..1
+rich = flox.implied_percentile_in_cone(realized_samples, implied_vol=0.65)
+```
+
 ## Vega and forward price
 
 ```python

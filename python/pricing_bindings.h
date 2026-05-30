@@ -21,6 +21,7 @@
 #include "flox/pricing/black_scholes.h"
 #include "flox/pricing/greeks.h"
 #include "flox/pricing/svi.h"
+#include "flox/pricing/vol_cone.h"
 
 namespace py = pybind11;
 
@@ -207,4 +208,47 @@ inline void bindPricing(py::module_& m)
       "Build a point-in-time VolSurface from (ts_ns, t, log_moneyness, iv) "
       "quotes, using ONLY those stamped on or before asof_ns — the no-lookahead "
       "guarantee for honest backtests. Expiries with < 5 quotes are skipped.");
+
+  // ── Volatility cone (realized vs implied) ───────────────────────────────
+  m.def(
+      "realized_vol",
+      [](const std::vector<double>& returns, double periods_per_year) -> double
+      { return flox::pricing::realizedVol(returns, periods_per_year); },
+      py::arg("returns"), py::arg("periods_per_year"),
+      "Annualized realized vol from log returns: sample stdev * sqrt(periods_per_year).");
+
+  m.def(
+      "vol_cone",
+      [](const std::vector<double>& prices, const std::vector<size_t>& horizons,
+         double periods_per_year) -> py::list
+      {
+        const auto cone = flox::pricing::volCone(prices, horizons, periods_per_year);
+        py::list out;
+        for (const auto& c : cone)
+        {
+          py::dict d;
+          d["horizon"] = c.horizon;
+          d["min"] = c.min;
+          d["p25"] = c.p25;
+          d["p50"] = c.p50;
+          d["p75"] = c.p75;
+          d["max"] = c.max;
+          d["samples"] = c.samples;
+          out.append(d);
+        }
+        return out;
+      },
+      py::arg("prices"), py::arg("horizons"), py::arg("periods_per_year"),
+      "Realized-vol cone from a price series: for each horizon (in return "
+      "periods) slide a window, annualize realized vol, and report a dict(horizon, "
+      "min, p25, p50, p75, max, samples). periods_per_year is 252 (equity) or 365 "
+      "(crypto).");
+
+  m.def(
+      "implied_percentile_in_cone",
+      [](const std::vector<double>& realized_samples, double implied_vol) -> double
+      { return flox::pricing::impliedPercentileInCone(realized_samples, implied_vol); },
+      py::arg("realized_samples"), py::arg("implied_vol"),
+      "Fraction of realized-vol samples at or below implied_vol (0..1). High = "
+      "options rich vs realized history; low = cheap. NaN on empty samples.");
 }

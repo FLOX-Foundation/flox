@@ -8369,6 +8369,10 @@
         },
         {
           "kind": "function",
+          "name": "implied_percentile_in_cone"
+        },
+        {
+          "kind": "function",
           "name": "implied_vol"
         },
         {
@@ -8422,6 +8426,10 @@
         {
           "kind": "function",
           "name": "quantities_to_double"
+        },
+        {
+          "kind": "function",
+          "name": "realized_vol"
         },
         {
           "kind": "function",
@@ -8498,6 +8506,10 @@
         {
           "kind": "function",
           "name": "validate_dataset"
+        },
+        {
+          "kind": "function",
+          "name": "vol_cone"
         },
         {
           "kind": "function",
