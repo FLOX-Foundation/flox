@@ -161,12 +161,15 @@ Surface: 113 classes, 70 functions, 39 constants.
 - `account_id(self) -> int`
 - `add_equity(self, delta: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `close_position(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `cross_headroom(self, tier_fraction: typing.SupportsFloat | typing.SupportsIndex) -> float`
 - `equity(self) -> float`
 - `has_stale_marks(self, now_ns: typing.SupportsInt | typing.SupportsIndex, budget_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
 - `margin_mode(self) -> MarginMode`
+- `margin_notional(self) -> float`
+- `margin_unrealised_pnl(self) -> float`
 - `mark_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> float`
 - `mark_ts_for(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> int`
-- `open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, isolated_equity: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
+- `open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, isolated_equity: typing.SupportsFloat | typing.SupportsIndex = 0.0, contract_multiplier: typing.SupportsFloat | typing.SupportsIndex = 1.0, is_long_option: bool = False) -> None`
 - `position_count(self) -> int`
 - `record_fill(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, notional: typing.SupportsFloat | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `reset_rolling(self) -> None`

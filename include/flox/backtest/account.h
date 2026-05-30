@@ -77,8 +77,15 @@ class Account
   // Default 0.0 keeps backwards-compatible call sites; isolated-
   // mode callers MUST pass the slice or the position survives any
   // mark move (no equity backing → trivially solvent).
+  // contractMultiplier scales this leg's notional / uPnL (options 100, ES 50;
+  // perp 1.0 — the default keeps existing call sites unchanged). isLongOption
+  // marks a premium-paid long option: it is carved out of the cross-margin
+  // requirement (max loss is the premium already paid, so it cannot be
+  // liquidated). Wire these from SymbolInfo.contractMultiplier / optionType /
+  // side at the position-open path.
   void openPosition(SymbolId symbol, double quantity, double entryPrice,
-                    double isolatedEquity = 0.0);
+                    double isolatedEquity = 0.0, double contractMultiplier = 1.0,
+                    bool isLongOption = false);
   void closePosition(SymbolId symbol);
   const std::vector<LeveragedPosition>& positions() const noexcept { return _positions; }
   std::vector<LeveragedPosition>& positionsMut() noexcept { return _positions; }
@@ -125,12 +132,20 @@ class Account
     _rollingTotal = 0.0;
   }
 
-  // Aggregate views over the position book.
+  // Aggregate views over the position book. All scale each leg by its
+  // contractMultiplier, so a 100-multiplier option counts 100x a perp of the
+  // same quantity and price.
   double totalNotional() const;
   double totalUnrealisedPnl() const;
-  // Account-level cross-margin equity headroom: equity + total uPnL
-  // minus the maintenance margin required at the total-notional tier.
-  // Negative = account is underwater and should be liquidated.
+  // Margin-bearing subset: the same aggregates but excluding premium-paid long
+  // options, which post no maintenance margin (max loss = premium already
+  // paid). For an account with no long options these equal the totals.
+  double marginNotional() const;
+  double marginUnrealisedPnl() const;
+  // Account-level cross-margin equity headroom: equity + margin-bearing uPnL
+  // minus the maintenance margin required at the given tier on the
+  // margin-bearing notional. Negative = account is underwater and should be
+  // liquidated. Long options never push this negative on their own.
   double crossHeadroom(double tierFraction) const;
 
  private:

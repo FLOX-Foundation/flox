@@ -553,3 +553,105 @@ TEST(Account, MultiSymbolOnMarksUpdatesAllAccountsAtomically)
   EXPECT_DOUBLE_EQ(a.markFor(BTC), 47'000.0);
   EXPECT_DOUBLE_EQ(a.markFor(ETH), 2'250.0);
 }
+
+// === Contract multiplier + option premium semantics (W16-T020) ===
+
+namespace
+{
+constexpr SymbolId ES = 3;   // an index future, multiplier 50
+constexpr SymbolId OPT = 4;  // an option, multiplier 100
+}  // namespace
+
+TEST(Account, MultiplierScalesNotionalAndUpnl)
+{
+  Account a(1, 100'000.0);
+  // ES future: 2 contracts at 4000, multiplier 50.
+  a.openPosition(ES, 2.0, 4'000.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/50.0);
+  a.setMark(ES, 4'010.0);
+
+  EXPECT_DOUBLE_EQ(a.totalNotional(), 2.0 * 4'010.0 * 50.0);    // 401,000
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 2.0 * 10.0 * 50.0);  // 1,000
+  // No long options here, so margin aggregates equal the totals.
+  EXPECT_DOUBLE_EQ(a.marginNotional(), a.totalNotional());
+  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl(), a.totalUnrealisedPnl());
+}
+
+TEST(Account, PerpUnchangedByMultiplierDefault)
+{
+  Account a(1, 1'000.0);
+  a.openPosition(BTC, 1.0, 50'000.0);  // default multiplier 1.0, not an option
+  a.setMark(BTC, 49'000.0);
+  EXPECT_DOUBLE_EQ(a.totalNotional(), 49'000.0);
+  EXPECT_DOUBLE_EQ(a.marginNotional(), 49'000.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), -1'000.0);
+  EXPECT_DOUBLE_EQ(a.crossHeadroom(0.005), 1'000.0 - 1'000.0 - 49'000.0 * 0.005);
+}
+
+TEST(Account, LongOptionNotLiquidatedOnAdverseMark)
+{
+  // A long option's loss is the premium already paid; it posts no maintenance
+  // margin and must never trigger a cross-margin liquidation.
+  Account a(1, 1'000.0);
+  a.openPosition(OPT, 1.0, 50.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/100.0,
+                 /*isLongOption=*/true);
+  a.setMark(OPT, 1.0);  // option collapses toward worthless
+
+  // Carved out of the margin requirement: headroom is just the equity.
+  EXPECT_DOUBLE_EQ(a.marginNotional(), 0.0);
+  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl(), 0.0);
+  EXPECT_DOUBLE_EQ(a.crossHeadroom(0.005), 1'000.0);
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.attachAccount(&a);
+  const auto out = e.onMark(OPT, 1.0);
+  EXPECT_EQ(out.liquidationsCount, 0u);
+  EXPECT_EQ(a.positionCount(), 1u);  // survives
+}
+
+TEST(Account, ShortOptionIsMargined)
+{
+  // A short option carries real margin risk and IS subject to liquidation.
+  Account a(1, 1'000.0);
+  a.openPosition(OPT, -1.0, 50.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/100.0,
+                 /*isLongOption=*/false);
+  a.setMark(OPT, 120.0);  // short loses: -1 * (120 - 50) * 100 = -7000
+
+  EXPECT_DOUBLE_EQ(a.marginNotional(), 1.0 * 120.0 * 100.0);  // 12,000 — margined
+  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl(), -7'000.0);
+  EXPECT_LT(a.crossHeadroom(0.005), 0.0);  // underwater
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.attachAccount(&a);
+  const auto out = e.onMark(OPT, 120.0);
+  EXPECT_GE(out.liquidationsCount, 1u);  // liquidated
+}
+
+TEST(Account, LongOptionDoesNotShieldMarginedLeg)
+{
+  // A perp underwater past maintenance margin still liquidates even with a long
+  // option in the book — the option is skipped as a closeout victim.
+  Account a(1, 1'000.0);
+  a.openPosition(BTC, 1.0, 50'000.0);  // margined perp
+  a.openPosition(OPT, 1.0, 50.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/100.0,
+                 /*isLongOption=*/true);
+  a.setMark(BTC, 44'000.0);  // -6000 on the perp
+  a.setMark(OPT, 1.0);
+
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.attachAccount(&a);
+  const auto out = e.onMark(BTC, 44'000.0);
+  EXPECT_GE(out.liquidationsCount, 1u);
+  // The long option is never the victim: it remains in the book.
+  bool optStillOpen = false;
+  for (const auto& p : a.positions())
+  {
+    if (p.symbol == OPT)
+    {
+      optStillOpen = true;
+    }
+  }
+  EXPECT_TRUE(optStillOpen);
+}

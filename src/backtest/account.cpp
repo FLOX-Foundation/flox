@@ -43,7 +43,7 @@ void Account::setMarginModeByName(const std::string& name)
 }
 
 void Account::openPosition(SymbolId symbol, double quantity, double entryPrice,
-                           double isolatedEquity)
+                           double isolatedEquity, double contractMultiplier, bool isLongOption)
 {
   LeveragedPosition p;
   p.accountId = _accountId;
@@ -54,6 +54,8 @@ void Account::openPosition(SymbolId symbol, double quantity, double entryPrice,
   // Account::equity instead). Isolated mode uses this field as the
   // posted margin backing this leg.
   p.equity = isolatedEquity;
+  p.contractMultiplier = contractMultiplier;
+  p.isLongOption = isLongOption;
   _positions.push_back(p);
 }
 
@@ -177,7 +179,7 @@ double Account::totalNotional() const
   {
     const double mark = markFor(p.symbol);
     const double px = mark > 0.0 ? mark : p.entryPrice;
-    n += std::abs(p.quantity) * px;
+    n += std::abs(p.quantity) * px * p.contractMultiplier;
   }
   return n;
 }
@@ -192,15 +194,50 @@ double Account::totalUnrealisedPnl() const
     {
       continue;  // no mark → assume valued at entry; zero uPnL.
     }
-    upnl += p.quantity * (mark - p.entryPrice);
+    upnl += p.quantity * (mark - p.entryPrice) * p.contractMultiplier;
+  }
+  return upnl;
+}
+
+double Account::marginNotional() const
+{
+  double n = 0.0;
+  for (const auto& p : _positions)
+  {
+    if (p.isLongOption)
+    {
+      continue;  // premium-paid long option posts no maintenance margin
+    }
+    const double mark = markFor(p.symbol);
+    const double px = mark > 0.0 ? mark : p.entryPrice;
+    n += std::abs(p.quantity) * px * p.contractMultiplier;
+  }
+  return n;
+}
+
+double Account::marginUnrealisedPnl() const
+{
+  double upnl = 0.0;
+  for (const auto& p : _positions)
+  {
+    if (p.isLongOption)
+    {
+      continue;  // its loss is bounded by the paid premium, not a margin call
+    }
+    const double mark = markFor(p.symbol);
+    if (mark <= 0.0)
+    {
+      continue;
+    }
+    upnl += p.quantity * (mark - p.entryPrice) * p.contractMultiplier;
   }
   return upnl;
 }
 
 double Account::crossHeadroom(double tierFraction) const
 {
-  const double notional = totalNotional();
-  const double upnl = totalUnrealisedPnl();
+  const double notional = marginNotional();
+  const double upnl = marginUnrealisedPnl();
   const double mmReq = notional * tierFraction;
   return _equity + upnl - mmReq;
 }
