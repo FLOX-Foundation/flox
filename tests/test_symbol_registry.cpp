@@ -145,6 +145,72 @@ TEST(SymbolRegistryTest, RegisterOptionAndFutureSymbols)
   EXPECT_EQ(futOptInfo->type, InstrumentType::Future);
 }
 
+TEST(SymbolRegistryTest, ContractSpecDefaultsAndRoundTrip)
+{
+  SymbolRegistry registry;
+
+  // Plain perp (registered with a bare SymbolInfo) keeps the defaults.
+  SymbolInfo perpInfo;
+  perpInfo.exchange = "bybit";
+  perpInfo.symbol = "BTCUSDT";
+  perpInfo.type = InstrumentType::Future;
+  auto perpId = registry.registerSymbol(perpInfo);
+  auto perp = registry.getSymbolInfo(perpId);
+  ASSERT_TRUE(perp.has_value());
+  EXPECT_DOUBLE_EQ(perp->contractMultiplier, 1.0);
+  EXPECT_EQ(perp->settlementType, SettlementType::Cash);
+  EXPECT_EQ(perp->exerciseStyle, ExerciseStyle::European);
+  EXPECT_FALSE(perp->settlementCcy.has_value());
+
+  // Equity option overrides the spec.
+  SymbolInfo opt;
+  opt.exchange = "cboe";
+  opt.symbol = "SPY-20240920-450-C";
+  opt.type = InstrumentType::Option;
+  opt.strike = Price::fromDouble(450.0);
+  opt.optionType = OptionType::CALL;
+  opt.contractMultiplier = 100.0;
+  opt.settlementType = SettlementType::Physical;
+  opt.exerciseStyle = ExerciseStyle::American;
+  opt.settlementCcy = "USD";
+  auto optId = registry.registerSymbol(opt);
+
+  auto got = registry.getSymbolInfo(optId);
+  ASSERT_TRUE(got.has_value());
+  EXPECT_DOUBLE_EQ(got->contractMultiplier, 100.0);
+  EXPECT_EQ(got->settlementType, SettlementType::Physical);
+  EXPECT_EQ(got->exerciseStyle, ExerciseStyle::American);
+  ASSERT_TRUE(got->settlementCcy.has_value());
+  EXPECT_EQ(*got->settlementCcy, "USD");
+
+  // Binary serialize / deserialize preserves the spec.
+  auto bytes = registry.serialize();
+  SymbolRegistry restored;
+  ASSERT_TRUE(restored.deserialize(bytes));
+  auto rOpt = restored.getSymbolInfo(optId);
+  ASSERT_TRUE(rOpt.has_value());
+  EXPECT_DOUBLE_EQ(rOpt->contractMultiplier, 100.0);
+  EXPECT_EQ(rOpt->settlementType, SettlementType::Physical);
+  EXPECT_EQ(rOpt->exerciseStyle, ExerciseStyle::American);
+  ASSERT_TRUE(rOpt->settlementCcy.has_value());
+  EXPECT_EQ(*rOpt->settlementCcy, "USD");
+
+  // JSON file save / load preserves the spec.
+  auto path = std::filesystem::temp_directory_path() / "test_contract_spec.json";
+  std::filesystem::remove(path);
+  ASSERT_TRUE(registry.saveToFile(path));
+  SymbolRegistry fromFile;
+  ASSERT_TRUE(fromFile.loadFromFile(path));
+  auto fOpt = fromFile.getSymbolInfo(optId);
+  ASSERT_TRUE(fOpt.has_value());
+  EXPECT_DOUBLE_EQ(fOpt->contractMultiplier, 100.0);
+  EXPECT_EQ(fOpt->settlementType, SettlementType::Physical);
+  EXPECT_EQ(fOpt->exerciseStyle, ExerciseStyle::American);
+  ASSERT_TRUE(fOpt->settlementCcy.has_value());
+  EXPECT_EQ(*fOpt->settlementCcy, "USD");
+  std::filesystem::remove(path);
+}
+
 TEST(SymbolRegistryTest, SaveAndLoadFromFile)
 {
   std::filesystem::path tempPath = std::filesystem::temp_directory_path() / "test_registry.json";

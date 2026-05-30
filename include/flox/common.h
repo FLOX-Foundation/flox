@@ -35,6 +35,18 @@ enum class OptionType
   PUT
 };
 
+enum class SettlementType
+{
+  Cash,
+  Physical
+};
+
+enum class ExerciseStyle
+{
+  European,
+  American
+};
+
 enum class OrderType : uint8_t
 {
   LIMIT = 0,

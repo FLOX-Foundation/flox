@@ -39,6 +39,14 @@ struct SymbolInfo
   std::optional<Price> strike;
   std::optional<TimePoint> expiry;
   std::optional<OptionType> optionType;
+
+  // Contract spec. Defaults preserve spot/perp behavior: a 1.0 multiplier, cash
+  // settlement, European exercise. Options override these per the venue
+  // (US equity 100x, physical-settled American; crypto 1x, cash, European).
+  double contractMultiplier{1.0};
+  SettlementType settlementType{SettlementType::Cash};
+  ExerciseStyle exerciseStyle{ExerciseStyle::European};
+  std::optional<std::string> settlementCcy;
 };
 
 class SymbolRegistry : public ISubsystem
