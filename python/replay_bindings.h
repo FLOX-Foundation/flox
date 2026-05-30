@@ -159,16 +159,21 @@ struct PyOptionQuote
   int64_t recv_ts_ns;
   int64_t mark_price_raw;
   int64_t index_price_raw;
+  int64_t underlying_price_raw;
   int64_t iv_raw;
-  int64_t open_interest_raw;
   int64_t bid_price_raw;
   int64_t ask_price_raw;
+  int64_t bid_size_raw;
+  int64_t ask_size_raw;
+  int64_t bid_iv_raw;
+  int64_t ask_iv_raw;
+  int64_t open_interest_raw;
   uint32_t symbol_id;
   uint8_t instrument;
   uint8_t _pad[3];
 };
 #pragma pack(pop)
-static_assert(sizeof(PyOptionQuote) == 72);
+static_assert(sizeof(PyOptionQuote) == 112);
 
 // Per-event header for read_book_updates(); levels are in a separate flat array.
 #pragma pack(push, 1)
@@ -402,10 +407,15 @@ class PyDataReader
                               p.recv_ts_ns = q.recv_ts_ns;
                               p.mark_price_raw = q.mark_price_raw;
                               p.index_price_raw = q.index_price_raw;
+                              p.underlying_price_raw = q.underlying_price_raw;
                               p.iv_raw = q.iv_raw;
-                              p.open_interest_raw = q.open_interest_raw;
                               p.bid_price_raw = q.bid_price_raw;
                               p.ask_price_raw = q.ask_price_raw;
+                              p.bid_size_raw = q.bid_size_raw;
+                              p.ask_size_raw = q.ask_size_raw;
+                              p.bid_iv_raw = q.bid_iv_raw;
+                              p.ask_iv_raw = q.ask_iv_raw;
+                              p.open_interest_raw = q.open_interest_raw;
                               p.symbol_id = q.symbol_id;
                               p.instrument = q.instrument;
                               quotes.push_back(p);
@@ -755,7 +765,8 @@ class PyDataWriter
                              py::array_t<double> markPrices, py::array_t<double> indexPrices,
                              py::array_t<double> ivs, py::array_t<double> openInterest,
                              py::array_t<uint32_t> symbolIds, py::object bidPrices,
-                             py::object askPrices)
+                             py::object askPrices, py::object underlyingPrices, py::object bidSizes,
+                             py::object askSizes, py::object bidIvs, py::object askIvs)
   {
     size_t n = exchangeTsNs.size();
     if (recvTsNs.size() != static_cast<py::ssize_t>(n) ||
@@ -768,26 +779,24 @@ class PyDataWriter
       throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
     }
 
-    // bid/ask are optional: pass None to record no quote (stored as 0).
-    py::array_t<double> bidArr, askArr;
-    const bool hasBid = !bidPrices.is_none();
-    const bool hasAsk = !askPrices.is_none();
-    if (hasBid)
+    // Optional channels: pass None to record 0. Each must match length if given.
+    auto optArr = [&](py::object o) -> py::array_t<double>
     {
-      bidArr = bidPrices.cast<py::array_t<double>>();
-      if (bidArr.size() != static_cast<py::ssize_t>(n))
+      if (o.is_none())
+      {
+        return py::array_t<double>();
+      }
+      auto a = o.cast<py::array_t<double>>();
+      if (a.size() != static_cast<py::ssize_t>(n))
       {
         throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
       }
-    }
-    if (hasAsk)
-    {
-      askArr = askPrices.cast<py::array_t<double>>();
-      if (askArr.size() != static_cast<py::ssize_t>(n))
-      {
-        throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
-      }
-    }
+      return a;
+    };
+    py::array_t<double> bidArr = optArr(bidPrices), askArr = optArr(askPrices),
+                        undArr = optArr(underlyingPrices), bidSzArr = optArr(bidSizes),
+                        askSzArr = optArr(askSizes), bidIvArr = optArr(bidIvs),
+                        askIvArr = optArr(askIvs);
 
     const auto* ets = exchangeTsNs.data();
     const auto* rts = recvTsNs.data();
@@ -796,8 +805,13 @@ class PyDataWriter
     const auto* iv = ivs.data();
     const auto* oi = openInterest.data();
     const auto* sid = symbolIds.data();
-    const auto* bd = hasBid ? bidArr.data() : nullptr;
-    const auto* ak = hasAsk ? askArr.data() : nullptr;
+    const auto* bd = bidArr.size() ? bidArr.data() : nullptr;
+    const auto* ak = askArr.size() ? askArr.data() : nullptr;
+    const auto* un = undArr.size() ? undArr.data() : nullptr;
+    const auto* bsz = bidSzArr.size() ? bidSzArr.data() : nullptr;
+    const auto* asz = askSzArr.size() ? askSzArr.data() : nullptr;
+    const auto* biv = bidIvArr.size() ? bidIvArr.data() : nullptr;
+    const auto* aiv = askIvArr.size() ? askIvArr.data() : nullptr;
 
     uint64_t written = 0;
     {
@@ -809,10 +823,15 @@ class PyDataWriter
         q.recv_ts_ns = rts[i];
         q.mark_price_raw = flox::Price::fromDouble(mk[i]).raw();
         q.index_price_raw = flox::Price::fromDouble(ix[i]).raw();
+        q.underlying_price_raw = un ? flox::Price::fromDouble(un[i]).raw() : 0;
         q.iv_raw = static_cast<int64_t>(iv[i] * flox::replay::kIvScale);
         q.open_interest_raw = flox::Quantity::fromDouble(oi[i]).raw();
         q.bid_price_raw = bd ? flox::Price::fromDouble(bd[i]).raw() : 0;
         q.ask_price_raw = ak ? flox::Price::fromDouble(ak[i]).raw() : 0;
+        q.bid_size_raw = bsz ? flox::Quantity::fromDouble(bsz[i]).raw() : 0;
+        q.ask_size_raw = asz ? flox::Quantity::fromDouble(asz[i]).raw() : 0;
+        q.bid_iv_raw = biv ? static_cast<int64_t>(biv[i] * flox::replay::kIvScale) : 0;
+        q.ask_iv_raw = aiv ? static_cast<int64_t>(aiv[i] * flox::replay::kIvScale) : 0;
         q.symbol_id = sid[i];
         q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
         if (_writer.writeOptionQuote(q))
@@ -1175,7 +1194,8 @@ inline void bindReplay(py::module_& m)
                        bid_count, ask_count, level_offset, event_type);
   PYBIND11_NUMPY_DTYPE(PyLevel, price_raw, qty_raw, side);
   PYBIND11_NUMPY_DTYPE(PyOptionQuote, exchange_ts_ns, recv_ts_ns, mark_price_raw,
-                       index_price_raw, iv_raw, open_interest_raw, bid_price_raw, ask_price_raw,
+                       index_price_raw, underlying_price_raw, iv_raw, bid_price_raw, ask_price_raw,
+                       bid_size_raw, ask_size_raw, bid_iv_raw, ask_iv_raw, open_interest_raw,
                        symbol_id, instrument);
 
   // Fixed-point scales — match flox::Price/Quantity/Volume in flox/common.h.
@@ -1355,13 +1375,17 @@ inline void bindReplay(py::module_& m)
       .def("write_option_quotes", &PyDataWriter::writeOptionQuotes,
            "Bulk-write option quotes. mark_prices/index_prices are doubles "
            "(PRICE_SCALE), ivs are doubles (e.g. 0.65), open_interest is a double "
-           "(QUANTITY_SCALE). bid_prices/ask_prices are optional doubles (None to "
-           "record no quote, stored as 0) — the realistic fill model needs them. "
-           "Returns the count written.",
+           "(QUANTITY_SCALE). The rest are optional (None -> 0): bid_prices/"
+           "ask_prices and bid_sizes/ask_sizes give the touch the fill model "
+           "crosses; underlying_prices is the per-expiry forward (pricing/"
+           "moneyness) vs index_prices (spot index); bid_ivs/ask_ivs are the vol "
+           "at each touch. Returns the count written.",
            py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"), py::arg("mark_prices"),
            py::arg("index_prices"), py::arg("ivs"), py::arg("open_interest"),
            py::arg("symbol_ids"), py::arg("bid_prices") = py::none(),
-           py::arg("ask_prices") = py::none())
+           py::arg("ask_prices") = py::none(), py::arg("underlying_prices") = py::none(),
+           py::arg("bid_sizes") = py::none(), py::arg("ask_sizes") = py::none(),
+           py::arg("bid_ivs") = py::none(), py::arg("ask_ivs") = py::none())
       .def("flush", &PyDataWriter::flush,
            "Flush buffered data to disk")
       .def("close", &PyDataWriter::close,
