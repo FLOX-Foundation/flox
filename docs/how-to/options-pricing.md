@@ -38,6 +38,28 @@ call = flox.bs_price(flox.OptionType.CALL, spot=100, strike=100, t=1.0, vol=0.20
 # 10.4506
 ```
 
+`cost_of_carry` assembles `b` from the financing pieces an asset actually has, so
+the same pricer covers crypto and equities. Crypto passes everything zero; an
+equity nets the dividend yield and stock borrow:
+
+```python
+b = flox.cost_of_carry(rate=0.05, dividend_yield=0.02, borrow_rate=0.01)  # 0.02
+call = flox.bs_price(flox.OptionType.CALL, spot=100, strike=100, t=1.0, vol=0.20,
+                     rate=0.05, carry=b)
+```
+
+Single-name equities pay lumpy cash dividends, not a smooth yield.
+`bs_price_discrete_dividends` uses the escrowed-dividend model: it subtracts the
+present value of the dividends paid before expiry from the spot. A dividend lowers
+a call and lifts a put.
+
+```python
+# A $3 dividend paid in six months, one-year option.
+call = flox.bs_price_discrete_dividends(flox.OptionType.CALL, spot=100, strike=100,
+                                        t=1.0, vol=0.25, rate=0.05,
+                                        dividends=[(0.5, 3.0)])
+```
+
 ## Back out implied volatility
 
 `implied_vol` inverts a quoted price to the vol that reproduces it. It uses

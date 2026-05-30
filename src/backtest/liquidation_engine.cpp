@@ -612,7 +612,7 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
   // when the account is solvent or no positions remain.
   while (account.positionCount() > 0)
   {
-    const double notional = account.totalNotional();
+    const double notional = account.marginNotional();
     const double mm = mmFractionFor(notional);
     const double headroom = account.crossHeadroom(mm);
     if (headroom >= 0.0)
@@ -621,7 +621,8 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
     }
 
     // Pick the worst-PnL position (most negative uPnL). If tied,
-    // pick the one with the largest absolute notional.
+    // pick the one with the largest absolute notional. Premium-paid long
+    // options are never force-closed — their loss is already paid.
     auto& book = account.positionsMut();
     int worstIdx = -1;
     double worstUpnl = 0.0;
@@ -629,10 +630,14 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
     for (size_t i = 0; i < book.size(); ++i)
     {
       const auto& p = book[i];
+      if (p.isLongOption)
+      {
+        continue;
+      }
       const double mark = account.markFor(p.symbol);
       const double px = mark > 0.0 ? mark : p.entryPrice;
-      const double upnl = p.quantity * (px - p.entryPrice);
-      const double n = std::abs(p.quantity) * px;
+      const double upnl = p.quantity * (px - p.entryPrice) * p.contractMultiplier;
+      const double n = std::abs(p.quantity) * px * p.contractMultiplier;
       const bool better = (worstIdx < 0) ||
                           (upnl < worstUpnl) ||
                           (upnl == worstUpnl && n > worstNotional);
@@ -675,7 +680,8 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
     }
 
     const double signedFilled = (victim.quantity > 0.0) ? filledQty : -filledQty;
-    const double realized = signedFilled * (closePrice - victim.entryPrice);
+    const double realized =
+        signedFilled * (closePrice - victim.entryPrice) * victim.contractMultiplier;
     account.addEquity(realized);
     result.outcome.liquidated.push_back(account.accountId());
     ++_statLiquidations;

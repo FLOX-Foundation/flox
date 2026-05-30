@@ -211,6 +211,19 @@ inline double bawPrice(OptionType type, double spot, double strike, double t, do
   return euro + a1 * std::pow(spot / sk, q1);
 }
 
+// The critical underlying price at which early exercise of an American option
+// becomes optimal: a call is exercised at or above it, a put at or below it.
+// Drives an auto-exercise rule in a backtest's settlement loop.
+inline double bawCriticalPrice(OptionType type, double strike, double t, double rate, double carry,
+                               double vol) noexcept
+{
+  if (strike <= 0.0 || t <= 0.0 || vol <= 0.0)
+  {
+    return strike;
+  }
+  return detail::bawCriticalPrice(type, strike, t, rate, carry, vol);
+}
+
 // Engine dispatch by exercise style: European routes to closed-form
 // Black-Scholes, American to Barone-Adesi-Whaley. Transparent to the caller —
 // pass the SymbolInfo's exerciseStyle and get the right model.

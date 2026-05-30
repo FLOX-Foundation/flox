@@ -41,7 +41,9 @@ struct LeveragedPosition
   SymbolId symbol{};
   double quantity{0.0};  // signed: + long, - short
   double entryPrice{0.0};
-  double equity{0.0};  // margin posted backing this position
+  double equity{0.0};              // margin posted backing this position
+  double contractMultiplier{1.0};  // notional / PnL scale (options 100, ES 50; perp 1.0)
+  bool isLongOption{false};        // premium-paid long option: not margined, max loss = premium
 };
 
 // ADL ranking strategy. Real venues compute the closeout queue
