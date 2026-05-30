@@ -192,6 +192,10 @@ class PositionGroupTracker
     return true;
   }
 
+  // All positions (open and closed), keyed by id. Lets engines that walk the
+  // whole book (e.g. option expiry settlement) enumerate without copying.
+  const std::unordered_map<PositionId, IndividualPosition>& positions() const { return _positions; }
+
   IndividualPosition* getPosition(PositionId pid)
   {
     auto it = _positions.find(pid);
