@@ -135,6 +135,7 @@ add_flox_test(test_american_pricing)
 add_flox_test(test_svi_surface)
 add_flox_test(test_carry)
 add_flox_test(test_trading_calendar)
+add_flox_test(test_vol_cone)
 add_flox_test(test_option_quote_record)
 add_flox_test(test_option_quote_io)
 
