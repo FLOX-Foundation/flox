@@ -7985,10 +7985,6 @@
         },
         {
           "kind": "class",
-          "name": "OptionType"
-        },
-        {
-          "kind": "class",
           "name": "Order"
         },
         {
@@ -8185,10 +8181,6 @@
         },
         {
           "kind": "class",
-          "name": "VolSurface"
-        },
-        {
-          "kind": "class",
           "name": "VolumeBinAggregator"
         },
         {
@@ -8289,35 +8281,11 @@
         },
         {
           "kind": "function",
-          "name": "baw_price"
-        },
-        {
-          "kind": "function",
-          "name": "binomial_price"
-        },
-        {
-          "kind": "function",
           "name": "bollinger"
         },
         {
           "kind": "function",
           "name": "bootstrap_ci"
-        },
-        {
-          "kind": "function",
-          "name": "bs_price"
-        },
-        {
-          "kind": "function",
-          "name": "bs_vega"
-        },
-        {
-          "kind": "function",
-          "name": "build_surface_as_of"
-        },
-        {
-          "kind": "function",
-          "name": "calibrate_svi"
         },
         {
           "kind": "function",
@@ -8357,19 +8325,7 @@
         },
         {
           "kind": "function",
-          "name": "forward_price"
-        },
-        {
-          "kind": "function",
-          "name": "greeks"
-        },
-        {
-          "kind": "function",
           "name": "hurst_dfa"
-        },
-        {
-          "kind": "function",
-          "name": "implied_vol"
         },
         {
           "kind": "function",
@@ -8450,10 +8406,6 @@
         {
           "kind": "function",
           "name": "rsi"
-        },
-        {
-          "kind": "function",
-          "name": "second_order_greeks"
         },
         {
           "kind": "function",
