@@ -86,6 +86,45 @@ amer = flox.baw_price(flox.OptionType.PUT, spot=100, strike=100, t=1.0, vol=0.30
 A finer tree is more accurate but slower; BAW trades a small approximation error for
 speed. Pick the lattice when you need a reference value, BAW when you need many prices.
 
+## Volatility surface (SVI)
+
+Marking every option at one flat vol is a toy. A real backtest marks each step to
+the volatility surface as it was on that date. `flox_py` fits a raw-SVI surface and
+serves point-in-time, no-lookahead vols.
+
+Calibrate one expiry's smile from observed log-moneyness and total variance
+(`iv**2 * t`):
+
+```python
+params = flox.calibrate_svi(log_moneyness=[-0.4, -0.2, 0.0, 0.2, 0.4],
+                            total_variance=[0.055, 0.050, 0.048, 0.051, 0.058])
+params["rho"]  # skew of the fitted slice
+```
+
+Stack slices into a surface and read an implied vol at any strike and expiry. The
+surface interpolates in total-variance space and can check itself for calendar
+arbitrage:
+
+```python
+surf = flox.VolSurface()
+surf.add_slice(t=0.25, **params)
+surf.add_slice(t=1.00, a=0.06, b=0.10, rho=-0.2, m=0.0, sigma=0.2)
+surf.implied_vol(log_moneyness=0.0, t=0.5)  # vol to mark a 6-month ATM option
+surf.is_calendar_free()                     # True when variance rises with time
+```
+
+For a historical backtest, build the surface from timestamped quotes and pass the
+as-of time. Only quotes stamped on or before it are used, so the surface is exactly
+what you could have seen then — no peeking at the future:
+
+```python
+# quotes: list of (ts_ns, t, log_moneyness, iv)
+surf = flox.build_surface_as_of(quotes, asof_ns=cutoff)
+```
+
+Expiries with fewer than five quotes are skipped — too thin to identify the five SVI
+parameters.
+
 ## Vega and forward price
 
 ```python

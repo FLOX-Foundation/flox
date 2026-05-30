@@ -8185,6 +8185,10 @@
         },
         {
           "kind": "class",
+          "name": "VolSurface"
+        },
+        {
+          "kind": "class",
           "name": "VolumeBinAggregator"
         },
         {
@@ -8306,6 +8310,14 @@
         {
           "kind": "function",
           "name": "bs_vega"
+        },
+        {
+          "kind": "function",
+          "name": "build_surface_as_of"
+        },
+        {
+          "kind": "function",
+          "name": "calibrate_svi"
         },
         {
           "kind": "function",

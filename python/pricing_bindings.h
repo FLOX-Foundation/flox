@@ -12,10 +12,15 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <cstdint>
+#include <tuple>
+#include <vector>
+
 #include "flox/common.h"
 #include "flox/pricing/american.h"
 #include "flox/pricing/black_scholes.h"
 #include "flox/pricing/greeks.h"
+#include "flox/pricing/svi.h"
 
 namespace py = pybind11;
 
@@ -141,4 +146,65 @@ inline void bindPricing(py::module_& m)
       py::arg("rate") = 0.0, py::arg("carry") = 0.0,
       "Second-order greeks dict(vanna, volga, charm) for vol traders. vanna = "
       "d(delta)/d(vol), volga = d(vega)/d(vol), charm = d(delta)/d(time) per year.");
+
+  // ── SVI implied-volatility surface ──────────────────────────────────────
+  m.def(
+      "calibrate_svi",
+      [](const std::vector<double>& k, const std::vector<double>& w) -> py::dict
+      {
+        const auto p = flox::pricing::calibrateSVI(k, w);
+        py::dict d;
+        d["a"] = p.a;
+        d["b"] = p.b;
+        d["rho"] = p.rho;
+        d["m"] = p.m;
+        d["sigma"] = p.sigma;
+        return d;
+      },
+      py::arg("log_moneyness"), py::arg("total_variance"),
+      "Calibrate a raw-SVI slice to observed (log-moneyness, total-variance) "
+      "points by least squares. Needs >= 5 points. Returns dict(a, b, rho, m, "
+      "sigma). Total variance is iv**2 * t.");
+
+  if (!py::hasattr(m, "VolSurface"))
+  {
+    py::class_<flox::pricing::VolSurface>(m, "VolSurface",
+                                          "SVI implied-volatility surface: a term structure of "
+                                          "calibrated slices that interpolates vol in total-variance "
+                                          "space. Mark a backtest to this instead of a flat vol.")
+        .def(py::init<>())
+        .def(
+            "add_slice",
+            [](flox::pricing::VolSurface& s, double t, double a, double b, double rho, double mm,
+               double sigma)
+            { s.addSlice(t, flox::pricing::SVIParams{a, b, rho, mm, sigma}); },
+            py::arg("t"), py::arg("a"), py::arg("b"), py::arg("rho"), py::arg("m"), py::arg("sigma"),
+            "Add a calibrated SVI slice at expiry t (years).")
+        .def("implied_vol", &flox::pricing::VolSurface::impliedVol, py::arg("log_moneyness"),
+             py::arg("t"), "Black-Scholes implied vol at (log-moneyness, expiry).")
+        .def("total_variance", &flox::pricing::VolSurface::totalVariance, py::arg("log_moneyness"),
+             py::arg("t"), "Total implied variance at (log-moneyness, expiry).")
+        .def("is_calendar_free", &flox::pricing::VolSurface::isCalendarFree,
+             py::arg("k_lo") = -1.5, py::arg("k_hi") = 1.5, py::arg("samples") = 50,
+             "True when total variance is non-decreasing in time (no calendar arbitrage).")
+        .def("slice_count", &flox::pricing::VolSurface::sliceCount);
+  }
+
+  m.def(
+      "build_surface_as_of",
+      [](const std::vector<std::tuple<int64_t, double, double, double>>& quotes,
+         int64_t asof_ns) -> flox::pricing::VolSurface
+      {
+        std::vector<flox::pricing::DatedVolQuote> dq;
+        dq.reserve(quotes.size());
+        for (const auto& q : quotes)
+        {
+          dq.push_back({std::get<0>(q), std::get<1>(q), std::get<2>(q), std::get<3>(q)});
+        }
+        return flox::pricing::buildSurfaceAsOf(dq, asof_ns);
+      },
+      py::arg("quotes"), py::arg("asof_ns"),
+      "Build a point-in-time VolSurface from (ts_ns, t, log_moneyness, iv) "
+      "quotes, using ONLY those stamped on or before asof_ns — the no-lookahead "
+      "guarantee for honest backtests. Expiries with < 5 quotes are skipped.");
 }
