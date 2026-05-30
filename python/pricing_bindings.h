@@ -19,6 +19,7 @@
 #include "flox/common.h"
 #include "flox/pricing/american.h"
 #include "flox/pricing/black_scholes.h"
+#include "flox/pricing/carry.h"
 #include "flox/pricing/greeks.h"
 #include "flox/pricing/svi.h"
 
@@ -146,6 +147,35 @@ inline void bindPricing(py::module_& m)
       py::arg("rate") = 0.0, py::arg("carry") = 0.0,
       "Second-order greeks dict(vanna, volga, charm) for vol traders. vanna = "
       "d(delta)/d(vol), volga = d(vega)/d(vol), charm = d(delta)/d(time) per year.");
+
+  // ── Cost-of-carry generalization (crypto + TradFi) ──────────────────────
+  m.def(
+      "cost_of_carry",
+      [](double rate, double dividend_yield, double borrow_rate) -> double
+      { return flox::pricing::costOfCarry(rate, dividend_yield, borrow_rate); },
+      py::arg("rate"), py::arg("dividend_yield") = 0.0, py::arg("borrow_rate") = 0.0,
+      "Cost-of-carry b = rate - dividend_yield - borrow_rate. Crypto/Black-76 "
+      "pass all zero; equity nets the financing pieces; FX passes the foreign "
+      "rate as dividend_yield.");
+
+  m.def(
+      "bs_price_discrete_dividends",
+      [](flox::OptionType type, double spot, double strike, double t, double vol, double rate,
+         const std::vector<std::tuple<double, double>>& dividends) -> double
+      {
+        std::vector<flox::pricing::Dividend> divs;
+        divs.reserve(dividends.size());
+        for (const auto& d : dividends)
+        {
+          divs.push_back({std::get<0>(d), std::get<1>(d)});
+        }
+        return flox::pricing::bsPriceDiscreteDividends(type, spot, strike, t, rate, vol, divs);
+      },
+      py::arg("option_type"), py::arg("spot"), py::arg("strike"), py::arg("t"), py::arg("vol"),
+      py::arg("rate"), py::arg("dividends"),
+      "European price on a stock paying discrete cash dividends (escrowed model). "
+      "dividends is a list of (t_years, amount) paid before expiry; their present "
+      "value is subtracted from spot. A dividend lowers a call and lifts a put.");
 
   // ── SVI implied-volatility surface ──────────────────────────────────────
   m.def(
