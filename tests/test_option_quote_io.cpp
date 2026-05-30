@@ -19,6 +19,8 @@ OptionQuoteRecord makeQuote(int i, uint32_t sym = 7)
   q.index_price_raw = (3001LL + i) * 100000000LL;
   q.iv_raw = static_cast<int64_t>((0.5 + i * 0.001) * kIvScale);
   q.open_interest_raw = (1000LL + i) * 100000000LL;
+  q.bid_price_raw = (2999LL + i) * 100000000LL;
+  q.ask_price_raw = (3002LL + i) * 100000000LL;
   q.symbol_id = sym;
   q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
   return q;
@@ -63,6 +65,8 @@ TEST_F(OptionQuoteIoTest, WriteAndReadUncompressed)
         EXPECT_EQ(event.option_quote.mark_price_raw, expected.mark_price_raw);
         EXPECT_EQ(event.option_quote.iv_raw, expected.iv_raw);
         EXPECT_EQ(event.option_quote.open_interest_raw, expected.open_interest_raw);
+        EXPECT_EQ(event.option_quote.bid_price_raw, expected.bid_price_raw);
+        EXPECT_EQ(event.option_quote.ask_price_raw, expected.ask_price_raw);
         EXPECT_EQ(event.option_quote.symbol_id, 7u);
         EXPECT_EQ(event.symbolId(), 7u);  // helper resolves option-quote symbol
         ++count;

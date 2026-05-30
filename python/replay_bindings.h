@@ -161,12 +161,14 @@ struct PyOptionQuote
   int64_t index_price_raw;
   int64_t iv_raw;
   int64_t open_interest_raw;
+  int64_t bid_price_raw;
+  int64_t ask_price_raw;
   uint32_t symbol_id;
   uint8_t instrument;
   uint8_t _pad[3];
 };
 #pragma pack(pop)
-static_assert(sizeof(PyOptionQuote) == 56);
+static_assert(sizeof(PyOptionQuote) == 72);
 
 // Per-event header for read_book_updates(); levels are in a separate flat array.
 #pragma pack(push, 1)
@@ -402,6 +404,8 @@ class PyDataReader
                               p.index_price_raw = q.index_price_raw;
                               p.iv_raw = q.iv_raw;
                               p.open_interest_raw = q.open_interest_raw;
+                              p.bid_price_raw = q.bid_price_raw;
+                              p.ask_price_raw = q.ask_price_raw;
                               p.symbol_id = q.symbol_id;
                               p.instrument = q.instrument;
                               quotes.push_back(p);
@@ -750,7 +754,8 @@ class PyDataWriter
   uint64_t writeOptionQuotes(py::array_t<int64_t> exchangeTsNs, py::array_t<int64_t> recvTsNs,
                              py::array_t<double> markPrices, py::array_t<double> indexPrices,
                              py::array_t<double> ivs, py::array_t<double> openInterest,
-                             py::array_t<uint32_t> symbolIds)
+                             py::array_t<uint32_t> symbolIds, py::object bidPrices,
+                             py::object askPrices)
   {
     size_t n = exchangeTsNs.size();
     if (recvTsNs.size() != static_cast<py::ssize_t>(n) ||
@@ -763,6 +768,27 @@ class PyDataWriter
       throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
     }
 
+    // bid/ask are optional: pass None to record no quote (stored as 0).
+    py::array_t<double> bidArr, askArr;
+    const bool hasBid = !bidPrices.is_none();
+    const bool hasAsk = !askPrices.is_none();
+    if (hasBid)
+    {
+      bidArr = bidPrices.cast<py::array_t<double>>();
+      if (bidArr.size() != static_cast<py::ssize_t>(n))
+      {
+        throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
+      }
+    }
+    if (hasAsk)
+    {
+      askArr = askPrices.cast<py::array_t<double>>();
+      if (askArr.size() != static_cast<py::ssize_t>(n))
+      {
+        throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
+      }
+    }
+
     const auto* ets = exchangeTsNs.data();
     const auto* rts = recvTsNs.data();
     const auto* mk = markPrices.data();
@@ -770,6 +796,8 @@ class PyDataWriter
     const auto* iv = ivs.data();
     const auto* oi = openInterest.data();
     const auto* sid = symbolIds.data();
+    const auto* bd = hasBid ? bidArr.data() : nullptr;
+    const auto* ak = hasAsk ? askArr.data() : nullptr;
 
     uint64_t written = 0;
     {
@@ -783,6 +811,8 @@ class PyDataWriter
         q.index_price_raw = flox::Price::fromDouble(ix[i]).raw();
         q.iv_raw = static_cast<int64_t>(iv[i] * flox::replay::kIvScale);
         q.open_interest_raw = flox::Quantity::fromDouble(oi[i]).raw();
+        q.bid_price_raw = bd ? flox::Price::fromDouble(bd[i]).raw() : 0;
+        q.ask_price_raw = ak ? flox::Price::fromDouble(ak[i]).raw() : 0;
         q.symbol_id = sid[i];
         q.instrument = static_cast<uint8_t>(flox::InstrumentType::Option);
         if (_writer.writeOptionQuote(q))
@@ -1145,7 +1175,8 @@ inline void bindReplay(py::module_& m)
                        bid_count, ask_count, level_offset, event_type);
   PYBIND11_NUMPY_DTYPE(PyLevel, price_raw, qty_raw, side);
   PYBIND11_NUMPY_DTYPE(PyOptionQuote, exchange_ts_ns, recv_ts_ns, mark_price_raw,
-                       index_price_raw, iv_raw, open_interest_raw, symbol_id, instrument);
+                       index_price_raw, iv_raw, open_interest_raw, bid_price_raw, ask_price_raw,
+                       symbol_id, instrument);
 
   // Fixed-point scales — match flox::Price/Quantity/Volume in flox/common.h.
   // Use these instead of hardcoding 1e8 in client code.
@@ -1324,10 +1355,13 @@ inline void bindReplay(py::module_& m)
       .def("write_option_quotes", &PyDataWriter::writeOptionQuotes,
            "Bulk-write option quotes. mark_prices/index_prices are doubles "
            "(PRICE_SCALE), ivs are doubles (e.g. 0.65), open_interest is a double "
-           "(QUANTITY_SCALE). Returns the count written.",
+           "(QUANTITY_SCALE). bid_prices/ask_prices are optional doubles (None to "
+           "record no quote, stored as 0) — the realistic fill model needs them. "
+           "Returns the count written.",
            py::arg("exchange_ts_ns"), py::arg("recv_ts_ns"), py::arg("mark_prices"),
            py::arg("index_prices"), py::arg("ivs"), py::arg("open_interest"),
-           py::arg("symbol_ids"))
+           py::arg("symbol_ids"), py::arg("bid_prices") = py::none(),
+           py::arg("ask_prices") = py::none())
       .def("flush", &PyDataWriter::flush,
            "Flush buffered data to disk")
       .def("close", &PyDataWriter::close,
