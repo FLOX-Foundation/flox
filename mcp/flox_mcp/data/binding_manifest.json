@@ -8285,6 +8285,14 @@
         },
         {
           "kind": "function",
+          "name": "baw_price"
+        },
+        {
+          "kind": "function",
+          "name": "binomial_price"
+        },
+        {
+          "kind": "function",
           "name": "bollinger"
         },
         {
