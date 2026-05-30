@@ -117,6 +117,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_w15_reproducibility)
   add_flox_test(test_w15_calibration)
   add_flox_test(test_option_settlement)
+  add_flox_test(test_option_exercise)
 endif()
 
 add_flox_test(test_indicators)
