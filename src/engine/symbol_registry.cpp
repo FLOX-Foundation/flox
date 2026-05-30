@@ -11,6 +11,7 @@
 #include "flox/util/performance/profile.h"
 
 #include <cstdio>
+#include <cstring>
 #include <optional>
 #include <span>
 
@@ -371,6 +372,16 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
       std::fprintf(f, ", \"option_type\": %d", static_cast<int>(*sym.optionType));
     }
 
+    std::fprintf(f,
+                 ", \"contract_multiplier\": %.10g, \"settlement_type\": %d, "
+                 "\"exercise_style\": %d",
+                 sym.contractMultiplier, static_cast<int>(sym.settlementType),
+                 static_cast<int>(sym.exerciseStyle));
+    if (sym.settlementCcy.has_value())
+    {
+      std::fprintf(f, ", \"settlement_ccy\": \"%s\"", sym.settlementCcy->c_str());
+    }
+
     std::fprintf(f, "}%s\n", (++count < _symbols.size()) ? "," : "");
   }
 
@@ -480,6 +491,33 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
       info.optionType = static_cast<OptionType>(std::stoi(content.substr(opt_start)));
     }
 
+    // Contract spec (older files omit these; defaults already on `info`).
+    size_t mult_start = content.find("\"contract_multiplier\":", pos);
+    if (mult_start != std::string::npos && mult_start < entry_end)
+    {
+      info.contractMultiplier = std::stod(content.substr(mult_start + 22));
+    }
+    size_t settle_start = content.find("\"settlement_type\":", pos);
+    if (settle_start != std::string::npos && settle_start < entry_end)
+    {
+      info.settlementType = static_cast<SettlementType>(std::stoi(content.substr(settle_start + 18)));
+    }
+    size_t ex_start = content.find("\"exercise_style\":", pos);
+    if (ex_start != std::string::npos && ex_start < entry_end)
+    {
+      info.exerciseStyle = static_cast<ExerciseStyle>(std::stoi(content.substr(ex_start + 17)));
+    }
+    size_t ccy_start = content.find("\"settlement_ccy\": \"", pos);
+    if (ccy_start != std::string::npos && ccy_start < entry_end)
+    {
+      ccy_start += 19;
+      size_t ccy_end = content.find('"', ccy_start);
+      if (ccy_end != std::string::npos)
+      {
+        info.settlementCcy = content.substr(ccy_start, ccy_end - ccy_start);
+      }
+    }
+
     // Add to registry
     std::string key = info.exchange + ":" + info.symbol;
     _map[key] = info.id;
@@ -512,7 +550,9 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
 //   [1 byte] option_type (if flag set)
 
 static constexpr uint32_t kSymbolRegistryMagic = 0x47455253;  // "SREG"
-static constexpr uint32_t kSymbolRegistryVersion = 2;
+// v3 adds the contract spec (multiplier / settlement_type / exercise_style /
+// settlement_ccy). v2 files load with defaults for those.
+static constexpr uint32_t kSymbolRegistryVersion = 3;
 
 std::vector<std::byte> SymbolRegistry::serialize() const
 {
@@ -543,6 +583,16 @@ std::vector<std::byte> SymbolRegistry::serialize() const
     for (int i = 0; i < 8; ++i)
     {
       result.push_back(static_cast<std::byte>((v >> (i * 8)) & 0xFF));
+    }
+  };
+
+  auto write_f64 = [&result](double d)
+  {
+    int64_t bits;
+    std::memcpy(&bits, &d, sizeof(bits));
+    for (int i = 0; i < 8; ++i)
+    {
+      result.push_back(static_cast<std::byte>((bits >> (i * 8)) & 0xFF));
     }
   };
 
@@ -582,6 +632,10 @@ std::vector<std::byte> SymbolRegistry::serialize() const
     {
       flags |= 0x04;
     }
+    if (sym.settlementCcy.has_value())
+    {
+      flags |= 0x08;
+    }
     write_u8(flags);
 
     if (sym.strike.has_value())
@@ -598,6 +652,15 @@ std::vector<std::byte> SymbolRegistry::serialize() const
     if (sym.optionType.has_value())
     {
       write_u8(static_cast<uint8_t>(*sym.optionType));
+    }
+
+    // v3 contract spec.
+    write_f64(sym.contractMultiplier);
+    write_u8(static_cast<uint8_t>(sym.settlementType));
+    write_u8(static_cast<uint8_t>(sym.exerciseStyle));
+    if (sym.settlementCcy.has_value())
+    {
+      write_string(*sym.settlementCcy);
     }
   }
 
@@ -661,6 +724,14 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
     return v;
   };
 
+  auto read_f64 = [&read_i64]() -> double
+  {
+    int64_t bits = read_i64();
+    double d;
+    std::memcpy(&d, &bits, sizeof(d));
+    return d;
+  };
+
   auto read_string = [&data, &pos, &read_u16]() -> std::string
   {
     uint16_t len = read_u16();
@@ -685,7 +756,7 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
   }
 
   uint32_t version = read_u32();
-  if (version != 1 && version != 2)
+  if (version != 1 && version != 2 && version != 3)
   {
     return false;
   }
@@ -723,6 +794,17 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
     if (flags & 0x04)
     {
       info.optionType = static_cast<OptionType>(read_u8());
+    }
+
+    if (version >= 3)
+    {
+      info.contractMultiplier = read_f64();
+      info.settlementType = static_cast<SettlementType>(read_u8());
+      info.exerciseStyle = static_cast<ExerciseStyle>(read_u8());
+      if (flags & 0x08)
+      {
+        info.settlementCcy = read_string();
+      }
     }
 
     std::string key = info.exchange + ":" + info.symbol;
