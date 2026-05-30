@@ -103,10 +103,12 @@ struct alignas(8) TradeRecord
 };
 static_assert(sizeof(TradeRecord) == 48, "TradeRecord must be 48 bytes");
 
-// Option side-channel quote. price_raw / index_price_raw use the same
+// Option side-channel quote. mark / index / bid / ask price_raw use the same
 // PRICE_SCALE as TradeRecord; iv_raw uses kIvScale; open_interest_raw uses the
 // venue's contract/quantity scale (QUANTITY_SCALE). Fields are independent of
-// any trade — emitted whenever the venue publishes a mark/IV snapshot.
+// any trade — emitted whenever the venue publishes a mark/IV/quote snapshot.
+// bid/ask are the best quoted prices (0 when the venue does not publish them);
+// the realistic fill model needs the spread, which mark alone cannot give.
 struct alignas(8) OptionQuoteRecord
 {
   int64_t exchange_ts_ns{0};
@@ -115,12 +117,14 @@ struct alignas(8) OptionQuoteRecord
   int64_t index_price_raw{0};
   int64_t iv_raw{0};
   int64_t open_interest_raw{0};
+  int64_t bid_price_raw{0};  // best bid; 0 when not published
+  int64_t ask_price_raw{0};  // best ask; 0 when not published
   uint32_t symbol_id{0};
   uint8_t instrument{0};
   uint8_t _pad{0};
   uint16_t exchange_id{0};
 };
-static_assert(sizeof(OptionQuoteRecord) == 56, "OptionQuoteRecord must be 56 bytes");
+static_assert(sizeof(OptionQuoteRecord) == 72, "OptionQuoteRecord must be 72 bytes");
 
 struct alignas(8) BookLevel
 {

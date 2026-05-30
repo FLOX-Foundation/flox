@@ -9,7 +9,7 @@ using namespace flox::replay;
 
 TEST(OptionQuoteRecord, SizeAndAlignment)
 {
-  static_assert(sizeof(OptionQuoteRecord) == 56);
+  static_assert(sizeof(OptionQuoteRecord) == 72);
   static_assert(alignof(OptionQuoteRecord) == 8);
   EXPECT_EQ(sizeof(OptionQuoteRecord) % 8, 0u);
 }
