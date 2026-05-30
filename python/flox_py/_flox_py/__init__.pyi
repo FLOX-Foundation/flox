@@ -8,7 +8,7 @@ import numpy.typing
 import typing
 from . import _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'Cross', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'Isolated', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarginMode', 'MarkImpactModel', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VenueAvailability', 'VenueExecutor', 'VenueStack', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'bollinger', 'bootstrap_ci', 'cci', 'chop', 'correlation', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'hurst_dfa', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'Cross', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'Isolated', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarginMode', 'MarkImpactModel', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'OptionType', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VenueAvailability', 'VenueExecutor', 'VenueStack', 'VolSurface', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'baw_price', 'binomial_price', 'bollinger', 'bootstrap_ci', 'bs_price', 'bs_price_discrete_dividends', 'bs_vega', 'build_surface_as_of', 'calibrate_svi', 'cci', 'chop', 'correlation', 'cost_of_carry', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'forward_price', 'greeks', 'hurst_dfa', 'implied_vol', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'second_order_greeks', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'validate', 'validate_dataset', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -531,6 +531,10 @@ class DataReader:
         """
         Read book updates starting from a given timestamp (nanoseconds). Same return shape as read_book_updates().
         """
+    def read_option_quotes_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
+        """
+        Read option quotes (mark/iv/index/open-interest) from a given timestamp (nanoseconds) as a numpy structured array (PyOptionQuote dtype). Raw fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE.
+        """
     def read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Read all trades as a numpy structured array (PyTrade dtype)
@@ -595,6 +599,10 @@ class DataWriter:
     def write_books(self, headers: typing.Annotated[numpy.typing.ArrayLike, ...], levels: typing.Annotated[numpy.typing.ArrayLike, ...]) -> int:
         """
         Batched book writer. Round-trip with DataReader.read_book_updates.
+        """
+    def write_option_quotes(self, exchange_ts_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], recv_ts_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], mark_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], index_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ivs: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], open_interest: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol_ids: typing.Annotated[numpy.typing.ArrayLike, numpy.uint32]) -> int:
+        """
+        Bulk-write option quotes. mark_prices/index_prices are doubles (PRICE_SCALE), ivs are doubles (e.g. 0.65), open_interest is a double (QUANTITY_SCALE). Returns the count written.
         """
     def write_trade(self, exchange_ts_ns: typing.SupportsInt | typing.SupportsIndex, recv_ts_ns: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, trade_id: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, side: typing.SupportsInt | typing.SupportsIndex) -> bool:
         """
@@ -1572,6 +1580,43 @@ class OHLCBinAggregator(_AggregatorHandle):
         """
         Structured numpy: (bucket_ts_ns i8, symbol_id u4, open_raw i8, high_raw i8, low_raw i8, close_raw i8). *_raw fields are fixed-point. Divide by Price::SCALE to get floats. symbol_id is 0 when by_symbol=False.
         """
+class OptionType:
+    """
+    Members:
+    
+      CALL
+    
+      PUT
+    """
+    CALL: typing.ClassVar[OptionType]  # value = <OptionType.CALL: 0>
+    PUT: typing.ClassVar[OptionType]  # value = <OptionType.PUT: 1>
+    __members__: typing.ClassVar[dict[str, OptionType]]  # value = {'CALL': <OptionType.CALL: 0>, 'PUT': <OptionType.PUT: 1>}
+    def __eq__(self, other: typing.Any) -> bool:
+        ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
 class Order:
     close_position: bool
     order_type: str
@@ -3286,6 +3331,30 @@ class VenueStack:
         ...
     def venue_name(self) -> str:
         ...
+class VolSurface:
+    """
+    SVI implied-volatility surface: a term structure of calibrated slices that interpolates vol in total-variance space. Mark a backtest to this instead of a flat vol.
+    """
+    def __init__(self) -> None:
+        ...
+    def add_slice(self, t: typing.SupportsFloat | typing.SupportsIndex, a: typing.SupportsFloat | typing.SupportsIndex, b: typing.SupportsFloat | typing.SupportsIndex, rho: typing.SupportsFloat | typing.SupportsIndex, m: typing.SupportsFloat | typing.SupportsIndex, sigma: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        Add a calibrated SVI slice at expiry t (years).
+        """
+    def implied_vol(self, log_moneyness: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex) -> float:
+        """
+        Black-Scholes implied vol at (log-moneyness, expiry).
+        """
+    def is_calendar_free(self, k_lo: typing.SupportsFloat | typing.SupportsIndex = -1.5, k_hi: typing.SupportsFloat | typing.SupportsIndex = 1.5, samples: typing.SupportsInt | typing.SupportsIndex = 50) -> bool:
+        """
+        True when total variance is non-decreasing in time (no calendar arbitrage).
+        """
+    def slice_count(self) -> int:
+        ...
+    def total_variance(self, log_moneyness: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex) -> float:
+        """
+        Total implied variance at (log-moneyness, expiry).
+        """
 class VolumeBinAggregator(_AggregatorHandle):
     """
     Time-bucketed trade quantity sum. Same bucketing structure as BinCountAggregator but sums trade.qty_raw per cell instead of counting. Books are ignored (no scalar qty per book event).
@@ -3538,11 +3607,39 @@ def autocorrelation(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float6
     ...
 def bar_returns(signal_long: typing.Annotated[numpy.typing.ArrayLike, numpy.int8], signal_short: typing.Annotated[numpy.typing.ArrayLike, numpy.int8], log_returns: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> numpy.typing.NDArray[numpy.float64]:
     ...
+def baw_price(option_type: OptionType, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> float:
+    """
+    Barone-Adesi-Whaley American price: European value plus a closed-form early-exercise premium. Cheaper than a fine tree, so preferred for greeks via finite differences. An American call with carry>=rate collapses to the European price.
+    """
+def binomial_price(option_type: OptionType, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0, steps: typing.SupportsInt | typing.SupportsIndex = 200, american: bool = True) -> float:
+    """
+    Cox-Ross-Rubinstein binomial price. american=True checks early exercise at every node (American premium); american=False is a European lattice that converges to bs_price as steps grows.
+    """
 def bollinger(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], period: typing.SupportsInt | typing.SupportsIndex = 20, stddev: typing.SupportsFloat | typing.SupportsIndex = 2.0) -> dict:
     ...
 def bootstrap_ci(data: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], confidence: typing.SupportsFloat | typing.SupportsIndex = 0.95, num_samples: typing.SupportsInt | typing.SupportsIndex = 10000) -> tuple[float, float, float]:
     """
     Bootstrap confidence interval, returns (lower, median, upper)
+    """
+def bs_price(option_type: OptionType, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> float:
+    """
+    Generalized Black-Scholes-Merton price. t in years; rate=discount r; carry=cost-of-carry b (0 for crypto/Black-76). Returns discounted intrinsic for expired or zero-vol inputs.
+    """
+def bs_price_discrete_dividends(option_type: OptionType, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex, dividends: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]]) -> float:
+    """
+    European price on a stock paying discrete cash dividends (escrowed model). dividends is a list of (t_years, amount) paid before expiry; their present value is subtracted from spot. A dividend lowers a call and lifts a put.
+    """
+def bs_vega(spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> float:
+    """
+    Black-Scholes vega (call/put identical).
+    """
+def build_surface_as_of(quotes: collections.abc.Sequence[tuple[typing.SupportsInt | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], asof_ns: typing.SupportsInt | typing.SupportsIndex) -> VolSurface:
+    """
+    Build a point-in-time VolSurface from (ts_ns, t, log_moneyness, iv) quotes, using ONLY those stamped on or before asof_ns — the no-lookahead guarantee for honest backtests. Expiries with < 5 quotes are skipped.
+    """
+def calibrate_svi(log_moneyness: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex], total_variance: collections.abc.Sequence[typing.SupportsFloat | typing.SupportsIndex]) -> dict:
+    """
+    Calibrate a raw-SVI slice to observed (log-moneyness, total-variance) points by least squares. Needs >= 5 points. Returns dict(a, b, rho, m, sigma). Total variance is iv**2 * t.
     """
 def cci(high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], period: typing.SupportsInt | typing.SupportsIndex = 20) -> numpy.typing.NDArray[numpy.float64]:
     ...
@@ -3551,6 +3648,10 @@ def chop(high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typ
 def correlation(x: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], y: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> float:
     """
     Pearson correlation coefficient
+    """
+def cost_of_carry(rate: typing.SupportsFloat | typing.SupportsIndex, dividend_yield: typing.SupportsFloat | typing.SupportsIndex = 0.0, borrow_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> float:
+    """
+    Cost-of-carry b = rate - dividend_yield - borrow_rate. Crypto/Black-76 pass all zero; equity nets the financing pieces; FX passes the foreign rate as dividend_yield.
     """
 def cvd(open: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], volume: typing.Annotated[numpy.typing.ArrayLike, numpy.float64]) -> numpy.typing.NDArray[numpy.float64]:
     ...
@@ -3564,9 +3665,21 @@ def extract_symbols(input_path: str, output_path: str, symbols: collections.abc.
     ...
 def extract_time_range(input_path: str, output_path: str, from_ns: typing.SupportsInt | typing.SupportsIndex, to_ns: typing.SupportsInt | typing.SupportsIndex) -> int:
     ...
+def forward_price(spot: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, carry: typing.SupportsFloat | typing.SupportsIndex) -> float:
+    """
+    Forward price spot * exp(carry * t).
+    """
+def greeks(option_type: OptionType, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> dict:
+    """
+    First-order greeks dict(delta, gamma, vega, theta, rho). theta is per year (divide by 365 for per-day); rho is the b-fixed partial dV/dr. carry=b (0 for crypto).
+    """
 def hurst_dfa(returns: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], scales: typing.Any = None) -> float:
     """
     Hurst exponent via Detrended Fluctuation Analysis on a series of returns (NOT prices). H ≈ 0.5 random, H > 0.5 persistent / trending, H < 0.5 anti-persistent / mean-reverting. If `scales` is None, uses a log-spaced default grid from 4 to N/4. Returns NaN if input is too short (< 32) or degenerate.
+    """
+def implied_vol(option_type: OptionType, price: typing.SupportsFloat | typing.SupportsIndex, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> dict:
+    """
+    Implied volatility from an option price via Newton-Raphson with bracketed bisection fallback. Returns dict(vol, converged, iterations); vol is NaN and converged False when the price violates no-arbitrage bounds.
     """
 def inspect(data_dir: str) -> dict:
     """
@@ -3620,6 +3733,10 @@ def rolling_zscore(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float64
     ...
 def rsi(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], period: typing.SupportsInt | typing.SupportsIndex) -> numpy.typing.NDArray[numpy.float64]:
     ...
+def second_order_greeks(option_type: OptionType, spot: typing.SupportsFloat | typing.SupportsIndex, strike: typing.SupportsFloat | typing.SupportsIndex, t: typing.SupportsFloat | typing.SupportsIndex, vol: typing.SupportsFloat | typing.SupportsIndex, rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, carry: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> dict:
+    """
+    Second-order greeks dict(vanna, volga, charm) for vol traders. vanna = d(delta)/d(vol), volga = d(vega)/d(vol), charm = d(delta)/d(time) per year.
+    """
 def set_log_callback(callback: typing.Any) -> None:
     """
     Install a Python callable as the global log sink. Pass None to detach. Callable receives (level: int, msg: str); level: 0=info, 1=warn, 2=error.
