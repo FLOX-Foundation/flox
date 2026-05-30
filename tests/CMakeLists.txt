@@ -129,6 +129,7 @@ add_flox_test(test_delta_hedger)
 add_flox_test(test_hedge_cost)
 add_flox_test(test_black_scholes)
 add_flox_test(test_greeks)
+add_flox_test(test_american_pricing)
 add_flox_test(test_option_quote_record)
 add_flox_test(test_option_quote_io)
 

@@ -56,6 +56,36 @@ When the quoted price breaks no-arbitrage bounds (below intrinsic or above the a
 value), `converged` is `False` and `vol` is `NaN`. Check `converged` before using the
 result.
 
+## American options (early exercise)
+
+Black-Scholes prices European options, which can only be exercised at expiry.
+US equity options are American: the holder can exercise early, and that right is
+worth something. `flox_py` prices it two ways.
+
+`binomial_price` is a Cox-Ross-Rubinstein lattice. With `american=True` it checks
+early exercise at every node; with `american=False` it is a European tree that
+converges to `bs_price` as `steps` grows.
+
+```python
+# One-year American put, 8% rate, no carry -> a real early-exercise premium.
+amer = flox.binomial_price(flox.OptionType.PUT, spot=100, strike=100, t=1.0, vol=0.30,
+                           rate=0.08, steps=500, american=True)
+euro = flox.bs_price(flox.OptionType.PUT, spot=100, strike=100, t=1.0, vol=0.30, rate=0.08)
+amer > euro  # True: the right to exercise early is worth more
+```
+
+`baw_price` is the Barone-Adesi-Whaley closed-form approximation. It is far cheaper
+than a fine tree, so it is the engine to reach for when computing greeks by finite
+differences. An American call whose carry covers the rate (`carry >= rate`) is never
+exercised early, so it returns the European price exactly.
+
+```python
+amer = flox.baw_price(flox.OptionType.PUT, spot=100, strike=100, t=1.0, vol=0.30, rate=0.08)
+```
+
+A finer tree is more accurate but slower; BAW trades a small approximation error for
+speed. Pick the lattice when you need a reference value, BAW when you need many prices.
+
 ## Vega and forward price
 
 ```python
