@@ -1,6 +1,6 @@
 {
   "name": "@flox-foundation/flox",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "AI-native framework for building trading systems.",
   "main": "index.js",
   "types": "index.d.ts",
