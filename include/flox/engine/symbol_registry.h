@@ -111,6 +111,11 @@ class SymbolRegistry : public ISubsystem
   SymbolId registerSymbol(ExchangeId exchange, std::string_view symbol);
   ExchangeId getExchangeForSymbol(SymbolId symbol) const;
 
+  // The venue type of the symbol's exchange. Defaults to CentralizedExchange
+  // when the symbol or its exchange is unknown. See venue_behavior.h to turn
+  // a venue type into routing decisions (W17-T006).
+  VenueType venueTypeForSymbol(SymbolId symbol) const;
+
   // Symbol equivalence (cross-exchange mapping)
   void mapEquivalentSymbols(std::span<const SymbolId> equivalentSymbols);
   std::span<const SymbolId> getEquivalentSymbols(SymbolId symbol) const;
