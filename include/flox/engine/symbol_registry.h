@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -47,7 +48,42 @@ struct SymbolInfo
   SettlementType settlementType{SettlementType::Cash};
   ExerciseStyle exerciseStyle{ExerciseStyle::European};
   std::optional<std::string> settlementCcy;
+
+  // Per-symbol fixed-point scale (W17-T001). Default 1e8 reproduces the
+  // compile-time Price/Quantity scale exactly, so CEX symbols and existing
+  // persisted registries are unchanged. A DEX token whose price (~1e-10) or
+  // supply (~1e12) range does not fit 1e8 in int64 sets a different scale
+  // here and converts through the scale-aware Decimal overloads.
+  int64_t priceScale{Price::Scale};
+  int64_t qtyScale{Quantity::Scale};
 };
+
+// Validate a symbol's per-symbol scale before registration (W17-T001 guardrail
+// 3d). A scale must be positive and small enough to leave usable integer
+// headroom in int64. The default 1e8 always passes, so CEX symbols and old
+// registries are never rejected.
+inline std::expected<void, std::string> validateSymbolScale(const SymbolInfo& info)
+{
+  // 1e18 still leaves ~9 integer units of headroom in int64.
+  static constexpr int64_t kMaxScale = 1'000'000'000'000'000'000;
+  if (info.priceScale <= 0)
+  {
+    return std::unexpected<std::string>("priceScale must be positive");
+  }
+  if (info.qtyScale <= 0)
+  {
+    return std::unexpected<std::string>("qtyScale must be positive");
+  }
+  if (info.priceScale > kMaxScale)
+  {
+    return std::unexpected<std::string>("priceScale too large for int64 headroom");
+  }
+  if (info.qtyScale > kMaxScale)
+  {
+    return std::unexpected<std::string>("qtyScale too large for int64 headroom");
+  }
+  return {};
+}
 
 class SymbolRegistry : public ISubsystem
 {

@@ -213,6 +213,13 @@ SymbolId SymbolRegistry::registerSymbol(const std::string& exchange, const std::
 
 SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
 {
+  // Reject an invalid per-symbol scale before any mutation (W17-T001 3d).
+  // 0 is the invalid-symbol sentinel. The default 1e8 scale always passes.
+  if (!validateSymbolScale(info))
+  {
+    return 0;
+  }
+
   std::lock_guard lock(_mutex);
   std::string key = info.exchange + ":" + info.symbol;
 
@@ -552,7 +559,9 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
 static constexpr uint32_t kSymbolRegistryMagic = 0x47455253;  // "SREG"
 // v3 adds the contract spec (multiplier / settlement_type / exercise_style /
 // settlement_ccy). v2 files load with defaults for those.
-static constexpr uint32_t kSymbolRegistryVersion = 3;
+// v4 adds per-symbol fixed-point scale (price_scale / qty_scale). Older files
+// load with the default 1e8 scale, so they are byte-identical in behavior.
+static constexpr uint32_t kSymbolRegistryVersion = 4;
 
 std::vector<std::byte> SymbolRegistry::serialize() const
 {
@@ -662,6 +671,10 @@ std::vector<std::byte> SymbolRegistry::serialize() const
     {
       write_string(*sym.settlementCcy);
     }
+
+    // v4 per-symbol fixed-point scale.
+    write_i64(sym.priceScale);
+    write_i64(sym.qtyScale);
   }
 
   return result;
@@ -756,7 +769,7 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
   }
 
   uint32_t version = read_u32();
-  if (version != 1 && version != 2 && version != 3)
+  if (version != 1 && version != 2 && version != 3 && version != 4)
   {
     return false;
   }
@@ -805,6 +818,12 @@ bool SymbolRegistry::deserialize(std::span<const std::byte> data)
       {
         info.settlementCcy = read_string();
       }
+    }
+
+    if (version >= 4)
+    {
+      info.priceScale = read_i64();
+      info.qtyScale = read_i64();
     }
 
     std::string key = info.exchange + ":" + info.symbol;

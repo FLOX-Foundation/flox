@@ -14,6 +14,8 @@
 #include <ostream>
 #include <string>
 
+#include "flox/util/base/scale_check.h"
+
 namespace flox
 {
 
@@ -46,6 +48,19 @@ class Decimal
 
   constexpr double toDouble() const { return static_cast<double>(_raw) / Scale; }
 
+  // Scale-aware conversions (W17-T001). The compile-time Scale is the default
+  // (1e8) used by CEX symbols; a DEX symbol carries its own scale in
+  // SymbolInfo and converts through these explicit-scale overloads so the
+  // raw int64 is interpreted correctly for its value range.
+  constexpr double toDouble(int64_t scale) const
+  {
+    return static_cast<double>(_raw) / static_cast<double>(scale);
+  }
+  static constexpr Decimal fromDouble(double val, int64_t scale)
+  {
+    return Decimal(static_cast<int64_t>(val >= 0.0 ? val * scale + 0.5 : val * scale - 0.5));
+  }
+
   constexpr int64_t raw() const { return _raw; }
 
   constexpr Decimal roundToTick() const { return Decimal((_raw / TickSize) * TickSize); }
@@ -68,7 +83,7 @@ class Decimal
   {
 #if defined(__SIZEOF_INT128__)
     using i128 = __int128_t;
-    return Decimal(static_cast<int64_t>((i128)_raw * (i128)other._raw / (i128)Scale));
+    return Decimal(checkedNarrowI64((i128)_raw * (i128)other._raw / (i128)Scale));
 #else
     return Decimal((_raw / Scale) * other._raw + (_raw % Scale) * other._raw / Scale);
 #endif
@@ -79,7 +94,7 @@ class Decimal
 
 #if defined(__SIZEOF_INT128__)
     using i128 = __int128_t;
-    return Decimal(static_cast<int64_t>(((i128)_raw * (i128)Scale) / (i128)other._raw));
+    return Decimal(checkedNarrowI64(((i128)_raw * (i128)Scale) / (i128)other._raw));
 #else
     return Decimal((_raw * Scale) / other._raw);
 #endif

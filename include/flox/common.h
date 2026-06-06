@@ -120,7 +120,7 @@ inline Volume operator*(Quantity qty, Price px)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
   return Volume::fromRaw(
-      static_cast<int64_t>((i128)qty.raw() * (i128)px.raw() / (i128)Volume::Scale));
+      checkedNarrowI64((i128)qty.raw() * (i128)px.raw() / (i128)Volume::Scale));
 #elif defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
   // MSVC x64: use _umul128 + _udiv128 intrinsics
   uint64_t hi;
@@ -146,7 +146,7 @@ inline Price operator/(Volume vol, Quantity qty)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
   return Price::fromRaw(
-      static_cast<int64_t>((i128)vol.raw() * (i128)Price::Scale / (i128)qty.raw()));
+      checkedNarrowI64((i128)vol.raw() * (i128)Price::Scale / (i128)qty.raw()));
 #elif defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
   // MSVC x64: use _umul128 + _udiv128 intrinsics
   uint64_t hi;
@@ -167,7 +167,7 @@ inline Quantity operator/(Volume vol, Price px)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
   return Quantity::fromRaw(
-      static_cast<int64_t>((i128)vol.raw() * (i128)Quantity::Scale / (i128)px.raw()));
+      checkedNarrowI64((i128)vol.raw() * (i128)Quantity::Scale / (i128)px.raw()));
 #elif defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
   // MSVC x64: use _umul128 + _udiv128 intrinsics
   uint64_t hi;
