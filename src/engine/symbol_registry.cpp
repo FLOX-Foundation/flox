@@ -113,6 +113,12 @@ ExchangeId SymbolRegistry::getExchangeForSymbol(SymbolId symbol) const
   return _symbolToExchange[symbol];
 }
 
+VenueType SymbolRegistry::venueTypeForSymbol(SymbolId symbol) const
+{
+  const ExchangeInfo* info = getExchange(getExchangeForSymbol(symbol));
+  return info != nullptr ? info->type : VenueType::CentralizedExchange;
+}
+
 // =============================================================================
 // Symbol equivalence
 // =============================================================================

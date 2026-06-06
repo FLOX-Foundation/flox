@@ -191,6 +191,7 @@ nav:
       - MCP control plane: explanation/mcp-control-plane.md
       - Indicators: explanation/indicators.md
       - Connectors: explanation/connectors.md
+      - Venue types: explanation/venue-types.md
       - Per-symbol scale: explanation/per-symbol-scale.md
       - On-chain order lifecycle: explanation/onchain-order-lifecycle.md
       - Liquidity-provision signals: explanation/liquidity-provision.md
