@@ -55,4 +55,25 @@ TEST(VenueBehaviorTest, VenueTypeForSymbol)
   EXPECT_EQ(reg.venueTypeForSymbol(9999), VenueType::CentralizedExchange);
 }
 
+// Regression: a symbol registered through the SymbolInfo overload (the overload
+// used to set priceScale / venue) must also resolve its venue type. Previously
+// only the ExchangeId overload populated the symbol->exchange map.
+TEST(VenueBehaviorTest, VenueTypeForSymbolViaSymbolInfo)
+{
+  SymbolRegistry reg;
+  ExchangeId dexId = reg.registerExchange("uniswap", VenueType::AmmDex);
+
+  SymbolInfo info;
+  info.exchange = "uniswap";
+  info.symbol = "WETHUSDC";
+  info.exchangeId = dexId;
+  info.priceScale = 1'000'000'000'000;  // 1e12
+  SymbolId sym = reg.registerSymbol(info);
+  ASSERT_NE(sym, 0u);
+
+  EXPECT_EQ(reg.getExchangeForSymbol(sym), dexId);
+  EXPECT_EQ(reg.venueTypeForSymbol(sym), VenueType::AmmDex);
+  EXPECT_TRUE(isDex(reg.venueTypeForSymbol(sym)));
+}
+
 }  // namespace

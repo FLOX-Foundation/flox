@@ -65,6 +65,26 @@ TEST(QuoterTest, ReservationPriceSign)
   EXPECT_GT(quoter.reservationPrice(fair, Quantity::fromDouble(-5.0)).toDouble(), 100.0);
 }
 
+// Regression: a large inventory must not drive the reservation price or the
+// ladder negative. The skew is capped.
+TEST(QuoterTest, LargeInventoryKeepsQuotesPositive)
+{
+  auto quoter = q(20, 3, 10, 0.5);  // 0.5 bps per unit of inventory
+  Price fair = Price::fromDouble(100.0);
+  // A billion units of inventory: uncapped, this would push the price far
+  // negative.
+  Quantity huge = Quantity::fromDouble(1'000'000'000.0);
+  Price res = quoter.reservationPrice(fair, huge);
+  EXPECT_GT(res.toDouble(), 0.0);
+
+  auto levels = quoter.quotes(fair, huge);
+  ASSERT_FALSE(levels.empty());
+  for (const auto& lvl : levels)
+  {
+    EXPECT_GT(lvl.price.toDouble(), 0.0);
+  }
+}
+
 TEST(QuoterTest, ShouldRequoteRespectsTolerance)
 {
   Price a = Price::fromDouble(100.0);

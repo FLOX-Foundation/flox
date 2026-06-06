@@ -270,6 +270,16 @@ SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
   }
   _reverse[newId] = {info.exchange, info.symbol};
 
+  // Record the symbol -> exchange mapping so getExchangeForSymbol and
+  // venueTypeForSymbol work for SymbolInfo-registered symbols, the same as the
+  // ExchangeId overload. Without this the mapping is only set by the
+  // ExchangeId-based registerSymbol, and venue-type lookup silently defaults.
+  if (_symbolToExchange.size() <= newId)
+  {
+    _symbolToExchange.resize(newId + 1, InvalidExchangeId);
+  }
+  _symbolToExchange[newId] = exId;
+
   return newId;
 }
 

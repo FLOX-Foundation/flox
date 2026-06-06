@@ -128,4 +128,17 @@ TEST(ScaleTest, SerializeRoundTripsScale)
   EXPECT_EQ(got->qtyScale, 10);
 }
 
+// rescale bridges a per-symbol-scaled value to the default scale, so a
+// default-scale component (AMM pricing, quoter, position tracking) reads it
+// correctly instead of off by priceScale / default.
+TEST(ScaleTest, RescaleBridgesToDefaultScale)
+{
+  const int64_t fine = 1'000'000'000'000'000;  // 1e15
+  Price p = Price::fromDouble(0.00000004, fine);
+  // Without rescale the default toDouble() misreads it (0.4 here).
+  ASSERT_NEAR(p.toDouble(), 0.4, 1e-9);
+  Price d = p.rescale(fine, Price::Scale);
+  EXPECT_NEAR(d.toDouble(), 0.00000004, 1e-12);
+}
+
 }  // namespace

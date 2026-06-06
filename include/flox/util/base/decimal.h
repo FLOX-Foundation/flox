@@ -61,6 +61,24 @@ class Decimal
     return Decimal(static_cast<int64_t>(val >= 0.0 ? val * scale + 0.5 : val * scale - 0.5));
   }
 
+  // Reinterpret this value, whose raw was created at `fromScale`, into this
+  // type's compile-time scale read at `toScale`. This is the explicit bridge
+  // between a per-symbol scale and the default scale the rest of the engine
+  // (AMM pricing, quoter, position tracking) computes in: a DEX price built
+  // with a fine per-symbol scale must be rescaled before it is handed to a
+  // default-scale component, otherwise it is read at the wrong scale. Lossy
+  // when toScale is coarser than fromScale (a sub-tick value rounds toward
+  // zero), which is inherent to narrowing the scale.
+  constexpr Decimal rescale(int64_t fromScale, int64_t toScale) const
+  {
+#if defined(__SIZEOF_INT128__)
+    using i128 = __int128_t;
+    return Decimal(checkedNarrowI64((i128)_raw * (i128)toScale / (i128)fromScale));
+#else
+    return Decimal(static_cast<int64_t>(_raw * toScale / fromScale));
+#endif
+  }
+
   constexpr int64_t raw() const { return _raw; }
 
   constexpr Decimal roundToTick() const { return Decimal((_raw / TickSize) * TickSize); }
