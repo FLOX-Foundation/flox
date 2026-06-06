@@ -36,6 +36,20 @@ reserves and the fee. Other models implement the same interface, each with its
 own state: weighted pools, concentrated liquidity, stableswap, cryptoswap. A
 backtest swaps one curve for another without touching the rest.
 
+## Weighted pools
+
+A weighted pool (Balancer style) keeps `B_base^w_base * B_quote^w_quote`
+constant, with the two weights summing to 1. Equal weights reduce it to
+constant-product; an unequal split prices the heavier-weighted token higher for
+the same balance, so an 80/20 pool with equal balances quotes the 80% token at
+four times the 20% token. The spot price is `(B_quote/w_quote)/(B_base/w_base)`
+and the output is closed-form:
+
+    amountOut = B_out * (1 - (B_in / (B_in + amountIn*(1-fee)))^(w_in/w_out))
+
+`WeightedCurve` needs only the balances, the weights, and the fee, plus a
+power. It is a closed-form curve like constant-product, no solver.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
