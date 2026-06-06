@@ -11,6 +11,7 @@
 
 #include "flox/common.h"
 #include "flox/engine/abstract_subsystem.h"
+#include "flox/position/position_valuator.h"
 #include "flox/strategy/symbol_state_map.h"
 
 #include <array>
@@ -84,12 +85,20 @@ class AggregatedPositionTracker : public ISubsystem
     return total;
   }
 
+  // Plug a custom valuator for nonlinear positions (AMM LP, options). When
+  // null (the default), valuation is linear: qty * (current - avg).
+  void setValuator(const IPositionValuator* valuator) { _valuator = valuator; }
+
   Volume unrealizedPnl(SymbolId symbol, Price currentPrice) const
   {
     auto pos = totalPosition(symbol);
     if (pos.quantity.raw() == 0)
     {
       return Volume{};
+    }
+    if (_valuator != nullptr)
+    {
+      return _valuator->unrealizedPnl(symbol, pos.quantity, pos.avgEntryPrice, currentPrice);
     }
     // PnL = qty * (current - avg)
     Price diff = currentPrice - pos.avgEntryPrice;
@@ -161,6 +170,7 @@ class AggregatedPositionTracker : public ISubsystem
   };
 
   std::array<SymbolStateMap<AtomicPositionState>, MaxExchanges> _positions;
+  const IPositionValuator* _valuator{nullptr};
 };
 
 }  // namespace flox

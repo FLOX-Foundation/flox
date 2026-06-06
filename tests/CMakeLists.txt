@@ -74,6 +74,7 @@ add_flox_test(test_multi_symbol_strategy)
 add_flox_test(test_order_group_replace)
 
 add_flox_test(test_position_aggregator)
+add_flox_test(test_position_valuator)
 
 # CEX coordination tests
 add_flox_test(test_cex_coordination)
