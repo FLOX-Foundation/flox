@@ -1,9 +1,8 @@
 # Venue types
 
 An exchange registers with a venue type: a centralized exchange, an AMM DEX,
-or a hybrid. The type had been a label that nothing read. It now drives the
-two decisions that separate a DEX venue from a CEX one: how a swap is priced,
-and how an order settles.
+or a hybrid. The type drives the two decisions that separate a DEX venue from a
+CEX one: how a swap is priced, and how an order settles.
 
 ## What the type decides
 

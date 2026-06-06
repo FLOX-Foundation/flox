@@ -20,13 +20,13 @@ casing.
 A swap against the pool becomes a TradeEvent at the realized rate, and the
 connector republishes the book because the reserves moved.
 
-## Why this proves the design
+## How the pieces compose
 
 The connector is where the DEX pieces meet. Reserves drive the synthetic book
 through the AMM pricing curve. The venue registers as an AMM type, so the
 routing flags select pool pricing and on-chain settlement. A position on the
-pool can carry a nonlinear valuator, and an order on it moves through the
-on-chain lifecycle. Each piece was built on its own; the connector composes
+pool carries a nonlinear valuator, and an order on it moves through the
+on-chain lifecycle. Each piece works on its own, and the connector composes
 them into a venue the engine treats like any other.
 
 ## Where the boundary holds
