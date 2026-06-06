@@ -20,27 +20,26 @@ the lock-free position trackers hold raw values in `std::atomic<int64>` (a
 128-bit atomic is not lock-free on most targets), and JavaScript numbers lose
 precision above `2^53`. So the integer width stays at 64 bits.
 
-## The approach: scale moves to the symbol
+## Scale on the symbol
 
-Instead of widening the integer, the scale becomes a per-symbol value carried
-in `SymbolInfo` (`priceScale`, `qtyScale`), defaulting to `1e8`. A token whose
-range does not fit `1e8` registers a scale chosen for its own value range: a
-finer factor such as `1e15` for a sub-cent price, a coarser one such as `1e2`
-for a quadrillion-unit supply. It then converts through the scale-aware
-`toDouble(scale)` and `fromDouble(value, scale)` overloads.
+The scale is a per-symbol value carried in `SymbolInfo` (`priceScale`,
+`qtyScale`), defaulting to `1e8`. A token whose range does not fit `1e8`
+registers a scale chosen for its own value range: a finer factor such as `1e15`
+for a sub-cent price, a coarser one such as `1e2` for a quadrillion-unit
+supply. It converts through the scale-aware `toDouble(scale)` and
+`fromDouble(value, scale)` overloads.
 
-Because the raw storage is already scale-agnostic (the tape records raw ticks;
-the scale is interpretation, never written to disk), keeping `int64` leaves the
-struct layout, the atomics, the tape width, and the C ABI untouched. Existing
-symbols and previously recorded data default to `1e8` and behave identically.
+The raw storage is scale-agnostic: the tape records raw ticks, and the scale is
+interpretation that is never written to disk. So an `int64` raw is enough, and
+the struct layout, the atomics, the tape width, and the C ABI carry no scale.
+A symbol or a tape without an explicit scale reads as `1e8`.
 
-## Recovering the lost guarantee
+## Catching scale mismatches
 
-When the scale lived in the type, the compiler guaranteed every `Price` shared
-one scale. Moving the scale to runtime removes that compile-time check, so a
-raw value of one scale could be mixed with another and produce a silent error.
-
-FLOX recovers the guarantee with guardrails rather than the type system:
+Because the scale is a runtime value on the symbol, not part of the type, the
+compiler cannot prove that two values share a scale. Mixing a value of one
+scale with another would compute a wrong number. FLOX checks scale agreement at
+runtime instead of in the type system:
 
 - conversions require an explicit scale, so a value is never interpreted under
   the wrong factor by accident;
@@ -75,15 +74,15 @@ inherent limit of representing a very fine value at a coarser scale. A token
 whose range cannot survive the default scale at all needs the larger,
 runtime-scale-aware work, not just a rescale.
 
-Forgetting the bridge no longer fails silently. In debug and CI builds a
-`Decimal` carries its scale and the arithmetic checks it: add and subtract
-require matching scales, and fixed-point multiply, divide, and the cross-type
-operators (`Quantity * Price` and friends) require the default scale. Mixing a
-per-symbol-scaled value into one of these traps with a message naming the
-operator, instead of computing a number that is wrong by the ratio of the two
-scales. In release the scale is not stored and the checks compile away, so the
-value stays a plain `int64` with no overhead. The `sanitizers` CI job builds in
-debug, so the check runs on every change.
+A value carried into a component at the wrong scale is caught, not silently
+miscomputed. In debug and CI builds a `Decimal` carries its scale and the
+arithmetic checks it: add and subtract require matching scales, and fixed-point
+multiply, divide, and the cross-type operators (`Quantity * Price` and friends)
+require the default scale. Mixing a per-symbol-scaled value into one of these
+traps with a message naming the operator. In release the scale is not stored
+and the checks compile away, so the value stays a plain `int64` with no
+overhead. The `sanitizers` CI job builds in debug, so the check runs on every
+change.
 
 ## Forward compatibility with C++26
 
