@@ -50,6 +50,23 @@ and the output is closed-form:
 `WeightedCurve` needs only the balances, the weights, and the fee, plus a
 power. It is a closed-form curve like constant-product, no solver.
 
+## Concentrated liquidity
+
+A concentrated-liquidity pool (Uniswap v3 style, also Orca and Raydium on
+Solana) places liquidity in price ranges instead of across the whole curve.
+The active liquidity `L` is constant only between two adjacent initialized
+ticks; inside a range the curve is constant-product on the virtual reserves
+`L/sqrt(P)` and `L*sqrt(P)`, and crossing a tick changes `L` by that tick's
+liquidity. A swap large enough to leave a range is not a single closed-form
+step: it walks the ticks, consuming each range to its boundary, crossing into
+the next, until the input is spent or the liquidity runs out.
+
+`ConcentratedLiquidityCurve` holds the current price, the active liquidity, and
+the tick table, and walks the swap across boundaries. The state a backtest must
+carry is therefore the tick and liquidity map, not just two reserves, and a
+swap can exhaust the available liquidity and fill less than its full size. This
+is the dominant model by 2026 DEX spot volume.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
