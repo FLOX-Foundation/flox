@@ -84,6 +84,24 @@ of a quadratic against the new input balance. Both converge in a handful of
 steps. The state a backtest carries is still just two balances plus `A`, but
 each quote costs two small solves instead of one division.
 
+## Cryptoswap
+
+A cryptoswap pool (Curve V2) is the volatile-asset counterpart to stableswap.
+The two assets have no peg, so a fixed flat zone would be wrong, but the pool
+still wants stableswap-like depth around wherever the price currently sits. It
+gets that by making the blend coefficient `K` depend on how balanced the pool
+is: near balance `K` is large and the curve is flat, and as the pool drifts off
+balance `K` decays toward zero and the curve falls back to constant-product. A
+sets the depth near balance, gamma how fast that depth fades as the pool moves.
+The result sits between stableswap and constant-product: flatter than a Uniswap
+pool near balance, but never as flat as a true stableswap once the price moves.
+
+`CryptoswapCurve` holds the two balances, A, gamma, and the fee. The invariant
+is non-monotonic, so it is not solved by plain Newton: both the invariant value
+and the swap output come from a safeguarded solve, a Newton step that falls back
+to bisection whenever the step would leave the bracketed physical branch. The
+state a backtest carries is still two balances plus the two parameters.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
