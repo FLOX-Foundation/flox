@@ -26,7 +26,13 @@ enum class SignalType : uint8_t
   TakeProfitMarket,
   TakeProfitLimit,
   TrailingStop,
-  OCO
+  OCO,
+  // DEX/AMM liquidity provision. ProvideLiquidity supplies liquidity to a
+  // pool over [priceLower, priceUpper]; WithdrawLiquidity removes it. The
+  // pool is identified by `symbol`. Executed by the on-chain connector, not
+  // the CEX/backtest path.
+  ProvideLiquidity,
+  WithdrawLiquidity
 };
 
 struct Signal
@@ -50,6 +56,12 @@ struct Signal
 
   // OCO: linked order id
   OrderId linkedOrderId{};
+
+  // DEX/AMM liquidity provision. priceLower/priceUpper bound the range and
+  // liquidity is the position size. Zero on non-LP signals.
+  Price priceLower{};
+  Price priceUpper{};
+  Quantity liquidity{};
 
   // Basic orders
   static Signal marketBuy(SymbolId sym, Quantity qty, OrderId id)
@@ -214,6 +226,30 @@ struct Signal
     s.price = price1;
     s.triggerPrice = price2;  // reuse for second price
     s.quantity = qty;
+    s.orderId = id;
+    return s;
+  }
+
+  // DEX/AMM liquidity provision
+  static Signal provideLiquidity(SymbolId pool, Price priceLower, Price priceUpper,
+                                 Quantity liquidity, OrderId id)
+  {
+    Signal s{};
+    s.type = SignalType::ProvideLiquidity;
+    s.symbol = pool;
+    s.priceLower = priceLower;
+    s.priceUpper = priceUpper;
+    s.liquidity = liquidity;
+    s.orderId = id;
+    return s;
+  }
+
+  static Signal withdrawLiquidity(SymbolId pool, Quantity liquidity, OrderId id)
+  {
+    Signal s{};
+    s.type = SignalType::WithdrawLiquidity;
+    s.symbol = pool;
+    s.liquidity = liquidity;
     s.orderId = id;
     return s;
   }

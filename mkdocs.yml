@@ -193,6 +193,7 @@ nav:
       - Connectors: explanation/connectors.md
       - Per-symbol scale: explanation/per-symbol-scale.md
       - On-chain order lifecycle: explanation/onchain-order-lifecycle.md
+      - Liquidity-provision signals: explanation/liquidity-provision.md
       - Replay-equivalence gate: explanation/replay-equivalence-gate.md
       - Build feature flags: build/feature-flags.md
       - Contributing:

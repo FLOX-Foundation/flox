@@ -14,6 +14,7 @@ Understand concepts and design decisions behind FLOX. These pages are language-a
 | [Indicators](indicators.md) | What each indicator measures and when to use it |
 | [Per-symbol scale](per-symbol-scale.md) | How fixed-point price/quantity scale is chosen per symbol for DEX-range tokens |
 | [On-chain order lifecycle](onchain-order-lifecycle.md) | Pending, reverted, and gas-replaced states for DEX orders |
+| [Liquidity-provision signals](liquidity-provision.md) | Provide and withdraw signals for AMM pool positions |
 | [Replay-equivalence gate](replay-equivalence-gate.md) | The CI check that defends deterministic backtest replay |
 
 ## When to read these

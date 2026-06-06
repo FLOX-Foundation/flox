@@ -370,6 +370,21 @@ class Strategy : public IStrategy
     return id;
   }
 
+  // DEX/AMM liquidity provision. Executed by the on-chain connector.
+  OrderId emitProvideLiquidity(SymbolId pool, Price priceLower, Price priceUpper, Quantity liquidity)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::provideLiquidity(pool, priceLower, priceUpper, liquidity, id));
+    return id;
+  }
+
+  OrderId emitWithdrawLiquidity(SymbolId pool, Quantity liquidity)
+  {
+    OrderId id = nextOrderId();
+    emit(Signal::withdrawLiquidity(pool, liquidity, id));
+    return id;
+  }
+
   // Close position (reduce-only market order)
   OrderId emitClosePosition(SymbolId symbol)
   {

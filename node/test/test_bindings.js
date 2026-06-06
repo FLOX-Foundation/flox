@@ -296,9 +296,15 @@ if (fs.existsSync(btCsv)) {
   const fast = new flox.SMA(10);
   const slow = new flox.SMA(30);
 
+  let lpFnsPresent = false;
   const strat = {
     symbols: [Number(btc2)],
     onTrade(ctx, t, emit) {
+      // W17-T002: the emit object exposes the DEX liquidity helpers.
+      if (typeof emit.provideLiquidity === 'function' &&
+          typeof emit.withdrawLiquidity === 'function') {
+        lpFnsPresent = true;
+      }
       const f = fast.update(t.price);
       const s = slow.update(t.price);
       if (f === null || s === null) return;
@@ -315,6 +321,8 @@ if (fs.existsSync(btCsv)) {
   const stats = bt.runCsv(btCsv, 'BTCUSDT');
   check(stats !== null && stats.totalTrades > 0,
         `BacktestRunner produced trades (got ${stats && stats.totalTrades})`);
+  check(lpFnsPresent,
+        'emit exposes provideLiquidity / withdrawLiquidity (W17-T002)');
 
   const eq = bt.equityCurve();
   check(eq && eq.equity instanceof Float64Array,

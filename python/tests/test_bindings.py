@@ -478,6 +478,24 @@ if os.path.exists(bt_csv):
 else:
     print(f"  skip BacktestRunner accessors (CSV not found: {bt_csv})")
 
+# ── LP instruction emit (W17-T002) ───────────────────────────────────
+
+
+class _LpStrat(flox.Strategy):
+    pass
+
+
+_lp = _LpStrat(symbols=[1])
+check(hasattr(_lp, "emit_provide_liquidity"),
+      "Strategy exposes emit_provide_liquidity")
+check(hasattr(_lp, "emit_withdraw_liquidity"),
+      "Strategy exposes emit_withdraw_liquidity")
+# No runner attached → bridge is null → returns 0 without crashing.
+check(_lp.emit_provide_liquidity(1, 1900.0, 2100.0, 5.0) == 0,
+      "emit_provide_liquidity returns 0 with no runner attached")
+check(_lp.emit_withdraw_liquidity(1, 2.5) == 0,
+      "emit_withdraw_liquidity returns 0 with no runner attached")
+
 # ── Summary ──────────────────────────────────────────────────────────
 
 print(f"\n{_passed} passed, {_failed} failed")
