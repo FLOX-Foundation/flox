@@ -17,6 +17,7 @@ Understand concepts and design decisions behind FLOX. These pages are language-a
 | [Liquidity-provision signals](liquidity-provision.md) | Provide and withdraw signals for AMM pool positions |
 | [Position valuation](position-valuation.md) | The hook for nonlinear (LP, option) position valuation |
 | [AMM pricing in backtests](amm-pricing.md) | Constant-product pool pricing, slippage, and price impact for DEX swaps |
+| [Market-making quoter](market-making-quoter.md) | Two-sided quote ladder with inventory skew and requote tolerance |
 | [Replay-equivalence gate](replay-equivalence-gate.md) | The CI check that defends deterministic backtest replay |
 
 ## When to read these
