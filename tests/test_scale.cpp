@@ -128,6 +128,25 @@ TEST(ScaleTest, SerializeRoundTripsScale)
   EXPECT_EQ(got->qtyScale, 10);
 }
 
+#if FLOX_SCALE_CHECKS
+// With scale checks on (debug / CI), mixing a per-symbol-scaled value into
+// arithmetic with a default-scale value traps instead of silently
+// miscomputing. This is the guardrail that would have caught the position-PnL
+// mis-scale found by the external consumer.
+TEST(ScaleDeathTest, MismatchedScaleArithmeticTraps)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  Price fine = Price::fromDouble(0.00000004, 1'000'000'000'000'000);  // scale 1e15
+  Price def = Price::fromDouble(1.0);                                 // default scale
+  EXPECT_DEATH(
+      {
+        volatile int64_t r = (fine + def).raw();
+        (void)r;
+      },
+      "scale mismatch");
+}
+#endif
+
 // rescale bridges a per-symbol-scaled value to the default scale, so a
 // default-scale component (AMM pricing, quoter, position tracking) reads it
 // correctly instead of off by priceScale / default.

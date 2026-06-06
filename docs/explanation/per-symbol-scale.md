@@ -75,6 +75,16 @@ inherent limit of representing a very fine value at a coarser scale. A token
 whose range cannot survive the default scale at all needs the larger,
 runtime-scale-aware work, not just a rescale.
 
+Forgetting the bridge no longer fails silently. In debug and CI builds a
+`Decimal` carries its scale and the arithmetic checks it: add and subtract
+require matching scales, and fixed-point multiply, divide, and the cross-type
+operators (`Quantity * Price` and friends) require the default scale. Mixing a
+per-symbol-scaled value into one of these traps with a message naming the
+operator, instead of computing a number that is wrong by the ratio of the two
+scales. In release the scale is not stored and the checks compile away, so the
+value stays a plain `int64` with no overhead. The `sanitizers` CI job builds in
+debug, so the check runs on every change.
+
 ## Forward compatibility with C++26
 
 The guardrail check is a single macro so it can adopt C++26 contracts when a

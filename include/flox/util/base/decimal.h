@@ -31,6 +31,19 @@ class Decimal
   constexpr Decimal() : _raw(0) {}
   explicit constexpr Decimal(int64_t raw) : _raw(raw) {}
 
+  // The runtime scale this value is expressed in. Equals the compile-time
+  // Scale unless built through a scale-aware path (fromDouble(val, scale) /
+  // rescale). Only stored when scale checks are on; in release it is the
+  // compile-time Scale with no storage and no overhead.
+  constexpr int64_t scale() const
+  {
+#if FLOX_SCALE_CHECKS
+    return _scale;
+#else
+    return Scale;
+#endif
+  }
+
   static constexpr Decimal fromDouble(double val)
   {
     if constexpr (Scale > 0)
@@ -58,7 +71,8 @@ class Decimal
   }
   static constexpr Decimal fromDouble(double val, int64_t scale)
   {
-    return Decimal(static_cast<int64_t>(val >= 0.0 ? val * scale + 0.5 : val * scale - 0.5));
+    return withScale(static_cast<int64_t>(val >= 0.0 ? val * scale + 0.5 : val * scale - 0.5),
+                     scale);
   }
 
   // Reinterpret this value, whose raw was created at `fromScale`, into this
@@ -73,32 +87,56 @@ class Decimal
   {
 #if defined(__SIZEOF_INT128__)
     using i128 = __int128_t;
-    return Decimal(checkedNarrowI64((i128)_raw * (i128)toScale / (i128)fromScale));
+    return withScale(checkedNarrowI64((i128)_raw * (i128)toScale / (i128)fromScale), toScale);
 #else
-    return Decimal(static_cast<int64_t>(_raw * toScale / fromScale));
+    return withScale(static_cast<int64_t>(_raw * toScale / fromScale), toScale);
 #endif
   }
 
   constexpr int64_t raw() const { return _raw; }
 
-  constexpr Decimal roundToTick() const { return Decimal((_raw / TickSize) * TickSize); }
+  constexpr Decimal roundToTick() const
+  {
+    return withScale((_raw / TickSize) * TickSize, scale());
+  }
 
-  constexpr auto operator<=>(const Decimal&) const = default;
-  constexpr bool operator==(const Decimal&) const = default;
+  // Comparisons order by raw only, ignoring scale, so the defaulted
+  // comparison does not pick up the debug-only _scale member and "x == 0"
+  // works across scales.
+  constexpr bool operator==(const Decimal& o) const { return _raw == o._raw; }
+  constexpr auto operator<=>(const Decimal& o) const { return _raw <=> o._raw; }
 
   constexpr bool operator<(const Decimal& other) const { return _raw < other._raw; }
   constexpr bool operator>(const Decimal& other) const { return _raw > other._raw; }
   constexpr bool operator<=(const Decimal& other) const { return _raw <= other._raw; }
   constexpr bool operator>=(const Decimal& other) const { return _raw >= other._raw; }
 
-  constexpr Decimal operator+(Decimal d) const { return Decimal(_raw + d._raw); }
-  constexpr Decimal operator-(Decimal d) const { return Decimal(_raw - d._raw); }
+  // Add / subtract require the same scale (a zero operand is scale-agnostic).
+  // The result carries that scale.
+  constexpr Decimal operator+(Decimal d) const
+  {
+    FLOX_SCALE_CHECK(_raw == 0 || d._raw == 0 || scale() == d.scale(),
+                     "Decimal::operator+ scale mismatch");
+    return withScale(_raw + d._raw, _raw != 0 ? scale() : d.scale());
+  }
+  constexpr Decimal operator-(Decimal d) const
+  {
+    FLOX_SCALE_CHECK(_raw == 0 || d._raw == 0 || scale() == d.scale(),
+                     "Decimal::operator- scale mismatch");
+    return withScale(_raw - d._raw, _raw != 0 ? scale() : d.scale());
+  }
 
-  constexpr Decimal operator*(int64_t x) const { return Decimal(_raw * x); }
-  constexpr Decimal operator/(int64_t x) const { return Decimal(_raw / x); }
+  // Scalar multiply / divide preserve the value's scale.
+  constexpr Decimal operator*(int64_t x) const { return withScale(_raw * x, scale()); }
+  constexpr Decimal operator/(int64_t x) const { return withScale(_raw / x, scale()); }
 
+  // Fixed-point multiply / divide bake in the compile-time Scale, so both
+  // operands must be at the default scale; rescale a per-symbol value first.
+  // The result is at the default scale.
   constexpr Decimal operator*(const Decimal& other) const
   {
+    FLOX_SCALE_CHECK(scale() == Scale && other.scale() == Scale,
+                     "Decimal::operator* requires default scale; rescale first");
 #if defined(__SIZEOF_INT128__)
     using i128 = __int128_t;
     return Decimal(checkedNarrowI64((i128)_raw * (i128)other._raw / (i128)Scale));
@@ -109,7 +147,8 @@ class Decimal
   constexpr Decimal operator/(const Decimal& other) const
   {
     assert(other.isZero() != 0 && "Division by zero");
-
+    FLOX_SCALE_CHECK(scale() == Scale && other.scale() == Scale,
+                     "Decimal::operator/ requires default scale; rescale first");
 #if defined(__SIZEOF_INT128__)
     using i128 = __int128_t;
     return Decimal(checkedNarrowI64(((i128)_raw * (i128)Scale) / (i128)other._raw));
@@ -118,16 +157,32 @@ class Decimal
 #endif
   }
 
-  constexpr friend Decimal operator*(int64_t x, Decimal d) { return Decimal(x * d._raw); }
+  constexpr friend Decimal operator*(int64_t x, Decimal d) { return withScale(x * d._raw, d.scale()); }
 
   constexpr Decimal& operator+=(const Decimal& other)
   {
+    FLOX_SCALE_CHECK(_raw == 0 || other._raw == 0 || scale() == other.scale(),
+                     "Decimal::operator+= scale mismatch");
+#if FLOX_SCALE_CHECKS
+    if (_raw == 0)
+    {
+      _scale = other._scale;
+    }
+#endif
     _raw += other._raw;
     return *this;
   }
 
   constexpr Decimal& operator-=(const Decimal& other)
   {
+    FLOX_SCALE_CHECK(_raw == 0 || other._raw == 0 || scale() == other.scale(),
+                     "Decimal::operator-= scale mismatch");
+#if FLOX_SCALE_CHECKS
+    if (_raw == 0)
+    {
+      _scale = other._scale;
+    }
+#endif
     _raw -= other._raw;
     return *this;
   }
@@ -151,8 +206,22 @@ class Decimal
     return std::to_string(toDouble());
   }
 
+  // Construct a value carrying an explicit runtime scale. In release the
+  // scale argument is ignored and this is just Decimal(raw).
+  static constexpr Decimal withScale(int64_t raw, [[maybe_unused]] int64_t s)
+  {
+    Decimal d(raw);
+#if FLOX_SCALE_CHECKS
+    d._scale = s;
+#endif
+    return d;
+  }
+
  private:
   int64_t _raw;
+#if FLOX_SCALE_CHECKS
+  int64_t _scale{Scale};
+#endif
 };
 
 template <typename Tag, int Scale_, int64_t TickSize_>

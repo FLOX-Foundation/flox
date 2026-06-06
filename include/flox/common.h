@@ -116,6 +116,8 @@ using Volume = Decimal<VolumeTag, 100'000'000, 1>;
 
 inline Volume operator*(Quantity qty, Price px)
 {
+  FLOX_SCALE_CHECK(qty.scale() == Quantity::Scale && px.scale() == Price::Scale,
+                   "Quantity*Price requires default scale; rescale a per-symbol value first");
 #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
@@ -142,6 +144,8 @@ inline Volume operator*(Price px, Quantity qty)
 
 inline Price operator/(Volume vol, Quantity qty)
 {
+  FLOX_SCALE_CHECK(vol.scale() == Volume::Scale && qty.scale() == Quantity::Scale,
+                   "Volume/Quantity requires default scale; rescale a per-symbol value first");
 #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
@@ -163,6 +167,8 @@ inline Price operator/(Volume vol, Quantity qty)
 
 inline Quantity operator/(Volume vol, Price px)
 {
+  FLOX_SCALE_CHECK(vol.scale() == Volume::Scale && px.scale() == Price::Scale,
+                   "Volume/Price requires default scale; rescale a per-symbol value first");
 #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
