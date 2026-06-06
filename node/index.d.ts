@@ -123,6 +123,9 @@ export type OrderEventStatus =
   | "REPLACE_SUBMITTED"
   | "REPLACE_ACCEPTED"
   | "REPLACE_REJECTED"
+  | "PENDING_ONCHAIN"
+  | "REVERTED"
+  | "REPLACED_GAS"
   | "UNKNOWN";
 
 /** Categorical position of a resting limit order relative to top-of-book. */

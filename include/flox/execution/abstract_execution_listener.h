@@ -76,6 +76,17 @@ class IOrderExecutionListener : public ISubscriber
                                       const Order& /*newOrder*/,
                                       const std::string& /*reason*/) {}
 
+  // On-chain (DEX) lifecycle. An on-chain order is probabilistic until
+  // confirmed: it sits PENDING_ONCHAIN in the mempool, may be REVERTED
+  // by the chain, and may be re-broadcast with higher gas (REPLACED_GAS).
+  // A strategy must not treat a pending on-chain order as filled. The
+  // tx hash, confirmation count, and revert reason ride on OrderEvent;
+  // the connector fills them. Default empty so CEX listeners are
+  // unaffected.
+  virtual void onOrderPendingOnchain(const Order&, const std::string& /*txHash*/) {}
+  virtual void onOrderReverted(const Order&, const std::string& /*reason*/) {}
+  virtual void onOrderGasReplaced(const Order& /*oldOrder*/, const Order& /*newOrder*/) {}
+
   // Raw OrderEvent fan-out for listeners that need access to all
   // payload fields at once (queue position + timestamps + maker/taker
   // + reject reason). Default empty so existing listeners that only

@@ -585,6 +585,12 @@ struct NodeStrategyHost
         return "REPLACE_ACCEPTED";
       case 17:
         return "REPLACE_REJECTED";
+      case 19:
+        return "PENDING_ONCHAIN";
+      case 20:
+        return "REVERTED";
+      case 21:
+        return "REPLACED_GAS";
       default:
         return "UNKNOWN";
     }
