@@ -67,6 +67,23 @@ carry is therefore the tick and liquidity map, not just two reserves, and a
 swap can exhaust the available liquidity and fill less than its full size. This
 is the dominant model by 2026 DEX spot volume.
 
+## Stableswap
+
+A stableswap pool (Curve style) is built for assets that trade near a peg, like
+two dollar stablecoins. Its invariant blends constant-sum, which gives a flat
+one-for-one price, with constant-product, which keeps the pool from ever
+emptying. An amplification coefficient `A` sets where the blend tips: a high `A`
+holds the price near 1 across a wide band of balances and only curves sharply
+once the pool is far from balance. So a swap near the peg slips far less than it
+would on a constant-product pool of the same size.
+
+`StableSwapCurve` holds the two balances, `A`, and the fee. Neither the
+invariant `D` nor the swap output is closed-form: `D` comes from a Newton
+iteration over the balances, and the output balance from a second Newton solve
+of a quadratic against the new input balance. Both converge in a handful of
+steps. The state a backtest carries is still just two balances plus `A`, but
+each quote costs two small solves instead of one division.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
