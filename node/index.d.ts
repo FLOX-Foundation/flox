@@ -192,6 +192,8 @@ export interface EmitMethods {
   marketSell(qty: number): void;
   limitBuy(price: number, qty: number): void;
   limitSell(price: number, qty: number): void;
+  provideLiquidity(priceLower: number, priceUpper: number, liquidity: number): void;
+  withdrawLiquidity(liquidity: number): void;
   cancel(orderId: number): void;
   closePosition(): void;
 }

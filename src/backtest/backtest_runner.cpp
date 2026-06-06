@@ -632,6 +632,11 @@ void BacktestRunner::onSignal(const Signal& signal)
       exec.submitOCO(params);
       break;
     }
+    case SignalType::ProvideLiquidity:
+    case SignalType::WithdrawLiquidity:
+      // DEX/AMM liquidity ops are executed by the on-chain connector, not
+      // the backtest CEX execution path.
+      break;
   }
 }
 

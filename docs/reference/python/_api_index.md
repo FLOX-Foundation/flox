@@ -1916,12 +1916,14 @@ Members:
 - `emit_market_buy(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_market_sell(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_modify(self, order_id: typing.SupportsInt | typing.SupportsIndex, new_price: typing.SupportsFloat | typing.SupportsIndex, new_quantity: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `emit_provide_liquidity(self, pool: typing.SupportsInt | typing.SupportsIndex, price_lower: typing.SupportsFloat | typing.SupportsIndex, price_upper: typing.SupportsFloat | typing.SupportsIndex, liquidity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_stop_limit(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, trigger: typing.SupportsFloat | typing.SupportsIndex, limit_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_stop_market(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, trigger: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_take_profit_limit(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, trigger: typing.SupportsFloat | typing.SupportsIndex, limit_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_take_profit_market(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, trigger: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_trailing_stop(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, offset: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `emit_trailing_stop_percent(self, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, callback_bps: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex) -> int`
+- `emit_withdraw_liquidity(self, pool: typing.SupportsInt | typing.SupportsIndex, liquidity: typing.SupportsFloat | typing.SupportsIndex) -> int`
 - `get_order_status(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `last_closed_bar(self, symbol_id: typing.SupportsInt | typing.SupportsIndex, bar_type: typing.SupportsInt | typing.SupportsIndex = 0, param: typing.SupportsInt | typing.SupportsIndex = 0) -> dict | None`
 - `last_n_closed_bars(self, symbol_id: typing.SupportsInt | typing.SupportsIndex, bar_type: typing.SupportsInt | typing.SupportsIndex, param: typing.SupportsInt | typing.SupportsIndex, n: typing.SupportsInt | typing.SupportsIndex) -> list`

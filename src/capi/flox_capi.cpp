@@ -5048,6 +5048,11 @@ class RunnerSignalHandler : public ISignalHandler
             exec->cb.submit_oco(exec->cb.user_data, &fo1, &fo2);
           }
           break;
+        case SignalType::ProvideLiquidity:
+        case SignalType::WithdrawLiquidity:
+          // DEX/AMM liquidity ops are handled by the on-chain connector,
+          // not the CEX executor callback surface.
+          break;
       }
     }
 

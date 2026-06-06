@@ -187,6 +187,27 @@ class PyStrategyBase
                                         Quantity::fromDouble(qty));
   }
 
+  uint64_t emit_provide_liquidity(uint32_t pool, double price_lower, double price_upper,
+                                  double liquidity)
+  {
+    if (!_bridge)
+    {
+      return 0;
+    }
+    return _bridge->publicEmitProvideLiquidity(pool, Price::fromDouble(price_lower),
+                                               Price::fromDouble(price_upper),
+                                               Quantity::fromDouble(liquidity));
+  }
+
+  uint64_t emit_withdraw_liquidity(uint32_t pool, double liquidity)
+  {
+    if (!_bridge)
+    {
+      return 0;
+    }
+    return _bridge->publicEmitWithdrawLiquidity(pool, Quantity::fromDouble(liquidity));
+  }
+
   void emit_cancel(uint64_t order_id)
   {
     if (_bridge)
@@ -2604,6 +2625,10 @@ inline void bindStrategy(py::module_& m)
            py::arg("side"), py::arg("offset"), py::arg("quantity"))
       .def("emit_trailing_stop_percent", &PyStrategyBase::emit_trailing_stop_percent,
            py::arg("symbol"), py::arg("side"), py::arg("callback_bps"), py::arg("quantity"))
+      .def("emit_provide_liquidity", &PyStrategyBase::emit_provide_liquidity, py::arg("pool"),
+           py::arg("price_lower"), py::arg("price_upper"), py::arg("liquidity"))
+      .def("emit_withdraw_liquidity", &PyStrategyBase::emit_withdraw_liquidity, py::arg("pool"),
+           py::arg("liquidity"))
       .def("emit_limit_buy_tif", &PyStrategyBase::emit_limit_buy_tif, py::arg("symbol"),
            py::arg("price"), py::arg("quantity"), py::arg("tif") = "gtc")
       .def("emit_limit_sell_tif", &PyStrategyBase::emit_limit_sell_tif, py::arg("symbol"),

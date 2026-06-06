@@ -141,6 +141,17 @@ class BridgeStrategy : public Strategy
     return emitTrailingStopPercent(symbol, side, callbackBps, qty);
   }
 
+  OrderId publicEmitProvideLiquidity(SymbolId pool, Price priceLower, Price priceUpper,
+                                     Quantity liquidity)
+  {
+    return emitProvideLiquidity(pool, priceLower, priceUpper, liquidity);
+  }
+
+  OrderId publicEmitWithdrawLiquidity(SymbolId pool, Quantity liquidity)
+  {
+    return emitWithdrawLiquidity(pool, liquidity);
+  }
+
   OrderId publicEmitLimitBuyTif(SymbolId symbol, Price price, Quantity qty, TimeInForce tif)
   {
     return emitLimitBuy(symbol, price, qty, tif);

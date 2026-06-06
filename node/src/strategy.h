@@ -320,6 +320,27 @@ struct NodeStrategyHost
         h->bridge->publicEmitLimitSell(sym, Price::fromDouble(price), Quantity::fromDouble(qty));
         return i.Env().Undefined(); }, "limitSell", this));
 
+    em.Set("provideLiquidity", Napi::Function::New(env_, [](const Napi::CallbackInfo& i) -> Napi::Value
+                                                   {
+        auto* h    = static_cast<NodeStrategyHost*>(i.Data());
+        double lo  = i[0].As<Napi::Number>().DoubleValue();
+        double hi  = i[1].As<Napi::Number>().DoubleValue();
+        double liq = i[2].As<Napi::Number>().DoubleValue();
+        uint32_t sym = i.Length() > 3 ? symId(i[3])
+                                       : (h->syms.empty() ? 0u : h->syms[0]);
+        h->bridge->publicEmitProvideLiquidity(sym, Price::fromDouble(lo), Price::fromDouble(hi),
+                                              Quantity::fromDouble(liq));
+        return i.Env().Undefined(); }, "provideLiquidity", this));
+
+    em.Set("withdrawLiquidity", Napi::Function::New(env_, [](const Napi::CallbackInfo& i) -> Napi::Value
+                                                    {
+        auto* h    = static_cast<NodeStrategyHost*>(i.Data());
+        double liq = i[0].As<Napi::Number>().DoubleValue();
+        uint32_t sym = i.Length() > 1 ? symId(i[1])
+                                       : (h->syms.empty() ? 0u : h->syms[0]);
+        h->bridge->publicEmitWithdrawLiquidity(sym, Quantity::fromDouble(liq));
+        return i.Env().Undefined(); }, "withdrawLiquidity", this));
+
     em.Set("cancel", Napi::Function::New(env_, [](const Napi::CallbackInfo& i) -> Napi::Value
                                          {
         auto* h = static_cast<NodeStrategyHost*>(i.Data());
