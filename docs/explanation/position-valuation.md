@@ -27,6 +27,11 @@ per-position data. An AMM valuator, for example, looks up the pool range,
 the liquidity, and the accrued fees for that symbol and computes the value
 from the pool's own math rather than from a single average entry price.
 
+A set valuator is consulted whenever the tracker is asked for unrealized PnL,
+including when the linear position is zero. An LP or option position is not a
+tracked quantity, so its value comes entirely from the valuator's own state.
+Only the linear default treats a zero position as zero PnL.
+
 ## What stays in the engine
 
 The engine owns the hook and the linear default. It does not own the
