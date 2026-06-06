@@ -198,6 +198,7 @@ nav:
       - Position valuation: explanation/position-valuation.md
       - AMM pricing in backtests: explanation/amm-pricing.md
       - Market-making quoter: explanation/market-making-quoter.md
+      - AMM DEX connector: explanation/amm-dex-connector.md
       - Replay-equivalence gate: explanation/replay-equivalence-gate.md
       - Build feature flags: build/feature-flags.md
       - Contributing:
