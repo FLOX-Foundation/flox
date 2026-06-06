@@ -11,6 +11,7 @@
 
 #include "flox/common.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <vector>
@@ -56,8 +57,13 @@ class Quoter
   // inventory raises it. With zero skew or zero inventory it equals fair.
   Price reservationPrice(Price fair, Quantity inventory) const
   {
-    const double skewBps = _skewBpsPerUnit * inventory.toDouble();
-    return Price::fromDouble(fair.toDouble() * (1.0 - skewBps / 10000.0));
+    // Skew the fair price against inventory, but cap the shift so a large
+    // position cannot drive the reservation price (and the ladder) negative.
+    // The cap holds the reservation within [1 - kMaxSkewFraction,
+    // 1 + kMaxSkewFraction] x fair regardless of inventory magnitude.
+    const double rawFrac = _skewBpsPerUnit * inventory.toDouble() / 10000.0;
+    const double frac = std::clamp(rawFrac, -kMaxSkewFraction, kMaxSkewFraction);
+    return Price::fromDouble(fair.toDouble() * (1.0 - frac));
   }
 
   // The desired two-sided ladder: levels bids and levels asks, stepped out
@@ -91,6 +97,10 @@ class Quoter
   }
 
  private:
+  // Cap on how far inventory skew may move the reservation price, as a
+  // fraction of fair. Keeps the ladder positive for any inventory.
+  static constexpr double kMaxSkewFraction = 0.9;
+
   int32_t _halfSpreadBps;
   int _levels;
   Quantity _levelSize;

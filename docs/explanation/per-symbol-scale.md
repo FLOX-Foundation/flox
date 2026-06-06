@@ -56,6 +56,25 @@ Fixed-point multiply and divide narrow their 128-bit intermediate back to
 debug build and clamps to the boundary otherwise, rather than wrapping into a
 wrong value.
 
+## Crossing into default-scale components
+
+Per-symbol scale lives on `SymbolInfo`; the value itself does not carry it. The
+engine's compute components — AMM pricing, the quoter, position tracking —
+operate in the default `1e8` scale, because their arithmetic uses the
+compile-time scale. A `Price` built with a fine per-symbol scale must therefore
+be rescaled to the default before it is handed to one of those components,
+otherwise it is read at the wrong factor and the result is silently off by the
+ratio of the two scales.
+
+`Decimal::rescale(fromScale, toScale)` is that explicit bridge: it reinterprets
+a value's raw from one scale into another. A DEX price at a `1e15` scale becomes
+a default-scale `Price` with `price.rescale(1e15, Price::Scale)` before it
+reaches the pricing curve or the position tracker. The conversion is lossy when
+the target scale is coarser (a sub-tick value rounds toward zero), which is the
+inherent limit of representing a very fine value at a coarser scale. A token
+whose range cannot survive the default scale at all needs the larger,
+runtime-scale-aware work, not just a rescale.
+
 ## Forward compatibility with C++26
 
 The guardrail check is a single macro so it can adopt C++26 contracts when a
