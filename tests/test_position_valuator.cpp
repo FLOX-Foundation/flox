@@ -61,12 +61,21 @@ TEST(PositionValuatorTest, ResettingValuatorRestoresLinear)
   EXPECT_NEAR(pnl.toDouble(), 20.0, 1e-6);
 }
 
-// A flat position is zero regardless of valuator (early return).
-TEST(PositionValuatorTest, FlatPositionIsZero)
+// A set valuator is consulted even with no linear position: a nonlinear
+// valuator (AMM LP, option) derives value from its own state, not from a
+// tracked quantity.
+TEST(PositionValuatorTest, ValuatorConsultedAtZeroPosition)
 {
-  AggregatedPositionTracker<> tracker;
+  AggregatedPositionTracker<> tracker;  // no onFill -> zero linear position
   FixedValuator fv(Volume::fromDouble(999.0));
   tracker.setValuator(&fv);
+  EXPECT_NEAR(tracker.unrealizedPnl(1, Price::fromDouble(110.0)).toDouble(), 999.0, 1e-6);
+}
+
+// The linear default still returns zero for a flat position.
+TEST(PositionValuatorTest, LinearFlatPositionIsZero)
+{
+  AggregatedPositionTracker<> tracker;
   EXPECT_EQ(tracker.unrealizedPnl(1, Price::fromDouble(110.0)).raw(), 0);
 }
 

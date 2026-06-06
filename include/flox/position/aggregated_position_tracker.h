@@ -92,13 +92,16 @@ class AggregatedPositionTracker : public ISubsystem
   Volume unrealizedPnl(SymbolId symbol, Price currentPrice) const
   {
     auto pos = totalPosition(symbol);
-    if (pos.quantity.raw() == 0)
-    {
-      return Volume{};
-    }
+    // A custom valuator is consulted whenever it is set, even at a zero linear
+    // position: a nonlinear valuator (AMM LP, option) derives value from its
+    // own state, not from a tracked quantity.
     if (_valuator != nullptr)
     {
       return _valuator->unrealizedPnl(symbol, pos.quantity, pos.avgEntryPrice, currentPrice);
+    }
+    if (pos.quantity.raw() == 0)
+    {
+      return Volume{};
     }
     // PnL = qty * (current - avg)
     Price diff = currentPrice - pos.avgEntryPrice;
