@@ -195,6 +195,7 @@ nav:
       - On-chain order lifecycle: explanation/onchain-order-lifecycle.md
       - Liquidity-provision signals: explanation/liquidity-provision.md
       - Position valuation: explanation/position-valuation.md
+      - AMM pricing in backtests: explanation/amm-pricing.md
       - Replay-equivalence gate: explanation/replay-equivalence-gate.md
       - Build feature flags: build/feature-flags.md
       - Contributing:
