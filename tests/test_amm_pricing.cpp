@@ -16,9 +16,9 @@ using namespace flox;
 namespace
 {
 
-AmmPool pool(double base, double quote, int32_t feeBps)
+ConstantProductCurve pool(double base, double quote, int32_t feeBps)
 {
-  return AmmPool(Quantity::fromDouble(base), Quantity::fromDouble(quote), feeBps);
+  return ConstantProductCurve(Quantity::fromDouble(base), Quantity::fromDouble(quote), feeBps);
 }
 
 TEST(AmmPricingTest, SpotPriceIsQuoteOverBase)

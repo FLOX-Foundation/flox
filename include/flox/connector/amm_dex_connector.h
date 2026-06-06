@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "flox/backtest/amm_pricing.h"
+#include "flox/backtest/amm_curve.h"
 #include "flox/connector/abstract_exchange_connector.h"
 
 #include <memory_resource>
@@ -18,27 +18,27 @@
 namespace flox
 {
 
-// Reference connector that presents a constant-product AMM pool as an
-// IExchangeConnector. It maps pool state into the same BookUpdateEvent and
-// TradeEvent the rest of the engine consumes, so the DEX pieces (per-symbol
-// scale, on-chain lifecycle, AMM pricing, nonlinear valuation, venue-type
-// routing) compose into a working venue without the core knowing it is a
-// pool rather than an order book.
+// Reference connector that presents any AMM curve as an IExchangeConnector. It
+// maps the curve's pricing into the same BookUpdateEvent and TradeEvent the
+// rest of the engine consumes, so the DEX pieces (per-symbol scale, on-chain
+// lifecycle, AMM pricing, nonlinear valuation, venue-type routing) compose into
+// a working venue without the core knowing it is a pool rather than an order
+// book. The curve is borrowed and must outlive the connector.
 //
-// This is the flox-side skeleton only. Sourcing reserve updates from a chain,
+// This is the flox-side skeleton only. Sourcing curve state from a chain,
 // signing swaps, mempool watching, gas policy, and MEV protection live in the
-// downstream connector that wraps this; here the pool state is fed in
-// directly so the mapping can be tested against fixtures with no network.
+// downstream connector that wraps this; here the curve is driven directly so
+// the mapping can be tested against fixtures with no network.
 class AmmDexConnector : public IExchangeConnector
 {
  public:
   // levels: synthetic book depth per side. levelSize: base quantity per
   // level, also the depth step used to price each level off the curve.
-  AmmDexConnector(std::string name, SymbolId symbol, AmmPool pool, int levels,
+  AmmDexConnector(std::string name, SymbolId symbol, IAmmCurve& curve, int levels,
                   Quantity levelSize)
       : _name(std::move(name)),
         _symbol(symbol),
-        _pool(pool),
+        _curve(curve),
         _levels(levels),
         _levelSize(levelSize)
   {
@@ -46,18 +46,15 @@ class AmmDexConnector : public IExchangeConnector
 
   std::string exchangeId() const override { return _name; }
 
-  // Update the pool's reserves and publish the resulting synthetic book.
-  void onPoolState(Quantity reserveBase, Quantity reserveQuote)
-  {
-    _pool = AmmPool(reserveBase, reserveQuote, _pool.feeBps());
-    publishBook();
-  }
+  // Publish a synthetic book from the curve's current state. Call after the
+  // caller mutates the curve (the curve owns its own state-update API).
+  void republish() { publishBook(); }
 
-  // Execute a swap against the pool, publish the trade, and republish the
-  // book since the reserves moved. baseForQuote=true sells base into the pool.
+  // Execute a swap against the curve, publish the trade, and republish the
+  // book since the curve moved. baseForQuote=true sells base into the pool.
   void onSwap(Quantity amountIn, bool baseForQuote, int64_t tsNs)
   {
-    const Quantity out = _pool.applySwap(amountIn, baseForQuote);
+    const Quantity out = _curve.applySwap(amountIn, baseForQuote);
     const double base = baseForQuote ? amountIn.toDouble() : out.toDouble();
     const double quote = baseForQuote ? out.toDouble() : amountIn.toDouble();
 
@@ -79,7 +76,7 @@ class AmmDexConnector : public IExchangeConnector
   // connector would price each side from its own swap direction.
   void publishBook()
   {
-    const double spot = _pool.spotPrice().toDouble();
+    const double spot = _curve.spotPrice().toDouble();
     if (spot <= 0.0 || _levels <= 0)
     {
       return;
@@ -94,7 +91,7 @@ class AmmDexConnector : public IExchangeConnector
     for (int i = 1; i <= _levels; ++i)
     {
       const Quantity depth = Quantity::fromDouble(_levelSize.toDouble() * i);
-      const double impact = _pool.priceImpact(depth, true);
+      const double impact = _curve.priceImpact(depth, true);
       ev.update.bids.emplace_back(Price::fromDouble(spot * (1.0 - impact)), _levelSize);
       ev.update.asks.emplace_back(Price::fromDouble(spot * (1.0 + impact)), _levelSize);
     }
@@ -104,7 +101,7 @@ class AmmDexConnector : public IExchangeConnector
 
   std::string _name;
   SymbolId _symbol;
-  AmmPool _pool;
+  IAmmCurve& _curve;
   int _levels;
   Quantity _levelSize;
 };
