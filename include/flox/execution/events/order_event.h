@@ -48,7 +48,15 @@ enum class OrderEventStatus
   REPLACE_REJECTED,
   // Rejected pre-submission by client-side rate-limit enforcement.
   // See RateLimitPolicy + SimulatedExecutor::setRateLimitPolicy.
-  REJECTED_RATE_LIMIT
+  REJECTED_RATE_LIMIT,
+  // On-chain (DEX) lifecycle. PENDING_ONCHAIN: broadcast to the mempool,
+  // not yet confirmed (probabilistic). REVERTED: the chain rejected the
+  // transaction (reason in rejectReason). REPLACED_GAS: re-broadcast with
+  // higher gas, superseding the pending tx. Connector-driven; backtest
+  // and CEX paths never emit these.
+  PENDING_ONCHAIN,
+  REVERTED,
+  REPLACED_GAS
 };
 
 // Categorical position of a resting limit order relative to the
@@ -86,6 +94,13 @@ struct OrderEvent
   Order newOrder{};
   Quantity fillQty{0};
   std::string rejectReason;
+
+  // On-chain (DEX) metadata, filled by the connector. txHash identifies
+  // the broadcast transaction; confirmations counts blocks since
+  // inclusion. The REVERTED reason reuses rejectReason. Empty / zero on
+  // CEX and backtest events.
+  std::string txHash;
+  uint32_t confirmations{0};
 
   // For fills and trailing updates
   Price fillPrice{};
@@ -183,6 +198,15 @@ struct OrderEvent
         break;
       case OrderEventStatus::REJECTED_RATE_LIMIT:
         listener.onOrderRejected(order, rejectReason);
+        break;
+      case OrderEventStatus::PENDING_ONCHAIN:
+        listener.onOrderPendingOnchain(order, txHash);
+        break;
+      case OrderEventStatus::REVERTED:
+        listener.onOrderReverted(order, rejectReason);
+        break;
+      case OrderEventStatus::REPLACED_GAS:
+        listener.onOrderGasReplaced(order, newOrder);
         break;
     }
   }
