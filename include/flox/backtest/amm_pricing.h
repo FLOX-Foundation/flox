@@ -9,26 +9,22 @@
 
 #pragma once
 
+#include "flox/backtest/amm_curve.h"
 #include "flox/common.h"
 
 namespace flox
 {
 
-// Constant-product (Uniswap v2 style) AMM pool pricing for backtests. A swap
-// fills at the price the pool's reserves imply, not against a central limit
-// order book, so the output amount and the price impact come from the
-// x * y = k curve and the pool's fee tier. This is a standalone primitive:
-// the CLOB SimulatedExecutor is untouched, and an AmmDex backtest fills swaps
-// through this curve while a CEX backtest keeps using the order book.
-//
-// A v3 concentrated-liquidity pool is a follow-up; the v2 curve is the
-// minimum needed to model DEX execution slippage realistically.
-class AmmPool
+// Constant-product (Uniswap v2 style) AMM curve. A swap fills at the price the
+// reserves imply, not against an order book, so the output amount and the
+// price impact come from the x * y = k curve and the fee tier. The simplest
+// IAmmCurve: it needs only the two reserves and the fee.
+class ConstantProductCurve : public IAmmCurve
 {
  public:
-  // reserveBase / reserveQuote are the pool's two reserves; feeBps is the
-  // swap fee in basis points (30 = 0.30%, the common v2 tier).
-  AmmPool(Quantity reserveBase, Quantity reserveQuote, int32_t feeBps)
+  // reserveBase / reserveQuote are the two reserves; feeBps is the swap fee in
+  // basis points (30 = 0.30%, the common v2 tier).
+  ConstantProductCurve(Quantity reserveBase, Quantity reserveQuote, int32_t feeBps)
       : _reserveBase(reserveBase), _reserveQuote(reserveQuote), _feeBps(feeBps)
   {
   }
@@ -37,8 +33,13 @@ class AmmPool
   Quantity reserveQuote() const { return _reserveQuote; }
   int32_t feeBps() const { return _feeBps; }
 
-  // Marginal price, quote per base, ignoring fee and impact.
-  Price spotPrice() const
+  void setReserves(Quantity reserveBase, Quantity reserveQuote)
+  {
+    _reserveBase = reserveBase;
+    _reserveQuote = reserveQuote;
+  }
+
+  Price spotPrice() const override
   {
     const double base = _reserveBase.toDouble();
     if (base <= 0.0)
@@ -48,10 +49,10 @@ class AmmPool
     return Price::fromDouble(_reserveQuote.toDouble() / base);
   }
 
-  // Output amount for swapping amountIn. baseForQuote=true swaps base->quote
-  // (a sell of base), false swaps quote->base (a buy of base). Applies the
-  // fee and the constant-product curve. Reserves are not mutated.
-  Quantity amountOut(Quantity amountIn, bool baseForQuote) const
+  // baseForQuote=true swaps base->quote (a sell of base), false swaps
+  // quote->base (a buy of base). Applies the fee and the constant-product
+  // curve. Reserves are not mutated.
+  Quantity amountOut(Quantity amountIn, bool baseForQuote) const override
   {
     const double reserveIn = baseForQuote ? _reserveBase.toDouble() : _reserveQuote.toDouble();
     const double reserveOut = baseForQuote ? _reserveQuote.toDouble() : _reserveBase.toDouble();
@@ -65,9 +66,7 @@ class AmmPool
     return Quantity::fromDouble(out);
   }
 
-  // Price impact as a fraction in [0, 1): how far the realized rate falls
-  // below the spot rate, including the fee. Zero for an infinitesimal swap.
-  double priceImpact(Quantity amountIn, bool baseForQuote) const
+  double priceImpact(Quantity amountIn, bool baseForQuote) const override
   {
     const double reserveIn = baseForQuote ? _reserveBase.toDouble() : _reserveQuote.toDouble();
     const double reserveOut = baseForQuote ? _reserveQuote.toDouble() : _reserveBase.toDouble();
@@ -82,9 +81,9 @@ class AmmPool
     return 1.0 - execRate / spotRate;
   }
 
-  // Execute the swap: returns the output amount and moves the reserves along
-  // the curve, so a sequence of swaps in a backtest sees the pool drift.
-  Quantity applySwap(Quantity amountIn, bool baseForQuote)
+  // Execute the swap: return the output and move the reserves along the curve,
+  // so a sequence of swaps in a backtest sees the pool drift.
+  Quantity applySwap(Quantity amountIn, bool baseForQuote) override
   {
     const Quantity out = amountOut(amountIn, baseForQuote);
     if (baseForQuote)

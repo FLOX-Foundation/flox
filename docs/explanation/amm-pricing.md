@@ -21,22 +21,25 @@ realized rate is always below the spot rate, by an amount that grows with
 size. That gap is the price impact, and ignoring it makes a DEX strategy look
 more profitable than it is.
 
-## What AmmPool provides
+## The curve interface
 
-`AmmPool` holds the reserves and the fee tier and answers three questions:
-the spot price, the output amount for a swap of a given size and direction,
-and the price impact of that swap. Applying a swap returns the output and
-moves the reserves, so a sequence of swaps in a backtest sees the pool drift
-the way a real pool would.
+A pricing curve answers four questions: the spot price, the output amount for
+a swap of a given size and direction, the price impact of that swap, and the
+new state after applying it. `IAmmCurve` is that interface, and the connector,
+the backtest pricing, and the LP valuator work over it without knowing which
+model is underneath. A swap that applies returns its output and moves the
+curve's state, so a sequence of swaps in a backtest sees the pool drift the way
+a real one would.
+
+`ConstantProductCurve` is the simplest implementation: it holds the two
+reserves and the fee. Other models implement the same interface, each with its
+own state: weighted pools, concentrated liquidity, stableswap, cryptoswap. A
+backtest swaps one curve for another without touching the rest.
 
 ## What it does not touch
 
-The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest
-still fills against the order book; only an AMM venue fills through this
-curve. The two pricing models sit side by side, chosen by venue type.
-
-This is the v2 constant-product curve. A v3 concentrated-liquidity pool,
-where liquidity is placed in ranges and the effective reserves change as
-price crosses a range boundary, is a later addition. Where a backtest sources
-its reserve history from is the concern of the connector that drives the DEX
-venue, not of the curve itself.
+The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
+against the order book; only an AMM venue fills through a curve. The two
+pricing models sit side by side, chosen by venue type. Where a backtest sources
+its curve state from is the concern of the connector that drives the DEX venue,
+not of the curve itself.

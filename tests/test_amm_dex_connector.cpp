@@ -7,6 +7,7 @@
  * license information.
  */
 
+#include "flox/backtest/amm_pricing.h"
 #include "flox/connector/amm_dex_connector.h"
 
 #include <gtest/gtest.h>
@@ -17,15 +18,10 @@ using namespace flox;
 namespace
 {
 
-AmmDexConnector makeConn(const char* name, double base, double quote, int feeBps, int levels)
+TEST(AmmDexConnectorTest, CurveStateSynthesizesBook)
 {
-  return AmmDexConnector(name, 1, AmmPool(Quantity::fromDouble(base), Quantity::fromDouble(quote), feeBps),
-                         levels, Quantity::fromDouble(1.0));
-}
-
-TEST(AmmDexConnectorTest, PoolStateSynthesizesBook)
-{
-  auto conn = makeConn("amm", 1000.0, 2000.0, 30, 3);
+  ConstantProductCurve curve(Quantity::fromDouble(1000.0), Quantity::fromDouble(2000.0), 30);
+  AmmDexConnector conn("amm", 1, curve, 3, Quantity::fromDouble(1.0));
 
   bool gotBook = false;
   std::vector<BookLevel> bids;
@@ -39,7 +35,7 @@ TEST(AmmDexConnectorTest, PoolStateSynthesizesBook)
       },
       [](const TradeEvent&) {});
 
-  conn.onPoolState(Quantity::fromDouble(1000.0), Quantity::fromDouble(2000.0));
+  conn.republish();
 
   ASSERT_TRUE(gotBook);
   ASSERT_EQ(bids.size(), 3u);
@@ -47,14 +43,14 @@ TEST(AmmDexConnectorTest, PoolStateSynthesizesBook)
   const double spot = 2.0;  // quote / base
   EXPECT_LT(bids[0].price.toDouble(), spot);
   EXPECT_GT(asks[0].price.toDouble(), spot);
-  // Levels step away from spot.
   EXPECT_LT(bids[1].price.toDouble(), bids[0].price.toDouble());
   EXPECT_GT(asks[1].price.toDouble(), asks[0].price.toDouble());
 }
 
 TEST(AmmDexConnectorTest, SwapEmitsTrade)
 {
-  auto conn = makeConn("amm", 1000.0, 1000.0, 0, 2);
+  ConstantProductCurve curve(Quantity::fromDouble(1000.0), Quantity::fromDouble(1000.0), 0);
+  AmmDexConnector conn("amm", 1, curve, 2, Quantity::fromDouble(1.0));
 
   bool gotTrade = false;
   TradeEvent captured;
@@ -77,8 +73,23 @@ TEST(AmmDexConnectorTest, SwapEmitsTrade)
 
 TEST(AmmDexConnectorTest, ExchangeId)
 {
-  auto conn = makeConn("uniswap", 1.0, 1.0, 0, 1);
+  ConstantProductCurve curve(Quantity::fromDouble(1.0), Quantity::fromDouble(1.0), 0);
+  AmmDexConnector conn("uniswap", 1, curve, 1, Quantity::fromDouble(1.0));
   EXPECT_EQ(conn.exchangeId(), "uniswap");
+}
+
+// The connector prices through the IAmmCurve interface, so any curve drives it.
+TEST(AmmDexConnectorTest, PricesOverInterfaceReference)
+{
+  ConstantProductCurve cp(Quantity::fromDouble(1000.0), Quantity::fromDouble(1000.0), 0);
+  IAmmCurve& curve = cp;
+  AmmDexConnector conn("amm", 1, curve, 1, Quantity::fromDouble(1.0));
+
+  bool gotBook = false;
+  conn.setCallbacks([&](const BookUpdateEvent&)
+                    { gotBook = true; }, [](const TradeEvent&) {});
+  conn.republish();
+  EXPECT_TRUE(gotBook);
 }
 
 }  // namespace
