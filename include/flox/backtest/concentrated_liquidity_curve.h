@@ -141,7 +141,7 @@ class ConcentratedLiquidityCurve : public INTokenCurve
       }
       u256 amountIn(0), amountOutStep(0), feeAmount(0);
       const u256 sqrtNext =
-          computeStep(sqrt, target, L, rem, zeroForOne, amountIn, amountOutStep, feeAmount);
+          computeStep(sqrt, target, L, rem, zeroForOne, _fee, amountIn, amountOutStep, feeAmount);
       rem = rem - (amountIn + feeAmount);
       out = out + amountOutStep;
       if (hasTick && sqrtNext == tickSqrt)
@@ -229,11 +229,14 @@ class ConcentratedLiquidityCurve : public INTokenCurve
     return zeroForOne ? nextFromAmount0Up(sp, L, amountIn) : nextFromAmount1Down(sp, L, amountIn);
   }
 
-  // v3 SwapMath.computeSwapStep, exact-input branch.
+  // v3 SwapMath.computeSwapStep, exact-input branch. feePips is the fee for this
+  // step (the fixed pool fee for a static pool, the per-step rate for an adaptive
+  // one).
   u256 computeStep(const u256& sc, const u256& st, const u256& L, const u256& amtRemaining,
-                   bool zeroForOne, u256& amountIn, u256& amountOut, u256& feeAmount) const
+                   bool zeroForOne, uint32_t feePips, u256& amountIn, u256& amountOut,
+                   u256& feeAmount) const
   {
-    const u256 feeNum = u256(1000000 - _fee);
+    const u256 feeNum = u256(1000000 - feePips);
     const u256 amountRemainingLessFee = mulDiv(amtRemaining, feeNum, u256(1000000));
     amountIn = zeroForOne ? getAmount0Delta(st, sc, L, true) : getAmount1Delta(sc, st, L, true);
     u256 sn;
@@ -262,7 +265,7 @@ class ConcentratedLiquidityCurve : public INTokenCurve
     }
     else
     {
-      feeAmount = mulDivUp(amountIn, u256(_fee), feeNum);
+      feeAmount = mulDivUp(amountIn, u256(feePips), feeNum);
     }
     return sn;
   }

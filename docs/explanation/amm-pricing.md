@@ -175,6 +175,29 @@ converted to its sqrt price by the program's tick math) priced through the curve
 agrees with an independent Jupiter quote to a fraction of a basis point, the
 residual being the aggregator's cache lag, not the math.
 
+## Solana: Whirlpool adaptive fee
+
+A Whirlpool can opt into an adaptive fee, and `AdaptiveFeeWhirlpoolCurve` is the
+`OrcaWhirlpoolCurve` swap with it. The fee is no longer fixed: it rises with how far
+the price has moved across tick groups since a time-decayed reference, so the swap
+is priced per step. Each step is bounded to the next tick-group boundary so the fee
+is constant within it; a volatility accumulator updates as groups are crossed, and
+the step fee is the static fee plus an adaptive term quadratic in that accumulator.
+This is a transcription of the program's FeeRateManager and Oracle, minus the skip
+optimization (which bounds compute, not output, so omitting it is exact). The
+current tick and the swap timestamp come from the pool; the fee state -- the
+volatility accumulator and its reference, plus the constants -- comes from the
+pool's Oracle account.
+
+It is validated to the unit against the program's own pre-calculated fee-rate
+vector (the volatility-to-fee table), and the tick-group-bounded swap reduces
+exactly to the static `OrcaWhirlpoolCurve` when the adaptive control factor is zero
+(the program skips the bounding there), so the loop is anchored to a curve already
+checked against the chain. The full adaptive swap matches a faithful transcription
+of the program. Unlike the static curves, a live cross-check is weaker here: the
+volatility accumulator is time-dependent, so an aggregator's lagged state cannot be
+aligned -- the program's own vectors are the stronger gate.
+
 ## Solana: Raydium CLMM
 
 `RaydiumClmmCurve` is Raydium's concentrated-liquidity pool, the other large
