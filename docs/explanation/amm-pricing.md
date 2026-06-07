@@ -205,6 +205,19 @@ fee exactly. So Saber pools are priced by the existing curve, validated to the
 unit against a transcription of Saber's `swap_to`, and read in the harness from
 Saber's packed (pre-Anchor) SwapInfo account and its two reserve vaults.
 
+## Token-2022 transfer fees
+
+A Solana mint can carry a transfer fee (the Token-2022 TransferFeeConfig
+extension), withheld on every transfer of that token. It changes the fill a swap
+delivers even when the pool curve is exact: the pool receives the input net of its
+transfer fee, and the user receives the output net of its transfer fee.
+`Token2022TransferFee` is that fee, exact per the program -- ceil(amount * basis
+points / 10000), capped at a maximum, with the rate the mint has in effect for the
+current epoch. `amountOutWithTransferFees` composes it with any curve: feed the
+pool the input net of its fee, take the curve output, and subtract the output
+token's fee. It is a boundary concern, parameterized by the mint's config, not a
+property of the curve, so it composes once and applies to every venue.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
