@@ -192,6 +192,19 @@ no-cross and tick-crossing cases. The live read differs from the Whirlpool only 
 the account layouts and the tick math constants (Raydium uses the Uniswap-style
 multiplicative tick table); the curve and its tick walk are the shared core.
 
+## Solana: Saber StableSwap
+
+Saber is the Curve StableSwap on Solana, and it needs no new curve: it is a
+`StableSwapCurve`. The invariant is the same, the amplification is the same
+`Ann = A * N` convention (Saber's `ann = amp * N_COINS`), the output Newton and the
+defensive `dy = dest - y - 1` match, and a Saber pool is two coins with no rate
+scaling -- so it is a `StableSwapCurve` with identity rates and `n = 2`. Saber's
+fee is a numerator over a denominator rather than a fixed 1e10 scale; when the
+denominator divides 1e10, as Saber's powers of ten do, it maps onto the over-1e10
+fee exactly. So Saber pools are priced by the existing curve, validated to the
+unit against a transcription of Saber's `swap_to`, and read in the harness from
+Saber's packed (pre-Anchor) SwapInfo account and its two reserve vaults.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
