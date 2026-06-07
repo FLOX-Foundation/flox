@@ -4928,6 +4928,25 @@
       "return_type": "uint64_t"
     },
     {
+      "group": "dex_amount",
+      "name": "flox_i256_roundtrip",
+      "params": [
+        {
+          "name": "dec",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "indicator_functions",
       "name": "flox_indicator_adf",
       "params": [
@@ -13131,6 +13150,78 @@
         }
       ],
       "return_type": "void"
+    },
+    {
+      "group": "dex_amount",
+      "name": "flox_u256_from_hex",
+      "params": [
+        {
+          "name": "hex",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "dex_amount",
+      "name": "flox_u256_from_words",
+      "params": [
+        {
+          "name": "words",
+          "type": "const uint64_t *"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "dex_amount",
+      "name": "flox_u256_roundtrip",
+      "params": [
+        {
+          "name": "dec",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "dex_amount",
+      "name": "flox_u256_to_words",
+      "params": [
+        {
+          "name": "dec",
+          "type": "const char *"
+        },
+        {
+          "name": "words",
+          "type": "uint64_t *"
+        }
+      ],
+      "return_type": "uint8_t"
     },
     {
       "group": "venue_availability",

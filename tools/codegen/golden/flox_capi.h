@@ -1179,6 +1179,16 @@ extern "C"
                                               FloxBookLevel* out, uint64_t max_entries);
 
   // ============================================================
+  // Dex Amount
+  // ============================================================
+
+  uint8_t flox_u256_roundtrip(const char* dec, char* out, size_t out_len);
+  uint8_t flox_i256_roundtrip(const char* dec, char* out, size_t out_len);
+  uint8_t flox_u256_from_hex(const char* hex, char* out, size_t out_len);
+  uint8_t flox_u256_to_words(const char* dec, uint64_t* words);
+  uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t out_len);
+
+  // ============================================================
   // Execution
   // ============================================================
 

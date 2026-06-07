@@ -2336,6 +2336,16 @@ export interface TapeDiffResult {
 export function tapeDiff(leftPath: string, rightPath: string,
                          opts?: TapeDiffOptions): TapeDiffResult;
 
+// ── DEX amounts: u256 / i256 (256-bit, native BigInt) ─────────────────
+
+/** Round-trip a value through the exact u256 (the DEX curves' amount type),
+ *  lossless for any value in [0, 2^256). The boundary type for the bound curves. */
+export function u256Roundtrip(value: bigint): bigint;
+/** The signed variant (i256), carrying the sign. */
+export function i256Roundtrip(value: bigint): bigint;
+/** Parse a hex string (with or without a 0x prefix) into a 256-bit BigInt. */
+export function u256FromHex(hex: string): bigint;
+
 // ── Portfolio risk aggregator ─────────────────────────────────────────
 
 /** Cross-strategy risk limits. Pass any subset; missing fields stay

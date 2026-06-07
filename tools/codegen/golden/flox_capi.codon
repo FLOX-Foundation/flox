@@ -187,6 +187,13 @@ from C import flox_delta_book_replayer_apply(cobj, u8, u32, cobj, int, cobj, int
 from C import flox_delta_book_replayer_copy_bids(cobj, cobj, u64) -> u64
 from C import flox_delta_book_replayer_copy_asks(cobj, cobj, u64) -> u64
 
+# ── dex_amount ──
+from C import flox_u256_roundtrip(cobj, cobj, int) -> u8
+from C import flox_i256_roundtrip(cobj, cobj, int) -> u8
+from C import flox_u256_from_hex(cobj, cobj, int) -> u8
+from C import flox_u256_to_words(cobj, Ptr[u64]) -> u8
+from C import flox_u256_from_words(Ptr[u64], cobj, int) -> u8
+
 # ── execution ──
 from C import flox_execution_listener_create(cobj) -> cobj
 from C import flox_execution_listener_create_p(cobj) -> cobj

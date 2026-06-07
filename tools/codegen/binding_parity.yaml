@@ -447,3 +447,20 @@ groups:
         - PeakAggregator
         - QuantileAggregator
     codon: { status: required }
+
+  # DEX 256-bit amounts (u256 / i256). The boundary type for the AMM/DEX curves,
+  # bound as a native bignum (Python int, Node BigInt).
+  dex_amount:
+    pybind11:
+      status: required
+      functions: [u256_roundtrip, i256_roundtrip, u256_from_hex]
+    napi:
+      status: required
+      functions: [u256Roundtrip, i256Roundtrip, u256FromHex]
+    codon: { status: required }
+    quickjs:
+      status: allowlist
+      reason: >
+        QuickJS has no arbitrary-precision integer in the bound surface, so a 256-bit
+        amount cannot round-trip through a JS number. Bind when the QuickJS layer
+        grows a BigInt path. Tracked in W1-T039.

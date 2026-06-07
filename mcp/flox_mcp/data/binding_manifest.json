@@ -1143,6 +1143,11 @@
           "name": "flox_grid_search_total"
         },
         {
+          "group": "dex_amount",
+          "kind": "function",
+          "name": "flox_i256_roundtrip"
+        },
+        {
           "group": "indicator_functions",
           "kind": "function",
           "name": "flox_indicator_adf"
@@ -3323,6 +3328,26 @@
           "name": "flox_target_future_return"
         },
         {
+          "group": "dex_amount",
+          "kind": "function",
+          "name": "flox_u256_from_hex"
+        },
+        {
+          "group": "dex_amount",
+          "kind": "function",
+          "name": "flox_u256_from_words"
+        },
+        {
+          "group": "dex_amount",
+          "kind": "function",
+          "name": "flox_u256_roundtrip"
+        },
+        {
+          "group": "dex_amount",
+          "kind": "function",
+          "name": "flox_u256_to_words"
+        },
+        {
           "group": "venue_availability",
           "kind": "function",
           "name": "flox_venue_availability_auto_random_outages"
@@ -3975,6 +4000,7 @@
         "datareader",
         "datawriter",
         "delta_book",
+        "dex_amount",
         "execution",
         "execution_algos",
         "executor_fill",
@@ -4942,6 +4968,10 @@
         {
           "kind": "function",
           "name": "flox_grid_search_total"
+        },
+        {
+          "kind": "function",
+          "name": "flox_i256_roundtrip"
         },
         {
           "kind": "function",
@@ -6689,6 +6719,22 @@
         },
         {
           "kind": "function",
+          "name": "flox_u256_from_hex"
+        },
+        {
+          "kind": "function",
+          "name": "flox_u256_from_words"
+        },
+        {
+          "kind": "function",
+          "name": "flox_u256_roundtrip"
+        },
+        {
+          "kind": "function",
+          "name": "flox_u256_to_words"
+        },
+        {
+          "kind": "function",
           "name": "flox_venue_availability_auto_random_outages"
         },
         {
@@ -7613,6 +7659,10 @@
         },
         {
           "kind": "function",
+          "name": "i256Roundtrip"
+        },
+        {
+          "kind": "function",
           "name": "inspect"
         },
         {
@@ -7718,6 +7768,14 @@
         {
           "kind": "function",
           "name": "tradePnl"
+        },
+        {
+          "kind": "function",
+          "name": "u256FromHex"
+        },
+        {
+          "kind": "function",
+          "name": "u256Roundtrip"
         },
         {
           "kind": "function",
@@ -8377,6 +8435,10 @@
         },
         {
           "kind": "function",
+          "name": "i256_roundtrip"
+        },
+        {
+          "kind": "function",
           "name": "implied_percentile_in_cone"
         },
         {
@@ -8506,6 +8568,14 @@
         {
           "kind": "function",
           "name": "trade_pnl"
+        },
+        {
+          "kind": "function",
+          "name": "u256_from_hex"
+        },
+        {
+          "kind": "function",
+          "name": "u256_roundtrip"
         },
         {
           "kind": "function",
@@ -9032,6 +9102,37 @@
           "DeltaBookReplayer"
         ],
         "functions": [],
+        "status": "required"
+      }
+    },
+    "dex_amount": {
+      "capi_functions": [
+        "flox_i256_roundtrip",
+        "flox_u256_from_hex",
+        "flox_u256_from_words",
+        "flox_u256_roundtrip",
+        "flox_u256_to_words"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "u256Roundtrip",
+          "i256Roundtrip",
+          "u256FromHex"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [
+          "u256_roundtrip",
+          "i256_roundtrip",
+          "u256_from_hex"
+        ],
         "status": "required"
       }
     },
