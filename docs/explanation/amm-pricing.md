@@ -47,6 +47,21 @@ because it moves the reserves further. And the realized rate is below the
 marginal rate by an amount that grows with size: that gap is the price impact,
 and ignoring it makes a DEX strategy look more profitable than it is.
 
+## Stableswap
+
+`StableSwapCurve` is a Curve stable pool (a 3pool of stablecoins), exact in
+integer. It blends constant-sum, for a flat one-for-one price near the peg, with
+constant-product, so the pool never empties, tuned by an amplification `A`. The
+balances are first normalized to a common scale by per-coin rates (3pool keeps
+DAI at 1e18 and lifts USDC and USDT by 1e12), and the invariant `D` and the
+output balance both come from integer Newton that stops when the step is within
+one unit, exactly as the contract does. The fee is taken on the output after the
+contract's defensive `-1`. `A * N` sets the amplification, the original
+StableSwap convention.
+
+One class covers 3pool and other plain stableswap pools: it is parameterized by
+the balances, the rates, `A`, and the fee, and `n` is the number of coins.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
