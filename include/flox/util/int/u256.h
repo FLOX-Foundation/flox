@@ -15,9 +15,56 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace flox
 {
+
+// Portable 64-bit limb primitives. MSVC (and clang-cl) have no __int128, so use
+// the x64 intrinsics there; everywhere else __int128 is the fast path.
+namespace u256_detail
+{
+
+inline uint64_t mul64(uint64_t a, uint64_t b, uint64_t& hi)
+{
+#if defined(_MSC_VER)
+  return _umul128(a, b, &hi);
+#else
+  unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
+  hi = static_cast<uint64_t>(p >> 64);
+  return static_cast<uint64_t>(p);
+#endif
+}
+
+// out = a + b + carry_in; returns carry_out (0 or 1).
+inline unsigned char addc(unsigned char carry, uint64_t a, uint64_t b, uint64_t& out)
+{
+#if defined(_MSC_VER)
+  return _addcarry_u64(carry, a, b, &out);
+#else
+  unsigned __int128 s = static_cast<unsigned __int128>(a) + b + carry;
+  out = static_cast<uint64_t>(s);
+  return static_cast<unsigned char>(s >> 64);
+#endif
+}
+
+// out = a - b - borrow_in; returns borrow_out (0 or 1).
+inline unsigned char subb(unsigned char borrow, uint64_t a, uint64_t b, uint64_t& out)
+{
+#if defined(_MSC_VER)
+  return _subborrow_u64(borrow, a, b, &out);
+#else
+  unsigned __int128 d = static_cast<unsigned __int128>(a) - b - borrow;
+  out = static_cast<uint64_t>(d);
+  return static_cast<unsigned char>((d >> 64) & 1);
+#endif
+}
+
+}  // namespace u256_detail
 
 // Unsigned 256-bit integer for chain-faithful DEX math. EVM/Vyper contracts
 // compute in uint256 with floor division; reproducing their output to the wei
@@ -193,51 +240,43 @@ struct u256
   friend u256 operator+(const u256& a, const u256& b)
   {
     u256 r;
-    unsigned __int128 carry = 0;
+    unsigned char carry = 0;
     for (int i = 0; i < 4; ++i)
     {
-      unsigned __int128 s = static_cast<unsigned __int128>(a.w[i]) + b.w[i] + carry;
-      r.w[i] = static_cast<uint64_t>(s);
-      carry = s >> 64;
+      carry = u256_detail::addc(carry, a.w[i], b.w[i], r.w[i]);
     }
     return r;
   }
   friend u256 operator-(const u256& a, const u256& b)
   {
     u256 r;
-    __int128 borrow = 0;
+    unsigned char borrow = 0;
     for (int i = 0; i < 4; ++i)
     {
-      __int128 d = static_cast<__int128>(a.w[i]) - b.w[i] - borrow;
-      if (d < 0)
-      {
-        d += (static_cast<__int128>(1) << 64);
-        borrow = 1;
-      }
-      else
-      {
-        borrow = 0;
-      }
-      r.w[i] = static_cast<uint64_t>(d);
+      borrow = u256_detail::subb(borrow, a.w[i], b.w[i], r.w[i]);
     }
     return r;
   }
 
-  // 256x256 -> 512, the full product with no truncation.
+  // 256x256 -> 512, the full product with no truncation. Schoolbook over the
+  // limbs: the running sum a[i]*b[j] + r[i+j] + k is at most 2^128 - 1, so the
+  // high word never overflows.
   static std::array<uint64_t, 8> mulFull(const u256& a, const u256& b)
   {
     std::array<uint64_t, 8> r{};
     for (int i = 0; i < 4; ++i)
     {
-      unsigned __int128 carry = 0;
+      uint64_t k = 0;
       for (int j = 0; j < 4; ++j)
       {
-        unsigned __int128 cur =
-            static_cast<unsigned __int128>(a.w[i]) * b.w[j] + r[i + j] + carry;
-        r[i + j] = static_cast<uint64_t>(cur);
-        carry = cur >> 64;
+        uint64_t hi;
+        uint64_t lo = u256_detail::mul64(a.w[i], b.w[j], hi);
+        hi += u256_detail::addc(0, lo, r[i + j], lo);
+        hi += u256_detail::addc(0, lo, k, lo);
+        r[i + j] = lo;
+        k = hi;
       }
-      r[i + 4] = static_cast<uint64_t>(r[i + 4] + carry);
+      r[i + 4] = k;
     }
     return r;
   }
