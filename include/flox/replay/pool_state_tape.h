@@ -14,6 +14,7 @@
 #include "flox/backtest/ntoken_curve.h"
 #include "flox/backtest/orca_whirlpool_curve.h"
 #include "flox/backtest/raydium_clmm_curve.h"
+#include "flox/backtest/raydium_cp_curve.h"
 #include "flox/connector/amm_dex_connector.h"
 #include "flox/util/int/i256.h"
 #include "flox/util/int/u256.h"
@@ -54,11 +55,19 @@ enum class PoolVenue : uint8_t
   UniswapV3 = 2,
   OrcaWhirlpool = 3,
   RaydiumClmm = 4,
+  RaydiumCp = 5,
 };
 
 inline bool isClmm(PoolVenue v)
 {
   return v == PoolVenue::UniswapV3 || v == PoolVenue::OrcaWhirlpool || v == PoolVenue::RaydiumClmm;
+}
+
+// The two-reserve (x*y=k style) venues: a Checkpoint carries the two reserves, and a
+// SwapDelta moves them through the venue's exact curve.
+inline bool isTwoReserve(PoolVenue v)
+{
+  return v == PoolVenue::ConstantProduct || v == PoolVenue::RaydiumCp;
 }
 
 namespace pool_tape_detail
@@ -146,6 +155,22 @@ class PoolStateWriter
     putU8(p, quoteDec);
     putU64(p, feeNum);
     putU64(p, feeDen);
+    frame(PoolRecord::Descriptor, p);
+  }
+
+  // A Raydium constant-product (CPMM) venue: rates over a 1e6 denominator, plus the
+  // creator-fee mode. Uses the two-reserve checkpoint().
+  void descriptorRaydiumCp(uint64_t tradeFeeRate, uint64_t creatorFeeRate, bool creatorFeeOnInput,
+                           uint8_t baseDec, uint8_t quoteDec)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU8(p, static_cast<uint8_t>(PoolVenue::RaydiumCp));
+    putU8(p, baseDec);
+    putU8(p, quoteDec);
+    putU64(p, tradeFeeRate);
+    putU64(p, creatorFeeRate);
+    putU8(p, creatorFeeOnInput ? 1 : 0);
     frame(PoolRecord::Descriptor, p);
   }
 
@@ -258,10 +283,15 @@ class PoolStateReplay
     _venue = static_cast<PoolVenue>(*rec++);
     _baseDec = *rec++;
     _quoteDec = *rec++;
-    _fee = pool_tape_detail::getU64(rec);  // feeNum (CP) or feePips (CLMM)
+    _fee = pool_tape_detail::getU64(rec);  // feeNum (CP) / feePips (CLMM) / tradeFeeRate (RaydiumCp)
     if (_venue == PoolVenue::ConstantProduct)
     {
       _feeDen = pool_tape_detail::getU64(rec);
+    }
+    else if (_venue == PoolVenue::RaydiumCp)
+    {
+      _creatorFee = pool_tape_detail::getU64(rec);
+      _creatorOnInput = *rec++ != 0;
     }
   }
 
@@ -270,11 +300,18 @@ class PoolStateReplay
     using namespace pool_tape_detail;
     const int64_t tsNs = static_cast<int64_t>(getU64(rec));
     std::unique_ptr<INTokenCurve> next;
-    if (_venue == PoolVenue::ConstantProduct)
+    if (isTwoReserve(_venue))
     {
       const u256 r0 = getU256(rec);
       const u256 r1 = getU256(rec);
-      next = std::make_unique<ConstantProductCurve>(r0, r1, _fee, _feeDen);
+      if (_venue == PoolVenue::RaydiumCp)
+      {
+        next = std::make_unique<RaydiumCpCurve>(r0, r1, _fee, _creatorFee, _creatorOnInput);
+      }
+      else
+      {
+        next = std::make_unique<ConstantProductCurve>(r0, r1, _fee, _feeDen);
+      }
     }
     else
     {
@@ -342,6 +379,8 @@ class PoolStateReplay
   uint8_t _quoteDec{0};
   uint64_t _fee{0};
   uint64_t _feeDen{0};
+  uint64_t _creatorFee{0};
+  bool _creatorOnInput{true};
   std::size_t _drift{0};
 };
 
