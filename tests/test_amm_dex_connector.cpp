@@ -7,7 +7,7 @@
  * license information.
  */
 
-#include "flox/backtest/amm_pricing.h"
+#include "flox/backtest/constant_product_curve.h"
 #include "flox/connector/amm_dex_connector.h"
 
 #include <gtest/gtest.h>
@@ -18,14 +18,24 @@ using namespace flox;
 namespace
 {
 
+// 18-decimal tokens, reserves 1000 base / 2000 quote, so the marginal price is
+// about 2 quote per base. levelSize 1 base.
+ConstantProductCurve makePool()
+{
+  return ConstantProductCurve(u256::fromDec("1000000000000000000000"),
+                              u256::fromDec("2000000000000000000000"), 997, 1000);
+}
+
 TEST(AmmDexConnectorTest, CurveStateSynthesizesBook)
 {
-  ConstantProductCurve curve(Quantity::fromDouble(1000.0), Quantity::fromDouble(2000.0), 30);
-  AmmDexConnector conn("amm", 1, curve, 3, Quantity::fromDouble(1.0));
+  // No fee, so the marginal price is exactly the reserve ratio (~2) and the level
+  // spread comes purely from depth impact.
+  ConstantProductCurve curve(u256::fromDec("1000000000000000000000"),
+                             u256::fromDec("2000000000000000000000"), 1, 1);
+  AmmDexConnector conn("amm", 1, curve, 0, 1, 18, 18, 3, u256::fromDec("1000000000000000000"));
 
   bool gotBook = false;
-  std::vector<BookLevel> bids;
-  std::vector<BookLevel> asks;
+  std::vector<BookLevel> bids, asks;
   conn.setCallbacks(
       [&](const BookUpdateEvent& ev)
       {
@@ -40,7 +50,8 @@ TEST(AmmDexConnectorTest, CurveStateSynthesizesBook)
   ASSERT_TRUE(gotBook);
   ASSERT_EQ(bids.size(), 3u);
   ASSERT_EQ(asks.size(), 3u);
-  const double spot = 2.0;  // quote / base
+  const double spot = 2.0;
+  EXPECT_NEAR(asks[0].price.toDouble(), spot, 0.05);
   EXPECT_LT(bids[0].price.toDouble(), spot);
   EXPECT_GT(asks[0].price.toDouble(), spot);
   EXPECT_LT(bids[1].price.toDouble(), bids[0].price.toDouble());
@@ -49,8 +60,10 @@ TEST(AmmDexConnectorTest, CurveStateSynthesizesBook)
 
 TEST(AmmDexConnectorTest, SwapEmitsTrade)
 {
-  ConstantProductCurve curve(Quantity::fromDouble(1000.0), Quantity::fromDouble(1000.0), 0);
-  AmmDexConnector conn("amm", 1, curve, 2, Quantity::fromDouble(1.0));
+  // No fee (feeNum == feeDen), reserves 1000/1000.
+  ConstantProductCurve curve(u256::fromDec("1000000000000000000000"),
+                             u256::fromDec("1000000000000000000000"), 1, 1);
+  AmmDexConnector conn("amm", 1, curve, 0, 1, 18, 18, 2, u256::fromDec("1000000000000000000"));
 
   bool gotTrade = false;
   TradeEvent captured;
@@ -61,7 +74,7 @@ TEST(AmmDexConnectorTest, SwapEmitsTrade)
                       captured = ev;
                     });
 
-  conn.onSwap(Quantity::fromDouble(10.0), true, 12345);  // sell 10 base
+  conn.onSwap(u256::fromDec("10000000000000000000"), true, 12345);  // sell 10 base
 
   ASSERT_TRUE(gotTrade);
   EXPECT_EQ(captured.trade.symbol, 1u);
@@ -73,17 +86,17 @@ TEST(AmmDexConnectorTest, SwapEmitsTrade)
 
 TEST(AmmDexConnectorTest, ExchangeId)
 {
-  ConstantProductCurve curve(Quantity::fromDouble(1.0), Quantity::fromDouble(1.0), 0);
-  AmmDexConnector conn("uniswap", 1, curve, 1, Quantity::fromDouble(1.0));
+  ConstantProductCurve curve = makePool();
+  AmmDexConnector conn("uniswap", 1, curve, 0, 1, 18, 18, 1, u256::fromDec("1000000000000000000"));
   EXPECT_EQ(conn.exchangeId(), "uniswap");
 }
 
-// The connector prices through the IAmmCurve interface, so any curve drives it.
+// The connector prices through the INTokenCurve interface, so any curve drives it.
 TEST(AmmDexConnectorTest, PricesOverInterfaceReference)
 {
-  ConstantProductCurve cp(Quantity::fromDouble(1000.0), Quantity::fromDouble(1000.0), 0);
-  IAmmCurve& curve = cp;
-  AmmDexConnector conn("amm", 1, curve, 1, Quantity::fromDouble(1.0));
+  ConstantProductCurve cp = makePool();
+  INTokenCurve& curve = cp;
+  AmmDexConnector conn("amm", 1, curve, 0, 1, 18, 18, 1, u256::fromDec("1000000000000000000"));
 
   bool gotBook = false;
   conn.setCallbacks([&](const BookUpdateEvent&)
