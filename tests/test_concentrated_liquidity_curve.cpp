@@ -49,19 +49,19 @@ TEST(ConcentratedLiquidityCurveTest, ApplySwapMovesPrice)
   ConcentratedLiquidityCurve pool(d("1959100328691929984878240664321702"), d("2580696918646962643"),
                                   500, {});
   EXPECT_EQ(pool.tokenCount(), 2u);
-  const u256 before = pool.sqrtPriceX96();
+  const u256 before = pool.sqrtPrice();
   pool.applySwap(0, 1, d("1000000000"));  // token0 in -> price down
-  EXPECT_TRUE(pool.sqrtPriceX96() < before);
+  EXPECT_TRUE(pool.sqrtPrice() < before);
 }
 
 TEST(ConcentratedLiquidityCurveTest, CloneIsIndependent)
 {
   ConcentratedLiquidityCurve pool(d("1959100328691929984878240664321702"), d("2580696918646962643"),
                                   500, {});
-  const u256 before = pool.sqrtPriceX96();
+  const u256 before = pool.sqrtPrice();
   auto clone = pool.clone();
-  clone->applySwap(0, 1, d("1000000000"));                 // mutate the clone
-  EXPECT_EQ(pool.sqrtPriceX96().toDec(), before.toDec());  // original intact
+  clone->applySwap(0, 1, d("1000000000"));              // mutate the clone
+  EXPECT_EQ(pool.sqrtPrice().toDec(), before.toDec());  // original intact
 }
 
 }  // namespace
