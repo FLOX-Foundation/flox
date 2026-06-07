@@ -92,6 +92,17 @@ integer exponents (1, 2, 4) take Balancer's fast paths without the transcendenta
 amounts into the 1e18 space the math works in, the normalized weights, and the
 swap fee.
 
+## Concentrated liquidity
+
+`ConcentratedLiquidityCurve` is a Uniswap v3 style pool, exact in integer. The
+swap math is a transcription of the v3 SwapMath, SqrtPriceMath, and FullMath, so
+the Q64.96 sqrt-price steps and their up and down rounding match the contract. A
+swap walks the initialized ticks: within a range it is a single step on the
+active liquidity, and crossing an initialized tick changes the liquidity by that
+tick's liquidityNet. The state is the current sqrt price, the active liquidity,
+the fee, and the tick table; a large swap can cross several ticks, each on a
+different liquidity. It reproduces a v3 pool's QuoterV2 quote to the wei.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
