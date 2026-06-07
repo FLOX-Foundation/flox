@@ -176,6 +176,28 @@ solving inside that bracket. A two-coin `CryptoswapPoolN` with unit scale is the
 same numbers as a `CryptoswapCurve`. Here the price scale is fixed; the
 repegging that moves it is the next piece.
 
+## Repegging
+
+The static cryptoswap pool concentrates liquidity at a fixed price scale. A real
+Curve V2 pool moves that scale to follow the traded price, with no external
+oracle, so the liquidity stays where the trading is. `RepeggingCryptoswapPool`
+adds that on top of the static pool, with two parts.
+
+The fee becomes dynamic. It is `mid_fee` when the pool is balanced and climbs
+toward `out_fee` as the pool tips, blended by `fee_gamma`. A lopsided pool
+charges more, which is both a deterrent and the fee income that pays for
+rebalancing.
+
+Then the repeg itself. After each swap an internal EMA oracle tracks the new
+marginal price. When the oracle has drifted from the scale by more than
+`adjustment_step`, and the pool's virtual price shows it is far enough ahead to
+afford it, the scale takes a step toward the oracle. The step is computed, the
+invariant and virtual price are recomputed at the new scale, and the move is
+kept only if it leaves the pool in profit; otherwise it is reverted. So a
+rebalance never spends the LPs' fee income, and `xcp_profit`, the running fee
+profit, only grows. Each swap advances the oracle by one time step, with
+`ma_half_time` measured in those steps.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills

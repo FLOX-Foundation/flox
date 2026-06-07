@@ -81,7 +81,7 @@ class CryptoswapPoolN : public INTokenCurve
     {
       return Quantity{};
     }
-    const double inWithFee = in * (1.0 - static_cast<double>(_feeBps) / 10000.0);
+    const double inWithFee = in * feeFraction();
     const double out = rawOut(i, j, inWithFee);
     return Quantity::fromDouble(out > 0.0 ? out : 0.0);
   }
@@ -115,7 +115,11 @@ class CryptoswapPoolN : public INTokenCurve
     return std::make_unique<CryptoswapPoolN>(*this);
   }
 
- private:
+ protected:
+  // Fraction of an input that survives the fee. Constant here; the repegging
+  // pool overrides it with a fee that depends on how balanced the pool is.
+  virtual double feeFraction() const { return 1.0 - static_cast<double>(_feeBps) / 10000.0; }
+
   double scaleOf(std::size_t k) const { return k == 0 ? 1.0 : _scale[k - 1]; }
 
   std::vector<double> xpOf() const
