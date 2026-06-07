@@ -488,6 +488,51 @@
           "name": "flox_composite_book_mark_stale"
         },
         {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_amount_out"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_apply_swap"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_balance"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_clone"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_constant_product"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_destroy"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_raydium_cp"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_token_count"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_uniswap_v3"
+        },
+        {
           "group": "data_reader",
           "kind": "function",
           "name": "flox_data_reader_clear_progress_callback"
@@ -3795,6 +3840,10 @@
         },
         {
           "kind": "handle",
+          "name": "FloxCurveHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxDataReaderHandle"
         },
         {
@@ -3988,6 +4037,7 @@
         "account",
         "additional_bar",
         "additional_stats",
+        "amm_curve",
         "backtest_slippage",
         "backtestrunner_replay",
         "bar_aggregation",
@@ -4444,6 +4494,42 @@
         {
           "kind": "function",
           "name": "flox_composite_book_mark_stale"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_amount_out"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_apply_swap"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_balance"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_clone"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_constant_product"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_raydium_cp"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_token_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_uniswap_v3"
         },
         {
           "kind": "function",
@@ -7603,6 +7689,38 @@
         },
         {
           "kind": "function",
+          "name": "ammCurveAmountOut"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveApplySwap"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveBalance"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveClone"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveConstantProduct"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveRaydiumCp"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveTokenCount"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveUniswapV3"
+        },
+        {
+          "kind": "function",
           "name": "atr"
         },
         {
@@ -7820,6 +7938,10 @@
         {
           "kind": "class",
           "name": "AggregatorEventFilter"
+        },
+        {
+          "kind": "class",
+          "name": "AmmCurve"
         },
         {
           "kind": "class",
@@ -8710,6 +8832,44 @@
           "bootstrap_ci",
           "whites_reality_check"
         ],
+        "status": "required"
+      }
+    },
+    "amm_curve": {
+      "capi_functions": [
+        "flox_curve_amount_out",
+        "flox_curve_apply_swap",
+        "flox_curve_balance",
+        "flox_curve_clone",
+        "flox_curve_constant_product",
+        "flox_curve_destroy",
+        "flox_curve_raydium_cp",
+        "flox_curve_token_count",
+        "flox_curve_uniswap_v3"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "ammCurveConstantProduct",
+          "ammCurveRaydiumCp",
+          "ammCurveUniswapV3",
+          "ammCurveTokenCount",
+          "ammCurveAmountOut",
+          "ammCurveApplySwap",
+          "ammCurveBalance",
+          "ammCurveClone"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "AmmCurve"
+        ],
+        "functions": [],
         "status": "required"
       }
     },

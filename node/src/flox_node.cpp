@@ -4,6 +4,7 @@
 
 #include "account.h"
 #include "aggregators.h"
+#include "amm_curve.h"
 #include "backtest.h"
 #include "bar_dispatch.h"
 #include "books.h"
@@ -69,6 +70,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerFeedClock(env, exports);
   node_flox::registerTapeDiff(env, exports);
   node_flox::registerDexAmount(env, exports);
+  node_flox::registerAmmCurve(env, exports);
   node_flox::registerRunTrace(env, exports);
   flox_node::registerHooks(env, exports);
   return exports;

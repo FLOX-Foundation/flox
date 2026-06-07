@@ -2346,6 +2346,31 @@ export function i256Roundtrip(value: bigint): bigint;
 /** Parse a hex string (with or without a 0x prefix) into a 256-bit BigInt. */
 export function u256FromHex(hex: string): bigint;
 
+// ── AMM curves: price a DEX swap (exact, 256-bit) ─────────────────────
+
+/** An opaque AMM pool curve handle (freed automatically when unreachable). */
+export type AmmCurveHandle = object;
+
+/** A constant-product pool (Uniswap v2 forks). Reserves are BigInt (native wei). */
+export function ammCurveConstantProduct(reserve0: bigint, reserve1: bigint,
+                                        feeNum: number, feeDen: number): AmmCurveHandle;
+/** A Raydium constant-product pool (Solana), fee rates over a 1e6 denominator. */
+export function ammCurveRaydiumCp(reserve0: bigint, reserve1: bigint, tradeFeeRate: number,
+                                  creatorFeeRate?: number, creatorFeeOnInput?: boolean): AmmCurveHandle;
+/** A Uniswap v3 concentrated-liquidity pool (Q64.96). ticks: [sqrtRatio, liquidityNet][]. */
+export function ammCurveUniswapV3(sqrtPriceX96: bigint, liquidity: bigint, feePips: number,
+                                  ticks?: Array<[bigint, bigint]>): AmmCurveHandle;
+/** The number of tokens in the pool. */
+export function ammCurveTokenCount(curve: AmmCurveHandle): number;
+/** Exact output for swapping amountIn of token i into token j, without moving the pool. */
+export function ammCurveAmountOut(curve: AmmCurveHandle, i: number, j: number, amountIn: bigint): bigint;
+/** Apply the swap (moves the pool) and return the output. */
+export function ammCurveApplySwap(curve: AmmCurveHandle, i: number, j: number, amountIn: bigint): bigint;
+/** The pool's reserve of token i (native wei). */
+export function ammCurveBalance(curve: AmmCurveHandle, i: number): bigint;
+/** An independent copy of the pool, for sizing a swap without disturbing the live one. */
+export function ammCurveClone(curve: AmmCurveHandle): AmmCurveHandle;
+
 // ── Portfolio risk aggregator ─────────────────────────────────────────
 
 /** Cross-strategy risk limits. Pass any subset; missing fields stay

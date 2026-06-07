@@ -41,6 +41,17 @@ from C import flox_stat_permutation_test(Ptr[float], int, Ptr[float], int, u32) 
 from C import flox_stat_bootstrap_ci(Ptr[float], int, float, u32, Ptr[float], Ptr[float], Ptr[float])
 from C import flox_stat_whites_reality_check(Ptr[float], int, int, u32, float, Ptr[float], Ptr[float], Ptr[i32])
 
+# ── amm_curve ──
+from C import flox_curve_constant_product(cobj, cobj, u64, u64) -> cobj
+from C import flox_curve_raydium_cp(cobj, cobj, u64, u64, u8) -> cobj
+from C import flox_curve_uniswap_v3(cobj, cobj, u32, Ptr[cobj], Ptr[cobj], int) -> cobj
+from C import flox_curve_token_count(cobj) -> int
+from C import flox_curve_amount_out(cobj, int, int, cobj, cobj, int) -> u8
+from C import flox_curve_apply_swap(cobj, int, int, cobj, cobj, int) -> u8
+from C import flox_curve_balance(cobj, int, cobj, int) -> u8
+from C import flox_curve_clone(cobj) -> cobj
+from C import flox_curve_destroy(cobj)
+
 # ── backtest_slippage ──
 from C import flox_simulated_executor_set_default_slippage(cobj, i32, i32, float, float, float)
 from C import flox_simulated_executor_set_symbol_slippage(cobj, u32, i32, i32, float, float, float)
