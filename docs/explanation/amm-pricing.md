@@ -142,6 +142,21 @@ any pair `(i, j)`. A two-asset `WeightedPoolN` is the same numbers as a
 `WeightedCurve`, and equal weights reduce a pair to constant-product, the same
 way they do for the two-token curve.
 
+## Stable baskets
+
+A Curve stable pool can hold three or more pegged coins in one curve, a 3pool of
+stablecoins being the common case. It is the same blend of constant-sum and
+constant-product as the two-coin stableswap, widened to n coins: the invariant D
+and the swap output still come from Newton iteration, but the loops now run over
+every balance in the pool, not two.
+
+`StableSwapPoolN` holds n balances, the amplification `A`, and the fee, and
+prices any pair `(i, j)` by solving `get_y` for coin j against the bumped
+balance of coin i while the other coins hold still. A two-coin `StableSwapPoolN`
+is the same numbers as a `StableSwapCurve`. Near the peg it fills flatter than
+constant-product on any pair, and a lower `A` curves earlier, exactly as in the
+two-coin case.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
