@@ -11,11 +11,13 @@
 
 #include "flox/backtest/ntoken_curve.h"
 #include "flox/connector/abstract_exchange_connector.h"
+#include "flox/connector/pool_quote_view.h"
 #include "flox/util/int/u256.h"
 
 #include <cstddef>
 #include <memory_resource>
 #include <string>
+#include <vector>
 
 namespace flox
 {
@@ -31,7 +33,7 @@ namespace flox
 //
 // flox-side skeleton only. Sourcing curve state from a chain, signing swaps,
 // mempool, gas, and MEV live in the downstream connector that wraps this.
-class AmmDexConnector : public IExchangeConnector
+class AmmDexConnector : public IExchangeConnector, public IPoolQuoteView
 {
  public:
   // baseIdx / quoteIdx: the pair this connector presents (base priced in quote).
@@ -86,6 +88,19 @@ class AmmDexConnector : public IExchangeConnector
 
     publishBook(tsNs);
   }
+
+  // IPoolQuoteView: the exact curve at the current timeline point, for a DEX-native
+  // strategy that wants the curve, not the synthesized book.
+  u256 quoteOut(const u256& amountIn, bool baseForQuote) const override
+  {
+    const std::size_t i = baseForQuote ? _baseIdx : _quoteIdx;
+    const std::size_t j = baseForQuote ? _quoteIdx : _baseIdx;
+    return _curve->amountOut(i, j, amountIn);
+  }
+  const std::vector<u256>& reserves() const override { return _curve->balances(); }
+  std::size_t baseIndex() const override { return _baseIdx; }
+  std::size_t quoteIndex() const override { return _quoteIdx; }
+  const INTokenCurve& curve() const override { return *_curve; }
 
  private:
   static double toHuman(const u256& wei, unsigned decimals)
