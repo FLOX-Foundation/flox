@@ -465,6 +465,19 @@ flox_peak_read_result|uint32_t|FloxAggregatorHandle|FloxPeakRow *|uint32_t
 flox_pnl_tracker_create|FloxPnLTrackerHandle|FloxPnLTrackerCallbacks
 flox_pnl_tracker_create_p|FloxPnLTrackerHandle|const FloxPnLTrackerCallbacks *
 flox_pnl_tracker_destroy|void|FloxPnLTrackerHandle
+flox_pool_replay_curve|FloxCurveHandle|FloxPoolReplayHandle
+flox_pool_replay_destroy|void|FloxPoolReplayHandle
+flox_pool_replay_drift_count|size_t|FloxPoolReplayHandle
+flox_pool_replay_trade_count|size_t|FloxPoolReplayHandle
+flox_pool_tape_checkpoint|uint8_t|FloxPoolTapeHandle|int64_t|const char *|const char *
+flox_pool_tape_checkpoint_clmm|uint8_t|FloxPoolTapeHandle|int64_t|const char *|const char *|const char *const *|const char *const *|size_t
+flox_pool_tape_create|FloxPoolTapeHandle
+flox_pool_tape_descriptor_clmm|void|FloxPoolTapeHandle|uint8_t|uint32_t|uint8_t|uint8_t
+flox_pool_tape_descriptor_constant_product|void|FloxPoolTapeHandle|uint64_t|uint64_t|uint8_t|uint8_t
+flox_pool_tape_descriptor_raydium_cp|void|FloxPoolTapeHandle|uint64_t|uint64_t|uint8_t|uint8_t|uint8_t
+flox_pool_tape_destroy|void|FloxPoolTapeHandle
+flox_pool_tape_replay|FloxPoolReplayHandle|FloxPoolTapeHandle|size_t|size_t|uint8_t|uint8_t
+flox_pool_tape_swap|uint8_t|FloxPoolTapeHandle|int64_t|uint8_t|const char *
 flox_portfolio_risk_account_count|uint64_t|FloxPortfolioRiskHandle
 flox_portfolio_risk_breach_at|uint8_t|FloxPortfolioRiskHandle|uint64_t|FloxBreach *
 flox_portfolio_risk_breach_count|uint64_t|FloxPortfolioRiskHandle

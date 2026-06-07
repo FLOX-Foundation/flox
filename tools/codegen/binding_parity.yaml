@@ -489,3 +489,30 @@ groups:
       reason: >
         Pricing needs 256-bit amounts, which the QuickJS bound surface has no BigInt
         for yet (see dex_amount). Bind the curves once that lands. Tracked in W1-T040.
+
+  # Pool-state tape replay: backtest a DEX strategy on recorded pool data. pybind11
+  # exposes PoolTape / PoolReplay classes; napi exposes free functions over opaque
+  # handles. Builds on the amm_curve + dex_amount boundary.
+  pool_tape:
+    pybind11:
+      status: required
+      classes: [PoolTape, PoolReplay]
+    napi:
+      status: required
+      functions:
+        - poolTapeCreate
+        - poolTapeDescriptorConstantProduct
+        - poolTapeDescriptorRaydiumCp
+        - poolTapeDescriptorClmm
+        - poolTapeCheckpoint
+        - poolTapeSwap
+        - poolTapeReplay
+        - poolReplayDriftCount
+        - poolReplayTradeCount
+        - poolReplayCurve
+    codon: { status: required }
+    quickjs:
+      status: allowlist
+      reason: >
+        Replay returns 256-bit reserves, which the QuickJS bound surface has no BigInt
+        for yet (see dex_amount / amm_curve). Bind once that lands. Tracked in W1-T041.

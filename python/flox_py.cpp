@@ -33,6 +33,7 @@
 #include "optimizer_bindings.h"
 #include "order_group_bindings.h"
 #include "order_journey_tracer_bindings.h"
+#include "pool_tape_bindings.h"
 #include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
 #include "pricing_bindings.h"
@@ -822,6 +823,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindDeltaBook(m);
   flox_py::bindDexAmount(m);
   flox_py::bindAmmCurve(m);
+  flox_py::bindPoolTape(m);
   flox_py::bindRunTrace(m);
   bindOptimizer(m);
   bindCompositeBook(m);

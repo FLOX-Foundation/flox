@@ -24,6 +24,7 @@
 #include "liquidation_engine.h"
 #include "live_queue_position.h"
 #include "order_group.h"
+#include "pool_tape.h"
 #include "portfolio_risk.h"
 #include "positions.h"
 #include "profiles.h"
@@ -71,6 +72,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerTapeDiff(env, exports);
   node_flox::registerDexAmount(env, exports);
   node_flox::registerAmmCurve(env, exports);
+  node_flox::registerPoolTape(env, exports);
   node_flox::registerRunTrace(env, exports);
   flox_node::registerHooks(env, exports);
   return exports;

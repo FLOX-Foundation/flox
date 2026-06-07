@@ -609,6 +609,21 @@ from C import flox_segment_export_p(cobj, cobj, u8, i64, i64, Ptr[u32], u32, cob
 from C import flox_segment_validate_full_p(cobj, u8, u8, cobj)
 from C import flox_dataset_validate_p(cobj, cobj)
 
+# ── pool_tape ──
+from C import flox_pool_tape_create() -> cobj
+from C import flox_pool_tape_descriptor_constant_product(cobj, u64, u64, u8, u8)
+from C import flox_pool_tape_descriptor_raydium_cp(cobj, u64, u64, u8, u8, u8)
+from C import flox_pool_tape_descriptor_clmm(cobj, u8, u32, u8, u8)
+from C import flox_pool_tape_checkpoint(cobj, i64, cobj, cobj) -> u8
+from C import flox_pool_tape_checkpoint_clmm(cobj, i64, cobj, cobj, Ptr[cobj], Ptr[cobj], int) -> u8
+from C import flox_pool_tape_swap(cobj, i64, u8, cobj) -> u8
+from C import flox_pool_tape_destroy(cobj)
+from C import flox_pool_tape_replay(cobj, int, int, u8, u8) -> cobj
+from C import flox_pool_replay_drift_count(cobj) -> int
+from C import flox_pool_replay_trade_count(cobj) -> int
+from C import flox_pool_replay_curve(cobj) -> cobj
+from C import flox_pool_replay_destroy(cobj)
+
 # ── portfolio_risk ──
 from C import flox_portfolio_risk_create(cobj, float) -> cobj
 from C import flox_portfolio_risk_destroy(cobj)

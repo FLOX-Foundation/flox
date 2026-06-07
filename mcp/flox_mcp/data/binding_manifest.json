@@ -2323,6 +2323,71 @@
           "name": "flox_pnl_tracker_destroy"
         },
         {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_replay_curve"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_replay_destroy"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_replay_drift_count"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_replay_trade_count"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_checkpoint"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_checkpoint_clmm"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_create"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_descriptor_clmm"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_descriptor_constant_product"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_descriptor_raydium_cp"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_destroy"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_replay"
+        },
+        {
+          "group": "pool_tape",
+          "kind": "function",
+          "name": "flox_pool_tape_swap"
+        },
+        {
           "group": "portfolio_risk",
           "kind": "function",
           "name": "flox_portfolio_risk_account_count"
@@ -3960,6 +4025,14 @@
         },
         {
           "kind": "handle",
+          "name": "FloxPoolReplayHandle"
+        },
+        {
+          "kind": "handle",
+          "name": "FloxPoolTapeHandle"
+        },
+        {
+          "kind": "handle",
           "name": "FloxPortfolioRiskHandle"
         },
         {
@@ -4081,6 +4154,7 @@
         "order_tracker",
         "partitioner",
         "pointer_out",
+        "pool_tape",
         "portfolio_risk",
         "position",
         "position_group",
@@ -5965,6 +6039,58 @@
         },
         {
           "kind": "function",
+          "name": "flox_pool_replay_curve"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_replay_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_replay_drift_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_replay_trade_count"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_checkpoint"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_checkpoint_clmm"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_descriptor_clmm"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_descriptor_constant_product"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_descriptor_raydium_cp"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_destroy"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_replay"
+        },
+        {
+          "kind": "function",
+          "name": "flox_pool_tape_swap"
+        },
+        {
+          "kind": "function",
           "name": "flox_portfolio_risk_account_count"
         },
         {
@@ -7821,6 +7947,46 @@
         },
         {
           "kind": "function",
+          "name": "poolReplayCurve"
+        },
+        {
+          "kind": "function",
+          "name": "poolReplayDriftCount"
+        },
+        {
+          "kind": "function",
+          "name": "poolReplayTradeCount"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeCheckpoint"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeCreate"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeDescriptorClmm"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeDescriptorConstantProduct"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeDescriptorRaydiumCp"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeReplay"
+        },
+        {
+          "kind": "function",
+          "name": "poolTapeSwap"
+        },
+        {
+          "kind": "function",
           "name": "profitFactor"
         },
         {
@@ -8222,6 +8388,14 @@
         {
           "kind": "class",
           "name": "PnLTracker"
+        },
+        {
+          "kind": "class",
+          "name": "PoolReplay"
+        },
+        {
+          "kind": "class",
+          "name": "PoolTape"
         },
         {
           "kind": "class",
@@ -10302,6 +10476,51 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      }
+    },
+    "pool_tape": {
+      "capi_functions": [
+        "flox_pool_replay_curve",
+        "flox_pool_replay_destroy",
+        "flox_pool_replay_drift_count",
+        "flox_pool_replay_trade_count",
+        "flox_pool_tape_checkpoint",
+        "flox_pool_tape_checkpoint_clmm",
+        "flox_pool_tape_create",
+        "flox_pool_tape_descriptor_clmm",
+        "flox_pool_tape_descriptor_constant_product",
+        "flox_pool_tape_descriptor_raydium_cp",
+        "flox_pool_tape_destroy",
+        "flox_pool_tape_replay",
+        "flox_pool_tape_swap"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [
+          "poolTapeCreate",
+          "poolTapeDescriptorConstantProduct",
+          "poolTapeDescriptorRaydiumCp",
+          "poolTapeDescriptorClmm",
+          "poolTapeCheckpoint",
+          "poolTapeSwap",
+          "poolTapeReplay",
+          "poolReplayDriftCount",
+          "poolReplayTradeCount",
+          "poolReplayCurve"
+        ],
+        "status": "required"
+      },
+      "pybind11": {
+        "classes": [
+          "PoolTape",
+          "PoolReplay"
+        ],
+        "functions": [],
+        "status": "required"
       }
     },
     "portfolio_risk": {
