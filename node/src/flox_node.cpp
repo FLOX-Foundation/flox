@@ -9,6 +9,7 @@
 #include "books.h"
 #include "data_ops.h"
 #include "delta_book.h"
+#include "dex_amount.h"
 #include "engine.h"
 #include "execution_algos.h"
 #include "fee_schedule.h"
@@ -67,6 +68,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
   node_flox::registerBarDispatchRecorder(env, exports);
   node_flox::registerFeedClock(env, exports);
   node_flox::registerTapeDiff(env, exports);
+  node_flox::registerDexAmount(env, exports);
   node_flox::registerRunTrace(env, exports);
   flox_node::registerHooks(env, exports);
   return exports;

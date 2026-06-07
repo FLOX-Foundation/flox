@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 698 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 69 groups.
+**Surface:** 703 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 70 groups.
 
 ## Opaque handles
 
@@ -1042,6 +1042,14 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle, uint8_t type, uint32_t symbol_id, const FloxBookLevel * bids, size_t bid_count, const FloxBookLevel * asks, size_t ask_count, uint64_t * out_bid_count, uint64_t * out_ask_count)`
 - `uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle, FloxBookLevel * out, uint64_t max_entries)`
 - `uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle, FloxBookLevel * out, uint64_t max_entries)`
+
+### dex_amount
+
+- `uint8_t flox_u256_roundtrip(const char * dec, char * out, size_t out_len)`
+- `uint8_t flox_i256_roundtrip(const char * dec, char * out, size_t out_len)`
+- `uint8_t flox_u256_from_hex(const char * hex, char * out, size_t out_len)`
+- `uint8_t flox_u256_to_words(const char * dec, uint64_t * words)`
+- `uint8_t flox_u256_from_words(const uint64_t * words, char * out, size_t out_len)`
 
 ### execution
 

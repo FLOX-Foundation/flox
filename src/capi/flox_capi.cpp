@@ -108,6 +108,8 @@
 #include "flox/replay/writers/binary_log_writer.h"
 #include "flox/strategy/abstract_signal_handler.h"
 #include "flox/testing/bar_dispatch_recorder.h"
+#include "flox/util/int/i256.h"
+#include "flox/util/int/u256.h"
 #include "flox/util/memory/pool.h"
 
 #include <random>
@@ -10016,4 +10018,108 @@ extern "C" FloxVenueAvailabilityHandle flox_venue_stack_venue(
 extern "C" const char* flox_venue_stack_venue_name(FloxVenueStackHandle h)
 {
   return toVenueStack(h)->venueName().c_str();
+}
+
+// ============================================================
+// T039: DEX amounts (u256 / i256) at the C boundary
+// ============================================================
+
+namespace
+{
+// Write a NUL-terminated string into out; return 1 if it fit, else 0.
+inline uint8_t writeOut(const std::string& s, char* out, size_t out_len)
+{
+  if (out == nullptr || out_len == 0 || s.size() + 1 > out_len)
+  {
+    return 0;
+  }
+  std::memcpy(out, s.c_str(), s.size() + 1);
+  return 1;
+}
+}  // namespace
+
+extern "C" uint8_t flox_u256_roundtrip(const char* dec, char* out, size_t out_len)
+{
+  if (dec == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    return writeOut(flox::u256::fromDec(dec).toDec(), out, out_len);
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_i256_roundtrip(const char* dec, char* out, size_t out_len)
+{
+  if (dec == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    const flox::i256 v = flox::i256::fromDec(dec);
+    const std::string mag = v.magnitude().toDec();
+    const std::string s = (v.neg && !v.magnitude().isZero()) ? "-" + mag : mag;
+    return writeOut(s, out, out_len);
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_u256_from_hex(const char* hex, char* out, size_t out_len)
+{
+  if (hex == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    return writeOut(flox::u256::fromHex(hex).toDec(), out, out_len);
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_u256_to_words(const char* dec, uint64_t* words)
+{
+  if (dec == nullptr || words == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    const flox::u256 v = flox::u256::fromDec(dec);
+    for (int i = 0; i < 4; ++i)
+    {
+      words[i] = v.w[static_cast<std::size_t>(i)];  // little-endian, w[0] is the LSB limb
+    }
+    return 1;
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t out_len)
+{
+  if (words == nullptr)
+  {
+    return 0;
+  }
+  flox::u256 v;
+  for (int i = 0; i < 4; ++i)
+  {
+    v.w[static_cast<std::size_t>(i)] = words[i];
+  }
+  return writeOut(v.toDec(), out, out_len);
 }

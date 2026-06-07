@@ -4574,6 +4574,43 @@ extern "C"
   FLOX_EXPORT(group = "venue_stack")
   const char* flox_venue_stack_venue_name(FloxVenueStackHandle h);
 
+  // ============================================================
+  // DEX amounts: u256 / i256 at the C boundary
+  // ============================================================
+  //
+  // The AMM/DEX curves compute in exact 256-bit integers -- u256, and i256 for
+  // signed values such as a tick's net liquidity -- in native token units (wei /
+  // lamports). At the C-ABI a 256-bit amount crosses as a NUL-terminated decimal
+  // string: language-agnostic and lossless, mapping to a native bignum in each
+  // binding (Python int, Node BigInt). A struct-of-limbs form would be zero-copy but
+  // a backtest is not a hot loop, so the string form is the chosen representation;
+  // the limb struct stays the option if profiling ever demands it.
+  //
+  // These are the canonical parse/format of that representation, the round-trip a
+  // binding uses to cross the boundary: it formats its native integer as a decimal
+  // string, and these validate and re-canonicalise it. flox_u256_from_hex accepts
+  // chain data that arrives in hex (with or without a 0x prefix). All write a
+  // NUL-terminated decimal string into out and return 1 on success, 0 on a parse
+  // error or a too-small buffer (a u256 needs up to 78 digits + sign + NUL).
+
+  FLOX_EXPORT(group = "dex_amount")
+  uint8_t flox_u256_roundtrip(const char* dec, char* out, size_t out_len);
+  FLOX_EXPORT(group = "dex_amount")
+  uint8_t flox_i256_roundtrip(const char* dec, char* out, size_t out_len);
+  FLOX_EXPORT(group = "dex_amount")
+  uint8_t flox_u256_from_hex(const char* hex, char* out, size_t out_len);
+
+  // The limb form (little-endian uint64[4]), for a binding whose native bignum is
+  // limb-addressable (a Node BigInt, via ToWords / FromWords). flox_u256_to_words
+  // parses a decimal string into 4 little-endian limbs; flox_u256_from_words formats
+  // 4 limbs as decimal. u256 only -- a signed value carries its sign in the binding.
+  // `words` points to exactly 4 uint64_t. Return 1 on success, 0 on a parse error or
+  // a too-small buffer.
+  FLOX_EXPORT(group = "dex_amount")
+  uint8_t flox_u256_to_words(const char* dec, uint64_t* words);
+  FLOX_EXPORT(group = "dex_amount")
+  uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t out_len);
+
 #ifdef __cplusplus
 }
 #endif

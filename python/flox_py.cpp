@@ -12,6 +12,7 @@
 #include "book_bindings.h"
 #include "composite_book_bindings.h"
 #include "delta_book_bindings.h"
+#include "dex_amount_bindings.h"
 #include "execution_algos_bindings.h"
 #include "fee_schedule_bindings.h"
 #include "feed_clock_bindings.h"
@@ -818,6 +819,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindFeedClock(m);
   flox_py::bindExecutionAlgos(m);
   flox_py::bindDeltaBook(m);
+  flox_py::bindDexAmount(m);
   flox_py::bindRunTrace(m);
   bindOptimizer(m);
   bindCompositeBook(m);
