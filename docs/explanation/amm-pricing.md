@@ -215,6 +215,29 @@ no-cross and tick-crossing cases. The live read differs from the Whirlpool only 
 the account layouts and the tick math constants (Raydium uses the Uniswap-style
 multiplicative tick table); the curve and its tick walk are the shared core.
 
+## Solana: Meteora DLMM (discrete bins)
+
+`MeteoraDlmmCurve` is a Meteora DLMM (Liquidity Book) pool, and it is not a curve in
+the AMM sense: liquidity sits in discrete price bins, each a constant-sum segment at
+its own fixed price `(1 + bin_step/1e4)^id` in Q64.64, and a swap walks bins from the
+active one outward. The price is the program's Liquidity Book power -- a bit-
+decomposition with an inversion trick, an approximation of the real, so the bin
+price is the chain's value, not `1.001^id` exactly. Each bin fills constant-sum:
+output is `price * amount` or `amount / price` shifted by the Q64 scale.
+
+The fee is dynamic, like the Whirlpool adaptive fee: a base fee plus a variable fee
+quadratic in a volatility accumulator that grows as the swap crosses bins from a
+time-decayed reference. It is priced per bin -- the accumulator updates at each bin,
+and the fee comes off the input. This is a transcription of the program's quote for
+the dominant case: MM liquidity, exact-in, fee on input. Limit orders (a newer
+layer in each bin) and the fee-on-output mode are separate features, not modelled.
+
+Validated to the unit against a faithful transcription of the program's swap, and
+the bin prices match the program's Liquidity Book power exactly. As with the
+adaptive fee, a clean live cross-check is not the gate: the variable fee depends on
+the pool's volatility state, which is time-dependent, so a lagged aggregator cannot
+be aligned.
+
 ## Solana: Saber StableSwap
 
 Saber is the Curve StableSwap on Solana, and it needs no new curve: it is a
