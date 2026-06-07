@@ -97,7 +97,7 @@ class CryptoswapCurve : public INTokenCurve
     return std::make_unique<CryptoswapCurve>(*this);
   }
 
- private:
+ protected:
   static u256 P() { return u256::pow10(18); }
   static u256 feeDenom() { return u256::pow10(10); }
   static constexpr uint64_t A_MULT = 10000;

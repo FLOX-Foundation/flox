@@ -77,6 +77,23 @@ This curve is the pricing surface, and it reproduces the live tricrypto2 get_dy
 to the wei. The price scale is a parameter held across a swap here; the internal
 repegging that moves the scale over time is a separate piece.
 
+## Cryptoswap repegging
+
+`RepeggingCryptoswapPool` is a `CryptoswapCurve` whose price scale moves. On chain
+a Curve V2 pool re-centers its liquidity on the traded price, with no external
+oracle, when doing so pays for itself out of accumulated fees. `applySwap` runs
+the contract's `tweak_price` after the trade: it advances an EMA price oracle
+(through Balancer-style `halfpow`), updates the running fee profit and virtual
+price, and steps the price scale toward the oracle when the pool is far enough
+ahead, keeping the step only if it leaves the pool in profit. All in the
+contract's integer arithmetic, so the evolved scale, oracle, and profit match the
+chain. The pricing within a single swap is the exact `CryptoswapCurve`; this adds
+the state evolution across swaps.
+
+Each swap advances an internal clock by `dtPerSwap`, since the curve interface
+carries no wall-clock time; a backtest sets it to the spacing it wants between
+trades.
+
 ## Weighted
 
 `WeightedCurve` is a Balancer weighted pool of n assets, exact in integer. The
