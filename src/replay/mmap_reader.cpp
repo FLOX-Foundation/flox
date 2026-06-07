@@ -340,6 +340,22 @@ bool MmapSegmentReader::next(ReplayEvent& out)
     std::memcpy(&out.option_quote, payload, sizeof(OptionQuoteRecord));
     out.timestamp_ns = out.option_quote.exchange_ts_ns;
   }
+  else if (frame->type == static_cast<uint8_t>(EventType::PoolState))
+  {
+    if (frame->size < sizeof(PoolStateRecordHeader))
+    {
+      return false;
+    }
+    std::memcpy(&out.pool_state_header, payload, sizeof(PoolStateRecordHeader));
+    out.timestamp_ns = out.pool_state_header.exchange_ts_ns;
+    const size_t payload_len = out.pool_state_header.payload_len;
+    if (frame->size < sizeof(PoolStateRecordHeader) + payload_len)
+    {
+      return false;
+    }
+    const std::byte* pool_payload = payload + sizeof(PoolStateRecordHeader);
+    out.pool_state_payload.assign(pool_payload, pool_payload + payload_len);
+  }
   else if (frame->type == static_cast<uint8_t>(EventType::BookSnapshot) ||
            frame->type == static_cast<uint8_t>(EventType::BookDelta))
   {

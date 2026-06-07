@@ -74,6 +74,9 @@ class BinaryLogWriter
 
   bool writeTrade(const TradeRecord& trade);
   bool writeOptionQuote(const OptionQuoteRecord& quote);
+  // A DEX pool-state record: the fixed header (its payload_len must equal
+  // payload_size) followed by payload_size bytes of the u256-native pool payload.
+  bool writePoolState(const PoolStateRecordHeader& header, const void* payload, size_t payload_size);
   bool writeBook(const BookRecordHeader& header, std::span<const BookLevel> bids,
                  std::span<const BookLevel> asks);
 

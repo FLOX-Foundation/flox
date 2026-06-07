@@ -12,6 +12,7 @@
 #include "flox/replay/binary_format_v1.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <filesystem>
 #include <functional>
@@ -171,6 +172,11 @@ struct ReplayEvent
 
   OptionQuoteRecord option_quote{};
 
+  // Pool-state record: the fixed header plus the raw u256 payload bytes, carried
+  // opaquely for the pool-state-tape layer to interpret.
+  PoolStateRecordHeader pool_state_header{};
+  std::vector<std::byte> pool_state_payload;
+
   // Symbol id for the active record, whichever event type this is. Keeps
   // symbol filtering correct as new record types are added.
   uint32_t symbolId() const
@@ -181,6 +187,8 @@ struct ReplayEvent
         return trade.symbol_id;
       case EventType::OptionQuote:
         return option_quote.symbol_id;
+      case EventType::PoolState:
+        return pool_state_header.symbol_id;
       default:
         return book_header.symbol_id;
     }
