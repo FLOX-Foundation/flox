@@ -127,6 +127,21 @@ consumes them stay exactly as they are, and a pool that genuinely holds more
 than two tokens implements this instead. Forcing the n-token case onto the
 base/quote interface would distort both, so they sit side by side.
 
+## Weighted baskets
+
+A Balancer-style weighted pool generalizes cleanly to many assets because its
+swap formula only ever looks at the in-token and the out-token. The output for
+swapping token i into token j is the same closed form as the two-token weighted
+curve, `B_j·(1 − (B_i/(B_i+inFee))^(w_i/w_j))`, and the other balances in the
+pool play no part in that swap. So an eight-asset pool is not eight-way coupled
+math: it is the two-token formula applied to whichever pair a swap touches, with
+the rest of the basket sitting idle.
+
+`WeightedPoolN` holds n balances, n weights summing to 1, and a fee, and prices
+any pair `(i, j)`. A two-asset `WeightedPoolN` is the same numbers as a
+`WeightedCurve`, and equal weights reduce a pair to constant-product, the same
+way they do for the two-token curve.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
