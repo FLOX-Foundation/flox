@@ -273,6 +273,19 @@ prices its synthetic levels from the curve's `amountOut`, so the book reflects
 the real fill at depth. Where a backtest sources its pool state is the concern of
 the connector that drives the venue, not of the curve.
 
+The synthetic book is convenient for a strategy that reuses CEX book logic, but a
+fixed set of levels discretises away the curve's exactness -- the very thing the
+exact curves are for. So the connector also exposes the curve directly, as
+`IPoolQuoteView`: `quoteOut(amountIn, baseForQuote)` is the exact output for an
+arbitrary size with no book rounding, `reserves()` is the pool's exact composition
+(the virtual reserves for a concentrated pool), and `curve()` reaches venue-specific
+state a generic view cannot name -- a concentrated pool's sqrt price and liquidity,
+a stable pool's amplification. A DEX-native strategy (LP / MM accounting,
+impermanent loss, an exact-size taker swap) holds the view as a plain interface,
+never having to know the venue is a pool, and it always reflects the live curve as
+the replay applies swaps and checkpoints. The book stays as one optional view layered
+on top, not the only interface.
+
 ## Replaying a pool over time
 
 A curve prices one state of a pool; a backtest needs the pool's state as it moved.
