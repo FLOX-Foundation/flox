@@ -64,6 +64,12 @@ int64_t firstTimestampInBlock(const std::vector<std::byte>& data)
       std::memcpy(&oq, data.data() + offset, sizeof(OptionQuoteRecord));
       ts = oq.exchange_ts_ns;
     }
+    else if (type == EventType::PoolState && frame.size >= sizeof(PoolStateRecordHeader))
+    {
+      PoolStateRecordHeader ph;
+      std::memcpy(&ph, data.data() + offset, sizeof(PoolStateRecordHeader));
+      ts = ph.exchange_ts_ns;
+    }
     if (ts > 0)
     {
       return ts;
@@ -109,6 +115,12 @@ int64_t lastTimestampInBlock(const std::vector<std::byte>& data)
       OptionQuoteRecord oq;
       std::memcpy(&oq, data.data() + offset, sizeof(OptionQuoteRecord));
       ts = oq.exchange_ts_ns;
+    }
+    else if (type == EventType::PoolState && frame.size >= sizeof(PoolStateRecordHeader))
+    {
+      PoolStateRecordHeader ph;
+      std::memcpy(&ph, data.data() + offset, sizeof(PoolStateRecordHeader));
+      ts = ph.exchange_ts_ns;
     }
     if (ts > 0)
     {
@@ -1964,6 +1976,25 @@ bool BinaryLogIterator::parseFrame(EventType type, const std::byte* data, size_t
     }
     std::memcpy(&out.option_quote, data, sizeof(OptionQuoteRecord));
     out.timestamp_ns = out.option_quote.exchange_ts_ns;
+    out.bids.clear();
+    out.asks.clear();
+    return true;
+  }
+  else if (type == EventType::PoolState)
+  {
+    if (size < sizeof(PoolStateRecordHeader))
+    {
+      return false;
+    }
+    std::memcpy(&out.pool_state_header, data, sizeof(PoolStateRecordHeader));
+    out.timestamp_ns = out.pool_state_header.exchange_ts_ns;
+    const size_t payload_len = out.pool_state_header.payload_len;
+    if (size < sizeof(PoolStateRecordHeader) + payload_len)
+    {
+      return false;
+    }
+    const std::byte* payload = data + sizeof(PoolStateRecordHeader);
+    out.pool_state_payload.assign(payload, payload + payload_len);
     out.bids.clear();
     out.asks.clear();
     return true;

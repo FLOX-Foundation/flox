@@ -314,6 +314,15 @@ where the mutation is observable and exactly modelled. Where the deltas come fro
 EVM event logs, parsed Solana instructions -- is the per-chain ingest; the tape and
 replay know nothing about the chain.
 
+The records ride on the same binary-log timeline as trades and books. A pool record
+is an `EventType::PoolState` frame: a fixed header (timestamp, symbol, the record
+kind and venue) and the u256 payload, written through `BinaryLogWriter::writePoolState`
+alongside trades and surfaced by the readers in one timestamp-ordered stream. The
+frame is additive -- a reader that predates it skips it by its size -- so a strategy
+sees a pool's swaps and an unrelated instrument's trades interleaved in time, and a
+`PoolState` event's payload drives `PoolStateReplay::step` to evolve the curve. A
+chain ingest is then just "parse an event into a pool record, stamp it, append it."
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills

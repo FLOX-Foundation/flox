@@ -28,7 +28,15 @@ enum class EventType : uint8_t
   // Additive — readers that predate this type skip the frame via FrameHeader.size
   // (see MmapSegmentReader::next unknown-type branch), so old tapes/readers are
   // unaffected and no format-version bump is needed.
-  OptionQuote = 4
+  OptionQuote = 4,
+  // DEX pool-state record (a Descriptor, Checkpoint, SwapDelta, or LiquidityDelta).
+  // The frame is a fixed PoolStateRecordHeader followed by payload_len bytes of the
+  // u256-native pool payload (32-byte big-endian, chain-native). It carries the pool
+  // history -- swaps, checkpoints, liquidity events -- on the same timestamp-ordered
+  // timeline as trades and books. Additive, like OptionQuote: an old reader skips it
+  // via FrameHeader.size. The payload bytes are interpreted by the pool-state-tape
+  // layer (PoolStateReplay), which the format header does not depend on.
+  PoolState = 5
 };
 
 // Fixed-point scale for implied volatility stored in OptionQuoteRecord.iv_raw.
@@ -135,6 +143,34 @@ struct alignas(8) OptionQuoteRecord
   uint16_t exchange_id{0};
 };
 static_assert(sizeof(OptionQuoteRecord) == 112, "OptionQuoteRecord must be 112 bytes");
+
+// Pool-state record subtype, mirroring the pool-state-tape PoolRecord enum
+// (Descriptor / Checkpoint / SwapDelta / LiquidityDelta). Kept as a raw value so
+// the format header stays free of the curve / tape headers.
+enum class PoolStateKind : uint8_t
+{
+  Descriptor = 1,
+  Checkpoint = 2,
+  SwapDelta = 3,
+  LiquidityDelta = 4,
+};
+
+// Fixed header for an EventType::PoolState frame. exchange_ts_ns is first so the
+// block-level timestamp scan reads it like any other record. payload_len bytes of
+// the u256-native pool payload follow this header within the same frame; sub_type
+// (a PoolStateKind) and venue (a PoolVenue) say how to interpret them.
+struct alignas(8) PoolStateRecordHeader
+{
+  int64_t exchange_ts_ns{0};
+  int64_t recv_ts_ns{0};
+  uint32_t symbol_id{0};
+  uint32_t payload_len{0};
+  uint8_t sub_type{0};
+  uint8_t venue{0};
+  uint16_t exchange_id{0};
+  uint32_t _pad{0};
+};
+static_assert(sizeof(PoolStateRecordHeader) == 32, "PoolStateRecordHeader must be 32 bytes");
 
 struct alignas(8) BookLevel
 {

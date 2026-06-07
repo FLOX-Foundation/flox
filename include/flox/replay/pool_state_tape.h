@@ -111,6 +111,25 @@ inline i256 getI256(const uint8_t*& p)
 }
 }  // namespace pool_tape_detail
 
+// Iterate a framed pool-state tape, calling fn(type, payload, len) per record. The
+// frame is [type:u8][len:u64][payload]; the payload is handed back as a pointer so a
+// caller can replay it (PoolStateReplay) or transcode it onto another container (the
+// binary-log timeline) without copying.
+template <typename F>
+inline void forEachPoolRecord(const std::vector<uint8_t>& tape, F&& fn)
+{
+  const uint8_t* p = tape.data();
+  const uint8_t* end = p + tape.size();
+  while (p < end)
+  {
+    const auto type = static_cast<PoolRecord>(*p++);
+    const uint64_t len = pool_tape_detail::getU64(p);
+    const uint8_t* rec = p;
+    p += len;
+    fn(type, rec, len);
+  }
+}
+
 // Writes pool-state records into a byte buffer. Each record is framed
 // [type:u8][len:u64][payload], so a reader that does not know a type can skip it.
 class PoolStateWriter
@@ -206,28 +225,30 @@ class PoolStateReplay
 
   void run(const std::vector<uint8_t>& tape)
   {
-    const uint8_t* p = tape.data();
-    const uint8_t* end = p + tape.size();
-    while (p < end)
+    forEachPoolRecord(tape, [this](PoolRecord type, const uint8_t* rec, uint64_t len)
+                      { step(type, rec, len); });
+  }
+
+  // Apply one record's payload (the bytes after the [type][len] frame). This is the
+  // single entry point both run() and a binary-log-timeline driver use, so a
+  // PoolState event read off the engine's replay stream replays identically to one
+  // read off a standalone tape.
+  void step(PoolRecord type, const uint8_t* rec, std::size_t len)
+  {
+    (void)len;
+    switch (type)
     {
-      const auto type = static_cast<PoolRecord>(*p++);
-      const uint64_t len = pool_tape_detail::getU64(p);
-      const uint8_t* rec = p;
-      p += len;
-      switch (type)
-      {
-        case PoolRecord::Descriptor:
-          readDescriptor(rec);
-          break;
-        case PoolRecord::Checkpoint:
-          readCheckpoint(rec);
-          break;
-        case PoolRecord::SwapDelta:
-          readSwap(rec);
-          break;
-        default:
-          break;  // unknown record type: skipped via len
-      }
+      case PoolRecord::Descriptor:
+        readDescriptor(rec);
+        break;
+      case PoolRecord::Checkpoint:
+        readCheckpoint(rec);
+        break;
+      case PoolRecord::SwapDelta:
+        readSwap(rec);
+        break;
+      default:
+        break;  // unknown record type: skipped via len
     }
   }
 

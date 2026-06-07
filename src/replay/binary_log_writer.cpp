@@ -513,6 +513,88 @@ bool BinaryLogWriter::writeOptionQuote(const OptionQuoteRecord& quote)
   return ok;
 }
 
+bool BinaryLogWriter::writePoolState(const PoolStateRecordHeader& hdr, const void* payload,
+                                     size_t payload_size)
+{
+  std::lock_guard lock(_mutex);
+
+  if (!ensureOpen())
+  {
+    return false;
+  }
+
+  // The frame is [PoolStateRecordHeader][payload]; the header's payload_len must
+  // match so the reader can carve the payload back out.
+  PoolStateRecordHeader record = hdr;
+  record.payload_len = static_cast<uint32_t>(payload_size);
+
+  const size_t frame_payload_size = sizeof(PoolStateRecordHeader) + payload_size;
+  _payload_buffer.resize(frame_payload_size);
+  std::memcpy(_payload_buffer.data(), &record, sizeof(record));
+  if (payload_size > 0)
+  {
+    std::memcpy(_payload_buffer.data() + sizeof(record), payload, payload_size);
+  }
+  auto* frame_payload = _payload_buffer.data();
+
+  bool ok;
+  if (isCompressed())
+  {
+    ok = writeFrameToBlock(EventType::PoolState, frame_payload, frame_payload_size,
+                           record.exchange_ts_ns);
+  }
+  else
+  {
+    const size_t frame_size = sizeof(FrameHeader) + frame_payload_size;
+    if (!maybeRotate(frame_size))
+    {
+      return false;
+    }
+
+    uint64_t frame_offset = _segment_bytes;
+
+    FrameHeader frame_hdr{};
+    frame_hdr.size = static_cast<uint32_t>(frame_payload_size);
+    frame_hdr.crc32 = Crc32::compute(frame_payload, frame_payload_size);
+    frame_hdr.type = static_cast<uint8_t>(EventType::PoolState);
+    frame_hdr.rec_version = 1;
+
+    if (std::fwrite(&frame_hdr, sizeof(frame_hdr), 1, _file) != 1)
+    {
+      return false;
+    }
+    if (std::fwrite(frame_payload, 1, frame_payload_size, _file) != frame_payload_size)
+    {
+      return false;
+    }
+
+    _segment_bytes += frame_size;
+    _stats.bytes_written += frame_size;
+    ++_stats.events_written;
+
+    if (_segment_header.first_event_ns == 0)
+    {
+      _segment_header.first_event_ns = record.exchange_ts_ns;
+    }
+    _segment_header.last_event_ns = record.exchange_ts_ns;
+    ++_segment_header.event_count;
+
+    if (_config.create_index)
+    {
+      if (_index_entries.empty() || _events_since_last_index >= _config.index_interval)
+      {
+        _index_entries.push_back(
+            IndexEntry{.timestamp_ns = record.exchange_ts_ns, .file_offset = frame_offset});
+        _events_since_last_index = 0;
+      }
+      ++_events_since_last_index;
+    }
+    ok = true;
+  }
+
+  return ok;
+}
+
 bool BinaryLogWriter::writeBook(const BookRecordHeader& hdr, std::span<const BookLevel> bids,
                                 std::span<const BookLevel> asks)
 {
@@ -815,7 +897,8 @@ int64_t BinaryLogWriter::sortBlockBuffer()
       break;
     }
 
-    // Both TradeRecord and BookRecordHeader have exchange_ts_ns as their first field.
+    // Every record type (Trade, Book, OptionQuote, PoolState) has exchange_ts_ns
+    // as its first field, so the block timestamp is the first int64 of the payload.
     int64_t ts = 0;
     if (hdr.size >= sizeof(int64_t))
     {
