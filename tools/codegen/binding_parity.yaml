@@ -464,3 +464,28 @@ groups:
         QuickJS has no arbitrary-precision integer in the bound surface, so a 256-bit
         amount cannot round-trip through a JS number. Bind when the QuickJS layer
         grows a BigInt path. Tracked in W1-T039.
+
+  # AMM curves: price a DEX swap exactly from a binding. pybind11 exposes a class
+  # (AmmCurve); napi exposes free functions over an opaque handle. Amounts are the
+  # 256-bit dex_amount boundary.
+  amm_curve:
+    pybind11:
+      status: required
+      classes: [AmmCurve]
+    napi:
+      status: required
+      functions:
+        - ammCurveConstantProduct
+        - ammCurveRaydiumCp
+        - ammCurveUniswapV3
+        - ammCurveTokenCount
+        - ammCurveAmountOut
+        - ammCurveApplySwap
+        - ammCurveBalance
+        - ammCurveClone
+    codon: { status: required }
+    quickjs:
+      status: allowlist
+      reason: >
+        Pricing needs 256-bit amounts, which the QuickJS bound surface has no BigInt
+        for yet (see dex_amount). Bind the curves once that lands. Tracked in W1-T040.

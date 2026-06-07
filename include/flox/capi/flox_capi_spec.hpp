@@ -41,6 +41,7 @@ extern "C"
   typedef void* FloxVolumeProfileHandle;
   typedef void* FloxMarketProfileHandle;
   typedef void* FloxCompositeBookHandle;
+  typedef void* FloxCurveHandle;  // an INTokenCurve (an AMM pool's exact pricing)
 
   // ============================================================
   // Flat event structs (C-compatible, no C++ dependencies)
@@ -4610,6 +4611,55 @@ extern "C"
   uint8_t flox_u256_to_words(const char* dec, uint64_t* words);
   FLOX_EXPORT(group = "dex_amount")
   uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t out_len);
+
+  // ============================================================
+  // AMM curves: price a DEX swap from any binding
+  // ============================================================
+  //
+  // An exact AMM pool curve (the INTokenCurve), as an opaque handle. A constructor
+  // takes the pool's parameters (amounts as decimal strings, the dex_amount boundary)
+  // and returns a handle; the generic ops price and move it. The handle owns the
+  // curve; flox_curve_destroy frees it. A constructor returns NULL on a bad parameter
+  // (e.g. a non-numeric amount).
+  //
+  // Token indices i / j are [0, token_count). flox_curve_amount_out prices a swap
+  // without moving the pool; flox_curve_apply_swap moves it and returns the output;
+  // flox_curve_balance reads a reserve. The amount-out / balance writers fill a
+  // decimal string and return 1, or 0 on a too-small buffer (96 bytes is always
+  // enough for a u256).
+  //
+  // This first set is constant-product (Uniswap v2 forks), Raydium CP (Solana), and
+  // Uniswap v3 concentrated liquidity; the other venues extend the same shape.
+
+  FLOX_EXPORT(group = "amm_curve")
+  FloxCurveHandle flox_curve_constant_product(const char* reserve0, const char* reserve1,
+                                              uint64_t fee_num, uint64_t fee_den);
+  FLOX_EXPORT(group = "amm_curve")
+  FloxCurveHandle flox_curve_raydium_cp(const char* reserve0, const char* reserve1,
+                                        uint64_t trade_fee_rate, uint64_t creator_fee_rate,
+                                        uint8_t creator_fee_on_input);
+  // Uniswap v3 (Q64.96). ticks: n_ticks initialized ticks, as parallel arrays of the
+  // sqrt-ratio (u256 decimal) and the net liquidity (i256 decimal, signed). Pass
+  // n_ticks = 0 for an in-range swap that crosses no tick.
+  FLOX_EXPORT(group = "amm_curve")
+  FloxCurveHandle flox_curve_uniswap_v3(const char* sqrt_price_x96, const char* liquidity,
+                                        uint32_t fee_pips, const char* const* tick_sqrt_ratio,
+                                        const char* const* tick_liquidity_net, size_t n_ticks);
+
+  FLOX_EXPORT(group = "amm_curve")
+  size_t flox_curve_token_count(FloxCurveHandle curve);
+  FLOX_EXPORT(group = "amm_curve")
+  uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t j, const char* amount_in,
+                                char* out, size_t out_len);
+  FLOX_EXPORT(group = "amm_curve")
+  uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j, const char* amount_in,
+                                char* out, size_t out_len);
+  FLOX_EXPORT(group = "amm_curve")
+  uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len);
+  FLOX_EXPORT(group = "amm_curve")
+  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);
+  FLOX_EXPORT(group = "amm_curve")
+  void flox_curve_destroy(FloxCurveHandle curve);
 
 #ifdef __cplusplus
 }

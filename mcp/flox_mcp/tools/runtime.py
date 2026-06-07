@@ -191,6 +191,77 @@ def _import_flox_or_error() -> Tuple[Any, Optional[str]]:
         )
 
 
+def price_amm_swap(
+    venue: str,
+    pool: Any,
+    amount_in: Any,
+    i: int = 0,
+    j: int = 1,
+) -> str:
+    """Price an exact DEX swap against a pool, to the wei.
+
+    venue: constant_product | raydium_cp | uniswap_v3. pool: the pool's parameters
+    (amounts as decimal strings, so 256-bit values are lossless). Returns JSON with
+    the exact output amount and the marginal price, computed through the exact curve.
+    """
+    import json as _json
+
+    flox, err = _import_flox_or_error()
+    if err is not None:
+        return err
+    if not isinstance(pool, dict):
+        return "price_amm_swap: `pool` must be an object of pool parameters."
+
+    def _int(v: Any) -> int:
+        return int(str(v))
+
+    v = (venue or "").lower()
+    try:
+        if v in ("constant_product", "cp", "uniswap_v2"):
+            curve = flox.AmmCurve.constant_product(
+                _int(pool["reserve0"]), _int(pool["reserve1"]),
+                int(pool.get("fee_num", 997)), int(pool.get("fee_den", 1000)))
+        elif v in ("raydium_cp", "raydium"):
+            curve = flox.AmmCurve.raydium_cp(
+                _int(pool["reserve0"]), _int(pool["reserve1"]),
+                int(pool["trade_fee_rate"]), int(pool.get("creator_fee_rate", 0)),
+                bool(pool.get("creator_fee_on_input", True)))
+        elif v in ("uniswap_v3", "v3", "concentrated_liquidity"):
+            ticks = [(_int(t[0]), _int(t[1])) for t in pool.get("ticks", [])]
+            curve = flox.AmmCurve.uniswap_v3(
+                _int(pool["sqrt_price_x96"]), _int(pool["liquidity"]),
+                int(pool["fee_pips"]), ticks)
+        else:
+            return (
+                f"price_amm_swap: unknown venue '{venue}'. Use one of "
+                "constant_product, raydium_cp, uniswap_v3."
+            )
+    except KeyError as e:
+        return f"price_amm_swap: missing pool parameter {e} for venue '{v}'."
+    except Exception as e:  # noqa: BLE001
+        return f"price_amm_swap: bad pool parameters: {e}"
+
+    amt = _int(amount_in)
+    out = curve.amount_out(int(i), int(j), amt)
+    # Marginal price from a tiny probe (a millionth of the input, min 1).
+    probe = max(amt // 1_000_000, 1)
+    probe_out = curve.amount_out(int(i), int(j), probe)
+    marginal = (probe_out / probe) if probe > 0 else 0.0
+    realized = (out / amt) if amt > 0 else 0.0
+    impact = (1.0 - realized / marginal) if marginal > 0 else 0.0
+    return _json.dumps({
+        "venue": v,
+        "amount_in": str(amt),
+        "amount_out": str(out),
+        "i": int(i),
+        "j": int(j),
+        "marginal_price": marginal,
+        "realized_price": realized,
+        "price_impact": impact,
+        "note": "exact to the wei via the flox curve",
+    }, indent=2)
+
+
 def compute_indicator(
     name: str,
     data: Any,

@@ -170,6 +170,8 @@ Mutating tools:
 
 - `compute_indicator / get_indicator_values / suggest_indicator` —
   indicator data over a window.
+- `price_amm_swap(venue, pool, amount_in)` — quote a DEX swap exact
+  to the wei on a constant-product / Raydium CP / Uniswap v3 pool.
 - `whatif(...)` — counterfactual replay with overridden inputs.
 - `lookahead(strategy_code, ...)` — bias detection.
 - `replay_window(start_ns, end_ns)` — re-run a slice for debugging.

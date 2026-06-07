@@ -2607,6 +2607,205 @@
       "return_type": "void"
     },
     {
+      "group": "amm_curve",
+      "name": "flox_curve_amount_out",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        },
+        {
+          "name": "i",
+          "type": "size_t"
+        },
+        {
+          "name": "j",
+          "type": "size_t"
+        },
+        {
+          "name": "amount_in",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_apply_swap",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        },
+        {
+          "name": "i",
+          "type": "size_t"
+        },
+        {
+          "name": "j",
+          "type": "size_t"
+        },
+        {
+          "name": "amount_in",
+          "type": "const char *"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_balance",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        },
+        {
+          "name": "i",
+          "type": "size_t"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_clone",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        }
+      ],
+      "return_type": "FloxCurveHandle"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_constant_product",
+      "params": [
+        {
+          "name": "reserve0",
+          "type": "const char *"
+        },
+        {
+          "name": "reserve1",
+          "type": "const char *"
+        },
+        {
+          "name": "fee_num",
+          "type": "uint64_t"
+        },
+        {
+          "name": "fee_den",
+          "type": "uint64_t"
+        }
+      ],
+      "return_type": "FloxCurveHandle"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_destroy",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_raydium_cp",
+      "params": [
+        {
+          "name": "reserve0",
+          "type": "const char *"
+        },
+        {
+          "name": "reserve1",
+          "type": "const char *"
+        },
+        {
+          "name": "trade_fee_rate",
+          "type": "uint64_t"
+        },
+        {
+          "name": "creator_fee_rate",
+          "type": "uint64_t"
+        },
+        {
+          "name": "creator_fee_on_input",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxCurveHandle"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_token_count",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        }
+      ],
+      "return_type": "size_t"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_uniswap_v3",
+      "params": [
+        {
+          "name": "sqrt_price_x96",
+          "type": "const char *"
+        },
+        {
+          "name": "liquidity",
+          "type": "const char *"
+        },
+        {
+          "name": "fee_pips",
+          "type": "uint32_t"
+        },
+        {
+          "name": "tick_sqrt_ratio",
+          "type": "const char *const *"
+        },
+        {
+          "name": "tick_liquidity_net",
+          "type": "const char *const *"
+        },
+        {
+          "name": "n_ticks",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "FloxCurveHandle"
+    },
+    {
       "group": "data_reader",
       "name": "flox_data_reader_clear_progress_callback",
       "params": [
@@ -15764,6 +15963,10 @@
     },
     {
       "name": "FloxCompositeBookHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxCurveHandle",
       "target": "void*"
     },
     {

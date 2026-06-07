@@ -37,6 +37,7 @@ extern "C"
   typedef void* FloxVolumeProfileHandle;
   typedef void* FloxMarketProfileHandle;
   typedef void* FloxCompositeBookHandle;
+  typedef void* FloxCurveHandle;
   typedef void* FloxIndicatorGraphHandle;
   typedef FloxIndicatorGraphHandle FloxStreamingGraphHandle;
   typedef void* FloxOrderGroupHandle;
@@ -882,6 +883,27 @@ extern "C"
                                       size_t num_periods, uint32_t num_bootstrap,
                                       double avg_block_size, double* p_value_out,
                                       double* best_stat_out, int32_t* best_index_out);
+
+  // ============================================================
+  // Amm Curve
+  // ============================================================
+
+  FloxCurveHandle flox_curve_constant_product(const char* reserve0, const char* reserve1,
+                                              uint64_t fee_num, uint64_t fee_den);
+  FloxCurveHandle flox_curve_raydium_cp(const char* reserve0, const char* reserve1,
+                                        uint64_t trade_fee_rate, uint64_t creator_fee_rate,
+                                        uint8_t creator_fee_on_input);
+  FloxCurveHandle flox_curve_uniswap_v3(const char* sqrt_price_x96, const char* liquidity,
+                                        uint32_t fee_pips, const char* const* tick_sqrt_ratio,
+                                        const char* const* tick_liquidity_net, size_t n_ticks);
+  size_t flox_curve_token_count(FloxCurveHandle curve);
+  uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t j, const char* amount_in,
+                                char* out, size_t out_len);
+  uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j, const char* amount_in,
+                                char* out, size_t out_len);
+  uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len);
+  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);
+  void flox_curve_destroy(FloxCurveHandle curve);
 
   // ============================================================
   // Backtest Slippage

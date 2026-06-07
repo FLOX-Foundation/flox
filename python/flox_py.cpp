@@ -6,6 +6,7 @@
 
 #include "account_bindings.h"
 #include "aggregator_bindings.h"
+#include "amm_curve_bindings.h"
 #include "backtest_bindings.h"
 #include "bar_dispatch_bindings.h"
 #include "bare_executor_bindings.h"
@@ -820,6 +821,7 @@ PYBIND11_MODULE(_flox_py, m)
   flox_py::bindExecutionAlgos(m);
   flox_py::bindDeltaBook(m);
   flox_py::bindDexAmount(m);
+  flox_py::bindAmmCurve(m);
   flox_py::bindRunTrace(m);
   bindOptimizer(m);
   bindCompositeBook(m);

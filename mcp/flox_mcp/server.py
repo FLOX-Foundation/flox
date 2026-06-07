@@ -535,6 +535,48 @@ def build_server() -> Server:
                 },
             ),
             Tool(
+                name="price_amm_swap",
+                description=(
+                    "Price a DEX swap against an AMM pool, exact to the "
+                    "wei, through FLOX's integer curves. Use this to quote "
+                    "a fill or measure price impact on a constant-product "
+                    "(Uniswap v2), Raydium CP (Solana), or Uniswap v3 "
+                    "concentrated-liquidity pool from its on-chain state. "
+                    "Amounts are decimal strings (native wei / lamports), "
+                    "so 256-bit values are lossless. Requires the optional "
+                    "`flox-py` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["venue", "pool", "amount_in"],
+                    "properties": {
+                        "venue": {
+                            "type": "string",
+                            "enum": ["constant_product", "raydium_cp", "uniswap_v3"],
+                            "description": "The pool's AMM type.",
+                        },
+                        "pool": {
+                            "type": "object",
+                            "description":
+                                "Pool parameters as decimal strings. "
+                                "constant_product: reserve0, reserve1, "
+                                "fee_num, fee_den. raydium_cp: reserve0, "
+                                "reserve1, trade_fee_rate. uniswap_v3: "
+                                "sqrt_price_x96, liquidity, fee_pips, "
+                                "ticks (optional [sqrtRatio, net] pairs).",
+                            "additionalProperties": True,
+                        },
+                        "amount_in": {
+                            "type": "string",
+                            "description": "Input amount, native wei (decimal string).",
+                        },
+                        "i": {"type": "integer", "description": "In-token index (default 0)."},
+                        "j": {"type": "integer", "description": "Out-token index (default 1)."},
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
                 name="suggest_indicator",
                 description=(
                     "Recommend FLOX indicators for an English description "
@@ -1116,6 +1158,14 @@ def build_server() -> Server:
                     name=arguments["name"],
                     data=arguments["data"],
                     **indicator_kwargs,
+                )
+            elif name == "price_amm_swap":
+                text = runtime.price_amm_swap(
+                    venue=arguments["venue"],
+                    pool=arguments["pool"],
+                    amount_in=arguments["amount_in"],
+                    i=arguments.get("i", 0),
+                    j=arguments.get("j", 1),
                 )
             elif name == "suggest_indicator":
                 text = runtime.suggest_indicator(

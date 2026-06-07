@@ -85,6 +85,10 @@
 #include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
 #include "flox/aggregator/policies/range_bar_policy.h"
 #include "flox/aggregator/policies/renko_bar_policy.h"
+#include "flox/backtest/concentrated_liquidity_curve.h"
+#include "flox/backtest/constant_product_curve.h"
+#include "flox/backtest/ntoken_curve.h"
+#include "flox/backtest/raydium_cp_curve.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/bus/trade_bus.h"
 #include "flox/book/composite_book_matrix.h"
@@ -10122,4 +10126,154 @@ extern "C" uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t
     v.w[static_cast<std::size_t>(i)] = words[i];
   }
   return writeOut(v.toDec(), out, out_len);
+}
+
+// ============================================================
+// T040: AMM curves
+// ============================================================
+
+namespace
+{
+inline flox::INTokenCurve* toCurve(FloxCurveHandle h)
+{
+  return static_cast<flox::INTokenCurve*>(h);
+}
+}  // namespace
+
+extern "C" FloxCurveHandle flox_curve_constant_product(const char* reserve0, const char* reserve1,
+                                                       uint64_t fee_num, uint64_t fee_den)
+{
+  if (reserve0 == nullptr || reserve1 == nullptr)
+  {
+    return nullptr;
+  }
+  try
+  {
+    return new flox::ConstantProductCurve(flox::u256::fromDec(reserve0),
+                                          flox::u256::fromDec(reserve1), fee_num, fee_den);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxCurveHandle flox_curve_raydium_cp(const char* reserve0, const char* reserve1,
+                                                 uint64_t trade_fee_rate, uint64_t creator_fee_rate,
+                                                 uint8_t creator_fee_on_input)
+{
+  if (reserve0 == nullptr || reserve1 == nullptr)
+  {
+    return nullptr;
+  }
+  try
+  {
+    return new flox::RaydiumCpCurve(flox::u256::fromDec(reserve0), flox::u256::fromDec(reserve1),
+                                    trade_fee_rate, creator_fee_rate, creator_fee_on_input != 0);
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" FloxCurveHandle flox_curve_uniswap_v3(const char* sqrt_price_x96, const char* liquidity,
+                                                 uint32_t fee_pips,
+                                                 const char* const* tick_sqrt_ratio,
+                                                 const char* const* tick_liquidity_net,
+                                                 size_t n_ticks)
+{
+  if (sqrt_price_x96 == nullptr || liquidity == nullptr)
+  {
+    return nullptr;
+  }
+  try
+  {
+    std::vector<flox::ClTick> ticks;
+    ticks.reserve(n_ticks);
+    for (size_t k = 0; k < n_ticks; ++k)
+    {
+      ticks.push_back({flox::u256::fromDec(tick_sqrt_ratio[k]),
+                       flox::i256::fromDec(tick_liquidity_net[k])});
+    }
+    return new flox::ConcentratedLiquidityCurve(flox::u256::fromDec(sqrt_price_x96),
+                                                flox::u256::fromDec(liquidity), fee_pips,
+                                                std::move(ticks));
+  }
+  catch (...)
+  {
+    return nullptr;
+  }
+}
+
+extern "C" size_t flox_curve_token_count(FloxCurveHandle curve)
+{
+  return curve == nullptr ? 0 : toCurve(curve)->tokenCount();
+}
+
+extern "C" uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t j,
+                                         const char* amount_in, char* out, size_t out_len)
+{
+  if (curve == nullptr || amount_in == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    return writeOut(toCurve(curve)->amountOut(i, j, flox::u256::fromDec(amount_in)).toDec(), out,
+                    out_len);
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j,
+                                         const char* amount_in, char* out, size_t out_len)
+{
+  if (curve == nullptr || amount_in == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    return writeOut(toCurve(curve)->applySwap(i, j, flox::u256::fromDec(amount_in)).toDec(), out,
+                    out_len);
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len)
+{
+  if (curve == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    const std::vector<flox::u256>& b = toCurve(curve)->balances();
+    if (i >= b.size())
+    {
+      return 0;
+    }
+    return writeOut(b[i].toDec(), out, out_len);
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" FloxCurveHandle flox_curve_clone(FloxCurveHandle curve)
+{
+  return curve == nullptr ? nullptr : toCurve(curve)->clone().release();
+}
+
+extern "C" void flox_curve_destroy(FloxCurveHandle curve)
+{
+  delete toCurve(curve);
 }

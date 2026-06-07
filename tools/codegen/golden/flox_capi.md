@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 703 functions, 55 handles, 58 structs, 43 callback typedefs, 3 enums, 70 groups.
+**Surface:** 712 functions, 56 handles, 58 structs, 43 callback typedefs, 3 enums, 71 groups.
 
 ## Opaque handles
 
@@ -20,6 +20,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxVolumeProfileHandle`
 - `FloxMarketProfileHandle`
 - `FloxCompositeBookHandle`
+- `FloxCurveHandle`
 - `FloxIndicatorGraphHandle`
 - `FloxStreamingGraphHandle` (alias of `FloxIndicatorGraphHandle`)
 - `FloxOrderGroupHandle`
@@ -884,6 +885,18 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `double flox_stat_permutation_test(const double * group1, size_t len1, const double * group2, size_t len2, uint32_t num_permutations)`
 - `void flox_stat_bootstrap_ci(const double * data, size_t len, double confidence, uint32_t num_samples, double * lower_out, double * median_out, double * upper_out)`
 - `void flox_stat_whites_reality_check(const double * returns, size_t num_strategies, size_t num_periods, uint32_t num_bootstrap, double avg_block_size, double * p_value_out, double * best_stat_out, int32_t * best_index_out)`
+
+### amm_curve
+
+- `FloxCurveHandle flox_curve_constant_product(const char * reserve0, const char * reserve1, uint64_t fee_num, uint64_t fee_den)`
+- `FloxCurveHandle flox_curve_raydium_cp(const char * reserve0, const char * reserve1, uint64_t trade_fee_rate, uint64_t creator_fee_rate, uint8_t creator_fee_on_input)`
+- `FloxCurveHandle flox_curve_uniswap_v3(const char * sqrt_price_x96, const char * liquidity, uint32_t fee_pips, const char *const * tick_sqrt_ratio, const char *const * tick_liquidity_net, size_t n_ticks)`
+- `size_t flox_curve_token_count(FloxCurveHandle curve)`
+- `uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t j, const char * amount_in, char * out, size_t out_len)`
+- `uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j, const char * amount_in, char * out, size_t out_len)`
+- `uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char * out, size_t out_len)`
+- `FloxCurveHandle flox_curve_clone(FloxCurveHandle curve)`
+- `void flox_curve_destroy(FloxCurveHandle curve)`
 
 ### backtest_slippage
 

@@ -98,6 +98,15 @@ flox_composite_book_create|FloxCompositeBookHandle
 flox_composite_book_destroy|void|FloxCompositeBookHandle
 flox_composite_book_has_arb|uint8_t|FloxCompositeBookHandle|uint32_t
 flox_composite_book_mark_stale|void|FloxCompositeBookHandle|uint32_t|uint32_t
+flox_curve_amount_out|uint8_t|FloxCurveHandle|size_t|size_t|const char *|char *|size_t
+flox_curve_apply_swap|uint8_t|FloxCurveHandle|size_t|size_t|const char *|char *|size_t
+flox_curve_balance|uint8_t|FloxCurveHandle|size_t|char *|size_t
+flox_curve_clone|FloxCurveHandle|FloxCurveHandle
+flox_curve_constant_product|FloxCurveHandle|const char *|const char *|uint64_t|uint64_t
+flox_curve_destroy|void|FloxCurveHandle
+flox_curve_raydium_cp|FloxCurveHandle|const char *|const char *|uint64_t|uint64_t|uint8_t
+flox_curve_token_count|size_t|FloxCurveHandle
+flox_curve_uniswap_v3|FloxCurveHandle|const char *|const char *|uint32_t|const char *const *|const char *const *|size_t
 flox_data_reader_clear_progress_callback|void|FloxDataReaderHandle
 flox_data_reader_count|uint64_t|FloxDataReaderHandle
 flox_data_reader_count_book_updates|uint64_t|FloxDataReaderHandle|uint64_t *
@@ -667,7 +676,9 @@ flox_target_future_ctc_volatility|void|const double *|size_t|size_t|double *
 flox_target_future_linear_slope|void|const double *|size_t|size_t|double *
 flox_target_future_return|void|const double *|size_t|size_t|double *
 flox_u256_from_hex|uint8_t|const char *|char *|size_t
+flox_u256_from_words|uint8_t|const uint64_t *|char *|size_t
 flox_u256_roundtrip|uint8_t|const char *|char *|size_t
+flox_u256_to_words|uint8_t|const char *|uint64_t *
 flox_venue_availability_auto_random_outages|void|FloxVenueAvailabilityHandle|double|int64_t|uint8_t|uint64_t
 flox_venue_availability_book_updates_allowed|uint8_t|FloxVenueAvailabilityHandle|int64_t
 flox_venue_availability_cancels_allowed|uint8_t|FloxVenueAvailabilityHandle|int64_t
