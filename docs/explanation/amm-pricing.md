@@ -227,6 +227,19 @@ prices its synthetic levels from the curve's `amountOut`, so the book reflects
 the real fill at depth. Where a backtest sources its pool state is the concern of
 the connector that drives the venue, not of the curve.
 
+## Replaying a pool over time
+
+A curve prices one state of a pool; a backtest needs the pool's state as it moved.
+`AmmPoolReplaySource` replays a recorded sequence of pool-state snapshots -- each a
+ready-to-price curve at a timestamp -- through an `AmmDexConnector`: at each
+snapshot it points the connector at that curve and republishes the synthetic book,
+stamped at the snapshot's time. Because a snapshot is just a curve, it is
+venue-agnostic -- the same driver replays a constant-product pool, a Whirlpool, or
+a Saber pool -- and it is reproducible, since the same snapshots replay
+identically. Where the snapshots come from (a recorded tape, a live account read)
+is the concern of whatever captured them; this is the engine-side glue that turns
+a pool's state-over-time into the book stream the rest of a backtest consumes.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
