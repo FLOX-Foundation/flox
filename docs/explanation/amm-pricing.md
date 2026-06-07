@@ -62,6 +62,21 @@ StableSwap convention.
 One class covers 3pool and other plain stableswap pools: it is parameterized by
 the balances, the rates, `A`, and the fee, and `n` is the number of coins.
 
+## Cryptoswap
+
+`CryptoswapCurve` is a Curve V2 pool (a tricrypto pool of volatile assets), exact
+in integer. It is a direct transcription of the contract's integer algorithm: the
+invariant `D` and the output balance come from the contract's Newton solvers, and
+the divisions floor exactly where the Vyper floors, so the rounding matches and
+not just the formula. The balances are normalized by per-coin precisions and an
+internal price scale, the amplification `A` and `gamma` come in their on-chain
+packing, and the fee is dynamic, taken on the output and computed from the
+post-swap balances so a lopsided pool charges more.
+
+This curve is the pricing surface, and it reproduces the live tricrypto2 get_dy
+to the wei. The price scale is a parameter held across a swap here; the internal
+repegging that moves the scale over time is a separate piece.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
