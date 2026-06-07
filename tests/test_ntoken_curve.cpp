@@ -18,106 +18,77 @@ using namespace flox;
 namespace
 {
 
-// A minimal stub that prices each token pair as an independent constant-product
-// curve on the two reserves. Not a real model -- it only exists to exercise the
-// INTokenCurve interface shape (indices, clone, the four queries) before the
-// real pools (W19-T002+) implement it.
-class NTokenConstProductStub : public INTokenCurve
+// A minimal stub that prices each pair as an independent constant-product curve
+// on the two balances, no fee. Exists only to exercise the INTokenCurve interface
+// shape (indices, u256 amounts, balances, clone).
+class NTokenStub : public INTokenCurve
 {
  public:
-  explicit NTokenConstProductStub(std::vector<double> reserves) : _r(std::move(reserves)) {}
+  explicit NTokenStub(std::vector<u256> balances) : _b(std::move(balances)) {}
 
-  std::size_t tokenCount() const override { return _r.size(); }
+  std::size_t tokenCount() const override { return _b.size(); }
+  const std::vector<u256>& balances() const override { return _b; }
 
-  const std::vector<double>& balances() const override { return _r; }
-
-  Price spotPrice(std::size_t i, std::size_t j) const override
+  u256 amountOut(std::size_t i, std::size_t j, const u256& amountIn) const override
   {
-    return Price::fromDouble(_r[i] / _r[j]);  // units of i per unit of j
-  }
-
-  Quantity amountOut(std::size_t i, std::size_t j, Quantity amountIn) const override
-  {
-    const double in = amountIn.toDouble();
-    return Quantity::fromDouble(_r[j] * in / (_r[i] + in));
-  }
-
-  double priceImpact(std::size_t i, std::size_t j, Quantity amountIn) const override
-  {
-    const double in = amountIn.toDouble();
-    const double out = amountOut(i, j, amountIn).toDouble();
-    if (in <= 0.0 || out <= 0.0)
+    if (amountIn.isZero())
     {
-      return 0.0;
+      return u256(0);
     }
-    const double spotRate = _r[j] / _r[i];  // out per in, marginal
-    return 1.0 - (out / in) / spotRate;
+    return mulDiv(_b[j], amountIn, _b[i] + amountIn);  // floor
   }
 
-  Quantity applySwap(std::size_t i, std::size_t j, Quantity amountIn) override
+  u256 applySwap(std::size_t i, std::size_t j, const u256& amountIn) override
   {
-    const Quantity out = amountOut(i, j, amountIn);
-    _r[i] += amountIn.toDouble();
-    _r[j] -= out.toDouble();
+    const u256 out = amountOut(i, j, amountIn);
+    _b[i] = _b[i] + amountIn;
+    _b[j] = _b[j] - out;
     return out;
   }
 
   std::unique_ptr<INTokenCurve> clone() const override
   {
-    return std::make_unique<NTokenConstProductStub>(*this);
+    return std::make_unique<NTokenStub>(*this);
   }
 
  private:
-  std::vector<double> _r;
+  std::vector<u256> _b;
 };
 
-TEST(NTokenCurveTest, InterfaceShape)
-{
-  NTokenConstProductStub pool(std::vector<double>{1000.0, 2000.0, 4000.0});
-  EXPECT_EQ(pool.tokenCount(), 3u);
-
-  // Reciprocal pricing: price of j in i times price of i in j is 1.
-  EXPECT_NEAR(pool.spotPrice(0, 2).toDouble() * pool.spotPrice(2, 0).toDouble(), 1.0, 1e-9);
-
-  const Quantity out = pool.amountOut(0, 1, Quantity::fromDouble(10.0));
-  EXPECT_GT(out.toDouble(), 0.0);
-  EXPECT_LT(out.toDouble(), 2000.0);
-
-  EXPECT_GT(pool.priceImpact(0, 1, Quantity::fromDouble(500.0)),
-            pool.priceImpact(0, 1, Quantity::fromDouble(5.0)));
-}
-
 // balances() on the interface lets generic code value a pool at given per-token
-// prices without knowing the concrete type.
-double poolValue(const INTokenCurve& pool, const std::vector<double>& prices)
+// prices without the concrete type.
+u256 poolValueScaled(const INTokenCurve& pool, const std::vector<u256>& priceScaled)
 {
   const auto& b = pool.balances();
-  double v = 0.0;
+  u256 v(0);
   for (std::size_t k = 0; k < b.size(); ++k)
   {
-    v += b[k] * prices[k];
+    v = v + b[k] * priceScaled[k];
   }
   return v;
 }
 
-TEST(NTokenCurveTest, BalancesValuationThroughInterface)
+TEST(NTokenCurveTest, InterfaceShape)
 {
-  NTokenConstProductStub pool(std::vector<double>{1000.0, 2000.0, 4000.0});
-  const INTokenCurve& iface = pool;
-  EXPECT_EQ(iface.balances().size(), 3u);
-  // Value at prices [2, 1, 0.5] = 2000 + 2000 + 2000 = 6000.
-  EXPECT_NEAR(poolValue(iface, {2.0, 1.0, 0.5}), 6000.0, 1e-9);
+  NTokenStub pool(std::vector<u256>{u256(1000), u256(2000), u256(4000)});
+  EXPECT_EQ(pool.tokenCount(), 3u);
+
+  const u256 out = pool.amountOut(0, 1, u256(10));
+  EXPECT_FALSE(out.isZero());
+  EXPECT_TRUE(out < u256(2000));
+
+  // Valuation through the interface: balances [1000,2000,4000] at prices [2,1,1]
+  // = 2000 + 2000 + 4000 = 8000.
+  EXPECT_EQ(poolValueScaled(pool, {u256(2), u256(1), u256(1)}).toDec(), "8000");
 }
 
 TEST(NTokenCurveTest, CloneIsIndependent)
 {
-  NTokenConstProductStub pool(std::vector<double>{1000.0, 1000.0, 1000.0});
-  const double spotBefore = pool.spotPrice(0, 1).toDouble();
-
+  NTokenStub pool(std::vector<u256>{u256(1000), u256(1000), u256(1000)});
   auto copy = pool.clone();
-  copy->applySwap(0, 1, Quantity::fromDouble(200.0));              // move the clone
-  EXPECT_NEAR(pool.spotPrice(0, 1).toDouble(), spotBefore, 1e-9);  // original intact
-  EXPECT_NE(copy->spotPrice(0, 1).toDouble(), spotBefore);         // clone moved
+  copy->applySwap(0, 1, u256(200));
+  EXPECT_EQ(pool.balances()[0].toDec(), "1000");   // original intact
+  EXPECT_EQ(copy->balances()[0].toDec(), "1200");  // clone moved
 }
 
 }  // namespace

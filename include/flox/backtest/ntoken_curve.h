@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "flox/common.h"
+#include "flox/util/int/u256.h"
 
 #include <cstddef>
 #include <memory>
@@ -18,17 +18,17 @@
 namespace flox
 {
 
-// An n-token AMM pool that prices and swaps between any pair of its tokens.
-// This is the multi-asset sibling of IAmmCurve: IAmmCurve is two-token
-// (base/quote, a baseForQuote bool), which covers every family in pair form,
-// while a pool that does not reduce to a pair -- a Balancer weighted basket, a
-// Curve n-coin stable pool, a tricrypto pool -- prices between an ordered pair
-// of token indices instead. The two interfaces coexist; IAmmCurve is not
-// reimplemented on top of this.
+// An n-token AMM pool, exact and native-wei. This is the single curve interface:
+// a two-token pool is just n = 2, so there is no separate 2-token interface.
+// Amounts are u256 in the token's own native units (wei), matching what the
+// deployed contract computes, so a backtest or pre-trade quote reproduces the
+// chain to the wei. Converting to the engine's Quantity happens at the boundary
+// where a curve result becomes an engine event (the connector), not on the
+// curve.
 //
-// Tokens are indexed [0, tokenCount). A swap names the in-token i and the
-// out-token j; price is always quote-per-base in the sense of "units of token i
-// per unit of token j" for spotPrice(i, j). The pool holds its own state.
+// Tokens are indexed [0, tokenCount). A swap names the in-token i and out-token
+// j. The exact integer math (floor division, the contract's rounding) is the
+// whole point; there is no double approximation behind this.
 class INTokenCurve
 {
  public:
@@ -37,26 +37,19 @@ class INTokenCurve
   // Number of tokens in the pool.
   virtual std::size_t tokenCount() const = 0;
 
-  // Per-token balances the pool holds, indexed [0, tokenCount). Lets generic
-  // code value the pool (LP marking, IL accounting) without the concrete type.
-  virtual const std::vector<double>& balances() const = 0;
+  // Per-token balances (native wei), indexed [0, tokenCount). Lets generic code
+  // value the pool without the concrete type.
+  virtual const std::vector<u256>& balances() const = 0;
 
-  // Marginal price of token j expressed in token i: how much i one unit of j is
-  // worth at the current state.
-  virtual Price spotPrice(std::size_t i, std::size_t j) const = 0;
-
-  // Output amount of token j for swapping amountIn of token i, no state change.
-  virtual Quantity amountOut(std::size_t i, std::size_t j, Quantity amountIn) const = 0;
-
-  // Price impact as a fraction in [0, 1): how far the realized rate falls below
-  // the spot rate, including fee. Zero for an infinitesimal swap.
-  virtual double priceImpact(std::size_t i, std::size_t j, Quantity amountIn) const = 0;
+  // Output of token j (native wei) for swapping amountIn of token i, exact, no
+  // state change.
+  virtual u256 amountOut(std::size_t i, std::size_t j, const u256& amountIn) const = 0;
 
   // Execute the swap: return the output of token j and move the pool state.
-  virtual Quantity applySwap(std::size_t i, std::size_t j, Quantity amountIn) = 0;
+  virtual u256 applySwap(std::size_t i, std::size_t j, const u256& amountIn) = 0;
 
-  // Independent deep copy, for sizing a swap to a target price without mutating
-  // the live pool (same rationale as IAmmCurve::clone).
+  // Independent deep copy, for sizing a swap to a target without mutating the
+  // live pool.
   virtual std::unique_ptr<INTokenCurve> clone() const = 0;
 };
 

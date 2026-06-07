@@ -9,54 +9,67 @@
 
 #pragma once
 
-#include "flox/backtest/amm_curve.h"
+#include "flox/backtest/ntoken_curve.h"
 #include "flox/connector/abstract_exchange_connector.h"
+#include "flox/util/int/u256.h"
 
+#include <cstddef>
 #include <memory_resource>
 #include <string>
 
 namespace flox
 {
 
-// Reference connector that presents any AMM curve as an IExchangeConnector. It
-// maps the curve's pricing into the same BookUpdateEvent and TradeEvent the
-// rest of the engine consumes, so the DEX pieces (per-symbol scale, on-chain
-// lifecycle, AMM pricing, nonlinear valuation, venue-type routing) compose into
-// a working venue without the core knowing it is a pool rather than an order
-// book. The curve is borrowed and must outlive the connector.
+// Reference connector that presents one token pair of an n-token AMM pool as an
+// IExchangeConnector. It maps the curve's exact pricing into the same
+// BookUpdateEvent and TradeEvent the rest of the engine consumes, so the DEX
+// pieces compose into a working venue without the core knowing it is a pool.
 //
-// This is the flox-side skeleton only. Sourcing curve state from a chain,
-// signing swaps, mempool watching, gas policy, and MEV protection live in the
-// downstream connector that wraps this; here the curve is driven directly so
-// the mapping can be tested against fixtures with no network.
+// This is the single conversion boundary: the curve speaks native-wei u256, and
+// the connector converts to the engine's Quantity / Price here, using the two
+// tokens' decimals. The curve is borrowed and must outlive the connector.
+//
+// flox-side skeleton only. Sourcing curve state from a chain, signing swaps,
+// mempool, gas, and MEV live in the downstream connector that wraps this.
 class AmmDexConnector : public IExchangeConnector
 {
  public:
-  // levels: synthetic book depth per side. levelSize: base quantity per
-  // level, also the depth step used to price each level off the curve.
-  AmmDexConnector(std::string name, SymbolId symbol, IAmmCurve& curve, int levels,
-                  Quantity levelSize)
+  // baseIdx / quoteIdx: the pair this connector presents (base priced in quote).
+  // baseDecimals / quoteDecimals: the tokens' native decimals, for the wei ->
+  // Quantity conversion. levels: synthetic book depth per side. levelSizeBaseWei:
+  // base amount per level (native wei), also the depth step used to price levels.
+  AmmDexConnector(std::string name, SymbolId symbol, INTokenCurve& curve, std::size_t baseIdx,
+                  std::size_t quoteIdx, unsigned baseDecimals, unsigned quoteDecimals, int levels,
+                  u256 levelSizeBaseWei)
       : _name(std::move(name)),
         _symbol(symbol),
         _curve(curve),
+        _baseIdx(baseIdx),
+        _quoteIdx(quoteIdx),
+        _baseDec(baseDecimals),
+        _quoteDec(quoteDecimals),
         _levels(levels),
-        _levelSize(levelSize)
+        _levelSize(levelSizeBaseWei)
   {
   }
 
   std::string exchangeId() const override { return _name; }
 
   // Publish a synthetic book from the curve's current state. Call after the
-  // caller mutates the curve (the curve owns its own state-update API).
+  // caller mutates the curve.
   void republish() { publishBook(); }
 
-  // Execute a swap against the curve, publish the trade, and republish the
-  // book since the curve moved. baseForQuote=true sells base into the pool.
-  void onSwap(Quantity amountIn, bool baseForQuote, int64_t tsNs)
+  // Execute a swap against the curve, publish the trade, and republish the book.
+  // baseForQuote=true sells base into the pool. amountIn is native wei of the
+  // in-token.
+  void onSwap(const u256& amountIn, bool baseForQuote, int64_t tsNs)
   {
-    const Quantity out = _curve.applySwap(amountIn, baseForQuote);
-    const double base = baseForQuote ? amountIn.toDouble() : out.toDouble();
-    const double quote = baseForQuote ? out.toDouble() : amountIn.toDouble();
+    const std::size_t i = baseForQuote ? _baseIdx : _quoteIdx;
+    const std::size_t j = baseForQuote ? _quoteIdx : _baseIdx;
+    const u256 out = _curve.applySwap(i, j, amountIn);
+
+    const double base = baseForQuote ? toHuman(amountIn, _baseDec) : toHuman(out, _baseDec);
+    const double quote = baseForQuote ? toHuman(out, _quoteDec) : toHuman(amountIn, _quoteDec);
 
     TradeEvent ev;
     ev.trade.symbol = _symbol;
@@ -70,30 +83,58 @@ class AmmDexConnector : public IExchangeConnector
   }
 
  private:
-  // Synthesize a snapshot book from the curve: bids below spot and asks above,
-  // each level priced by the price impact of trading that depth. The ask side
-  // mirrors the bid-side impact, a reference approximation; a production
-  // connector would price each side from its own swap direction.
+  static double toHuman(const u256& wei, unsigned decimals)
+  {
+    return std::stod(wei.toDecimalString(decimals));
+  }
+
+  // Marginal quote-per-base from a small base-in probe (a millionth of the base
+  // reserve), small enough to be near-marginal, large enough that the integer
+  // floor does not dominate.
+  double spotPrice() const
+  {
+    u256 probe = _curve.balances()[_baseIdx] / u256(1000000);
+    if (probe.isZero())
+    {
+      probe = u256(1);
+    }
+    const double in = toHuman(probe, _baseDec);
+    if (in <= 0.0)
+    {
+      return 0.0;
+    }
+    const double out = toHuman(_curve.amountOut(_baseIdx, _quoteIdx, probe), _quoteDec);
+    return out / in;
+  }
+
+  // Synthesize a snapshot book: bids below spot and asks above, each level priced
+  // by the realized price impact of selling that depth of base. The ask side
+  // mirrors the bid-side impact, a reference approximation.
   void publishBook()
   {
-    const double spot = _curve.spotPrice().toDouble();
+    const double spot = spotPrice();
     if (spot <= 0.0 || _levels <= 0)
     {
       return;
     }
+    const Quantity levelQty = Quantity::fromDouble(toHuman(_levelSize, _baseDec));
 
     BookUpdateEvent ev(std::pmr::new_delete_resource());
     ev.update.symbol = _symbol;
     ev.update.type = BookUpdateType::SNAPSHOT;
-    ev.update.bids.reserve(static_cast<size_t>(_levels));
-    ev.update.asks.reserve(static_cast<size_t>(_levels));
+    ev.update.bids.reserve(static_cast<std::size_t>(_levels));
+    ev.update.asks.reserve(static_cast<std::size_t>(_levels));
 
-    for (int i = 1; i <= _levels; ++i)
+    u256 depth(0);
+    for (int k = 1; k <= _levels; ++k)
     {
-      const Quantity depth = Quantity::fromDouble(_levelSize.toDouble() * i);
-      const double impact = _curve.priceImpact(depth, true);
-      ev.update.bids.emplace_back(Price::fromDouble(spot * (1.0 - impact)), _levelSize);
-      ev.update.asks.emplace_back(Price::fromDouble(spot * (1.0 + impact)), _levelSize);
+      depth = depth + _levelSize;
+      const double baseIn = toHuman(depth, _baseDec);
+      const double quoteOut = toHuman(_curve.amountOut(_baseIdx, _quoteIdx, depth), _quoteDec);
+      const double realized = baseIn > 0.0 ? quoteOut / baseIn : spot;
+      const double impact = spot > 0.0 ? 1.0 - realized / spot : 0.0;
+      ev.update.bids.emplace_back(Price::fromDouble(spot * (1.0 - impact)), levelQty);
+      ev.update.asks.emplace_back(Price::fromDouble(spot * (1.0 + impact)), levelQty);
     }
 
     emitBookUpdate(ev);
@@ -101,9 +142,13 @@ class AmmDexConnector : public IExchangeConnector
 
   std::string _name;
   SymbolId _symbol;
-  IAmmCurve& _curve;
+  INTokenCurve& _curve;
+  std::size_t _baseIdx;
+  std::size_t _quoteIdx;
+  unsigned _baseDec;
+  unsigned _quoteDec;
   int _levels;
-  Quantity _levelSize;
+  u256 _levelSize;
 };
 
 }  // namespace flox
