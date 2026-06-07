@@ -12,6 +12,8 @@
 #include "flox/backtest/amm_curve.h"
 #include "flox/common.h"
 
+#include <memory>
+
 namespace flox
 {
 
@@ -97,6 +99,11 @@ class ConstantProductCurve : public IAmmCurve
       _reserveBase = Quantity::fromRaw(_reserveBase.raw() - out.raw());
     }
     return out;
+  }
+
+  std::unique_ptr<IAmmCurve> clone() const override
+  {
+    return std::make_unique<ConstantProductCurve>(*this);
   }
 
  private:

@@ -36,6 +36,14 @@ reserves and the fee. Other models implement the same interface, each with its
 own state: weighted pools, concentrated liquidity, stableswap, cryptoswap. A
 backtest swaps one curve for another without touching the rest.
 
+The interface also clones. Sizing a swap to a target price, the core of arb and
+inventory-aware quoting, is a search over swap size, and each trial needs a
+post-swap state to read back without committing it. The non-mutating queries
+answer the output and the impact of a swap but not the price it leaves behind,
+so `clone()` gives that search a throwaway copy: bisect the swap size on a clone,
+then apply the winner to the live curve. It works over `IAmmCurve` for any
+model, so arb and routing code does not care which curve it holds.
+
 ## Weighted pools
 
 A weighted pool (Balancer style) keeps `B_base^w_base * B_quote^w_quote`
