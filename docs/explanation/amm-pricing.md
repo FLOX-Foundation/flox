@@ -77,6 +77,21 @@ This curve is the pricing surface, and it reproduces the live tricrypto2 get_dy
 to the wei. The price scale is a parameter held across a swap here; the internal
 repegging that moves the scale over time is a separate piece.
 
+## Weighted
+
+`WeightedCurve` is a Balancer weighted pool of n assets, exact in integer. The
+output for swapping token i into token j is `balanceOut · (1 −
+(balanceIn/(balanceIn+amountInAfterFee))^(weightIn/weightOut))`, and the power
+goes through Balancer's own fixed-point `pow`, which is `exp(y · ln(x))` with
+signed fixed-point `ln` and `exp`. That signed math runs on `i256`, and the
+divisions truncate toward zero the way Solidity's `int256` does, so the rounding
+matches the contract. Equal weights reduce to constant-product, and the common
+integer exponents (1, 2, 4) take Balancer's fast paths without the transcendental.
+
+`WeightedCurve` holds n balances, per-token scaling factors that carry native
+amounts into the 1e18 space the math works in, the normalized weights, and the
+swap fee.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
