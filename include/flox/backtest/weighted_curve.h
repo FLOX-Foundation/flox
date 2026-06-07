@@ -13,6 +13,7 @@
 #include "flox/common.h"
 
 #include <cmath>
+#include <memory>
 
 namespace flox
 {
@@ -105,6 +106,11 @@ class WeightedCurve : public IAmmCurve
       _rb = Quantity::fromRaw(_rb.raw() - out.raw());
     }
     return out;
+  }
+
+  std::unique_ptr<IAmmCurve> clone() const override
+  {
+    return std::make_unique<WeightedCurve>(*this);
   }
 
  private:

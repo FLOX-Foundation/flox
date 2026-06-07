@@ -11,6 +11,8 @@
 
 #include "flox/common.h"
 
+#include <memory>
+
 namespace flox
 {
 
@@ -36,6 +38,11 @@ class IAmmCurve
 
   // Execute the swap: return the output and move the curve's state along it.
   virtual Quantity applySwap(Quantity amountIn, bool baseForQuote) = 0;
+
+  // Independent deep copy. Lets generic code probe a post-swap state (size a
+  // swap to a target price, run a what-if) without mutating the live curve,
+  // which the non-mutating queries alone cannot express.
+  virtual std::unique_ptr<IAmmCurve> clone() const = 0;
 };
 
 }  // namespace flox

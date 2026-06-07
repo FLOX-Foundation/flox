@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <vector>
 
 namespace flox
@@ -82,6 +83,11 @@ class ConcentratedLiquidityCurve : public IAmmCurve
   Quantity applySwap(Quantity amountIn, bool baseForQuote) override
   {
     return Quantity::fromDouble(walk(amountIn.toDouble(), baseForQuote, _sqrtP, _liquidity));
+  }
+
+  std::unique_ptr<IAmmCurve> clone() const override
+  {
+    return std::make_unique<ConcentratedLiquidityCurve>(*this);
   }
 
  private:

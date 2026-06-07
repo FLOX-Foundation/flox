@@ -14,6 +14,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
 
 namespace flox
 {
@@ -117,6 +118,11 @@ class StableSwapCurve : public IAmmCurve
       _rb = Quantity::fromRaw(_rb.raw() - out.raw());
     }
     return out;
+  }
+
+  std::unique_ptr<IAmmCurve> clone() const override
+  {
+    return std::make_unique<StableSwapCurve>(*this);
   }
 
  private:
