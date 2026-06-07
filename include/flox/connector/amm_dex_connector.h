@@ -43,7 +43,7 @@ class AmmDexConnector : public IExchangeConnector
                   u256 levelSizeBaseWei)
       : _name(std::move(name)),
         _symbol(symbol),
-        _curve(curve),
+        _curve(&curve),
         _baseIdx(baseIdx),
         _quoteIdx(quoteIdx),
         _baseDec(baseDecimals),
@@ -55,9 +55,14 @@ class AmmDexConnector : public IExchangeConnector
 
   std::string exchangeId() const override { return _name; }
 
-  // Publish a synthetic book from the curve's current state. Call after the
-  // caller mutates the curve.
-  void republish() { publishBook(); }
+  // Re-point at a new curve (same pair / decimals), for a driver that advances
+  // pool state by swapping in a fresh curve per snapshot. The curve is borrowed
+  // and must outlive its use.
+  void setCurve(INTokenCurve& curve) { _curve = &curve; }
+
+  // Publish a synthetic book from the curve's current state, stamped at tsNs.
+  // Call after the caller mutates or re-points the curve.
+  void republish(int64_t tsNs = 0) { publishBook(tsNs); }
 
   // Execute a swap against the curve, publish the trade, and republish the book.
   // baseForQuote=true sells base into the pool. amountIn is native wei of the
@@ -66,7 +71,7 @@ class AmmDexConnector : public IExchangeConnector
   {
     const std::size_t i = baseForQuote ? _baseIdx : _quoteIdx;
     const std::size_t j = baseForQuote ? _quoteIdx : _baseIdx;
-    const u256 out = _curve.applySwap(i, j, amountIn);
+    const u256 out = _curve->applySwap(i, j, amountIn);
 
     const double base = baseForQuote ? toHuman(amountIn, _baseDec) : toHuman(out, _baseDec);
     const double quote = baseForQuote ? toHuman(out, _quoteDec) : toHuman(amountIn, _quoteDec);
@@ -79,7 +84,7 @@ class AmmDexConnector : public IExchangeConnector
     ev.trade.exchangeTsNs = static_cast<UnixNanos>(tsNs);
     emitTrade(ev);
 
-    publishBook();
+    publishBook(tsNs);
   }
 
  private:
@@ -93,7 +98,7 @@ class AmmDexConnector : public IExchangeConnector
   // floor does not dominate.
   double spotPrice() const
   {
-    u256 probe = _curve.balances()[_baseIdx] / u256(1000000);
+    u256 probe = _curve->balances()[_baseIdx] / u256(1000000);
     if (probe.isZero())
     {
       probe = u256(1);
@@ -103,14 +108,14 @@ class AmmDexConnector : public IExchangeConnector
     {
       return 0.0;
     }
-    const double out = toHuman(_curve.amountOut(_baseIdx, _quoteIdx, probe), _quoteDec);
+    const double out = toHuman(_curve->amountOut(_baseIdx, _quoteIdx, probe), _quoteDec);
     return out / in;
   }
 
   // Synthesize a snapshot book: bids below spot and asks above, each level priced
   // by the realized price impact of selling that depth of base. The ask side
   // mirrors the bid-side impact, a reference approximation.
-  void publishBook()
+  void publishBook(int64_t tsNs = 0)
   {
     const double spot = spotPrice();
     if (spot <= 0.0 || _levels <= 0)
@@ -122,6 +127,7 @@ class AmmDexConnector : public IExchangeConnector
     BookUpdateEvent ev(std::pmr::new_delete_resource());
     ev.update.symbol = _symbol;
     ev.update.type = BookUpdateType::SNAPSHOT;
+    ev.update.exchangeTsNs = static_cast<UnixNanos>(tsNs);
     ev.update.bids.reserve(static_cast<std::size_t>(_levels));
     ev.update.asks.reserve(static_cast<std::size_t>(_levels));
 
@@ -130,7 +136,7 @@ class AmmDexConnector : public IExchangeConnector
     {
       depth = depth + _levelSize;
       const double baseIn = toHuman(depth, _baseDec);
-      const double quoteOut = toHuman(_curve.amountOut(_baseIdx, _quoteIdx, depth), _quoteDec);
+      const double quoteOut = toHuman(_curve->amountOut(_baseIdx, _quoteIdx, depth), _quoteDec);
       const double realized = baseIn > 0.0 ? quoteOut / baseIn : spot;
       const double impact = spot > 0.0 ? 1.0 - realized / spot : 0.0;
       ev.update.bids.emplace_back(Price::fromDouble(spot * (1.0 - impact)), levelQty);
@@ -142,7 +148,7 @@ class AmmDexConnector : public IExchangeConnector
 
   std::string _name;
   SymbolId _symbol;
-  INTokenCurve& _curve;
+  INTokenCurve* _curve;
   std::size_t _baseIdx;
   std::size_t _quoteIdx;
   unsigned _baseDec;
