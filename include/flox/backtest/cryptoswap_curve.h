@@ -10,6 +10,7 @@
 #pragma once
 
 #include "flox/backtest/amm_curve.h"
+#include "flox/backtest/detail/safeguarded_solve.h"
 #include "flox/common.h"
 
 #include <cmath>
@@ -162,8 +163,8 @@ class CryptoswapCurve : public IAmmCurve
     }
     const double lo = 2.0 * std::sqrt(x * y);
     const double hi = x + y;
-    return solve([&](double D)
-                 { return invariant(x, y, D); }, lo, hi, hi);
+    return detail::safeguardedRoot([&](double D)
+                                   { return invariant(x, y, D); }, lo, hi, hi);
   }
 
   // Partner balance that holds the invariant for the given known balance and D.
@@ -178,98 +179,8 @@ class CryptoswapCurve : public IAmmCurve
     }
     const double hi = D * D / (4.0 * known);
     const double lo = hi * 1e-12;
-    return solve([&](double y)
-                 { return invariant(known, y, D); }, lo, hi, hi);
-  }
-
-  // Safeguarded Newton (Numerical Recipes rtsafe): a Newton step when it stays
-  // in the bracket and makes progress, a bisection step otherwise. The bracket
-  // [lo, hi] is known to straddle the root. scale sets the convergence tolerance.
-  template <typename F>
-  static double solve(F f, double lo, double hi, double scale)
-  {
-    const double tol = 1e-12 * (scale > 0.0 ? scale : 1.0);
-    double flo = f(lo);
-    double fhi = f(hi);
-    if (flo == 0.0)
-    {
-      return lo;
-    }
-    if (fhi == 0.0)
-    {
-      return hi;
-    }
-    if ((flo > 0.0) == (fhi > 0.0))
-    {
-      return 0.5 * (lo + hi);  // not bracketed (degenerate); best effort
-    }
-    double xl = flo < 0.0 ? lo : hi;  // side where f < 0
-    double xh = flo < 0.0 ? hi : lo;
-    double x = 0.5 * (lo + hi);
-    double dxOld = std::fabs(hi - lo);
-    double dx = dxOld;
-    double fx = f(x);
-    double df = deriv(f, x, lo, hi);
-    for (int i = 0; i < 100; ++i)
-    {
-      const bool newtonOutOfRange =
-          ((x - xh) * df - fx) * ((x - xl) * df - fx) > 0.0;
-      const bool newtonSlow = std::fabs(2.0 * fx) > std::fabs(dxOld * df);
-      if (newtonOutOfRange || newtonSlow || df == 0.0)
-      {
-        dxOld = dx;
-        dx = 0.5 * (xh - xl);
-        x = xl + dx;
-      }
-      else
-      {
-        dxOld = dx;
-        dx = fx / df;
-        x = x - dx;
-      }
-      if (std::fabs(dx) < tol)
-      {
-        return x;
-      }
-      fx = f(x);
-      df = deriv(f, x, lo, hi);
-      if (fx < 0.0)
-      {
-        xl = x;
-      }
-      else
-      {
-        xh = x;
-      }
-    }
-    return x;
-  }
-
-  // Central-difference derivative, with the step clamped inside [lo, hi].
-  template <typename F>
-  static double deriv(F f, double x, double lo, double hi)
-  {
-    double h = 1e-7 * std::fabs(x);
-    if (h < 1e-12)
-    {
-      h = 1e-12;
-    }
-    double xp = x + h;
-    double xm = x - h;
-    if (xp > hi)
-    {
-      xp = hi;
-    }
-    if (xm < lo)
-    {
-      xm = lo;
-    }
-    const double span = xp - xm;
-    if (span <= 0.0)
-    {
-      return 0.0;
-    }
-    return (f(xp) - f(xm)) / span;
+    return detail::safeguardedRoot([&](double y)
+                                   { return invariant(known, y, D); }, lo, hi, hi);
   }
 
   Quantity _rb;
