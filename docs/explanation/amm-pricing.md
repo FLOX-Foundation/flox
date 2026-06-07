@@ -298,6 +298,13 @@ the tape is compact and a swap is both the trade and the state mutation, one str
 the curve, a SwapDelta is applied through `onSwap`. All amounts are u256, 32 bytes
 big-endian, chain-native.
 
+A Checkpoint is venue-shaped: reserves for a constant-product pool, and the sqrt
+price, active liquidity, and tick array for a concentrated-liquidity pool (Uniswap
+v3, Orca Whirlpool, Raydium CLMM). The replay rebuilds the matching curve from
+whichever the Descriptor names, so a cross-tick swap is reconstructed through the
+exact v3 math, and the drift check compares the replayed and checkpoint states
+through `balances()`, which every venue exposes.
+
 It is checkpoint-anchored, not delta-only. Before a Checkpoint re-anchors, the
 replayed state is compared to it, and a mismatch is counted as drift -- an
 unobserved or unmodelled mutation (a donation, a rebasing token, an admin parameter

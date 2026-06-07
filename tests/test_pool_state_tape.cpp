@@ -9,6 +9,7 @@
 
 #include "flox/replay/pool_state_tape.h"
 
+#include "flox/backtest/concentrated_liquidity_curve.h"
 #include "flox/backtest/constant_product_curve.h"
 
 #include <gtest/gtest.h>
@@ -23,7 +24,7 @@ namespace
 
 u256 D(const char* s) { return u256::fromDec(s); }
 
-AmmDexConnector makeConnector(ConstantProductCurve& seed)
+AmmDexConnector makeConnector(INTokenCurve& seed)
 {
   return AmmDexConnector("amm", SymbolId{1}, seed, 0, 1, 18, 18, 1, D("1000000000000000000"));
 }
@@ -70,6 +71,53 @@ TEST(PoolStateTapeTest, RoundTripReconstructsState)
   ASSERT_NE(replay.curve(), nullptr);
   EXPECT_EQ(replay.curve()->balances()[0].toDec(), f0.toDec());
   EXPECT_EQ(replay.curve()->balances()[1].toDec(), f1.toDec());
+}
+
+// The same delta-log replay works for a concentrated-liquidity venue: the
+// checkpoint carries the sqrt price, liquidity, and tick array; a swap that crosses
+// an initialized tick is reconstructed through the exact v3 curve; and the closing
+// checkpoint matches the replayed sqrt-price / liquidity state, so no drift. This is
+// the venue-shaped checkpoint and the generic balances() drift check.
+TEST(PoolStateTapeTest, ClmmRoundTripCrossesTick)
+{
+  const u256 q96 = D("79228162514264337593543950336");
+  const u256 sqrt0 = q96;                      // price 1.0
+  const u256 L0 = D("1000000000000000000");    // 1e18
+  const u256 amtIn = D("300000000000000000");  // token0 in, crosses the tick below
+  std::vector<ClTick> ticks{{D("71305346262837903834189555302"), i256(D("500000000000000000"))}};
+
+  // Independently apply the swap to get the expected post-state.
+  ConcentratedLiquidityCurve expected(sqrt0, L0, 3000, ticks);
+  const u256 outExpected = expected.amountOut(0, 1, amtIn);
+  expected.applySwap(0, 1, amtIn);
+  const u256 sqrt1 = expected.sqrtPrice();
+  const u256 L1 = expected.liquidity();
+
+  std::vector<uint8_t> tape;
+  PoolStateWriter w(tape);
+  w.descriptorClmm(PoolVenue::UniswapV3, 3000, 18, 18);
+  w.checkpointClmm(100, sqrt0, L0, ticks);
+  w.swap(200, true, amtIn);                 // token0 (base) in
+  w.checkpointClmm(300, sqrt1, L1, ticks);  // matches replayed state -> no drift
+
+  ConcentratedLiquidityCurve seed(sqrt0, L0, 3000, ticks);
+  AmmDexConnector conn = makeConnector(seed);
+  int trades = 0;
+  conn.setCallbacks([](const BookUpdateEvent&) {}, [&](const TradeEvent&)
+                    { ++trades; });
+
+  PoolStateReplay replay(conn);
+  replay.run(tape);
+
+  EXPECT_EQ(replay.driftCount(), 0u);
+  EXPECT_EQ(trades, 1);
+  ASSERT_NE(replay.curve(), nullptr);
+  const auto* cl = dynamic_cast<const ConcentratedLiquidityCurve*>(replay.curve());
+  ASSERT_NE(cl, nullptr);
+  EXPECT_EQ(cl->sqrtPrice().toDec(), sqrt1.toDec());
+  EXPECT_EQ(cl->liquidity().toDec(), L1.toDec());
+  // The cross-tick swap output is non-trivial (matches the curve's own quote).
+  EXPECT_EQ(outExpected.toDec(), "213772620630911997");
 }
 
 // A checkpoint that disagrees with the replayed state is caught as drift, not

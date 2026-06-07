@@ -9,9 +9,13 @@
 
 #pragma once
 
+#include "flox/backtest/concentrated_liquidity_curve.h"
 #include "flox/backtest/constant_product_curve.h"
 #include "flox/backtest/ntoken_curve.h"
+#include "flox/backtest/orca_whirlpool_curve.h"
+#include "flox/backtest/raydium_clmm_curve.h"
 #include "flox/connector/amm_dex_connector.h"
+#include "flox/util/int/i256.h"
 #include "flox/util/int/u256.h"
 
 #include <cstdint>
@@ -28,13 +32,14 @@ namespace flox
 // through the exact curve -- a parsed swap replayed via applySwap reconstructs the
 // post-state to the wei -- so the tape is compact and trades and state are one
 // stream. Checkpoints anchor the replay and catch drift (an unobserved or
-// unmodelled mutation): the worst case for any chain is a Checkpoint every event,
-// which always works. All amounts are u256, 32 bytes big-endian, chain-native, no
-// scaling.
+// unmodelled mutation, including a liquidity change between checkpoints): before a
+// Checkpoint re-anchors, the replayed state is compared to it. All amounts are u256,
+// 32 bytes big-endian, chain-native, no scaling.
 //
-// This is the chain-agnostic core (constant-product venue first); the per-chain
-// ingest (EVM logs, Solana instructions) produces these records, and the binary
-// segment container / ReplayEvent integration layer on top.
+// Covers the constant-product and concentrated-liquidity venues; a Checkpoint is
+// venue-shaped (reserves for CP, sqrt price + liquidity + ticks for a CLMM). A
+// dedicated LiquidityDelta record (avoid re-anchoring on a mint/burn) and the binary
+// segment container / ReplayEvent integration are the remaining W23-T001 pieces.
 
 enum class PoolRecord : uint8_t
 {
@@ -46,7 +51,15 @@ enum class PoolRecord : uint8_t
 enum class PoolVenue : uint8_t
 {
   ConstantProduct = 1,
+  UniswapV3 = 2,
+  OrcaWhirlpool = 3,
+  RaydiumClmm = 4,
 };
+
+inline bool isClmm(PoolVenue v)
+{
+  return v == PoolVenue::UniswapV3 || v == PoolVenue::OrcaWhirlpool || v == PoolVenue::RaydiumClmm;
+}
 
 namespace pool_tape_detail
 {
@@ -68,6 +81,11 @@ inline void putU256(std::vector<uint8_t>& b, const u256& v)
     }
   }
 }
+inline void putI256(std::vector<uint8_t>& b, const i256& v)
+{
+  putU8(b, v.neg ? 1 : 0);
+  putU256(b, v.mag);
+}
 inline uint64_t getU64(const uint8_t*& p)
 {
   uint64_t v = 0;
@@ -86,6 +104,11 @@ inline u256 getU256(const uint8_t*& p)
   }
   return v;
 }
+inline i256 getI256(const uint8_t*& p)
+{
+  const bool neg = *p++ != 0;
+  return i256(getU256(p), neg);
+}
 }  // namespace pool_tape_detail
 
 // Writes pool-state records into a byte buffer. Each record is framed
@@ -95,7 +118,6 @@ class PoolStateWriter
  public:
   explicit PoolStateWriter(std::vector<uint8_t>& out) : _out(out) {}
 
-  // Constant-product venue: the fee numerator / denominator and the two decimals.
   void descriptorConstantProduct(uint64_t feeNum, uint64_t feeDen, uint8_t baseDec, uint8_t quoteDec)
   {
     std::vector<uint8_t> p;
@@ -108,7 +130,18 @@ class PoolStateWriter
     frame(PoolRecord::Descriptor, p);
   }
 
-  // The full reserves at a point in time -- an anchor and a drift check.
+  // A concentrated-liquidity venue: the fee in hundredths of a basis point.
+  void descriptorClmm(PoolVenue venue, uint32_t feePips, uint8_t baseDec, uint8_t quoteDec)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU8(p, static_cast<uint8_t>(venue));
+    putU8(p, baseDec);
+    putU8(p, quoteDec);
+    putU64(p, feePips);
+    frame(PoolRecord::Descriptor, p);
+  }
+
   void checkpoint(int64_t tsNs, const u256& reserve0, const u256& reserve1)
   {
     std::vector<uint8_t> p;
@@ -119,7 +152,23 @@ class PoolStateWriter
     frame(PoolRecord::Checkpoint, p);
   }
 
-  // A swap: the trade, and the state mutation when replayed through the curve.
+  void checkpointClmm(int64_t tsNs, const u256& sqrtPrice, const u256& liquidity,
+                      const std::vector<ClTick>& ticks)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU64(p, static_cast<uint64_t>(tsNs));
+    putU256(p, sqrtPrice);
+    putU256(p, liquidity);
+    putU64(p, ticks.size());
+    for (const ClTick& t : ticks)
+    {
+      putU256(p, t.sqrtRatio);
+      putI256(p, t.liquidityNet);
+    }
+    frame(PoolRecord::Checkpoint, p);
+  }
+
   void swap(int64_t tsNs, bool baseForQuote, const u256& amountIn)
   {
     std::vector<uint8_t> p;
@@ -143,11 +192,10 @@ class PoolStateWriter
 };
 
 // Replays a pool-state tape through an AmmDexConnector: a Checkpoint rebuilds the
-// exact curve and re-points the connector at it; a SwapDelta is applied via the
-// connector's onSwap (which moves the curve, emits the trade, and republishes the
-// book). It is checkpoint-anchored: before a Checkpoint re-anchors, the replayed
-// state is compared to it, and a mismatch is counted as drift (never silently
-// carried). Returns the drift count.
+// exact curve and re-points the connector; a SwapDelta is applied via onSwap (moves
+// the curve, emits the trade, republishes the book). Checkpoint-anchored: before a
+// Checkpoint re-anchors, the replayed composition is compared to the checkpoint's
+// (via balances(), which works for every venue), and a mismatch is counted as drift.
 class PoolStateReplay
 {
  public:
@@ -189,27 +237,51 @@ class PoolStateReplay
     _venue = static_cast<PoolVenue>(*rec++);
     _baseDec = *rec++;
     _quoteDec = *rec++;
-    _feeNum = pool_tape_detail::getU64(rec);
-    _feeDen = pool_tape_detail::getU64(rec);
+    _fee = pool_tape_detail::getU64(rec);  // feeNum (CP) or feePips (CLMM)
+    if (_venue == PoolVenue::ConstantProduct)
+    {
+      _feeDen = pool_tape_detail::getU64(rec);
+    }
   }
 
   void readCheckpoint(const uint8_t* rec)
   {
-    const int64_t tsNs = static_cast<int64_t>(pool_tape_detail::getU64(rec));
-    const u256 r0 = pool_tape_detail::getU256(rec);
-    const u256 r1 = pool_tape_detail::getU256(rec);
+    using namespace pool_tape_detail;
+    const int64_t tsNs = static_cast<int64_t>(getU64(rec));
+    std::unique_ptr<INTokenCurve> next;
+    if (_venue == PoolVenue::ConstantProduct)
+    {
+      const u256 r0 = getU256(rec);
+      const u256 r1 = getU256(rec);
+      next = std::make_unique<ConstantProductCurve>(r0, r1, _fee, _feeDen);
+    }
+    else
+    {
+      const u256 sqrtP = getU256(rec);
+      const u256 L = getU256(rec);
+      const uint64_t n = getU64(rec);
+      std::vector<ClTick> ticks;
+      ticks.reserve(n);
+      for (uint64_t k = 0; k < n; ++k)
+      {
+        const u256 s = getU256(rec);
+        const i256 net = getI256(rec);
+        ticks.push_back({s, net});
+      }
+      next = buildClmm(sqrtP, L, std::move(ticks));
+    }
 
-    // Drift check: the replayed state must match this checkpoint; re-anchor either
-    // way, but count a mismatch.
+    // Drift check via the composition, which every venue exposes.
     if (_curve)
     {
-      const std::vector<u256>& bal = _curve->balances();
-      if (bal.size() < 2 || !(bal[0] == r0) || !(bal[1] == r1))
+      const std::vector<u256> old = _curve->balances();
+      const std::vector<u256>& fresh = next->balances();
+      if (old.size() != fresh.size() || !(old[0] == fresh[0]) || !(old[1] == fresh[1]))
       {
         ++_drift;
       }
     }
-    _curve = buildCurve(r0, r1);
+    _curve = std::move(next);
     _conn.setCurve(*_curve);
     _conn.republish(tsNs);
   }
@@ -225,13 +297,21 @@ class PoolStateReplay
     }
   }
 
-  std::unique_ptr<INTokenCurve> buildCurve(const u256& r0, const u256& r1) const
+  std::unique_ptr<INTokenCurve> buildClmm(const u256& sqrtP, const u256& L,
+                                          std::vector<ClTick> ticks) const
   {
-    if (_venue == PoolVenue::ConstantProduct)
+    const auto fee = static_cast<uint32_t>(_fee);
+    switch (_venue)
     {
-      return std::make_unique<ConstantProductCurve>(r0, r1, _feeNum, _feeDen);
+      case PoolVenue::UniswapV3:
+        return std::make_unique<ConcentratedLiquidityCurve>(sqrtP, L, fee, std::move(ticks));
+      case PoolVenue::OrcaWhirlpool:
+        return std::make_unique<OrcaWhirlpoolCurve>(sqrtP, L, fee, std::move(ticks));
+      case PoolVenue::RaydiumClmm:
+        return std::make_unique<RaydiumClmmCurve>(sqrtP, L, fee, std::move(ticks));
+      default:
+        throw std::runtime_error("pool-state tape: unknown CLMM venue");
     }
-    throw std::runtime_error("pool-state tape: unknown venue");
   }
 
   AmmDexConnector& _conn;
@@ -239,7 +319,7 @@ class PoolStateReplay
   PoolVenue _venue{PoolVenue::ConstantProduct};
   uint8_t _baseDec{0};
   uint8_t _quoteDec{0};
-  uint64_t _feeNum{0};
+  uint64_t _fee{0};
   uint64_t _feeDen{0};
   std::size_t _drift{0};
 };
