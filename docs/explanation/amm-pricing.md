@@ -343,6 +343,19 @@ sees a pool's swaps and an unrelated instrument's trades interleaved in time, an
 `PoolState` event's payload drives `PoolStateReplay::step` to evolve the curve. A
 chain ingest is then just "parse an event into a pool record, stamp it, append it."
 
+## Live, with reorgs
+
+A recorded tape is settled history; a live feed is not -- a chain can roll back an
+unfinalised block (an EVM reorg, a dropped Solana slot), so a swap is optimistic until
+its block finalises. `ReorgSafePoolFeed` keeps a finalised curve (the last
+irreversible state) and a buffer of optimistic swaps applied on top. A reorg drops the
+optimistic swaps above the rolled-back height and rebuilds the working curve from the
+finalised one, so a block that did not stick can never corrupt the state; finalising
+folds the now-irreversible swaps into the finalised curve. With no reorg the working
+curve is exactly what the tape replay produces from the same deltas, so a strategy
+sees an identical book live and from a tape -- the live transport (a poll, an
+`eth_subscribe`, a Geyser stream) only changes where the deltas come from.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
