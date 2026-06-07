@@ -91,6 +91,31 @@ class ConcentratedLiquidityCurve : public INTokenCurve
     return out;
   }
 
+  // Exact-output swap: the input (native wei) required to take exactly dy of the
+  // out-token j, without moving the pool. This is the other v3 SwapMath branch (the
+  // contract rounds the price the opposite way from exact-input), the one a
+  // router-style exact-output swap takes.
+  u256 amountInForOutput(std::size_t i, std::size_t j, const u256& dy) const
+  {
+    (void)j;
+    u256 sqrt = _sqrtP;
+    u256 L = _L;
+    return runSwapExactOut(i == 0, dy, sqrt, L);
+  }
+
+  // Apply an exact-output swap: move the pool to take exactly dy of the out-token and
+  // return the input spent.
+  u256 applySwapForOutput(std::size_t i, std::size_t j, const u256& dy)
+  {
+    (void)j;
+    u256 sqrt = _sqrtP;
+    u256 L = _L;
+    const u256 in = runSwapExactOut(i == 0, dy, sqrt, L);
+    _sqrtP = sqrt;
+    _L = L;
+    return in;
+  }
+
   std::unique_ptr<INTokenCurve> clone() const override
   {
     return std::make_unique<ConcentratedLiquidityCurve>(*this);
@@ -268,6 +293,102 @@ class ConcentratedLiquidityCurve : public INTokenCurve
       feeAmount = mulDivUp(amountIn, u256(feePips), feeNum);
     }
     return sn;
+  }
+
+  // v3 SqrtPriceMath.getNextSqrtPriceFromOutput, the price after removing `amount` of
+  // the out-token. zeroForOne removes token1 (round the quotient up, subtract);
+  // oneForZero removes token0 (round the quotient up via the reciprocal form).
+  u256 nextFromAmount1RemoveDown(const u256& sp, const u256& L, const u256& amount) const
+  {
+    const u256 quotient = mulDivUp(amount, _q, L);
+    return quotient >= sp ? _minSqrt : sp - quotient;  // unreachable in one step -> clamp
+  }
+  u256 nextFromAmount0RemoveUp(const u256& sp, const u256& L, const u256& amount) const
+  {
+    const u256 numerator1 = L * _q;
+    const u256 product = amount * sp;
+    if (product >= numerator1)
+    {
+      return _maxSqrt;  // unreachable in one step -> clamp
+    }
+    return mulDivUp(numerator1, sp, numerator1 - product);
+  }
+  u256 nextFromOutput(const u256& sp, const u256& L, const u256& amountOut, bool zeroForOne) const
+  {
+    return zeroForOne ? nextFromAmount1RemoveDown(sp, L, amountOut)
+                      : nextFromAmount0RemoveUp(sp, L, amountOut);
+  }
+
+  // v3 SwapMath.computeSwapStep, exact-output branch: amtOutRemaining is the output
+  // still wanted. The input is rounded up and the price rounded the opposite way from
+  // the exact-input step, matching the contract.
+  u256 computeStepOut(const u256& sc, const u256& st, const u256& L, const u256& amtOutRemaining,
+                      bool zeroForOne, uint32_t feePips, u256& amountIn, u256& amountOut,
+                      u256& feeAmount) const
+  {
+    const u256 maxToTarget =
+        zeroForOne ? getAmount1Delta(st, sc, L, false) : getAmount0Delta(sc, st, L, false);
+    u256 sn = (amtOutRemaining >= maxToTarget) ? st : nextFromOutput(sc, L, amtOutRemaining, zeroForOne);
+    const bool max = (st == sn);
+    if (zeroForOne)
+    {
+      amountIn = getAmount0Delta(sn, sc, L, true);
+      amountOut = max ? maxToTarget : getAmount1Delta(sn, sc, L, false);
+    }
+    else
+    {
+      amountIn = getAmount1Delta(sc, sn, L, true);
+      amountOut = max ? maxToTarget : getAmount0Delta(sc, sn, L, false);
+    }
+    if (amountOut > amtOutRemaining)
+    {
+      amountOut = amtOutRemaining;  // never release more than asked
+    }
+    const u256 feeNum = u256(1000000 - feePips);
+    feeAmount = mulDivUp(amountIn, u256(feePips), feeNum);
+    return sn;
+  }
+
+  // The v3 swap loop driven by a desired output. Walks ticks like runSwap, mutating
+  // sqrt and L; returns the total input (incl. fee).
+  u256 runSwapExactOut(bool zeroForOne, const u256& dy, u256& sqrt, u256& L) const
+  {
+    if (dy.isZero())
+    {
+      return u256(0);
+    }
+    u256 remOut = dy;
+    u256 totalIn(0);
+    const u256 limit = zeroForOne ? _minSqrt + u256(1) : _maxSqrt - u256(1);
+    for (int guard = 0; guard < 4096; ++guard)
+    {
+      if (remOut.isZero() || sqrt == limit || L.isZero())
+      {
+        break;
+      }
+      bool hasTick = false;
+      u256 tickSqrt(0);
+      i256 net(0);
+      findNextTick(sqrt, zeroForOne, hasTick, tickSqrt, net);
+      u256 target = limit;
+      if (hasTick)
+      {
+        target = zeroForOne ? (tickSqrt > limit ? tickSqrt : limit)
+                            : (tickSqrt < limit ? tickSqrt : limit);
+      }
+      u256 amountIn(0), amountOutStep(0), feeAmount(0);
+      const u256 sqrtNext =
+          computeStepOut(sqrt, target, L, remOut, zeroForOne, _fee, amountIn, amountOutStep, feeAmount);
+      remOut = remOut - amountOutStep;
+      totalIn = totalIn + amountIn + feeAmount;
+      if (hasTick && sqrtNext == tickSqrt)
+      {
+        const i256 dL = zeroForOne ? -net : net;
+        L = dL.neg ? (L - dL.mag) : (L + dL.mag);
+      }
+      sqrt = sqrtNext;
+    }
+    return totalIn;
   }
 
   u256 _sqrtP;

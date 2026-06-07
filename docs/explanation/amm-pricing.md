@@ -120,6 +120,13 @@ tick's liquidityNet. The state is the current sqrt price, the active liquidity,
 the fee, and the tick table; a large swap can cross several ticks, each on a
 different liquidity. It reproduces a v3 pool's QuoterV2 quote to the wei.
 
+A swap can be exact-input (spend a fixed input) or exact-output (take a fixed
+output), and the contract rounds the price the opposite way for each.
+`amountInForOutput` / `applySwapForOutput` are the exact-output side: the input
+needed to take a target output. Both branches are checked against live pool Swap
+logs -- the log carries the post sqrtPriceX96, so the curve replaying the swap must
+reproduce it -- and each reproduces its swaps to the wei.
+
 ## Solana: Raydium constant product
 
 The exact-curve approach is not EVM-specific. `RaydiumCpCurve` is a Raydium

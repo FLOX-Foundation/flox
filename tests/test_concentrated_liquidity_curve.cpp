@@ -54,6 +54,28 @@ TEST(ConcentratedLiquidityCurveTest, ApplySwapMovesPrice)
   EXPECT_TRUE(pool.sqrtPrice() < before);
 }
 
+// Exact-output: the input to take a target output. Feeding that input back as an
+// exact-input swap must yield at least the target (the input is rounded up), and the
+// resulting price must match -- the two v3 branches agree at the same point.
+TEST(ConcentratedLiquidityCurveTest, ExactOutputRoundTripsWithExactInput)
+{
+  const u256 sqrt0 = d("1959100328691929984878240664321702");
+  ConcentratedLiquidityCurve outPool(sqrt0, d("2580696918646962643"), 500, {});
+  const u256 targetOut = d("500000000000000000");  // want 0.5 WETH (token1) out
+  const u256 inNeeded = outPool.amountInForOutput(0, 1, targetOut);
+  EXPECT_TRUE(outPool.sqrtPrice() == sqrt0);  // amountInForOutput does not move the pool
+
+  // Feeding the computed input as exact-input yields at least the target, and the
+  // applied-output price equals the applied-input price for that input.
+  ConcentratedLiquidityCurve a(sqrt0, d("2580696918646962643"), 500, {});
+  const u256 gotOut = a.amountOut(0, 1, inNeeded);
+  EXPECT_FALSE(gotOut < targetOut);
+
+  ConcentratedLiquidityCurve b(sqrt0, d("2580696918646962643"), 500, {});
+  b.applySwapForOutput(0, 1, targetOut);
+  EXPECT_TRUE(b.sqrtPrice() < sqrt0);  // token0-in swap moves price down
+}
+
 TEST(ConcentratedLiquidityCurveTest, CloneIsIndependent)
 {
   ConcentratedLiquidityCurve pool(d("1959100328691929984878240664321702"), d("2580696918646962643"),

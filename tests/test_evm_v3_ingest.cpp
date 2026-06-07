@@ -70,6 +70,42 @@ TEST(EvmV3IngestTest, ChainedSwapsReproducePostStateToTheWei)
   }
 }
 
+// Three consecutive exact-OUTPUT swaps on the same pool (WETH in, USDC out), the
+// other V3 SwapMath branch: the swap specifies the output, and the contract rounds the
+// price the opposite way from exact-input. Captured the same way (their logged
+// post-state chains, liquidity unchanged). applySwapForOutput must reproduce both the
+// logged post sqrtPriceX96 and the input spent to the wei -- this is what proves the
+// 45-ish "exact-input mismatches" were exact-output swaps, not curve errors.
+struct V3OutSwap
+{
+  const char* preSqrt;
+  const char* amountOut;
+  const char* postSqrt;
+  const char* amountIn;
+};
+
+const std::array<V3OutSwap, 3> kOutSwaps = {{
+    {"1958820412253784087668564948683869", "10462067765", "1959013809804441323243263928778499",
+     "6398934744314278556"},
+    {"1959013809804441323243263928778499", "33350385123", "1959630566507519512976239756703465",
+     "20406597098586884193"},
+    {"1959630566507519512976239756703465", "4129618828", "1959706963564795850126560532119431",
+     "2527745478200719219"},
+}};
+
+TEST(EvmV3IngestTest, ExactOutputSwapsReproducePostStateToTheWei)
+{
+  // oneForZero (token1 WETH in, token0 USDC out): i = 1, j = 0.
+  ConcentratedLiquidityCurve pool(D(kOutSwaps[0].preSqrt), D(kLiquidity), 500, {});
+  for (const V3OutSwap& s : kOutSwaps)
+  {
+    EXPECT_EQ(pool.sqrtPrice().toDec(), D(s.preSqrt).toDec());
+    const u256 in = pool.applySwapForOutput(1, 0, D(s.amountOut));  // exact output of token0
+    EXPECT_EQ(pool.sqrtPrice().toDec(), D(s.postSqrt).toDec());
+    EXPECT_EQ(in.toDec(), D(s.amountIn).toDec());
+  }
+}
+
 // The same decoded swaps written as a pool-state tape and replayed: a CLMM descriptor,
 // a checkpoint at the pre-state, the swaps as SwapDeltas, and a closing checkpoint at
 // the logged final state -- the replay reconstructs the exact pool with zero drift.
