@@ -286,6 +286,27 @@ identically. Where the snapshots come from (a recorded tape, a live account read
 is the concern of whatever captured them; this is the engine-side glue that turns
 a pool's state-over-time into the book stream the rest of a backtest consumes.
 
+## The pool-state tape
+
+A pool-state tape records a pool's history as a delta log, not snapshots: a
+Descriptor (the venue and its static parameters), periodic Checkpoints (the full
+state), and the SwapDeltas that move it. A pool's state is *derived* by replaying
+the deltas through the exact curve -- a parsed swap replayed via `applySwap`
+reconstructs the post-state to the wei, which is what the exact curves are for -- so
+the tape is compact and a swap is both the trade and the state mutation, one stream.
+`PoolStateReplay` reads a tape and drives an `AmmDexConnector`: a Checkpoint rebuilds
+the curve, a SwapDelta is applied through `onSwap`. All amounts are u256, 32 bytes
+big-endian, chain-native.
+
+It is checkpoint-anchored, not delta-only. Before a Checkpoint re-anchors, the
+replayed state is compared to it, and a mismatch is counted as drift -- an
+unobserved or unmodelled mutation (a donation, a rebasing token, an admin parameter
+change) is caught, never silently carried. Checkpoint cadence is a knob: the worst
+case for any chain is a Checkpoint per event, which always works; deltas are the win
+where the mutation is observable and exactly modelled. Where the deltas come from --
+EVM event logs, parsed Solana instructions -- is the per-chain ingest; the tape and
+replay know nothing about the chain.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
