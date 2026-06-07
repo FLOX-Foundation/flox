@@ -148,6 +148,33 @@ published test vectors and the protocol's off-chain SDK rather than a single
 on-chain call. The concentrated-liquidity Solana pools (Orca, Raydium) carry
 their own fixed-point and are separate transcriptions.
 
+## Solana: Orca Whirlpool concentrated liquidity
+
+`OrcaWhirlpoolCurve` is an Orca Whirlpool, Solana's concentrated-liquidity pool.
+It is the Uniswap v3 swap math at a Q64.64 sqrt price instead of Q64.96, so it is
+a thin parameterization of `ConcentratedLiquidityCurve`, not a separate
+transcription: same delta and next-sqrt-price formulas, same tick walk, only the
+fixed-point unit and the min/max sqrt price change. The Whirlpool program writes
+`get_amount_delta_a` as one division over the full 256-bit numerator where v3
+nests two divisions, but those give the same result for every input
+(`ceil(ceil(a/b)/c) == ceil(a/(b·c))`, and the floor analogue), so the rounding is
+identical, not merely close.
+
+The state is the current Q64.64 sqrt price, the active liquidity, the fee rate in
+hundredths of a basis point, and the table of initialized ticks. A swap within a
+range is one step on the active liquidity; a larger swap crosses ticks, each on a
+different liquidity, exactly as on chain. This models a static-fee Whirlpool, the
+common kind; the opt-in adaptive-fee extension (the program's volatility-tracking
+FeeRateManager) is a separate feature, not part of this curve, the same way the v3
+curve does not model v4 hooks.
+
+Validation is two-sided: the curve reproduces a faithful transcription of the
+program's swap to the unit on no-cross and tick-crossing cases, and a live
+Whirlpool read (the pool account plus its tick arrays, with each tick index
+converted to its sqrt price by the program's tick math) priced through the curve
+agrees with an independent Jupiter quote to a fraction of a basis point, the
+residual being the aggregator's cache lag, not the math.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
