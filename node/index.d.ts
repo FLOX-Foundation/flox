@@ -2371,6 +2371,41 @@ export function ammCurveBalance(curve: AmmCurveHandle, i: number): bigint;
 /** An independent copy of the pool, for sizing a swap without disturbing the live one. */
 export function ammCurveClone(curve: AmmCurveHandle): AmmCurveHandle;
 
+// ── Pool-state tape: replay a recorded DEX pool history ───────────────
+
+/** An opaque pool-state tape being built (freed automatically when unreachable). */
+export type PoolTapeHandle = object;
+/** An opaque pool-state replay result (freed automatically when unreachable). */
+export type PoolReplayHandle = object;
+
+/** Create an empty pool-state tape (a delta log) to build then replay. */
+export function poolTapeCreate(): PoolTapeHandle;
+/** Write the venue descriptor: a constant-product pool. */
+export function poolTapeDescriptorConstantProduct(tape: PoolTapeHandle, feeNum: number,
+                                                  feeDen: number, baseDec: number, quoteDec: number): void;
+/** Write the venue descriptor: a Raydium constant-product pool. */
+export function poolTapeDescriptorRaydiumCp(tape: PoolTapeHandle, tradeFeeRate: number,
+                                            creatorFeeRate: number, creatorFeeOnInput: boolean,
+                                            baseDec: number, quoteDec: number): void;
+/** Write the venue descriptor: a concentrated-liquidity pool (venue: 2=v3, 3=Orca, 4=Raydium CLMM). */
+export function poolTapeDescriptorClmm(tape: PoolTapeHandle, venue: number, feePips: number,
+                                       baseDec: number, quoteDec: number): void;
+/** Write a checkpoint (the two reserves, native wei) at a timestamp. */
+export function poolTapeCheckpoint(tape: PoolTapeHandle, tsNs: number, reserve0: bigint,
+                                   reserve1: bigint): void;
+/** Write a swap delta (baseForQuote sells base into the pool). */
+export function poolTapeSwap(tape: PoolTapeHandle, tsNs: number, baseForQuote: boolean,
+                             amountIn: bigint): void;
+/** Replay the tape through the exact curve, presenting the pair base/quote. */
+export function poolTapeReplay(tape: PoolTapeHandle, baseIdx: number, quoteIdx: number,
+                               baseDec: number, quoteDec: number): PoolReplayHandle;
+/** The number of checkpoints that disagreed with the replayed state. */
+export function poolReplayDriftCount(replay: PoolReplayHandle): number;
+/** The number of swaps applied. */
+export function poolReplayTradeCount(replay: PoolReplayHandle): number;
+/** The final pool as an owned AmmCurve handle. */
+export function poolReplayCurve(replay: PoolReplayHandle): AmmCurveHandle;
+
 // ── Portfolio risk aggregator ─────────────────────────────────────────
 
 /** Cross-strategy risk limits. Pass any subset; missing fields stay

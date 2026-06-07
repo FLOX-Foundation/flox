@@ -95,6 +95,7 @@
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/book/l3/l3_order_book.h"
+#include "flox/connector/amm_dex_connector.h"
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/exchange_capabilities.h"
@@ -108,6 +109,7 @@
 #include "flox/replay/ops/partitioner.h"
 #include "flox/replay/ops/segment_ops.h"
 #include "flox/replay/ops/validator.h"
+#include "flox/replay/pool_state_tape.h"
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/replay/writers/binary_log_writer.h"
 #include "flox/strategy/abstract_signal_handler.h"
@@ -10277,3 +10279,167 @@ extern "C" void flox_curve_destroy(FloxCurveHandle curve)
 {
   delete toCurve(curve);
 }
+
+// ============================================================
+// T041: Pool-state tape replay
+// ============================================================
+
+namespace
+{
+struct PoolTapeBuilder
+{
+  std::vector<uint8_t> bytes;
+};
+
+struct PoolReplayResult
+{
+  std::unique_ptr<flox::INTokenCurve> seed;
+  std::unique_ptr<flox::AmmDexConnector> conn;
+  std::unique_ptr<flox::PoolStateReplay> replay;
+  std::size_t trades{0};
+};
+
+inline PoolTapeBuilder* toTape(FloxPoolTapeHandle h) { return static_cast<PoolTapeBuilder*>(h); }
+inline PoolReplayResult* toReplay(FloxPoolReplayHandle h)
+{
+  return static_cast<PoolReplayResult*>(h);
+}
+}  // namespace
+
+extern "C" FloxPoolTapeHandle flox_pool_tape_create(void) { return new PoolTapeBuilder(); }
+extern "C" void flox_pool_tape_destroy(FloxPoolTapeHandle tape) { delete toTape(tape); }
+
+extern "C" void flox_pool_tape_descriptor_constant_product(FloxPoolTapeHandle tape,
+                                                           uint64_t fee_num, uint64_t fee_den,
+                                                           uint8_t base_dec, uint8_t quote_dec)
+{
+  flox::PoolStateWriter(toTape(tape)->bytes)
+      .descriptorConstantProduct(fee_num, fee_den, base_dec, quote_dec);
+}
+
+extern "C" void flox_pool_tape_descriptor_raydium_cp(FloxPoolTapeHandle tape,
+                                                     uint64_t trade_fee_rate,
+                                                     uint64_t creator_fee_rate,
+                                                     uint8_t creator_fee_on_input, uint8_t base_dec,
+                                                     uint8_t quote_dec)
+{
+  flox::PoolStateWriter(toTape(tape)->bytes)
+      .descriptorRaydiumCp(trade_fee_rate, creator_fee_rate, creator_fee_on_input != 0, base_dec,
+                           quote_dec);
+}
+
+extern "C" void flox_pool_tape_descriptor_clmm(FloxPoolTapeHandle tape, uint8_t venue,
+                                               uint32_t fee_pips, uint8_t base_dec,
+                                               uint8_t quote_dec)
+{
+  flox::PoolStateWriter(toTape(tape)->bytes)
+      .descriptorClmm(static_cast<flox::PoolVenue>(venue), fee_pips, base_dec, quote_dec);
+}
+
+extern "C" uint8_t flox_pool_tape_checkpoint(FloxPoolTapeHandle tape, int64_t ts_ns,
+                                             const char* reserve0, const char* reserve1)
+{
+  if (reserve0 == nullptr || reserve1 == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    flox::PoolStateWriter(toTape(tape)->bytes)
+        .checkpoint(ts_ns, flox::u256::fromDec(reserve0), flox::u256::fromDec(reserve1));
+    return 1;
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_pool_tape_checkpoint_clmm(FloxPoolTapeHandle tape, int64_t ts_ns,
+                                                  const char* sqrt_price, const char* liquidity,
+                                                  const char* const* tick_sqrt_ratio,
+                                                  const char* const* tick_liquidity_net,
+                                                  size_t n_ticks)
+{
+  if (sqrt_price == nullptr || liquidity == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    std::vector<flox::ClTick> ticks;
+    ticks.reserve(n_ticks);
+    for (size_t k = 0; k < n_ticks; ++k)
+    {
+      ticks.push_back({flox::u256::fromDec(tick_sqrt_ratio[k]),
+                       flox::i256::fromDec(tick_liquidity_net[k])});
+    }
+    flox::PoolStateWriter(toTape(tape)->bytes)
+        .checkpointClmm(ts_ns, flox::u256::fromDec(sqrt_price), flox::u256::fromDec(liquidity),
+                        ticks);
+    return 1;
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" uint8_t flox_pool_tape_swap(FloxPoolTapeHandle tape, int64_t ts_ns,
+                                       uint8_t base_for_quote, const char* amount_in)
+{
+  if (amount_in == nullptr)
+  {
+    return 0;
+  }
+  try
+  {
+    flox::PoolStateWriter(toTape(tape)->bytes)
+        .swap(ts_ns, base_for_quote != 0, flox::u256::fromDec(amount_in));
+    return 1;
+  }
+  catch (...)
+  {
+    return 0;
+  }
+}
+
+extern "C" FloxPoolReplayHandle flox_pool_tape_replay(FloxPoolTapeHandle tape, size_t base_idx,
+                                                      size_t quote_idx, uint8_t base_dec,
+                                                      uint8_t quote_dec)
+{
+  auto* r = new PoolReplayResult();
+  // A throwaway seed for the connector ctor; the replay re-points it at the curve it
+  // rebuilds from the tape's first Checkpoint.
+  r->seed = std::make_unique<flox::ConstantProductCurve>(flox::u256(1), flox::u256(1), 1, 1);
+  r->conn = std::make_unique<flox::AmmDexConnector>("amm", flox::SymbolId{1}, *r->seed, base_idx,
+                                                    quote_idx, base_dec, quote_dec, 1,
+                                                    flox::u256(1));
+  r->conn->setCallbacks([](const flox::BookUpdateEvent&) {},
+                        [r](const flox::TradeEvent&)
+                        { ++r->trades; });
+  r->replay = std::make_unique<flox::PoolStateReplay>(*r->conn);
+  r->replay->run(toTape(tape)->bytes);
+  return r;
+}
+
+extern "C" size_t flox_pool_replay_drift_count(FloxPoolReplayHandle replay)
+{
+  return replay == nullptr ? 0 : toReplay(replay)->replay->driftCount();
+}
+
+extern "C" size_t flox_pool_replay_trade_count(FloxPoolReplayHandle replay)
+{
+  return replay == nullptr ? 0 : toReplay(replay)->trades;
+}
+
+extern "C" FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay)
+{
+  if (replay == nullptr)
+  {
+    return nullptr;
+  }
+  return const_cast<flox::INTokenCurve*>(toReplay(replay)->replay->curve());
+}
+
+extern "C" void flox_pool_replay_destroy(FloxPoolReplayHandle replay) { delete toReplay(replay); }

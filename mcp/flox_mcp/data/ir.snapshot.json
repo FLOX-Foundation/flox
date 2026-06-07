@@ -9250,6 +9250,260 @@
       "return_type": "void"
     },
     {
+      "group": "pool_tape",
+      "name": "flox_pool_replay_curve",
+      "params": [
+        {
+          "name": "replay",
+          "type": "FloxPoolReplayHandle"
+        }
+      ],
+      "return_type": "FloxCurveHandle"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_replay_destroy",
+      "params": [
+        {
+          "name": "replay",
+          "type": "FloxPoolReplayHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_replay_drift_count",
+      "params": [
+        {
+          "name": "replay",
+          "type": "FloxPoolReplayHandle"
+        }
+      ],
+      "return_type": "size_t"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_replay_trade_count",
+      "params": [
+        {
+          "name": "replay",
+          "type": "FloxPoolReplayHandle"
+        }
+      ],
+      "return_type": "size_t"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_checkpoint",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "reserve0",
+          "type": "const char *"
+        },
+        {
+          "name": "reserve1",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_checkpoint_clmm",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "sqrt_price",
+          "type": "const char *"
+        },
+        {
+          "name": "liquidity",
+          "type": "const char *"
+        },
+        {
+          "name": "tick_sqrt_ratio",
+          "type": "const char *const *"
+        },
+        {
+          "name": "tick_liquidity_net",
+          "type": "const char *const *"
+        },
+        {
+          "name": "n_ticks",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_create",
+      "params": [],
+      "return_type": "FloxPoolTapeHandle"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_descriptor_clmm",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "venue",
+          "type": "uint8_t"
+        },
+        {
+          "name": "fee_pips",
+          "type": "uint32_t"
+        },
+        {
+          "name": "base_dec",
+          "type": "uint8_t"
+        },
+        {
+          "name": "quote_dec",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_descriptor_constant_product",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "fee_num",
+          "type": "uint64_t"
+        },
+        {
+          "name": "fee_den",
+          "type": "uint64_t"
+        },
+        {
+          "name": "base_dec",
+          "type": "uint8_t"
+        },
+        {
+          "name": "quote_dec",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_descriptor_raydium_cp",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "trade_fee_rate",
+          "type": "uint64_t"
+        },
+        {
+          "name": "creator_fee_rate",
+          "type": "uint64_t"
+        },
+        {
+          "name": "creator_fee_on_input",
+          "type": "uint8_t"
+        },
+        {
+          "name": "base_dec",
+          "type": "uint8_t"
+        },
+        {
+          "name": "quote_dec",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_destroy",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_replay",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "base_idx",
+          "type": "size_t"
+        },
+        {
+          "name": "quote_idx",
+          "type": "size_t"
+        },
+        {
+          "name": "base_dec",
+          "type": "uint8_t"
+        },
+        {
+          "name": "quote_dec",
+          "type": "uint8_t"
+        }
+      ],
+      "return_type": "FloxPoolReplayHandle"
+    },
+    {
+      "group": "pool_tape",
+      "name": "flox_pool_tape_swap",
+      "params": [
+        {
+          "name": "tape",
+          "type": "FloxPoolTapeHandle"
+        },
+        {
+          "name": "ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "base_for_quote",
+          "type": "uint8_t"
+        },
+        {
+          "name": "amount_in",
+          "type": "const char *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "portfolio_risk",
       "name": "flox_portfolio_risk_account_count",
       "params": [
@@ -16083,6 +16337,14 @@
     },
     {
       "name": "FloxPnLTrackerHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPoolReplayHandle",
+      "target": "void*"
+    },
+    {
+      "name": "FloxPoolTapeHandle",
       "target": "void*"
     },
     {

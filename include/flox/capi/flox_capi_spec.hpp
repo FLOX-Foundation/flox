@@ -41,7 +41,9 @@ extern "C"
   typedef void* FloxVolumeProfileHandle;
   typedef void* FloxMarketProfileHandle;
   typedef void* FloxCompositeBookHandle;
-  typedef void* FloxCurveHandle;  // an INTokenCurve (an AMM pool's exact pricing)
+  typedef void* FloxCurveHandle;       // an INTokenCurve (an AMM pool's exact pricing)
+  typedef void* FloxPoolTapeHandle;    // a pool-state tape being built (delta log)
+  typedef void* FloxPoolReplayHandle;  // the result of replaying a pool-state tape
 
   // ============================================================
   // Flat event structs (C-compatible, no C++ dependencies)
@@ -4660,6 +4662,66 @@ extern "C"
   FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);
   FLOX_EXPORT(group = "amm_curve")
   void flox_curve_destroy(FloxCurveHandle curve);
+
+  // ============================================================
+  // Pool-state tape: replay a recorded DEX pool history
+  // ============================================================
+  //
+  // A pool-state tape is a delta log -- a Descriptor (the venue), Checkpoints (full
+  // state), and the SwapDeltas that move it -- and a pool's state is derived by
+  // replaying the deltas through the exact curve. Build a tape with the writer calls,
+  // then replay it: the replay rebuilds the curve from each Checkpoint, applies the
+  // swaps, and counts drift (a Checkpoint that disagrees with the replayed state).
+  // This lets a binding backtest a DEX strategy on recorded pool data.
+  //
+  // Build order: a descriptor (once), then alternating Checkpoints and SwapDeltas in
+  // timestamp order. Two-reserve venues (constant-product, Raydium CP) use
+  // flox_pool_tape_checkpoint; a concentrated-liquidity venue uses
+  // flox_pool_tape_checkpoint_clmm. The writers return 0 on a bad amount string.
+
+  FLOX_EXPORT(group = "pool_tape")
+  FloxPoolTapeHandle flox_pool_tape_create(void);
+  FLOX_EXPORT(group = "pool_tape")
+  void flox_pool_tape_descriptor_constant_product(FloxPoolTapeHandle tape, uint64_t fee_num,
+                                                  uint64_t fee_den, uint8_t base_dec,
+                                                  uint8_t quote_dec);
+  FLOX_EXPORT(group = "pool_tape")
+  void flox_pool_tape_descriptor_raydium_cp(FloxPoolTapeHandle tape, uint64_t trade_fee_rate,
+                                            uint64_t creator_fee_rate, uint8_t creator_fee_on_input,
+                                            uint8_t base_dec, uint8_t quote_dec);
+  // venue: 2 = Uniswap v3, 3 = Orca Whirlpool, 4 = Raydium CLMM.
+  FLOX_EXPORT(group = "pool_tape")
+  void flox_pool_tape_descriptor_clmm(FloxPoolTapeHandle tape, uint8_t venue, uint32_t fee_pips,
+                                      uint8_t base_dec, uint8_t quote_dec);
+  FLOX_EXPORT(group = "pool_tape")
+  uint8_t flox_pool_tape_checkpoint(FloxPoolTapeHandle tape, int64_t ts_ns, const char* reserve0,
+                                    const char* reserve1);
+  FLOX_EXPORT(group = "pool_tape")
+  uint8_t flox_pool_tape_checkpoint_clmm(FloxPoolTapeHandle tape, int64_t ts_ns,
+                                         const char* sqrt_price, const char* liquidity,
+                                         const char* const* tick_sqrt_ratio,
+                                         const char* const* tick_liquidity_net, size_t n_ticks);
+  FLOX_EXPORT(group = "pool_tape")
+  uint8_t flox_pool_tape_swap(FloxPoolTapeHandle tape, int64_t ts_ns, uint8_t base_for_quote,
+                              const char* amount_in);
+  FLOX_EXPORT(group = "pool_tape")
+  void flox_pool_tape_destroy(FloxPoolTapeHandle tape);
+
+  // Replay the tape, deriving the pool state through the exact curve. base_idx /
+  // quote_idx and the decimals are the pair the synthetic book is presented as.
+  FLOX_EXPORT(group = "pool_tape")
+  FloxPoolReplayHandle flox_pool_tape_replay(FloxPoolTapeHandle tape, size_t base_idx,
+                                             size_t quote_idx, uint8_t base_dec, uint8_t quote_dec);
+  FLOX_EXPORT(group = "pool_tape")
+  size_t flox_pool_replay_drift_count(FloxPoolReplayHandle replay);
+  FLOX_EXPORT(group = "pool_tape")
+  size_t flox_pool_replay_trade_count(FloxPoolReplayHandle replay);
+  // The final curve, borrowed -- valid until flox_pool_replay_destroy; do not pass it
+  // to flox_curve_destroy. NULL if the tape had no checkpoint.
+  FLOX_EXPORT(group = "pool_tape")
+  FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay);
+  FLOX_EXPORT(group = "pool_tape")
+  void flox_pool_replay_destroy(FloxPoolReplayHandle replay);
 
 #ifdef __cplusplus
 }
