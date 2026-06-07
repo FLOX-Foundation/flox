@@ -49,7 +49,7 @@ class CryptoswapPoolN : public INTokenCurve
   {
   }
 
-  const std::vector<double>& balances() const { return _b; }
+  const std::vector<double>& balances() const override { return _b; }
   const std::vector<double>& priceScale() const { return _scale; }
   double amp() const { return _A; }
   double gamma() const { return _gamma; }

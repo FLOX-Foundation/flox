@@ -38,7 +38,7 @@ class StableSwapPoolN : public INTokenCurve
   {
   }
 
-  const std::vector<double>& balances() const { return _b; }
+  const std::vector<double>& balances() const override { return _b; }
   double amp() const { return _A; }
   int32_t feeBps() const { return _feeBps; }
 

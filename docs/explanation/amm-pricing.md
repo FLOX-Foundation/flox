@@ -121,7 +121,10 @@ depends on every balance in the pool, not just two.
 
 `INTokenCurve` is the interface for those. It indexes tokens `[0, tokenCount)`
 and prices between an ordered pair: `spotPrice(i, j)`, `amountOut(i, j, in)`,
-`priceImpact(i, j, in)`, `applySwap(i, j, in)`, and `clone()`. It is a sibling
+`priceImpact(i, j, in)`, `applySwap(i, j, in)`, `balances()`, and `clone()`. The
+balances are on the interface because valuing an LP position and accounting for
+impermanent loss both need the pool's composition, and every multi-asset pool
+has one. It is a sibling
 of `IAmmCurve`, not a replacement: the two-token curves and everything that
 consumes them stay exactly as they are, and a pool that genuinely holds more
 than two tokens implements this instead. Forcing the n-token case onto the
