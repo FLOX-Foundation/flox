@@ -29,6 +29,8 @@ class NTokenConstProductStub : public INTokenCurve
 
   std::size_t tokenCount() const override { return _r.size(); }
 
+  const std::vector<double>& balances() const override { return _r; }
+
   Price spotPrice(std::size_t i, std::size_t j) const override
   {
     return Price::fromDouble(_r[i] / _r[j]);  // units of i per unit of j
@@ -83,6 +85,28 @@ TEST(NTokenCurveTest, InterfaceShape)
 
   EXPECT_GT(pool.priceImpact(0, 1, Quantity::fromDouble(500.0)),
             pool.priceImpact(0, 1, Quantity::fromDouble(5.0)));
+}
+
+// balances() on the interface lets generic code value a pool at given per-token
+// prices without knowing the concrete type.
+double poolValue(const INTokenCurve& pool, const std::vector<double>& prices)
+{
+  const auto& b = pool.balances();
+  double v = 0.0;
+  for (std::size_t k = 0; k < b.size(); ++k)
+  {
+    v += b[k] * prices[k];
+  }
+  return v;
+}
+
+TEST(NTokenCurveTest, BalancesValuationThroughInterface)
+{
+  NTokenConstProductStub pool(std::vector<double>{1000.0, 2000.0, 4000.0});
+  const INTokenCurve& iface = pool;
+  EXPECT_EQ(iface.balances().size(), 3u);
+  // Value at prices [2, 1, 0.5] = 2000 + 2000 + 2000 = 6000.
+  EXPECT_NEAR(poolValue(iface, {2.0, 1.0, 0.5}), 6000.0, 1e-9);
 }
 
 TEST(NTokenCurveTest, CloneIsIndependent)

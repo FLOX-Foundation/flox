@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 namespace flox
 {
@@ -35,6 +36,10 @@ class INTokenCurve
 
   // Number of tokens in the pool.
   virtual std::size_t tokenCount() const = 0;
+
+  // Per-token balances the pool holds, indexed [0, tokenCount). Lets generic
+  // code value the pool (LP marking, IL accounting) without the concrete type.
+  virtual const std::vector<double>& balances() const = 0;
 
   // Marginal price of token j expressed in token i: how much i one unit of j is
   // worth at the current state.

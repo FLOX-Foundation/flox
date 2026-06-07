@@ -34,7 +34,7 @@ class WeightedPoolN : public INTokenCurve
   {
   }
 
-  const std::vector<double>& balances() const { return _b; }
+  const std::vector<double>& balances() const override { return _b; }
   const std::vector<double>& weights() const { return _w; }
   int32_t feeBps() const { return _feeBps; }
 
