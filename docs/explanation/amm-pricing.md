@@ -120,6 +120,34 @@ tick's liquidityNet. The state is the current sqrt price, the active liquidity,
 the fee, and the tick table; a large swap can cross several ticks, each on a
 different liquidity. It reproduces a v3 pool's QuoterV2 quote to the wei.
 
+## Solana: Raydium constant product
+
+The exact-curve approach is not EVM-specific. `RaydiumCpCurve` is a Raydium
+constant-product pool on Solana, transcribed from its program
+(`CurveCalculator::swap_base_input`). The core is the same constant product as the
+EVM forks, `out = net * outVault / (inVault + net)` floored, but the fee handling
+is Raydium's, over a 1e6 denominator as a ceil-div. The trade fee comes off the
+input. The creator fee has two on-chain modes: on input, the trade and creator
+rates are summed and removed from the input in one ceil-div; on output, only the
+trade fee comes off the input and a ceil-div creator fee then comes off the
+swapped amount, so the user receives less than the pool releases. A pool with no
+creator fee, the common case, is identical either way.
+
+The two balances are the swappable reserves -- each vault's balance minus its
+accumulated protocol, fund, and creator fees, which is what the program feeds the
+curve. They move the way the program's result does: the input reserve grows by the
+input net of fees (the fee is set aside, not added to the reserve), and the output
+reserve falls by the full swapped amount. It is a separate class from
+`ConstantProductCurve`, sharing the formula but not the fee, and it implements the
+same `INTokenCurve` -- a Solana pool is just another curve, no interface change. It
+reproduces the program's own integer test vectors to the lamport.
+
+Solana state lives in account data rather than contract getters, and the programs
+have no quote view to ask, so a Solana curve is checked against the program's
+published test vectors and the protocol's off-chain SDK rather than a single
+on-chain call. The concentrated-liquidity Solana pools (Orca, Raydium) carry
+their own fixed-point and are separate transcriptions.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
