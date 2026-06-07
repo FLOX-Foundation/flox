@@ -157,6 +157,25 @@ is the same numbers as a `StableSwapCurve`. Near the peg it fills flatter than
 constant-product on any pair, and a lower `A` curves earlier, exactly as in the
 two-coin case.
 
+## Volatile baskets
+
+A Curve V2 cryptoswap pool (a tricrypto pool) holds several volatile assets in
+one curve. It is the n-coin form of the two-coin cryptoswap: the same
+superposition of constant-product and stableswap, run in transformed balances.
+Coin 0 is the numeraire and every other coin is scaled into it through a
+price-scale vector, `xp[k] = balance[k]·price_scale[k-1]`, and the invariant is
+solved in that space. The pool fills flatter than constant-product near balance
+and falls back toward it once a pair drifts off balance, the same way the
+two-coin curve does.
+
+`CryptoswapPoolN` holds n balances, the price-scale vector, `A`, `gamma`, and a
+fee. The invariant is non-monotonic and has more than one root, so solving for
+the output coin is not a plain Newton step: the physical root is the topmost one
+below the coin's current balance, found by bracketing the first sign change and
+solving inside that bracket. A two-coin `CryptoswapPoolN` with unit scale is the
+same numbers as a `CryptoswapCurve`. Here the price scale is fixed; the
+repegging that moves it is the next piece.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
