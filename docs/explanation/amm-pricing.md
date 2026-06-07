@@ -110,6 +110,23 @@ and the swap output come from a safeguarded solve, a Newton step that falls back
 to bisection whenever the step would leave the bracketed physical branch. The
 state a backtest carries is still two balances plus the two parameters.
 
+## Pools with more than two tokens
+
+Every curve so far is two-token: a base and a quote, with `baseForQuote`
+picking the direction. That covers each family in its pair form, and most pools
+trade as a pair. Some do not. A Balancer pool can hold eight assets at once, a
+Curve stable pool three or more, a tricrypto pool three; a swap there names an
+in-token and an out-token out of the whole set, and the price between them
+depends on every balance in the pool, not just two.
+
+`INTokenCurve` is the interface for those. It indexes tokens `[0, tokenCount)`
+and prices between an ordered pair: `spotPrice(i, j)`, `amountOut(i, j, in)`,
+`priceImpact(i, j, in)`, `applySwap(i, j, in)`, and `clone()`. It is a sibling
+of `IAmmCurve`, not a replacement: the two-token curves and everything that
+consumes them stay exactly as they are, and a pool that genuinely holds more
+than two tokens implements this instead. Forcing the n-token case onto the
+base/quote interface would distort both, so they sit side by side.
+
 ## What it does not touch
 
 The CLOB SimulatedExecutor is unchanged. A centralized-exchange backtest fills
