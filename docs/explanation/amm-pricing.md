@@ -175,6 +175,23 @@ converted to its sqrt price by the program's tick math) priced through the curve
 agrees with an independent Jupiter quote to a fraction of a basis point, the
 residual being the aggregator's cache lag, not the math.
 
+## Solana: Raydium CLMM
+
+`RaydiumClmmCurve` is Raydium's concentrated-liquidity pool, the other large
+Solana CLMM. It is the same `ConcentratedLiquidityCurve` at Q64.64, a thin
+parameterization like the Whirlpool: Raydium's `get_delta_amount_0_unsigned`
+already uses the nested rounding the v3 core does, and its next-sqrt-price and 1e6
+fee match, so only the fixed-point unit and the maximum sqrt price differ from v3
+(and the maximum differs slightly from Orca's, because Raydium's tick math rounds
+the boundary differently). The standard fee-on-input pool is modelled; the
+fee-on-output path for transfer-fee mints and Token-2022 transfer fees are a
+separate boundary concern, not part of the curve.
+
+Validated to the unit against a faithful transcription of the program's swap on
+no-cross and tick-crossing cases. The live read differs from the Whirlpool only in
+the account layouts and the tick math constants (Raydium uses the Uniswap-style
+multiplicative tick table); the curve and its tick walk are the shared core.
+
 ## The connector boundary
 
 `AmmDexConnector` presents one token pair of a pool as an order book the rest of
