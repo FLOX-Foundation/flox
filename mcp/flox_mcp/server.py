@@ -577,6 +577,120 @@ def build_server() -> Server:
                 },
             ),
             Tool(
+                name="route_amm_swap",
+                description=(
+                    "Best execution for a DEX swap across a set of AMM "
+                    "pools, exact to the wei. Give it the same notional and "
+                    "several venues (constant-product, Raydium CP, Uniswap "
+                    "v3) and it returns the venue that fills the most, the "
+                    "fill, and a per-venue comparison. Amounts are human "
+                    "'NUMBER SYMBOL' strings (e.g. '50000 USDC'); each pool "
+                    "carries its token symbols and decimals, so directions "
+                    "are by symbol and a mis-routed swap raises instead of "
+                    "returning a quiet zero. Requires the optional `flox-py` "
+                    "dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["venues", "amount"],
+                    "properties": {
+                        "venues": {
+                            "type": "array",
+                            "description":
+                                "Pool specs. Each: {venue, token0:{symbol,"
+                                "decimals}, token1:{symbol,decimals}, ... "
+                                "venue params}. constant_product/uniswap_v2: "
+                                "reserves (['1000 WETH','2000000 USDC']), fee, "
+                                "fee_den. raydium_cp: reserves, trade_fee. "
+                                "uniswap_v3: sqrt_price_x96, liquidity, fee, "
+                                "ticks.",
+                            "items": {"type": "object", "additionalProperties": True},
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Input amount as 'NUMBER SYMBOL', e.g. '50000 USDC'.",
+                        },
+                        "into": {
+                            "type": "string",
+                            "description": "Out-token symbol (optional; inferred otherwise).",
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="amm_price_impact",
+                description=(
+                    "The depth / slippage table for one AMM pool: the "
+                    "realized average price and price impact for each of a "
+                    "list of trade sizes, exact to the wei. Use this to "
+                    "reason about how large a trade a pool can absorb before "
+                    "quoting. Sizes are human 'NUMBER SYMBOL' strings. "
+                    "Requires the optional `flox-py` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["pool", "sizes"],
+                    "properties": {
+                        "pool": {
+                            "type": "object",
+                            "description":
+                                "A pool spec: {venue, token0:{symbol,decimals}, "
+                                "token1:{symbol,decimals}, ...venue params}.",
+                            "additionalProperties": True,
+                        },
+                        "sizes": {
+                            "type": "array",
+                            "description": "Trade sizes as 'NUMBER SYMBOL' strings.",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
+                name="replay_pool_tape",
+                description=(
+                    "Backtest a DEX position from a recorded pool history. "
+                    "Replays a list of swaps (or decoded Uniswap v2 Swap "
+                    "logs) through the exact curve and returns the price / "
+                    "reserves / LP-value / impermanent-loss / drift series "
+                    "over time. Use this to evaluate an LP position or a "
+                    "trading sequence against a real transcript. Requires "
+                    "the optional `flox-py` dependency."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["pool"],
+                    "properties": {
+                        "pool": {
+                            "type": "object",
+                            "description":
+                                "A pool spec: {venue, token0:{symbol,decimals}, "
+                                "token1:{symbol,decimals}, ...venue params} -- the "
+                                "replay's starting state.",
+                            "additionalProperties": True,
+                        },
+                        "swaps": {
+                            "type": "array",
+                            "description":
+                                "Swaps as [ts, 'NUMBER SYMBOL', into?] entries. "
+                                "Supply this or `evm_logs`.",
+                            "items": {"type": "array"},
+                        },
+                        "evm_logs": {
+                            "type": "array",
+                            "description":
+                                "Decoded Uniswap v2 Swap log dicts (data word order "
+                                "amount0In, amount1In, amount0Out, amount1Out). "
+                                "Supply this or `swaps`.",
+                            "items": {"type": "object", "additionalProperties": True},
+                        },
+                    },
+                    "additionalProperties": True,
+                },
+            ),
+            Tool(
                 name="suggest_indicator",
                 description=(
                     "Recommend FLOX indicators for an English description "
@@ -1166,6 +1280,23 @@ def build_server() -> Server:
                     amount_in=arguments["amount_in"],
                     i=arguments.get("i", 0),
                     j=arguments.get("j", 1),
+                )
+            elif name == "route_amm_swap":
+                text = runtime.route_amm_swap(
+                    venues=arguments["venues"],
+                    amount=arguments["amount"],
+                    into=arguments.get("into"),
+                )
+            elif name == "amm_price_impact":
+                text = runtime.amm_price_impact(
+                    pool=arguments["pool"],
+                    sizes=arguments["sizes"],
+                )
+            elif name == "replay_pool_tape":
+                text = runtime.replay_pool_tape(
+                    pool=arguments["pool"],
+                    swaps=arguments.get("swaps"),
+                    evm_logs=arguments.get("evm_logs"),
                 )
             elif name == "suggest_indicator":
                 text = runtime.suggest_indicator(

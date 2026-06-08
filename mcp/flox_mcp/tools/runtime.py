@@ -262,6 +262,157 @@ def price_amm_swap(
     }, indent=2)
 
 
+def _import_dex_or_error() -> Tuple[Any, Optional[str]]:
+    try:
+        from flox_py import dex  # type: ignore
+        return dex, None
+    except ImportError:
+        return None, (
+            "this tool requires the optional `flox-py` package (>= the build that "
+            "ships flox_py.dex). Install it with `pip install \"flox-mcp[flox]\"`."
+        )
+
+
+def _build_dex_pool(dex: Any, spec: Any) -> Any:
+    """Build a flox.dex pool from an agent-facing spec.
+
+    spec: {venue, token0:{symbol,decimals}, token1:{symbol,decimals}, ...venue params}.
+    constant_product / uniswap_v2: reserves (["1000 WETH","2000000 USDC"]), fee, fee_den.
+    raydium_cp: reserves, trade_fee. uniswap_v3: sqrt_price_x96, liquidity, fee, ticks.
+    """
+    if not isinstance(spec, dict):
+        raise ValueError("pool must be an object of pool parameters")
+    t = spec.get("token0"), spec.get("token1")
+    if not all(isinstance(x, dict) and "symbol" in x and "decimals" in x for x in t):
+        raise ValueError("token0/token1 must be {symbol, decimals} objects")
+    t0 = dex.Token(t[0]["symbol"], int(t[0]["decimals"]))
+    t1 = dex.Token(t[1]["symbol"], int(t[1]["decimals"]))
+    v = (spec.get("venue") or "").lower()
+    if v in ("constant_product", "cp", "uniswap_v2"):
+        return dex.UniswapV2(t0, t1, reserves=spec["reserves"],
+                             fee=spec.get("fee", "0.30%"), fee_den=int(spec.get("fee_den", 1000)))
+    if v in ("raydium_cp", "raydium"):
+        return dex.RaydiumCp(t0, t1, reserves=spec["reserves"],
+                             trade_fee=spec.get("trade_fee", "0.25%"))
+    if v in ("uniswap_v3", "v3", "concentrated_liquidity"):
+        ticks = [(int(str(a)), int(str(b))) for a, b in spec.get("ticks", [])]
+        return dex.UniswapV3(t0, t1, int(str(spec["sqrt_price_x96"])),
+                             int(str(spec["liquidity"])), fee=spec.get("fee", "0.05%"), ticks=ticks)
+    raise ValueError(f"unknown venue '{spec.get('venue')}'. Use one of "
+                     "constant_product, raydium_cp, uniswap_v3.")
+
+
+def _rows_to_list(rows: Any) -> list:
+    """A flox.dex table (pandas DataFrame or list of dicts) to a list of dicts.
+
+    Wei-scale fields (reserves) are coerced to decimal strings so a JSON consumer does
+    not lose precision past 2^53; small fields (ts, price, il) keep their native type.
+    """
+    if not isinstance(rows, list):
+        rows = rows.to_dict("records")  # pandas DataFrame
+    wei_keys = ("reserve0", "reserve1")
+    out = []
+    for r in rows:
+        out.append({k: (str(val) if k in wei_keys and val is not None else val)
+                    for k, val in r.items()})
+    return out
+
+
+def route_amm_swap(venues: Any, amount: Any, into: Any = None) -> str:
+    """Best execution across a set of AMM pools, exact to the wei via flox.dex.Router.
+
+    venues: a list of pool specs (see _build_dex_pool). amount: "NUMBER SYMBOL".
+    into: the out-token symbol (optional). Returns the winning venue, the fill, and the
+    per-venue comparison table.
+    """
+    import json as _json
+
+    dex, err = _import_dex_or_error()
+    if err is not None:
+        return err
+    if not isinstance(venues, list) or not venues:
+        return "route_amm_swap: `venues` must be a non-empty list of pool specs."
+    try:
+        pools = [_build_dex_pool(dex, s) for s in venues]
+        router = dex.Router(pools)
+        best_pool, best_q = router.best(amount, into)
+        table = router.table(amount, into)
+    except Exception as e:  # noqa: BLE001
+        return f"route_amm_swap: {e}"
+    table = _rows_to_list(table)
+    return _json.dumps({
+        "amount_in": str(amount),
+        "best": {
+            "venue": best_pool.venue,
+            "out": str(best_q.out),
+            "out_wei": str(best_q.exact_wei),
+            "price_impact": float(best_q.price_impact),
+        },
+        "venues": table,
+        "note": "best execution exact to the wei via flox.dex.Router",
+    }, indent=2)
+
+
+def amm_price_impact(pool: Any, sizes: Any) -> str:
+    """The depth / slippage table for a pool: realized price and impact per size.
+
+    pool: a pool spec (see _build_dex_pool). sizes: a list of "NUMBER SYMBOL" amounts.
+    Use this to reason about size before quoting. Exact to the wei via flox.dex.
+    """
+    import json as _json
+
+    dex, err = _import_dex_or_error()
+    if err is not None:
+        return err
+    if not isinstance(sizes, list) or not sizes:
+        return "amm_price_impact: `sizes` must be a non-empty list of amounts."
+    try:
+        p = _build_dex_pool(dex, pool)
+        rows = _rows_to_list(p.depth(sizes))
+    except Exception as e:  # noqa: BLE001
+        return f"amm_price_impact: {e}"
+    return _json.dumps({
+        "venue": p.venue,
+        "spot_price": float(p.spot_price),
+        "depth": rows,
+        "note": "depth / slippage exact to the wei via flox.dex",
+    }, indent=2)
+
+
+def replay_pool_tape(pool: Any, swaps: Any = None, evm_logs: Any = None) -> str:
+    """Replay a recorded pool history through the exact curve into a backtest series.
+
+    pool: a pool spec (see _build_dex_pool). Supply either `swaps` (a list of
+    [ts, "NUMBER SYMBOL", into?]) or `evm_logs` (decoded Uniswap v2 Swap log dicts).
+    Returns the price / reserves / LP-value / IL / drift series so an agent can backtest
+    a DEX position from a transcript.
+    """
+    import json as _json
+
+    dex, err = _import_dex_or_error()
+    if err is not None:
+        return err
+    if not swaps and not evm_logs:
+        return "replay_pool_tape: supply either `swaps` or `evm_logs`."
+    try:
+        p = _build_dex_pool(dex, pool)
+        if evm_logs:
+            tape = dex.Tape.from_evm_logs(p, evm_logs)
+        else:
+            tape = dex.Tape(p).from_swaps([tuple(s) for s in swaps])
+        bt = tape.replay()
+    except Exception as e:  # noqa: BLE001
+        return f"replay_pool_tape: {e}"
+    drift = bt.attrs["drift_count"] if not isinstance(bt, list) else \
+        sum(1 for r in bt if r.get("drift"))
+    return _json.dumps({
+        "venue": p.venue,
+        "drift_count": int(drift),
+        "series": _rows_to_list(bt),
+        "note": "exact replay through the flox.dex curve",
+    }, indent=2)
+
+
 def compute_indicator(
     name: str,
     data: Any,

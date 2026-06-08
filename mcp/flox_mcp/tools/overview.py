@@ -172,6 +172,12 @@ Mutating tools:
   indicator data over a window.
 - `price_amm_swap(venue, pool, amount_in)` — quote a DEX swap exact
   to the wei on a constant-product / Raydium CP / Uniswap v3 pool.
+- `route_amm_swap(venues, amount, into)` — best execution across pools;
+  the winning venue, the fill, and a per-venue comparison.
+- `amm_price_impact(pool, sizes)` — the depth / slippage table for a
+  pool, to size a trade before quoting.
+- `replay_pool_tape(pool, swaps | evm_logs)` — replay a recorded
+  history into a price / LP-value / impermanent-loss / drift series.
 - `whatif(...)` — counterfactual replay with overridden inputs.
 - `lookahead(strategy_code, ...)` — bias detection.
 - `replay_window(start_ns, end_ns)` — re-run a slice for debugging.
