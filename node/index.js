@@ -12,5 +12,6 @@ try {
 }
 
 const composite = require('./lib/composite');
+const dex = require('./lib/dex');
 
-module.exports = Object.assign({}, native, { composite });
+module.exports = Object.assign({}, native, { composite, dex });
