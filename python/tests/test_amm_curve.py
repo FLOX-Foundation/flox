@@ -36,7 +36,12 @@ def main():
     ray = flox.AmmCurve.raydium_cp(13831187668587, 13771991024747, 2500)
     assert ray.amount_out(0, 1, 1000000000) > 0
 
-    print("test_amm_curve: OK (constant-product + v3 to the wei, clone independent, raydium)")
+    # CLMM state read-back: v3 returns its exact sqrt price + liquidity, others None.
+    assert v3.sqrt_price() == 1959100328691929984878240664321702, "v3 sqrt price read-back"
+    assert v3.liquidity() == 2580696918646962643, "v3 liquidity read-back"
+    assert cp.sqrt_price() is None and ray.sqrt_price() is None, "non-CLMM returns None"
+
+    print("test_amm_curve: OK (constant-product + v3 to the wei, clone, raydium, CLMM read-back)")
 
 
 if __name__ == "__main__":

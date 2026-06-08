@@ -520,7 +520,17 @@
         {
           "group": "amm_curve",
           "kind": "function",
+          "name": "flox_curve_liquidity"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
           "name": "flox_curve_raydium_cp"
+        },
+        {
+          "group": "amm_curve",
+          "kind": "function",
+          "name": "flox_curve_sqrt_price"
         },
         {
           "group": "amm_curve",
@@ -4595,7 +4605,15 @@
         },
         {
           "kind": "function",
+          "name": "flox_curve_liquidity"
+        },
+        {
+          "kind": "function",
           "name": "flox_curve_raydium_cp"
+        },
+        {
+          "kind": "function",
+          "name": "flox_curve_sqrt_price"
         },
         {
           "kind": "function",
@@ -7835,7 +7853,15 @@
         },
         {
           "kind": "function",
+          "name": "ammCurveLiquidity"
+        },
+        {
+          "kind": "function",
           "name": "ammCurveRaydiumCp"
+        },
+        {
+          "kind": "function",
+          "name": "ammCurveSqrtPrice"
         },
         {
           "kind": "function",
@@ -9017,7 +9043,9 @@
         "flox_curve_clone",
         "flox_curve_constant_product",
         "flox_curve_destroy",
+        "flox_curve_liquidity",
         "flox_curve_raydium_cp",
+        "flox_curve_sqrt_price",
         "flox_curve_token_count",
         "flox_curve_uniswap_v3"
       ],
@@ -9035,6 +9063,8 @@
           "ammCurveAmountOut",
           "ammCurveApplySwap",
           "ammCurveBalance",
+          "ammCurveSqrtPrice",
+          "ammCurveLiquidity",
           "ammCurveClone"
         ],
         "status": "required"

@@ -2368,6 +2368,10 @@ export function ammCurveAmountOut(curve: AmmCurveHandle, i: number, j: number, a
 export function ammCurveApplySwap(curve: AmmCurveHandle, i: number, j: number, amountIn: bigint): bigint;
 /** The pool's reserve of token i (native wei). */
 export function ammCurveBalance(curve: AmmCurveHandle, i: number): bigint;
+/** A concentrated-liquidity pool's current sqrtPriceX96, or null for a non-CLMM pool. */
+export function ammCurveSqrtPrice(curve: AmmCurveHandle): bigint | null;
+/** A concentrated-liquidity pool's active liquidity, or null for a non-CLMM pool. */
+export function ammCurveLiquidity(curve: AmmCurveHandle): bigint | null;
 /** An independent copy of the pool, for sizing a swap without disturbing the live one. */
 export function ammCurveClone(curve: AmmCurveHandle): AmmCurveHandle;
 

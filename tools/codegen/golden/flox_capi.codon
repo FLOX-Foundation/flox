@@ -49,6 +49,8 @@ from C import flox_curve_token_count(cobj) -> int
 from C import flox_curve_amount_out(cobj, int, int, cobj, cobj, int) -> u8
 from C import flox_curve_apply_swap(cobj, int, int, cobj, cobj, int) -> u8
 from C import flox_curve_balance(cobj, int, cobj, int) -> u8
+from C import flox_curve_sqrt_price(cobj, cobj, int) -> u8
+from C import flox_curve_liquidity(cobj, cobj, int) -> u8
 from C import flox_curve_clone(cobj) -> cobj
 from C import flox_curve_destroy(cobj)
 

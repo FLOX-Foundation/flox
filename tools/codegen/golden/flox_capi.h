@@ -904,6 +904,8 @@ extern "C"
   uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j, const char* amount_in,
                                 char* out, size_t out_len);
   uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len);
+  uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char* out, size_t out_len);
+  uint8_t flox_curve_liquidity(FloxCurveHandle curve, char* out, size_t out_len);
   FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);
   void flox_curve_destroy(FloxCurveHandle curve);
 

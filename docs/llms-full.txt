@@ -8538,6 +8538,8 @@ Which event kinds an aggregator counts. Trades = TradeRecord only, BooksOnly = B
 - `apply_swap(self, i: typing.SupportsInt | typing.SupportsIndex, j: typing.SupportsInt | typing.SupportsIndex, amount_in: int) -> int`
 - `balances(self) -> list`
 - `clone(self) -> AmmCurve`
+- `liquidity(self) -> int | None`
+- `sqrt_price(self) -> int | None`
 - `token_count(self) -> int`
 
 ### `class AutoCorrelation`

@@ -61,6 +61,26 @@ TEST(CapiAmmCurveTest, UniswapV3InRangeMatchesQuoter)
   flox_curve_destroy(c);
 }
 
+TEST(CapiAmmCurveTest, ClmmStateReadBack)
+{
+  FloxCurveHandle c = flox_curve_uniswap_v3("1959100328691929984878240664321702",
+                                            "2580696918646962643", 500, nullptr, nullptr, 0);
+  ASSERT_NE(c, nullptr);
+  char out[96] = {0};
+  EXPECT_EQ(flox_curve_sqrt_price(c, out, sizeof(out)), 1);
+  EXPECT_STREQ(out, "1959100328691929984878240664321702");
+  EXPECT_EQ(flox_curve_liquidity(c, out, sizeof(out)), 1);
+  EXPECT_STREQ(out, "2580696918646962643");
+  flox_curve_destroy(c);
+
+  // A non-CLMM pool reports "0" and returns 0 so the caller can branch.
+  FloxCurveHandle cp = flox_curve_constant_product("1000", "2000", 997, 1000);
+  EXPECT_EQ(flox_curve_sqrt_price(cp, out, sizeof(out)), 0);
+  EXPECT_STREQ(out, "0");
+  EXPECT_EQ(flox_curve_liquidity(cp, out, sizeof(out)), 0);
+  flox_curve_destroy(cp);
+}
+
 TEST(CapiAmmCurveTest, RaydiumCpConstructsAndPrices)
 {
   // Raydium CP, 0.25% trade fee, no creator fee.

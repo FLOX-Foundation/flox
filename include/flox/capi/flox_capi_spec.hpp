@@ -4658,6 +4658,14 @@ extern "C"
                                 char* out, size_t out_len);
   FLOX_EXPORT(group = "amm_curve")
   uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len);
+  // Concentrated-liquidity state read-back. For a CLMM pool (Uniswap v3, Orca
+  // Whirlpool, Raydium CLMM) writes the current sqrtPriceX96 / active liquidity as a
+  // decimal string and returns 1. For any other venue writes "0" and returns 0, so a
+  // caller can tell "not a CLMM pool" from a genuine zero.
+  FLOX_EXPORT(group = "amm_curve")
+  uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char* out, size_t out_len);
+  FLOX_EXPORT(group = "amm_curve")
+  uint8_t flox_curve_liquidity(FloxCurveHandle curve, char* out, size_t out_len);
   FLOX_EXPORT(group = "amm_curve")
   FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);
   FLOX_EXPORT(group = "amm_curve")
