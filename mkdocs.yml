@@ -133,6 +133,7 @@ nav:
           - Perpetual funding: how-to/perpetual-funding.md
           - Price a DEX swap: how-to/price-a-dex-swap.md
           - Backtest an LP position: how-to/backtest-an-lp-position.md
+          - Route, arb, and ingest DEX pools: how-to/route-and-arb-dex-pools.md
           - Price options and implied volatility: how-to/options-pricing.md
           - Compute option greeks: how-to/options-greeks.md
           - Order TIF flags: how-to/order-tif-flags.md

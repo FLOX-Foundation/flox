@@ -312,9 +312,12 @@ class UniswapV3(Pool):
         return amount_in_wei * self._fee_pips // 1_000_000
 
 
-# Imported at the bottom so tape.py can pull Token/Amount/Pool from this
+# Imported at the bottom so these submodules can pull Token/Amount/Pool from this
 # already-populated module without a circular-import dance.
 from .tape import Tape, LpPosition  # noqa: E402
+from .router import Router, Arb, arb  # noqa: E402
+from .ingest import from_evm_pool, tape_from_evm_logs, tape_from_solana  # noqa: E402
 
 __all__ = ["Token", "Amount", "Quote", "Pool", "UniswapV2", "RaydiumCp", "UniswapV3",
-           "Tape", "LpPosition"]
+           "Tape", "LpPosition", "Router", "Arb", "arb",
+           "from_evm_pool", "tape_from_evm_logs", "tape_from_solana"]
