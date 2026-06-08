@@ -273,3 +273,7 @@ docs/how-to/price-a-dex-swap.md
 # How-to: backtest an LP position -- flox_py.dex.Tape / LpPosition snippets;
 # the same calls are exercised by python/tests/test_dex_tape.py (CI run step).
 docs/how-to/backtest-an-lp-position.md
+
+# How-to: route / arb / ingest DEX pools -- flox_py.dex.Router / arb / ingest
+# snippets; exercised by python/tests/test_dex_router.py (CI run step).
+docs/how-to/route-and-arb-dex-pools.md

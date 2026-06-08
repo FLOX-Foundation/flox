@@ -181,6 +181,9 @@ jobs:
     - name: Verify DEX tape/backtest layer (flox_py.dex.Tape)
       run: PYTHONPATH=build/python python3 python/tests/test_dex_tape.py
 
+    - name: Verify DEX router / arb / ingest (flox_py.dex.Router)
+      run: PYTHONPATH=build/python python3 python/tests/test_dex_router.py
+
     - name: Verify Python extension hooks
       run: PYTHONPATH=build/python python3 python/tests/test_hooks.py
 
