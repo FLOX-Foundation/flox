@@ -131,6 +131,7 @@ nav:
           - Cross-margin accounts: how-to/cross-margin.md
           - Liquidation and ADL: how-to/liquidation-and-adl.md
           - Perpetual funding: how-to/perpetual-funding.md
+          - Price a DEX swap: how-to/price-a-dex-swap.md
           - Price options and implied volatility: how-to/options-pricing.md
           - Compute option greeks: how-to/options-greeks.md
           - Order TIF flags: how-to/order-tif-flags.md

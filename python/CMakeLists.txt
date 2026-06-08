@@ -71,6 +71,9 @@ add_custom_command(TARGET _flox_py POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/archives
     ${CMAKE_CURRENT_BINARY_DIR}/flox_py/archives
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/dex
+    ${CMAKE_CURRENT_BINARY_DIR}/flox_py/dex
 )
 foreach(opt_file IN LISTS FLOX_PY_OPTIONAL_ROOT_STUBS)
   if(EXISTS ${opt_file})

@@ -265,3 +265,7 @@ docs/how-to/options-pricing.md
 # How-to: option greeks — focused teaching snippets; full runnable path in
 # docs/examples/python_options_greeks.py (CI mypy + run step).
 docs/how-to/options-greeks.md
+
+# How-to: price a DEX swap -- flox_py.dex usage snippets; the same calls are
+# exercised end-to-end by python/tests/test_dex.py (CI run step).
+docs/how-to/price-a-dex-swap.md
