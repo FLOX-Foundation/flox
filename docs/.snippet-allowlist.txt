@@ -277,3 +277,7 @@ docs/how-to/backtest-an-lp-position.md
 # How-to: route / arb / ingest DEX pools -- flox_py.dex.Router / arb / ingest
 # snippets; exercised by python/tests/test_dex_router.py (CI run step).
 docs/how-to/route-and-arb-dex-pools.md
+
+# How-to: DEX on Node -- flox/dex usage snippets; the same calls are
+# exercised end-to-end by node/test/test_dex.js (CI run step).
+docs/how-to/dex-on-node.md
