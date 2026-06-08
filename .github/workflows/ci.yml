@@ -178,6 +178,9 @@ jobs:
     - name: Verify DEX comfort layer (flox_py.dex)
       run: PYTHONPATH=build/python python3 python/tests/test_dex.py
 
+    - name: Verify DEX tape/backtest layer (flox_py.dex.Tape)
+      run: PYTHONPATH=build/python python3 python/tests/test_dex_tape.py
+
     - name: Verify Python extension hooks
       run: PYTHONPATH=build/python python3 python/tests/test_hooks.py
 

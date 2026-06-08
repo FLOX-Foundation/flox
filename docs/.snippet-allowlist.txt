@@ -269,3 +269,7 @@ docs/how-to/options-greeks.md
 # How-to: price a DEX swap -- flox_py.dex usage snippets; the same calls are
 # exercised end-to-end by python/tests/test_dex.py (CI run step).
 docs/how-to/price-a-dex-swap.md
+
+# How-to: backtest an LP position -- flox_py.dex.Tape / LpPosition snippets;
+# the same calls are exercised by python/tests/test_dex_tape.py (CI run step).
+docs/how-to/backtest-an-lp-position.md

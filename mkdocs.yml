@@ -132,6 +132,7 @@ nav:
           - Liquidation and ADL: how-to/liquidation-and-adl.md
           - Perpetual funding: how-to/perpetual-funding.md
           - Price a DEX swap: how-to/price-a-dex-swap.md
+          - Backtest an LP position: how-to/backtest-an-lp-position.md
           - Price options and implied volatility: how-to/options-pricing.md
           - Compute option greeks: how-to/options-greeks.md
           - Order TIF flags: how-to/order-tif-flags.md
