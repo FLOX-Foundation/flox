@@ -191,6 +191,30 @@ inline Napi::Value ammCurveBalance(const Napi::CallbackInfo& info)
   return detail_curve::decimalToBigint(env, out);
 }
 
+// A concentrated-liquidity pool's sqrt price / active liquidity as a BigInt, or null
+// for a non-CLMM pool (constant-product, Raydium CP).
+inline Napi::Value ammCurveClmmField(const Napi::CallbackInfo& info,
+                                     uint8_t (*op)(FloxCurveHandle, char*, size_t))
+{
+  Napi::Env env = info.Env();
+  char out[96] = {0};
+  if (!op(detail_curve::unwrapHandle(info[0]), out, sizeof(out)))
+  {
+    return env.Null();
+  }
+  return detail_curve::decimalToBigint(env, out);
+}
+
+inline Napi::Value ammCurveSqrtPrice(const Napi::CallbackInfo& info)
+{
+  return ammCurveClmmField(info, &flox_curve_sqrt_price);
+}
+
+inline Napi::Value ammCurveLiquidity(const Napi::CallbackInfo& info)
+{
+  return ammCurveClmmField(info, &flox_curve_liquidity);
+}
+
 inline Napi::Value ammCurveClone(const Napi::CallbackInfo& info)
 {
   Napi::Env env = info.Env();
@@ -212,6 +236,10 @@ inline void registerAmmCurve(Napi::Env env, Napi::Object exports)
   exports.Set("ammCurveApplySwap",
               Napi::Function::New(env, &ammCurveApplySwap, "ammCurveApplySwap"));
   exports.Set("ammCurveBalance", Napi::Function::New(env, &ammCurveBalance, "ammCurveBalance"));
+  exports.Set("ammCurveSqrtPrice",
+              Napi::Function::New(env, &ammCurveSqrtPrice, "ammCurveSqrtPrice"));
+  exports.Set("ammCurveLiquidity",
+              Napi::Function::New(env, &ammCurveLiquidity, "ammCurveLiquidity"));
   exports.Set("ammCurveClone", Napi::Function::New(env, &ammCurveClone, "ammCurveClone"));
 }
 

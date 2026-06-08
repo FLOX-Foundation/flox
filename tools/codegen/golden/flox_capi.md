@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 725 functions, 58 handles, 58 structs, 43 callback typedefs, 3 enums, 72 groups.
+**Surface:** 727 functions, 58 handles, 58 structs, 43 callback typedefs, 3 enums, 72 groups.
 
 ## Opaque handles
 
@@ -897,6 +897,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t j, const char * amount_in, char * out, size_t out_len)`
 - `uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j, const char * amount_in, char * out, size_t out_len)`
 - `uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char * out, size_t out_len)`
+- `uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char * out, size_t out_len)`
+- `uint8_t flox_curve_liquidity(FloxCurveHandle curve, char * out, size_t out_len)`
 - `FloxCurveHandle flox_curve_clone(FloxCurveHandle curve)`
 - `void flox_curve_destroy(FloxCurveHandle curve)`
 

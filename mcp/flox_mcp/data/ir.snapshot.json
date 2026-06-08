@@ -2738,6 +2738,25 @@
     },
     {
       "group": "amm_curve",
+      "name": "flox_curve_liquidity",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "amm_curve",
       "name": "flox_curve_raydium_cp",
       "params": [
         {
@@ -2762,6 +2781,25 @@
         }
       ],
       "return_type": "FloxCurveHandle"
+    },
+    {
+      "group": "amm_curve",
+      "name": "flox_curve_sqrt_price",
+      "params": [
+        {
+          "name": "curve",
+          "type": "FloxCurveHandle"
+        },
+        {
+          "name": "out",
+          "type": "char *"
+        },
+        {
+          "name": "out_len",
+          "type": "size_t"
+        }
+      ],
+      "return_type": "uint8_t"
     },
     {
       "group": "amm_curve",

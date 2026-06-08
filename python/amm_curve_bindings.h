@@ -20,6 +20,7 @@
 #include "flox/backtest/raydium_cp_curve.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -95,6 +96,27 @@ class PyAmmCurve
 
   PyAmmCurve clone() const { return PyAmmCurve(_c->clone()); }
 
+  // Concentrated-liquidity state, or None for a non-CLMM pool (constant-product,
+  // Raydium CP). The comfort layer derives price / tick from these.
+  std::optional<py::int_> sqrtPrice() const
+  {
+    const auto* cl = dynamic_cast<const flox::ConcentratedLiquidityCurve*>(_c.get());
+    if (cl == nullptr)
+    {
+      return std::nullopt;
+    }
+    return fromU256(cl->sqrtPrice());
+  }
+  std::optional<py::int_> liquidity() const
+  {
+    const auto* cl = dynamic_cast<const flox::ConcentratedLiquidityCurve*>(_c.get());
+    if (cl == nullptr)
+    {
+      return std::nullopt;
+    }
+    return fromU256(cl->liquidity());
+  }
+
  private:
   static flox::u256 toU256(const py::int_& v) { return flox::u256::fromDec(decimalFromInt(v)); }
   static flox::i256 toI256(const py::int_& v) { return flox::i256::fromDec(decimalFromInt(v)); }
@@ -117,6 +139,8 @@ inline void bindAmmCurve(py::module_& m)
       .def("amount_out", &PyAmmCurve::amountOut, py::arg("i"), py::arg("j"), py::arg("amount_in"))
       .def("apply_swap", &PyAmmCurve::applySwap, py::arg("i"), py::arg("j"), py::arg("amount_in"))
       .def("balances", &PyAmmCurve::balances)
+      .def("sqrt_price", &PyAmmCurve::sqrtPrice)
+      .def("liquidity", &PyAmmCurve::liquidity)
       .def("clone", &PyAmmCurve::clone);
 }
 

@@ -482,6 +482,8 @@ groups:
         - ammCurveAmountOut
         - ammCurveApplySwap
         - ammCurveBalance
+        - ammCurveSqrtPrice
+        - ammCurveLiquidity
         - ammCurveClone
     codon: { status: required }
     quickjs:

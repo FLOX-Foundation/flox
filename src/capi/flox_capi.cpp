@@ -10270,6 +10270,32 @@ extern "C" uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out
   }
 }
 
+extern "C" uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char* out, size_t out_len)
+{
+  const auto* cl = curve == nullptr
+                       ? nullptr
+                       : dynamic_cast<const flox::ConcentratedLiquidityCurve*>(toCurve(curve));
+  if (cl == nullptr)
+  {
+    writeOut("0", out, out_len);
+    return 0;
+  }
+  return writeOut(cl->sqrtPrice().toDec(), out, out_len);
+}
+
+extern "C" uint8_t flox_curve_liquidity(FloxCurveHandle curve, char* out, size_t out_len)
+{
+  const auto* cl = curve == nullptr
+                       ? nullptr
+                       : dynamic_cast<const flox::ConcentratedLiquidityCurve*>(toCurve(curve));
+  if (cl == nullptr)
+  {
+    writeOut("0", out, out_len);
+    return 0;
+  }
+  return writeOut(cl->liquidity().toDec(), out, out_len);
+}
+
 extern "C" FloxCurveHandle flox_curve_clone(FloxCurveHandle curve)
 {
   return curve == nullptr ? nullptr : toCurve(curve)->clone().release();
