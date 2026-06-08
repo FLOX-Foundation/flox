@@ -169,6 +169,15 @@ jobs:
     - name: Verify Python bindings
       run: PYTHONPATH=build/python python3 python/tests/test_bindings.py
 
+    - name: Verify DEX bindings (u256 amounts, curves, pool tape)
+      run: |
+        PYTHONPATH=build/python python3 python/tests/test_dex_amount.py
+        PYTHONPATH=build/python python3 python/tests/test_amm_curve.py
+        PYTHONPATH=build/python python3 python/tests/test_pool_tape.py
+
+    - name: Verify DEX comfort layer (flox_py.dex)
+      run: PYTHONPATH=build/python python3 python/tests/test_dex.py
+
     - name: Verify Python extension hooks
       run: PYTHONPATH=build/python python3 python/tests/test_hooks.py
 
