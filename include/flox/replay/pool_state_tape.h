@@ -11,10 +11,14 @@
 
 #include "flox/backtest/concentrated_liquidity_curve.h"
 #include "flox/backtest/constant_product_curve.h"
+#include "flox/backtest/cryptoswap_curve.h"
+#include "flox/backtest/meteora_dlmm_curve.h"
 #include "flox/backtest/ntoken_curve.h"
 #include "flox/backtest/orca_whirlpool_curve.h"
 #include "flox/backtest/raydium_clmm_curve.h"
 #include "flox/backtest/raydium_cp_curve.h"
+#include "flox/backtest/stableswap_curve.h"
+#include "flox/backtest/weighted_curve.h"
 #include "flox/connector/amm_dex_connector.h"
 #include "flox/util/int/i256.h"
 #include "flox/util/int/u256.h"
@@ -37,10 +41,13 @@ namespace flox
 // Checkpoint re-anchors, the replayed state is compared to it. All amounts are u256,
 // 32 bytes big-endian, chain-native, no scaling.
 //
-// Covers the constant-product and concentrated-liquidity venues; a Checkpoint is
-// venue-shaped (reserves for CP, sqrt price + liquidity + ticks for a CLMM). A
-// dedicated LiquidityDelta record (avoid re-anchoring on a mint/burn) and the binary
-// segment container / ReplayEvent integration are the remaining W23-T001 pieces.
+// Covers every exact-curve venue; a Checkpoint is venue-shaped: reserves for CP,
+// sqrt price + liquidity + ticks for a CLMM, the full balance vector for an n-token
+// pool (StableSwap, Weighted; Cryptoswap also re-anchors its price scale), and the
+// bin book + volatility state for Meteora DLMM. An n-token SwapDelta names the
+// (i, j) pair explicitly; a swap off the connector's pair still moves the pool. A
+// dedicated LiquidityDelta record (avoid re-anchoring on a mint/burn) is the
+// remaining W23-T001 piece.
 
 enum class PoolRecord : uint8_t
 {
@@ -56,6 +63,10 @@ enum class PoolVenue : uint8_t
   OrcaWhirlpool = 3,
   RaydiumClmm = 4,
   RaydiumCp = 5,
+  StableSwap = 6,
+  Weighted = 7,
+  Cryptoswap = 8,
+  MeteoraDlmm = 9,
 };
 
 inline bool isClmm(PoolVenue v)
@@ -68,6 +79,14 @@ inline bool isClmm(PoolVenue v)
 inline bool isTwoReserve(PoolVenue v)
 {
   return v == PoolVenue::ConstantProduct || v == PoolVenue::RaydiumCp;
+}
+
+// The n-token balances-shaped venues: a Checkpoint carries the full balance vector
+// (Cryptoswap also carries its price scale), and a SwapDelta may name any (i, j)
+// pair of the pool, not just the connector's.
+inline bool isBalancesShaped(PoolVenue v)
+{
+  return v == PoolVenue::StableSwap || v == PoolVenue::Weighted || v == PoolVenue::Cryptoswap;
 }
 
 namespace pool_tape_detail
@@ -112,6 +131,31 @@ inline u256 getU256(const uint8_t*& p)
     v.w[static_cast<std::size_t>(limb)] = getU64(p);
   }
   return v;
+}
+inline void putI64(std::vector<uint8_t>& b, int64_t v)
+{
+  putU64(b, static_cast<uint64_t>(v));
+}
+inline int64_t getI64(const uint8_t*& p)
+{
+  return static_cast<int64_t>(getU64(p));
+}
+inline void putU256Vec(std::vector<uint8_t>& b, const std::vector<u256>& vs)
+{
+  for (const u256& v : vs)
+  {
+    putU256(b, v);
+  }
+}
+inline std::vector<u256> getU256Vec(const uint8_t*& p, std::size_t n)
+{
+  std::vector<u256> vs;
+  vs.reserve(n);
+  for (std::size_t k = 0; k < n; ++k)
+  {
+    vs.push_back(getU256(p));
+  }
+  return vs;
 }
 inline i256 getI256(const uint8_t*& p)
 {
@@ -186,6 +230,84 @@ class PoolStateWriter
     frame(PoolRecord::Descriptor, p);
   }
 
+  // A Curve StableSwap venue: per-coin RATES, the contract A() value, and the raw
+  // fee over 1e10. Uses checkpointBalances().
+  void descriptorStableSwap(const std::vector<u256>& rates, uint64_t A, const u256& fee,
+                            uint8_t baseDec, uint8_t quoteDec)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU8(p, static_cast<uint8_t>(PoolVenue::StableSwap));
+    putU8(p, baseDec);
+    putU8(p, quoteDec);
+    putU64(p, rates.size());
+    putU256Vec(p, rates);
+    putU64(p, A);
+    putU256(p, fee);
+    frame(PoolRecord::Descriptor, p);
+  }
+
+  // A Balancer weighted venue: per-coin scaling factors and normalized weights
+  // (1e18), and the swap fee (1e18). Uses checkpointBalances().
+  void descriptorWeighted(const std::vector<u256>& scalingFactors,
+                          const std::vector<u256>& weights, const u256& swapFee, uint8_t baseDec,
+                          uint8_t quoteDec)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU8(p, static_cast<uint8_t>(PoolVenue::Weighted));
+    putU8(p, baseDec);
+    putU8(p, quoteDec);
+    putU64(p, weights.size());
+    putU256Vec(p, scalingFactors);
+    putU256Vec(p, weights);
+    putU256(p, swapFee);
+    frame(PoolRecord::Descriptor, p);
+  }
+
+  // A Curve V2 cryptoswap venue: per-coin PRECISIONS and the contract A() / gamma()
+  // and dynamic-fee parameters. The price scale is state, not a parameter -- the
+  // chain repegs it -- so it rides in checkpointCryptoswap() and re-anchors there.
+  void descriptorCryptoswap(const std::vector<u256>& precisions, uint64_t A, const u256& gamma,
+                            const u256& midFee, const u256& outFee, const u256& feeGamma,
+                            uint8_t baseDec, uint8_t quoteDec)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU8(p, static_cast<uint8_t>(PoolVenue::Cryptoswap));
+    putU8(p, baseDec);
+    putU8(p, quoteDec);
+    putU64(p, precisions.size());
+    putU256Vec(p, precisions);
+    putU64(p, A);
+    putU256(p, gamma);
+    putU256(p, midFee);
+    putU256(p, outFee);
+    putU256(p, feeGamma);
+    frame(PoolRecord::Descriptor, p);
+  }
+
+  // A Meteora DLMM venue: the bin step and the adaptive-fee parameters from the
+  // LbPair account. The bin book and volatility state ride in checkpointDlmm().
+  void descriptorDlmm(uint16_t binStep, const DlmmFeeParams& params, uint8_t baseDec,
+                      uint8_t quoteDec)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU8(p, static_cast<uint8_t>(PoolVenue::MeteoraDlmm));
+    putU8(p, baseDec);
+    putU8(p, quoteDec);
+    putU64(p, binStep);
+    putU64(p, params.baseFactor);
+    putU8(p, params.baseFeePowerFactor);
+    putU64(p, params.variableFeeControl);
+    putU64(p, params.filterPeriod);
+    putU64(p, params.decayPeriod);
+    putU64(p, params.reductionFactor);
+    putU64(p, params.maxVolatilityAccumulator);
+    frame(PoolRecord::Descriptor, p);
+  }
+
   void checkpoint(int64_t tsNs, const u256& reserve0, const u256& reserve1)
   {
     std::vector<uint8_t> p;
@@ -213,12 +335,75 @@ class PoolStateWriter
     frame(PoolRecord::Checkpoint, p);
   }
 
+  // The full balance vector, for an n-token venue (StableSwap, Weighted).
+  void checkpointBalances(int64_t tsNs, const std::vector<u256>& balances)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU64(p, static_cast<uint64_t>(tsNs));
+    putU64(p, balances.size());
+    putU256Vec(p, balances);
+    frame(PoolRecord::Checkpoint, p);
+  }
+
+  // Cryptoswap state: the balances plus the price scale (n-1 entries, the price of
+  // each coin k>=1 in coin 0). A repeg between checkpoints is re-anchored here.
+  void checkpointCryptoswap(int64_t tsNs, const std::vector<u256>& balances,
+                            const std::vector<u256>& priceScale)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU64(p, static_cast<uint64_t>(tsNs));
+    putU64(p, balances.size());
+    putU256Vec(p, balances);
+    putU256Vec(p, priceScale);
+    frame(PoolRecord::Checkpoint, p);
+  }
+
+  // Meteora DLMM state: the active bin, the swap-time clock, the volatility
+  // accumulator state, and the populated bin book.
+  void checkpointDlmm(int64_t tsNs, int32_t activeId, uint64_t timestamp,
+                      const DlmmVolatility& vol, const std::vector<DlmmBin>& bins)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU64(p, static_cast<uint64_t>(tsNs));
+    putI64(p, activeId);
+    putU64(p, timestamp);
+    putU64(p, vol.volatilityAccumulator);
+    putU64(p, vol.volatilityReference);
+    putI64(p, vol.indexReference);
+    putU64(p, vol.lastUpdateTimestamp);
+    putU64(p, bins.size());
+    for (const DlmmBin& b : bins)
+    {
+      putI64(p, b.id);
+      putU256(p, b.amountX);
+      putU256(p, b.amountY);
+    }
+    frame(PoolRecord::Checkpoint, p);
+  }
+
   void swap(int64_t tsNs, bool baseForQuote, const u256& amountIn)
   {
     std::vector<uint8_t> p;
     using namespace pool_tape_detail;
     putU64(p, static_cast<uint64_t>(tsNs));
     putU8(p, baseForQuote ? 1 : 0);
+    putU256(p, amountIn);
+    frame(PoolRecord::SwapDelta, p);
+  }
+
+  // An n-token swap names the pool's (i, j) pair explicitly, so a swap on a pair
+  // the connector does not present still moves the shared state. Distinguished from
+  // the directional record by payload size.
+  void swapN(int64_t tsNs, uint8_t i, uint8_t j, const u256& amountIn)
+  {
+    std::vector<uint8_t> p;
+    using namespace pool_tape_detail;
+    putU64(p, static_cast<uint64_t>(tsNs));
+    putU8(p, i);
+    putU8(p, j);
     putU256(p, amountIn);
     frame(PoolRecord::SwapDelta, p);
   }
@@ -270,7 +455,7 @@ class PoolStateReplay
         readCheckpoint(rec);
         break;
       case PoolRecord::SwapDelta:
-        readSwap(rec);
+        readSwap(rec, len);
         break;
       default:
         break;  // unknown record type: skipped via len
@@ -280,17 +465,57 @@ class PoolStateReplay
  private:
   void readDescriptor(const uint8_t* rec)
   {
+    using namespace pool_tape_detail;
     _venue = static_cast<PoolVenue>(*rec++);
     _baseDec = *rec++;
     _quoteDec = *rec++;
-    _fee = pool_tape_detail::getU64(rec);  // feeNum (CP) / feePips (CLMM) / tradeFeeRate (RaydiumCp)
+    if (_venue == PoolVenue::StableSwap)
+    {
+      const uint64_t n = getU64(rec);
+      _rates = getU256Vec(rec, n);
+      _amp = getU64(rec);
+      _feeWide = getU256(rec);
+      return;
+    }
+    if (_venue == PoolVenue::Weighted)
+    {
+      const uint64_t n = getU64(rec);
+      _scalingFactors = getU256Vec(rec, n);
+      _weights = getU256Vec(rec, n);
+      _feeWide = getU256(rec);
+      return;
+    }
+    if (_venue == PoolVenue::Cryptoswap)
+    {
+      const uint64_t n = getU64(rec);
+      _precisions = getU256Vec(rec, n);
+      _amp = getU64(rec);
+      _gamma = getU256(rec);
+      _midFee = getU256(rec);
+      _outFee = getU256(rec);
+      _feeGamma = getU256(rec);
+      return;
+    }
+    if (_venue == PoolVenue::MeteoraDlmm)
+    {
+      _binStep = static_cast<uint16_t>(getU64(rec));
+      _dlmmParams.baseFactor = static_cast<uint32_t>(getU64(rec));
+      _dlmmParams.baseFeePowerFactor = *rec++;
+      _dlmmParams.variableFeeControl = static_cast<uint32_t>(getU64(rec));
+      _dlmmParams.filterPeriod = static_cast<uint16_t>(getU64(rec));
+      _dlmmParams.decayPeriod = static_cast<uint16_t>(getU64(rec));
+      _dlmmParams.reductionFactor = static_cast<uint16_t>(getU64(rec));
+      _dlmmParams.maxVolatilityAccumulator = static_cast<uint32_t>(getU64(rec));
+      return;
+    }
+    _fee = getU64(rec);  // feeNum (CP) / feePips (CLMM) / tradeFeeRate (RaydiumCp)
     if (_venue == PoolVenue::ConstantProduct)
     {
-      _feeDen = pool_tape_detail::getU64(rec);
+      _feeDen = getU64(rec);
     }
     else if (_venue == PoolVenue::RaydiumCp)
     {
-      _creatorFee = pool_tape_detail::getU64(rec);
+      _creatorFee = getU64(rec);
       _creatorOnInput = *rec++ != 0;
     }
   }
@@ -313,6 +538,50 @@ class PoolStateReplay
         next = std::make_unique<ConstantProductCurve>(r0, r1, _fee, _feeDen);
       }
     }
+    else if (isBalancesShaped(_venue))
+    {
+      const uint64_t n = getU64(rec);
+      std::vector<u256> balances = getU256Vec(rec, n);
+      if (_venue == PoolVenue::StableSwap)
+      {
+        next = std::make_unique<StableSwapCurve>(std::move(balances), _rates, _amp, _feeWide);
+      }
+      else if (_venue == PoolVenue::Weighted)
+      {
+        next = std::make_unique<WeightedCurve>(std::move(balances), _scalingFactors, _weights,
+                                               _feeWide);
+      }
+      else
+      {
+        std::vector<u256> scale = getU256Vec(rec, n - 1);
+        next = std::make_unique<CryptoswapCurve>(std::move(balances), _precisions,
+                                                 std::move(scale), _amp, _gamma, _midFee, _outFee,
+                                                 _feeGamma);
+      }
+    }
+    else if (_venue == PoolVenue::MeteoraDlmm)
+    {
+      const auto activeId = static_cast<int32_t>(getI64(rec));
+      const uint64_t timestamp = getU64(rec);
+      DlmmVolatility vol;
+      vol.volatilityAccumulator = static_cast<uint32_t>(getU64(rec));
+      vol.volatilityReference = static_cast<uint32_t>(getU64(rec));
+      vol.indexReference = static_cast<int32_t>(getI64(rec));
+      vol.lastUpdateTimestamp = getU64(rec);
+      const uint64_t n = getU64(rec);
+      std::vector<DlmmBin> bins;
+      bins.reserve(n);
+      for (uint64_t k = 0; k < n; ++k)
+      {
+        DlmmBin b;
+        b.id = static_cast<int32_t>(getI64(rec));
+        b.amountX = getU256(rec);
+        b.amountY = getU256(rec);
+        bins.push_back(b);
+      }
+      next = std::make_unique<MeteoraDlmmCurve>(activeId, _binStep, std::move(bins), _dlmmParams,
+                                                vol, timestamp);
+    }
     else
     {
       const u256 sqrtP = getU256(rec);
@@ -334,7 +603,12 @@ class PoolStateReplay
     {
       const std::vector<u256> old = _curve->balances();
       const std::vector<u256>& fresh = next->balances();
-      if (old.size() != fresh.size() || !(old[0] == fresh[0]) || !(old[1] == fresh[1]))
+      bool same = old.size() == fresh.size();
+      for (std::size_t k = 0; same && k < old.size(); ++k)
+      {
+        same = old[k] == fresh[k];
+      }
+      if (!same)
       {
         ++_drift;
       }
@@ -344,15 +618,41 @@ class PoolStateReplay
     _conn.republish(tsNs);
   }
 
-  void readSwap(const uint8_t* rec)
+  // A directional record (41 bytes) swaps the connector's pair; an n-token record
+  // (42 bytes) names (i, j) -- on the connector's pair it emits the trade, off it
+  // the state still moves and the book republishes, but no trade prints on this
+  // symbol (the swap happened on a pair this connector does not present).
+  void readSwap(const uint8_t* rec, std::size_t len)
   {
-    const int64_t tsNs = static_cast<int64_t>(pool_tape_detail::getU64(rec));
-    const bool baseForQuote = *rec++ != 0;
-    const u256 amountIn = pool_tape_detail::getU256(rec);
-    if (_curve)
+    using namespace pool_tape_detail;
+    const int64_t tsNs = static_cast<int64_t>(getU64(rec));
+    if (!_curve)
     {
-      _conn.onSwap(amountIn, baseForQuote, tsNs);
+      return;
     }
+    if (len == kSwapNPayload)
+    {
+      const std::size_t i = *rec++;
+      const std::size_t j = *rec++;
+      const u256 amountIn = getU256(rec);
+      if (i == _conn.baseIndex() && j == _conn.quoteIndex())
+      {
+        _conn.onSwap(amountIn, true, tsNs);
+      }
+      else if (i == _conn.quoteIndex() && j == _conn.baseIndex())
+      {
+        _conn.onSwap(amountIn, false, tsNs);
+      }
+      else
+      {
+        _curve->applySwap(i, j, amountIn);
+        _conn.republish(tsNs);
+      }
+      return;
+    }
+    const bool baseForQuote = *rec++ != 0;
+    const u256 amountIn = getU256(rec);
+    _conn.onSwap(amountIn, baseForQuote, tsNs);
   }
 
   std::unique_ptr<INTokenCurve> buildClmm(const u256& sqrtP, const u256& L,
@@ -372,6 +672,10 @@ class PoolStateReplay
     }
   }
 
+  // [ts:u64][i:u8][j:u8][amountIn:u256] -- the n-token SwapDelta payload size,
+  // one byte longer than the directional [ts][dir][amountIn].
+  static constexpr std::size_t kSwapNPayload = 8 + 1 + 1 + 32;
+
   AmmDexConnector& _conn;
   std::unique_ptr<INTokenCurve> _curve;
   PoolVenue _venue{PoolVenue::ConstantProduct};
@@ -381,6 +685,18 @@ class PoolStateReplay
   uint64_t _feeDen{0};
   uint64_t _creatorFee{0};
   bool _creatorOnInput{true};
+  uint64_t _amp{0};
+  u256 _feeWide{0};
+  std::vector<u256> _rates;
+  std::vector<u256> _scalingFactors;
+  std::vector<u256> _weights;
+  std::vector<u256> _precisions;
+  u256 _gamma{0};
+  u256 _midFee{0};
+  u256 _outFee{0};
+  u256 _feeGamma{0};
+  uint16_t _binStep{0};
+  DlmmFeeParams _dlmmParams{};
   std::size_t _drift{0};
 };
 

@@ -81,6 +81,24 @@ class MeteoraDlmmCurve : public INTokenCurve
   // (1 + bin_step/1e4)^id in Q64.64, the program's bin price.
   u256 binPriceAt(int32_t id) const { return binPrice(id); }
 
+  // The checkpoint surface: everything a recorder needs to capture the pool's
+  // variable state (the static DlmmFeeParams travel in the descriptor).
+  int32_t activeId() const { return _activeId; }
+  uint16_t binStep() const { return _binStep; }
+  const DlmmFeeParams& feeParams() const { return _params; }
+  const DlmmVolatility& volatility() const { return _vol; }
+  uint64_t timestamp() const { return _ts; }
+  std::vector<DlmmBin> bins() const
+  {
+    std::vector<DlmmBin> out;
+    out.reserve(_bins.size());
+    for (const auto& [id, r] : _bins)
+    {
+      out.push_back({id, r.first, r.second});
+    }
+    return out;
+  }
+
   std::size_t tokenCount() const override { return 2; }
 
   // The total reserves across all bins, so the interface has a composition.
@@ -103,12 +121,32 @@ class MeteoraDlmmCurve : public INTokenCurve
     return runSwap(i == 0, amountIn, active, v);
   }
 
+  // Moves the active bin, the volatility state, and the bin reserves: each filled
+  // bin gains the net input it absorbed and loses the output it paid. The fee part
+  // of the input is not compounded into the bin (on-chain it splits protocol/LP);
+  // a checkpoint that includes accrued LP fees re-anchors it as drift.
   u256 applySwap(std::size_t i, std::size_t j, const u256& amountIn) override
   {
     (void)j;
+    const bool swapForY = i == 0;
     int32_t active = _activeId;
     DlmmVolatility v = _vol;
-    const u256 out = runSwap(i == 0, amountIn, active, v, /*mutate*/ true);
+    std::vector<BinFill> fills;
+    const u256 out = runSwap(swapForY, amountIn, active, v, &fills);
+    for (const BinFill& f : fills)
+    {
+      auto& r = _bins[f.id];
+      if (swapForY)
+      {
+        r.first = r.first + f.in;
+        r.second = r.second - f.out;
+      }
+      else
+      {
+        r.second = r.second + f.in;
+        r.first = r.first - f.out;
+      }
+    }
     _activeId = active;
     _vol = v;
     return out;
@@ -120,6 +158,15 @@ class MeteoraDlmmCurve : public INTokenCurve
   }
 
  private:
+  // One bin's fill during a swap walk: the net input it absorbed (fee excluded)
+  // and the output it paid, so applySwap can move the reserves it quotes from.
+  struct BinFill
+  {
+    int32_t id{0};
+    u256 in{0};
+    u256 out{0};
+  };
+
   static constexpr uint64_t kBasisPointMax = 10000;
   static constexpr uint64_t kFeePrecision = 1000000000;  // 1e9
   static constexpr uint64_t kMaxFeeRate = 100000000;     // 1e8 (10%)
@@ -240,9 +287,10 @@ class MeteoraDlmmCurve : public INTokenCurve
   }
 
   // The bin walk: fill bins from the active one outward, each constant-sum at its
-  // price with the per-bin dynamic fee (fee on input).
+  // price with the per-bin dynamic fee (fee on input). When fills is given, each
+  // bin's net-in / out is recorded so the caller can move the reserves.
   u256 runSwap(bool swapForY, const u256& amountIn, int32_t& active, DlmmVolatility& v,
-               bool /*mutate*/ = false) const
+               std::vector<BinFill>* fills = nullptr) const
   {
     if (amountIn.isZero())
     {
@@ -277,12 +325,21 @@ class MeteoraDlmmCurve : public INTokenCurve
           const u256 binFee = computeFee(maxIn, fee);
           out = out + maxOut;
           left = left - (maxIn + binFee);
+          if (fills)
+          {
+            fills->push_back({active, maxIn, maxOut});
+          }
         }
         else
         {
           // partial fill; the whole remaining input is spent here.
-          out = out + amountOutAtBin(net, price, swapForY);
+          const u256 binOut = amountOutAtBin(net, price, swapForY);
+          out = out + binOut;
           left = u256(0);
+          if (fills)
+          {
+            fills->push_back({active, net, binOut});
+          }
         }
       }
       if (!left.isZero())
