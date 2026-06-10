@@ -122,9 +122,10 @@ class MeteoraDlmmCurve : public INTokenCurve
   }
 
   // Moves the active bin, the volatility state, and the bin reserves: each filled
-  // bin gains the net input it absorbed and loses the output it paid. The fee part
-  // of the input is not compounded into the bin (on-chain it splits protocol/LP);
-  // a checkpoint that includes accrued LP fees re-anchors it as drift.
+  // bin gains the net input it absorbed and loses the output it paid. The whole fee
+  // is excluded from the bin, exactly as the program's Bin::swap does
+  // (amount_into_bin = amount_in_with_fees - fee; fees are claimable, tracked
+  // outside amount_x/amount_y), so the reserves match an on-chain bin readback.
   u256 applySwap(std::size_t i, std::size_t j, const u256& amountIn) override
   {
     (void)j;

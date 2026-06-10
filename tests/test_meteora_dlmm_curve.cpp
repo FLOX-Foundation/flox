@@ -80,7 +80,8 @@ TEST(MeteoraDlmmCurveTest, BalancesAndApply)
   EXPECT_EQ(clone->amountOut(0, 1, D("2500000000")).toDec(), out.toDec());  // clone untouched
 
   // The apply moved the bin reserves: Y left the pool exactly as quoted, X grew by
-  // the net input (the fee part is not compounded into the bins).
+  // the net input -- the program's amount_into_bin = amount_in_with_fees - fee, the
+  // whole fee stays out of the reserves (it is claimable, not compounded).
   EXPECT_EQ((p.balances()[1] + out).toDec(), "7000000000");
   EXPECT_GT(p.balances()[0], D("7000000000"));
   EXPECT_LT(p.balances()[0], D("7000000000") + D("2500000000"));
