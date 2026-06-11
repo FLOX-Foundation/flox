@@ -11,6 +11,10 @@
 
 #include "flox/backtest/concentrated_liquidity_curve.h"
 #include "flox/backtest/constant_product_curve.h"
+#include "flox/backtest/cryptoswap_curve.h"
+#include "flox/backtest/meteora_dlmm_curve.h"
+#include "flox/backtest/stableswap_curve.h"
+#include "flox/backtest/weighted_curve.h"
 
 #include <gtest/gtest.h>
 
@@ -142,6 +146,212 @@ TEST(PoolStateTapeTest, MismatchedCheckpointIsDrift)
   PoolStateReplay replay(conn);
   replay.run(tape);
   EXPECT_EQ(replay.driftCount(), 1u);  // caught and re-anchored
+}
+
+// A balances-shaped venue round-trips: the descriptor carries the StableSwap
+// parameters, a checkpoint carries the full 3-coin balance vector, and an n-token
+// SwapDelta names its (i, j) pair. The (0,1) swap is the connector's pair and
+// prints a trade; the (1,2) swap is off-pair -- the shared state still moves and
+// the book republishes, but no trade prints on this symbol. The closing checkpoint
+// matches the replayed balances across all three coins, so no drift.
+TEST(PoolStateTapeTest, StableSwapRoundTripOffPairSwapMovesState)
+{
+  const std::vector<u256> rates{u256::pow10(18), u256::pow10(30), u256::pow10(30)};
+  const u256 fee = D("1500000");
+  const std::vector<u256> bal{D("50000000000000000000000000"),  // 50M DAI
+                              D("50000000000000"),              // 50M USDC
+                              D("50000000000000")};             // 50M USDT
+  const u256 dxPair = D("1000000000000000000000000");           // 1M DAI -> USDC
+  const u256 dxOff = D("2000000000000");                        // 2M USDC -> USDT
+
+  StableSwapCurve expected(bal, rates, 4000, fee);
+  expected.applySwap(0, 1, dxPair);
+  expected.applySwap(1, 2, dxOff);
+
+  std::vector<uint8_t> tape;
+  PoolStateWriter w(tape);
+  w.descriptorStableSwap(rates, 4000, fee, 18, 6);
+  w.checkpointBalances(100, bal);
+  w.swapN(200, 0, 1, dxPair);
+  w.swapN(300, 1, 2, dxOff);
+  w.checkpointBalances(400, expected.balances());
+
+  StableSwapCurve seed(bal, rates, 4000, fee);
+  AmmDexConnector conn("amm", SymbolId{1}, seed, 0, 1, 18, 6, 1, D("1000000000000000000"));
+  int trades = 0;
+  conn.setCallbacks([](const BookUpdateEvent&) {}, [&](const TradeEvent&)
+                    { ++trades; });
+
+  PoolStateReplay replay(conn);
+  replay.run(tape);
+
+  EXPECT_EQ(replay.driftCount(), 0u);
+  EXPECT_EQ(trades, 1);  // the off-pair swap moves state without a trade print
+  ASSERT_NE(replay.curve(), nullptr);
+  for (std::size_t k = 0; k < 3; ++k)
+  {
+    EXPECT_EQ(replay.curve()->balances()[k].toDec(), expected.balances()[k].toDec());
+  }
+}
+
+// A weighted venue replays through the directional SwapDelta: the 80/20 pool's
+// exact Balancer math reconstructs the post-state, and the balances-shaped
+// checkpoint anchors it.
+TEST(PoolStateTapeTest, WeightedRoundTripDirectionalSwap)
+{
+  const std::vector<u256> sf{u256::pow10(18), u256::pow10(18)};
+  const std::vector<u256> weights{D("800000000000000000"), D("200000000000000000")};
+  const u256 fee = D("10000000000000000");
+  const std::vector<u256> bal{D("1000000000000000000000000"), D("1000000000000000000000")};
+  const u256 dx = D("10000000000000000000000");  // BAL -> WETH
+
+  WeightedCurve expected(bal, sf, weights, fee);
+  expected.applySwap(0, 1, dx);
+
+  std::vector<uint8_t> tape;
+  PoolStateWriter w(tape);
+  w.descriptorWeighted(sf, weights, fee, 18, 18);
+  w.checkpointBalances(100, bal);
+  w.swap(200, true, dx);
+  w.checkpointBalances(300, expected.balances());
+
+  WeightedCurve seed(bal, sf, weights, fee);
+  AmmDexConnector conn = makeConnector(seed);
+  int trades = 0;
+  conn.setCallbacks([](const BookUpdateEvent&) {}, [&](const TradeEvent&)
+                    { ++trades; });
+
+  PoolStateReplay replay(conn);
+  replay.run(tape);
+
+  EXPECT_EQ(replay.driftCount(), 0u);
+  EXPECT_EQ(trades, 1);
+  ASSERT_NE(replay.curve(), nullptr);
+  EXPECT_EQ(replay.curve()->balances()[0].toDec(), expected.balances()[0].toDec());
+  EXPECT_EQ(replay.curve()->balances()[1].toDec(), expected.balances()[1].toDec());
+}
+
+// A cryptoswap venue carries its price scale in the checkpoint -- it is state the
+// chain repegs, not a static parameter -- and the replayed curve quotes with the
+// re-anchored scale. Tricrypto snapshot parameters, USDT/WBTC as the pair.
+TEST(PoolStateTapeTest, CryptoswapRoundTripReanchorsPriceScale)
+{
+  const std::vector<u256> bal{D("3142759669571"), D("5014135703"),
+                              D("1929303558813993742375")};
+  const std::vector<u256> prec{u256::pow10(12), u256::pow10(10), u256(1)};
+  const std::vector<u256> scale{D("61120002629999063359445"), D("1581037626232863066025")};
+  const u256 gamma = D("11809167828997");
+  const u256 midFee = D("3000000"), outFee = D("30000000"), feeGamma = D("500000000000000");
+  const u256 dx = D("10000000000");  // 10,000 USDT -> WBTC
+
+  CryptoswapCurve expected(bal, prec, scale, 1707629, gamma, midFee, outFee, feeGamma);
+  expected.applySwap(0, 1, dx);
+
+  std::vector<uint8_t> tape;
+  PoolStateWriter w(tape);
+  w.descriptorCryptoswap(prec, 1707629, gamma, midFee, outFee, feeGamma, 6, 8);
+  w.checkpointCryptoswap(100, bal, scale);
+  w.swapN(200, 0, 1, dx);
+  w.checkpointCryptoswap(300, expected.balances(), scale);
+
+  CryptoswapCurve seed(bal, prec, scale, 1707629, gamma, midFee, outFee, feeGamma);
+  AmmDexConnector conn("amm", SymbolId{1}, seed, 0, 1, 6, 8, 1, D("1000000"));
+  int trades = 0;
+  conn.setCallbacks([](const BookUpdateEvent&) {}, [&](const TradeEvent&)
+                    { ++trades; });
+
+  PoolStateReplay replay(conn);
+  replay.run(tape);
+
+  EXPECT_EQ(replay.driftCount(), 0u);
+  EXPECT_EQ(trades, 1);
+  ASSERT_NE(replay.curve(), nullptr);
+  const auto* cs = dynamic_cast<const CryptoswapCurve*>(replay.curve());
+  ASSERT_NE(cs, nullptr);
+  EXPECT_EQ(cs->priceScale()[0].toDec(), scale[0].toDec());
+  for (std::size_t k = 0; k < 3; ++k)
+  {
+    EXPECT_EQ(cs->balances()[k].toDec(), expected.balances()[k].toDec());
+  }
+}
+
+// A Meteora DLMM venue: the checkpoint carries the bin book and volatility state,
+// a swap walks bins through the exact Liquidity Book math (moving the active bin
+// and the bin reserves), and the closing checkpoint -- captured off the expected
+// post-state -- matches, so no drift.
+TEST(PoolStateTapeTest, DlmmRoundTripWalksBins)
+{
+  DlmmFeeParams params;
+  params.baseFactor = 10000;
+  params.baseFeePowerFactor = 0;
+  params.variableFeeControl = 40000;
+  params.filterPeriod = 30;
+  params.decayPeriod = 600;
+  params.reductionFactor = 5000;
+  params.maxVolatilityAccumulator = 350000;
+  std::vector<DlmmBin> bins;
+  for (int32_t i = -3; i <= 3; ++i)
+  {
+    bins.push_back({i, D("1000000000"), D("1000000000")});
+  }
+  const u256 amtIn = D("2500000000");  // X in, crosses several bins downward
+
+  MeteoraDlmmCurve expected(0, 10, bins, params, DlmmVolatility{}, 1000000);
+  const u256 outExpected = expected.amountOut(0, 1, amtIn);
+  expected.applySwap(0, 1, amtIn);
+  EXPECT_LT(expected.activeId(), 0);  // the X-in walk moved the active bin down
+
+  std::vector<uint8_t> tape;
+  PoolStateWriter w(tape);
+  w.descriptorDlmm(10, params, 9, 9);
+  w.checkpointDlmm(100, 0, 1000000, DlmmVolatility{}, bins);
+  w.swap(200, true, amtIn);
+  w.checkpointDlmm(300, expected.activeId(), expected.timestamp(), expected.volatility(),
+                   expected.bins());
+
+  MeteoraDlmmCurve seed(0, 10, bins, params, DlmmVolatility{}, 1000000);
+  AmmDexConnector conn("amm", SymbolId{1}, seed, 0, 1, 9, 9, 1, D("1000000000"));
+  int trades = 0;
+  conn.setCallbacks([](const BookUpdateEvent&) {}, [&](const TradeEvent&)
+                    { ++trades; });
+
+  PoolStateReplay replay(conn);
+  replay.run(tape);
+
+  EXPECT_EQ(replay.driftCount(), 0u);
+  EXPECT_EQ(trades, 1);
+  ASSERT_NE(replay.curve(), nullptr);
+  const auto* dlmm = dynamic_cast<const MeteoraDlmmCurve*>(replay.curve());
+  ASSERT_NE(dlmm, nullptr);
+  EXPECT_EQ(dlmm->activeId(), expected.activeId());
+  EXPECT_EQ(dlmm->balances()[0].toDec(), expected.balances()[0].toDec());
+  EXPECT_EQ(dlmm->balances()[1].toDec(), expected.balances()[1].toDec());
+  EXPECT_EQ(outExpected.toDec(), "2495496549");  // the program-reference output
+}
+
+// A balances-shaped checkpoint that disagrees with the replayed state is drift,
+// the same guarantee the two-reserve venues have.
+TEST(PoolStateTapeTest, StableSwapMismatchedCheckpointIsDrift)
+{
+  const std::vector<u256> rates{u256::pow10(18), u256::pow10(30), u256::pow10(30)};
+  const u256 fee = D("1500000");
+  const std::vector<u256> bal{D("50000000000000000000000000"), D("50000000000000"),
+                              D("50000000000000")};
+
+  std::vector<uint8_t> tape;
+  PoolStateWriter w(tape);
+  w.descriptorStableSwap(rates, 4000, fee, 18, 6);
+  w.checkpointBalances(100, bal);
+  w.swapN(200, 0, 1, D("1000000000000000000000000"));
+  w.checkpointBalances(300, bal);  // does NOT match the post-swap state
+
+  StableSwapCurve seed(bal, rates, 4000, fee);
+  AmmDexConnector conn("amm", SymbolId{1}, seed, 0, 1, 18, 6, 1, D("1000000000000000000"));
+  conn.setCallbacks([](const BookUpdateEvent&) {}, [](const TradeEvent&) {});
+
+  PoolStateReplay replay(conn);
+  replay.run(tape);
+  EXPECT_EQ(replay.driftCount(), 1u);
 }
 
 // An unknown record type is skipped via its length frame (forward compatibility).

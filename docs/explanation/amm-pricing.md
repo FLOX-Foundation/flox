@@ -318,12 +318,21 @@ the tape is compact and a swap is both the trade and the state mutation, one str
 the curve, a SwapDelta is applied through `onSwap`. All amounts are u256, 32 bytes
 big-endian, chain-native.
 
-A Checkpoint is venue-shaped: reserves for a constant-product pool, and the sqrt
+A Checkpoint is venue-shaped: reserves for a constant-product pool; the sqrt
 price, active liquidity, and tick array for a concentrated-liquidity pool (Uniswap
-v3, Orca Whirlpool, Raydium CLMM). The replay rebuilds the matching curve from
-whichever the Descriptor names, so a cross-tick swap is reconstructed through the
-exact v3 math, and the drift check compares the replayed and checkpoint states
-through `balances()`, which every venue exposes.
+v3, Orca Whirlpool, Raydium CLMM); the full balance vector for an n-token pool
+(StableSwap, Weighted -- Cryptoswap also carries its price scale, since the chain
+repegs it, so a repeg between checkpoints re-anchors rather than corrupts); and the
+bin book plus volatility-accumulator state for Meteora DLMM. The replay rebuilds
+the matching curve from whichever the Descriptor names, so a cross-tick swap is
+reconstructed through the exact v3 math and a DLMM swap through the exact bin walk,
+and the drift check compares the replayed and checkpoint states through
+`balances()`, which every venue exposes.
+
+An n-token venue's SwapDelta names its `(i, j)` pair explicitly. On the pair the
+connector presents it prints a trade; off it -- a 3pool USDC->USDT swap while the
+connector presents DAI/USDC -- the shared state still moves and the book
+republishes, because that swap changed the pool the presented pair prices from.
 
 It is checkpoint-anchored, not delta-only. Before a Checkpoint re-anchors, the
 replayed state is compared to it, and a mismatch is counted as drift -- an
