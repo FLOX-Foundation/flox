@@ -12,13 +12,13 @@ jobs:
   codegen-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # ABI gate scans recent commit messages for `BREAKING:`. Need full
           # history (or at least the PR's commits) to do that.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 

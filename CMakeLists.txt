@@ -80,12 +80,19 @@ if(NOT MSVC)
   endif()
 endif()
 
-if(MSVC)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  # Genuine cl.exe: whole-program optimization via /GL + /LTCG.
   target_compile_options(${FLOX} PUBLIC
     $<$<CONFIG:Release>:/O2 /GL>
   )
   target_link_options(${FLOX} PUBLIC
     $<$<CONFIG:Release>:/LTCG>
+  )
+elseif(MSVC)
+  # clang-cl has the MSVC frontend but does not accept /GL at compile time
+  # (it emits "argument unused"). Keep /O2; LTO would need -flto, not /GL.
+  target_compile_options(${FLOX} PUBLIC
+    $<$<CONFIG:Release>:/O2>
   )
 else()
   set(FLOX_RELEASE_OPTS -O3 -flto -funroll-loops)

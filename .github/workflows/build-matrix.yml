@@ -24,7 +24,7 @@ jobs:
   format-check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install clang-format
       run: |
         sudo apt-get update -qq
@@ -79,7 +79,7 @@ jobs:
             needs_pybind: true
     name: ${{ matrix.name }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install dependencies
       run: |
