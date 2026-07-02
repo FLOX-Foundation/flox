@@ -262,6 +262,9 @@ jobs:
     - name: Verify flox_py native-extension import guard
       run: PYTHONPATH=build/python python3 python/tests/test_native_import_guard.py
 
+    - name: Verify conditional orders (stop / take-profit / trailing) via SimulatedExecutor
+      run: PYTHONPATH=build/python python3 python/tests/test_conditional_orders.py
+
     - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
 

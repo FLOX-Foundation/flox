@@ -1,7 +1,7 @@
 """Reference strategy for the replay-equivalence CI gate.
 
 Frozen on purpose: any change here forces a regeneration of the
-expected output (run scripts/regen_replay_equivalence_fixtures.py).
+expected output (run scripts/replay_equivalence_gate.py --regen).
 
 The strategy fires one MARKET BUY on the first observed trade and
 holds — small enough that the gate is fast, exercises the
