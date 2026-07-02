@@ -36,7 +36,7 @@ When those land, this gate gets new fixtures alongside the existing one.
 python3 scripts/replay_equivalence_gate.py
 ```
 
-The script adds the built bindings to `sys.path` itself, preferring a build directory whose compiled extension matches the running interpreter (`build/python`, then `build-py312/python`). The interpreter you run the script with must be the one the bindings were built for: a `.so` built for a different Python version is invisible to the import system, and `flox_py` refuses to import with an explicit error pointing at the version mismatch. Rebuild the bindings with your interpreter or run the script with the matching one, e.g.:
+The script adds the built bindings to `sys.path` itself, preferring a build directory whose compiled extension matches the running interpreter (`build/python`, then `build-py312/python`). The interpreter you run the script with must be the one the bindings were built for: a `.so` built for a different Python version is invisible to the import system. `flox_py` still imports in that state (pure-Python surfaces such as `flox_py.cli` keep working), but the first access to a native name raises an ImportError pointing at the version mismatch. Rebuild the bindings with your interpreter or run the script with the matching one, e.g.:
 
 ```bash
 .venv312/bin/python scripts/replay_equivalence_gate.py
