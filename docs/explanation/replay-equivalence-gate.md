@@ -7,16 +7,28 @@ flox positions itself on three legs: deterministic backtest ↔ live replay equi
 Every push runs `scripts/replay_equivalence_gate.py`:
 
 1. Generate a small deterministic tape from a frozen sequence of synthetic trades (`tests/replay-equivalence/build_tape.py`).
-2. Run a frozen reference strategy (`tests/replay-equivalence/strategy.py`) through that tape against `flox_py.SimulatedExecutor`.
-3. Compare the captured output (`trade_count`, `fill_count`, the fill sequence, `total_filled_quantity`) field-by-field with the frozen `tests/replay-equivalence/expected_output.json`.
+2. Run every frozen scenario under `tests/replay-equivalence/scenarios/` through that tape against `flox_py.SimulatedExecutor`. Each scenario is a directory holding a `strategy.py` and its frozen `expected_output.json`.
+3. Compare each captured output (`trade_count`, `fill_count`, the fill sequence, `total_filled_quantity`) field-by-field with the scenario's frozen expectation.
 
-Match → exit 0. Divergence → exit 1, with a per-field diff printed to stderr (nested structures produce paths like `fills[0].price: actual=100.0 expected=999.0`). The gate runs as a step of the `linux-gcc` CI job; divergence fails that job and blocks merge.
+All scenarios match → exit 0. Any divergence → exit 1, with a per-field diff per scenario printed to stderr (nested structures produce paths like `fills[0].price: actual=100.0 expected=999.0`). The gate runs as a step of the `linux-gcc` CI job; divergence fails that job and blocks merge.
+
+## Scenarios
+
+| Scenario | Mechanics pinned |
+|---|---|
+| `market` | market entry on the first trade; the plain strategy → simulator → fill round trip |
+| `stop_loss` | entry + protective SELL `stop_market` armed mid-tape; trigger evaluation (`price <= trigger`) and triggered-market conversion |
+| `take_profit` | entry + SELL `take_profit_market`; the tape prints 101.25 against a 101.30 trigger before firing at 101.50, pinning the trigger boundary |
+| `trailing_stop` | entry + SELL `trailing_stop` with a fixed 0.30 offset; the trigger ratchets behind the rally and fires on the pullback |
+
+`stop_loss` and `trailing_stop` freeze the same fill sequence through different mechanics — a regression in ratchet math surfaces in one without the other.
 
 ## What divergence catches
 
 - Engine event-ordering changes that shift fill prices.
 - Slippage model regressions.
 - Queue-tracking math drift.
+- Conditional-order regressions: trigger comparison direction, trigger-price plumbing through the signal path, trailing-stop ratchet math, triggered-order conversion to market.
 - C++/Python type round-trip changes that perturb fixed-point conversion.
 - Unintentional behavior changes in `SimulatedExecutor` order matching.
 
@@ -24,11 +36,11 @@ Match → exit 0. Divergence → exit 1, with a per-field diff printed to stderr
 
 The gate is intentionally small. It does not exercise:
 
-- Stop / take-profit / trailing variants. Those are no-ops in `SimulatedExecutor.submit_order` today.
+- Resting-limit fills. Resting limits fill against book liquidity, not the trade feed, and the gate's tape is trades-only; a book-driven scenario needs a tape format that carries snapshots.
 - Multi-strategy composition.
 - Live ↔ backtest equivalence proper. A separate phase tracks that work: a captured live tape replayed through the engine, comparing against the live-side fill log.
 
-When those land, this gate gets new fixtures alongside the existing one.
+When those land, this gate gets new fixtures alongside the existing ones.
 
 ## Running the gate locally
 
@@ -50,9 +62,9 @@ When an intentional engine change shifts fills (a slippage formula refinement, a
 python3 scripts/replay_equivalence_gate.py --regen
 ```
 
-Commit the resulting `tests/replay-equivalence/expected_output.json` diff alongside the engine change. The PR review should explain what shifted and why; reviewers should reject regenerations that are not justified.
+Commit the resulting `expected_output.json` diffs alongside the engine change. The PR review should explain what shifted and why; reviewers should reject regenerations that are not justified. `--regen` rewrites every scenario, so an engine change that legitimately shifts one scenario and silently shifts another shows up as two diffs — both need explaining.
 
-The fixtures (`strategy.py`, `build_tape.py`, `expected_output.json`) live together so that "what is the gate testing" is one directory listing away from "what does the gate expect".
+The fixtures (each scenario's `strategy.py` + `expected_output.json`, plus the shared `build_tape.py`) live together so that "what is the gate testing" is one directory listing away from "what does the gate expect".
 
 ## Why a synthetic tape
 

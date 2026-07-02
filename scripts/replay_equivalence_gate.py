@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Replay-equivalence CI gate (W2-T017).
 
-Builds a deterministic tape, runs the frozen reference strategy
-through it, and compares the captured output field-by-field against
-``tests/replay-equivalence/expected_output.json``. This is the
-guarantee behind flox's "deterministic backtest ↔ live replay"
-positioning: if anything in the engine drifts the fill output,
-this gate fails before merge.
+Builds a deterministic tape and runs every frozen scenario under
+``tests/replay-equivalence/scenarios/`` through it, comparing each
+captured output field-by-field against the scenario's frozen
+``expected_output.json``. Scenarios cover the plain market path plus
+the conditional-order mechanics (stop-loss, take-profit, trailing
+stop). This is the guarantee behind flox's "deterministic backtest ↔
+live replay" positioning: if anything in the engine drifts the fill
+output, this gate fails before merge.
 
-Exits 0 on an exact match, 1 on divergence (with a per-field diff).
+Exits 0 when every scenario matches exactly, 1 on divergence (with a
+per-field diff per scenario).
 
 To regenerate the expected output after an intentional change, run
 this script with ``--regen``: it will overwrite the JSON in place.
@@ -27,8 +30,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = REPO_ROOT / "tests" / "replay-equivalence"
-STRATEGY_PATH = FIXTURES / "strategy.py"
-EXPECTED_PATH = FIXTURES / "expected_output.json"
+SCENARIOS_DIR = FIXTURES / "scenarios"
 
 
 def _ensure_python_path() -> None:
@@ -81,36 +83,56 @@ def run(*, regen: bool = False) -> int:
     from flox_py.bundle import _run_strategy_against_tape  # type: ignore
     from build_tape import build_tape  # type: ignore
 
+    scenarios = sorted(
+        p for p in SCENARIOS_DIR.iterdir()
+        if (p / "strategy.py").is_file()
+    )
+    if not scenarios:
+        print("::error::replay-equivalence gate: no scenarios found",
+              file=sys.stderr)
+        return 1
+
     work = Path(tempfile.mkdtemp(prefix="flox-replay-eq-"))
+    failed: list[str] = []
     try:
         tape_dir = work / "tape"
         build_tape(tape_dir)
-        actual = _run_strategy_against_tape(STRATEGY_PATH, tape_dir)
+
+        for scen in scenarios:
+            actual = _run_strategy_against_tape(scen / "strategy.py", tape_dir)
+            expected_path = scen / "expected_output.json"
+
+            if regen:
+                expected_path.write_text(
+                    json.dumps(actual, indent=2, sort_keys=True) + "\n"
+                )
+                print(f"replay-equivalence gate: regenerated {expected_path}")
+                continue
+
+            expected = json.loads(expected_path.read_text())
+            diffs = _diff_dicts(actual, expected)
+            if not diffs:
+                print(
+                    f"replay-equivalence gate [{scen.name}]: OK "
+                    f"(trade_count={actual['trade_count']}, "
+                    f"fill_count={actual['fill_count']}, "
+                    f"total_filled={actual['total_filled_quantity']})"
+                )
+                continue
+
+            failed.append(scen.name)
+            print(f"::error::replay-equivalence gate [{scen.name}]: DIVERGENCE",
+                  file=sys.stderr)
+            for d in diffs:
+                print(f"  {d}", file=sys.stderr)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
-    if regen:
-        EXPECTED_PATH.write_text(
-            json.dumps(actual, indent=2, sort_keys=True) + "\n"
-        )
-        print(f"replay-equivalence gate: regenerated {EXPECTED_PATH}")
+    if regen or not failed:
         return 0
 
-    expected = json.loads(EXPECTED_PATH.read_text())
-    diffs = _diff_dicts(actual, expected)
-    if not diffs:
-        print(
-            f"replay-equivalence gate: OK "
-            f"(trade_count={actual['trade_count']}, "
-            f"fill_count={actual['fill_count']}, "
-            f"total_filled={actual['total_filled_quantity']})"
-        )
-        return 0
-
-    print("::error::replay-equivalence gate: DIVERGENCE", file=sys.stderr)
-    for d in diffs:
-        print(f"  {d}", file=sys.stderr)
     print(
+        f"\n{len(failed)} scenario(s) diverged: {', '.join(failed)}."
         "\nIf this divergence is intentional, regenerate the expected "
         "output with:\n  python3 scripts/replay_equivalence_gate.py --regen",
         file=sys.stderr,
