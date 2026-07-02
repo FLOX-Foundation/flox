@@ -259,6 +259,9 @@ jobs:
     - name: Verify DataReader progress callback (Python)
       run: PYTHONPATH=build/python python3 python/tests/test_progress_callback.py
 
+    - name: Verify flox_py native-extension import guard
+      run: PYTHONPATH=build/python python3 python/tests/test_native_import_guard.py
+
     - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
 

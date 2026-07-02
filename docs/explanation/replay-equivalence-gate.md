@@ -8,9 +8,9 @@ Every push runs `scripts/replay_equivalence_gate.py`:
 
 1. Generate a small deterministic tape from a frozen sequence of synthetic trades (`tests/replay-equivalence/build_tape.py`).
 2. Run a frozen reference strategy (`tests/replay-equivalence/strategy.py`) through that tape against `flox_py.SimulatedExecutor`.
-3. Compare the captured output (`trade_count`, `fill_count`, the fill sequence, `total_filled_quantity`) byte-for-byte with the frozen `tests/replay-equivalence/expected_output.json`.
+3. Compare the captured output (`trade_count`, `fill_count`, the fill sequence, `total_filled_quantity`) field-by-field with the frozen `tests/replay-equivalence/expected_output.json`.
 
-Match → exit 0. Divergence → exit 1, with a per-key diff printed to stderr. The gate is wired into the `verify-docs-current` CI job, so divergence blocks the rest of the build matrix.
+Match → exit 0. Divergence → exit 1, with a per-field diff printed to stderr (nested structures produce paths like `fills[0].price: actual=100.0 expected=999.0`). The gate runs as a step of the `linux-gcc` CI job; divergence fails that job and blocks merge.
 
 ## What divergence catches
 
@@ -29,6 +29,18 @@ The gate is intentionally small. It does not exercise:
 - Live ↔ backtest equivalence proper. A separate phase tracks that work: a captured live tape replayed through the engine, comparing against the live-side fill log.
 
 When those land, this gate gets new fixtures alongside the existing one.
+
+## Running the gate locally
+
+```bash
+python3 scripts/replay_equivalence_gate.py
+```
+
+The script adds the built bindings to `sys.path` itself, preferring a build directory whose compiled extension matches the running interpreter (`build/python`, then `build-py312/python`). The interpreter you run the script with must be the one the bindings were built for: a `.so` built for a different Python version is invisible to the import system. `flox_py` still imports in that state (pure-Python surfaces such as `flox_py.cli` keep working), but the first access to a native name raises an ImportError pointing at the version mismatch. Rebuild the bindings with your interpreter or run the script with the matching one, e.g.:
+
+```bash
+.venv312/bin/python scripts/replay_equivalence_gate.py
+```
 
 ## Regenerating the expected output
 
