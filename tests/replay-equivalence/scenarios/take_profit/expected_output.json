@@ -1,0 +1,19 @@
+{
+  "fill_count": 2,
+  "fills": [
+    {
+      "price": 100.0,
+      "quantity": 0.25,
+      "side": "buy",
+      "symbol": 1
+    },
+    {
+      "price": 101.5,
+      "quantity": 0.25,
+      "side": "sell",
+      "symbol": 1
+    }
+  ],
+  "total_filled_quantity": 0.5,
+  "trade_count": 7
+}

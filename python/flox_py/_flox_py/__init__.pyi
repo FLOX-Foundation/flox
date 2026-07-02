@@ -2824,9 +2824,9 @@ class SimulatedExecutor:
         """
         Submit a native iceberg order. Only visible_quantity is exposed; the hidden remainder refreshes automatically as the visible slice fills.
         """
-    def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0, account_id: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+    def submit_order(self, id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, type: str = 'market', symbol: typing.SupportsInt | typing.SupportsIndex = 1, tif: str = 'gtc', reduce_only: bool = False, expires_at_ns: typing.SupportsInt | typing.SupportsIndex = 0, account_id: typing.SupportsInt | typing.SupportsIndex = 0, trigger: typing.SupportsFloat | typing.SupportsIndex = 0.0, trailing_offset: typing.SupportsFloat | typing.SupportsIndex = 0.0, trailing_bps: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         """
-        Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. reduce_only: only reduce existing position. expires_at_ns: GTD deadline. account_id: optional STP account identifier (default 0).
+        Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. reduce_only: only reduce existing position. expires_at_ns: GTD deadline. account_id: optional STP account identifier (default 0). trigger: trigger price for stop_market / stop_limit / take_profit_market / take_profit_limit (falls back to `price` when unset, which is unambiguous for the market-style conditionals). trailing_offset / trailing_bps: fixed-price or bps offset for trailing_stop (set exactly one).
         """
     @property
     def fill_count(self) -> int:

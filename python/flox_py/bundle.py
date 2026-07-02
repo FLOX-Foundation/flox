@@ -175,9 +175,28 @@ def _run_strategy_against_tape(
             print(f"flox bundle: TraceRecorder unavailable: {e!r}", file=_sys.stderr)
             rec = None
 
+    # Signal.order_type strings follow the C-ABI signal enum
+    # ("tp_market" / "tp_limit"); SimulatedExecutor.submit_order parses
+    # the long names. Keys double as the accepted-signal filter; the
+    # index in this dict is also the bundle-local trace code (0=market,
+    # 1=limit predate the conditional types; the rest extend that
+    # convention in enum order).
+    _SIGNAL_TO_EXEC_TYPE = {
+        "market": "market",
+        "limit": "limit",
+        "stop_market": "stop_market",
+        "stop_limit": "stop_limit",
+        "tp_market": "take_profit_market",
+        "tp_limit": "take_profit_limit",
+        "trailing_stop": "trailing_stop",
+    }
+    _TRACE_ORDER_TYPE = {
+        name: code for code, name in enumerate(_SIGNAL_TO_EXEC_TYPE)
+    }
+
     def on_signal(sig: Any) -> None:
         order_type = (getattr(sig, "order_type", "") or "").lower()
-        if order_type not in ("market", "limit"):
+        if order_type not in _SIGNAL_TO_EXEC_TYPE:
             return
         side = (getattr(sig, "side", "") or "").lower()
         oid = int(getattr(sig, "order_id", 0) or 0)
@@ -188,7 +207,10 @@ def _run_strategy_against_tape(
         qty = float(getattr(sig, "quantity", 0.0))
         sim.submit_order(
             oid, side, price, qty,
-            type=order_type, symbol=int(sym),
+            type=_SIGNAL_TO_EXEC_TYPE[order_type], symbol=int(sym),
+            trigger=float(getattr(sig, "trigger_price", 0.0) or 0.0),
+            trailing_offset=float(getattr(sig, "trailing_offset", 0.0) or 0.0),
+            trailing_bps=int(getattr(sig, "trailing_bps", 0) or 0),
         )
         if rec is not None:
             try:
@@ -203,7 +225,7 @@ def _run_strategy_against_tape(
                     symbol_id=int(sym),
                     event_kind=OrderEventKind.SUBMIT,
                     side=0 if side == "buy" else 1,
-                    order_type=1 if order_type == "limit" else 0,
+                    order_type=_TRACE_ORDER_TYPE[order_type],
                     price_raw=int(price * 1e8), qty_raw=int(qty * 1e8),
                 )
                 submitted_orders[oid] = {"side": side, "symbol": int(sym)}

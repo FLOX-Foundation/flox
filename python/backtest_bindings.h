@@ -138,7 +138,9 @@ class PySimulatedExecutor
   void submitOrder(uint64_t id, const std::string& sideStr, double price, double qty,
                    const std::string& typeStr, uint32_t symbol,
                    const std::string& tifStr = "gtc", bool reduceOnly = false,
-                   int64_t expiresAtNs = 0, uint64_t accountId = 0)
+                   int64_t expiresAtNs = 0, uint64_t accountId = 0,
+                   double trigger = 0.0, double trailingOffset = 0.0,
+                   int32_t trailingBps = 0)
   {
     Order order;
     order.id = id;
@@ -154,6 +156,27 @@ class PySimulatedExecutor
     {
       order.expiresAfter = TimePoint(std::chrono::nanoseconds(expiresAtNs));
     }
+
+    // Conditional orders keep the trigger separate from the limit
+    // price; the simulator's trigger checks read Order::triggerPrice.
+    // For the market-style conditionals a single price is unambiguous,
+    // so `price` doubles as the trigger when the caller left `trigger`
+    // unset. STOP_LIMIT / TAKE_PROFIT_LIMIT need both values and fall
+    // back the same way only when no explicit trigger is given.
+    const bool isConditional =
+        order.type == OrderType::STOP_MARKET || order.type == OrderType::STOP_LIMIT ||
+        order.type == OrderType::TAKE_PROFIT_MARKET ||
+        order.type == OrderType::TAKE_PROFIT_LIMIT;
+    if (isConditional)
+    {
+      order.triggerPrice = Price::fromDouble(trigger > 0.0 ? trigger : price);
+    }
+    if (order.type == OrderType::TRAILING_STOP)
+    {
+      order.trailingOffset = Price::fromDouble(trailingOffset);
+      order.trailingCallbackRate = trailingBps;
+    }
+
     _executor.submitOrder(order);
   }
 
@@ -661,11 +684,18 @@ inline void bindBacktest(py::module_& m)
       .def("submit_order", &PySimulatedExecutor::submitOrder,
            "Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. "
            "reduce_only: only reduce existing position. expires_at_ns: GTD deadline. "
-           "account_id: optional STP account identifier (default 0).",
+           "account_id: optional STP account identifier (default 0). "
+           "trigger: trigger price for stop_market / stop_limit / "
+           "take_profit_market / take_profit_limit (falls back to `price` "
+           "when unset, which is unambiguous for the market-style "
+           "conditionals). trailing_offset / trailing_bps: fixed-price or "
+           "bps offset for trailing_stop (set exactly one).",
            py::arg("id"), py::arg("side"), py::arg("price"), py::arg("quantity"),
            py::arg("type") = "market", py::arg("symbol") = 1,
            py::arg("tif") = "gtc", py::arg("reduce_only") = false,
-           py::arg("expires_at_ns") = 0, py::arg("account_id") = 0)
+           py::arg("expires_at_ns") = 0, py::arg("account_id") = 0,
+           py::arg("trigger") = 0.0, py::arg("trailing_offset") = 0.0,
+           py::arg("trailing_bps") = 0)
       .def("set_stp_group_membership", &PySimulatedExecutor::setSTPGroupMembership,
            "Opt an STP account into a group. group_id=0 removes the mapping.",
            py::arg("account_id"), py::arg("group_id"))
