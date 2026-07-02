@@ -2,13 +2,13 @@
 """Replay-equivalence CI gate (W2-T017).
 
 Builds a deterministic tape, runs the frozen reference strategy
-through it, and asserts the captured output is byte-equal to
+through it, and compares the captured output field-by-field against
 ``tests/replay-equivalence/expected_output.json``. This is the
 guarantee behind flox's "deterministic backtest ↔ live replay"
 positioning: if anything in the engine drifts the fill output,
 this gate fails before merge.
 
-Exits 0 on byte-equal match, 1 on divergence (with a per-key diff).
+Exits 0 on an exact match, 1 on divergence (with a per-field diff).
 
 To regenerate the expected output after an intentional change, run
 this script with ``--regen``: it will overwrite the JSON in place.
@@ -32,11 +32,25 @@ EXPECTED_PATH = FIXTURES / "expected_output.json"
 
 
 def _ensure_python_path() -> None:
-    for cand in ("build/python", "build-py312/python"):
-        p = REPO_ROOT / cand
-        if p.is_dir() and str(p) not in sys.path:
-            sys.path.insert(0, str(p))
-            break
+    # Prefer a build directory whose compiled extension matches the
+    # running interpreter's ABI tag; a mismatched .so is invisible to
+    # the import system and flox_py degrades into its typing-stub
+    # namespace package. Fall back to the first existing candidate so
+    # the error surfaced on import stays the informative one.
+    import sysconfig
+    suffix = sysconfig.get_config_var("EXT_SUFFIX") or ""
+    candidates = [
+        REPO_ROOT / cand
+        for cand in ("build/python", "build-py312/python")
+        if (REPO_ROOT / cand).is_dir()
+    ]
+    chosen = next(
+        (p for p in candidates
+         if suffix and (p / "flox_py" / f"_flox_py{suffix}").exists()),
+        candidates[0] if candidates else None,
+    )
+    if chosen is not None and str(chosen) not in sys.path:
+        sys.path.insert(0, str(chosen))
     sys.path.insert(0, str(FIXTURES))
 
 
@@ -48,10 +62,14 @@ def _diff_dicts(actual, expected, path: str = "") -> list[str]:
             a = actual.get(k, "<missing>")
             e = expected.get(k, "<missing>")
             sub = f"{path}.{k}" if path else k
-            if isinstance(a, dict) and isinstance(e, dict):
-                diffs.extend(_diff_dicts(a, e, sub))
-            elif a != e:
-                diffs.append(f"{sub}: actual={a!r} expected={e!r}")
+            diffs.extend(_diff_dicts(a, e, sub))
+    elif isinstance(actual, list) and isinstance(expected, list):
+        if len(actual) != len(expected):
+            diffs.append(
+                f"{path}: length actual={len(actual)} expected={len(expected)}"
+            )
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            diffs.extend(_diff_dicts(a, e, f"{path}[{i}]"))
     elif actual != expected:
         diffs.append(f"{path}: actual={actual!r} expected={expected!r}")
     return diffs
