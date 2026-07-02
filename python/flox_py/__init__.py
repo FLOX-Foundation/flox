@@ -49,6 +49,8 @@ else:
                 f"{_NATIVE_IMPORT_ERROR} (while accessing flox_py.{name})"
             ) from None
 
+del _NATIVE_AVAILABLE  # branch flag only; keep it out of the module surface
+
 # Pure-Python research surfaces that sit on top of the compiled bindings.
 from .live_queue_calibrator import (  # noqa: F401
     CalibrationResult,
