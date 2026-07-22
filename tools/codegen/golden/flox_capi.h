@@ -670,6 +670,18 @@ extern "C"
     uint64_t count;
   } FloxQuantileRow;
 
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    uint16_t level;
+    uint16_t flags;
+    int64_t bid_price_raw;
+    int64_t bid_qty_raw;
+    int64_t ask_price_raw;
+    int64_t ask_qty_raw;
+  } FloxBookSnapshotBinRow;
+
   // ============================================================
   // Callback function pointer types
   // ============================================================
@@ -2264,6 +2276,10 @@ extern "C"
                                                        FloxAggregatorEventFilter event_filter,
                                                        const uint32_t* symbol_filter,
                                                        uint32_t symbol_filter_count);
+  FloxAggregatorHandle flox_book_snapshot_bin_aggregator_create(int64_t bucket_ns, uint16_t levels,
+                                                                FloxAggregatorEventFilter event_filter,
+                                                                const uint32_t* symbol_filter,
+                                                                uint32_t symbol_filter_count);
   void flox_aggregator_destroy(FloxAggregatorHandle h);
   uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle* aggregators,
                                uint32_t aggregator_count, uint32_t n_threads);
@@ -2281,6 +2297,8 @@ extern "C"
   uint32_t flox_peak_read_result(FloxAggregatorHandle h, FloxPeakRow* rows_out, uint32_t max_rows);
   uint32_t flox_quantile_read_result(FloxAggregatorHandle h, FloxQuantileRow* rows_out,
                                      uint32_t max_rows);
+  uint32_t flox_book_snapshot_bin_read_result(FloxAggregatorHandle h,
+                                              FloxBookSnapshotBinRow* rows_out, uint32_t max_rows);
 
   // ============================================================
   // Tape Diff

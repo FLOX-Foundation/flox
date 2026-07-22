@@ -3978,6 +3978,20 @@ extern "C"
       FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
       uint32_t symbol_filter_count);
 
+  // BookSnapshotBinAggregator: time-bucketed order-book snapshots
+  // reconstructed from book snapshot/delta events. At each bucket
+  // boundary emits the latest ladder state observed inside the closed
+  // bucket as up to `levels` rows per side (a row pairs the bid and
+  // ask at the same depth; the shorter side is zero-padded). Book
+  // reconstruction is order-dependent across the whole tape, so the
+  // aggregator refuses parallel runs (cloneEmpty throws) — call
+  // flox_data_reader_run with n_threads=1. `levels` must be > 0.
+  FLOX_EXPORT(group = "tape_aggregator")
+  FloxAggregatorHandle flox_book_snapshot_bin_aggregator_create(
+      int64_t bucket_ns, uint16_t levels,
+      FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+      uint32_t symbol_filter_count);
+
   // Universal destroy — works on any handle returned by the create
   // functions above. Safe to call with NULL.
   FLOX_EXPORT(group = "tape_aggregator")
@@ -4081,6 +4095,20 @@ extern "C"
     uint64_t count;
   } FloxQuantileRow;
 
+  // flags bit 0: best bid >= best ask (crossed book) at this bucket.
+  // Zero price+qty on a side = no level at that depth.
+  typedef struct
+  {
+    int64_t bucket_ts_ns;
+    uint32_t symbol_id;
+    uint16_t level;
+    uint16_t flags;
+    int64_t bid_price_raw;
+    int64_t bid_qty_raw;
+    int64_t ask_price_raw;
+    int64_t ask_qty_raw;
+  } FloxBookSnapshotBinRow;
+
   // Result accessors. Each is two-call: first form returns the row
   // count (pass `rows_out=NULL`, `max_rows=0`); second form fills the
   // caller's buffer (returns the number of rows actually written,
@@ -4114,6 +4142,11 @@ extern "C"
   uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
                                      FloxQuantileRow* rows_out,
                                      uint32_t max_rows);
+
+  FLOX_EXPORT(group = "tape_aggregator")
+  uint32_t flox_book_snapshot_bin_read_result(FloxAggregatorHandle h,
+                                              FloxBookSnapshotBinRow* rows_out,
+                                              uint32_t max_rows);
 
   // ---- Tiered fee schedule ---------------------------------------
   //

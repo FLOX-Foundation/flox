@@ -1773,7 +1773,7 @@ export class DataReader {
    *  the run loop at most once per `progressIntervalMs`; returning
    *  `false` cancels the walk and returns `false` from `run`. Progress
    *  is reported only on the single-thread path (nThreads=1). */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator>, options?: number | DataReaderRunOptions): boolean;
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator | BookSnapshotBinAggregator>, options?: number | DataReaderRunOptions): boolean;
 }
 
 export interface DataReaderRunOptions {
@@ -1880,6 +1880,30 @@ export class QuantileAggregator {
   result(): QuantileWindowResult[];
 }
 
+/** One (bucket, symbol, depth) row of a reconstructed order-book
+ *  snapshot. `level` 0 is top of book; zero price+qty on a side means
+ *  no level at that depth. `flags` bit 0 = crossed book (best bid >=
+ *  best ask) at this bucket. */
+export interface BookSnapshotBinRow {
+  bucketTsNs: bigint;
+  symbolId: number;
+  level: number;
+  flags: number;
+  bidPriceRaw: bigint;
+  bidQtyRaw: bigint;
+  askPriceRaw: bigint;
+  askQtyRaw: bigint;
+}
+/** Time-bucketed order-book snapshots reconstructed from book
+ *  snapshot/delta events; up to `levels` rows per side per bucket.
+ *  Book reconstruction is order-dependent across the whole tape, so
+ *  this aggregator requires `run(..., 1)` — parallel runs fail. */
+export class BookSnapshotBinAggregator {
+  constructor(bucketNs: bigint | number, levels?: number,
+              eventFilter?: AggregatorEventFilter, symbolFilter?: number[]);
+  result(): BookSnapshotBinRow[];
+}
+
 /** Built-in `.floxlog` recorder. Owns a `BinaryLogWriter` on the engine
  *  thread — trade/book events are persisted in C++ on the hot path without
  *  bouncing through JS. Attach via `runner.setMarketDataRecorder(hook)`. */
@@ -1980,7 +2004,7 @@ export class MergedTapeReader {
    *  decompression pass. Same contract as `DataReader.run` — events
    *  carry global-rewritten symbol ids; per-tape provenance is not
    *  surfaced to aggregators. */
-  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator>, nThreads?: number): boolean;
+  run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator | BookSnapshotBinAggregator>, nThreads?: number): boolean;
 }
 
 export interface Partition {

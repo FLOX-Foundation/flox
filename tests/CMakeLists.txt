@@ -60,7 +60,7 @@ add_flox_test(test_event_bus)
 add_flox_test(test_binary_log)
 add_flox_test(test_replay_connector)
 add_flox_test(test_aggregator_framework)
-
+add_flox_test(test_book_snapshot_aggregator)
 # Run-trace tests (.floxrun)
 add_flox_test(test_run_trace)
 

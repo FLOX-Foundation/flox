@@ -18,6 +18,7 @@
 
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
+#include "flox/replay/aggregators/book_snapshot_bin.h"
 #include "flox/replay/aggregators/event_type_stats.h"
 #include "flox/replay/aggregators/ohlc_bin.h"
 #include "flox/replay/aggregators/peak.h"
@@ -155,6 +156,34 @@ class PyOHLCBinAggregator : public IPyAggregator
   flox::replay::OHLCBinAggregator _impl;
 };
 
+class PyBookSnapshotBinAggregator : public IPyAggregator
+{
+ public:
+  PyBookSnapshotBinAggregator(int64_t bucket_ns, uint16_t levels,
+                              flox::replay::AggregatorEventFilter event_filter,
+                              std::vector<uint32_t> symbol_filter)
+      : _impl(bucket_ns, levels, event_filter, std::move(symbol_filter))
+  {
+  }
+
+  flox::replay::IAggregator* native() override { return &_impl; }
+
+  py::array_t<flox::replay::BookSnapshotBinAggregator::Row> result()
+  {
+    const auto& rows = _impl.result();
+    py::array_t<flox::replay::BookSnapshotBinAggregator::Row> out(rows.size());
+    if (!rows.empty())
+    {
+      std::memcpy(out.mutable_data(), rows.data(),
+                  rows.size() * sizeof(flox::replay::BookSnapshotBinAggregator::Row));
+    }
+    return out;
+  }
+
+ private:
+  flox::replay::BookSnapshotBinAggregator _impl;
+};
+
 class PyPeakAggregator : public IPyAggregator
 {
  public:
@@ -257,6 +286,9 @@ inline void bindTapeAggregators(py::module_& m)
                        symbol_id, side, qty_raw);
   PYBIND11_NUMPY_DTYPE(flox::replay::OHLCBinAggregator::Row, bucket_ts_ns,
                        symbol_id, open_raw, high_raw, low_raw, close_raw);
+  PYBIND11_NUMPY_DTYPE(flox::replay::BookSnapshotBinAggregator::Row, bucket_ts_ns,
+                       symbol_id, level, flags, bid_price_raw, bid_qty_raw,
+                       ask_price_raw, ask_qty_raw);
 
   py::enum_<flox::replay::AggregatorEventFilter>(m, "AggregatorEventFilter",
                                                  "Which event kinds an aggregator counts. Trades = TradeRecord only, "
@@ -333,6 +365,31 @@ inline void bindTapeAggregators(py::module_& m)
            "open_raw i8, high_raw i8, low_raw i8, close_raw i8). "
            "*_raw fields are fixed-point. Divide by Price::SCALE to get "
            "floats. symbol_id is 0 when by_symbol=False.");
+
+  py::class_<PyBookSnapshotBinAggregator, IPyAggregator>(m, "BookSnapshotBinAggregator",
+                                                         "Time-bucketed order-book snapshots. Maintains the full ladder per "
+                                                         "symbol from book snapshot/delta events and at each bucket boundary "
+                                                         "emits the latest state observed inside the closed bucket as up to "
+                                                         "`levels` rows per side (row = bid+ask paired at the same depth, "
+                                                         "shorter side zero-padded). Buckets without book events produce no "
+                                                         "rows; the last observed state is emitted as the trailing bucket. "
+                                                         "Book reconstruction is order-dependent across the whole tape, so "
+                                                         "this aggregator REQUIRES DataReader.run(..., n_threads=1) — "
+                                                         "parallel runs raise.")
+      .def(py::init<int64_t, uint16_t, flox::replay::AggregatorEventFilter,
+                    std::vector<uint32_t>>(),
+           py::arg("bucket_ns"),
+           py::arg("levels") = uint16_t{20},
+           py::arg("event_filter") = flox::replay::AggregatorEventFilter::BooksOnly,
+           py::arg("symbol_filter") = std::vector<uint32_t>{})
+      .def("result", &PyBookSnapshotBinAggregator::result,
+           "Structured numpy: (bucket_ts_ns i8, symbol_id u4, level u2, "
+           "flags u2, bid_price_raw i8, bid_qty_raw i8, ask_price_raw i8, "
+           "ask_qty_raw i8). level 0 = top of book; zero price+qty on a "
+           "side = no level at that depth. flags bit 0 = book crossed "
+           "(best bid >= best ask) at this bucket. *_raw fields are "
+           "fixed-point — divide by Price/Quantity SCALE. Sorted by "
+           "(bucket_ts_ns, symbol_id, level).");
 
   py::class_<PyPeakAggregator, IPyAggregator>(m, "PeakAggregator",
                                               "Streaming top-N busiest fixed-width windows per scale. For each "

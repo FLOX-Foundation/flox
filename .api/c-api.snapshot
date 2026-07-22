@@ -90,6 +90,8 @@ flox_book_get_asks|uint32_t|FloxBookHandle|double *|double *|uint32_t
 flox_book_get_bids|uint32_t|FloxBookHandle|double *|double *|uint32_t
 flox_book_is_crossed|uint8_t|FloxBookHandle
 flox_book_mid|uint8_t|FloxBookHandle|double *
+flox_book_snapshot_bin_aggregator_create|FloxAggregatorHandle|int64_t|uint16_t|FloxAggregatorEventFilter|const uint32_t *|uint32_t
+flox_book_snapshot_bin_read_result|uint32_t|FloxAggregatorHandle|FloxBookSnapshotBinRow *|uint32_t
 flox_book_spread|uint8_t|FloxBookHandle|double *
 flox_composite_book_best_ask|uint8_t|FloxCompositeBookHandle|uint32_t|double *|double *
 flox_composite_book_best_bid|uint8_t|FloxCompositeBookHandle|uint32_t|double *|double *
@@ -104,7 +106,9 @@ flox_curve_balance|uint8_t|FloxCurveHandle|size_t|char *|size_t
 flox_curve_clone|FloxCurveHandle|FloxCurveHandle
 flox_curve_constant_product|FloxCurveHandle|const char *|const char *|uint64_t|uint64_t
 flox_curve_destroy|void|FloxCurveHandle
+flox_curve_liquidity|uint8_t|FloxCurveHandle|char *|size_t
 flox_curve_raydium_cp|FloxCurveHandle|const char *|const char *|uint64_t|uint64_t|uint8_t
+flox_curve_sqrt_price|uint8_t|FloxCurveHandle|char *|size_t
 flox_curve_token_count|size_t|FloxCurveHandle
 flox_curve_uniswap_v3|FloxCurveHandle|const char *|const char *|uint32_t|const char *const *|const char *const *|size_t
 flox_data_reader_clear_progress_callback|void|FloxDataReaderHandle
