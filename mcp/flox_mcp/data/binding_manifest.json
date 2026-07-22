@@ -448,6 +448,16 @@
           "name": "flox_book_mid"
         },
         {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_book_snapshot_bin_aggregator_create"
+        },
+        {
+          "group": "tape_aggregator",
+          "kind": "function",
+          "name": "flox_book_snapshot_bin_read_result"
+        },
+        {
           "group": "order_book",
           "kind": "function",
           "name": "flox_book_spread"
@@ -3675,6 +3685,10 @@
         },
         {
           "kind": "struct",
+          "name": "FloxBookSnapshotBinRow"
+        },
+        {
+          "kind": "struct",
           "name": "FloxBookUpdateHeader"
         },
         {
@@ -4546,6 +4560,14 @@
         {
           "kind": "function",
           "name": "flox_book_mid"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_snapshot_bin_aggregator_create"
+        },
+        {
+          "kind": "function",
+          "name": "flox_book_snapshot_bin_read_result"
         },
         {
           "kind": "function",
@@ -7173,6 +7195,14 @@
         },
         {
           "kind": "class",
+          "name": "BookSnapshotBinAggregator"
+        },
+        {
+          "kind": "class",
+          "name": "BookSnapshotBinRow"
+        },
+        {
+          "kind": "class",
           "name": "BookUpdateRecord"
         },
         {
@@ -8166,6 +8196,10 @@
         {
           "kind": "class",
           "name": "Bollinger"
+        },
+        {
+          "kind": "class",
+          "name": "BookSnapshotBinAggregator"
         },
         {
           "kind": "class",
@@ -11031,6 +11065,8 @@
         "flox_aggregator_destroy",
         "flox_bin_count_aggregator_create",
         "flox_bin_count_read_result",
+        "flox_book_snapshot_bin_aggregator_create",
+        "flox_book_snapshot_bin_read_result",
         "flox_data_reader_run",
         "flox_event_type_stats_aggregator_create",
         "flox_event_type_stats_read_result",

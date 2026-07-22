@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 727 functions, 58 handles, 58 structs, 43 callback typedefs, 3 enums, 72 groups.
+**Surface:** 729 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 72 groups.
 
 ## Opaque handles
 
@@ -847,6 +847,19 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `window_ns` | `int64_t` |
 | `quantile` | `double` |
 | `count` | `uint64_t` |
+
+### `FloxBookSnapshotBinRow`
+
+| field | type |
+|---|---|
+| `bucket_ts_ns` | `int64_t` |
+| `symbol_id` | `uint32_t` |
+| `level` | `uint16_t` |
+| `flags` | `uint16_t` |
+| `bid_price_raw` | `int64_t` |
+| `bid_qty_raw` | `int64_t` |
+| `ask_price_raw` | `int64_t` |
+| `ask_qty_raw` | `int64_t` |
 
 ## Functions
 
@@ -1709,6 +1722,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FloxAggregatorHandle flox_ohlc_bin_aggregator_create(int64_t bucket_ns, uint8_t by_symbol, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_peak_aggregator_create(const int64_t * window_ns_list, uint32_t window_count, uint32_t top_n, uint32_t oversample_factor, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `FloxAggregatorHandle flox_quantile_aggregator_create(const int64_t * window_ns_list, uint32_t window_count, const double * quantiles, uint32_t quantile_count, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
+- `FloxAggregatorHandle flox_book_snapshot_bin_aggregator_create(int64_t bucket_ns, uint16_t levels, FloxAggregatorEventFilter event_filter, const uint32_t * symbol_filter, uint32_t symbol_filter_count)`
 - `void flox_aggregator_destroy(FloxAggregatorHandle h)`
 - `uint8_t flox_data_reader_run(FloxDataReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count, uint32_t n_threads)`
 - `uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader, FloxAggregatorHandle * aggregators, uint32_t aggregator_count, uint32_t n_threads)`
@@ -1718,6 +1732,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h, FloxOHLCBinRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_peak_read_result(FloxAggregatorHandle h, FloxPeakRow * rows_out, uint32_t max_rows)`
 - `uint32_t flox_quantile_read_result(FloxAggregatorHandle h, FloxQuantileRow * rows_out, uint32_t max_rows)`
+- `uint32_t flox_book_snapshot_bin_read_result(FloxAggregatorHandle h, FloxBookSnapshotBinRow * rows_out, uint32_t max_rows)`
 
 ### tape_diff
 

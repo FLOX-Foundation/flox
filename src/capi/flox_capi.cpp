@@ -31,6 +31,7 @@
 #include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/aggregator.h"
 #include "flox/replay/aggregators/bin_count.h"
+#include "flox/replay/aggregators/book_snapshot_bin.h"
 #include "flox/replay/aggregators/event_type_stats.h"
 #include "flox/replay/aggregators/ohlc_bin.h"
 #include "flox/replay/aggregators/peak.h"
@@ -8814,6 +8815,7 @@ struct AggregatorHolder
     KIND_OHLC_BIN,
     KIND_PEAK,
     KIND_QUANTILE,
+    KIND_BOOK_SNAPSHOT_BIN,
   };
   Kind kind;
   std::unique_ptr<replay::IAggregator> impl;
@@ -8957,6 +8959,19 @@ extern "C" FloxAggregatorHandle flox_quantile_aggregator_create(
   return holder;
 }
 
+extern "C" FloxAggregatorHandle flox_book_snapshot_bin_aggregator_create(
+    int64_t bucket_ns, uint16_t levels,
+    FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
+    uint32_t symbol_filter_count)
+{
+  auto* holder = new AggregatorHolder{
+      AggregatorHolder::KIND_BOOK_SNAPSHOT_BIN,
+      std::make_unique<replay::BookSnapshotBinAggregator>(
+          bucket_ns, levels, toAggFilter(event_filter),
+          copySymbolFilter(symbol_filter, symbol_filter_count))};
+  return holder;
+}
+
 extern "C" void flox_aggregator_destroy(FloxAggregatorHandle h)
 {
   delete toAgg(h);
@@ -9014,7 +9029,17 @@ extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
   }
   auto* r = static_cast<replay::BinaryLogReader*>(reader);
   const std::size_t nt = n_threads == 0 ? std::size_t{1} : std::size_t{n_threads};
-  return r->run(raw, nt) ? 1 : 0;
+  // Aggregators may refuse a configuration by throwing (e.g. the book
+  // snapshot aggregator refuses parallel runs from cloneEmpty). A C++
+  // exception must not cross the C ABI — map it to the failure return.
+  try
+  {
+    return r->run(raw, nt) ? 1 : 0;
+  }
+  catch (const std::exception&)
+  {
+    return 0;
+  }
 }
 
 extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
@@ -9223,6 +9248,40 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
     rows_out[i].window_ns = rows[i].window_ns;
     rows_out[i].quantile = rows[i].quantile;
     rows_out[i].count = rows[i].count;
+  }
+  return n;
+}
+
+extern "C" uint32_t flox_book_snapshot_bin_read_result(
+    FloxAggregatorHandle h, FloxBookSnapshotBinRow* rows_out, uint32_t max_rows)
+{
+  auto* holder = toAgg(h);
+  if (holder == nullptr)
+  {
+    return 0;
+  }
+  auto* impl = holder->as<replay::BookSnapshotBinAggregator>(
+      AggregatorHolder::KIND_BOOK_SNAPSHOT_BIN);
+  if (impl == nullptr)
+  {
+    return 0;
+  }
+  const auto& rows = impl->result();
+  if (rows_out == nullptr || max_rows == 0)
+  {
+    return static_cast<uint32_t>(rows.size());
+  }
+  const uint32_t n = static_cast<uint32_t>(std::min<std::size_t>(rows.size(), max_rows));
+  for (uint32_t i = 0; i < n; ++i)
+  {
+    rows_out[i].bucket_ts_ns = rows[i].bucket_ts_ns;
+    rows_out[i].symbol_id = rows[i].symbol_id;
+    rows_out[i].level = rows[i].level;
+    rows_out[i].flags = rows[i].flags;
+    rows_out[i].bid_price_raw = rows[i].bid_price_raw;
+    rows_out[i].bid_qty_raw = rows[i].bid_qty_raw;
+    rows_out[i].ask_price_raw = rows[i].ask_price_raw;
+    rows_out[i].ask_qty_raw = rows[i].ask_qty_raw;
   }
   return n;
 }

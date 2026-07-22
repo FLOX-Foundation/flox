@@ -17,6 +17,12 @@ Two surfaces:
 Both go through ``DataReader.read_book_updates`` and the existing
 snapshot / delta semantics; this module never touches the binary
 format directly.
+
+This is the pure-Python reference implementation — convenient for
+point queries and hours-scale windows. For month-scale multi-symbol
+feature extraction use ``flox_py.BookSnapshotBinAggregator`` via
+``DataReader.run([...], n_threads=1)`` — same bucket semantics, C++
+throughput.
 """
 from __future__ import annotations
 
@@ -27,6 +33,10 @@ from typing import Iterator, List, Optional, Tuple, Union
 import numpy as np
 
 PathLike = Union[str, Path]
+
+# Kwargs forwarded verbatim to the internal ``DataReader`` on top of
+# the time bounds this module manages itself.
+ReaderKwargs = Optional[dict]
 
 
 @dataclass
@@ -64,19 +74,35 @@ def _to_array(ladder: dict, *, descending: bool, levels: int
 def _read_events(tape_path: PathLike,
                  *,
                  t_from: Optional[int],
-                 t_to: Optional[int]) -> Tuple[np.ndarray, np.ndarray]:
+                 t_to: Optional[int],
+                 reorder_window_ns: Optional[int] = None,
+                 reader_kwargs: ReaderKwargs = None
+                 ) -> Tuple[np.ndarray, np.ndarray]:
     """Wrapper around ``DataReader.read_book_updates`` that returns
     the structured (headers, levels) arrays, scoped by optional time
-    bounds (half-open ``[t_from, t_to)``)."""
+    bounds (half-open ``[t_from, t_to)``). Extra ``reader_kwargs``
+    are forwarded to the ``DataReader`` constructor; the explicit
+    ``reorder_window_ns`` knob wins over a value in ``reader_kwargs``."""
     import flox_py
 
-    kwargs = {}
+    kwargs = dict(reader_kwargs) if reader_kwargs else {}
     if t_from is not None:
         kwargs["from_ns"] = int(t_from)
     if t_to is not None:
         kwargs["to_ns"] = int(t_to)
+    if reorder_window_ns is not None:
+        kwargs["reorder_window_ns"] = int(reorder_window_ns)
     reader = flox_py.DataReader(str(tape_path), **kwargs)
     headers, levels = reader.read_book_updates()
+    # The bulk read surfaces events in tape/arrival order, which on
+    # live-recorded tapes is not timestamp order. Snapshot/delta
+    # application is order-sensitive, so re-sort by exchange ts
+    # (stable: equal-ts events keep arrival order). Each header
+    # carries its own level_offset, so the levels array stays as-is.
+    if headers.size > 1:
+        ts = headers["exchange_ts_ns"]
+        if np.any(ts[1:] < ts[:-1]):
+            headers = headers[np.argsort(ts, kind="stable")]
     return headers, levels
 
 
@@ -129,6 +155,15 @@ class OrderBookIterator:
         Optional filter — yield snapshots only for this symbol id.
         Omit to yield one snapshot per (bucket, symbol) for every
         symbol present in the tape.
+    reorder_window_ns
+        Forwarded to the internal ``DataReader``. Out-of-order book
+        events are handled here regardless (events are re-sorted by
+        exchange ts before application); the knob is exposed for
+        parity with reader paths that enforce the window.
+    reader_kwargs
+        Extra kwargs forwarded verbatim to the internal ``DataReader``
+        (future reader knobs without one-by-one plumbing). Time bounds
+        and ``reorder_window_ns`` set explicitly win over entries here.
     """
 
     def __init__(self,
@@ -138,7 +173,9 @@ class OrderBookIterator:
                  levels: int = 20,
                  t_from: Optional[int] = None,
                  t_to: Optional[int] = None,
-                 symbol_id: Optional[int] = None) -> None:
+                 symbol_id: Optional[int] = None,
+                 reorder_window_ns: Optional[int] = None,
+                 reader_kwargs: ReaderKwargs = None) -> None:
         if bucket_ns <= 0:
             raise ValueError(f"bucket_ns must be > 0, got {bucket_ns}")
         if levels < 0:
@@ -149,10 +186,14 @@ class OrderBookIterator:
         self._t_from = t_from
         self._t_to = t_to
         self._symbol_id = symbol_id
+        self._reorder_window_ns = reorder_window_ns
+        self._reader_kwargs = reader_kwargs
 
     def __iter__(self) -> Iterator[BookSnapshot]:
         headers, levels_arr = _read_events(
-            self._tape_path, t_from=self._t_from, t_to=self._t_to)
+            self._tape_path, t_from=self._t_from, t_to=self._t_to,
+            reorder_window_ns=self._reorder_window_ns,
+            reader_kwargs=self._reader_kwargs)
         if headers.size == 0:
             return
         # Per-symbol running ladder.
@@ -221,7 +262,9 @@ def book_at(tape_path: PathLike,
             ts_ns: int,
             levels: int = 20,
             symbol_id: Optional[int] = None,
-            t_from: Optional[int] = None) -> Optional[BookSnapshot]:
+            t_from: Optional[int] = None,
+            reorder_window_ns: Optional[int] = None,
+            reader_kwargs: ReaderKwargs = None) -> Optional[BookSnapshot]:
     """Reconstruct the latest book state at or before ``ts_ns``.
 
     Walks the tape from the optional ``t_from`` (or the tape start)
@@ -231,7 +274,9 @@ def book_at(tape_path: PathLike,
     contains multiple symbols, returns the snapshot for whichever
     symbol carried the most recent book event before ``ts_ns``.
     """
-    headers, levels_arr = _read_events(tape_path, t_from=t_from, t_to=ts_ns + 1)
+    headers, levels_arr = _read_events(tape_path, t_from=t_from, t_to=ts_ns + 1,
+                                       reorder_window_ns=reorder_window_ns,
+                                       reader_kwargs=reader_kwargs)
     if headers.size == 0:
         return None
     running: dict = {}

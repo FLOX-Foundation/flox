@@ -193,5 +193,86 @@ class BookAtTests(unittest.TestCase):
         self.assertIsNone(snap)
 
 
+class OutOfOrderEventsTests(unittest.TestCase):
+    """Live-recorded tapes carry book events out of timestamp order
+    (the bulk read surfaces tape/arrival order and applies no reorder
+    buffer). The module must re-sort by exchange ts before applying
+    snapshots/deltas, and must forward reader knobs like
+    ``reorder_window_ns`` for parity with reader paths that enforce
+    the window."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ob-reorder-"))
+        self.tape = self.tmp / "tape"
+        # Arrival order: the 40s-newer snapshot first, then a 40s-late
+        # one (own segment via a second writer session, as a live
+        # recorder restart would produce). On the 60s grid _BASE_NS
+        # sits at +20s into its bucket, so in chronological order the
+        # two events land in consecutive buckets.
+        _write_book_tape(self.tape, [
+            (_BASE_NS + 40_000_000_000, 1, True,
+             [(100.0, 1.0)], [(101.0, 1.0)]),
+        ])
+        _write_book_tape(self.tape, [
+            (_BASE_NS, 1, True,
+             [(90.0, 1.0)], [(91.0, 1.0)]),
+        ])
+
+    def test_iterator_sorts_before_applying(self) -> None:
+        snaps = list(ob.OrderBookIterator(
+            self.tape, bucket_ns=60_000_000_000, levels=5))
+        self.assertEqual(len(snaps), 2)
+        # Chronological: the older snapshot closes the first bucket,
+        # the newer one the second. Without the sort this collapses
+        # into a single bucket carrying the OLDER state.
+        self.assertEqual(snaps[0].bids, [(90.0, 1.0)])
+        self.assertEqual(snaps[0].asks, [(91.0, 1.0)])
+        self.assertEqual(snaps[1].bids, [(100.0, 1.0)])
+        self.assertEqual(snaps[1].asks, [(101.0, 1.0)])
+        self.assertLess(snaps[0].ts_ns, snaps[1].ts_ns)
+
+    def test_book_at_sorts_before_applying(self) -> None:
+        # Point query after both events sees the newer state; without
+        # the sort the arrival-ordered walk breaks early / applies the
+        # late event last.
+        snap = ob.book_at(self.tape, ts_ns=_BASE_NS + 50_000_000_000,
+                          levels=5)
+        self.assertEqual(snap.bids, [(100.0, 1.0)])
+        # Between the two events only the older one applies.
+        snap_mid = ob.book_at(self.tape, ts_ns=_BASE_NS + 1, levels=5)
+        self.assertEqual(snap_mid.bids, [(90.0, 1.0)])
+
+    def test_reorder_window_passthrough(self) -> None:
+        # The knob forwards to the reader without changing the (already
+        # sorted) result.
+        snaps = list(ob.OrderBookIterator(
+            self.tape, bucket_ns=60_000_000_000, levels=5,
+            reorder_window_ns=120_000_000_000))
+        self.assertEqual(len(snaps), 2)
+        snap = ob.book_at(self.tape, ts_ns=_BASE_NS + 50_000_000_000,
+                          levels=5, reorder_window_ns=120_000_000_000)
+        self.assertEqual(snap.bids, [(100.0, 1.0)])
+
+    def test_reader_kwargs_passthrough(self) -> None:
+        # Forwarded verbatim: a valid knob works, an unknown one
+        # surfaces the DataReader constructor error — proof the dict
+        # actually reaches the reader.
+        snaps = list(ob.OrderBookIterator(
+            self.tape, bucket_ns=60_000_000_000, levels=5,
+            reader_kwargs={"reorder_window_ns": 120_000_000_000}))
+        self.assertEqual(len(snaps), 2)
+        with self.assertRaises(TypeError):
+            list(ob.OrderBookIterator(
+                self.tape, bucket_ns=60_000_000_000, levels=5,
+                reader_kwargs={"no_such_reader_kwarg": 1}))
+
+    def test_explicit_knob_wins_over_reader_kwargs(self) -> None:
+        snaps = list(ob.OrderBookIterator(
+            self.tape, bucket_ns=60_000_000_000, levels=5,
+            reorder_window_ns=120_000_000_000,
+            reader_kwargs={"reorder_window_ns": 1_000_000_000}))
+        self.assertEqual(len(snaps), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

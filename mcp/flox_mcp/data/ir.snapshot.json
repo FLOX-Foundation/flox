@@ -2476,6 +2476,52 @@
       "return_type": "uint8_t"
     },
     {
+      "group": "tape_aggregator",
+      "name": "flox_book_snapshot_bin_aggregator_create",
+      "params": [
+        {
+          "name": "bucket_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "levels",
+          "type": "uint16_t"
+        },
+        {
+          "name": "event_filter",
+          "type": "FloxAggregatorEventFilter"
+        },
+        {
+          "name": "symbol_filter",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "symbol_filter_count",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "FloxAggregatorHandle"
+    },
+    {
+      "group": "tape_aggregator",
+      "name": "flox_book_snapshot_bin_read_result",
+      "params": [
+        {
+          "name": "h",
+          "type": "FloxAggregatorHandle"
+        },
+        {
+          "name": "rows_out",
+          "type": "FloxBookSnapshotBinRow *"
+        },
+        {
+          "name": "max_rows",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "uint32_t"
+    },
+    {
       "group": "order_book",
       "name": "flox_book_spread",
       "params": [
@@ -14637,6 +14683,43 @@
         }
       ],
       "name": "FloxBookSnapshot"
+    },
+    {
+      "fields": [
+        {
+          "name": "bucket_ts_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbol_id",
+          "type": "uint32_t"
+        },
+        {
+          "name": "level",
+          "type": "uint16_t"
+        },
+        {
+          "name": "flags",
+          "type": "uint16_t"
+        },
+        {
+          "name": "bid_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "bid_qty_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ask_price_raw",
+          "type": "int64_t"
+        },
+        {
+          "name": "ask_qty_raw",
+          "type": "int64_t"
+        }
+      ],
+      "name": "FloxBookSnapshotBinRow"
     },
     {
       "fields": [

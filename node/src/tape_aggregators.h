@@ -605,6 +605,94 @@ class QuantileAggregatorWrap : public Napi::ObjectWrap<QuantileAggregatorWrap>
   FloxAggregatorHandle _h = nullptr;
 };
 
+// ── BookSnapshotBinAggregator ───────────────────────────────────────
+
+class BookSnapshotBinAggregatorWrap
+    : public Napi::ObjectWrap<BookSnapshotBinAggregatorWrap>
+{
+ public:
+  static Napi::FunctionReference& Ctor()
+  {
+    static Napi::FunctionReference ref;
+    return ref;
+  }
+  static Napi::Function Init(Napi::Env env)
+  {
+    Napi::Function fn = DefineClass(
+        env, "BookSnapshotBinAggregator",
+        {InstanceMethod("result", &BookSnapshotBinAggregatorWrap::Result)});
+    Ctor() = Napi::Persistent(fn);
+    Ctor().SuppressDestruct();
+    return fn;
+  }
+
+  BookSnapshotBinAggregatorWrap(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<BookSnapshotBinAggregatorWrap>(info)
+  {
+    int64_t bucket_ns = 0;
+    if (info.Length() > 0)
+    {
+      if (info[0].IsBigInt())
+      {
+        bool lossless = false;
+        bucket_ns = info[0].As<Napi::BigInt>().Int64Value(&lossless);
+      }
+      else if (info[0].IsNumber())
+      {
+        bucket_ns = info[0].As<Napi::Number>().Int64Value();
+      }
+    }
+    uint16_t levels = 20;
+    if (info.Length() > 1 && info[1].IsNumber())
+    {
+      levels = static_cast<uint16_t>(info[1].As<Napi::Number>().Uint32Value());
+    }
+    auto filter = tape_agg_detail::readEventFilter(info, 2, FLOX_AGG_FILTER_BOOKS_ONLY);
+    auto sf = tape_agg_detail::readSymbolFilter(info, 3);
+    _h = flox_book_snapshot_bin_aggregator_create(
+        bucket_ns, levels, filter, sf.empty() ? nullptr : sf.data(),
+        static_cast<uint32_t>(sf.size()));
+  }
+  ~BookSnapshotBinAggregatorWrap()
+  {
+    if (_h)
+    {
+      flox_aggregator_destroy(_h);
+    }
+  }
+
+  FloxAggregatorHandle nativeHandle() const { return _h; }
+
+ private:
+  Napi::Value Result(const Napi::CallbackInfo& info)
+  {
+    uint32_t n = flox_book_snapshot_bin_read_result(_h, nullptr, 0);
+    std::vector<FloxBookSnapshotBinRow> rows(n);
+    if (n > 0)
+    {
+      flox_book_snapshot_bin_read_result(_h, rows.data(), n);
+    }
+    auto env = info.Env();
+    auto arr = Napi::Array::New(env, n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      auto o = Napi::Object::New(env);
+      o.Set("bucketTsNs", Napi::BigInt::New(env, rows[i].bucket_ts_ns));
+      o.Set("symbolId", Napi::Number::New(env, rows[i].symbol_id));
+      o.Set("level", Napi::Number::New(env, rows[i].level));
+      o.Set("flags", Napi::Number::New(env, rows[i].flags));
+      o.Set("bidPriceRaw", Napi::BigInt::New(env, rows[i].bid_price_raw));
+      o.Set("bidQtyRaw", Napi::BigInt::New(env, rows[i].bid_qty_raw));
+      o.Set("askPriceRaw", Napi::BigInt::New(env, rows[i].ask_price_raw));
+      o.Set("askQtyRaw", Napi::BigInt::New(env, rows[i].ask_qty_raw));
+      arr.Set(i, o);
+    }
+    return arr;
+  }
+
+  FloxAggregatorHandle _h = nullptr;
+};
+
 // ── Public helpers + registration ──────────────────────────────────
 
 // Walk a JS array of aggregator wraps and produce a flat list of
@@ -651,12 +739,16 @@ inline bool collectAggregatorHandles(Napi::Env env, Napi::Array js_aggregators,
     {
       h = Napi::ObjectWrap<QuantileAggregatorWrap>::Unwrap(obj)->nativeHandle();
     }
+    else if (obj.InstanceOf(BookSnapshotBinAggregatorWrap::Ctor().Value()))
+    {
+      h = Napi::ObjectWrap<BookSnapshotBinAggregatorWrap>::Unwrap(obj)->nativeHandle();
+    }
     else
     {
       Napi::TypeError::New(
           env,
           "Element is not a recognised tape aggregator wrap "
-          "(EventTypeStats/BinCount/VolumeBin/OHLCBin/Peak/Quantile)")
+          "(EventTypeStats/BinCount/VolumeBin/OHLCBin/Peak/Quantile/BookSnapshotBin)")
           .ThrowAsJavaScriptException();
       return false;
     }
@@ -673,6 +765,7 @@ inline void registerTapeAggregators(Napi::Env env, Napi::Object exports)
   exports.Set("OHLCBinAggregator", OHLCBinAggregatorWrap::Init(env));
   exports.Set("PeakAggregator", PeakAggregatorWrap::Init(env));
   exports.Set("QuantileAggregator", QuantileAggregatorWrap::Init(env));
+  exports.Set("BookSnapshotBinAggregator", BookSnapshotBinAggregatorWrap::Init(env));
 
   // Mirror the C ABI enum values so JS callers can pass them positionally.
   auto filterEnum = Napi::Object::New(env);

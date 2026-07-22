@@ -18,7 +18,9 @@
 #include "tape_aggregator_bindings.h"
 
 #include <cstring>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -271,12 +273,20 @@ inline WriterConfig makeWriterConfig(const std::string& outputDir, uint64_t maxS
 class PyDataReader
 {
   BinaryLogReader _reader;
+  // Upper time bound of the reader config. The forEachFrom walk itself
+  // runs to the end of the tape; bounded readers (option quotes) use
+  // this to collect only in-range rows and abort the walk early.
+  std::optional<int64_t> _to_ns;
 
  public:
   PyDataReader(const std::string& dataDir, py::object fromNs, py::object toNs,
                py::object symbols, py::object reorderWindowNs)
       : _reader(makeReaderConfig(dataDir, fromNs, toNs, symbols, reorderWindowNs))
   {
+    if (!toNs.is_none())
+    {
+      _to_ns = toNs.cast<int64_t>();
+    }
   }
 
   py::dict summary()
@@ -391,17 +401,36 @@ class PyDataReader
   }
 
   // Read option quotes (mark/iv/index/open-interest) as a structured numpy array.
+  // Honors the reader's to_ns: quotes at/after the bound are not collected and
+  // the walk aborts once events run past the bound (with a reorder-slack margin),
+  // so a bounded window costs O(prefix), not O(tape), in both time and memory.
   py::array_t<PyOptionQuote> readOptionQuotesFrom(int64_t startTsNs)
   {
+    const int64_t stop_ns = _to_ns.value_or(std::numeric_limits<int64_t>::max());
+    // Events can be locally out of order (bounded reorder on write);
+    // keep walking this margin past the bound before aborting.
+    constexpr int64_t kReorderSlackNs = 600'000'000'000;  // 10 min
+    const int64_t hard_stop =
+        stop_ns > std::numeric_limits<int64_t>::max() - kReorderSlackNs
+            ? std::numeric_limits<int64_t>::max()
+            : stop_ns + kReorderSlackNs;
     std::vector<PyOptionQuote> quotes;
     {
       py::gil_scoped_release release;
       _reader.forEachFrom(startTsNs,
                           [&](const ReplayEvent& ev) -> bool
                           {
+                            if (ev.timestamp_ns >= hard_stop)
+                            {
+                              return false;
+                            }
                             if (ev.type == EventType::OptionQuote)
                             {
                               const auto& q = ev.option_quote;
+                              if (q.exchange_ts_ns >= stop_ns)
+                              {
+                                return true;
+                              }
                               PyOptionQuote p{};
                               p.exchange_ts_ns = q.exchange_ts_ns;
                               p.recv_ts_ns = q.recv_ts_ns;
