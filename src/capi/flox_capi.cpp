@@ -5730,6 +5730,35 @@ class OhlcvBacktestReader : public replay::IMultiSegmentReader
 // build a FloxSignal from the Order and forward.
 // ──────────────────────────────────────────────────────────────
 
+// flox::OrderType and the FLOX_SIGNAL_TYPE_* wire codes disagree on 0
+// and 1 (OrderType::LIMIT is 0, the wire code for LIMIT is 1), so a raw
+// static_cast here made FloxSignal.order_type mean one thing on the
+// strategy-signal path and the opposite on the risk-manager /
+// kill-switch / order-validator / PnL-tracker callbacks. Map explicitly.
+inline uint8_t signalTypeCodeFromOrderType(OrderType type) noexcept
+{
+  switch (type)
+  {
+    case OrderType::MARKET:
+      return FLOX_SIGNAL_TYPE_MARKET;
+    case OrderType::LIMIT:
+      return FLOX_SIGNAL_TYPE_LIMIT;
+    case OrderType::STOP_MARKET:
+      return FLOX_SIGNAL_TYPE_STOP_MARKET;
+    case OrderType::STOP_LIMIT:
+      return FLOX_SIGNAL_TYPE_STOP_LIMIT;
+    case OrderType::TAKE_PROFIT_MARKET:
+      return FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET;
+    case OrderType::TAKE_PROFIT_LIMIT:
+      return FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT;
+    case OrderType::TRAILING_STOP:
+      return FLOX_SIGNAL_TYPE_TRAILING_STOP;
+    case OrderType::ICEBERG:
+      return FLOX_SIGNAL_TYPE_ICEBERG;
+  }
+  return FLOX_SIGNAL_TYPE_MARKET;
+}
+
 inline FloxSignal orderToFloxSignal(const Order& order) noexcept
 {
   FloxSignal fs{};
@@ -5738,7 +5767,7 @@ inline FloxSignal orderToFloxSignal(const Order& order) noexcept
   fs.side = (order.side == Side::BUY) ? 0 : 1;
   fs.price = order.price.toDouble();
   fs.quantity = order.quantity.toDouble();
-  fs.order_type = static_cast<uint8_t>(order.type);
+  fs.order_type = signalTypeCodeFromOrderType(order.type);
   return fs;
 }
 
