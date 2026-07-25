@@ -79,6 +79,7 @@ import {
 } from "..";
 
 const arr = new Float64Array([1, 2, 3, 4, 5]);
+const tsArr = new BigInt64Array([1n, 2n, 3n, 4n, 5n]);
 const ohlcArr = { open: arr, high: arr, low: arr, close: arr, vol: arr };
 const ib = new Uint8Array([1, 0, 1, 0, 1]);
 
@@ -130,12 +131,20 @@ threadedRunner.start();
 threadedRunner.stop();
 
 // ── Engine + SignalBuilder ─────────────────────────────────────────────
-const engine = new Engine(registry);
-engine.loadOhlcv(arr, arr, arr, arr, arr, arr, "BTCUSDT");
-engine.resample(60);
+const engine = new Engine();
+const engine2 = new Engine(100000, 0.0001);
+void engine2;
+engine.loadOhlcv(
+  { ts: arr, open: arr, high: arr, low: arr, close: arr, volume: arr },
+  "BTCUSDT",
+);
+engine.loadOhlcv({ ts: arr, open: arr, high: arr, low: arr, close: arr, volume: arr });
+engine.resample("BTCUSDT", "BTCUSDT_1h", "1h");
 const _bc: number = engine.barCount();
+const _bcSym: number = engine.barCount("BTCUSDT");
+void _bcSym;
 const _ts: Float64Array = engine.ts();
-const _opens: Float64Array = engine.open();
+const _opens: Float64Array = engine.open("BTCUSDT");
 const _highs: Float64Array = engine.high();
 const _lows: Float64Array = engine.low();
 const _closes: Float64Array = engine.close();
@@ -143,10 +152,10 @@ const _vols: Float64Array = engine.volume();
 const _syms: string[] = engine.symbols;
 
 const signals = new SignalBuilder();
-signals.buy(0);
-signals.sell(1);
-signals.limitBuy(2, 100);
-signals.limitSell(3, 100);
+signals.buy(0, 0.1);
+signals.sell(1, 0.1, "BTCUSDT");
+signals.limitBuy(2, 100, 0.1);
+signals.limitSell(3, 100, 0.1, "BTCUSDT").buy(4, 0.1);
 const _sigLen: number = signals.length;
 signals.clear();
 
@@ -157,7 +166,7 @@ const _sharpe: number = stats.sharpe;
 // ── Backtest classes ───────────────────────────────────────────────────
 const bt = new BacktestRunner(registry, 0.0001, 100000);
 bt.setStrategy(strategy);
-const _btStats = bt.runOhlcv(arr, arr, "BTCUSDT");
+const _btStats = bt.runOhlcv(tsArr, arr, "BTCUSDT");
 void _btStats.totalTrades;
 
 const exec = new SimulatedExecutor();
@@ -462,22 +471,22 @@ void flox.rollingCorrelation(arr, arr, 20);
 // ── Indicator graphs ──────────────────────────────────────────────────
 const ig = new IndicatorGraph();
 ig.setBars(1, arr, arr, arr, arr);
-const nodeId = ig.addNode("emaClose", [], (g, sym) => {
+ig.addNode("emaClose", [], (g, sym) => {
   const closes = g.close(sym);
   return closes;
 });
-ig.require(nodeId);
-void ig.get(nodeId, 1);
+const _igSeries: Float64Array = ig.require(1, "emaClose");
+void _igSeries;
+void ig.get(1, "emaClose");
 void ig.close(1);
 void ig.high(1);
 void ig.low(1);
 void ig.volume(1);
-ig.invalidate(nodeId);
+ig.invalidate(1);
 ig.invalidateAll();
 
 const sg = new StreamingIndicatorGraph();
-const sNodeId = sg.addNode("triple", [], (_g, _s) => 0);
-void sNodeId;
+sg.addNode("triple", [], (g, sym) => g.close(sym));
 sg.step(1, 100);
 sg.step(1, 100, 100, 100, 1);
 void sg.current(1, "triple");

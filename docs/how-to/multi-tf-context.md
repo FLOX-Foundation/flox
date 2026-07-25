@@ -68,11 +68,9 @@ function onBar(ctx, bar, emit) {
 
 `emit.setBarRingCapacity(n)` adjusts ring depth.
 
-`lastClosedBar`, `lastNClosedBars`, and `setBarRingCapacity` exist on
-the Node `emit` object at runtime but are not declared on the
-`EmitMethods` interface in `node/index.d.ts`. TypeScript callers need
-a cast (`(emit as any).lastClosedBar(...)`) until the declaration
-catches up.
+`lastClosedBar`, `lastNClosedBars`, and `setBarRingCapacity` are
+declared on the `EmitMethods` interface in `node/index.d.ts`, so
+TypeScript callers reach them directly — no cast needed.
 
 The QuickJS strategy facade exposes the same methods on `this`:
 

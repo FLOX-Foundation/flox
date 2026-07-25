@@ -109,26 +109,34 @@ const stats = result.stats();
 
 Bulk backtesting engine. Loads OHLCV data once, then runs strategies against it.
 
+The constructor takes capital and fee rate, not a registry.
+
 ```javascript
-const engine = new flox.Engine(registry);
-engine.loadCsv('/path/to/data.csv', 'BTCUSDT');
-const stats = engine.run(strategy);
+const engine = new flox.Engine(100_000, 0.0001);
+engine.loadCsv('/path/to/btcusdt_1m.csv');   // symbol inferred from the filename
+const signals = new flox.SignalBuilder();
+signals.buy(tsNs, 1.0);
+const stats = engine.run(signals);
 ```
 
 | Method / Property | Returns | Description |
 |-------------------|---------|-------------|
-| `loadCsv(path, symbol)` | `void` | Load OHLCV CSV |
-| `loadOhlcv(timestamps, opens, highs, lows, closes, volumes, symbol)` | `void` | Load raw OHLCV arrays |
-| `resample(intervalSeconds)` | `void` | Resample loaded data |
-| `run(strategyOrSignals)` | stats object | Run a strategy or `SignalBuilder` |
-| `barCount()` | `number` | Number of bars loaded |
-| `ts()` | `Float64Array` | Timestamps |
-| `open()` | `Float64Array` | Open prices |
-| `high()` | `Float64Array` | High prices |
-| `low()` | `Float64Array` | Low prices |
-| `close()` | `Float64Array` | Close prices |
-| `volume()` | `Float64Array` | Volumes |
+| `new Engine(initialCapital?, feeRate?)` | | Defaults 100000 and 0.0001 (fee is a fraction) |
+| `loadCsv(path, symbol?)` | `void` | Load OHLCV CSV. Without `symbol` the name is inferred from the file stem, upper-cased, with a `_1m` / `_5m` / `_15m` / `_1h` / `_4h` / `_1d` suffix stripped |
+| `loadOhlcv(bars, symbol?)` | `void` | `bars` is one object `{ts, open, high, low, close, volume}` of `Float64Array`s, not positional arrays. Timestamps in s / ms / us are auto-scaled to ns |
+| `resample(src, dst, interval)` | `void` | Three strings, e.g. `('BTCUSDT', 'BTCUSDT_1h', '1h')`. Interval is `<count><s\|m\|h\|d>`. Throws `E_SYM_001` if `src` is not loaded |
+| `run(signals)` | `BacktestStats` | Takes a `SignalBuilder` only. Passing a Strategy aborts |
+| `barCount(symbol?)` | `number` | Bars loaded; defaults to the first loaded symbol |
+| `ts(symbol?)` | `Float64Array` | Timestamps |
+| `open(symbol?)` | `Float64Array` | Open prices |
+| `high(symbol?)` | `Float64Array` | High prices |
+| `low(symbol?)` | `Float64Array` | Low prices |
+| `close(symbol?)` | `Float64Array` | Close prices |
+| `volume(symbol?)` | `Float64Array` | Volumes |
 | `symbols` | `string[]` | Registered symbol names (property) |
+
+`run()` returns the `BacktestStats` shape (`sharpe` / `sortino` / `calmar`),
+not the runner shape — see [Stats object](#stats-object).
 
 ---
 
@@ -136,18 +144,24 @@ const stats = engine.run(strategy);
 
 Builds a signal array to pass to `engine.run()`.
 
+Signals are keyed by timestamp and carry a quantity — not a bar index.
+
 ```javascript
 const signals = new flox.SignalBuilder();
-signals.buy(i);     // enter long at bar i
-signals.sell(i);    // enter short at bar i
+signals.buy(tsNs, 1.0)              // methods return `this`, so they chain
+       .limitSell(tsNs, 101.0, 1.0);
 const stats = engine.run(signals);
 ```
 
 | Method / Property | Description |
 |-------------------|-------------|
-| `buy(index)` | Add a long entry signal at bar `index` |
-| `sell(index)` | Add a short entry signal at bar `index` |
-| `limitBuy(index, price)` | Limit long entry |
-| `limitSell(index, price)` | Limit short entry |
+| `buy(tsNs, qty, symbol?)` | Long entry at `tsNs`. Returns `this` |
+| `sell(tsNs, qty, symbol?)` | Short entry. Returns `this` |
+| `limitBuy(tsNs, price, qty, symbol?)` | Limit long entry. Returns `this` |
+| `limitSell(tsNs, price, qty, symbol?)` | Limit short entry. Returns `this` |
 | `clear()` | Clear all signals |
+| `length` | Signal count (read-only property) |
+
+Timestamps are read as a JS `number`, not a `bigint`; values in s / ms / us
+are auto-scaled to ns.
 | `length` | Number of signals (property) |

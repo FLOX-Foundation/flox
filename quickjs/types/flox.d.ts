@@ -298,29 +298,20 @@ declare class Bollinger {
     };
 }
 
-// --- Volume ---
+// --- Volume / cumulative ---
+// Batch-only helpers: `static compute` and nothing else. Unlike the
+// indicators above they have no streaming instance API (no update /
+// value / ready / count / reset).
 
 declare class OBV {
-    constructor();
-    update(close: number, volume: number): number;
-    readonly value: number;
-    readonly ready: boolean;
     static compute(close: number[], volume: number[]): number[];
 }
 
 declare class VWAP {
-    constructor(window: number);
-    update(close: number, volume: number): number;
-    readonly value: number;
-    readonly ready: boolean;
     static compute(close: number[], volume: number[], window: number): number[];
 }
 
 declare class CVD {
-    constructor();
-    update(open: number, high: number, low: number, close: number, volume: number): number;
-    readonly value: number;
-    readonly ready: boolean;
     static compute(open: number[], high: number[], low: number[], close: number[], volume: number[]): number[];
 }
 
