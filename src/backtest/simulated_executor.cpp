@@ -1550,7 +1550,8 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
                     .side = order.side,
                     .price = price,
                     .quantity = qty,
-                    .timestampNs = now});
+                    .timestampNs = now,
+                    .isMaker = isMaker});
 
   // Update simulator-side net position for reduce_only enforcement.
   const int64_t signedRaw = (order.side == Side::BUY) ? qty.raw() : -qty.raw();

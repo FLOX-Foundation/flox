@@ -38,6 +38,12 @@ struct Fill
   Price price{};
   Quantity quantity{};
   UnixNanos timestampNs{};
+  // Whether this fill provided liquidity. The executor already knows -- it
+  // decides maker vs taker to pick the fill price, and reports it on
+  // OrderEvent -- but Fill used to drop it, which left every consumer of the
+  // fill stream unable to select a tier from a FeeSchedule and forced flat
+  // fee rates on results built from fills.
+  bool isMaker{false};
 };
 
 struct TrailingState

@@ -204,8 +204,12 @@ class AutoCorrelation:
     def value(self) -> float | None:
         ...
 class BacktestResult:
-    def __init__(self, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001, use_percentage_fee: bool = True, fixed_fee_per_trade: typing.SupportsFloat | typing.SupportsIndex = 0.0, risk_free_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, annualization_factor: typing.SupportsFloat | typing.SupportsIndex = 252.0) -> None:
-        ...
+    def __init__(self, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001, use_percentage_fee: bool = True, fixed_fee_per_trade: typing.SupportsFloat | typing.SupportsIndex = 0.0, risk_free_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, annualization_factor: typing.SupportsFloat | typing.SupportsIndex = 252.0, maker_fee_rate: typing.SupportsFloat | typing.SupportsIndex = -1.0, taker_fee_rate: typing.SupportsFloat | typing.SupportsIndex = -1.0) -> None:
+        """
+        maker_fee_rate / taker_fee_rate default to -1.0, meaning unset: both
+        sides are charged fee_rate. Set either to charge the real spread
+        between posting and taking. Only used when use_percentage_fee.
+        """
     def equity_curve(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Return equity curve as numpy structured array
@@ -214,7 +218,7 @@ class BacktestResult:
         """
         Drain executor fills into this result in FIFO order
         """
-    def record_fill(self, order_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, timestamp_ns: typing.SupportsInt | typing.SupportsIndex) -> None:
+    def record_fill(self, order_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, timestamp_ns: typing.SupportsInt | typing.SupportsIndex, is_maker: bool = False) -> None:
         ...
     def stats(self) -> dict:
         """
@@ -279,7 +283,7 @@ class BacktestRunner:
         ...
     def set_venue_stack(self, stack: VenueStack) -> None:
         """
-        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so fees, funding, liquidation, rate limits and queue model are the venue's. BacktestConfig fee/slippage/queue fields are ignored. Pass None to revert to the built-in executor.
+        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so the run uses the venue's fill mechanics (queue model, iceberg latency, venue availability, rate limits). Fees still come from BacktestConfig, and funding and liquidation are driven by explicit calls rather than the replay loop. Pass None to revert to the built-in executor.
         """
     def trades(self) -> typing.Any:
         """

@@ -256,13 +256,13 @@ Which event kinds an aggregator counts. Trades = TradeRecord only, BooksOnly = B
 
 **Constructor**
 
-- `BacktestResult(initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001, use_percentage_fee: bool = True, fixed_fee_per_trade: typing.SupportsFloat | typing.SupportsIndex = 0.0, risk_free_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, annualization_factor: typing.SupportsFloat | typing.SupportsIndex = 252.0) -> None`
+- `BacktestResult(initial_capital: typing.SupportsFloat | typing.SupportsIndex = 100000.0, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0001, use_percentage_fee: bool = True, fixed_fee_per_trade: typing.SupportsFloat | typing.SupportsIndex = 0.0, risk_free_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0, annualization_factor: typing.SupportsFloat | typing.SupportsIndex = 252.0, maker_fee_rate: typing.SupportsFloat | typing.SupportsIndex = -1.0, taker_fee_rate: typing.SupportsFloat | typing.SupportsIndex = -1.0) -> None`
 
 **Members**
 
 - `equity_curve(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `ingest_executor(self, executor: SimulatedExecutor) -> None`
-- `record_fill(self, order_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, timestamp_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `record_fill(self, order_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, timestamp_ns: typing.SupportsInt | typing.SupportsIndex, is_maker: bool = False) -> None`
 - `stats(self) -> dict`
 - `trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `write_equity_curve_csv(self, path: str) -> bool`

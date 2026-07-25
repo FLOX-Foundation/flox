@@ -75,9 +75,9 @@ void BacktestRunner::setSimulatedExecutor(SimulatedExecutor* executor, Simulated
     // for its venue, and applyConfig() would overwrite that with
     // BacktestConfig's flat defaults. Note this covers only what the
     // executor owns -- queue model, depth, latency, rate limits. Fees are
-    // charged downstream from BacktestConfig::feeRate; the stack's tiered
-    // FeeSchedule is never consulted, because Fill carries no maker/taker
-    // flag to select a tier with.
+    // charged downstream from BacktestConfig; the stack's FeeSchedule is
+    // never consulted, so its 30-day volume tiering does not apply (the
+    // per-side split does, via Fill::isMaker).
     installOrderEventCallback(*executor);
     if (clock != nullptr)
     {

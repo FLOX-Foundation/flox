@@ -33,9 +33,10 @@ latency, venue availability and rate limits.
 Two things it does not change, so read the result as "this venue's fill
 mechanics" and not "this venue's full economics":
 
-- Fees still come from `BacktestConfig` (`fee_rate` / `fixed_fee_per_trade`).
-  Charging the stack's tiered `FeeSchedule` needs a maker/taker flag per
-  fill, and `Fill` does not carry one.
+- Fees still come from `BacktestConfig`, not from the stack's `FeeSchedule`.
+  Fills carry `is_maker`, so `maker_fee_rate` / `taker_fee_rate` charge the
+  real spread between posting and taking; what the stack still knows and the
+  result does not is 30-day volume tiering.
 - Funding and liquidation are driven by explicit calls
   (`FundingSchedule` settlement, `LiquidationEngine.on_marks`), not by the
   replay loop.

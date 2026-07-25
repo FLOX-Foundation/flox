@@ -5,10 +5,11 @@ so the run uses that venue's queue model and depth, iceberg refresh
 latency, venue availability and rate limits.
 
 Two things this does not change: fees still come from BacktestConfig
-(Fill carries no maker/taker flag, so the stack's tiered FeeSchedule
-cannot be applied per fill), and funding and liquidation are driven by
-explicit calls rather than the replay loop. Read the result as "this
-venue's fill mechanics", not "this venue's full economics".
+rather than the stack's FeeSchedule (fills carry is_maker, so per-side
+rates work, but the schedule's 30-day volume tiering is not consulted),
+and funding and liquidation are driven by explicit calls rather than the
+replay loop. Read the result as "this venue's fill mechanics", not "this
+venue's full economics".
 """
 import pathlib
 from collections import deque

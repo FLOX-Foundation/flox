@@ -134,10 +134,12 @@ class BacktestRunner : public ISignalHandler
   /// not overwritten.
   ///
   /// What it does NOT bring in, and why:
-  ///   - Fees. BacktestResult computes them from BacktestConfig
-  ///     (feeRate / fixedFeePerTrade). Charging the stack's tiered
-  ///     FeeSchedule needs a maker/taker flag per fill, and Fill does not
-  ///     carry one.
+  ///   - Fees. BacktestResult computes them from BacktestConfig, not from
+  ///     the stack's FeeSchedule. Fill::isMaker now lets BacktestConfig
+  ///     charge makerFeeRate / takerFeeRate per side, which covers the flat
+  ///     part of a venue's schedule; what is still missing is its 30-day
+  ///     volume tiering, which the stack tracks and BacktestResult does not
+  ///     consult.
   ///   - Funding and liquidation. Both are driven by explicit calls
   ///     (FundingSchedule settlement, LiquidationEngine::onMarks), not by
   ///     the replay loop.
