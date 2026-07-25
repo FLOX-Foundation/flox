@@ -257,7 +257,7 @@ class BacktestRunner:
     @typing.overload
     def set_executor(self, executor: VenueExecutor) -> None:
         """
-        Refused: a VenueStack executor cannot drive a BacktestRunner. Raises ValueError naming the supported pattern.
+        Refused: pass the stack via set_venue_stack(stack) instead. The executor alone does not carry the clock the runner must advance.
         """
     def set_kill_switch(self, ks: KillSwitch) -> None:
         """
@@ -277,6 +277,10 @@ class BacktestRunner:
         """
     def set_strategy(self, strategy: Strategy) -> None:
         ...
+    def set_venue_stack(self, stack: VenueStack) -> None:
+        """
+        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so fees, funding, liquidation, rate limits and queue model are the venue's. BacktestConfig fee/slippage/queue fields are ignored. Pass None to revert to the built-in executor.
+        """
     def trades(self) -> typing.Any:
         """
         Return closed trades from the most recent run as a dict of numpy arrays (symbol, side, entry_price, exit_price, quantity, pnl, fee, entry_time_ns, exit_time_ns).

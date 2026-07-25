@@ -289,6 +289,7 @@ Which event kinds an aggregator counts. Trades = TradeRecord only, BooksOnly = B
 - `set_pnl_tracker(self, tracker: PnLTracker) -> None`
 - `set_risk_manager(self, rm: RiskManager) -> None`
 - `set_strategy(self, strategy: Strategy) -> None`
+- `set_venue_stack(self, stack: VenueStack) -> None`
 - `trades(self) -> typing.Any`
 
 ### `class BarData`

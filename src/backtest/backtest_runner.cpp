@@ -23,7 +23,12 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
     : _config(config), _executor(_clock), _pool(std::make_unique<std::pmr::monotonic_buffer_resource>(1024 * 1024))
 {
   _executor.applyConfig(_config);
-  _executor.setOrderEventCallback(
+  installOrderEventCallback(_executor);
+}
+
+void BacktestRunner::installOrderEventCallback(SimulatedExecutor& exec)
+{
+  exec.setOrderEventCallback(
       [this](const OrderEvent& ev)
       {
         // The built-in position tracker has to receive fills before
@@ -58,6 +63,31 @@ BacktestRunner::BacktestRunner(const BacktestConfig& config)
           _strategy->onOrderEvent(ev);
         }
       });
+}
+
+void BacktestRunner::setSimulatedExecutor(SimulatedExecutor* executor, SimulatedClock* clock)
+{
+  _venueExecutor = executor;
+  _venueClock = clock;
+  if (executor != nullptr)
+  {
+    // Deliberately no applyConfig(): the stack's own fee schedule,
+    // queue model and rate limits win over BacktestConfig.
+    installOrderEventCallback(*executor);
+    if (clock != nullptr)
+    {
+      clock->advanceTo(_clock.nowNs());
+    }
+  }
+}
+
+void BacktestRunner::advanceClocks(UnixNanos ns)
+{
+  _clock.advanceTo(ns);
+  if (_venueClock != nullptr)
+  {
+    _venueClock->advanceTo(ns);
+  }
 }
 
 void BacktestRunner::setStrategy(IStrategy* strategy)
@@ -179,12 +209,12 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 
   for (const auto& ev : bars)
   {
-    _clock.advanceTo(ev.bar.endTime.time_since_epoch().count());
+    advanceClocks(ev.bar.endTime.time_since_epoch().count());
     ++_eventCount;
 
     // Feed the bar's close into the executor so resting orders can match.
     // (SimulatedExecutor::onBar already handles SL/TP triggers using close.)
-    _executor.onBar(ev.symbol, ev.bar.close);
+    sim().onBar(ev.symbol, ev.bar.close);
 
     if (_strategy)
     {
@@ -296,7 +326,7 @@ void BacktestRunner::start(replay::IMultiSegmentReader& reader)
 
 void BacktestRunner::processEvent(const replay::ReplayEvent& event)
 {
-  _clock.advanceTo(event.timestamp_ns);
+  advanceClocks(event.timestamp_ns);
   ++_eventCount;
   _lastEventType = event.type;
 
@@ -313,8 +343,8 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     trade_ev.trade.instrument = static_cast<InstrumentType>(event.trade.instrument);
     trade_ev.exchangeMsgTsNs = event.trade.exchange_ts_ns;
 
-    _executor.onTrade(trade_ev.trade.symbol, trade_ev.trade.price, trade_ev.trade.quantity,
-                      trade_ev.trade.isBuy);
+    sim().onTrade(trade_ev.trade.symbol, trade_ev.trade.price, trade_ev.trade.quantity,
+                  trade_ev.trade.isBuy);
 
     if (_strategy)
     {
@@ -350,7 +380,7 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
       book_ev.update.asks.emplace_back(Price::fromRaw(ask.price_raw), Quantity::fromRaw(ask.qty_raw));
     }
 
-    _executor.onBookUpdate(book_ev.update.symbol, book_ev.update.bids, book_ev.update.asks);
+    sim().onBookUpdate(book_ev.update.symbol, book_ev.update.bids, book_ev.update.asks);
 
     if (_strategy)
     {
@@ -508,8 +538,8 @@ BacktestState BacktestRunner::state() const
 
 BacktestResult BacktestRunner::result() const
 {
-  BacktestResult res(_config, _executor.fills().size());
-  for (const auto& fill : _executor.fills())
+  BacktestResult res(_config, sim().fills().size());
+  for (const auto& fill : sim().fills())
   {
     res.recordFill(fill);
   }
@@ -518,8 +548,8 @@ BacktestResult BacktestRunner::result() const
 
 BacktestResult BacktestRunner::extractResult()
 {
-  BacktestResult res(_config, _executor.fills().size());
-  auto fills = _executor.extractFills();
+  BacktestResult res(_config, sim().fills().size());
+  auto fills = sim().extractFills();
   for (auto& fill : fills)
   {
     res.recordFill(fill);
@@ -573,7 +603,7 @@ void BacktestRunner::onSignal(const Signal& signal)
   // Route to custom executor if attached, else to the built-in simulator.
   IOrderExecutor& exec = (_customExecutor != nullptr)
                              ? *_customExecutor
-                             : static_cast<IOrderExecutor&>(_executor);
+                             : static_cast<IOrderExecutor&>(sim());
 
   switch (signal.type)
   {
