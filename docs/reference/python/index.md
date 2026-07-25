@@ -11,7 +11,7 @@ pip install flox-py
 Or build from source:
 
 ```bash
-cmake -B build -DFLOX_ENABLE_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 

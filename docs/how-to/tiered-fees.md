@@ -21,7 +21,7 @@ from the 30-day rolling sum on each lookup.
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
     const sched = new flox.FeeSchedule();
     sched.loadProfile('binance_um_futures');
     sched.recordFill(tsNs, notional);

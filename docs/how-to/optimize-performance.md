@@ -279,7 +279,7 @@ sudo sysctl -w net.core.busy_read=50
 
 Run included benchmarks:
 ```bash
-cmake .. -DFLOX_ENABLE_BENCHMARKS=ON
+cmake .. -DFLOX_BUILD_BENCHMARKS=ON
 make -j
 ./benchmarks/binary_log_benchmark
 ./benchmarks/nlevel_order_book_benchmark

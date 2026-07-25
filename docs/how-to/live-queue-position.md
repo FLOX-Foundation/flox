@@ -53,7 +53,7 @@ confidence is a strong signal; below 0.3 the estimate is roughly
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
 
     const est = new flox.LiveQueuePositionEstimator();
     est.setConfidenceHalfLifeNs(60_000_000_000);

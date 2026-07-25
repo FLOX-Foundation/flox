@@ -49,7 +49,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { LiquidationEngine } from "flox";
+    import { LiquidationEngine } from "@flox-foundation/flox";
 
     const eng = new LiquidationEngine();
     eng.addTier(0, 0.005);

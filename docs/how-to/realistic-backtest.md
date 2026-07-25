@@ -24,7 +24,7 @@ defaults.
 === "TypeScript"
 
     ```typescript
-    import { VenueStack } from "flox";
+    import { VenueStack } from "@flox-foundation/flox";
 
     const stack = VenueStack.binanceUmFutures(42, 10_000);
     stack.accountOpenPosition(1, 5.0, 50_000);

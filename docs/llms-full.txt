@@ -3630,16 +3630,16 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
     from flox.strategy import Strategy
     from flox.context import SymbolContext
     from flox.types import TradeData
-    from flox.indicators import StreamingSMA
+    from flox.indicators import SMA
 
     class SmaCrossover(Strategy):
-        fast_sma: StreamingSMA
-        slow_sma: StreamingSMA
+        fast_sma: SMA
+        slow_sma: SMA
 
         def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30):
             super().__init__(symbols)
-            self.fast_sma = StreamingSMA(fast)
-            self.slow_sma = StreamingSMA(slow)
+            self.fast_sma = SMA(fast)
+            self.slow_sma = SMA(slow)
 
         def on_trade(self, ctx: SymbolContext, trade: TradeData):
             price = trade.price.to_double()
@@ -3832,25 +3832,25 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
     from flox.strategy import Strategy
     from flox.context import SymbolContext
     from flox.types import TradeData
-    from flox.indicators import StreamingSMA
+    from flox.indicators import SMA
 
     class SmaCrossover(Strategy):
-        fast: StreamingSMA
-        slow: StreamingSMA
+        fast: SMA
+        slow: SMA
         size: float
         prev_above: bool
 
         def __init__(self, symbols: List[int], fast_n: int = 10, slow_n: int = 20, size: float = 1.0):
             super().__init__(symbols)
-            self.fast = StreamingSMA(fast_n)
-            self.slow = StreamingSMA(slow_n)
+            self.fast = SMA(fast_n)
+            self.slow = SMA(slow_n)
             self.size = size
             self.prev_above = False
 
         def on_trade(self, ctx: SymbolContext, trade: TradeData):
             f = self.fast.update(trade.price.to_double())
             s = self.slow.update(trade.price.to_double())
-            if f is None or s is None:
+            if not self.slow.ready:
                 return
             above = f > s
             if above and not self.prev_above and self.position() == 0.0:
@@ -7031,7 +7031,7 @@ sudo sysctl -w net.core.busy_read=50
 
 Run included benchmarks:
 ```bash
-cmake .. -DFLOX_ENABLE_BENCHMARKS=ON
+cmake .. -DFLOX_BUILD_BENCHMARKS=ON
 make -j
 ./benchmarks/binary_log_benchmark
 ./benchmarks/nlevel_order_book_benchmark
@@ -8337,7 +8337,7 @@ signals.
 
 === "Python"
     ```python
-    import flox
+    import flox_py as flox
 
     eng = flox.Engine()
     eng.add_symbol("BTCUSDT")           # ← register first
@@ -8571,7 +8571,7 @@ pip install flox-py
 Or build from source:
 
 ```bash
-cmake -B build -DFLOX_ENABLE_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
@@ -8889,6 +8889,7 @@ Which event kinds an aggregator counts. Trades = TradeRecord only, BooksOnly = B
 - `run_tape(self, path: str) -> typing.Any`
 - `run_tapes(self, paths: collections.abc.Sequence[str]) -> typing.Any`
 - `set_executor(self, executor: Executor) -> None`
+- `set_executor(self, executor: VenueExecutor) -> None`
 - `set_kill_switch(self, ks: KillSwitch) -> None`
 - `set_order_validator(self, ov: OrderValidator) -> None`
 - `set_pnl_tracker(self, tracker: PnLTracker) -> None`
@@ -14218,26 +14219,34 @@ const stats = result.stats();
 
 Bulk backtesting engine. Loads OHLCV data once, then runs strategies against it.
 
+The constructor takes capital and fee rate, not a registry.
+
 ```javascript
-const engine = new flox.Engine(registry);
-engine.loadCsv('/path/to/data.csv', 'BTCUSDT');
-const stats = engine.run(strategy);
+const engine = new flox.Engine(100_000, 0.0001);
+engine.loadCsv('/path/to/btcusdt_1m.csv');   // symbol inferred from the filename
+const signals = new flox.SignalBuilder();
+signals.buy(tsNs, 1.0);
+const stats = engine.run(signals);
 ```
 
 | Method / Property | Returns | Description |
 |-------------------|---------|-------------|
-| `loadCsv(path, symbol)` | `void` | Load OHLCV CSV |
-| `loadOhlcv(timestamps, opens, highs, lows, closes, volumes, symbol)` | `void` | Load raw OHLCV arrays |
-| `resample(intervalSeconds)` | `void` | Resample loaded data |
-| `run(strategyOrSignals)` | stats object | Run a strategy or `SignalBuilder` |
-| `barCount()` | `number` | Number of bars loaded |
-| `ts()` | `Float64Array` | Timestamps |
-| `open()` | `Float64Array` | Open prices |
-| `high()` | `Float64Array` | High prices |
-| `low()` | `Float64Array` | Low prices |
-| `close()` | `Float64Array` | Close prices |
-| `volume()` | `Float64Array` | Volumes |
+| `new Engine(initialCapital?, feeRate?)` | | Defaults 100000 and 0.0001 (fee is a fraction) |
+| `loadCsv(path, symbol?)` | `void` | Load OHLCV CSV. Without `symbol` the name is inferred from the file stem, upper-cased, with a `_1m` / `_5m` / `_15m` / `_1h` / `_4h` / `_1d` suffix stripped |
+| `loadOhlcv(bars, symbol?)` | `void` | `bars` is one object `{ts, open, high, low, close, volume}` of `Float64Array`s, not positional arrays. Timestamps in s / ms / us are auto-scaled to ns |
+| `resample(src, dst, interval)` | `void` | Three strings, e.g. `('BTCUSDT', 'BTCUSDT_1h', '1h')`. Interval is `<count><s\|m\|h\|d>`. Throws `E_SYM_001` if `src` is not loaded |
+| `run(signals)` | `BacktestStats` | Takes a `SignalBuilder` only. Passing a Strategy aborts |
+| `barCount(symbol?)` | `number` | Bars loaded; defaults to the first loaded symbol |
+| `ts(symbol?)` | `Float64Array` | Timestamps |
+| `open(symbol?)` | `Float64Array` | Open prices |
+| `high(symbol?)` | `Float64Array` | High prices |
+| `low(symbol?)` | `Float64Array` | Low prices |
+| `close(symbol?)` | `Float64Array` | Close prices |
+| `volume(symbol?)` | `Float64Array` | Volumes |
 | `symbols` | `string[]` | Registered symbol names (property) |
+
+`run()` returns the `BacktestStats` shape (`sharpe` / `sortino` / `calmar`),
+not the runner shape — see [Stats object](#stats-object).
 
 ---
 
@@ -14245,20 +14254,26 @@ const stats = engine.run(strategy);
 
 Builds a signal array to pass to `engine.run()`.
 
+Signals are keyed by timestamp and carry a quantity — not a bar index.
+
 ```javascript
 const signals = new flox.SignalBuilder();
-signals.buy(i);     // enter long at bar i
-signals.sell(i);    // enter short at bar i
+signals.buy(tsNs, 1.0)              // methods return `this`, so they chain
+       .limitSell(tsNs, 101.0, 1.0);
 const stats = engine.run(signals);
 ```
 
 | Method / Property | Description |
 |-------------------|-------------|
-| `buy(index)` | Add a long entry signal at bar `index` |
-| `sell(index)` | Add a short entry signal at bar `index` |
-| `limitBuy(index, price)` | Limit long entry |
-| `limitSell(index, price)` | Limit short entry |
+| `buy(tsNs, qty, symbol?)` | Long entry at `tsNs`. Returns `this` |
+| `sell(tsNs, qty, symbol?)` | Short entry. Returns `this` |
+| `limitBuy(tsNs, price, qty, symbol?)` | Limit long entry. Returns `this` |
+| `limitSell(tsNs, price, qty, symbol?)` | Limit short entry. Returns `this` |
 | `clear()` | Clear all signals |
+| `length` | Signal count (read-only property) |
+
+Timestamps are read as a JS `number`, not a `bigint`; values in s / ms / us
+are auto-scaled to ns.
 | `length` | Number of signals (property) |
 
 ------------------------------------------------------------------------------
@@ -14352,7 +14367,7 @@ Every indicator below is **one Node.js class** with both a batch
 Same instance, two ways to use it:
 
 ```js
-const flox = require('flox-node');
+const flox = require('@flox-foundation/flox');
 const ema = new flox.EMA(10);
 const out = ema.compute(prices);            // batch
 for (const v of stream) {
@@ -15527,53 +15542,57 @@ cvd_series  = cvd(opens, highs, lows, closes, volumes)
 
 ---
 
-## Batch vs streaming, per class
-
-Not every class carries a batch `compute()`. Classes **with** an instance `compute()`: `SMA`, `EMA`,
-`RMA`, `DEMA`, `TEMA`, `KAMA`, `RSI`, `Slope`, `ATR`, `MACD`, `Bollinger`. `SMA` additionally has a
-`compute_static(data, period)` — it is the only static form in the module.
-
-Classes with **no** `compute()` — streaming only: `CCI`, `Stochastic`, `Skewness`, `Kurtosis`,
-`RollingZScore`, `ShannonEntropy`, `ParkinsonVol`, `RogersSatchellVol`, `Correlation`,
-`AutoCorrelation`. For batch use, call the corresponding free function.
-
-!!! warning "The generated catalog below overstates this"
-    The auto-generated table is produced from `include/flox/indicator/registry.def`, which describes
-    the C++ indicator surface. Its claim that every indicator is one class with both `compute()` and
-    `update()` does not hold for the Codon module, and the constructor column renders C++ signatures
-    (`flox.EMA(size_t period)`). Read the table as a list of available class names only; use this
-    page's sections above for the Codon signatures.
-
 ## Indicator catalog
 
 <!-- INDICATOR-LIST-START -->
 
-Every indicator below is **one Codon class** with both a batch
-`compute()` method and streaming `update()` / `value` / `ready` / `reset()`.
+Every indicator below is **one Codon class** with streaming `update()` / `value` /
+`ready` / `reset()`. A batch `compute()` is **not** on every class — the `Batch`
+column says what each class actually exposes. Classes and the batch free functions
+both come from `flox.indicators`.
 
-| Indicator | Constructor | Kind |
-|---|---|---|
-| `EMA` | `flox.EMA(size_t period)` | SingleInput |
-| `SMA` | `flox.SMA(size_t period)` | SingleInput |
-| `RMA` | `flox.RMA(size_t period)` | SingleInput |
-| `RSI` | `flox.RSI(size_t period)` | SingleInput |
-| `KAMA` | `flox.KAMA(size_t period, size_t fast, size_t slow)` | SingleInput |
-| `DEMA` | `flox.DEMA(size_t period)` | SingleInput |
-| `TEMA` | `flox.TEMA(size_t period)` | SingleInput |
-| `Slope` | `flox.Slope(size_t length)` | SingleInput |
-| `Skewness` | `flox.Skewness(size_t period)` | SingleInput |
-| `Kurtosis` | `flox.Kurtosis(size_t period)` | SingleInput |
-| `RollingZScore` | `flox.RollingZScore(size_t period)` | SingleInput |
-| `ShannonEntropy` | `flox.ShannonEntropy(size_t period, size_t bins)` | SingleInput |
-| `AutoCorrelation` | `flox.AutoCorrelation(size_t window, size_t lag)` | SingleInput |
-| `ATR` | `flox.ATR(size_t period)` | BarInput |
-| `CCI` | `flox.CCI(size_t period)` | BarInput |
-| `Stochastic` | `flox.Stochastic(size_t k_period, size_t d_period)` | BarInput |
-| `ParkinsonVol` | `flox.ParkinsonVol(size_t period)` | HighLowInput |
-| `RogersSatchellVol` | `flox.RogersSatchellVol(size_t period)` | OhlcInput |
-| `Correlation` | `flox.Correlation(size_t period)` | PairInput |
-| `MACD` | `flox.MACD(size_t fast, size_t slow, size_t signal)` | MultiOutput |
-| `Bollinger` | `flox.Bollinger(size_t period, double stddev)` | MultiOutput |
+```codon
+from flox.indicators import EMA, CCI, cci
+
+ema = EMA(20)
+out = ema.compute(prices)                  # EMA has an instance compute()
+for v in stream:
+    ema.update(v)
+    if ema.ready: print(ema.value)         # streaming on the same instance
+
+c = CCI(20)                                # CCI has no compute()
+series = cci(highs, lows, closes, 20)      # batch via the free function
+```
+
+| Indicator | Constructor | Kind | Batch |
+|---|---|---|---|
+| `EMA` | `EMA(period)` | SingleInput | instance `compute(data)` |
+| `SMA` | `SMA(period)` | SingleInput | instance `compute(data)`, static `compute_static(data, period)` |
+| `RMA` | `RMA(period)` | SingleInput | instance `compute(data)` |
+| `RSI` | `RSI(period)` | SingleInput | instance `compute(data)` |
+| `KAMA` | `KAMA(period, fast=2, slow=30)` | SingleInput | instance `compute(data)` |
+| `DEMA` | `DEMA(period)` | SingleInput | instance `compute(data)` |
+| `TEMA` | `TEMA(period)` | SingleInput | instance `compute(data)` |
+| `Slope` | `Slope(length)` | SingleInput | instance `compute(data)` |
+| `Skewness` | `Skewness(period)` | SingleInput | none — free function `skewness(data, period)` |
+| `Kurtosis` | `Kurtosis(period)` | SingleInput | none — free function `kurtosis(data, period)` |
+| `RollingZScore` | `RollingZScore(period)` | SingleInput | none — free function `rolling_zscore(data, period)` |
+| `ShannonEntropy` | `ShannonEntropy(period, bins=10)` | SingleInput | none — free function `shannon_entropy(data, period, bins=10)` |
+| `AutoCorrelation` | `AutoCorrelation(window, lag)` | SingleInput | none — free function `autocorrelation(data, window, lag)` |
+| `ATR` | `ATR(period)` | BarInput | instance `compute(h, l, c)` |
+| `CCI` | `CCI(period)` | BarInput | none — free function `cci(high, low, close, period)` |
+| `Stochastic` | `Stochastic(k_period=14, d_period=3)` | BarInput | none — free function `stochastic(high, low, close, k_period=14, d_period=3)` |
+| `ParkinsonVol` | `ParkinsonVol(period)` | HighLowInput | none — free function `parkinson_vol(high, low, period)` |
+| `RogersSatchellVol` | `RogersSatchellVol(period)` | OhlcInput | none — free function `rogers_satchell_vol(open_, high, low, close, period)` |
+| `Correlation` | `Correlation(period)` | PairInput | none — free function `correlation(x, y, period)` |
+| `MACD` | `MACD(fast=12, slow=26, signal=9)` | MultiOutput | instance `compute(data)` |
+| `Bollinger` | `Bollinger(period=20, multiplier=2.0)` | MultiOutput | instance `compute(data)` |
+
+Streaming only, with no `compute()` at all — call the matching free function for batch:
+`Skewness`, `Kurtosis`, `RollingZScore`, `ShannonEntropy`, `AutoCorrelation`, `CCI`,
+`Stochastic`, `ParkinsonVol`, `RogersSatchellVol`, `Correlation`.
+
+`SMA.compute_static(data, period)` is the only static batch method in the module.
 
 
 <!-- INDICATOR-LIST-END -->
@@ -16452,8 +16471,8 @@ this.orderStatus(orderId)   // -1 if not found
 # Indicators
 
 Every indicator class has `.update()` for per-tick use plus a **static** `.compute()` for batch, and
-`.reset()` to clear state. Whether the *instance* also carries a `compute()` differs per class — see
-[Batch access per class](#batch-access-per-class) below.
+`.reset()` to clear state. Whether the *instance* also carries a `compute()` differs per class — the
+[indicator catalog](#indicator-catalog) below lists it per class.
 
 Classes are injected as globals by the embedded runtime. There is no `require()` in QuickJS.
 
@@ -16514,76 +16533,55 @@ const skewArr = Skewness.compute(prices, 20);
 `VWAP.compute(close, volume, window)`
 `CVD.compute(open, high, low, close, volume)`
 
-## Batch access per class
-
-**Static `compute()` only** — `new EMA(20).compute(prices)` is `undefined`; call `EMA.compute(prices, 20)`:
-
-`SMA`, `EMA`, `RMA`, `DEMA`, `TEMA`, `RSI`, `Slope`, `ATR`, `CCI`, `CHOP`, `ADX`, `Skewness`,
-`Kurtosis`, `RollingZScore`, `ShannonEntropy`, `ParkinsonVol`, `RogersSatchellVol`, `Correlation`,
-`OBV`, `VWAP`, `CVD` — every class deriving from the streaming base helpers, plus the batch-only
-volume helpers.
-
-**Both instance and static `compute()`** — the classes with custom adapters:
-
-`KAMA`, `MACD`, `Bollinger`, `Stochastic`
-
-```javascript
-// Static form works everywhere.
-const out = EMA.compute(prices, 20);
-
-// Instance form only on KAMA / MACD / Bollinger / Stochastic.
-const bb = new Bollinger(20, 2.0);
-const bands = bb.compute(prices);
-```
-
-!!! warning "The generated catalog below is not QuickJS-accurate"
-    The auto-generated table is produced from `include/flox/indicator/registry.def`, which describes
-    the C++ indicator surface. Two things in it do not apply to the embedded QuickJS runtime: the
-    claim that every class supports both instance `compute()` and `update()` (see the split above),
-    and the `require('flox-node')` line in its example — that is the Node binding's API. In QuickJS
-    the classes are globals. Read the table as a list of available class names only.
-
 ## Indicator catalog
 
 <!-- INDICATOR-LIST-START -->
 
-Every indicator below is **one QuickJS class** with both a batch
-`compute()` method and streaming `update()` / `value` / `ready` / `reset()`.
-Same instance, two ways to use it:
+Every indicator below is a **global class**: the embedded runtime evaluates
+`quickjs/flox/indicators.js` at global scope, so there is no `require()` and no
+namespace prefix. Streaming is `update()` / `value` / `ready` / `reset()` on the
+instance; batch is a **static** `compute()`. Only some classes also carry an
+instance `compute()` — see the `Batch` column.
 
 ```js
-const flox = require('flox-node');
-const ema = new flox.EMA(10);
-const out = ema.compute(prices);            // batch
+const ema = new EMA(10);                    // global class, no require()
+const out = EMA.compute(prices, 10);        // batch: static compute()
 for (const v of stream) {
   ema.update(v);
-  if (ema.ready) console.log(ema.value);    // streaming on the same instance
+  if (ema.ready) console.log(ema.value);    // streaming on the instance
 }
 ```
 
-| Indicator | Constructor | Kind |
-|---|---|---|
-| `EMA` | `new flox.EMA(period)` | SingleInput |
-| `SMA` | `new flox.SMA(period)` | SingleInput |
-| `RMA` | `new flox.RMA(period)` | SingleInput |
-| `RSI` | `new flox.RSI(period)` | SingleInput |
-| `KAMA` | `new flox.KAMA(period, fast, slow)` | SingleInput |
-| `DEMA` | `new flox.DEMA(period)` | SingleInput |
-| `TEMA` | `new flox.TEMA(period)` | SingleInput |
-| `Slope` | `new flox.Slope(length)` | SingleInput |
-| `Skewness` | `new flox.Skewness(period)` | SingleInput |
-| `Kurtosis` | `new flox.Kurtosis(period)` | SingleInput |
-| `RollingZScore` | `new flox.RollingZScore(period)` | SingleInput |
-| `ShannonEntropy` | `new flox.ShannonEntropy(period, bins)` | SingleInput |
-| `AutoCorrelation` | `new flox.AutoCorrelation(window, lag)` | SingleInput |
-| `ATR` | `new flox.ATR(period)` | BarInput |
-| `CCI` | `new flox.CCI(period)` | BarInput |
-| `Stochastic` | `new flox.Stochastic(k_period, d_period)` | BarInput |
-| `ParkinsonVol` | `new flox.ParkinsonVol(period)` | HighLowInput |
-| `RogersSatchellVol` | `new flox.RogersSatchellVol(period)` | OhlcInput |
-| `Correlation` | `new flox.Correlation(period)` | PairInput |
-| `MACD` | `new flox.MACD(fast, slow, signal)` | MultiOutput |
-| `Bollinger` | `new flox.Bollinger(period, stddev)` | MultiOutput |
+| Indicator | Constructor | Kind | Batch |
+|---|---|---|---|
+| `EMA` | `new EMA(period)` | SingleInput | static `EMA.compute(data, period)` |
+| `SMA` | `new SMA(period)` | SingleInput | static `SMA.compute(data, period)` |
+| `RMA` | `new RMA(period)` | SingleInput | static `RMA.compute(data, period)` |
+| `RSI` | `new RSI(period)` | SingleInput | static `RSI.compute(data, period)` |
+| `KAMA` | `new KAMA(period, fast=2, slow=30)` | SingleInput | static `KAMA.compute(data, period, fast=2, slow=30)`, instance `compute(data)` |
+| `DEMA` | `new DEMA(period)` | SingleInput | static `DEMA.compute(data, period)` |
+| `TEMA` | `new TEMA(period)` | SingleInput | static `TEMA.compute(data, period)` |
+| `Slope` | `new Slope(length)` | SingleInput | static `Slope.compute(data, length)` |
+| `Skewness` | `new Skewness(period)` | SingleInput | static `Skewness.compute(data, period)` |
+| `Kurtosis` | `new Kurtosis(period)` | SingleInput | static `Kurtosis.compute(data, period)` |
+| `RollingZScore` | `new RollingZScore(period)` | SingleInput | static `RollingZScore.compute(data, period)` |
+| `ShannonEntropy` | `new ShannonEntropy(period, bins=10)` | SingleInput | static `ShannonEntropy.compute(data, period, bins=10)`, instance `compute(data)` |
+| `AutoCorrelation` | `new AutoCorrelation(window, lag)` | SingleInput | static `AutoCorrelation.compute(data, window, lag)`, instance `compute(data)` |
+| `ATR` | `new ATR(period)` | BarInput | static `ATR.compute(high, low, close, period)` |
+| `CCI` | `new CCI(period)` | BarInput | static `CCI.compute(high, low, close, period)` |
+| `Stochastic` | `new Stochastic(kPeriod=14, dPeriod=3)` | BarInput | static `Stochastic.compute(high, low, close, kPeriod=14, dPeriod=3)`, instance `compute(high, low, close)` |
+| `ParkinsonVol` | `new ParkinsonVol(period)` | HighLowInput | static `ParkinsonVol.compute(high, low, period)` |
+| `RogersSatchellVol` | `new RogersSatchellVol(period)` | OhlcInput | static `RogersSatchellVol.compute(open, high, low, close, period)` |
+| `Correlation` | `new Correlation(period)` | PairInput | static `Correlation.compute(x, y, period)` |
+| `MACD` | `new MACD(fast=12, slow=26, signal=9)` | MultiOutput | static `MACD.compute(data, fast=12, slow=26, signal=9)`, instance `compute(data)` |
+| `Bollinger` | `new Bollinger(period=20, multiplier=2.0)` | MultiOutput | static `Bollinger.compute(data, period=20, multiplier=2.0)`, instance `compute(data)` |
+
+An instance `compute()` exists only on `KAMA`, `ShannonEntropy`, `AutoCorrelation`,
+`Stochastic`, `MACD`, `Bollinger`. On every other class above `new EMA(20).compute(prices)` is
+`undefined` — call `EMA.compute(prices, 20)`.
+
+Also defined in `flox/indicators.js` but not in the shared registry: `CHOP` (streaming plus a
+static `compute()`); `ADX`, `OBV`, `VWAP`, `CVD` (batch-only static `compute()`, no `update()`).
 
 
 <!-- INDICATOR-LIST-END -->

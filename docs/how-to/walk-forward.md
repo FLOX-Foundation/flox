@@ -73,7 +73,7 @@ the next fold's stats.
 ## Node
 
 ```js
-const flox = require('flox-node');
+const flox = require('@flox-foundation/flox');
 
 const reg = new flox.SymbolRegistry();
 const btc = reg.addSymbol('exchange', 'BTCUSDT', 0.01);

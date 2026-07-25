@@ -44,7 +44,7 @@ Calling `tick()` with a symbol that was not in the original `symbols` list updat
 
 ```javascript
 // node
-const { MultiFeedClock, FeedClockPolicy } = require('flox');
+const { MultiFeedClock, FeedClockPolicy } = require('@flox-foundation/flox');
 const clock = new MultiFeedClock({
   symbols: [btc, eth],
   policy: FeedClockPolicy.WaitForAll,

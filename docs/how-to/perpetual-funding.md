@@ -29,7 +29,7 @@ periodic-event clock of its own.
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
     const sched = new flox.FundingSchedule();
     sched.loadProfile('binance_um_futures');
     sched.setConstantRate(0.0001);

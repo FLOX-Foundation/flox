@@ -199,7 +199,7 @@ bus.subscribe(&loggingHandler, false);   // optional
 Run `event_bus_benchmark` to measure performance on your hardware:
 
 ```bash
-cmake -DFLOX_ENABLE_BENCHMARKS=ON ..
+cmake -DFLOX_BUILD_BENCHMARKS=ON ..
 make event_bus_benchmark
 ./benchmarks/event_bus_benchmark
 ```

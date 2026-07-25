@@ -37,7 +37,7 @@ Policies and states are exposed as named string constants in JS bindings and as 
 
 ```javascript
 // node
-const { OrderGroup, OrderGroupPolicy } = require('flox');
+const { OrderGroup, OrderGroupPolicy } = require('@flox-foundation/flox');
 const g = new OrderGroup({ parentSignalId: 42, policy: OrderGroupPolicy.AllOrNothing });
 g.addMarketLeg(btc, 0, 0.1);
 g.addMarketLeg(eth, 1, 2.0);

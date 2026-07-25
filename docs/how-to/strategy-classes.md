@@ -69,16 +69,16 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
     from flox.strategy import Strategy
     from flox.context import SymbolContext
     from flox.types import TradeData
-    from flox.indicators import StreamingSMA
+    from flox.indicators import SMA
 
     class SmaCrossover(Strategy):
-        fast_sma: StreamingSMA
-        slow_sma: StreamingSMA
+        fast_sma: SMA
+        slow_sma: SMA
 
         def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30):
             super().__init__(symbols)
-            self.fast_sma = StreamingSMA(fast)
-            self.slow_sma = StreamingSMA(slow)
+            self.fast_sma = SMA(fast)
+            self.slow_sma = SMA(slow)
 
         def on_trade(self, ctx: SymbolContext, trade: TradeData):
             price = trade.price.to_double()

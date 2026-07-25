@@ -42,7 +42,7 @@ Numbers approximate published rules; tune to your account tier.
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
     const policy = new flox.RateLimitPolicy();
     policy.loadProfile('binance_um_futures');
     exec.setRateLimitPolicy(policy);

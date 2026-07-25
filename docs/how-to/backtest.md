@@ -91,25 +91,25 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
     from flox.strategy import Strategy
     from flox.context import SymbolContext
     from flox.types import TradeData
-    from flox.indicators import StreamingSMA
+    from flox.indicators import SMA
 
     class SmaCrossover(Strategy):
-        fast: StreamingSMA
-        slow: StreamingSMA
+        fast: SMA
+        slow: SMA
         size: float
         prev_above: bool
 
         def __init__(self, symbols: List[int], fast_n: int = 10, slow_n: int = 20, size: float = 1.0):
             super().__init__(symbols)
-            self.fast = StreamingSMA(fast_n)
-            self.slow = StreamingSMA(slow_n)
+            self.fast = SMA(fast_n)
+            self.slow = SMA(slow_n)
             self.size = size
             self.prev_above = False
 
         def on_trade(self, ctx: SymbolContext, trade: TradeData):
             f = self.fast.update(trade.price.to_double())
             s = self.slow.update(trade.price.to_double())
-            if f is None or s is None:
+            if not self.slow.ready:
                 return
             above = f > s
             if above and not self.prev_above and self.position() == 0.0:
