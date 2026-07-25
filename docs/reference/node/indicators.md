@@ -84,7 +84,7 @@ Every indicator below is **one Node.js class** with both a batch
 Same instance, two ways to use it:
 
 ```js
-const flox = require('flox-node');
+const flox = require('@flox-foundation/flox');
 const ema = new flox.EMA(10);
 const out = ema.compute(prices);            // batch
 for (const v of stream) {

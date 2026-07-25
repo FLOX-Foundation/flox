@@ -284,53 +284,57 @@ cvd_series  = cvd(opens, highs, lows, closes, volumes)
 
 ---
 
-## Batch vs streaming, per class
-
-Not every class carries a batch `compute()`. Classes **with** an instance `compute()`: `SMA`, `EMA`,
-`RMA`, `DEMA`, `TEMA`, `KAMA`, `RSI`, `Slope`, `ATR`, `MACD`, `Bollinger`. `SMA` additionally has a
-`compute_static(data, period)` — it is the only static form in the module.
-
-Classes with **no** `compute()` — streaming only: `CCI`, `Stochastic`, `Skewness`, `Kurtosis`,
-`RollingZScore`, `ShannonEntropy`, `ParkinsonVol`, `RogersSatchellVol`, `Correlation`,
-`AutoCorrelation`. For batch use, call the corresponding free function.
-
-!!! warning "The generated catalog below overstates this"
-    The auto-generated table is produced from `include/flox/indicator/registry.def`, which describes
-    the C++ indicator surface. Its claim that every indicator is one class with both `compute()` and
-    `update()` does not hold for the Codon module, and the constructor column renders C++ signatures
-    (`flox.EMA(size_t period)`). Read the table as a list of available class names only; use this
-    page's sections above for the Codon signatures.
-
 ## Indicator catalog
 
 <!-- INDICATOR-LIST-START -->
 
-Every indicator below is **one Codon class** with both a batch
-`compute()` method and streaming `update()` / `value` / `ready` / `reset()`.
+Every indicator below is **one Codon class** with streaming `update()` / `value` /
+`ready` / `reset()`. A batch `compute()` is **not** on every class — the `Batch`
+column says what each class actually exposes. Classes and the batch free functions
+both come from `flox.indicators`.
 
-| Indicator | Constructor | Kind |
-|---|---|---|
-| `EMA` | `flox.EMA(size_t period)` | SingleInput |
-| `SMA` | `flox.SMA(size_t period)` | SingleInput |
-| `RMA` | `flox.RMA(size_t period)` | SingleInput |
-| `RSI` | `flox.RSI(size_t period)` | SingleInput |
-| `KAMA` | `flox.KAMA(size_t period, size_t fast, size_t slow)` | SingleInput |
-| `DEMA` | `flox.DEMA(size_t period)` | SingleInput |
-| `TEMA` | `flox.TEMA(size_t period)` | SingleInput |
-| `Slope` | `flox.Slope(size_t length)` | SingleInput |
-| `Skewness` | `flox.Skewness(size_t period)` | SingleInput |
-| `Kurtosis` | `flox.Kurtosis(size_t period)` | SingleInput |
-| `RollingZScore` | `flox.RollingZScore(size_t period)` | SingleInput |
-| `ShannonEntropy` | `flox.ShannonEntropy(size_t period, size_t bins)` | SingleInput |
-| `AutoCorrelation` | `flox.AutoCorrelation(size_t window, size_t lag)` | SingleInput |
-| `ATR` | `flox.ATR(size_t period)` | BarInput |
-| `CCI` | `flox.CCI(size_t period)` | BarInput |
-| `Stochastic` | `flox.Stochastic(size_t k_period, size_t d_period)` | BarInput |
-| `ParkinsonVol` | `flox.ParkinsonVol(size_t period)` | HighLowInput |
-| `RogersSatchellVol` | `flox.RogersSatchellVol(size_t period)` | OhlcInput |
-| `Correlation` | `flox.Correlation(size_t period)` | PairInput |
-| `MACD` | `flox.MACD(size_t fast, size_t slow, size_t signal)` | MultiOutput |
-| `Bollinger` | `flox.Bollinger(size_t period, double stddev)` | MultiOutput |
+```codon
+from flox.indicators import EMA, CCI, cci
+
+ema = EMA(20)
+out = ema.compute(prices)                  # EMA has an instance compute()
+for v in stream:
+    ema.update(v)
+    if ema.ready: print(ema.value)         # streaming on the same instance
+
+c = CCI(20)                                # CCI has no compute()
+series = cci(highs, lows, closes, 20)      # batch via the free function
+```
+
+| Indicator | Constructor | Kind | Batch |
+|---|---|---|---|
+| `EMA` | `EMA(period)` | SingleInput | instance `compute(data)` |
+| `SMA` | `SMA(period)` | SingleInput | instance `compute(data)`, static `compute_static(data, period)` |
+| `RMA` | `RMA(period)` | SingleInput | instance `compute(data)` |
+| `RSI` | `RSI(period)` | SingleInput | instance `compute(data)` |
+| `KAMA` | `KAMA(period, fast=2, slow=30)` | SingleInput | instance `compute(data)` |
+| `DEMA` | `DEMA(period)` | SingleInput | instance `compute(data)` |
+| `TEMA` | `TEMA(period)` | SingleInput | instance `compute(data)` |
+| `Slope` | `Slope(length)` | SingleInput | instance `compute(data)` |
+| `Skewness` | `Skewness(period)` | SingleInput | none — free function `skewness(data, period)` |
+| `Kurtosis` | `Kurtosis(period)` | SingleInput | none — free function `kurtosis(data, period)` |
+| `RollingZScore` | `RollingZScore(period)` | SingleInput | none — free function `rolling_zscore(data, period)` |
+| `ShannonEntropy` | `ShannonEntropy(period, bins=10)` | SingleInput | none — free function `shannon_entropy(data, period, bins=10)` |
+| `AutoCorrelation` | `AutoCorrelation(window, lag)` | SingleInput | none — free function `autocorrelation(data, window, lag)` |
+| `ATR` | `ATR(period)` | BarInput | instance `compute(h, l, c)` |
+| `CCI` | `CCI(period)` | BarInput | none — free function `cci(high, low, close, period)` |
+| `Stochastic` | `Stochastic(k_period=14, d_period=3)` | BarInput | none — free function `stochastic(high, low, close, k_period=14, d_period=3)` |
+| `ParkinsonVol` | `ParkinsonVol(period)` | HighLowInput | none — free function `parkinson_vol(high, low, period)` |
+| `RogersSatchellVol` | `RogersSatchellVol(period)` | OhlcInput | none — free function `rogers_satchell_vol(open_, high, low, close, period)` |
+| `Correlation` | `Correlation(period)` | PairInput | none — free function `correlation(x, y, period)` |
+| `MACD` | `MACD(fast=12, slow=26, signal=9)` | MultiOutput | instance `compute(data)` |
+| `Bollinger` | `Bollinger(period=20, multiplier=2.0)` | MultiOutput | instance `compute(data)` |
+
+Streaming only, with no `compute()` at all — call the matching free function for batch:
+`Skewness`, `Kurtosis`, `RollingZScore`, `ShannonEntropy`, `AutoCorrelation`, `CCI`,
+`Stochastic`, `ParkinsonVol`, `RogersSatchellVol`, `Correlation`.
+
+`SMA.compute_static(data, period)` is the only static batch method in the module.
 
 
 <!-- INDICATOR-LIST-END -->
