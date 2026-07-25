@@ -115,3 +115,29 @@ TEST(CapiRegistryTest, MultipleExchangesSameSymbol)
 
   flox_registry_destroy(reg);
 }
+
+// An unregistered SymbolId reaches the C API as a plain integer the caller
+// invented, and Strategy's base constructor throws std::invalid_argument for
+// it. Under extern "C" that exception has nowhere to go, so before the
+// try/catch in flox_strategy_create this call terminated the process instead
+// of returning a handle the caller could test.
+TEST(CapiRegistryTest, StrategyCreateReturnsNullForUnregisteredSymbol)
+{
+  FloxRegistryHandle reg = flox_registry_create();
+  ASSERT_NE(reg, nullptr);
+
+  const uint32_t bogus[] = {4242u};
+  FloxStrategyCallbacks cb{};
+  FloxStrategyHandle strat = flox_strategy_create(1, bogus, 1, reg, cb);
+
+  EXPECT_EQ(strat, nullptr);
+
+  flox_registry_destroy(reg);
+}
+
+TEST(CapiRegistryTest, StrategyCreateRejectsNullRegistry)
+{
+  const uint32_t syms[] = {1u};
+  FloxStrategyCallbacks cb{};
+  EXPECT_EQ(flox_strategy_create(1, syms, 1, nullptr, cb), nullptr);
+}

@@ -71,8 +71,13 @@ void BacktestRunner::setSimulatedExecutor(SimulatedExecutor* executor, Simulated
   _venueClock = clock;
   if (executor != nullptr)
   {
-    // Deliberately no applyConfig(): the stack's own fee schedule,
-    // queue model and rate limits win over BacktestConfig.
+    // Deliberately no applyConfig(): the stack arrives already configured
+    // for its venue, and applyConfig() would overwrite that with
+    // BacktestConfig's flat defaults. Note this covers only what the
+    // executor owns -- queue model, depth, latency, rate limits. Fees are
+    // charged downstream from BacktestConfig::feeRate; the stack's tiered
+    // FeeSchedule is never consulted, because Fill carries no maker/taker
+    // flag to select a tier with.
     installOrderEventCallback(*executor);
     if (clock != nullptr)
     {

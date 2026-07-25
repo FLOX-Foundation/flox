@@ -40,6 +40,15 @@ foreach(_flox_core_dir "${CMAKE_SOURCE_DIR}/../build" "${CMAKE_SOURCE_DIR}/../bu
   endif()
 endforeach()
 
+if(NOT _flox_core_build_type)
+  message(FATAL_ERROR
+    "Could not read CMAKE_BUILD_TYPE from the flox core build next to "
+    "${FLOX_LIB}. An unset build type means no NDEBUG, which turns on "
+    "FLOX_SCALE_CHECKS and changes sizeof(Price) from 8 to 16 — linking that "
+    "archive into this addon corrupts memory silently. Reconfigure the core "
+    "with an explicit -DCMAKE_BUILD_TYPE=Release.")
+endif()
+
 if(_flox_core_build_type)
   set(_flox_node_build_type "${CMAKE_BUILD_TYPE}")
   if(NOT _flox_node_build_type)
@@ -78,7 +87,18 @@ if(MSVC)
   set_property(TARGET flox_node PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
 target_link_libraries(flox_node ${CMAKE_JS_LIB} ${FLOX_LIB})
-target_compile_definitions(flox_node PRIVATE NAPI_VERSION=8 NODE_ADDON_API_DISABLE_DEPRECATED)
+# NODE_ADDON_API_CPP_EXCEPTIONS_ALL widens node-addon-api's callback wrapper
+# (node_modules/node-addon-api/napi-inl.h) from catching only Napi::Error to
+# also catching std::exception and (...), converting them into JS errors.
+# Without it a C++ exception thrown by flox core — flox::Strategy's constructor
+# throws std::invalid_argument for a SymbolId missing from the registry —
+# escapes into V8's C frame and calls std::terminate, killing the process
+# instead of raising something JS can catch. That path is reachable from four
+# addStrategy/setStrategy entry points, and only 14 of 577 NAPI methods carry a
+# hand-written try/catch. tryFlox stays as the enrichment layer that preserves
+# FloxError's code and helpUrl; this is the safety net underneath it.
+target_compile_definitions(flox_node PRIVATE NAPI_VERSION=8 NODE_ADDON_API_DISABLE_DEPRECATED
+                                             NODE_ADDON_API_CPP_EXCEPTIONS_ALL)
 
 # flox headers are feature-gated on macros the core build sets PUBLIC on the
 # `flox` target. find_library() gives us the archive but none of those
