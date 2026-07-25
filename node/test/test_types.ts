@@ -161,7 +161,7 @@ signals.clear();
 
 const stats = engine.run(signals);
 const _net: number = stats.netPnl;
-const _sharpe: number = stats.sharpe;
+const _sharpe: number = stats.sharpeRatio;
 
 // ── Backtest classes ───────────────────────────────────────────────────
 const bt = new BacktestRunner(registry, 0.0001, 100000);

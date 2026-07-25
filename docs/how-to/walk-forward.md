@@ -60,9 +60,9 @@ folds = wfr.run_csv("data/btcusdt_sample.csv", "BTCUSDT")
 for f in folds:
     print(f"fold {f['fold_index']}: "
           f"train return={f['train_stats']['return_pct']:+.4f}% "
-          f"sharpe={f['train_stats']['sharpe']:+.4f} | "
+          f"sharpe={f['train_stats']['sharpe_ratio']:+.4f} | "
           f"test return={f['test_stats']['return_pct']:+.4f}% "
-          f"sharpe={f['test_stats']['sharpe']:+.4f}")
+          f"sharpe={f['test_stats']['sharpe_ratio']:+.4f}")
 ```
 
 The factory pattern is non-negotiable: the engine calls it once per

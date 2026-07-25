@@ -66,7 +66,7 @@ stats = bt.run_csv(DATA)
 
 print(f"  Return   : {stats['return_pct']:+.4f}%")
 print(f"  Trades   : {stats['total_trades']}  win={stats['win_rate']*100:.1f}%")
-print(f"  Sharpe   : {stats['sharpe']:.4f}")
+print(f"  Sharpe   : {stats['sharpe_ratio']:.4f}")
 print(f"  Max DD   : {stats['max_drawdown_pct']:.4f}%")
 print(f"  Net PnL  : {stats['net_pnl']:.4f}")
 

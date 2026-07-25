@@ -97,8 +97,9 @@ inline py::dict statsToDict(const flox::BacktestStats& s)
   d["max_drawdown_pct"] = s.maxDrawdownPct;
   d["win_rate"] = s.winRate;
   d["profit_factor"] = s.profitFactor;
-  d["sharpe"] = s.sharpeRatio;
-  d["sortino"] = s.sortinoRatio;
+  d["sharpe_ratio"] = s.sharpeRatio;
+  d["sortino_ratio"] = s.sortinoRatio;
+  d["calmar_ratio"] = s.calmarRatio;
   d["return_pct"] = s.returnPct;
   return d;
 }

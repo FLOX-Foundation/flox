@@ -83,14 +83,14 @@ bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMAcross([btc]))
 
 stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
-print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
+print(stats["return_pct"], stats["sharpe_ratio"], stats["max_drawdown_pct"])
 ```
 
 The constructor takes `(registry, fee_rate=0.0004, initial_capital=100000.0)` — nothing else. Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Useful for an indicator sanity check; not enough for a decision about real capital.
 
 `run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not. Timestamps below `1e12` are treated as seconds and scaled to nanoseconds. Other entry points: `run_bars(...)` (full OHLC, fires `on_bar`), `run_ohlcv(ts, close, symbol)`, `run_tape(path)` and `run_tapes(paths)` for `.floxlog` tapes.
 
-Returns a plain dict. Keys: `total_trades`, `winning_trades`, `losing_trades`, `initial_capital`, `final_capital`, `total_pnl`, `total_fees`, `net_pnl`, `gross_profit`, `gross_loss`, `max_drawdown`, `max_drawdown_pct`, `win_rate`, `profit_factor`, `sharpe`, `sortino`, `return_pct`.
+Returns a plain dict. Keys: `total_trades`, `winning_trades`, `losing_trades`, `initial_capital`, `final_capital`, `total_pnl`, `total_fees`, `net_pnl`, `gross_profit`, `gross_loss`, `max_drawdown`, `max_drawdown_pct`, `win_rate`, `profit_factor`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `return_pct`.
 
 Hooks attach after construction: `set_executor(executor)` (a subclass of `flox.Executor`), `set_risk_manager`, `set_kill_switch`, `set_order_validator`, `set_pnl_tracker`, `add_execution_listener`.
 
@@ -175,7 +175,7 @@ signals.buy(1704067200_000000000, 0.5, symbol="BTCUSDT")
 signals.sell(1704068400_000000000, 0.5, symbol="BTCUSDT")
 
 stats = engine.run(signals)
-print(f"PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe:.4f}")
+print(f"PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe_ratio:.4f}")
 ```
 
 ### Loading Bar Data
@@ -214,9 +214,9 @@ Returns a `flox.Stats` object. Fields are readable as attributes or via `stats["
 | `total_trades` | Round-trip trade count |
 | `net_pnl` | Gross PnL minus all fees |
 | `total_fees` | Total execution fees |
-| `sharpe` | Annualized Sharpe ratio |
-| `sortino` | Annualized Sortino ratio |
-| `calmar` | Calmar ratio |
+| `sharpe_ratio` | Annualized Sharpe ratio |
+| `sortino_ratio` | Annualized Sortino ratio |
+| `calmar_ratio` | Calmar ratio |
 | `max_drawdown` | Peak-to-trough drawdown |
 | `max_drawdown_pct` | Drawdown as percentage |
 | `win_rate` | Winning trade fraction |

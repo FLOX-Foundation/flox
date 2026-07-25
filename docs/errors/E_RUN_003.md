@@ -22,7 +22,7 @@ a list, a non-dict mapping — fails fast.
         if fast >= slow:
             # Skip invalid combinations by returning an empty / zero
             # stats dict (still a dict).
-            return {"sharpe": 0.0, "return_pct": 0.0, "total_trades": 0}
+            return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
         bt = flox.BacktestRunner(reg, 0.0004, 10_000)
         bt.set_strategy(MyStrategy(fast, slow))

@@ -89,7 +89,7 @@ Run a backtest over every loaded symbol. `signals` is a [`SignalBuilder`](#signa
 
 ```python
 stats = engine.run(signals)
-print(stats.net_pnl, stats["sharpe"])
+print(stats.net_pnl, stats["sharpe_ratio"])
 ```
 
 Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
@@ -142,10 +142,10 @@ Returned by `Engine.run()`. Fields are readable as attributes or by key, and `to
 ```python
 stats = engine.run(signals)
 
-stats.sharpe          # attribute access
-stats["sharpe"]       # key access
+stats.sharpe_ratio    # attribute access
+stats["sharpe_ratio"]  # key access
 stats.to_dict()       # dict of every field
-repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe=... dd=...%)
+repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe_ratio=... dd=...%)
 ```
 
 | Field | Type | Description |
@@ -166,9 +166,9 @@ repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe=... dd=...%)
 | `profit_factor` | `float` | Gross profit / gross loss |
 | `avg_win` | `float` | Average winning trade |
 | `avg_loss` | `float` | Average losing trade |
-| `sharpe` | `float` | Annualized Sharpe ratio |
-| `sortino` | `float` | Annualized Sortino ratio |
-| `calmar` | `float` | Calmar ratio |
+| `sharpe_ratio` | `float` | Annualized Sharpe ratio |
+| `sortino_ratio` | `float` | Annualized Sortino ratio |
+| `calmar_ratio` | `float` | Calmar ratio |
 | `return_pct` | `float` | Net return percentage |
 
 `BacktestResult.stats()` in [Backtest Components](backtest.md#backtestresult) returns a dict with a different, larger key set — the ratios are named `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` there.
@@ -209,5 +209,5 @@ for i in range(1, n):
 
 stats = engine.run(signals)
 print(f"Signals: {len(signals)}, trades: {stats.total_trades}")
-print(f"Net PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe:.4f}")
+print(f"Net PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe_ratio:.4f}")
 ```

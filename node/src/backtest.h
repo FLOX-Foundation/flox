@@ -596,9 +596,9 @@ class BacktestResultWrap : public Napi::ObjectWrap<BacktestResultWrap>
     o.Set("profitFactor", s.profitFactor);
     o.Set("avgWin", s.avgWin);
     o.Set("avgLoss", s.avgLoss);
-    o.Set("sharpe", s.sharpeRatio);
-    o.Set("sortino", s.sortinoRatio);
-    o.Set("calmar", s.calmarRatio);
+    o.Set("sharpeRatio", s.sharpeRatio);
+    o.Set("sortinoRatio", s.sortinoRatio);
+    o.Set("calmarRatio", s.calmarRatio);
     o.Set("returnPct", s.returnPct);
     return o;
   }

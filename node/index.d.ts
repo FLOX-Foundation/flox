@@ -440,16 +440,15 @@ export interface BacktestStats {
   profitFactor: number;
   avgWin: number;
   avgLoss: number;
-  sharpe: number;
-  sortino: number;
-  calmar: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  calmarRatio: number;
   returnPct: number;
 }
 
-/** Stats returned by every `BacktestRunner.run*` method. A different,
- *  narrower shape than `BacktestStats`: `sharpeRatio` rather than
- *  `sharpe`, and no `sortino` / `calmar` / `totalPnl` / `grossProfit` /
- *  `grossLoss`. */
+/** Stats returned by every `BacktestRunner.run*` method. `BacktestStats`
+ *  minus `totalPnl` / `grossProfit` / `grossLoss`. The risk ratios are
+ *  named the same across every producer. */
 export interface RunnerStats {
   totalTrades: number;
   winningTrades: number;
@@ -462,6 +461,8 @@ export interface RunnerStats {
   maxDrawdown: number;
   maxDrawdownPct: number;
   sharpeRatio: number;
+  sortinoRatio: number;
+  calmarRatio: number;
   winRate: number;
   avgWin: number;
   avgLoss: number;
@@ -469,7 +470,7 @@ export interface RunnerStats {
 }
 
 /** Stats attached to a `WalkForwardFold` and to a `GridSearchResult`.
- *  `RunnerStats` minus `avgWin` / `avgLoss`, plus `sortinoRatio`. */
+ *  `RunnerStats` minus `avgWin` / `avgLoss`. */
 export interface FoldStats {
   totalTrades: number;
   winningTrades: number;
@@ -483,6 +484,7 @@ export interface FoldStats {
   maxDrawdownPct: number;
   sharpeRatio: number;
   sortinoRatio: number;
+  calmarRatio: number;
   winRate: number;
   profitFactor: number;
 }

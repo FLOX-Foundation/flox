@@ -1538,6 +1538,8 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
     obj.Set("maxDrawdown", Napi::Number::New(env, s.maxDrawdown));
     obj.Set("maxDrawdownPct", Napi::Number::New(env, s.maxDrawdownPct));
     obj.Set("sharpeRatio", Napi::Number::New(env, s.sharpeRatio));
+    obj.Set("sortinoRatio", Napi::Number::New(env, s.sortinoRatio));
+    obj.Set("calmarRatio", Napi::Number::New(env, s.calmarRatio));
     obj.Set("winRate", Napi::Number::New(env, s.winRate));
     obj.Set("avgWin", Napi::Number::New(env, s.avgWin));
     obj.Set("avgLoss", Napi::Number::New(env, s.avgLoss));

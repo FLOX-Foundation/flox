@@ -52,7 +52,7 @@ def _fmt_value(key: str, val: Any) -> str:
 
 _SUMMARY_LAYOUT = [
     ("Return", "return_pct"),
-    ("Sharpe", "sharpe"),
+    ("Sharpe", "sharpe_ratio"),
     ("Max DD", "max_drawdown_pct"),
     ("Trades", "total_trades"),
     ("Win rate", "win_rate"),
@@ -76,7 +76,7 @@ def _summary_cards(stats: Mapping[str, Any]) -> str:
             v = stats.get(key)
             if isinstance(v, (int, float)):
                 klass += " good" if v > 0 else " bad"
-        if key == "sharpe":
+        if key == "sharpe_ratio":
             v = stats.get(key)
             if isinstance(v, (int, float)):
                 klass += " good" if v > 1 else ("bad" if v < 0 else "")

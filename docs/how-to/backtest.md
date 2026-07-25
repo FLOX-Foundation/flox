@@ -178,7 +178,7 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 
     stats = bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
     print(f"Final ${stats['final_capital']:.2f}  return {stats['return_pct']:.2f}%  "
-          f"trades {stats['total_trades']}  Sharpe {stats['sharpe']:.2f}  "
+          f"trades {stats['total_trades']}  Sharpe {stats['sharpe_ratio']:.2f}  "
           f"DD {stats['max_drawdown_pct']:.2f}%")
     ```
 
@@ -248,20 +248,29 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 Final $10245.30  return 2.45%  trades 47  Sharpe 1.23  DD 3.21%
 ```
 
-### Stats key names differ by producer
+### Two stats shapes, one set of key names
 
-There are two different stats shapes, and the risk-adjusted ratio keys are not the same in both. Read the keys off the object that produced the dict, not off a generic "stats" shape.
+Every producer names the risk ratios the same way: `sharpe_ratio` /
+`sortino_ratio` / `calmar_ratio` in Python and Codon, `sharpeRatio` /
+`sortinoRatio` / `calmarRatio` in Node. The C++ `BacktestStats` field name is
+the source both are derived from, so the snake_case to camelCase rule holds
+with no exceptions.
 
-| Producer | Python keys | Node.js keys |
-|---|---|---|
-| `BacktestRunner.run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes` | `sharpe`, `sortino` | `sharpeRatio` only |
-| `BacktestResult.stats()` | `sharpe_ratio`, `sortino_ratio`, `calmar_ratio` | `sharpe`, `sortino`, `calmar` |
-| `GridSearch.run()[i]["stats"]` | whatever the factory returned (normally the `run_csv` shape) | `sharpeRatio`, `sortinoRatio` |
-| `WalkForwardRunner` fold stats | `sharpe`, `sortino` | `sharpeRatio`, `sortinoRatio` |
+What still differs between producers is the *field set*, not the names:
 
-Only `BacktestResult.stats()` carries the full metric set. The `run_*` dict is the short form — no Calmar, and in Node no Sortino either. Python's `BacktestResult.stats()` additionally carries `time_weighted_return`, `avg_win_loss_ratio`, `max_consecutive_wins` / `max_consecutive_losses`, `avg_trade_duration_ns` / `median_trade_duration_ns` / `max_trade_duration_ns`, `start_time_ns` and `end_time_ns`; the Node `stats()` object does not.
+| Producer | Field set |
+|---|---|
+| `BacktestRunner.run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes` | Headline metrics plus all three risk ratios |
+| `BacktestResult.stats()` | The full set |
+| `GridSearch.run()[i]["stats"]` | Python: whatever the factory returned (normally the `run_*` shape). Node: the fold shape |
+| `WalkForwardRunner` fold stats | The fold shape: the `run_*` set minus `avg_win` / `avg_loss` |
 
-Note the `BacktestStats` interface in `node/index.d.ts` describes the `BacktestResult.stats()` shape; the `runCsv` / `runOhlcv` return value is declared as that type but does not match it.
+`BacktestResult.stats()` is the only one carrying the full metric set:
+`time_weighted_return`, `avg_win_loss_ratio`, `max_consecutive_wins` /
+`max_consecutive_losses`, `avg_trade_duration_ns` /
+`median_trade_duration_ns` / `max_trade_duration_ns`, `start_time_ns` and
+`end_time_ns`. In Node these three shapes are the `BacktestStats`,
+`RunnerStats` and `FoldStats` interfaces in `index.d.ts`.
 
 ## Pre-aggregated bars (faster replay)
 

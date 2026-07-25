@@ -137,7 +137,7 @@ Hooks attach after construction: `setExecutor(executor)` (an object implementing
 
 Also present: `winningTrades`, `losingTrades`, `initialCapital`, `finalCapital`, `totalFees`, `maxDrawdown`, `profitFactor`, `avgWin`, `avgLoss`.
 
-The key names depend on which object produced the dict. `BacktestRunner.runCsv` / `runOhlcv` / `runBars` emit `sharpeRatio` and carry no Sortino or Calmar (`node/src/strategy.h:1527-1546`). `BacktestResult.stats()` is a different shape: `sharpe`, `sortino`, `calmar` (`node/src/backtest.h:578-580`). `GridSearch` and `WalkForwardRunner` emit `sharpeRatio` and `sortinoRatio` (`node/src/walk_forward.h:77-78`). Note that the `BacktestStats` interface in `node/index.d.ts` describes the `BacktestResult.stats()` shape but is declared as the return type of `runCsv` — a stale declaration, not a runtime difference.
+Every producer uses the same names: `sharpeRatio`, `sortinoRatio` and `calmarRatio`. What differs is the field set, and `index.d.ts` has one interface per shape — `BacktestStats` for `BacktestResult.stats()`, `RunnerStats` for `BacktestRunner.runCsv` / `runOhlcv` / `runBars`, and `FoldStats` for `GridSearch` and `WalkForwardRunner`.
 
 ### Venue physics
 

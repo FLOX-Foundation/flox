@@ -17,7 +17,7 @@ btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 def factory(params):
     fast, slow = int(params[0]), int(params[1])
     if fast >= slow:
-        return {"sharpe": 0.0}
+        return {"sharpe_ratio": 0.0}
     # ... build BacktestRunner, run, return stats dict
     bt = flox.BacktestRunner(reg, 0.0004, 10_000)
     bt.set_strategy(_build(fast, slow))
@@ -35,7 +35,7 @@ results = gs.run()
 
 # Project sharpe onto the 2D grid (last axis varies fastest).
 z = [
-    [results[i * len(slow_axis) + j]["stats"]["sharpe"]
+    [results[i * len(slow_axis) + j]["stats"]["sharpe_ratio"]
      for j in range(len(slow_axis))]
     for i in range(len(fast_axis))
 ]

@@ -199,7 +199,7 @@ flox.BacktestResult(
 
 ### `stats()` keys
 
-The [`Stats`](engine.md#stats) object returned by `Engine.run()` is a different, smaller set — note in particular `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` here versus `sharpe` / `sortino` / `calmar` there.
+The [`Stats`](engine.md#stats) object returned by `Engine.run()` is a different, smaller set, but the key names are the same.
 
 | Key | Type | Description |
 |-----|------|-------------|
