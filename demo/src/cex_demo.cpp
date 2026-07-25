@@ -24,7 +24,7 @@
 using namespace flox;
 
 // Simulated order executor for demo purposes
-class SimulatedExecutor : public IOrderExecutor
+class SimulatedExecutor : public IRoutableExecutor
 {
  public:
   explicit SimulatedExecutor(std::string name) : _name(std::move(name)) {}

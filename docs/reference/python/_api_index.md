@@ -283,6 +283,7 @@ Which event kinds an aggregator counts. Trades = TradeRecord only, BooksOnly = B
 - `run_tape(self, path: str) -> typing.Any`
 - `run_tapes(self, paths: collections.abc.Sequence[str]) -> typing.Any`
 - `set_executor(self, executor: Executor) -> None`
+- `set_executor(self, executor: VenueExecutor) -> None`
 - `set_kill_switch(self, ks: KillSwitch) -> None`
 - `set_order_validator(self, ov: OrderValidator) -> None`
 - `set_pnl_tracker(self, tracker: PnLTracker) -> None`

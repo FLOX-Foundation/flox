@@ -251,8 +251,14 @@ class BacktestRunner:
         """
         Run a backtest off N `.floxlog` tapes merged on read. Symbols are rekeyed by (metadata.exchange, name) so two captures of the same venue/symbol collapse, and two different venues stay distinct. `run_tapes([t])` is equivalent to `run_tape(t)`. Stats shape mirrors run_tape.
         """
+    @typing.overload
     def set_executor(self, executor: Executor) -> None:
         ...
+    @typing.overload
+    def set_executor(self, executor: VenueExecutor) -> None:
+        """
+        Refused: a VenueStack executor cannot drive a BacktestRunner. Raises ValueError naming the supported pattern.
+        """
     def set_kill_switch(self, ks: KillSwitch) -> None:
         """
         Attach (or detach with None) a kill switch. Reduce-only orders bypass so tightening caps does not strand a position.

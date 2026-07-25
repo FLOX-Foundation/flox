@@ -502,6 +502,25 @@ TEST(SplitOrderTrackerTest, PartialFailure)
   EXPECT_FALSE(tracker.isSuccessful(100));
 }
 
+TEST(SplitOrderTrackerTest, DuplicateSuccessDoesNotMaskAFailedChild)
+{
+  // onChildComplete() is not idempotent: a duplicated terminal event
+  // (venue replay, reconnect) can push completedCount to childCount
+  // while a sibling has already failed. allSuccess() must still report
+  // failure.
+  SplitOrderTracker tracker;
+
+  std::array<OrderId, 2> children = {101, 102};
+  tracker.registerSplit(100, children, 200 * 1'000'000LL, 0);
+
+  tracker.onChildComplete(101, true);
+  tracker.onChildComplete(101, true);  // duplicate terminal event
+  tracker.onChildComplete(102, false);
+
+  EXPECT_TRUE(tracker.isComplete(100));
+  EXPECT_FALSE(tracker.isSuccessful(100));
+}
+
 TEST(SplitOrderTrackerTest, Cleanup)
 {
   SplitOrderTracker tracker;
@@ -530,7 +549,7 @@ TEST(SplitOrderTrackerTest, TooManyChildren)
 // OrderRouter Tests
 // ============================================================================
 
-class MockOrderExecutor : public IOrderExecutor
+class MockOrderExecutor : public IRoutableExecutor
 {
  public:
   void submit(SymbolId symbol,
