@@ -235,6 +235,70 @@ def _feed_tape(runner, tape_path: Path) -> int:
 # ── Command ──────────────────────────────────────────────────────────
 
 
+def _make_sim_bridge(sim: Any) -> Any:
+    """Adapt a native ``SimulatedExecutor`` to the runner's executor hook.
+
+    ``Runner.set_executor`` takes a ``flox_py.Executor`` -- the Python-side
+    hook whose calls are marshalled back through the C API.
+    ``SimulatedExecutor`` is an unrelated binding of the C++ matching engine
+    and is not a subclass of it, so handing one straight to the runner raises
+    TypeError. This adapter is the join: the runner sees an ``Executor``, and
+    the ControlServer keeps talking to the same underlying ``sim``, so orders
+    from the strategy and orders placed over MCP land in one book.
+
+    Built inside a function because ``flox_py`` is imported lazily here --
+    binding the base class at module scope would drag the extension into
+    every ``flox --help``.
+    """
+    import flox_py
+
+    class _SimBridge(flox_py.Executor):
+        def __init__(self) -> None:
+            super().__init__()
+            self._sim = sim
+
+        def submit(self, order: Any) -> None:
+            self._sim.submit_order(
+                order.id,
+                order.side or "buy",
+                float(order.price),
+                float(order.quantity),
+                type=order.order_type or "market",
+                symbol=order.symbol,
+                tif=order.time_in_force or "gtc",
+                reduce_only=bool(order.reduce_only),
+            )
+
+        def cancel(self, order_id: int) -> None:
+            self._sim.cancel_order(order_id)
+
+        def cancel_all(self, symbol: int) -> None:
+            self._sim.cancel_all(symbol)
+
+    return _SimBridge()
+
+
+def _make_kill_switch_bridge(state: "_KillSwitch") -> Any:
+    """Adapt the duck-typed ``_KillSwitch`` to the runner's kill-switch hook.
+
+    ``_KillSwitch`` exists for ControlServer and the state writer, which want
+    ``set`` / ``state``. The runner wants a ``flox_py.KillSwitch`` whose
+    ``check(signal)`` returns False to halt trading. Without this adapter the
+    two were never connected, so flipping the switch over MCP gated the
+    control endpoints while the strategy kept trading -- the opposite of what
+    an operator kill switch is for.
+
+    Lazily built for the same reason as _make_sim_bridge.
+    """
+    import flox_py
+
+    class _KillSwitchBridge(flox_py.KillSwitch):
+        def check(self, signal: Any) -> bool:
+            return not state.state()["active"]
+
+    return _KillSwitchBridge()
+
+
 def cmd_engine_sim(args: argparse.Namespace) -> int:
     import flox_py
     from . import control_server as cs_mod
@@ -252,19 +316,23 @@ def cmd_engine_sim(args: argparse.Namespace) -> int:
     StratCls = _load_strategy_class(strategy_path)
 
     registry = flox_py.SymbolRegistry()
-    sym_id = registry.add_symbol(
+    # add_symbol returns a Symbol, not an int. Strategy accepts either, but
+    # the control server and the state writer put this straight into JSON,
+    # where a Symbol is not serialisable.
+    symbol = registry.add_symbol(
         args.exchange, args.symbol_name, tick_size=args.tick_size,
     )
+    sym_id = int(symbol.id)
 
     runner = flox_py.Runner(registry, on_signal=lambda s: None,
                             threaded=bool(args.threaded))
     sim = flox_py.SimulatedExecutor()
-    runner.set_executor(sim)
+    runner.set_executor(_make_sim_bridge(sim))
 
     ks = _KillSwitch()
-    runner.set_kill_switch(ks)
+    runner.set_kill_switch(_make_kill_switch_bridge(ks))
 
-    strategy = StratCls([sym_id])
+    strategy = StratCls([symbol])
     runner.add_strategy(strategy)
     runner.start()
 
