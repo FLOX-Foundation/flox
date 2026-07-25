@@ -26,7 +26,7 @@ Find good strategy parameters by sweeping a grid and ranking results. The patter
             stats = run_one(fast, slow)
             rows.append({"fast": fast, "slow": slow, **stats})
 
-    df = pd.DataFrame(rows).sort_values("sharpe", ascending=False)
+    df = pd.DataFrame(rows).sort_values("sharpe_ratio", ascending=False)
     print(df.head())
     df.to_csv("grid_results.csv", index=False)
     ```
@@ -96,15 +96,15 @@ Keys below are for the dict returned by `BacktestRunner.run_csv` / `run_ohlcv` /
 
 | Metric | Python | Node.js | C++ (`RankMetric::*`) |
 |---|---|---|---|
-| Sharpe | `sharpe` | `sharpeRatio` | `SharpeRatio` |
-| Sortino | `sortino` | not on the `run_*` object | `SortinoRatio` |
-| Calmar | not on the `run_*` object | not on the `run_*` object | `CalmarRatio` |
+| Sharpe | `sharpe_ratio` | `sharpeRatio` | `SharpeRatio` |
+| Sortino | `sortino_ratio` | `sortinoRatio` | `SortinoRatio` |
+| Calmar | `calmar_ratio` | `calmarRatio` | `CalmarRatio` |
 | Total return | `return_pct` | `returnPct` | `TotalReturn` |
 | Max drawdown | `max_drawdown_pct` | `maxDrawdownPct` | `MaxDrawdown` |
 | Win rate | `win_rate` | `winRate` | `WinRate` |
 | Profit factor | `profit_factor` | `profitFactor` | `ProfitFactor` |
 
-Calmar is available, just not on this dict: `BacktestResult.stats()` returns `calmar_ratio` (Python) / `calmar` (Node), along with `sharpe_ratio` / `sortino_ratio` and the extra trade-duration, streak and TWR fields. The two shapes are not interchangeable — see [Stats key names differ by producer](backtest.md#stats-key-names-differ-by-producer).
+All three ratios are on this dict. `BacktestResult.stats()` carries the same names plus the trade-duration, streak and TWR fields — see [Two stats shapes, one set of key names](backtest.md#two-stats-shapes-one-set-of-key-names).
 
 ## Filtering, stability, statistical tests
 
@@ -116,7 +116,7 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
     import numpy as np
     import flox_py as flox
 
-    sharpes = df["sharpe"].values
+    sharpes = df["sharpe_ratio"].values
     returns = df["return_pct"].values
     print("mean Sharpe:", sharpes.mean(), " std:", sharpes.std())
     print("corr(Sharpe, return):", np.corrcoef(sharpes, returns)[0, 1])
@@ -174,7 +174,7 @@ btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 def factory(params):
     fast, slow = int(params[0]), int(params[1])
     if fast >= slow:
-        return {"sharpe": 0.0, "return_pct": 0.0, "total_trades": 0}
+        return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
     class _S(flox.Strategy):
         def __init__(self, syms):
@@ -200,7 +200,7 @@ for r in gs.run():
     fast, slow = r["params"]
     s = r["stats"]
     print(f"fast={int(fast):3d} slow={int(slow):3d}: "
-          f"return={s['return_pct']:+.4f}% sharpe={s['sharpe']:+.4f}")
+          f"return={s['return_pct']:+.4f}% sharpe={s['sharpe_ratio']:+.4f}")
 ```
 
 The factory takes `list[float]` and returns the same dict shape as `BacktestRunner.run_csv`.

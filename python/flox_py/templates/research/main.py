@@ -62,7 +62,7 @@ def main() -> None:
     print(f"  return : {stats['return_pct']:+.4f}%")
     print(f"  trades : {stats['total_trades']}  "
           f"win={stats['win_rate']*100:.1f}%")
-    print(f"  sharpe : {stats['sharpe']:.4f}")
+    print(f"  sharpe : {stats['sharpe_ratio']:.4f}")
     print(f"  max DD : {stats['max_drawdown_pct']:.4f}%")
     print(f"  net PnL: {stats['net_pnl']:.4f}")
 

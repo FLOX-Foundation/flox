@@ -2152,8 +2152,9 @@ class PyBacktestRunner
     d["max_drawdown_pct"] = stats.maxDrawdownPct;
     d["win_rate"] = stats.winRate;
     d["profit_factor"] = stats.profitFactor;
-    d["sharpe"] = stats.sharpeRatio;
-    d["sortino"] = stats.sortinoRatio;
+    d["sharpe_ratio"] = stats.sharpeRatio;
+    d["sortino_ratio"] = stats.sortinoRatio;
+    d["calmar_ratio"] = stats.calmarRatio;
     d["return_pct"] = stats.returnPct;
     _lastResult = std::move(result);
     return d;
@@ -2251,8 +2252,9 @@ class PyBacktestRunner
     d["max_drawdown_pct"] = stats.maxDrawdownPct;
     d["win_rate"] = stats.winRate;
     d["profit_factor"] = stats.profitFactor;
-    d["sharpe"] = stats.sharpeRatio;
-    d["sortino"] = stats.sortinoRatio;
+    d["sharpe_ratio"] = stats.sharpeRatio;
+    d["sortino_ratio"] = stats.sortinoRatio;
+    d["calmar_ratio"] = stats.calmarRatio;
     d["return_pct"] = stats.returnPct;
     _lastResult = std::move(result);
     return d;
@@ -2409,8 +2411,9 @@ class PyBacktestRunner
     d["max_drawdown_pct"] = stats.maxDrawdownPct;
     d["win_rate"] = stats.winRate;
     d["profit_factor"] = stats.profitFactor;
-    d["sharpe"] = stats.sharpeRatio;
-    d["sortino"] = stats.sortinoRatio;
+    d["sharpe_ratio"] = stats.sharpeRatio;
+    d["sortino_ratio"] = stats.sortinoRatio;
+    d["calmar_ratio"] = stats.calmarRatio;
     d["return_pct"] = stats.returnPct;
     _lastResult = std::move(result);
     return d;

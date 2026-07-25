@@ -61,7 +61,7 @@ def sma_crossover(path: str, fast: int = 10, slow: int = 30,
     print(f"  Return   : {ret_sign}{stats.return_pct:.4f}%")
     print(f"  Trades   : {stats.total_trades}  (win rate {stats.win_rate * 100.0:.1f}%)")
     print(f"  Prof.factor: {stats.profit_factor:.2f}")
-    print(f"  Sharpe   : {stats.sharpe:.4f}")
+    print(f"  Sharpe   : {stats.sharpe_ratio:.4f}")
     print(f"  Max DD   : {stats.max_drawdown_pct:.4f}%")
     print(f"  Fees     : {stats.total_fees:.4f}")
     print(f"  PnL      : {stats.net_pnl:.4f}")

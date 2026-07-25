@@ -79,7 +79,7 @@ numbers.
     bt.set_strategy(strat)
 
     stats = bt.run_csv("/data/btcusdt_1m.csv", "BTCUSDT")
-    print(f"Return {stats['return_pct']:.2f}%  Sharpe {stats['sharpe']:.2f}  "
+    print(f"Return {stats['return_pct']:.2f}%  Sharpe {stats['sharpe_ratio']:.2f}  "
           f"DD {stats['max_drawdown_pct']:.2f}%  trades {stats['total_trades']}")
     ```
 
@@ -180,27 +180,18 @@ same fields off `BacktestStats`.
 | `total_trades` | `totalTrades` | Number of closed trades |
 | `final_capital` | `finalCapital` | Ending capital |
 | `return_pct` | `returnPct` | Total return % |
-| `sharpe` | `sharpeRatio` | Annualised Sharpe |
-| `sortino` | (absent) | Annualised Sortino |
+| `sharpe_ratio` | `sharpeRatio` | Annualised Sharpe |
+| `sortino_ratio` | `sortinoRatio` | Annualised Sortino |
+| `calmar_ratio` | `calmarRatio` | Calmar ratio |
 | `max_drawdown_pct` | `maxDrawdownPct` | Worst drawdown |
-| `win_rate` | `winRate` | Win rate (0–1) |
+| `win_rate` | `winRate` | Win rate (0-1) |
 | `profit_factor` | `profitFactor` | Gross profit / gross loss |
 
 Python `BacktestRunner.run_*` returns a plain dict; Codon returns a
 `BacktestStats` object with attribute access; Node.js returns an object
-literal.
-
-Sharpe is the one key whose name does not follow the snake_case to
-camelCase rule, and the shapes differ per producer:
-
-| Producer | Sharpe key | Sortino / Calmar |
-|---|---|---|
-| Python `BacktestRunner.run_*` | `sharpe` | `sortino`; no calmar (`python/strategy_bindings.h:2113-2114`) |
-| Python `BacktestResult.stats()` | `sharpe_ratio` | `sortino_ratio`, `calmar_ratio` (`python/backtest_bindings.h:613-615`) |
-| Node `BacktestRunner.runCsv` / `runOhlcv` / `runBars` | `sharpeRatio` | neither is emitted (`node/src/strategy.h:1527-1546`) |
-| Node `BacktestResult.stats()` | `sharpe` | `sortino`, `calmar` (`node/src/backtest.h:578-580`) |
-| Node `GridSearch` / `WalkForwardRunner` | `sharpeRatio` | `sortinoRatio` (`node/src/walk_forward.h:77-78`) |
-| Codon `run_*` | `sharpe` | `sortino`, `calmar` (`codon/flox/runner.codon:343-345`) |
+literal. Every key follows the snake_case to camelCase rule with no
+exceptions, and every producer emits all three risk ratios -- the C++
+`BacktestStats` field name is the source both are derived from.
 
 ## Time-range filtering
 

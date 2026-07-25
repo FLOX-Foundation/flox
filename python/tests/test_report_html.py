@@ -28,7 +28,7 @@ _STATS = {
     "total_fees": 8.4,
     "max_drawdown_pct": 1.503,
     "win_rate": 0.663,
-    "sharpe": -4.5746,
+    "sharpe_ratio": -4.5746,
     "profit_factor": 0.92,
     "return_pct": -1.2103,
 }

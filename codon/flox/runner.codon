@@ -297,7 +297,7 @@ class BacktestRunner:
         runner = BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000.0)
         runner.set_strategy(strat)
         stats = runner.run_csv("/path/to/data.csv", "BTCUSDT")
-        print(stats.return_pct, stats.sharpe)
+        print(stats.return_pct, stats.sharpe_ratio)
     """
 
     _handle: cobj
@@ -340,9 +340,9 @@ class BacktestRunner:
             avg_trade_duration_ns=fp[19],
             median_trade_duration_ns=fp[20],
             max_trade_duration_ns=fp[21],
-            sharpe=fp[22],
-            sortino=fp[23],
-            calmar=fp[24],
+            sharpe_ratio=fp[22],
+            sortino_ratio=fp[23],
+            calmar_ratio=fp[24],
             time_weighted_return=fp[25],
             return_pct=fp[26],
             start_time_ns=int(buf[27]),

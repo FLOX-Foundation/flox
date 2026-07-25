@@ -89,13 +89,14 @@ These are the fields on the dict returned by `run_csv` / `run_ohlcv` / `run_bars
 | `total_trades` | `totalTrades` | Number of closed trades |
 | `net_pnl` | `netPnl` | Total P&L net of fees |
 | `return_pct` | `returnPct` | Total return % |
-| `sharpe` | `sharpeRatio` | Annualised Sharpe |
-| `sortino` | — | Annualised Sortino (not on the Node `run_*` object) |
+| `sharpe_ratio` | `sharpeRatio` | Annualised Sharpe |
+| `sortino_ratio` | `sortinoRatio` | Annualised Sortino |
+| `calmar_ratio` | `calmarRatio` | Calmar ratio |
 | `max_drawdown_pct` | `maxDrawdownPct` | Worst drawdown |
 | `win_rate` | `winRate` | Win rate |
 | `profit_factor` | `profitFactor` | Gross profit / gross loss |
 
-`BacktestResult.stats()` is a *different* dict with a wider field set and different ratio keys — `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` in Python, `sharpe` / `sortino` / `calmar` in Node. See [Running a backtest](backtest.md#stats-key-names-differ-by-producer).
+`BacktestResult.stats()` is a *different* dict with a wider field set, but the same key names. See [Running a backtest](backtest.md#two-stats-shapes-one-set-of-key-names).
 
 ## 4. Export the equity curve
 

@@ -298,14 +298,14 @@ bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMAcross([btc]))
 
 stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
-print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
+print(stats["return_pct"], stats["sharpe_ratio"], stats["max_drawdown_pct"])
 ```
 
 The constructor takes `(registry, fee_rate=0.0004, initial_capital=100000.0)` — nothing else. Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Useful for an indicator sanity check; not enough for a decision about real capital.
 
 `run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not. Timestamps below `1e12` are treated as seconds and scaled to nanoseconds. Other entry points: `run_bars(...)` (full OHLC, fires `on_bar`), `run_ohlcv(ts, close, symbol)`, `run_tape(path)` and `run_tapes(paths)` for `.floxlog` tapes.
 
-Returns a plain dict. Keys: `total_trades`, `winning_trades`, `losing_trades`, `initial_capital`, `final_capital`, `total_pnl`, `total_fees`, `net_pnl`, `gross_profit`, `gross_loss`, `max_drawdown`, `max_drawdown_pct`, `win_rate`, `profit_factor`, `sharpe`, `sortino`, `return_pct`.
+Returns a plain dict. Keys: `total_trades`, `winning_trades`, `losing_trades`, `initial_capital`, `final_capital`, `total_pnl`, `total_fees`, `net_pnl`, `gross_profit`, `gross_loss`, `max_drawdown`, `max_drawdown_pct`, `win_rate`, `profit_factor`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `return_pct`.
 
 Hooks attach after construction: `set_executor(executor)` (a subclass of `flox.Executor`), `set_risk_manager`, `set_kill_switch`, `set_order_validator`, `set_pnl_tracker`, `add_execution_listener`.
 
@@ -390,7 +390,7 @@ signals.buy(1704067200_000000000, 0.5, symbol="BTCUSDT")
 signals.sell(1704068400_000000000, 0.5, symbol="BTCUSDT")
 
 stats = engine.run(signals)
-print(f"PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe:.4f}")
+print(f"PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe_ratio:.4f}")
 ```
 
 ### Loading Bar Data
@@ -429,9 +429,9 @@ Returns a `flox.Stats` object. Fields are readable as attributes or via `stats["
 | `total_trades` | Round-trip trade count |
 | `net_pnl` | Gross PnL minus all fees |
 | `total_fees` | Total execution fees |
-| `sharpe` | Annualized Sharpe ratio |
-| `sortino` | Annualized Sortino ratio |
-| `calmar` | Calmar ratio |
+| `sharpe_ratio` | Annualized Sharpe ratio |
+| `sortino_ratio` | Annualized Sortino ratio |
+| `calmar_ratio` | Calmar ratio |
 | `max_drawdown` | Peak-to-trough drawdown |
 | `max_drawdown_pct` | Drawdown as percentage |
 | `win_rate` | Winning trade fraction |
@@ -595,7 +595,7 @@ Hooks attach after construction: `setExecutor(executor)` (an object implementing
 
 Also present: `winningTrades`, `losingTrades`, `initialCapital`, `finalCapital`, `totalFees`, `maxDrawdown`, `profitFactor`, `avgWin`, `avgLoss`.
 
-The key names depend on which object produced the dict. `BacktestRunner.runCsv` / `runOhlcv` / `runBars` emit `sharpeRatio` and carry no Sortino or Calmar (`node/src/strategy.h:1527-1546`). `BacktestResult.stats()` is a different shape: `sharpe`, `sortino`, `calmar` (`node/src/backtest.h:578-580`). `GridSearch` and `WalkForwardRunner` emit `sharpeRatio` and `sortinoRatio` (`node/src/walk_forward.h:77-78`). Note that the `BacktestStats` interface in `node/index.d.ts` describes the `BacktestResult.stats()` shape but is declared as the return type of `runCsv` — a stale declaration, not a runtime difference.
+Every producer uses the same names: `sharpeRatio`, `sortinoRatio` and `calmarRatio`. What differs is the field set, and `index.d.ts` has one interface per shape — `BacktestStats` for `BacktestResult.stats()`, `RunnerStats` for `BacktestRunner.runCsv` / `runOhlcv` / `runBars`, and `FoldStats` for `GridSearch` and `WalkForwardRunner`.
 
 ### Venue physics
 
@@ -820,7 +820,7 @@ bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
 bt.set_strategy(SMAcross([int(btc)]))
 
 stats = bt.run_csv("/path/to/btcusdt_1m.csv", "BTCUSDT")
-print(stats.return_pct, stats.sharpe, stats.max_drawdown_pct)
+print(stats.return_pct, stats.sharpe_ratio, stats.max_drawdown_pct)
 ```
 
 `run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not.
@@ -851,9 +851,9 @@ Codon has no `@classmethod`, so the factories are module-level functions: `binan
 | `net_pnl` | Net P&L after fees |
 | `total_trades` | Round-trip trade count |
 | `win_rate` | Winning trade fraction |
-| `sharpe` | Annualized Sharpe ratio |
-| `sortino` | Annualized Sortino ratio |
-| `calmar` | Calmar ratio |
+| `sharpe_ratio` | Annualized Sharpe ratio |
+| `sortino_ratio` | Annualized Sortino ratio |
+| `calmar_ratio` | Calmar ratio |
 | `max_drawdown_pct` | Peak-to-trough drawdown (%) |
 | `profit_factor` | Gross profit / gross loss |
 | `final_capital` | Capital at end of backtest |
@@ -916,7 +916,7 @@ def main():
     bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
     bt.set_strategy(SMAcross([btc_id]))
     stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
-    print(f"Return: {stats.return_pct:.2f}%  Sharpe: {stats.sharpe:.3f}")
+    print(f"Return: {stats.return_pct:.2f}%  Sharpe: {stats.sharpe_ratio:.3f}")
 
     # --- Live ---
     runner = Runner(reg, on_signal)
@@ -1438,7 +1438,7 @@ bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMACross([btc]))
 
 stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
-print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
+print(stats["return_pct"], stats["sharpe_ratio"], stats["max_drawdown_pct"])
 ```
 
 CSV format: one header line, then OHLCV bars —
@@ -2930,7 +2930,7 @@ numbers.
     bt.set_strategy(strat)
 
     stats = bt.run_csv("/data/btcusdt_1m.csv", "BTCUSDT")
-    print(f"Return {stats['return_pct']:.2f}%  Sharpe {stats['sharpe']:.2f}  "
+    print(f"Return {stats['return_pct']:.2f}%  Sharpe {stats['sharpe_ratio']:.2f}  "
           f"DD {stats['max_drawdown_pct']:.2f}%  trades {stats['total_trades']}")
     ```
 
@@ -3031,27 +3031,18 @@ same fields off `BacktestStats`.
 | `total_trades` | `totalTrades` | Number of closed trades |
 | `final_capital` | `finalCapital` | Ending capital |
 | `return_pct` | `returnPct` | Total return % |
-| `sharpe` | `sharpeRatio` | Annualised Sharpe |
-| `sortino` | (absent) | Annualised Sortino |
+| `sharpe_ratio` | `sharpeRatio` | Annualised Sharpe |
+| `sortino_ratio` | `sortinoRatio` | Annualised Sortino |
+| `calmar_ratio` | `calmarRatio` | Calmar ratio |
 | `max_drawdown_pct` | `maxDrawdownPct` | Worst drawdown |
-| `win_rate` | `winRate` | Win rate (0–1) |
+| `win_rate` | `winRate` | Win rate (0-1) |
 | `profit_factor` | `profitFactor` | Gross profit / gross loss |
 
 Python `BacktestRunner.run_*` returns a plain dict; Codon returns a
 `BacktestStats` object with attribute access; Node.js returns an object
-literal.
-
-Sharpe is the one key whose name does not follow the snake_case to
-camelCase rule, and the shapes differ per producer:
-
-| Producer | Sharpe key | Sortino / Calmar |
-|---|---|---|
-| Python `BacktestRunner.run_*` | `sharpe` | `sortino`; no calmar (`python/strategy_bindings.h:2113-2114`) |
-| Python `BacktestResult.stats()` | `sharpe_ratio` | `sortino_ratio`, `calmar_ratio` (`python/backtest_bindings.h:613-615`) |
-| Node `BacktestRunner.runCsv` / `runOhlcv` / `runBars` | `sharpeRatio` | neither is emitted (`node/src/strategy.h:1527-1546`) |
-| Node `BacktestResult.stats()` | `sharpe` | `sortino`, `calmar` (`node/src/backtest.h:578-580`) |
-| Node `GridSearch` / `WalkForwardRunner` | `sharpeRatio` | `sortinoRatio` (`node/src/walk_forward.h:77-78`) |
-| Codon `run_*` | `sharpe` | `sortino`, `calmar` (`codon/flox/runner.codon:343-345`) |
+literal. Every key follows the snake_case to camelCase rule with no
+exceptions, and every producer emits all three risk ratios -- the C++
+`BacktestStats` field name is the source both are derived from.
 
 ## Time-range filtering
 
@@ -3937,7 +3928,7 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 
     stats = bt.run_csv("data/btcusdt_1m.csv", "BTCUSDT")
     print(f"Final ${stats['final_capital']:.2f}  return {stats['return_pct']:.2f}%  "
-          f"trades {stats['total_trades']}  Sharpe {stats['sharpe']:.2f}  "
+          f"trades {stats['total_trades']}  Sharpe {stats['sharpe_ratio']:.2f}  "
           f"DD {stats['max_drawdown_pct']:.2f}%")
     ```
 
@@ -4007,20 +3998,29 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 Final $10245.30  return 2.45%  trades 47  Sharpe 1.23  DD 3.21%
 ```
 
-### Stats key names differ by producer
+### Two stats shapes, one set of key names
 
-There are two different stats shapes, and the risk-adjusted ratio keys are not the same in both. Read the keys off the object that produced the dict, not off a generic "stats" shape.
+Every producer names the risk ratios the same way: `sharpe_ratio` /
+`sortino_ratio` / `calmar_ratio` in Python and Codon, `sharpeRatio` /
+`sortinoRatio` / `calmarRatio` in Node. The C++ `BacktestStats` field name is
+the source both are derived from, so the snake_case to camelCase rule holds
+with no exceptions.
 
-| Producer | Python keys | Node.js keys |
-|---|---|---|
-| `BacktestRunner.run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes` | `sharpe`, `sortino` | `sharpeRatio` only |
-| `BacktestResult.stats()` | `sharpe_ratio`, `sortino_ratio`, `calmar_ratio` | `sharpe`, `sortino`, `calmar` |
-| `GridSearch.run()[i]["stats"]` | whatever the factory returned (normally the `run_csv` shape) | `sharpeRatio`, `sortinoRatio` |
-| `WalkForwardRunner` fold stats | `sharpe`, `sortino` | `sharpeRatio`, `sortinoRatio` |
+What still differs between producers is the *field set*, not the names:
 
-Only `BacktestResult.stats()` carries the full metric set. The `run_*` dict is the short form — no Calmar, and in Node no Sortino either. Python's `BacktestResult.stats()` additionally carries `time_weighted_return`, `avg_win_loss_ratio`, `max_consecutive_wins` / `max_consecutive_losses`, `avg_trade_duration_ns` / `median_trade_duration_ns` / `max_trade_duration_ns`, `start_time_ns` and `end_time_ns`; the Node `stats()` object does not.
+| Producer | Field set |
+|---|---|
+| `BacktestRunner.run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes` | Headline metrics plus all three risk ratios |
+| `BacktestResult.stats()` | The full set |
+| `GridSearch.run()[i]["stats"]` | Python: whatever the factory returned (normally the `run_*` shape). Node: the fold shape |
+| `WalkForwardRunner` fold stats | The fold shape: the `run_*` set minus `avg_win` / `avg_loss` |
 
-Note the `BacktestStats` interface in `node/index.d.ts` describes the `BacktestResult.stats()` shape; the `runCsv` / `runOhlcv` return value is declared as that type but does not match it.
+`BacktestResult.stats()` is the only one carrying the full metric set:
+`time_weighted_return`, `avg_win_loss_ratio`, `max_consecutive_wins` /
+`max_consecutive_losses`, `avg_trade_duration_ns` /
+`median_trade_duration_ns` / `max_trade_duration_ns`, `start_time_ns` and
+`end_time_ns`. In Node these three shapes are the `BacktestStats`,
+`RunnerStats` and `FoldStats` interfaces in `index.d.ts`.
 
 ## Pre-aggregated bars (faster replay)
 
@@ -4160,13 +4160,14 @@ These are the fields on the dict returned by `run_csv` / `run_ohlcv` / `run_bars
 | `total_trades` | `totalTrades` | Number of closed trades |
 | `net_pnl` | `netPnl` | Total P&L net of fees |
 | `return_pct` | `returnPct` | Total return % |
-| `sharpe` | `sharpeRatio` | Annualised Sharpe |
-| `sortino` | — | Annualised Sortino (not on the Node `run_*` object) |
+| `sharpe_ratio` | `sharpeRatio` | Annualised Sharpe |
+| `sortino_ratio` | `sortinoRatio` | Annualised Sortino |
+| `calmar_ratio` | `calmarRatio` | Calmar ratio |
 | `max_drawdown_pct` | `maxDrawdownPct` | Worst drawdown |
 | `win_rate` | `winRate` | Win rate |
 | `profit_factor` | `profitFactor` | Gross profit / gross loss |
 
-`BacktestResult.stats()` is a *different* dict with a wider field set and different ratio keys — `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` in Python, `sharpe` / `sortino` / `calmar` in Node. See [Running a backtest](backtest.md#stats-key-names-differ-by-producer).
+`BacktestResult.stats()` is a *different* dict with a wider field set, but the same key names. See [Running a backtest](backtest.md#two-stats-shapes-one-set-of-key-names).
 
 ## 4. Export the equity curve
 
@@ -4522,7 +4523,7 @@ Find good strategy parameters by sweeping a grid and ranking results. The patter
             stats = run_one(fast, slow)
             rows.append({"fast": fast, "slow": slow, **stats})
 
-    df = pd.DataFrame(rows).sort_values("sharpe", ascending=False)
+    df = pd.DataFrame(rows).sort_values("sharpe_ratio", ascending=False)
     print(df.head())
     df.to_csv("grid_results.csv", index=False)
     ```
@@ -4592,15 +4593,15 @@ Keys below are for the dict returned by `BacktestRunner.run_csv` / `run_ohlcv` /
 
 | Metric | Python | Node.js | C++ (`RankMetric::*`) |
 |---|---|---|---|
-| Sharpe | `sharpe` | `sharpeRatio` | `SharpeRatio` |
-| Sortino | `sortino` | not on the `run_*` object | `SortinoRatio` |
-| Calmar | not on the `run_*` object | not on the `run_*` object | `CalmarRatio` |
+| Sharpe | `sharpe_ratio` | `sharpeRatio` | `SharpeRatio` |
+| Sortino | `sortino_ratio` | `sortinoRatio` | `SortinoRatio` |
+| Calmar | `calmar_ratio` | `calmarRatio` | `CalmarRatio` |
 | Total return | `return_pct` | `returnPct` | `TotalReturn` |
 | Max drawdown | `max_drawdown_pct` | `maxDrawdownPct` | `MaxDrawdown` |
 | Win rate | `win_rate` | `winRate` | `WinRate` |
 | Profit factor | `profit_factor` | `profitFactor` | `ProfitFactor` |
 
-Calmar is available, just not on this dict: `BacktestResult.stats()` returns `calmar_ratio` (Python) / `calmar` (Node), along with `sharpe_ratio` / `sortino_ratio` and the extra trade-duration, streak and TWR fields. The two shapes are not interchangeable — see [Stats key names differ by producer](backtest.md#stats-key-names-differ-by-producer).
+All three ratios are on this dict. `BacktestResult.stats()` carries the same names plus the trade-duration, streak and TWR fields — see [Two stats shapes, one set of key names](backtest.md#two-stats-shapes-one-set-of-key-names).
 
 ## Filtering, stability, statistical tests
 
@@ -4612,7 +4613,7 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
     import numpy as np
     import flox_py as flox
 
-    sharpes = df["sharpe"].values
+    sharpes = df["sharpe_ratio"].values
     returns = df["return_pct"].values
     print("mean Sharpe:", sharpes.mean(), " std:", sharpes.std())
     print("corr(Sharpe, return):", np.corrcoef(sharpes, returns)[0, 1])
@@ -4670,7 +4671,7 @@ btc = reg.add_symbol("exchange", "BTCUSDT", 0.01)
 def factory(params):
     fast, slow = int(params[0]), int(params[1])
     if fast >= slow:
-        return {"sharpe": 0.0, "return_pct": 0.0, "total_trades": 0}
+        return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
     class _S(flox.Strategy):
         def __init__(self, syms):
@@ -4696,7 +4697,7 @@ for r in gs.run():
     fast, slow = r["params"]
     s = r["stats"]
     print(f"fast={int(fast):3d} slow={int(slow):3d}: "
-          f"return={s['return_pct']:+.4f}% sharpe={s['sharpe']:+.4f}")
+          f"return={s['return_pct']:+.4f}% sharpe={s['sharpe_ratio']:+.4f}")
 ```
 
 The factory takes `list[float]` and returns the same dict shape as `BacktestRunner.run_csv`.
@@ -10535,7 +10536,7 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - `to_dict(self) -> dict`
 - *property* `avg_loss: float`
 - *property* `avg_win: float`
-- *property* `calmar: float`
+- *property* `calmar_ratio: float`
 - *property* `final_capital: float`
 - *property* `gross_loss: float`
 - *property* `gross_profit: float`
@@ -10546,8 +10547,8 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - *property* `net_pnl: float`
 - *property* `profit_factor: float`
 - *property* `return_pct: float`
-- *property* `sharpe: float`
-- *property* `sortino: float`
+- *property* `sharpe_ratio: float`
+- *property* `sortino_ratio: float`
 - *property* `total_fees: float`
 - *property* `total_pnl: float`
 - *property* `total_trades: int`
@@ -11005,7 +11006,7 @@ Run a backtest over every loaded symbol. `signals` is a [`SignalBuilder`](#signa
 
 ```python
 stats = engine.run(signals)
-print(stats.net_pnl, stats["sharpe"])
+print(stats.net_pnl, stats["sharpe_ratio"])
 ```
 
 Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
@@ -11058,10 +11059,10 @@ Returned by `Engine.run()`. Fields are readable as attributes or by key, and `to
 ```python
 stats = engine.run(signals)
 
-stats.sharpe          # attribute access
-stats["sharpe"]       # key access
+stats.sharpe_ratio    # attribute access
+stats["sharpe_ratio"]  # key access
 stats.to_dict()       # dict of every field
-repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe=... dd=...%)
+repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe_ratio=... dd=...%)
 ```
 
 | Field | Type | Description |
@@ -11082,9 +11083,9 @@ repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe=... dd=...%)
 | `profit_factor` | `float` | Gross profit / gross loss |
 | `avg_win` | `float` | Average winning trade |
 | `avg_loss` | `float` | Average losing trade |
-| `sharpe` | `float` | Annualized Sharpe ratio |
-| `sortino` | `float` | Annualized Sortino ratio |
-| `calmar` | `float` | Calmar ratio |
+| `sharpe_ratio` | `float` | Annualized Sharpe ratio |
+| `sortino_ratio` | `float` | Annualized Sortino ratio |
+| `calmar_ratio` | `float` | Calmar ratio |
 | `return_pct` | `float` | Net return percentage |
 
 `BacktestResult.stats()` in [Backtest Components](backtest.md#backtestresult) returns a dict with a different, larger key set — the ratios are named `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` there.
@@ -11125,7 +11126,7 @@ for i in range(1, n):
 
 stats = engine.run(signals)
 print(f"Signals: {len(signals)}, trades: {stats.total_trades}")
-print(f"Net PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe:.4f}")
+print(f"Net PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe_ratio:.4f}")
 ```
 
 ------------------------------------------------------------------------------
@@ -11455,7 +11456,7 @@ Each setter takes `None` to detach.
 | `net_pnl` | Net P&L after fees |
 | `total_trades` | Round-trip trade count |
 | `win_rate` | Winning trade fraction |
-| `sharpe` | Annualized Sharpe ratio |
+| `sharpe_ratio` | Annualized Sharpe ratio |
 | `max_drawdown_pct` | Peak-to-trough drawdown (%) |
 
 ## Example
@@ -13656,7 +13657,7 @@ flox.BacktestResult(
 
 ### `stats()` keys
 
-The [`Stats`](engine.md#stats) object returned by `Engine.run()` is a different, smaller set — note in particular `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` here versus `sharpe` / `sortino` / `calmar` there.
+The [`Stats`](engine.md#stats) object returned by `Engine.run()` is a different, smaller set, but the key names are the same.
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -13909,7 +13910,7 @@ for period in periods:
     p_down = (f[1:] < slow[1:]) & (f[:-1] >= slow[:-1])
     p_idx = np.flatnonzero(p_up | p_down) + 1
     stats = engine.run(build(p_idx, np.where(p_up[p_idx - 1], 0, 1)))
-    param_sharpes.append(stats.sharpe)
+    param_sharpes.append(stats.sharpe_ratio)
 
 r = flox.correlation(periods.astype(np.float64), np.array(param_sharpes))
 print(f"Period-Sharpe correlation: {r:.4f}")
@@ -14191,9 +14192,9 @@ const stats = bt.runOhlcv(timestampsNs, closePrices, 'BTCUSDT');
 | `profitFactor` | `number` | Gross profit / gross loss |
 | `avgWin` | `number` | Average winning trade |
 | `avgLoss` | `number` | Average losing trade |
-| `sharpe` | `number` | Annualized Sharpe ratio |
-| `sortino` | `number` | Sortino ratio |
-| `calmar` | `number` | Calmar ratio |
+| `sharpeRatio` | `number` | Annualized Sharpe ratio |
+| `sortinoRatio` | `number` | Sortino ratio |
+| `calmarRatio` | `number` | Calmar ratio |
 | `returnPct` | `number` | Net return (%) |
 
 ---
@@ -14274,8 +14275,9 @@ const stats = engine.run(signals);
 | `volume(symbol?)` | `Float64Array` | Volumes |
 | `symbols` | `string[]` | Registered symbol names (property) |
 
-`run()` returns the `BacktestStats` shape (`sharpe` / `sortino` / `calmar`),
-not the runner shape — see [Stats object](#stats-object).
+`run()` returns the full `BacktestStats` shape, not the narrower runner
+shape — see [Stats object](#stats-object). The key names are the same in
+both; only the field set differs.
 
 ---
 
@@ -15720,7 +15722,7 @@ bt.set_strategy(my_strategy)
 
 stats = bt.run_csv("data/btcusdt.csv", "BTCUSDT")
 stats = bt.run_ohlcv(timestamps, closes, "BTCUSDT")
-print(stats.return_pct, stats.sharpe)
+print(stats.return_pct, stats.sharpe_ratio)
 ```
 
 ### Constructor
@@ -15789,9 +15791,9 @@ Returned by `BacktestRunner.run_csv()` / `run_ohlcv()` and `BacktestResult.stats
 | `avg_trade_duration_ns` | `float` | Average trade duration (ns) |
 | `median_trade_duration_ns` | `float` | Median trade duration (ns) |
 | `max_trade_duration_ns` | `float` | Longest trade (ns) |
-| `sharpe` | `float` | Annualized Sharpe ratio |
-| `sortino` | `float` | Sortino ratio |
-| `calmar` | `float` | Calmar ratio |
+| `sharpe_ratio` | `float` | Annualized Sharpe ratio |
+| `sortino_ratio` | `float` | Sortino ratio |
+| `calmar_ratio` | `float` | Calmar ratio |
 | `time_weighted_return` | `float` | Time-weighted return |
 | `return_pct` | `float` | Net return (%) |
 | `start_time_ns` | `int` | Backtest start timestamp (ns) |

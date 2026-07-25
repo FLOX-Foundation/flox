@@ -87,7 +87,7 @@ bt.set_strategy(my_strategy)
 
 stats = bt.run_csv("data/btcusdt.csv", "BTCUSDT")
 stats = bt.run_ohlcv(timestamps, closes, "BTCUSDT")
-print(stats.return_pct, stats.sharpe)
+print(stats.return_pct, stats.sharpe_ratio)
 ```
 
 ### Constructor

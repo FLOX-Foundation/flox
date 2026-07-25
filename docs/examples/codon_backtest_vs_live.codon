@@ -76,7 +76,7 @@ def main():
     sign = "+" if stats.return_pct >= 0.0 else ""
     print(f"  Return   : {sign}{stats.return_pct:.4f}%")
     print(f"  Trades   : {stats.total_trades}  win={stats.win_rate * 100.0:.1f}%")
-    print(f"  Sharpe   : {stats.sharpe:.4f}")
+    print(f"  Sharpe   : {stats.sharpe_ratio:.4f}")
     print(f"  Max DD   : {stats.max_drawdown_pct:.4f}%")
     print(f"  Net PnL  : {stats.net_pnl:.4f}")
 

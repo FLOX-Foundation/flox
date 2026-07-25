@@ -276,7 +276,7 @@ struct PyStats
   double initial_capital, final_capital, total_pnl, total_fees, net_pnl;
   double gross_profit, gross_loss, max_drawdown, max_drawdown_pct;
   double win_rate, profit_factor, avg_win, avg_loss;
-  double sharpe, sortino, calmar, return_pct;
+  double sharpe_ratio, sortino_ratio, calmar_ratio, return_pct;
 
   static PyStats fromBacktest(const BacktestStats& s)
   {
@@ -306,9 +306,9 @@ struct PyStats
     d["profit_factor"] = profit_factor;
     d["avg_win"] = avg_win;
     d["avg_loss"] = avg_loss;
-    d["sharpe"] = sharpe;
-    d["sortino"] = sortino;
-    d["calmar"] = calmar;
+    d["sharpe_ratio"] = sharpe_ratio;
+    d["sortino_ratio"] = sortino_ratio;
+    d["calmar_ratio"] = calmar_ratio;
     d["return_pct"] = return_pct;
     return d;
   }
@@ -317,7 +317,7 @@ struct PyStats
   {
     std::ostringstream os;
     os << "Stats(trades=" << total_trades << " pnl=" << net_pnl << " ret=" << return_pct
-       << "% sharpe=" << sharpe << " dd=" << max_drawdown_pct << "%)";
+       << "% sharpe_ratio=" << sharpe_ratio << " dd=" << max_drawdown_pct << "%)";
     return os.str();
   }
 };
@@ -748,9 +748,9 @@ PYBIND11_MODULE(_flox_py, m)
       .def_readonly("profit_factor", &PyStats::profit_factor)
       .def_readonly("avg_win", &PyStats::avg_win)
       .def_readonly("avg_loss", &PyStats::avg_loss)
-      .def_readonly("sharpe", &PyStats::sharpe)
-      .def_readonly("sortino", &PyStats::sortino)
-      .def_readonly("calmar", &PyStats::calmar)
+      .def_readonly("sharpe_ratio", &PyStats::sharpe_ratio)
+      .def_readonly("sortino_ratio", &PyStats::sortino_ratio)
+      .def_readonly("calmar_ratio", &PyStats::calmar_ratio)
       .def_readonly("return_pct", &PyStats::return_pct)
       .def("to_dict", &PyStats::toDict)
       .def("__repr__", &PyStats::repr)

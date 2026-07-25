@@ -173,9 +173,9 @@ class BacktestStats:
     avg_trade_duration_ns: float
     median_trade_duration_ns: float
     max_trade_duration_ns: float
-    sharpe: float
-    sortino: float
-    calmar: float
+    sharpe_ratio: float
+    sortino_ratio: float
+    calmar_ratio: float
     time_weighted_return: float
     return_pct: float
     start_time_ns: int
@@ -185,7 +185,7 @@ class BacktestStats:
         return (f"BacktestStats(trades={self.total_trades}, "
                 f"win_rate={self.win_rate * 100.0:.1f}%, "
                 f"net_pnl={self.net_pnl:.2f}, "
-                f"sharpe={self.sharpe:.2f}, "
+                f"sharpe_ratio={self.sharpe_ratio:.2f}, "
                 f"max_dd={self.max_drawdown_pct * 100.0:.1f}%)")
 
 
@@ -953,9 +953,9 @@ class BacktestResult:
             avg_trade_duration_ns=fp[19],
             median_trade_duration_ns=fp[20],
             max_trade_duration_ns=fp[21],
-            sharpe=fp[22],
-            sortino=fp[23],
-            calmar=fp[24],
+            sharpe_ratio=fp[22],
+            sortino_ratio=fp[23],
+            calmar_ratio=fp[24],
             time_weighted_return=fp[25],
             return_pct=fp[26],
             start_time_ns=int(buf[27]),

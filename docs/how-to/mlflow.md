@@ -42,7 +42,7 @@ What ends up where:
 
 | Source | MLflow field |
 |---|---|
-| Numeric `stats` keys (`return_pct`, `sharpe`, `max_drawdown_pct`, `total_trades`, `win_rate`, …) | `metrics` |
+| Numeric `stats` keys (`return_pct`, `sharpe_ratio`, `max_drawdown_pct`, `total_trades`, `win_rate`, …) | `metrics` |
 | Non-numeric `stats` keys (timestamps, names) | `tags` |
 | `params` | `params` |
 | `equity_curve` | `equity_curve.csv` artifact, plus `equity_curve.png` when matplotlib is installed |

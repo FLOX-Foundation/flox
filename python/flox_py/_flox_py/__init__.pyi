@@ -2923,7 +2923,7 @@ class Stats:
     def avg_win(self) -> float:
         ...
     @property
-    def calmar(self) -> float:
+    def calmar_ratio(self) -> float:
         ...
     @property
     def final_capital(self) -> float:
@@ -2956,10 +2956,10 @@ class Stats:
     def return_pct(self) -> float:
         ...
     @property
-    def sharpe(self) -> float:
+    def sharpe_ratio(self) -> float:
         ...
     @property
-    def sortino(self) -> float:
+    def sortino_ratio(self) -> float:
         ...
     @property
     def total_fees(self) -> float:

@@ -76,6 +76,7 @@ inline Napi::Object statsToJsObj(Napi::Env env, const FloxBacktestStats& s)
   obj.Set("maxDrawdownPct", Napi::Number::New(env, s.maxDrawdownPct));
   obj.Set("sharpeRatio", Napi::Number::New(env, s.sharpeRatio));
   obj.Set("sortinoRatio", Napi::Number::New(env, s.sortinoRatio));
+  obj.Set("calmarRatio", Napi::Number::New(env, s.calmarRatio));
   obj.Set("winRate", Napi::Number::New(env, s.winRate));
   obj.Set("profitFactor", Napi::Number::New(env, s.profitFactor));
   return obj;

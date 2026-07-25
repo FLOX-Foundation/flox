@@ -52,9 +52,9 @@ const stats = bt.runOhlcv(timestampsNs, closePrices, 'BTCUSDT');
 | `profitFactor` | `number` | Gross profit / gross loss |
 | `avgWin` | `number` | Average winning trade |
 | `avgLoss` | `number` | Average losing trade |
-| `sharpe` | `number` | Annualized Sharpe ratio |
-| `sortino` | `number` | Sortino ratio |
-| `calmar` | `number` | Calmar ratio |
+| `sharpeRatio` | `number` | Annualized Sharpe ratio |
+| `sortinoRatio` | `number` | Sortino ratio |
+| `calmarRatio` | `number` | Calmar ratio |
 | `returnPct` | `number` | Net return (%) |
 
 ---
@@ -135,8 +135,9 @@ const stats = engine.run(signals);
 | `volume(symbol?)` | `Float64Array` | Volumes |
 | `symbols` | `string[]` | Registered symbol names (property) |
 
-`run()` returns the `BacktestStats` shape (`sharpe` / `sortino` / `calmar`),
-not the runner shape — see [Stats object](#stats-object).
+`run()` returns the full `BacktestStats` shape, not the narrower runner
+shape — see [Stats object](#stats-object). The key names are the same in
+both; only the field set differs.
 
 ---
 

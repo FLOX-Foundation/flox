@@ -70,7 +70,7 @@ bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMACross([btc]))
 
 stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
-print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
+print(stats["return_pct"], stats["sharpe_ratio"], stats["max_drawdown_pct"])
 ```
 
 CSV format: one header line, then OHLCV bars —

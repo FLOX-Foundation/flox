@@ -32,8 +32,8 @@ from typing import Any, Iterator, List, Mapping, Optional, Sequence
 # objects) is not logged as metrics; non-numeric keys end up as run
 # tags so the MLflow UI still shows them.
 _NUMERIC_STAT_KEYS = (
-    "return_pct", "sharpe", "sortino", "max_drawdown_pct",
-    "calmar", "profit_factor", "win_rate", "expectancy",
+    "return_pct", "sharpe_ratio", "sortino_ratio", "max_drawdown_pct",
+    "calmar_ratio", "profit_factor", "win_rate", "expectancy",
     "total_trades", "winning_trades", "losing_trades",
     "net_pnl", "gross_pnl", "fees_paid",
     "avg_win", "avg_loss", "avg_trade_duration_seconds",

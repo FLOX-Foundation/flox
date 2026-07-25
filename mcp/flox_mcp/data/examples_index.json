@@ -3,8 +3,8 @@
     {
       "language": "codon",
       "path": "docs/examples/codon_backtest_vs_live.codon",
-      "sha256": "e6fae33cb4ec3a4369d03eedfe7d805c1c342b158e5cd1108fbfa9ca2d4aa824",
-      "size_bytes": 4681,
+      "sha256": "e9d3b20120e56ccea2a32e65133e06988b695e5499c36e86a79ecdabbd626c9e",
+      "size_bytes": 4687,
       "topic": "backtest"
     },
     {
@@ -38,8 +38,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_backtest_vs_live.py",
-      "sha256": "add890b38b0eeea214d4df8fcf792bbafcb1852c9907fccaf6d7505428f3f817",
-      "size_bytes": 4611,
+      "sha256": "88381ea950f68eec54dd567b16d7cc79c67e7cb08bc6b264f5c0598bfcb72856",
+      "size_bytes": 4617,
       "topic": "backtest"
     },
     {
@@ -171,8 +171,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_multi_symbol.py",
-      "sha256": "524c3c289215c0404ad7dcc2919ff8d2bb6ebb608954588c20fdcf97dd1f7b21",
-      "size_bytes": 3285,
+      "sha256": "93677e67662d69b8ea0f94836488856dd90d1775d828561aac1a760f0ecea925",
+      "size_bytes": 3291,
       "topic": "strategy"
     },
     {

@@ -50,7 +50,7 @@ class GridSearchTests(unittest.TestCase):
 
         def factory(params):
             seen.append(tuple(params))
-            return {"sharpe": float(params[0] + params[1]),
+            return {"sharpe_ratio": float(params[0] + params[1]),
                     "return_pct": 0.0, "total_trades": 0}
 
         gs.set_factory(factory)
@@ -58,8 +58,8 @@ class GridSearchTests(unittest.TestCase):
         self.assertEqual(len(results), 4)
         self.assertEqual(len(seen), 4)
         # Stats round-trip through the result dict.
-        self.assertAlmostEqual(results[0]["stats"]["sharpe"], 11.0)
-        self.assertAlmostEqual(results[3]["stats"]["sharpe"], 22.0)
+        self.assertAlmostEqual(results[0]["stats"]["sharpe_ratio"], 11.0)
+        self.assertAlmostEqual(results[3]["stats"]["sharpe_ratio"], 22.0)
 
     def test_run_without_factory_raises(self):
         gs = flox.GridSearch()
@@ -70,7 +70,7 @@ class GridSearchTests(unittest.TestCase):
 
     def test_run_with_no_axes_raises(self):
         gs = flox.GridSearch()
-        gs.set_factory(lambda p: {"sharpe": 0})
+        gs.set_factory(lambda p: {"sharpe_ratio": 0})
         with self.assertRaises(flox.FloxError) as cm:
             gs.run()
         self.assertEqual(cm.exception.code, "E_RUN_002")
@@ -84,7 +84,7 @@ class GridSearchTests(unittest.TestCase):
         def factory(params):
             fast, slow = int(params[0]), int(params[1])
             if fast >= slow:
-                return {"sharpe": 0.0, "return_pct": 0.0, "total_trades": 0}
+                return {"sharpe_ratio": 0.0, "return_pct": 0.0, "total_trades": 0}
 
             class _S(flox.Strategy):
                 def __init__(self, syms):
@@ -112,7 +112,7 @@ class GridSearchTests(unittest.TestCase):
         gs.set_factory(factory)
         results = gs.run()
         self.assertEqual(len(results), 4)
-        sharpes = [r["stats"]["sharpe"] for r in results]
+        sharpes = [r["stats"]["sharpe_ratio"] for r in results]
         self.assertGreater(len(set(sharpes)), 1,
                            "different params should yield different sharpe")
 

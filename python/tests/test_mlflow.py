@@ -56,7 +56,7 @@ class MlflowIntegrationTests(unittest.TestCase):
 
         stats = {
             "return_pct": 12.34,
-            "sharpe": 1.42,
+            "sharpe_ratio": 1.42,
             "max_drawdown_pct": 5.7,
             "total_trades": 42,
             "win_rate": 0.66,
@@ -74,7 +74,7 @@ class MlflowIntegrationTests(unittest.TestCase):
         run = self._client().get_run(run_id)
         # Numeric stats land in metrics:
         self.assertAlmostEqual(run.data.metrics["return_pct"], 12.34, places=4)
-        self.assertAlmostEqual(run.data.metrics["sharpe"], 1.42, places=4)
+        self.assertAlmostEqual(run.data.metrics["sharpe_ratio"], 1.42, places=4)
         self.assertEqual(int(run.data.metrics["total_trades"]), 42)
         # Non-numeric stat goes to tags:
         self.assertIn("first_trade", run.data.tags)
@@ -147,7 +147,7 @@ class MlflowIntegrationTests(unittest.TestCase):
         from flox_py import mlflow as flox_mlflow
 
         run_id = flox_mlflow.log_backtest(
-            stats={"sharpe": float("nan"),
+            stats={"sharpe_ratio": float("nan"),
                    "max_drawdown_pct": float("inf"),
                    "return_pct": 5.0},
             run_name="test-nan",
@@ -155,7 +155,7 @@ class MlflowIntegrationTests(unittest.TestCase):
             experiment="flox-test",
         )
         run = self._client().get_run(run_id)
-        self.assertIn("sharpe", run.data.tags)
+        self.assertIn("sharpe_ratio", run.data.tags)
         self.assertIn("max_drawdown_pct", run.data.tags)
         self.assertAlmostEqual(run.data.metrics["return_pct"], 5.0, places=4)
 

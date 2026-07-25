@@ -217,7 +217,7 @@ bt.set_pnl_tracker(my_pnl_tracker)          # IPnLTracker: .on_order_filled(orde
 | `net_pnl` | Net P&L after fees |
 | `total_trades` | Round-trip trade count |
 | `win_rate` | Winning trade fraction |
-| `sharpe` | Annualized Sharpe ratio |
+| `sharpe_ratio` | Annualized Sharpe ratio |
 | `max_drawdown_pct` | Peak-to-trough drawdown (%) |
 
 ### Walk-forward and grid search

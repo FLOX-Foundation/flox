@@ -37,9 +37,9 @@ Returned by `BacktestRunner.run_csv()` / `run_ohlcv()` and `BacktestResult.stats
 | `avg_trade_duration_ns` | `float` | Average trade duration (ns) |
 | `median_trade_duration_ns` | `float` | Median trade duration (ns) |
 | `max_trade_duration_ns` | `float` | Longest trade (ns) |
-| `sharpe` | `float` | Annualized Sharpe ratio |
-| `sortino` | `float` | Sortino ratio |
-| `calmar` | `float` | Calmar ratio |
+| `sharpe_ratio` | `float` | Annualized Sharpe ratio |
+| `sortino_ratio` | `float` | Sortino ratio |
+| `calmar_ratio` | `float` | Calmar ratio |
 | `time_weighted_return` | `float` | Time-weighted return |
 | `return_pct` | `float` | Net return (%) |
 | `start_time_ns` | `int` | Backtest start timestamp (ns) |

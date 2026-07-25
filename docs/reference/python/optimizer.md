@@ -153,7 +153,7 @@ for period in periods:
     p_down = (f[1:] < slow[1:]) & (f[:-1] >= slow[:-1])
     p_idx = np.flatnonzero(p_up | p_down) + 1
     stats = engine.run(build(p_idx, np.where(p_up[p_idx - 1], 0, 1)))
-    param_sharpes.append(stats.sharpe)
+    param_sharpes.append(stats.sharpe_ratio)
 
 r = flox.correlation(periods.astype(np.float64), np.array(param_sharpes))
 print(f"Period-Sharpe correlation: {r:.4f}")

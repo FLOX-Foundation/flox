@@ -140,7 +140,7 @@ bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
 bt.set_strategy(SMAcross([int(btc)]))
 
 stats = bt.run_csv("/path/to/btcusdt_1m.csv", "BTCUSDT")
-print(stats.return_pct, stats.sharpe, stats.max_drawdown_pct)
+print(stats.return_pct, stats.sharpe_ratio, stats.max_drawdown_pct)
 ```
 
 `run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not.
@@ -171,9 +171,9 @@ Codon has no `@classmethod`, so the factories are module-level functions: `binan
 | `net_pnl` | Net P&L after fees |
 | `total_trades` | Round-trip trade count |
 | `win_rate` | Winning trade fraction |
-| `sharpe` | Annualized Sharpe ratio |
-| `sortino` | Annualized Sortino ratio |
-| `calmar` | Calmar ratio |
+| `sharpe_ratio` | Annualized Sharpe ratio |
+| `sortino_ratio` | Annualized Sortino ratio |
+| `calmar_ratio` | Calmar ratio |
 | `max_drawdown_pct` | Peak-to-trough drawdown (%) |
 | `profit_factor` | Gross profit / gross loss |
 | `final_capital` | Capital at end of backtest |
@@ -236,7 +236,7 @@ def main():
     bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
     bt.set_strategy(SMAcross([btc_id]))
     stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
-    print(f"Return: {stats.return_pct:.2f}%  Sharpe: {stats.sharpe:.3f}")
+    print(f"Return: {stats.return_pct:.2f}%  Sharpe: {stats.sharpe_ratio:.3f}")
 
     # --- Live ---
     runner = Runner(reg, on_signal)

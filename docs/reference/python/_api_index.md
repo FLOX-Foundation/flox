@@ -1911,7 +1911,7 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - `to_dict(self) -> dict`
 - *property* `avg_loss: float`
 - *property* `avg_win: float`
-- *property* `calmar: float`
+- *property* `calmar_ratio: float`
 - *property* `final_capital: float`
 - *property* `gross_loss: float`
 - *property* `gross_profit: float`
@@ -1922,8 +1922,8 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - *property* `net_pnl: float`
 - *property* `profit_factor: float`
 - *property* `return_pct: float`
-- *property* `sharpe: float`
-- *property* `sortino: float`
+- *property* `sharpe_ratio: float`
+- *property* `sortino_ratio: float`
 - *property* `total_fees: float`
 - *property* `total_pnl: float`
 - *property* `total_trades: int`
