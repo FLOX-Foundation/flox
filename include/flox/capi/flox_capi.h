@@ -147,6 +147,13 @@ extern "C"
     FloxBookSnapshot snapshot;
   } FloxBookData;
 
+  /* OHLC bar event, delivered to FloxStrategyCallbacks.on_bar.
+   * bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi,
+   *           6=BpsRange (mirrors flox::BarType in aggregator/bar.h).
+   * bar_type_param: interval in NANOSECONDS for Time bars, tick count for
+   *           Tick, volume threshold for Volume, and the brick / range /
+   *           bps size for the others.
+   * close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. */
   typedef struct
   {
     uint32_t symbol;
