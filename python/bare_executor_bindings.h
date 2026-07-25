@@ -189,6 +189,7 @@ inline void bindBareExecutor(py::module_& m)
               d["price"] = f.price.toDouble();
               d["quantity"] = f.quantity.toDouble();
               d["timestamp_ns"] = static_cast<int64_t>(f.timestampNs);
+              d["is_maker"] = f.isMaker;
               out.append(d);
             }
             return out;

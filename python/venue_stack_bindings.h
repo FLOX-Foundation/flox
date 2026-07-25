@@ -12,6 +12,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/venue_stack.h"
 
 namespace py = pybind11;
@@ -21,6 +22,23 @@ namespace flox_py
 
 inline void bindVenueStack(py::module_& m)
 {
+  // VenueStack::clock() was bound without its return type ever being
+  // registered, so every call raised "Unregistered type" -- a method that
+  // could not succeed. Register it: driving the clock is the point of holding
+  // a stack from Python (RL envs, paper harnesses), where nothing else
+  // advances simulated time.
+  py::class_<flox::SimulatedClock>(
+      m, "SimulatedClock",
+      "Simulated time source shared by a VenueStack. Monotonic: advance_to()\n"
+      "with a timestamp at or before the current one is a no-op. Use reset()\n"
+      "to move backwards.")
+      .def("now_ns", &flox::SimulatedClock::nowNs,
+           "Current simulated time in nanoseconds.")
+      .def("advance_to", &flox::SimulatedClock::advanceTo, py::arg("ns"),
+           "Advance to `ns`. Ignored if `ns` is not ahead of the current time.")
+      .def("reset", &flox::SimulatedClock::reset, py::arg("ns") = 0,
+           "Set the clock to `ns`, backwards included.");
+
   py::class_<flox::VenueStack>(m, "VenueStack",
                                "Single-call venue-realistic backtest stack.\n\n"
                                "Use one of the factory methods to obtain a fully-wired "

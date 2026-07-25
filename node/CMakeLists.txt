@@ -22,6 +22,60 @@ find_library(FLOX_LIB flox HINTS
   ${CMAKE_SOURCE_DIR}/../build
   ${CMAKE_SOURCE_DIR}/../build/Release)
 
+# The addon compiles its own translation units and links a prebuilt archive, so
+# the two halves must agree on NDEBUG. libc++ changes container layout and
+# hardening between debug and release, and a mismatch does not fail to link: it
+# corrupts silently. Observed symptoms of a Release addon against a Debug
+# archive were SymbolRegistry::registerSymbol returning 0 for every symbol,
+# malloc aborting with free_list_checksum_botch, and segfaults at exit.
+#
+# cmake-js builds Release by default. Read the core build's type out of its
+# CMakeCache and refuse to proceed on a mismatch, naming the fix.
+foreach(_flox_core_dir "${CMAKE_SOURCE_DIR}/../build" "${CMAKE_SOURCE_DIR}/../build/Release")
+  if(EXISTS "${_flox_core_dir}/CMakeCache.txt")
+    file(STRINGS "${_flox_core_dir}/CMakeCache.txt" _flox_core_build_type
+         REGEX "^CMAKE_BUILD_TYPE:STRING=")
+    string(REPLACE "CMAKE_BUILD_TYPE:STRING=" "" _flox_core_build_type "${_flox_core_build_type}")
+    break()
+  endif()
+endforeach()
+
+if(NOT _flox_core_build_type)
+  message(FATAL_ERROR
+    "Could not read CMAKE_BUILD_TYPE from the flox core build next to "
+    "${FLOX_LIB}. An unset build type means no NDEBUG, which turns on "
+    "FLOX_SCALE_CHECKS and changes sizeof(Price) from 8 to 16 — linking that "
+    "archive into this addon corrupts memory silently. Reconfigure the core "
+    "with an explicit -DCMAKE_BUILD_TYPE=Release.")
+endif()
+
+if(_flox_core_build_type)
+  set(_flox_node_build_type "${CMAKE_BUILD_TYPE}")
+  if(NOT _flox_node_build_type)
+    set(_flox_node_build_type "Release")
+  endif()
+  string(TOUPPER "${_flox_core_build_type}" _core_upper)
+  string(TOUPPER "${_flox_node_build_type}" _node_upper)
+  # Debug is the only type without NDEBUG; Release / RelWithDebInfo /
+  # MinSizeRel all define it, so they are interchangeable here.
+  set(_core_ndebug ON)
+  set(_node_ndebug ON)
+  if(_core_upper STREQUAL "DEBUG")
+    set(_core_ndebug OFF)
+  endif()
+  if(_node_upper STREQUAL "DEBUG")
+    set(_node_ndebug OFF)
+  endif()
+  if(NOT _core_ndebug STREQUAL _node_ndebug)
+    message(FATAL_ERROR
+      "flox_node build type (${_flox_node_build_type}) disagrees with the flox "
+      "archive it links (${_flox_core_build_type}). Mixing NDEBUG and non-NDEBUG "
+      "halves corrupts memory instead of failing to link. Rebuild the core with "
+      "-DCMAKE_BUILD_TYPE=${_flox_node_build_type}, or build the addon with "
+      "npm run build -- --debug to match a Debug core.")
+  endif()
+endif()
+
 # Compile flox_capi.cpp directly to avoid DLL/import-lib complexity on Windows
 add_library(flox_node SHARED
   src/flox_node.cpp
@@ -33,16 +87,48 @@ if(MSVC)
   set_property(TARGET flox_node PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
 target_link_libraries(flox_node ${CMAKE_JS_LIB} ${FLOX_LIB})
-target_compile_definitions(flox_node PRIVATE NAPI_VERSION=8 NODE_ADDON_API_DISABLE_DEPRECATED)
+# NODE_ADDON_API_CPP_EXCEPTIONS_ALL widens node-addon-api's callback wrapper
+# (node_modules/node-addon-api/napi-inl.h) from catching only Napi::Error to
+# also catching std::exception and (...), converting them into JS errors.
+# Without it a C++ exception thrown by flox core — flox::Strategy's constructor
+# throws std::invalid_argument for a SymbolId missing from the registry —
+# escapes into V8's C frame and calls std::terminate, killing the process
+# instead of raising something JS can catch. That path is reachable from four
+# addStrategy/setStrategy entry points, and only 14 of 577 NAPI methods carry a
+# hand-written try/catch. tryFlox stays as the enrichment layer that preserves
+# FloxError's code and helpUrl; this is the safety net underneath it.
+target_compile_definitions(flox_node PRIVATE NAPI_VERSION=8 NODE_ADDON_API_DISABLE_DEPRECATED
+                                             NODE_ADDON_API_CPP_EXCEPTIONS_ALL)
+
+# flox headers are feature-gated on macros the core build sets PUBLIC on the
+# `flox` target. find_library() gives us the archive but none of those
+# definitions, so flox_capi.cpp compiled here can disagree with the archive it
+# links: FLOX_LZ4_ENABLED changes whether <lz4.h> is included and whether
+# compression reports as supported, which is enough to read a tape written by
+# the other half and land on corrupted state. Set them explicitly.
+#
+# The affinity pair is guarded because FLOX_CPU_AFFINITY_ENABLED also decides
+# whether EventBus declares two data members, i.e. it changes sizeof.
+# FLOX_ENABLE_CPU_AFFINITY defaults OFF in the core build; if you turn it on
+# there, pass -DFLOX_NODE_CPU_AFFINITY=ON here so both halves agree.
+option(FLOX_NODE_CPU_AFFINITY "Match a core build configured with FLOX_ENABLE_CPU_AFFINITY=ON" OFF)
+if(FLOX_NODE_CPU_AFFINITY)
+  target_compile_definitions(flox_node PRIVATE FLOX_CPU_AFFINITY_ENABLED=1)
+else()
+  target_compile_definitions(flox_node PRIVATE FLOX_CPU_AFFINITY_ENABLED=0)
+endif()
+target_compile_definitions(flox_node PRIVATE FLOX_NUMA_LIBRARY_LINKED=0)
 
 # Mirror the LZ4 detection from the core CMakeLists. find_library(FLOX_LIB)
 # locates a static archive but does not propagate the PUBLIC dependencies of
 # the original `flox` target, so the binding has to re-discover lz4 itself.
 # Try the three discovery methods used in the core build (vcpkg, brew/Linux
 # system, pkg-config) and link whichever one matches.
+set(FLOX_NODE_LZ4_FOUND OFF)
 find_package(lz4 CONFIG QUIET)
 if(lz4_FOUND)
   target_link_libraries(flox_node lz4::lz4)
+  set(FLOX_NODE_LZ4_FOUND ON)
   message(STATUS "flox_node: LZ4 via find_package")
 else()
   find_library(LZ4_LIBRARY NAMES lz4)
@@ -50,6 +136,7 @@ else()
   if(LZ4_LIBRARY AND LZ4_INCLUDE_DIR)
     target_include_directories(flox_node PRIVATE ${LZ4_INCLUDE_DIR})
     target_link_libraries(flox_node ${LZ4_LIBRARY})
+    set(FLOX_NODE_LZ4_FOUND ON)
     message(STATUS "flox_node: LZ4 via find_library: ${LZ4_LIBRARY}")
   else()
     find_package(PkgConfig QUIET)
@@ -59,9 +146,17 @@ else()
     if(LZ4_FOUND)
       target_include_directories(flox_node PRIVATE ${LZ4_INCLUDE_DIRS})
       target_link_libraries(flox_node ${LZ4_LINK_LIBRARIES})
+      set(FLOX_NODE_LZ4_FOUND ON)
       message(STATUS "flox_node: LZ4 via pkg-config")
     else()
       message(STATUS "flox_node: LZ4 not found — compressed segment reads will fail at runtime")
     endif()
   endif()
+endif()
+
+# Must match the value the linked archive was compiled with.
+if(FLOX_NODE_LZ4_FOUND)
+  target_compile_definitions(flox_node PRIVATE FLOX_LZ4_ENABLED=1)
+else()
+  target_compile_definitions(flox_node PRIVATE FLOX_LZ4_ENABLED=0)
 endif()

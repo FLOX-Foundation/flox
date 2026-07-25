@@ -29,7 +29,7 @@ def test_venue_stack_executor_is_refused_with_guidance() -> None:
     msg = str(excinfo.value)
     # The message has to name the supported pattern, not just say "no".
     assert "VenueExecutor" in msg
-    assert "ingest_executor" in msg
+    assert "set_venue_stack" in msg
 
 
 def test_custom_executor_overload_still_accepted() -> None:

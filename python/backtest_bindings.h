@@ -31,7 +31,8 @@ struct PyFill
   uint64_t order_id;
   uint32_t symbol;
   uint8_t side;
-  uint8_t _pad[3];
+  uint8_t is_maker;
+  uint8_t _pad[2];
   int64_t price_raw;
   int64_t quantity_raw;
   int64_t timestamp_ns;
@@ -71,6 +72,7 @@ inline PyFill fillToPyFill(const Fill& f)
   return {.order_id = f.orderId,
           .symbol = f.symbol,
           .side = static_cast<uint8_t>(f.side == Side::BUY ? 0 : 1),
+          .is_maker = static_cast<uint8_t>(f.isMaker ? 1 : 0),
           ._pad = {},
           .price_raw = f.price.raw(),
           .quantity_raw = f.quantity.raw(),
@@ -505,6 +507,7 @@ class PySimulatedExecutor
       d["price"] = f.price.toDouble();
       d["quantity"] = f.quantity.toDouble();
       d["timestamp_ns"] = static_cast<int64_t>(f.timestampNs);
+      d["is_maker"] = f.isMaker;
       result.append(d);
     }
     return result;
@@ -552,19 +555,23 @@ class PyBacktestResult
 {
  public:
   PyBacktestResult(double initialCapital, double feeRate, bool usePercentageFee,
-                   double fixedFeePerTrade, double riskFreeRate, double annualization)
+                   double fixedFeePerTrade, double riskFreeRate, double annualization,
+                   double makerFeeRate, double takerFeeRate)
   {
     _config.initialCapital = initialCapital;
     _config.feeRate = feeRate;
     _config.usePercentageFee = usePercentageFee;
     _config.fixedFeePerTrade = fixedFeePerTrade;
+    // Negative means unset, so both sides keep charging fee_rate.
+    _config.makerFeeRate = makerFeeRate;
+    _config.takerFeeRate = takerFeeRate;
     _config.riskFreeRate = riskFreeRate;
     _config.metricsAnnualizationFactor = (annualization > 0.0) ? annualization : 252.0;
     _result = std::make_unique<BacktestResult>(_config);
   }
 
   void recordFill(uint64_t orderId, uint32_t symbol, const std::string& sideStr, double price,
-                  double qty, int64_t timestampNs)
+                  double qty, int64_t timestampNs, bool isMaker)
   {
     Fill fill{};
     fill.orderId = orderId;
@@ -573,6 +580,7 @@ class PyBacktestResult
     fill.price = Price::fromDouble(price);
     fill.quantity = Quantity::fromDouble(qty);
     fill.timestampNs = static_cast<UnixNanos>(timestampNs);
+    fill.isMaker = isMaker;
     _result->recordFill(fill);
   }
 
@@ -674,7 +682,8 @@ inline void bindBacktest(py::module_& m)
                     &flox::LatencyDistribution::setBurstCorrelation)
       .def("median_ns", &flox::LatencyDistribution::medianNs);
 
-  PYBIND11_NUMPY_DTYPE(PyFill, order_id, symbol, side, price_raw, quantity_raw, timestamp_ns);
+  PYBIND11_NUMPY_DTYPE(PyFill, order_id, symbol, side, is_maker, price_raw, quantity_raw,
+                       timestamp_ns);
   PYBIND11_NUMPY_DTYPE(PyTradeRecord, symbol, side, entry_price_raw, exit_price_raw,
                        quantity_raw, entry_time_ns, exit_time_ns, pnl_raw, fee_raw);
   PYBIND11_NUMPY_DTYPE(PyEquityPoint, timestamp_ns, equity, drawdown_pct);
@@ -845,13 +854,17 @@ inline void bindBacktest(py::module_& m)
       .def_property_readonly("fill_count", &PySimulatedExecutor::fillCount);
 
   py::class_<PyBacktestResult>(m, "BacktestResult")
-      .def(py::init<double, double, bool, double, double, double>(),
+      .def(py::init<double, double, bool, double, double, double, double, double>(),
            py::arg("initial_capital") = 100000.0, py::arg("fee_rate") = 0.0001,
            py::arg("use_percentage_fee") = true, py::arg("fixed_fee_per_trade") = 0.0,
-           py::arg("risk_free_rate") = 0.0, py::arg("annualization_factor") = 252.0)
+           py::arg("risk_free_rate") = 0.0, py::arg("annualization_factor") = 252.0,
+           py::arg("maker_fee_rate") = -1.0, py::arg("taker_fee_rate") = -1.0,
+           "maker_fee_rate / taker_fee_rate default to -1.0, meaning unset: both\n"
+           "sides are charged fee_rate. Set either to charge the real spread\n"
+           "between posting and taking. Only used when use_percentage_fee.")
       .def("record_fill", &PyBacktestResult::recordFill,
            py::arg("order_id"), py::arg("symbol"), py::arg("side"), py::arg("price"),
-           py::arg("quantity"), py::arg("timestamp_ns"))
+           py::arg("quantity"), py::arg("timestamp_ns"), py::arg("is_maker") = false)
       .def("ingest_executor", &PyBacktestResult::ingestExecutor, py::arg("executor"),
            "Drain executor fills into this result in FIFO order")
       .def("stats", &PyBacktestResult::stats,

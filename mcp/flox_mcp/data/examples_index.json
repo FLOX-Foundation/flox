@@ -282,6 +282,13 @@
     },
     {
       "language": "python",
+      "path": "docs/examples/python_venue_stack_backtest.py",
+      "sha256": "5cd9e0cfaba49426d8289ce8c75a9986e848463a0e4115f0f58a6ce4804cfc4a",
+      "size_bytes": 1997,
+      "topic": "backtest"
+    },
+    {
+      "language": "python",
       "path": "docs/examples/python_xs_panel.py",
       "sha256": "8e58215f23c03247bf001802408f0676305176d2714b9f61bc04da04aa8c9f24",
       "size_bytes": 2679,

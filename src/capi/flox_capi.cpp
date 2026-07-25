@@ -212,14 +212,31 @@ uint32_t flox_registry_symbol_count(FloxRegistryHandle registry)
 // Strategy lifecycle
 // ============================================================
 
+// Returns NULL if the strategy cannot be constructed. BridgeStrategy's base
+// throws std::invalid_argument for a SymbolId absent from the registry -- an
+// easy mistake to make from a foreign runtime, where the id is just an integer
+// the caller made up. Letting that propagate out of extern "C" is undefined
+// behaviour, so it becomes a NULL handle the caller can test.
 FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t* symbols,
                                         uint32_t num_symbols, FloxRegistryHandle registry,
                                         FloxStrategyCallbacks callbacks)
 {
-  auto* reg = toRegistry(registry);
-  std::vector<SymbolId> syms(symbols, symbols + num_symbols);
-  auto* strat = new BridgeStrategy(static_cast<SubscriberId>(id), std::move(syms), *reg, callbacks);
-  return static_cast<FloxStrategyHandle>(strat);
+  try
+  {
+    auto* reg = toRegistry(registry);
+    if (reg == nullptr || (num_symbols > 0 && symbols == nullptr))
+    {
+      return nullptr;
+    }
+    std::vector<SymbolId> syms(symbols, symbols + num_symbols);
+    auto* strat =
+        new BridgeStrategy(static_cast<SubscriberId>(id), std::move(syms), *reg, callbacks);
+    return static_cast<FloxStrategyHandle>(strat);
+  }
+  catch (const std::exception&)
+  {
+    return nullptr;
+  }
 }
 
 FloxStrategyHandle flox_strategy_create_p(uint32_t id, const uint32_t* symbols,
@@ -7097,39 +7114,53 @@ int64_t normalizeWfTs(int64_t t)
   return t;
 }
 
+// Callers treat an empty result as "could not load" (see the bars.empty()
+// check in flox_walk_forward_run_csv), which is the only failure channel this
+// signature has. std::stoll/std::stod throw std::invalid_argument on a
+// malformed row, and this runs under extern "C", where an escaping exception
+// is undefined behaviour rather than a catchable error. Abort the whole load
+// instead of skipping bad rows: a partially-parsed tape would silently produce
+// a backtest over data the caller never supplied.
 std::vector<OhlcvReplaySource::Bar> loadOhlcvBarsCsv(const char* path,
-                                                     uint32_t symbolId)
+                                                     uint32_t symbolId) noexcept
 {
-  std::vector<OhlcvReplaySource::Bar> out;
-  std::ifstream f(path);
-  if (!f.is_open())
+  try
   {
+    std::vector<OhlcvReplaySource::Bar> out;
+    std::ifstream f(path);
+    if (!f.is_open())
+    {
+      return out;
+    }
+    std::string line;
+    std::getline(f, line);  // header
+    while (std::getline(f, line))
+    {
+      if (line.empty())
+      {
+        continue;
+      }
+      std::istringstream ss(line);
+      std::string tok;
+      std::getline(ss, tok, ',');
+      int64_t ts = normalizeWfTs(std::stoll(tok));
+      std::getline(ss, tok, ',');  // open
+      std::getline(ss, tok, ',');  // high
+      std::getline(ss, tok, ',');  // low
+      std::getline(ss, tok, ',');
+      double c = std::stod(tok);
+      OhlcvReplaySource::Bar bar;
+      bar.ts_ns = ts;
+      bar.price_raw = Price::fromDouble(c).raw();
+      bar.symbol_id = symbolId;
+      out.push_back(bar);
+    }
     return out;
   }
-  std::string line;
-  std::getline(f, line);  // header
-  while (std::getline(f, line))
+  catch (const std::exception&)
   {
-    if (line.empty())
-    {
-      continue;
-    }
-    std::istringstream ss(line);
-    std::string tok;
-    std::getline(ss, tok, ',');
-    int64_t ts = normalizeWfTs(std::stoll(tok));
-    std::getline(ss, tok, ',');  // open
-    std::getline(ss, tok, ',');  // high
-    std::getline(ss, tok, ',');  // low
-    std::getline(ss, tok, ',');
-    double c = std::stod(tok);
-    OhlcvReplaySource::Bar bar;
-    bar.ts_ns = ts;
-    bar.price_raw = Price::fromDouble(c).raw();
-    bar.symbol_id = symbolId;
-    out.push_back(bar);
+    return {};
   }
-  return out;
 }
 
 void fillStatsStruct(const BacktestStats& s, FloxBacktestStats* out)

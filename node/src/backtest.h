@@ -218,6 +218,19 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   void AdvanceClock(const Napi::CallbackInfo& info) { flox_simulated_executor_advance_clock(_h, info[0].As<Napi::Number>().Int64Value()); }
   void SetDefaultSlippage(const Napi::CallbackInfo& info)
   {
+    // Accept either the string name or the exported SLIPPAGE_* constant.
+    // The constants are part of the public surface, so rejecting them
+    // made documented code throw at runtime.
+    if (info.Length() > 0 && info[0].IsNumber())
+    {
+      const uint8_t code = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+      int32_t t0 = info.Length() > 1 ? info[1].As<Napi::Number>().Int32Value() : 0;
+      double ts0 = info.Length() > 2 ? info[2].As<Napi::Number>().DoubleValue() : 0.0;
+      double b0 = info.Length() > 3 ? info[3].As<Napi::Number>().DoubleValue() : 0.0;
+      double i0 = info.Length() > 4 ? info[4].As<Napi::Number>().DoubleValue() : 0.0;
+      flox_simulated_executor_set_default_slippage(_h, code, t0, ts0, b0, i0);
+      return;
+    }
     std::string model = info[0].As<Napi::String>().Utf8Value();
     uint8_t m = 0;
     if (model == "fixed_ticks")
@@ -240,6 +253,14 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   }
   void SetQueueModel(const Napi::CallbackInfo& info)
   {
+    // Accept either the string name or the exported QUEUE_* constant.
+    if (info.Length() > 0 && info[0].IsNumber())
+    {
+      const uint8_t code = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+      uint32_t d0 = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 1;
+      flox_simulated_executor_set_queue_model(_h, code, d0);
+      return;
+    }
     std::string model = info[0].As<Napi::String>().Utf8Value();
     uint8_t m = 0;
     if (model == "tob")

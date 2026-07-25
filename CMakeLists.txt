@@ -5,6 +5,19 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# An unset CMAKE_BUILD_TYPE is not a neutral default here: without NDEBUG,
+# FLOX_SCALE_CHECKS turns on (include/flox/util/base/scale_check.h) and adds a
+# member to Decimal, so sizeof(Price) goes 8 -> 16 and every struct holding a
+# price or quantity changes layout. Consumers that compile their own
+# translation units against a prebuilt archive (the Node addon does) then read
+# fields at the wrong offsets, which corrupts memory instead of failing to
+# link. Every build recipe in docs/ omitted the build type, so this state was
+# the documented default. Pin it.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  message(STATUS "CMAKE_BUILD_TYPE was unset; defaulting to Release")
+endif()
+
 option(FLOX_ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
 
 if(FLOX_ENABLE_DEV_SETUP)

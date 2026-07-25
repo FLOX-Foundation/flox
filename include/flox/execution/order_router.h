@@ -46,7 +46,7 @@ enum class RoutingError : uint8_t
 };
 
 // The router's own narrow order sink. Deliberately NOT
-// flox::IRoutableExecutor from execution/abstract_executor.h: that one is
+// flox::IOrderExecutor from execution/abstract_executor.h: that one is
 // the full executor interface (submitOrder(const Order&), cancelOrder,
 // replaceOrder, submitOCO, capabilities) and is what SimulatedExecutor
 // implements. Two classes with the same fully-qualified name in one

@@ -12,6 +12,7 @@
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/backtest_runner.h"
+#include "flox/backtest/venue_stack.h"
 #include "flox/book/bus/book_update_bus.h"
 #include "flox/book/bus/trade_bus.h"
 #include "flox/book/events/book_update_event.h"
@@ -1981,17 +1982,36 @@ class PyBacktestRunner
   // custom executor. The run completes with zero trades and a flat
   // equity curve, which reads like a broken strategy. Refuse loudly and
   // name the supported pattern instead.
+  // Run against a venue stack: the runner feeds the stack's executor
+  // market data and harvests its fills, so the run uses that venue's
+  // FILL MECHANICS -- queue model and depth, iceberg refresh latency,
+  // venue availability and rate limits. Fees still come from
+  // BacktestConfig (Fill carries no maker/taker flag), and funding and
+  // liquidation are driven by explicit calls, not the replay loop.
+  // Takes the whole stack because the executor alone does not expose the
+  // clock, and without advancing it ack latency and queue timing would
+  // never progress. Pass None to revert to the built-in executor.
+  void set_venue_stack(flox::VenueStack* stack)
+  {
+    if (stack == nullptr)
+    {
+      _runner->setSimulatedExecutor(nullptr, nullptr);
+      return;
+    }
+    _runner->setSimulatedExecutor(&stack->executor(), &stack->clock());
+  }
+
+  // A bare VenueExecutor cannot be wired correctly: SimulatedExecutor
+  // does not expose the clock it was built with, so the runner could not
+  // advance it. Point the caller at set_venue_stack instead of accepting
+  // a half-wired run.
   [[noreturn]] void set_venue_executor(flox::SimulatedExecutor*)
   {
     throw std::invalid_argument(
-        "BacktestRunner.set_executor() does not accept a VenueStack executor "
-        "(flox.VenueExecutor). BacktestRunner feeds market data only to its "
-        "built-in simulator, so a venue executor would receive orders but no "
-        "data and the run would report zero trades. Drive the venue stack "
-        "directly instead: feed it with VenueExecutor.on_trade() / "
-        "on_book_snapshot(), then pull the fills into a result with "
-        "BacktestResult.ingest_executor(executor). See "
-        "docs/how-to/realistic-backtest.md.");
+        "BacktestRunner.set_executor() does not take a VenueStack executor "
+        "(flox.VenueExecutor) — the executor alone does not carry the clock "
+        "the runner has to advance. Pass the stack itself: "
+        "runner.set_venue_stack(stack). See docs/how-to/realistic-backtest.md.");
   }
 
   void add_execution_listener(std::shared_ptr<flox_py::PyExecutionListener> listener)
@@ -2953,8 +2973,17 @@ inline void bindStrategy(py::module_& m)
       // VenueStack executor here would run to completion with zero trades.
       .def("set_executor", &PyBacktestRunner::set_venue_executor,
            py::arg("executor"),
-           "Refused: a VenueStack executor cannot drive a BacktestRunner. "
-           "Raises ValueError naming the supported pattern.")
+           "Refused: pass the stack via set_venue_stack(stack) instead. The "
+           "executor alone does not carry the clock the runner must advance.")
+      .def("set_venue_stack", &PyBacktestRunner::set_venue_stack,
+           py::arg("stack").none(true), py::keep_alive<1, 2>(),
+           "Run against a VenueStack: the runner feeds the stack executor "
+           "market data and harvests its fills, so the run uses the venue's "
+           "fill mechanics (queue model, iceberg latency, venue "
+           "availability, rate limits). Fees still come from BacktestConfig, "
+           "and funding and liquidation are driven by explicit calls rather "
+           "than the replay loop. Pass None to revert to the built-in "
+           "executor.")
       .def("add_execution_listener", &PyBacktestRunner::add_execution_listener,
            py::arg("listener"), py::keep_alive<1, 2>())
       .def("set_risk_manager", &PyBacktestRunner::set_risk_manager,

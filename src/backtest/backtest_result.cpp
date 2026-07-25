@@ -33,7 +33,7 @@ void BacktestResult::recordFill(const Fill& fill)
 {
   _fills.push_back(fill);
 
-  const Volume fee = computeFee(fill.price, fill.quantity);
+  const Volume fee = computeFee(fill.price, fill.quantity, fill.isMaker);
   _totalFees = Volume::fromRaw(_totalFees.raw() + fee.raw());
 
   Position& pos = getPosition(fill.symbol);
@@ -411,12 +411,16 @@ void BacktestResult::recordTrade(SymbolId symbol, Side side, Price entryPrice, P
   _equityCurve.push_back(pt);
 }
 
-Volume BacktestResult::computeFee(Price price, Quantity qty) const
+Volume BacktestResult::computeFee(Price price, Quantity qty, bool isMaker) const
 {
   if (_config.usePercentageFee)
   {
+    const double sideRate = isMaker ? _config.makerFeeRate : _config.takerFeeRate;
+    // Negative means unset, so an untouched config keeps charging feeRate on
+    // both sides and results do not move.
+    const double rate = (sideRate >= 0.0) ? sideRate : _config.feeRate;
     const Volume notional = price * qty;
-    return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * _config.feeRate *
+    return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * rate *
                                                 static_cast<double>(Volume::Scale)));
   }
   else

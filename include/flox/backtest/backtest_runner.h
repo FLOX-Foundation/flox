@@ -113,6 +113,44 @@ class BacktestRunner : public ISignalHandler
   void setExecutor(IOrderExecutor* executor) noexcept { _customExecutor = executor; }
   IOrderExecutor* customExecutor() const noexcept { return _customExecutor; }
 
+  /// Drive the run against an externally owned SimulatedExecutor —
+  /// typically VenueStack::executor().
+  ///
+  /// This differs from setExecutor() in both directions: the runner
+  /// FEEDS this executor market data (bars, trades, book updates) and
+  /// HARVESTS its fills into BacktestResult, so a venue stack no longer
+  /// has to be driven by hand. Order events are routed through the same
+  /// position tracker, PnL tracker and listener chain as the built-in
+  /// executor.
+  ///
+  /// `clock` must be the clock the executor was constructed with
+  /// (VenueStack::clock()). The runner advances it in lockstep with its
+  /// own, otherwise ack latency and queue timing would never progress.
+  ///
+  /// What this DOES bring in from the stack: the execution mechanics its
+  /// executor was wired with — queue model and depth, iceberg refresh
+  /// latency, venue availability (downtime) and the rate-limit policy.
+  /// BacktestConfig is not applied to the executor, so those settings are
+  /// not overwritten.
+  ///
+  /// What it does NOT bring in, and why:
+  ///   - Fees. BacktestResult computes them from BacktestConfig, not from
+  ///     the stack's FeeSchedule. Fill::isMaker now lets BacktestConfig
+  ///     charge makerFeeRate / takerFeeRate per side, which covers the flat
+  ///     part of a venue's schedule; what is still missing is its 30-day
+  ///     volume tiering, which the stack tracks and BacktestResult does not
+  ///     consult.
+  ///   - Funding and liquidation. Both are driven by explicit calls
+  ///     (FundingSchedule settlement, LiquidationEngine::onMarks), not by
+  ///     the replay loop.
+  /// Read the result as "this venue's fill mechanics", not "this venue's
+  /// full economics".
+  ///
+  /// Caller retains ownership. Pass (nullptr, nullptr) to revert to the
+  /// built-in executor.
+  void setSimulatedExecutor(SimulatedExecutor* executor, SimulatedClock* clock);
+  SimulatedExecutor* simulatedExecutorOverride() const noexcept { return _venueExecutor; }
+
   /// Pre-trade gate parity with the live `Runner`. All four hooks are
   /// optional; an unset hook is a no-op (let the order through).
   ///
@@ -214,6 +252,22 @@ class BacktestRunner : public ISignalHandler
   void notifyPaused();
   Order signalToOrder(const Signal& sig);
   bool passesPreTradeGate(const Order& order);
+  // Routes an executor's order events into the position tracker, PnL
+  // tracker and listener chain. Applied to the built-in executor in the
+  // constructor and to a venue executor in setSimulatedExecutor().
+  void installOrderEventCallback(SimulatedExecutor& exec);
+  // The executor that receives market data and owns the fills for this
+  // run: the venue override when set, otherwise the built-in one.
+  SimulatedExecutor& sim() noexcept
+  {
+    return _venueExecutor != nullptr ? *_venueExecutor : _executor;
+  }
+  const SimulatedExecutor& sim() const noexcept
+  {
+    return _venueExecutor != nullptr ? *_venueExecutor : _executor;
+  }
+  // Keeps a venue executor's clock in lockstep with the runner's.
+  void advanceClocks(UnixNanos ns);
 
   BacktestConfig _config;
   SimulatedClock _clock;
@@ -221,6 +275,10 @@ class BacktestRunner : public ISignalHandler
   // Optional binding-supplied executor. When non-null, signals are routed
   // here instead of to the built-in SimulatedExecutor.
   IOrderExecutor* _customExecutor{nullptr};
+  // Optional externally owned SimulatedExecutor (VenueStack::executor()).
+  // When non-null it receives market data and owns the run's fills.
+  SimulatedExecutor* _venueExecutor{nullptr};
+  SimulatedClock* _venueClock{nullptr};
   IStrategy* _strategy{nullptr};
   // Pre-trade gate stack — parity with live Runner. Caller-owned;
   // runner does not delete.

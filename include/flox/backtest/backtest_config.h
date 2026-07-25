@@ -70,6 +70,16 @@ struct BacktestConfig
   bool usePercentageFee{true};
   double fixedFeePerTrade{0.0};
 
+  // Per-side percentage rates. Negative (the default) means "not set": both
+  // sides fall back to feeRate, which is why that field had to be documented
+  // as a maker/taker average. Set either to charge the real spread between
+  // the two -- on a venue where the maker rate is a rebate, a strategy that
+  // only posts can be profitable at an average rate that says it is not.
+  // Only consulted when usePercentageFee is true; Fill::isMaker selects the
+  // side.
+  double makerFeeRate{-1.0};
+  double takerFeeRate{-1.0};
+
   SlippageProfile defaultSlippage{};
   std::vector<std::pair<SymbolId, SlippageProfile>> perSymbolSlippage{};
 

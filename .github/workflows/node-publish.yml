@@ -54,9 +54,15 @@ jobs:
       - name: Build flox + capi
         shell: bash
         run: |
+          # FLOX_NATIVE=OFF is mandatory on distribution paths: it defaults
+          # ON and adds -march=native, which is baked into the archive that
+          # gets statically linked into the published .node and faults with
+          # SIGILL on any consumer CPU missing an instruction the runner had.
+          # python-wheels does this via pyproject.toml; this path did not.
           cmake -B build \
             -DFLOX_BUILD_CAPI=ON \
             -DFLOX_ENABLE_BACKTEST=ON \
+            -DFLOX_NATIVE=OFF \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
 

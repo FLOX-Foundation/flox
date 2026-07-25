@@ -119,7 +119,7 @@ class BacktestResult
   void recordTrade(SymbolId symbol, Side side, Price entryPrice, Price exitPrice,
                    Quantity quantity, UnixNanos entryTimeNs, UnixNanos exitTimeNs,
                    Volume pnl, Volume fee);
-  Volume computeFee(Price price, Quantity qty) const;
+  Volume computeFee(Price price, Quantity qty, bool isMaker) const;
 
   // Ratios are computed from per-period returns derived from the equity curve.
   // Each return is (equity[i] - equity[i-1]) / equity[i-1] with the configured

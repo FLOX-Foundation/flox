@@ -19,9 +19,29 @@ checks. Numbers it produces ignore funding, liquidation, queue
 position, rate limits, and venue outages — the forces that decide
 whether a perp strategy survives in production.
 
-Venue physics live in a separate simulation, `VenueStack`, which you
-drive directly rather than plugging into `BacktestRunner`. See
-[Realistic backtest in one call](../how-to/realistic-backtest.md)
+To run the same strategy against a venue's fill mechanics, hand the
+runner a `VenueStack`:
+
+```python
+--8<-- "examples/python_venue_stack_backtest.py"
+```
+
+The runner then feeds that stack's executor market data and harvests its
+fills, so the run uses the venue's queue model and depth, iceberg refresh
+latency, venue availability and rate limits.
+
+Two things it does not change, so read the result as "this venue's fill
+mechanics" and not "this venue's full economics":
+
+- Fees still come from `BacktestConfig`, not from the stack's `FeeSchedule`.
+  Fills carry `is_maker`, so `maker_fee_rate` / `taker_fee_rate` charge the
+  real spread between posting and taking; what the stack still knows and the
+  result does not is 30-day volume tiering.
+- Funding and liquidation are driven by explicit calls
+  (`FundingSchedule` settlement, `LiquidationEngine.on_marks`), not by the
+  replay loop.
+
+See [Realistic backtest in one call](../how-to/realistic-backtest.md)
 and [Cross-margin accounts](../how-to/cross-margin.md).
 
 ## Minimal example
@@ -152,8 +172,6 @@ numbers.
 
 ## What's in `stats`
 
-| Field | Description |
-|---|---|
 Python and Codon use snake_case, Node.js camelCase. C++ reads the
 same fields off `BacktestStats`.
 
