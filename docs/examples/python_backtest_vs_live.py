@@ -49,8 +49,8 @@ class SMAStrategy(flox.Strategy):
         if fv > sv and ctx.is_flat():
             self.market_buy(0.01)
             self.trade_count += 1
-        elif fv < sv and ctx.is_flat():
-            self.market_sell(0.01)
+        elif fv < sv and ctx.is_long():
+            self.close_position()
             self.trade_count += 1
 
 

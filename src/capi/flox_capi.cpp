@@ -2826,10 +2826,13 @@ void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setReplaceAckLatency(latency_ns, jitter_ns);
 }
 
-void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle h,
-                                                   const char* profile_name)
+int flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle h,
+                                                  const char* profile_name)
 {
-  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.applyLatencyProfile(profile_name);
+  return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.applyLatencyProfile(
+             profile_name)
+             ? 1
+             : 0;
 }
 
 void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle h, uint8_t mode)
@@ -3015,12 +3018,12 @@ extern "C" void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
   toRateLimit(h)->setBan(after_consecutive_rejects, ban_duration_ns);
 }
 
-extern "C" void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
-                                                    const char* name)
+extern "C" int flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
+                                                   const char* name)
 {
   if (!h || !name)
   {
-    return;
+    return 0;
   }
   std::string n = name;
   if (n == "binance_um_futures")
@@ -3039,6 +3042,11 @@ extern "C" void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
   {
     *toRateLimit(h) = flox::RateLimitPolicy::deribit();
   }
+  else
+  {
+    return 0;
+  }
+  return 1;
 }
 
 extern "C" int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h)
@@ -9390,11 +9398,11 @@ extern "C" void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h,
 {
   toFee(h)->addTier(min_notional_30d, maker_bps, taker_bps);
 }
-extern "C" void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* name)
+extern "C" int flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* name)
 {
   if (!h || !name)
   {
-    return;
+    return 0;
   }
   std::string n = name;
   if (n == "binance_um_futures")
@@ -9413,6 +9421,11 @@ extern "C" void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const ch
   {
     *toFee(h) = flox::FeeSchedule::deribit();
   }
+  else
+  {
+    return 0;
+  }
+  return 1;
 }
 extern "C" void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns,
                                               double notional)
@@ -9504,12 +9517,12 @@ extern "C" uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h,
   }
   return toFunding(h)->loadTape(std::string(path)) ? 1 : 0;
 }
-extern "C" void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
-                                                   const char* name)
+extern "C" int flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
+                                                  const char* name)
 {
   if (!h || !name)
   {
-    return;
+    return 0;
   }
   std::string n = name;
   if (n == "binance_um_futures")
@@ -9528,6 +9541,11 @@ extern "C" void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
   {
     *toFunding(h) = flox::FundingSchedule::bitget_hourly();
   }
+  else
+  {
+    return 0;
+  }
+  return 1;
 }
 extern "C" void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h,
                                                         double rate)

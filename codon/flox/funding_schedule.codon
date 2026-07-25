@@ -6,18 +6,20 @@ from C import flox_funding_schedule_destroy(cobj)
 from C import flox_funding_schedule_set_constant(cobj, i64, f64)
 from C import flox_funding_schedule_set_tape_by_symbol(cobj, cobj, cobj, cobj, u32)
 from C import flox_funding_schedule_load_tape(cobj, cobj) -> u8
-from C import flox_funding_schedule_load_profile(cobj, cobj)
+from C import flox_funding_schedule_load_profile(cobj, cobj) -> i32
 from C import flox_funding_schedule_set_constant_rate(cobj, f64)
 from C import flox_funding_schedule_reset(cobj)
 from C import flox_funding_schedule_tick(cobj, i64, cobj, cobj, cobj, u32, cobj, u32) -> u32
 
 
 def _cstr(s: str) -> cobj:
-    from internal.gc import sys_alloc
+    # `internal.gc.sys_alloc` does not exist in Codon 0.19.6, so this whole
+    # function failed to compile and took every method that calls it with it.
+    # run_trace.codon has always used the plain Ptr[byte] allocation.
     n = len(s)
-    buf = Ptr[byte](sys_alloc(n + 1))
+    buf = Ptr[byte](n + 1)
     for i in range(n):
-        buf[i] = byte(ord(s[i]))
+        buf[i] = byte(int(s.ptr[i]))
     buf[n] = byte(0)
     return cobj(buf)
 
@@ -69,8 +71,8 @@ class FundingSchedule:
 
     def load_profile(self, name: str):
         """name: binance_um_futures | bybit_linear | okx_swap | bitget_hourly."""
-        flox_funding_schedule_load_profile(self._h, _cstr(name))
-
+        if int(flox_funding_schedule_load_profile(self._h, _cstr(name))) == 0:
+            raise ValueError("unknown funding schedule profile: " + name)
     def set_constant_rate(self, rate: float):
         flox_funding_schedule_set_constant_rate(self._h, f64(rate))
 

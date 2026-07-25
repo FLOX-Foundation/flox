@@ -154,11 +154,11 @@ void SimulatedExecutor::setReplaceAckLatencyDistribution(const LatencyDistributi
   _replaceAckDist = dist;
 }
 
-void SimulatedExecutor::applyLatencyProfile(const char* name)
+bool SimulatedExecutor::applyLatencyProfile(const char* name)
 {
   if (name == nullptr)
   {
-    return;
+    return false;
   }
   std::string n(name);
   BacktestConfig cfg{};
@@ -188,11 +188,12 @@ void SimulatedExecutor::applyLatencyProfile(const char* name)
   }
   else
   {
-    return;
+    return false;
   }
   setSubmitAckLatency(cfg.submitAckLatencyNs, cfg.submitAckJitterNs);
   setCancelAckLatency(cfg.cancelAckLatencyNs, cfg.cancelAckJitterNs);
   setReplaceAckLatency(cfg.replaceAckLatencyNs, cfg.replaceAckJitterNs);
+  return true;
 }
 
 void SimulatedExecutor::setRateLimitPolicy(const RateLimitPolicy& policy)

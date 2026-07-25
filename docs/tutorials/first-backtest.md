@@ -78,8 +78,8 @@ class my_strategy_strategy(flox.Strategy):
             return
         if fv > sv and ctx.is_flat():
             self.market_buy(0.01)
-        elif fv < sv and ctx.is_flat():
-            self.market_sell(0.01)
+        elif fv < sv and ctx.is_long():
+            self.close_position()
 ```
 
 ## Use your own data

@@ -4597,7 +4597,7 @@
           "type": "const char *"
         }
       ],
-      "return_type": "void"
+      "return_type": "int"
     },
     {
       "group": "fee_schedule",
@@ -4928,7 +4928,7 @@
           "type": "const char *"
         }
       ],
-      "return_type": "void"
+      "return_type": "int"
     },
     {
       "group": "funding_schedule",
@@ -10313,7 +10313,7 @@
           "type": "const char *"
         }
       ],
-      "return_type": "void"
+      "return_type": "int"
     },
     {
       "group": "rate_limit",
@@ -12026,7 +12026,7 @@
           "type": "const char *"
         }
       ],
-      "return_type": "void"
+      "return_type": "int"
     },
     {
       "group": "simulated_executor",

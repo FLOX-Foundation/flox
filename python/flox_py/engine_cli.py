@@ -215,17 +215,51 @@ def _print_banner(strategy_name: str, strategy_path: Path,
 # ── Tape feed ────────────────────────────────────────────────────────
 
 
-def _feed_tape(runner, tape_path: Path) -> int:
+def _resolve_tape_symbol(tape_path: Path, requested: Optional[int]) -> int:
+    """Pick which symbol id in the tape feeds the one registered symbol.
+
+    The tape's ids are assigned by whoever recorded it (``flox tape record``
+    numbers them 1..N in encounter order); they carry no relation to the
+    single symbol this command registers. Forwarding them unchanged meant a
+    multi-symbol tape delivered some other instrument's trades under the
+    requested name, with rc=0 and a success banner -- silently wrong prices
+    rather than an error.
+    """
+    from . import tape as tape_mod
+
+    ids = list(getattr(tape_mod.inspect_tape(tape_path), "symbol_ids", []) or [])
+    if requested is not None:
+        if ids and requested not in ids:
+            raise SystemExit(
+                f"flox engine sim: --tape-symbol-id {requested} is not in the "
+                f"tape. present: {ids}")
+        return requested
+    if len(ids) > 1:
+        raise SystemExit(
+            f"flox engine sim: the tape holds {len(ids)} symbols ({ids}) but "
+            f"this command registers one. Re-run with --tape-symbol-id <id> "
+            f"to choose which one feeds the strategy.")
+    return ids[0] if ids else 0
+
+
+def _feed_tape(runner, tape_path: Path, tape_symbol_id: int,
+               registered_symbol_id: int) -> int:
     """Drive a Runner from a recorded ``.floxlog`` tape. Returns the
-    number of trades dispatched."""
+    number of trades dispatched to the strategy."""
     from . import tape as tape_mod
 
     counter = [0]
 
     def _on_trade(ts_ns: int, sym_id: int, price: float,
                   qty: float, side: int) -> None:
+        # Only the chosen instrument, remapped onto the registered id. The
+        # counter reports trades *delivered*, not trades read -- the old one
+        # counted the whole tape and so claimed success even when nothing
+        # reached the strategy.
+        if sym_id != tape_symbol_id:
+            return
         # side: 0 = buy, 1 = sell. Runner.on_trade wants is_buy=bool.
-        runner.on_trade(sym_id, price, qty, side == 0, ts_ns)
+        runner.on_trade(registered_symbol_id, price, qty, side == 0, ts_ns)
         counter[0] += 1
 
     tape_mod.replay_tape(tape_path, on_trade=_on_trade)
@@ -323,6 +357,8 @@ def cmd_engine_sim(args: argparse.Namespace) -> int:
         args.exchange, args.symbol_name, tick_size=args.tick_size,
     )
     sym_id = int(symbol.id)
+    tape_symbol_id = _resolve_tape_symbol(
+        tape_path, getattr(args, "tape_symbol_id", None))
 
     runner = flox_py.Runner(registry, on_signal=lambda s: None,
                             threaded=bool(args.threaded))
@@ -381,7 +417,7 @@ def cmd_engine_sim(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGTERM, _on_signal)
 
     try:
-        n = _feed_tape(runner, tape_path)
+        n = _feed_tape(runner, tape_path, tape_symbol_id, sym_id)
         print(f"tape replay complete: {n} trade(s) dispatched.")
         print("engine still running — Ctrl-C to stop.")
         # Hold until SIGINT so the user can introspect via MCP after
@@ -431,6 +467,10 @@ def add_engine_subparser(sub: Any) -> None:
         "--symbol-name", default="BTCUSDT",
         help="Symbol name to register (default: BTCUSDT).",
     )
+    p_sim.add_argument(
+        "--tape-symbol-id", type=int, default=None,
+        help="Which symbol id in the tape feeds the strategy. Required when "
+             "the tape holds more than one.")
     p_sim.add_argument(
         "--exchange", default="sim",
         help="Exchange tag for the symbol (default: sim).",

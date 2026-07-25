@@ -6214,27 +6214,37 @@ static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
 using AggTimeFn = uint32_t (*)(const int64_t*, const double*, const double*, const uint8_t*,
                                size_t, double, FloxBar*, uint32_t);
 
+// Read the optional `sides` array into per-trade buy flags. Shared, because
+// js_agg_tick used to inline an all-zero vector instead and so reported
+// buyVolume == 0 on every tick bar -- silently, and only on that one
+// aggregator.
+static std::vector<uint8_t> aggSides(JSContext* c, JSValueConst sidesArg, uint32_t n)
+{
+  std::vector<uint8_t> side(n, 0);
+  if (JS_IsArray(c, sidesArg))
+  {
+    JSValue lenVal = JS_GetPropertyStr(c, sidesArg, "length");
+    uint32_t sn = 0;
+    JS_ToUint32(c, &sn, lenVal);
+    JS_FreeValue(c, lenVal);
+    for (uint32_t i = 0; i < std::min(sn, n); i++)
+    {
+      JSValue e = JS_GetPropertyUint32(c, sidesArg, i);
+      int boolVal = JS_ToBool(c, e);
+      JS_FreeValue(c, e);
+      side[i] = boolVal ? 1 : 0;
+    }
+  }
+  return side;
+}
+
 static JSValue doAgg(JSContext* c, JSValueConst* a, AggTimeFn fn, double param)
 {
   auto ts = jsArrayToInt64s(c, a[0]);
   auto px = jsArrayToDoubles(c, a[1]);
   auto qty = jsArrayToDoubles(c, a[2]);
   uint32_t n = static_cast<uint32_t>(ts.size());
-  std::vector<uint8_t> side(n, 0);
-  if (JS_IsArray(c, a[3]))
-  {
-    JSValue lenVal = JS_GetPropertyStr(c, a[3], "length");
-    uint32_t sn = 0;
-    JS_ToUint32(c, &sn, lenVal);
-    JS_FreeValue(c, lenVal);
-    for (uint32_t i = 0; i < std::min(sn, n); i++)
-    {
-      JSValue e = JS_GetPropertyUint32(c, a[3], i);
-      int boolVal = JS_ToBool(c, e);
-      JS_FreeValue(c, e);
-      side[i] = boolVal ? 1 : 0;
-    }
-  }
+  std::vector<uint8_t> side = aggSides(c, a[3], n);
   std::vector<FloxBar> bars(n);
   uint32_t got = fn(ts.data(), px.data(), qty.data(), side.data(), n, param, bars.data(), n);
   bars.resize(got);
@@ -6252,7 +6262,7 @@ static JSValue js_agg_tick(JSContext* c, JSValueConst, int, JSValueConst* a)
   auto px = jsArrayToDoubles(c, a[1]);
   auto qty = jsArrayToDoubles(c, a[2]);
   uint32_t n = static_cast<uint32_t>(ts.size());
-  std::vector<uint8_t> side(n, 0);
+  std::vector<uint8_t> side = aggSides(c, a[3], n);
   std::vector<FloxBar> bars(n);
   uint32_t got = flox_aggregate_tick_bars(ts.data(), px.data(), qty.data(), side.data(),
                                           n, toUint32(c, a[4]), bars.data(), n);
@@ -6691,6 +6701,11 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_symbol_slippage",
                 js_executor_set_symbol_slippage, 7);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_model", js_executor_set_queue_model, 3);
+  // js_strategy.cpp:159 exposes setQueueFifoTopN() and matching-modes.md
+  // documents it, but the global was never registered -- every call was a
+  // ReferenceError.
+  addGlobalFunc(ctx, "__flox_simulated_executor_set_queue_fifo_top_n",
+                js_executor_set_queue_fifo_top_n, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_top_priority_share",
                 js_executor_set_top_priority_share, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_set_lmm_orders",

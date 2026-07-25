@@ -251,14 +251,14 @@ class Runner:
         if self._threaded:
             flox_live_engine_publish_book_snapshot(
                 self._live_handle, u32(symbol),
-                bid_prices.__ptr__(), bid_qtys.__ptr__(), nb,
-                ask_prices.__ptr__(), ask_qtys.__ptr__(), na,
+                bid_prices.arr.ptr, bid_qtys.arr.ptr, nb,
+                ask_prices.arr.ptr, ask_qtys.arr.ptr, na,
                 i64(ts_ns))
         else:
             flox_runner_on_book_snapshot(
                 self._sync_handle, u32(symbol),
-                bid_prices.__ptr__(), bid_qtys.__ptr__(), nb,
-                ask_prices.__ptr__(), ask_qtys.__ptr__(), na,
+                bid_prices.arr.ptr, bid_qtys.arr.ptr, nb,
+                ask_prices.arr.ptr, ask_qtys.arr.ptr, na,
                 i64(ts_ns))
 
     def on_bar(self, symbol: int,
@@ -405,7 +405,7 @@ class BacktestRunner:
         buf      = [i64(0)] * 29
         ok = flox_backtest_runner_run_ohlcv(
             self._handle,
-            ts_buf.arr.ptr, closes.__ptr__(), n,
+            ts_buf.arr.ptr, closes.arr.ptr, n,
             symbol.c_str(), buf.arr.ptr)
         if ok == i32(0):
             raise ValueError("BacktestRunner.run_ohlcv failed")
@@ -425,8 +425,8 @@ class BacktestRunner:
         ok = flox_backtest_runner_run_bars(
             self._handle,
             sn.arr.ptr, en.arr.ptr,
-            opens.__ptr__(), highs.__ptr__(), lows.__ptr__(),
-            closes.__ptr__(), volumes.__ptr__(),
+            opens.arr.ptr, highs.arr.ptr, lows.arr.ptr,
+            closes.arr.ptr, volumes.arr.ptr,
             n, symbol.c_str(),
             u8(bar_type), u64(bar_type_param),
             buf.arr.ptr)

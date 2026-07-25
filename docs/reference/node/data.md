@@ -126,7 +126,7 @@ All methods return an array of partition objects `{ partitionId, fromNs, toNs, w
 |--------|-------------|
 | `byTime(numPartitions, warmupNs)` | Split into N equal time slices |
 | `byDuration(durationNs, warmupNs)` | Split by fixed duration |
-| `byCalendar(unit, warmupNs)` | Split by calendar unit (0=day, 1=week, 2=month) |
+| `byCalendar(unit, warmupNs)` | Split by calendar unit: `"hour"`, `"day"`, `"week"`, `"month"` |
 | `bySymbol(numPartitions)` | Split by symbol group |
 | `perSymbol()` | One partition per symbol |
 | `byEventCount(numPartitions)` | Split by event count |

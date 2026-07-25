@@ -431,7 +431,7 @@ const part = new Partitioner("/tmp/flox-test");
 const parts: Partition[] = part.byTime(4, 0n);
 void parts[0]?.fromNs;
 void part.byDuration(1_000_000n, 0n);
-void part.byCalendar(0, 0n);
+void part.byCalendar('day', 0n);
 void part.bySymbol(2);
 void part.perSymbol();
 void part.byEventCount(4);

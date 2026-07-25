@@ -92,7 +92,15 @@ class FundingScheduleWrap : public Napi::ObjectWrap<FundingScheduleWrap>
   void LoadProfile(const Napi::CallbackInfo& info)
   {
     std::string name = info[0].As<Napi::String>().Utf8Value();
-    flox_funding_schedule_load_profile(_h, name.c_str());
+    // A typo used to be a silent no-op, leaving default funding schedule
+    // values in place -- a zero-fee or unthrottled backtest that
+    // looks perfectly healthy.
+    if (flox_funding_schedule_load_profile(_h, name.c_str()) == 0)
+    {
+      Napi::Error::New(info.Env(), "unknown funding schedule profile: " + name +
+                                       ". known: binance_um_futures, bybit_linear, okx_swap, bitget_hourly")
+          .ThrowAsJavaScriptException();
+    }
   }
   void SetConstantRate(const Napi::CallbackInfo& info)
   {

@@ -19,7 +19,7 @@ class SMA(flox.Strategy):
         f = self.fast.update(t.price); s = self.slow.update(t.price)
         if f is None or s is None: return
         if f > s and ctx.is_flat(): self.market_buy(0.01)
-        elif f < s and ctx.is_flat(): self.market_sell(0.01)
+        elif f < s and ctx.is_long(): self.market_sell(0.01):
 
 bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMA([btc]))

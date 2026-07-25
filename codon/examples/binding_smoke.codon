@@ -1,0 +1,39 @@
+# Compile-time smoke test for the Codon binding surface.
+#
+# Codon realizes a function only where it is actually called, so a broken
+# body inside an uncalled method compiles fine and ships. Several methods
+# reached users that way: `_cstr` imported `internal.gc.sys_alloc`, which
+# does not exist, taking every profile loader with it; Partitioner passed
+# `Ptr[u32]` where the FFI declares `cobj`; and runner.codon called
+# `List.__ptr__()`, which is not Codon API.
+#
+# Everything below is called at module scope on purpose -- that is what
+# forces realization, and what makes this file a gate rather than decoration.
+
+from flox.fee_schedule import FeeSchedule
+from flox.funding_schedule import FundingSchedule
+from flox.rate_limit import RateLimitPolicy
+from flox.tools import Partitioner
+from flox.backtest import SimulatedExecutor
+
+fees = FeeSchedule()
+fees.load_profile("binance_um_futures")
+
+funding = FundingSchedule()
+funding.load_profile("binance_um_futures")
+
+limits = RateLimitPolicy()
+limits.add_bucket("orders", 60_000_000_000, 1200)
+
+part = Partitioner("/tmp/flox-binding-smoke-nonexistent")
+_by_time = part.by_time(4, 0)
+_by_duration = part.by_duration(1_000_000_000, 0)
+_by_calendar = part.by_calendar(1, 0)
+_by_symbol = part.by_symbol(2)
+_per_symbol = part.per_symbol()
+_by_events = part.by_event_count(3)
+
+executor = SimulatedExecutor()
+executor.apply_latency_profile("okx_swap")
+
+print("codon binding smoke ok")

@@ -1591,7 +1591,7 @@ class Partitioner:
         buf = [byte(0)] * (n * 48)
         flox_partitioner_by_time(
             self._h, u32(num_partitions), i64(warmup_ns),
-            Ptr[u32](buf.arr.ptr), u32(n))
+            cobj(buf.arr.ptr), u32(n))
         return self._read_partitions(n, buf)
 
     def by_duration(self, duration_ns: int, warmup_ns: int = 0) -> List[Partition]:
@@ -1603,7 +1603,7 @@ class Partitioner:
         buf = [byte(0)] * (n * 48)
         flox_partitioner_by_duration(
             self._h, i64(duration_ns), i64(warmup_ns),
-            Ptr[u32](buf.arr.ptr), u32(n))
+            cobj(buf.arr.ptr), u32(n))
         return self._read_partitions(n, buf)
 
     def by_calendar(self, unit: int = 2, warmup_ns: int = 0) -> List[Partition]:
@@ -1615,7 +1615,7 @@ class Partitioner:
         buf = [byte(0)] * (n * 48)
         flox_partitioner_by_calendar(
             self._h, u8(unit), i64(warmup_ns),
-            Ptr[u32](buf.arr.ptr), u32(n))
+            cobj(buf.arr.ptr), u32(n))
         return self._read_partitions(n, buf)
 
     def by_symbol(self, num_partitions: int) -> List[Partition]:
@@ -1627,7 +1627,7 @@ class Partitioner:
         buf = [byte(0)] * (n * 48)
         flox_partitioner_by_symbol(
             self._h, u32(num_partitions),
-            Ptr[u32](buf.arr.ptr), u32(n))
+            cobj(buf.arr.ptr), u32(n))
         return self._read_partitions(n, buf)
 
     def per_symbol(self) -> List[Partition]:
@@ -1636,7 +1636,7 @@ class Partitioner:
         if n == 0:
             return list[Partition]()
         buf = [byte(0)] * (n * 48)
-        flox_partitioner_per_symbol(self._h, Ptr[u32](buf.arr.ptr), u32(n))
+        flox_partitioner_per_symbol(self._h, cobj(buf.arr.ptr), u32(n))
         return self._read_partitions(n, buf)
 
     def by_event_count(self, num_partitions: int) -> List[Partition]:
@@ -1648,7 +1648,7 @@ class Partitioner:
         buf = [byte(0)] * (n * 48)
         flox_partitioner_by_event_count(
             self._h, u32(num_partitions),
-            Ptr[u32](buf.arr.ptr), u32(n))
+            cobj(buf.arr.ptr), u32(n))
         return self._read_partitions(n, buf)
 
 

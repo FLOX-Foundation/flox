@@ -4,7 +4,7 @@
 from C import flox_fee_schedule_create() -> cobj
 from C import flox_fee_schedule_destroy(cobj)
 from C import flox_fee_schedule_add_tier(cobj, f64, f64, f64)
-from C import flox_fee_schedule_load_profile(cobj, cobj)
+from C import flox_fee_schedule_load_profile(cobj, cobj) -> i32
 from C import flox_fee_schedule_record_fill(cobj, i64, f64)
 from C import flox_fee_schedule_fee_for(cobj, i64, f64, u8) -> f64
 from C import flox_fee_schedule_current_tier(cobj) -> u32
@@ -16,11 +16,13 @@ from C import flox_fee_schedule_clear_account_binding(cobj)
 
 
 def _cstr(s: str) -> cobj:
-    from internal.gc import sys_alloc
+    # `internal.gc.sys_alloc` does not exist in Codon 0.19.6, so this whole
+    # function failed to compile and took every method that calls it with it.
+    # run_trace.codon has always used the plain Ptr[byte] allocation.
     n = len(s)
-    buf = Ptr[byte](sys_alloc(n + 1))
+    buf = Ptr[byte](n + 1)
     for i in range(n):
-        buf[i] = byte(ord(s[i]))
+        buf[i] = byte(int(s.ptr[i]))
     buf[n] = byte(0)
     return cobj(buf)
 
@@ -46,8 +48,8 @@ class FeeSchedule:
 
     def load_profile(self, name: str):
         """name: binance_um_futures | bybit_linear | okx_swap | deribit."""
-        flox_fee_schedule_load_profile(self._h, _cstr(name))
-
+        if int(flox_fee_schedule_load_profile(self._h, _cstr(name))) == 0:
+            raise ValueError("unknown fee schedule profile: " + name)
     def record_fill(self, ts_ns: int, notional: float):
         flox_fee_schedule_record_fill(self._h, i64(ts_ns), f64(notional))
 
