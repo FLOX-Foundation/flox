@@ -35,7 +35,7 @@ orders submitted after the call.
 === "Python"
 
     ```python
-    import flox
+    import flox_py as flox
 
     exec = flox.SimulatedExecutor()
 
@@ -155,8 +155,9 @@ multiplier (e.g. 1.5) on top of raw size.
   no overshoot.
 - An empty `fifoTopN` (zero or larger than the level depth) makes
   `pro_rata_with_fifo` behave identically to pure `pro_rata`.
-- The `setFifoTopN` value persists across `set_queue_model` calls;
-  reset it explicitly when switching back to a pure FIFO mode.
+- The `set_queue_fifo_top_n` / `setQueueFifoTopN` value persists
+  across `set_queue_model` calls; reset it explicitly when switching
+  back to a pure FIFO mode.
 
 ## When the model matters
 

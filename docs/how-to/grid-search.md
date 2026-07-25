@@ -92,41 +92,52 @@ The C++ optimizer parallelises across threads automatically (`runLocal(numThread
 
 ## Ranking metrics
 
-| Metric | Python (in stats dict) | C++ (`RankMetric::*`) |
-|---|---|---|
-| Sharpe | `sharpe` / `sharpeRatio` | `SharpeRatio` |
-| Sortino | `sortino` | `SortinoRatio` |
-| Calmar | n/a (compute as `return / max_dd`) | `CalmarRatio` |
-| Total return | `return_pct` | `TotalReturn` |
-| Max drawdown | `max_drawdown_pct` | `MaxDrawdown` |
-| Win rate | `win_rate` | `WinRate` |
-| Profit factor | `profit_factor` | `ProfitFactor` |
+Keys below are for the dict returned by `BacktestRunner.run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes`, which is what the examples on this page rank on.
+
+| Metric | Python | Node.js | C++ (`RankMetric::*`) |
+|---|---|---|---|
+| Sharpe | `sharpe` | `sharpeRatio` | `SharpeRatio` |
+| Sortino | `sortino` | not on the `run_*` object | `SortinoRatio` |
+| Calmar | not on the `run_*` object | not on the `run_*` object | `CalmarRatio` |
+| Total return | `return_pct` | `returnPct` | `TotalReturn` |
+| Max drawdown | `max_drawdown_pct` | `maxDrawdownPct` | `MaxDrawdown` |
+| Win rate | `win_rate` | `winRate` | `WinRate` |
+| Profit factor | `profit_factor` | `profitFactor` | `ProfitFactor` |
+
+Calmar is available, just not on this dict: `BacktestResult.stats()` returns `calmar_ratio` (Python) / `calmar` (Node), along with `sharpe_ratio` / `sortino_ratio` and the extra trade-duration, streak and TWR fields. The two shapes are not interchangeable — see [Stats key names differ by producer](backtest.md#stats-key-names-differ-by-producer).
 
 ## Filtering, stability, statistical tests
 
-The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permutation tests as templated utilities (see [`optimization_stats.h`](../reference/api/backtest/optimization_stats.md)). From Python / Node.js you use `pandas` / `numpy` / `scipy` directly:
+The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permutation tests as templated utilities (see [`optimization_stats.h`](../reference/api/backtest/optimization_stats.md)). The same primitives are exposed as free functions in `flox_py` — prefer them over hand-rolling with `scipy`:
 
 === "Python"
 
     ```python
     import numpy as np
-    from scipy import stats
+    import flox_py as flox
 
     sharpes = df["sharpe"].values
     returns = df["return_pct"].values
     print("mean Sharpe:", sharpes.mean(), " std:", sharpes.std())
     print("corr(Sharpe, return):", np.corrcoef(sharpes, returns)[0, 1])
 
-    # Bootstrap 95% CI for mean Sharpe
-    boot = [np.random.choice(sharpes, size=len(sharpes), replace=True).mean() for _ in range(10_000)]
-    print("CI:", np.percentile(boot, [2.5, 97.5]))
+    # Bootstrap 95% CI for mean Sharpe -> (lower, median, upper)
+    print("CI:", flox.bootstrap_ci(sharpes, confidence=0.95, num_samples=10_000))
 
-    # Permutation test: top-10 vs bottom-10
+    # Two-sample permutation test: top-10 vs bottom-10 -> p-value
     top, bot = np.sort(sharpes)[-10:], np.sort(sharpes)[:10]
-    perm = stats.permutation_test((top, bot), lambda a, b: a.mean() - b.mean(),
-                                    n_resamples=10_000, alternative="greater")
-    print("p =", perm.pvalue)
+    print("p =", flox.permutation_test(top, bot, num_permutations=10_000))
+
+    # Multiple-comparison correction across K candidate strategies.
+    # excess: shape (K, T) of EXCESS returns -> {p_value, best_stat, best_index}
+    print(flox.whites_reality_check(excess, num_bootstrap=10_000))
     ```
+
+    `flox_py` also ships `profit_factor(returns)`, `win_rate(trade_pnls)` and
+    `trade_pnl(signal_long, signal_short, log_returns)`. Node.js has the same set
+    camelCased — `bootstrapCI`, `permutationTest`, `whitesRealityCheck`,
+    `profitFactor`, `winRate`, `tradePnl` — but `whitesRealityCheck` takes a flat
+    row-major matrix plus `numStrategies` / `numPeriods` rather than a 2-D array.
 
 === "C++"
 

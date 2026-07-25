@@ -1,6 +1,6 @@
 # Inspect a running flox engine over MCP
 
-The `flox-mcp` server can read positions, open orders, PnL, and the kill-switch state from a running flox engine and answer questions about them through any MCP client (Cursor, Claude Code, Cline). This is read-only inspection. Mutating ops like `place_order` and `set_kill_switch` are Phase 2 and not in this build.
+The `flox-mcp` server can read positions, open orders, PnL, and the kill-switch state from a running flox engine and answer questions about them through any MCP client (Cursor, Claude Code, Cline). The tools on this page are read-only and driven by a JSON snapshot file. Mutating ops (`place_order`, `cancel_order`, `cancel_all`, `flatten_positions`, `set_kill_switch`) ship in the same server but go through a separate, token-scoped HTTP control plane — see [Control a running engine over MCP](mcp-control-plane.md).
 
 ## How it works
 
@@ -84,7 +84,7 @@ The arrays may be empty. Missing optional fields default sensibly: `kill_switch`
 
 ## Writing the snapshot
 
-flox does not ship a built-in snapshot writer in Phase 1. Every app composes its hooks differently, and the writer needs to know which hook instances to query. Here is a minimal pattern:
+flox does not ship a built-in snapshot writer. Every app composes its hooks differently, and the writer needs to know which hook instances to query. Here is a minimal pattern:
 
 ```python
 import json
@@ -146,13 +146,25 @@ Add `flox-mcp` to your MCP client's server list. Pass `FLOX_RUNTIME_STATE` so it
 
 Every tool returns `{"snapshot_age_ms": int|null, "data": ...}`. If the snapshot is missing or unreadable, the response is `{"error": "..."}`.
 
-## What's not here yet
+## Mutating tools use a different transport
 
-Phase 2 will add mutating operations (`place_order`, `cancel_order`, `cancel_all`, `flatten_positions`, `set_kill_switch`) plus a security model (scoped tokens, audit log, dry-run defaults, rate limits, out-of-band approval for live ops). Until that lands, nothing the MCP server does can change the engine's state. Flipping the kill switch or placing an order is something you still do yourself.
+The snapshot file is read-only by construction — the MCP server never writes it. The mutating tools do not read it at all; they talk HTTP to a `ControlServer` your app embeds, reading the URL and bearer token from `FLOX_CONTROL_URL` / `FLOX_CONTROL_TOKEN`.
 
-The snapshot model also gives stale data. A dedicated IPC transport (Unix socket or shared memory) is the natural Phase 2 follow-up for real-time inspection and for any mutating op where 1 second of staleness is unacceptable. The file-based model in Phase 1 is the cheap thing that gets us most of the value; we may regret it the first time someone wants sub-second positions.
+| Tool | Purpose |
+|------|---------|
+| `place_order(account, symbol, side, qty, type?, price?, reason?, dry_run?, approve_token?)` | Place a market or limit order. |
+| `cancel_order(order_id, dry_run?)` | Cancel one open order. |
+| `cancel_all(symbol?, dry_run?)` | Cancel every open order; `symbol=0` (default) spans all symbols. |
+| `flatten_positions(symbol?, dry_run?)` | Close every open position with opposite-side market orders. |
+| `set_kill_switch(active, reason?, dry_run?)` | Halt or resume trading. |
+
+All five default to `dry_run=true`; pass `dry_run=false` to dispatch. `place_order` on `live` scope additionally needs a one-shot `approve_token` from `ControlServer.issue_approval()`. Scopes, rate limits, and the audit log are covered in [Control a running engine over MCP](mcp-control-plane.md).
+
+## Limits of the snapshot model
+
+The snapshot model gives stale data. A dedicated IPC transport (Unix socket or shared memory) is the natural follow-up for real-time inspection, and for any workflow where 1 second of staleness is unacceptable. The file-based model is the cheap thing that gets most of the value.
 
 ## See also
 
-* [MCP server tools overview](../bindings/mcp.md). The full set of `flox-mcp` tools.
+* [Control a running engine over MCP](../explanation/mcp-control-plane.md). The control-plane design behind the mutating tools.
 * [CCXT adapter](ccxt-adapter.md). The live-feed source that typically drives the engine being inspected.

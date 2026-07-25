@@ -8,6 +8,33 @@ Smart order routing across multiple exchanges.
 #include "flox/execution/order_router.h"
 ```
 
+!!! danger "Two distinct `flox::IOrderExecutor` types"
+    `execution/order_router.h` declares its own `flox::IOrderExecutor`:
+
+    ```cpp
+    virtual void submit(SymbolId, Side, int64_t priceRaw, int64_t quantityRaw, OrderId) = 0;
+    virtual void cancel(OrderId) = 0;
+    ```
+
+    `execution/abstract_executor.h` declares a **different** class under the **same
+    fully-qualified name**:
+
+    ```cpp
+    virtual void submitOrder(const Order&);
+    virtual void cancelOrder(OrderId);
+    // ... cancelAllOrders, replaceOrder, submitOCO, capabilities
+    ```
+
+    Consequences:
+
+    - `registerExecutor()` takes the router's interface. Passing a class that derives from
+      `abstract_executor.h`'s `IOrderExecutor` (for example `SimulatedExecutor`) is a type error.
+    - Including both headers in one translation unit is an ODR conflict.
+
+    Implement the router's two-method interface for anything you register here, and keep the two
+    headers out of the same translation unit. This is a known defect in the headers, not in this
+    page.
+
 ## Synopsis
 
 ```cpp
@@ -33,11 +60,25 @@ enum class RoutingError : uint8_t {
   RejectedByPolicy
 };
 
+// NOTE: order_router.h declares its OWN flox::IOrderExecutor. It is a DIFFERENT
+// type from the one in execution/abstract_executor.h despite the identical
+// fully-qualified name. See the warning below.
+class IOrderExecutor
+{
+public:
+  virtual ~IOrderExecutor() = default;
+
+  virtual void submit(SymbolId symbol, Side side, int64_t priceRaw,
+                      int64_t quantityRaw, OrderId orderId) = 0;
+  virtual void cancel(OrderId orderId) = 0;
+};
+
 template <size_t MaxExchanges = 4>
 class OrderRouter : public ISubsystem
 {
 public:
-  // Executor registration
+  // Executor registration — takes the IOrderExecutor declared above,
+  // NOT execution/abstract_executor.h's.
   void registerExecutor(ExchangeId exchange, IOrderExecutor* executor) noexcept;
   void setEnabled(ExchangeId exchange, bool enabled) noexcept;
 

@@ -2,7 +2,7 @@
 
 `DataReader.run([...])` walks a `.floxlog` once and forwards every event to a panel of streaming aggregators. The aggregators run entirely in C++; the dispatch loop never crosses into Python or JS during the walk.
 
-The six native aggregators:
+The seven native aggregators:
 
 | Aggregator | Per-cell value | Typical use |
 |---|---|---|
@@ -10,13 +10,16 @@ The six native aggregators:
 | `BinCountAggregator` | Event count per time bucket | Trades per minute, per second, etc. |
 | `VolumeBinAggregator` | Sum of trade `qty_raw` per time bucket | Volume profile over time |
 | `OHLCBinAggregator` | Open / high / low / close of trade `price_raw` per bucket | Price-time series for returns and candle reconstruction |
+| `BookSnapshotBinAggregator` | Order-book ladder (up to N levels/side) at each bucket boundary | Per-bucket book shape: spread, depth, imbalance |
 | `PeakAggregator` | Top-N busiest fixed-width windows per scale | Finding bursts at chosen scales |
 | `QuantileAggregator` | Window-count distribution to quantiles | Activity baseline at a given scale |
 
-The filter parameters work the same way on all six:
+The filter parameters work the same way on all seven:
 
-- `event_filter`: `Trades`, `BooksOnly`, or `Both`. Aggregators that only make sense for trades (volume, OHLC, peaks, quantiles) default to `Trades`.
+- `event_filter`: `Trades`, `BooksOnly`, or `Both`. Aggregators that only make sense for trades (volume, OHLC, peaks, quantiles) default to `Trades`; `BookSnapshotBin` defaults to `BooksOnly`.
 - `symbol_filter`: a list of symbol ids. The default (empty) admits every symbol.
+
+`BookSnapshotBinAggregator` requires `n_threads=1` — see [Parallel execution](#parallel-execution).
 
 `run([])` is a no-op. It does not decompress anything; useful as a sanity check that the framework is wired up.
 
@@ -39,6 +42,10 @@ volume = flox_py.VolumeBinAggregator(
 ohlc = flox_py.OHLCBinAggregator(
     bucket_ns=60_000_000_000,
 )
+book = flox_py.BookSnapshotBinAggregator(
+    bucket_ns=60_000_000_000,
+    levels=20,                 # rows per side per bucket; default 20
+)
 peaks = flox_py.PeakAggregator(
     window_ns_list=[1_000_000, 10_000_000, 100_000_000, 1_000_000_000],
     top_n=10,
@@ -48,18 +55,20 @@ quantiles = flox_py.QuantileAggregator(
     quantiles=[0.5, 0.95, 0.99],
 )
 
-reader.run([stats, counts, volume, ohlc, peaks, quantiles])
+# n_threads=1 is mandatory once the panel contains BookSnapshotBinAggregator.
+reader.run([stats, counts, volume, ohlc, book, peaks, quantiles], n_threads=1)
 
 # .result() is populated once run() returns.
 print(stats.result())       # structured numpy array
 print(counts.result())      # structured numpy array
 print(volume.result())      # structured numpy array
 print(ohlc.result())        # structured numpy array
+print(book.result())        # structured numpy array
 print(peaks.result())       # dict[window_ns, list[(count, start_ns)]]
 print(quantiles.result())   # dict[window_ns, dict[quantile, count]]
 ```
 
-The tabular aggregators (stats, counts, volume, ohlc) return structured numpy arrays. Field names match the row struct, so `arr["count"]`, `arr["bucket_ts_ns"]`, `arr["close_raw"]` work directly.
+The tabular aggregators (stats, counts, volume, ohlc, book) return structured numpy arrays. Field names match the row struct, so `arr["count"]`, `arr["bucket_ts_ns"]`, `arr["close_raw"]` work directly.
 
 `side` encoding in `BinCount` and `VolumeBin` rows: `0` means aggregate (no side split), `1` is BUY, `2` is SELL. `symbol_id = 0` means aggregate; set `by_symbol=True` to get one row per (bucket, symbol_id) cell.
 
@@ -67,8 +76,8 @@ The tabular aggregators (stats, counts, volume, ohlc) return structured numpy ar
 
 ```js
 import { DataReader, EventTypeStatsAggregator, BinCountAggregator,
-         VolumeBinAggregator, OHLCBinAggregator, PeakAggregator,
-         QuantileAggregator, AggregatorEventFilter }
+         VolumeBinAggregator, OHLCBinAggregator, BookSnapshotBinAggregator,
+         PeakAggregator, QuantileAggregator, AggregatorEventFilter }
     from '@flox-foundation/flox';
 
 const reader = new DataReader('./tape');
@@ -78,6 +87,7 @@ const stats = new EventTypeStatsAggregator(F.Both, []);
 const counts = new BinCountAggregator(60_000_000_000n, /*bySide=*/true);
 const volume = new VolumeBinAggregator(60_000_000_000n, /*bySide=*/true);
 const ohlc = new OHLCBinAggregator(60_000_000_000n);
+const book = new BookSnapshotBinAggregator(60_000_000_000n, /*levels=*/20);
 const peaks = new PeakAggregator(
     [1_000_000n, 10_000_000n, 100_000_000n, 1_000_000_000n],
     /*topN=*/10
@@ -87,12 +97,13 @@ const quantiles = new QuantileAggregator(
     [0.5, 0.95, 0.99]
 );
 
-reader.run([stats, counts, volume, ohlc, peaks, quantiles]);
+reader.run([stats, counts, volume, ohlc, book, peaks, quantiles], 1);  // n_threads=1
 
 console.log(stats.result());
 console.log(counts.result());
 console.log(volume.result());
 console.log(ohlc.result());
+console.log(book.result());     // Array<BookSnapshotBinRow>
 console.log(peaks.result());
 console.log(quantiles.result());
 ```
@@ -135,6 +146,16 @@ There is no `by_side` parameter. An "open price for buys" is not a generally use
 
 `*_raw` fields are fixed-point int64. Divide by `Price::SCALE` (= 1e8) to get floats. Parallel runs preserve open/close ordering by comparing the per-cell first/last timestamps on merge.
 
+### BookSnapshotBin
+
+Maintains the full ladder per symbol from `BookSnapshot` / `BookDelta` events and, at each bucket boundary, emits the latest state observed inside the closed bucket as up to `levels` rows per side. One row pairs the bid and the ask at the same depth (`level=0` is top of book); the shorter side is zero-padded, so a row can carry a bid and a zero ask. Buckets with no book events for a symbol produce no rows; the state at the end of the walk is emitted as the trailing bucket.
+
+Row fields: `bucket_ts_ns`, `symbol_id`, `level`, `flags`, `bid_price_raw`, `bid_qty_raw`, `ask_price_raw`, `ask_qty_raw`. Rows are sorted by `(bucket_ts_ns, symbol_id, level)` ascending. `flags` bit 0 (`kFlagCrossed`, value 1) marks a bucket where the best bid was `>=` the best ask. A zero price and qty on one side means no level at that depth.
+
+`event_filter` is accepted for API parity, but only book events ever contribute — a `Trades` filter yields an empty result. `bucket_ns` and `levels` must both be `> 0`.
+
+This is the C++ fast path for per-bucket book shape. The pure-Python equivalent is [`OrderBookIterator`](iterate-orderbook.md), which has the same bucket semantics but is meant for point queries and hours-scale windows; use this aggregator for month-scale multi-symbol feature extraction.
+
 ### Peak
 
 For each `window_ns`, finds the top-N intervals of width `window_ns` that contain the most events. After the walk, `finalize()` removes peaks that fall within `3 × window_ns` of a stronger one already kept; this keeps the top-N from being filled with adjacent samples of one burst.
@@ -167,6 +188,10 @@ reader.run(panel)                # default n_threads=0 → auto
 Partitioning is intra-segment at the compressed-block level. Each worker holds its own panel, cloned from the caller's via `IAggregator::cloneEmpty()`, and walks its assigned block range; results merge into the caller's originals via `IAggregator::merge()` before `finalize()`. Captures with one large active segment (md_collector style) benefit from this layout; segment-level partitioning would leave workers idle when one segment dominates.
 
 Aggregators with associative state (`EventTypeStats`, `BinCount`, `VolumeBin`, `Quantile`) produce identical results between single-thread and parallel runs.
+
+`BookSnapshotBinAggregator` cannot run partitioned at all. Book reconstruction is order-dependent across the whole tape: a worker that starts mid-stream would apply deltas to a ladder whose snapshot it never saw. `cloneEmpty()` and `merge()` therefore throw, and a parallel run fails with "book reconstruction is order-dependent across the whole tape". Pass `n_threads=1`.
+
+The failure is layout-dependent: the reader only partitions when a segment has enough compressed blocks, so on small or uncompressed tapes `n_threads>1` silently runs on the master panel and succeeds. Do not rely on that — pass `n_threads=1` explicitly.
 
 `PeakAggregator` and `QuantileAggregator` are sliding-window aggregators. With `N` workers there are up to `N-1` partition seams per segment, each at most `max(window_ns)` wide; windows that span a seam are not seen by any single worker. The trade-off is documented on `IAggregator::merge`. Results match the single-thread reference when `window_ns` is much wider than the seam. At sub-millisecond scales on a tape with 16 workers, expect a small fraction of cross-seam windows to be miscounted.
 
@@ -231,4 +256,5 @@ reader.run([agg], {
 ## See also
 
 - [Record and replay market data with `flox tape`](tape-record.md) for capturing the `.floxlog`.
-- [Merged tape consumption](multi-tape-replay.md) for `MergedTapeReader` reference when streaming `run()` is not enough.
+- [Merged tape consumption](multi-tape.md) for `MergedTapeReader` reference when streaming `run()` is not enough.
+- [Iterate the order book](iterate-orderbook.md) for the event-by-event Python reconstruction `BookSnapshotBinAggregator` replaces on the hot path.

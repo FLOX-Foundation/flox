@@ -1,6 +1,6 @@
 # How to Use Volume Profile
 
-Volume Profile aggregates traded volume by price level over a session, exposing point-of-control (POC), value area, and high/low volume nodes. Available in C++, Python, and Node.js. The advanced pattern examples below are written in C++ but the same logic ports directly to the Python/Node API.
+Volume Profile aggregates traded volume by price level over a session, exposing point-of-control (POC), value area, and high/low volume nodes. Available in C++, Python, and Node.js. The advanced pattern examples below are written in C++; Python has the full surface, Node currently exposes only `addTrade`, `poc`, `valueAreaHigh`, `valueAreaLow`, `totalVolume`, and `clear`.
 
 ## Basic setup
 
@@ -13,6 +13,11 @@ Volume Profile aggregates traded volume by price level over a session, exposing 
 
     # On every trade
     vp.add_trade(price, qty, is_buy=trade.is_buy)
+
+    # Or one vectorised call over a whole tape slice. is_buy is uint8.
+    vp.add_trades(prices, quantities, is_buy)
+
+    vp.clear()   # start a new session
     ```
 
 === "Node.js"
@@ -41,6 +46,14 @@ Volume Profile aggregates traded volume by price level over a session, exposing 
     va_high  = vp.value_area_high()
     total    = vp.total_volume()
     delta    = vp.total_delta()        # buy − sell
+
+    n        = vp.num_levels()
+    at_price = vp.volume_at(67_000.0)  # volume in that price bucket
+
+    # Every occupied bucket, as dicts:
+    #   {price, volume, buy_volume, sell_volume, delta}
+    for lvl in vp.levels():
+        print(lvl["price"], lvl["volume"], lvl["delta"])
     ```
 
 === "Node.js"

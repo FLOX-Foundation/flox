@@ -25,9 +25,15 @@ The `flox tape view` subcommand stages your artifact, starts a local web server,
 flox tape view path/to/btc.floxlog
 flox tape view path/to/btc.floxrun
 flox tape view path/to/btc.floxlog path/to/btc.floxrun
+flox tape view tapes/bybit-btc tapes/binance-btc          # merged multi-tape
 ```
 
-Pass either or both. The viewer auto-loads what you gave it.
+`paths` is variadic. Pass any number of `.floxlog` directories and
+at most one `.floxrun`; the viewer auto-loads what you gave it. With
+two or more tapes the CLI materialises a merged synthetic tape with
+symbols rekeyed into a global id space keyed by `(exchange, name)`
+and points the viewer at that — see
+[Merge multiple tapes](multi-tape.md).
 
 Flags:
 
@@ -69,7 +75,7 @@ A capture with no book frames (the default `flox tape record` shape today) shows
 ## Limitations
 
 - No backend, no auth, no live data. Open captured runs only.
-- One tape and one run at a time. Multi-symbol runs are fine; multi-tape side-by-side is not in this MVP.
+- One run at a time. Multiple tapes are merged into a single synthetic stream rather than shown side by side; the SPA has no multi-venue legend or per-venue book chart, so each merged tape's symbols appear as distinct global ids on one chart.
 - The order-book view limits to the top fifteen levels per side.
 - Equity is a simple cash + last-price-marked-position computation. Realistic backtest equity (with mark-to-market on the tape clock) belongs in the backtest reports, not here.
 - Price-chart interactivity is hover-tooltip plus click-to-seek only. No zoom, no pan, no drag-select range. Add as follow-ups if a real workload demands them.

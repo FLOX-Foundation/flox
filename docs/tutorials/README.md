@@ -44,16 +44,16 @@ After completing these tutorials, move on to [How-To Guides](../how-to/README.md
     - `pip install flox-py` or build from source
 
 === "Node.js"
-    - Node.js 18+
+    - Node.js 20+
     - `npm install @flox-foundation/flox` or build from source
 
 === "Codon"
     - Codon compiler installed
-    - Flox built with `-DFLOX_ENABLE_CAPI=ON`
+    - Flox built with `-DFLOX_BUILD_CAPI=ON`
 
 === "C++"
-    - C++20 compiler (GCC 13+ or Clang 16+)
+    - C++23 compiler (GCC 14+ or Clang 18+; MSVC or clang-cl on Windows)
     - CMake 3.22+
-    - Linux (recommended) or macOS
+    - Linux (recommended), macOS, or Windows
 
 See the [Bindings](../bindings/README.md) page for full per-language build details.

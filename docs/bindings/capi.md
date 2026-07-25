@@ -6,7 +6,7 @@
 
 ```bash
 cmake -B build \
-  -DFLOX_ENABLE_CAPI=ON \
+  -DFLOX_BUILD_CAPI=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
@@ -26,13 +26,13 @@ Produces `build/src/capi/libflox_capi.so`.
 #include "flox/capi/flox_capi.h"
 #include <stdio.h>
 
-static void on_trade(FloxStrategyHandle strat, FloxSymbolContext* ctx,
-                     FloxTradeData* trade, void* user_data) {
+static void on_trade(void* user_data, const FloxSymbolContext* ctx,
+                     const FloxTradeData* trade) {
     double price = flox_price_to_double(trade->price_raw);
     printf("trade: %.2f\n", price);
 }
 
-static void on_signal(const FloxSignal* sig, void* user_data) {
+static void on_signal(void* user_data, const FloxSignal* sig) {
     printf("signal: %s qty=%.4f\n",
            sig->side == 0 ? "buy" : "sell",
            sig->quantity);
@@ -45,7 +45,7 @@ int main(void) {
     FloxStrategyCallbacks cbs = {0};
     cbs.on_trade = on_trade;
 
-    FloxStrategyHandle strat = flox_strategy_create(0, &btc, 1, &cbs, NULL);
+    FloxStrategyHandle strat = flox_strategy_create(0, &btc, 1, reg, cbs);
 
     FloxRunnerHandle runner = flox_runner_create(reg, on_signal, NULL);
     flox_runner_add_strategy(runner, strat);

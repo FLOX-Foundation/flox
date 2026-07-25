@@ -6,7 +6,8 @@ FLOX uses GitHub Actions for continuous integration. The CI pipeline runs on eve
 
 | Job | Platform | Compiler | Build Type | Description |
 |-----|----------|----------|------------|-------------|
-| `format-check` | Ubuntu | - | - | Validates code formatting with clang-format |
+| `format-check` | ubuntu-latest | - | - | Validates code formatting with clang-format |
+| `verify-docs-current` | ubuntu-latest | - | - | Regenerates indicator docs, `llms.txt` / `llms-full.txt`, and checks `node/index.d.ts` exports and class members against the C++ binding |
 | `linux-gcc` | Ubuntu 24.04 | GCC 14 | Release | Main Linux build |
 | `linux-clang` | Ubuntu 24.04 | Clang 18 + libc++ | Release | Clang with libc++ standard library |
 | `sanitizers` | Ubuntu 24.04 | GCC 14 | Debug | ASan and UBSan for memory/UB detection |
@@ -14,6 +15,9 @@ FLOX uses GitHub Actions for continuous integration. The CI pipeline runs on eve
 | `windows-msvc` | Windows latest | MSVC | Release | Windows with MSVC toolchain |
 | `windows-clang-cl` | Windows latest | Clang-CL | Release | Windows with Clang frontend |
 | `affinity-tests` | Ubuntu 24.04 | GCC 14 | Release | Weekly CPU affinity tests (scheduled) |
+| `connectors-build` | Ubuntu 24.04 | GCC 14 | Release | Native exchange connectors module |
+
+A second workflow, `.github/workflows/build-matrix.yml`, configures and builds on ubuntu-24.04 in nine flag combinations so a default-OFF assumption cannot silently rot. It covers flag isolation; `ci.yml` covers platform coverage.
 
 ## Build Configuration
 
@@ -66,9 +70,9 @@ CPU affinity tests run weekly (Sunday 3:00 UTC) because:
 cmake -B build -G Ninja \
   -DCMAKE_CXX_COMPILER=g++-14 \
   -DCMAKE_BUILD_TYPE=Release \
-  -DFLOX_ENABLE_TESTS=ON \
-  -DFLOX_ENABLE_BENCHMARKS=ON \
-  -DFLOX_ENABLE_DEMO=ON \
+  -DFLOX_BUILD_TESTS=ON \
+  -DFLOX_BUILD_BENCHMARKS=ON \
+  -DFLOX_BUILD_DEMO=ON \
   -DFLOX_ENABLE_LZ4=ON \
   -DFLOX_ENABLE_BACKTEST=ON
 
@@ -84,7 +88,7 @@ cmake -B build -G Ninja \
   -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DFLOX_ENABLE_TESTS=ON
+  -DFLOX_BUILD_TESTS=ON
 
 cmake --build build
 ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 ctest --output-on-failure --test-dir build

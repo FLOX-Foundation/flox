@@ -111,7 +111,7 @@ Two ways to write a `.floxlog`:
     writer.close();
     ```
 
-## 3. Recording from Live Connectors
+## Recording from live connectors
 
 Subscribe the writer to your market data buses:
 
@@ -181,7 +181,7 @@ tradeBus->subscribe(recorder.get());
 bookBus->subscribe(recorder.get());
 ```
 
-## 4. Writer Configuration
+## Writer configuration
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -194,17 +194,25 @@ bookBus->subscribe(recorder.get());
 | `index_interval` | 1000 | Events between index entries |
 | `compression` | None | `None` or `LZ4` |
 
-## 5. File Format
+## File format
 
 FLOX creates `.floxlog` segment files with embedded index:
 
 ```
 /data/market_data/
 ├── metadata.json                    # Recording metadata (exchange, symbols, etc.)
-├── 20250101_120000_000.floxlog      # First segment (index embedded at end)
-├── 20250101_121500_001.floxlog      # Second segment (after rotation)
+├── .manifest                        # Optional: binary segment index, rebuildable
+├── 1735732800000000000.floxlog      # First segment (index embedded at end)
+├── 1735733700000000000.floxlog      # Second segment (after rotation)
 └── index.floxidx                    # Optional: global index across all segments
 ```
+
+Segments are named `<created_ns>.floxlog` by default — the wall-clock
+nanosecond timestamp at which the writer opened them. Set a
+`rotation_callback` on the writer config to choose your own names.
+Trades and book updates are interleaved in one timestamp-ordered
+stream; there is no per-type file split. Full byte layout:
+[`.floxlog` format spec](../spec/floxlog.md).
 
 Segment structure:
 ```
@@ -220,7 +228,7 @@ Segment structure:
 
 The global index (`index.floxidx`) can be built separately using `GlobalIndexBuilder` to enable fast lookup across multiple segment files.
 
-## 6. Recording Metadata
+## Recording metadata
 
 Each recording includes a `metadata.json` file with source information:
 
@@ -305,7 +313,7 @@ writer.addSymbol({.symbol_id = 1, .name = "ETHUSDT"});
 writer.close();  // Saves metadata.json
 ```
 
-## 7. Monitoring Recording
+## Monitoring recording
 
 ```cpp
 // Periodically check stats
@@ -317,7 +325,7 @@ std::cout << "Events: " << stats.events_written
           << ", Bytes: " << stats.bytes_written << std::endl;
 ```
 
-## 8. Compression
+## Compression
 
 Enable LZ4 for 3-5x size reduction:
 

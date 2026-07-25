@@ -4,14 +4,20 @@ Write a simple trading strategy that reacts to market data. After your [language
 
 ## The model
 
-Every Strategy subclass gets four callbacks. You override the ones you need:
+Every Strategy subclass gets nine callbacks. You override the ones you need; the rest stay no-ops.
 
-| Callback | Fires when |
-|---|---|
-| `on_trade(ctx, trade)` | A trade tick arrives |
-| `on_book_update(ctx)` | Top-of-book moves (bid/ask change) |
-| `on_bar(ctx, bar)` | A closed OHLC bar is dispatched |
-| `on_start()` / `on_stop()` | Strategy lifecycle |
+| Callback (Python) | Node.js | Fires when |
+|---|---|---|
+| `on_trade(ctx, trade)` | `onTrade(ctx, trade, emit)` | A trade tick arrives |
+| `on_book_update(ctx)` | `onBookUpdate(ctx, emit)` | Top-of-book moves (bid/ask change) |
+| `on_bar(ctx, bar)` | `onBar(ctx, bar, emit)` | A closed OHLC bar is dispatched |
+| `on_fill(ctx, event)` | `onFill(ctx, ev, emit)` | One of your orders partially or fully fills |
+| `on_order_update(ctx, event)` | `onOrderUpdate(ctx, ev, emit)` | Any order-lifecycle status change (fills included) |
+| `on_queue_position_change(ctx, event)` | `onQueuePositionChange(ctx, ev, emit)` | A resting limit order's queue position moved (backtest only) |
+| `on_market_position_change(ctx, event)` | `onMarketPositionChange(ctx, ev, emit)` | A resting limit order crossed a categorical position boundary (backtest only) |
+| `on_start()` / `on_stop()` | `onStart()` / `onStop()` | Strategy lifecycle |
+
+The first three are the ones most strategies need. Node.js callbacks take an extra `emit` argument; Python calls order helpers on `self`.
 
 Inside callbacks you query state via `ctx` and place orders with helpers like `market_buy(qty)` / `limit_sell(price, qty)`.
 

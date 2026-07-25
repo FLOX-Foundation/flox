@@ -23,6 +23,14 @@ const stats = bt.runOhlcv(timestampsNs, closePrices, 'BTCUSDT');
 | `setStrategy(strategy)` | `void` | Attach a strategy |
 | `runCsv(path, symbol)` | stats object | Replay a CSV file (timestamp, open, high, low, close, volume) |
 | `runOhlcv(timestamps, closes, symbol)` | stats object | Replay raw arrays (timestamps as Float64Array, closes as Float64Array) |
+| `runTape(path)` | stats object | Replay a `.floxlog` tape directory — the canonical recording written by `flox tape record` or `scripts/backfill_to_tape.py` |
+| `runTapes(paths)` | stats object | Merge N `.floxlog` tape directories on read and replay the merged stream. Symbols are rekeyed by `(metadata.exchange, name)` so two venues stay distinct. `runTapes([t])` equals `runTape(t)`; throws on bad paths or overlapping book streams |
+| `setExecutor(executor)` | `void` | Replace the built-in `SimulatedExecutor`. `null` detaches |
+| `addExecutionListener(listener)` | `void` | Attach an order-lifecycle listener. Multiple listeners may be attached; each fires for every order event |
+| `equityCurve()` | `EquityCurve` | Equity curve from the most recent run |
+| `trades()` | `BacktestTrades` | Closed trades from the most recent run |
+
+`equityCurve()` and `trades()` throw `FloxError(E_RUN_002)` if no run has completed.
 
 ### Stats object
 
@@ -63,15 +71,19 @@ exec.setQueueModel('tob', 1);
 
 | Method / Property | Description |
 |-------------------|-------------|
-| `submitOrder(id, side, price, qty, type, symbol)` | Submit an order (`side`: `"buy"`/`"sell"`, `type`: `"market"`/`"limit"`) |
+| `submitOrder(id, side, price, qty, type, symbol, opts?)` | Submit an order (`side`: `"buy"`/`"sell"`) |
 | `cancelOrder(orderId)` | Cancel an order |
 | `cancelAll(symbol)` | Cancel all orders for a symbol |
 | `onBar(symbol, closePrice)` | Feed a bar close |
 | `onTrade(symbol, price, isBuy)` | Feed a trade |
 | `advanceClock(timestampNs)` | Advance simulated time |
-| `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage. `model` is a string or one of `SLIPPAGE_NONE`, `SLIPPAGE_FIXED_TICKS`, `SLIPPAGE_FIXED_BPS`, `SLIPPAGE_VOLUME_IMPACT` |
-| `setQueueModel(model, depth)` | Configure limit order queue. `model` is a string or one of `QUEUE_NONE`, `QUEUE_TOB`, `QUEUE_FULL` |
+| `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage. `model` is one of `"none"`, `"fixed_ticks"`, `"fixed_bps"`, `"volume_impact"` |
+| `setQueueModel(model, depth)` | Configure limit order queue. `model` is one of `"none"`, `"tob"`, `"full"`, `"pro_rata"`, `"pro_rata_with_fifo"`, `"top_pro_lmm"`, `"pro_rata_with_priority"` |
 | `fillCount` | Number of fills (property) |
+
+`submitOrder`'s `type` is one of `"market"`, `"limit"`, `"stop_market"`,
+`"stop_limit"`, `"trailing_stop"`. The optional seventh argument carries
+`{ tif?: 'gtc' | 'ioc' | 'fok' | 'gtd' | 'post_only', reduceOnly?: boolean, expiresAtNs?: number }`.
 
 ---
 

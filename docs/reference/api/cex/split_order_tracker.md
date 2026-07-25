@@ -19,6 +19,7 @@ public:
   struct SplitState {
     OrderId parentId{};
     std::array<OrderId, kMaxChildrenPerSplit> childIds{};
+    std::array<ExchangeId, kMaxChildrenPerSplit> childExchanges{};
     uint8_t childCount{0};
     uint8_t completedCount{0};
     uint8_t failedCount{0};
@@ -26,29 +27,40 @@ public:
     int64_t filledQtyRaw{0};
     int64_t createdAtNs{0};
 
-    bool allDone() const noexcept;
-    bool allSuccess() const noexcept;
-    double fillRatio() const noexcept;
+    bool allDone() const;
+    bool allSuccess() const;
+    double fillRatio() const;
   };
 
-  // Register a split order
+  // Register a split order. The four-argument overload leaves childExchanges
+  // default-initialized; pass an `exchanges` span the same length as `children`
+  // to record which venue each child went to.
   bool registerSplit(OrderId parent, std::span<const OrderId> children,
-                     int64_t totalQtyRaw, int64_t nowNs) noexcept;
+                     std::span<const ExchangeId> exchanges,
+                     int64_t totalQtyRaw, int64_t nowNs);
+  bool registerSplit(OrderId parent, std::span<const OrderId> children,
+                     int64_t totalQtyRaw, int64_t nowNs);
 
   // Update on child events
-  void onChildFill(OrderId childId, int64_t fillQtyRaw) noexcept;
-  void onChildComplete(OrderId childId, bool success) noexcept;
+  void onChildFill(OrderId childId, int64_t fillQtyRaw);
+  void onChildComplete(OrderId childId, bool success);
 
   // Query
-  const SplitState* getState(OrderId parentId) const noexcept;
-  bool isComplete(OrderId parentId) const noexcept;
-  bool isSuccessful(OrderId parentId) const noexcept;
+  const SplitState* getState(OrderId parentId) const;
+  bool isComplete(OrderId parentId) const;
+  bool isSuccessful(OrderId parentId) const;
 
   // Management
-  void cleanup(int64_t nowNs, int64_t timeoutNs) noexcept;
-  size_t size() const noexcept;
+  void remove(OrderId parentId);
+  void cleanup(int64_t nowNs, int64_t timeoutNs);
+  size_t size() const;
+  void clear();
 };
 ```
+
+No method is `noexcept`. `registerSplit` returns `false` if `children.size()` exceeds
+`kMaxChildrenPerSplit`, if `children` and `exchanges` differ in length, or if `parent` is already
+registered.
 
 ## Use Case
 
@@ -137,21 +149,25 @@ tracker.cleanup(nowNs, oneHourNs);
 
 ### allDone()
 ```cpp
-bool allDone() const noexcept {
+bool allDone() const {
   return completedCount + failedCount >= childCount;
 }
 ```
 
 ### allSuccess()
 ```cpp
-bool allSuccess() const noexcept {
-  return completedCount >= childCount && failedCount == 0;
+bool allSuccess() const {
+  return completedCount >= childCount;
 }
 ```
 
+Note that `allSuccess()` does not inspect `failedCount`. A split in which some children failed can
+still report success once `completedCount` reaches `childCount`. Check `failedCount == 0` yourself if
+you need a strict all-succeeded test.
+
 ### fillRatio()
 ```cpp
-double fillRatio() const noexcept {
+double fillRatio() const {
   return totalQtyRaw > 0 ? static_cast<double>(filledQtyRaw) / totalQtyRaw : 0.0;
 }
 ```

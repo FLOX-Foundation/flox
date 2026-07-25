@@ -89,44 +89,72 @@ print(f"Mean PnL: {median:.2f} [{lower:.2f}, {upper:.2f}] (95% CI)")
 import numpy as np
 import flox_py as flox
 
-engine = flox.Engine(initial_capital=100_000)
-engine.load_bars_df(timestamps, opens, highs, lows, closes, volumes)
-
-# Run strategy
-signals = my_strategy(closes)
-base_stats = engine.run(signals)
-base_pnl = base_stats['net_pnl']
-
-# Monte Carlo permutation test
+n = 2000
 rng = np.random.default_rng(42)
-shuffled_sets = []
-for _ in range(1000):
-    idx = rng.permutation(len(signals))
-    shuffled = signals[idx]
-    shuffled_sets.append(shuffled)
+ts = 1_700_000_000_000_000_000 + np.arange(n, dtype=np.int64) * 3_600_000_000_000
+close = 30_000.0 + np.cumsum(rng.normal(0.0, 25.0, n))
 
-results = engine.run_batch(shuffled_sets)
-random_pnls = np.array([r['net_pnl'] for r in results])
+engine = flox.Engine(initial_capital=100_000)
+engine.load_ohlcv({
+    "ts": ts,
+    "open": close,
+    "high": close + 5.0,
+    "low": close - 5.0,
+    "close": close,
+    "volume": np.full(n, 1.0),
+}, symbol="BTCUSDT")
 
-# Statistical significance
-p_value = np.mean(random_pnls >= base_pnl)
+closes = engine.close("BTCUSDT")
+fast = flox.ema(closes, 10)
+slow = flox.ema(closes, 30)
+
+
+def build(indices, sides):
+    """Turn (bar index, side) pairs into a SignalBuilder."""
+    sb = flox.SignalBuilder()
+    for i, side in zip(indices, sides):
+        emit = sb.buy if side == 0 else sb.sell
+        emit(int(ts[i]), 1.0, "BTCUSDT")
+    return sb
+
+
+# Base run: MA crossover
+up = (fast[1:] > slow[1:]) & (fast[:-1] <= slow[:-1])
+down = (fast[1:] < slow[1:]) & (fast[:-1] >= slow[:-1])
+idx = np.flatnonzero(up | down) + 1
+sides = np.where(up[idx - 1], 0, 1)
+
+base_pnl = engine.run(build(idx, sides)).net_pnl
+
+# Monte Carlo: same trade count and side sequence, random entry times
+random_pnls = np.array([
+    engine.run(build(np.sort(rng.choice(n, size=idx.size, replace=False)), sides)).net_pnl
+    for _ in range(200)
+])
+
+p_value = float(np.mean(random_pnls >= base_pnl))
 print(f"Strategy PnL: {base_pnl:.2f}, p-value: {p_value:.4f}")
 
-# Confidence interval on trade PnLs
+# Confidence interval on per-trade PnLs
+log_returns = np.diff(np.log(closes), prepend=np.log(closes[0]))
+signal_long = (fast > slow).astype(np.int8)
+signal_short = (fast < slow).astype(np.int8)
+
 trade_pnls = flox.trade_pnl(signal_long, signal_short, log_returns)
 lo, med, hi = flox.bootstrap_ci(trade_pnls)
 print(f"Trade PnL: {med:.4f} [{lo:.4f}, {hi:.4f}]")
 
 # Parameter sensitivity
+periods = np.arange(5, 50)
 param_sharpes = []
-for period in range(5, 50):
-    sigs = ma_strategy(closes, period)
-    stats = engine.run(sigs)
-    param_sharpes.append(stats['sharpe'])
+for period in periods:
+    f = flox.ema(closes, int(period))
+    p_up = (f[1:] > slow[1:]) & (f[:-1] <= slow[:-1])
+    p_down = (f[1:] < slow[1:]) & (f[:-1] >= slow[:-1])
+    p_idx = np.flatnonzero(p_up | p_down) + 1
+    stats = engine.run(build(p_idx, np.where(p_up[p_idx - 1], 0, 1)))
+    param_sharpes.append(stats.sharpe)
 
-r = flox.correlation(
-    np.arange(5, 50, dtype=np.float64),
-    np.array(param_sharpes),
-)
+r = flox.correlation(periods.astype(np.float64), np.array(param_sharpes))
 print(f"Period-Sharpe correlation: {r:.4f}")
 ```

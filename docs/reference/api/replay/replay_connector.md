@@ -107,11 +107,15 @@ connector->stop();
 
 ### With Engine Integration
 
-```cpp
-Engine engine(config);
+`Engine` has no `addConnector`. Subsystems and connectors are passed to the constructor:
 
+```cpp
 auto replay = std::make_shared<ReplayConnector>(replay_config);
-engine.addConnector(replay);
+
+std::vector<std::unique_ptr<ISubsystem>> subsystems;
+std::vector<std::shared_ptr<IExchangeConnector>> connectors{replay};
+
+Engine engine(engineConfig, std::move(subsystems), std::move(connectors));
 
 engine.start();
 // Events flow through the standard connector pipeline

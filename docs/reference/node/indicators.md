@@ -1,5 +1,9 @@
 # Indicators
 
+```javascript
+const flox = require('@flox-foundation/flox');
+```
+
 ---
 
 ## Batch functions
@@ -16,7 +20,9 @@ const adx  = flox.adx(hi, lo, cl, 14);           // { adx, plusDi, minusDi }
 
 **Single value** — `(input, period)`:
 
-`sma`, `ema`, `rma`, `rsi`, `dema`, `tema`, `kama`, `slope`
+`sma`, `ema`, `rma`, `rsi`, `dema`, `tema`, `slope`
+
+`kama(input, period, fast?, slow?)` takes two extra optional smoothing constants.
 
 **OHLC input:**
 
@@ -51,7 +57,7 @@ ind.reset()          // clear state, keep config
 
 `SMA(period)`, `EMA(period)`, `RMA(period)`, `RSI(period)`, `DEMA(period)`, `TEMA(period)`,
 `KAMA(period, fast?, slow?)`, `Slope(length)`, `Skewness(period)`, `Kurtosis(period)`,
-`RollingZScore(period)`, `ShannonEntropy(period, bins)`
+`RollingZScore(period)`, `ShannonEntropy(period, bins)`, `AutoCorrelation(window, lag)`
 
 **Multi-output** — `update(value)`, named properties instead of `.value`:
 
@@ -67,11 +73,7 @@ ind.reset()          // clear state, keep config
 `RogersSatchellVol(period)` — `update(open, high, low, close)`  
 `Correlation(period)` — `update(x, y)`
 
-**Volume:**
-
-`OBV()` — `update(close, volume)`  
-`VWAP(window)` — `update(close, volume)`  
-`CVD()` — `update(open, high, low, close, volume)`
+Volume indicators (`obv`, `vwap`, `cvd`) exist as batch functions only — there are no streaming classes for them.
 
 ## Indicator catalog
 

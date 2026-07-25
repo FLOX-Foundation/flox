@@ -12,7 +12,7 @@ All bindings expose the same core model: strategy callbacks, order emission, pos
 
 ## Which one to use
 
-Python is the easiest starting point for backtesting — the `Engine` class runs signal batches in parallel C++ threads with the GIL released. Node.js makes more sense if your infrastructure is already JS.
+Python is the easiest starting point for backtesting — `BacktestRunner` for event-driven strategies, `Engine` for pre-built signal lists. Node.js makes more sense if your infrastructure is already JS.
 
 Codon has nearly identical syntax to Python but compiles to native code. Start with Python, switch to Codon if you need it.
 

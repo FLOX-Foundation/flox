@@ -9,13 +9,15 @@ bundled templates. It is registered as a console script, so after
 ```bash
 flox new my-strategy                      # default template (research)
 flox new my-strategy --template=research  # explicit
-flox new --here .                         # scaffold into current dir
+flox new my-strategy --here               # scaffold into current dir
 flox templates                            # list available templates
 ```
 
 `flox new <name>` creates a directory `<name>/` in the current working
-directory and copies the chosen template into it. Two placeholders are
-substituted in every text file:
+directory and copies the chosen template into it. `name` is always
+required — `--here` only redirects the destination to the current
+working directory; the name is still used for the substitutions below.
+Four placeholders are substituted in every text file:
 
 | Placeholder           | Replaced with                                          |
 |-----------------------|--------------------------------------------------------|

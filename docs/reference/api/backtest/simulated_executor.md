@@ -45,9 +45,136 @@ public:
   std::vector<Fill> extractFills();
   const std::vector<Order>& conditionalOrders() const;
 
-  CompositeOrderLogic& compositeLogic() noexcept;
+  // Top-of-book accessors. Return 0 when the side is empty.
+  Price bestBidPrice(SymbolId symbol) const;
+  Price bestAskPrice(SymbolId symbol) const;
+  Price bookMidPrice(SymbolId symbol) const;  // 0 when either side is empty
+
+  CompositeOrderLogic& compositeLogic();
 };
 ```
+
+`start()` and `stop()` are empty overrides. `compositeLogic()` is not `noexcept`.
+
+### Brackets
+
+A single call submits the entry leg and arms a take-profit plus stop pair on entry fill. The simulator
+runs the state machine: the first child to fill cancels the other, and cancelling the bracket cancels
+every still-live leg. Order ids are derived from the bracket id — `entry = bracketId * 3 + 0`,
+`tp = bracketId * 3 + 1`, `stop = bracketId * 3 + 2`.
+
+```cpp
+void submitBracket(const BracketOrder& bracket);
+void cancelBracket(uint64_t bracketId);
+BracketStatus bracketStatus(uint64_t bracketId) const;
+
+enum class BracketArmMode : uint8_t { OnFullFill = 0, OnPartialFill = 1 };
+void setBracketChildArmMode(BracketArmMode mode) noexcept;
+BracketArmMode bracketChildArmMode() const noexcept;
+```
+
+`OnFullFill` (the default) arms the children once, at full entry fill. `OnPartialFill` arms them at the
+running entry-fill quantity on every partial, resizing via replace as more entry quantity fills.
+
+### Iceberg
+
+Applies to orders of `OrderType::ICEBERG`.
+
+```cpp
+void setIcebergRefreshLatency(int64_t latencyNs) noexcept;
+int64_t icebergRefreshLatencyNs() const noexcept;
+
+void setIcebergSizeRandomisationPct(double pct) noexcept;
+double icebergSizeRandomisationPct() const noexcept;
+void setIcebergJitterSeed(uint64_t seed) noexcept;
+
+enum class IcebergPriorityMode : uint8_t { Back = 0, Retain = 1 };
+void setIcebergPriorityMode(IcebergPriorityMode mode) noexcept;
+IcebergPriorityMode icebergPriorityMode() const noexcept;
+void setIcebergPriorityModeByName(const std::string& name) noexcept;
+
+int64_t icebergHiddenRemainingRaw(OrderId id) const;  // 0 if not an iceberg
+```
+
+| Setting | Description |
+|---------|-------------|
+| `setIcebergRefreshLatency` | Delay between a visible tranche filling and the next being exposed. Applies to orders submitted after the call |
+| `setIcebergSizeRandomisationPct` | Per-refresh visible-slice jitter as a fraction. `0.0` is deterministic, `0.10` is +/-10% uniform. Sampled from an internal RNG |
+| `setIcebergJitterSeed` | Reseed that RNG to reproduce a specific draw sequence |
+| `setIcebergPriorityMode` | `Back`: the refreshed slice goes to the back of the queue (most crypto venues). `Retain`: it keeps the prior slice's queue position (CME options, some Eurex contracts) |
+| `icebergHiddenRemainingRaw` | Diagnostic: remaining hidden quantity, or 0 |
+
+### Self-trade prevention
+
+STP keys on `Order::accountId` plus an optional STP group. Two orders share an STP scope when their
+`accountId`s are equal, or when both accounts map to the same non-zero group.
+
+```cpp
+void setSTPMode(STPMode mode) noexcept;
+STPMode stpMode() const noexcept;
+
+void setSTPGroupMembership(uint64_t accountId, uint64_t groupId);  // groupId 0 removes
+uint64_t stpGroupFor(uint64_t accountId) const;
+bool sameStpScope(uint64_t a, uint64_t b) const;
+```
+
+See [`STPMode`](../common.md#stpmode) for the modes.
+
+### FOK semantics
+
+```cpp
+enum class FokMode : uint8_t { AnyPrice = 0, SinglePrice = 1 };
+void setFokMode(FokMode mode) noexcept;
+FokMode fokMode() const noexcept;
+void setFokModeByName(const std::string& name);  // "any_price" | "single_price"
+```
+
+`AnyPrice` (the default, matching crypto venues) fills when cumulative liquidity at prices crossing
+the order's limit is at least the order quantity. `SinglePrice` (CME, Eurex, most US equities) fills
+only when the level at the limit price holds the whole quantity in one trade. The simulator currently
+consults top-of-book quantity only. `setFokModeByName` is case-insensitive and ignores unknown values.
+
+### Latency
+
+```cpp
+void setSubmitAckLatency(int64_t latencyNs, int64_t jitterNs);
+void setCancelAckLatency(int64_t latencyNs, int64_t jitterNs);
+void setReplaceAckLatency(int64_t latencyNs, int64_t jitterNs);
+
+void setSubmitAckLatencyDistribution(const LatencyDistribution& dist);
+void setCancelAckLatencyDistribution(const LatencyDistribution& dist);
+void setReplaceAckLatencyDistribution(const LatencyDistribution& dist);
+
+void applyLatencyProfile(const char* name);
+```
+
+The scalar setters delegate to the distribution setters: zero jitter becomes `Constant`, non-zero
+becomes `Uniform` over `[base - jitter, base + jitter]`.
+
+### Venue availability and rate limits
+
+```cpp
+void setVenueAvailability(VenueAvailability* availability);  // nullptr disables
+VenueAvailability* venueAvailability() noexcept;
+
+void setRateLimitPolicy(const RateLimitPolicy& policy);
+void clearRateLimitPolicy();
+bool hasRateLimitPolicy() const noexcept;
+RateLimitPolicy& rateLimitPolicy();
+```
+
+Submit, cancel and replace issued while the venue is down are buffered and flushed at the recovery
+edge in FIFO order. Market-data callbacks (`onTrade`, `onBookUpdate`, `onBar`) are silently dropped
+during an outage, so the strategy sees a feed gap.
+
+Submit, cancel and replace consult the rate-limit policy first; an overflow emits
+`OrderEventStatus::REJECTED_RATE_LIMIT` and the action is not committed.
+
+### Queue tuning
+
+`setQueueFifoTopN`, `setTopPriorityShare`, `setLmmOrders`, `setLmmBonusMultiplier`,
+`setOrderPriorityMultiplier` and `setQueuePositionMinChangeFraction` are documented in
+[Queue simulation](queue_simulation.md).
 
 ## Execution logic
 
@@ -132,23 +259,17 @@ Trailing stop updates emit `TRAILING_UPDATED` events with the new trigger price.
 
 ## Market state
 
-Per-symbol state updated via `onBookUpdate()` and `onTrade()`:
+Per-symbol best bid, best ask, last trade and level quantities are updated via `onBookUpdate()` and
+`onTrade()`. The state struct itself is **private**; read it through the public accessors:
 
 ```cpp
-struct MarketState
-{
-  int64_t bestBidRaw{0};
-  int64_t bestAskRaw{0};
-  int64_t lastTradeRaw{0};
-  int64_t bestBidQtyRaw{0};
-  int64_t bestAskQtyRaw{0};
-  bool hasBid{false};
-  bool hasAsk{false};
-  bool hasTrade{false};
-};
+Price bestBidPrice(SymbolId symbol) const;   // 0 when the side is empty
+Price bestAskPrice(SymbolId symbol) const;
+Price bookMidPrice(SymbolId symbol) const;   // 0 when either side is empty
 ```
 
-`bestBidQtyRaw` and `bestAskQtyRaw` are used by `VOLUME_IMPACT` slippage and by the queue tracker.
+The tracked level quantities are consumed internally by `VOLUME_IMPACT` slippage and by the queue
+tracker; they are not exposed.
 
 ## Performance
 

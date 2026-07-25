@@ -7,7 +7,7 @@ Understand concepts and design decisions behind FLOX. These pages are language-a
 | Topic | What You'll Learn |
 |-------|-------------------|
 | [Architecture](architecture.md) | How components fit together |
-| [Bar Types](bar-types.md) | Time, tick, volume, range, Renko, Heikin-Ashi — when to use which |
+| [Bar Types](bar-types.md) | Time, tick, volume, range, bps-range, Renko, Heikin-Ashi — when to use which |
 | [Disruptor Pattern](disruptor.md) | Why we use ring buffers (system-level, C++ internals) |
 | [Memory Model](memory-model.md) | Zero-allocation event delivery (system-level, C++ internals) |
 | [Integration Flow](integration-flow.md) | End-to-end data flow through the system |
@@ -21,6 +21,11 @@ Understand concepts and design decisions behind FLOX. These pages are language-a
 | [Market-making quoter](market-making-quoter.md) | Two-sided quote ladder with inventory skew and requote tolerance |
 | [AMM DEX connector](amm-dex-connector.md) | Presenting a constant-product pool through the connector interface |
 | [Replay-equivalence gate](replay-equivalence-gate.md) | The CI check that defends deterministic backtest replay |
+| [Bar-close ordering](bar-close-ordering.md) | Which aggregator fires first when several bars close on the same instant |
+| [Connectors](connectors.md) | The native exchange connectors module and the interfaces it implements |
+| [MCP control plane](mcp-control-plane.md) | Why the AI-agent control surface is shaped the way it is |
+| [Venue-stack reproducibility](w15-reproducibility.md) | What makes a backtest result reproducible across machines |
+| [Build feature flags](../build/feature-flags.md) | Every CMake option, what it costs, and what it depends on |
 
 ## When to read these
 

@@ -88,7 +88,7 @@ this.marketSell({ symbol: 'ETHUSDT', qty: 2.0 })
 
 ```javascript
 this.limitBuy({ price: 50000, qty: 0.1 })
-this.limitSell({ price: 51000, qty: 0.1, tif: 'IOC' })  // tif: GTC (default) | IOC | FOK
+this.limitSell({ price: 51000, qty: 0.1, tif: 'IOC' })  // tif: GTC (default) | IOC | FOK | GTD | POST_ONLY
 ```
 
 ### Stop / take-profit

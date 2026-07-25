@@ -14,12 +14,17 @@ H4_NS = 4 * 3600 * 1_000_000_000
 M5_NS = 5 * 60 * 1_000_000_000
 
 class TrendFollow(Strategy):
-    def setup(self):
+    def __init__(self, symbols):
+        super().__init__(symbols)
+        self.btc_id = symbols[0]
+        self.entry = None
+
+    def on_start(self):
         self.entry = (
-            when(self, btc_id, TIME_BARS, H4_NS).ema(50)
-            > when(self, btc_id, TIME_BARS, H4_NS).ema(200)
+            when(self, self.btc_id, TIME_BARS, H4_NS).ema(50)
+            > when(self, self.btc_id, TIME_BARS, H4_NS).ema(200)
         ) & (
-            when(self, btc_id, TIME_BARS, M5_NS).rsi(14) < 30
+            when(self, self.btc_id, TIME_BARS, M5_NS).rsi(14) < 30
         )
 
     def on_bar(self, ctx, bar):
@@ -27,20 +32,29 @@ class TrendFollow(Strategy):
             self.emit_market_buy(ctx.symbol_id, 0.01)
 ```
 
+There is no `setup()` hook. The strategy hooks are `on_start`, `on_stop`, `on_trade`, `on_bar`, `on_book_update`, `on_fill`, `on_order_update`, `on_queue_position_change`, `on_market_position_change`. Building the tree inside `on_bar` works too — the nodes are lazy, so rebuilding per bar costs only the tree allocation.
+
 ## Building blocks
 
 - `when(strategy, symbol_id, bar_type, param)` returns a handle bound to that timeframe.
 - `.sma(period)`, `.ema(period)`, `.rsi(period)`, `.close()` return indicator nodes that compute lazily from the ring.
-- Comparison operators (`<`, `<=`, `>`, `>=`, `==`, `!=`) on a node produce a `Condition`.
+- Comparison operators (`<`, `<=`, `>`, `>=`, `==`, `!=`) on a node produce a `Condition`. The right-hand side may be another node or a plain number.
 - Conditions compose with `&` (and), `|` (or), `~` (not).
+
+Nodes have **no arithmetic operators** — `*`, `+`, `-`, `/` on a node raise `TypeError`. Only comparison and boolean composition are overloaded.
 
 ## Cross-symbol pair trade
 
+Because there is no arithmetic on nodes, a scaled comparison is done on the resolved values:
+
 ```python
-self.spread_short = (
-    when(self, btc_id, TIME_BARS, H1_NS).close()
-    > 1.05 * when(self, eth_id, TIME_BARS, H1_NS).sma(20)
-)
+self.btc_close = when(self, btc_id, TIME_BARS, H1_NS).close()
+self.eth_sma = when(self, eth_id, TIME_BARS, H1_NS).sma(20)
+
+def spread_short(self) -> bool:
+    if not (self.btc_close.is_ready() and self.eth_sma.is_ready()):
+        return False
+    return self.btc_close.value() > 1.05 * self.eth_sma.value()
 ```
 
 ## Warmup contract
@@ -74,7 +88,7 @@ The grid ships in every binding. Lookup is `g.get(symbol, bar_type, param)` in J
 
 ```javascript
 // node
-const { grid, BAR_TYPE_TIME } = require('flox/composite');
+const { grid, BAR_TYPE_TIME } = require('@flox-foundation/flox').composite;
 const g = grid(strat, [btcId, ethId], [M5_NS, [BAR_TYPE_TIME, H4_NS]]).ema(50);
 const btcM5 = g.get(btcId, BAR_TYPE_TIME, M5_NS);
 if (btcM5.isReady()) console.log(btcM5.value());
@@ -100,7 +114,7 @@ The DSL ships in every binding. The Python form uses Python operator overloading
 
 ```javascript
 // node
-const { when, BAR_TYPE_TIME } = require('flox/composite');
+const { when, BAR_TYPE_TIME } = require('@flox-foundation/flox').composite;
 const fast = when(strat, btcId, BAR_TYPE_TIME, M5_NS).ema(50);
 const slow = when(strat, btcId, BAR_TYPE_TIME, M5_NS).ema(200);
 const crossUp = fast.gt(slow);

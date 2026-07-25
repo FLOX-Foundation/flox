@@ -3,20 +3,39 @@
 `ExchangeCapabilities` provides feature discovery for execution venues, allowing strategies to check which order types and features are supported.
 
 ```cpp
-struct ExchangeCapabilities {
-  uint32_t supportedOrderTypes{0};
-  uint32_t supportedTimeInForce{0};
+struct ExchangeCapabilities
+{
+  // Order types
+  bool supportsStopMarket{true};
+  bool supportsStopLimit{true};
+  bool supportsTakeProfitMarket{true};
+  bool supportsTakeProfitLimit{true};
+  bool supportsTrailingStop{false};
+  bool supportsIceberg{false};
+
+  // OCO
+  bool supportsOCO{false};
+
+  // Time-in-force
+  bool supportsGTC{true};
+  bool supportsIOC{true};
+  bool supportsFOK{true};
+  bool supportsGTD{false};
+  bool supportsPostOnly{true};
+
+  // Execution flags
   bool supportsReduceOnly{true};
-  bool supportsClosePosition{true};
-  bool supportsOCO{true};
+  bool supportsClosePosition{false};
 
-  bool supports(OrderType type) const noexcept;
-  bool supports(TimeInForce tif) const noexcept;
+  bool supports(OrderType type) const;
+  bool supports(TimeInForce tif) const;
 
-  static ExchangeCapabilities all() noexcept;
-  static ExchangeCapabilities simulated() noexcept;
+  static ExchangeCapabilities all();
+  static ExchangeCapabilities simulated();
 };
 ```
+
+Each capability is an independent `bool`. There is no bitmask. No member function is `noexcept`.
 
 ## Purpose
 
@@ -24,45 +43,34 @@ struct ExchangeCapabilities {
 * Allow strategies to adapt behavior based on available features.
 * Prevent submission of unsupported order types.
 
-## Usage
-
-```cpp
-// Get capabilities from executor
-auto caps = executor->capabilities();
-
-// Check order type support
-if (caps.supports(OrderType::TRAILING_STOP)) {
-  emitTrailingStop(symbol, Side::SELL, offset, qty);
-} else {
-  // Fallback to manual trailing logic
-}
-
-// Check time-in-force support
-if (caps.supports(TimeInForce::POST_ONLY)) {
-  emitLimitBuy(symbol, price, qty, TimeInForce::POST_ONLY);
-}
-
-// Check OCO support
-if (caps.supportsOCO) {
-  // Use OCO orders
-}
-```
-
 ## Fields
 
-| Field               | Description                                      |
-|---------------------|--------------------------------------------------|
-| supportedOrderTypes | Bitmask of supported `OrderType` values.         |
-| supportedTimeInForce| Bitmask of supported `TimeInForce` values.       |
-| supportsReduceOnly  | Whether reduceOnly flag is supported.            |
-| supportsClosePosition| Whether closePosition flag is supported.        |
-| supportsOCO         | Whether OCO (one-cancels-other) orders work.     |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `supportsStopMarket` | `true` | `OrderType::STOP_MARKET` |
+| `supportsStopLimit` | `true` | `OrderType::STOP_LIMIT` |
+| `supportsTakeProfitMarket` | `true` | `OrderType::TAKE_PROFIT_MARKET` |
+| `supportsTakeProfitLimit` | `true` | `OrderType::TAKE_PROFIT_LIMIT` |
+| `supportsTrailingStop` | `false` | `OrderType::TRAILING_STOP` |
+| `supportsIceberg` | `false` | `OrderType::ICEBERG` |
+| `supportsOCO` | `false` | OCO (one-cancels-other) orders |
+| `supportsGTC` | `true` | `TimeInForce::GTC` |
+| `supportsIOC` | `true` | `TimeInForce::IOC` |
+| `supportsFOK` | `true` | `TimeInForce::FOK` |
+| `supportsGTD` | `false` | `TimeInForce::GTD` |
+| `supportsPostOnly` | `true` | `TimeInForce::POST_ONLY` |
+| `supportsReduceOnly` | `true` | `ExecutionFlags::reduceOnly` |
+| `supportsClosePosition` | `false` | `ExecutionFlags::closePosition` |
+
+There is no field for `OrderType::LIMIT` or `OrderType::MARKET` — `supports()` returns `true` for
+both unconditionally.
 
 ## Methods
 
 ### `supports(OrderType type)`
 
-Returns `true` if the given order type is supported.
+Switches on `type` and returns the matching field. `LIMIT` and `MARKET` always return `true`; an
+out-of-range value returns `false`.
 
 ```cpp
 bool canUseStop = caps.supports(OrderType::STOP_MARKET);
@@ -70,7 +78,7 @@ bool canUseStop = caps.supports(OrderType::STOP_MARKET);
 
 ### `supports(TimeInForce tif)`
 
-Returns `true` if the given time-in-force policy is supported.
+Switches on `tif` and returns the matching field. An out-of-range value returns `false`.
 
 ```cpp
 bool canUseIOC = caps.supports(TimeInForce::IOC);
@@ -80,32 +88,53 @@ bool canUseIOC = caps.supports(TimeInForce::IOC);
 
 ### `ExchangeCapabilities::all()`
 
-Returns capabilities with all features enabled. Use for testing.
+Default-constructs, then sets `supportsTrailingStop`, `supportsIceberg`, `supportsOCO`,
+`supportsGTD` and `supportsClosePosition` to `true`. Every capability is then enabled.
 
 ### `ExchangeCapabilities::simulated()`
 
-Returns capabilities for `SimulatedExecutor`:
-* All order types supported
-* All time-in-force policies supported
-* All flags supported
-* OCO supported
+Returns `all()`. `SimulatedExecutor` supports everything.
 
-## Implementation Notes
+`IOrderExecutor::capabilities()` defaults to `ExchangeCapabilities::simulated()`; a live connector
+overrides it with the venue's real set.
 
-Order types are stored as a bitmask for efficient checking:
+## Usage
 
 ```cpp
-bool supports(OrderType type) const noexcept {
-  return (supportedOrderTypes & (1u << static_cast<uint8_t>(type))) != 0;
+auto caps = executor->capabilities();
+
+if (caps.supports(OrderType::TRAILING_STOP))
+{
+  emitTrailingStop(symbol, Side::SELL, offset, qty);
+}
+else
+{
+  // Fall back to manual trailing logic.
+}
+
+if (caps.supports(TimeInForce::POST_ONLY))
+{
+  emitLimitBuy(symbol, price, qty, TimeInForce::POST_ONLY);
+}
+
+if (caps.supportsOCO)
+{
+  // Use OCO orders.
 }
 ```
 
+A default-constructed `ExchangeCapabilities` reports `supportsOCO == false`,
+`supportsTrailingStop == false`, `supportsIceberg == false`, `supportsGTD == false` and
+`supportsClosePosition == false`. Do not assume the permissive case; check, or start from `all()`.
+
 ## Handling Unsupported Features
 
-When a strategy attempts to use an unsupported feature, the executor should reject the order with a clear error:
+When a strategy attempts to use an unsupported feature, the executor should reject the order with a
+clear reason:
 
 ```cpp
-if (!capabilities().supports(order.type)) {
+if (!capabilities().supports(order.type))
+{
   OrderEvent ev;
   ev.status = OrderEventStatus::REJECTED;
   ev.order = order;

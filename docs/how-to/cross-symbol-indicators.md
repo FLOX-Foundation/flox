@@ -23,7 +23,7 @@ another). Before feeding a pair-input indicator you must:
 3. **Drop warmup** — discard the first samples until both series
    have a value.
 
-The `flox.FeedClock` helper exists exactly for step (1) on the
+The `flox.MultiFeedClock` helper exists exactly for step (1) on the
 streaming path; see [`multi-feed-clock.md`](multi-feed-clock.md).
 
 ## Batch recipe (Python)
@@ -44,7 +44,10 @@ assert btc_close.shape == eth_close.shape
 corr = flox.Correlation(period=30)
 out = np.empty(len(btc_close))
 for i, (b, e) in enumerate(zip(btc_close, eth_close)):
-    out[i] = corr.update(b, e) or float("nan")
+    # update() returns None until the window fills; `or nan` would also
+    # swallow a legitimate 0.0, so test for None explicitly.
+    v = corr.update(b, e)
+    out[i] = np.nan if v is None else v
 
 # Final value for the trailing 30-bar window:
 print(corr.value)
@@ -95,7 +98,8 @@ class CorrelatedPair(flox.Strategy):
         c = self._corr.update(self._last_btc, self._last_eth)
         if c is not None and abs(c) < 0.2:
             # Pair has decorrelated — example signal.
-            self.market_buy(self._btc_id, qty=0.01)
+            # market_buy is (qty, symbol_name); emit_market_buy takes a symbol id.
+            self.emit_market_buy(self._btc_id, 0.01)
 ```
 
 This pattern is intentionally manual. The alternative — emitting
@@ -106,7 +110,7 @@ per strategy. Keeping it caller-side keeps the engine honest.
 ## Node.js
 
 ```javascript
-const flox = require('flox');
+const flox = require('@flox-foundation/flox');
 
 const corr = new flox.Correlation(30);
 for (let i = 0; i < btcClose.length; ++i) {

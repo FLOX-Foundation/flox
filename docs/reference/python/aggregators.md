@@ -11,7 +11,9 @@ All aggregation functions share the same input signature:
 | `timestamps` | `int64[]` | Trade timestamps in nanoseconds |
 | `prices` | `float64[]` | Trade prices |
 | `quantities` | `float64[]` | Trade quantities |
-| `is_buy` | `uint8[]` | Buy/sell flag (1 = buy, 0 = sell) |
+| `is_buy` | `uint8[]` | Buy/sell flag (non-zero = buy, 0 = sell) |
+
+`is_buy` is the inverse of the `side` field on `PyTrade` from [`DataReader`](replay.md#pytrade-dtype), where `0 = buy` and `1 = sell`. Convert with `(trades['side'] == 0).astype(np.uint8)` — passing `side` straight through inverts every bar's buy volume.
 
 **Returns:** `numpy.ndarray` with `PyExtBar` structured dtype.
 
@@ -126,14 +128,14 @@ trades = reader.read_trades()
 ts = trades['exchange_ts_ns']
 px = trades['price_raw'] / 1e8
 qty = trades['qty_raw'] / 1e8
-side = trades['side']
+is_buy = (trades['side'] == 0).astype(np.uint8)   # PyTrade.side: 0 = buy
 
 # Create 1-minute time bars
-bars = flox.aggregate_time_bars(ts, px, qty, side, interval_seconds=60.0)
+bars = flox.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=60.0)
 print(f"Generated {len(bars)} time bars")
 
 # Create 500-tick bars
-tick_bars = flox.aggregate_tick_bars(ts, px, qty, side, tick_count=500)
+tick_bars = flox.aggregate_tick_bars(ts, px, qty, is_buy, tick_count=500)
 print(f"Generated {len(tick_bars)} tick bars")
 
 # Access bar data

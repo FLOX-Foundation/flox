@@ -43,7 +43,7 @@ the estimator on venues with active hidden flow.
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
     const est = new flox.LiveQueuePositionEstimator();
     est.setHiddenOrderPolicy('trust_trade_flag');
     est.onTradeWithFlag(symbol, 50000.0, 1.0, tsNs, /*isHidden=*/true);

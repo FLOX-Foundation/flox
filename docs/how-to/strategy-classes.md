@@ -108,6 +108,13 @@ All bindings dispatch through the same C++ `BridgeStrategy` callbacks, so behavi
 | `on_book_update(ctx)` | L2 book changed (bid/ask, mid) | All bindings |
 | `on_bar(ctx, bar)` | Closed OHLC bar | All bindings (since [#123](https://github.com/FLOX-Foundation/flox/pull/123)) |
 | `on_start()` / `on_stop()` | Lifecycle hooks | All bindings |
+| `on_fill(ctx, event)` | Every fill on the strategy's own orders (`PARTIALLY_FILLED` / `FILLED`) | Python, Node.js, Codon |
+| `on_order_update(ctx, event)` | Every order-lifecycle status change — `NEW` / `ACCEPTED` / `CANCELED` / `REJECTED` / `REPLACED` / `TRIGGERED` / `TRAILING_UPDATED`, fills included | Python, Node.js, Codon |
+| `on_market_position_change(ctx, event)` | Resting limit order's categorical market position moved (`best` / `behind_best` / `mid_spread` / `level_empty` / `crossed`). Backtest only | Python, Node.js, Codon |
+| `on_queue_position_change(ctx, event)` | Resting limit order's queue position moved with no other lifecycle transition; `event.queue_ahead` / `queue_total` carry the snapshot. Backtest only | Python, Node.js, Codon |
+
+Node spells the last four `onFill`, `onOrderUpdate`,
+`onMarketPositionChange`, `onQueuePositionChange`.
 
 ## Order emission helpers
 
@@ -117,16 +124,29 @@ Names differ slightly by language (snake_case vs camelCase) but the surface is t
 |---|---|---|---|---|
 | Market buy | `market_buy(qty)` | `emit.marketBuy(qty)` | `market_buy(qty)` | `emitMarketBuy(sym, qty)` |
 | Market sell | `market_sell(qty)` | `emit.marketSell(qty)` | `market_sell(qty)` | `emitMarketSell(sym, qty)` |
-| Limit buy | `limit_buy(price, qty)` | `emit.limitBuy(p, qty)` | `limit_buy(price, qty)` | `emitLimitBuy(sym, p, qty)` |
-| Limit sell | `limit_sell(price, qty)` | `emit.limitSell(p, qty)` | `limit_sell(price, qty)` | `emitLimitSell(sym, p, qty)` |
+| Limit buy | `limit_buy(price, qty, tif="gtc")` | `emit.limitBuy(p, qty)` | `limit_buy(price, qty, tif="gtc")` | `emitLimitBuy(sym, p, qty[, tif])` |
+| Limit sell | `limit_sell(price, qty, tif="gtc")` | `emit.limitSell(p, qty)` | `limit_sell(price, qty, tif="gtc")` | `emitLimitSell(sym, p, qty[, tif])` |
 | Cancel | `cancel_order(id)` | `emit.cancel(id)` | `cancel_order(id)` | `emitCancel(id)` |
-| Cancel all | `cancel_all_orders()` | `emit.cancelAll(sym)` | `cancel_all_orders()` | `emitCancelAll(sym)` |
+| Cancel all | `cancel_all_orders()` | — | `cancel_all_orders()` | `emitCancelAll(sym)` |
+| Modify / replace | `modify_order(id, new_price, new_qty)` | — | `modify_order(id, new_price, new_qty)` | `emitModify(id, newPrice, newQty)` |
 | Stop market | `stop_market(side, trigger, qty)` | — | `stop_market(side, trigger, qty)` | `emitStopMarket(sym, side, trigger, qty)` |
+| Stop limit | `stop_limit(side, trigger, limit_price, qty)` | — | `stop_limit(side, trigger, limit_price, qty)` | `emitStopLimit(sym, side, trigger, limit, qty)` |
 | Take profit market | `take_profit_market(side, trigger, qty)` | — | `take_profit_market(side, trigger, qty)` | `emitTakeProfitMarket(sym, side, trigger, qty)` |
+| Take profit limit | `take_profit_limit(side, trigger, limit_price, qty)` | — | `take_profit_limit(side, trigger, limit_price, qty)` | `emitTakeProfitLimit(sym, side, trigger, limit, qty)` |
 | Trailing stop | `trailing_stop(side, offset, qty)` | — | `trailing_stop(side, offset, qty)` | `emitTrailingStop(sym, side, offset, qty)` |
+| Trailing stop (bps) | `trailing_stop_percent(side, callback_bps, qty)` | — | `trailing_stop_percent(side, callback_bps, qty)` | `emitTrailingStopPercent(sym, side, callbackBps, qty)` |
 | Close position | `close_position()` | `emit.closePosition()` | `close_position()` | `emitClosePosition(sym)` |
 
 In Python / Node.js / Codon `symbol` defaults to the first registered symbol when omitted.
+
+The Node `emit` object carries only `marketBuy`, `marketSell`,
+`limitBuy`, `limitSell`, `cancel`, `closePosition`,
+`provideLiquidity`, and `withdrawLiquidity`. `cancelAll(symbol)` is a
+`SimulatedExecutor` method, not an emit helper. `tif` is not
+reachable from Node's `limitBuy` / `limitSell`.
+
+`tif` accepts `gtc` (default), `ioc`, `fok`, or `post_only`;
+anything else falls back to `gtc`.
 
 ## Context (`ctx`) properties
 
@@ -137,7 +157,12 @@ In Python / Node.js / Codon `symbol` defaults to the first registered symbol whe
 | `last_trade_price` / `lastTradePrice` | float | Most recent trade price |
 | `best_bid` / `bestBid`, `best_ask` / `bestAsk` | float | Top-of-book |
 | `mid_price` / `midPrice` | float | `(best_bid + best_ask) / 2` |
+| `unrealized_pnl` (Py) | float | Unrealized PnL on the current position |
 | `is_long()` / `is_short()` / `is_flat()` (Py/Codon) | bool | Position state |
+| `book_spread()` (Py/Codon) | float | `best_ask - best_bid` |
+
+Node's `SymbolContext` is the narrower set: `position`, `symbolId`,
+`lastTradePrice`, `bestBid`, `bestAsk`, `midPrice`.
 
 ## C++ ↔ binding name map
 

@@ -45,7 +45,7 @@ Pick your language:
 === "Node.js"
 
     ```javascript
-    const flox = require('./build/node');
+    const flox = require('@flox-foundation/flox');
 
     const ema = new flox.EMA(20);
     const rsi = new flox.RSI(14);
@@ -62,11 +62,15 @@ Pick your language:
 === "C++"
 
     ```cpp
-    #include "flox/strategy/istrategy.h"
-    #include "flox/book/event/trade_event.h"
+    #include "flox/strategy/abstract_strategy.h"
+    #include "flox/book/events/trade_event.h"
 
     class MyStrategy : public flox::IStrategy {
     public:
+        flox::SubscriberId id() const override {
+            return reinterpret_cast<flox::SubscriberId>(this);
+        }
+
         void onTrade(const flox::TradeEvent& event) override {
             if (event.trade.symbol == _targetSymbol) {
                 processSignal(event.trade.price);
@@ -132,9 +136,9 @@ Pick the row for your binding. The C++ engine itself only matters if you build f
 | If you use | You need |
 |---|---|
 | **Python** | Python 3.10+. `pip install flox-py` for prebuilt wheels (Linux / macOS). |
-| **Node.js** | Node 18+. `npm install @flox-foundation/flox`. |
-| **Codon** | Codon compiler + `flox` built with `-DFLOX_ENABLE_CAPI=ON`. |
-| **C++** | C++20 compiler (GCC 13+ / Clang 16+), CMake 3.22+, Linux or macOS. |
+| **Node.js** | Node 20+. `npm install @flox-foundation/flox`. |
+| **Codon** | Codon compiler + `flox` built with `-DFLOX_BUILD_CAPI=ON`. |
+| **C++** | C++23 compiler (GCC 14+ / Clang 18+; MSVC or clang-cl on Windows), CMake 3.22+. |
 
 Optional across all bindings: LZ4 for binary log compression.
 

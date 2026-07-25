@@ -108,6 +108,56 @@ enum class VenueType : uint8_t
 };
 ```
 
+### `SettlementType`
+
+How a contract settles at expiry. Defaults to `Cash` on `SymbolInfo`, which preserves spot and perp
+behavior.
+
+```cpp
+enum class SettlementType
+{
+  Cash,
+  Physical
+};
+```
+
+### `ExerciseStyle`
+
+When an option may be exercised. Defaults to `European` on `SymbolInfo`.
+
+```cpp
+enum class ExerciseStyle
+{
+  European,
+  American
+};
+```
+
+### `STPMode`
+
+Self-trade prevention. Real venues apply these when a new order from the same account would cross an
+existing resting order of the same account. `SimulatedExecutor` matches on `Order::accountId`;
+configure it with `setSTPMode` and `setSTPGroupMembership`.
+
+```cpp
+enum class STPMode : uint8_t
+{
+  None = 0,          // self-match allowed (default)
+  CancelNewest = 1,  // cancel the incoming order
+  CancelOldest = 2,  // cancel the resting order; new one goes through
+  CancelBoth = 3,    // cancel both legs
+  Decrement = 4,     // cancel smaller side fully; reduce larger by smaller qty
+};
+```
+
+| Value | Name | Effect |
+|-------|------|--------|
+| 0 | `None` | Self-match allowed. Default |
+| 1 | `CancelNewest` | Cancel the incoming order |
+| 2 | `CancelOldest` | Cancel the resting order; the new one goes through |
+| 3 | `CancelBoth` | Cancel both legs |
+| 4 | `Decrement` | Cancel the smaller side fully; reduce the larger by the smaller quantity |
+
 
 ## Identifiers
 

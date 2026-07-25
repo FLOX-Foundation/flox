@@ -1,10 +1,12 @@
 # Engine & Backtest
 
-The core backtest engine. Load OHLCV data once, then run unlimited backtests with different signal sets.
+The core backtest engine. Load OHLCV data once, build a signal set, then run. Bars are merged across symbols by timestamp; market orders fill at the bar close.
 
 ## Engine
 
 ```python
+import flox_py as flox
+
 engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
 ```
 
@@ -13,53 +15,141 @@ engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
 | `initial_capital` | `float` | `100000.0` | Starting capital |
 | `fee_rate` | `float` | `0.0001` | Fee rate per trade (percentage mode) |
 
-### Methods
+### Loading
 
-#### `load_bars(bars)`
+Each loader registers (or overwrites) one named symbol. When `symbol` is omitted, `load_csv` infers the name from the filename and `load_ohlcv` / `load_df` use `"default"`. Timestamps are auto-normalized to nanoseconds (seconds, milliseconds and microseconds are detected by magnitude).
 
-Load bars from a numpy structured array with `PyBar` dtype.
+#### `load_csv(path, symbol='')`
 
-```python
-bars = np.zeros(n, dtype=flox.PyBar)
-bars['timestamp_ns'] = timestamps
-bars['open_raw'] = (opens * 1e8).astype(np.int64)
-bars['high_raw'] = (highs * 1e8).astype(np.int64)
-bars['low_raw'] = (lows * 1e8).astype(np.int64)
-bars['close_raw'] = (closes * 1e8).astype(np.int64)
-bars['volume_raw'] = (volumes * 1e8).astype(np.int64)
-engine.load_bars(bars)
-```
-
-#### `load_bars_df(timestamps, open, high, low, close, volume)`
-
-Load bars from separate numpy arrays (float64). Timestamps are auto-normalized to nanoseconds.
+Load bars from a headed CSV with columns `timestamp,open,high,low,close,volume` in that order. The symbol name is derived from the file stem (uppercased, with a trailing `_1m` / `_5m` / `_15m` / `_1h` / `_4h` / `_1d` stripped) unless `symbol` is given.
 
 ```python
-engine.load_bars_df(timestamps, opens, highs, lows, closes, volumes)
+engine.load_csv("./data/btcusdt_1h.csv")            # symbol -> "BTCUSDT"
+engine.load_csv("./data/eth.csv", symbol="ETHUSDT")
 ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `timestamps` | `int64[]` | Unix timestamps (s, ms, us, or ns — auto-detected) |
+Raises `FloxError(code="E_IO_001")` if the file cannot be opened.
+
+#### `load_ohlcv(data, symbol='')`
+
+Load bars from a dict of numpy arrays.
+
+```python
+engine.load_ohlcv({
+    "ts": timestamps,     # int64 — 'timestamp' is also accepted
+    "open": opens,
+    "high": highs,
+    "low": lows,
+    "close": closes,
+    "volume": volumes,
+}, symbol="BTCUSDT")
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `ts` or `timestamp` | `int64[]` | Bar timestamps (s, ms, us or ns — auto-detected) |
 | `open` | `float64[]` | Open prices |
 | `high` | `float64[]` | High prices |
 | `low` | `float64[]` | Low prices |
 | `close` | `float64[]` | Close prices |
 | `volume` | `float64[]` | Volume |
 
-#### `run(signals, symbol=1) -> dict`
+A missing key raises `FloxError(code="E_KEY_001")`.
 
-Run a single backtest. Returns a stats dictionary.
+#### `load_df(df, symbol='')`
+
+Load bars from a pandas DataFrame with `open`, `high`, `low`, `close`, `volume` columns. The timestamp column is the first of `ts`, `timestamp`, `open_time`, `time` that exists; if none does, the DataFrame index is used.
 
 ```python
-stats = engine.run(signals, symbol=1)
-print(stats['net_pnl'], stats['sharpe'])
+engine.load_df(df, symbol="BTCUSDT")
 ```
 
-**Return keys:**
+#### `resample(symbol, target, interval)`
 
-| Key | Type | Description |
-|-----|------|-------------|
+Resample an already-loaded symbol into a new symbol named `target`.
+
+```python
+engine.load_csv("./data/btcusdt_1m.csv", symbol="BTC_1M")
+engine.resample("BTC_1M", "BTC_1H", "1h")
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `symbol` | `str` | Source symbol name |
+| `target` | `str` | Name of the resampled symbol |
+| `interval` | `str` | Bucket size — number plus `s`, `m`, `h` or `d` |
+
+An unknown unit raises `FloxError(code="E_TIME_001")`.
+
+### Running
+
+#### `run(signals, default_symbol=0) -> Stats`
+
+Run a backtest over every loaded symbol. `signals` is a [`SignalBuilder`](#signalbuilder). Signals built without an explicit symbol name are routed to `default_symbol` (a numeric symbol ID); `0` means the first loaded symbol.
+
+```python
+stats = engine.run(signals)
+print(stats.net_pnl, stats["sharpe"])
+```
+
+Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
+
+### Accessors
+
+| Member | Type | Description |
+|--------|------|-------------|
+| `symbols` | `list[str]` | Registered symbol names (property) |
+| `bar_count(symbol='')` | `int` | Number of bars loaded for a symbol |
+| `ts(symbol='')` | `float64[]` | Bar timestamps in nanoseconds |
+| `open(symbol='')` | `float64[]` | Open prices |
+| `high(symbol='')` | `float64[]` | High prices |
+| `low(symbol='')` | `float64[]` | Low prices |
+| `close(symbol='')` | `float64[]` | Close prices |
+| `volume(symbol='')` | `float64[]` | Volume |
+
+An empty `symbol` selects the first symbol loaded. Calling any accessor before loading data raises `FloxError(code="E_RUN_002")`.
+
+---
+
+## SignalBuilder
+
+Accumulates the orders a backtest should submit. Timestamps are normalized the same way as bar timestamps; each signal fires on the first bar whose timestamp is at or past it.
+
+```python
+signals = flox.SignalBuilder()
+signals.buy(ts_ns, 1.0)
+signals.limit_sell(ts_ns, 51_000.0, 1.0, "BTCUSDT")
+len(signals)
+```
+
+| Method | Description |
+|--------|-------------|
+| `buy(ts, qty, symbol='')` | Market buy |
+| `sell(ts, qty, symbol='')` | Market sell |
+| `limit_buy(ts, price, qty, symbol='')` | Limit buy |
+| `limit_sell(ts, price, qty, symbol='')` | Limit sell |
+| `clear()` | Drop all accumulated signals |
+| `__len__()` | Signal count |
+
+`symbol` is a registered symbol name. Left empty, the signal is routed to `run()`'s `default_symbol`.
+
+---
+
+## Stats
+
+Returned by `Engine.run()`. Fields are readable as attributes or by key, and `to_dict()` returns the whole set as a plain dict.
+
+```python
+stats = engine.run(signals)
+
+stats.sharpe          # attribute access
+stats["sharpe"]       # key access
+stats.to_dict()       # dict of every field
+repr(stats)           # Stats(trades=... pnl=... ret=...% sharpe=... dd=...%)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
 | `total_trades` | `int` | Round-trip trade count |
 | `winning_trades` | `int` | Profitable trade count |
 | `losing_trades` | `int` | Losing trade count |
@@ -81,76 +171,7 @@ print(stats['net_pnl'], stats['sharpe'])
 | `calmar` | `float` | Calmar ratio |
 | `return_pct` | `float` | Net return percentage |
 
-#### `run_batch(signal_sets, threads=0, symbol=1) -> list[dict]`
-
-Run N backtests in parallel using C++ threads. GIL released.
-
-```python
-results = engine.run_batch([signals_1, signals_2, ...], threads=0)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `signal_sets` | `list` | — | List of signal arrays |
-| `threads` | `int` | `0` | Thread count (0 = all cores) |
-| `symbol` | `int` | `1` | Symbol ID |
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `bar_count` | `int` | Number of loaded bars |
-
----
-
-## make_signals()
-
-Create a packed signal array from separate numpy arrays.
-
-```python
-signals = flox.make_signals(
-    timestamps,   # int64 — unix ms, us, or ns
-    sides,        # uint8 — 0=buy, 1=sell
-    quantities,   # float64 — position size
-    prices=None,  # float64 — limit price (optional)
-    types=None,   # uint8 — 0=market, 1=limit (optional)
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `timestamps` | `int64[]` | — | Trade timestamps (auto-normalized to ns) |
-| `sides` | `uint8[]` | — | 0 = buy, 1 = sell |
-| `quantities` | `float64[]` | — | Position sizes |
-| `prices` | `float64[]` | `None` | Limit prices (omit for market orders) |
-| `types` | `uint8[]` | `None` | Order types: 0 = market, 1 = limit |
-
-**Returns:** `numpy.ndarray` with `PySignal` dtype.
-
----
-
-## Structured Dtypes
-
-### PySignal
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp_ns` | `int64` | Timestamp in nanoseconds |
-| `quantity_raw` | `int64` | Quantity * 10^8 |
-| `price_raw` | `int64` | Price * 10^8 (0 for market) |
-| `side` | `uint8` | 0 = buy, 1 = sell |
-| `order_type` | `uint8` | 0 = market, 1 = limit |
-
-### PyBar
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp_ns` | `int64` | Bar timestamp in nanoseconds |
-| `open_raw` | `int64` | Open * 10^8 |
-| `high_raw` | `int64` | High * 10^8 |
-| `low_raw` | `int64` | Low * 10^8 |
-| `close_raw` | `int64` | Close * 10^8 |
-| `volume_raw` | `int64` | Volume * 10^8 |
+`BacktestResult.stats()` in [Backtest Components](backtest.md#backtestresult) returns a dict with a different, larger key set — the ratios are named `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` there.
 
 ---
 
@@ -160,33 +181,33 @@ signals = flox.make_signals(
 import numpy as np
 import flox_py as flox
 
-engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
-engine.load_bars_df(timestamps, opens, highs, lows, closes, volumes)
+n = 500
+rng = np.random.default_rng(42)
+ts = 1_700_000_000_000_000_000 + np.arange(n, dtype=np.int64) * 3_600_000_000_000
+close = 30_000.0 + np.cumsum(rng.normal(0.0, 25.0, n))
 
-# Simple MA crossover signals
+engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
+engine.load_ohlcv({
+    "ts": ts,
+    "open": close,
+    "high": close + 5.0,
+    "low": close - 5.0,
+    "close": close,
+    "volume": np.full(n, 1.0),
+}, symbol="BTCUSDT")
+
+closes = engine.close("BTCUSDT")
 fast = flox.ema(closes, 10)
 slow = flox.ema(closes, 30)
 
-cross_up = (fast[1:] > slow[1:]) & (fast[:-1] <= slow[:-1])
-cross_down = (fast[1:] < slow[1:]) & (fast[:-1] >= slow[:-1])
-
-ts_list, side_list, qty_list = [], [], []
-for i in range(len(cross_up)):
-    if cross_up[i]:
-        ts_list.append(timestamps[i + 1])
-        side_list.append(0)  # buy
-        qty_list.append(1.0)
-    elif cross_down[i]:
-        ts_list.append(timestamps[i + 1])
-        side_list.append(1)  # sell
-        qty_list.append(1.0)
-
-signals = flox.make_signals(
-    np.array(ts_list, dtype=np.int64),
-    np.array(side_list, dtype=np.uint8),
-    np.array(qty_list, dtype=np.float64),
-)
+signals = flox.SignalBuilder()
+for i in range(1, n):
+    if fast[i] > slow[i] and fast[i - 1] <= slow[i - 1]:
+        signals.buy(int(ts[i]), 1.0, "BTCUSDT")
+    elif fast[i] < slow[i] and fast[i - 1] >= slow[i - 1]:
+        signals.sell(int(ts[i]), 1.0, "BTCUSDT")
 
 stats = engine.run(signals)
-print(f"Net PnL: {stats['net_pnl']:.2f}, Sharpe: {stats['sharpe']:.4f}")
+print(f"Signals: {len(signals)}, trades: {stats.total_trades}")
+print(f"Net PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe:.4f}")
 ```

@@ -54,6 +54,8 @@ async def main():
 asyncio.run(main())
 ```
 
+Other constructor keywords: `password` (for venues that need a passphrase), `on_error` (a `Callable[[str, BaseException], None]` invoked per stream failure with a tag like `"balance"` / `"orders"`; the default logs at WARN), and `exchange` (dependency injection for tests — production callers leave it `None` and the broker constructs the ccxt.pro exchange itself).
+
 `add_symbol` calls `exchange.load_markets()` once and reads tick size from `markets[sym]["precision"]["price"]`. `add_strategy` attaches to the broker's internal `Runner`. The runner's signal callback is wired to `_handle_signal`, which dispatches to a per-order-type method (`_place_market`, `_place_limit`, `_place_stop_market`, ...). Calling `self.market_buy(...)` inside the strategy ends up calling `exchange.create_market_buy_order(...)`.
 
 ## Lifecycle
@@ -72,7 +74,9 @@ Pass any subset of `("trades", "book", "orders")` to `run(streams=...)`:
 | `book`    | `watch_order_book(sym)`   | `runner.on_book_snapshot(sym_id, bids/asks)`                   |
 | `orders`  | `watch_orders()`          | strategy's `on_order_update(ccxt_sym, status, filled, avg)`    |
 
-Each yields a snapshot per call. The book stream forwards `book_depth` levels (default 20).
+Each yields a snapshot per call.
+
+Book depth is a keyword on `run()`, not on the constructor: `run(book_depth=N)`. It defaults to `None`, which means no `limit` is passed to `watch_order_book` and ccxt picks the venue's default channel. The one exception is a built-in per-exchange override — `_BOOK_DEPTH_OVERRIDE = {"bitget": 15}`, because ccxt.pro's default `books50` channel for Bitget USDT-FUTURES is rejected by the venue with error 30016.
 
 ## Order routing
 
@@ -130,6 +134,10 @@ class BybitBroker(CcxtBroker):
             {"stopPrice": self._trigger(sig), "triggerBy": "MarkPrice"},
         )
 ```
+
+## Recording market data
+
+`broker.set_market_data_recorder(recorder)` attaches a `MarketDataRecorderHook` subclass that sees every trade and book update flowing through the broker. This is the hook `flox tape record` uses, and it is also the fix when a capture's `metadata.json` comes out with an empty `symbols` list — attach the recorder before `run()` so the symbol registrations are captured.
 
 ## Multi-exchange
 

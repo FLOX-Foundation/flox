@@ -9,7 +9,7 @@ defaults.
 === "Python"
 
     ```python
-    import flox
+    import flox_py as flox
 
     stack = flox.VenueStack.binance_um_futures(
         account_id=42, equity=10_000.0)
@@ -47,7 +47,15 @@ defaults.
 | `binance_um_futures`          | Binance UM (Binance ADL)   | 8h      | 10-tier VIP ladder    |
 | `bybit_linear`                | Bybit linear (Bybit ADL)   | 8h      | 6-tier VIP ladder     |
 | `okx_swap`                    | OKX swap (PnlRatio ADL)    | 8h      | 4-tier VIP ladder     |
-| `deribit`                     | Deribit options (PnlRatio) | 1h      | LV1 maker rebate path |
+| `deribit`                     | Bybit linear (Bybit ADL)   | 8h      | LV1 maker rebate path |
+
+The `deribit` row carries two placeholders: there is no
+deribit-specific `FundingSchedule` or `LiquidationEngine` profile
+yet, so the factory wires `FundingSchedule::binance_um_futures()`
+(8h) and `LiquidationEngine::bybit_linear()`. Fees, rate limits, and
+the `pro_rata_with_fifo` queue model are deribit-specific. Override
+the funding and liquidation components if the placeholders matter
+for your research.
 
 String dispatch via `VenueStack.from_venue("binance", account_id,
 equity)` is also available for codegen / agents that pick the
@@ -63,13 +71,17 @@ acct.open_position(symbol=BTC, quantity=5.0, entry_price=50_000.0)
 
 # On every tick of the strategy loop:
 #   1) update marks (one per symbol you hold; the engine sets the
-#      mark for the called symbol automatically — see T053 for the
-#      multi-symbol atomic path when that lands).
+#      mark for the called symbol automatically).
 #   2) run the liquidation walk.
 acct.set_mark(BTC, 48_000.0)
 outcome = liq.on_mark(BTC, 48_000.0)
 if outcome["liquidations_count"] > 0:
     print("liquidated:", outcome["liquidated"])
+
+# Multi-symbol: on_marks updates every attached account's mark for
+# each (symbol, price) pair atomically, then walks liquidations once
+# per symbol. Same aggregated outcome dict.
+outcome = liq.on_marks([(BTC, 48_000.0), (ETH, 2_900.0)], ts_ns=now)
 
 # Record fills through the fee schedule so the 30-day VIP tier
 # tracks correctly (FeeSchedule reads aggregate notional from the
@@ -89,17 +101,26 @@ backtests always go through a venue factory.
 
 ## Custom venues / overrides
 
-The factory wires defaults. Tune individual components after
-construction:
+The factory wires defaults. Each accessor returns the live
+component, so mutations after construction stick:
 
 ```python
-# Bump iceberg refresh latency to 200ms (slower venue).
-stack.executor().set_iceberg_refresh_latency(200_000_000)
 # Switch ADL ranking strategy.
 stack.liquidation().set_adl_ranking("position_size")
 # Lower insurance fund to test cascade behaviour.
 stack.liquidation().set_insurance_fund_capital(1_000.0)
+# Override the placeholder funding rate.
+stack.funding().set_constant_rate(0.0001)
 ```
+
+`stack.executor()` returns a `VenueExecutor`, not a
+`SimulatedExecutor`. Its full surface is `submit_order`,
+`cancel_order`, `cancel_all`, `on_bar`, `on_trade`, `on_trade_qty`,
+`fills_list`, `fill_count`, `set_rate_limit_policy`,
+`clear_rate_limit_policy`, and `set_venue_availability`. The queue,
+slippage, iceberg, latency, and STP knobs are fixed by the factory
+and are not reachable through it — build a `SimulatedExecutor`
+directly (or use `assemble_custom_venue` below) when you need them.
 
 ## Fully custom venue
 
@@ -117,8 +138,8 @@ user-built subsystems into a venue-stack-shaped bundle:
     fees = flox.FeeSchedule()
     fees.add_tier(0, 1.0, 3.0)
     fees.add_tier(50_000, 0.5, 2.5)
-    funding = flox.FundingSchedule()
-    funding.set_interval_ns(4 * 3600 * 1_000_000_000)  # 4h cadence
+    # 4h cadence; interval is fixed at construction, there is no setter.
+    funding = flox.FundingSchedule.constant(4 * 3600 * 1_000_000_000, 0.0)
     liq = flox.LiquidationEngine()
     liq.add_tier(0.0, 0.004)
     rate_limits = flox.RateLimitPolicy()

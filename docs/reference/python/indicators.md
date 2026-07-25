@@ -12,14 +12,14 @@ result = ind.update(price)  # None during warmup, float when ready
 ind.value                   # None or float
 ind.ready                   # bool
 ind.reset()                 # clear state, keep config
-ind2 = ind.fresh()          # new independent instance, same config
+ind.count                   # number of samples fed so far
 ```
 
 During warmup, `update()` and `.value` return `None`. Check with `if result is not None` or use `.ready`.
 
 **Single value** — `update(value) -> float | None`:
 
-`SMA(period)`, `EMA(period)`, `RMA(period)`, `RSI(period)`, `DEMA(period)`, `TEMA(period)`, `KAMA(period, fast=2, slow=30)`, `Slope(length)`, `Skewness(period)`, `Kurtosis(period)`, `RollingZScore(period)`, `ShannonEntropy(period, bins=10)`
+`SMA(period)`, `EMA(period)`, `RMA(period)`, `RSI(period)`, `DEMA(period)`, `TEMA(period)`, `KAMA(period, fast=2, slow=30)`, `Slope(length)`, `Skewness(period)`, `Kurtosis(period)`, `RollingZScore(period)`, `ShannonEntropy(period, bins=10)`, `AutoCorrelation(window, lag)`
 
 **Multi-output** — `update(value) -> float | None`, named properties instead of `.value`:
 
@@ -35,11 +35,7 @@ During warmup, `update()` and `.value` return `None`. Check with `if result is n
 `RogersSatchellVol(period)` — `update(open, high, low, close)`  
 `Correlation(period)` — `update(x, y)`
 
-**Volume:**
-
-`OBV()` — `update(close, volume)`  
-`VWAP(window)` — `update(close, volume)`  
-`CVD()` — `update(open, high, low, close, volume)`
+Volume indicators (`obv`, `vwap`, `cvd`) exist as batch functions only — there are no streaming classes for them.
 
 ---
 
@@ -245,6 +241,65 @@ Rolling Pearson correlation between two series. NaN if either series is constant
 ```python
 result = flox.rolling_correlation(closes_btc, closes_eth, period=20)
 ```
+
+### `autocorrelation(input, window, lag) -> ndarray`
+
+Rolling autocorrelation of a series against itself at a fixed `lag`.
+
+```python
+result = flox.autocorrelation(closes, window=100, lag=1)
+```
+
+---
+
+## Series diagnostics
+
+### `adf(input, max_lag=4, regression='c') -> dict`
+
+Augmented Dickey-Fuller unit-root test. `regression` selects the deterministic terms. Returns `test_stat`, `p_value`, `used_lag`.
+
+```python
+result = flox.adf(spread, max_lag=4)
+if result['p_value'] < 0.05:
+    print("spread is stationary")
+```
+
+### `hurst_dfa(returns, scales=None) -> float`
+
+Hurst exponent via Detrended Fluctuation Analysis. Input is a series of **returns**, not prices. `H ~ 0.5` random, `H > 0.5` persistent/trending, `H < 0.5` mean-reverting. `scales=None` uses a log-spaced grid from 4 to `N/4`. Returns NaN for inputs shorter than 32 or degenerate ones.
+
+```python
+h = flox.hurst_dfa(np.diff(np.log(closes)))
+```
+
+### `rolling_hurst(prices, window=1080) -> ndarray`
+
+Rolling DFA-Hurst on price levels. For bar `i` it computes the Hurst exponent of the previous `window` log-returns; `output[i]` is NaN for `i <= window`. Output length matches input.
+
+```python
+result = flox.rolling_hurst(closes, window=1080)
+```
+
+### `realized_vol(returns, periods_per_year) -> float`
+
+Annualized realized volatility from log returns: sample stdev times `sqrt(periods_per_year)`.
+
+```python
+rv = flox.realized_vol(log_returns, periods_per_year=365 * 24)
+```
+
+### `whites_reality_check(returns, num_bootstrap=10000, avg_block_size=0.0, seed=42) -> dict`
+
+White's reality check via stationary bootstrap. Tests whether the best of `K` candidate strategies beats zero after multiple-comparison correction. `returns` is a `(K, T)` array of **excess** returns relative to a benchmark. Returns `p_value`, `best_stat`, `best_index`.
+
+```python
+result = flox.whites_reality_check(excess_returns)
+print(result['best_index'], result['p_value'])
+```
+
+### `list_indicators() -> list`
+
+Names of every indicator class registered in this build.
 
 ---
 

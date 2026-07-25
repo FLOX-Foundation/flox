@@ -44,7 +44,7 @@ A `nullptr` recorder pointer disables capture without removing the inner-handler
 
 ## Phase status
 
-This page covers Phase 1: the C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. Phase 2 lifts a one-call `Runner.attach_trace_recorder(rec)` helper into every binding so polyglot strategies capture without per-language plumbing. Phase 3 adds `Runner.trace_order_event(...)` and `Runner.trace_fill(...)` so the user's executor wrapper mirrors order events + fills into the same recorder with two extra lines per callback. End-to-end auto-subscription against the executor's listener bus is a follow-up tracked separately.
+The C++ adapter classes ship in `include/flox/run/trace_handlers.h` and are exercised by `tests/test_trace_handlers.cpp`. The one-call binding helper (`Runner.attach_trace_recorder`) and the executor-mirroring helpers (`Runner.trace_order_event`, `Runner.trace_fill`, plus `Runner.set_trace_feed_ts_ns`) have shipped — see the sections below. What is still a follow-up is end-to-end auto-subscription against the executor's listener bus: the mirroring calls are made by the caller, not wired automatically.
 
 ## One-call attach
 
@@ -91,7 +91,7 @@ runner.trace_fill(order_id=fill.order_id, fill_id=fill.fill_id,
 // node — after the executor's on_canceled fires
 runner.traceOrderEvent({
   orderId, parentSignalId: 0, symbolId,
-  eventKind: 1 /* Cancel */, side, orderType: 0,
+  eventKind: 2 /* Cancel */, side, orderType: 0,
   price: 0, qty: 0,
 });
 ```

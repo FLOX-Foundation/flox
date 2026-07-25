@@ -1,6 +1,6 @@
 # Live engine analytics over MCP
 
-Phase 2 of the MCP positions work added mutating tools. The same control plane also serves a set of read-only analytics tools so an AI client can answer questions about a running flox engine without any risk of moving state. List strategies, dump current state, walk an event back to its root cause, replay a window with different params, all over the same HTTP control plane and the same scoped bearer token.
+The MCP control plane serves mutating tools. It also serves a set of read-only analytics tools so an AI client can answer questions about a running flox engine without any risk of moving state. List strategies, dump current state, walk an event back to its root cause, replay a window with different params, all over the same HTTP control plane and the same scoped bearer token.
 
 ## What's available
 
@@ -18,7 +18,7 @@ All seven are read-only. They accept any scope (`read`, `paper`, `live`); there 
 
 ## Wiring up the providers
 
-`ControlServer` accepts five optional callables for analytics. The user app passes whichever it can, and the corresponding tool answers; the rest return `{data: [], note: "..."}` rather than crashing.
+`ControlServer` accepts five optional analytics inputs — four callables (`strategies`, `strategy_state_provider`, `indicator_provider`, `replay_callback`) plus `event_log`, which takes a `flox_py.event_log.EventLog` instance, not a callable. The user app passes whichever it can, and the corresponding tool answers; the rest return `{data: [], note: "..."}` rather than crashing.
 
 ```python
 from flox_py.control_server import ControlServer
@@ -101,6 +101,6 @@ if event_log_enabled.is_set():
 
 ## See also
 
-* [Control a running engine over MCP](mcp-control-plane.md). The Phase 2 mutating tools that share this control server.
-* [Inspect a running engine over MCP](mcp-runtime-inspection.md). The Phase 1 read-only snapshot model.
+* [Control a running engine over MCP](mcp-control-plane.md). The mutating tools that share this control server.
+* [Inspect a running engine over MCP](mcp-runtime-inspection.md). The read-only snapshot model.
 * [Reproducibility bundles](reproducibility-bundles.md). Useful as the underlying primitive for `replay_callback`.

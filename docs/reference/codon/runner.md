@@ -67,8 +67,11 @@ Runner(registry: cobj, on_signal: Function[[Signal], None], threaded: bool = Fal
 | `stop()` | Stop and clean up |
 | `on_trade(symbol, price, qty, is_buy, ts_ns)` | Push a trade tick |
 | `on_book_snapshot(symbol, bid_prices, bid_qtys, ask_prices, ask_qtys, ts_ns)` | Push a full L2 snapshot |
+| `on_bar(symbol, open, high, low, close, volume=0.0, buy_volume=0.0, start_time_ns=0, end_time_ns=0, bar_type=0, bar_type_param=0, close_reason=0)` | Push a closed bar |
+| `set_market_data_recorder(recorder_handle)` | Attach a market-data recorder handle so pushed events are also written to a tape |
 
-`symbol` accepts a symbol ID (`int`) or any value with a `symbol_id` property.
+`symbol` is typed `int`. Codon compiles statically, so there is no duck-typed overload accepting an
+object with a `symbol_id` property — resolve the id yourself before calling.
 
 ---
 
@@ -100,6 +103,11 @@ BacktestRunner(registry: cobj, fee_rate: float = 0.0004, initial_capital: float 
 | `set_strategy(strategy)` | `None` | Attach a strategy |
 | `run_csv(path, symbol)` | `BacktestStats` | Replay a CSV file (columns: timestamp, open, high, low, close, volume) |
 | `run_ohlcv(timestamps, closes, symbol)` | `BacktestStats` | Replay raw arrays (`List[int]` timestamps in ns, `List[float]` closes) |
+| `run_bars(start_ns, end_ns, opens, highs, lows, closes, volumes, symbol, bar_type=0, bar_type_param=0)` | `BacktestStats` | Replay full OHLCV bars. `Strategy.on_bar` fires; `on_trade` does **not** |
+| `run_tape(path)` | `BacktestStats` | Replay one `.floxlog` tape directory |
+| `run_tapes(paths)` | `BacktestStats` | Replay N `.floxlog` tapes merged on read |
+| `equity_curve()` | `Tuple[List[int], List[float], List[float]]` | `(timestamps_ns, equity, drawdown_pct)` from the most recent run, all the same length. Raises if no run has completed |
+| `trades()` | 9 parallel lists | `(symbol, side, entry_price, exit_price, quantity, pnl, fee, entry_time_ns, exit_time_ns)` for the closed trades of the most recent run. `side` is 0 for long, 1 for short |
 | `close()` | `None` | Free resources |
 
 See [Backtest](backtest.md) for the `BacktestStats` field reference.

@@ -6,8 +6,24 @@
 class IStrategy : public ISubsystem, public IMarketDataSubscriber {
 public:
   virtual ~IStrategy() = default;
+
+  virtual void setSignalHandler(ISignalHandler*) {}
+  virtual void setPositionManager(IPositionManager*) {}
+
+  // Forwarded by the runner each time the executor publishes an OrderEvent for
+  // an order this strategy emitted. Default no-op; the concrete Strategy
+  // dispatches to onSymbolFill / onSymbolOrderUpdate based on status.
+  virtual void onOrderEvent(const OrderEvent&) {}
 };
 ```
+
+## Own Methods
+
+| Method | Description |
+|--------|-------------|
+| `setSignalHandler(ISignalHandler*)` | Install the sink that converts emitted `Signal`s into orders. `BacktestRunner::setStrategy` calls this. Default no-op. |
+| `setPositionManager(IPositionManager*)` | Install the position source the strategy reads from. Default no-op. |
+| `onOrderEvent(const OrderEvent&)` | Every executor event for an order this strategy emitted. Default no-op, so an implementer need not override it; `Strategy` overrides it and dispatches by status. |
 
 ## Purpose
 

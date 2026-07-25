@@ -47,6 +47,7 @@ The replay system uses a compact binary format optimized for sequential reads an
 | 0   | HasIndex   | Segment contains seek index    |
 | 1   | Compressed | Data is LZ4 compressed         |
 | 2   | Encrypted  | Data is encrypted (reserved)   |
+| 3   | Sorted     | Writer guarantees `exchange_ts_ns` is monotonically non-decreasing across every event in the segment, within and across block boundaries |
 
 ## FrameHeader (12 bytes)
 
@@ -56,9 +57,23 @@ Each event is wrapped in a frame for integrity checking:
 |--------|------|-------------|------------------------------------|
 | 0      | 4    | size        | Payload size (excluding header)    |
 | 4      | 4    | crc32       | CRC32 of payload                   |
-| 8      | 1    | type        | Event type (1=Trade, 2=Book, 3=Delta) |
+| 8      | 1    | type        | `EventType` (see below)            |
 | 9      | 1    | rec_version | Record format version              |
 | 10     | 2    | flags       | Reserved                           |
+
+### EventType
+
+| Value | Name | Payload |
+|-------|------|---------|
+| 1 | `Trade` | `TradeRecord` (48 bytes) |
+| 2 | `BookSnapshot` | `BookRecordHeader` + `BookLevel[]` |
+| 3 | `BookDelta` | `BookRecordHeader` + `BookLevel[]` |
+| 4 | `OptionQuote` | `OptionQuoteRecord` (112 bytes) |
+| 5 | `PoolState` | `PoolStateRecordHeader` (32 bytes) + `payload_len` bytes |
+
+Types 4 and 5 are additive: a reader that predates them skips the frame via
+`FrameHeader.size`, so old tapes and old readers are unaffected and no format-version bump was
+needed.
 
 ## TradeRecord (48 bytes)
 
@@ -95,8 +110,63 @@ Immediately following the header are `bid_count + ask_count` BookLevel entries.
 
 | Offset | Size | Field     | Description                      |
 |--------|------|-----------|----------------------------------|
-| 0      | 8    | price_raw | Price (fixed-point, 9 decimals)  |
+| 0      | 8    | price_raw | Price (fixed-point, 8 decimals)  |
 | 8      | 8    | qty_raw   | Quantity (fixed-point)           |
+
+## OptionQuoteRecord (112 bytes)
+
+Option side-channel snapshot, emitted whenever the venue publishes mark / IV / quote data.
+Independent of any trade. Every field is 0 when the venue does not publish it. `*_price_raw` use the
+same 8-decimal price scale as `TradeRecord`; `*_iv_raw` use `kIvScale` (also 1e8, so 0.65 = 65 vol
+points = `65000000`); `*_size_raw` and `open_interest_raw` use the quantity scale.
+
+| Offset | Size | Field                 | Description                      |
+|--------|------|-----------------------|----------------------------------|
+| 0      | 8    | exchange_ts_ns        | Exchange timestamp (ns)          |
+| 8      | 8    | recv_ts_ns            | Local receive timestamp (ns)     |
+| 16     | 8    | mark_price_raw        | Mark price                       |
+| 24     | 8    | index_price_raw       | Spot index of the base coin (delta-hedge leg) |
+| 32     | 8    | underlying_price_raw  | Per-expiry forward (pricing, greeks, log-moneyness) |
+| 40     | 8    | iv_raw                | Implied vol at the mark          |
+| 48     | 8    | bid_price_raw         | Best bid; 0 when not published   |
+| 56     | 8    | ask_price_raw         | Best ask; 0 when not published   |
+| 64     | 8    | bid_size_raw          | Size at the bid                  |
+| 72     | 8    | ask_size_raw          | Size at the ask                  |
+| 80     | 8    | bid_iv_raw            | Implied vol at the bid           |
+| 88     | 8    | ask_iv_raw            | Implied vol at the ask           |
+| 96     | 8    | open_interest_raw     | Open interest                    |
+| 104    | 4    | symbol_id             | Symbol registry ID               |
+| 108    | 1    | instrument            | Instrument type                  |
+| 109    | 1    | _pad                  | Alignment padding                |
+| 110    | 2    | exchange_id           | Exchange identifier              |
+
+## PoolStateRecordHeader (32 bytes)
+
+Fixed header for an `EventType::PoolState` frame. `exchange_ts_ns` comes first so the block-level
+timestamp scan reads it like any other record. `payload_len` bytes of u256-native pool payload
+(32-byte big-endian, chain-native) follow within the same frame. `sub_type` is a `PoolStateKind` and
+`venue` a `PoolVenue`; together they say how to interpret the payload, which is decoded by the
+pool-state-tape layer, not by the format layer.
+
+| Offset | Size | Field          | Description                      |
+|--------|------|----------------|----------------------------------|
+| 0      | 8    | exchange_ts_ns | Exchange timestamp (ns)          |
+| 8      | 8    | recv_ts_ns     | Local receive timestamp (ns)     |
+| 16     | 4    | symbol_id      | Symbol registry ID               |
+| 20     | 4    | payload_len    | Payload byte length              |
+| 24     | 1    | sub_type       | `PoolStateKind`                  |
+| 25     | 1    | venue          | `PoolVenue`                      |
+| 26     | 2    | exchange_id    | Exchange identifier              |
+| 28     | 4    | _pad           | Alignment padding                |
+
+### PoolStateKind
+
+| Value | Name |
+|-------|------|
+| 1 | `Descriptor` |
+| 2 | `Checkpoint` |
+| 3 | `SwapDelta` |
+| 4 | `LiquidityDelta` |
 
 ## Compressed Block Format
 

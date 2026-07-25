@@ -93,6 +93,32 @@ A worked example (Python):
     uint32_t n = flox_liquidation_engine_on_mark(eng, 1, 49500.0);
     ```
 
+## Multi-symbol marks in one step
+
+`on_mark` walks one symbol. For a cross-margin account holding
+several symbols, updating them one at a time means the walk for the
+first symbol runs against stale marks for the rest.
+`on_marks(marks, ts_ns=0)` takes a sequence of `(symbol, price)`
+pairs, updates every attached account's mark for all of them
+atomically, then walks liquidations once per symbol. The return
+shape is the same aggregated outcome dict.
+
+=== "Python"
+
+    ```python
+    outcome = eng.on_marks([(1, 49_500.0), (2, 2_900.0)], ts_ns=now_ns)
+    ```
+
+## Fill price of a liquidation
+
+`set_liquidation_slippage_bps(bps)` sets how far through the mark a
+forced close is assumed to fill (default 25 bps). It applies only
+when no executor is attached; with `set_executor(...)` the closeout
+routes through the executor as a market order and takes that
+executor's fill price instead. The canned profiles override the
+default: 15 bps for `binance_um_futures`, 20 bps for `bybit_linear`
+and `okx_swap`.
+
 ## Canned profiles
 
 | Profile               | Tiers | Insurance fund cap | Slippage |

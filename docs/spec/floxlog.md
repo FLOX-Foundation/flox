@@ -1,10 +1,10 @@
 # `.floxlog` binary tape format specification
 
-**Version 1.0, frozen 2026-05-08.** This is the on-disk format flox uses for deterministic event capture and replay. The format is published so third-party tooling can read and write tapes without depending on flox itself.
+**Version 1, last revised 2026-07-22.** This is the on-disk format flox uses for deterministic event capture and replay. The format is published so third-party tooling can read and write tapes without depending on flox itself.
 
 ## At a glance
 
-A `.floxlog` is a directory of segment files plus a manifest. Segments hold trades and order-book updates as length-prefixed CRC-checked frames, optionally LZ4-compressed in fixed-size blocks. Each segment can carry a sparse index for seek. Timestamps are integer nanoseconds since Unix epoch; prices and quantities are int64 fixed-point with a scale of `1e8`.
+A `.floxlog` is a directory of segment files plus two sidecars. Segments hold trades, order-book updates and side-channel records as length-prefixed CRC-checked frames in one interleaved, timestamp-ordered stream, optionally LZ4-compressed in fixed-size blocks. Each segment can carry a sparse index for seek. Timestamps are integer nanoseconds since Unix epoch; prices and quantities are int64 fixed-point with a scale of `1e8`.
 
 Everything is little-endian. All structures are 8-byte aligned. CRC32 uses the standard reflected polynomial `0xEDB88320` (ISO 3309).
 
@@ -12,14 +12,20 @@ Everything is little-endian. All structures are 8-byte aligned. CRC32 uses the s
 
 ```
 my-tape.floxlog/
-├── manifest.json
-├── trades-000000.bin
-├── trades-000001.bin
-├── book-000000.bin
+├── .manifest            # binary segment index (optional, rebuildable)
+├── metadata.json        # human-readable recording metadata (optional)
+├── 1714123456000000000.floxlog
+├── 1714123459000000000.floxlog
 └── ...
 ```
 
-`manifest.json` lists segment files, their byte counts, and the time range they cover. Segments are independently parseable; the manifest is an index, not a requirement.
+Segment files are named `<created_ns>.floxlog`, where `created_ns` is the wall-clock nanosecond timestamp at which the writer opened the segment. A custom rotation callback can override the naming. There is **no** per-type split: trades, book snapshots, book deltas and the side-channel record types all live interleaved in the same frame stream, ordered by timestamp.
+
+Segments are independently parseable; both sidecars are conveniences, not requirements.
+
+`.manifest` is a **binary** file — see [Manifest](#manifest) — not JSON. It can be rebuilt from the segments at any time.
+
+`metadata.json` is the only JSON sidecar. It carries recording-level metadata the segment headers do not: `recording_id`, `description`, `exchange`, `exchange_type`, `instrument_type`, `connector_version`, the symbol table, `has_trades` / `has_book_snapshots` / `has_book_deltas`, `total_trades`, `total_book_updates`, `book_depth`, `recording_start` / `recording_end` (ISO 8601), `price_scale` / `qty_scale`, `hostname`, `timezone`, `flox_version`, and a free-form `custom` string map. It is written by `BinaryLogWriter::close()` and only when metadata was set on the writer.
 
 ## Magic numbers and constants
 
@@ -28,8 +34,10 @@ my-tape.floxlog/
 | `MAGIC_SEGMENT` | `0x584F4C46` (`"FLOX"`) | Segment header sentinel. |
 | `MAGIC_BLOCK` | `0x4B4C4246` (`"FBLK"`) | Compressed block header sentinel. |
 | `MAGIC_INDEX` | `0x58444E49` (`"INDX"`) | Sparse index header sentinel. |
+| `MAGIC_MANIFEST` | `0x464D414E` (`"FMAN"`) | Binary manifest header sentinel. |
 | `FORMAT_VERSION` | `1` | Bump triggers a new `.floxlog` major. |
 | `INDEX_VERSION` | `1` | Bump triggers a new index format minor. |
+| `MANIFEST_VERSION` | `1` | Manifest header version. |
 
 ## Segment file
 
@@ -70,6 +78,10 @@ A frame is a `FrameHeader` followed by `size` bytes of payload. Payload meaning 
 - `type = 1` → `TradeRecord`
 - `type = 2` → `BookRecordHeader` followed by `bid_count + ask_count` `BookLevel` entries (book snapshot)
 - `type = 3` → same shape as `type = 2`, but the levels are deltas (positive qty = upsert, qty == 0 = remove)
+- `type = 4` → `OptionQuoteRecord` (112 bytes) — option side-channel: mark price, index price, underlying forward, implied vol, best bid/ask with sizes and IVs, open interest
+- `type = 5` → `PoolStateRecordHeader` (32 bytes) followed by `payload_len` bytes of u256-native DEX pool payload
+
+Types 4 and 5 are **additive**. A reader that does not know a type skips the frame using `FrameHeader.size` and continues; it must not reject the segment. Unknown types are therefore not an error, unlike unknown `flags` bits or an unknown `rec_version`.
 
 If `Compressed` is set, the entire frame stream from the byte after the segment header lives inside one or more `CompressedBlock`s.
 
@@ -79,7 +91,7 @@ If `Compressed` is set, the entire frame stream from the byte after the segment 
 |---:|---:|---|---|
 | 0 | 4 | `size` | Payload bytes, excluding this header. |
 | 4 | 4 | `crc32` | CRC32 of the payload bytes (header excluded). |
-| 8 | 1 | `type` | `1` Trade, `2` BookSnapshot, `3` BookDelta. |
+| 8 | 1 | `type` | `1` Trade, `2` BookSnapshot, `3` BookDelta, `4` OptionQuote, `5` PoolState. |
 | 9 | 1 | `rec_version` | Per-record version. `1` for the layouts below. |
 | 10 | 2 | `flags` | Reserved. Must be zero. |
 
@@ -147,7 +159,7 @@ The trailer at `index_offset`:
 |---:|---:|---|---|
 | 0  | 4 | `magic` | `MAGIC_INDEX`. |
 | 4  | 2 | `version` | `1`. |
-| 6  | 2 | `interval` | Spacing between consecutive entries. Reserved as a hint; flox writes `0` for now. |
+| 6  | 2 | `interval` | Events between consecutive index entries. The writer stores its configured `index_interval`; the default is `1000`. |
 | 8  | 4 | `entry_count` | Number of `IndexEntry` rows that follow. |
 | 12 | 4 | `crc32` | CRC32 over the entries section. |
 | 16 | 8 | `first_ts_ns` | First indexed timestamp. |
@@ -166,28 +178,36 @@ Followed by `entry_count` `IndexEntry` rows.
 
 ## Manifest
 
-`manifest.json` is one JSON object:
+`.manifest` is a binary file: one `ManifestHeader`, then `segment_count` `ManifestSegmentEntry` rows, read and written with plain struct I/O. It is a cache — `SegmentManifest::build(dir)` regenerates it from the segments — so a reader may ignore it entirely.
 
-```json
-{
-  "schema_version": 1,
-  "format_version": 1,
-  "exchange_id": 0,
-  "created_ns": 1714123456000000000,
-  "segments": [
-    {
-      "name": "trades-000000.bin",
-      "type": "trades",
-      "size_bytes": 1048576,
-      "first_event_ns": 1714123456000000000,
-      "last_event_ns": 1714123459000000000,
-      "event_count": 50000
-    }
-  ]
-}
-```
+### `ManifestHeader`
 
-`schema_version` covers the manifest itself; `format_version` covers the segment binary layout. Mismatched `format_version` requires the reader to fail loudly. Mismatched `schema_version` is grounds for rejection unless documented otherwise.
+| Size | Field | Notes |
+|---:|---|---|
+| 4 | `magic` | `MAGIC_MANIFEST`. |
+| 1 | `version` | `MANIFEST_VERSION` (`1`). |
+| 3 | `reserved[3]` | Zero-filled. |
+| 8 | `segment_count` | Number of `ManifestSegmentEntry` rows that follow. |
+| 8 | `total_events` | Across all segments. |
+| 8 | `first_timestamp_ns` | Earliest event in the tape. |
+| 8 | `last_timestamp_ns` | Latest event in the tape. |
+| 8 | `total_bytes` | Sum of segment file sizes. |
+| 4 | `symbol_count` | Distinct symbols across the tape. |
+| 4 | `checksum` | |
+
+A header whose `magic` or `version` does not match is treated as absent; the reader falls back to rebuilding.
+
+### `ManifestSegmentEntry`
+
+| Size | Field | Notes |
+|---:|---|---|
+| 256 | `filename[256]` | NUL-padded, relative to the tape directory. |
+| 8 | `first_event_ns` | |
+| 8 | `last_event_ns` | |
+| 8 | `event_count` | |
+| 8 | `file_size` | |
+| 4 | `flags` | `0x01` = segment has an index, `0x02` = segment is compressed. |
+| 4 | `reserved` | Zero. |
 
 ## Instrument codes
 
@@ -208,10 +228,11 @@ Followed by `entry_count` `IndexEntry` rows.
 ## Versioning policy
 
 - `format_version` follows semantic versioning at the major level. A new major is incompatible. Old readers of a new tape must reject with a clear error.
-- New `flags` bits, new `EventType` codes, new `Instrument` codes, and new fields in reserved space all require a new major.
+- New `EventType` codes are **additive within the same `format_version`**. Because every frame is length-prefixed, a reader that meets an unknown `type` skips `FrameHeader.size` bytes and carries on. `OptionQuote` (4) and `PoolState` (5) were both added this way under `format_version = 1`.
+- New `flags` bits, new `Instrument` codes, and new fields in reserved space do require a new major: unlike frame types, an unknown flag changes how the rest of the segment must be parsed, so it cannot be skipped.
 - Adding new `rec_version` values for a single record type within the same `format_version` is allowed when the record's size grows monotonically and the new version stays parseable as a prefix of the new layout. This path is rarely worth the complexity; prefer a new major.
 
-Version 1.0 is **frozen** as of this document. Any change to the layout described here ships as version 2.0 with migration guidance in the corresponding spec revision.
+The layouts above are stable: existing offsets and sizes do not move within `format_version = 1`. Any change that would move them ships as version 2 with migration guidance in the corresponding spec revision.
 
 ## Reference implementations
 
@@ -227,7 +248,7 @@ The replay-equivalence CI gate (`scripts/replay_equivalence_gate.py`) writes a f
 
 - Files written by `flox-py` 0.5.x and later remain readable by every flox 1.x release.
 - A reader for an older flox must refuse to load a newer tape rather than skip frames it does not understand.
-- New optional flags and codes must be additive. Writers can elect to set them; older readers must reject the segment when an unknown flag is set, but compliant 1.0-only writers must not emit anything outside this document.
+- New `EventType` codes must be additive and skippable via `FrameHeader.size`. New `flags` bits are not skippable: a reader must reject a segment whose `SegmentFlags` carry a bit it does not know.
 
 ## Reporting issues
 

@@ -18,8 +18,8 @@ struct ExchangeInfo
   std::array<char, kMaxNameLength> name{};
   VenueType type{VenueType::CentralizedExchange};
 
-  [[nodiscard]] std::string_view nameView() const noexcept;
-  void setName(std::string_view n) noexcept;
+  std::string_view nameView() const;
+  void setName(std::string_view n);
 };
 ```
 
@@ -55,7 +55,7 @@ info.type = VenueType::CentralizedExchange;
 ```cpp
 SymbolRegistry registry;
 
-// Register returns ExchangeId (uint8_t)
+// Register returns ExchangeId (uint16_t)
 ExchangeId id = registry.registerExchange("Binance", VenueType::CentralizedExchange);
 
 // Get info by ID
@@ -78,7 +78,7 @@ info.setName("VeryLongExchangeName");
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `kMaxNameLength` | 16 | Maximum name storage (15 chars + null) |
-| `InvalidExchangeId` | 255 | Sentinel value for invalid exchange |
+| `InvalidExchangeId` | `0xFFFF` (65535) | Sentinel value for invalid exchange |
 
 ## Memory Layout
 

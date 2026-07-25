@@ -6,31 +6,86 @@
 
 All language bindings (Python, Node.js, Codon, embedded JS) call into this header. You can use it directly to integrate Flox into any language with a C FFI, or embed it in a C/C++ project.
 
+!!! warning "This page is a curated subset"
+    The full surface is **729 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums**
+    across 72 groups. This page covers the commonly used core (roughly 150 functions) with prose.
+    The complete, machine-generated reference — every function signature, in group order — is
+    [`tools/codegen/golden/flox_capi.md`](https://github.com/FLOX-Foundation/flox/blob/main/tools/codegen/golden/flox_capi.md),
+    generated from `include/flox/capi/flox_capi_spec.hpp`. **That file is the reference of record.**
+    When this page and the header disagree, the header wins.
+
+    Groups with no prose coverage here: Account, Amm Curve, Delta Book, Dex Amount, Execution Algos,
+    Fee Schedule, Feed Clock, Floxrun/trace, Funding Schedule, Grid Search, Heatmap, Indicator Graph,
+    Latency Models, Liquidation Engine, Live Queue Position, Logger, Merged Tape Reader, Metrics,
+    Multi-TF Helpers, Order Group, Order Journey Tracer, Pool Tape, Portfolio Risk, Rate Limit,
+    Recorder, Replay, Risk, Storage, Tape Aggregator, Tape Diff, Targets, Trace Attach, Validation,
+    Venue Availability, Venue Stack, Walk Forward.
+
 ---
 
 ## Opaque handles
 
+All 58 handles are `void*`. Lifetime is managed by the matching `_create` / `_destroy` pair.
+
 ```c
-typedef void* FloxRegistryHandle;
 typedef void* FloxStrategyHandle;
-typedef void* FloxRunnerHandle;
-typedef void* FloxLiveEngineHandle;
-typedef void* FloxBacktestRunnerHandle;
-typedef void* FloxBacktestResultHandle;
-typedef void* FloxSimulatedExecutorHandle;
+typedef void* FloxRegistryHandle;
 typedef void* FloxBookHandle;
-typedef void* FloxL3BookHandle;
-typedef void* FloxCompositeBookHandle;
+typedef void* FloxSimulatedExecutorHandle;
 typedef void* FloxPositionTrackerHandle;
 typedef void* FloxPositionGroupHandle;
 typedef void* FloxOrderTrackerHandle;
+typedef void* FloxOrderJourneyTracerHandle;
+typedef void* FloxFootprintHandle;
 typedef void* FloxVolumeProfileHandle;
 typedef void* FloxMarketProfileHandle;
-typedef void* FloxFootprintHandle;
+typedef void* FloxCompositeBookHandle;
+typedef void* FloxCurveHandle;
+typedef void* FloxPoolTapeHandle;
+typedef void* FloxPoolReplayHandle;
+typedef void* FloxIndicatorGraphHandle;
+typedef FloxIndicatorGraphHandle FloxStreamingGraphHandle;  // alias
+typedef void* FloxOrderGroupHandle;
+typedef void* FloxFeedClockHandle;
+typedef void* FloxL3BookHandle;
 typedef void* FloxDataWriterHandle;
 typedef void* FloxDataReaderHandle;
-typedef void* FloxBinaryLogRecorderHookHandle;
+typedef void* FloxLatencyDistributionHandle;
+typedef void* FloxRateLimitPolicyHandle;
+typedef void* FloxVenueAvailabilityHandle;
+typedef void* FloxBacktestResultHandle;
+typedef void* FloxMergedTapeReaderHandle;
 typedef void* FloxPartitionerHandle;
+typedef void* FloxRiskManagerHandle;
+typedef void* FloxKillSwitchHandle;
+typedef void* FloxOrderValidatorHandle;
+typedef void* FloxPnLTrackerHandle;
+typedef void* FloxStorageSinkHandle;
+typedef void* FloxMarketDataRecorderHandle;
+typedef void* FloxBinaryLogRecorderHookHandle;
+typedef void* FloxReplaySourceHandle;
+typedef void* FloxExecutionListenerHandle;
+typedef void* FloxExecutorHandle;
+typedef void* FloxLiveEngineHandle;
+typedef void* FloxRunnerHandle;
+typedef void* FloxBacktestRunnerHandle;
+typedef void* FloxGridSearchHandle;
+typedef void* FloxLatencyModelHandle;
+typedef void* FloxTapeDiffHandle;
+typedef void* FloxPortfolioRiskHandle;
+typedef void* FloxExecAlgoHandle;
+typedef void* FloxDeltaBookEncoderHandle;
+typedef void* FloxDeltaBookReplayerHandle;
+typedef void* FloxRunRecorderHandle;
+typedef void* FloxRunReaderHandle;
+typedef void* FloxBarDispatchRecorderHandle;
+typedef void* FloxAggregatorHandle;
+typedef void* FloxFeeScheduleHandle;
+typedef void* FloxFundingScheduleHandle;
+typedef void* FloxLiveQueuePositionHandle;
+typedef void* FloxLiquidationEngineHandle;
+typedef void* FloxAccountHandle;
+typedef void* FloxVenueStackHandle;
 ```
 
 ---
@@ -84,7 +139,35 @@ typedef void* FloxPartitionerHandle;
 | `last_update_ns` | `int64_t` | Last update timestamp (ns) |
 | `book` | `FloxBookSnapshot` | Top-of-book snapshot |
 
+### `FloxBarData`
+
+Passed to `FloxOnBarCallback` when a bar closes.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `symbol` | `uint32_t` | Symbol ID |
+| `bar_type` | `uint8_t` | Bar type (Time, Tick, Volume, Range, Renko, Dollar, BpsRange) |
+| `close_reason` | `uint8_t` | Why the bar closed |
+| `_pad` | `uint8_t[2]` | Padding |
+| `bar_type_param` | `uint64_t` | Type parameter. For Time bars this is **nanoseconds** (1-minute = `60000000000`) |
+| `open_raw` | `int64_t` | Open × 1e8 |
+| `high_raw` | `int64_t` | High × 1e8 |
+| `low_raw` | `int64_t` | Low × 1e8 |
+| `close_raw` | `int64_t` | Close × 1e8 |
+| `volume_raw` | `int64_t` | Volume × 1e8 |
+| `buy_volume_raw` | `int64_t` | Buy-side volume × 1e8 |
+| `trade_count_raw` | `int64_t` | Trade count × 1e8 |
+| `start_time_ns` | `int64_t` | Bar open time (ns) |
+| `end_time_ns` | `int64_t` | Bar close time (ns) |
+
+`FloxBarData` is distinct from `FloxBar` (below). `FloxBar` is the batch-aggregation output row;
+`FloxBarData` is the live strategy callback payload.
+
 ### `FloxStrategyCallbacks`
+
+**10 members.** Field order is load-bearing for FFI consumers — allocate the full struct
+(10 pointer-sized slots on a 64-bit target) and zero it before filling. A short allocation
+corrupts memory when the runtime writes past the end.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -93,7 +176,44 @@ typedef void* FloxPartitionerHandle;
 | `on_bar` | `FloxOnBarCallback` | Closed OHLC bar callback (`FloxBarData`) |
 | `on_start` | `FloxOnStartCallback` | Strategy start callback |
 | `on_stop` | `FloxOnStopCallback` | Strategy stop callback |
+| `on_fill` | `FloxOnFillCallback` | Fill callback (`FloxOrderEventData`) |
+| `on_order_update` | `FloxOnOrderUpdateCallback` | Order status change (`FloxOrderEventData`) |
+| `on_queue_position_change` | `FloxOnQueuePositionChangeCallback` | Queue position moved |
+| `on_market_position_change` | `FloxOnMarketPositionChangeCallback` | Order's position vs best moved |
 | `user_data` | `void*` | Passed to all callbacks |
+
+Any member may be `NULL`; an unset callback is a no-op.
+
+### `FloxOrderEventData`
+
+Payload for `on_fill`, `on_order_update`, `on_queue_position_change`, `on_market_position_change`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `order_id` | `uint64_t` | Order ID |
+| `symbol_id` | `uint32_t` | Symbol ID |
+| `side` | `uint8_t` | 0 = buy, 1 = sell |
+| `order_type` | `uint8_t` | `OrderType` encoding — see [order_type encodings](#order_type-encodings) |
+| `status` | `uint8_t` | `OrderEventStatus` value |
+| `_pad` | `uint8_t` | Padding |
+| `fill_qty_raw` | `int64_t` | Fill quantity × 1e8 |
+| `fill_price_raw` | `int64_t` | Fill price × 1e8 |
+| `exchange_ts_ns` | `int64_t` | Exchange timestamp (ns) |
+| `reject_reason` | `const char*` | Reject reason, or `NULL`. Borrowed; valid only for the callback's duration |
+| `queue_ahead_raw` | `int64_t` | Queue volume ahead × 1e8 |
+| `queue_total_raw` | `int64_t` | Total queue volume at the level × 1e8 |
+| `submitted_at_ns` | `int64_t` | Submit timestamp (ns) |
+| `accepted_at_ns` | `int64_t` | Accept timestamp (ns) |
+| `first_fill_at_ns` | `int64_t` | First fill timestamp (ns) |
+| `last_fill_at_ns` | `int64_t` | Last fill timestamp (ns) |
+| `canceled_at_ns` | `int64_t` | Cancel timestamp (ns) |
+| `rejected_at_ns` | `int64_t` | Reject timestamp (ns) |
+| `triggered_at_ns` | `int64_t` | Trigger timestamp (ns) |
+| `expired_at_ns` | `int64_t` | Expiry timestamp (ns) |
+| `is_maker` | `uint8_t` | 1 if the fill was passive |
+| `market_position` | `uint8_t` | `MarketPosition` value |
+| `distance_to_best_ticks` | `int32_t` | Ticks from best price |
+| `_pad2` | `uint8_t[2]` | Padding |
 
 ### `FloxSignal`
 
@@ -104,7 +224,7 @@ Emitted by strategies, received by the order backend.
 | `order_id` | `uint64_t` | Order ID |
 | `symbol` | `uint32_t` | Symbol ID |
 | `side` | `uint8_t` | 0 = buy, 1 = sell |
-| `order_type` | `uint8_t` | 0=market, 1=limit, 2=stop_market, 3=stop_limit, 4=tp_market, 5=tp_limit, 6=trailing_stop, 7=cancel, 8=cancel_all, 9=modify |
+| `order_type` | `uint8_t` | **Encoding depends on the entry point** — see [order_type encodings](#order_type-encodings) |
 | `price` | `double` | Limit price (0 for market orders) |
 | `quantity` | `double` | Order quantity |
 | `trigger_price` | `double` | Stop/take-profit trigger |
@@ -182,16 +302,103 @@ Emitted by strategies, received by the order backend.
 
 ---
 
+## order_type encodings
+
+There are **two different `uint8_t` order-type encodings** in this API. They disagree on the two
+most common values. Which one applies depends on the entry point, not on the struct.
+
+**Encoding A — SignalType (0 = market, 1 = limit)**
+
+| Value | Meaning |
+|-------|---------|
+| 0 | market |
+| 1 | limit |
+| 2 | stop_market |
+| 3 | stop_limit |
+| 4 | tp_market |
+| 5 | tp_limit |
+| 6 | trailing_stop |
+| 7 | cancel |
+| 8 | cancel_all |
+| 9 | modify |
+
+**Encoding B — C++ `flox::OrderType` (0 = LIMIT, 1 = MARKET)**
+
+| Value | Meaning |
+|-------|---------|
+| 0 | LIMIT |
+| 1 | MARKET |
+| 2 | STOP_MARKET |
+| 3 | STOP_LIMIT |
+| 4 | TAKE_PROFIT_MARKET |
+| 5 | TAKE_PROFIT_LIMIT |
+| 6 | TRAILING_STOP |
+| 7 | ICEBERG |
+
+Values 2–6 coincide; 0, 1, 7 and above do not. Which entry point uses which:
+
+| Entry point | Field | Encoding | Code path |
+|-------------|-------|----------|-----------|
+| `FloxOnSignalCallback` from the runner / live engine | `FloxSignal.order_type` | **A** (SignalType) | `src/capi/flox_capi.cpp` — explicit `switch (sig.type)` |
+| `FloxRiskManagerAllowFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` — `static_cast<uint8_t>(order.type)` |
+| `FloxKillSwitchCheckFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` |
+| `FloxOrderValidatorValidateFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` |
+| `FloxPnLTrackerOnSignalFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` |
+| `flox_simulated_executor_submit_order` | `order_type` argument | **B** (`OrderType`) | `static_cast<OrderType>(order_type)` |
+| `flox_simulated_executor_submit_order_ex` | `order_type` argument | **B** (`OrderType`) | `static_cast<OrderType>(order_type)` |
+| `FloxOrderEventData.order_type` | struct field | **B** (`OrderType`) | carried from `Order::type` |
+
+Consequence: passing `0` to `flox_simulated_executor_submit_order` submits a **LIMIT** order, not a
+market order. Pass `1` for market. The embedded QuickJS binding compensates for this mismatch by
+remapping in `src/quickjs/js_strategy.cpp` before it calls through; bindings you write yourself must
+do the same.
+
+---
+
 ## Callback types
+
+The header declares 43 callback typedefs. The strategy, gate and progress callbacks are below; the
+listener, executor, recorder and replay-source function pointers are in the generated reference.
+
+Strategy callbacks — the members of `FloxStrategyCallbacks`:
 
 ```c
 typedef void (*FloxOnTradeCallback)(void* user_data, const FloxSymbolContext* ctx,
                                     const FloxTradeData* trade);
 typedef void (*FloxOnBookCallback)(void* user_data, const FloxSymbolContext* ctx,
                                    const FloxBookData* book);
+typedef void (*FloxOnBarCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                  const FloxBarData* bar);
 typedef void (*FloxOnStartCallback)(void* user_data);
 typedef void (*FloxOnStopCallback)(void* user_data);
-typedef void (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);
+typedef void (*FloxOnFillCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                   const FloxOrderEventData* ev);
+typedef void (*FloxOnOrderUpdateCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                          const FloxOrderEventData* ev);
+typedef void (*FloxOnQueuePositionChangeCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                                  const FloxOrderEventData* ev);
+typedef void (*FloxOnMarketPositionChangeCallback)(void* user_data, const FloxSymbolContext* ctx,
+                                                   const FloxOrderEventData* ev);
+```
+
+Signal sink and pre-trade gates. The gates run in order KillSwitch, OrderValidator, RiskManager;
+returning 0 drops the signal and skips the remaining gates. Note the `FloxSignal.order_type` in a
+gate callback uses [encoding B](#order_type-encodings), not the runner's encoding A:
+
+```c
+typedef void    (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);
+typedef uint8_t (*FloxRiskManagerAllowFn)(void* user_data, const FloxSignal* signal);
+typedef uint8_t (*FloxKillSwitchCheckFn)(void* user_data, const FloxSignal* signal);
+typedef uint8_t (*FloxOrderValidatorValidateFn)(void* user_data, const FloxSignal* signal);
+typedef void    (*FloxPnLTrackerOnSignalFn)(void* user_data, const FloxSignal* signal);
+typedef void    (*FloxStorageSinkStoreFn)(void* user_data, const FloxSignal* signal);
+```
+
+Logging and long-running-operation progress. `FloxProgressCallback` returns 0 to request cancellation:
+
+```c
+typedef void    (*FloxLogCallback)(void* user_data, int32_t level, const char* message);
+typedef uint8_t (*FloxProgressCallback)(void* user_data, double fraction, int64_t items_done);
 ```
 
 ---
@@ -416,14 +623,33 @@ void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle exe
 
 ```c
 typedef enum {
-    FLOX_QUEUE_NONE = 0,
-    FLOX_QUEUE_TOB  = 1,
-    FLOX_QUEUE_FULL = 2
+    FLOX_QUEUE_NONE                = 0,
+    FLOX_QUEUE_TOB                 = 1,
+    FLOX_QUEUE_FULL                = 2,
+    FLOX_QUEUE_PRO_RATA            = 3,
+    FLOX_QUEUE_PRO_RATA_WITH_FIFO  = 4
 } FloxQueueModel;
 
 void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle executor,
                                    int32_t model, uint32_t depth);
 ```
+
+The C++ `QueueModel` enum has two further values (`TOP_PRO_LMM`, `PRO_RATA_WITH_PRIORITY`) with no
+C-API constant; see [queue simulation](../backtest/queue_simulation.md).
+
+### Aggregator event filter
+
+```c
+typedef enum {
+    FLOX_AGG_FILTER_TRADES     = 1,
+    FLOX_AGG_FILTER_BOOKS_ONLY = 2,
+    FLOX_AGG_FILTER_BOTH       = 3
+} FloxAggregatorEventFilter;
+```
+
+Selects which tape events feed a `FloxAggregatorHandle`. These three enums (`FloxSlippageModel`,
+`FloxQueueModel`, `FloxAggregatorEventFilter`) are the only C enums in the header; every other
+discrete value crosses the boundary as a bare `uint8_t` or `int32_t`.
 
 ---
 
@@ -479,6 +705,23 @@ Stateless, array-in / array-out.
 | `flox_indicator_obv(close, volume, len, output)` | On-balance volume |
 | `flox_indicator_vwap(close, volume, len, window, output)` | Rolling VWAP |
 | `flox_indicator_cvd(open, high, low, close, volume, len, output)` | Cumulative volume delta |
+| `flox_indicator_skewness(input, len, period, output)` | Rolling skewness |
+| `flox_indicator_kurtosis(input, len, period, output)` | Rolling kurtosis |
+| `flox_indicator_parkinson_vol(high, low, len, period, output)` | Parkinson volatility |
+| `flox_indicator_rogers_satchell_vol(open, high, low, close, len, period, output)` | Rogers-Satchell volatility |
+| `flox_indicator_rolling_zscore(input, len, period, output)` | Rolling z-score |
+| `flox_indicator_shannon_entropy(input, len, period, bins, output)` | Shannon entropy |
+| `flox_indicator_correlation(x, y, len, period, output)` | Rolling correlation |
+| `flox_indicator_adf(input, len, max_lag, regression, test_stat_out, p_value_out, used_lag_out)` | Augmented Dickey-Fuller test |
+| `flox_indicator_autocorrelation(input, len, window, lag, output)` | Rolling autocorrelation |
+
+That is all 27 functions in the `indicator_functions` group. `flox_indicator_adf` is the only one
+that is not array-in / array-out: it writes three scalars through out-pointers and takes a
+`const char* regression` selector. The `flox_indicator_graph_*` functions are a separate group and
+are not listed here.
+
+Streaming (stateful) indicator objects are not part of the C API; they are exposed by the Codon,
+QuickJS and Node bindings.
 
 ---
 

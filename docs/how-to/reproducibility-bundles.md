@@ -86,7 +86,7 @@ Strategy state should reset every run (no global side effects, no clock dependen
 
 ## What's not handled
 
-- Stop / take-profit / trailing-stop signals fall through to the simulator's no-op path. `SimulatedExecutor.submit_order` accepts `market` and `limit` only. If your strategy emits stops, the bundle still packs but the fills will not match. Design Phase 1 strategies with that constraint, or wait for the follow-up that extends `submit_order`.
+- `CANCEL` / `CANCEL_ALL` / `MODIFY` signals. Pack routes `market`, `limit`, `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, and `trailing_stop` into `SimulatedExecutor.submit_order`; anything else is dropped, so a strategy that cancels or replaces will not reproduce those actions in the bundle.
 - Multi-strategy ensembles. Pack supports one strategy per bundle.
 - Network or exchange-stub bundles. The tape is the only input source.
 

@@ -160,14 +160,25 @@ cone = flox.vol_cone(prices, horizons=[10, 30, 60, 90], periods_per_year=365)
 cone[0]["p50"]  # median realized vol at the 10-period horizon
 ```
 
-To place an implied quote in the cone, pull the realized samples for one horizon and
-ask what fraction sit below it — high means rich, low means cheap:
+Each cone entry's `samples` field is the observation *count*, not the observations
+themselves. `implied_percentile_in_cone` wants the flat list of realized-vol
+samples, so rebuild it with `realized_vol` over the same rolling window the cone
+uses — log returns, window of `horizon` returns, one annualized vol per window:
 
 ```python
-samples = flox.vol_cone(prices, [30], 365)  # or compute realized_vol per window
+import math
+
+rets = [math.log(prices[i] / prices[i - 1]) for i in range(1, len(prices))]
+horizon = 30
+samples = [flox.realized_vol(rets[i - horizon:i], 365)
+           for i in range(horizon, len(rets) + 1)]
+
 # implied_percentile_in_cone(realized_samples, implied_vol) -> 0..1
-rich = flox.implied_percentile_in_cone(realized_samples, implied_vol=0.65)
+rich = flox.implied_percentile_in_cone(samples, implied_vol=0.65)
 ```
+
+`len(samples)` matches `cone[0]["samples"]` and `min` / `max` match the cone's
+`min` / `max` for that horizon.
 
 ## Vega and forward price
 

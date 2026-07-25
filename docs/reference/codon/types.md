@@ -77,6 +77,7 @@ Trade event data passed to `Strategy.on_trade()`.
 | `TIF_GTC` | `0` |
 | `TIF_IOC` | `1` |
 | `TIF_FOK` | `2` |
+| `TIF_GTD` | `3` |
 | `TIF_POST_ONLY` | `4` |
 
 ## `SymbolContext`

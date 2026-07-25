@@ -1,12 +1,14 @@
 # C++ — SMA backtest
 
-A complete C++ backtest of an SMA(10/30) crossover. Same model as the [Python example](python-backtest-vs-live.md) — one Strategy subclass replayed through `BacktestRunner` against a CSV — but written against the C++ API directly.
+A C++ backtest of an SMA(10/30) crossover. Same model as the [Python example](python-backtest-vs-live.md) — one Strategy subclass replayed through `BacktestRunner` against a CSV — but written against the C++ API directly.
 
-```bash
-cmake -B build -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target cpp_sma_backtest
-./build/docs/examples/cpp_sma_backtest docs/examples/data/btcusdt_1m.csv
-```
+!!! warning "Illustrative only — not wired into the build"
+    There is no CMake target for this file and no `--target cpp_sma_backtest`
+    to invoke. `replay::createCsvOhlcvReader(...)` on line 116 is not declared
+    anywhere in `include/` or `src/`, so the file will not compile as written.
+    Read it for the API shape; supply your own OHLCV reader and your own build
+    rule if you want to run it. The runnable equivalents are the Python, Node.js
+    and Codon examples linked below.
 
 ```cpp
 --8<-- "examples/cpp_sma_backtest.cpp"
@@ -16,7 +18,7 @@ cmake --build build --target cpp_sma_backtest
 
 - Inheriting from `flox::Strategy` (not `IStrategy`) — `Strategy` exposes `emitMarketBuy/Sell` which `BacktestRunner` intercepts as signals.
 - Using `SymbolContext::position` indirectly via the `_long` / `_short` state — the bookkeeping `BacktestRunner` does in `BacktestResult::computeStats()`.
-- Loading a CSV via `replay::createCsvOhlcvReader(...)` — the same reader interface used for `.floxlog` segments.
+- Feeding `BacktestRunner::run` an `IMultiSegmentReader` — the same reader interface used for `.floxlog` segments.
 - Reading stats off `BacktestResult::computeStats()` — same fields exposed in Python and Node.js.
 
 ## Compare to other languages

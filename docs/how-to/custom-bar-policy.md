@@ -7,7 +7,7 @@ This guide shows how to create your own bar closing policy for the BarAggregator
 
 ## When to Use
 
-Create a custom policy when built-in types (Time, Tick, Volume, Renko, Range) don't fit your needs:
+Create a custom policy when the built-in types (Time, Tick, Volume, Renko, Range, HeikinAshi, BpsRange) don't fit your needs:
 
 - Dollar bars (close after fixed dollar volume)
 - Volatility bars (close based on ATR)

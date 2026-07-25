@@ -214,15 +214,21 @@ The trace format and the tape format version independently. A `.floxrun 1.0` can
 
 ## Bundle integration
 
-`flox bundle pack` produces a tarball containing strategy source, the consumed `.floxlog` directories, and a `.floxrun` directory. `flox bundle replay` extracts the tarball, replays the strategy against the included tapes, and compares the new `.floxrun` against the bundled one as the actual-vs-expected diff.
+`flox bundle pack` produces a tarball containing the strategy source, the consumed tape, the run parameters, and a `.floxrun` directory. `flox bundle replay` extracts the tarball, replays the strategy against the included tape, and compares the new `.floxrun` against the bundled one as the actual-vs-expected diff.
 
 The bundle's outer layout is:
 
 ```
-my-bundle.tar
-├── strategy.py (or .ts, .codon, .js depending on language)
-├── tapes/
-│   ├── BTCUSDT.floxlog/
-│   └── ETHUSDT.floxlog/
+my-bundle.tar[.zst]
+├── manifest.json           versions + integrity hashes + config
+├── strategy/
+│   └── <name>.py           the strategy module
+├── config/
+│   └── params.json         runtime params (slippage, queue model,
+│                           initial capital, ...)
+├── tape/                   the .floxlog tape this run drove against
+├── expected_output.json    PnL, fill sequence, final positions
 └── expected.floxrun/
 ```
+
+Phase 1 covers single-strategy, single-tape bundles — hence `tape/`, singular. Bundles produced before the `.floxrun` ride-along landed have no `expected.floxrun/` entry; `replay` falls back to a JSON-only diff for those.

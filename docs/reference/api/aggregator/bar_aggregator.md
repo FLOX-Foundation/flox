@@ -129,8 +129,12 @@ struct Bar {
 };
 
 // Calculate delta (buy pressure - sell pressure)
-Volume delta = bar.buyVolume.raw() - (bar.volume.raw() - bar.buyVolume.raw());
+Volume sellVolume = bar.volume - bar.buyVolume;
+int64_t delta = bar.buyVolume.raw() - sellVolume.raw();
 ```
+
+`Volume`'s `int64_t` constructor is `explicit`, so a raw arithmetic result cannot be assigned to a
+`Volume`. Subtract the fixed-point values, or work in raw units as above.
 
 ## Multi-Timeframe Analysis
 
@@ -231,29 +235,47 @@ TimeframeId vol = TimeframeId::volume(1000000);                  // $1M volume
 
 Implement your own bar policy by satisfying the `BarPolicy` concept:
 
+The concept requires four members: `shouldClose`, `update`, `initBar`, `param()`, plus a
+`kBarType` constant. All four functions must be `noexcept`. Omitting `param()` fails the constraint
+and `BarAggregator<MyCustomPolicy>` will not instantiate.
+
+`kBarType` must be one of the existing `BarType` values — there is no `BarType::Custom`. Pick the
+value that best describes the closing rule (`Tick`, `Volume`, `Range`, ...).
+
 ```cpp
 struct MyCustomPolicy {
-  static constexpr BarType kBarType = BarType::Custom;
+  static constexpr BarType kBarType = BarType::Volume;
 
-  bool shouldClose(const TradeEvent& trade, const Bar& bar) noexcept {
+  explicit MyCustomPolicy(uint64_t threshold) noexcept : _threshold(threshold) {}
+
+  bool shouldClose(const TradeEvent& trade, const Bar& bar) const noexcept {
     // Your closing logic
-    return /* condition */;
+    return bar.volume.raw() >= static_cast<int64_t>(_threshold);
   }
 
   void update(const TradeEvent& trade, Bar& bar) noexcept {
-    updateOHLCV(trade, bar);  // Use helper for OHLCV update
+    updateOHLCV(trade, bar);  // Helper for the OHLCV update
     // Additional custom updates
   }
 
   void initBar(const TradeEvent& trade, Bar& bar) noexcept {
-    initializeBar(trade, bar);  // Use helper for initialization
+    initBarFromTrade(trade, bar);  // Helper for initialization
     // Additional initialization
   }
+
+  // Required by the concept: the type parameter carried on every BarEvent.
+  uint64_t param() const noexcept { return _threshold; }
+
+ private:
+  uint64_t _threshold;
 };
 
 // Use with BarAggregator
-BarAggregator<MyCustomPolicy> aggregator(MyCustomPolicy{...}, &bus);
+BarAggregator<MyCustomPolicy> aggregator(MyCustomPolicy{1000000}, &bus);
 ```
+
+The initialization helper is `initBarFromTrade(const TradeEvent&, Bar&)`. There is no
+`initializeBar`.
 
 ## BarEvent
 
@@ -261,13 +283,20 @@ Bar events contain full bar data plus metadata:
 
 ```cpp
 struct BarEvent {
-  SymbolId symbol;
-  InstrumentType instrument;
-  BarType barType;
-  uint32_t barTypeParam;  // seconds, tick count, volume threshold
-  Bar bar;
+  using Listener = IMarketDataSubscriber;
+
+  SymbolId symbol{};
+  InstrumentType instrument = InstrumentType::Spot;
+  BarType barType{};
+  uint64_t barTypeParam{};  // interval in NANOSECONDS, tick count, volume threshold
+  Bar bar{};
+
+  uint64_t tickSequence = 0;  // internal, set by bus
 };
 ```
+
+`barTypeParam` is `uint64_t`, and for `BarType::Time` it carries **nanoseconds**, not seconds. A
+1-minute bar has `barTypeParam == 60'000'000'000`.
 
 ## Strategy Integration
 
@@ -276,11 +305,11 @@ struct BarEvent {
 ```cpp
 class MyStrategy : public BarStrategy<4> {
 public:
-  void setBarMatrix(BarMatrix<>* matrix) {
-    BarStrategy::setBarMatrix(matrix);
-  }
+  // Strategy's constructors both require a const SymbolRegistry&.
+  using BarStrategy::BarStrategy;
 
-  void onBar(const BarEvent& ev) override {
+protected:
+  void onSymbolBar(SymbolContext& ctx, const BarEvent& ev) override {
     // Access bars via helper methods
     auto* h1 = bar(timeframe::H1, 0);
     auto* h1_prev = bar(timeframe::H1, 1);
@@ -294,12 +323,18 @@ public:
 };
 ```
 
+`Strategy::onBar` is `final` — it maintains the per-symbol context and bar rings before dispatching.
+Override the protected `onSymbolBar(SymbolContext&, const BarEvent&)` instead.
+
 ### Manual Integration
 
+Only a subscriber that is not a `Strategy` overrides `onBar` directly:
+
 ```cpp
-class MyStrategy : public IMarketDataSubscriber {
+class MyBarSubscriber : public IMarketDataSubscriber {
   void onBar(const BarEvent& ev) override {
-    if (ev.barType == BarType::Time && ev.barTypeParam == 60) {
+    // barTypeParam is nanoseconds for Time bars
+    if (ev.barType == BarType::Time && ev.barTypeParam == 60'000'000'000ULL) {
       // Handle 1-minute bars
     }
   }

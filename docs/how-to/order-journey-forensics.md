@@ -29,6 +29,20 @@ Each row carries:
 The output is a numpy structured array, so downstream analysis can use
 `pandas.DataFrame(arr)` or numpy operations directly.
 
+## Reading it back
+
+| Method | Returns |
+|---|---|
+| `result()` | Every recorded event as one structured array, one row per event |
+| `journey(order_id)` | The same shape, restricted to one order |
+| `order_count()` | Orders currently tracked |
+| `record_count()` | Total events retained across all tracked orders |
+| `median_ack_latency_ns()` | Median submit-to-ack latency across tracked orders |
+| `median_time_to_first_fill_ns()` | Median submit-to-first-fill latency |
+| `maker_fill_ratio()` | Fraction of fills classified maker |
+| `cancel_race_loss_rate()` | Fraction of cancels that lost the race to a fill |
+| `clear()` | Drop every tracked order and reset the counters |
+
 ## Bounded memory
 
 Two caps keep the tracer safe in long runs:

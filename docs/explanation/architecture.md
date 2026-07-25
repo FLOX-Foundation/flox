@@ -127,13 +127,29 @@ Key characteristics:
 `IExchangeConnector` interface:
 
 ```cpp
-class IExchangeConnector
+class IExchangeConnector : public ISubsystem, public IDrainable
 {
 public:
   virtual ~IExchangeConnector() = default;
+
+  // ISubsystem
   virtual void start() = 0;
   virtual void stop() = 0;
+  // IDrainable — default returns true; override to wait for in-flight work
+  bool drain(uint32_t timeoutMs) override { return true; }
+
   virtual std::string exchangeId() const = 0;
+
+  using BookUpdateCallback  = MoveOnlyFunction<void(const BookUpdateEvent&)>;
+  using TradeCallback       = MoveOnlyFunction<void(const TradeEvent&)>;
+  using DisconnectCallback  = MoveOnlyFunction<void(std::string_view reason)>;
+  using SequenceGapCallback = MoveOnlyFunction<void(uint64_t expected, uint64_t received)>;
+  using StaleDataCallback   = MoveOnlyFunction<void(SymbolId, uint64_t lastUpdateMs)>;
+
+  virtual void setCallbacks(BookUpdateCallback onBookUpdate, TradeCallback onTrade);
+  virtual void setErrorCallbacks(DisconnectCallback onDisconnect,
+                                 SequenceGapCallback onSequenceGap,
+                                 StaleDataCallback onStaleData);
 };
 ```
 
@@ -252,9 +268,19 @@ flowchart TB
 
 With `FLOX_ENABLE_CPU_AFFINITY=ON`:
 
+`EventBus` is a class template, so `ComponentType` is reached through
+a concrete alias — `BookUpdateBus`, `TradeBus`, `OrderExecutionBus`:
+
 ```cpp
-bus.setupOptimalConfiguration(EventBus::ComponentType::MARKET_DATA);
+bus.setupOptimalConfiguration(BookUpdateBus::ComponentType::MARKET_DATA);
 ```
+
+`setupOptimalConfiguration` is only compiled when
+`FLOX_CPU_AFFINITY_ENABLED` is set; the convenience wrappers in
+`book_update_bus.h` (`createOptimalBookUpdateBus`,
+`configureBookUpdateBusForPerformance`) compile to a no-op otherwise.
+`ComponentType` values: `MARKET_DATA`, `EXECUTION`, `STRATEGY`,
+`RISK`, `GENERAL`.
 
 This:
 

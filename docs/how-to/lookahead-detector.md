@@ -86,9 +86,13 @@ A strategy that needs a hard guarantee should pair this lint with an integration
   run: |
     set -e
     for f in strategies/*.py; do
-      python3 -m flox_py lint lookahead "$f"
+      flox lint lookahead "$f"
     done
 ```
+
+`flox` is the console script installed with `flox-py`. Without it on
+`PATH`, call the module directly: `python3 -m flox_py.cli lint
+lookahead "$f"` (`flox_py` itself has no `__main__`).
 
 `--json` lets you aggregate findings across many strategies if you have a fleet. Exit code is `0` when clean, `1` when the lint flags anything, `2` when the file is missing.
 

@@ -6,11 +6,15 @@ Cross-symbol research (XS momentum, pair stat-arb, rank-based long-short, disper
 
 ## Helpers
 
+Everything after `symbols` is keyword-only, and `bucket_ns` is required on all three.
+
 | Function | Output |
 |---|---|
-| `build_close_panel(symbols, ..., align=...)` | `Panel(ts, values=(T,S), symbols)` |
-| `build_ohlc_panel(symbols, ..., align=...)` | `OHLCPanel(ts, open, high, low, close, symbols)` |
-| `build_returns_panel(symbols, ..., lookback_n=N, align=...)` | `ReturnsPanel(ts, values=(T,S), symbols)` |
+| `build_close_panel(symbols, *, bucket_ns, tape_root=None, tape_paths=None, align="intersection", t_from=None, t_to=None)` | `Panel(ts, values=(T,S), symbols, mode)` |
+| `build_ohlc_panel(symbols, *, bucket_ns, ...)` | `OHLCPanel(ts, open, high, low, close, symbols, mode)` |
+| `build_returns_panel(symbols, *, bucket_ns, lookback_n, ...)` | `ReturnsPanel(ts, values=(T,S), symbols, lookback_n, mode)` |
+
+`build_returns_panel` additionally requires `lookback_n` (>= 1). Every result dataclass carries a `mode` field holding the alignment mode it was built with. `OHLCPanel` has no volume: the underlying `OHLCBinAggregator` does not emit it.
 
 ## Alignment modes
 

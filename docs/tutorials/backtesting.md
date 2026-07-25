@@ -1,64 +1,33 @@
 # Backtesting
 
-Run your strategy against recorded market data. FLOX gives you two
-paths — one bare, one venue-realistic. Pick the second by default
-unless you have a specific reason to skip the venue physics.
+Run your strategy against recorded market data.
 
 ## Prerequisites
 
 - Completed [Recording Data](recording-data.md) (or have a CSV / `.floxlog` file)
 - Build / install with backtest support — see [Bindings](../bindings/README.md) for per-language details
 
-## Two pipelines
+## The pipeline
 
 ```
-data file → VenueStack ← Strategy → outcome with fees + funding + liquidation + rate limits
-                       (recommended)
-
 data file → BacktestRunner → Strategy → SimulatedExecutor → BacktestResult
-                       (minimal, no venue physics)
 ```
 
-The bare `BacktestRunner` path runs your strategy through a
-`SimulatedExecutor` with a flat fee rate and nothing else. Useful
-for indicator sanity checks. Numbers it produces ignore funding,
-liquidation, queue position, rate limits, and venue outages — the
-forces that decide whether a perp strategy survives in production.
+`BacktestRunner` runs your strategy through a `SimulatedExecutor`
+with a flat fee rate and nothing else. Useful for indicator sanity
+checks. Numbers it produces ignore funding, liquidation, queue
+position, rate limits, and venue outages — the forces that decide
+whether a perp strategy survives in production.
 
-`VenueStack` wires the full venue physics in one call. Same
-strategy class, same fill model, same data source. The diff is
-what gets simulated around the fills.
+Venue physics live in a separate simulation, `VenueStack`, which you
+drive directly rather than plugging into `BacktestRunner`. See
+[Realistic backtest in one call](../how-to/realistic-backtest.md)
+and [Cross-margin accounts](../how-to/cross-margin.md).
 
-## Realistic backtest
+## Minimal example
 
-=== "Python"
-
-    ```python
-    import flox_py as flox
-
-    reg = flox.SymbolRegistry()
-    btc = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
-
-    stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
-    # stack.executor() / stack.account() / stack.liquidation() / stack.fees() / stack.funding()
-    ```
-
-`stack.account()` is a cross-margin Account; `stack.liquidation()`
-holds the configured MM tier ladder and ADL ranking; `stack.fees()`
-binds to the account so 30d VIP tier moves with aggregate notional;
-`stack.funding()` settles on the venue's interval. Other factories:
-`bybit_linear`, `okx_swap`, `deribit`. For custom venues see
-[`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
-
-See [Realistic backtest in one call](../how-to/realistic-backtest.md)
-for the full pattern and [Cross-margin accounts](../how-to/cross-margin.md)
-for the account API.
-
-## Minimal example (bare path)
-
-A strategy that buys when price crosses above a 20-period SMA. This
-runs through `BacktestRunner` directly — the bare path. Match the
-output against a known baseline; do not size positions off these
+A strategy that buys when price crosses above a 20-period SMA. Match
+the output against a known baseline; do not size positions off these
 numbers.
 
 === "Python"
@@ -131,13 +100,13 @@ numbers.
     from flox.strategy import Strategy
     from flox.context import SymbolContext
     from flox.types import TradeData
-    from flox.indicators import StreamingSMA
+    from flox.indicators import SMA
 
     class CrossAboveSMA(Strategy):
-        sma: StreamingSMA
+        sma: SMA
         def __init__(self, symbols: List[int], period: int = 20):
             super().__init__(symbols)
-            self.sma = StreamingSMA(period)
+            self.sma = SMA(period)
 
         def on_trade(self, ctx: SymbolContext, trade: TradeData):
             v = self.sma.update(trade.price.to_double())
@@ -185,14 +154,35 @@ numbers.
 
 | Field | Description |
 |---|---|
-| `total_trades` / `totalTrades` | Number of closed trades |
-| `final_capital` / `finalCapital` | Ending capital |
-| `return_pct` / `returnPct` | Total return % |
-| `sharpe` / `sharpeRatio` | Annualised Sharpe |
-| `sortino` / `sortinoRatio` | Annualised Sortino |
-| `max_drawdown_pct` / `maxDrawdownPct` | Worst drawdown |
-| `win_rate` / `winRate` | Win rate (0–1) |
-| `profit_factor` / `profitFactor` | Gross profit / gross loss |
+Python and Codon use snake_case, Node.js camelCase. C++ reads the
+same fields off `BacktestStats`.
+
+| Python / Codon | Node.js | Description |
+|---|---|---|
+| `total_trades` | `totalTrades` | Number of closed trades |
+| `final_capital` | `finalCapital` | Ending capital |
+| `return_pct` | `returnPct` | Total return % |
+| `sharpe` | `sharpeRatio` | Annualised Sharpe |
+| `sortino` | (absent) | Annualised Sortino |
+| `max_drawdown_pct` | `maxDrawdownPct` | Worst drawdown |
+| `win_rate` | `winRate` | Win rate (0–1) |
+| `profit_factor` | `profitFactor` | Gross profit / gross loss |
+
+Python `BacktestRunner.run_*` returns a plain dict; Codon returns a
+`BacktestStats` object with attribute access; Node.js returns an object
+literal.
+
+Sharpe is the one key whose name does not follow the snake_case to
+camelCase rule, and the shapes differ per producer:
+
+| Producer | Sharpe key | Sortino / Calmar |
+|---|---|---|
+| Python `BacktestRunner.run_*` | `sharpe` | `sortino`; no calmar (`python/strategy_bindings.h:2113-2114`) |
+| Python `BacktestResult.stats()` | `sharpe_ratio` | `sortino_ratio`, `calmar_ratio` (`python/backtest_bindings.h:613-615`) |
+| Node `BacktestRunner.runCsv` / `runOhlcv` / `runBars` | `sharpeRatio` | neither is emitted (`node/src/strategy.h:1527-1546`) |
+| Node `BacktestResult.stats()` | `sharpe` | `sortino`, `calmar` (`node/src/backtest.h:578-580`) |
+| Node `GridSearch` / `WalkForwardRunner` | `sharpeRatio` | `sortinoRatio` (`node/src/walk_forward.h:77-78`) |
+| Codon `run_*` | `sharpe` | `sortino`, `calmar` (`codon/flox/runner.codon:343-345`) |
 
 ## Time-range filtering
 
@@ -219,12 +209,12 @@ numbers.
 
 ## Next
 
-The `BacktestRunner` above is the bare path: flat fee rate, no
-funding, no liquidation, no rate limits. Good enough for a sanity
-check; not enough before live. The venue-realistic stack is one
-call away — `flox.VenueStack.binance_um_futures(account_id=42, equity=10_000)`
-wires executor, account, liquidation engine, fees, and funding with
-venue defaults. See the links below.
+`BacktestRunner` is a flat fee rate, no funding, no liquidation, no
+rate limits. Good enough for a sanity check; not enough before live.
+`flox.VenueStack.binance_um_futures(account_id=42, equity=10_000)`
+gives you an executor, account, liquidation engine, fee schedule and
+funding schedule with venue defaults, driven directly. See the links
+below.
 
 - [Realistic backtest in one call](../how-to/realistic-backtest.md) — venue stack
 - [Cross-margin accounts](../how-to/cross-margin.md) — share equity across positions

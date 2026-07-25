@@ -17,6 +17,20 @@ struct BacktestConfig
 
   QueueModel queueModel{QueueModel::NONE};
   size_t queueDepth{8};
+  double queuePositionMinChangeFraction{0.05};
+
+  // Cancellation ack model
+  int64_t cancelAckLatencyNs{0};
+  int64_t cancelAckJitterNs{0};
+  uint64_t cancelAckSeed{42};
+
+  // Replace ack model
+  int64_t replaceAckLatencyNs{0};
+  int64_t replaceAckJitterNs{0};
+
+  // Submit ack model
+  int64_t submitAckLatencyNs{0};
+  int64_t submitAckJitterNs{0};
 
   double riskFreeRate{0.0};
   double metricsAnnualizationFactor{252.0};
@@ -33,6 +47,14 @@ struct BacktestConfig
 | `perSymbolSlippage` | `{}` | Per-symbol overrides of the default profile |
 | `queueModel` | `NONE` | Queue simulation mode for limit orders. See `queue_simulation.md`. |
 | `queueDepth` | 8 | Levels tracked in `FULL` mode |
+| `queuePositionMinChangeFraction` | 0.05 | Minimum fractional change in `queueAhead` before a `QUEUE_POSITION_UPDATED` event fires. `0.0` fires on every change (lossless, very chatty on liquid books); `1.0` disables emission. Computed against the order's `aheadAtArrival`, so one threshold covers all sizes |
+| `cancelAckLatencyNs` | 0 | Base round-trip delay between `cancelOrder()` and `CANCELED`. Zero preserves the synchronous legacy behavior. Positive turns cancels async: `PENDING_CANCEL` fires immediately, `CANCELED` when sim time reaches `now + sampled_latency`, and the order may still fill in that window (late-cancel-after-fill race) |
+| `cancelAckJitterNs` | 0 | Uniform jitter band; sampled latency is drawn from `[base - jitter, base + jitter]` |
+| `cancelAckSeed` | 42 | Seed making the ack-latency sampling reproducible across runs. Shared by the replace model |
+| `replaceAckLatencyNs` | 0 | Mirrors the cancel model. Positive turns replace async: `REPLACE_SUBMITTED` fires immediately, `REPLACE_ACCEPTED` + `REPLACED` when the deadline elapses, and `REPLACE_REJECTED` when the original filled inside the window |
+| `replaceAckJitterNs` | 0 | Jitter band for the replace ack |
+| `submitAckLatencyNs` | 0 | Positive defers `ACCEPTED` until the sampled deadline. The order does not participate in queue matching or fills until then. A `POST_ONLY` order that becomes marketable during the window is `REJECTED` with `reject_reason = "late_post_only_crossed"` |
+| `submitAckJitterNs` | 0 | Jitter band for the submit ack |
 | `riskFreeRate` | 0.0 | Per-period risk-free rate subtracted from each trade return before Sharpe/Sortino |
 | `metricsAnnualizationFactor` | 252.0 | Scaling factor used for annualized Sharpe/Sortino/Calmar (sqrt applied) |
 
@@ -143,7 +165,9 @@ Each `TradeRecord` now carries both the entry and exit price, the closed quantit
 
 ```cpp
 BacktestConfig cfg;
-cfg.defaultSlippage = {SlippageModel::FIXED_BPS, 0, 2.0, 0.0};  // 2 bps
+// SlippageProfile is {model, ticks, tickSize, bps, impactCoeff} — five members,
+// with Price tickSize third. Price has no implicit double conversion.
+cfg.defaultSlippage = {SlippageModel::FIXED_BPS, 0, Price{}, 2.0, 0.0};  // 2 bps
 cfg.queueModel = QueueModel::TOB;
 cfg.riskFreeRate = 0.0;
 

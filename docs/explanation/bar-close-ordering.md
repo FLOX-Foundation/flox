@@ -11,18 +11,24 @@ For multi-TF strategies, this gives a simple authoring contract:
 > Register coarsest-first.
 
 ```cpp
+using namespace std::chrono_literals;
+
 flox::MultiTimeframeAggregator<3> agg(&bus);
-agg.addTimeframe(H4_NS);   // coarsest first → emits first on tied closes
-agg.addTimeframe(H1_NS);
-agg.addTimeframe(M5_NS);   // finest last → emits last on tied closes
+agg.addTimeInterval(4h);    // coarsest first → emits first on tied closes
+agg.addTimeInterval(1h);
+agg.addTimeInterval(5min);  // finest last → emits last on tied closes
 ```
+
+The registration calls are typed by bar kind: `addTimeInterval(std::chrono::seconds)`, `addTickInterval(uint32_t)`, `addVolumeInterval(double)`. Each returns the slot index it took. Note that `addTimeInterval` takes **seconds**, whereas `BarEvent::barTypeParam` reports the interval in **nanoseconds** — do not pass an `_NS` constant to the registration call.
 
 A strategy that does
 
 ```cpp
 void onSymbolBar(SymbolContext& c, const BarEvent& ev) override {
-  if (ev.barTypeParam == H4_NS) cacheTrend(ev.bar);
-  else if (ev.barTypeParam == M5_NS) maybeEnter(c, ev, lastH4Trend());
+  // barTypeParam is nanoseconds for Time bars; timeframe::H4.param is the
+  // matching constant.
+  if (ev.barTypeParam == flox::timeframe::H4.param) cacheTrend(ev.bar);
+  else if (ev.barTypeParam == flox::timeframe::M5.param) maybeEnter(c, ev, lastH4Trend());
 }
 ```
 
@@ -38,9 +44,8 @@ A previous draft considered automatic descending-duration sort inside `MultiTime
 If a user really wants coarsest-first regardless of registration order, sort the timeframe list before registering:
 
 ```cpp
-std::sort(timeframes.begin(), timeframes.end(),
-          [](auto a, auto b) { return durationNs(a) > durationNs(b); });
-for (auto tf : timeframes) agg.addTimeframe(tf);
+std::sort(intervals.begin(), intervals.end(), std::greater<>{});
+for (auto seconds : intervals) agg.addTimeInterval(seconds);
 ```
 
 ## Replay determinism

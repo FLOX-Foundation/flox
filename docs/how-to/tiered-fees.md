@@ -68,6 +68,22 @@ from the 30-day rolling sum on each lookup.
 Numbers reflect published VIP brackets at the time of writing.
 Tune for your actual tier; venue schedules drift.
 
+## Aggregating volume across symbols
+
+`record_fill` accumulates into the schedule's own 30-day window. When
+the schedule is bound to an `Account`, `record_fill` pushes into the
+account instead and tier resolution reads the account's aggregate
+counter, so volume across every symbol advances the same tier:
+
+```python
+sched.bind_account(account)      # tier now tracks account.rolling_notional_30d()
+sched.clear_account_binding()    # back to the schedule's own window
+```
+
+The `VenueStack` factories bind the account for you.
+`current_bps(now_ns)` returns the active `(maker_bps, taker_bps)`
+pair without computing a fee.
+
 ## Fee sign convention
 
 Returned fee is positive when the account pays, negative when the

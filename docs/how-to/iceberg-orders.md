@@ -46,7 +46,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor } from "flox";
+    import { SimulatedExecutor } from "@flox-foundation/flox";
 
     const exec = new SimulatedExecutor();
     exec.setIcebergRefreshLatency(1_000_000);

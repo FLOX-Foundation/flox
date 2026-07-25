@@ -3,12 +3,23 @@
 `Order` encapsulates all information related to a client-side order, including identifiers, execution parameters, status, timestamps, and advanced order features.
 
 ```cpp
+// Hold-side hint for exchanges in hedge / dual-position mode (Bitget, Bybit,
+// Binance hedge). Connectors serialise this to the exchange's own field
+// (Bitget: posSide=long|short).
+enum class HoldSide : uint8_t
+{
+  Unspecified = 0,
+  Long = 1,
+  Short = 2
+};
+
 struct ExecutionFlags
 {
   uint8_t reduceOnly : 1 = 0;
   uint8_t closePosition : 1 = 0;
   uint8_t postOnly : 1 = 0;
-  uint8_t _reserved : 5 = 0;
+  uint8_t holdSide : 2 = 0;  // HoldSide; cast through static_cast<HoldSide>
+  uint8_t _reserved : 3 = 0;
 };
 
 struct Order
@@ -41,6 +52,11 @@ struct Order
 
   // Iceberg
   Quantity visibleQuantity{};  // visible size (0 = full)
+
+  // STP account routing. Zero = the default account; the simulator applies
+  // self-trade prevention only when two orders share the same accountId.
+  // Configure group-level STP via SimulatedExecutor::setSTPGroupMembership.
+  uint64_t accountId{0};
 };
 ```
 
@@ -83,9 +99,19 @@ struct Order
 
 | Flag          | Description                                   |
 | ------------- | --------------------------------------------- |
-| reduceOnly    | Order can only reduce position, not increase. |
-| closePosition | Order should close entire position.           |
-| postOnly      | Order must be maker; rejects if would take.   |
+| reduceOnly    | 1 bit. Order can only reduce position, not increase. |
+| closePosition | 1 bit. Order should close entire position.           |
+| postOnly      | 1 bit. Order must be maker; rejects if would take.   |
+| holdSide      | 2 bits. `HoldSide` value for hedge-mode venues. Cast with `static_cast<HoldSide>(flags.holdSide)`. |
+| _reserved     | 3 bits. Reserved.                                    |
+
+### HoldSide
+
+| Value | Name | Meaning |
+|-------|------|---------|
+| 0 | `Unspecified` | One-way mode; the venue infers the side |
+| 1 | `Long` | Act on the long position |
+| 2 | `Short` | Act on the short position |
 
 ## Metadata
 
@@ -94,6 +120,7 @@ struct Order
 | clientOrderId | User-defined ID for correlation.                |
 | strategyId    | ID of the strategy that created the order.      |
 | orderTag      | Tag for order grouping (e.g., OCO pairs).       |
+| accountId     | STP account routing. Zero = the default account. `SimulatedExecutor` applies self-trade prevention only between orders sharing an `accountId`; extend the match across accounts with `setSTPGroupMembership`. |
 
 ## Iceberg Orders
 

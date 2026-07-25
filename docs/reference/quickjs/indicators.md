@@ -1,6 +1,10 @@
 # Indicators
 
-Each indicator has `.update()` for per-tick use and a static `.compute()` for batch. All classes support `.reset()` to clear state.
+Every indicator class has `.update()` for per-tick use plus a **static** `.compute()` for batch, and
+`.reset()` to clear state. Whether the *instance* also carries a `compute()` differs per class — see
+[Batch access per class](#batch-access-per-class) below.
+
+Classes are injected as globals by the embedded runtime. There is no `require()` in QuickJS.
 
 ```javascript
 // Single value
@@ -53,9 +57,40 @@ const skewArr = Skewness.compute(prices, 20);
 `RogersSatchellVol` — `update(open, high, low, close)`  
 `Correlation` — `update(x, y)`
 
-**Volume:**
+**Volume — batch-only static helpers, no `update()` / `value` / `ready`:**
 
-`OBV`, `VWAP`, `CVD`
+`OBV.compute(close, volume)`
+`VWAP.compute(close, volume, window)`
+`CVD.compute(open, high, low, close, volume)`
+
+## Batch access per class
+
+**Static `compute()` only** — `new EMA(20).compute(prices)` is `undefined`; call `EMA.compute(prices, 20)`:
+
+`SMA`, `EMA`, `RMA`, `DEMA`, `TEMA`, `RSI`, `Slope`, `ATR`, `CCI`, `CHOP`, `ADX`, `Skewness`,
+`Kurtosis`, `RollingZScore`, `ShannonEntropy`, `ParkinsonVol`, `RogersSatchellVol`, `Correlation`,
+`OBV`, `VWAP`, `CVD` — every class deriving from the streaming base helpers, plus the batch-only
+volume helpers.
+
+**Both instance and static `compute()`** — the classes with custom adapters:
+
+`KAMA`, `MACD`, `Bollinger`, `Stochastic`
+
+```javascript
+// Static form works everywhere.
+const out = EMA.compute(prices, 20);
+
+// Instance form only on KAMA / MACD / Bollinger / Stochastic.
+const bb = new Bollinger(20, 2.0);
+const bands = bb.compute(prices);
+```
+
+!!! warning "The generated catalog below is not QuickJS-accurate"
+    The auto-generated table is produced from `include/flox/indicator/registry.def`, which describes
+    the C++ indicator surface. Two things in it do not apply to the embedded QuickJS runtime: the
+    claim that every class supports both instance `compute()` and `update()` (see the split above),
+    and the `require('flox-node')` line in its example — that is the Node binding's API. In QuickJS
+    the classes are globals. Read the table as a list of available class names only.
 
 ## Indicator catalog
 

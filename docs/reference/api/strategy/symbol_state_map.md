@@ -22,10 +22,15 @@ The container uses a two-tier approach:
 2. **Overflow vector** (symbols >= 256): Linear search, rare case
 
 ```cpp
-alignas(64) std::array<State, MaxSymbols> _flat{};
-std::array<bool, MaxSymbols> _initialized{};
-std::vector<std::pair<SymbolId, State>> _overflow;
+alignas(64) std::array<State, kMaxSymbols> _flat{};
+std::array<bool, kMaxSymbols> _initialized{};
+OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
 ```
+
+`OverflowStorage` is conditional: for a move-constructible `State` it holds a
+`std::vector<std::pair<SymbolId, State>>`; for a non-move-constructible `State` it is an empty stub
+whose `size()` is always 0. So a `State` that cannot be moved gets no overflow tier at all — only the
+flat array is available, and symbols at or above `kMaxSymbols` are not storable.
 
 ## API
 
@@ -114,7 +119,8 @@ For most trading systems with < 256 symbols, all operations are O(1).
 - Initialized flags: `MaxSymbols` bytes
 - Overflow: dynamic allocation only when needed
 
-Default with `SymbolContext`: ~1MB for 256 symbols (4KB per symbol due to order book).
+Default with `SymbolContext`: ~2 MB for 256 symbols. `SymbolContext` is ~8 KB, dominated by
+`NLevelOrderBook<512>`'s two `std::array<Quantity, 512>` (2 x 512 x 8 bytes = 8192 bytes).
 
 ## Template Parameters
 
