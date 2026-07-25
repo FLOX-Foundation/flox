@@ -235,6 +235,7 @@ nav:
           - Cross-binding parity gate: contributors/parity-gate.md
           - Keeping node/index.d.ts class bodies in sync: contributors/dts-class-members.md
           - Test gating: contributors/test-gating.md
+          - Documentation gates: contributors/doc-gates.md
           - CI pipeline: contributors/ci-pipeline.md
           - Binding architecture RFC: contributors/binding-architecture-rfc.md
 
