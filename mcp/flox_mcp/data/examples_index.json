@@ -178,8 +178,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_multi_symbol_cross_margin.py",
-      "sha256": "879831337535e7dfe44a46345857f2f1b6ff47aaa7b60652f05872e4760a380f",
-      "size_bytes": 2072,
+      "sha256": "a8b427724e3caf088ff4912a5eda70a77dd802b943f1160e623f31259044e261",
+      "size_bytes": 2314,
       "topic": "strategy"
     },
     {

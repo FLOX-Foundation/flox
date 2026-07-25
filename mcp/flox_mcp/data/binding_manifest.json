@@ -7211,6 +7211,10 @@
         },
         {
           "kind": "class",
+          "name": "ClosedBar"
+        },
+        {
+          "kind": "class",
           "name": "CompositeBookMatrix"
         },
         {
@@ -7352,6 +7356,10 @@
         {
           "kind": "class",
           "name": "FloxError"
+        },
+        {
+          "kind": "class",
+          "name": "FoldStats"
         },
         {
           "kind": "class",
@@ -7644,6 +7652,10 @@
         {
           "kind": "class",
           "name": "Runner"
+        },
+        {
+          "kind": "class",
+          "name": "RunnerStats"
         },
         {
           "kind": "class",
