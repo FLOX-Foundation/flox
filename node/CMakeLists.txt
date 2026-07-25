@@ -22,6 +22,51 @@ find_library(FLOX_LIB flox HINTS
   ${CMAKE_SOURCE_DIR}/../build
   ${CMAKE_SOURCE_DIR}/../build/Release)
 
+# The addon compiles its own translation units and links a prebuilt archive, so
+# the two halves must agree on NDEBUG. libc++ changes container layout and
+# hardening between debug and release, and a mismatch does not fail to link: it
+# corrupts silently. Observed symptoms of a Release addon against a Debug
+# archive were SymbolRegistry::registerSymbol returning 0 for every symbol,
+# malloc aborting with free_list_checksum_botch, and segfaults at exit.
+#
+# cmake-js builds Release by default. Read the core build's type out of its
+# CMakeCache and refuse to proceed on a mismatch, naming the fix.
+foreach(_flox_core_dir "${CMAKE_SOURCE_DIR}/../build" "${CMAKE_SOURCE_DIR}/../build/Release")
+  if(EXISTS "${_flox_core_dir}/CMakeCache.txt")
+    file(STRINGS "${_flox_core_dir}/CMakeCache.txt" _flox_core_build_type
+         REGEX "^CMAKE_BUILD_TYPE:STRING=")
+    string(REPLACE "CMAKE_BUILD_TYPE:STRING=" "" _flox_core_build_type "${_flox_core_build_type}")
+    break()
+  endif()
+endforeach()
+
+if(_flox_core_build_type)
+  set(_flox_node_build_type "${CMAKE_BUILD_TYPE}")
+  if(NOT _flox_node_build_type)
+    set(_flox_node_build_type "Release")
+  endif()
+  string(TOUPPER "${_flox_core_build_type}" _core_upper)
+  string(TOUPPER "${_flox_node_build_type}" _node_upper)
+  # Debug is the only type without NDEBUG; Release / RelWithDebInfo /
+  # MinSizeRel all define it, so they are interchangeable here.
+  set(_core_ndebug ON)
+  set(_node_ndebug ON)
+  if(_core_upper STREQUAL "DEBUG")
+    set(_core_ndebug OFF)
+  endif()
+  if(_node_upper STREQUAL "DEBUG")
+    set(_node_ndebug OFF)
+  endif()
+  if(NOT _core_ndebug STREQUAL _node_ndebug)
+    message(FATAL_ERROR
+      "flox_node build type (${_flox_node_build_type}) disagrees with the flox "
+      "archive it links (${_flox_core_build_type}). Mixing NDEBUG and non-NDEBUG "
+      "halves corrupts memory instead of failing to link. Rebuild the core with "
+      "-DCMAKE_BUILD_TYPE=${_flox_node_build_type}, or build the addon with "
+      "npm run build -- --debug to match a Debug core.")
+  endif()
+endif()
+
 # Compile flox_capi.cpp directly to avoid DLL/import-lib complexity on Windows
 add_library(flox_node SHARED
   src/flox_node.cpp
