@@ -8539,6 +8539,10 @@
         },
         {
           "kind": "class",
+          "name": "SimulatedClock"
+        },
+        {
+          "kind": "class",
           "name": "SimulatedExecutor"
         },
         {
