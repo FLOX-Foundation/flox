@@ -20,9 +20,21 @@ namespace node_flox
 class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
 {
  public:
+  // Cached at module init. The static factories need the actual constructor,
+  // and inside a StaticMethod there is no way to reach it from the callback
+  // info: `info.This()` IS the constructor function, so `.Get("constructor")`
+  // returns the global `Function`, and `Function(0, 1, 100000)` parses its
+  // last argument as a function body -- every factory threw
+  // "SyntaxError: Unexpected number".
+  static Napi::FunctionReference& Ctor()
+  {
+    static Napi::FunctionReference ref;
+    return ref;
+  }
+
   static Napi::Function Init(Napi::Env env)
   {
-    return DefineClass(
+    Napi::Function fn = DefineClass(
         env, "VenueStack",
         {InstanceMethod("venueName", &VenueStackWrap::VenueName),
          // Account proxies.
@@ -60,6 +72,9 @@ class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
          StaticMethod("okxSwap", &VenueStackWrap::OkxSwap),
          StaticMethod("deribit", &VenueStackWrap::Deribit),
          StaticMethod("fromVenue", &VenueStackWrap::FromVenue)});
+    Ctor() = Napi::Persistent(fn);
+    Ctor().SuppressDestruct();
+    return fn;
   }
 
   VenueStackWrap(const Napi::CallbackInfo& info)
@@ -85,21 +100,14 @@ class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
   static Napi::Value buildFromVenue(const Napi::CallbackInfo& info,
                                     uint8_t venue)
   {
-    Napi::Function ctor = info.Env()
-                              .Global()
-                              .Get("Object")
-                              .As<Napi::Object>()
-                              .Get("VenueStack")
-                              .As<Napi::Function>();
-    // The constructor is exported on the module, not on global.Object.
-    // Look it up via the caller's `this` binding (the module).
-    if (!ctor.IsFunction())
+    Napi::Env env = info.Env();
+    if (Ctor().IsEmpty())
     {
-      ctor =
-          info.This().As<Napi::Object>().Get("constructor").As<Napi::Function>();
+      Napi::Error::New(env, "VenueStack constructor unavailable")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
     }
-    return ctor.New(
-        {Napi::Number::New(info.Env(), venue), info[0], info[1]});
+    return Ctor().New({Napi::Number::New(env, venue), info[0], info[1]});
   }
   static Napi::Value BinanceUmFutures(const Napi::CallbackInfo& info)
   {
@@ -144,9 +152,13 @@ class VenueStackWrap : public Napi::ObjectWrap<VenueStackWrap>
           .ThrowAsJavaScriptException();
       return info.Env().Undefined();
     }
-    Napi::Function ctor =
-        info.This().As<Napi::Object>().Get("constructor").As<Napi::Function>();
-    return ctor.New({Napi::Number::New(info.Env(), code), info[1], info[2]});
+    if (Ctor().IsEmpty())
+    {
+      Napi::Error::New(info.Env(), "VenueStack constructor unavailable")
+          .ThrowAsJavaScriptException();
+      return info.Env().Undefined();
+    }
+    return Ctor().New({Napi::Number::New(info.Env(), code), info[1], info[2]});
   }
 
   Napi::Value VenueName(const Napi::CallbackInfo& info)

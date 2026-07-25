@@ -242,12 +242,32 @@ def _run_strategy_against_tape(
 
     from flox_py.tape import replay_tape
 
-    def on_trade(ts_ns, sym_id, price, qty, side):
-        sim.advance_clock(int(ts_ns))
-        sim.on_trade_qty(int(sym_id), float(price), float(qty), side == 0)
-        runner.on_trade(int(sym_id), float(price), float(qty), side == 0, int(ts_ns))
+    # The tape's symbol ids are assigned by whoever recorded it and bear no
+    # relation to the single symbol registered above. Forwarding them
+    # unchanged fed another instrument's trades to the strategy under this
+    # symbol's name, and `bundle validate` still reported OK. Feed only the
+    # tape symbol this bundle is about, remapped onto the registered id.
+    from flox_py.tape import inspect_tape
 
-    n = replay_tape(tape_path, on_trade=on_trade)
+    tape_ids = list(getattr(inspect_tape(tape_path), "symbol_ids", []) or [])
+    if len(tape_ids) > 1:
+        raise ValueError(
+            f"bundle replay: the tape holds {len(tape_ids)} symbols "
+            f"({tape_ids}) but the bundle registers one ({symbol_name}). "
+            f"Re-pack the bundle from a single-symbol tape.")
+    tape_sym = tape_ids[0] if tape_ids else int(sym)
+    delivered = [0]
+
+    def on_trade(ts_ns, sym_id, price, qty, side):
+        if int(sym_id) != tape_sym:
+            return
+        sim.advance_clock(int(ts_ns))
+        sim.on_trade_qty(int(sym), float(price), float(qty), side == 0)
+        runner.on_trade(int(sym), float(price), float(qty), side == 0, int(ts_ns))
+        delivered[0] += 1
+
+    replay_tape(tape_path, on_trade=on_trade)
+    n = delivered[0]
     runner.stop()
 
     fills = sim.fills_list()

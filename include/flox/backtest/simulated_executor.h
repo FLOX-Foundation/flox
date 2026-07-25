@@ -101,7 +101,9 @@ class SimulatedExecutor : public IOrderExecutor
   void setCancelAckLatencyDistribution(const LatencyDistribution& dist);
   void setReplaceAckLatencyDistribution(const LatencyDistribution& dist);
 
-  void applyLatencyProfile(const char* name);
+  // Returns false if `name` is not a known profile, so callers can
+  // surface a typo instead of silently running default latencies.
+  bool applyLatencyProfile(const char* name);
 
   // Self-trade prevention. When set, submitOrder consults pending
   // resting orders and applies the configured mode if the incoming

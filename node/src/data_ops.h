@@ -58,11 +58,49 @@ class DataWriterWrap : public Napi::ObjectWrap<DataWriterWrap>
  private:
   Napi::Value WriteTrade(const Napi::CallbackInfo& info)
   {
-    return Napi::Boolean::New(info.Env(), flox_data_writer_write_trade(_h,
-                                                                       info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Int64Value(),
-                                                                       info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Number>().DoubleValue(),
-                                                                       info[4].As<Napi::Number>().Int64Value(), info[5].As<Napi::Number>().Uint32Value(),
-                                                                       info[6].As<Napi::Number>().Uint32Value()));
+    // index.d.ts declares `number | bigint` timestamps and `Side`
+    // ("buy" | "sell"), but this read Number for all three, so every
+    // declared form except an all-numeric call threw. writeBook next door
+    // already used toInt64Ns; a real ns timestamp does not survive a double
+    // (1765615835519000000 comes back as ...064), which is why bigint is the
+    // documented form.
+    const int64_t exchTs = toInt64Ns(info[0]);
+    const int64_t recvTs = toInt64Ns(info[1]);
+    const int64_t tradeId = toInt64Ns(info[4]);
+
+    uint32_t side = 0;
+    if (info[6].IsString())
+    {
+      const std::string s = info[6].As<Napi::String>().Utf8Value();
+      if (s == "buy")
+      {
+        side = 0;
+      }
+      else if (s == "sell")
+      {
+        side = 1;
+      }
+      else
+      {
+        Napi::Error::New(info.Env(),
+                         "unknown side: " + s + ". known: buy, sell")
+            .ThrowAsJavaScriptException();
+        return info.Env().Undefined();
+      }
+    }
+    else
+    {
+      side = info[6].As<Napi::Number>().Uint32Value();
+    }
+
+    return Napi::Boolean::New(
+        info.Env(),
+        flox_data_writer_write_trade(_h, exchTs, recvTs,
+                                     info[2].As<Napi::Number>().DoubleValue(),
+                                     info[3].As<Napi::Number>().DoubleValue(),
+                                     tradeId,
+                                     info[5].As<Napi::Number>().Uint32Value(),
+                                     side));
   }
   // bids/asks are flat BigInt64Array: [price_raw, qty_raw, price_raw, qty_raw, ...].
   // Reinterpret the buffer as FloxBookLevel* — layout matches (two int64 per level).
@@ -897,9 +935,25 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
   }
   Napi::Value ByCalendar(const Napi::CallbackInfo& info)
   {
+    // CalendarUnit is Hour=0, Day=1, Week=2, Month=3
+    // (replay/ops/partitioner.h). There used to be no `else`, so "hour"
+    // worked by falling through to 0 -- and so did every typo, silently
+    // partitioning by hour instead of by month.
+    if (!info[0].IsString())
+    {
+      Napi::TypeError::New(info.Env(),
+                           "byCalendar expects a unit string: hour, day, "
+                           "week or month")
+          .ThrowAsJavaScriptException();
+      return info.Env().Undefined();
+    }
     std::string u = info[0].As<Napi::String>().Utf8Value();
     uint8_t unit = 0;
-    if (u == "day")
+    if (u == "hour")
+    {
+      unit = 0;
+    }
+    else if (u == "day")
     {
       unit = 1;
     }
@@ -910,6 +964,14 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
     else if (u == "month")
     {
       unit = 3;
+    }
+    else
+    {
+      Napi::Error::New(info.Env(),
+                       "unknown calendar unit: " + u +
+                           ". known: hour, day, week, month")
+          .ThrowAsJavaScriptException();
+      return info.Env().Undefined();
     }
     int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
     uint32_t count = flox_partitioner_by_calendar(_h, unit, warmup, nullptr, 0);

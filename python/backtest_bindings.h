@@ -427,7 +427,15 @@ class PySimulatedExecutor
   }
   void applyLatencyProfile(const std::string& name)
   {
-    _executor.applyLatencyProfile(name.c_str());
+    // A typo was a silent no-op: the run kept default latencies and looked
+    // like a healthy venue-realistic backtest.
+    if (!_executor.applyLatencyProfile(name.c_str()))
+    {
+      throw std::invalid_argument(
+          "unknown latency profile: " + name +
+          ". known: binance_um_futures, bybit_linear, okx_swap, deribit, "
+          "idealized, adversarial");
+    }
   }
   void setSTPMode(const std::string& mode)
   {

@@ -949,8 +949,8 @@ extern "C"
                                                       int64_t latency_ns, int64_t jitter_ns);
   void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle executor,
                                                        int64_t latency_ns, int64_t jitter_ns);
-  void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
-                                                     const char* profile_name);
+  int flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
+                                                    const char* profile_name);
   void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
   void flox_simulated_executor_set_fok_mode(FloxSimulatedExecutorHandle executor, uint8_t mode);
   uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle executor);
@@ -1289,7 +1289,7 @@ extern "C"
   void flox_fee_schedule_destroy(FloxFeeScheduleHandle h);
   void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h, double min_notional_30d, double maker_bps,
                                   double taker_bps);
-  void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* profile_name);
+  int flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* profile_name);
   void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns, double notional);
   double flox_fee_schedule_fee_for(FloxFeeScheduleHandle h, int64_t ts_ns, double notional,
                                    uint8_t is_maker);
@@ -1432,7 +1432,7 @@ extern "C"
                                                 const uint32_t* symbols, const double* rates,
                                                 uint32_t n_entries);
   uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h, const char* path);
-  void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h, const char* profile_name);
+  int flox_funding_schedule_load_profile(FloxFundingScheduleHandle h, const char* profile_name);
   void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h, double rate);
   void flox_funding_schedule_reset(FloxFundingScheduleHandle h);
   uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int64_t now_ns,
@@ -2021,7 +2021,7 @@ extern "C"
                                                 uint32_t query_weight);
   void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
                                       uint32_t after_consecutive_rejects, int64_t ban_duration_ns);
-  void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h, const char* profile_name);
+  int flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h, const char* profile_name);
   int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h);
   uint32_t flox_rate_limit_policy_consecutive_rejects(FloxRateLimitPolicyHandle h);
   uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandle h, int64_t now_ns,

@@ -54,7 +54,15 @@ class FeeScheduleWrap : public Napi::ObjectWrap<FeeScheduleWrap>
   void LoadProfile(const Napi::CallbackInfo& info)
   {
     std::string name = info[0].As<Napi::String>().Utf8Value();
-    flox_fee_schedule_load_profile(_h, name.c_str());
+    // A typo used to be a silent no-op, leaving default fee schedule
+    // values in place -- a zero-fee or unthrottled backtest that
+    // looks perfectly healthy.
+    if (flox_fee_schedule_load_profile(_h, name.c_str()) == 0)
+    {
+      Napi::Error::New(info.Env(), "unknown fee schedule profile: " + name +
+                                       ". known: binance_um_futures, bybit_linear, okx_swap, deribit")
+          .ThrowAsJavaScriptException();
+    }
   }
   void RecordFill(const Napi::CallbackInfo& info)
   {

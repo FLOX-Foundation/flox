@@ -2140,8 +2140,10 @@ export class Partitioner {
   constructor(dataDir: string);
   byTime(numPartitions: number, warmupNs: number | bigint): Partition[];
   byDuration(durationNs: number | bigint, warmupNs: number | bigint): Partition[];
-  /** `unit`: 0=day, 1=week, 2=month. */
-  byCalendar(unit: 0 | 1 | 2, warmupNs: number | bigint): Partition[];
+  /** Partition on calendar boundaries. The addon reads a unit *string*;
+   *  the numeric form this used to declare was never accepted. */
+  byCalendar(unit: 'hour' | 'day' | 'week' | 'month',
+             warmupNs: number | bigint): Partition[];
   bySymbol(numPartitions: number): Partition[];
   perSymbol(): Partition[];
   byEventCount(numPartitions: number): Partition[];

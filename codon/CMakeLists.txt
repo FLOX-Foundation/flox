@@ -27,6 +27,10 @@ function(add_codon_executable name source)
   add_custom_target(build_${name} ALL DEPENDS ${OUTPUT_EXE})
 endfunction()
 
+# Forces realization of the binding surface; see the file header.
+add_codon_executable(codon_binding_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/binding_smoke.codon)
+
 add_codon_executable(codon_sma_crossover
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/sma_crossover.codon)
 

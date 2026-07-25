@@ -39,8 +39,8 @@ class ZlemaCrossStrategy(flox.Strategy):
             return
         if f > s and ctx.is_flat():
             self.market_buy(self.qty)
-        elif f < s and ctx.is_flat():
-            self.market_sell(self.qty)
+        elif f < s and ctx.is_long():
+            self.close_position()
 
 
 def main() -> None:

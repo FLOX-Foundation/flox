@@ -160,9 +160,17 @@ The helper:
 - Attaches the account to liquidation and routes liquidation
   orders through the executor
 
-`CustomVenue` has the same accessor surface as a `VenueStack`
-(`.executor()`, `.account()`, etc.) so downstream code is
-interchangeable with a canned factory's output.
+`CustomVenue` mirrors most of `VenueStack`'s accessors
+(`.executor()`, `.account()`, `.fees()`, `.funding()`,
+`.liquidation()`) but is not a drop-in replacement: it has no
+`.clock()`, its availability accessor is `.venue_availability()`
+rather than `.venue()`, and `.executor()` hands back a
+`SimulatedExecutor` rather than a stack-owned `VenueExecutor`.
+
+It also takes `queue_model` / `queue_depth` (default `"full"` / 8,
+matching the built-in presets). Passing `"none"` leaves resting maker
+orders unfillable while taker orders still fill, so the run looks
+alive and reports no maker fills.
 
 The C++ escape hatch is `VenueStack::assemble(AssembleArgs&&)`.
 Codon and QuickJS users assemble manually via the existing setter

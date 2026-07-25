@@ -1427,7 +1427,7 @@ extern "C"
   // bybit_linear, okx_swap, deribit, idealized, adversarial. Unknown
   // names are a no-op.
   FLOX_EXPORT(group = "backtest_slippage")
-  void flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
+  int flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
                                                      const char* profile_name);
 
   // Self-trade prevention mode. 0=None, 1=CancelNewest, 2=CancelOldest,
@@ -1534,7 +1534,7 @@ extern "C"
   // Canned profiles: "binance_um_futures", "bybit_linear",
   // "okx_swap", "deribit". Unknown names are a no-op.
   FLOX_EXPORT(group = "rate_limit")
-  void flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
+  int flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
                                            const char* profile_name);
 
   FLOX_EXPORT(group = "rate_limit")
@@ -4167,9 +4167,11 @@ extern "C"
                                   double maker_bps, double taker_bps);
 
   // Canned profile: "binance_um_futures" | "bybit_linear" | "okx_swap" |
-  // "deribit". Unknown names are a no-op.
+  // "deribit". Returns 1 if the profile was applied, 0 if the name is
+  // unknown -- a silently-ignored typo would otherwise produce a zero-fee
+  // backtest that looks healthy.
   FLOX_EXPORT(group = "fee_schedule")
-  void flox_fee_schedule_load_profile(FloxFeeScheduleHandle h,
+  int flox_fee_schedule_load_profile(FloxFeeScheduleHandle h,
                                       const char* profile_name);
 
   FLOX_EXPORT(group = "fee_schedule")
@@ -4241,7 +4243,7 @@ extern "C"
   // "okx_swap" | "bitget_hourly". Rate defaults to zero; override
   // with set_constant_rate or use a tape.
   FLOX_EXPORT(group = "funding_schedule")
-  void flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
+  int flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
                                           const char* profile_name);
 
   FLOX_EXPORT(group = "funding_schedule")

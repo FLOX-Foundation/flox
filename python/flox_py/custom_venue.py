@@ -106,6 +106,8 @@ def assemble_custom_venue(
     rate_limits: RateLimitPolicy,
     venue_availability: Optional[VenueAvailability] = None,
     venue_name: str = "custom",
+    queue_model: str = "full",
+    queue_depth: int = 8,
 ) -> CustomVenue:
     """Wire pre-built subsystems into a venue-stack-shaped bundle.
 
@@ -113,7 +115,12 @@ def assemble_custom_venue(
     need (custom fee ladder, custom funding interval, custom MM
     tier, ...) and passes them in. The helper:
 
-    - Creates a fresh `SimulatedClock` + `SimulatedExecutor`.
+    - Creates a fresh `SimulatedExecutor` and gives it a queue model.
+      Without one the executor runs `QueueModel.NONE`, where a resting
+      maker order never fills -- taker orders still fill, so a backtest
+      built this way looks alive while silently reporting zero maker
+      fills. The C++ `wireStack` has always set this; this helper did
+      not. `full`/8 matches the built-in venue presets.
     - Binds the executor to the supplied rate-limit policy +
       venue-availability instance (or a fresh `VenueAvailability`
       if none supplied).
@@ -133,6 +140,7 @@ def assemble_custom_venue(
     venue_avail = venue_availability if venue_availability is not None else VenueAvailability()
 
     # Wire the executor.
+    executor.set_queue_model(queue_model, queue_depth)
     executor.set_venue_availability(venue_avail)
     executor.set_rate_limit_policy(rate_limits)
 

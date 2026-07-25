@@ -360,7 +360,10 @@ def aggtrades_to_floxlog(
     rows_skipped = 0
     for r in _iter_rows(csv_path):
         rows_read += 1
-        if r[0] <= last_id:
+        # last_id == 0 doubles as "nothing archived yet", so a real
+        # aggTradeId of 0 was skipped as already-seen. The sibling
+        # archives (bybit, deribit, bitget) already carry this guard.
+        if r[0] <= last_id and r[0] != 0:
             rows_skipped += 1
             continue
         rows.append(r)

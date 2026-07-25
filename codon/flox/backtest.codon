@@ -38,7 +38,7 @@ from C import flox_simulated_executor_set_iceberg_jitter_seed(cobj, u64)
 from C import flox_simulated_executor_set_submit_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_cancel_ack_latency(cobj, i64, i64)
 from C import flox_simulated_executor_set_replace_ack_latency(cobj, i64, i64)
-from C import flox_simulated_executor_apply_latency_profile(cobj, cobj)
+from C import flox_simulated_executor_apply_latency_profile(cobj, cobj) -> i32
 from C import flox_latency_distribution_create() -> cobj
 from C import flox_latency_distribution_destroy(cobj)
 from C import flox_latency_distribution_set_constant(cobj, i64)
@@ -530,13 +530,14 @@ class SimulatedExecutor:
     def apply_latency_profile(self, name: str):
         # Codon strings are utf-8; pass as cobj pointer to bytes.
         # The C side reads name as const char*.
-        from internal.gc import sys_alloc
+        # `internal.gc.sys_alloc` does not exist in Codon 0.19.6.
         n = len(name)
-        buf = Ptr[byte](sys_alloc(n + 1))
+        buf = Ptr[byte](n + 1)
         for i in range(n):
-            buf[i] = byte(ord(name[i]))
+            buf[i] = byte(int(name.ptr[i]))
         buf[n] = byte(0)
-        flox_simulated_executor_apply_latency_profile(self._handle, cobj(buf))
+        if int(flox_simulated_executor_apply_latency_profile(self._handle, cobj(buf))) == 0:
+            raise ValueError("unknown latency profile: " + name)
 
     def set_submit_ack_latency_distribution(self, dist: LatencyDistribution):
         flox_simulated_executor_set_submit_ack_latency_distribution(
