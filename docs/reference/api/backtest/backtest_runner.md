@@ -16,8 +16,19 @@ public:
   void addMarketDataSubscriber(IMarketDataSubscriber* subscriber);
   void addExecutionListener(IOrderExecutionListener* listener);
 
+  // Custom executor / pre-trade gates
+  void setExecutor(IOrderExecutor* executor) noexcept;
+  IOrderExecutor* customExecutor() const noexcept;
+  void setRiskManager(IRiskManager* rm) noexcept;
+  void setOrderValidator(IOrderValidator* ov) noexcept;
+  void setKillSwitch(IKillSwitch* ks) noexcept;
+  void setPnLTracker(IPnLTracker* tracker) noexcept;
+
   // Non-interactive mode
   BacktestResult run(replay::IMultiSegmentReader& reader);
+  BacktestResult runBars(const std::vector<BarEvent>& bars);
+  BacktestResult runTape(const std::filesystem::path& data_dir);
+  BacktestResult runTapes(const std::vector<std::filesystem::path>& data_dirs);
 
   // Interactive mode
   void start(replay::IMultiSegmentReader& reader);
@@ -54,6 +65,30 @@ public:
   const BacktestConfig& config() const noexcept;
 };
 ```
+
+## Entry Points
+
+| Method | Input | Notes |
+|--------|-------|-------|
+| `run(reader)` | An `IMultiSegmentReader` | The general path |
+| `runBars(bars)` | A `std::vector<BarEvent>` | Each bar updates the `SimulatedExecutor` so resting orders and SL/TP match against `bar.high` / `bar.low` / `bar.close`, then dispatches to `Strategy::onBar` and any registered subscriber. Bars must be in non-decreasing `endTime` order |
+| `runTape(dir)` | One `.floxlog` directory | Opens the tape via `replay::createMultiSegmentReader`. Throws if `dir` is not a `.floxlog` directory or holds no segments |
+| `runTapes(dirs)` | N `.floxlog` directories, merged on read | Symbols are rekeyed into the engine registry via `(metadata.exchange, name)`, so strategies that pre-resolved venue-tagged symbols see the merger's ids. Throws if any input is not `.floxlog`, or if two inputs declare overlapping book streams for the same symbol (`OverlappingBookStreamError`). `runTapes({t})` equals `runTape(t)` modulo the rekey |
+
+## Pre-Trade Gates
+
+All four hooks are optional; an unset hook is a no-op. The runner holds raw pointers and does not
+delete them.
+
+Gates fire on entry-type signals (`Market`, `Limit`, `Stop*`, `TakeProfit*`, `TrailingStop`) and on
+the order they produce. `Cancel`, `CancelAll` and `Modify` pass through ungated — they reduce, not
+add, exposure. Reduce-only orders also bypass: when caps tighten you do not want to be stuck in a
+position.
+
+`setExecutor` replaces the built-in `SimulatedExecutor` for signal routing (submit, cancel, replace,
+OCO, cancelAll). The simulator is left intact to match live data into `BacktestResult`; the custom
+executor must report fills through its own execution-listener path. Pass `nullptr` to revert. The
+caller retains ownership.
 
 ## Two Modes
 

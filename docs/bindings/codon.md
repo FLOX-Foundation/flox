@@ -6,15 +6,15 @@ Flox provides Codon bindings via the C API, so strategies compile to binaries wi
 ## Prerequisites
 
 - [Codon compiler](https://github.com/exaloop/codon) installed
-- Flox built with `-DFLOX_ENABLE_CAPI=ON`
+- Flox built with `-DFLOX_BUILD_CAPI=ON`
 
 ## Build
 
 ```bash
 cmake -B build \
   -DFLOX_ENABLE_BACKTEST=ON \
-  -DFLOX_ENABLE_CAPI=ON \
-  -DFLOX_ENABLE_CODON=ON \
+  -DFLOX_BUILD_CAPI=ON \
+  -DFLOX_BUILD_CODON=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
@@ -50,16 +50,16 @@ Subclass `Strategy` and override `on_trade`. Order methods default to the primar
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData
-from flox.indicators import StreamingSMA
+from flox.indicators import SMA
 
 class SMAcross(Strategy):
-    fast: StreamingSMA
-    slow: StreamingSMA
+    fast: SMA
+    slow: SMA
 
     def __init__(self, symbols: List[int]):
         super().__init__(symbols)
-        self.fast = StreamingSMA(10)
-        self.slow = StreamingSMA(30)
+        self.fast = SMA(10)
+        self.slow = SMA(30)
 
     def on_start(self):
         print("started")
@@ -139,23 +139,29 @@ from flox.runner import BacktestRunner
 bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
 bt.set_strategy(SMAcross([int(btc)]))
 
-stats = bt.run_csv("/path/to/btcusdt_trades.csv", "BTCUSDT")
+stats = bt.run_csv("/path/to/btcusdt_1m.csv", "BTCUSDT")
 print(stats.return_pct, stats.sharpe, stats.max_drawdown_pct)
 ```
 
-Or pass raw arrays:
+`run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not.
+
+Or pass raw arrays / a recorded tape:
 
 ```python
 stats = bt.run_ohlcv(timestamps_ns, closes, "BTCUSDT")
+stats = bt.run_tape("/path/to/tape.floxlog")
 ```
 
-For the realistic venue stack (cross-margin Account, MM tier ladder + ADL, VIP fee schedule, funding settlement, rate limits, venue availability), drive the simulation from Python via [`flox.VenueStack.binance_um_futures(...)`](../how-to/realistic-backtest.md) and call the Codon strategy through the C API. The Codon strategy class itself is unchanged.
+The realistic venue stack (cross-margin account, MM tier ladder + ADL, VIP fee schedule, funding settlement, rate limits, venue availability) is a separate simulation in `flox.backtest`. It is not an argument to `BacktestRunner`:
 
-## Paper and live
+```python
+from flox.backtest import binance_um_futures
 
-The Python `PaperBroker` and `CcxtBroker` wrap any strategy that implements the C API contract — including Codon-compiled strategies. Compile once with `codon build`, then load the resulting `.so` from Python and pass it to the runner. See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+stack = binance_um_futures(account_id=42, equity=10_000.0)
+acct = stack.account_handle()   # raw handle; wrap with the matching codon class if needed
+```
 
-One strategy class runs backtest, paper, and live.
+Codon has no `@classmethod`, so the factories are module-level functions: `binance_um_futures`, `bybit_linear`, `okx_swap`, `deribit`, `from_venue(name, account_id, equity)`. See [Realistic backtest in one call](../how-to/realistic-backtest.md).
 
 ### BacktestStats fields
 
@@ -174,17 +180,19 @@ One strategy class runs backtest, paper, and live.
 
 ## Indicators
 
-Streaming indicators with zero FFI overhead (pure Codon):
+Indicator classes offer both a batch (`compute`) and an incremental (`update` / `value` / `ready` / `reset`) surface:
 
 ```python
-from flox.indicators import StreamingSMA, StreamingEMA
+from flox.indicators import SMA, EMA
 
-sma = StreamingSMA(20)
+sma = SMA(20)
 val = sma.update(price)   # returns float; sma.ready is True once primed
 
-ema = StreamingEMA(12)
+ema = EMA(12)
 val = ema.update(price)
 ```
+
+`update()` is not an O(1) online recurrence. Each class accumulates the full history and re-runs the batch C-API function over it, which keeps results identical to `compute()` by construction but costs one FFI call over the whole history per tick. For tick-rate hot paths, buffer and call `compute()` on the batch instead.
 
 Batch indicators via C API (`ema`, `sma`, `rsi`, `atr`, `macd`, `bollinger`) — see [Codon Indicators](../reference/codon/indicators.md).
 
@@ -195,16 +203,16 @@ from flox.runner import Runner, BacktestRunner, flox_registry_create, flox_regis
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData
-from flox.indicators import StreamingSMA
+from flox.indicators import SMA
 
 class SMAcross(Strategy):
-    fast: StreamingSMA
-    slow: StreamingSMA
+    fast: SMA
+    slow: SMA
 
     def __init__(self, symbols: List[int]):
         super().__init__(symbols)
-        self.fast = StreamingSMA(10)
-        self.slow = StreamingSMA(30)
+        self.fast = SMA(10)
+        self.slow = SMA(30)
 
     def on_trade(self, ctx: SymbolContext, trade: TradeData):
         f = self.fast.update(trade.price.to_double())
@@ -227,7 +235,7 @@ def main():
     # --- Backtest ---
     bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
     bt.set_strategy(SMAcross([btc_id]))
-    stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")
+    stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
     print(f"Return: {stats.return_pct:.2f}%  Sharpe: {stats.sharpe:.3f}")
 
     # --- Live ---

@@ -24,15 +24,25 @@ auto logger = std::make_unique<AtomicLogger>(opts);
 
 ## Options
 
-| Field              | Description                                     |
-| ------------------ | ----------------------------------------------- |
-| `overflow`         | `Drop` or `Overwrite` when buffer is full       |
-| `levelThreshold`   | Minimum `LogLevel` to log                       |
-| `basename`         | Log file base name (e.g. `flox.log`)            |
-| `directory`        | Directory for log output (e.g. `/dev/shm`)      |
-| `maxFileSize`      | Maximum size before rotation                    |
-| `rotateInterval`   | Time-based rotation window                      |
-| `flushImmediately` | If `true`, flush immediately after each message |
+| Field              | Default              | Description                                     |
+| ------------------ | -------------------- | ----------------------------------------------- |
+| `overflow`         | `Drop`               | `Drop` or `Overwrite` when buffer is full       |
+| `levelThreshold`   | `LogLevel::Info`     | Minimum `LogLevel` to log                       |
+| `basename`         | `"flox.log"`         | Log file base name                              |
+| `directory`        | `"/dev/shm"`         | Directory for log output                        |
+| `maxFileSize`      | 100 MB               | Maximum size before rotation                    |
+| `rotateInterval`   | 60 minutes           | Time-based rotation window                      |
+| `flushImmediately` | `true`               | If `true`, flush immediately after each message |
+
+The example above overrides several of these; a default-constructed
+`AtomicLoggerOptions` rotates at 100 MB or 60 minutes, not at the example's 10 MB / 30 minutes.
+
+## Methods
+
+| Method | Description |
+|--------|-------------|
+| `info(msg)` / `warn(msg)` / `error(msg)` | `ILogger` overrides. Lock-free on the caller's thread |
+| `flush()` | Drain the ring buffer to the file synchronously. Public; call it before shutdown or when you need the file to be current |
 
 ## Implementation Details
 

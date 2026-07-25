@@ -53,7 +53,7 @@ confidence is a strong signal; below 0.3 the estimate is roughly
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
 
     const est = new flox.LiveQueuePositionEstimator();
     est.setConfidenceHalfLifeNs(60_000_000_000);
@@ -105,6 +105,47 @@ confidence is a strong signal; below 0.3 the estimate is roughly
     auto snap = est.snapshot(/*orderId=*/42);  // std::optional<LiveQueueSnapshot>
     ```
 
+## Snapshot fields
+
+`snapshot(order_id, now_ns=0)` returns `None` when the order is not
+tracked, otherwise a dict (Python) / object (Node) with:
+
+| Python key | Node field | Meaning |
+|---|---|---|
+| `order_id` | `orderId` | The tracked order |
+| `queue_ahead_est` | `queueAheadEst` | Estimated volume ahead in the queue |
+| `total` | `total` | Level total recorded at placement |
+| `confidence` | `confidence` | Decayed confidence in `[0, 1]` |
+| `last_update_ns` | `lastUpdateNs` | Timestamp of the last event applied |
+| `hidden_volume_seen` | `hiddenVolumeSeen` | Trade volume attributed to hidden liquidity |
+
+`tracked_order_count()` reports how many orders the estimator is
+currently following.
+
+## Hidden and iceberg liquidity
+
+Hidden fills that a naive estimator books as visible-queue consumption
+are the main source of drift. `set_hidden_order_policy(policy)`
+selects how trades are attributed:
+
+| Policy | Behaviour |
+|---|---|
+| `ignore` (default) | Every trade deducts visible queue. Over-attributes when hidden flow is present. |
+| `trust_trade_flag` | The caller flags hidden trades; flagged volume neither deducts queue nor feeds the proportional-shrink path. For venues that publish a per-trade hidden flag. |
+| `infer_if_trade_exceeds_visible` | Trade volume above the last-known visible level total is attributed to hidden flow. For venues that do not flag hidden but where the excess is observable. |
+
+Under `trust_trade_flag`, feed trades through
+`on_trade_with_flag(symbol, price, qty, ts_ns=0, is_hidden=False)`
+instead of `on_trade`. Attributed volume accumulates in the
+snapshot's `hidden_volume_seen`.
+
+Two more lifecycle hooks matter for accuracy:
+
+- `on_order_cancelled(order_id, ts_ns=0)` — drop a cancelled order
+  from tracking so it stops consuming a slot.
+- `set_shrink_attribution_factor(factor)` — the confidence multiplier
+  applied on each proportional-shrink attribution (default 0.85).
+
 ## Calibration
 
 The shipped defaults (60s half-life, 0.85 shrink factor) are a
@@ -124,9 +165,10 @@ values for a venue you want to share.
 
 ## Limits
 
-- Hidden / iceberg orders are invisible to clients, so the
-  proportional-shrink heuristic misattributes their fills as
-  cancellations.
+- Hidden / iceberg orders are invisible to clients. Under the default
+  `ignore` policy the proportional-shrink heuristic misattributes
+  their fills as cancellations; the two other hidden-order policies
+  above reduce but do not eliminate the error.
 - Same-price joins from new orders show up as level growth, which
   the estimator treats as "behind us" — correct for queue position
   but understates how much competing volume the level now holds.

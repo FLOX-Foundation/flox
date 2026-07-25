@@ -47,6 +47,7 @@ public:
 |-----------------------------|------------------------------------------|
 | `InvalidMagic`              | File magic number doesn't match          |
 | `InvalidVersion`            | Unsupported format version               |
+| `InvalidFlags`              | Segment header flags are not a valid combination |
 | `HeaderCorrupted`           | Segment header unreadable                |
 | `FrameCrcMismatch`          | Frame CRC32 check failed                 |
 | `FrameSizeTooLarge`         | Frame size exceeds limits                |
@@ -54,14 +55,31 @@ public:
 | `FrameTruncated`            | Incomplete frame data                    |
 | `BlockMagicInvalid`         | Compressed block magic mismatch          |
 | `BlockDecompressionFailed`  | LZ4 decompression error                  |
+| `BlockSizeMismatch`         | Decompressed block size differs from the header's |
 | `IndexCrcMismatch`          | Index CRC32 check failed                 |
+| `IndexMagicInvalid`         | Index magic number doesn't match         |
+| `IndexOutOfBounds`          | Index entry points outside the file      |
 | `IndexNotSorted`            | Index entries not in order               |
 | `TimestampOutOfOrder`       | Events not chronologically sorted        |
 | `TimestampJumpTooLarge`     | Suspicious timestamp gap                 |
 | `EventCountMismatch`        | Header count doesn't match actual        |
 | `FileTruncated`             | File ends unexpectedly                   |
+| `FileNotFound`              | The path does not exist                  |
+| `FileReadError`             | The file could not be read               |
 
 ## Severity Levels
+
+The enum is named `IssueSeverity`.
+
+```cpp
+enum class IssueSeverity
+{
+  Info,
+  Warning,
+  Error,
+  Critical,
+};
+```
 
 | Level      | Meaning                                    |
 |------------|---------------------------------------------|

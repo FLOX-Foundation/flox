@@ -69,7 +69,7 @@ Out-of-process signing keeps the secret out of the trading binary's address spac
 The expected pattern for a new connector:
 
 1. Create `connectors/src/<venue>/` and `connectors/include/flox-connectors/<venue>/`.
-2. Implement the venue-specific subclasses of the connector / executor abstractions in `flox::book::IExchangeConnector` and `flox::execution::IOrderExecutor`.
+2. Implement the venue-specific subclasses of the connector / executor abstractions in `flox::IExchangeConnector` (`flox/connector/abstract_exchange_connector.h`) and `flox::IOrderExecutor` (`flox/execution/abstract_executor.h`) — both live directly in namespace `flox`.
 3. The CMake glob in `connectors/CMakeLists.txt` picks up new `.cpp` files automatically — no CMakeLists edit needed.
 4. Add an integration test under `connectors/tests/integration_test_<venue>.cpp` (build-only by default).
 

@@ -7,7 +7,7 @@ filling in the window between replaceOrder and the venue's ack.
 
 ## Events
 
-Async replace produces a four-event sequence on success:
+Async replace produces a three-event sequence on success:
 
 - REPLACE_SUBMITTED — fires immediately on replaceOrder()
 - REPLACE_ACCEPTED — fires at the sampled ack deadline
@@ -26,7 +26,7 @@ the existing on_order_update / onOrderUpdate path.
 
 ## Configure
 
-Two new BacktestConfig knobs:
+Two BacktestConfig knobs:
 
 - replaceAckLatencyNs — base ack delay. Default 0 preserves the
   legacy synchronous replaceOrder().
@@ -34,18 +34,26 @@ Two new BacktestConfig knobs:
 
 RNG sampling shares cancelAckSeed.
 
+The bindings expose the pair as one SimulatedExecutor setter,
+set_replace_ack_latency(latency_ns, jitter_ns=0). BacktestRunner's
+constructor takes only (registry, fee_rate, initial_capital) and
+owns its executor internally, so a BacktestRunner's replace latency
+is configured through BacktestConfig in C++.
+
 === "Python"
 
     ```python
     import flox_py as flox
 
-    runner = flox.BacktestRunner(
-        registry,
-        fee_rate=0.0,
-        initial_capital=100_000.0,
-        replace_ack_latency_ns=10_000_000,
-        replace_ack_jitter_ns=2_000_000,
-    )
+    ex = flox.SimulatedExecutor()
+    ex.set_replace_ack_latency(10_000_000, 2_000_000)
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const ex = new flox.SimulatedExecutor();
+    ex.setReplaceAckLatency(10_000_000, 2_000_000);
     ```
 
 === "C++"
@@ -90,6 +98,10 @@ RNG sampling shares cancelAckSeed.
 
 ## Notes
 
+- Neither the Python nor the Node SimulatedExecutor exposes a
+  replace call. A backtest replace is emitted from the strategy
+  (modify_order / emitModify); the runner turns that Modify signal
+  into replaceOrder on its own executor.
 - The pending replace is dropped if the order is canceled by other
   means before the ack arrives. Replace ack finalization runs on
   the next simulator tick after the deadline passes.

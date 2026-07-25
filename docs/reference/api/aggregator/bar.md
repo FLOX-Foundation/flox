@@ -9,7 +9,8 @@ enum class BarType : uint8_t {
   Volume,     // Fixed notional volume
   Renko,      // Fixed price movement (bricks)
   Range,      // Fixed high-low range
-  HeikinAshi  // Smoothed time-based bars
+  HeikinAshi, // Smoothed time-based bars
+  BpsRange    // Fixed high-low range in basis points of the bar open
 };
 
 enum class BarCloseReason : uint8_t {
@@ -67,6 +68,7 @@ int64_t delta = bar.buyVolume.raw() - sellVolume.raw();
 | `Renko` | Price moved by brick size | Trend following |
 | `Range` | High-low exceeded threshold | Volatility analysis |
 | `HeikinAshi` | Time interval (smoothed OHLC) | Trend clarity |
+| `BpsRange` | `(high - low) / open >= bps threshold` | Volatility analysis, scale-free across price levels |
 
 ## See Also
 

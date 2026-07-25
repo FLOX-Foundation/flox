@@ -65,24 +65,22 @@ runner.stop()
 
 ## 4. Backtest
 
-Two paths. Pick the second by default.
-
-### Bare backtest
-
 ```python
 bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMACross([btc]))
 
-stats = bt.run_csv("btcusdt_trades.csv")
+stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
 print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
 ```
 
-CSV format: `timestamp,price,qty,is_buy`, one trade per row. Flat
-fee rate, no funding, no liquidation, no rate limits, no queue
-position. Use for an indicator sanity check, not for a decision
-about real capital.
+CSV format: one header line, then OHLCV bars —
+`timestamp,open,high,low,close,volume`. Only the timestamp and close
+columns are read; each row is replayed as a single trade, so
+`on_trade` fires. Flat fee rate, no funding, no liquidation, no rate
+limits, no queue position. Use for an indicator sanity check, not for
+a decision about real capital.
 
-### Realistic backtest
+## 5. Venue physics
 
 ```python
 stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
@@ -99,6 +97,9 @@ funding settlement schedule, the venue-specific rate-limit policy,
 and the venue-availability hook. Other factories: `bybit_linear`,
 `okx_swap`, `deribit`. For custom venues see
 [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
+
+`VenueStack` is a standalone simulation: you drive its subsystems
+directly. It is not an argument to `BacktestRunner`.
 
 Full pattern: [Realistic backtest in one call](../how-to/realistic-backtest.md).
 
@@ -138,5 +139,5 @@ That's it — `scikit-build-core` handles the cmake build internally. The module
 - [Control engine over MCP](../how-to/mcp-control-plane.md) —
   AI agents driving the engine with scoped permission and audit.
 - [Indicators reference](../reference/python/indicators.md) — full indicator API.
-- [Python bindings guide](../bindings/python.md) — batch backtest engine, grid search, live runner.
+- [Python bindings guide](../bindings/python.md) — vectorised engine, live runner, paper and live brokers.
 - [Backtesting how-to](../how-to/backtest.md).

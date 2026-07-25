@@ -82,33 +82,43 @@ Configure a backtest with realistic execution: slippage on market orders, queue 
 
 ## 3. Inspect stats
 
-The same fields are returned by every binding (snake_case in Python/Codon, camelCase in Node, `BacktestStats` struct in C++).
+These are the fields on the dict returned by `run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes` (snake_case in Python/Codon, camelCase in Node, `BacktestStats` struct in C++).
 
-| Field | Description |
-|---|---|
-| `total_trades` / `totalTrades` | Number of closed trades |
-| `net_pnl` / `netPnl` | Total P&L net of fees |
-| `return_pct` / `returnPct` | Total return % |
-| `sharpe` / `sharpeRatio` | Annualised Sharpe |
-| `sortino` / `sortinoRatio` | Annualised Sortino |
-| `max_drawdown_pct` / `maxDrawdownPct` | Worst drawdown |
-| `win_rate` / `winRate` | Win rate |
-| `profit_factor` / `profitFactor` | Gross profit / gross loss |
+| Python / Codon | Node.js | Description |
+|---|---|---|
+| `total_trades` | `totalTrades` | Number of closed trades |
+| `net_pnl` | `netPnl` | Total P&L net of fees |
+| `return_pct` | `returnPct` | Total return % |
+| `sharpe` | `sharpeRatio` | Annualised Sharpe |
+| `sortino` | — | Annualised Sortino (not on the Node `run_*` object) |
+| `max_drawdown_pct` | `maxDrawdownPct` | Worst drawdown |
+| `win_rate` | `winRate` | Win rate |
+| `profit_factor` | `profitFactor` | Gross profit / gross loss |
+
+`BacktestResult.stats()` is a *different* dict with a wider field set and different ratio keys — `sharpe_ratio` / `sortino_ratio` / `calmar_ratio` in Python, `sharpe` / `sortino` / `calmar` in Node. See [Running a backtest](backtest.md#stats-key-names-differ-by-producer).
 
 ## 4. Export the equity curve
 
 === "Python"
 
     ```python
-    curve = bt.equity_curve()                  # structured numpy array
-    bt.write_equity_curve_csv("equity.csv")
+    curve = bt.equity_curve()   # dict of numpy arrays
+    ts, eq, dd = curve["timestamp_ns"], curve["equity"], curve["drawdown_pct"]
+
+    # BacktestRunner has no CSV writer. write_equity_curve_csv lives on
+    # BacktestResult, which you drive from a SimulatedExecutor:
+    res = flox.BacktestResult(initial_capital=100_000.0, fee_rate=0.0002)
+    res.ingest_executor(ex)
+    res.write_equity_curve_csv("equity.csv")   # or res.equity_curve() -> structured array
     ```
 
 === "Node.js"
 
     ```javascript
-    const curve = bt.equityCurve();
-    bt.writeEquityCurveCsv("equity.csv");
+    const curve = bt.equityCurve();   // { timestampNs, equity, drawdownPct }
+
+    // Node has no equity-curve CSV writer on either BacktestRunner or
+    // BacktestResult. Write the rows yourself from the arrays above.
     ```
 
 === "C++"

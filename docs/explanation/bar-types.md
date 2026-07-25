@@ -25,7 +25,8 @@ Alternative bar types address this by normalizing **what** closes a bar rather t
 | **Tick** | N trades occur | HFT, eliminating time bias |
 | **Volume** | Notional volume threshold | Volume-weighted analysis |
 | **Renko** | Price moves by brick size | Trend following, noise elimination |
-| **Range** | High-low exceeds threshold | Volatility-based analysis |
+| **Range** | High-low exceeds an absolute price threshold | Volatility-based analysis |
+| **BpsRange** | High-low exceeds a threshold in basis points of the open | Volatility-based analysis across instruments and price levels |
 | **Heikin-Ashi** | Fixed time interval (smoothed) | Trend clarity, noise reduction |
 
 ## Time Bars
@@ -164,6 +165,32 @@ RangeBarAggregator aggregator(RangeBarPolicy::fromDouble(5.0), &bus);
 
 **Example**: $5 range bars will close quickly during volatile periods (many bars) and slowly during consolidation (fewer bars).
 
+## BpsRange Bars
+
+```cpp
+BpsRangeBarAggregator aggregator(BpsRangeBarPolicy(20.0), &bus);  // 20 bps
+```
+
+**How it works**: Close when `(high − low) / open` reaches the threshold expressed in basis points. Same idea as Range bars, but relative instead of absolute.
+
+**Pros**:
+
+- One threshold works across instruments with different price levels
+- Stays meaningful as an instrument's price drifts over a long backtest
+- No re-tuning after a redenomination or a large price move
+
+**Cons**:
+
+- Needs a valid open price; a bar with `open <= 0` never closes on this rule
+- Slightly less intuitive than an absolute range in the instrument's own units
+
+**Use when**:
+
+- Running the same strategy across a basket at different price levels
+- Long backtests where an absolute range threshold would drift out of relevance
+
+`param()` encodes the threshold as bps × 100, so a 20 bps policy reports `2000`.
+
 ## Heikin-Ashi Bars
 
 ```cpp
@@ -220,7 +247,8 @@ What matters most for your strategy?
 │
 ├── Price movement?
 │   ├── Trend direction → Use RENKO bars
-│   └── Volatility → Use RANGE bars
+│   ├── Volatility, absolute units → Use RANGE bars
+│   └── Volatility, relative → Use BPSRANGE bars
 ```
 
 ### By Strategy Type
@@ -231,7 +259,7 @@ What matters most for your strategy?
 | Momentum | Time, Renko, or Heikin-Ashi |
 | Scalping/HFT | Tick |
 | Trend following | Renko, Heikin-Ashi, or Time |
-| Volatility trading | Range |
+| Volatility trading | Range or BpsRange |
 | Statistical arb | Tick or Volume |
 | Swing trading | Time (H1, D1) or Heikin-Ashi |
 
@@ -239,7 +267,7 @@ What matters most for your strategy?
 
 | Condition | Better Choice |
 |-----------|--------------|
-| High volatility | Range or Renko |
+| High volatility | Range, BpsRange, or Renko |
 | Low liquidity | Volume |
 | 24/7 markets | Tick or Volume |
 | Session-based | Time |
@@ -269,10 +297,10 @@ aggregator.addVolumeInterval(1000000.0);                 // Volume for flow
 
 All bar types have similar computational cost:
 
-| Operation | Time | Tick | Volume | Renko | Range | Heikin-Ashi |
-|-----------|------|------|--------|-------|-------|-------------|
-| shouldClose() | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) |
-| update() | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) |
+| Operation | Time | Tick | Volume | Renko | Range | BpsRange | Heikin-Ashi |
+|-----------|------|------|--------|-------|-------|----------|-------------|
+| shouldClose() | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) |
+| update() | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) | O(1) |
 
 The main difference is **bar frequency**, not computational overhead.
 
@@ -282,7 +310,8 @@ The main difference is **bar frequency**, not computational overhead.
 - **Tick bars**: Consistent activity, good for HFT
 - **Volume bars**: Consistent economic significance
 - **Renko bars**: Noise-free trend visualization
-- **Range bars**: Volatility-normalized
+- **Range bars**: Volatility-normalized in absolute price units
+- **BpsRange bars**: Volatility-normalized in basis points of the open
 - **Heikin-Ashi bars**: Smoothed trends, noise reduction
 
 Choose based on what your strategy needs to hold constant: **time**, **activity**, **volume**, **price movement**, **volatility**, or **trend clarity**.

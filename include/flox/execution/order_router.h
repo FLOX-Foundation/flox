@@ -45,10 +45,16 @@ enum class RoutingError : uint8_t
   RejectedByPolicy
 };
 
-class IOrderExecutor
+// The router's own narrow order sink. Deliberately NOT
+// flox::IRoutableExecutor from execution/abstract_executor.h: that one is
+// the full executor interface (submitOrder(const Order&), cancelOrder,
+// replaceOrder, submitOCO, capabilities) and is what SimulatedExecutor
+// implements. Two classes with the same fully-qualified name in one
+// program is an ODR violation, so this one carries a distinct name.
+class IRoutableExecutor
 {
  public:
-  virtual ~IOrderExecutor() = default;
+  virtual ~IRoutableExecutor() = default;
 
   virtual void submit(SymbolId symbol,
                       Side side,
@@ -63,7 +69,7 @@ template <size_t MaxExchanges = 4>
 class OrderRouter : public ISubsystem
 {
  public:
-  void registerExecutor(ExchangeId exchange, IOrderExecutor* executor)
+  void registerExecutor(ExchangeId exchange, IRoutableExecutor* executor)
   {
     if (exchange < MaxExchanges)
     {
@@ -330,7 +336,7 @@ class OrderRouter : public ISubsystem
     return InvalidExchangeId;
   }
 
-  std::array<IOrderExecutor*, MaxExchanges> _executors{};
+  std::array<IRoutableExecutor*, MaxExchanges> _executors{};
   std::array<bool, MaxExchanges> _enabled{};
   CompositeBookMatrix<MaxExchanges>* _book{nullptr};
   ExchangeClockSync<MaxExchanges>* _clockSync{nullptr};

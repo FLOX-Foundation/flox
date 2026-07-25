@@ -104,9 +104,11 @@ struct Level {
   Quantity totalVolume() const;    // bid + ask
   Quantity delta() const;          // ask - bid
   double imbalanceRatio() const;   // ask / total (0.0 to 1.0)
-  bool isSinglePrint() const;      // Only one TPO (for market profile)
 };
 ```
+
+All three are `noexcept`. There is no `isSinglePrint()` on `FootprintBar::Level` — that method belongs
+to `MarketProfile::Level`.
 
 ### Key Levels
 
@@ -121,6 +123,16 @@ Price sellPressure = footprint.highestSellingPressure();
 Price imbalance = footprint.strongestImbalance(0.7);
 ```
 
+`strongestImbalance(threshold)` is **direction-agnostic**. It scores each level by
+`|imbalanceRatio - 0.5| * 2` and returns the price of the highest-scoring level whose score is at
+least `(threshold - 0.5) * 2`. So it finds the strongest imbalance in *either* direction, not the
+strongest buy-side imbalance. Returns a default-constructed `Price` when no level qualifies.
+
+Because the gate is `(threshold - 0.5) * 2`, a `threshold` at or below 0.5 disables the gate entirely
+and the call returns the single strongest imbalanced level regardless of direction. To distinguish
+buying from selling pressure, read `imbalanceRatio()` at the returned price, or use
+`highestBuyingPressure()` / `highestSellingPressure()`.
+
 ### Reset
 
 ```cpp
@@ -132,12 +144,16 @@ footprint.clear();
 ### Support/Resistance from Imbalances
 
 ```cpp
-Price buyImbalance = footprint.strongestImbalance(0.7);
-Price sellImbalance = footprint.strongestImbalance(0.3);
-
-// Strong buying = potential support
-// Strong selling = potential resistance
+Price extreme = footprint.strongestImbalance(0.7);
+if (extreme.raw() != 0) {
+  // Check the direction at that price: ratio > 0.5 = aggressive buying
+  // (potential support), ratio < 0.5 = aggressive selling (potential
+  // resistance). strongestImbalance itself does not tell you which.
+}
 ```
+
+Do not call `strongestImbalance(0.3)` expecting a sell-side result — a threshold below 0.5 turns the
+gate off and returns the same direction-agnostic extreme.
 
 ### Delta Divergence
 

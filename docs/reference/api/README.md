@@ -15,6 +15,17 @@ Complete technical documentation for all FLOX components.
 | [Connector](connector/exchange_connector.md) | Exchange connectivity |
 | [Strategy](strategy/abstract_strategy.md) | Strategy interfaces |
 | [Risk](risk/abstract_risk_manager.md) | Risk management |
+| [Aggregator](aggregator/bar.md) | Bar aggregation, footprint, volume and market profiles |
+| [Position](position/position_tracker.md) | Position tracking and reconciliation |
+| [CEX](cex/index.md) | Multi-exchange primitives: composite book, order router, split orders |
+| [C API](capi/flox_capi.md) | The C FFI surface every binding calls into |
+| [Metrics](metrics/abstract_pnl_tracker.md) | PnL and execution trackers |
+| [Log](log/log.md) | Logging |
+| [Net](net/abstract_transport.md) | HTTP and WebSocket transports |
+| [KillSwitch](killswitch/abstract_killswitch.md) | Kill-switch interface |
+| [Validation](validation/abstract_order_validator.md) | Order validation interface |
+| [Sink](sink/abstract_storage_sink.md) | Storage sink interface |
+| [Common](common.md) | Shared enums, identifiers and fixed-point types |
 
 ## Quick Links
 
@@ -61,17 +72,38 @@ Complete technical documentation for all FLOX components.
 
 ## Header Organization
 
+`include/flox/` has 27 subdirectories plus `common.h`. The ones with reference pages here:
+
 ```
 include/flox/
+├── aggregator/     # Bar aggregation, footprint, volume/market profiles
 ├── backtest/       # Backtesting and optimization
 ├── book/           # Order book, trades, events
+├── capi/           # C FFI surface
 ├── connector/      # Exchange connectivity
 ├── engine/         # Core engine components
-├── execution/      # Order execution
+├── exchange/       # Exchange metadata
+├── execution/      # Order execution, order router, split orders
+├── killswitch/     # Kill-switch interface
+├── log/            # Logging
+├── metrics/        # Metrics collection
+├── net/            # HTTP / WebSocket transports
+├── position/       # Position tracking and reconciliation
 ├── replay/         # Recording and playback
-├── strategy/       # Strategy interfaces
-└── util/           # Utilities
+├── risk/           # Risk management
+├── sink/           # Storage sinks
+├── strategy/       # Strategy interfaces, signals, symbol context
+├── util/           # Utilities
+├── validation/     # Order validation
+└── common.h        # Shared enums, ids, fixed-point types
 ```
+
+The remaining directories — `error/`, `feed/`, `indicator/`, `pricing/`, `report/`, `run/`, `stats/`,
+`target/`, `testing/` — have no page under `docs/reference/api/` yet; read the headers directly.
+
+Two documentation directories do not map one-to-one onto a header directory: `cex/` collects the
+multi-exchange primitives that live under `execution/`, `position/` and `exchange/`, and
+`aggregator/custom/` headers are documented under `aggregator/`.
 
 ## See Also
 

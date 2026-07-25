@@ -1,4 +1,4 @@
-## Heatmap rendering
+# Heatmap rendering
 
 `flox.report.heatmap_html` (Python) and `flox.report.heatmapHtml` (Node) render a 2D matrix as a self-contained HTML page with an inline-SVG heatmap. The renderer lives in `flox::report::renderHeatmapHtml` (C++), so all bindings produce byte-identical output for the same input. No external assets, no scripts beyond the SVG `<title>` tooltips.
 

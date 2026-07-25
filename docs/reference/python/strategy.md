@@ -27,7 +27,8 @@ btc = registry.add_symbol("binance", "BTCUSDT", tick_size=0.01)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `add_symbol(exchange, name, tick_size)` | `Symbol` | Register a symbol and return its `Symbol` object |
+| `add_symbol(exchange, symbol, tick_size=0.01)` | `Symbol` | Register a symbol and return its `Symbol` object |
+| `symbol_count()` | `int` | Number of registered symbols |
 
 ## Class: `flox_py.Strategy`
 
@@ -70,22 +71,54 @@ def on_bar(self, ctx, bar):
     self.prev_high = max(getattr(self, "prev_high", 0.0), bar.high)
 ```
 
+#### `on_fill(ctx: SymbolContext, event: OrderEventData)`
+
+Called on every fill this strategy's own orders produce (status
+`PARTIALLY_FILLED` or `FILLED`).
+
+#### `on_order_update(ctx: SymbolContext, event: OrderEventData)`
+
+Called on every order-lifecycle status change: `NEW`, `ACCEPTED`, `CANCELED`,
+`REJECTED`, `REPLACED`, `TRIGGERED`, `TRAILING_UPDATED`. Fills fire here too —
+use `on_fill` if you only care about those.
+
+#### `on_queue_position_change(ctx: SymbolContext, event: OrderEventData)`
+
+Called when a resting limit order's queue position moved with no other
+lifecycle transition. `event.queue_ahead` and `event.queue_total` carry the
+snapshot. Backtest only.
+
+#### `on_market_position_change(ctx: SymbolContext, event: OrderEventData)`
+
+Called when a resting limit order's categorical market position transitioned.
+Backtest only.
+
 #### `on_start()` / `on_stop()`
 
 Lifecycle callbacks.
 
 ### Order Emission — Shorthand
 
-These methods use the first registered symbol when `symbol` is omitted.
+These methods use the first registered symbol when `symbol` is omitted. `symbol` is a symbol name.
 
 | Method | Description |
 |--------|-------------|
 | `market_buy(qty, symbol=None)` | Market buy |
 | `market_sell(qty, symbol=None)` | Market sell |
-| `limit_buy(price, qty, symbol=None)` | Limit buy |
-| `limit_sell(price, qty, symbol=None)` | Limit sell |
+| `limit_buy(price, qty, symbol=None, tif='gtc')` | Limit buy |
+| `limit_sell(price, qty, symbol=None, tif='gtc')` | Limit sell |
 | `stop_market(side, trigger, qty, symbol=None)` | Stop market |
+| `stop_limit(side, trigger, limit_price, qty, symbol=None)` | Stop limit |
+| `take_profit_market(side, trigger, qty, symbol=None)` | Take profit market |
+| `take_profit_limit(side, trigger, limit_price, qty, symbol=None)` | Take profit limit |
+| `trailing_stop(side, offset, qty, symbol=None)` | Trailing stop, fixed offset |
+| `trailing_stop_percent(side, callback_bps, qty, symbol=None)` | Trailing stop, bps callback |
 | `close_position(symbol=None)` | Close position (reduce-only) |
+| `cancel_order(order_id)` | Cancel an order |
+| `cancel_all_orders(symbol=None)` | Cancel every order for a symbol |
+| `modify_order(order_id, new_price, new_qty)` | Modify a resting order |
+
+`tif` accepts `"gtc"`, `"ioc"`, `"fok"`, `"gtd"`, `"post_only"`.
 
 ### Order Emission — Explicit (emit_* variants)
 
@@ -94,31 +127,62 @@ These methods use the first registered symbol when `symbol` is omitted.
 | `emit_market_buy(symbol, qty)` | `int` | Market buy, returns order ID |
 | `emit_market_sell(symbol, qty)` | `int` | Market sell |
 | `emit_limit_buy(symbol, price, qty)` | `int` | Limit buy |
-| `emit_limit_sell(symbol, price, qty)` | `int` | Limit sell |
+| `emit_limit_sell(symbol, price, quantity)` | `int` | Limit sell |
+| `emit_limit_buy_tif(symbol, price, quantity, tif='gtc')` | `int` | Limit buy with an explicit time in force |
+| `emit_limit_sell_tif(symbol, price, quantity, tif='gtc')` | `int` | Limit sell with an explicit time in force |
 | `emit_cancel(order_id)` | `None` | Cancel order |
 | `emit_cancel_all(symbol)` | `None` | Cancel all orders for symbol |
-| `emit_modify(order_id, price, qty)` | `None` | Modify existing order |
-| `emit_stop_market(symbol, side, trigger, qty)` | `int` | Stop market order |
-| `emit_stop_limit(symbol, side, trigger, limit, qty)` | `int` | Stop limit order |
-| `emit_take_profit_market(symbol, side, trigger, qty)` | `int` | Take profit market |
-| `emit_take_profit_limit(symbol, side, trigger, limit, qty)` | `int` | Take profit limit |
-| `emit_trailing_stop(symbol, side, offset, qty)` | `int` | Trailing stop |
-| `emit_trailing_stop_percent(symbol, side, bps, qty)` | `int` | Trailing stop (%) |
+| `emit_modify(order_id, new_price, new_quantity)` | `None` | Modify existing order |
+| `emit_stop_market(symbol, side, trigger, quantity)` | `int` | Stop market order |
+| `emit_stop_limit(symbol, side, trigger, limit_price, quantity)` | `int` | Stop limit order |
+| `emit_take_profit_market(symbol, side, trigger, quantity)` | `int` | Take profit market |
+| `emit_take_profit_limit(symbol, side, trigger, limit_price, quantity)` | `int` | Take profit limit |
+| `emit_trailing_stop(symbol, side, offset, quantity)` | `int` | Trailing stop, fixed offset |
+| `emit_trailing_stop_percent(symbol, side, callback_bps, quantity)` | `int` | Trailing stop, bps callback |
+| `emit_provide_liquidity(pool, price_lower, price_upper, liquidity)` | `int` | Provide AMM liquidity in a price range |
+| `emit_withdraw_liquidity(pool, liquidity)` | `int` | Withdraw AMM liquidity |
 | `emit_close_position(symbol)` | `int` | Close position (reduce-only) |
+
+`emit_market_buy` and the rest take a numeric symbol ID; `side` is `"buy"` or `"sell"`.
 
 ### Context Queries
 
+`symbol` defaults to the first registered symbol when omitted.
+
+| Method / Property | Returns | Description |
+|-------------------|---------|-------------|
+| `position(symbol=None)` | `float` | Current position quantity |
+| `pos(symbol=None)` | `float` | Alias of `position` |
+| `ctx(symbol=None)` | `SymbolContext` | Per-symbol context snapshot |
+| `last_price(symbol=None)` | `float` | Last trade price |
+| `best_bid(symbol=None)` | `float` | Best bid |
+| `best_ask(symbol=None)` | `float` | Best ask |
+| `mid_price(symbol=None)` | `float` | Mid price |
+| `get_order_status(order_id)` | `int` | Order status (-1 if not found) |
+| `order_status(order_id)` | `int` | Alias of `get_order_status` |
+| `symbols` | `list[int]` | Subscribed symbol IDs (property) |
+| `symbol_names` | `list[str]` | Subscribed symbol names (property) |
+| `primary_symbol_name` | `str` | Name of the first subscribed symbol (property) |
+
+### Closed-bar history
+
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `position(symbol)` | `float` | Current position quantity |
-| `ctx(symbol)` | `SymbolContext` | Per-symbol context snapshot |
-| `get_order_status(order_id)` | `int` | Order status (-1 if not found) |
+| `last_closed_bar(symbol_id, bar_type=0, param=0)` | `dict \| None` | Last closed bar for `(symbol, bar_type, param)`, or `None` if that timeframe has emitted nothing yet |
+| `last_n_closed_bars(symbol_id, bar_type, param, n)` | `list` | Up to `n` most recent closed bars for that timeframe, oldest first |
+| `bar_ring_capacity()` | `int` | Current per-timeframe ring size |
+| `set_bar_ring_capacity(n)` | `None` | Resize the per-timeframe ring |
+
+`bar_type`: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi,
+6=BpsRange. `param` is the time-bar interval in nanoseconds, or the tick /
+volume / range threshold the aggregator was configured with.
 
 ## Class: `flox_py.SymbolContext`
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `symbol_id` | `int` | Symbol identifier |
+| `symbol` | `str` | Symbol name |
 | `position` | `float` | Current position |
 | `last_trade_price` | `float` | Last trade price |
 | `best_bid` | `float` | Best bid price |
@@ -135,10 +199,13 @@ These methods use the first registered symbol when `symbol` is omitted.
 | Property | Type | Description |
 |----------|------|-------------|
 | `symbol` | `int` | Symbol ID |
+| `symbol_name` | `str` | Symbol name |
 | `price` | `float` | Trade price |
 | `quantity` | `float` | Trade quantity |
 | `is_buy` | `bool` | Buy-side aggressor |
-| `timestamp_ns` | `int` | Timestamp (nanoseconds) |
+| `side` | `str` | `"buy"` or `"sell"` |
+| `timestamp_ns` | `int` | Local timestamp (nanoseconds) |
+| `exchange_ts_ns` | `int` | Exchange timestamp (nanoseconds) |
 
 ## Class: `flox_py.Runner`
 
@@ -159,13 +226,35 @@ runner.stop()
 | Method | Description |
 |--------|-------------|
 | `add_strategy(strategy)` | Register a strategy instance |
+| `replace_strategy(index, strategy)` | Atomically swap the strategy at `index`. The old strategy's `on_stop` fires, the bridge's internal state survives, the new strategy's `on_start` fires afterwards. WebSocket / gRPC connections are unaffected |
 | `start()` | Start the runner |
 | `stop()` | Stop the runner |
-| `on_trade(symbol, price, qty, is_buy, ts_ns)` | Inject a trade event |
-| `on_book_snapshot(symbol, bid_px, bid_qty, ask_px, ask_qty, ts_ns)` | Inject an order book snapshot |
+| `on_trade(symbol, price, qty, is_buy, ts_ns=0)` | Inject a trade event |
+| `on_book_snapshot(symbol, bid_prices, bid_qtys, ask_prices, ask_qtys, ts_ns=0)` | Inject an order book snapshot |
 | `on_bar(symbol, open, high, low, close, volume=0, buy_volume=0, start_time_ns=0, end_time_ns=0, bar_type=0, bar_type_param=0, close_reason=0)` | Inject a closed OHLC bar |
 
 `symbol` accepts a `Symbol` object or a raw `int`.
+
+### Hook setters
+
+| Method | Description |
+|--------|-------------|
+| `set_pnl_tracker(tracker)` | Attach a `PnLTracker` |
+| `set_storage_sink(sink)` | Attach a `StorageSink` |
+| `set_risk_manager(rm)` | Attach a `RiskManager` |
+| `set_kill_switch(ks)` | Attach a `KillSwitch` |
+| `set_order_validator(ov)` | Attach an `OrderValidator` |
+| `set_market_data_recorder(recorder)` | Attach a `MarketDataRecorderHook` or `BinaryLogRecorderHook` |
+| `set_executor(executor)` | Replace the executor |
+
+### Trace recording
+
+| Method | Description |
+|--------|-------------|
+| `attach_trace_recorder(recorder)` | Auto-capture every signal into a `.floxrun` recorder |
+| `set_trace_feed_ts_ns(feed_ts_ns)` | Stamp every recorded signal with this `feed_ts_ns` until the next call |
+| `trace_order_event(order_id, parent_signal_id, symbol_id, event_kind, side, order_type, price, qty, flags=0)` | Mirror an order event into the attached recorder |
+| `trace_fill(order_id, fill_id, price, qty, fee, symbol_id, side, liquidity=0)` | Mirror a fill into the attached recorder |
 
 ### Signal object
 
@@ -173,11 +262,17 @@ Passed to the `on_signal` callback.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `side` | `str` | `"buy"` or `"sell"` |
-| `quantity` | `float` | Order quantity |
-| `price` | `float` | Limit price (0 for market) |
-| `order_type` | `str` | `"market"`, `"limit"`, etc. |
 | `order_id` | `int` | Internal order ID |
+| `symbol` | `int` | Symbol ID |
+| `side` | `str` | `"buy"` or `"sell"` |
+| `order_type` | `str` | `"market"`, `"limit"`, etc. |
+| `price` | `float` | Limit price (0 for market) |
+| `quantity` | `float` | Order quantity |
+| `trigger_price` | `float` | Trigger price for conditional orders |
+| `trailing_offset` | `float` | Fixed-price trailing offset |
+| `trailing_bps` | `int` | Bps trailing callback |
+| `new_price` | `float` | Replacement price on a modify |
+| `new_quantity` | `float` | Replacement quantity on a modify |
 
 ## Class: `flox_py.BacktestRunner`
 
@@ -194,9 +289,28 @@ stats = bt.run_csv("data.csv", "BTCUSDT")  # explicit symbol name
 | Method | Description |
 |--------|-------------|
 | `set_strategy(strategy)` | Set the strategy to backtest |
-| `run_csv(path, symbol=None)` | Run backtest against a CSV file, returns stats dict |
-| `run_ohlcv(ts, close, symbol=None)` | Replay close-only bars as synthetic trades (`Strategy.on_trade` fires) |
-| `run_bars(start_time_ns, end_time_ns, open, high, low, close, volume, symbol=None, bar_type=0, bar_type_param=0)` | Replay full OHLCV bars (`Strategy.on_bar` fires) |
+| `run_csv(path, symbol='')` | Run backtest against a CSV file, returns stats dict |
+| `run_ohlcv(ts, close, symbol='')` | Replay close-only bars as synthetic trades (`Strategy.on_trade` fires) |
+| `run_bars(start_time_ns, end_time_ns, open, high, low, close, volume, symbol='', bar_type=0, bar_type_param=0)` | Replay full OHLCV bars (`Strategy.on_bar` fires) |
+| `run_tape(path)` | Run against a `.floxlog` tape directory — the canonical recorded artifact `flox tape record` writes. Same stats shape as `run_csv` |
+| `run_tapes(paths)` | Run against N `.floxlog` tapes merged on read. Symbols are rekeyed by `(metadata.exchange, name)`, so two captures of the same venue/symbol collapse and two venues stay distinct. `run_tapes([t])` equals `run_tape(t)` |
+| `equity_curve()` | Equity curve from the most recent run, as a dict of numpy arrays (`timestamp_ns`, `equity`, `drawdown_pct`) |
+| `trades()` | Closed trades from the most recent run, as a dict of numpy arrays (`symbol`, `side`, `entry_price`, `exit_price`, `quantity`, `pnl`, `fee`, `entry_time_ns`, `exit_time_ns`) |
+
+An empty `symbol` resolves to `"default"`.
+
+### Hook setters
+
+| Method | Description |
+|--------|-------------|
+| `set_executor(executor)` | Replace the built-in simulated executor |
+| `add_execution_listener(listener)` | Attach an `ExecutionListener` |
+| `set_pnl_tracker(tracker)` | Attach a PnL tracker; fires `on_signal(signal)` for every fill the simulator dispatches |
+| `set_risk_manager(rm)` | Attach a pre-trade risk manager. Reduce-only orders bypass the gate by design |
+| `set_kill_switch(ks)` | Attach a kill switch. Reduce-only orders bypass, so tightening caps cannot strand a position |
+| `set_order_validator(ov)` | Attach an order validator. Reduce-only orders bypass |
+
+Each setter takes `None` to detach.
 
 ### Stats dict keys
 

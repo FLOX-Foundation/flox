@@ -59,7 +59,7 @@ h->tickSequence = 123;
 
 ## Internal Design
 
-* `Pool<T>` uses `std::aligned_storage` for static placement.
+* `Pool<T>` stores slots in a hand-rolled `struct alignas(alignof(T)) Storage { std::byte data[sizeof(T)]; }` array for static placement. `std::aligned_storage` is deprecated and is not used.
 * Objects are returned to the pool via an `SPSCQueue<T*>`.
 * Backed by a `monotonic_buffer_resource` and `unsynchronized_pool_resource` for internal vector-like allocations.
 

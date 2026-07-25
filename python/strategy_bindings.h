@@ -7,6 +7,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/backtest_runner.h"
@@ -1972,6 +1974,26 @@ class PyBacktestRunner
     }
   }
 
+  // A VenueStack executor cannot drive a BacktestRunner today, and
+  // silently accepting it is worse than refusing: setExecutor() routes
+  // signals to the custom executor but keeps feeding market data only to
+  // the built-in simulator, and the contract puts fill reporting on the
+  // custom executor. The run completes with zero trades and a flat
+  // equity curve, which reads like a broken strategy. Refuse loudly and
+  // name the supported pattern instead.
+  [[noreturn]] void set_venue_executor(flox::SimulatedExecutor*)
+  {
+    throw std::invalid_argument(
+        "BacktestRunner.set_executor() does not accept a VenueStack executor "
+        "(flox.VenueExecutor). BacktestRunner feeds market data only to its "
+        "built-in simulator, so a venue executor would receive orders but no "
+        "data and the run would report zero trades. Drive the venue stack "
+        "directly instead: feed it with VenueExecutor.on_trade() / "
+        "on_book_snapshot(), then pull the fills into a result with "
+        "BacktestResult.ingest_executor(executor). See "
+        "docs/how-to/realistic-backtest.md.");
+  }
+
   void add_execution_listener(std::shared_ptr<flox_py::PyExecutionListener> listener)
   {
     if (!listener)
@@ -2927,6 +2949,12 @@ inline void bindStrategy(py::module_& m)
            py::keep_alive<1, 2>())
       .def("set_executor", &PyBacktestRunner::set_executor, py::arg("executor"),
            py::keep_alive<1, 2>())
+      // Overload that exists only to fail with an explanation: passing a
+      // VenueStack executor here would run to completion with zero trades.
+      .def("set_executor", &PyBacktestRunner::set_venue_executor,
+           py::arg("executor"),
+           "Refused: a VenueStack executor cannot drive a BacktestRunner. "
+           "Raises ValueError naming the supported pattern.")
       .def("add_execution_listener", &PyBacktestRunner::add_execution_listener,
            py::arg("listener"), py::keep_alive<1, 2>())
       .def("set_risk_manager", &PyBacktestRunner::set_risk_manager,

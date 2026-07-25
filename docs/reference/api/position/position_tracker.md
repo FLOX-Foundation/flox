@@ -108,8 +108,8 @@ config.feeRate = 0.0004;
 
 BacktestRunner runner(config);
 
-// Create strategy
-MyStrategy strategy(1, symbol);
+// Create strategy. Both Strategy constructors require a const SymbolRegistry&.
+MyStrategy strategy(1, symbol, registry);
 runner.setStrategy(&strategy);
 
 // Add position tracker
@@ -130,8 +130,10 @@ std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol).toDouble() << 
 ```cpp
 PositionTracker tracker(1, CostBasisMethod::LIFO);
 
-// Track fills from executor
-executor.addExecutionListener(&tracker);
+// Track fills. BacktestRunner::addExecutionListener is the registration point;
+// SimulatedExecutor has no addExecutionListener, only a single
+// setOrderEventCallback(std::function<void(const OrderEvent&)>).
+runner.addExecutionListener(&tracker);
 
 // Query per-symbol
 for (SymbolId sym : symbols)

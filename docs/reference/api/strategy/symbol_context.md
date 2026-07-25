@@ -112,7 +112,8 @@ protected:
     // Check position state
     if (ctx(_front).isLong() && pnl > _target)
     {
-      closePosition();
+      emitClosePosition(_front);
+      emitClosePosition(_back);
     }
   }
 
@@ -126,7 +127,7 @@ private:
 
 `SymbolContext` is designed for cache efficiency:
 
-- ~4KB per symbol (512-level book dominates)
+- ~8 KB per symbol (the 512-level book dominates: two `std::array<Quantity, 512>` at 8 bytes each = 8192 bytes)
 - All fields in single contiguous struct
 - Access via `SymbolStateMap` provides O(1) lookup
 

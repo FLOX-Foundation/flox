@@ -123,9 +123,10 @@ List all available timeframes.
 // Open bar storage
 MmapBarStorage storage("/data/BTCUSDT");
 
-// Get available timeframes
+// Get available timeframes. TimeframeId exposes `type` and `param`; there is no
+// seconds() accessor. For BarType::Time, param is nanoseconds.
 for (auto tf : storage.timeframes()) {
-  std::cout << "TF: " << tf.seconds() << "s, "
+  std::cout << "TF: " << tf.param << " (type " << static_cast<int>(tf.type) << "), "
             << storage.barCount(tf) << " bars\n";
 }
 

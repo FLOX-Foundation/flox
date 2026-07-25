@@ -205,9 +205,18 @@ stateDiagram-v2
 
 ## Example: Debug Strategy
 
+`Strategy::onTrade` is `final` — it does the subscription check and context
+bookkeeping, then dispatches. Override `onSymbolTrade` instead. The base
+constructor takes `(id, symbol, registry)`.
+
 ```cpp
 class DebugStrategy : public Strategy {
-  void onTrade(const TradeEvent& ev) override {
+public:
+  DebugStrategy(SymbolId symbol, const SymbolRegistry& registry)
+      : Strategy(1, symbol, registry) {}
+
+protected:
+  void onSymbolTrade(SymbolContext& /*ctx*/, const TradeEvent& ev) override {
     if (shouldBuy(ev)) {
       emitMarketBuy(ev.trade.symbol, Quantity::fromDouble(1.0));
     }
@@ -217,8 +226,14 @@ class DebugStrategy : public Strategy {
 int main() {
   auto reader = replay::createMultiSegmentReader("./data");
 
-  DebugStrategy strategy;
-  BacktestRunner runner;
+  SymbolRegistry registry;
+  SymbolInfo info{ .exchange = "binance", .symbol = "BTCUSDT",
+                   .tickSize = Price::fromDouble(0.01) };
+  registry.registerSymbol(info);
+
+  DebugStrategy strategy(1, registry);
+  BacktestConfig config{ .initialCapital = 10000.0, .feeRate = 0.0004 };
+  BacktestRunner runner(config);
   runner.setStrategy(&strategy);
 
   // Break when signal is emitted

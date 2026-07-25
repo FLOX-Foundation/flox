@@ -3,7 +3,7 @@
 `ITransport` defines an abstract interface for sending asynchronous HTTP POST requests, allowing components to perform remote communication with external services.
 
 ```cpp
-class ITransport {
+class ITransport : public ISubsystem {
 public:
   virtual ~ITransport() = default;
 
@@ -16,6 +16,11 @@ public:
 };
 ```
 
+`ITransport` derives from [`ISubsystem`](../engine/abstract_subsystem.md), so an implementation also
+inherits `start()` and `stop()`. Both have empty default bodies — override them if the transport owns
+a connection pool, an event loop, or a worker thread that must be brought up and torn down with the
+engine.
+
 ## Purpose
 
 * Provide a generic mechanism to send HTTP POST requests without coupling to a specific transport library or implementation.
@@ -26,3 +31,5 @@ public:
 | Method   | Description                                                                                                                               |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `post()` | Sends a POST request to the specified URL with custom headers and body. Invokes success or error callback based on result. |
+| `start()` | Inherited from `ISubsystem`. Default no-op. |
+| `stop()` | Inherited from `ISubsystem`. Default no-op. |

@@ -62,7 +62,7 @@ fp.addTrade(price, qty, isBuy);
 
 ## Statistics
 
-All functions take `Float64Array` inputs.
+Inputs are `Float64Array`, except the signal arrays of `barReturns` / `tradePnl`, which are `Int8Array`.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -71,5 +71,5 @@ All functions take `Float64Array` inputs.
 | `winRate(pnl)` | `number` | Fraction of positive values |
 | `bootstrapCI(data, confidence?, samples?)` | `{ lower, median, upper }` | Bootstrap confidence interval (default: 0.95, 10000 samples) |
 | `permutationTest(group1, group2, samples?)` | `number` | Two-sample permutation p-value (default: 10000) |
-| `barReturns(longSignals, shortSignals, logReturns)` | `Float64Array` | Per-bar returns given signal arrays |
-| `tradePnl(longSignals, shortSignals, logReturns)` | `Float64Array` | PnL per closed trade |
+| `barReturns(longSignals: Int8Array, shortSignals: Int8Array, logReturns)` | `Float64Array` | Per-bar returns given signal arrays |
+| `tradePnl(longSignals: Int8Array, shortSignals: Int8Array, logReturns)` | `Float64Array` | PnL per closed trade |

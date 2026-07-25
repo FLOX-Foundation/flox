@@ -1,6 +1,6 @@
 # Advanced orders
 
-Stop orders, take-profit, trailing stops, OCO, and execution flags. Every order type below is exposed through every binding — only the method name differs.
+Stop orders, take-profit, trailing stops, and execution flags. Every order type below is exposed through every binding — only the method name differs.
 
 ## Order types
 
@@ -11,7 +11,9 @@ Stop orders, take-profit, trailing stops, OCO, and execution flags. Every order 
 | `TAKE_PROFIT_MARKET` | Lock in profits |
 | `TAKE_PROFIT_LIMIT` | Lock in profits with price control |
 | `TRAILING_STOP` | Dynamic stop that follows price |
-| `OCO` | One-cancels-other for breakouts |
+| `ICEBERG` | Large order shown in slices — see [Iceberg orders](iceberg-orders.md) |
+
+OCO is not an `OrderType` and has no emit method. It is an executor-side call — `Executor.submit_oco(order1, order2)` in Python, `submitOco(order1, order2)` in Node — backed by the separate `supportsOCO` capability flag. From a strategy, use the manual TP/SL bracket below or [bracket orders](bracket-orders.md).
 
 ## Stop orders
 
@@ -249,9 +251,36 @@ Real exchanges support different subsets of order types. Before using an advance
     bool hasOCO      = caps.supportsOCO;
     ```
 
-=== "Python / Node.js / Codon"
+=== "Python"
 
-    Capabilities introspection isn't yet exposed in the binding APIs — check the [exchange's connector source](../bindings/README.md) or fall back to manual TP/SL.
+    ```python
+    caps = executor.capabilities()      # flox_py.ExchangeCapabilities
+    has_trailing = caps.trailing_stop
+    has_oco      = caps.oco
+    ```
+
+    `ExchangeCapabilities` carries one bool per feature: `stop_market`, `stop_limit`,
+    `take_profit_market`, `take_profit_limit`, `trailing_stop`, `iceberg`, `oco`,
+    `gtc`, `ioc`, `fok`, `gtd`, `post_only`, `reduce_only`, `close_position`.
+    There is no `supports(OrderType)` helper in the bindings — read the flag directly.
+    `capabilities()` is a hook on `Executor`; a binding-supplied executor overrides it
+    and the engine queries it inline. `SimulatedExecutor` does not expose it.
+
+=== "Node.js"
+
+    ```javascript
+    const caps = executor.capabilities();
+    const hasTrailing = caps.trailingStop;
+    const hasOco      = caps.oco;
+    ```
+
+    Same flags, camelCased, all optional. `Executor` is an interface you implement;
+    `capabilities()` is queried by the engine.
+
+=== "Codon"
+
+    Capabilities introspection is not exposed in the Codon API — check the
+    [exchange's connector source](../bindings/README.md) or fall back to manual TP/SL.
 
 ## See also
 

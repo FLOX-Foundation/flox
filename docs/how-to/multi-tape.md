@@ -123,8 +123,34 @@ bybit_trades = trades[trades["symbol_id"] == 1]
 binance_trades = trades[trades["symbol_id"] == 2]
 ```
 
-`read_trades` and `read_books` materialise the merged arrays. For
-memory-bounded streaming use `replay_tapes` instead.
+`read_trades` and `read_books` materialise the merged arrays, and so
+does `tape.replay_tapes` — it calls both before invoking your
+callbacks. The memory-bounded path is `stream_events`, an N-way heap
+merge whose peak memory is O(number of tapes):
+
+```python
+def on_trade(exchange_ts_ns, recv_ts_ns, price_raw, qty_raw,
+             symbol_id, tape_index, side):
+    ...      # return False to abort the walk
+
+reader.stream_events(on_trade=on_trade)
+```
+
+`on_book(exchange_ts_ns, recv_ts_ns, symbol_id, tape_index,
+is_snapshot, bids, asks)` receives `bids` / `asks` as lists of
+`(price_raw, qty_raw)` tuples. Note that `stream_events` reports raw
+fixed-point values and a `tape_index` for provenance, which
+`replay_tapes` does not.
+
+Two more readers round out the surface:
+
+- `run(aggregators)` walks the merged stream through a panel of
+  streaming aggregators in one decompression pass, same semantics as
+  `DataReader.run`. Aggregators see global-rewritten symbol ids and
+  no per-tape provenance.
+- `summary()` returns `first_event_ns`, `last_event_ns`,
+  `total_events` (populated after `read_trades` / `read_books`),
+  `tape_count`, and `symbol_count`.
 
 ## Cross-exchange basis backtest example
 

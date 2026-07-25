@@ -15,7 +15,29 @@ struct SymbolInfo
   std::optional<Price> strike;
   std::optional<TimePoint> expiry;
   std::optional<OptionType> optionType;
+
+  // Contract spec. Defaults preserve spot/perp behavior: 1.0 multiplier, cash
+  // settlement, European exercise. Options override per venue (US equity 100x,
+  // physical-settled American; crypto 1x, cash, European).
+  double contractMultiplier{1.0};
+  SettlementType settlementType{SettlementType::Cash};
+  ExerciseStyle exerciseStyle{ExerciseStyle::European};
+  std::optional<std::string> settlementCcy;
+
+  // Per-symbol fixed-point scale. The default 1e8 reproduces the compile-time
+  // Price/Quantity scale exactly, so CEX symbols and persisted registries are
+  // unchanged. A DEX token whose price (~1e-10) or supply (~1e12) range does not
+  // fit 1e8 in int64 sets a different scale here and converts through the
+  // scale-aware Decimal overloads.
+  int64_t priceScale{Price::Scale};
+  int64_t qtyScale{Quantity::Scale};
 };
+
+// Validate a symbol's per-symbol scale before registration. A scale must be
+// positive and small enough to leave usable integer headroom in int64. The
+// default 1e8 always passes, so CEX symbols and old registries are never
+// rejected. The cap is 1e18, which still leaves ~9 integer units in int64.
+std::expected<void, std::string> validateSymbolScale(const SymbolInfo& info);
 
 class SymbolRegistry : public ISubsystem
 {

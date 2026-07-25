@@ -56,7 +56,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor, VenueAvailability } from "flox";
+    import { SimulatedExecutor, VenueAvailability } from "@flox-foundation/flox";
 
     const va = new VenueAvailability();
     va.scheduleOutage(t0 + 3600 * 1e9, 120 * 1e9, "cancel_all");

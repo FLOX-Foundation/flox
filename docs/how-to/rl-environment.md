@@ -2,7 +2,7 @@
 
 `flox_py.rl_env.FloxTradingEnv` is a Gymnasium-compatible environment that drives an agent through the trades in a captured `.floxlog` tape. It speaks the standard `Env` protocol (`reset`, `step`, `render`, `close`, `action_space`, `observation_space`, `metadata`) without importing `gymnasium` itself, so plugging it into `stable_baselines3`, `RLlib`, or `CleanRL` does not pull gymnasium into flox's dependency surface. The user installs gymnasium and the learner of choice; the env works out of the box.
 
-Two construction paths are available. `FloxTradingEnv.from_tape(...)` is the lightweight Phase 1 path — trade-by-trade replay with ideal fills, no fees, no funding, no liquidation. `FloxTradingEnv.from_venue_stack(stack, tape=...)` plugs the env on top of a `VenueStack` so every action routes through the same simulated executor used in backtest and paper trading; fees and funding feed back into the reward via the cross-margin Account, and liquidation terminates the episode. Phase 2 follow-ups will add continuous action spaces, limit-order semantics, and multi-symbol portfolios.
+Two construction paths are available. `FloxTradingEnv.from_tape(...)` is the lightweight path — trade-by-trade replay with ideal fills, no fees, no funding, no liquidation. `FloxTradingEnv.from_venue_stack(stack, tape=...)` plugs the env on top of a `VenueStack` so every action routes through the same simulated executor used in backtest and paper trading; fees and funding feed back into the reward via the cross-margin Account, and liquidation terminates the episode. The venue-stack path also carries the continuous action space, limit-order semantics, and multi-symbol portfolios documented below.
 
 ## Quick start
 
@@ -93,7 +93,7 @@ Same strategy class, same data, the only thing that differs from `from_tape` is 
 
 ## Continuous actions
 
-`from_venue_stack` defaults to a continuous action space — a `Box((3,))` with one axis for signed quantity, one for price offset in ticks, one for time-in-force. Discrete(3) stays available as `action_mode="discrete"` for Phase 1 compatibility.
+`from_venue_stack` defaults to a continuous action space — a `Box((3,))` with one axis for signed quantity, one for price offset in ticks, one for time-in-force. Discrete(3) stays available as `action_mode="discrete"`.
 
 | Axis | Range | Meaning |
 |---|---|---|
@@ -117,17 +117,17 @@ obs, reward, term, trunc, info = env.step([-1.0, 2.0, 2.0])   # post-only limit 
 Decode rules:
 
 - `price_offset_ticks == 0` (after rounding) means **market order** — TIF axis is ignored, the order routes through the executor at the most recent trade price.
-- `price_offset_ticks != 0` means **limit order**. The price is `mid + offset * tick_size * side_sign`, where mid is the latest trade price (Phase 1 approximation; T034 will swap in the best bid / best ask) and `side_sign` is `+1` for buys, `-1` for sells.
+- `price_offset_ticks != 0` means **limit order**. The price is `mid + offset * tick_size * side_sign`, where mid is the latest trade price (an approximation — the env does not read best bid / best ask) and `side_sign` is `+1` for buys, `-1` for sells.
 - The TIF axis rounds to the nearest int. Out-of-range values are clipped to the box bounds.
 - Out-of-bounds actions are **clipped** (not raised). A `RuntimeWarning` is emitted and `info["action_clipped"] = True` so a learner that occasionally samples outside the box does not crash the env.
 
-For Phase 1 prototypes, pass `action_mode="discrete"` to keep the `Discrete(3)` interface — same semantics as before T033.
+Pass `action_mode="discrete"` to keep the `Discrete(3)` interface instead. Multi-symbol mode requires `action_mode="continuous"`.
 
 ## Open-order observation slots
 
 In venue-stack mode the observation gains a configurable bank of open-order slots. Each slot is four floats — signed qty remaining (as a fraction of `max_position`), age in steps (as a fraction of `window_size`), distance from the latest price in ticks (as a fraction of `max_price_offset_ticks`, clipped to `[-1, 1]`), and a queue position proxy in `[0, 1]`. Unused slots are zero-padded so the observation shape stays constant.
 
-`n_open_slots` defaults to 4 in venue-stack mode and 0 in the bare `from_tape` path (no executor → no resting orders to track). Set it explicitly to override:
+`n_open_slots` defaults to 4 in single-symbol venue-stack mode, 2 *per symbol* in multi-symbol mode, and 0 in the bare `from_tape` path (no executor → no resting orders to track). Set it explicitly to override:
 
 ```python
 env = FloxTradingEnv.from_venue_stack(
@@ -197,20 +197,29 @@ policy = make_rl_policy(
 )
 
 # 3a. Paper trading — same policy, live feed, simulated fills
-broker = flox_py.PaperBroker(registry)
-runner = flox_py.Runner(registry, broker.on_signal)
-runner.add_strategy(policy)
-runner.start()
-# feed trades from your live source: runner.on_trade(symbol_id, price, qty, is_buy, ts_ns)
+from flox_py.paper import PaperBroker
 
-# 3b. Live — swap PaperBroker for CcxtBroker, everything else unchanged
-import ccxt.pro
-exchange = ccxt.pro.binanceusdm({"apiKey": "...", "secret": "..."})
-broker = flox_py.CcxtBroker(exchange, registry)
-runner = flox_py.Runner(registry, broker.on_signal)
-runner.add_strategy(policy)
-runner.start()
+broker = PaperBroker(registry=registry)
+broker.runner.add_strategy(policy)   # the broker owns its Runner
+broker.start()
+# feed trades from your live source:
+#   broker.observe_trade(symbol_id, price, qty, is_buy, ts_ns)
+
+# 3b. Live — swap PaperBroker for CcxtBroker, the policy is unchanged
+from flox_py.ccxt import CcxtBroker
+
+broker = CcxtBroker("binanceusdm", api_key="...", secret="...")
+sym = await broker.add_symbol("BTC/USDT:USDT")   # async; tick size from the market
+broker.add_strategy(policy)
+await broker.run()
 ```
+
+`PaperBroker` and `CcxtBroker` are in `flox_py.paper` and
+`flox_py.ccxt`; neither is re-exported at the top level. Each owns
+its own `Runner` (and `CcxtBroker` its own `SymbolRegistry`), so
+there is no separate `Runner` to construct. `CcxtBroker`'s first
+argument is a ccxt.pro exchange *id* string, not an exchange object;
+pass a constructed exchange through `exchange=` only for tests.
 
 The model, builder, and decoder are byte-for-byte identical across all three modes; only the broker behind the signal callback differs. Anything the model learned about queue position, ack latency, fees, or funding in training will continue to apply in paper and live, because the underlying simulated executor is the same one the paper broker uses and the live broker mirrors.
 
@@ -280,7 +289,7 @@ env = FloxTradingEnv.from_venue_stack(
     max_position=0.05,
     window_size=32,
     tick_size=0.01,
-    n_open_slots=2,           # per symbol
+    n_open_slots=2,           # per symbol; 2 is also the multi-symbol default
 )
 
 # Dict observation: {"1": Box((window+2+4*n_open,)), "2": Box(...), "account": Box((3,))}
@@ -360,9 +369,8 @@ model.learn(total_timesteps=100_000)
 
 ## What this is not
 
-- A multi-symbol portfolio simulator. One symbol per env in both construction paths. Multi-instrument is Phase 2.
 - A live agent runtime. The env consumes a captured tape; for live RL you need an outer loop that feeds new trades and re-runs the policy. The same `step` / `reset` API applies, but the data plumbing is up to you.
-- A continuous-action interface. Phase 1 keeps `Discrete(3)` everywhere; Phase 2 adds a `Box` action space for signed quantity, price offset in ticks, and TIF.
+- A multi-symbol simulator in the bare `from_tape` path. `from_tape` is single-symbol and `Discrete(3)` only; multi-symbol portfolios and the continuous `Box` action space require `from_venue_stack`.
 
 ## See also
 

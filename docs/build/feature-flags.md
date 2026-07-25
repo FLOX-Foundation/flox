@@ -30,8 +30,8 @@ A third prefix gates compiler/portability flags rather than features:
 | `FLOX_BUILD_DEMO` | OFF | Build the `flox_demo` executable. | optionally `FLOX_ENABLE_BACKTEST` |
 | `FLOX_BUILD_TOOLS` | OFF | Build the CLI tools under `tools/`. | optionally `FLOX_ENABLE_BACKTEST` |
 | `FLOX_BUILD_PYTHON` | OFF | Build `flox_py` pybind11 binding. | pybind11, Python 3.10+ |
-| `FLOX_BUILD_NODE` | OFF | Documentation flag. The Node addon is built out-of-tree by `npm run build`; this flag exists for parity in the CI matrix. CMake itself does not invoke npm. | npm, Node 18+ |
-| `FLOX_BUILD_CAPI` | OFF | Build the `libflox_capi.so` shared library — the integration point for any other language. Forces the static `flox` library to be position-independent. | — |
+| `FLOX_BUILD_NODE` | OFF | Documentation flag. The Node addon is built out-of-tree by `npm run build`; this flag exists for parity in the CI matrix. CMake itself does not invoke npm. | npm, Node 20+ |
+| `FLOX_BUILD_CAPI` | OFF | Build the `libflox_capi.so` shared library — the integration point for any other language. Forces the static `flox` library to be position-independent, and force-enables `FLOX_ENABLE_BACKTEST` (the C API exposes the backtest module). | — |
 | `FLOX_BUILD_CODON` | OFF | Build the Codon strategy support layer under `codon/`. | `FLOX_BUILD_CAPI=ON`, Codon compiler |
 | `FLOX_BUILD_QUICKJS` | OFF | Build the embedded JS strategy runtime. | `FLOX_BUILD_CAPI=ON` |
 | `FLOX_BUILD_CONNECTORS` | OFF | Build the native exchange connectors module under `connectors/`. | OpenSSL / zlib / libcurl, plus `ixwebsocket` and `simdjson` via FetchContent |

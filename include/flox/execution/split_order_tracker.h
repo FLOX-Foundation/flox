@@ -41,7 +41,12 @@ class SplitOrderTracker
       return completedCount + failedCount >= childCount;
     }
 
-    bool allSuccess() const { return completedCount >= childCount; }
+    // A split is a success only when every child finished AND none
+    // failed. The failedCount term is not redundant: onChildComplete()
+    // is not idempotent, so a duplicated terminal event (venue replay,
+    // reconnect) can push completedCount to childCount while a sibling
+    // has already failed.
+    bool allSuccess() const { return completedCount >= childCount && failedCount == 0; }
 
     double fillRatio() const
     {

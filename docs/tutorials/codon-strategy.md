@@ -10,7 +10,7 @@ reverse crossover.
 2. Codon compiler installed
 
 ```bash
-cmake -B build -DFLOX_ENABLE_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DFLOX_BUILD_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
@@ -22,19 +22,19 @@ Create `my_sma_strategy.codon`:
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData
-from flox.indicators import StreamingSMA
+from flox.indicators import SMA
 
 
 class SmaCrossover(Strategy):
-    fast_sma: StreamingSMA
-    slow_sma: StreamingSMA
+    fast_sma: SMA
+    slow_sma: SMA
     order_size: float
     long_position: bool
 
     def __init__(self, symbols: List[int], fast: int = 10, slow: int = 30):
         super().__init__(symbols)
-        self.fast_sma = StreamingSMA(fast)
-        self.slow_sma = StreamingSMA(slow)
+        self.fast_sma = SMA(fast)
+        self.slow_sma = SMA(slow)
         self.order_size = 1.0
         self.long_position = False
 
@@ -84,7 +84,7 @@ codon build -exe \
 - `Strategy` -- base class providing emit/query methods
 - `SymbolContext` -- per-symbol state (position, book, prices)
 - `TradeData` -- trade event with price, quantity, side
-- `StreamingSMA` -- O(1) streaming SMA (pure Codon, no FFI)
+- `SMA` -- SMA indicator class with both `compute()` (batch) and `update()` / `value` / `ready` / `reset` (incremental)
 
 ### Key Patterns
 
@@ -97,8 +97,13 @@ codon build -exe \
 
 Because Codon compiles to native code:
 - `on_trade` is compiled to a native function, not interpreted
-- `StreamingSMA.update()` is a native function call
 - No GIL, no interpreter, no garbage collector pauses
+
+`SMA.update()` is **not** an O(1) online recurrence. The indicator classes
+in `flox.indicators` accumulate the full history and re-run the batch C-API
+function over all of it on every call, which guarantees parity with
+`compute()` but costs one FFI call over the whole history per tick. For
+tick-rate hot paths, buffer the prices and call `compute()` on the batch.
 
 ## Step 4: Compare with C++ and Python
 

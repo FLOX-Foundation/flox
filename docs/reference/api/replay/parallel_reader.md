@@ -124,7 +124,7 @@ auto results = reader.mapSegments<SegmentStats>(
         for (const auto& e : events) {
             if (e.type == replay::EventType::Trade) {
                 stats.trades++;
-                stats.volume += e.trade.qty_raw / 1e9;
+                stats.volume += e.trade.qty_raw / 1e8;  // quantity scale is 1e8
             } else {
                 stats.books++;
             }

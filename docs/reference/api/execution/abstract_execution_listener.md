@@ -5,7 +5,7 @@
 ```cpp
 class IOrderExecutionListener : public ISubscriber {
 public:
-  explicit IOrderExecutionListener(SubscriberId id);
+  IOrderExecutionListener(SubscriberId id);  // not explicit
   virtual ~IOrderExecutionListener() = default;
 
   SubscriberId id() const override;
@@ -25,8 +25,31 @@ public:
   virtual void onOrderPendingTrigger(const Order& order) {}
   virtual void onOrderTriggered(const Order& order) {}
   virtual void onTrailingStopUpdated(const Order& order, Price newTriggerPrice) {}
+
+  // Backtest-only microstructure events
+  virtual void onOrderQueuePositionChange(const Order&, Quantity queueAhead,
+                                          Quantity queueTotal) {}
+  virtual void onOrderMarketPositionChange(const Order&, uint8_t position,
+                                           int32_t distanceToBestTicks) {}
+
+  // Replace-in-flight lifecycle (backtest only)
+  virtual void onOrderReplaceSubmitted(const Order& oldOrder, const Order& newOrder) {}
+  virtual void onOrderReplaceAccepted(const Order& oldOrder, const Order& newOrder) {}
+  virtual void onOrderReplaceRejected(const Order& oldOrder, const Order& newOrder,
+                                      const std::string& reason) {}
+
+  // On-chain (DEX) lifecycle
+  virtual void onOrderPendingOnchain(const Order&, const std::string& txHash) {}
+  virtual void onOrderReverted(const Order&, const std::string& reason) {}
+  virtual void onOrderGasReplaced(const Order& oldOrder, const Order& newOrder) {}
+
+  // Raw fan-out; fires AFTER the typed dispatch above
+  virtual void onOrderEvent(const OrderEvent& ev) {}
 };
 ```
+
+Every method has an empty default body, so an implementer overrides only what it needs. All 21
+virtuals are listed here; missing one silently drops those events rather than failing to compile.
 
 ## Purpose
 
@@ -53,6 +76,46 @@ public:
 | `onOrderPendingTrigger`  | Conditional order waiting for trigger condition.   |
 | `onOrderTriggered`       | Trigger condition met, order converted to market/limit. |
 | `onTrailingStopUpdated`  | Trailing stop trigger price moved.                 |
+
+## Microstructure Events
+
+Backtest only — live exchanges do not publish queue position.
+
+| Method | Triggered On |
+| ------ | ------------ |
+| `onOrderQueuePositionChange` | A resting order's queue position moved with no other lifecycle transition. `queueAhead` is the volume in front of the order at its level, `queueTotal` the level's total quantity. |
+| `onOrderMarketPositionChange` | A resting order's categorical position changed (best, behind_best, mid_spread, level_empty, crossed). `position` is a `MarketPosition` value passed as `uint8_t` to keep this header free of the event include. `distanceToBestTicks` is signed ticks from best on our side. |
+
+## Replace-in-Flight Events
+
+Backtest only — live venues have their own replace semantics.
+
+| Method | Triggered On |
+| ------ | ------------ |
+| `onOrderReplaceSubmitted` | Fires immediately on `replaceOrder()`. |
+| `onOrderReplaceAccepted` | Fires after the ack latency on a successful replacement. |
+| `onOrderReplaceRejected` | The replace could not complete, typically because the original filled inside the ack window. |
+
+The terminal `REPLACED` status still arrives through `onOrderReplaced()`.
+
+## On-Chain (DEX) Events
+
+An on-chain order is probabilistic until confirmed. A strategy must not treat a pending on-chain
+order as filled.
+
+| Method | Triggered On |
+| ------ | ------------ |
+| `onOrderPendingOnchain` | Broadcast to the mempool, not yet confirmed. Carries the tx hash. |
+| `onOrderReverted` | The chain rejected the transaction. |
+| `onOrderGasReplaced` | Re-broadcast with higher gas, superseding the pending tx. |
+
+Connector-driven; the backtest and CEX paths never emit these.
+
+## Raw Event Fan-Out
+
+| Method | Triggered On |
+| ------ | ------------ |
+| `onOrderEvent` | Every event, with the full `OrderEvent` payload (queue position, timestamps, maker/taker flag, reject reason). Fires *after* the typed dispatch, so a listener can override both. |
 
 ### Conditional Order Flow
 

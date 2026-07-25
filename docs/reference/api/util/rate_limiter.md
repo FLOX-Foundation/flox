@@ -59,7 +59,7 @@ public:
     : _orderLimiter({.capacity = 10, .refillRate = 10})  // 10 orders/sec
   {}
 
-  void submit(const Order& order) override {
+  void submitOrder(const Order& order) override {
     if (!_orderLimiter.tryAcquire()) {
       reject(order, "rate limit exceeded");
       return;

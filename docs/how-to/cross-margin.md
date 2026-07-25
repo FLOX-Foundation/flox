@@ -18,7 +18,7 @@ per-position.
 === "Python"
 
     ```python
-    import flox
+    import flox_py as flox
 
     acct = flox.Account(account_id=42, equity=10_000.0)
     acct.open_position(symbol=1, quantity=5.0, entry_price=50_000.0)
@@ -28,7 +28,7 @@ per-position.
 === "TypeScript"
 
     ```typescript
-    import { Account } from "flox";
+    import { Account } from "@flox-foundation/flox";
 
     const acct = new Account(42, 10_000);
     acct.openPosition(1, 5.0, 50_000);

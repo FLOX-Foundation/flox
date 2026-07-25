@@ -196,22 +196,37 @@ When `BookUpdateEvent` allocates vectors for bids/asks:
 
 ```cpp
 class RefCountable {
-  std::atomic<uint32_t> _refCount{1};
+protected:
+  std::atomic<uint32_t> _refCount{0};
 
 public:
-  void retain() {
+  void retain() noexcept {
     _refCount.fetch_add(1, std::memory_order_relaxed);
   }
 
-  bool release() {
-    return _refCount.fetch_sub(1, std::memory_order_acq_rel) == 1;
+  // Returns true when this was the last reference.
+  bool release() noexcept {
+    auto prev = _refCount.fetch_sub(1, std::memory_order_acq_rel);
+    if (prev == 0) [[unlikely]] {
+      std::abort();   // release on a zero refcount is a bug, not a no-op
+    }
+    return prev == 1;
   }
 
-  void resetRefCount() {
-    _refCount.store(1, std::memory_order_relaxed);
+  void resetRefCount(uint32_t value = 0) noexcept {
+    _refCount.store(value, std::memory_order_relaxed);
+  }
+
+  uint32_t refCount() const noexcept {
+    return _refCount.load(std::memory_order_relaxed);
   }
 };
 ```
+
+The counter starts at **0**, not 1 — the pool sets it explicitly via
+`resetRefCount(n)` when it hands an object out. `release()` on a
+zero refcount calls `std::abort()` rather than wrapping around, so a
+double-release fails loudly instead of corrupting the pool.
 
 Atomic operations ensure thread safety across bus consumers.
 

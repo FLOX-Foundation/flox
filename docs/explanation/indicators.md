@@ -1,6 +1,8 @@
 # Indicators
 
-FLOX has around 25 indicators, split across moving averages, oscillators, volatility, volume, and statistics. Each works in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). The same indicator set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
+FLOX has 26 indicators, split across moving averages, oscillators, trend, volatility, volume, and statistics. The same set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
+
+Most of them work in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). Five — **ADX**, **CHOP**, **OBV**, **VWAP** and **CVD** — are batch-only: there is a free function (`adx(...)`, `chop(...)`, ...) but no indicator class and no streaming mode. The 21 classes are the ones in `include/flox/indicator/registry.def`; `flox.list_indicators()` returns exactly that list at runtime.
 
 This page covers what each one actually measures and when you'd want it.
 
@@ -133,6 +135,8 @@ Bands widen in volatile markets and contract when price quiets down. The squeeze
 
 ### ADX
 
+*Batch-only — `adx(high, low, close, period)`. No streaming class.*
+
 Measures trend strength, not direction. Comes with two directional indicators.
 
 ```
@@ -144,6 +148,8 @@ ADX  = Wilder(|+DI − −DI| / (+DI + −DI), period)
 ADX above 25 typically means there's a trend worth following. Below 20 is choppy. +DI and −DI tell you direction; ADX tells you whether to care.
 
 ### CHOP
+
+*Batch-only — `chop(high, low, close, period)`. No streaming class.*
 
 How much price moved as a fraction of the maximum possible range over the period.
 
@@ -194,6 +200,8 @@ Better than Parkinson for trending assets. Both can be annualized by multiplying
 
 ### OBV
 
+*Batch-only — `obv(close, volume)`. No streaming class.*
+
 Running total: add volume on up bars, subtract on down bars.
 
 ```
@@ -204,6 +212,8 @@ The absolute value is meaningless — you're looking at the trend of OBV and div
 
 ### VWAP
 
+*Batch-only — `vwap(close, volume, window)`. No streaming class.*
+
 Average price weighted by volume, over a rolling window.
 
 ```
@@ -213,6 +223,8 @@ VWAP = Σ(price × volume) / Σ(volume)
 Price above VWAP = buyers have been in control over that window. Used as a fair-value reference and order execution benchmark. Institutions care about VWAP when filling large orders.
 
 ### CVD
+
+*Batch-only — `cvd(open, high, low, close, volume)`. No streaming class.*
 
 Running total of buying minus selling volume, inferred from OHLCV.
 
@@ -261,6 +273,16 @@ H = −Σ p(x) × ln(p(x)) / ln(bins)
 ```
 
 1 = uniform distribution (maximum uncertainty). 0 = all values identical. Entropy tends to drop before trends develop and rise in choppy, uncertain markets — useful as a regime filter.
+
+### Autocorrelation
+
+Rolling Pearson correlation of a series with itself at a fixed lag.
+
+```
+AC(window, lag) = corr(x[t], x[t − lag])   over the trailing `window`
+```
+
+Constructed as `AutoCorrelation(window, lag)`. Positive values mean the series continues in the same direction at that lag (momentum); negative values mean it reverses (mean reversion). Useful for picking a holding horizon or deciding whether a series is worth a momentum model at all. Returns NaN when the window is constant.
 
 ### Correlation
 

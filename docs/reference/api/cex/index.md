@@ -17,7 +17,7 @@ The CEX module provides building blocks for:
 
 - **Zero allocations** on hot paths
 - **No `std::variant`** - 17-20% slower than tag+switch dispatch
-- **No `std::expected`** - C++23, poor platform support
+- **`std::expected` used sparingly** - the only occurrence in `include/` is `validateSymbolScale()` on the symbol-registration path
 - **Fixed-size containers** where possible
 - **Thread-safe atomic reads** for multi-consumer EventBus architecture
 

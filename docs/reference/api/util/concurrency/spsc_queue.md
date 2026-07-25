@@ -13,8 +13,15 @@ class SPSCQueue;
 
 ## Requirements
 
+Enforced by `static_assert`:
+
+* `Capacity > 1`.
 * `Capacity` must be a power of two.
 * `T` must be nothrow-destructible.
+* `T` must be nothrow-move-constructible.
+
+Not enforced by the compiler:
+
 * Only one producer and one consumer may operate concurrently.
 
 ## Key Features

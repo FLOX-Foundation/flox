@@ -27,7 +27,7 @@ signals.
 
 === "Python"
     ```python
-    import flox
+    import flox_py as flox
 
     eng = flox.Engine()
     eng.add_symbol("BTCUSDT")           # ← register first

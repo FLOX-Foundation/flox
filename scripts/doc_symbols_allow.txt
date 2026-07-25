@@ -1,0 +1,28 @@
+# Allowlist for scripts/check_doc_symbols.py
+#
+# One entry per line. An entry is either a bare symbol (`Foo`) or a
+# page-scoped one (`docs/how-to/x.md:Foo`) — prefer page-scoped, so the same
+# name in a new page still fails the gate. Everything after `#` is a comment
+# and every entry MUST carry one explaining why the symbol is not a defect.
+#
+# Two legitimate reasons to add an entry:
+#   1. The reference is a placeholder or user-supplied name that only looks
+#      like an API call (`MyStrategy()`, `flox.Xxx`).
+#   2. The reference is real but lives in a surface this gate does not model
+#      (the QuickJS global namespace).
+#
+# A third, temporary reason is a real defect this gate found in a file the
+# current change cannot touch. Those carry a `TODO:` and must be deleted
+# together with the fix — do not let them accumulate.
+
+# --- placeholders: names the reader is expected to supply -----------------
+docs/how-to/mcp-control-plane.md:MyKillSwitch  # "any object with .set(active, reason)" — reader-supplied class
+docs/how-to/mlflow.md:MyStrategy            # reader-supplied strategy class, defined outside the snippet
+docs/how-to/add-an-indicator.md:flox.MyIndicator  # the walkthrough's example indicator, deliberately not in the registry
+docs/contributors/extension-hook-pattern.md:flox.Xxx  # `Xxx` is the placeholder hook name used throughout the RFC
+docs/contributors/parity-gate.md:flox.LinearSlope  # hypothetical top-level name, cited as the shape the gate does NOT require
+
+# --- surfaces this gate does not model ------------------------------------
+docs/how-to/strategy-hot-reload.md:flox.register  # QuickJS global (quickjs/flox/*.js), not the Python/Node surface
+
+# --- TODO: node/index.d.ts is missing declarations that node/index.js ships -

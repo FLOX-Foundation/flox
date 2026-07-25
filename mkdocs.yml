@@ -157,6 +157,23 @@ nav:
           - White's reality check: how-to/whites-reality-check.md
           - Log to MLflow: how-to/mlflow.md
           - Advanced Orders: how-to/advanced-orders.md
+          - Submit a native bracket order: how-to/bracket-orders.md
+          - Replace a leg of an active OrderGroup: how-to/order-group-replace.md
+          - Model order replace acknowledgement: how-to/order-replace-flow.md
+          - Per-lifecycle-stage order timestamps: how-to/order-state-timestamps.md
+          - Record and analyse order journeys: how-to/order-journey-forensics.md
+          - Read maker / taker on a fill: how-to/maker-taker-classification.md
+          - Read queue position from a strategy: how-to/queue-position.md
+          - Estimate queue position from live events: how-to/live-queue-position.md
+          - Attribute hidden / iceberg flow in queue estimation: how-to/hidden-order-attribution.md
+          - Track a resting order's market position: how-to/resting-order-market-position.md
+          - Detect when a resting order is alone at its level: how-to/level-empty-detection.md
+          - Model submit-side ack latency: how-to/submit-latency-modeling.md
+          - Model cancellation ack latency: how-to/cancel-latency-modeling.md
+          - Configure ack-latency distributions: how-to/latency-distributions.md
+          - Apply a named latency profile: how-to/latency-profiles.md
+          - Model venue volume-tiered fees: how-to/tiered-fees.md
+          - Backtest recipes: how-to/backtest-recipes.md
           - Multi-Exchange Trading: how-to/multi-exchange-trading.md
           - Inspect engine over MCP: how-to/mcp-runtime-inspection.md
           - Paper trading: how-to/paper-trading.md
@@ -171,9 +188,11 @@ nav:
       - Indicators & Aggregation:
           - Indicator Graph: how-to/indicator-graph.md
           - Multi-Symbol Indicators: how-to/multi-symbol-indicators.md
+          - Cross-symbol indicators: how-to/cross-symbol-indicators.md
           - Bar Aggregation: how-to/bar-aggregation.md
           - Custom Bar Policy: how-to/custom-bar-policy.md
           - Volume Profile: how-to/use-volume-profile.md
+          - Aggregate tape events in a single pass: how-to/aggregate-tape-events.md
       - Performance (system-level):
           - Optimize Performance: how-to/optimize-performance.md
           - CPU Affinity: how-to/cpu-affinity.md
@@ -181,6 +200,7 @@ nav:
           - Add a New Indicator: how-to/add-an-indicator.md
           - Custom Connector: how-to/custom-connector.md
       - Project ops:
+          - Project layout: how-to/project-layout.md
           - Configuration: how-to/configuration.md
           - CI Configuration: how-to/ci.md
           - Contributing: how-to/contributing.md
@@ -204,6 +224,8 @@ nav:
       - Market-making quoter: explanation/market-making-quoter.md
       - AMM DEX connector: explanation/amm-dex-connector.md
       - Replay-equivalence gate: explanation/replay-equivalence-gate.md
+      - Bar-close ordering on tied timestamps: explanation/bar-close-ordering.md
+      - Venue-stack reproducibility: explanation/w15-reproducibility.md
       - Build feature flags: build/feature-flags.md
       - Contributing:
           - contributors/index.md
@@ -211,6 +233,9 @@ nav:
           - Adding a C ABI export: contributors/adding-a-c-api-export.md
           - Extension hook pattern: contributors/extension-hook-pattern.md
           - Cross-binding parity gate: contributors/parity-gate.md
+          - Keeping node/index.d.ts class bodies in sync: contributors/dts-class-members.md
+          - Test gating: contributors/test-gating.md
+          - Documentation gates: contributors/doc-gates.md
           - CI pipeline: contributors/ci-pipeline.md
           - Binding architecture RFC: contributors/binding-architecture-rfc.md
 
@@ -282,6 +307,10 @@ nav:
           - "E_ADF_004 — ADF: singular regression": errors/E_ADF_004.md
           - "E_BACKTEST_001 — Bar type unsupported by writer": errors/E_BACKTEST_001.md
           - "E_DATA_001 — Bar data not found": errors/E_DATA_001.md
+          - "E_DATA_002 — Tape event arrived past reorder window": errors/E_DATA_002.md
+          - "E_INPUT_002 — Cannot load tape metadata.json": errors/E_INPUT_002.md
+          - "E_INPUT_003 — Precision mismatch across tapes": errors/E_INPUT_003.md
+          - "E_VAL_002 — Invalid argument to a binding constructor or function": errors/E_VAL_002.md
       - Core (C++ internals):
           - reference/api/README.md
           - Common: reference/api/common.md

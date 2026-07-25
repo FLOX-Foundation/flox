@@ -145,7 +145,7 @@ def on_trade(ts_ns, sym, price, qty, is_buy):
 ## What's not here yet
 
 - `AdaptiveExecutor` that switches strategies based on market conditions. The composition is non-trivial and this layer is intentionally simple.
-- C++ binding parity. The algo classes are Python-only today; Phase 2 will mirror them on the C++ `ExecutionListener` surface and through pybind11 / NAPI / Codon / QuickJS.
+- An `ExecutionAlgo` that runs *inside* the engine off `ExecutionListener` callbacks. Today the algos are driven by the caller: you call `step()` and feed fills back with `report_fill` / `observe_volume`.
 - Backtest-fidelity tuning. Slippage and queue-aware fills already work through `flox_py.SimulatedExecutor`. Latency-aware fill timing pairs naturally with the `latency_models` module from W6.
 
 ## See also

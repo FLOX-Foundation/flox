@@ -1,7 +1,5 @@
 # Strategy
 
-::: flox.strategy.Strategy
-
 Base class for Codon event-driven strategies. Mirrors C++ `flox::Strategy`.
 
 ## Class: `Strategy`
@@ -9,12 +7,16 @@ Base class for Codon event-driven strategies. Mirrors C++ `flox::Strategy`.
 ### Constructor
 
 ```python
-Strategy(symbols: List[int])
+Strategy(symbols: List[int], strategy_id: int = 1, registry: cobj = cobj())
 ```
 
 **Parameters:**
 
 - `symbols` -- List of symbol IDs to subscribe to
+- `strategy_id` -- Subscriber id, default `1`
+- `registry` -- Symbol-registry handle. When omitted, the underlying handle is created empty and
+  `Runner.add_strategy` rebuilds it once a registry is present. Pass the strategy into a `Runner` to
+  give it an event source; on its own it has none.
 
 ### Overridable Callbacks
 
@@ -52,6 +54,28 @@ def on_bar(self, ctx: SymbolContext, bar: BarData):
 #### `on_start()` / `on_stop()`
 
 Lifecycle callbacks.
+
+#### `on_fill(ctx, ev)`
+
+Called on each fill (status `PARTIALLY_FILLED` or `FILLED`) for orders this strategy emitted. `ev`
+carries `order_id`, `side`, `fill_qty`, `fill_price`, `exchange_ts_ns`.
+
+#### `on_order_update(ctx, ev)`
+
+Called on every order-lifecycle status change for orders this strategy emitted: `NEW`, `ACCEPTED`,
+`CANCELED`, `REJECTED`, `REPLACED`, `TRIGGERED`, `TRAILING_UPDATED`. Fills come through here too —
+override `on_fill` instead if you only want fills.
+
+#### `on_queue_position_change(ctx, ev)`
+
+A resting limit order's queue position moved with no other lifecycle transition. `ev.queue_ahead` and
+`ev.queue_total` carry the current snapshot. Backtest only.
+
+#### `on_market_position_change(ctx, ev)`
+
+A resting limit order's categorical market position transitioned (best, behind_best, mid_spread,
+level_empty, crossed). `ev.market_position` is the new state; `ev.distance_to_best_ticks` is signed
+ticks from best on our side. Backtest only.
 
 ### Signal Emission
 
@@ -133,11 +157,59 @@ Get a `SymbolContext` for querying per-symbol state.
 
 Get order status. Returns -1 if not found.
 
+### String-Symbol Convenience API
+
+These take an optional symbol **name** and resolve it through the strategy's own name map, falling
+back to the primary symbol when omitted. Prices and quantities are plain `float`.
+
+| Method | Returns |
+|--------|---------|
+| `market_buy(qty, symbol=None)` | `int` order id |
+| `market_sell(qty, symbol=None)` | `int` order id |
+| `limit_buy(price, qty, symbol=None, tif="gtc")` | `int` order id |
+| `limit_sell(price, qty, symbol=None, tif="gtc")` | `int` order id |
+| `stop_market(side, trigger, qty, symbol=None)` | `int` order id |
+| `stop_limit(side, trigger, limit_price, qty, symbol=None)` | `int` order id |
+| `take_profit_market(side, trigger, qty, symbol=None)` | `int` order id |
+| `take_profit_limit(side, trigger, limit_price, qty, symbol=None)` | `int` order id |
+| `trailing_stop(side, offset, qty, symbol=None)` | `int` order id |
+| `trailing_stop_percent(side, callback_bps, qty, symbol=None)` | `int` order id |
+| `close_position(symbol=None)` | `int` order id |
+| `cancel_order(order_id)` | `None` |
+| `cancel_all_orders(symbol=None)` | `None` |
+| `modify_order(order_id, new_price, new_qty)` | `None` |
+| `pos(symbol=None)` | `float` position |
+| `last_price(symbol=None)` | `float` |
+| `best_bid(symbol=None)` | `float` |
+| `best_ask(symbol=None)` | `float` |
+| `mid_price(symbol=None)` | `float` |
+| `order_status(order_id)` | `int` |
+
+`side` and `tif` are lowercase strings here (`'buy'` / `'sell'`, `'gtc'` / `'ioc'` / ...), unlike the
+`emit_*` methods which take the integer constants from [`flox.types`](types.md). An unrecognised
+`side` falls back to buy and an unrecognised `tif` to GTC. An unknown symbol name raises
+`ValueError`.
+
+### Multi-Timeframe Bar Ring
+
+| Method | Description |
+|--------|-------------|
+| `last_closed_bar(symbol, bar_type, param) -> Optional[BarData]` | Most recent closed bar for that (symbol, timeframe), or `None` before one has closed |
+| `last_n_closed_bars(symbol, bar_type, param, n) -> List[BarData]` | Most recent `n` bars, oldest first |
+| `bar_ring_capacity() -> int` | Bars retained per (symbol, timeframe) |
+| `set_bar_ring_capacity(n)` | Set the retention count |
+
+`param` is nanoseconds for time bars, a count for tick bars, a threshold for volume bars.
+
 ### Properties
 
 #### `primary_symbol -> int`
 
 Returns the first symbol in the subscription list.
+
+#### `primary_symbol_name -> str`
+
+The name of the primary symbol, as resolved through the registry.
 
 ## Example
 

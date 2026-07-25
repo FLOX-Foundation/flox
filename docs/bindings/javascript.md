@@ -7,8 +7,8 @@ Strategies use string symbol names, options objects for orders, and get TypeScri
 
 ```bash
 cmake -B build \
-  -DFLOX_ENABLE_CAPI=ON \
-  -DFLOX_ENABLE_QUICKJS=ON \
+  -DFLOX_BUILD_CAPI=ON \
+  -DFLOX_BUILD_QUICKJS=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
@@ -272,4 +272,4 @@ FloxJsEngine engine(0);                  // unlimited
 ## Limitations
 
 - QuickJS is an interpreter — suitable for prototyping and backtesting, latency-sensitive production should use Codon or C++
-- Uses global eval, ES modules are planned for a future release
+- Scripts are evaluated with `JS_EVAL_TYPE_GLOBAL`; ES module syntax (`import` / `export`) is not supported 

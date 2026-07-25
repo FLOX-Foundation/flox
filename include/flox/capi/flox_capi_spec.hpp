@@ -81,7 +81,8 @@ extern "C"
     FloxBookSnapshot snapshot;
   } FloxBookData;
 
-  // OHLC bar event. bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi.
+  // OHLC bar event. bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range,
+  // 5=HeikinAshi, 6=BpsRange (mirrors flox::BarType in aggregator/bar.h).
   // bar_type_param: interval_ns / tick count / volume threshold depending on type.
   // close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup.
   typedef struct

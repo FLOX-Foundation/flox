@@ -17,7 +17,7 @@ The `demo` folder provides a minimal working example that wires FLOX components 
 ## Build the Demo
 
 ```bash
-cmake .. -DFLOX_ENABLE_DEMO=ON
+cmake .. -DFLOX_BUILD_DEMO=ON
 make -j$(nproc)
 ```
 
@@ -29,35 +29,53 @@ make -j$(nproc)
 
 The demo will:
 
-1. Start two synthetic connectors
+1. Start three synthetic connectors (`demoA`, `demoB`, `demoC`) and
+   eight `DemoStrategy` instances, one per symbol id `0..7`
 2. Publish market data via `TradeBus` and `BookUpdateBus`
-3. Run the strategy and supporting systems for approximately five seconds
-4. Stop all components and exit cleanly
+3. Run the strategy and supporting systems for 30 seconds
+4. Stop all components and print the latency report
 
 ## Expected Output
 
+`main.cpp` calls `FLOX_LOG_OFF()` before `engine->start()` and only
+re-enables logging after `engine->stop()`, so the run itself is
+silent. What you see is the report:
+
 ```
-[INFO] Starting DemoConnector (exchange1)
-[INFO] Starting DemoConnector (exchange2)
-[INFO] DemoStrategy: received trade BTCUSDT @ 50000.00
-[INFO] DemoStrategy: received book update BTCUSDT (10 levels)
-[INFO] DemoStrategy: placing order BUY 0.1 BTCUSDT @ 49990.00
-[INFO] SimpleOrderExecutor: order filled
-...
-[INFO] Stopping all components
-[INFO] Demo completed
+demo finished
+[latency] bus_publish | count=... mean=...ns p50=...ns p95=...ns max=...ns
+[latency] strategy_onTrade | count=... mean=...ns p50=...ns p95=...ns max=...ns
+[latency] execution_onOrderFilled | count=... mean=...ns p50=...ns p95=...ns max=...ns
+[latency] end_to_end | count=... mean=...ns p50=...ns p95=...ns max=...ns
 ```
+
+To see the per-event log lines, edit `NO_COUT` in `demo/src/main.cpp`.
 
 ## Code Structure
 
 ```
 demo/
-├── main.cpp              # Entry point
-├── demo_builder.h        # Wires all components
-├── demo_connector.h      # Synthetic market data
-├── demo_strategy.h       # Example strategy
-└── simple_*.h            # Simple implementations of interfaces
+├── src/
+│   ├── main.cpp               # Entry point — build, start, sleep 30s, stop, report
+│   ├── demo_builder.cpp       # Wires all components
+│   ├── demo_connector.cpp     # Synthetic market data
+│   └── demo_strategy.cpp      # Example strategy
+├── include/demo/
+│   ├── demo_builder.h
+│   ├── demo_connector.h
+│   ├── demo_strategy.h
+│   ├── pairs_strategy.h
+│   ├── latency_collector.h    # p50/p95/max latency report
+│   └── simple_components.h    # SimpleOrderExecutor, SimplePnLTracker,
+│                              # SimpleKillSwitch, SimpleRiskManager, ...
+└── data/sample.floxlog
 ```
+
+`demo/CMakeLists.txt` also builds seven other executables from the
+same directory: `multi_timeframe_demo`, `volume_profile_demo`,
+`footprint_demo`, `market_profile_demo`, `cex_demo`, plus
+`backtest_demo` and `grid_search_demo` when
+`FLOX_ENABLE_BACKTEST=ON`.
 
 ## Understanding the Demo
 
@@ -71,8 +89,9 @@ auto tradeBus = std::make_unique<TradeBus>();
 auto bookBus = std::make_unique<BookUpdateBus>();
 auto execBus = std::make_unique<OrderExecutionBus>();
 
-// Create connectors
-auto connector = std::make_shared<DemoConnector>(registry, tradeBus, bookBus);
+// Create connectors — (id, symbol, bookUpdateBus, tradeBus)
+auto connector = std::make_shared<DemoConnector>("demoA", symbolId,
+                                                 *bookBus, *tradeBus);
 
 // Create strategy
 auto strategy = std::make_unique<DemoStrategy>();

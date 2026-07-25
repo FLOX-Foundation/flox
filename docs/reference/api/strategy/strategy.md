@@ -61,12 +61,35 @@ protected:
 
   // Called on book updates for subscribed symbols
   virtual void onSymbolBook(SymbolContext& ctx, const BookUpdateEvent& ev) {}
+
+  // Called when a bar closes for a subscribed symbol
+  virtual void onSymbolBar(SymbolContext& ctx, const BarEvent& ev) {}
+
+  // Order-event hooks. Override onSymbolFill for fill notifications (the common
+  // case) and onSymbolOrderUpdate for everything else — cancels, rejects,
+  // pending-trigger transitions. Without these, native stop_market is unusable:
+  // there is no other path for the strategy to learn its stop fired.
+  virtual void onSymbolFill(SymbolContext& ctx, const OrderEvent& ev) {}
+  virtual void onSymbolOrderUpdate(SymbolContext& ctx, const OrderEvent& ev) {}
+
+  // Backtest only. Live exchanges do not publish queue position.
+  virtual void onSymbolQueuePositionChange(SymbolContext& ctx, const OrderEvent& ev) {}
+  virtual void onSymbolMarketPositionChange(SymbolContext& ctx, const OrderEvent& ev) {}
 ```
+
+`onTrade`, `onBookUpdate` and `onBar` are **`final`** on `Strategy` — do not try to override them.
+They filter by subscription, update `SymbolContext`, push into the bar ring, and then dispatch to the
+`onSymbol*` hooks above.
+
+`onOrderEvent` routes by status: `FILLED` / `PARTIALLY_FILLED` to `onSymbolFill`,
+`QUEUE_POSITION_UPDATED` to `onSymbolQueuePositionChange`, `MARKET_POSITION_CHANGED` to
+`onSymbolMarketPositionChange`, everything else to `onSymbolOrderUpdate`.
 
 The base class automatically:
 1. Filters events by subscription
 2. Updates `SymbolContext` (book, prices, timestamps)
-3. Dispatches to the appropriate handler
+3. Maintains the per-(symbol, timeframe) bar ring
+4. Dispatches to the appropriate handler
 
 ## Context Access
 
@@ -127,6 +150,12 @@ protected:
 
   // Close position (reduce-only market order)
   OrderId emitClosePosition(SymbolId symbol);
+
+  // DEX/AMM liquidity provision. Executed by the on-chain connector, not the
+  // CEX or backtest path; `pool` identifies the pool.
+  OrderId emitProvideLiquidity(SymbolId pool, Price priceLower, Price priceUpper,
+                               Quantity liquidity);
+  OrderId emitWithdrawLiquidity(SymbolId pool, Quantity liquidity);
 ```
 
 ### Conditional Order Examples
@@ -147,6 +176,29 @@ emitClosePosition(symbol);
 // IOC limit order
 emitLimitBuy(symbol, price, qty, TimeInForce::IOC);
 ```
+
+## Multi-Timeframe Bar Ring
+
+`Strategy` keeps a ring of closed bars per (symbol, timeframe), so a multi-timeframe strategy can
+recall the last N closed bars without its own bookkeeping. These are `public`:
+
+```cpp
+size_t barRingCapacity() const noexcept;
+void   setBarRingCapacity(size_t n) noexcept;   // clamped to >= 1
+
+std::optional<Bar> lastClosedBar(SymbolId sym, BarType type, uint64_t param) const;
+std::vector<Bar>   lastNClosedBars(SymbolId sym, BarType type, uint64_t param, size_t n) const;
+```
+
+| Method | Behavior |
+|--------|----------|
+| `barRingCapacity()` | Bars retained per (symbol, timeframe) |
+| `setBarRingCapacity(n)` | Set the retention count. `n` is clamped to at least 1 |
+| `lastClosedBar(sym, type, param)` | The most recent closed bar, or `std::nullopt` before a `BarAggregator` of that timeframe has emitted one |
+| `lastNClosedBars(sym, type, param, n)` | The most recent `n` bars in chronological order, oldest first. Returns fewer than `n` (possibly empty) when the ring holds less |
+
+`param` follows `BarEvent::barTypeParam`: nanoseconds for `BarType::Time`, count for `Tick`,
+threshold for `Volume`. The ring evicts the oldest bar when full.
 
 ## Order and Position Tracking
 
@@ -295,9 +347,17 @@ auto result = runner.run(*reader);
 
 // Live (with signal handler)
 strategy.setSignalHandler(&executor);
-engine.addSubscriber(&strategy);
+
+// Engine takes its subsystems and connectors through the constructor; there is
+// no addSubscriber / addConnector. Move the strategy in as a subsystem.
+std::vector<std::unique_ptr<ISubsystem>> subsystems;
+subsystems.push_back(std::move(strategyPtr));
+
+Engine engine(engineConfig, std::move(subsystems), connectors);
 engine.start();
 ```
+
+`Engine`'s entire public surface is the three-argument constructor plus `start()` and `stop()`.
 
 ## See Also
 

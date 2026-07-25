@@ -10,7 +10,7 @@ Replay an SMA crossover strategy against historical data and read the stats out.
     pip install flox-py
     ```
 
-    Or build from source: `cmake -B build -DFLOX_ENABLE_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON && cmake --build build` and put `build/python` on `PYTHONPATH`.
+    Or build from source: `cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON && cmake --build build` and put `build/python` on `PYTHONPATH`.
 
 === "Node.js"
 
@@ -20,7 +20,7 @@ Replay an SMA crossover strategy against historical data and read the stats out.
 
 === "Codon"
 
-    Build flox with `-DFLOX_ENABLE_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON`, then point Codon at `codon/flox`.
+    Build flox with `-DFLOX_BUILD_CAPI=ON -DFLOX_ENABLE_BACKTEST=ON`, then point Codon at `codon/flox`.
 
 === "C++"
 
@@ -91,25 +91,25 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
     from flox.strategy import Strategy
     from flox.context import SymbolContext
     from flox.types import TradeData
-    from flox.indicators import StreamingSMA
+    from flox.indicators import SMA
 
     class SmaCrossover(Strategy):
-        fast: StreamingSMA
-        slow: StreamingSMA
+        fast: SMA
+        slow: SMA
         size: float
         prev_above: bool
 
         def __init__(self, symbols: List[int], fast_n: int = 10, slow_n: int = 20, size: float = 1.0):
             super().__init__(symbols)
-            self.fast = StreamingSMA(fast_n)
-            self.slow = StreamingSMA(slow_n)
+            self.fast = SMA(fast_n)
+            self.slow = SMA(slow_n)
             self.size = size
             self.prev_above = False
 
         def on_trade(self, ctx: SymbolContext, trade: TradeData):
             f = self.fast.update(trade.price.to_double())
             s = self.slow.update(trade.price.to_double())
-            if f is None or s is None:
+            if not self.slow.ready:
                 return
             above = f > s
             if above and not self.prev_above and self.position() == 0.0:
@@ -248,9 +248,26 @@ A 10/20 SMA crossover. Buy when fast crosses above slow, sell on the reverse.
 Final $10245.30  return 2.45%  trades 47  Sharpe 1.23  DD 3.21%
 ```
 
+### Stats key names differ by producer
+
+There are two different stats shapes, and the risk-adjusted ratio keys are not the same in both. Read the keys off the object that produced the dict, not off a generic "stats" shape.
+
+| Producer | Python keys | Node.js keys |
+|---|---|---|
+| `BacktestRunner.run_csv` / `run_ohlcv` / `run_bars` / `run_tape` / `run_tapes` | `sharpe`, `sortino` | `sharpeRatio` only |
+| `BacktestResult.stats()` | `sharpe_ratio`, `sortino_ratio`, `calmar_ratio` | `sharpe`, `sortino`, `calmar` |
+| `GridSearch.run()[i]["stats"]` | whatever the factory returned (normally the `run_csv` shape) | `sharpeRatio`, `sortinoRatio` |
+| `WalkForwardRunner` fold stats | `sharpe`, `sortino` | `sharpeRatio`, `sortinoRatio` |
+
+Only `BacktestResult.stats()` carries the full metric set. The `run_*` dict is the short form — no Calmar, and in Node no Sortino either. Python's `BacktestResult.stats()` additionally carries `time_weighted_return`, `avg_win_loss_ratio`, `max_consecutive_wins` / `max_consecutive_losses`, `avg_trade_duration_ns` / `median_trade_duration_ns` / `max_trade_duration_ns`, `start_time_ns` and `end_time_ns`; the Node `stats()` object does not.
+
+Note the `BacktestStats` interface in `node/index.d.ts` describes the `BacktestResult.stats()` shape; the `runCsv` / `runOhlcv` return value is declared as that type but does not match it.
+
 ## Pre-aggregated bars (faster replay)
 
-For repeated parameter sweeps over the same data, pre-aggregate bars once and replay them. The Python and Node.js bindings expose this via `BacktestRunner.run_bars(...)` (closed OHLC bars), and C++ has dedicated mmap storage.
+For repeated parameter sweeps over the same data, pre-aggregate bars once and replay them. Python (`run_bars`), Node.js (`runBars`) and Codon (`run_bars`) all take closed OHLC bars; C++ has dedicated mmap storage.
+
+`runBars` is implemented by the Node addon but is not declared in `index.d.ts`, so TypeScript callers need a cast.
 
 === "Python"
 
@@ -267,6 +284,7 @@ For repeated parameter sweeps over the same data, pre-aggregate bars once and re
 === "Node.js"
 
     ```javascript
+    // startNs / endNs are BigInt64Array; OHLCV arrays are Float64Array.
     bt.runBars(startNs, endNs, opens, highs, lows, closes, vols, "BTCUSDT");
     ```
 

@@ -74,7 +74,7 @@ Most users record from a live connector. The Python recorder writes the same `.f
 Run `preagg_bars` once per dataset; it writes one bar file per timeframe.
 
 ```bash
-cmake -B build -DFLOX_ENABLE_TOOLS=ON -DFLOX_ENABLE_BACKTEST=ON
+cmake -B build -DFLOX_BUILD_TOOLS=ON -DFLOX_ENABLE_BACKTEST=ON
 cmake --build build
 
 ./build/tools/preagg_bars /data/bybit/BTCUSDT /data/bybit/BTCUSDT/bars 60 300 900 3600
@@ -88,32 +88,57 @@ Same tool for every binding — it's a standalone CLI binary.
 
 ## 3. Load bars for backtesting
 
+`MmapBarStorage` / `MmapBarReplaySource` are C++-only — neither is exposed in
+the Python or Node.js bindings. From the bindings, aggregate the trade arrays
+in-process with the batch aggregators and feed the result to `run_bars`.
+
 === "Python"
 
-    Bars come back as a structured numpy array. Pass directly to `BacktestRunner.run_bars(...)`:
+    Bars come back as a structured numpy array with fields `start_time_ns`,
+    `end_time_ns`, `open_raw`, `high_raw`, `low_raw`, `close_raw`, `volume_raw`,
+    `buy_volume_raw`, `trade_count`. The `*_raw` fields are fixed-point — divide
+    by `flox.PRICE_SCALE` / `flox.VOLUME_SCALE` for floats.
 
     ```python
-    storage = flox.MmapBarStorage("/data/bybit/BTCUSDT/bars")
-    bars = storage.bars(timeframe_ns=60 * 1_000_000_000)   # 1-minute bars
+    import flox_py as flox
+
+    bars = flox.aggregate_time_bars(timestamps, prices, quantities, is_buy,
+                                    interval_seconds=60.0)
 
     bt.run_bars(
         start_time_ns = bars["start_time_ns"],
         end_time_ns   = bars["end_time_ns"],
-        open  = bars["open"],   high = bars["high"],
-        low   = bars["low"],    close = bars["close"],
-        volume = bars["volume"],
+        open  = bars["open_raw"]  / flox.PRICE_SCALE,
+        high  = bars["high_raw"]  / flox.PRICE_SCALE,
+        low   = bars["low_raw"]   / flox.PRICE_SCALE,
+        close = bars["close_raw"] / flox.PRICE_SCALE,
+        volume = bars["volume_raw"] / flox.VOLUME_SCALE,
         symbol = "BTCUSDT",
     )
     ```
 
+    Also available: `aggregate_tick_bars(..., tick_count)`,
+    `aggregate_volume_bars(..., volume_threshold)`,
+    `aggregate_range_bars(..., range_size)`,
+    `aggregate_renko_bars(..., brick_size)`,
+    `aggregate_heikin_ashi_bars(..., interval_seconds)`.
+
 === "Node.js"
 
+    The `aggregate*` helpers return an array of objects (`startTimeNs`,
+    `endTimeNs`, `open`, `high`, `low`, `close`, `volume`, `buyVolume`,
+    `tradeCount`) — already in floats, so build the typed arrays `runBars`
+    wants from them.
+
     ```javascript
-    const storage = new flox.MmapBarStorage("/data/bybit/BTCUSDT/bars");
-    const bars = storage.bars(60n * 1_000_000_000n);
-    bt.runBars(bars.startTimeNs, bars.endTimeNs,
-                bars.open, bars.high, bars.low, bars.close, bars.volume,
-                "BTCUSDT");
+    const bars = flox.aggregateTimeBars(timestamps, prices, quantities, isBuy, 60);
+
+    const startNs = BigInt64Array.from(bars, (b) => BigInt(b.startTimeNs));
+    const endNs   = BigInt64Array.from(bars, (b) => BigInt(b.endTimeNs));
+    const col = (k) => Float64Array.from(bars, (b) => b[k]);
+
+    bt.runBars(startNs, endNs, col('open'), col('high'), col('low'),
+               col('close'), col('volume'), "BTCUSDT");
     ```
 
 === "C++"
@@ -153,7 +178,9 @@ For real-time bar generation while you trade, configure the aggregator with the 
 
 === "Python / Node.js"
 
-    Live bar aggregation isn't yet exposed as an idiomatic Python/Node.js API — drive your strategy from `Runner.on_trade(...)` and accumulate bars yourself, or pre-aggregate with `preagg_bars` and replay.
+    The live `MultiTimeframeAggregator` / `MmapBarWriter` wiring above is C++-only. From the bindings, use the batch aggregators on a trade array — `aggregate_time_bars`, `aggregate_tick_bars`, `aggregate_volume_bars`, `aggregate_range_bars`, `aggregate_renko_bars`, `aggregate_heikin_ashi_bars` (Node: `aggregateTimeBars`, ...) — and replay the result through `run_bars` / `runBars`. Since `MmapBarStorage` is not bound, those functions are the only Python/Node.js bar-aggregation path.
+
+    `flox_py.BarDispatchRecorder` is a testing helper that records which (bar type, param) closes fired for a trade stream: `add_time_interval_seconds`, `on_trade(symbol, price, qty, ts_ns)`, `finalize`, then `count` / `type_at` / `param_at`.
 
 ## Bar types
 

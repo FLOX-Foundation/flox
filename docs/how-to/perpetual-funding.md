@@ -29,7 +29,7 @@ periodic-event clock of its own.
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
     const sched = new flox.FundingSchedule();
     sched.loadProfile('binance_um_futures');
     sched.setConstantRate(0.0001);
@@ -120,6 +120,21 @@ timestamp_ns,symbol,funding_rate
     sched.setConstantRate(0.00005);
     ```
 
+To build the same tape in memory instead of from CSV, pass
+`FundingTapeEntry` rows (`timestamp_ns`, `symbol`, `rate`) to the
+static `FundingSchedule.tape_by_symbol(entries)`
+(`setTapeBySymbol(timestampsNs, symbols, rates)` in Node).
+
+## Inspecting a loaded schedule
+
+| Method | Returns |
+|---|---|
+| `interval_ns()` | Settlement cadence in ns (0 for a tape-driven schedule) |
+| `constant_rate()` | Current fallback rate |
+| `last_tick_ns()` | Internal cursor, advanced by `tick` |
+| `settlement_timestamps()` | Every settlement timestamp in the loaded tape, deduplicated and sorted |
+| `per_symbol_tape()` | The loaded per-symbol rows as `FundingTapeEntry` objects |
+
 ## Integration recipe
 
 A typical backtest tick loop:
@@ -140,8 +155,10 @@ for event in market_data:
 - The schedule's internal cursor (`last_tick_ns`) advances on every
   tick. To restart a backtest, call `reset()`.
 - Per-day settlement venues (BitMEX-style daily funding) need a
-  custom interval — pass `24 * 3600 * 1_000_000_000` to
-  `set_constant`.
+  custom interval. The interval is fixed at construction and has no
+  setter: build the schedule with the static factory
+  `FundingSchedule.constant(24 * 3600 * 1_000_000_000, rate)`
+  (`setConstant(intervalNs, rate)` in Node).
 - The signed position should reflect the actual exposure at the
   funding boundary, not the average over the period. Snap the
   position at the boundary timestamp.

@@ -42,7 +42,7 @@ A worked example (Python):
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor } from "flox";
+    import { SimulatedExecutor } from "@flox-foundation/flox";
 
     const exec = new SimulatedExecutor();
     exec.submitBracket({
@@ -123,10 +123,17 @@ OrderIds. The simulator does not currently enforce this.
 
 ## Notes
 
-- Each child's `quantity` matches the actual entry fill at the time
-  TP + stop are submitted, so partial entry fills produce
-  proportionally smaller children. Re-entering after partial fill
-  on the entry leg is left to higher-level strategies.
+- The child-arm policy is set with
+  `set_bracket_child_arm_mode(mode)` /
+  `setBracketChildArmMode(mode)` on the `SimulatedExecutor`:
+    - `'on_full_fill'` (**default**) — TP + stop are armed once, on
+      the *full* entry fill, each sized to the entry quantity. A
+      partially filled entry arms nothing.
+    - `'on_partial_fill'` — children are armed and resized
+      incrementally on every partial entry fill, so a partial entry
+      produces proportionally smaller children.
+- Re-entering after a partial fill on the entry leg is left to
+  higher-level strategies.
 - Bracket is not chainable: you cannot submit a new bracket whose
   entry order id collides with an existing one. Reuse a fresh
   `bracketId` per attempt.

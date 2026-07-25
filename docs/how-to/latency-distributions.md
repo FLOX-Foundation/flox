@@ -43,7 +43,7 @@ spikes.
 === "Node.js"
 
     ```javascript
-    const flox = require('flox-node');
+    const flox = require('@flox-foundation/flox');
     const dist = new flox.LatencyDistribution();
     dist.setLognormal(5_000_000, 0.7);
     dist.setBurstCorrelation(0.4);

@@ -17,7 +17,7 @@ moves between submission and the venue accepting the order.
 
 ## Configure
 
-Two new `BacktestConfig` knobs:
+Two `BacktestConfig` knobs:
 
 - `submitAckLatencyNs` — base ack delay. Default `0` preserves the
   legacy synchronous flow.
@@ -25,16 +25,28 @@ Two new `BacktestConfig` knobs:
 
 RNG sampling shares `cancelAckSeed`.
 
+The bindings expose the pair as one `SimulatedExecutor` setter,
+`set_submit_ack_latency(latency_ns, jitter_ns=0)`. `BacktestRunner`'s
+constructor takes only `(registry, fee_rate, initial_capital)` and
+owns its executor internally, so from Python / Node the knob applies
+to a `SimulatedExecutor` you drive yourself — a standalone one, or
+`PaperBroker.simulated_executor`. Set `BacktestConfig` in C++ to
+change the knob for a `BacktestRunner`.
+
 === "Python"
 
     ```python
-    runner = flox.BacktestRunner(
-        registry,
-        fee_rate=0.0,
-        initial_capital=100_000.0,
-        submit_ack_latency_ns=5_000_000,
-        submit_ack_jitter_ns=2_000_000,
-    )
+    import flox_py as flox
+
+    ex = flox.SimulatedExecutor()
+    ex.set_submit_ack_latency(5_000_000, 2_000_000)   # 5 ms ± 2 ms
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const ex = new flox.SimulatedExecutor();
+    ex.setSubmitAckLatency(5_000_000, 2_000_000);
     ```
 
 === "C++"

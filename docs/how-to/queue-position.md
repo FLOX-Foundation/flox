@@ -42,7 +42,7 @@ order's volume-at-arrival.
 
     ```javascript
     const ex = new flox.SimulatedExecutor();
-    ex.setQueueModel("tob");
+    ex.setQueueModel("tob", 1);   // depth is required in the .d.ts
     ex.setQueuePositionMinChangeFraction(0.05);
     ```
 

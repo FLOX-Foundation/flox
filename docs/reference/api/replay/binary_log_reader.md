@@ -10,6 +10,7 @@ struct ReaderConfig
   std::optional<int64_t> to_ns;
   std::set<uint32_t> symbols;
   bool verify_crc{true};
+  int64_t reorder_window_ns{10'000'000'000};  // 10s
 };
 
 class BinaryLogReader
@@ -30,6 +31,15 @@ public:
   using EventCallback = std::function<bool(const ReplayEvent&)>;
   bool forEach(EventCallback callback);
   bool forEachFrom(int64_t start_ts_ns, EventCallback callback);
+
+  // Progress reporting. The callback returns false to cancel the run; forEach
+  // then returns false so the caller can tell a cancelled run from a completed
+  // one. Returning true continues.
+  using ProgressCallback = std::function<bool(double pct, int64_t cursor_ts_ns)>;
+  void setProgressCallback(
+      ProgressCallback cb,
+      std::chrono::milliseconds interval = std::chrono::milliseconds(1000));
+  void clearProgressCallback();
 
   // Metadata
   std::optional<std::pair<int64_t, int64_t>> timeRange() const;
@@ -54,6 +64,7 @@ public:
 | to_ns      | `optional<int64_t>`     | End timestamp filter (inclusive)         |
 | symbols    | `set<uint32_t>`         | Symbol IDs to include (empty = all)      |
 | verify_crc | `bool`                  | Verify CRC32 checksums (default: true)   |
+| reorder_window_ns | `int64_t`        | Bounded reorder buffer, default 10 s. Events arriving more than this far behind the emit cursor cannot be placed in order any more, so the reader throws `FloxError` with the observed delta. The default covers exchange-WS jitter and the 99th percentile of reconnect-induced cross-block inversions on real tapes. Memory bound is roughly `reorder_window_ns x peak_event_rate x sizeof(ReplayEvent)` — about 36 MB at 10 s and a 10k ev/s burst |
 
 ## Core Methods
 
@@ -65,6 +76,8 @@ public:
 | `count()`          | Returns total event count across all segments            |
 | `forEach()`        | Iterate all events matching filters                      |
 | `forEachFrom()`    | Iterate events starting from a timestamp                 |
+| `setProgressCallback()` | Install a progress callback, invoked at most once per `interval`. Return `false` from it to cancel; `forEach` then returns `false` |
+| `clearProgressCallback()` | Remove the progress callback                        |
 | `timeRange()`      | Returns (first_event_ns, last_event_ns) pair             |
 | `stats()`          | Returns read statistics (events, bytes, errors)          |
 | `segmentFiles()`   | Returns list of segment file paths                       |
@@ -106,7 +119,7 @@ struct DatasetSummary
 ```cpp
 struct ReplayEvent
 {
-  EventType type;           // Trade, BookSnapshot, or BookDelta
+  EventType type;           // Trade, BookSnapshot, BookDelta, OptionQuote, PoolState
   int64_t timestamp_ns;     // Event timestamp
 
   TradeRecord trade;        // Populated for Trade events
@@ -114,8 +127,22 @@ struct ReplayEvent
   BookRecordHeader book_header;  // Populated for Book events
   std::vector<BookLevel> bids;
   std::vector<BookLevel> asks;
+
+  OptionQuoteRecord option_quote;  // Populated for OptionQuote events
+
+  // Pool-state record: the fixed header plus the raw u256 payload bytes,
+  // carried opaquely for the pool-state-tape layer to interpret.
+  PoolStateRecordHeader pool_state_header;
+  std::vector<std::byte> pool_state_payload;
+
+  // Symbol id for the active record, whichever event type this is. Keeps symbol
+  // filtering correct as new record types are added.
+  uint32_t symbolId() const;
 };
 ```
+
+Read the symbol through `symbolId()` rather than reaching into a per-type record; it switches on
+`type` and stays correct as record types are added.
 
 ### ReaderStats
 

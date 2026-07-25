@@ -37,7 +37,7 @@ Policies and states are exposed as named string constants in JS bindings and as 
 
 ```javascript
 // node
-const { OrderGroup, OrderGroupPolicy } = require('flox');
+const { OrderGroup, OrderGroupPolicy } = require('@flox-foundation/flox');
 const g = new OrderGroup({ parentSignalId: 42, policy: OrderGroupPolicy.AllOrNothing });
 g.addMarketLeg(btc, 0, 0.1);
 g.addMarketLeg(eth, 1, 2.0);
@@ -95,6 +95,21 @@ fired = g.auto_dispatch(strategy)  # strategy is any class with the three emit_*
 ```
 
 `auto_dispatch` returns the number of actions it fired so the caller can decide whether to react. It is safe to call after every `record_*` event — only newly recommended actions will fire.
+
+If you dispatch by hand instead of through `auto_dispatch`, call `mark_action_dispatched(leg_index, kind)` after emitting so the same action is not recommended again on the next `recommended_actions()` call. `kind` is the action's `"cancel"` / `"revert"` string.
+
+## Reading leg state
+
+| Method | Returns |
+|---|---|
+| `leg_count()` | Number of legs added |
+| `leg_state(i)` | That leg's `LegState` |
+| `leg_filled(i)` | Cumulative filled quantity on the leg |
+| `leg_order_id(i)` | Order id recorded by `record_submit` |
+| `find_leg_by_order_id(id)` | Leg index for an order id |
+
+`record_cancel(leg_index)` is the counterpart to `record_fill` /
+`record_failure` for a leg the venue confirmed cancelled.
 
 ## Group-level risk gate
 

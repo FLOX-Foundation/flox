@@ -16,9 +16,14 @@ writer.close();
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `writeTrade(exchangeTsNs, recvTsNs, price, qty, tradeId, symbolId, side)` | `boolean` | Write a trade record |
+| `writeBook(exchangeTsNs, recvTsNs, seq, symbolId, isSnapshot, bids, asks)` | `boolean` | Write a book update |
 | `flush()` | `void` | Flush to disk |
 | `close()` | `void` | Close and finalize |
 | `stats()` | `{ bytesWritten, eventsWritten, segmentsCreated, tradesWritten }` | Write statistics |
+
+`writeBook`'s `exchangeTsNs`, `recvTsNs` and `seq` are `bigint`. `bids` and
+`asks` are flat `BigInt64Array`s of interleaved raw int64
+`[price, qty, price, qty, ...]` at the 1e8 price/quantity scale.
 
 ---
 
@@ -44,7 +49,20 @@ const events = reader.readBookUpdates();
 | `readBBOFrom(startTsNs, max?)` | BBO record array | Same as `readBBO` starting from `startTsNs` |
 | `readBookUpdates()` | book update array | Full depth: each event includes `bids` and `asks` arrays |
 | `readBookUpdatesFrom(startTsNs)` | book update array | Same as `readBookUpdates` starting from `startTsNs` |
-| `run(aggregators, nThreads?)` | `boolean` | Streaming aggregator dispatch over the tape. `nThreads=0` (default) auto-picks `min(blocks_per_segment/2, hardware_concurrency)`; `1` forces single-thread; `>1` sets the worker count (capped to the effective block count). Parallel mode partitions at the compressed-block level and merges per-worker panels back into the caller's array. See the [aggregate-tape-events how-to](../../how-to/aggregate-tape-events.md). |
+| `run(aggregators, options?)` | `boolean` | Streaming aggregator dispatch over the tape. See below. |
+
+`run`'s second argument is either an `nThreads` integer (back-compat) or a
+`DataReaderRunOptions` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nThreads` | `number` | `0` (default) auto-picks `min(blocks_per_segment/2, hardware_concurrency)`; `1` forces single-thread; `>1` sets the worker count (capped to the effective block count). |
+| `onProgress` | `(pct, tsNs) => boolean \| void` | Called from inside the run loop with the bytes-based pct (0..1) and the cursor timestamp in nanoseconds. Return `false` to cancel. Only fires on the single-thread path, so it requires `nThreads: 1`. |
+| `progressIntervalMs` | `number` | Minimum interval between `onProgress` calls. Defaults to `1000`; `0` is treated as `1000`. |
+
+Parallel mode partitions at the compressed-block level and merges per-worker
+panels back into the caller's array. See the
+[aggregate-tape-events how-to](../../how-to/aggregate-tape-events.md).
 
 Record shapes:
 
@@ -69,7 +87,8 @@ Built-in `.floxlog` recorder. Plug into a `Runner` via
 
 ```javascript
 const hook = new flox.BinaryLogRecorderHook(
-  outputDir, maxSegmentMb /*=256*/, exchangeId /*=0*/, compression /*"none"|"lz4"*/);
+  outputDir, maxSegmentMb /*=256*/, exchangeId /*=0*/, compression /*"none"|"lz4"*/,
+  exchangeName /*=""*/, instrumentType /*=""*/);
 hook.addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision);
 
 runner.setMarketDataRecorder(hook);
@@ -84,7 +103,11 @@ console.log(hook.stats());
 | `addSymbol(symbolId, name, base, quote, pricePrecision, qtyPrecision)` | Register a symbol in the recording metadata. |
 | `flush()` | Flush buffered bytes to disk. |
 | `stats()` | Returns `{ tradesWritten, bookUpdatesWritten, bytesWritten, segmentsCreated, errors }` as BigInts. |
-| `destroy()` | Release the underlying C-API handle. |
+
+`exchangeName` is stamped into the tape manifest as `metadata.exchange` and is
+required for `MergedTapeReader` keying — tapes recorded without it refuse to
+merge. `instrumentType` is stamped as `metadata.instrument_type` (`"spot"`,
+`"perpetual"`, `"futures"`, `"option"`).
 
 ---
 

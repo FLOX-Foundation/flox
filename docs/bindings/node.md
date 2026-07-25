@@ -7,9 +7,10 @@ Event-driven live trading and backtesting from Node.js using `@flox-foundation/f
 ```bash
 npm install @flox-foundation/flox
 # or build from source:
-cmake -B build -DFLOX_ENABLE_NODE=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cd node && npm install && npm run build
 ```
+
+The addon is built out of tree by npm, not by CMake. `FLOX_BUILD_NODE` exists for parity with the other binding flags but does not invoke npm. The compiled addon lands at `node/build/Release/flox_node.node`.
 
 ```javascript
 const flox = require('@flox-foundation/flox');
@@ -77,6 +78,8 @@ const strategy = {
 | `emit.marketSell(qty)` | Market sell |
 | `emit.limitBuy(price, qty)` | Limit buy |
 | `emit.limitSell(price, qty)` | Limit sell |
+| `emit.provideLiquidity(priceLower, priceUpper, liquidity)` | Add AMM liquidity in a tick range |
+| `emit.withdrawLiquidity(liquidity)` | Remove AMM liquidity |
 | `emit.cancel(orderId)` | Cancel order |
 | `emit.closePosition()` | Close position (reduce-only) |
 
@@ -108,33 +111,18 @@ runner.stop();
 
 ## Backtest
 
-Two paths. The realistic one is one extra call; pick it by default.
-
-### Realistic (venue stack)
-
-```javascript
-const stack = flox.VenueStack.binanceUmFutures(42, 10_000);
-
-const bt = new flox.BacktestRunner(registry, { executor: stack.executor(), account: stack.account() });
-bt.setStrategy(strategy);
-
-const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
-```
-
-`VenueStack.binanceUmFutures` wires the venue physics in one call — cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account so realized notional moves the tier), funding settlement, rate limits, and the venue-availability hook. Other factories: `bybitLinear`, `okxSwap`, `deribit`.
-
-Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
-
-### Bare (flat fee, nothing else)
-
 ```javascript
 const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
 
-const stats = bt.runCsv('/path/to/data.csv', 'BTCUSDT');
+const stats = bt.runCsv('/path/to/btcusdt_1m.csv', 'BTCUSDT');
 ```
 
-Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Good for an indicator sanity check; not enough before live.
+The constructor takes `(registry, feeRate, initialCapital)` — nothing else. Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Good for an indicator sanity check; not enough before live.
+
+`runCsv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used, and each bar is replayed as one trade. Other entry points: `runOhlcv(timestamps, closes, symbol)`, `runTape(path)`, `runTapes(paths)`.
+
+Hooks attach after construction: `setExecutor(executor)` (an object implementing the `Executor` interface, or `null`), `addExecutionListener(listener)`. Run artifacts: `equityCurve()`, `trades()`.
 
 ### Stats object
 
@@ -147,37 +135,26 @@ Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Go
 | `sharpeRatio` | Annualized Sharpe ratio |
 | `maxDrawdownPct` | Peak-to-trough drawdown (%) |
 
-## Paper trading
+Also present: `winningTrades`, `losingTrades`, `initialCapital`, `finalCapital`, `totalFees`, `maxDrawdown`, `profitFactor`, `avgWin`, `avgLoss`.
 
-Same strategy object, live feed, simulated fills. `PaperBroker` wraps the same `SimulatedExecutor` and `Account` you used for the realistic backtest.
+The key names depend on which object produced the dict. `BacktestRunner.runCsv` / `runOhlcv` / `runBars` emit `sharpeRatio` and carry no Sortino or Calmar (`node/src/strategy.h:1527-1546`). `BacktestResult.stats()` is a different shape: `sharpe`, `sortino`, `calmar` (`node/src/backtest.h:578-580`). `GridSearch` and `WalkForwardRunner` emit `sharpeRatio` and `sortinoRatio` (`node/src/walk_forward.h:77-78`). Note that the `BacktestStats` interface in `node/index.d.ts` describes the `BacktestResult.stats()` shape but is declared as the return type of `runCsv` — a stale declaration, not a runtime difference.
 
-```javascript
-const broker = new flox.PaperBroker(stack.executor(), stack.account());
-const runner = new flox.Runner(registry, broker.onSignal);
-runner.addStrategy(strategy);
-runner.start();
+### Venue physics
 
-// Forward trades from your live feed:
-// runner.onTrade(btc, price, qty, isBuy, tsNs)
-```
-
-See [Paper trading](../how-to/paper-trading.md).
-
-## Live
-
-`CcxtBroker` has the same shape as `PaperBroker` but routes through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange. The strategy object is unchanged.
+`VenueStack` is a separate venue simulation with its own flat proxy surface. It is not an argument to `BacktestRunner` and does not attach to one.
 
 ```javascript
-const ccxt = require('ccxt');
-const exchange = new ccxt.pro.binanceusdm({ apiKey: '...', secret: '...' });
+const stack = flox.VenueStack.binanceUmFutures(42, 10_000);
 
-const broker = new flox.CcxtBroker(exchange, registry);
-const runner = new flox.Runner(registry, broker.onSignal);
-runner.addStrategy(strategy);
-runner.start();
+stack.accountOpenPosition(btc, 5.0, 50_000);
+stack.accountSetMark(btc, 47_000);
+const liquidated = stack.liquidationOnMark(btc, 47_000);
+stack.feesRecordFill(tsNs, 20_000);
 ```
 
-One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+One call wires the cross-margin account, MM tiers and ADL, the VIP fee schedule, funding settlement, rate limits, and the venue-availability hook. Other factories: `bybitLinear`, `okxSwap`, `deribit`, plus `VenueStack.fromVenue(name, accountId, equity)`.
+
+Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
 
 ## Full Example — SMA Crossover
 
@@ -234,6 +211,6 @@ runner.start();
 // --- Backtest ---
 const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
-const stats = bt.runCsv('./data/btcusdt_trades.csv', 'BTCUSDT');
+const stats = bt.runCsv('./data/btcusdt_1m.csv', 'BTCUSDT');
 console.log(stats);
 ```

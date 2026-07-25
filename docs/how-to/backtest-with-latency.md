@@ -2,7 +2,7 @@
 
 Per-trade fills in flox work in instant mode by default: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
 
-Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification). Phase 1 is the sampling primitive. The user app applies samples to its own timestamps before submitting orders to `SimulatedExecutor`. Phase 2 will plumb the primitive into the engine through `BacktestConfig.latency` so one knob controls every fill path.
+Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification). These models are a sampling primitive: the user app applies samples to its own timestamps before submitting orders to `SimulatedExecutor`. `BacktestConfig` has no latency field. For ack latency that the simulator applies itself, see the `SimulatedExecutor` setters at the bottom of this page.
 
 ## The four models
 
@@ -157,10 +157,24 @@ For bar-driven strategies on minute-or-larger timeframes, latency rarely changes
 - You are testing a latency-arbitrage strategy where round-trip is the whole point.
 - A live recording diverges from the instant-mode backtest and you want to localize whether the gap is latency-driven.
 
-## What is not here yet (Phase 2)
+## What is not here yet
 
-- Engine-level integration through `BacktestConfig.latency`. Today the user app applies samples manually; Phase 2 wires the primitive into `SimulatedExecutor` so one knob controls every fill path.
-- Per-symbol calibration. Phase 1 is global per component.
+- A single `BacktestConfig.latency` knob. `BacktestConfig` has no latency field; the models on this page are a sampling primitive that the user app applies to its own timestamps.
+- Per-symbol calibration. The models are global per component.
+
+`SimulatedExecutor` does have its own ack-latency knobs, independent of the models above, and they *are* wired into the fill path:
+
+| Setter | Effect |
+|---|---|
+| `set_submit_ack_latency(latency_ns, jitter_ns=0)` | Defers `ACCEPTED` after submit |
+| `set_cancel_ack_latency(latency_ns, jitter_ns=0)` | Defers `CANCELED`; the order can still fill in the window |
+| `set_replace_ack_latency(latency_ns, jitter_ns=0)` | Defers the replace ack |
+| `set_submit_ack_latency_distribution(dist)` | Same, driven by a `LatencyDistribution` |
+| `set_cancel_ack_latency_distribution(dist)` | Same |
+| `set_replace_ack_latency_distribution(dist)` | Same |
+| `apply_latency_profile(name)` | Sets all three from a named venue profile |
+
+`LatencyDistribution` (Node: `new flox.LatencyDistribution()` plus `setConstant` / `setUniform` / `setLognormal` / `setEmpirical` / `setBurstCorrelation`) is a separate type from the `*Latency` models above. See [Model cancellation ack latency](cancel-latency-modeling.md).
 
 ## See also
 

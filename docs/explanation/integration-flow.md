@@ -34,11 +34,18 @@ Before anything else, define which trading instruments the system will operate o
 
 SymbolRegistry registry;
 
-// Register symbols with exchange and instrument info
-auto btcId = registry.registerSymbol("binance", "BTCUSDT", InstrumentType::PERPETUAL);
-auto ethId = registry.registerSymbol("binance", "ETHUSDT", InstrumentType::PERPETUAL);
+// Short form: exchange + symbol only, everything else defaulted
+auto btcId = registry.registerSymbol("binance", "BTCUSDT");
 
-// Retrieve later by name
+// Full form: pass a SymbolInfo to set instrument type, tick size, etc.
+// InstrumentType is {Spot, Future, Inverse, Option}.
+SymbolInfo eth{.exchange = "binance",
+               .symbol = "ETHUSDT",
+               .type = InstrumentType::Future,
+               .tickSize = Price::fromDouble(0.01)};
+auto ethId = registry.registerSymbol(eth);
+
+// Retrieve later by name — returns std::optional<SymbolId>
 auto symbolId = registry.getSymbolId("binance", "BTCUSDT");
 ```
 
@@ -115,7 +122,7 @@ auto connector = std::make_shared<BinanceConnector>(
 Configure buses to distribute events to subscribers:
 
 ```cpp
-#include "flox/strategy/istrategy.h"
+#include "flox/strategy/abstract_strategy.h"
 
 // Create strategy
 auto strategy = std::make_unique<MyStrategy>(executor.get());
@@ -127,9 +134,10 @@ bookBus->subscribe(strategy.get());
 // Subscribe to execution events
 execBus->subscribe(strategy.get());
 
-// Add optional subscribers
-tradeBus->subscribe(logger.get(), /*optional=*/true);
-tradeBus->subscribe(metrics.get(), /*optional=*/true);
+// Add optional subscribers. The second parameter is `required` and
+// defaults to true — pass false to let a slow consumer drop events.
+tradeBus->subscribe(logger.get(), /*required=*/false);
+tradeBus->subscribe(metrics.get(), /*required=*/false);
 ```
 
 **Subscriber types:**
@@ -165,12 +173,18 @@ subsystems.push_back(std::move(strategy));
 std::vector<std::shared_ptr<IExchangeConnector>> connectors;
 connectors.push_back(connector);
 
-// Create and start engine
-EngineConfig config = loadConfig("config.json");
+// Create and start engine. There is no configuration-file parser —
+// EngineConfig is a plain struct you fill in yourself.
+EngineConfig config{};
 Engine engine(config, std::move(subsystems), std::move(connectors));
 
-engine.start();  // Blocks until shutdown signal
+engine.start();  // Returns immediately once subsystems and connectors are up
 ```
+
+`Engine::start()` starts every subsystem, then every connector, and
+returns. The host keeps the process alive and calls `engine.stop()`
+when it wants to shut down — see `demo/src/main.cpp` for the
+start / sleep / stop shape.
 
 **Startup sequence:**
 
@@ -255,6 +269,19 @@ stateDiagram-v2
 | `PENDING_TRIGGER` | Conditional order waiting |
 | `TRIGGERED` | Condition met, converting to market/limit |
 | `TRAILING_UPDATED` | Trailing stop price adjusted |
+| `QUEUE_POSITION_UPDATED` | Queue position moved, no other transition (backtest only) |
+| `MARKET_POSITION_CHANGED` | Resting order crossed a categorical position boundary (backtest only) |
+| `REPLACE_SUBMITTED` | Replace request sent |
+| `REPLACE_ACCEPTED` | Replace acknowledged after ack latency |
+| `REPLACE_REJECTED` | Replace refused (original already filled or not replaceable) |
+| `REJECTED_RATE_LIMIT` | Refused pre-submission by client-side rate-limit enforcement |
+| `PENDING_ONCHAIN` | Broadcast to the mempool, not yet confirmed (DEX) |
+| `REVERTED` | Chain rejected the transaction (DEX) |
+| `REPLACED_GAS` | Re-broadcast with higher gas, superseding the pending tx (DEX) |
+
+All 21 values are in `flox/execution/events/order_event.h`. The three
+on-chain states are covered in
+[On-chain order lifecycle](onchain-order-lifecycle.md).
 
 ## 7. Shutdown Procedure
 
@@ -295,7 +322,11 @@ void gracefulShutdown() {
 ## Complete Example
 
 ```cpp
-#include "flox/flox.h"
+#include "flox/engine/engine.h"
+#include "flox/engine/symbol_registry.h"
+#include "flox/book/bus/trade_bus.h"
+#include "flox/book/bus/book_update_bus.h"
+#include "flox/execution/bus/order_execution_bus.h"
 
 int main() {
     // 1. Registry
@@ -326,8 +357,12 @@ int main() {
     std::vector<std::shared_ptr<IExchangeConnector>> connectors;
     connectors.push_back(connector);
 
-    Engine engine(loadConfig(), std::move(subsystems), std::move(connectors));
+    EngineConfig config{};
+    Engine engine(config, std::move(subsystems), std::move(connectors));
     engine.start();
+
+    // start() returns immediately; keep the process alive, then:
+    engine.stop();
 
     return 0;
 }
@@ -344,11 +379,11 @@ flowchart LR
     TB --> STRAT[Your Strategy]
     STRAT --> SIG[Signal]
     SIG --> BR{Broker}
-    BR -->|paper| SIM[SimulatedExecutor<br/>+ VenueStack]
+    BR -->|paper| SIM[SimulatedExecutor]
     BR -->|live| EXCH[Exchange]
 ```
 
-`PaperBroker` plugs the realistic `SimulatedExecutor` behind the strategy's signal callback. `CcxtBroker` plugs a real exchange behind it. The strategy class, the buses, and the registry are untouched — only the broker swaps. One strategy class runs backtest, paper, and live.
+`flox_py.paper.PaperBroker` routes signals into its own in-process `SimulatedExecutor`. `flox_py.ccxt.CcxtBroker` routes them to a real exchange. Each broker owns its `Runner`; the strategy class is untouched — only the broker swaps. One strategy class runs backtest, paper, and live.
 
 See [Paper trading](../how-to/paper-trading.md) and [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
 

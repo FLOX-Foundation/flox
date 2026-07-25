@@ -71,22 +71,21 @@ runner.stop();
 
 ## 4. Backtest
 
-Two paths. Pick the second by default.
-
-### Bare backtest
-
 ```javascript
 const bt = new flox.BacktestRunner(registry, 0.0004, 10_000);
 bt.setStrategy(strategy);
 
-const stats = bt.runCsv('./data/btcusdt_trades.csv', 'BTCUSDT');
+const stats = bt.runCsv('./data/btcusdt_1m.csv', 'BTCUSDT');
 console.log(stats.returnPct, stats.sharpeRatio, stats.maxDrawdownPct);
 ```
 
-Flat fee rate, no funding, no liquidation, no rate limits. Useful
-for an indicator sanity check; not enough to decide on live capital.
+CSV format: one header line, then OHLCV bars —
+`timestamp,open,high,low,close,volume`. Only the timestamp and close
+columns are read; each row is replayed as a single trade. Flat fee
+rate, no funding, no liquidation, no rate limits. Useful for an
+indicator sanity check; not enough to decide on live capital.
 
-### Realistic backtest
+## 5. Venue physics
 
 ```javascript
 const stack = flox.VenueStack.binanceUmFutures(42, 10_000);
@@ -99,6 +98,9 @@ One call wires cross-margin Account, MM tier ladder, ADL ranking,
 30d VIP fee schedule (bound to the account), funding settlement,
 rate-limit policy, and venue-availability hook. Other factories:
 `bybitLinear`, `okxSwap`, `deribit`.
+
+`VenueStack` is a standalone simulation with its own flat proxy
+surface. It is not an argument to `BacktestRunner`.
 
 See [Realistic backtest in one call](../how-to/realistic-backtest.md)
 for the full pattern.
@@ -120,7 +122,7 @@ git clone https://github.com/FLOX-Foundation/flox.git
 cd flox
 
 cmake -B build \
-  -DFLOX_ENABLE_CAPI=ON \
+  -DFLOX_BUILD_CAPI=ON \
   -DFLOX_ENABLE_BACKTEST=ON \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build build
@@ -128,10 +130,13 @@ cmake --build build
 cd node && npm install && npm run build
 ```
 
-Then require the local build instead of the npm package:
+The addon is built by npm, not by CMake; it lands at
+`node/build/Release/flox_node.node`. Require the package entry point
+rather than the raw addon — it also attaches the `composite` and
+`dex` helpers:
 
 ```javascript
-const flox = require('./node/build/Release/flox_node');
+const flox = require('./node');
 ```
 
 ---

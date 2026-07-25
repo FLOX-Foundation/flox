@@ -11,7 +11,7 @@ pip install flox-py
 Or build from source:
 
 ```bash
-cmake -B build -DFLOX_ENABLE_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
@@ -19,7 +19,8 @@ cmake --build build
 
 | Module | Description |
 |--------|-------------|
-| [Engine & Backtest](engine.md) | Backtest engine, signal creation, batch execution |
+| [Engine & Backtest](engine.md) | Backtest engine, `SignalBuilder`, `Stats` |
+| [Strategy](strategy.md) | Event-driven `Strategy`, `Runner`, `BacktestRunner` |
 | [Indicators](indicators.md) | 20+ technical indicators (EMA, RSI, MACD, ATR, ...) |
 | [Aggregators](aggregators.md) | Bar aggregation (time, tick, volume, range, renko, Heikin-Ashi) |
 | [Order Books](books.md) | NLevelOrderBook, L3OrderBook, CompositeBookMatrix |

@@ -25,7 +25,7 @@ struct EventDispatcher<pool::Handle<T>> {
 | `BookUpdateEvent` | `IMarketDataSubscriber::onBookUpdate()`                       |
 | `TradeEvent`      | `IMarketDataSubscriber::onTrade()`                            |
 | `BarEvent`        | `IMarketDataSubscriber::onBar()`                              |
-| `OrderEvent`      | `IOrderExecutionListener::onOrderFilled()` via `dispatchTo()` |
+| `OrderEvent`      | `IOrderExecutionListener`, via `OrderEvent::dispatchTo()`, which switches on `status` across all ~21 typed handlers |
 | `pool::Handle<T>` | Unwraps and forwards to `EventDispatcher<T>`                  |
 
 ## Notes

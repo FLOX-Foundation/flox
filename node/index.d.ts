@@ -76,7 +76,9 @@ export interface BarData {
   buyVolume: number;
   startTimeNs: number;
   endTimeNs: number;
-  /** 0=Time, 1=Tick, 2=Volume, 3=Range, 4=Renko, 5=HeikinAshi. */
+  /** 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi, 6=BpsRange.
+   *  Mirrors `flox::BarType` (include/flox/aggregator/bar.h) and the
+   *  `composite.BAR_TYPE_*` constants. */
   barType: number;
   /** Interval / threshold for the active bar policy. */
   barTypeParam: number;
@@ -186,16 +188,53 @@ export interface OrderEventData {
   distanceToBestTicks: number;
 }
 
-/** Order-emission helper passed as the third arg to strategy callbacks. */
+/** Closed bar read back from the per-(symbol, timeframe) ring by
+ *  `EmitMethods.lastClosedBar` / `lastNClosedBars`. Mirrors `FloxBar`;
+ *  narrower than `BarData` (no `buyVolume` / `barType` / `closeReason`). */
+export interface ClosedBar {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  startNs: number;
+  endNs: number;
+}
+
+/** Order-emission helper passed as the third arg to strategy callbacks.
+ *  Every `symbol` argument is optional and defaults to the strategy's
+ *  first subscribed symbol. */
 export interface EmitMethods {
-  marketBuy(qty: number): void;
-  marketSell(qty: number): void;
-  limitBuy(price: number, qty: number): void;
-  limitSell(price: number, qty: number): void;
-  provideLiquidity(priceLower: number, priceUpper: number, liquidity: number): void;
-  withdrawLiquidity(liquidity: number): void;
+  marketBuy(qty: number, symbol?: Symbol | number): void;
+  marketSell(qty: number, symbol?: Symbol | number): void;
+  limitBuy(price: number, qty: number, symbol?: Symbol | number): void;
+  limitSell(price: number, qty: number, symbol?: Symbol | number): void;
+  provideLiquidity(
+    priceLower: number,
+    priceUpper: number,
+    liquidity: number,
+    symbol?: Symbol | number,
+  ): void;
+  withdrawLiquidity(liquidity: number, symbol?: Symbol | number): void;
   cancel(orderId: number): void;
-  closePosition(): void;
+  closePosition(symbol?: Symbol | number): void;
+  /** Most recent closed bar for `(symbol, barType, barTypeParam)`, or
+   *  `null` when none has closed yet. `barType` uses the `BarData.barType`
+   *  encoding; `barTypeParam` is the interval / threshold. */
+  lastClosedBar(
+    symbol: Symbol | number,
+    barType: number,
+    barTypeParam: number,
+  ): ClosedBar | null;
+  /** Up to `n` most recent closed bars, oldest first. */
+  lastNClosedBars(
+    symbol: Symbol | number,
+    barType: number,
+    barTypeParam: number,
+    n: number,
+  ): ClosedBar[];
+  /** Ring depth kept per (symbol, timeframe). */
+  setBarRingCapacity(n: number): void;
 }
 
 /** Backtest signal emitted by `Runner` / collected by `SimulatedExecutor`. */
@@ -383,7 +422,7 @@ export function setLogCallback(
   callback: ((level: number, msg: string) => void) | null
 ): void;
 
-/** Stats returned by `BacktestRunner.runCsv` / `runOhlcv` and `BacktestResult.stats()`. */
+/** Stats returned by `BacktestResult.stats()` and `Engine.run()`. */
 export interface BacktestStats {
   totalTrades: number;
   winningTrades: number;
@@ -405,6 +444,47 @@ export interface BacktestStats {
   sortino: number;
   calmar: number;
   returnPct: number;
+}
+
+/** Stats returned by every `BacktestRunner.run*` method. A different,
+ *  narrower shape than `BacktestStats`: `sharpeRatio` rather than
+ *  `sharpe`, and no `sortino` / `calmar` / `totalPnl` / `grossProfit` /
+ *  `grossLoss`. */
+export interface RunnerStats {
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  initialCapital: number;
+  finalCapital: number;
+  netPnl: number;
+  totalFees: number;
+  returnPct: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  sharpeRatio: number;
+  winRate: number;
+  avgWin: number;
+  avgLoss: number;
+  profitFactor: number;
+}
+
+/** Stats attached to a `WalkForwardFold` and to a `GridSearchResult`.
+ *  `RunnerStats` minus `avgWin` / `avgLoss`, plus `sortinoRatio`. */
+export interface FoldStats {
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  initialCapital: number;
+  finalCapital: number;
+  netPnl: number;
+  totalFees: number;
+  returnPct: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  winRate: number;
+  profitFactor: number;
 }
 
 // ── Symbol & registry ─────────────────────────────────────────────────
@@ -517,36 +597,51 @@ export class Runner {
 // ── Backtest ──────────────────────────────────────────────────────────
 
 export class Engine {
-  constructor(registry: SymbolRegistry);
-  loadCsv(path: string, symbol: string): void;
+  /** Defaults: `initialCapital` 100000, `feeRate` 0.0001 (percentage). */
+  constructor(initialCapital?: number, feeRate?: number);
+  /** `symbol` defaults to the file stem, upper-cased with a trailing
+   *  `_1m` / `_5m` / `_15m` / `_1h` / `_4h` / `_1d` stripped. */
+  loadCsv(path: string, symbol?: string): void;
+  /** All six arrays are required and must match `ts` in length.
+   *  Timestamps auto-scale from s / ms / us to ns. `symbol` defaults
+   *  to `"default"`. */
   loadOhlcv(
-    timestamps: Float64Array,
-    opens: Float64Array,
-    highs: Float64Array,
-    lows: Float64Array,
-    closes: Float64Array,
-    volumes: Float64Array,
-    symbol: string,
+    bars: {
+      ts: Float64Array;
+      open: Float64Array;
+      high: Float64Array;
+      low: Float64Array;
+      close: Float64Array;
+      volume: Float64Array;
+    },
+    symbol?: string,
   ): void;
-  resample(intervalSeconds: number): void;
-  /** Run a callback strategy or replay a `SignalBuilder`. */
-  run(strategyOrSignals: Strategy | SignalBuilder): BacktestStats;
-  barCount(): number;
-  ts(): Float64Array;
-  open(): Float64Array;
-  high(): Float64Array;
-  low(): Float64Array;
-  close(): Float64Array;
-  volume(): Float64Array;
+  /** Resample the bars of symbol `src` into symbol `dst`. `interval` is
+   *  `<count><s|m|h|d>`, e.g. `"4h"`. Throws if `src` is not loaded. */
+  resample(src: string, dst: string, interval: string): void;
+  /** Replay a `SignalBuilder` against every loaded symbol. */
+  run(signals: SignalBuilder): BacktestStats;
+  /** `symbol` defaults to the first loaded symbol in every accessor
+   *  below; an unknown name throws. */
+  barCount(symbol?: string): number;
+  /** Bar open times in nanoseconds. */
+  ts(symbol?: string): Float64Array;
+  open(symbol?: string): Float64Array;
+  high(symbol?: string): Float64Array;
+  low(symbol?: string): Float64Array;
+  close(symbol?: string): Float64Array;
+  volume(symbol?: string): Float64Array;
   readonly symbols: string[];
 }
 
 export class SignalBuilder {
   constructor();
-  buy(index: number): void;
-  sell(index: number): void;
-  limitBuy(index: number, price: number): void;
-  limitSell(index: number, price: number): void;
+  /** `ts` auto-scales from s / ms / us to ns. `symbol` defaults to the
+   *  engine's first loaded symbol at `run()` time. Returns `this`. */
+  buy(ts: number, qty: number, symbol?: string): this;
+  sell(ts: number, qty: number, symbol?: string): this;
+  limitBuy(ts: number, price: number, qty: number, symbol?: string): this;
+  limitSell(ts: number, price: number, qty: number, symbol?: string): this;
   clear(): void;
   readonly length: number;
 }
@@ -586,8 +681,8 @@ export interface WalkForwardFold {
   trainEndNs: bigint;
   testStartNs: bigint;
   testEndNs: bigint;
-  trainStats: BacktestStats;
-  testStats: BacktestStats;
+  trainStats: FoldStats;
+  testStats: FoldStats;
 }
 
 /** Walk-forward configuration. `mode = 'anchored'`: train window
@@ -614,7 +709,7 @@ export class WalkForwardRunner {
 export interface GridSearchResult {
   index: number;
   params: number[];
-  stats: BacktestStats;
+  stats: FoldStats;
 }
 
 /** Type-erased grid search over numeric parameter axes. The last axis
@@ -622,7 +717,10 @@ export interface GridSearchResult {
 export class GridSearch {
   constructor();
   addAxis(values: number[]): void;
-  setFactory(factory: (params: number[]) => BacktestStats): void;
+  /** The factory's return value is read key-by-key in the
+   *  `BacktestRunner.run*` shape, so a `run*` result can be returned
+   *  directly. Missing keys read as 0. */
+  setFactory(factory: (params: number[]) => RunnerStats): void;
   total(): number;
   paramsForIndex(index: number): number[];
   run(): GridSearchResult[];
@@ -631,18 +729,37 @@ export class GridSearch {
 export class BacktestRunner {
   constructor(registry: SymbolRegistry, feeRate: number, initialCapital: number);
   setStrategy(strategy: Strategy): void;
-  runCsv(path: string, symbol: string): BacktestStats;
-  runOhlcv(timestamps: Float64Array, closes: Float64Array, symbol: string): BacktestStats;
+  /** Returns `null` if `path` cannot be opened. */
+  runCsv(path: string, symbol: string): RunnerStats | null;
+  /** `timestamps` holds nanosecond epochs as a `BigInt64Array`. */
+  runOhlcv(timestamps: BigInt64Array, closes: Float64Array, symbol: string): RunnerStats;
+  /** Replay full OHLCV bars. `startNs` / `endNs` are `BigInt64Array`;
+   *  the five OHLCV arrays are `Float64Array` and must match their
+   *  length. `barType` uses the `BarData.barType` encoding (default 0 =
+   *  time bar); `barTypeParam` is the interval / threshold (default 0). */
+  runBars(
+    startNs: BigInt64Array,
+    endNs: BigInt64Array,
+    opens: Float64Array,
+    highs: Float64Array,
+    lows: Float64Array,
+    closes: Float64Array,
+    volumes: Float64Array,
+    symbol: string,
+    barType?: number,
+    barTypeParam?: number,
+  ): RunnerStats;
   /** Replay a `.floxlog` tape directory through the backtest. The tape
    *  is the canonical recording format written by `flox tape record`
-   *  (live) or `scripts/backfill_to_tape.py` (historical). */
-  runTape(path: string): BacktestStats;
+   *  (live) or `scripts/backfill_to_tape.py` (historical). Returns
+   *  `null` if the tape cannot be read. */
+  runTape(path: string): RunnerStats | null;
   /** Merge N `.floxlog` tape directories on read and replay the merged
    *  event stream through the backtest. Symbols are rekeyed by
    *  `(metadata.exchange, name)` so two venues stay distinct.
    *  `runTapes([t])` is equivalent to `runTape(t)`. Throws on bad paths
    *  or overlapping book streams across tapes. */
-  runTapes(paths: string[]): BacktestStats;
+  runTapes(paths: string[]): RunnerStats;
   /** Replace the built-in SimulatedExecutor with a binding-supplied one. */
   setExecutor(executor: Executor | null): void;
   /** Attach a listener for order lifecycle events. Multiple listeners
@@ -1006,7 +1123,8 @@ export class SimulatedExecutor {
     bps: number,
     impactCoeff: number,
   ): void;
-  setQueueModel(model: QueueModel | number, depth: number): void;
+  /** `depth` is the number of book levels the model tracks; defaults to 1. */
+  setQueueModel(model: QueueModel | number, depth?: number): void;
   /** For 'pro_rata_with_fifo': the first N orders at a price level
    *  consume the trade FIFO; the remainder is split pro-rata across
    *  the rest. Ignored in 'none' / 'tob' / 'full' / 'pro_rata'. */
@@ -2143,39 +2261,64 @@ export function inspect(path: string): DataReaderSummary;
 // ── Indicator graphs ──────────────────────────────────────────────────
 
 /**
- * Node compute callback: receives the graph instance and the current symbol
- * id, returns this bar's value. Use `graph.get(node, sym)` / `graph.close(sym)`
- * etc. inside the callback.
+ * Node compute callback: receives the graph instance and the current
+ * symbol id, returns the node's whole series for that symbol. Read
+ * dependencies with `graph.get(symbolId, name)` and raw inputs with
+ * `graph.close(symbolId)` etc. The return value is read as a
+ * `Float64Array`; anything else throws.
  */
 export type IndicatorGraphCompute = (
-  graph: IndicatorGraph | StreamingIndicatorGraph,
+  graph: IndicatorGraph,
   symbolId: number,
-) => number | Float64Array | number[];
+) => Float64Array;
+
+/** Same contract as `IndicatorGraphCompute`, but the graph handed to the
+ *  callback is the streaming one (no `get` / `require`; read the current
+ *  window via `close` / `high` / `low` / `volume`). */
+export type StreamingIndicatorGraphCompute = (
+  graph: StreamingIndicatorGraph,
+  symbolId: number,
+) => Float64Array;
 
 export class IndicatorGraph {
   constructor();
+  /** `high` / `low` default to `close`, `volume` to 0. Supplied arrays
+   *  must match `close` in length. */
   setBars(
     symbol: number,
     close: Float64Array,
-    high: Float64Array,
-    low: Float64Array,
-    volume: Float64Array,
+    high?: Float64Array,
+    low?: Float64Array,
+    volume?: Float64Array,
   ): void;
-  /** Returns the node id. `dependencies` are previously-added node ids. */
-  addNode(name: string, dependencies: number[], compute: IndicatorGraphCompute): number;
-  require(node: number): void;
-  get(node: number, symbol: number): Float64Array;
+  /** Register a node under `name`. `dependencies` are the names of
+   *  previously-added nodes. */
+  addNode(name: string, dependencies: string[], compute: IndicatorGraphCompute): void;
+  /** Compute (or return the cached) series for node `name`. Throws if
+   *  `name` was never added. */
+  require(symbol: number, name: string): Float64Array;
+  /** Cached series for node `name`, or `null` if it has not been
+   *  computed for `symbol` yet. */
+  get(symbol: number, name: string): Float64Array | null;
   close(symbol: number): Float64Array;
   high(symbol: number): Float64Array;
   low(symbol: number): Float64Array;
   volume(symbol: number): Float64Array;
-  invalidate(node: number): void;
+  /** Drop every cached node series for `symbol`. */
+  invalidate(symbol: number): void;
   invalidateAll(): void;
 }
 
 export class StreamingIndicatorGraph {
   constructor();
-  addNode(name: string, dependencies: number[], compute: IndicatorGraphCompute): number;
+  /** Register a node under `name`. `dependencies` are the names of
+   *  previously-added nodes. */
+  addNode(
+    name: string,
+    dependencies: string[],
+    compute: StreamingIndicatorGraphCompute,
+  ): void;
+  /** Push one bar. `high` / `low` default to `close`, `volume` to 0. */
   step(symbol: number, close: number, high?: number, low?: number, volume?: number): void;
   current(symbol: number, name: string): number;
   barCount(symbol: number): number;
@@ -2910,4 +3053,554 @@ export class TraceReader {
   readAllOrderEvents(): TraceOrderEventRecord[];
   readAllFills(): TraceFillRecord[];
   close(): void;
+}
+
+// ── Comfort layers (pure JavaScript, node/lib/) ───────────────────────
+//
+// `composite` and `dex` are plain-JS namespaces that node/index.js hangs
+// off the module (`Object.assign({}, native, { composite, dex })`). They
+// are not NAPI exports, so scripts/check_dts_exports.py — which mirrors
+// `exports.Set(...)` in node/src — neither knows nor requires them; a
+// `namespace` declaration is exempt from that gate.
+//
+// Implementations: node/lib/composite.js, node/lib/dex.js. The `dex`
+// surface is also published standalone as node/lib/dex.d.ts for
+// `require('@flox-foundation/flox/lib/dex')`.
+
+/**
+ * Composite-condition DSL. Builds multi-symbol / multi-timeframe entry
+ * logic as a lazy tree of indicator handles and boolean operators instead
+ * of nested `if`s over `lastNClosedBars`.
+ *
+ * Every node is lazy: it re-reads the bar ring and recomputes on each
+ * `isReady()` / `value()` call, so a tree built once in `onStart` stays
+ * live for the whole run. Nothing is cached and nothing is mutated.
+ *
+ * ```js
+ * const { when, BAR_TYPE_TIME } = require("@flox-foundation/flox").composite;
+ * const fast = when(emit, symbolId, BAR_TYPE_TIME, M5_NS).ema(50);
+ * const slow = when(emit, symbolId, BAR_TYPE_TIME, M5_NS).ema(200);
+ * const crossUp = fast.gt(slow);
+ * if (crossUp.isReady() && crossUp.value()) emit.marketBuy(0.01);
+ * ```
+ *
+ * Mirrors `flox_py.composite` and `quickjs/flox/composite.js`.
+ */
+export namespace composite {
+  /** Time bars. `param` is the interval in nanoseconds. */
+  const BAR_TYPE_TIME: 0;
+  /** Tick bars. `param` is the tick count. */
+  const BAR_TYPE_TICK: 1;
+  /** Volume bars. `param` is the volume threshold. */
+  const BAR_TYPE_VOLUME: 2;
+  /** Renko bars. `param` is the brick size. */
+  const BAR_TYPE_RENKO: 3;
+  /** Range bars. `param` is the range threshold. */
+  const BAR_TYPE_RANGE: 4;
+  /** Heikin-Ashi bars. `param` is the underlying interval. */
+  const BAR_TYPE_HEIKIN_ASHI: 5;
+  /** Basis-point range bars. `param` is the range in bps. */
+  const BAR_TYPE_BPS_RANGE: 6;
+
+  /** A `BAR_TYPE_*` value. Matches the C++ `BarType` enum. */
+  type BarType = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+  /** Whatever serves the DSL its bars — in practice the `emit` helper
+   *  passed to strategy callbacks, but any object with this one method
+   *  works (the test suites drive it with a fake ring). */
+  interface BarSource {
+    lastNClosedBars(
+      symbol: Symbol | number,
+      barType: number,
+      barTypeParam: number,
+      n: number,
+    ): ClosedBar[];
+  }
+
+  /** A numeric node: an indicator over one (symbol, timeframe). */
+  interface Indicator {
+    /** True once the ring holds the whole window — `period` bars, or
+     *  `period + 1` for `rsi`. */
+    isReady(): boolean;
+    /** The current value, or `NaN` when `isReady()` is false. */
+    value(): number;
+    /** `this < operand`. A plain number is lifted into a constant node;
+     *  anything with `isReady()` / `value()` is used as-is. */
+    lt(operand: Indicator | number): Condition;
+    /** `this <= operand`. */
+    le(operand: Indicator | number): Condition;
+    /** `this > operand`. */
+    gt(operand: Indicator | number): Condition;
+    /** `this >= operand`. */
+    ge(operand: Indicator | number): Condition;
+    /** `this === operand` — strict float equality, rarely what you want
+     *  on an indicator. */
+    eq(operand: Indicator | number): Condition;
+    /** `this !== operand`. */
+    ne(operand: Indicator | number): Condition;
+  }
+
+  /** A boolean node. `and` / `or` / `not` build new nodes; the receiver is
+   *  never mutated, so a sub-tree can be shared between conditions. */
+  interface Condition {
+    /** True once every leaf under this node is ready. */
+    isReady(): boolean;
+    /** The boolean result. Evaluated even when `isReady()` is false — an
+     *  unready leaf yields `NaN`, which makes `lt` / `le` / `gt` / `ge` /
+     *  `eq` false but `ne` **true**. Always guard with `isReady()`. */
+    value(): boolean;
+    /** Logical AND. `other` must already be a node (a plain number is not
+     *  lifted here, unlike in the comparison operators). */
+    and(other: Condition | Indicator): Condition;
+    /** Logical OR. Same operand rule as `and`. */
+    or(other: Condition | Indicator): Condition;
+    /** Logical NOT. */
+    not(): Condition;
+  }
+
+  /** A handle bound to one (symbol, timeframe); its methods build the
+   *  indicator nodes that read that ring. */
+  interface TfHandle {
+    /** Simple moving average of the last `period` closes. */
+    sma(period: number): Indicator;
+    /** Exponential moving average, `alpha = 2 / (period + 1)`, seeded on
+     *  the oldest close of the `period`-bar window (not a running EMA
+     *  across the whole history). */
+    ema(period: number): Indicator;
+    /** RSI over `period` close-to-close deltas — a plain mean of gains and
+     *  losses, not Wilder smoothing. Needs `period + 1` bars. Returns
+     *  `100` when the window has no losses. */
+    rsi(period: number): Indicator;
+    /** The most recent closed bar's close (a one-bar window). */
+    close(): Indicator;
+  }
+
+  /** Bind the DSL to one (symbol, timeframe). `barType` is a `BAR_TYPE_*`
+   *  constant and `param` that policy's interval / threshold (nanoseconds
+   *  for time bars). Nothing is read from `strategy` until a node is
+   *  evaluated. */
+  function when(
+    strategy: BarSource,
+    symbol: Symbol | number,
+    barType: number,
+    param: number,
+  ): TfHandle;
+
+  /** One slot of a grid, as returned by `IndicatorGrid.keys()`. */
+  interface GridKey {
+    symbol: Symbol | number;
+    barType: number;
+    param: number;
+  }
+
+  /** The materialised cross-product of symbols x timeframes. */
+  interface IndicatorGrid {
+    /** The cell for one slot, or `undefined` when that slot is not in the
+     *  grid (the lookup key is `${symbol}|${barType}|${param}`, so the
+     *  arguments must match the declaration exactly). */
+    get(symbol: Symbol | number, barType: number, param: number): Indicator | undefined;
+    /** Every slot in declaration order (symbol-major). A fresh array per
+     *  call; the entries are the live key objects. */
+    keys(): GridKey[];
+    /** `symbols.length * timeframes.length`. */
+    size(): number;
+  }
+
+  /** Builder returned by `grid()`. Each method materialises a whole grid
+   *  of that indicator in one shot. */
+  interface GridBuilder {
+    sma(period: number): IndicatorGrid;
+    ema(period: number): IndicatorGrid;
+    rsi(period: number): IndicatorGrid;
+    close(): IndicatorGrid;
+  }
+
+  /** A grid timeframe: a bare number is a Time-bar interval in
+   *  nanoseconds, `[barType, param]` selects any other bar policy. */
+  type GridTimeframe = number | [number, number];
+
+  /** Declare the same indicator across every symbol x timeframe slot. */
+  function grid(
+    strategy: BarSource,
+    symbols: ReadonlyArray<Symbol | number>,
+    timeframes: ReadonlyArray<GridTimeframe>,
+  ): GridBuilder;
+}
+
+/**
+ * Symbol-aware comfort layer over the exact AMM curves: `Token` / `Amount`
+ * / the `Pool` venue classes / `Quote` / `Router` / `arb` / `Tape`. Human
+ * amounts go in as `"NUMBER SYMBOL"` strings, the swap math runs in the
+ * addon as `bigint` wei, and a mis-routed swap throws instead of returning
+ * a quiet zero.
+ *
+ * This layer only carries the decimals and the token order — every curve
+ * evaluation is `ammCurve*` on the top level of this module, so the
+ * figures match `flox_py.dex` to the wei.
+ *
+ * ```js
+ * const { dex } = require("@flox-foundation/flox");
+ * const weth = new dex.Token("WETH", 18), usdc = new dex.Token("USDC", 6);
+ * const pool = new dex.UniswapV2(weth, usdc,
+ *   { reserves: ["1000 WETH", "2000000 USDC"], fee: "0.30%" });
+ * pool.quote("10 WETH").out.toString();  // "19743.160687 USDC"
+ * ```
+ */
+export namespace dex {
+  /** A swap amount: a `"NUMBER SYMBOL"` string (`"10 WETH"`, `_` grouping
+   *  allowed) or an `Amount`. A bare number throws — the symbol is what
+   *  picks the swap direction. */
+  type AmountSpec = string | Amount;
+
+  /** A one-sided quantity where the token is already known (a reserve, a
+   *  position value): an `AmountSpec`, or a bare number / bigint / numeric
+   *  string in that token's human units. */
+  type ReserveSpec = AmountSpec | number | bigint;
+
+  /** An ERC-20 / SPL token: a symbol and its decimal scale. Purely a unit
+   *  carrier — no address, no chain. */
+  class Token {
+    constructor(symbol: string, decimals: number);
+    symbol: string;
+    decimals: number;
+    /** Human units to wei. A `bigint` is taken as whole units and scaled
+     *  by `10 ** decimals`; a string or number may carry a fraction, which
+     *  is padded or **truncated** to `decimals` places. */
+    toWei(human: string | number | bigint): bigint;
+    /** wei to an exact human string, trailing zeros stripped. Lossless. */
+    toHuman(wei: bigint): string;
+    /** `new Amount(this, this.toWei(human))`. */
+    amount(human: string | number | bigint): Amount;
+  }
+
+  /** A quantity of one token, held exactly as wei. */
+  class Amount {
+    /** `wei` must be an integer — a fractional number throws (`BigInt()`). */
+    constructor(token: Token, wei: bigint | number | string);
+    token: Token;
+    wei: bigint;
+    /** Human magnitude as a float, for arithmetic and display. Lossy above
+     *  2^53 — use `humanString` / `wei` when exactness matters. */
+    readonly human: number;
+    /** Exact human string, no symbol. */
+    readonly humanString: string;
+    /** `"19743.160687 USDC"`. */
+    toString(): string;
+    /** Parse `"10 WETH"` against a symbol table. Returns `spec` unchanged
+     *  when it is already an `Amount`. Throws when the string carries no
+     *  symbol, or when the symbol is absent from `tokens`. */
+    static parse(spec: AmountSpec, tokens: Record<string, Token>): Amount;
+  }
+
+  /** The result of pricing a swap. */
+  class Quote {
+    constructor(
+      amountIn: Amount,
+      out: Amount,
+      fee: Amount,
+      priceImpact: number,
+      avgPrice: number,
+    );
+    amountIn: Amount;
+    out: Amount;
+    /** The venue fee, denominated in the **input** token. Computed by the
+     *  venue subclass; the base `Pool` always reports zero. */
+    fee: Amount;
+    /** Impact as a fraction of the mid price (`0.0128` is 1.28%), not a
+     *  percentage. Zero when the pool has no mid price, and always zero on
+     *  a `Quote` returned by `Pool.swap`. */
+    priceImpact: number;
+    /** Realized price, output human per input human. Zero for a
+     *  zero-sized input. */
+    avgPrice: number;
+    /** The raw curve output in wei, lossless. */
+    readonly exactWei: bigint;
+    toString(): string;
+  }
+
+  /** One row of `Pool.depth`. */
+  interface PoolDepthRow {
+    /** The input, formatted (`"10 WETH"`). */
+    in: string;
+    /** The output, formatted (`"19743.160687 USDC"`). */
+    out: string;
+    avgPrice: number;
+    /** Price impact in **percent**, unlike `Quote.priceImpact`. */
+    impactPct: number;
+  }
+
+  /** Base class for every venue. Owns the token order and the decimals;
+   *  the curve itself lives in the addon. Construct a venue subclass
+   *  rather than this directly. */
+  class Pool {
+    constructor(token0: Token, token1: Token, curve: AmmCurveHandle);
+    token0: Token;
+    token1: Token;
+    /** Venue tag. `"amm"` on the base class; each subclass overrides it. */
+    readonly venue: string;
+    /** Both reserves in native wei, `[token0, token1]`. */
+    balances(): [bigint, bigint];
+    /** Price a swap without moving the pool. The input token picks the
+     *  direction; `into` names the output side explicitly. Throws when the
+     *  amount carries an unknown symbol, when a token is not in this pool,
+     *  or when a non-empty pool returns a zero output (the mis-routed-swap
+     *  guard). */
+    quote(amount: AmountSpec, into?: Token | string): Quote;
+    /** Like `quote`, but **applies** the swap — this pool moves. The
+     *  returned `Quote` always carries `priceImpact === 0`; clone and
+     *  `quote` first if you need the impact. */
+    swap(amount: AmountSpec, into?: Token | string): Quote;
+    /** Both reserves as `Amount`s, `[token0, token1]`. */
+    readonly reserves: [Amount, Amount];
+    /** Marginal price of token0 in token1 (WETH priced in USDC), fee
+     *  excluded. Read off `sqrtPriceX96` for a concentrated-liquidity
+     *  pool, off the reserve ratio otherwise. `0` when the pool is
+     *  one-sided or empty. */
+    readonly spotPrice: number;
+    /** Marginal price of `of` denominated in `in_`. Throws when either
+     *  token is not in this pool. */
+    price(of: Token, in_: Token): number;
+    /** A slippage table: price every size and report the realized price
+     *  and impact. Each size is quoted against the unmoved pool. */
+    depth(sizes: ReadonlyArray<AmountSpec>): PoolDepthRow[];
+    /** An independent copy, native curve included, so a trade can be sized
+     *  without disturbing the live pool. */
+    clone(): this;
+    /** `<UniswapV2 WETH/USDC  px=2000.00  reserves=(1000 WETH, 2000000 USDC)>`. */
+    toString(): string;
+  }
+
+  interface UniswapV2Options {
+    /** `[token0 reserve, token1 reserve]`, in that order. Required — the
+     *  options object itself defaults to `{}` in JS, which then throws. */
+    reserves: [AmountSpec, AmountSpec];
+    /** Swap fee as `"0.30%"` or `0.003`. Default `"0.30%"`. */
+    fee?: string | number;
+    /** Denominator the pool's integer fee math uses. Default `1000`. */
+    feeDen?: number;
+  }
+
+  /** A constant-product pool (Uniswap v2 and its forks). */
+  class UniswapV2 extends Pool {
+    constructor(token0: Token, token1: Token, options: UniswapV2Options);
+    readonly venue: "UniswapV2";
+  }
+
+  interface RaydiumCpOptions {
+    /** `[token0 reserve, token1 reserve]`, in that order. */
+    reserves: [AmountSpec, AmountSpec];
+    /** Trade fee as `"0.25%"` or `0.0025`, quantised to a 1e6
+     *  denominator. Default `"0.25%"`. */
+    tradeFee?: string | number;
+    /** Creator fee on top, same units. Default `"0%"`. */
+    creatorFee?: string | number;
+    /** Take the creator fee off the input (`true`) or the output
+     *  (`false`). Default `true`. */
+    creatorFeeOnInput?: boolean;
+  }
+
+  /** A Raydium constant-product pool (Solana). */
+  class RaydiumCp extends Pool {
+    constructor(token0: Token, token1: Token, options: RaydiumCpOptions);
+    readonly venue: "RaydiumCp";
+  }
+
+  interface UniswapV3Options {
+    /** Current price as Q64.96, straight off `slot0()`. Coerced with
+     *  `BigInt()`, so a float throws. */
+    sqrtPriceX96: bigint | number | string;
+    /** Active liquidity, straight off `liquidity()`. */
+    liquidity: bigint | number | string;
+    /** Fee as `"0.05%"` or `0.0005`, quantised to pips (1e6). Default
+     *  `"0.05%"`. */
+    fee?: string | number;
+    /** Initialised ticks as `[sqrtRatioX96, liquidityNet]`. Default `[]`,
+     *  which prices the pool as if liquidity were flat forever. */
+    ticks?: ReadonlyArray<[bigint | number | string, bigint | number | string]>;
+  }
+
+  interface UniswapV3FromPriceOptions {
+    /** token1 human per token0 human (USDC per WETH). */
+    price: number | string;
+    liquidity: bigint | number | string;
+    /** Default `"0.05%"`. */
+    fee?: string | number;
+    /** Default `[]`. */
+    ticks?: ReadonlyArray<[bigint | number | string, bigint | number | string]>;
+  }
+
+  /** A concentrated-liquidity pool (Uniswap v3). */
+  class UniswapV3 extends Pool {
+    constructor(token0: Token, token1: Token, options: UniswapV3Options);
+    readonly venue: "UniswapV3";
+    /** The live Q64.96 price. `null` only if the underlying curve is not a
+     *  concentrated-liquidity one. */
+    readonly sqrtPrice: bigint | null;
+    /** The live active liquidity, `null` under the same condition. */
+    readonly liquidity: bigint | null;
+    /** Build from a human price instead of a raw Q64.96 number. The
+     *  conversion runs through a float `sqrt`, so the resulting
+     *  `sqrtPriceX96` is rounded — not bit-exact against the chain.
+     *  `options` is required; omitting it throws. */
+    static fromPrice(
+      token0: Token,
+      token1: Token,
+      options: UniswapV3FromPriceOptions,
+    ): UniswapV3;
+  }
+
+  /** One row of a `Tape.replay()` result. */
+  interface ReplayRow {
+    /** The timestamp as handed to `swap` / `checkpoint`. */
+    ts: number;
+    /** Pool mid price (token1 per token0) after the event. */
+    price: number;
+    /** Reserves after the event, native wei. */
+    reserve0: bigint;
+    reserve1: bigint;
+    /** Whole-pool value in token1 at `price`. `null` on checkpoint rows. */
+    lpValue: number | null;
+    /** Pool value against holding the starting mix, as a fraction
+     *  (`-0.0006` is -0.06%). `null` on checkpoint rows. */
+    il: number | null;
+    /** A checkpoint whose asserted reserves disagreed with the replay.
+     *  Always `false` on swap rows. */
+    drift: boolean;
+    /** `true` for a swap row, `false` for a checkpoint row. */
+    trade: boolean;
+  }
+
+  /** The array `Tape.replay()` returns, with three summary properties hung
+   *  off it. Plain JS — no DataFrame dependency. */
+  interface ReplayResult extends Array<ReplayRow> {
+    /** Checkpoints that disagreed with the replayed state. */
+    driftCount: number;
+    /** Final reserves after every queued event, native wei. */
+    finalReserve0: bigint;
+    finalReserve1: bigint;
+  }
+
+  /** One entry for `Tape.fromSwaps`: `[ts, amount]` or
+   *  `[ts, amount, into]`. */
+  type TapeSwapSpec =
+    | [number, AmountSpec]
+    | [number, AmountSpec, Token | string];
+
+  /** A decoded Uniswap v2 `Swap` log, in `eth_getLogs` shape. */
+  interface EvmSwapLog {
+    /** ABI-encoded data words in order `amount0In, amount1In, amount0Out,
+     *  amount1Out`. A `0x` prefix is optional. */
+    data: string;
+    /** Used as the row timestamp. A string is parsed as hex. */
+    blockNumber?: string | number;
+    /** Timestamp fallback when `blockNumber` is absent; `0` when neither
+     *  is set. A string is parsed as hex. */
+    ts?: string | number;
+  }
+
+  /** A pool-state delta log: swaps, optionally with reserve checkpoints,
+   *  replayed through the exact curve into a table. */
+  class Tape {
+    constructor(pool: Pool);
+    /** The pool the tape prices against. `replay()` works on a clone, so
+     *  this pool is never moved. */
+    pool: Pool;
+    /** Queue a swap. The amount's token picks the direction; `into` names
+     *  the output side explicitly. Returns `this` for chaining. Throws on
+     *  an unknown token. */
+    swap(ts: number, amount: AmountSpec, into?: Token | string): this;
+    /** Queue a swap in raw wei. `baseForQuote` `true` sells token0 into
+     *  the pool, `false` sells token1. Returns `this`. */
+    swapWei(ts: number, amountInWei: bigint | number | string, baseForQuote: boolean): this;
+    /** Assert the pool's reserves at `ts`. On replay a mismatch flags the
+     *  row and bumps `driftCount`. Each reserve is resolved against its own
+     *  token, so a `"NUMBER SYMBOL"` string must name that side's token.
+     *  Returns `this`. */
+    checkpoint(ts: number, reserve0: ReserveSpec, reserve1: ReserveSpec): this;
+    /** Queue many swaps at once. Returns `this`. */
+    fromSwaps(swaps: ReadonlyArray<TapeSwapSpec>): this;
+    /** Build a tape from decoded Uniswap v2 `Swap` logs. `pool.token0` /
+     *  `pool.token1` must be in on-chain order. A log with no input amount
+     *  on either side is skipped. */
+    static fromEvmLogs(pool: Pool, swapLogs: ReadonlyArray<EvmSwapLog>): Tape;
+    /** Replay every queued event through a clone of the pool, swaps and
+     *  checkpoints merged and sorted by `ts` (stable — on a tie every swap
+     *  precedes every checkpoint). */
+    replay(): ReplayResult;
+  }
+
+  /** An LP stake pinned to the pool's price and token mix at construction
+   *  time. */
+  class LpPosition {
+    /** `value` is denominated in **token1** — a `"100000 USDC"` string, an
+     *  `Amount` in token1, or a bare number already in token1 units. Omit
+     *  it to take the whole pool (`share === 1`). Throws when `value` is an
+     *  `Amount` (or symbol string) in token0. */
+    constructor(pool: Pool, value?: ReserveSpec);
+    /** The pool the position was opened against. */
+    pool: Pool;
+    /** Fraction of the pool owned, fixed at construction. */
+    share: number;
+    /** Current worth in token1. `at` prices against another pool — a moved
+     *  clone, say — and defaults to the entry pool. */
+    value(at?: Pool): number;
+    /** What holding the entry mix would be worth now, in token1. */
+    hodlValue(at?: Pool): number;
+    /** `value(at) / hodlValue(at) - 1`. Negative once the price moves;
+     *  `0` when `hodlValue(at)` is not positive. */
+    impermanentLoss(at?: Pool): number;
+  }
+
+  /** One row of `Router.table`. */
+  interface RouterTableRow {
+    venue: string;
+    /** The output, formatted (`"24.330847... WETH"`). */
+    out: string;
+    outHuman: number;
+    /** Price impact in **percent**. */
+    impactPct: number;
+  }
+
+  /** Best execution across a set of pools. Routing prices through `quote`,
+   *  so no pool is moved. */
+  class Router {
+    /** Throws when `pools` is empty. */
+    constructor(pools: Iterable<Pool> | ArrayLike<Pool>);
+    pools: Pool[];
+    /** Every pool that can price the swap, as `[pool, quote]` in
+     *  construction order. A pool that throws — unknown token, vanishing
+     *  output — is skipped silently. */
+    quotes(amount: AmountSpec, into?: Token | string): Array<[Pool, Quote]>;
+    /** The `[pool, quote]` with the largest output. Throws when no pool
+     *  could price the swap. */
+    best(amount: AmountSpec, into?: Token | string): [Pool, Quote];
+    /** Every pool that could price the swap, ranked by output, best
+     *  first. */
+    table(amount: AmountSpec, into?: Token | string): RouterTableRow[];
+  }
+
+  /** A sized arbitrage between two pools on the same pair. */
+  class Arb {
+    constructor(size: Amount, profit: Amount, route: [string, string] | null);
+    /** The profit-maximising input, denominated in token1. */
+    size: Amount;
+    /** Net token1 profit, after both pools' fees and slippage. */
+    profit: Amount;
+    /** `[buyVenue, sellVenue]`, or `null` when there is no edge. */
+    route: [string, string] | null;
+    /** `profit.wei > 0n`. */
+    readonly profitable: boolean;
+    toString(): string;
+  }
+
+  /** Size the depth-aware arb between two pools on the same pair: spend
+   *  token1 on the cheaper pool to buy token0, sell that token0 on the
+   *  dearer one. Both `size` and `profit` are in `poolA.token1`.
+   *
+   *  Neither pool is moved — the search prices through the curve directly.
+   *  Throws when the two pools do not trade the same pair. Returns a
+   *  zero-size, zero-profit `Arb` with `route === null` when the two
+   *  prices agree, when the buy pool holds no token1, or when the optimum
+   *  is not profitable. */
+  function arb(poolA: Pool, poolB: Pool): Arb;
 }

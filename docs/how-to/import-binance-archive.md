@@ -79,6 +79,14 @@ The tape's `metadata.json` is created (or merged into) on every successful conve
 
 ## What is and is not in the archive
 
-aggTrades only carries print events. There is no book information. The archive that does carry it (`depth20` and `T1` / `bookTicker`) is tracked separately, so the produced tapes can later be combined into a single floxlog directory with both trades and book updates.
+aggTrades only carries print events. There is no book information. The book archives have their own converters in `flox_py.archives.binance`:
 
-Other public archives (Bybit, OKX, Bitget) follow the same pattern but ship as separate subcommands under `flox archive`; see the multi-exchange reader task in the roadmap.
+| Function | Archive |
+|---|---|
+| `t1_to_floxlog(csv_path, out_tape, ...)` | `T1` / `bookTicker` — top of book |
+| `depth20_to_floxlog(csv_path, out_tape, *, levels=20, ...)` | `depth20` / `bookDepth` — L2 ladder |
+| `range_book_to_floxlog(symbol, market, book_type, date_from, date_to, out_tape, ...)` | multi-day book range, downloads and converts in one call |
+
+They write into the same tape directory, so a single floxlog can carry both trades and book updates. See [Import Binance book archives](import-binance-book-archive.md).
+
+Other public archives ship as sibling subcommands under `flox archive`: `bybit`, `okx`, `bitget` and `deribit` (`flox_py.archives.deribit`). See [Import multi-exchange archives](import-multi-exchange-archives.md).

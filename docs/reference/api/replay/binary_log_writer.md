@@ -19,8 +19,10 @@ struct WriterConfig {
   bool create_index{true};
   uint16_t index_interval{1000};            // Events per index entry
   CompressionType compression{CompressionType::None};
+  uint64_t stdio_buffer_size{64ull << 10};   // setvbuf size; 0 = system default 8 KB
   RotationCallback rotation_callback{nullptr};  // Custom naming on rotation
   void* rotation_user_data{nullptr};            // User data for callback
+  std::optional<RecordingMetadata> metadata;    // Writes metadata.json when set
 };
 
 class BinaryLogWriter {
@@ -28,7 +30,14 @@ public:
   explicit BinaryLogWriter(WriterConfig config);
   ~BinaryLogWriter();
 
+  // Move-only: copy construction and copy assignment are deleted.
+  BinaryLogWriter(BinaryLogWriter&&) noexcept;
+  BinaryLogWriter& operator=(BinaryLogWriter&&) noexcept;
+
   bool writeTrade(const TradeRecord& trade);
+  bool writeOptionQuote(const OptionQuoteRecord& quote);
+  bool writePoolState(const PoolStateRecordHeader& header, const void* payload,
+                      size_t payload_size);
   bool writeBook(const BookRecordHeader& header,
                  std::span<const BookLevel> bids,
                  std::span<const BookLevel> asks);
@@ -38,6 +47,14 @@ public:
 
   WriterStats stats() const;
   std::filesystem::path currentSegmentPath() const;
+
+  // Metadata
+  void setMetadata(const RecordingMetadata& meta);
+  RecordingMetadata* metadata();          // nullptr when unset
+  void addSymbol(const SymbolInfo& symbol);
+  void setHasTrades(bool v);
+  void setHasBookSnapshots(bool v);
+  void setHasBookDeltas(bool v);
 };
 ```
 
@@ -62,17 +79,25 @@ public:
 | `compression` | None | Compression type (`None` or `LZ4`). |
 | `rotation_callback` | nullptr | Custom callback for segment naming on rotation. |
 | `rotation_user_data` | nullptr | User data passed to rotation callback. |
+| `stdio_buffer_size` | 64 KB | `setvbuf` size. `0` falls back to the system default of 8 KB. |
+| `metadata` | unset | Optional `RecordingMetadata`. When set, a `metadata.json` is created in `output_dir`. |
 
 ## Methods
 
 | Method | Description |
 |--------|-------------|
 | `writeTrade(trade)` | Write a trade record. Returns `true` on success. |
+| `writeOptionQuote(quote)` | Write an `OptionQuoteRecord`. Returns `true` on success. |
+| `writePoolState(header, payload, payload_size)` | Write a DEX pool-state record: the fixed header, whose `payload_len` must equal `payload_size`, followed by `payload_size` bytes of u256-native pool payload. |
 | `writeBook(header, bids, asks)` | Write a book update. Returns `true` on success. |
 | `flush()` | Flush internal buffers to disk. |
 | `close()` | Close current segment, write index and header. |
 | `stats()` | Returns write statistics. |
 | `currentSegmentPath()` | Returns path to current segment file. |
+| `setMetadata(meta)` | Replace the recording metadata. Callable during recording. |
+| `metadata()` | Mutable pointer to the metadata, or `nullptr` when unset. |
+| `addSymbol(symbol)` | Append a `SymbolInfo` to the metadata. |
+| `setHasTrades(v)` / `setHasBookSnapshots(v)` / `setHasBookDeltas(v)` | Set the content flags in the metadata. |
 
 ## Statistics
 
@@ -83,6 +108,7 @@ struct WriterStats {
   uint64_t segments_created{0};
   uint64_t trades_written{0};
   uint64_t book_updates_written{0};
+  uint64_t option_quotes_written{0};
   uint64_t blocks_written{0};        // For compressed mode
   uint64_t uncompressed_bytes{0};
   uint64_t compressed_bytes{0};

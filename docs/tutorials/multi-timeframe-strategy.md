@@ -89,8 +89,9 @@ void onBar(const BarEvent& ev) override
     return;
   }
 
-  // Only act on M1 bars (fastest timeframe for entries)
-  if (ev.barType != BarType::Time || ev.barTypeParam != 60)
+  // Only act on M1 bars (fastest timeframe for entries).
+  // barTypeParam is the interval in NANOSECONDS for Time bars.
+  if (ev.barType != timeframe::M1.type || ev.barTypeParam != timeframe::M1.param)
   {
     return;
   }
@@ -127,7 +128,7 @@ void onBar(const BarEvent& ev) override
 
 **Key points:**
 
-- We filter for M1 bars to trigger entry logic on the fastest timeframe
+- We filter for M1 bars to trigger entry logic on the fastest timeframe. `BarEvent::barTypeParam` holds the interval in nanoseconds for `BarType::Time`, so compare against `timeframe::M1.param` (60'000'000'000) rather than the literal `60`
 - `bar(symbol, timeframe, index)` gives us historical bars (0 = latest, 1 = previous)
 - We check conditions across all three timeframes
 
@@ -221,7 +222,7 @@ class MTFMomentumStrategy : public IMarketDataSubscriber
   void onBar(const BarEvent& ev) override
   {
     if (ev.symbol != _symbol) return;
-    if (ev.barType != BarType::Time || ev.barTypeParam != 60) return;
+    if (ev.barType != timeframe::M1.type || ev.barTypeParam != timeframe::M1.param) return;
 
     const Bar* h1 = _matrix->bar(_symbol, timeframe::H1, 0);
     const Bar* h1_prev = _matrix->bar(_symbol, timeframe::H1, 1);

@@ -42,13 +42,16 @@ def main():
             (ETH, 3_000.0 - 30.0 * i),    # ETH dropping
         ]
 
-        # Sanity check: refuse to walk if any position would be
-        # evaluated against stale data. Should never fire here since
-        # we just refreshed both symbols.
+        # on_marks refreshes every attached account's marks and walks
+        # the liquidation check in one pass, so the freshness assertion
+        # belongs after it: before the first call no mark has ever been
+        # set and every position looks stale by construction.
+        out = liq.on_marks(marks, ts_ns=ts)
+
+        # Both symbols were just stamped with ts, so nothing is stale.
+        # This fires only if a symbol was left out of the marks list.
         if acct.has_stale_marks(now_ns=ts, budget_ns=stale_budget_ns):
             raise RuntimeError(f"tick {i}: stale marks; refresh before walking")
-
-        out = liq.on_marks(marks, ts_ns=ts)
         print(f"tick {i}: liq={out['liquidations_count']} "
               f"upnl={acct.total_unrealised_pnl():.2f}")
 

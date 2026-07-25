@@ -60,11 +60,21 @@ jobs:
       run: python3 scripts/gen_api_index.py --check
     - name: Verify doc snippets follow the --8<-- include pattern
       run: |
-        # Ratchet floor: 6 `--8<--` includes today (2% of 288 typed
+        # Ratchet floor: 24 `--8<--` includes today (4% of 481 typed
         # blocks). Migration target is 50% coverage. Bump the floor
         # in this step every time a PR successfully migrates more
         # snippets — never lower it.
-        python3 scripts/check_doc_snippets.py --min-includes 6
+        python3 scripts/check_doc_snippets.py --min-includes 24
+    - name: Verify every API symbol named in hand-written docs exists
+      run: python3 scripts/check_doc_symbols.py
+    - name: Verify docs/examples/* still run (or at least parse)
+      run: python3 scripts/check_doc_examples.py
+    - name: Verify every doc page is reachable from the mkdocs nav
+      run: python3 scripts/check_doc_nav.py
+    - name: Verify relative doc links and anchors resolve
+      run: python3 scripts/check_doc_links.py
+    - name: Verify doc conventions (package names, build flags, no emoji)
+      run: python3 scripts/check_doc_conventions.py
     - name: Verify flox-mcp bundled data is in sync
       run: |
         # IR snapshot is built from the IDL via libclang, plus the
@@ -355,6 +365,14 @@ jobs:
 
     - name: Run Python rate-limit-aware market maker example
       run: PYTHONPATH=build/python python3 docs/examples/python_rate_limit_aware_market_maker.py
+
+    # The named steps above cover a hand-picked subset. This one executes
+    # *every* docs/examples/*.py (minus the explicit skip-list in the
+    # script), so a new example is covered the moment it lands. The docs-only
+    # job runs the same gate without a build, where it degrades to a syntax
+    # check; --require-runtime makes the missing extension a failure here.
+    - name: Run every doc example against the built bindings
+      run: PYTHONPATH=build/python python3 scripts/check_doc_examples.py --require-runtime
 
     - name: RL env→paper alpha-decay gate (synthetic)
       run: PYTHONPATH=build/python python3 scripts/rl_alpha_decay_gate.py --max-decay 0.30

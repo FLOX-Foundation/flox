@@ -4,4 +4,5 @@ Versioned, semantically frozen documents that describe formats and contracts thi
 
 | Spec | Version | Status |
 |---|---|---|
-| [`floxlog` binary tape format](floxlog.md) | 1.0 | Frozen 2026-05-08 |
+| [`floxlog` binary tape format](floxlog.md) | 1 | Layouts stable; last revised 2026-07-22 |
+| [`floxrun` strategy-trace format](floxrun.md) | 1.0 | Frozen 2026-05-08 |

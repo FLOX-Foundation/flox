@@ -8,13 +8,13 @@ Event-driven live trading and backtesting using `Strategy`, `Runner`, and `Backt
 
 ```bash
 cmake -B build \
-  -DFLOX_ENABLE_PYTHON=ON \
+  -DFLOX_BUILD_PYTHON=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build
 ```
 
-Requires: Python 3.9+, pybind11 (`pip install pybind11`).
+Requires: Python 3.10+, pybind11 (`pip install pybind11`).
 
 The module builds at `build/python/flox_py.cpython-*.so`.
 
@@ -78,164 +78,136 @@ runner.stop()
 
 ### Backtest
 
-Two paths. The realistic one is one extra call; pick it by default.
-
-#### Realistic (venue stack)
-
-```python
-stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
-
-bt = flox.BacktestRunner(registry, executor=stack.executor(), account=stack.account())
-bt.set_strategy(SMAcross([btc]))
-
-stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")
-print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
-```
-
-`VenueStack.binance_um_futures` wires the venue physics in one call: cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account, so realized notional moves the tier), funding settlement on the venue's interval, rate limits, and a venue-availability hook. Other factories: `bybit_linear`, `okx_swap`, `deribit`. Non-canonical venues go through [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
-
-Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
-
-#### Bare (flat fee, nothing else)
-
 ```python
 bt = flox.BacktestRunner(registry, fee_rate=0.0004, initial_capital=10_000)
 bt.set_strategy(SMAcross([btc]))
 
-stats = bt.run_csv("btcusdt_trades.csv", "BTCUSDT")
+stats = bt.run_csv("btcusdt_1m.csv", "BTCUSDT")
 print(stats["return_pct"], stats["sharpe"], stats["max_drawdown_pct"])
 ```
 
-Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Useful for an indicator sanity check; not enough for a decision about real capital.
+The constructor takes `(registry, fee_rate=0.0004, initial_capital=100000.0)` — nothing else. Flat fee rate, no funding, no liquidation, no rate limits, no queue position. Useful for an indicator sanity check; not enough for a decision about real capital.
 
-Stats dict keys: `return_pct`, `net_pnl`, `total_trades`, `win_rate`, `sharpe`, `max_drawdown_pct`.
+`run_csv` reads OHLCV **bars**: one header line, then `timestamp,open,high,low,close,volume`. Only the timestamp and close columns are used; each bar is replayed as one trade, so `on_trade` fires and `on_bar` does not. Timestamps below `1e12` are treated as seconds and scaled to nanoseconds. Other entry points: `run_bars(...)` (full OHLC, fires `on_bar`), `run_ohlcv(ts, close, symbol)`, `run_tape(path)` and `run_tapes(paths)` for `.floxlog` tapes.
+
+Returns a plain dict. Keys: `total_trades`, `winning_trades`, `losing_trades`, `initial_capital`, `final_capital`, `total_pnl`, `total_fees`, `net_pnl`, `gross_profit`, `gross_loss`, `max_drawdown`, `max_drawdown_pct`, `win_rate`, `profit_factor`, `sharpe`, `sortino`, `return_pct`.
+
+Hooks attach after construction: `set_executor(executor)` (a subclass of `flox.Executor`), `set_risk_manager`, `set_kill_switch`, `set_order_validator`, `set_pnl_tracker`, `add_execution_listener`.
+
+#### Venue physics
+
+`VenueStack` is a separate, self-contained venue simulation — it is not an argument to `BacktestRunner` and does not attach to one.
+
+```python
+stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
+
+acct = stack.account()
+liq = stack.liquidation()
+fees = stack.fees()
+funding = stack.funding()
+exec_ = stack.executor()
+```
+
+One call wires the cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account, so realized notional moves the tier), funding settlement on the venue's interval, rate limits, and a venue-availability hook. Other factories: `bybit_linear`, `okx_swap`, `deribit`, plus `VenueStack.from_venue(name, account_id, equity)`. Non-canonical venues go through [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
+
+You drive the returned subsystems directly — `acct.open_position(...)`, `liq.on_marks(...)`, `fees.record_fill(...)`, `funding.tick(...)`, `exec_.submit_order(...)`. See `docs/examples/python_realistic_backtest.py`.
+
+Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
 
 ### Paper trading
 
-Same strategy class, live feed, simulated fills. The `PaperBroker` routes orders into a `SimulatedExecutor` configured the same way as the backtest stack — fills, fees, funding, and rate limits stay in-process.
+Same strategy class, live feed, simulated fills. `PaperBroker` lives in `flox_py.paper`. It constructs its own `SimulatedExecutor` and its own `Runner`; you attach strategies to `broker.runner` and tee market data in through `broker.observe_trade(...)`.
 
 ```python
-broker = flox.PaperBroker(stack.executor(), stack.account())
-runner = flox.Runner(registry, broker.on_signal)
-runner.add_strategy(SMAcross([btc]))
-runner.start()
+from flox_py.paper import PaperBroker
+
+broker = PaperBroker(registry=registry)
+broker.runner.add_strategy(SMAcross([btc]))
+broker.start()
 
 # Feed live trades from your data source (websocket, ccxt.pro, etc.)
-# runner.on_trade(btc, price, qty, is_buy, ts_ns)
+broker.observe_trade(btc, price, qty, is_buy, ts_ns=ts_ns)
+
+broker.stop()
+print(broker.fills_list(), broker.stats)
 ```
+
+`PaperBroker` is a dataclass; `on_signal=` is an optional user callback that fires *after* the simulator has accepted a signal, not a routing method. Slippage is tunable via `set_default_slippage(model, **params)` / `set_symbol_slippage(symbol_id, model, **params)`.
 
 See [Paper trading](../how-to/paper-trading.md) for the full feed-wiring pattern.
 
 ### Live
 
-`CcxtBroker` is the same shape as `PaperBroker` but routes orders through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange instance. The strategy class is unchanged.
+`CcxtBroker` lives in `flox_py.ccxt` and routes orders through a [ccxt.pro](https://github.com/ccxt/ccxt) exchange. It is async and owns its own registry and runner — construct it from an exchange *id*, not an exchange object. The strategy class is unchanged.
 
 ```python
-import ccxt.pro as ccxt
+import asyncio
+from flox_py.ccxt import CcxtBroker
 
-exchange = ccxt.binanceusdm({"apiKey": ..., "secret": ...})
-broker = flox.CcxtBroker(exchange, registry)
+async def main():
+    broker = CcxtBroker("binance", api_key=..., secret=..., sandbox=True)
+    async with broker:
+        btc = await broker.add_symbol("BTC/USDT")
+        broker.add_strategy(SMAcross([btc]))
+        await broker.run(streams=("trades", "orders"))
 
-runner = flox.Runner(registry, broker.on_signal)
-runner.add_strategy(SMAcross([btc]))
-runner.start()
+asyncio.run(main())
 ```
 
-One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md).
+One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) and `docs/examples/python_ccxt_live.py`.
 
 ---
 
-## Batch Backtest Engine
+## Vectorised Engine
 
-Run backtests against pre-computed signal arrays. Execution runs in C++ with the GIL released and multi-threaded batch support.
-
-### Build
-
-```bash
-cmake -B build \
-  -DFLOX_ENABLE_BACKTEST=ON \
-  -DFLOX_ENABLE_PYTHON=ON \
-  -DCMAKE_BUILD_TYPE=Release
-
-cmake --build build
-```
-
-Requires: Python 3.9+, pybind11, numpy (`pip install pybind11 numpy`).
+`flox.Engine` runs a backtest against a pre-built signal list instead of an event-driven `Strategy`. Bars are loaded once and can be re-run against many signal sets.
 
 ### Quick Start
 
 ```python
-import numpy as np
 import flox_py as flox
 
 engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
+engine.load_csv("btcusdt_1m.csv", symbol="BTCUSDT")
 
-# Load OHLCV data
-engine.load_bars_df(timestamps, opens, highs, lows, closes, volumes)
-
-# Create signals (all market orders)
-signals = flox.make_signals(
-    timestamps=np.array([1704067200000, 1704068400000], dtype=np.int64),
-    sides=np.array([0, 1], dtype=np.uint8),  # 0=buy, 1=sell
-    quantities=np.array([0.5, 0.5]),
-)
+signals = flox.SignalBuilder()
+signals.buy(1704067200_000000000, 0.5, symbol="BTCUSDT")
+signals.sell(1704068400_000000000, 0.5, symbol="BTCUSDT")
 
 stats = engine.run(signals)
-print(f"PnL: {stats['net_pnl']:.2f}, Sharpe: {stats['sharpe']:.4f}")
+print(f"PnL: {stats.net_pnl:.2f}, Sharpe: {stats.sharpe:.4f}")
 ```
 
 ### Loading Bar Data
 
-Two options:
+| Method | Input |
+|--------|-------|
+| `load_csv(path, symbol="")` | OHLCV CSV; symbol inferred from the filename when omitted |
+| `load_ohlcv(data, symbol="")` | dict with `ts` (or `timestamp`) plus `open`, `high`, `low`, `close`, `volume` arrays |
+| `load_df(df, symbol="")` | pandas DataFrame; timestamp taken from `ts`/`timestamp`/`open_time`/`time`, else the index |
 
-=== "From numpy arrays"
-
-    ```python
-    engine.load_bars_df(
-        timestamps,  # int64, unix ms or ns (auto-detected)
-        opens,       # float64
-        highs,       # float64
-        lows,        # float64
-        closes,      # float64
-        volumes,     # float64
-    )
-    ```
-
-=== "From structured array"
-
-    ```python
-    bars = np.zeros(n, dtype=flox.PyBar)
-    bars['timestamp_ns'] = ...
-    bars['open_raw'] = (opens * 1e8).astype(np.int64)
-    # ... etc
-    engine.load_bars(bars)
-    ```
-
-Load once, then run as many backtests as needed against the same data.
+Call any of them once per symbol. `resample(symbol, target, interval)` derives a coarser series from a loaded one. Read-back accessors: `symbols`, `bar_count(symbol="")`, `ts`, `open`, `high`, `low`, `close`, `volume`.
 
 ### Creating Signals
 
-`make_signals()` converts numpy arrays into a packed struct array:
+`flox.SignalBuilder` accumulates signals in call order:
+
+| Method | Arguments |
+|--------|-----------|
+| `buy` | `ts`, `qty`, `symbol=""` |
+| `sell` | `ts`, `qty`, `symbol=""` |
+| `limit_buy` | `ts`, `price`, `qty`, `symbol=""` |
+| `limit_sell` | `ts`, `price`, `qty`, `symbol=""` |
+
+`len(builder)` gives the count; `clear()` resets it. An empty `symbol` falls back to `run`'s `default_symbol`.
+
+### Run
 
 ```python
-signals = flox.make_signals(
-    timestamps,   # int64 — unix ms, us, or ns (auto-normalized)
-    sides,        # uint8 — 0=buy, 1=sell
-    quantities,   # float64 — position size
-    prices,       # float64 — limit price (optional, default: market)
-    types,        # uint8 — 0=market, 1=limit (optional, default: market)
-)
+stats = engine.run(signals, default_symbol=0)
 ```
 
-For market-only strategies, `prices` and `types` can be omitted.
-
-### Single Run
-
-```python
-stats = engine.run(signals, symbol=1)
-```
-
-Returns a dict with all backtest metrics:
+Returns a `flox.Stats` object. Fields are readable as attributes or via `stats["key"]`; `stats.to_dict()` returns the whole set.
 
 | Key | Description |
 |-----|-------------|
@@ -251,54 +223,7 @@ Returns a dict with all backtest metrics:
 | `profit_factor` | Gross profit / gross loss |
 | `return_pct` | Net return percentage |
 
-### Batch Execution
-
-Run N backtests in parallel using C++ threads:
-
-```python
-all_stats = engine.run_batch(
-    [signals_1, signals_2, ..., signals_n],
-    threads=0,   # 0 = use all cores
-    symbol=1,
-)
-```
-
-GIL released. Threads run independent copies, nothing shared.
-
-#### Permutation Testing Example
-
-```python
-import flox_py as flox
-import numpy as np
-
-engine = flox.Engine(initial_capital=100_000, fee_rate=0.0001)
-engine.load_bars_df(timestamps, opens, highs, lows, closes, volumes)
-
-rng = np.random.default_rng(42)
-signal_sets = []
-
-for _ in range(1000):
-    rets = np.diff(np.log(closes))
-    rng.shuffle(rets)
-    shuffled = closes[0] * np.exp(np.cumsum(np.concatenate(([0], rets))))
-    sigs = my_strategy(shuffled, timestamps)
-    signal_sets.append(sigs)
-
-# 1000 backtests in ~50ms
-results = engine.run_batch(signal_sets)
-pnls = [r["net_pnl"] for r in results]
-p_value = np.mean([p >= results[0]["net_pnl"] for p in pnls])
-```
-
-### Performance
-
-Benchmarked on Apple M-series, 100K bars, MA cross strategy:
-
-| Mode | Time | vs Python |
-|------|------|-----------|
-| Single run | 0.6ms | 33x |
-| 1000 permutations | 53ms | 400x |
-| Bar loading | 0.5ms | — |
+`Engine` exposes a single `run`; there is no batch or multi-threaded entry point. For parameter sweeps see [Grid Search](../how-to/grid-search.md).
 
 ## See Also
 

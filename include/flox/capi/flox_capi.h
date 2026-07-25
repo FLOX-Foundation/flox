@@ -147,6 +147,13 @@ extern "C"
     FloxBookSnapshot snapshot;
   } FloxBookData;
 
+  /* OHLC bar event, delivered to FloxStrategyCallbacks.on_bar.
+   * bar_type: 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi,
+   *           6=BpsRange (mirrors flox::BarType in aggregator/bar.h).
+   * bar_type_param: interval in NANOSECONDS for Time bars, tick count for
+   *           Tick, volume threshold for Volume, and the brick / range /
+   *           bps size for the others.
+   * close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. */
   typedef struct
   {
     uint32_t symbol;
@@ -449,6 +456,11 @@ extern "C"
     uint64_t estimated_bytes;
   } FloxPartition;
 
+  /* order_type uses the FLOX_SIGNAL_TYPE_* codes below on every path
+   * that fills this struct (strategy signals, and the risk-manager /
+   * kill-switch / order-validator / PnL-tracker callbacks). It is NOT
+   * the C++ flox::OrderType enum, whose LIMIT and MARKET are swapped
+   * relative to these codes. */
   typedef struct
   {
     uint64_t order_id;
@@ -463,6 +475,18 @@ extern "C"
     double new_price;
     double new_quantity;
   } FloxSignal;
+
+#define FLOX_SIGNAL_TYPE_MARKET 0
+#define FLOX_SIGNAL_TYPE_LIMIT 1
+#define FLOX_SIGNAL_TYPE_STOP_MARKET 2
+#define FLOX_SIGNAL_TYPE_STOP_LIMIT 3
+#define FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET 4
+#define FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT 5
+#define FLOX_SIGNAL_TYPE_TRAILING_STOP 6
+#define FLOX_SIGNAL_TYPE_CANCEL 7
+#define FLOX_SIGNAL_TYPE_CANCEL_ALL 8
+#define FLOX_SIGNAL_TYPE_MODIFY 9
+#define FLOX_SIGNAL_TYPE_ICEBERG 10
 
   typedef struct
   {

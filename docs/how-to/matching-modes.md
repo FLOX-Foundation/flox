@@ -35,7 +35,7 @@ orders submitted after the call.
 === "Python"
 
     ```python
-    import flox
+    import flox_py as flox
 
     exec = flox.SimulatedExecutor()
 
@@ -50,7 +50,7 @@ orders submitted after the call.
 === "TypeScript (Node)"
 
     ```typescript
-    import { SimulatedExecutor } from "flox";
+    import { SimulatedExecutor } from "@flox-foundation/flox";
 
     const exec = new SimulatedExecutor();
 
@@ -73,11 +73,17 @@ orders submitted after the call.
 === "Codon"
 
     ```python
-    from flox.backtest import SimulatedExecutor, QueueModel
+    from flox.backtest import SimulatedExecutor
+
+    # flox.backtest names only QUEUE_NONE / QUEUE_TOB / QUEUE_FULL. The
+    # pro-rata models are the remaining FloxQueueModel values from the C
+    # ABI, passed as plain ints.
+    PRO_RATA = 3
+    PRO_RATA_WITH_FIFO = 4
 
     exec = SimulatedExecutor()
-    exec.set_queue_model(int(QueueModel.PRO_RATA), 4)
-    exec.set_queue_model(int(QueueModel.PRO_RATA_WITH_FIFO), 4)
+    exec.set_queue_model(PRO_RATA, 4)
+    exec.set_queue_model(PRO_RATA_WITH_FIFO, 4)
     exec.set_queue_fifo_top_n(3)
     ```
 
@@ -155,8 +161,9 @@ multiplier (e.g. 1.5) on top of raw size.
   no overshoot.
 - An empty `fifoTopN` (zero or larger than the level depth) makes
   `pro_rata_with_fifo` behave identically to pure `pro_rata`.
-- The `setFifoTopN` value persists across `set_queue_model` calls;
-  reset it explicitly when switching back to a pure FIFO mode.
+- The `set_queue_fifo_top_n` / `setQueueFifoTopN` value persists
+  across `set_queue_model` calls; reset it explicitly when switching
+  back to a pure FIFO mode.
 
 ## When the model matters
 

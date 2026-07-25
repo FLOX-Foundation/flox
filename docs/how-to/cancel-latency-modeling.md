@@ -7,7 +7,7 @@ trade in the window between `cancelOrder()` and the venue's ack.
 
 ## What's exposed
 
-Three `BacktestConfig` fields:
+Three `BacktestConfig` fields on the C++ side:
 
 - `cancelAckLatencyNs` — base ack delay in nanoseconds. Default `0`
   preserves the legacy synchronous behavior (`cancelOrder()` →
@@ -15,7 +15,23 @@ Three `BacktestConfig` fields:
 - `cancelAckJitterNs` — uniform jitter band added to the base. The
   sampled latency lands in `[base - jitter, base + jitter]` and is
   clamped to a non-negative value.
-- `cancelAckSeed` — RNG seed for reproducible sampling.
+- `cancelAckSeed` — RNG seed for reproducible sampling. Default `42`.
+
+The bindings do not take these through `BacktestConfig` or the
+`BacktestRunner` constructor. They configure the model on a
+`SimulatedExecutor` instead:
+
+- `set_cancel_ack_latency(latency_ns, jitter_ns=0)` — base + jitter.
+- `set_cancel_ack_latency_distribution(dist)` — a `LatencyDistribution`
+  (`constant`, `uniform`, `lognormal`, `empirical`, plus
+  `set_burst_correlation`) instead of the base/jitter pair.
+- `apply_latency_profile(name)` — a named venue profile:
+  `binance_um_futures`, `bybit_linear`, `okx_swap`, `deribit`,
+  `idealized`, `adversarial`.
+
+`cancelAckSeed` has no binding setter — it is C++-only, so from Python
+and Node the sampling uses the default seed and is reproducible across
+runs but not tunable.
 
 When `cancelAckLatencyNs > 0`, the simulator emits `PENDING_CANCEL`
 immediately and defers `CANCELED` until simulation time reaches the
@@ -33,14 +49,28 @@ cancel attempt; the fill itself fires normally.
     ```python
     import flox_py as flox
 
-    runner = flox.BacktestRunner(
-        registry,
-        fee_rate=0.0,
-        initial_capital=100_000.0,
-        cancel_ack_latency_ns=10_000_000,   # 10 ms
-        cancel_ack_jitter_ns=2_000_000,     # ±2 ms
-        cancel_ack_seed=42,
-    )
+    ex = flox.SimulatedExecutor()
+    ex.set_cancel_ack_latency(10_000_000, 2_000_000)   # 10 ms base, ±2 ms jitter
+
+    # Or a distribution instead of base/jitter:
+    ex.set_cancel_ack_latency_distribution(
+        flox.LatencyDistribution.lognormal(10_000_000, 0.4))
+
+    # Or a named venue profile (sets submit / cancel / replace together):
+    ex.apply_latency_profile("binance_um_futures")
+    ```
+
+=== "Node.js"
+
+    ```javascript
+    const ex = new flox.SimulatedExecutor();
+    ex.setCancelAckLatency(10_000_000, 2_000_000);
+
+    const dist = new flox.LatencyDistribution();
+    dist.setLognormal(10_000_000, 0.4);
+    ex.setCancelAckLatencyDistribution(dist);
+
+    ex.applyLatencyProfile("binance_um_futures");
     ```
 
 === "C++"

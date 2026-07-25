@@ -23,10 +23,10 @@ flox new my-strategy
 cd my-strategy
 ```
 
-`flox new` writes `main.py`, `requirements.txt`, a README, and a
-`data/btcusdt_sample.csv` with 500 real BTC/USDT 1-minute bars
-(`timestamp,open,high,low,close,volume`). The default template is
-`research`: a single-file SMA(10/30) crossover.
+`flox new` writes `main.py`, `main.ipynb`, `requirements.txt`, a
+README, and a `data/btcusdt_sample.csv` with 500 real BTC/USDT
+1-minute bars (`timestamp,open,high,low,close,volume`). The default
+template is `research`: a single-file SMA(10/30) crossover.
 
 ## 3. Run
 
@@ -44,7 +44,12 @@ backtest on btcusdt_sample.csv
   sharpe : -4.5746
   max DD : 1.5030%
   net PnL: -121.0296
+  report : /path/to/my-strategy/report.html
 ```
+
+The last line is an HTML report the template always writes next to
+`main.py`, with the equity curve and the trades table. Open it in a
+browser.
 
 That is the actual result of an SMA(10/30) crossover on 500 minutes of
 BTC. 66% of trades closed in the green, but small wins do not pay for

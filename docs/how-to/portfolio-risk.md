@@ -126,6 +126,18 @@ print(snap.to_dict())
 
 The `to_dict()` method is JSON-serializable, so you can drop it straight into the runtime-state snapshot file the MCP analytics tools read. If you do, `get_pnl` and `get_kill_switch` over MCP automatically reflect portfolio-level state.
 
+## Retiring a strategy
+
+`remove(name)` drops a strategy's row from the aggregate and
+re-evaluates immediately. Use it when a strategy is stopped for the
+session rather than leaving a stale row inflating gross exposure.
+
+Re-evaluation is one-directional: it can raise peak equity and it can
+trip the kill switch, but it never lowers peak equity and never
+clears an already-active switch. Dropping the row that caused a
+breach removes the breach from the next `snapshot()`, but trading
+stays halted until `reset_kill_switch()`.
+
 ## After a breach
 
 `reset_kill_switch()` is the explicit operator action that re-enables trading. The aggregator does not auto-reset; that is intentional. The next `update` re-evaluates and re-trips the switch if the underlying cause (drawdown, gross exposure, concentration) is still present, so resetting without addressing the cause buys you nothing. Read the breach detail, decide whether to flatten manually, and only then reset.

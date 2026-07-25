@@ -60,7 +60,8 @@ The streaming mixin you choose depends on the input shape:
 | `compute(high, low)` | `StreamingHighLow<T>` |
 | `compute(open, high, low, close)` | `StreamingOhlc<T>` |
 | `compute(x, y)` | `StreamingPair<T>` |
-| Multi-output result struct | hand-written streaming methods (see `MACD`, `Bollinger`, `Stochastic`) |
+| Single series returning a result struct | `StreamingMultiOutputSingle<T, Result>` |
+| Multi-output result struct, other input shapes | hand-written streaming methods (see `MACD`, `Bollinger`, `Stochastic`) |
 
 ## 2. Register it
 
@@ -105,7 +106,7 @@ The parity is **by construction** — `update()` calls your `compute()`
 internally, so there is no separate streaming logic to drift. No ring
 buffer, no warmup logic, no seeding to debug.
 
-## 4. Reading the existing 22 indicators
+## 4. Reading the existing 21 indicators
 
 Every indicator listed in `registry.def` (EMA, SMA, RSI, ATR, MACD, ...)
 follows exactly this pattern. Look at any `include/flox/indicator/<name>.h`

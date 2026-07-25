@@ -32,4 +32,29 @@ echo "=== Demo ==="
 echo "=== Benchmarks ==="
 ./scripts/run-benchmarks.sh "$BUILD_DIR/benchmarks"
 
+# Same set as the verify-docs-current job in .github/workflows/ci.yml, so a
+# green local run means green docs in CI. See docs/contributors/doc-gates.md.
+echo "=== Documentation gates ==="
+PY="${PYTHON:-python3}"
+"$PY" scripts/gen_indicator_docs.py
+git diff --exit-code -- docs/ >/dev/null || {
+  echo "error: docs/ out of sync with include/flox/indicator/registry.def" >&2
+  echo "Run: $PY scripts/gen_indicator_docs.py" >&2
+  exit 1
+}
+"$PY" scripts/gen_llms_txt.py --check
+"$PY" scripts/gen_api_index.py --check
+"$PY" scripts/check_dts_exports.py
+"$PY" scripts/check_dts_class_members.py
+"$PY" scripts/check_binding_parity.py
+"$PY" scripts/check_error_codes.py
+"$PY" scripts/check_test_gating.py
+"$PY" scripts/check_doc_snippets.py --min-includes 24
+"$PY" scripts/check_doc_symbols.py
+"$PY" scripts/check_doc_nav.py
+"$PY" scripts/check_doc_links.py
+"$PY" scripts/check_doc_conventions.py
+"$PY" scripts/check_doc_examples.py
+"$PY" scripts/sync_mcp_data.py --check
+
 echo "=== All CI checks passed ==="

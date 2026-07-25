@@ -77,7 +77,7 @@ struct AffinityConfig
 | `setAffinityConfig(cfg)`      | Configure CPU affinity and RT priority.               |
 | `setCoreAssignment(assign)`   | Manually set core assignment.                         |
 | `setupOptimalConfiguration()` | Auto-configure for component type.                    |
-| `verifyIsolatedCoreConfig()`  | Verify isolated core setup.                           |
+| `verifyIsolatedCoreConfiguration()` | Verify isolated core setup.                     |
 
 Consumer threads are distributed across available cores using round-robin assignment.
 
@@ -93,6 +93,23 @@ Consumer threads are distributed across available cores using round-robin assign
 * **In-Place Construction**: Events constructed via placement new, destructed on reclaim.
 * **Thread-Safe Subscribe**: `subscribe()` returns false if called after `start()`.
 * **Overflow Protection**: Sequence counter overflow is detected and handled.
+
+## Statistics
+
+```cpp
+struct Stats
+{
+  uint64_t published{0};
+  uint64_t dropped{0};
+  uint64_t consumed{0};
+};
+
+Stats stats() const;
+```
+
+`stats()` snapshots three relaxed-load counters. The counts are not a consistent triple — each is
+read independently — so treat them as monotonic indicators, not as an invariant
+(`published == consumed + dropped` may not hold at the instant of the call).
 
 ## Internal Types
 
@@ -182,7 +199,7 @@ bus.subscribe(&loggingHandler, false);   // optional
 Run `event_bus_benchmark` to measure performance on your hardware:
 
 ```bash
-cmake -DFLOX_ENABLE_BENCHMARKS=ON ..
+cmake -DFLOX_BUILD_BENCHMARKS=ON ..
 make event_bus_benchmark
 ./benchmarks/event_bus_benchmark
 ```

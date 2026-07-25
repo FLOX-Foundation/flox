@@ -15,7 +15,7 @@ with each bar.
 
 === "Python"
     ```python
-    import flox
+    import flox_py as flox
 
     runner = flox.BacktestRunner(reg, fee_rate=0.001, initial_capital=10_000)
     runner.set_strategy(MyStrategy())          # ← required first

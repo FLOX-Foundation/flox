@@ -82,10 +82,42 @@ flox.permutationTest([1, 2, 3], [4, 5, 6], 10000); // p-value
 
 ## Segment operations
 
+Segment directories use the `.floxlog` extension.
+
 ```javascript
-flox.validateSegment('/path/to/segment.flx');
-flox.mergeSegments('/path/to/input_dir', '/path/to/output_dir');
+flox.validateSegment('/path/to/segment.floxlog');
+
+// Second argument is an OUTPUT FILE PATH, not a directory.
+flox.mergeSegments('/path/to/input_dir', '/path/to/merged.floxlog');
 ```
+
+Extended operations:
+
+| Call | Description |
+|------|-------------|
+| `flox.mergeDir(inputDir, outputDir)` | Merge a directory into an output directory |
+| `flox.splitSegment(inputPath, outputDir, mode, timeIntervalNs, eventsPerFile)` | Split one segment into many |
+| `flox.exportSegment(inputPath, outputPath, format, fromNs, toNs, symbols)` | Export a range to another format |
+| `flox.validateSegmentFull(path, verifyCrc, verifyTimestamps)` | Full validation, optional CRC and timestamp checks |
+| `flox.validateDataset(dataDir)` | Validate every segment in a dataset directory |
+| `flox.recompressSegment(inputPath, outputPath, level)` | Recompress at a different level |
+| `flox.extractSymbols(inputPath, outputDir, symbols)` | Extract selected symbols |
+| `flox.extractTimeRange(inputPath, outputPath, fromNs, toNs)` | Extract a time window |
+
+---
+
+## Bar aggregation
+
+Each helper takes `(timestamps, prices, quantities, sides, param)`:
+
+| Call | `param` |
+|------|---------|
+| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+| `flox.tickBars(ts, px, qty, sides, ticksPerBar)` | Trades per bar |
+| `flox.volumeBars(ts, px, qty, sides, volumePerBar)` | Volume per bar |
+| `flox.rangeBars(ts, px, qty, sides, rangeSize)` | High-low range |
+| `flox.renkoBars(ts, px, qty, sides, brickSize)` | Brick size |
+| `flox.heikinBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
 
 ---
 

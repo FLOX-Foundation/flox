@@ -164,7 +164,20 @@ mark_price, iv, index_price
 - future:    `BTC-29MAR24`, `ETH-28JUN24`, ... (date-encoded expiry)
 - option:    `BTC-29MAR24-50000-C`, `BTC-29MAR24-50000-P` (date-encoded expiry + strike + C/P)
 
-The converter takes one instrument per tape. Multi-instrument option-chain aggregation (one tape covering every strike at a given expiry) is left as a follow-up — backtests that pin to a specific strike or roll through a known series sequentially are well served by the single-instrument path.
+The converter writes one instrument per tape, but option chains are handled by
+`flox_py.archives.deribit.load_option_chain`, which converts each instrument's
+archive into its own tape under `out_root/<instrument>` and returns a queryable
+`OptionChain` over them:
+
+`load_option_chain(instruments, day, out_root, *, mirror, exchange_id=0, compression="none")`
+takes a sequence of instrument ids and a day; `mirror` is required (CSVs are read
+from there and downloaded if absent). Each instrument gets a distinct `symbol_id`
+(its index + 1). The returned `OptionChain` supports `len()`, iteration,
+`expiries()`, `strikes(expiry=None)` and `query(expiry=None, strike=None,
+option_type=None)`, each yielding `OptionContract` records that carry the tape
+path. `parse_option_instrument("BTC-29MAR24-50000-C")` returns
+`("BTC", date(2024, 3, 29), 50000.0, "C")` and raises `ValueError` on a perp /
+future id.
 
 ### Example
 
