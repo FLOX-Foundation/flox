@@ -62,3 +62,12 @@ ends with `OK — N test targets, gating consistent.`
 - The `FLAG_IMPLIES` map at the top of the script mirrors the
   hard-prereq guards in the root `CMakeLists.txt`. Keep them in
   sync when adding a new flag dependency.
+
+## Sibling gate: suite discovery
+
+`check_test_gating.py` guarantees a C++ test is *registered*.
+[`check_suite_discovery.py`](../../scripts/check_suite_discovery.py) is the
+Python/Node counterpart, and exists because there was none: `ci.yml` listed
+test files one per named step, so 34 of 69 Python files and 9 of 21 Node files
+never ran. Both suites are now invoked wholesale, and that script fails CI if a
+test file would not be picked up — or if anyone re-lists files by hand.

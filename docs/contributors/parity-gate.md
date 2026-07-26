@@ -122,7 +122,16 @@ So the gate is a coarse mechanical check: "does the symbol exist?". Tests cover 
 
 The script is small (~280 lines, [scripts/check_binding_parity.py](../../scripts/check_binding_parity.py)). If you need a new check, add it there. Examples:
 
-- **QuickJS coverage.** Currently QuickJS is unchecked because its bindings live in `.cpp` and aren't easily introspectable. Could be added by parsing `JS_NewCFunction` calls in `src/quickjs/js_bindings.cpp`.
+- **QuickJS coverage.** Partly addressed outside this gate: [`check_quickjs_registration.py`](../../scripts/check_quickjs_registration.py) asserts that every `__flox_*` global the JS layer calls has an `addGlobalFunc` registration, which is what `setQueueFifoTopN` violated. Generating the registration table from the IDL is not currently possible — the global name is derivable but the wrapper name is not (`flox_simulated_executor_set_queue_model` is implemented by `js_executor_set_queue_model`).
 - **Method-level checks.** Currently we check class presence; we could check that a class has specific methods (e.g. `Executor` must have `submit`, `cancel`, `replace`).
 
 Both would tighten the gate. Keep changes minimal — every false-positive case wastes contributor time.
+
+## Sibling gate: behaviour, not names
+
+This gate asserts a symbol *exists*. Every defect the binding-surface audit
+found had an existing symbol — `VenueStack.clock()` raised "Unregistered type",
+the five Node `VenueStack` factories threw `SyntaxError`.
+[`check_binding_smoke.py`](../../scripts/check_binding_smoke.py) closes that by
+walking both bindings by reflection and *calling* what it finds (~760 zero-arg
+calls), failing only on binding-level errors and ignoring rejected inputs.

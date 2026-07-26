@@ -36,6 +36,7 @@ Two mechanisms keep the pipeline cheap on bad pushes:
 
 1. **`needs:` dependency.** Every OS build job in [`ci.yml`](../../.github/workflows/ci.yml) declares `needs: [format-check, verify-docs-current]`. If either quick gate fails, the multi-OS matrix is skipped — saving ~50 compute minutes (10 min × 5 jobs).
 2. **`concurrency.cancel-in-progress`.** A new push to the same branch / PR cancels the in-flight workflow run for that ref. No more "two builds racing on stale code".
+3. **`push:` is filtered to `main`.** With an unfiltered `push:` alongside `pull_request:`, every push to a branch with an open PR ran the whole matrix twice — 32 checks where 22 is the real coverage, and three `clang-format` jobs because `build-matrix.yml` duplicated `ci.yml`'s. A branch now gets exactly one run, from `pull_request`.
 
 Both are at the workflow top:
 
@@ -67,10 +68,30 @@ Runs eight checks in sequence (each takes <5s):
 | `check_dts_exports.py` | `node/index.d.ts` matches NAPI exports | Edit `.d.ts` to add/remove the listed names |
 | `check_binding_parity.py` | pybind11/NAPI/Codon coverage matches IDL | See [parity-gate.md](parity-gate.md) |
 | `check_error_codes.py` | Every error code has a doc page; pages aren't stale | Add the doc page or remove the unused code |
+| `check_test_gating.py` | Every `tests/*.cpp` is registered in CMake | Register the target — see [test-gating.md](test-gating.md) |
+| `check_suite_discovery.py` | Every Python/Node test file is reachable by the suite runners, and nobody re-listed files by hand | Rename the file to `test_*`, add cases, or drop the hand-written step |
+| `check_quickjs_registration.py` | Every `__flox_*` global the JS layer calls has an `addGlobalFunc` registration | Register the global in `js_bindings.cpp` |
 | `gen_api_index.py --check` | `docs/reference/python/_api_index.md` matches `.pyi` | Run `python3 scripts/gen_api_index.py` |
 | `check_doc_snippets.py` | Doc snippets follow `--8<--` include pattern | Refactor inline snippets into includes |
 | `sync_mcp_data.py --check` | `mcp/flox_mcp/data/` matches source | Run `python3 scripts/sync_mcp_data.py` |
 | flox-mcp pytest | MCP server unit tests | Fix the broken test |
+
+### `linux-gcc` — the binding suites
+
+The one job that builds every binding, so it is where the binding-level checks
+live. All of them run the whole suite, not a list:
+
+| Step | What it does | If it fails |
+|------|--------------|-------------|
+| `pytest python/tests -q` | The entire Python suite, under `PYTHONPATH=build/python` | Fix the test. Reproduce locally with `scripts/ci-local.sh`, which uses the same `PYTHONPATH` — a *relative* path, which is why a subprocess spawned with a different `cwd` must absolutise it |
+| `for f in test/test_*.js` | Every Node test file | Fix the test |
+| `check_binding_smoke.py` | Calls ~760 zero-argument methods across both bindings and fails on binding-level errors (unregistered return type, signature the addon cannot accept) | The wrapper is broken, not the input — see [parity-gate.md](parity-gate.md) |
+
+Both suites used to be invoked as one named step per file — roughly 35 of them.
+A test file nobody remembered to add simply never ran: 34 of 69 Python files and
+9 of 21 Node files, including every regression gate written for the
+binding-surface audit. `check_suite_discovery.py` now fails CI if a test file
+would not be picked up, or if anyone re-lists files by hand.
 
 ### `codegen-check` (separate workflow)
 

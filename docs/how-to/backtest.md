@@ -272,6 +272,44 @@ What still differs between producers is the *field set*, not the names:
 `end_time_ns`. In Node these three shapes are the `BacktestStats`,
 `RunnerStats` and `FoldStats` interfaces in `index.d.ts`.
 
+## Fees: one rate, or one per side
+
+`fee_rate` charges every fill the same. That is a maker/taker *average*, and it
+understates any strategy that mostly posts on a venue where making is cheaper
+than taking — sometimes a rebate.
+
+Fills carry `is_maker`, so both sides can be priced separately:
+
+=== "Python"
+
+    ```python
+    r = flox.BacktestResult(
+        initial_capital=10_000.0,
+        fee_rate=0.0004,          # still the fallback for either side
+        maker_fee_rate=0.0001,    # charged when the fill provided liquidity
+        taker_fee_rate=0.0005,    # charged when it took liquidity
+    )
+    ```
+
+=== "C++"
+
+    ```cpp
+    BacktestConfig config{};
+    config.feeRate = 0.0004;
+    config.makerFeeRate = 0.0001;
+    config.takerFeeRate = 0.0005;
+    ```
+
+Both default to a negative value meaning *unset*, in which case `fee_rate`
+applies to both sides and results are unchanged. Zero is a real rate, not
+"unset" — which matters, because zero is a real maker rate. Fixed-fee mode
+(`use_percentage_fee=False`) ignores the side entirely.
+
+`is_maker` is also on every fill in `fills_list()` and in the `fills()` numpy
+dtype, so a fee model of your own can read it directly. What this does *not*
+give you is a venue's 30-day volume tiering — for that see
+[Realistic backtest in one call](realistic-backtest.md).
+
 ## Pre-aggregated bars (faster replay)
 
 For repeated parameter sweeps over the same data, pre-aggregate bars once and replay them. Python (`run_bars`), Node.js (`runBars`) and Codon (`run_bars`) all take closed OHLC bars; C++ has dedicated mmap storage.

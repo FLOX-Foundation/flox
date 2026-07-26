@@ -144,6 +144,7 @@ nav:
           - Venue downtime: how-to/venue-downtime.md
           - Calibrate live queue: how-to/calibrate-live-queue.md
           - Record and replay market data: how-to/tape-record.md
+          - Run a paper engine (flox engine sim): how-to/engine-sim.md
           - Merge multiple tapes on read: how-to/multi-tape.md
           - Import Binance public archives: how-to/import-binance-archive.md
           - Import Binance book archives: how-to/import-binance-book-archive.md
