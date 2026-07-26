@@ -22,6 +22,7 @@ Solve specific problems. Assumes you know the basics.
 | [Backtest recipes](backtest-recipes.md) | Runnable end-to-end recipes for the common backtest assembly patterns |
 | [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
 | [Record and replay tapes](tape-record.md) | Capture live market data to `.floxlog`, replay deterministically |
+| [Run a paper engine (`flox engine sim`)](engine-sim.md) | Replay a tape through a strategy behind a control server an agent can drive |
 | [Merge multiple tapes on read](multi-tape.md) | Cross-exchange research over N tapes with symbols rekeyed into one global id space |
 | [Aggregate tape events in a single pass](aggregate-tape-events.md) | Run a panel of streaming aggregators over a tape without materialising it |
 | [Import Binance public archives](import-binance-archive.md) | Convert `data.binance.vision` aggTrades zips into a `.floxlog` tape |

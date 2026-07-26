@@ -53,6 +53,32 @@ The empty string (the default) means "all venues currently in `connectors/src/`"
 |---|---|---|
 | `FLOX_NATIVE` | **ON** | Add `-march=native` to Release builds. Fastest on the build host, but the resulting `.so` / `.a` will fault with SIGILL on any CPU lacking an instruction the build host had (e.g. AVX-512 → consumer x86). When OFF on x86_64, falls back to `-march=x86-64-v3` (AVX2/BMI2/FMA baseline, supported since ~2015); on arm64 the compiler default is used. Distribution paths (wheels, prebuilt binaries) must build with `FLOX_NATIVE=OFF`. |
 
+## Build type, and why it is not a neutral choice
+
+`CMAKE_BUILD_TYPE` **defaults to `Release`**. Leaving it unset used to be the
+documented default in every build recipe, and it changes the ABI:
+
+Without `NDEBUG`, `FLOX_SCALE_CHECKS` turns on
+([`util/base/scale_check.h`](https://github.com/FLOX-Foundation/flox/blob/main/include/flox/util/base/scale_check.h))
+and adds an `int64_t _scale` member to `Decimal`. `sizeof(Price)` goes from 8
+to 16, and every struct holding a `Price`, `Quantity` or `Volume` changes
+layout with it.
+
+That matters because it does not fail to link. A consumer that compiles its own
+translation units against a prebuilt archive — the Node addon does exactly this
+— reads fields at the wrong offsets and corrupts memory. The symptoms look
+nothing like a build problem: `registerSymbol()` returning 0, allocator
+checksum aborts, SIGSEGV in unrelated code.
+
+So:
+
+- Do not mix build types between the core archive and anything linking it. The
+  Node addon enforces this: it reads `CMAKE_BUILD_TYPE` out of the core's
+  `CMakeCache.txt` and fails the build on a mismatch, or when it cannot read
+  one at all.
+- `Debug` is fine as long as *everything* is Debug.
+- `FLOX_SCALE_CHECKS` is derived from `NDEBUG`, not set directly.
+
 ## Recommended configurations
 
 ```bash
