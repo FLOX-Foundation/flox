@@ -51,11 +51,31 @@ def _trade_count(stdout: str) -> int:
     return int(line.split("trades :")[1].split()[0])
 
 
+
+def _subprocess_env() -> dict:
+    """Absolutise PYTHONPATH before spawning with a different cwd.
+
+    CI provides flox_py via `PYTHONPATH=build/python`, a path relative to the
+    repo root. Every subprocess here runs with cwd set to a temp directory, so
+    a relative entry resolves against that temp dir and the import fails with
+    ModuleNotFoundError. Locally this never showed up because flox_py is
+    pip-installed at an absolute site-packages path.
+    """
+    env = dict(os.environ)
+    raw = env.get("PYTHONPATH", "")
+    if raw:
+        env["PYTHONPATH"] = os.pathsep.join(
+            str(Path(part).resolve()) if part else part
+            for part in raw.split(os.pathsep))
+    return env
+
+
 def _scaffold(tmp: str, name: str, template: str | None = None) -> Path:
     argv = ["-m", "flox_py.cli", "new", name]
     if template:
         argv += ["--template", template]
-    r = subprocess.run([sys.executable, *argv], cwd=tmp, capture_output=True, text=True)
+    r = subprocess.run([sys.executable, *argv], cwd=tmp, env=_subprocess_env(),
+                       capture_output=True, text=True)
     assert r.returncode == 0, f"flox new failed: {r.stderr}"
     return Path(tmp) / name
 
@@ -66,6 +86,7 @@ class ResearchTemplateRuns(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             proj = _scaffold(tmp, "probe")
             r = subprocess.run([sys.executable, "main.py"], cwd=proj,
+                               env=_subprocess_env(),
                                capture_output=True, text=True, timeout=300)
             self.assertEqual(r.returncode, 0, r.stderr)
 
@@ -78,6 +99,7 @@ class ResearchTemplateRuns(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             proj = _scaffold(tmp, "probe")
             subprocess.run([sys.executable, "main.py"], cwd=proj,
+                           env=_subprocess_env(),
                            capture_output=True, text=True, timeout=300)
             report = proj / "report.html"
             self.assertTrue(report.exists(), "no report.html was written")
@@ -99,7 +121,9 @@ class IndicatorLibraryTemplateRuns(unittest.TestCase):
             # `python examples/use_in_strategy.py` from the project root, so
             # the scaffolded package must be importable. PYTHONPATH stands in
             # for the editable install.
-            env = dict(os.environ, PYTHONPATH=str(proj))
+            env = _subprocess_env()
+            env["PYTHONPATH"] = os.pathsep.join(
+                [str(proj)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
             r = subprocess.run([sys.executable, "examples/use_in_strategy.py"],
                                cwd=proj, env=env,
                                capture_output=True, text=True, timeout=300)

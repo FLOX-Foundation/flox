@@ -18,6 +18,7 @@ detectable without a live exchange.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -39,9 +40,29 @@ WIRING_ERRORS = (
 )
 
 
+
+def _subprocess_env() -> dict:
+    """Absolutise PYTHONPATH before spawning with a different cwd.
+
+    CI provides flox_py via `PYTHONPATH=build/python`, a path relative to the
+    repo root. Every subprocess here runs with cwd set to a temp directory, so
+    a relative entry resolves against that temp dir and the import fails with
+    ModuleNotFoundError. Locally this never showed up because flox_py is
+    pip-installed at an absolute site-packages path.
+    """
+    env = dict(os.environ)
+    raw = env.get("PYTHONPATH", "")
+    if raw:
+        env["PYTHONPATH"] = os.pathsep.join(
+            str(Path(part).resolve()) if part else part
+            for part in raw.split(os.pathsep))
+    return env
+
+
 def _run(argv: list[str], cwd: str | None = None, timeout: int = 300):
     return subprocess.run([sys.executable, "-m", "flox_py.cli", *argv],
-                          cwd=cwd, capture_output=True, text=True, timeout=timeout)
+                          cwd=cwd, env=_subprocess_env(),
+                          capture_output=True, text=True, timeout=timeout)
 
 
 def _assert_no_wiring_error(argv: list[str], r) -> None:
@@ -212,6 +233,7 @@ def test_engine_sim_runs_a_tape_and_stops(tape: Path, strategy_file: Path) -> No
          "--strategy", str(strategy_file), "--tape", str(tape),
          "--port", "18921",
          "--state-file", str(Path(tempfile.gettempdir()) / "flox-smoke-state.json")],
+        env=_subprocess_env(),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         time.sleep(8)
