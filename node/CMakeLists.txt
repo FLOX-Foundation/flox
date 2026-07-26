@@ -31,22 +31,53 @@ find_library(FLOX_LIB flox HINTS
 #
 # cmake-js builds Release by default. Read the core build's type out of its
 # CMakeCache and refuse to proceed on a mismatch, naming the fix.
+#
+# Multi-config generators (Visual Studio, Ninja Multi-Config) do not use
+# CMAKE_BUILD_TYPE at all -- the configuration is chosen at build time with
+# --config, so the cache entry is empty even when the caller passed
+# -DCMAKE_BUILD_TYPE=Release. They are detected by CMAKE_CONFIGURATION_TYPES,
+# and the built configuration is recoverable from where the archive landed:
+# build/Release/flox.lib rather than build/flox.lib. Demanding
+# CMAKE_BUILD_TYPE from those generators broke the Windows leg of
+# node-publish.yml and blocked a release.
 foreach(_flox_core_dir "${CMAKE_SOURCE_DIR}/../build" "${CMAKE_SOURCE_DIR}/../build/Release")
   if(EXISTS "${_flox_core_dir}/CMakeCache.txt")
     file(STRINGS "${_flox_core_dir}/CMakeCache.txt" _flox_core_build_type
          REGEX "^CMAKE_BUILD_TYPE:STRING=")
     string(REPLACE "CMAKE_BUILD_TYPE:STRING=" "" _flox_core_build_type "${_flox_core_build_type}")
+    file(STRINGS "${_flox_core_dir}/CMakeCache.txt" _flox_core_config_types
+         REGEX "^CMAKE_CONFIGURATION_TYPES:STRING=")
     break()
   endif()
 endforeach()
 
+if(NOT _flox_core_build_type AND _flox_core_config_types)
+  # Multi-config: recover the configuration from the archive's directory.
+  get_filename_component(_flox_lib_dir "${FLOX_LIB}" DIRECTORY)
+  get_filename_component(_flox_lib_leaf "${_flox_lib_dir}" NAME)
+  if(_flox_lib_leaf MATCHES "^(Debug|Release|RelWithDebInfo|MinSizeRel)$")
+    set(_flox_core_build_type "${_flox_lib_leaf}")
+    message(STATUS
+      "flox core built by a multi-config generator; taking configuration "
+      "'${_flox_core_build_type}' from ${FLOX_LIB}")
+  else()
+    message(FATAL_ERROR
+      "The flox core at ${FLOX_LIB} was built by a multi-config generator, "
+      "but its configuration cannot be determined: the archive is not under a "
+      "Debug/ Release/ RelWithDebInfo/ or MinSizeRel/ directory. Build the "
+      "core with `cmake --build build --config Release` so the layout names "
+      "the configuration.")
+  endif()
+endif()
+
 if(NOT _flox_core_build_type)
   message(FATAL_ERROR
     "Could not read CMAKE_BUILD_TYPE from the flox core build next to "
-    "${FLOX_LIB}. An unset build type means no NDEBUG, which turns on "
-    "FLOX_SCALE_CHECKS and changes sizeof(Price) from 8 to 16 — linking that "
-    "archive into this addon corrupts memory silently. Reconfigure the core "
-    "with an explicit -DCMAKE_BUILD_TYPE=Release.")
+    "${FLOX_LIB}, and it was not built by a multi-config generator either. An "
+    "unset build type means no NDEBUG, which turns on FLOX_SCALE_CHECKS and "
+    "changes sizeof(Price) from 8 to 16 — linking that archive into this addon "
+    "corrupts memory silently. Reconfigure the core with an explicit "
+    "-DCMAKE_BUILD_TYPE=Release.")
 endif()
 
 if(_flox_core_build_type)
