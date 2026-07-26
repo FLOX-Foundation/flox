@@ -80,5 +80,18 @@ check(hasattr(flox, "OptionType"), "OptionType enum present")
 check(flox.OptionType.CALL != flox.OptionType.PUT, "OptionType values distinct")
 
 print(f"\n{_passed} passed, {_failed} failed")
-if _failed:
+
+
+def test_no_failures() -> None:
+    """Report the checks above as one collectable test.
+
+    The checks run at import. Without this, pytest collected nothing
+    from the file and a failure escaped as INTERNALERROR from the
+    module-level sys.exit(1) -- which aborts the whole pytest run
+    rather than failing this one file.
+    """
+    assert _failed == 0, f"{_failed} check(s) failed; see output above"
+
+
+if __name__ == "__main__" and _failed:
     sys.exit(1)

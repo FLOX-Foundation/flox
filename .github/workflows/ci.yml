@@ -1,7 +1,11 @@
 name: Build and Test
 
 on:
+  # Only main on push: a branch with an open PR would otherwise run the whole
+  # matrix twice (once for push, once for pull_request) -- 32 checks where 16
+  # is the real coverage.
   push:
+    branches: [main]
   pull_request:
   schedule:
     # Weekly affinity tests - Sunday at 3:00 UTC
@@ -56,6 +60,9 @@ jobs:
       run: python3 scripts/check_error_codes.py
     - name: Verify test gating against backtest / capi headers
       run: python3 scripts/check_test_gating.py
+
+    - name: Verify every test file is reachable by the suite runners
+      run: python3 scripts/check_suite_discovery.py
     - name: Verify Python API index is in sync with .pyi
       run: python3 scripts/gen_api_index.py --check
     - name: Verify doc snippets follow the --8<-- include pattern
@@ -83,8 +90,11 @@ jobs:
         python3 -m pip install --break-system-packages libclang pyyaml
         python3 scripts/sync_mcp_data.py --check
     - name: flox-mcp unit tests
+      # `mcp` was never installed, so flox_mcp.server was unimportable and
+      # nothing tested the 37 tool schemas or the dispatch chain that has to
+      # match them. test_tool_dispatch.py needs it.
       run: |
-        python3 -m pip install --break-system-packages pytest
+        python3 -m pip install --break-system-packages pytest "mcp>=1.0"
         python3 -m pytest mcp/tests/ -q
 
   linux-gcc:
@@ -104,7 +114,7 @@ jobs:
         sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 python3-dev python3-pip
 
     - name: Install Python packages
-      run: python3 -m pip install --break-system-packages pybind11 numpy pybind11-stubgen mypy pyright
+      run: python3 -m pip install --break-system-packages pybind11 numpy pybind11-stubgen mypy pyright pytest
 
     - name: Install Codon
       env:
@@ -176,113 +186,25 @@ jobs:
         nm -D build/src/capi/libflox_capi.so | grep -q flox_position_tracker_on_fill
         nm -D build/src/capi/libflox_capi.so | grep -q flox_order_tracker_on_submitted
 
-    - name: Verify Python bindings
-      run: PYTHONPATH=build/python python3 python/tests/test_bindings.py
+    # The whole suite, not a hand-listed subset. This used to be ~35 named
+    # steps, one per file, so any test file nobody remembered to add here
+    # simply never ran -- 34 of 69 files at the time this changed, including
+    # every regression gate added for the binding audit. scripts/
+    # check_suite_discovery.py fails CI if a test file is not reachable.
+    # check_binding_parity.py asserts a symbol exists; this calls it. Every
+    # defect the binding audit found had an existing symbol, so the name gate
+    # could not see any of them.
+    - name: Binding smoke (call the surface, not just name it)
+      run: PYTHONPATH=build/python python3 scripts/check_binding_smoke.py
 
-    - name: Verify DEX bindings (u256 amounts, curves, pool tape)
-      run: |
-        PYTHONPATH=build/python python3 python/tests/test_dex_amount.py
-        PYTHONPATH=build/python python3 python/tests/test_amm_curve.py
-        PYTHONPATH=build/python python3 python/tests/test_pool_tape.py
-
-    - name: Verify DEX comfort layer (flox_py.dex)
-      run: PYTHONPATH=build/python python3 python/tests/test_dex.py
-
-    - name: Verify DEX tape/backtest layer (flox_py.dex.Tape)
-      run: PYTHONPATH=build/python python3 python/tests/test_dex_tape.py
-
-    - name: Verify DEX router / arb / ingest (flox_py.dex.Router)
-      run: PYTHONPATH=build/python python3 python/tests/test_dex_router.py
-
-    - name: Verify Python extension hooks
-      run: PYTHONPATH=build/python python3 python/tests/test_hooks.py
-
-    - name: Verify flox new CLI scaffolder
-      run: PYTHONPATH=build/python python3 python/tests/test_flox_new_cli.py
-
-    - name: Verify flox tape CLI (record / replay / inspect)
-      run: PYTHONPATH=build/python python3 python/tests/test_tape_cli.py
-
-    - name: Verify PaperBroker (sandbox / paper trading mode)
-      run: PYTHONPATH=build/python python3 python/tests/test_paper.py
-
-    - name: Verify reproducibility bundle (flox bundle pack/replay/validate)
-      run: PYTHONPATH=build/python python3 python/tests/test_bundle.py
-
-    - name: Verify ControlServer (HTTP control plane + auth + audit + rate limits)
-      run: PYTHONPATH=build/python python3 python/tests/test_control_server.py
-
-    - name: Verify EventLog (in-memory ring buffer for live analytics)
-      run: PYTHONPATH=build/python python3 python/tests/test_event_log.py
-
-    - name: Verify lookahead-bias detector (static AST analysis)
-      run: PYTHONPATH=build/python python3 python/tests/test_lookahead.py
-
-    - name: Verify flox tape diff CLI
-      run: PYTHONPATH=build/python python3 python/tests/test_tape_diff.py
-
-    - name: Verify portfolio risk aggregator
-      run: PYTHONPATH=build/python python3 python/tests/test_portfolio_risk.py
-
-    - name: Verify latency models
-      run: PYTHONPATH=build/python python3 python/tests/test_latency_models.py
-
-    - name: Verify execution algorithms
-      run: PYTHONPATH=build/python python3 python/tests/test_execution_algos.py
-
-    - name: Verify strategy hot-reload
-      run: PYTHONPATH=build/python python3 python/tests/test_strategy_hot_reload.py
-
-    - name: Verify delta book compression
-      run: PYTHONPATH=build/python python3 python/tests/test_delta_book.py
-
-    - name: Verify RL environment
-      run: PYTHONPATH=build/python python3 python/tests/test_rl_env.py
-
-    - name: Verify Binance archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_binance_archive.py
-
-    - name: Verify Binance book archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_binance_book_archive.py
-
-    - name: Verify Bybit archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_bybit_archive.py
-
-    - name: Verify OKX archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_okx_archive.py
-
-    - name: Verify Bitget archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_bitget_archive.py
-
-    - name: Verify Deribit archive importer
-      run: PYTHONPATH=build/python python3 python/tests/test_deribit_archive.py
-
-    - name: Verify OrderBookIterator
-      run: PYTHONPATH=build/python python3 python/tests/test_orderbook_iterator.py
-
-    - name: Verify rolling top-K helper
-      run: PYTHONPATH=build/python python3 python/tests/test_rolling.py
-
-    - name: Verify cross-sectional panel builder
-      run: PYTHONPATH=build/python python3 python/tests/test_panel.py
-
-    - name: Verify DataReader progress callback (Python)
-      run: PYTHONPATH=build/python python3 python/tests/test_progress_callback.py
-
-    - name: Verify flox_py native-extension import guard
-      run: PYTHONPATH=build/python python3 python/tests/test_native_import_guard.py
-
-    - name: Verify conditional orders (stop / take-profit / trailing) via SimulatedExecutor
-      run: PYTHONPATH=build/python python3 python/tests/test_conditional_orders.py
+    - name: Python test suite
+      run: PYTHONPATH=build/python python3 -m pytest python/tests -q
 
     - name: Replay-equivalence CI gate
       run: python3 scripts/replay_equivalence_gate.py
 
     - name: Cross-binding .floxrun parity gate
       run: python3 scripts/floxrun_byte_identical_gate.py
-
-    - name: Verify Python CCXT adapter (mock-based)
-      run: PYTHONPATH=build/python python3 python/tests/test_ccxt_adapter.py
 
     - name: Verify .pyi stubs are in sync with the binding
       run: python3 scripts/gen_pyi_stubs.py --check
@@ -417,53 +339,18 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
 
-    - name: Verify Node.js bindings
+    # Every test_*.js, not a hand-listed subset (9 of 21 files were unrun).
+    # byte_identical_fixture.js is a fixture helper, not a test, and is
+    # excluded by the test_ prefix.
+    - name: Node.js test suite
       run: |
-        cd node && node test/test_bindings.js
-
-    - name: Verify Node.js latency models
-      run: |
-        cd node && node test/test_latency.js
-
-    - name: Verify Node.js tape diff
-      run: |
-        cd node && node test/test_tape_diff.js
-
-    - name: Verify Node.js portfolio risk aggregator
-      run: |
-        cd node && node test/test_portfolio_risk.js
-
-    - name: Verify Node.js execution algorithms
-      run: |
-        cd node && node test/test_execution_algos.js
-
-    - name: Verify Node.js strategy hot-reload
-      run: |
-        cd node && node test/test_hot_reload.js
-
-    - name: Verify Node.js delta book compression
-      run: |
-        cd node && node test/test_delta_book.js
-
-    - name: Verify Node.js bar-close ordering parity
-      run: |
-        cd node && node test/test_bar_close_ordering_parity.js
-
-    - name: Verify Node.js extension hooks
-      run: |
-        cd node && node test/test_hooks.js
-
-    - name: Verify Node.js DataReader progress callback
-      run: |
-        cd node && node test/test_progress_callback.js
-
-    - name: Verify Node.js FloxError surface
-      run: |
-        cd node && node test/test_flox_error.js
-
-    - name: Verify Node.js DEX comfort layer (flox/dex)
-      run: |
-        cd node && node test/test_dex.js
+        cd node
+        fail=0
+        for f in test/test_*.js; do
+          echo "── $f"
+          node "$f" || fail=1
+        done
+        exit $fail
 
     - name: Verify Node.js TypeScript authoring layer
       run: |

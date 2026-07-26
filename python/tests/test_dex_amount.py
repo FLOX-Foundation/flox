@@ -45,5 +45,16 @@ def main():
     print("test_dex_amount: OK (u256 max, i256 sign, hex round-trip)")
 
 
+def test_main() -> None:
+    """Entry point pytest can collect.
+
+    Everything in this file lives in main(), which used to run only
+    under __main__ -- so `pytest python/tests` executed none of it.
+    CI invoked the file by name, and when that named step went away
+    the coverage would have gone with it.
+    """
+    main()
+
+
 if __name__ == "__main__":
     main()

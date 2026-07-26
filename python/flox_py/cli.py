@@ -428,7 +428,13 @@ def cmd_bundle_pack(args: argparse.Namespace) -> int:
 def cmd_bundle_replay(args: argparse.Namespace) -> int:
     from . import bundle as bundle_mod
 
-    res = bundle_mod.replay_bundle(Path(args.path))
+    try:
+        res = bundle_mod.replay_bundle(Path(args.path))
+    except (FileNotFoundError, ValueError) as exc:
+        # Every sibling verb reports a bad path as a message; this one dumped
+        # a raw traceback, which reads like a crash rather than bad input.
+        print(f"flox bundle replay: {exc}", file=sys.stderr)
+        return 1
     print(f"flox bundle replay: {args.path}")
     print(f"  flox_version:           {res.manifest.get('flox_version')}")
     print(f"  bundle_format_version:  {res.manifest.get('bundle_format_version')}")
@@ -443,7 +449,11 @@ def cmd_bundle_replay(args: argparse.Namespace) -> int:
 def cmd_bundle_validate(args: argparse.Namespace) -> int:
     from . import bundle as bundle_mod
 
-    res = bundle_mod.validate_bundle(Path(args.path))
+    try:
+        res = bundle_mod.validate_bundle(Path(args.path))
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"flox bundle validate: {exc}", file=sys.stderr)
+        return 1
     if res.matches:
         print(f"flox bundle validate: OK ({args.path}) — actual matches expected")
         return 0

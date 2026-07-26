@@ -49,6 +49,8 @@ git diff --exit-code -- docs/ >/dev/null || {
 "$PY" scripts/check_binding_parity.py
 "$PY" scripts/check_error_codes.py
 "$PY" scripts/check_test_gating.py
+"$PY" scripts/check_suite_discovery.py
+"$PY" scripts/check_binding_smoke.py
 "$PY" scripts/check_doc_snippets.py --min-includes 24
 "$PY" scripts/check_doc_symbols.py
 "$PY" scripts/check_doc_nav.py

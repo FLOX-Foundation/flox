@@ -2,9 +2,8 @@ name: Build matrix
 
 # Configures + builds FLOX in nine flag combinations on ubuntu-24.04.
 # Each row exercises one option (or a small combination) in isolation
-# so a default-OFF assumption can't silently rot. The matrix runs only
-# after the quick format check passes; it cancels in progress on rapid
-# pushes.
+# so a default-OFF assumption can't silently rot. It cancels in progress
+# on rapid pushes.
 #
 # This complements ci.yml — the latter handles the platform matrix
 # (linux-clang/-gcc, macos, windows-msvc/-clang-cl) for the canonical
@@ -21,19 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  format-check:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
-    - name: Install clang-format
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends clang-format
-    - name: Check formatting
-      run: ./scripts/check-format.sh
-
+  # No format-check here: ci.yml runs one, and duplicating it burned a third
+  # clang-format job on every push. Formatting never breaks a build, so
+  # gating the flag matrix on it bought nothing.
   matrix:
-    needs: format-check
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
