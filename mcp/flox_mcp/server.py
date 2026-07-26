@@ -172,8 +172,9 @@ def build_server() -> Server:
             Tool(
                 name="lookup_symbol",
                 description=(
-                    "Resolve a FLOX symbol across every binding (C-API, "
-                    "Python, Node, Codon). Returns the local name, kind, "
+                    "Resolve a FLOX symbol across every surface (C++, C-API, "
+                    "Python, Node, Codon, QuickJS). Methods resolve too, "
+                    "reported as Owner.method. Returns the local name, kind, "
                     "and signature for each binding that exports it. Use "
                     "this whenever the user names a struct, function, or "
                     "indicator and you need to know what it's called in "
@@ -203,7 +204,7 @@ def build_server() -> Server:
                             "type": "string",
                             "description":
                                 "Optional binding filter. One of: capi, "
-                                "python, node, codon, quickjs.",
+                                "cpp, capi, python, node, codon, quickjs.",
                         },
                     },
                 },
@@ -226,7 +227,7 @@ def build_server() -> Server:
                             "type": "string",
                             "description":
                                 "Binding surface. One of: capi, python, "
-                                "node, codon, quickjs.",
+                                "cpp, capi, python, node, codon, quickjs.",
                         },
                         "filter": {
                             "type": "string",

@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from . import _data
 
 
-VALID_LANGUAGES = ("capi", "python", "node", "codon", "quickjs")
+VALID_LANGUAGES = ("cpp", "capi", "python", "node", "codon", "quickjs")
 _PYBIND_KEY = "pybind11"
 _NAPI_KEY = "napi"
 
@@ -136,9 +136,11 @@ def _resolve_capi(ir: dict, name: str) -> Optional[dict]:
 
 
 def _resolve_python(name: str, manifest: dict, ir_match: Optional[dict]) -> Optional[dict]:
-    sym = {s["name"] for s in _flatten_binding_symbols(manifest, "pybind11")}
+    sym = _by_name(manifest, "pybind11")
     if name in sym:
-        return {"name": name, "kind": "class" if name[0:1].isupper() else "function"}
+        # The manifest carries the real kind; guessing it from capitalisation
+        # reported every method as a "function" and dropped its owner.
+        return _describe(sym[name])
     if ir_match is not None and ir_match.get("group"):
         classes, fns = _python_local_name_for(ir_match["group"], manifest)
         for c in classes:
@@ -156,9 +158,11 @@ def _resolve_python(name: str, manifest: dict, ir_match: Optional[dict]) -> Opti
 
 
 def _resolve_node(name: str, manifest: dict, ir_match: Optional[dict]) -> Optional[dict]:
-    sym = {s["name"] for s in _flatten_binding_symbols(manifest, "napi")}
+    sym = _by_name(manifest, "napi")
     if name in sym:
-        return {"name": name, "kind": "class" if name[0:1].isupper() else "function"}
+        # The manifest carries the real kind; guessing it from capitalisation
+        # reported every method as a "function" and dropped its owner.
+        return _describe(sym[name])
     if ir_match is not None and ir_match.get("group"):
         classes, fns = _node_local_name_for(ir_match["group"], manifest)
         for c in classes:
@@ -172,12 +176,64 @@ def _resolve_node(name: str, manifest: dict, ir_match: Optional[dict]) -> Option
     return None
 
 
+def _by_name(manifest: dict, key: str) -> Dict[str, dict]:
+    """name -> the most informative entry for it.
+
+    Prefer a class/type over a method of the same name, so `Account` resolves
+    to the type rather than to some `account()` accessor.
+    """
+    rank = {"class": 0, "type": 0, "function": 1, "global": 2, "method": 3,
+            "struct": 0, "enum": 0, "handle": 1, "c_import": 4}
+    out: Dict[str, dict] = {}
+    for s in _flatten_binding_symbols(manifest, key):
+        cur = out.get(s["name"])
+        if cur is None or rank.get(s.get("kind"), 9) < rank.get(cur.get("kind"), 9):
+            out[s["name"]] = s
+    return out
+
+
+def _describe(entry: dict) -> dict:
+    """Manifest entry -> a lookup row, keeping the real kind and its owner."""
+    row = {"name": entry["name"], "kind": entry.get("kind", "symbol")}
+    if entry.get("parent"):
+        row["name"] = f"{entry['parent']}.{entry['name']}"
+    if entry.get("header"):
+        row["signature"] = entry["header"]
+    return row
+
+
 def _resolve_codon(name: str, manifest: dict, ir_match: Optional[dict]) -> Optional[dict]:
-    sym = {s["name"] for s in _flatten_binding_symbols(manifest, "codon")}
+    sym = _by_name(manifest, "codon")
     if name in sym:
-        return {"name": name, "kind": "function"}
+        return _describe(sym[name])
     if ir_match is not None and ir_match.get("name") in sym:
-        return {"name": ir_match["name"], "kind": "function"}
+        return _describe(sym[ir_match["name"]])
+    return None
+
+
+def _resolve_cpp(name: str, manifest: dict, ir_match: Optional[dict]) -> Optional[dict]:
+    """The engine itself. Every other surface is a wrapper over this one, and
+    it was absent from the manifest entirely -- so `SimulatedExecutor` resolved
+    to its Python and Node wrappers while the class itself was invisible, and
+    a C++-only type like `BacktestConfig` resolved nowhere at all."""
+    sym = _by_name(manifest, "cpp")
+    if name in sym:
+        return _describe(sym[name])
+    # Flox-prefixed C spellings map back to the C++ type they wrap.
+    if name.startswith("Flox") and name[4:] in sym:
+        return _describe(sym[name[4:]])
+    return None
+
+
+def _resolve_quickjs(name: str, manifest: dict, ir_match: Optional[dict]) -> Optional[dict]:
+    sym = _by_name(manifest, "quickjs")
+    if name in sym:
+        return _describe(sym[name])
+    # The prelude wraps `__flox_<capi name>` globals.
+    if ir_match is not None:
+        g = f"__{ir_match.get('name', '')}"
+        if g in sym:
+            return _describe(sym[g])
     return None
 
 
@@ -206,9 +262,14 @@ def lookup_symbol(name: str, language: Optional[str] = None) -> str:
     py_match = _resolve_python(name, manifest, capi_match)
     nd_match = _resolve_node(name, manifest, capi_match)
     cd_match = _resolve_codon(name, manifest, capi_match)
-    qj_match = None  # quickjs binding does not yet contribute symbols
+    qj_match = _resolve_quickjs(name, manifest, capi_match)
+    cpp_match = _resolve_cpp(name, manifest, capi_match)
 
     rows: List[Tuple[str, dict]] = []
+    # C++ first: it is the definition, the rest are wrappers.
+    if language is None or language == "cpp":
+        if cpp_match is not None:
+            rows.append(("cpp", cpp_match))
     if language is None or language == "capi":
         if capi_match is not None:
             rows.append(("capi", capi_match))
@@ -230,7 +291,7 @@ def lookup_symbol(name: str, language: Optional[str] = None) -> str:
     if not rows:
         body = (
             f"# lookup_symbol: no match for `{name}`\n\n"
-            f"Tried C-API, Python, Node, Codon"
+            f"Tried C++, C-API, Python, Node, Codon, QuickJS"
             f"{' (filtered to ' + language + ')' if language else ''}."
             f" Use `list_bindings(language=...)` to browse the surface."
         )
@@ -347,14 +408,6 @@ def list_bindings(language: str, filter: Optional[str] = None,
         truncated = True
 
     if total == 0:
-        if language == "quickjs":
-            return (
-                f"# {language} binding\n\n"
-                "No QuickJS exports recorded yet. The QuickJS binding is "
-                "experimental and currently surfaced through the C ABI "
-                "directly; the surface inventory will land once the "
-                "binding stabilises."
-            )
         return (
             f"# {language} binding\n\nNo symbols match"
             + (f" filter {filter!r}" if filter else "")
@@ -367,7 +420,12 @@ def list_bindings(language: str, filter: Optional[str] = None,
     lines.append("| Name | Kind | Group / Notes |")
     lines.append("|---|---|---|")
     for s in symbols:
-        notes = s.get("group") or s.get("from_group") or ""
+        # A bare method name is not actionable; show what owns it, and for C++
+        # the header to include.
+        notes = (s.get("group") or s.get("from_group")
+                 or s.get("header") or "")
+        if s.get("parent"):
+            notes = f"on `{s['parent']}`" + (f" — {notes}" if notes else "")
         lines.append(
             f"| `{s.get('name', '')}` | {s.get('kind', '')} | "
             f"{notes} |"
