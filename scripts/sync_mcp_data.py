@@ -57,6 +57,11 @@ SRC_SPEC = REPO_ROOT / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
 SRC_PYI = REPO_ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
 SRC_DTS = REPO_ROOT / "node" / "index.d.ts"
 SRC_CODON = REPO_ROOT / "tools" / "codegen" / "golden" / "flox_capi.codon"
+# The surfaces the manifest used to omit or inventory at the wrong layer.
+SRC_CODON_API = REPO_ROOT / "codon" / "flox"
+SRC_CPP_HEADERS = REPO_ROOT / "include" / "flox"
+SRC_QUICKJS_BINDINGS = REPO_ROOT / "src" / "quickjs" / "js_bindings.cpp"
+SRC_QUICKJS_PRELUDE = REPO_ROOT / "src" / "quickjs" / "js_strategy.cpp"
 SRC_PARITY = REPO_ROOT / "tools" / "codegen" / "binding_parity.yaml"
 SRC_EXAMPLES = REPO_ROOT / "docs" / "examples"
 SRC_DOCS = REPO_ROOT / "docs"
@@ -119,12 +124,26 @@ def _build_binding_manifest_json() -> str:
     pyi_text = SRC_PYI.read_text() if SRC_PYI.exists() else ""
     dts_text = SRC_DTS.read_text() if SRC_DTS.exists() else ""
     codon_text = SRC_CODON.read_text() if SRC_CODON.exists() else ""
+    codon_sources = {
+        str(f.relative_to(REPO_ROOT)): f.read_text()
+        for f in sorted(SRC_CODON_API.glob("*.codon"))
+    } if SRC_CODON_API.is_dir() else {}
+    cpp_headers = {
+        str(f.relative_to(REPO_ROOT)): f.read_text(errors="ignore")
+        for f in sorted(SRC_CPP_HEADERS.rglob("*.h"))
+    } if SRC_CPP_HEADERS.is_dir() else {}
     payload = manifest.build_binding_manifest(
         module=module,
         parity_yaml=parity,
         pyi_text=pyi_text,
         dts_text=dts_text,
         codon_text=codon_text,
+        codon_sources=codon_sources,
+        cpp_headers=cpp_headers,
+        quickjs_bindings_text=(SRC_QUICKJS_BINDINGS.read_text(errors="ignore")
+                               if SRC_QUICKJS_BINDINGS.exists() else ""),
+        quickjs_prelude_text=(SRC_QUICKJS_PRELUDE.read_text(errors="ignore")
+                              if SRC_QUICKJS_PRELUDE.exists() else ""),
     )
     return manifest.dumps_canonical(payload)
 

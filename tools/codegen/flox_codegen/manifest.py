@@ -121,6 +121,23 @@ _DTS_CLASS = re.compile(r"^export\s+(?:class|interface)\s+([A-Za-z_][A-Za-z_0-9]
 _DTS_FUNC = re.compile(r"^export\s+function\s+([A-Za-z_][A-Za-z_0-9]*)")
 _CODON_GROUP = re.compile(r"^#\s*──\s*([A-Za-z_0-9]+)\s*──\s*$")
 _CODON_IMPORT = re.compile(r"^from\s+C\s+import\s+([A-Za-z_][A-Za-z_0-9]*)")
+# Methods, so a lookup can answer "what is this called in my language" rather
+# than only "does this class exist".
+_PYI_METHOD = re.compile(r"^\s{4}def\s+([A-Za-z_][A-Za-z_0-9]*)")
+_DTS_MEMBER = re.compile(r"^\s{2}(?:readonly\s+)?(?:static\s+)?([A-Za-z_][A-Za-z_0-9]*)\s*[(?:]")
+# The real Codon API: what a Codon user types, not the FFI declarations.
+_CODON_CLASS = re.compile(r"^class\s+([A-Za-z_][A-Za-z_0-9]*)")
+_CODON_DEF = re.compile(r"^def\s+([A-Za-z_][A-Za-z_0-9]*)")
+_CODON_METHOD = re.compile(r"^\s{4}def\s+([A-Za-z_][A-Za-z_0-9]*)")
+# C++ is the engine itself; every other surface wraps it.
+_CPP_TYPE = re.compile(r"^\s*(?:class|struct)\s+([A-Z][A-Za-z_0-9]*)\s*(?:final\s*)?(?::|\{|$)")
+_CPP_METHOD = re.compile(
+    r"^\s{2}(?:\[\[[^\]]*\]\]\s*)?(?:virtual\s+|static\s+|explicit\s+|constexpr\s+|inline\s+)*"
+    r"[A-Za-z_][\w:<>,&*\s]*?\b([a-z][A-Za-z_0-9]*)\s*\(")
+# QuickJS: the globals the addon registers, and the flox.* prelude built on them.
+_QJS_GLOBAL = re.compile(r'addGlobalFunc\(\s*ctx\s*,\s*"([^"]+)"')
+_QJS_PRELUDE_FN = re.compile(r"^\s{6}([a-zA-Z_][A-Za-z_0-9]*)\s*:\s*function")
+_QJS_PRELUDE_CLASS = re.compile(r"^\s{4}class\s+([A-Za-z_][A-Za-z_0-9]*)")
 
 
 def scan_pyi(text: str) -> Tuple[List[str], List[str]]:
@@ -151,6 +168,119 @@ def scan_dts(text: str) -> Tuple[List[str], List[str]]:
     return sorted(set(classes)), sorted(set(funcs))
 
 
+def scan_pyi_methods(text: str) -> List[Tuple[str, str]]:
+    """(class, method) pairs from the .pyi. Class-only inventories cannot
+    answer the question an agent actually asks -- what is this *method* called
+    in my language -- so `run_csv` used to resolve nowhere."""
+    out: List[Tuple[str, str]] = []
+    current = None
+    for line in text.splitlines():
+        m = _PYI_CLASS.match(line)
+        if m:
+            current = m.group(1)
+            continue
+        if current:
+            m = _PYI_METHOD.match(line)
+            if m and not m.group(1).startswith("__"):
+                out.append((current, m.group(1)))
+    return sorted(set(out))
+
+
+def scan_dts_members(text: str) -> List[Tuple[str, str]]:
+    """(class, member) pairs from index.d.ts."""
+    out: List[Tuple[str, str]] = []
+    current = None
+    for line in text.splitlines():
+        m = _DTS_CLASS.match(line)
+        if m:
+            current = m.group(1)
+            continue
+        if line.startswith("}"):
+            current = None
+            continue
+        if current:
+            m = _DTS_MEMBER.match(line)
+            if m and m.group(1) not in {"constructor", "new"}:
+                out.append((current, m.group(1)))
+    return sorted(set(out))
+
+
+def scan_codon_api(sources: Dict[str, str]) -> Tuple[List[str], List[str], List[Tuple[str, str]]]:
+    """The Codon surface a user types: (classes, module functions, methods).
+
+    The manifest used to inventory Codon from the generated FFI golden, so it
+    listed `flox_*` C names -- a Codon user writing `BacktestRunner` found
+    nothing. These come from codon/flox/*.codon instead.
+    """
+    classes: List[str] = []
+    funcs: List[str] = []
+    methods: List[Tuple[str, str]] = []
+    for _, text in sorted(sources.items()):
+        current = None
+        for line in text.splitlines():
+            m = _CODON_CLASS.match(line)
+            if m:
+                current = m.group(1)
+                classes.append(current)
+                continue
+            m = _CODON_DEF.match(line)
+            if m:
+                current = None
+                if not m.group(1).startswith("_"):
+                    funcs.append(m.group(1))
+                continue
+            if current:
+                m = _CODON_METHOD.match(line)
+                if m and not m.group(1).startswith("__"):
+                    methods.append((current, m.group(1)))
+    return sorted(set(classes)), sorted(set(funcs)), sorted(set(methods))
+
+
+def scan_cpp(headers: Dict[str, str]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    """The C++ engine surface: (types with header, (type, method) pairs).
+
+    C++ was absent from the manifest entirely, so `lookup_symbol` reported
+    "Tried C-API, Python, Node, Codon" and missed the surface every other
+    binding wraps -- `SimulatedExecutor` resolved to its Python and Node
+    wrappers while the class itself was invisible.
+    """
+    types: List[Tuple[str, str]] = []
+    methods: List[Tuple[str, str]] = []
+    for path, text in sorted(headers.items()):
+        current = None
+        for line in text.splitlines():
+            m = _CPP_TYPE.match(line)
+            if m:
+                current = m.group(1)
+                types.append((current, path))
+                continue
+            if current:
+                m = _CPP_METHOD.match(line)
+                if m and m.group(1) not in {"if", "for", "while", "return", "switch"}:
+                    methods.append((current, m.group(1)))
+    return sorted(set(types)), sorted(set(methods))
+
+
+def scan_quickjs(bindings_text: str, prelude_text: str) -> Tuple[List[str], List[str], List[str]]:
+    """(registered globals, prelude classes, prelude functions).
+
+    QuickJS recorded zero symbols, so list_bindings answered "No QuickJS
+    exports recorded yet" for a surface with ~500 registered globals.
+    """
+    globals_ = sorted(set(_QJS_GLOBAL.findall(bindings_text)))
+    classes: List[str] = []
+    funcs: List[str] = []
+    for line in prelude_text.splitlines():
+        m = _QJS_PRELUDE_CLASS.match(line)
+        if m:
+            classes.append(m.group(1))
+            continue
+        m = _QJS_PRELUDE_FN.match(line)
+        if m:
+            funcs.append(m.group(1))
+    return globals_, sorted(set(classes)), sorted(set(funcs))
+
+
 def scan_codon(text: str) -> Tuple[List[str], List[str]]:
     """Return (groups_present, c_function_imports) found in the codon golden."""
     groups: List[str] = []
@@ -176,6 +306,10 @@ def build_binding_manifest(
     pyi_text: str,
     dts_text: str,
     codon_text: str,
+    codon_sources: Dict[str, str] | None = None,
+    cpp_headers: Dict[str, str] | None = None,
+    quickjs_bindings_text: str = "",
+    quickjs_prelude_text: str = "",
 ) -> Dict[str, Any]:
     """Compose the cross-binding symbol manifest.
 
@@ -239,12 +373,40 @@ def build_binding_manifest(
     pybind_symbols = (
         [{"name": c, "kind": "class"} for c in pyi_classes]
         + [{"name": f, "kind": "function"} for f in pyi_funcs]
+        + [{"name": m, "kind": "method", "parent": c}
+           for c, m in scan_pyi_methods(pyi_text)]
     )
     napi_symbols = (
         [{"name": c, "kind": "class"} for c in dts_classes]
         + [{"name": f, "kind": "function"} for f in dts_funcs]
+        + [{"name": m, "kind": "method", "parent": c}
+           for c, m in scan_dts_members(dts_text)]
     )
-    codon_symbols = [{"name": n, "kind": "function"} for n in codon_imports]
+
+    # Codon: the API a user writes. The FFI imports from the golden are kept
+    # under a separate kind so the C names stay findable without being the
+    # only thing Codon appears to expose.
+    cd_classes, cd_funcs, cd_methods = scan_codon_api(codon_sources or {})
+    codon_symbols = (
+        [{"name": c, "kind": "class"} for c in cd_classes]
+        + [{"name": f, "kind": "function"} for f in cd_funcs]
+        + [{"name": m, "kind": "method", "parent": c} for c, m in cd_methods]
+        + [{"name": n, "kind": "c_import"} for n in codon_imports]
+    )
+
+    cpp_types, cpp_methods = scan_cpp(cpp_headers or {})
+    cpp_symbols = (
+        [{"name": n, "kind": "type", "header": h} for n, h in cpp_types]
+        + [{"name": m, "kind": "method", "parent": c} for c, m in cpp_methods]
+    )
+
+    qjs_globals, qjs_classes, qjs_funcs = scan_quickjs(
+        quickjs_bindings_text, quickjs_prelude_text)
+    quickjs_symbols = (
+        [{"name": c, "kind": "class"} for c in qjs_classes]
+        + [{"name": f, "kind": "function"} for f in qjs_funcs]
+        + [{"name": g, "kind": "global"} for g in qjs_globals]
+    )
 
     return {
         "version": SCHEMA_VERSION,
@@ -254,7 +416,8 @@ def build_binding_manifest(
             "pybind11": {"symbols": pybind_symbols},
             "napi": {"symbols": napi_symbols},
             "codon": {"symbols": codon_symbols, "groups_present": codon_groups},
-            "quickjs": {"symbols": []},
+            "quickjs": {"symbols": quickjs_symbols},
+            "cpp": {"symbols": cpp_symbols},
         },
     }
 
