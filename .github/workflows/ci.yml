@@ -548,6 +548,14 @@ jobs:
     needs: [format-check, verify-docs-current]
     runs-on: windows-latest
 
+    env:
+      # The VC++ telemetry uploader touches freshly linked binaries and
+      # has been observed holding a .exe long enough for the next ninja
+      # link step to fail with "being used by another process". Nothing
+      # in CI needs it.
+      VSCMD_SKIP_SENDTELEMETRY: 1
+      VCPKG_DISABLE_METRICS: 1
+
     steps:
     - uses: actions/checkout@v5
 
@@ -575,7 +583,19 @@ jobs:
               -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
-      run: cmake --build build -j $env:NUMBER_OF_PROCESSORS
+      # Retried once, Windows only. Parallel linking of ~150 test executables
+      # intermittently loses one to "the process cannot access the file because
+      # it is being used by another process" -- a file lock, not a build error.
+      # ninja is incremental, so a real compile or link error re-fails in
+      # seconds on the second attempt and still fails the job; only the lock
+      # clears. This masks nothing deterministic.
+      run: |
+        cmake --build build -j $env:NUMBER_OF_PROCESSORS
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::warning::build failed once; retrying in case a linker output was locked"
+          cmake --build build -j $env:NUMBER_OF_PROCESSORS
+        }
+        if ($LASTEXITCODE -ne 0) { exit 1 }
 
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
@@ -586,6 +606,14 @@ jobs:
   windows-clang-cl:
     needs: [format-check, verify-docs-current]
     runs-on: windows-latest
+
+    env:
+      # The VC++ telemetry uploader touches freshly linked binaries and
+      # has been observed holding a .exe long enough for the next ninja
+      # link step to fail with "being used by another process". Nothing
+      # in CI needs it.
+      VSCMD_SKIP_SENDTELEMETRY: 1
+      VCPKG_DISABLE_METRICS: 1
 
     steps:
     - uses: actions/checkout@v5
@@ -616,7 +644,19 @@ jobs:
               -DFLOX_ENABLE_BACKTEST=ON
 
     - name: Build
-      run: cmake --build build -j $env:NUMBER_OF_PROCESSORS
+      # Retried once, Windows only. Parallel linking of ~150 test executables
+      # intermittently loses one to "the process cannot access the file because
+      # it is being used by another process" -- a file lock, not a build error.
+      # ninja is incremental, so a real compile or link error re-fails in
+      # seconds on the second attempt and still fails the job; only the lock
+      # clears. This masks nothing deterministic.
+      run: |
+        cmake --build build -j $env:NUMBER_OF_PROCESSORS
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::warning::build failed once; retrying in case a linker output was locked"
+          cmake --build build -j $env:NUMBER_OF_PROCESSORS
+        }
+        if ($LASTEXITCODE -ne 0) { exit 1 }
 
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
