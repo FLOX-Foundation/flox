@@ -5,7 +5,7 @@ on:
   # matrix twice (once for push, once for pull_request) -- 32 checks where 16
   # is the real coverage.
   push:
-    branches: [main, 'venue/**']
+    branches: [main]
   pull_request:
   schedule:
     # Weekly affinity tests - Sunday at 3:00 UTC
