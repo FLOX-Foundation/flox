@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace flox;
@@ -88,9 +89,53 @@ std::vector<replay::ReplayEvent> createTestEvents(size_t count)
 
 }  // namespace
 
+// Sanitizer builds run the runner thread several times slower, so a wall-clock
+// budget that is generous natively goes flaky under TSAN on a loaded CI runner.
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+constexpr int kTimeoutScale = 20;
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+constexpr int kTimeoutScale = 20;
+#else
+constexpr int kTimeoutScale = 1;
+#endif
+#else
+constexpr int kTimeoutScale = 1;
+#endif
+
+// Stops the runner and joins on every exit path. A test that ASSERT_*s while
+// the worker thread is live returns from the test body with the thread still
+// joinable, and std::thread's destructor then calls std::terminate -- aborting
+// the whole binary and hiding both the real failure and every later test.
+class RunnerThread
+{
+ public:
+  template <typename Fn>
+  RunnerThread(BacktestRunner& runner, Fn&& fn) : _runner(runner), _t(std::forward<Fn>(fn))
+  {
+  }
+
+  ~RunnerThread()
+  {
+    _runner.stop();
+    if (_t.joinable())
+    {
+      _t.join();
+    }
+  }
+
+  RunnerThread(const RunnerThread&) = delete;
+  RunnerThread& operator=(const RunnerThread&) = delete;
+
+ private:
+  BacktestRunner& _runner;
+  std::thread _t;
+};
+
 // Helper to wait for a condition with timeout
 template <typename Pred>
-bool waitFor(Pred pred, std::chrono::milliseconds timeout = std::chrono::milliseconds(1000))
+bool waitFor(Pred pred,
+             std::chrono::milliseconds timeout = std::chrono::milliseconds(1000 * kTimeoutScale))
 {
   auto start = std::chrono::steady_clock::now();
   while (!pred())
@@ -116,8 +161,8 @@ TEST(InteractiveRunnerTest, StepExecutesOneEvent)
                           { ++eventsSeen; });
 
   // Run in background thread
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   // Wait for initial pause
   ASSERT_TRUE(waitFor([&]()
@@ -138,10 +183,6 @@ TEST(InteractiveRunnerTest, StepExecutesOneEvent)
   ASSERT_TRUE(waitFor([&]()
                       { return eventsSeen.load() >= 3 && runner.isPaused(); }));
   EXPECT_EQ(eventsSeen.load(), 3);
-
-  // Stop and join
-  runner.stop();
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, RunUntilBreakpoint)
@@ -154,8 +195,8 @@ TEST(InteractiveRunnerTest, RunUntilBreakpoint)
   // Break after 50 events
   runner.addBreakpoint(Breakpoint::afterEvents(50));
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   ASSERT_TRUE(waitFor([&]()
                       { return runner.isPaused(); }));
@@ -169,9 +210,6 @@ TEST(InteractiveRunnerTest, RunUntilBreakpoint)
   EXPECT_TRUE(state.isPaused);
   EXPECT_GE(state.eventCount, 50u);
   EXPECT_FALSE(state.isFinished);
-
-  runner.stop();
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, RunToCompletion)
@@ -181,8 +219,8 @@ TEST(InteractiveRunnerTest, RunToCompletion)
 
   BacktestRunner runner;
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   ASSERT_TRUE(waitFor([&]()
                       { return runner.isPaused(); }));
@@ -197,8 +235,6 @@ TEST(InteractiveRunnerTest, RunToCompletion)
   auto state = runner.state();
   EXPECT_TRUE(state.isFinished);
   EXPECT_EQ(state.eventCount, 10u);
-
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, StepUntilTrade)
@@ -228,8 +264,8 @@ TEST(InteractiveRunnerTest, StepUntilTrade)
   MockReader reader(events);
   BacktestRunner runner;
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   ASSERT_TRUE(waitFor([&]()
                       { return runner.isPaused(); }));
@@ -242,9 +278,6 @@ TEST(InteractiveRunnerTest, StepUntilTrade)
   auto state = runner.state();
   EXPECT_EQ(state.tradeCount, 1u);
   EXPECT_EQ(state.bookUpdateCount, 5u);
-
-  runner.stop();
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, BreakpointAtTime)
@@ -257,8 +290,8 @@ TEST(InteractiveRunnerTest, BreakpointAtTime)
   // Break at timestamp 50ms
   runner.addBreakpoint(Breakpoint::atTime(50000000));
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   ASSERT_TRUE(waitFor([&]()
                       { return runner.isPaused(); }));
@@ -269,9 +302,6 @@ TEST(InteractiveRunnerTest, BreakpointAtTime)
   auto state = runner.state();
   EXPECT_TRUE(state.isPaused);
   EXPECT_GE(state.currentTimeNs, 50000000u);
-
-  runner.stop();
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, CustomBreakpoint)
@@ -285,8 +315,8 @@ TEST(InteractiveRunnerTest, CustomBreakpoint)
   runner.addBreakpoint(Breakpoint::when([](const replay::ReplayEvent& ev)
                                         { return ev.type == replay::EventType::Trade && ev.trade.price_raw > 10050; }));
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   ASSERT_TRUE(waitFor([&]()
                       { return runner.isPaused(); }));
@@ -298,9 +328,6 @@ TEST(InteractiveRunnerTest, CustomBreakpoint)
   EXPECT_TRUE(state.isPaused);
   // Should have processed roughly 51 events (0-50 have prices 10000-10050)
   EXPECT_GE(state.eventCount, 51u);
-
-  runner.stop();
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, PauseCallback)
@@ -314,8 +341,8 @@ TEST(InteractiveRunnerTest, PauseCallback)
   runner.setPauseCallback([&](const BacktestState&)
                           { ++pauseCount; });
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   // Wait for initial pause callback
   ASSERT_TRUE(waitFor([&]()
@@ -329,9 +356,6 @@ TEST(InteractiveRunnerTest, PauseCallback)
   ASSERT_TRUE(waitFor([&]()
                       { return pauseCount.load() >= 2; }));
   EXPECT_GE(pauseCount.load(), 2);
-
-  runner.stop();
-  t.join();
 }
 
 TEST(InteractiveRunnerTest, StateInspection)
@@ -351,8 +375,8 @@ TEST(InteractiveRunnerTest, StateInspection)
         }
       });
 
-  std::thread t([&]()
-                { runner.start(reader); });
+  RunnerThread t(runner, [&]()
+                 { runner.start(reader); });
 
   // Wait for initial pause callback
   while (!initialPauseCalled.load())
@@ -368,7 +392,8 @@ TEST(InteractiveRunnerTest, StateInspection)
   runner.resume();
 
   // Wait for completion
-  t.join();
+  ASSERT_TRUE(waitFor([&]()
+                      { return runner.isFinished(); }));
 
   state = runner.state();
   EXPECT_EQ(state.eventCount, 5u);
