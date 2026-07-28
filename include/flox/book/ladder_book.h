@@ -25,6 +25,7 @@
 
 #include "flox/book/resting_order.h"
 
+#include <bit>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -416,7 +417,7 @@ class LadderBook
     {
       if (word != 0)
       {
-        return static_cast<int32_t>((w << 6) + static_cast<size_t>(63 - __builtin_clzll(word)));
+        return static_cast<int32_t>((w << 6) + static_cast<size_t>(63 - std::countl_zero(word)));
       }
       if (w == 0)
       {
@@ -446,7 +447,7 @@ class LadderBook
       if (word != 0)
       {
         const int32_t idx =
-            static_cast<int32_t>((w << 6) + static_cast<size_t>(__builtin_ctzll(word)));
+            static_cast<int32_t>((w << 6) + static_cast<size_t>(std::countr_zero(word)));
         return idx < numLevels_ ? idx : -1;
       }
       ++w;
