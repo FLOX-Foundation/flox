@@ -5,7 +5,7 @@ on:
   # matrix twice (once for push, once for pull_request) -- 32 checks where 16
   # is the real coverage.
   push:
-    branches: [main]
+    branches: [main, 'venue/**']
   pull_request:
   schedule:
     # Weekly affinity tests - Sunday at 3:00 UTC
@@ -450,7 +450,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [address, undefined]
+        sanitizer: [address, undefined, thread]
 
     steps:
     - uses: actions/checkout@v5
@@ -757,3 +757,74 @@ jobs:
 
     - name: Verify static archive exists
       run: test -f build/connectors/libflox-connectors.a
+
+  # The venue module must stay genuinely optional: a build with it OFF has to
+  # configure, compile and pass its suite with no venue code involved. Cheap
+  # job, but it is the only thing that stops the OFF path from rotting.
+  venue-optional:
+    needs: [format-check, verify-docs-current]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+
+    - name: Configure without the venue
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_BUILD_VENUE=OFF \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_DEMO=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: Test
+      run: ctest --output-on-failure --test-dir build
+
+    - name: Verify nothing venue-side was built
+      run: |
+        test ! -f build/venue/libflox-venue.a
+        ! ctest --test-dir build -N | grep -qE "Test +#[0-9]+: test_venue_(matcher|engine|ledger)"
+
+  # Weekly deep run of the venue fuzzes. Pull requests run them at a
+  # CI-friendly depth; this raises the command count by an order of magnitude,
+  # which is where the rarer book divergences and reservation leaks surface.
+  venue-deep-fuzz:
+    if: github.event_name == 'schedule'
+    needs: [format-check, verify-docs-current]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
+
+    - name: Build the fuzz targets
+      run: cmake --build build --target test_venue_differential_fuzz test_venue_conservation_fuzz -j$(nproc)
+
+    - name: Differential fuzz (deep)
+      env:
+        FLOX_FUZZ_OPS: 2000000
+      run: ./build/venue/test_venue_differential_fuzz
+
+    - name: Conservation fuzz
+      run: ./build/venue/test_venue_conservation_fuzz

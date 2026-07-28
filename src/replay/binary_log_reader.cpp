@@ -655,6 +655,14 @@ void BinaryLogReader::clearProgressCallback()
   _progress_cb = nullptr;
 }
 
+bool BinaryLogReader::ensureScanned() const
+{
+  std::call_once(_scan_once,
+                 [this]
+                 { const_cast<BinaryLogReader*>(this)->scanSegments(); });
+  return _scanned;
+}
+
 bool BinaryLogReader::scanSegments()
 {
   if (_scanned)
@@ -893,7 +901,7 @@ bool BinaryLogReader::readSegmentFrom(const SegmentInfo& segment, int64_t start_
 
 bool BinaryLogReader::forEach(EventCallback callback)
 {
-  if (!scanSegments())
+  if (!ensureScanned())
   {
     return false;
   }
@@ -939,7 +947,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
       // missing directory) we leave total_events = 0 and report
       // pct=0.0 to the callback. The walk itself will then fail and
       // surface the underlying error to the caller.
-      if (scanSegments())
+      if (ensureScanned())
       {
         for (const auto& seg : _segments)
         {
@@ -1007,7 +1015,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
 
   // Auto / multi-thread path. Resolve n_threads after scanning the
   // segment list so we can cap to actual segment count.
-  if (!scanSegments())
+  if (!ensureScanned())
   {
     return false;
   }
@@ -1228,7 +1236,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
 
 bool BinaryLogReader::streamForEach(EventCallback callback)
 {
-  if (!scanSegments())
+  if (!ensureScanned())
   {
     return false;
   }
@@ -1246,7 +1254,7 @@ bool BinaryLogReader::streamForEach(EventCallback callback)
 
 bool BinaryLogReader::streamForEachFrom(int64_t start_ts_ns, EventCallback callback)
 {
-  if (!scanSegments())
+  if (!ensureScanned())
   {
     return false;
   }
@@ -1480,7 +1488,7 @@ bool BinaryLogReader::readSegmentStreamingFrom(const SegmentInfo& segment,
 
 bool BinaryLogReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)
 {
-  if (!scanSegments())
+  if (!ensureScanned())
   {
     return false;
   }
@@ -1507,7 +1515,7 @@ bool BinaryLogReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)
 
 std::optional<std::pair<int64_t, int64_t>> BinaryLogReader::timeRange() const
 {
-  if (_segments.empty())
+  if (!ensureScanned() || _segments.empty())
   {
     return std::nullopt;
   }
@@ -1647,7 +1655,7 @@ DatasetSummary BinaryLogReader::inspectWithSymbols(const std::filesystem::path& 
 
 DatasetSummary BinaryLogReader::summary()
 {
-  scanSegments();
+  ensureScanned();
 
   DatasetSummary result;
   result.data_dir = _config.data_dir;
@@ -1691,7 +1699,7 @@ DatasetSummary BinaryLogReader::summary()
 
 uint64_t BinaryLogReader::count()
 {
-  scanSegments();
+  ensureScanned();
 
   uint64_t total = 0;
   for (const auto& segment : _segments)

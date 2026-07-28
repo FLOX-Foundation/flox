@@ -471,6 +471,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     size_t idx;
     double score;
     double upnl;
+    uint64_t accountId;  // stable tie-break key (see the sort below)
   };
   std::vector<AdlCandidate> candidates;
 
@@ -506,7 +507,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     const double upnl = p.quantity * (markPrice - p.entryPrice);
     if (upnl > 0.0)
     {
-      candidates.push_back({nullptr, i, scorePosition(p, upnl), upnl});
+      candidates.push_back({nullptr, i, scorePosition(p, upnl), upnl, p.accountId});
     }
   }
   // Account candidates.
@@ -527,14 +528,29 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       const double upnl = p.quantity * (markPrice - p.entryPrice);
       if (upnl > 0.0)
       {
-        candidates.push_back({acct, i, scorePosition(p, upnl), upnl});
+        candidates.push_back({acct, i, scorePosition(p, upnl), upnl, p.accountId});
       }
     }
   }
 
+  // Deterministic total order: rank by ADL score, then break ties on a stable
+  // key (accountId, position index) so the closeout queue does not depend on
+  // std::sort's handling of equal scores across STL/build versions -- required
+  // for backtest reproducibility / live-parity when several opposite-side
+  // winners share the same score.
   std::sort(candidates.begin(), candidates.end(),
             [](const AdlCandidate& a, const AdlCandidate& b)
-            { return a.score > b.score; });
+            {
+              if (a.score != b.score)
+              {
+                return a.score > b.score;
+              }
+              if (a.accountId != b.accountId)
+              {
+                return a.accountId < b.accountId;
+              }
+              return a.idx < b.idx;
+            });
 
   // Track indexes per source so we can erase descending after the
   // close loop.
@@ -546,6 +562,14 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     {
       break;
     }
+    // ADL closes the winner at the bankruptcy price (spec: liquidation-and-adl):
+    // it forgoes only the gain needed to absorb the remaining deficit (capped at
+    // its own uPnl) and keeps any excess. Crediting the FULL mark uPnl while
+    // decrementing the deficit -- as before -- leaves the deficit unfunded, i.e.
+    // creates money against a conservation-exact ledger (the winner is made whole
+    // AND the bankrupt's loss vanishes). Confiscate exactly `absorbed`.
+    const double absorbed = std::min(totalDeficit, c.upnl);
+    const double realized = c.upnl - absorbed;  // gain above the bankruptcy price
     if (c.owner == nullptr)
     {
       const auto& p = _positions[c.idx];
@@ -555,25 +579,23 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     else
     {
       auto& p = c.owner->positionsMut()[c.idx];
-      // Credit the account's equity (cross mode) or the leg's
-      // isolated_equity (isolated mode) with the realised PnL. The
-      // mark price is the close benchmark for ADL — no executor
-      // routing on ADL closes by spec.
+      // Credit the account's equity (cross) or the leg's isolated_equity
+      // (isolated) with the RETAINED PnL after the ADL haircut.
       if (c.owner->marginMode() == MarginMode::Cross)
       {
-        c.owner->addEquity(c.upnl);
+        c.owner->addEquity(realized);
       }
       else
       {
-        p.equity += c.upnl;
+        p.equity += realized;
       }
       out.adlClosedOut.push_back(p.accountId);
       acctClose[c.owner].push_back(c.idx);
     }
-    totalDeficit -= c.upnl;
+    totalDeficit -= absorbed;
     ++_statAdlCloseouts;
     ++out.adlCloseoutsCount;
-    _deficitsPaidByAdl.push_back(c.upnl);
+    _deficitsPaidByAdl.push_back(absorbed);
     if (_firstAdlTickIdx == UINT64_MAX)
     {
       _firstAdlTickIdx = tickIdx;

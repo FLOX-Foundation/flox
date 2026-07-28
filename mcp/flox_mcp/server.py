@@ -22,6 +22,7 @@ from .tools import (
     lookahead as lookahead_tool,
     lookup,
     overview,
+    venue as venue_tool,
     positions,
     record_data as record_data_tool,
     runtime,
@@ -39,6 +40,23 @@ def build_server() -> Server:
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
         return [
+            Tool(
+                name="flox_venue_guide",
+                description=(
+                    "Use when the user wants to BUILD A MARKET rather than "
+                    "trade on one: simulate several agents/strategies against "
+                    "one shared order book, model market impact with reacting "
+                    "counterparties, or run a matching engine, clearing "
+                    "ledger, margin/liquidation, market-data feed or venue "
+                    "gateway. Returns a Markdown guide to the optional FLOX "
+                    "venue module (flox::venue): headers, order vocabulary, "
+                    "derivatives waterfall, the multi-agent demo, build flag, "
+                    "and verification posture. No arguments. Cheap; pure "
+                    "bundled text. NOT for an ordinary single-strategy "
+                    "backtest over historical data -- use run_backtest."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
             Tool(
                 name="flox_overview",
                 description=(
@@ -1193,6 +1211,8 @@ def build_server() -> Server:
         try:
             if name == "flox_overview":
                 text = overview.flox_overview()
+            elif name == "flox_venue_guide":
+                text = venue_tool.flox_venue_guide()
             elif name == "list_indicators":
                 text = indicators.list_indicators(filter=arguments.get("filter"))
             elif name == "lookup_error_code":

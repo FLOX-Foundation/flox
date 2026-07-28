@@ -49,7 +49,18 @@ file(GLOB_RECURSE SRC_FILES
     src/run/*.cpp
 )
 
+# The venue module reuses backtest-side primitives (FeeSchedule,
+# RateLimitPolicy, LiquidationEngine, Account), so it implies the backtest
+# module. Declared here, before the option below, so the implication applies on
+# a first configure; the add_subdirectory(venue) itself lives further down,
+# after enable_testing() so the module's tests register.
+option(FLOX_BUILD_VENUE "Build the venue module (matching engine, clearing, venue risk)" ON)
+
 option(FLOX_ENABLE_BACKTEST "Enable backtest module" OFF)
+if(FLOX_BUILD_VENUE AND NOT FLOX_ENABLE_BACKTEST)
+  message(STATUS "FLOX_BUILD_VENUE=ON implies FLOX_ENABLE_BACKTEST=ON; enabling.")
+  set(FLOX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
+endif()
 if(FLOX_ENABLE_BACKTEST)
   file(GLOB BACKTEST_SRC_FILES src/backtest/*.cpp)
   list(APPEND SRC_FILES ${BACKTEST_SRC_FILES})
@@ -259,6 +270,11 @@ option(FLOX_BUILD_TESTS "Build tests" OFF)
 if (FLOX_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+# Venue module (option declared above, next to the backtest implication).
+if (FLOX_BUILD_VENUE)
+  add_subdirectory(venue)
 endif()
 
 option(FLOX_BUILD_DEMO "Build demo application" OFF)
