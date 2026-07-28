@@ -27,8 +27,7 @@ class MetricsServer
   using Ready = std::function<bool()>;
 
   explicit MetricsServer(Snapshot snap, Ready ready = []
-                                        { return true; })
-      : snap_(std::move(snap)), ready_(std::move(ready))
+                                        { return true; }) : snap_(std::move(snap)), ready_(std::move(ready))
   {
   }
 

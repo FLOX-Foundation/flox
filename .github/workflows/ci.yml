@@ -100,7 +100,9 @@ jobs:
       # nothing tested the 37 tool schemas or the dispatch chain that has to
       # match them. test_tool_dispatch.py needs it.
       run: |
-        python3 -m pip install --break-system-packages pytest "mcp>=1.0"
+        # Pinned below 2.0: the 2.x SDK dropped the @server.list_tools() /
+        # @server.call_tool() decorators this server is built on.
+        python3 -m pip install --break-system-packages pytest "mcp>=1.0,<2"
         python3 -m pytest mcp/tests/ -q
 
   linux-gcc:

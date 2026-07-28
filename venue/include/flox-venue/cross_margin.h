@@ -33,8 +33,7 @@ class CrossMarginManager
 
   using OnLiquidation = std::function<void(const Liquidation&)>;
 
-  CrossMarginManager(Ledger& led, AssetId collateral, uint64_t venueAccount, OnLiquidation onLiq = [](const Liquidation&) {}, bool autoDeleverage = false)
-      : led_(led), collateral_(collateral), venue_(venueAccount), onLiq_(std::move(onLiq)), adl_(autoDeleverage)
+  CrossMarginManager(Ledger& led, AssetId collateral, uint64_t venueAccount, OnLiquidation onLiq = [](const Liquidation&) {}, bool autoDeleverage = false) : led_(led), collateral_(collateral), venue_(venueAccount), onLiq_(std::move(onLiq)), adl_(autoDeleverage)
   {
   }
 
