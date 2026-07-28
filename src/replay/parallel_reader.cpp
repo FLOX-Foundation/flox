@@ -49,7 +49,13 @@ ParallelReader::ParallelReader(ParallelReaderConfig config) : _config(std::move(
 
 ParallelReader::~ParallelReader()
 {
-  _shutdown.store(true);
+  {
+    // Store under the queue mutex: the workers' wait predicate reads _shutdown
+    // with the lock held, so an unlocked store+notify can slip between the
+    // predicate check and the sleep and the worker never wakes (join hangs).
+    std::lock_guard lock(_queue_mutex);
+    _shutdown.store(true);
+  }
   _queue_cv.notify_all();
 
   for (auto& worker : _workers)

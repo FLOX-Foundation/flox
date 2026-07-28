@@ -476,38 +476,55 @@ void BacktestRunner::notifyPaused()
   }
 }
 
+// The flag stores below happen under _mutex: waitForResume evaluates its
+// predicate with the lock held, so a store+notify outside the lock can land
+// between the predicate check and the sleep and the wakeup is lost forever.
+
 void BacktestRunner::resume()
 {
-  _stepRequested.store(false, std::memory_order_release);
-  _paused.store(false, std::memory_order_release);
+  {
+    std::lock_guard lock(_mutex);
+    _stepRequested.store(false, std::memory_order_release);
+    _paused.store(false, std::memory_order_release);
+  }
   _cv.notify_all();
 }
 
 void BacktestRunner::step()
 {
-  _stepMode.store(BacktestMode::Step, std::memory_order_release);
-  _stepRequested.store(true, std::memory_order_release);
-  _paused.store(false, std::memory_order_release);
+  {
+    std::lock_guard lock(_mutex);
+    _stepMode.store(BacktestMode::Step, std::memory_order_release);
+    _stepRequested.store(true, std::memory_order_release);
+    _paused.store(false, std::memory_order_release);
+  }
   _cv.notify_all();
 }
 
 void BacktestRunner::stepUntil(BacktestMode mode)
 {
-  _stepMode.store(mode, std::memory_order_release);
-  _stepRequested.store(true, std::memory_order_release);
-  _paused.store(false, std::memory_order_release);
+  {
+    std::lock_guard lock(_mutex);
+    _stepMode.store(mode, std::memory_order_release);
+    _stepRequested.store(true, std::memory_order_release);
+    _paused.store(false, std::memory_order_release);
+  }
   _cv.notify_all();
 }
 
 void BacktestRunner::pause()
 {
+  std::lock_guard lock(_mutex);
   _paused.store(true, std::memory_order_release);
 }
 
 void BacktestRunner::stop()
 {
-  _running.store(false, std::memory_order_release);
-  _paused.store(false, std::memory_order_release);
+  {
+    std::lock_guard lock(_mutex);
+    _running.store(false, std::memory_order_release);
+    _paused.store(false, std::memory_order_release);
+  }
   _cv.notify_all();
 }
 
