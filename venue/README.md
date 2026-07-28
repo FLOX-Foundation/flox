@@ -22,6 +22,9 @@ next to the aggregate `NLevelOrderBook` and are useful on their own) and the
 general utilities this layer needed (`flox/util/{crypto,wire,transport,websocket,
 system_clock}.h`).
 
+Platform: Linux and macOS. Skipped on MSVC/clang-cl, which have no `__int128`
+— the type the ledger keeps money in.
+
 ## What it unlocks
 
 Strategy backtests replay a recorded tape: the market never reacts to your

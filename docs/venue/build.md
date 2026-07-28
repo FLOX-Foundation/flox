@@ -26,6 +26,15 @@ library). Turning it off removes:
 A `-DFLOX_BUILD_VENUE=OFF` build configures and passes its full test suite with
 no venue code compiled at all — verify with `ctest` after building.
 
+## Platform support
+
+Linux and macOS. The module is skipped on MSVC and clang-cl: the ledger keeps
+money in native 128-bit integers (`__int128`) so a notional cannot overflow and
+a rounding drift is impossible, and those compilers have no such type. A
+Windows build simply configures with the module off — porting the money type
+onto the portable wide-integer helpers in `flox/util/int` would lift the
+restriction.
+
 ## What it costs when ON
 
 Nothing beyond the module itself. The venue links only `${FLOX}` core: no new
