@@ -54,7 +54,27 @@ Note the distinction the [multi-agent demo](multi-agent.md) makes explicit:
 cash and inventory are conserved *exactly*, while total mark-to-market equity
 moves with the last price. That is valuation, not leakage.
 
-## Fee policy
+## Per-symbol scale
+
+The default fixed-point scale (1e8) caps an int64 quantity at ~9.2e10 whole
+units -- too small for tokens whose circulating supply runs to 1e14. Such a
+symbol sets `priceScale`/`qtyScale` on its `SymbolConfig` (and on
+`configureSymbol` for cross margin); its price and quantity raws are then
+interpreted in those units end to end -- matching, reservation, settlement,
+margin, PnL, funding, fees, and metrics.
+
+Two invariants keep the money model simple:
+
+- **Money never changes scale.** Every quote amount in the ledger is at the
+  fixed 1e-8 scale (`venue::kMoneyScale`) regardless of the symbol that
+  produced it, so balances from symbols with different scales add up safely.
+- **A base-asset balance is the symbol's qty raw.** All symbols sharing a base
+  asset must therefore use one `qtyScale`.
+
+Scales must be positive, and `qtyScale` must divide or be a multiple of the
+money scale (any power of ten works) -- `venue::scalesValid` checks the pair.
+At the default scale every formula is bit-identical to the fixed-scale code it
+generalized, so determinism hashes and replays are unaffected.
 
 Fees flow through `flox::FeeSchedule` (maker rebate / taker fee, volume tiers).
 The venue gate reserves the **notional**, and the taker fee is charged

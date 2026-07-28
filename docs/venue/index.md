@@ -75,6 +75,10 @@ someone the other side. That enables things a tape cannot express:
 - **Money is `__int128` fixed point**, never `double`. See
   [Clearing](clearing.md) for why the venue and the backtest keep separate
   margin models.
+- **Per-symbol scale.** A symbol whose price or supply range does not fit the
+  default 1e8 scale in int64 (a meme coin with a 1e14 supply) sets its own
+  `priceScale`/`qtyScale` in `SymbolConfig`; money still settles at the fixed
+  1e-8 scale. See [Clearing](clearing.md#per-symbol-scale).
 
 ## Verification
 

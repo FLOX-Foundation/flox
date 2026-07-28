@@ -8,11 +8,13 @@
  */
 #pragma once
 
+#include "flox-venue/ledger.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/reject_reason.h"
 
 #include <array>
 #include <cstdint>
+#include <unordered_map>
 
 namespace flox::venue
 {
@@ -79,11 +81,21 @@ struct Metrics
   uint64_t modifies{0};
   uint64_t liquidations{0};
   uint64_t holds{0};
-  __int128 volumeRaw{0};  // cumulative traded notional (quote raw)
+  __int128 volumeRaw{0};  // cumulative traded notional (quote raw, kMoneyScale)
   static constexpr size_t kReasons = 24;
   std::array<uint64_t, kReasons> rejectsByReason{};  // indexed by RejectReason
 
+  // Symbols with a non-default scale must be registered so trade notional is
+  // normalized to kMoneyScale; unregistered symbols use the default 1e8.
+  void setSymbolScales(SymbolId s, int64_t priceScale, int64_t qtyScale)
+  {
+    scales_[s] = {priceScale, qtyScale};
+  }
+
   void observe(const OutboundEvent& e) noexcept;
+
+ private:
+  std::unordered_map<SymbolId, std::pair<int64_t, int64_t>> scales_;
 };
 
 // Point-in-time venue state that is NOT derivable from the outbound event stream
@@ -105,8 +117,11 @@ inline void Metrics::observe(const OutboundEvent& e) noexcept
   if (const auto* t = std::get_if<Trade>(&e))
   {
     ++trades;
-    volumeRaw += static_cast<__int128>(t->price.raw()) * t->quantity.raw() /
-                 static_cast<__int128>(Price::Scale);
+    auto it = scales_.find(t->symbol);
+    const auto [pS, qS] = it == scales_.end()
+                              ? std::pair<int64_t, int64_t>{Price::Scale, Quantity::Scale}
+                              : it->second;
+    volumeRaw += notionalRaw(t->price.raw(), t->quantity.raw(), pS, qS);
   }
   else if (std::get_if<OrderAccepted>(&e))
   {

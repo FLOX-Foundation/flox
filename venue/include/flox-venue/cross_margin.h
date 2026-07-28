@@ -13,6 +13,7 @@
 #include "flox-venue/messages.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -29,6 +30,8 @@ class CrossMarginManager
   {
     int32_t imBps{0};
     int32_t mmBps{0};
+    int64_t priceScale{Price::Scale};
+    int64_t qtyScale{Quantity::Scale};
   };
 
   using OnLiquidation = std::function<void(const Liquidation&)>;
@@ -37,7 +40,20 @@ class CrossMarginManager
   {
   }
 
-  void configureSymbol(SymbolId s, int32_t imBps, int32_t mmBps) { cfg_[s] = {imBps, mmBps}; }
+  void configureSymbol(SymbolId s, int32_t imBps, int32_t mmBps,
+                       int64_t priceScale = Price::Scale, int64_t qtyScale = Quantity::Scale)
+  {
+    assert(scalesValid(priceScale, qtyScale));
+    cfg_[s] = {imBps, mmBps, priceScale, qtyScale};
+  }
+
+  // Scales of a configured symbol; defaults for one traded before configureSymbol.
+  std::pair<int64_t, int64_t> scalesOf(SymbolId s) const
+  {
+    auto c = cfg_.find(s);
+    return c == cfg_.end() ? std::pair<int64_t, int64_t>{Price::Scale, Quantity::Scale}
+                           : std::pair<int64_t, int64_t>{c->second.priceScale, c->second.qtyScale};
+  }
 
   // Optional multi-asset collateral: when set, equity uses the haircut-adjusted
   // basket value (BTC/ETH/... posted as margin) instead of the single quote
@@ -75,8 +91,8 @@ class CrossMarginManager
       {
         continue;
       }
-      const __int128 notionalSigned =
-          static_cast<__int128>(markRaw) * l->second.qtyRaw / static_cast<__int128>(Price::Scale);
+      const auto [pS, qS] = scalesOf(s);
+      const Amount notionalSigned = notionalRaw(markRaw, l->second.qtyRaw, pS, qS);
       const Amount pay = -static_cast<Amount>(static_cast<double>(notionalSigned) * rate);
       if (pay == 0)
       {
@@ -135,8 +151,8 @@ class CrossMarginManager
     {
       for (const auto& [s, leg] : legs)
       {
-        t += static_cast<__int128>(markOf(s, leg.entryRaw)) * iabs64(leg.qtyRaw) /
-             static_cast<__int128>(Price::Scale);
+        const auto [pS, qS] = scalesOf(s);
+        t += notionalRaw(markOf(s, leg.entryRaw), iabs64(leg.qtyRaw), pS, qS);
       }
     }
     return static_cast<Amount>(t);
@@ -199,10 +215,10 @@ class CrossMarginManager
     if (posSign != 0 && posSign != fillSign)
     {
       const int64_t reduceQty = std::min<int64_t>(remaining, iabs64(p.qtyRaw));
-      const __int128 pnl = static_cast<__int128>(priceRaw - p.entryRaw) * reduceQty /
-                           static_cast<__int128>(Price::Scale) * posSign;
-      led_.credit(acct, collateral_, static_cast<Amount>(pnl));
-      led_.credit(venue_, collateral_, -static_cast<Amount>(pnl));
+      const auto [pS, qS] = scalesOf(s);
+      const Amount pnl = notionalRaw(priceRaw - p.entryRaw, reduceQty, pS, qS) * posSign;
+      led_.credit(acct, collateral_, pnl);
+      led_.credit(venue_, collateral_, -pnl);
       p.qtyRaw += fillSign * reduceQty;
       remaining -= reduceQty;
       if (p.qtyRaw == 0)
@@ -252,7 +268,8 @@ class CrossMarginManager
     for (const auto& [s, leg] : a->second)
     {
       const int64_t mark = markOf(s, leg.entryRaw);
-      total += static_cast<__int128>(mark - leg.entryRaw) * leg.qtyRaw / static_cast<__int128>(Price::Scale);
+      const auto [pS, qS] = scalesOf(s);
+      total += notionalRaw(mark - leg.entryRaw, leg.qtyRaw, pS, qS);
     }
     return static_cast<Amount>(total);
   }
@@ -301,8 +318,8 @@ class CrossMarginManager
       return 0;
     }
     const int32_t bps = maintenance ? c->second.mmBps : c->second.imBps;
-    const __int128 notional =
-        static_cast<__int128>(markRaw) * iabs64(qtyRaw) / static_cast<__int128>(Price::Scale);
+    const Amount notional =
+        notionalRaw(markRaw, iabs64(qtyRaw), c->second.priceScale, c->second.qtyScale);
     return notional * bps / 10000;
   }
 
@@ -345,10 +362,10 @@ class CrossMarginManager
     for (const auto& [s, leg] : a->second)
     {
       const int64_t mark = markOf(s, leg.entryRaw);
-      const __int128 pnl =
-          static_cast<__int128>(mark - leg.entryRaw) * leg.qtyRaw / static_cast<__int128>(Price::Scale);
-      led_.credit(acct, collateral_, static_cast<Amount>(pnl));
-      led_.credit(venue_, collateral_, -static_cast<Amount>(pnl));
+      const auto [pS, qS] = scalesOf(s);
+      const Amount pnl = notionalRaw(mark - leg.entryRaw, leg.qtyRaw, pS, qS);
+      led_.credit(acct, collateral_, pnl);
+      led_.credit(venue_, collateral_, -pnl);
       bankruptSides.emplace_back(s, leg.qtyRaw);
     }
     pos_.erase(a);
@@ -411,8 +428,8 @@ class CrossMarginManager
         {
           continue;  // must be the opposite side
         }
-        const Amount up = static_cast<Amount>(static_cast<__int128>(mark - l->second.entryRaw) *
-                                              l->second.qtyRaw / static_cast<__int128>(Price::Scale));
+        const auto [pS, qS] = scalesOf(sym);
+        const Amount up = notionalRaw(mark - l->second.entryRaw, l->second.qtyRaw, pS, qS);
         if (up > 0)
         {
           cands.push_back({oa, sym, up});
@@ -458,8 +475,8 @@ class CrossMarginManager
       const int64_t mark = markOf(c.sym, 0);
       const Leg leg = l->second;
       // Close the winner at the mark (realize their gain), then haircut it.
-      const Amount pnl = static_cast<Amount>(static_cast<__int128>(mark - leg.entryRaw) * leg.qtyRaw /
-                                             static_cast<__int128>(Price::Scale));
+      const auto [pS, qS] = scalesOf(c.sym);
+      const Amount pnl = notionalRaw(mark - leg.entryRaw, leg.qtyRaw, pS, qS);
       led_.credit(c.acct, collateral_, pnl);
       led_.credit(venue_, collateral_, -pnl);
       const Amount haircut = remaining < c.uPnl ? remaining : c.uPnl;

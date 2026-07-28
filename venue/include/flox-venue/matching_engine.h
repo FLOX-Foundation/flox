@@ -18,6 +18,7 @@
 #include "flox/backtest/fee_schedule.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <deque>
 #include <optional>
@@ -61,6 +62,12 @@ struct SymbolConfig
   bool autoDeleverage{false};           // ADL: recover a bankruptcy deficit from winners before insurance
   Quantity maxPositionQty{};            // 0 = unchecked (max |position| per account, perp risk cap)
   uint32_t maxOpenOrders{0};            // 0 = unchecked (max live resting orders per account)
+
+  // Per-symbol fixed-point scale, same semantics as core SymbolInfo. Default
+  // 1e8 = the compile-time Price/Quantity scale. Money always settles at
+  // kMoneyScale regardless. Must satisfy scalesValid().
+  int64_t priceScale{Price::Scale};
+  int64_t qtyScale{Quantity::Scale};
 };
 
 template <class Book = MatchingBook>
@@ -71,6 +78,7 @@ class MatchingEngine
                  MatchPolicy policy = MatchPolicy::PriceTimeFifo)
       : cfg_(cfg), sink_(std::move(sink)), matcher_(policy), book_(std::move(book))
   {
+    assert(scalesValid(cfg_.priceScale, cfg_.qtyScale));
     // Wrap the user sink to observe the trade stream (last price for stops,
     // fees, MM-protection counters) and maintain per-account resting state.
     emit_ = [this](const OutboundEvent& e)
@@ -280,8 +288,8 @@ class MatchingEngine
     }
     for (auto& [acct, p] : positions_)
     {
-      const __int128 notional =
-          static_cast<__int128>(mark.raw()) * iabs64(p.qtyRaw) / static_cast<__int128>(Price::Scale);
+      const Amount notional =
+          notionalRaw(mark.raw(), iabs64(p.qtyRaw), cfg_.priceScale, cfg_.qtyScale);
       const Amount mag = static_cast<Amount>(static_cast<double>(notional) * rate);
       const Amount signedPay = (p.qtyRaw > 0) ? -mag : mag;  // long pays when rate>0
       ledger_->credit(acct, cfg_.quoteAsset, signedPay);
@@ -314,8 +322,9 @@ class MatchingEngine
       return 0;
     }
     const int64_t sign = it->second.qtyRaw > 0 ? 1 : -1;
-    return static_cast<Amount>(static_cast<__int128>(mark.raw() - it->second.entryRaw) *
-                               iabs64(it->second.qtyRaw) / static_cast<__int128>(Price::Scale) * sign);
+    return notionalRaw(mark.raw() - it->second.entryRaw, iabs64(it->second.qtyRaw),
+                       cfg_.priceScale, cfg_.qtyScale) *
+           sign;
   }
 
   const Book& book() const noexcept { return book_; }
@@ -1295,7 +1304,10 @@ class MatchingEngine
     {
       return;
     }
-    const double notional = (t.price * t.quantity).toDouble();
+    const double notional =
+        static_cast<double>(
+            notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
+        kMoneyScale;
     sink_(FeeCharged{t.makerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, true)), true});
     sink_(FeeCharged{t.takerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, false)), false});
   }
@@ -1312,8 +1324,8 @@ class MatchingEngine
 
   Amount imForRaw(int64_t qtyRaw, int64_t priceRaw) const
   {
-    const __int128 notional = static_cast<__int128>(priceRaw) * qtyRaw / static_cast<__int128>(Price::Scale);
-    return static_cast<Amount>(notional * cfg_.initialMarginBps / 10000);
+    const Amount notional = notionalRaw(priceRaw, qtyRaw, cfg_.priceScale, cfg_.qtyScale);
+    return notional * cfg_.initialMarginBps / 10000;
   }
 
   bool reserveFunds(const NewOrder& o)
@@ -1357,7 +1369,7 @@ class MatchingEngine
           return false;
         }
         asset = cfg_.quoteAsset;
-        amt = amountOf(px * o.quantity);
+        amt = notionalRaw(px.raw(), o.quantity.raw(), cfg_.priceScale, cfg_.qtyScale);
         limitRaw = px.raw();
       }
       else
@@ -1410,7 +1422,8 @@ class MatchingEngine
       settlePerp(t);
       return;
     }
-    const Amount notional = amountOf(t.price * t.quantity);
+    const Amount notional =
+        notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale);
     const Amount qtyRaw = amountOf(t.quantity);
     const bool takerBuys = (t.takerSide == Side::BUY);
     const OrderId buyerId = takerBuys ? t.takerId : t.makerId;
@@ -1421,9 +1434,8 @@ class MatchingEngine
     // Buyer: pay quote from reserved (refund over-reservation), receive base.
     if (auto rb = reserve_.find(buyerId); rb != reserve_.end())
     {
-      const Amount limitNotional = static_cast<Amount>(
-          static_cast<__int128>(rb->second.limitPriceRaw) * static_cast<__int128>(t.quantity.raw()) /
-          static_cast<__int128>(Price::Scale));
+      const Amount limitNotional = notionalRaw(rb->second.limitPriceRaw, t.quantity.raw(),
+                                               cfg_.priceScale, cfg_.qtyScale);
       ledger_->spendReserved(buyerAcct, cfg_.quoteAsset, notional);
       if (limitNotional > notional)
       {
@@ -1451,7 +1463,10 @@ class MatchingEngine
 
     if (feesEnabled_)
     {
-      const double notionalD = (t.price * t.quantity).toDouble();
+      const double notionalD =
+          static_cast<double>(
+              notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
+          kMoneyScale;
       chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_, notionalD, true), true);
       chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_, notionalD, false), false);
     }
@@ -1525,10 +1540,10 @@ class MatchingEngine
     {
       const int64_t reduceQty = std::min<int64_t>(remaining, iabs64(p.qtyRaw));
       // realized PnL vs entry (long: (price-entry)*qty; short: (entry-price)*qty)
-      const __int128 pnl = static_cast<__int128>(priceRaw - p.entryRaw) * reduceQty /
-                           static_cast<__int128>(Price::Scale) * posSign;
-      ledger_->credit(acct, cfg_.quoteAsset, static_cast<Amount>(pnl));
-      ledger_->credit(venueAccount_, cfg_.quoteAsset, -static_cast<Amount>(pnl));
+      const Amount pnl =
+          notionalRaw(priceRaw - p.entryRaw, reduceQty, cfg_.priceScale, cfg_.qtyScale) * posSign;
+      ledger_->credit(acct, cfg_.quoteAsset, pnl);
+      ledger_->credit(venueAccount_, cfg_.quoteAsset, -pnl);
       // release position margin for the reduced portion
       const Amount relMargin =
           static_cast<Amount>(static_cast<__int128>(p.margin) * reduceQty / iabs64(p.qtyRaw));
@@ -1576,7 +1591,10 @@ class MatchingEngine
     updatePerpPosition(sellerAcct, sellerId, false, t.quantity.raw(), t.price.raw());
     if (feesEnabled_)
     {
-      const double notionalD = (t.price * t.quantity).toDouble();
+      const double notionalD =
+          static_cast<double>(
+              notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
+          kMoneyScale;
       chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_, notionalD, true), true);
       chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_, notionalD, false), false);
     }
@@ -1594,9 +1612,9 @@ class MatchingEngine
     for (const auto& [acct, p] : positions_)
     {
       const Amount uPnl = unrealizedPnlRaw(acct, mark);
-      const __int128 notional =
-          static_cast<__int128>(mark.raw()) * iabs64(p.qtyRaw) / static_cast<__int128>(Price::Scale);
-      const Amount mmReq = static_cast<Amount>(notional * cfg_.maintenanceMarginBps / 10000);
+      const Amount notional =
+          notionalRaw(mark.raw(), iabs64(p.qtyRaw), cfg_.priceScale, cfg_.qtyScale);
+      const Amount mmReq = notional * cfg_.maintenanceMarginBps / 10000;
       // A negative wallet (funding/fees charged to `available` with no free
       // collateral to absorb them) drags the maintenance-equity check: otherwise
       // funding could push a max-leverage payer's wallet unboundedly negative
@@ -1640,8 +1658,8 @@ class MatchingEngine
     cancelAllForAccount(acct, CancelReason::Liquidation);
     const int64_t sign = p.qtyRaw > 0 ? 1 : -1;
     const int64_t qtyAbs = iabs64(p.qtyRaw);
-    const Amount uPnl = static_cast<Amount>(static_cast<__int128>(mark.raw() - p.entryRaw) * qtyAbs /
-                                            static_cast<__int128>(Price::Scale) * sign);
+    const Amount uPnl =
+        notionalRaw(mark.raw() - p.entryRaw, qtyAbs, cfg_.priceScale, cfg_.qtyScale) * sign;
     ledger_->credit(acct, cfg_.quoteAsset, uPnl);
     ledger_->credit(venueAccount_, cfg_.quoteAsset, -uPnl);
     if (p.margin > 0)
@@ -1688,8 +1706,8 @@ class MatchingEngine
       {
         continue;  // opposite side only
       }
-      const Amount up = static_cast<Amount>(static_cast<__int128>(mark.raw() - pos.entryRaw) *
-                                            pos.qtyRaw / static_cast<__int128>(Price::Scale));
+      const Amount up =
+          notionalRaw(mark.raw() - pos.entryRaw, pos.qtyRaw, cfg_.priceScale, cfg_.qtyScale);
       if (up > 0)
       {
         cands.push_back({oa, up});
@@ -1717,8 +1735,8 @@ class MatchingEngine
       const Position p = it->second;
       positions_.erase(it);
       const int64_t qtyAbs = iabs64(p.qtyRaw);
-      const Amount uPnl = static_cast<Amount>(static_cast<__int128>(mark.raw() - p.entryRaw) *
-                                              p.qtyRaw / static_cast<__int128>(Price::Scale));
+      const Amount uPnl =
+          notionalRaw(mark.raw() - p.entryRaw, p.qtyRaw, cfg_.priceScale, cfg_.qtyScale);
       ledger_->credit(c.acct, cfg_.quoteAsset, uPnl);  // realize gain at mark
       ledger_->credit(venueAccount_, cfg_.quoteAsset, -uPnl);
       if (p.margin > 0)
@@ -1791,8 +1809,7 @@ class MatchingEngine
     }
     else if (it->second.side == Side::BUY)
     {
-      rel = static_cast<Amount>(static_cast<__int128>(it->second.limitPriceRaw) *
-                                static_cast<__int128>(qty.raw()) / static_cast<__int128>(Price::Scale));
+      rel = notionalRaw(it->second.limitPriceRaw, qty.raw(), cfg_.priceScale, cfg_.qtyScale);
     }
     else
     {

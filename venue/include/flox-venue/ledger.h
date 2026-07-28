@@ -32,6 +32,45 @@ using Amount = __int128;  // raw 1e-8 units
 inline Amount amountOf(Volume v) { return static_cast<Amount>(v.raw()); }
 inline Amount amountOf(Quantity q) { return static_cast<Amount>(q.raw()); }
 
+// Money is always at this scale (1e-8 units of the asset), regardless of any
+// symbol's price/qty scale. A base-asset balance is the symbol's qty raw, so
+// every symbol sharing a base asset must use one qtyScale.
+inline constexpr int64_t kMoneyScale = 100'000'000;
+
+inline constexpr Amount kAmountMax = static_cast<Amount>(~static_cast<unsigned __int128>(0) >> 1);
+inline constexpr Amount kAmountMin = -kAmountMax - 1;
+
+// kMoneyScale and qtyScale must divide one another exactly (any power-of-ten
+// scale qualifies); priceScale only needs to be positive.
+inline constexpr bool scalesValid(int64_t priceScale, int64_t qtyScale)
+{
+  return priceScale > 0 && qtyScale > 0 &&
+         (qtyScale <= kMoneyScale ? kMoneyScale % qtyScale == 0 : qtyScale % kMoneyScale == 0);
+}
+
+// price x quantity, each raw in the symbol's own scale, -> Amount raw at
+// kMoneyScale. Generalizes the fixed-scale `praw * qraw / Price::Scale`
+// (bit-identical to it at the default 1e8/1e8, so determinism hashes are
+// unchanged). Signed; truncates toward zero exactly like the expression it
+// replaces. Multiply-before-divide keeps sub-quote-unit precision when
+// qtyScale is coarser than money (a meme-coin at qtyScale 1); the overflow
+// guard falls back to divide-first for magnitudes past ~1e22 quote units,
+// where the lost remainder is meaningless but signed overflow would be UB.
+inline Amount notionalRaw(int64_t priceRaw, int64_t qtyRaw, int64_t priceScale, int64_t qtyScale)
+{
+  const Amount prod = static_cast<Amount>(priceRaw) * qtyRaw;
+  if (qtyScale <= kMoneyScale)
+  {
+    const Amount mul = kMoneyScale / qtyScale;
+    if (prod > kAmountMax / mul || prod < kAmountMin / mul)
+    {
+      return prod / priceScale * mul;
+    }
+    return prod * mul / priceScale;
+  }
+  return prod / (static_cast<Amount>(priceScale) * (qtyScale / kMoneyScale));
+}
+
 class Ledger
 {
  public:
