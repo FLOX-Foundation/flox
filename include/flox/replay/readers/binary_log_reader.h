@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <span>
@@ -300,6 +301,12 @@ class BinaryLogReader
 
  private:
   bool scanSegments();
+
+  // Build the segment index exactly once, safely, from a const context.
+  // The index is immutable after the first scan, so const readers may then run
+  // concurrently; without this the first scan could race a reader on another
+  // thread (a replay loop scanning lazily while the owner asks for timeRange).
+  bool ensureScanned() const;
   bool readSegment(const std::filesystem::path& path, EventCallback& callback);
   bool readSegmentFrom(const SegmentInfo& segment, int64_t start_ts_ns, EventCallback& callback);
   bool readSegmentStreaming(const std::filesystem::path& path, EventCallback& callback);
@@ -319,6 +326,7 @@ class BinaryLogReader
   ReaderStats _stats;
   std::vector<SegmentInfo> _segments;
   bool _scanned{false};
+  mutable std::once_flag _scan_once;
   ProgressCallback _progress_cb;
   std::chrono::milliseconds _progress_interval{1000};
 };

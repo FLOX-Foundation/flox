@@ -9,6 +9,7 @@
 
 #include "flox/backtest/liquidation_engine.h"
 
+#include "flox/backtest/account.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 
@@ -102,6 +103,60 @@ TEST(LiquidationEngine, AdlClosesProfitableOppositeWhenFundDepleted)
   // acct 3 alone covers 550. So just one closeout.
   EXPECT_EQ(out.adlCloseoutsCount, 1u);
   EXPECT_EQ(out.adlClosedOut.front(), 3u);
+}
+
+// Regression: ADL must close the winner at the bankruptcy price -- it forgoes
+// only the gain that absorbs the deficit and KEEPS the excess. Crediting the
+// full mark uPnl (the old behaviour) makes the winner whole AND zeroes the
+// deficit => money created. Here deficit=550, winner uPnl=600: it must forgo
+// 550 and retain 50, not pocket the full 600.
+TEST(LiquidationEngine, AdlConfiscatesForgoneGainNotFullUpnl)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);  // fund can't absorb -> straight to ADL
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+
+  // Bankrupt long (orphan): 10 @ 100, equity 50; at mark 40 loss 600 -> deficit 550.
+  e.openPosition(pos(/*acct=*/1, 10.0, 100.0, 50.0));
+  // Winner short account: -10 @ 100, equity 100; at mark 40 uPnl = +600.
+  Account w(/*id=*/2, /*equity=*/100.0);
+  w.setMarginMode(MarginMode::Cross);
+  w.openPosition(BTC, -10.0, 100.0);
+  e.attachAccount(&w);
+
+  const auto out = e.onMark(BTC, 40.0);
+  EXPECT_EQ(out.adlCloseoutsCount, 1u);
+  EXPECT_EQ(out.adlClosedOut.front(), 2u);
+  // absorbed = min(deficit 550, uPnl 600) = 550; retained = 50.
+  // Correct: 100 + 50 = 150. Old buggy behaviour credited full 600 -> 700.
+  EXPECT_DOUBLE_EQ(w.equity(), 150.0);
+  EXPECT_EQ(w.positionCount(), 0u);  // fully deleveraged
+}
+
+// Determinism: when several opposite-side winners share the same ADL score, the
+// closeout queue must be a stable total order (score, then accountId) so the
+// victim does not depend on std::sort's handling of equal keys across builds.
+// Two identical winners (equal PnL ratio) are inserted in DESCENDING id order;
+// the lower accountId must still be chosen first.
+TEST(LiquidationEngine, AdlTieBreaksOnAccountIdDeterministically)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+
+  // Bankrupt long -> deficit 550 (< one winner's 600, so exactly one closeout).
+  e.openPosition(pos(/*acct=*/1, 10.0, 100.0, 50.0));
+  // Two identical winners, equal PnL ratio 6; inserted high id first.
+  e.openPosition(pos(/*acct=*/3, -10.0, 100.0, 100.0));
+  e.openPosition(pos(/*acct=*/2, -10.0, 100.0, 100.0));
+
+  const auto out = e.onMark(BTC, 40.0);
+  EXPECT_EQ(out.adlCloseoutsCount, 1u);
+  EXPECT_EQ(out.adlClosedOut.front(), 2u);  // lower accountId wins the tie
 }
 
 TEST(LiquidationEngine, AdlDisabledLeavesDeficitUnpaid)

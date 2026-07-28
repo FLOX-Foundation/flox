@@ -21,6 +21,7 @@ from flox_mcp.tools import (
     lookup,
     overview,
     scaffold,
+    venue,
 )
 
 
@@ -452,3 +453,34 @@ def test_flox_overview_covers_control_plane_safety():
     assert "scope" in out.lower()
     assert "out-of-band" in out.lower() or "OOB" in out
     assert "audit" in out.lower()
+
+
+# ── flox_venue_guide ──────────────────────────────────────────────────
+
+
+def test_flox_venue_guide_covers_the_module_surface():
+    """The venue guide is how an agent discovers that FLOX can BE a
+    market, not just trade on one. It must name the build flag, the
+    include prefix, and the pieces an agent needs to assemble one."""
+    out = venue.flox_venue_guide()
+    assert len(out) > 500
+    # How to get it at all.
+    assert "FLOX_BUILD_VENUE" in out
+    assert "flox-venue/" in out
+    assert "flox::venue" in out
+    # The capability that justifies the module.
+    assert "Multi-agent" in out or "multi-agent" in out
+    # Core pieces an agent has to reach for.
+    assert "matching_engine.h" in out
+    assert "ledger.h" in out
+    assert "cross_margin" in out
+    # Steer away from the wrong tool for a plain historical backtest.
+    assert "run_backtest" in out
+
+
+def test_flox_venue_guide_flags_the_two_margin_models():
+    """The venue and backtest margin models coexist deliberately;
+    an agent that mixes them for one account gets wrong numbers."""
+    out = venue.flox_venue_guide()
+    assert "LiquidationEngine" in out
+    assert "CrossMarginManager" in out

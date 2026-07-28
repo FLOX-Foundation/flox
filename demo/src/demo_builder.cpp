@@ -84,13 +84,18 @@ std::unique_ptr<Engine> DemoBuilder::build()
     connectors.push_back(conn);
   }
 
-  subsystems.push_back(std::move(bookUpdateBus));
-  subsystems.push_back(std::move(tradeBus));
-  subsystems.push_back(std::move(barBus));
-  subsystems.push_back(std::move(execBus));
+  // Engine::stop() stops subsystems in reverse registration order, so
+  // registration must run consumers-first: a subscriber that is registered
+  // after its bus would be stopped while the bus is still delivering to it
+  // (the bar aggregator's stop() flushes and clears state the trade-bus
+  // consumers were concurrently writing).
   subsystems.push_back(std::move(execTracker));
   subsystems.push_back(std::move(trackerAdapter));
+  subsystems.push_back(std::move(execBus));
+  subsystems.push_back(std::move(barBus));
   subsystems.push_back(std::move(barAggregator));
+  subsystems.push_back(std::move(tradeBus));
+  subsystems.push_back(std::move(bookUpdateBus));
 
   return std::make_unique<Engine>(_config, std::move(subsystems), std::move(connectors));
 }

@@ -206,6 +206,18 @@ nav:
           - CI Configuration: how-to/ci.md
           - Contributing: how-to/contributing.md
 
+  - Venue:
+      - Overview: venue/index.md
+      - Building with/without the venue: venue/build.md
+      - Matching: venue/matching.md
+      - Clearing and the ledger: venue/clearing.md
+      - Derivatives risk: venue/risk.md
+      - Runtime and recovery: venue/runtime.md
+      - Market data: venue/market-data.md
+      - Perimeter: venue/perimeter.md
+      - Multi-agent simulation: venue/multi-agent.md
+      - Verification: venue/verification.md
+
   - Explanation:
       - explanation/README.md
       - Architecture: explanation/architecture.md

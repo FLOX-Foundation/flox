@@ -37,6 +37,10 @@ See [the package README](./mcp/README.md) for setup and the full tool list.
 
 Native exchange connectors (Bybit, Bitget, Hyperliquid, Polymarket) live under [`connectors/`](./connectors/) and build with `-DFLOX_BUILD_CONNECTORS=ON`. The flag defaults to OFF so a backtest-only or research build doesn't pay the dependency cost. See the [connectors README](./connectors/README.md) for adapter notes and the optional Polymarket Rust toolchain step.
 
+## Venue
+
+Beyond trading on a market, FLOX can be one: the optional [`venue/`](./venue/) module adds a matching engine and the machinery around it, so many participants can trade against a single order book. See the [venue docs](https://flox-foundation.github.io/flox/venue/).
+
 ## Build options
 
 The CMake options that gate every optional artefact (bindings, demo, tools, tests, benchmarks, connectors) are catalogued in [`docs/build/feature-flags.md`](https://flox-foundation.github.io/flox/build/feature-flags/). Defaults are OFF so a bare `cmake -B build` produces only the core C++ static library.

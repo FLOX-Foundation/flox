@@ -151,6 +151,8 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_option_settlement)
   add_flox_test(test_option_exercise)
   add_flox_test(test_option_fill_model)
+  add_flox_test(test_system_clock)
+  add_flox_test(test_matching_book)
 endif()
 
 add_flox_test(test_indicators)

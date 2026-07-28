@@ -11376,6 +11376,11 @@
           "name": "ConfidenceInterval"
         },
         {
+          "header": "include/flox/book/ladder_book.h",
+          "kind": "type",
+          "name": "Config"
+        },
+        {
           "header": "include/flox/execution/order_journey_tracer.h",
           "kind": "type",
           "name": "Config"
@@ -12011,6 +12016,11 @@
           "name": "IndividualPosition"
         },
         {
+          "header": "include/flox/util/transport.h",
+          "kind": "type",
+          "name": "IoUring"
+        },
+        {
           "header": "include/flox/aggregator/bar_series.h",
           "kind": "type",
           "name": "Iterator"
@@ -12046,6 +12056,11 @@
           "name": "L3Snapshot"
         },
         {
+          "header": "include/flox/book/ladder_book.h",
+          "kind": "type",
+          "name": "LadderBook"
+        },
+        {
           "header": "include/flox/backtest/latency_distribution.h",
           "kind": "type",
           "name": "LatencyDistribution"
@@ -12077,6 +12092,11 @@
         },
         {
           "header": "include/flox/backtest/order_queue_tracker.h",
+          "kind": "type",
+          "name": "Level"
+        },
+        {
+          "header": "include/flox/book/ladder_book.h",
           "kind": "type",
           "name": "Level"
         },
@@ -12134,6 +12154,11 @@
           "header": "include/flox/execution/live_queue_position_estimator.h",
           "kind": "type",
           "name": "LiveQueueSnapshot"
+        },
+        {
+          "header": "include/flox/book/matching_book.h",
+          "kind": "type",
+          "name": "Loc"
         },
         {
           "header": "include/flox/position/multi_mode_position_tracker.h",
@@ -12204,6 +12229,11 @@
           "header": "include/flox/backtest/simulated_executor.h",
           "kind": "type",
           "name": "MarketState"
+        },
+        {
+          "header": "include/flox/book/matching_book.h",
+          "kind": "type",
+          "name": "MatchingBook"
         },
         {
           "header": "include/flox/replay/ops/segment_ops.h",
@@ -12304,6 +12334,11 @@
           "header": "include/flox/book/nlevel_order_book.h",
           "kind": "type",
           "name": "NLevelOrderBook"
+        },
+        {
+          "header": "include/flox/book/ladder_book.h",
+          "kind": "type",
+          "name": "Node"
         },
         {
           "header": "include/flox/indicator/indicator_pipeline.h",
@@ -12761,6 +12796,11 @@
           "name": "ReadProgress"
         },
         {
+          "header": "include/flox/util/wire.h",
+          "kind": "type",
+          "name": "Reader"
+        },
+        {
           "header": "include/flox/replay/readers/binary_log_reader.h",
           "kind": "type",
           "name": "ReaderConfig"
@@ -12839,6 +12879,11 @@
           "header": "include/flox/replay/abstract_replay_source.h",
           "kind": "type",
           "name": "ReplaySpeed"
+        },
+        {
+          "header": "include/flox/book/resting_order.h",
+          "kind": "type",
+          "name": "RestingOrder"
         },
         {
           "header": "include/flox/risk/portfolio_risk.h",
@@ -13016,6 +13061,11 @@
           "name": "Slot"
         },
         {
+          "header": "include/flox/book/ladder_book.h",
+          "kind": "type",
+          "name": "Slot"
+        },
+        {
           "header": "include/flox/replay/delta_book.h",
           "kind": "type",
           "name": "Snapshot"
@@ -13189,6 +13239,11 @@
           "header": "include/flox/strategy/symbol_state_map.h",
           "kind": "type",
           "name": "SymbolStateMap"
+        },
+        {
+          "header": "include/flox/util/system_clock.h",
+          "kind": "type",
+          "name": "SystemClock"
         },
         {
           "header": "include/flox/indicator/dema.h",
@@ -14712,6 +14767,11 @@
         },
         {
           "kind": "method",
+          "name": "ensureScanned",
+          "parent": "BinaryLogReader"
+        },
+        {
+          "kind": "method",
           "name": "forEach",
           "parent": "BinaryLogReader"
         },
@@ -15637,7 +15697,42 @@
         },
         {
           "kind": "method",
+          "name": "addResting",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "available",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "availableWithin",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "availableWithinExcl",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "bestAsk",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "bestBid",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "bestLevel",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "cancel",
           "parent": "Config"
         },
         {
@@ -15657,6 +15752,31 @@
         },
         {
           "kind": "method",
+          "name": "consumeById",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "contains",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "empty",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "fillBest",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "find",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "forEach",
           "parent": "Config"
         },
@@ -15672,7 +15792,17 @@
         },
         {
           "kind": "method",
+          "name": "full",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "journey",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "levels",
           "parent": "Config"
         },
         {
@@ -15707,12 +15837,22 @@
         },
         {
           "kind": "method",
+          "name": "peekBest",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "reader",
           "parent": "Config"
         },
         {
           "kind": "method",
           "name": "recordCount",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "reduce",
           "parent": "Config"
         },
         {
@@ -17817,6 +17957,16 @@
         },
         {
           "kind": "method",
+          "name": "readAll",
+          "parent": "IoUring"
+        },
+        {
+          "kind": "method",
+          "name": "writeAll",
+          "parent": "IoUring"
+        },
+        {
+          "kind": "method",
           "name": "begin",
           "parent": "Iterator"
         },
@@ -18512,6 +18662,16 @@
         },
         {
           "kind": "method",
+          "name": "fillFront",
+          "parent": "Loc"
+        },
+        {
+          "kind": "method",
+          "name": "consumeSlot",
+          "parent": "LogEntry"
+        },
+        {
+          "kind": "method",
           "name": "flushLoop",
           "parent": "LogEntry"
         },
@@ -18814,6 +18974,81 @@
           "kind": "method",
           "name": "updateTrailingStops",
           "parent": "MarketState"
+        },
+        {
+          "kind": "method",
+          "name": "addResting",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "availableWithin",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "availableWithinExcl",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "bestAsk",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "bestBid",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "bestLevel",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "cancel",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "consumeById",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "contains",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "empty",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "fillBest",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "find",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "levels",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "peekBest",
+          "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "reduce",
+          "parent": "MatchingBook"
         },
         {
           "kind": "method",
@@ -21157,6 +21392,26 @@
         },
         {
           "kind": "method",
+          "name": "i",
+          "parent": "Reader"
+        },
+        {
+          "kind": "method",
+          "name": "need",
+          "parent": "Reader"
+        },
+        {
+          "kind": "method",
+          "name": "u",
+          "parent": "Reader"
+        },
+        {
+          "kind": "method",
+          "name": "u8",
+          "parent": "Reader"
+        },
+        {
+          "kind": "method",
           "name": "passes",
           "parent": "ReaderFilter"
         },
@@ -22262,7 +22517,52 @@
         },
         {
           "kind": "method",
+          "name": "allocNode",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "bitsRef",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "clampLevel",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "clearBit",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
           "name": "emitBar",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "eraseSlot",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "findSlot",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "freeNode",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "hash",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "highestSetAtOrBelow",
           "parent": "Slot"
         },
         {
@@ -22272,12 +22572,52 @@
         },
         {
           "kind": "method",
+          "name": "insertSlot",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "levelOf",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "levelRef",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "lowestSetAtOrAbove",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "moveToTail",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
           "name": "numTimeframes",
           "parent": "Slot"
         },
         {
           "kind": "method",
+          "name": "onLevelEmptied",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "onLevelOccupied",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
           "name": "onTrade",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "priceOf",
           "parent": "Slot"
         },
         {
@@ -22288,6 +22628,16 @@
         {
           "kind": "method",
           "name": "processSlot",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "requeueFrontToTail",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "setBit",
           "parent": "Slot"
         },
         {
@@ -22308,6 +22658,16 @@
         {
           "kind": "method",
           "name": "timeframes",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "unlink",
+          "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "wordsFor",
           "parent": "Slot"
         },
         {
@@ -23104,6 +23464,16 @@
           "kind": "method",
           "name": "tryGet",
           "parent": "SymbolStateMap"
+        },
+        {
+          "kind": "method",
+          "name": "advanceTo",
+          "parent": "SystemClock"
+        },
+        {
+          "kind": "method",
+          "name": "nowNs",
+          "parent": "SystemClock"
         },
         {
           "kind": "method",

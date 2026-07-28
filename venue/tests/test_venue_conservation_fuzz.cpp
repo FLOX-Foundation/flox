@@ -1,0 +1,522 @@
+/*
+ * Flox Engine
+ * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
+ * Copyright (c) 2025 FLOX Foundation
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ *
+ * Money-conservation fuzz over the venue core. Value must never be created or
+ * destroyed across a random command stream (spot, perp, perp+ADL, cross-margin,
+ * multi-asset collateral), and after the book is drained every account's
+ * `reserved` must return to zero -- a stuck reservation is invisible to
+ * conservation-of-total but shows up in that second check.
+ */
+#include "flox-venue/collateral.h"
+#include "flox-venue/cross_margin.h"
+#include "flox-venue/ledger.h"
+#include "flox-venue/matching_engine.h"
+#include "flox/book/matching_book.h"
+
+#include "flox/backtest/fee_schedule.h"
+
+#include <gtest/gtest.h>
+#include <array>
+#include <cstdint>
+
+#include <cstdio>
+#include <cstdlib>
+
+using namespace flox;
+using namespace flox::venue;
+
+namespace
+{
+int g_failures = 0;
+int g_checks = 0;
+void check(bool ok, const char* e, int line)
+{
+  ++g_checks;
+  if (!ok)
+  {
+    ++g_failures;
+    std::printf("  FAIL line %d: %s\n", line, e);
+  }
+}
+#define CHECK(x) check((x), #x, __LINE__)
+
+constexpr SymbolId SYM = 1;
+constexpr AssetId BASE = 0;
+constexpr AssetId QUOTE = 1;
+constexpr uint64_t VENUE = 9;
+constexpr int NACCT = 8;
+
+Price px(double v) { return Price::fromDouble(v); }
+Quantity qty(double v) { return Quantity::fromDouble(v); }
+Amount base(double v) { return amountOf(qty(v)); }
+Amount quote(double v) { return amountOf(Volume::fromDouble(v)); }
+
+struct Rng
+{
+  uint64_t s;
+  uint64_t next()
+  {
+    s ^= s << 13;
+    s ^= s >> 7;
+    s ^= s << 17;
+    return s;
+  }
+};
+
+void test_spot_conservation()
+{
+  std::printf("test_spot_conservation\n");
+  Ledger led;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    led.deposit(a, BASE, base(1000));
+    led.deposit(a, QUOTE, quote(100000));
+  }
+  const Amount initBase = base(1000) * NACCT;
+  const Amount initQuote = quote(100000) * NACCT;
+
+  SymbolConfig c;
+  c.id = SYM;
+  c.tickSize = px(0.01);
+  c.minPrice = px(50);
+  c.maxPrice = px(150);
+  c.baseAsset = BASE;
+  c.quoteAsset = QUOTE;
+  MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
+  flox::FeeSchedule fs;
+  fs.addTier(0.0, -1.0, 2.0);  // maker rebate, taker fee -> venue nets fees
+  eng.setFeeSchedule(fs);
+  eng.setLedger(&led, VENUE);
+
+  auto sumAsset = [&](AssetId asset)
+  {
+    Amount t = 0;
+    for (int a = 1; a <= NACCT; ++a)
+    {
+      t += led.total(a, asset);
+    }
+    t += led.total(VENUE, asset);
+    return t;
+  };
+
+  Rng rng{0xDEADBEEF12345ULL};
+  const int64_t midRaw = px(100).raw();
+  const int64_t tickRaw = px(0.01).raw();
+  int breaches = 0;
+  OrderId nextId = 1;
+  for (int i = 0; i < 200000; ++i)
+  {
+    const uint64_t r = rng.next();
+    const uint32_t kind = r % 100;
+    if (kind < 20 && nextId > 1)
+    {
+      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, 0}}, i);
+    }
+    else if (kind < 30 && nextId > 1)
+    {
+      // Modify a random existing order (reprice + resize) -- must adjust the
+      // ledger reservation, else buying power leaks/double-counts.
+      const OrderId vid = 1 + (rng.next() % (nextId - 1));
+      const int ticks = static_cast<int>((r >> 1) % 101) - 50;
+      const Price np = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
+      const Quantity nq = qty(1.0 + static_cast<double>((r >> 24) % 5));
+      eng.submit(InboundCommand{ModifyOrder{vid, SYM, np, nq, 0}}, i);
+    }
+    else
+    {
+      NewOrder o;
+      o.id = nextId++;
+      o.symbol = SYM;
+      o.side = (r & 1) ? Side::BUY : Side::SELL;
+      o.accountId = 1 + (r >> 8) % NACCT;
+      const int ticks = static_cast<int>((r >> 1) % 101) - 50;
+      o.price = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
+      o.quantity = qty(1.0 + static_cast<double>((r >> 20) % 5));
+      o.type = (kind < 25) ? OrderType::MARKET : OrderType::LIMIT;
+      if (kind >= 25 && kind < 32)  // stop-market: reserve-at-trigger + settle path
+      {
+        o.type = OrderType::STOP_MARKET;
+        const int tt = static_cast<int>((r >> 33) % 61) - 30;
+        o.triggerPrice = Price::fromRaw(midRaw + static_cast<int64_t>(tt) * tickRaw);
+      }
+      // Exercise GTD expiry, OCO cancellation, and peg reprice under the ledger
+      // conservation invariant (each must release/re-reserve buying power).
+      if (o.type == OrderType::LIMIT)
+      {
+        const uint32_t t = static_cast<uint32_t>((r >> 32) % 100);
+        if (t < 15)
+        {
+          o.tif = TimeInForce::GTD;
+          o.expiryNs = i + 1 + static_cast<int64_t>((r >> 40) % 50);  // expires soon
+        }
+        else if (t < 25)
+        {
+          o.ocoGroup = 1 + ((r >> 44) % 5);
+        }
+        else if (t < 35)
+        {
+          const uint32_t pr = static_cast<uint32_t>((r >> 48) % 3);
+          o.peg = pr == 0 ? PegRef::Bid : (pr == 1 ? PegRef::Ask : PegRef::Mid);
+        }
+        else if (t < 45)
+        {
+          o.tif = TimeInForce::IOC;  // partial fill + residual cancel must release reserve
+        }
+        else if (t < 52)
+        {
+          o.tif = TimeInForce::FOK;  // all-or-nothing: full reserve released on kill
+        }
+        else if (t < 58)
+        {
+          o.postOnly = true;  // maker-only: rejected-on-cross must release reserve
+        }
+        else if (t < 66)
+        {
+          // Iceberg: reserves the FULL qty but shows only a peak. Adds peak
+          // refill + hidden-reserve matching to the fuzz. NOTE: a per-order
+          // reservation bug (over-release against the peak on modify) is NOT
+          // visible here -- the ledger aggregates `reserved` per account, so one
+          // order's over-release is masked by other orders. The precise guard is
+          // the single-order test_iceberg_modify_shrink in test_ledger.
+          o.visibleQuantity = qty(1.0 + static_cast<double>((r >> 52) % 2));
+        }
+      }
+      eng.submit(InboundCommand{o}, i);
+    }
+    if (sumAsset(BASE) != initBase || sumAsset(QUOTE) != initQuote)
+    {
+      ++breaches;
+      if (breaches == 1)
+      {
+        std::printf("  first breach at op %d\n", i);
+      }
+    }
+  }
+  CHECK(breaches == 0);
+
+  // Reserved-invariant: drain the whole book, then EVERY account's reserved must
+  // return to zero. A stuck reservation (leak) is invisible to conservation-of-
+  // total but shows up here as residual `reserved` after all orders are gone.
+  for (OrderId id = 1; id < nextId; ++id)
+  {
+    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 999999);
+  }
+  int reservedLeaks = 0;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    if (led.reserved(a, BASE) != 0 || led.reserved(a, QUOTE) != 0)
+    {
+      ++reservedLeaks;
+    }
+  }
+  CHECK(reservedLeaks == 0);
+  std::printf("  200000 ops, base/quote conserved (%d breaches); reserved drained clean (%d leaks)\n",
+              breaches, reservedLeaks);
+}
+
+void test_perp_conservation(bool adl)
+{
+  std::printf("test_perp_conservation%s\n", adl ? " (ADL)" : "");
+  Ledger led;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    led.deposit(a, QUOTE, quote(1000000));
+  }
+  if (adl)
+  {
+    led.deposit(VENUE, QUOTE, quote(1000000));  // seed insurance fund
+  }
+  Amount initQuote = quote(1000000) * NACCT;
+  if (adl)
+  {
+    initQuote += quote(1000000);
+  }
+
+  SymbolConfig c;
+  c.id = SYM;
+  c.tickSize = px(0.01);
+  c.minPrice = px(50);
+  c.maxPrice = px(150);
+  c.quoteAsset = QUOTE;
+  c.linearPerp = true;
+  c.initialMarginBps = 1000;
+  c.maintenanceMarginBps = 500;
+  c.autoDeleverage = adl;
+  MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
+  eng.setLedger(&led, VENUE);
+
+  auto sumQuote = [&]()
+  {
+    Amount t = 0;
+    for (int a = 1; a <= NACCT; ++a)
+    {
+      t += led.total(a, QUOTE);
+    }
+    t += led.total(VENUE, QUOTE);
+    return t;
+  };
+
+  Rng rng{0x1234ABCDULL};
+  const int64_t midRaw = px(100).raw();
+  const int64_t tickRaw = px(0.01).raw();
+  int breaches = 0;
+  OrderId nextId = 1;
+  for (int i = 0; i < 100000; ++i)
+  {
+    const uint64_t r = rng.next();
+    const uint32_t kind = r % 100;
+    if (kind < 15 && nextId > 1)
+    {
+      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, 0}}, i);
+    }
+    else if (kind < 25)
+    {
+      // periodic mark move -> may trigger liquidations
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      eng.setMarkPrice(Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw));
+    }
+    else
+    {
+      NewOrder o;
+      o.id = nextId++;
+      o.symbol = SYM;
+      o.side = (r & 1) ? Side::BUY : Side::SELL;
+      o.accountId = 1 + (r >> 8) % NACCT;
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      o.price = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
+      o.quantity = qty(1.0 + static_cast<double>((r >> 20) % 5));
+      eng.submit(InboundCommand{o}, i);
+    }
+    if (sumQuote() != initQuote)
+    {
+      ++breaches;
+      if (breaches == 1)
+      {
+        std::printf("  first breach at op %d\n", i);
+      }
+    }
+  }
+  CHECK(breaches == 0);
+
+  // Perp reserved-invariant: drain resting orders, then every reserved quote
+  // unit must be backed by an open position's posted margin -- no IM leak.
+  for (OrderId id = 1; id < nextId; ++id)
+  {
+    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 999999);
+  }
+  Amount reservedSum = 0;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    reservedSum += led.reserved(a, QUOTE);
+  }
+  CHECK(reservedSum == eng.totalPositionMargin());
+  std::printf(
+      "  100000 ops (orders+marks+liquidations), collateral conserved (%d breaches); "
+      "reserved==position-margin (%s)\n",
+      breaches, reservedSum == eng.totalPositionMargin() ? "ok" : "LEAK");
+}
+
+void test_cross_margin_conservation()
+{
+  std::printf("test_cross_margin_conservation\n");
+  Ledger led;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    led.deposit(a, QUOTE, quote(1000000));
+  }
+  const Amount initQuote = quote(1000000) * NACCT;
+
+  CrossMarginManager m(led, QUOTE, VENUE);
+  constexpr SymbolId S1 = 1;
+  constexpr SymbolId S2 = 2;
+  m.configureSymbol(S1, /*im*/ 1000, /*mm*/ 500);
+  m.configureSymbol(S2, /*im*/ 2000, /*mm*/ 1000);
+  m.setMark(S1, px(100));
+  m.setMark(S2, px(100));
+
+  auto sumQuote = [&]()
+  {
+    Amount t = 0;
+    for (int a = 1; a <= NACCT; ++a)
+    {
+      t += led.total(a, QUOTE);
+    }
+    t += led.total(VENUE, QUOTE);
+    return t;
+  };
+
+  Rng rng{0xC0FFEE99ULL};
+  const int64_t midRaw = px(100).raw();
+  const int64_t tickRaw = px(0.01).raw();
+  int breaches = 0;
+  for (int i = 0; i < 100000; ++i)
+  {
+    const uint64_t r = rng.next();
+    const uint32_t kind = r % 100;
+    const SymbolId sym = (r & 2) ? S2 : S1;
+    if (kind < 20)
+    {
+      // mark move -> may liquidate underwater portfolios
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      m.setMark(sym, Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw));
+    }
+    else if (kind < 25)
+    {
+      // periodic funding on the portfolio book -- must conserve
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      m.applyFunding(sym, 0.0005, Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw));
+    }
+    else
+    {
+      uint64_t buyer = 1 + (r >> 8) % NACCT;
+      uint64_t seller = 1 + (r >> 16) % NACCT;
+      if (buyer == seller)
+      {
+        seller = 1 + (seller % NACCT);
+      }
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      const int64_t priceRaw = midRaw + static_cast<int64_t>(ticks) * tickRaw;
+      const int64_t q = qty(1.0 + static_cast<double>((r >> 24) % 5)).raw();
+      // Both sides settle through the same pool -> value conserved by construction.
+      m.applyFill(buyer, sym, Side::BUY, q, priceRaw);
+      m.applyFill(seller, sym, Side::SELL, q, priceRaw);
+    }
+    if (sumQuote() != initQuote)
+    {
+      ++breaches;
+      if (breaches == 1)
+      {
+        std::printf("  first breach at op %d\n", i);
+      }
+    }
+  }
+  CHECK(breaches == 0);
+  std::printf(
+      "  100000 ops (2-symbol cross-margin fills+marks+funding+liquidations), collateral "
+      "conserved (%d breaches)\n",
+      breaches);
+}
+
+void test_multi_collateral_conservation()
+{
+  std::printf("test_multi_collateral_conservation\n");
+  constexpr AssetId BTC_COL = 2;  // collateral asset (distinct from the perp symbol)
+  Ledger led;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    led.deposit(a, QUOTE, quote(500));                           // thin quote
+    led.deposit(a, BTC_COL, amountOf(Quantity::fromDouble(2)));  // + coin collateral
+  }
+  led.deposit(VENUE, QUOTE, quote(100000000));  // deep insurance
+  const Amount initQuote = quote(500) * NACCT + quote(100000000);
+  const Amount initBtc = amountOf(Quantity::fromDouble(2)) * NACCT;
+
+  CollateralSchedule sched;
+  sched.configure(QUOTE, px(1.0).raw(), 0);
+  sched.configure(BTC_COL, px(300).raw(), 1500);  // coin priced at 300, 15% haircut
+
+  CrossMarginManager m(led, QUOTE, VENUE, [](const Liquidation&) {}, /*adl*/ false);
+  m.setCollateralSchedule(&sched);
+  m.configureSymbol(SYM, /*im*/ 1000, /*mm*/ 500);
+  m.setMark(SYM, px(100));
+
+  auto sumAsset = [&](AssetId asset)
+  {
+    Amount t = led.total(VENUE, asset);
+    for (int a = 1; a <= NACCT; ++a)
+    {
+      t += led.total(a, asset);
+    }
+    return t;
+  };
+
+  Rng rng{0xC01A7E5ULL};
+  const int64_t midRaw = px(100).raw();
+  const int64_t tickRaw = px(0.01).raw();
+  int breaches = 0;
+  for (int i = 0; i < 100000; ++i)
+  {
+    const uint64_t r = rng.next();
+    const uint32_t kind = r % 100;
+    if (kind < 20)
+    {
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      m.setMark(SYM, Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw));
+    }
+    else if (kind < 25)
+    {
+      // re-price the coin collateral (revaluation shifts who is liquidatable)
+      const int d = static_cast<int>((r >> 3) % 201) - 100;  // +/- 100
+      sched.setPrice(BTC_COL, px(300 + d).raw());
+    }
+    else
+    {
+      uint64_t buyer = 1 + (r >> 8) % NACCT;
+      uint64_t seller = 1 + (r >> 16) % NACCT;
+      if (buyer == seller)
+      {
+        seller = 1 + (seller % NACCT);
+      }
+      const int ticks = static_cast<int>((r >> 1) % 61) - 30;
+      const int64_t priceRaw = midRaw + static_cast<int64_t>(ticks) * tickRaw;
+      const int64_t q = qty(1.0 + static_cast<double>((r >> 24) % 5)).raw();
+      m.applyFill(buyer, SYM, Side::BUY, q, priceRaw);
+      m.applyFill(seller, SYM, Side::SELL, q, priceRaw);
+    }
+    if (sumAsset(QUOTE) != initQuote || sumAsset(BTC_COL) != initBtc)
+    {
+      ++breaches;
+      if (breaches == 1)
+      {
+        std::printf("  first breach at op %d\n", i);
+      }
+    }
+  }
+  CHECK(breaches == 0);
+  std::printf(
+      "  100000 ops (2-asset collateral: fills+marks+revaluation+collateral-liquidation), "
+      "quote+coin conserved (%d breaches)\n",
+      breaches);
+}
+
+}  // namespace
+
+TEST(VenueConservationFuzz, SpotValueAndReservationsConserved)
+{
+  g_failures = 0;  // independent baseline: a prior scenario must not taint this one
+  test_spot_conservation();
+  EXPECT_EQ(g_failures, 0);
+}
+
+TEST(VenueConservationFuzz, PerpCollateralConserved)
+{
+  g_failures = 0;  // independent baseline: a prior scenario must not taint this one
+  test_perp_conservation(/*adl=*/false);
+  EXPECT_EQ(g_failures, 0);
+}
+
+TEST(VenueConservationFuzz, PerpWithAdlConserved)
+{
+  g_failures = 0;  // independent baseline: a prior scenario must not taint this one
+  test_perp_conservation(/*adl=*/true);
+  EXPECT_EQ(g_failures, 0);
+}
+
+TEST(VenueConservationFuzz, CrossMarginConserved)
+{
+  g_failures = 0;  // independent baseline: a prior scenario must not taint this one
+  test_cross_margin_conservation();
+  EXPECT_EQ(g_failures, 0);
+}
+
+TEST(VenueConservationFuzz, MultiCollateralConserved)
+{
+  g_failures = 0;  // independent baseline: a prior scenario must not taint this one
+  test_multi_collateral_conservation();
+  EXPECT_EQ(g_failures, 0);
+}

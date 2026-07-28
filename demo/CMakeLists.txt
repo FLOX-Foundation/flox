@@ -43,3 +43,11 @@ target_link_libraries(market_profile_demo PRIVATE ${FLOX})
 add_executable(cex_demo src/cex_demo.cpp)
 target_include_directories(cex_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(cex_demo PRIVATE ${FLOX})
+
+# Multi-agent venue simulation: several agents trading against one shared book
+# through the venue matching engine (needs the venue module).
+if(FLOX_BUILD_VENUE)
+  add_executable(multi_agent_venue_demo src/multi_agent_venue_demo.cpp)
+  target_include_directories(multi_agent_venue_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+  target_link_libraries(multi_agent_venue_demo PRIVATE flox::venue)
+endif()

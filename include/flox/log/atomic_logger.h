@@ -60,6 +60,10 @@ class AtomicLogger final : public ILogger
     size_t length;
     char message[MAX_MESSAGE_SIZE];
     std::chrono::system_clock::time_point timestamp;
+    // Publication flag. A producer claims a slot by advancing _writeIndex, so
+    // the consumer can see the index move before the payload is written; it
+    // must wait for this to be set (release) before reading the fields.
+    std::atomic<bool> ready{false};
   };
 
   AtomicLoggerOptions _opts;
@@ -80,6 +84,7 @@ class AtomicLogger final : public ILogger
   void flushLoop();
   void rotateIfNeeded();
   void rotate();
+  void consumeSlot(size_t idx);
   void writeToOutput(const LogEntry& entry);
   void formatTimestamp(std::chrono::system_clock::time_point ts, char* buf, size_t bufSize);
 };

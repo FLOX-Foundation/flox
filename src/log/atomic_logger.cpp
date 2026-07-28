@@ -86,6 +86,9 @@ void AtomicLogger::log(LogLevel level, std::string_view msg)
   entry.length = std::min(msg.size(), MAX_MESSAGE_SIZE - 1);
   std::memcpy(entry.message, msg.data(), entry.length);
   entry.message[entry.length] = '\0';
+  // Publish only now: everything above must be visible to the consumer before
+  // it is allowed to read this slot.
+  entry.ready.store(true, std::memory_order_release);
 
   _cv.notify_one();
 }
@@ -103,7 +106,7 @@ void AtomicLogger::flushLoop()
     {
       rotateIfNeeded();
       const size_t idx = _readIndex.fetch_add(1, std::memory_order_acq_rel) % BUFFER_SIZE;
-      writeToOutput(_buffer[idx]);
+      consumeSlot(idx);
     }
   }
 
@@ -111,7 +114,7 @@ void AtomicLogger::flushLoop()
   {
     rotateIfNeeded();
     const size_t idx = _readIndex.fetch_add(1) % BUFFER_SIZE;
-    writeToOutput(_buffer[idx]);
+    consumeSlot(idx);
   }
 }
 
@@ -150,6 +153,20 @@ void AtomicLogger::rotate()
   _file = std::fopen(path.c_str(), "w");
   _bytesWritten = 0;
   _lastRotation = std::chrono::system_clock::now();
+}
+
+// Read a claimed slot once its producer has published it. The slot index can
+// become visible before the payload is written, so spin briefly on the flag
+// instead of racing the producer.
+void AtomicLogger::consumeSlot(size_t idx)
+{
+  LogEntry& entry = _buffer[idx];
+  while (!entry.ready.load(std::memory_order_acquire))
+  {
+    std::this_thread::yield();
+  }
+  writeToOutput(entry);
+  entry.ready.store(false, std::memory_order_relaxed);
 }
 
 void AtomicLogger::writeToOutput(const LogEntry& entry)

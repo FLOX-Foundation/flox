@@ -342,17 +342,19 @@ TEST(Account, CrossAccountDeficitTriggersAdlAcrossAccounts)
   e.attachAccount(&aShort);
 
   // BTC drops 20% (-10000 for aLong, +10000 for aShort). aLong
-  // liquidates with 10k deficit. ADL closes aShort's profitable
-  // BTC short to absorb the deficit; aShort's equity is credited
-  // with the realised +10k.
+  // liquidates with a 10k deficit. ADL closes aShort's profitable
+  // BTC short at the bankruptcy price: it forgoes exactly the gain
+  // that absorbs the deficit and keeps only the excess.
   const double aShortEquityBefore = aShort.equity();
   const auto out = e.onMark(BTC, 40'000.0);
   EXPECT_GE(out.liquidationsCount, 1u);
   EXPECT_GE(out.adlCloseoutsCount, 1u);
   // aShort's BTC position should be gone (ADL'd).
   EXPECT_EQ(aShort.positionCount(), 0u);
-  // aShort's equity rose by the realised +10k from the ADL close.
-  EXPECT_GT(aShort.equity(), aShortEquityBefore);
+  // Deficit (10k) == the winner's gain (10k), so the whole gain is
+  // confiscated and equity is unchanged. Crediting the full +10k here
+  // would leave the deficit unfunded, i.e. create money.
+  EXPECT_DOUBLE_EQ(aShort.equity(), aShortEquityBefore);
 }
 
 TEST(Account, IsolatedAndCrossAccountsCoexist)

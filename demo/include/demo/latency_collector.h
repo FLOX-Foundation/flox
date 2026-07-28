@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -41,11 +42,14 @@ class LatencyCollector
 
   static constexpr size_t MaxSamples = 1 << 20;  // 1M
 
+  // Called from every connector/strategy thread: claim a slot atomically,
+  // then write the sample without contention.
   void record(LabelId id, std::chrono::nanoseconds delta)
   {
-    if (_count[id] < MaxSamples)
+    const size_t slot = _count[id].fetch_add(1, std::memory_order_relaxed);
+    if (slot < MaxSamples)
     {
-      _samples[id][_count[id]++] = delta.count();
+      _samples[id][slot] = delta.count();
     }
   }
 
@@ -53,8 +57,8 @@ class LatencyCollector
   {
     for (size_t i = 0; i < LabelCount; ++i)
     {
-      const auto n = _count[i];
-      if (n == 0 || n > MaxSamples)
+      const auto n = std::min(_count[i].load(std::memory_order_relaxed), MaxSamples);
+      if (n == 0)
       {
         continue;
       }
@@ -83,7 +87,7 @@ class LatencyCollector
 
  private:
   inline static std::array<std::array<int64_t, MaxSamples>, LabelCount> _samples{};
-  inline static std::array<size_t, LabelCount> _count{};
+  inline static std::array<std::atomic<size_t>, LabelCount> _count{};
 };
 
 }  // namespace demo
