@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2FFLOX-Foundation%2Fflox.svg)](https://mcptoplist.com/server/glama%2FFLOX-Foundation%2Fflox)
+
 [![CI](https://github.com/flox-foundation/flox/actions/workflows/ci.yml/badge.svg)](https://github.com/flox-foundation/flox/actions)
 [![Docs](https://img.shields.io/badge/docs-site-blue)](https://flox-foundation.github.io/flox)
 [![PyPI](https://img.shields.io/pypi/v/flox-py?v=1)](https://pypi.org/project/flox-py/)
