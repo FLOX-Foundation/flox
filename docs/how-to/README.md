@@ -20,6 +20,7 @@ Solve specific problems. Assumes you know the basics.
 | [Backtesting](backtest.md) | Run strategy backtests on historical data |
 | [Realistic backtest in one call](realistic-backtest.md) | Venue-typed factory that wires executor, account, fees, funding, liquidation, and rate limits |
 | [Backtest recipes](backtest-recipes.md) | Runnable end-to-end recipes for the common backtest assembly patterns |
+| [Sweep a signal over a tape](strategy-pump.md) | Monomorphic replay for indicator studies and parameter sweeps |
 | [Realistic fills](backtest-realistic-fills.md) | Slippage, queue position, partial fills |
 | [Record and replay tapes](tape-record.md) | Capture live market data to `.floxlog`, replay deterministically |
 | [Run a paper engine (`flox engine sim`)](engine-sim.md) | Replay a tape through a strategy behind a control server an agent can drive |

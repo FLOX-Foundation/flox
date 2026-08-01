@@ -26,6 +26,7 @@
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/engine/engine_config.h"
 #include "flox/engine/event_dispatcher.h"
+#include "flox/util/base/sanitizer.h"
 #include "flox/util/concurrency/jthread.h"
 #include "flox/util/memory/pool.h"
 #include "flox/util/performance/busy_backoff.h"
@@ -57,6 +58,9 @@ class EventBus : public ISubsystem
   static_assert(CapacityPow2 > 0, "Capacity must be > 0");
   static_assert((CapacityPow2 & (CapacityPow2 - 1)) == 0, "Capacity must be power of 2");
   static constexpr size_t Mask = CapacityPow2 - 1;
+  // Upper bound on how many contiguous published events a consumer delivers
+  // before publishing its progress (see the worker loop batch effect).
+  static constexpr size_t kMaxConsumeRun = 1024;
 
  public:
   using Listener = typename ListenerType<Event>::type;
@@ -85,9 +89,12 @@ class EventBus : public ISubsystem
   };
 #endif
 
+  using ConsumerRunnerFn = void (*)(EventBus*, uint32_t, void*, bool, BackoffMode);
+
   struct ConsumerSlot
   {
-    Listener* listener{nullptr};
+    void* listener{nullptr};
+    ConsumerRunnerFn runner{nullptr};
     bool required{true};                       // influence on gating
     alignas(64) std::atomic<int64_t> seq{-1};  // last handled seq
     std::optional<jthread> thread{};
@@ -131,26 +138,17 @@ class EventBus : public ISubsystem
 
   bool subscribe(Listener* listener, bool required = true)
   {
-    if (!listener)
-    {
-      return false;
-    }
-    if (_running.load(std::memory_order_acquire))
-    {
-      return false;  // Cannot subscribe after start
-    }
-    const uint32_t idx = _consumerCount.fetch_add(1, std::memory_order_acq_rel);
-    if (idx >= MaxConsumers)
-    {
-      _consumerCount.fetch_sub(1, std::memory_order_acq_rel);
-      return false;
-    }
-    _consumers[idx].listener = listener;
-    _consumers[idx].required = required;
-    _consumers[idx].seq.store(-1, std::memory_order_relaxed);
-    _consumers[idx].coreIndex = idx;  // Store index for core distribution
-    _gating[idx].store(required ? -1 : INT64_MAX, std::memory_order_relaxed);
-    return true;
+    return subscribeImpl(listener, &runConsumer<Listener>, required);
+  }
+
+  // Subscribe with a concrete type. The consumer loop is instantiated
+  // around L, so dispatch is a direct call and the handler inlines into the
+  // run over published events. L only needs the handler methods the Event's
+  // dispatcher calls; deriving from Listener is not required.
+  template <typename L>
+  bool subscribeStatic(L* listener, bool required = true)
+  {
+    return subscribeImpl(listener, &runConsumer<L>, required);
   }
 
   void start() override
@@ -166,11 +164,12 @@ class EventBus : public ISubsystem
     for (uint32_t i = 0; i < n; ++i)
     {
       auto* l = _consumers[i].listener;
+      auto runner = _consumers[i].runner;
       auto required = _consumers[i].required;
       auto coreIdx = _consumers[i].coreIndex;
       auto backoffMode = _backoffMode;
 
-      _consumers[i].thread.emplace([this, i, l, required, coreIdx, backoffMode]
+      _consumers[i].thread.emplace([this, i, l, runner, required, coreIdx, backoffMode]
                                    {
 #if FLOX_CPU_AFFINITY_ENABLED
          auto threadCpuAffinity = performance::createCpuAffinity();
@@ -222,63 +221,7 @@ class EventBus : public ISubsystem
            if (_active.fetch_sub(1, std::memory_order_acq_rel) == 1) _cv.notify_one();
          }
  
-         BusyBackoff backoff(backoffMode);
-         int64_t next = -1;
-
-         while (_running.load(std::memory_order_acquire))
-         {
-           const int64_t seq = next + 1;
-           const size_t  idx = size_t(seq) & Mask;
- 
-           while (_published[idx].load(std::memory_order_acquire) != seq)
-           {
-             if (!_running.load(std::memory_order_relaxed)) break;
-             backoff.pause();
-           }
-
-           if (!_running.load(std::memory_order_relaxed)) break;
-
-           // Value 2 = timeout placeholder (event was never constructed in this slot)
-           // Value 0 = reclaimed
-           // Value 1 = valid event
-           // ALL consumers must skip timeout placeholders -- dispatching would
-           // read stale/uninitialized memory from a previous wrap-around.
-           if (_constructed[idx].load(std::memory_order_acquire) == 1)
-           {
-             FLOX_PROFILE_SCOPE("Disruptor::deliver");
-             EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
-             _consumeCount.fetch_add(1, std::memory_order_relaxed);
-           }
-
-           _consumers[i].seq.store(seq, std::memory_order_release);
-           _gating[i].store(required ? seq : INT64_MAX, std::memory_order_release);
-
-           next = seq;
-           backoff.reset();
-         }
-
-         if (_drainOnStop)
-         {
-           int64_t seq = _consumers[i].seq.load(std::memory_order_relaxed);
-           for (;;)
-           {
-             const int64_t want = seq + 1;
-             const size_t  idx  = size_t(want) & Mask;
-             if (_published[idx].load(std::memory_order_acquire) != want) break;
-
-             if (_constructed[idx].load(std::memory_order_acquire) == 1)
-             {
-               FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
-               EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
-               _consumeCount.fetch_add(1, std::memory_order_relaxed);
-             }
-
-             _consumers[i].seq.store(want, std::memory_order_release);
-             _gating[i].store(required ? want : INT64_MAX, std::memory_order_release);
-
-             seq = want;
-           }
-         } });
+         runner(this, i, l, required, backoffMode); });
     }
 
     std::unique_lock lk(_readyMutex);
@@ -308,10 +251,123 @@ class EventBus : public ISubsystem
       _published[i].store(-1, std::memory_order_relaxed);
     }
     _reclaimSeq.store(-1, std::memory_order_relaxed);
+    _cachedMinConsumed.store(-1, std::memory_order_relaxed);
   }
 
   int64_t publish(const Event& ev) { return do_publish(ev, std::nullopt).second; }
   int64_t publish(Event&& ev) { return do_publish(std::move(ev), std::nullopt).second; }
+
+  // Publish a contiguous batch: one sequence reservation, one wrap/reclaim
+  // wait for the whole range, then a single release fence covering all slot
+  // stamps instead of one release store per event. Blocking, like publish().
+  // Returns the last sequence, or -1 if the bus is stopped.
+  int64_t publishBatch(const Event* evs, size_t count)
+  {
+    FLOX_PROFILE_SCOPE("Disruptor::publishBatch");
+
+    static_assert(CapacityPow2 >= 2);
+    assert(count > 0 && count <= CapacityPow2 / 2 && "batch must fit the ring with room to spare");
+
+    if (!_running.load(std::memory_order_acquire))
+    {
+      return -1;
+    }
+
+    const int64_t lastSeq = _next.fetch_add(static_cast<int64_t>(count),
+                                            std::memory_order_acq_rel) +
+                            static_cast<int64_t>(count);
+    const int64_t firstSeq = lastSeq - static_cast<int64_t>(count) + 1;
+    if (firstSeq < 0)
+    {
+      return -1;
+    }
+
+    // Wrap gating for the whole range (required consumers).
+    const int64_t wrap = lastSeq - static_cast<int64_t>(CapacityPow2);
+    {
+      BusyBackoff bo;
+      int64_t cachedMin = _cachedMin.load(std::memory_order_acquire);
+      while (wrap > cachedMin)
+      {
+        if (!_running.load(std::memory_order_relaxed))
+        {
+          return -1;
+        }
+        cachedMin = minGating();
+        _cachedMin.store(cachedMin, std::memory_order_release);
+        if (wrap <= cachedMin)
+        {
+          break;
+        }
+        bo.pause();
+      }
+    }
+
+    // Reclaim gating for the whole range (all consumers), through the
+    // monotonic cache.
+    if (wrap >= 0 && _cachedMinConsumed.load(std::memory_order_acquire) < wrap)
+    {
+      BusyBackoff reclaimBo;
+      int64_t observed;
+      while ((observed = minConsumed()) < wrap)
+      {
+        if (!_running.load(std::memory_order_relaxed))
+        {
+          return -1;
+        }
+        reclaimBo.pause();
+      }
+      _cachedMinConsumed.store(observed, std::memory_order_release);
+    }
+
+    for (size_t k = 0; k < count; ++k)
+    {
+      const int64_t seq = firstSeq + static_cast<int64_t>(k);
+      const size_t idx = size_t(seq) & Mask;
+      if (_constructed[idx].exchange(0, std::memory_order_acq_rel))
+      {
+        slot_ptr(idx)->~Event();
+      }
+      ::new (slot_ptr(idx)) Event(evs[k]);
+      auto& obj = slot_ref(idx);
+      if constexpr (requires { obj->tickSequence; })
+      {
+        obj->tickSequence = static_cast<uint64_t>(seq);
+      }
+      if constexpr (requires { obj.tickSequence; })
+      {
+        obj.tickSequence = static_cast<uint64_t>(seq);
+      }
+    }
+
+    // ThreadSanitizer cannot see thread fences, so under TSan every stamp is
+    // its own release store. Same correctness, and TSan gets a visible
+    // happens-before edge. The dead branch costs nothing.
+    if constexpr (FLOX_TSAN_ENABLED != 0)
+    {
+      for (size_t k = 0; k < count; ++k)
+      {
+        const int64_t seq = firstSeq + static_cast<int64_t>(k);
+        const size_t idx = size_t(seq) & Mask;
+        _constructed[idx].store(1, std::memory_order_release);
+        _published[idx].store(seq, std::memory_order_release);
+      }
+    }
+    else
+    {
+      std::atomic_thread_fence(std::memory_order_release);
+      for (size_t k = 0; k < count; ++k)
+      {
+        const int64_t seq = firstSeq + static_cast<int64_t>(k);
+        const size_t idx = size_t(seq) & Mask;
+        _constructed[idx].store(1, std::memory_order_relaxed);
+        _published[idx].store(seq, std::memory_order_relaxed);
+      }
+    }
+
+    _publishCount.fetch_add(count, std::memory_order_relaxed);
+    return lastSeq;
+  }
 
   // Publish with timeout - returns result and sequence number (-1 on failure).
   // Default 1ms: zero-timeout is an anti-pattern on multi-core due to cache coherency latency.
@@ -431,6 +487,141 @@ class EventBus : public ISubsystem
 #endif
 
  private:
+  bool subscribeImpl(void* listener, ConsumerRunnerFn runner, bool required)
+  {
+    if (!listener)
+    {
+      return false;
+    }
+    if (_running.load(std::memory_order_acquire))
+    {
+      return false;  // Cannot subscribe after start
+    }
+    const uint32_t idx = _consumerCount.fetch_add(1, std::memory_order_acq_rel);
+    if (idx >= MaxConsumers)
+    {
+      _consumerCount.fetch_sub(1, std::memory_order_acq_rel);
+      return false;
+    }
+    _consumers[idx].listener = listener;
+    _consumers[idx].runner = runner;
+    _consumers[idx].required = required;
+    _consumers[idx].seq.store(-1, std::memory_order_relaxed);
+    _consumers[idx].coreIndex = idx;  // Store index for core distribution
+    _gating[idx].v.store(required ? -1 : INT64_MAX, std::memory_order_relaxed);
+    return true;
+  }
+
+  template <typename L>
+  static void runConsumer(EventBus* self, uint32_t i, void* obj, bool required, BackoffMode mode)
+  {
+    self->consumerLoop(i, static_cast<L*>(obj), required, mode);
+  }
+
+  // The whole consume loop, monomorphic in the subscriber type. For
+  // L = Listener this is exactly the historical virtual path; for a concrete
+  // L (via subscribeStatic) dispatch resolves statically and the handler
+  // inlines into the batched run.
+  template <typename L>
+  void consumerLoop(uint32_t i, L* l, bool required, BackoffMode backoffMode)
+  {
+    BusyBackoff backoff(backoffMode);
+    int64_t next = -1;
+
+    while (_running.load(std::memory_order_acquire))
+    {
+      const int64_t seq = next + 1;
+      const size_t idx = size_t(seq) & Mask;
+
+      while (_published[idx].load(std::memory_order_acquire) != seq)
+      {
+        if (!_running.load(std::memory_order_relaxed))
+        {
+          break;
+        }
+        backoff.pause();
+      }
+
+      if (!_running.load(std::memory_order_relaxed))
+      {
+        break;
+      }
+
+      // Batch effect: consume the whole contiguous published run and
+      // publish progress once at its end, instead of two release stores
+      // per event. The run is bounded so producers waiting on the wrap
+      // never starve for progress longer than kMaxConsumeRun events.
+      int64_t last = next;
+      int64_t cur = seq;
+      uint64_t delivered = 0;
+      size_t run = 0;
+      while (run < kMaxConsumeRun)
+      {
+        const size_t cidx = size_t(cur) & Mask;
+        if (_published[cidx].load(std::memory_order_acquire) != cur)
+        {
+          break;
+        }
+
+        // Value 2 = timeout placeholder (event was never constructed in
+        // this slot), value 0 = reclaimed, value 1 = valid event. ALL
+        // consumers must skip timeout placeholders -- dispatching would
+        // read stale/uninitialized memory from a previous wrap-around.
+        // Relaxed is enough: the construction store is ordered before the
+        // slot stamp acquired above.
+        if (_constructed[cidx].load(std::memory_order_relaxed) == 1)
+        {
+          FLOX_PROFILE_SCOPE("Disruptor::deliver");
+          EventDispatcher<Event>::dispatch(slot_ref(cidx), *l);
+          ++delivered;
+        }
+
+        last = cur;
+        ++cur;
+        ++run;
+      }
+
+      _consumers[i].seq.store(last, std::memory_order_release);
+      if (required)
+      {
+        _gating[i].v.store(last, std::memory_order_release);
+      }
+      if (delivered != 0)
+      {
+        _consumeCount.fetch_add(delivered, std::memory_order_relaxed);
+      }
+
+      next = last;
+      backoff.reset();
+    }
+
+    if (_drainOnStop)
+    {
+      int64_t seq = _consumers[i].seq.load(std::memory_order_relaxed);
+      for (;;)
+      {
+        const int64_t want = seq + 1;
+        const size_t idx = size_t(want) & Mask;
+        if (_published[idx].load(std::memory_order_acquire) != want)
+        {
+          break;
+        }
+
+        if (_constructed[idx].load(std::memory_order_acquire) == 1)
+        {
+          FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
+          EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
+          _consumeCount.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        _consumers[i].seq.store(want, std::memory_order_release);
+        _gating[i].v.store(required ? want : INT64_MAX, std::memory_order_release);
+
+        seq = want;
+      }
+    }
+  }
+
   template <typename Ev>
   std::pair<PublishResult, int64_t> do_publish(Ev&& ev, std::optional<std::chrono::microseconds> timeout)
   {
@@ -454,7 +645,7 @@ class EventBus : public ISubsystem
     const int64_t wrap = seq - static_cast<int64_t>(CapacityPow2);
 
     BusyBackoff bo;
-    int64_t cachedMin = _cachedMin.load(std::memory_order_relaxed);
+    int64_t cachedMin = _cachedMin.load(std::memory_order_acquire);
 
     auto startTime = timeout.has_value() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 
@@ -481,7 +672,7 @@ class EventBus : public ISubsystem
       }
 
       cachedMin = minGating();
-      _cachedMin.store(cachedMin, std::memory_order_relaxed);
+      _cachedMin.store(cachedMin, std::memory_order_release);
       if (wrap <= cachedMin)
       {
         break;
@@ -492,12 +683,16 @@ class EventBus : public ISubsystem
     const size_t idx = size_t(seq) & Mask;
 
     // Wait for ALL consumers (including optional) to process the old event
-    // before destroying it. This prevents use-after-free for optional consumers.
+    // before destroying it. This prevents use-after-free for optional
+    // consumers. minConsumed() is a scan over every consumer's progress line,
+    // so consult the monotonic cache first: any previously observed lower
+    // bound stays valid forever, and the scan runs only when it is not enough.
     const int64_t oldSeq = seq - static_cast<int64_t>(CapacityPow2);
-    if (oldSeq >= 0)
+    if (oldSeq >= 0 && _cachedMinConsumed.load(std::memory_order_acquire) < oldSeq)
     {
       BusyBackoff reclaimBo;
-      while (minConsumed() < oldSeq)
+      int64_t observed;
+      while ((observed = minConsumed()) < oldSeq)
       {
         if (!_running.load(std::memory_order_relaxed))
         {
@@ -505,6 +700,7 @@ class EventBus : public ISubsystem
         }
         reclaimBo.pause();
       }
+      _cachedMinConsumed.store(observed, std::memory_order_release);
     }
 
     // Destroy old event if present - only if not already reclaimed
@@ -539,7 +735,7 @@ class EventBus : public ISubsystem
     int64_t mn = INT64_MAX;
     for (uint32_t i = 0; i < n; ++i)
     {
-      const int64_t s = _gating[i].load(std::memory_order_acquire);
+      const int64_t s = _gating[i].v.load(std::memory_order_acquire);
       mn = s < mn ? s : mn;
     }
     return (mn == INT64_MAX) ? _next.load(std::memory_order_acquire) : mn;
@@ -614,11 +810,22 @@ class EventBus : public ISubsystem
   // _constructed values: 0 = empty/reclaimed, 1 = valid event, 2 = timeout placeholder
   alignas(64) std::array<std::atomic<uint8_t>, CapacityPow2> _constructed{};
 
+  // Monotonic lower bound of minConsumed(); stale values are always safe.
+  // Release/acquire so a publisher that trusts the cached bound inherits the
+  // happens-before edges the publisher that scanned it established.
+  alignas(64) std::atomic<int64_t> _cachedMinConsumed{-1};
+
   alignas(64) std::atomic<int64_t> _reclaimSeq{-1};
   alignas(64) std::atomic_flag _reclaimLock = ATOMIC_FLAG_INIT;
 
   alignas(64) std::array<ConsumerSlot, MaxConsumers> _consumers{};
-  alignas(64) std::array<std::atomic<int64_t>, MaxConsumers> _gating{};
+  // One cache line per consumer: packed gating atomics false-share between
+  // consumers storing progress and the producer scanning it.
+  struct alignas(64) PaddedSeq
+  {
+    std::atomic<int64_t> v{0};
+  };
+  alignas(64) std::array<PaddedSeq, MaxConsumers> _gating{};
   alignas(64) std::atomic<uint32_t> _consumerCount{0};
 
   std::condition_variable _cv;

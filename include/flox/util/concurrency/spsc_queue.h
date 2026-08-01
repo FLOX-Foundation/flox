@@ -152,6 +152,55 @@ class SPSCQueue
     return std::ref(*ptr);
   }
 
+  // --- segment API -----------------------------------------------------------
+  // Amortizes the ring protocol: one index publish per batch instead of one
+  // per item. Consumer: read_segment() -> process up to n items -> destroy
+  // them -> commit_read(k), k <= n. Producer: write_segment() -> placement-new
+  // up to n items into the segment -> commit_write(k), k <= n. Segments are
+  // contiguous; a wrapped queue takes two rounds. Unlike try_pop, the slot is
+  // republished to the producer only at commit, after the consumer is done
+  // with it.
+
+  size_t read_segment(T*& out) noexcept
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    const size_t head = _head.load(std::memory_order_acquire);
+    if (head == tail)
+    {
+      return 0;
+    }
+    out = reinterpret_cast<T*>(&_buffer[tail]);
+    return head > tail ? head - tail : Capacity - tail;
+  }
+
+  void commit_read(size_t n) noexcept
+  {
+    const size_t tail = _tail.load(std::memory_order_relaxed);
+    _tail.store((tail + n) & MASK, std::memory_order_release);
+  }
+
+  size_t write_segment(T*& out) noexcept
+  {
+    const size_t head = _head.load(std::memory_order_relaxed);
+    const size_t tail = _tail.load(std::memory_order_acquire);
+    const size_t free = (tail + Capacity - head - 1) & MASK;
+    if (free == 0)
+    {
+      return 0;
+    }
+    const size_t untilWrap = Capacity - head;
+    out = reinterpret_cast<T*>(&_buffer[head]);
+    return free < untilWrap ? free : untilWrap;
+  }
+
+  void commit_write(size_t n) noexcept
+  {
+    const size_t head = _head.load(std::memory_order_relaxed);
+    _head.store((head + n) & MASK, std::memory_order_release);
+  }
+
+  // ---------------------------------------------------------------------------
+
   void clear() noexcept
   {
     FLOX_PROFILE_SCOPE("SPSCQueue::clear");

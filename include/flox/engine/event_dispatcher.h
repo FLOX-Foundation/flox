@@ -24,7 +24,8 @@ struct EventDispatcher;
 template <typename T>
 struct EventDispatcher<pool::Handle<T>>
 {
-  static void dispatch(const pool::Handle<T>& ev, typename T::Listener& sub)
+  template <typename Sub>
+  static void dispatch(const pool::Handle<T>& ev, Sub& sub)
   {
     EventDispatcher<T>::dispatch(*ev, sub);
   }
@@ -33,7 +34,10 @@ struct EventDispatcher<pool::Handle<T>>
 template <>
 struct EventDispatcher<BookUpdateEvent>
 {
-  static void dispatch(const BookUpdateEvent& ev, IMarketDataSubscriber& sub)
+  // Templated on the subscriber so a statically-subscribed concrete type
+  // keeps its identity all the way to the handler call (see subscribeStatic).
+  template <typename Sub>
+  static void dispatch(const BookUpdateEvent& ev, Sub& sub)
   {
     sub.onBookUpdate(ev);
   }
@@ -42,7 +46,10 @@ struct EventDispatcher<BookUpdateEvent>
 template <>
 struct EventDispatcher<TradeEvent>
 {
-  static void dispatch(const TradeEvent& ev, IMarketDataSubscriber& sub)
+  // Templated on the subscriber so a statically-subscribed concrete type
+  // keeps its identity all the way to the handler call (see subscribeStatic).
+  template <typename Sub>
+  static void dispatch(const TradeEvent& ev, Sub& sub)
   {
     sub.onTrade(ev);
   }
@@ -51,7 +58,10 @@ struct EventDispatcher<TradeEvent>
 template <>
 struct EventDispatcher<BarEvent>
 {
-  static void dispatch(const BarEvent& ev, IMarketDataSubscriber& sub)
+  // Templated on the subscriber so a statically-subscribed concrete type
+  // keeps its identity all the way to the handler call (see subscribeStatic).
+  template <typename Sub>
+  static void dispatch(const BarEvent& ev, Sub& sub)
   {
     sub.onBar(ev);
   }
@@ -60,7 +70,8 @@ struct EventDispatcher<BarEvent>
 template <>
 struct EventDispatcher<OrderEvent>
 {
-  static void dispatch(const OrderEvent& ev, IOrderExecutionListener& listener)
+  template <typename Sub>
+  static void dispatch(const OrderEvent& ev, Sub& listener)
   {
     ev.dispatchTo(listener);
   }
