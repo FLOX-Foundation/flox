@@ -10,8 +10,10 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <numeric>
+#include <thread>
 #include <vector>
 
 #include "flox/util/eventing/event_bus.h"
@@ -57,11 +59,30 @@ class RecordingListener : public BatchTestEvent::Listener
   {
     values.push_back(e.value);
     seqs.push_back(e.tickSequence);
+    count.store(values.size(), std::memory_order_release);
   }
 
   std::vector<int> values;
   std::vector<uint64_t> seqs;
+  std::atomic<size_t> count{0};
 };
+
+// flush() only waits for required consumers; an optional consumer that has
+// not caught up loses the tail when stop() lands. Tests that assert on an
+// optional consumer have to wait for it themselves.
+bool waitForCount(const std::atomic<size_t>& count, size_t expected)
+{
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (count.load(std::memory_order_acquire) < expected)
+  {
+    if (std::chrono::steady_clock::now() > deadline)
+    {
+      return false;
+    }
+    std::this_thread::yield();
+  }
+  return true;
+}
 
 // No inheritance: the static-subscription surface only needs the handler.
 struct PlainRecorder
@@ -180,6 +201,7 @@ TEST(EventBusBatch, OptionalConsumerReceivesWithoutGating)
     bus.publishBatch(evs.data() + off, 25);  // capacity 64: batches must stay <= 32
   }
   bus.flush();
+  EXPECT_TRUE(waitForCount(optional.count, 200));
   bus.stop();
 
   EXPECT_EQ(required.values.size(), 200u);
