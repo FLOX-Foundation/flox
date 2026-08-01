@@ -29,14 +29,12 @@
 // fence-plus-relaxed publication in publishBatch reads as a race to it.
 // Under TSan we fall back to per-slot release stores: same correctness,
 // slightly slower, and TSan can see the happens-before edge.
-#if defined(__has_feature)
-#if __has_feature(thread_sanitizer)
-#define FLOX_TSAN_ENABLED 1
+#ifndef __has_feature
+#define __has_feature(x) 0
 #endif
-#elif defined(__SANITIZE_THREAD__)
+#if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
 #define FLOX_TSAN_ENABLED 1
-#endif
-#ifndef FLOX_TSAN_ENABLED
+#else
 #define FLOX_TSAN_ENABLED 0
 #endif
 #include "flox/engine/engine_config.h"
