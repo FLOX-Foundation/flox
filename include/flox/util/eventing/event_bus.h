@@ -24,21 +24,9 @@
 #include <type_traits>
 
 #include "flox/engine/abstract_subsystem.h"
-
-// ThreadSanitizer does not model std::atomic_thread_fence, so the
-// fence-plus-relaxed publication in publishBatch reads as a race to it.
-// Under TSan we fall back to per-slot release stores: same correctness,
-// slightly slower, and TSan can see the happens-before edge.
-#ifndef __has_feature
-#define __has_feature(x) 0
-#endif
-#if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
-#define FLOX_TSAN_ENABLED 1
-#else
-#define FLOX_TSAN_ENABLED 0
-#endif
 #include "flox/engine/engine_config.h"
 #include "flox/engine/event_dispatcher.h"
+#include "flox/util/base/sanitizer.h"
 #include "flox/util/concurrency/jthread.h"
 #include "flox/util/memory/pool.h"
 #include "flox/util/performance/busy_backoff.h"
@@ -352,24 +340,30 @@ class EventBus : public ISubsystem
       }
     }
 
-#if FLOX_TSAN_ENABLED
-    for (size_t k = 0; k < count; ++k)
+    // ThreadSanitizer cannot see thread fences, so under TSan every stamp is
+    // its own release store. Same correctness, and TSan gets a visible
+    // happens-before edge. The dead branch costs nothing.
+    if constexpr (FLOX_TSAN_ENABLED != 0)
     {
-      const int64_t seq = firstSeq + static_cast<int64_t>(k);
-      const size_t idx = size_t(seq) & Mask;
-      _constructed[idx].store(1, std::memory_order_release);
-      _published[idx].store(seq, std::memory_order_release);
+      for (size_t k = 0; k < count; ++k)
+      {
+        const int64_t seq = firstSeq + static_cast<int64_t>(k);
+        const size_t idx = size_t(seq) & Mask;
+        _constructed[idx].store(1, std::memory_order_release);
+        _published[idx].store(seq, std::memory_order_release);
+      }
     }
-#else
-    std::atomic_thread_fence(std::memory_order_release);
-    for (size_t k = 0; k < count; ++k)
+    else
     {
-      const int64_t seq = firstSeq + static_cast<int64_t>(k);
-      const size_t idx = size_t(seq) & Mask;
-      _constructed[idx].store(1, std::memory_order_relaxed);
-      _published[idx].store(seq, std::memory_order_relaxed);
+      std::atomic_thread_fence(std::memory_order_release);
+      for (size_t k = 0; k < count; ++k)
+      {
+        const int64_t seq = firstSeq + static_cast<int64_t>(k);
+        const size_t idx = size_t(seq) & Mask;
+        _constructed[idx].store(1, std::memory_order_relaxed);
+        _published[idx].store(seq, std::memory_order_relaxed);
+      }
     }
-#endif
 
     _publishCount.fetch_add(count, std::memory_order_relaxed);
     return lastSeq;
