@@ -12,12 +12,14 @@
 #include "flox/util/concurrency/spsc_queue.h"
 #include "flox/util/memory/ref_countable.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <memory_resource>
 #include <optional>
 #include <type_traits>
+#include <vector>
 
 namespace flox::concepts
 {
@@ -100,7 +102,8 @@ class Handle
   Handle<U> upcast() const
   {
     static_assert(std::is_base_of_v<U, T>);
-    retain(_ptr);
+    // Handle's constructor retains; retaining here as well would leak a
+    // reference and eventually starve the pool.
     return Handle<U>(_ptr);
   }
 
@@ -163,6 +166,43 @@ class Pool
   using ExhaustionCallback = void (*)(size_t capacity, size_t inUse);
 
   void setExhaustionCallback(ExhaustionCallback cb) { _exhaustionCb = cb; }
+
+  // Pop up to `count` objects with one freelist index publish per
+  // contiguous segment instead of one per object. Appends Handles to `out`
+  // and returns how many it got. Fewer than `count` means the pool ran dry.
+  size_t acquireBatch(std::vector<Handle<T>>& out, size_t count)
+  {
+    size_t got = 0;
+    while (got < count)
+    {
+      T** seg = nullptr;
+      const size_t avail = _queue.read_segment(seg);
+      if (avail == 0)
+      {
+        break;
+      }
+      const size_t n = std::min(avail, count - got);
+      for (size_t k = 0; k < n; ++k)
+      {
+        T* obj = seg[k];
+        obj->resetRefCount();
+        obj->setPool(this);
+        out.emplace_back(obj);
+      }
+      _queue.commit_read(n);
+      got += n;
+    }
+    _acquired += got;
+    if (got < count)
+    {
+      ++_exhaustionCount;
+      if (_exhaustionCb)
+      {
+        _exhaustionCb(Capacity, inUse());
+      }
+    }
+    return got;
+  }
 
   std::optional<Handle<T>> acquire()
   {

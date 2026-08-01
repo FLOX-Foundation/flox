@@ -248,6 +248,56 @@ Optional consumers:
 - May miss events if too slow
 - Useful for monitoring, logging, metrics
 
+## Batch Publishing
+
+WebSocket feeds already deliver batches: a depth message carries every level
+that changed, and a busy trade stream packs several trades into one frame.
+`publishBatch` keeps that shape instead of splitting it into per-event
+publishes:
+
+```cpp
+// evs is a contiguous array, count <= CapacityPow2 / 2
+int64_t lastSeq = tradeBus->publishBatch(evs, count);
+```
+
+One call reserves the whole sequence range at once, waits once for ring
+space, then stamps every slot under a single release fence. Per-event
+`publish()` pays a sequence reservation, a wrap check and a release store
+for every event; the batch pays each of those once. On our benchmark
+hardware that is the difference between ~19M and ~275M events/s with one
+consumer (`benchmarks/batch_delivery_benchmark.cpp`).
+
+Batching costs nothing on the latency side. A batch is whatever the producer
+already has in hand, so a single event still goes through alone, and
+delivery latency under bursty load measures the same as the per-event path.
+
+Consumers batch on their own: a consumer that wakes up delivers the whole
+contiguous run of published events (up to 1024) and stores its progress once
+at the end of the run, instead of updating two atomics per event. This works
+for both publish paths and needs nothing from the caller.
+
+## Static Subscription
+
+`subscribe()` takes a listener interface pointer and dispatches through a
+virtual call. `subscribeStatic` takes a concrete type instead:
+
+```cpp
+struct PriceLogger
+{
+  void onTrade(const TradeEvent& ev) { /* ... */ }
+};
+
+PriceLogger logger;
+tradeBus->subscribeStatic(&logger);
+```
+
+The consumer loop is instantiated around the concrete type, so the handler
+call is direct and can inline. The type only needs the handler methods the
+event's dispatcher calls; it does not have to derive from the listener
+interface. On a live bus the difference is small, because the producer side
+dominates. The same mechanism is what makes StrategyPump fast in replay,
+where there is no producer to hide behind.
+
 ## Performance Characteristics
 
 | Metric | Notes |

@@ -13136,6 +13136,16 @@
           "name": "StrategyAccount"
         },
         {
+          "header": "include/flox/backtest/strategy_pump.h",
+          "kind": "type",
+          "name": "StrategyPump"
+        },
+        {
+          "header": "include/flox/backtest/strategy_pump.h",
+          "kind": "type",
+          "name": "StrategyPumpStats"
+        },
+        {
           "header": "include/flox/indicator/streaming.h",
           "kind": "type",
           "name": "StreamingBar"
@@ -20452,6 +20462,11 @@
         },
         {
           "kind": "method",
+          "name": "acquireBatch",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
           "name": "acquireCount",
           "parent": "Pool"
         },
@@ -21762,6 +21777,16 @@
         },
         {
           "kind": "method",
+          "name": "commit_read",
+          "parent": "SPSCQueue"
+        },
+        {
+          "kind": "method",
+          "name": "commit_write",
+          "parent": "SPSCQueue"
+        },
+        {
+          "kind": "method",
           "name": "emplace",
           "parent": "SPSCQueue"
         },
@@ -21787,6 +21812,11 @@
         },
         {
           "kind": "method",
+          "name": "read_segment",
+          "parent": "SPSCQueue"
+        },
+        {
+          "kind": "method",
           "name": "size",
           "parent": "SPSCQueue"
         },
@@ -21803,6 +21833,11 @@
         {
           "kind": "method",
           "name": "try_pop_ref",
+          "parent": "SPSCQueue"
+        },
+        {
+          "kind": "method",
+          "name": "write_segment",
           "parent": "SPSCQueue"
         },
         {
@@ -22827,6 +22862,11 @@
         },
         {
           "kind": "method",
+          "name": "consumerLoop",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
           "name": "do_publish",
           "parent": "Stats"
         },
@@ -22863,6 +22903,16 @@
         {
           "kind": "method",
           "name": "publish",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
+          "name": "publishBatch",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
+          "name": "runConsumer",
           "parent": "Stats"
         },
         {
@@ -22913,6 +22963,16 @@
         {
           "kind": "method",
           "name": "subscribe",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
+          "name": "subscribeImpl",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
+          "name": "subscribeStatic",
           "parent": "Stats"
         },
         {
@@ -22994,6 +23054,26 @@
           "kind": "method",
           "name": "dailyPnl",
           "parent": "StrategyAccount"
+        },
+        {
+          "kind": "method",
+          "name": "run",
+          "parent": "StrategyPump"
+        },
+        {
+          "kind": "method",
+          "name": "runBars",
+          "parent": "StrategyPump"
+        },
+        {
+          "kind": "method",
+          "name": "runTrades",
+          "parent": "StrategyPump"
+        },
+        {
+          "kind": "method",
+          "name": "total",
+          "parent": "StrategyPumpStats"
         },
         {
           "kind": "method",

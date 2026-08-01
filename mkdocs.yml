@@ -175,6 +175,7 @@ nav:
           - Apply a named latency profile: how-to/latency-profiles.md
           - Model venue volume-tiered fees: how-to/tiered-fees.md
           - Backtest recipes: how-to/backtest-recipes.md
+          - Sweep a signal over a tape: how-to/strategy-pump.md
           - Multi-Exchange Trading: how-to/multi-exchange-trading.md
           - Inspect engine over MCP: how-to/mcp-runtime-inspection.md
           - Paper trading: how-to/paper-trading.md
