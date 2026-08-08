@@ -12061,9 +12061,19 @@
           "name": "LadderBook"
         },
         {
+          "header": "include/flox/util/performance/latency_contour.h",
+          "kind": "type",
+          "name": "LatencyContour"
+        },
+        {
           "header": "include/flox/backtest/latency_distribution.h",
           "kind": "type",
           "name": "LatencyDistribution"
+        },
+        {
+          "header": "include/flox/util/performance/latency_histogram.h",
+          "kind": "type",
+          "name": "LatencyHistogram"
         },
         {
           "header": "include/flox/backtest/latency_model.h",
@@ -12999,6 +13009,11 @@
           "header": "include/flox/replay/ops/validator.h",
           "kind": "type",
           "name": "SegmentRepairer"
+        },
+        {
+          "header": "include/flox/util/performance/latency_contour.h",
+          "kind": "type",
+          "name": "SegmentSnapshot"
         },
         {
           "header": "include/flox/replay/ops/validator.h",
@@ -18062,6 +18077,21 @@
         },
         {
           "kind": "method",
+          "name": "record",
+          "parent": "LatencyContour"
+        },
+        {
+          "kind": "method",
+          "name": "recordSpan",
+          "parent": "LatencyContour"
+        },
+        {
+          "kind": "method",
+          "name": "registerSegment",
+          "parent": "LatencyContour"
+        },
+        {
+          "kind": "method",
           "name": "burstCorrelation",
           "parent": "LatencyDistribution"
         },
@@ -18109,6 +18139,46 @@
           "kind": "method",
           "name": "uniform",
           "parent": "LatencyDistribution"
+        },
+        {
+          "kind": "method",
+          "name": "bucketFor",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "bucketUpperBound",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "count",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "max",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "quantile",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "record",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
+          "parent": "LatencyHistogram"
+        },
+        {
+          "kind": "method",
+          "name": "summary",
+          "parent": "LatencyHistogram"
         },
         {
           "kind": "method",
@@ -22069,6 +22139,26 @@
           "kind": "method",
           "name": "repair",
           "parent": "SegmentRepairer"
+        },
+        {
+          "kind": "method",
+          "name": "histogram",
+          "parent": "SegmentSnapshot"
+        },
+        {
+          "kind": "method",
+          "name": "report",
+          "parent": "SegmentSnapshot"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
+          "parent": "SegmentSnapshot"
+        },
+        {
+          "kind": "method",
+          "name": "snapshot",
+          "parent": "SegmentSnapshot"
         },
         {
           "kind": "method",

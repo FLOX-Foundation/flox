@@ -22,6 +22,7 @@ function(add_flox_test name)
 endfunction()
 
 add_flox_test(test_book_update_bus)
+add_flox_test(test_latency_contour)
 add_flox_test(test_bar_aggregator)
 add_flox_test(test_connection_factory)
 add_flox_test(test_connector_manager)
