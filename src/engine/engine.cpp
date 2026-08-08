@@ -9,6 +9,10 @@
 
 #include "flox/engine/engine.h"
 
+#include "flox/log/log.h"
+#include "flox/util/memory/large_arena.h"
+#include "flox/util/performance/memory_profile.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -23,6 +27,18 @@ Engine::Engine(const EngineConfig& config, std::vector<std::unique_ptr<ISubsyste
 
 void Engine::start()
 {
+  auto memReport = performance::applyMemoryProfile(
+      performance::memoryProfileFromString(_config.memoryProfile));
+  memReport.hugeArenaBytes = memory::LargeArena::totalBytesAll();
+  memReport.hugeArenaMode = memory::LargeArena::aggregateMode();
+  FLOX_LOG_INFO(memReport.toString());
+  if (memReport.mlockRequested && !memReport.mlockApplied)
+  {
+    FLOX_LOG_WARN("memory profile 'colo' requested but mlockall failed ("
+                  << memReport.mlockError
+                  << "); hot pages remain evictable. Check CAP_IPC_LOCK / ulimit -l.");
+  }
+
   for (auto& subsystem : _subsystems)
   {
     subsystem->start();
