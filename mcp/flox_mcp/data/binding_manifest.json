@@ -11291,6 +11291,11 @@
           "name": "BucketState"
         },
         {
+          "header": "include/flox/ml/onnx_inference.h",
+          "kind": "type",
+          "name": "BudgetedInference"
+        },
+        {
           "header": "include/flox/backtest/simulated_executor.h",
           "kind": "type",
           "name": "BufferedRequest"
@@ -12461,6 +12466,16 @@
           "name": "OnMarkPass"
         },
         {
+          "header": "include/flox/ml/onnx_inference.h",
+          "kind": "type",
+          "name": "OnnxModel"
+        },
+        {
+          "header": "include/flox/ml/onnx_inference.h",
+          "kind": "type",
+          "name": "OnnxSidecar"
+        },
+        {
           "header": "include/flox/backtest/backtest_optimizer.h",
           "kind": "type",
           "name": "OptimizationResult"
@@ -12771,6 +12786,11 @@
           "name": "PrecomputedFill"
         },
         {
+          "header": "include/flox/ml/onnx_inference.h",
+          "kind": "type",
+          "name": "Prediction"
+        },
+        {
           "header": "include/flox/book/l3/l3_order_book.h",
           "kind": "type",
           "name": "PriceIndex"
@@ -12964,6 +12984,11 @@
           "header": "include/flox/book/resting_order.h",
           "kind": "type",
           "name": "RestingOrder"
+        },
+        {
+          "header": "include/flox/ml/onnx_inference.h",
+          "kind": "type",
+          "name": "Result"
         },
         {
           "header": "include/flox/risk/portfolio_risk.h",
@@ -19902,6 +19927,26 @@
         },
         {
           "kind": "method",
+          "name": "featureCount",
+          "parent": "OnnxModel"
+        },
+        {
+          "kind": "method",
+          "name": "outputCount",
+          "parent": "OnnxModel"
+        },
+        {
+          "kind": "method",
+          "name": "run",
+          "parent": "OnnxModel"
+        },
+        {
+          "kind": "method",
+          "name": "submit",
+          "parent": "OnnxSidecar"
+        },
+        {
+          "kind": "method",
           "name": "calmarRatio",
           "parent": "OptimizationResult"
         },
@@ -21437,6 +21482,16 @@
         },
         {
           "kind": "method",
+          "name": "latest",
+          "parent": "Prediction"
+        },
+        {
+          "kind": "method",
+          "name": "loop",
+          "parent": "Prediction"
+        },
+        {
+          "kind": "method",
           "name": "erasePriceMapping",
           "parent": "PriceIndex"
         },
@@ -21989,6 +22044,26 @@
           "kind": "method",
           "name": "diffOne",
           "parent": "Report"
+        },
+        {
+          "kind": "method",
+          "name": "histogram",
+          "parent": "Result"
+        },
+        {
+          "kind": "method",
+          "name": "overruns",
+          "parent": "Result"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
+          "parent": "Result"
+        },
+        {
+          "kind": "method",
+          "name": "run",
+          "parent": "Result"
         },
         {
           "kind": "method",

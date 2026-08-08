@@ -29,6 +29,7 @@ TESTS_DIR = REPO_ROOT / "tests"
 GATED_PREFIXES: dict[str, str] = {
     "flox/backtest/": "FLOX_ENABLE_BACKTEST",
     "flox/capi/": "FLOX_BUILD_CAPI",
+    "flox/ml/": "FLOX_ENABLE_ONNX",
 }
 
 # Hard-prereq implications expressed in CMakeLists.txt. When a flag

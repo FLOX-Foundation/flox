@@ -280,3 +280,5 @@ docs/how-to/route-and-arb-dex-pools.md
 # How-to: DEX on Node -- flox/dex usage snippets; the same calls are
 # exercised end-to-end by node/test/test_dex.js (CI run step).
 docs/how-to/dex-on-node.md
+
+docs/how-to/alpha-to-onnx.md   # illustrative: sklearn/skl2onnx export (external dep) and build_dataset over a live tape path, not runnable in CI
