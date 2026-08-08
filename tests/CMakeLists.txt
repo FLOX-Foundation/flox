@@ -22,6 +22,7 @@ function(add_flox_test name)
 endfunction()
 
 add_flox_test(test_book_update_bus)
+add_flox_test(test_shadow_mode)
 add_flox_test(test_latency_contour)
 add_flox_test(test_rt_spin_guard)
 add_flox_test(test_event_bus_health)
