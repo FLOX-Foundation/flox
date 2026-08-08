@@ -26,13 +26,16 @@
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/engine/engine_config.h"
 #include "flox/engine/event_dispatcher.h"
+#include "flox/log/log.h"
 #include "flox/util/base/sanitizer.h"
 #include "flox/util/concurrency/jthread.h"
 #include "flox/util/memory/pool.h"
 #include "flox/util/performance/busy_backoff.h"
 #include "flox/util/performance/profile.h"
+
 #if FLOX_CPU_AFFINITY_ENABLED
 #include "flox/util/performance/cpu_affinity.h"
+#include "flox/util/performance/rt_spin_guard.h"
 #endif
 
 namespace flox
@@ -82,6 +85,11 @@ class EventBus : public ISubsystem
     int realTimePriority = config::DEFAULT_REALTIME_PRIORITY;
     bool enableNumaAwareness = true;
     bool preferIsolatedCores = true;
+    // Policy for "RT priority + AGGRESSIVE backoff on a non-isolated core".
+    // preferIsolatedCores is a preference, not a guarantee: on a host without
+    // isolated cores the consumer would otherwise spin forever at RT priority
+    // on a shared core. See rt_spin_guard.h.
+    performance::RtSpinPolicy rtSpinPolicy = performance::RtSpinPolicy::DOWNGRADE;
 
     AffinityConfig() = default;
     AffinityConfig(ComponentType t, int prio = config::DEFAULT_REALTIME_PRIORITY)
@@ -98,8 +106,130 @@ class EventBus : public ISubsystem
     bool required{true};                       // influence on gating
     alignas(64) std::atomic<int64_t> seq{-1};  // last handled seq
     std::optional<jthread> thread{};
-    uint32_t coreIndex{0};  // index for core distribution
+    uint32_t coreIndex{0};                   // index for core distribution
+    std::atomic<bool> alive{false};          // loop entered and not exited
+    std::atomic<uint64_t> droppedBehind{0};  // events skipped by drop-behind
   };
+
+  // ---------- consumer health ----------
+  //
+  // A stalled REQUIRED consumer stops the publisher at wrap gating; a stalled
+  // OPTIONAL consumer stops it at the reclaim fence (use-after-free
+  // protection scans every consumer). Either way the bus freezes silently.
+  // The health layer makes the failure loud and gives optional consumers a
+  // documented degradation: drop-behind.
+
+  enum class ConsumerHealth : uint8_t
+  {
+    HEALTHY,
+    STALLED,  // no progress for stallThreshold while work is pending
+    DEAD      // loop exited (handler threw) while the bus is running
+  };
+
+  enum class DeadConsumerPolicy : uint8_t
+  {
+    ALERT,    // callback + log only
+    STOP_BUS  // additionally stop() the bus on a dead REQUIRED consumer
+  };
+
+  using HealthCallback = void (*)(uint32_t consumerIndex, ConsumerHealth state, void* user);
+
+  struct HealthConfig
+  {
+    std::chrono::milliseconds stallThreshold{100};
+    // Optional consumers may jump to the head instead of stalling the
+    // reclaim fence; skipped events are counted, never silently lost.
+    bool dropBehindOptional{false};
+    size_t dropBehindSlack{CapacityPow2 / 2};
+    DeadConsumerPolicy deadPolicy{DeadConsumerPolicy::ALERT};
+    HealthCallback callback{nullptr};
+    void* callbackUser{nullptr};
+    bool enableMonitorThread{false};  // poll checkHealth() at stallThreshold/2
+  };
+
+  // Must be called before start().
+  void setHealthConfig(const HealthConfig& cfg) { _healthCfg = cfg; }
+
+  struct HealthSweep
+  {
+    uint32_t stalled{0};
+    uint32_t dead{0};
+  };
+
+  // One health sweep over all consumers. Fires the callback on state
+  // transitions. Single-checker contract: call from one thread at a time
+  // (the built-in monitor thread or your own health checker, not both).
+  HealthSweep checkHealth()
+  {
+    HealthSweep sweep;
+    if (!_running.load(std::memory_order_acquire))
+    {
+      return sweep;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const int64_t head = _next.load(std::memory_order_acquire);
+    const uint32_t n = _consumerCount.load(std::memory_order_acquire);
+
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      auto& book = _healthBook[i];
+      ConsumerHealth next = ConsumerHealth::HEALTHY;
+
+      if (!_consumers[i].alive.load(std::memory_order_acquire))
+      {
+        next = ConsumerHealth::DEAD;
+      }
+      else
+      {
+        const int64_t s = _consumers[i].seq.load(std::memory_order_acquire);
+        if (s != book.lastSeen)
+        {
+          book.lastSeen = s;
+          book.lastChange = now;
+        }
+        else if (s < head && now - book.lastChange >= _healthCfg.stallThreshold)
+        {
+          next = ConsumerHealth::STALLED;
+        }
+      }
+
+      if (next != book.state)
+      {
+        book.state = next;
+        if (next == ConsumerHealth::DEAD)
+        {
+          FLOX_LOG_ERROR("EventBus consumer " << i << " is dead (handler threw)");
+        }
+        else if (next == ConsumerHealth::STALLED)
+        {
+          FLOX_LOG_WARN("EventBus consumer " << i << " stalled: seq="
+                                             << book.lastSeen << " head=" << head);
+        }
+        if (_healthCfg.callback)
+        {
+          _healthCfg.callback(i, next, _healthCfg.callbackUser);
+        }
+        if (next == ConsumerHealth::DEAD && _consumers[i].required &&
+            _healthCfg.deadPolicy == DeadConsumerPolicy::STOP_BUS)
+        {
+          FLOX_LOG_ERROR("EventBus: required consumer " << i << " dead, stopping bus");
+          stop();
+          return sweep;
+        }
+      }
+
+      if (next == ConsumerHealth::STALLED)
+      {
+        ++sweep.stalled;
+      }
+      if (next == ConsumerHealth::DEAD)
+      {
+        ++sweep.dead;
+      }
+    }
+    return sweep;
+  }
 
   enum class PublishResult
   {
@@ -113,6 +243,7 @@ class EventBus : public ISubsystem
     uint64_t published{0};
     uint64_t dropped{0};
     uint64_t consumed{0};
+    uint64_t droppedBehind{0};  // skipped by optional drop-behind consumers
   };
 
  public:
@@ -169,8 +300,13 @@ class EventBus : public ISubsystem
       auto coreIdx = _consumers[i].coreIndex;
       auto backoffMode = _backoffMode;
 
+      // Preset before the thread exists so a health sweep between start()
+      // and the loop entry cannot misread a starting consumer as dead.
+      _consumers[i].alive.store(true, std::memory_order_release);
+
       _consumers[i].thread.emplace([this, i, l, runner, required, coreIdx, backoffMode]
                                    {
+         auto effectiveBackoff = backoffMode;
 #if FLOX_CPU_AFFINITY_ENABLED
          auto threadCpuAffinity = performance::createCpuAffinity();
          if (_coreAssignment.has_value() && _affinityConfig.has_value())
@@ -191,12 +327,23 @@ class EventBus : public ISubsystem
              // Distribute consumers across available cores using round-robin
              const auto coreId = targetCores[coreIdx % targetCores.size()];
              const auto pinned = threadCpuAffinity->pinToCore(coreId);
-             if (config.enableRealTimePriority)
+             const bool isolated = pinned && assignment.hasIsolatedCores &&
+                                   std::find(assignment.allIsolatedCores.begin(),
+                                             assignment.allIsolatedCores.end(), coreId) != assignment.allIsolatedCores.end();
+             const auto guard = performance::resolveRtSpinGuard(
+                 config.enableRealTimePriority, isolated, effectiveBackoff, config.rtSpinPolicy);
+             if (guard.guardTriggered)
+             {
+               effectiveBackoff = guard.backoffMode;
+               FLOX_LOG_WARN("EventBus consumer " << i << ": RT priority with AGGRESSIVE backoff on non-isolated core "
+                                                  << coreId << "; "
+                                                  << (guard.applyRtPriority ? "backoff downgraded to ADAPTIVE"
+                                                                            : "RT priority refused"));
+             }
+             if (guard.applyRtPriority && config.enableRealTimePriority)
              {
                auto pr = config.realTimePriority;
-               if (pinned && assignment.hasIsolatedCores &&
-                   std::find(assignment.allIsolatedCores.begin(),
-                             assignment.allIsolatedCores.end(), coreId) != assignment.allIsolatedCores.end())
+               if (isolated)
                {
                  pr += config::ISOLATED_CORE_PRIORITY_BOOST;
                }
@@ -211,8 +358,21 @@ class EventBus : public ISubsystem
            {
              // Distribute across market data cores
              const auto coreId = assignment.marketDataCores[coreIdx % assignment.marketDataCores.size()];
-             threadCpuAffinity->pinToCore(coreId);
-             threadCpuAffinity->setRealTimePriority(config::FALLBACK_REALTIME_PRIORITY);
+             const auto pinned = threadCpuAffinity->pinToCore(coreId);
+             const bool isolated = pinned && assignment.hasIsolatedCores &&
+                                   std::find(assignment.allIsolatedCores.begin(),
+                                             assignment.allIsolatedCores.end(), coreId) != assignment.allIsolatedCores.end();
+             const auto guard = performance::resolveRtSpinGuard(true, isolated, effectiveBackoff);
+             if (guard.guardTriggered)
+             {
+               effectiveBackoff = guard.backoffMode;
+               FLOX_LOG_WARN("EventBus consumer " << i << ": fallback RT priority with AGGRESSIVE backoff on non-isolated core "
+                                                  << coreId << "; backoff downgraded to ADAPTIVE");
+             }
+             if (guard.applyRtPriority)
+             {
+               threadCpuAffinity->setRealTimePriority(config::FALLBACK_REALTIME_PRIORITY);
+             }
            }
          }
 #endif
@@ -221,12 +381,24 @@ class EventBus : public ISubsystem
            if (_active.fetch_sub(1, std::memory_order_acq_rel) == 1) _cv.notify_one();
          }
  
-         runner(this, i, l, required, backoffMode); });
+         runner(this, i, l, required, effectiveBackoff); });
     }
 
     std::unique_lock lk(_readyMutex);
     _cv.wait(lk, [&]
              { return _active.load(std::memory_order_acquire) == 0; });
+
+    if (_healthCfg.enableMonitorThread)
+    {
+      _monitorThread.emplace([this]
+                             {
+        const auto period = _healthCfg.stallThreshold / 2;
+        while (_running.load(std::memory_order_acquire))
+        {
+          checkHealth();
+          std::this_thread::sleep_for(period);
+        } });
+    }
   }
 
   void stop() override
@@ -235,6 +407,8 @@ class EventBus : public ISubsystem
     {
       return;
     }
+
+    _monitorThread.reset();
 
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
@@ -250,7 +424,6 @@ class EventBus : public ISubsystem
       }
       _published[i].store(-1, std::memory_order_relaxed);
     }
-    _reclaimSeq.store(-1, std::memory_order_relaxed);
     _cachedMinConsumed.store(-1, std::memory_order_relaxed);
   }
 
@@ -384,10 +557,17 @@ class EventBus : public ISubsystem
 
   Stats stats() const
   {
+    uint64_t droppedBehind = 0;
+    const uint32_t n = _consumerCount.load(std::memory_order_acquire);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      droppedBehind += _consumers[i].droppedBehind.load(std::memory_order_relaxed);
+    }
     return Stats{
         _publishCount.load(std::memory_order_relaxed),
         _dropCount.load(std::memory_order_relaxed),
-        _consumeCount.load(std::memory_order_relaxed)};
+        _consumeCount.load(std::memory_order_relaxed),
+        droppedBehind};
   }
 
   void waitConsumed(int64_t seq)
@@ -522,14 +702,48 @@ class EventBus : public ISubsystem
   // L = Listener this is exactly the historical virtual path; for a concrete
   // L (via subscribeStatic) dispatch resolves statically and the handler
   // inlines into the batched run.
+  struct AliveGuard
+  {
+    std::atomic<bool>& flag;
+    ~AliveGuard() { flag.store(false, std::memory_order_release); }
+  };
+
   template <typename L>
   void consumerLoop(uint32_t i, L* l, bool required, BackoffMode backoffMode)
   {
+    // alive is preset by start(); the guard clears it on any exit path.
+    AliveGuard aliveGuard{_consumers[i].alive};
     BusyBackoff backoff(backoffMode);
     int64_t next = -1;
 
+    const bool dropBehind = !required && _healthCfg.dropBehindOptional;
+    // Drop-behind lag is only examined at the loop top, so cap the batch run
+    // for such consumers: with an uncapped run the consumer re-checks only
+    // after consuming the whole backlog and the lag never looks large. The
+    // required hot path keeps the full run and zero extra loads.
+    const size_t maxRun =
+        dropBehind ? std::max<size_t>(1, _healthCfg.dropBehindSlack / 2) : kMaxConsumeRun;
+
     while (_running.load(std::memory_order_acquire))
     {
+      // Optional consumers may fall arbitrarily far behind; without
+      // drop-behind they stall the publisher at the reclaim fence. Jump to
+      // the head, publish the skipped range as consumed (the events are
+      // never delivered here -- reclaim only needs to know nobody will read
+      // them) and account every skipped event.
+      if (dropBehind)
+      {
+        const int64_t head = _next.load(std::memory_order_acquire);
+        if (head - next > static_cast<int64_t>(_healthCfg.dropBehindSlack))
+        {
+          const int64_t target = head - 1;
+          _consumers[i].droppedBehind.fetch_add(static_cast<uint64_t>(target - next),
+                                                std::memory_order_relaxed);
+          next = target;
+          _consumers[i].seq.store(next, std::memory_order_release);
+        }
+      }
+
       const int64_t seq = next + 1;
       const size_t idx = size_t(seq) & Mask;
 
@@ -555,7 +769,7 @@ class EventBus : public ISubsystem
       int64_t cur = seq;
       uint64_t delivered = 0;
       size_t run = 0;
-      while (run < kMaxConsumeRun)
+      while (run < maxRun)
       {
         const size_t cidx = size_t(cur) & Mask;
         if (_published[cidx].load(std::memory_order_acquire) != cur)
@@ -572,7 +786,25 @@ class EventBus : public ISubsystem
         if (_constructed[cidx].load(std::memory_order_relaxed) == 1)
         {
           FLOX_PROFILE_SCOPE("Disruptor::deliver");
-          EventDispatcher<Event>::dispatch(slot_ref(cidx), *l);
+          try
+          {
+            EventDispatcher<Event>::dispatch(slot_ref(cidx), *l);
+          }
+          catch (...)
+          {
+            // Publish progress up to the previous event and die loudly.
+            // Swallowing would keep a broken handler in the loop; rethrowing
+            // would terminate the process. A dead REQUIRED consumer stalls
+            // gating by design -- checkHealth() surfaces it and applies the
+            // configured policy.
+            _consumers[i].seq.store(last, std::memory_order_release);
+            if (required)
+            {
+              _gating[i].v.store(last, std::memory_order_release);
+            }
+            FLOX_LOG_ERROR("EventBus consumer " << i << ": handler threw, consumer is dead");
+            return;
+          }
           ++delivered;
         }
 
@@ -760,39 +992,6 @@ class EventBus : public ISubsystem
     return mn;
   }
 
-  inline void tryReclaim()
-  {
-    // Use minConsumed() instead of minGating() to ensure optional consumers
-    // have processed the event before destruction
-    const int64_t upto = minConsumed();
-    int64_t cur = _reclaimSeq.load(std::memory_order_relaxed);
-    if (upto <= cur)
-    {
-      return;
-    }
-
-    if (_reclaimLock.test_and_set(std::memory_order_acquire))
-    {
-      return;
-    }
-    cur = _reclaimSeq.load(std::memory_order_relaxed);
-    if (upto > cur)
-    {
-      for (int64_t s = cur + 1; s <= upto; ++s)
-      {
-        const size_t idx = size_t(s) & Mask;
-        if (_constructed[idx].exchange(0, std::memory_order_acq_rel))
-        {
-          slot_ptr(idx)->~Event();
-        }
-      }
-
-      _reclaimSeq.store(upto, std::memory_order_release);
-    }
-
-    _reclaimLock.clear(std::memory_order_release);
-  }
-
  private:
   alignas(64) std::atomic<bool> _running{false};
   alignas(64) std::atomic<int64_t> _next{-1};
@@ -815,9 +1014,6 @@ class EventBus : public ISubsystem
   // happens-before edges the publisher that scanned it established.
   alignas(64) std::atomic<int64_t> _cachedMinConsumed{-1};
 
-  alignas(64) std::atomic<int64_t> _reclaimSeq{-1};
-  alignas(64) std::atomic_flag _reclaimLock = ATOMIC_FLAG_INIT;
-
   alignas(64) std::array<ConsumerSlot, MaxConsumers> _consumers{};
   // One cache line per consumer: packed gating atomics false-share between
   // consumers storing progress and the producer scanning it.
@@ -831,6 +1027,18 @@ class EventBus : public ISubsystem
   std::condition_variable _cv;
   std::mutex _readyMutex;
   std::atomic<uint32_t> _active{0};
+
+  // Health checker bookkeeping. Touched only by the single health-checker
+  // thread (see checkHealth), so plain members are fine.
+  struct HealthBook
+  {
+    int64_t lastSeen{-1};
+    std::chrono::steady_clock::time_point lastChange{};
+    ConsumerHealth state{ConsumerHealth::HEALTHY};
+  };
+  std::array<HealthBook, MaxConsumers> _healthBook{};
+  HealthConfig _healthCfg{};
+  std::optional<jthread> _monitorThread{};
 
   bool _drainOnStop{false};
   BackoffMode _backoffMode{config::defaultBackoffMode};

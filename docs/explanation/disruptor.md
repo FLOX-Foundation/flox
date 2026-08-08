@@ -341,6 +341,45 @@ using MyBus = EventBus<TradeEvent,
 
 Capacity must be a power of 2 (for fast modulo via bitmask).
 
+## Degradation modes and consumer health
+
+A stalled consumer freezes the whole bus, and without instrumentation it
+freezes silently. Configure the health layer if you run the bus anywhere a
+frozen publisher costs money.
+
+Why a single consumer can stop everything: a required consumer that stops
+advancing blocks the publisher at wrap gating, and an optional one blocks
+it at the reclaim fence, because use-after-free protection waits for every
+consumer before destroying old events. In both cases the publisher spins in
+`publish()` and nothing in the logs says why.
+
+The health layer gives each failure mode a detector and a policy:
+
+- Stalls. `checkHealth()` sweeps all consumers and fires the callback with
+  `STALLED` when one has pending work but no progress for
+  `stallThreshold`, then `HEALTHY` again on recovery. Call it from your own
+  health thread or set `enableMonitorThread` to poll automatically. One
+  sweeping thread at a time; the bookkeeping is not synchronized between
+  checkers.
+- Slow optional consumers. With `dropBehindOptional`, an optional consumer
+  more than `dropBehindSlack` events behind jumps to the head instead of
+  blocking the reclaim fence. The skipped count is in
+  `stats().droppedBehind`. Required consumers never drop events.
+- Dead consumers. A handler that throws kills its consumer loop and logs an
+  error. Swallowing the exception would keep a broken handler running, and
+  rethrowing would terminate the process, so the consumer dies and the next
+  sweep reports `DEAD`. For a required consumer, `deadPolicy` picks between
+  `ALERT` and `STOP_BUS`.
+
+```cpp
+MyBus::HealthConfig cfg;
+cfg.stallThreshold = std::chrono::milliseconds(50);
+cfg.dropBehindOptional = true;
+cfg.enableMonitorThread = true;
+cfg.callback = [](uint32_t idx, MyBus::ConsumerHealth st, void*) { /* metrics */ };
+bus.setHealthConfig(cfg);  // before start()
+```
+
 ## Further Reading
 
 - [LMAX Disruptor Paper](https://lmax-exchange.github.io/disruptor/disruptor.html)
