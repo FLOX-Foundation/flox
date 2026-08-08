@@ -84,7 +84,10 @@ inline RxTimestampMode enableRxTimestamps(int fd, bool wantHardware = true)
 
 // Extracts the receive timestamp (ns since epoch of the respective clock)
 // from a recvmsg() control buffer. Returns 0 when absent -- caller falls
-// back to monotonicNs() taken at recv return.
+// back to monotonicNs() taken at recv return. Defined only where the socket
+// control-message API exists; the sole caller (the UDP receive path) is
+// itself platform-guarded, so other platforms never reference it.
+#if defined(__linux__) || defined(__APPLE__)
 inline int64_t extractRxTimestampNs(const msghdr& msg)
 {
 #if defined(__linux__)
@@ -102,7 +105,7 @@ inline int64_t extractRxTimestampNs(const msghdr& msg)
     }
   }
   return 0;
-#elif defined(__APPLE__)
+#else  // __APPLE__
   for (cmsghdr* c = CMSG_FIRSTHDR(const_cast<msghdr*>(&msg)); c != nullptr;
        c = CMSG_NXTHDR(const_cast<msghdr*>(&msg), c))
   {
@@ -113,10 +116,8 @@ inline int64_t extractRxTimestampNs(const msghdr& msg)
     }
   }
   return 0;
-#else
-  (void)msg;
-  return 0;
 #endif
 }
+#endif  // __linux__ || __APPLE__
 
 }  // namespace flox::net

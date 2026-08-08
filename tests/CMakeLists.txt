@@ -99,6 +99,11 @@ if(FLOX_ENABLE_ONNX)
     FLOX_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 endif()
 
+# test_receive_path uses POSIX sockets; not built on Windows.
+if(NOT WIN32)
+  add_flox_test(test_receive_path)
+endif()
+
 if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest)
   add_flox_test(test_strategy_pump)
