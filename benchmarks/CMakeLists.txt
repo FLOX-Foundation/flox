@@ -25,6 +25,7 @@ add_flox_benchmark(multi_symbol_benchmark)
 add_flox_benchmark(cex_benchmark)
 add_flox_benchmark(position_aggregator_benchmark)
 add_flox_benchmark(statistical_indicator_benchmark)
+add_flox_benchmark(latency_contour_benchmark)
 
 if(FLOX_ENABLE_CPU_AFFINITY)
     add_flox_benchmark(cpu_affinity_benchmark)
