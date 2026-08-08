@@ -11281,12 +11281,12 @@
           "name": "BridgeStrategy"
         },
         {
-          "header": "include/flox/backtest/rate_limit_policy.h",
+          "header": "include/flox/execution/rate_limit_policy.h",
           "kind": "type",
           "name": "Bucket"
         },
         {
-          "header": "include/flox/backtest/rate_limit_policy.h",
+          "header": "include/flox/execution/rate_limit_policy.h",
           "kind": "type",
           "name": "BucketState"
         },
@@ -11387,6 +11387,11 @@
         },
         {
           "header": "include/flox/book/ladder_book.h",
+          "kind": "type",
+          "name": "Config"
+        },
+        {
+          "header": "include/flox/execution/live_rate_limit_budgeter.h",
           "kind": "type",
           "name": "Config"
         },
@@ -12196,6 +12201,11 @@
           "name": "LiveQueueSnapshot"
         },
         {
+          "header": "include/flox/execution/live_rate_limit_budgeter.h",
+          "kind": "type",
+          "name": "LiveRateLimitBudgeter"
+        },
+        {
           "header": "include/flox/book/matching_book.h",
           "kind": "type",
           "name": "Loc"
@@ -12319,6 +12329,11 @@
           "header": "include/flox/backtest/meteora_dlmm_curve.h",
           "kind": "type",
           "name": "MeteoraDlmmCurve"
+        },
+        {
+          "header": "include/flox/execution/live_rate_limit_budgeter.h",
+          "kind": "type",
+          "name": "Metrics"
         },
         {
           "header": "include/flox/backtest/mmap_bar_replay_source.h",
@@ -12816,9 +12831,14 @@
           "name": "RangeBarPolicy"
         },
         {
-          "header": "include/flox/backtest/rate_limit_policy.h",
+          "header": "include/flox/execution/rate_limit_policy.h",
           "kind": "type",
           "name": "RateLimitPolicy"
+        },
+        {
+          "header": "include/flox/execution/live_rate_limit_budgeter.h",
+          "kind": "type",
+          "name": "RateLimitedExecutor"
         },
         {
           "header": "include/flox/util/rate_limiter.h",
@@ -13199,6 +13219,11 @@
           "header": "include/flox/backtest/strategy_pump.h",
           "kind": "type",
           "name": "StrategyPumpStats"
+        },
+        {
+          "header": "include/flox/execution/live_rate_limit_budgeter.h",
+          "kind": "type",
+          "name": "StrategyQuota"
         },
         {
           "header": "include/flox/indicator/streaming.h",
@@ -15988,6 +16013,11 @@
         {
           "kind": "method",
           "name": "segments",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "setStrategyQuota",
           "parent": "Config"
         },
         {
@@ -19357,6 +19387,21 @@
         },
         {
           "kind": "method",
+          "name": "bucketStates",
+          "parent": "Metrics"
+        },
+        {
+          "kind": "method",
+          "name": "metrics",
+          "parent": "Metrics"
+        },
+        {
+          "kind": "method",
+          "name": "policy",
+          "parent": "Metrics"
+        },
+        {
+          "kind": "method",
           "name": "replay",
           "parent": "MmapBarReplaySource"
         },
@@ -21557,6 +21602,21 @@
         },
         {
           "kind": "method",
+          "name": "cancel",
+          "parent": "RateLimitedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reject",
+          "parent": "RateLimitedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "submit",
+          "parent": "RateLimitedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "clone",
           "parent": "RaydiumClmmCurve"
         },
@@ -23279,6 +23339,16 @@
           "kind": "method",
           "name": "total",
           "parent": "StrategyPumpStats"
+        },
+        {
+          "kind": "method",
+          "name": "evict",
+          "parent": "StrategyQuota"
+        },
+        {
+          "kind": "method",
+          "name": "wouldPassAtFullCapacity",
+          "parent": "StrategyQuota"
         },
         {
           "kind": "method",
