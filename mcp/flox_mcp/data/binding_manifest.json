@@ -11531,6 +11531,11 @@
           "name": "DeltaHedger"
         },
         {
+          "header": "include/flox/strategy/shadow.h",
+          "kind": "type",
+          "name": "Divergence"
+        },
+        {
           "header": "include/flox/pricing/carry.h",
           "kind": "type",
           "name": "Dividend"
@@ -12881,6 +12886,11 @@
           "name": "ReaderStats"
         },
         {
+          "header": "include/flox/strategy/shadow.h",
+          "kind": "type",
+          "name": "Record"
+        },
+        {
           "header": "include/flox/testing/bar_dispatch_recorder.h",
           "kind": "type",
           "name": "Recorder"
@@ -12944,6 +12954,11 @@
           "header": "include/flox/replay/abstract_replay_source.h",
           "kind": "type",
           "name": "ReplaySpeed"
+        },
+        {
+          "header": "include/flox/strategy/shadow.h",
+          "kind": "type",
+          "name": "Report"
         },
         {
           "header": "include/flox/book/resting_order.h",
@@ -13089,6 +13104,16 @@
           "header": "include/flox/run/trace_recorder.h",
           "kind": "type",
           "name": "SegmentWriter"
+        },
+        {
+          "header": "include/flox/strategy/shadow.h",
+          "kind": "type",
+          "name": "ShadowComparator"
+        },
+        {
+          "header": "include/flox/strategy/shadow.h",
+          "kind": "type",
+          "name": "ShadowSignalHandler"
         },
         {
           "header": "include/flox/indicator/shannon_entropy.h",
@@ -21717,6 +21742,26 @@
         },
         {
           "kind": "method",
+          "name": "clear",
+          "parent": "Record"
+        },
+        {
+          "kind": "method",
+          "name": "evicted",
+          "parent": "Record"
+        },
+        {
+          "kind": "method",
+          "name": "onSignal",
+          "parent": "Record"
+        },
+        {
+          "kind": "method",
+          "name": "records",
+          "parent": "Record"
+        },
+        {
+          "kind": "method",
           "name": "load",
           "parent": "RecordingMetadata"
         },
@@ -21934,6 +21979,16 @@
           "kind": "method",
           "name": "realtime",
           "parent": "ReplaySpeed"
+        },
+        {
+          "kind": "method",
+          "name": "compare",
+          "parent": "Report"
+        },
+        {
+          "kind": "method",
+          "name": "diffOne",
+          "parent": "Report"
         },
         {
           "kind": "method",
