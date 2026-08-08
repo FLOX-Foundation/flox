@@ -93,6 +93,12 @@ add_flox_test(test_position_valuator)
 # CEX coordination tests
 add_flox_test(test_cex_coordination)
 
+if(FLOX_ENABLE_ONNX)
+  add_flox_test(test_onnx_inference)
+  target_compile_definitions(test_onnx_inference PRIVATE
+    FLOX_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+endif()
+
 if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest)
   add_flox_test(test_strategy_pump)

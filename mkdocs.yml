@@ -123,6 +123,7 @@ nav:
           - Wait for multiple feeds with staleness budget: how-to/multi-feed-clock.md
           - Connect to CCXT exchange: how-to/ccxt-adapter.md
           - Measure per-hop latency: how-to/latency-contour.md
+          - From alpha to ONNX inference: how-to/alpha-to-onnx.md
           - Prepare a colo host (memory profile): how-to/colo-host-memory.md
           - Backtesting: how-to/backtest.md
           - Backtest HTML report: how-to/backtest-html-report.md
