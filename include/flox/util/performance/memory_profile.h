@@ -1,0 +1,144 @@
+/*
+ * Flox Engine
+ * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
+ * Copyright (c) 2025 FLOX Foundation
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
+
+#pragma once
+
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
+#include <sstream>
+#include <string>
+
+#if defined(__linux__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <sys/resource.h>
+#endif
+
+namespace flox::performance
+{
+
+// Deployment memory profile. flox pre-allocates and touches its hot memory
+// (pools and rings are constructed at startup), but a touched page is still
+// evictable: under memory pressure it can be paged out, and the next access
+// is a major fault in the middle of trading. COLO pins everything with
+// mlockall(MCL_CURRENT | MCL_FUTURE). DEFAULT changes nothing -- a hard
+// mlockall would break startup on hosts without CAP_IPC_LOCK / memlock
+// ulimit, which is most shared VPS deployments (same philosophy as
+// BackoffMode::RELAXED).
+
+enum class MemoryProfile
+{
+  DEFAULT,  ///< No page locking; suitable for shared/VPS hosts
+  COLO      ///< mlockall the process; requires memlock privilege
+};
+
+inline const char* toString(MemoryProfile p)
+{
+  return p == MemoryProfile::COLO ? "colo" : "default";
+}
+
+inline MemoryProfile memoryProfileFromString(const std::string& s)
+{
+  return s == "colo" ? MemoryProfile::COLO : MemoryProfile::DEFAULT;
+}
+
+struct MemoryReport
+{
+  MemoryProfile profile{MemoryProfile::DEFAULT};
+  bool mlockRequested{false};
+  bool mlockApplied{false};
+  std::string mlockError;         // errno text when the request failed
+  uint64_t memlockLimitBytes{0};  // RLIMIT_MEMLOCK soft limit; UINT64_MAX = unlimited
+  bool memlockLimitKnown{false};
+
+  // Filled by the huge-page arena layer when in use (see large_arena.h).
+  uint64_t hugeArenaBytes{0};
+  std::string hugeArenaMode{"n/a"};
+
+  std::string toString() const
+  {
+    std::ostringstream os;
+    os << "memory profile=" << performance::toString(profile)
+       << " mlock=";
+    if (!mlockRequested)
+    {
+      os << "not-requested";
+    }
+    else if (mlockApplied)
+    {
+      os << "applied";
+    }
+    else
+    {
+      os << "FAILED(" << mlockError << ")";
+    }
+    os << " memlock-limit=";
+    if (!memlockLimitKnown)
+    {
+      os << "unknown";
+    }
+    else if (memlockLimitBytes == UINT64_MAX)
+    {
+      os << "unlimited";
+    }
+    else
+    {
+      os << memlockLimitBytes;
+    }
+    os << " huge-arena=" << hugeArenaMode;
+    if (hugeArenaBytes > 0)
+    {
+      os << "(" << hugeArenaBytes << "B)";
+    }
+    return os.str();
+  }
+};
+
+// Applies the profile to the current process. Never fatal: a COLO request on
+// an unprivileged host degrades to DEFAULT behaviour with the failure recorded
+// in the report -- absence of protection must be a visible fact, not a
+// surprise.
+inline MemoryReport applyMemoryProfile(MemoryProfile profile)
+{
+  MemoryReport report;
+  report.profile = profile;
+
+#if defined(__linux__) || defined(__APPLE__)
+  rlimit rl{};
+  if (::getrlimit(RLIMIT_MEMLOCK, &rl) == 0)
+  {
+    report.memlockLimitKnown = true;
+    report.memlockLimitBytes =
+        (rl.rlim_cur == RLIM_INFINITY) ? UINT64_MAX : static_cast<uint64_t>(rl.rlim_cur);
+  }
+
+  if (profile == MemoryProfile::COLO)
+  {
+    report.mlockRequested = true;
+    if (::mlockall(MCL_CURRENT | MCL_FUTURE) == 0)
+    {
+      report.mlockApplied = true;
+    }
+    else
+    {
+      report.mlockError = std::strerror(errno);
+    }
+  }
+#else
+  if (profile == MemoryProfile::COLO)
+  {
+    report.mlockRequested = true;
+    report.mlockError = "mlockall unsupported on this platform";
+  }
+#endif
+
+  return report;
+}
+
+}  // namespace flox::performance

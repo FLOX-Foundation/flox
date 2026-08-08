@@ -11066,6 +11066,11 @@
           "name": "AmmPoolSnapshot"
         },
         {
+          "header": "include/flox/util/memory/large_arena.h",
+          "kind": "type",
+          "name": "ArenaBacked"
+        },
+        {
           "header": "include/flox/backtest/venue_stack.h",
           "kind": "type",
           "name": "AssembleArgs"
@@ -12081,6 +12086,11 @@
           "name": "LadderBook"
         },
         {
+          "header": "include/flox/util/memory/large_arena.h",
+          "kind": "type",
+          "name": "LargeArena"
+        },
+        {
           "header": "include/flox/util/performance/latency_contour.h",
           "kind": "type",
           "name": "LatencyContour"
@@ -12264,6 +12274,11 @@
           "header": "include/flox/book/matching_book.h",
           "kind": "type",
           "name": "MatchingBook"
+        },
+        {
+          "header": "include/flox/util/performance/memory_profile.h",
+          "kind": "type",
+          "name": "MemoryReport"
         },
         {
           "header": "include/flox/replay/ops/segment_ops.h",
@@ -13869,6 +13884,16 @@
           "kind": "method",
           "name": "step",
           "parent": "AmmPoolReplaySource"
+        },
+        {
+          "kind": "method",
+          "name": "arena",
+          "parent": "ArenaBacked"
+        },
+        {
+          "kind": "method",
+          "name": "get",
+          "parent": "ArenaBacked"
         },
         {
           "kind": "method",
@@ -18147,6 +18172,61 @@
         },
         {
           "kind": "method",
+          "name": "aggregateMode",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "backing",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "backingName",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "bytesFor",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "data",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "name",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "prefault",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "roundUp",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "size",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "totalBytes",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
+          "name": "totalBytesAll",
+          "parent": "LargeArena"
+        },
+        {
+          "kind": "method",
           "name": "record",
           "parent": "LatencyContour"
         },
@@ -19199,6 +19279,11 @@
           "kind": "method",
           "name": "reduce",
           "parent": "MatchingBook"
+        },
+        {
+          "kind": "method",
+          "name": "toString",
+          "parent": "MemoryReport"
         },
         {
           "kind": "method",

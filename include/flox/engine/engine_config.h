@@ -46,6 +46,10 @@ struct EngineConfig
   std::string logFile;
 
   uint32_t drainTimeoutMs = 5000;  ///< Timeout for draining in-flight orders on shutdown
+
+  /// Deployment memory profile: "default" (no page locking) or "colo"
+  /// (mlockall at start; requires memlock privilege, degrades with a warning).
+  std::string memoryProfile = "default";
 };
 
 #ifndef FLOX_DEFAULT_EVENTBUS_CAPACITY
