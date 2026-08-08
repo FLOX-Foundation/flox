@@ -528,12 +528,23 @@ class EventBus : public ISubsystem
     }
     else
     {
-      std::atomic_thread_fence(std::memory_order_release);
+      // The _constructed flags must be stored BEFORE the release fence: the
+      // fence only orders writes sequenced before it against the relaxed
+      // _published stamps that consumers acquire. With constructed stamped
+      // after the fence, a consumer on a weakly-ordered CPU can observe
+      // _published == seq while _constructed still reads 0, classify the
+      // slot as reclaimed and silently skip the event.
       for (size_t k = 0; k < count; ++k)
       {
         const int64_t seq = firstSeq + static_cast<int64_t>(k);
         const size_t idx = size_t(seq) & Mask;
         _constructed[idx].store(1, std::memory_order_relaxed);
+      }
+      std::atomic_thread_fence(std::memory_order_release);
+      for (size_t k = 0; k < count; ++k)
+      {
+        const int64_t seq = firstSeq + static_cast<int64_t>(k);
+        const size_t idx = size_t(seq) & Mask;
         _published[idx].store(seq, std::memory_order_relaxed);
       }
     }
