@@ -11036,6 +11036,11 @@
           "name": "AdxResult"
         },
         {
+          "header": "include/flox/net/af_xdp_receive_path.h",
+          "kind": "type",
+          "name": "AfXdpReceivePath"
+        },
+        {
           "header": "include/flox/util/eventing/event_bus.h",
           "kind": "type",
           "name": "AffinityConfig"
@@ -11406,6 +11411,16 @@
           "name": "Config"
         },
         {
+          "header": "include/flox/net/af_xdp_receive_path.h",
+          "kind": "type",
+          "name": "Config"
+        },
+        {
+          "header": "include/flox/net/receive_path.h",
+          "kind": "type",
+          "name": "Config"
+        },
+        {
           "header": "include/flox/replay/readers/mmap_reader.h",
           "kind": "type",
           "name": "Config"
@@ -11494,6 +11509,11 @@
           "header": "include/flox/indicator/dema.h",
           "kind": "type",
           "name": "DEMA"
+        },
+        {
+          "header": "include/flox/net/receive_path.h",
+          "kind": "type",
+          "name": "Datagram"
         },
         {
           "header": "include/flox/replay/readers/binary_log_reader.h",
@@ -11954,6 +11974,11 @@
           "header": "include/flox/position/position_valuator.h",
           "kind": "type",
           "name": "IPositionValuator"
+        },
+        {
+          "header": "include/flox/net/receive_path.h",
+          "kind": "type",
+          "name": "IReceivePath"
         },
         {
           "header": "include/flox/replay/abstract_replay_source.h",
@@ -13529,6 +13554,11 @@
           "header": "include/flox/backtest/simulated_executor.h",
           "kind": "type",
           "name": "TrailingState"
+        },
+        {
+          "header": "include/flox/net/receive_path.h",
+          "kind": "type",
+          "name": "UdpSocketReceivePath"
         },
         {
           "header": "include/flox/indicator/vwap.h",
@@ -15947,7 +15977,17 @@
         },
         {
           "kind": "method",
+          "name": "droppedNonUdp",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "empty",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "fd",
           "parent": "Config"
         },
         {
@@ -15992,6 +16032,11 @@
         },
         {
           "kind": "method",
+          "name": "localPort",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "makerFillRatio",
           "parent": "Config"
         },
@@ -16023,6 +16068,11 @@
         {
           "kind": "method",
           "name": "peekBest",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "poll",
           "parent": "Config"
         },
         {
@@ -16087,12 +16137,27 @@
         },
         {
           "kind": "method",
+          "name": "timestampMode",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "totalEvents",
           "parent": "Config"
         },
         {
           "kind": "method",
           "name": "tryAcquire",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "udpPayload",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
+          "name": "valid",
           "parent": "Config"
         },
         {
@@ -17774,6 +17839,16 @@
           "kind": "method",
           "name": "unrealizedPnl",
           "parent": "IPositionValuator"
+        },
+        {
+          "kind": "method",
+          "name": "poll",
+          "parent": "IReceivePath"
+        },
+        {
+          "kind": "method",
+          "name": "timestampMode",
+          "parent": "IReceivePath"
         },
         {
           "kind": "method",

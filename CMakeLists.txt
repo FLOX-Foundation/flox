@@ -182,6 +182,23 @@ else()
   target_compile_definitions(${FLOX} PUBLIC FLOX_ONNX_ENABLED=0)
 endif()
 
+# AF_XDP receive-path backend (flox/net/af_xdp_receive_path.h). Linux-only,
+# needs libxdp/libbpf; off by default.
+option(FLOX_ENABLE_AF_XDP "Enable AF_XDP receive-path backend" OFF)
+if(FLOX_ENABLE_AF_XDP)
+  find_library(XDP_LIBRARY NAMES xdp)
+  find_library(BPF_LIBRARY NAMES bpf)
+  if(XDP_LIBRARY AND BPF_LIBRARY)
+    target_link_libraries(${FLOX} PUBLIC ${XDP_LIBRARY} ${BPF_LIBRARY})
+    target_compile_definitions(${FLOX} PUBLIC FLOX_AF_XDP_ENABLED=1)
+    message(STATUS "AF_XDP backend enabled: ${XDP_LIBRARY}")
+  else()
+    message(FATAL_ERROR "FLOX_ENABLE_AF_XDP=ON but libxdp/libbpf were not found")
+  endif()
+else()
+  target_compile_definitions(${FLOX} PUBLIC FLOX_AF_XDP_ENABLED=0)
+endif()
+
 option(FLOX_ENABLE_LZ4 "Enable LZ4 compression for binary logs" ON)
 if(FLOX_ENABLE_LZ4)
   # Try find_package first (works with vcpkg on Windows)
