@@ -11046,6 +11046,11 @@
           "name": "AggregatedPositionTracker"
         },
         {
+          "header": "include/flox/util/eventing/event_bus.h",
+          "kind": "type",
+          "name": "AliveGuard"
+        },
+        {
           "header": "include/flox/connector/amm_dex_connector.h",
           "kind": "type",
           "name": "AmmDexConnector"
@@ -11779,6 +11784,21 @@
           "header": "include/flox/util/memory/pool.h",
           "kind": "type",
           "name": "Handle"
+        },
+        {
+          "header": "include/flox/util/eventing/event_bus.h",
+          "kind": "type",
+          "name": "HealthBook"
+        },
+        {
+          "header": "include/flox/util/eventing/event_bus.h",
+          "kind": "type",
+          "name": "HealthConfig"
+        },
+        {
+          "header": "include/flox/util/eventing/event_bus.h",
+          "kind": "type",
+          "name": "HealthSweep"
         },
         {
           "header": "include/flox/report/heatmap_html.h",
@@ -12951,6 +12971,11 @@
           "name": "Row"
         },
         {
+          "header": "include/flox/util/performance/rt_spin_guard.h",
+          "kind": "type",
+          "name": "RtSpinDecision"
+        },
+        {
           "header": "include/flox/indicator/sma.h",
           "kind": "type",
           "name": "SMA"
@@ -13714,6 +13739,41 @@
           "kind": "method",
           "name": "runAdaptive",
           "parent": "AdaptiveFeeWhirlpoolCurve"
+        },
+        {
+          "kind": "method",
+          "name": "alignas",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "consumerLoop",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "do_publish",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "minConsumed",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "minGating",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "slot_ptr",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "slot_ref",
+          "parent": "AliveGuard"
         },
         {
           "kind": "method",
@@ -17094,6 +17154,16 @@
           "kind": "method",
           "name": "upcast",
           "parent": "Handle"
+        },
+        {
+          "kind": "method",
+          "name": "setHealthConfig",
+          "parent": "HealthConfig"
+        },
+        {
+          "kind": "method",
+          "name": "checkHealth",
+          "parent": "HealthSweep"
         },
         {
           "kind": "method",
@@ -22942,22 +23012,7 @@
         },
         {
           "kind": "method",
-          "name": "alignas",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
           "name": "consumerCount",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
-          "name": "consumerLoop",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
-          "name": "do_publish",
           "parent": "Stats"
         },
         {
@@ -22978,16 +23033,6 @@
         {
           "kind": "method",
           "name": "getCoreAssignment",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
-          "name": "minConsumed",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
-          "name": "minGating",
           "parent": "Stats"
         },
         {
@@ -23027,16 +23072,6 @@
         },
         {
           "kind": "method",
-          "name": "slot_ptr",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
-          "name": "slot_ref",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
           "name": "start",
           "parent": "Stats"
         },
@@ -23068,11 +23103,6 @@
         {
           "kind": "method",
           "name": "tryPublish",
-          "parent": "Stats"
-        },
-        {
-          "kind": "method",
-          "name": "tryReclaim",
           "parent": "Stats"
         },
         {
