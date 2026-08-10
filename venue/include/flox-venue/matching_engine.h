@@ -694,36 +694,20 @@ class MatchingEngine
         return;
       }
     }
-    if (cfg_.linearPerp && o.reduceOnly)
+    // Perp risk gate (reduce-only cap + position-limit check). The single
+    // source of truth shared with the triggered-stop and modify paths -- see
+    // perpRiskGate. Runs BEFORE validate so the fat-finger size check sees the
+    // reduce-only-capped quantity, matching the pre-refactor behaviour. Spot:
+    // a no-op.
+    if (const RejectReason r = perpRiskGate(o); r != RejectReason::None)
     {
-      // Cap a reduce-only order to the opposing position size (never increases;
-      // 0 -> rejected by validate as invalid quantity).
-      const auto pit = positions_.find(o.accountId);
-      const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
-      const int64_t reducible = (o.side == Side::BUY && posQ < 0)    ? -posQ
-                                : (o.side == Side::SELL && posQ > 0) ? posQ
-                                                                     : 0;
-      if (o.quantity.raw() > reducible)
-      {
-        o.quantity = Quantity::fromRaw(reducible);
-      }
+      sink_(OrderRejected{o.id, o.symbol, r});
+      return;
     }
     if (const RejectReason r = validate(o); r != RejectReason::None)
     {
       sink_(OrderRejected{o.id, o.symbol, r});
       return;
-    }
-    if (cfg_.linearPerp && !cfg_.maxPositionQty.isZero())
-    {
-      // Reject if a full fill would grow the account's position past the cap.
-      const auto pit = positions_.find(o.accountId);
-      const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
-      const int64_t worst = posQ + (o.side == Side::BUY ? o.quantity.raw() : -o.quantity.raw());
-      if (iabs64(worst) > cfg_.maxPositionQty.raw())
-      {
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::PositionLimitExceeded});
-        return;
-      }
     }
     if (!reserveFunds(o))
     {
