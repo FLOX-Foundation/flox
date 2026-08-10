@@ -292,7 +292,13 @@ class Matcher
     }
 
     Quantity leaves = order.quantity;
-    std::vector<RestingOrder> level;
+    // Reused scratch, persistent across aggressors: the level snapshot and the
+    // per-order allocation vector. Pro-rata instruments have thick levels, so
+    // these are the hot allocations -- keep them off the matching thread's heap.
+    // thread_local: one matcher runs on one sequenced-shard thread, and this
+    // keeps the FIFO path's zero-alloc guarantee for pro-rata too.
+    static thread_local std::vector<RestingOrder> level;
+    static thread_local std::vector<int64_t> alloc;
     while (!leaves.isZero())
     {
       RestingOrder* top = book.peekBest(restingSide);
@@ -313,7 +319,7 @@ class Matcher
       }
       const int64_t want = std::min<int64_t>(leaves.raw(), tot);
 
-      std::vector<int64_t> alloc(level.size(), 0);
+      alloc.assign(level.size(), 0);  // reuses capacity across levels/aggressors
       int64_t assigned = 0;
       for (size_t i = 0; i < level.size(); ++i)
       {
