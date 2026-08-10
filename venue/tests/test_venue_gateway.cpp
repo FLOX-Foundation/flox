@@ -7,10 +7,10 @@
  * license information.
  */
 #include "flox-venue/fix_codec.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 

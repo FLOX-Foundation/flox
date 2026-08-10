@@ -41,7 +41,7 @@ ordinary backtest path (`run_backtest`) is the right tool, not this.
 ```cpp
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/ledger.h"
-#include "flox/book/matching_book.h"
+#include "flox-venue/matching_book.h"
 
 using namespace flox;
 using namespace flox::venue;
@@ -71,7 +71,7 @@ Interchangeable, and held identical by a differential fuzz.
 | Need | Header |
 |---|---|
 | Matching, order lifecycle, auctions, LULD | `flox-venue/matching_engine.h`, `flox-venue/matcher.h` |
-| Books | `flox/book/{matching_book,ladder_book}.h` (core) |
+| Books | `flox/book/ladder_book.h` (core), `flox-venue/matching_book.h` (oracle) |
 | Money (double entry, `__int128`, conservation-exact) | `flox-venue/ledger.h` |
 | Portfolio margin, collateral haircuts, segregation | `flox-venue/{cross_margin,collateral,segregation}.h` |
 | Mark/index price, feed circuit breaker | `flox-venue/{index_feed,mark_feed_driver}.h` |

@@ -7,7 +7,13 @@
  * license information.
  *
  * O(1) tick-indexed ladder matching book: the performance-path order-level
- * resting book the reference MatchingBook is measured against (same interface).
+ * resting book of the venue matching engine. The correctness oracle it is
+ * verified against (flox-venue/matching_book.h) shares the same interface.
+ *
+ * WHEN TO USE: resting book for matching -- own orders, cancel by id, FIFO
+ * within a level, zero allocations in steady state. For an aggregate L2
+ * market-data view use flox/book/nlevel_order_book.h; for an order-level
+ * market-data book use flox/book/l3/l3_order_book.h.
  *
  * Design:
  * - Two dense price ladders (bids, asks), one Level per tick over a bounded

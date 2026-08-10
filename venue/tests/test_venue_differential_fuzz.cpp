@@ -19,9 +19,9 @@
  * (the venue application gates 2M under ASAN/UBSAN before release).
  */
 #include "flox-venue/event_hash.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox/book/ladder_book.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>

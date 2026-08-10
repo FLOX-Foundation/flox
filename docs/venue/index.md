@@ -11,7 +11,7 @@ configured, compiled, or tested. See
 ```cpp
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/ledger.h"
-#include "flox/book/matching_book.h"
+#include "flox-venue/matching_book.h"
 
 namespace venue = flox::venue;   // qualify venue types; see the namespace note below
 using namespace flox;

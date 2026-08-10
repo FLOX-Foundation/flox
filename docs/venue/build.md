@@ -48,7 +48,7 @@ That brings the include prefix with it:
 
 ```cpp
 #include "flox-venue/matching_engine.h"   // module
-#include "flox/book/matching_book.h"      // core (order-level books live in core)
+#include "flox-venue/matching_book.h"      // module (reference oracle book)
 ```
 
 ## Layout
@@ -63,7 +63,9 @@ venue/
   benchmarks/             book microbenchmark
 ```
 
-Order-level books (`flox/book/{resting_order,matching_book,ladder_book}.h`) and
+Order-level book primitives (`flox/book/{resting_order,ladder_book}.h`) and
 the shared utilities the venue needed (`flox/util/{crypto,wire,transport,
 websocket,system_clock}.h`) live in core, because they are useful on their own
-and carry no venue-specific policy.
+and carry no venue-specific policy. The map-based `MatchingBook` lives in the
+module (`flox-venue/matching_book.h`): it is the correctness oracle the venue
+matcher is fuzz-verified against, not a general-purpose book.

@@ -10,6 +10,7 @@
 #include "flox-venue/control_plane.h"
 #include "flox-venue/control_server.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
@@ -17,7 +18,6 @@
 #include "flox-venue/tcp_gateway.h"
 #include "flox-venue/udp_multicast.h"
 #include "flox-venue/ws_gateway.h"
-#include "flox/book/matching_book.h"
 #include "flox/util/crypto.h"
 #include "flox/util/websocket.h"
 

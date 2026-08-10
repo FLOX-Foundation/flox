@@ -5,6 +5,12 @@
  * Copyright (c) 2025 FLOX Foundation
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
+ *
+ * WHEN TO USE: order-level (L3) market-data book -- tracks individual resting
+ * orders from an exchange L3 feed: add/cancel/modify by id, FIFO queue per
+ * price level, fixed capacity. No matching. For aggregate L2 depth use
+ * flox/book/nlevel_order_book.h; for the venue matcher's resting book use
+ * flox/book/ladder_book.h.
  */
 
 #pragma once

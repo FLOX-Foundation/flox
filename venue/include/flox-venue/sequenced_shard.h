@@ -9,9 +9,9 @@
 #pragma once
 
 #include "flox-venue/journal.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/messages.h"
-#include "flox/book/matching_book.h"
 
 #include "flox/util/eventing/event_bus.h"
 

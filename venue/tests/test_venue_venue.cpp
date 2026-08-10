@@ -10,11 +10,11 @@
 #include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/metrics.h"
 #include "flox-venue/ouch_codec.h"
 #include "flox-venue/resend_buffer.h"
-#include "flox/book/matching_book.h"
 
 #include "flox/backtest/fee_schedule.h"
 

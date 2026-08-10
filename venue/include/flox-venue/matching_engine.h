@@ -10,9 +10,9 @@
 
 #include "flox-venue/ledger.h"
 #include "flox-venue/matcher.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/stop_book.h"
-#include "flox/book/matching_book.h"
 #include "flox/book/resting_order.h"
 
 #include "flox/backtest/fee_schedule.h"
@@ -70,6 +70,12 @@ struct SymbolConfig
   int64_t qtyScale{Quantity::Scale};
 };
 
+// Book selects the resting-book implementation. The default MatchingBook is
+// the allocation-heavy correctness oracle (fine for backtests and tests, needs
+// no per-symbol config). For latency-sensitive simulation instantiate with
+// flox::LadderBook and pass a configured instance:
+//   MatchingEngine<LadderBook> e(cfg, sink, LadderBook{ladderCfg});
+// Equivalence of the two books is enforced by test_venue_differential_fuzz.
 template <class Book = MatchingBook>
 class MatchingEngine
 {

@@ -6,9 +6,9 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox/book/ladder_book.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 

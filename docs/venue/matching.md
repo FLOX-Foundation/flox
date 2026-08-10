@@ -2,10 +2,11 @@
 
 ## Two books, one interface
 
-Order-level books live in core (`flox/book/`) and are distinct from
-`NLevelOrderBook`, which aggregates per-level totals for market data. Matching
-needs individual orders: to keep time priority, cancel by id, and refill
-icebergs.
+Matching needs individual orders -- to keep time priority, cancel by id, and
+refill icebergs -- so the matcher's resting books are distinct from
+`NLevelOrderBook`, which aggregates per-level totals for market data. The
+performance book `LadderBook` lives in core (`flox/book/ladder_book.h`); the
+reference `MatchingBook` lives in the module (`flox-venue/matching_book.h`).
 
 | Book | Shape | Use |
 |---|---|---|

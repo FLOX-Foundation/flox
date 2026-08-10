@@ -8,10 +8,10 @@
  */
 #include "flox-venue/itch_codec.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/workload.h"
 #include "flox/book/ladder_book.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 
