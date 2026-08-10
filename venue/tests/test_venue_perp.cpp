@@ -7,8 +7,8 @@
  * license information.
  */
 #include "flox-venue/ledger.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 
@@ -372,6 +372,47 @@ void test_perp_modify_respects_position_cap()
   CHECK(!eng.book().bestBid().has_value());  // order gone, not resting at qty 20
 }
 
+// The perp risk gate (reduce-only cap + position-limit) is one function shared
+// by the new-order, triggered-stop, and modify paths. This pins that they agree:
+// the identical over-cap scenario must reject with PositionLimitExceeded whether
+// it arrives as a fresh order or as a size-increasing modify.
+void test_perp_risk_gate_consistent_across_paths()
+{
+  std::printf("test_perp_risk_gate_consistent_across_paths\n");
+  auto rejectsOverCap = [](bool viaModify)
+  {
+    Ledger led;
+    led.deposit(1, QUOTE, quote(100000));
+    auto c = cfg();
+    c.maxPositionQty = qty(10);
+    std::vector<OutboundEvent> ev;
+    MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
+                                     { ev.push_back(e); });
+    eng.setLedger(&led, VENUE);
+    eng.submit(InboundCommand{ord(1, Side::BUY, 100, 8, 1)}, 0);  // rest 8 (<= cap)
+    ev.clear();
+    if (viaModify)
+    {
+      eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(20), 1}}, 1);  // 8 -> 20
+    }
+    else
+    {
+      eng.submit(InboundCommand{ord(2, Side::BUY, 100, 20, 1)}, 1);  // fresh 20
+    }
+    for (auto& e : ev)
+    {
+      if (auto* r = std::get_if<OrderRejected>(&e);
+          r && r->reason == RejectReason::PositionLimitExceeded)
+      {
+        return true;
+      }
+    }
+    return false;
+  };
+  CHECK(rejectsOverCap(/*viaModify*/ false));  // new-order path
+  CHECK(rejectsOverCap(/*viaModify*/ true));   // modify path
+}
+
 // reduce-only must survive a modify: a resting reduce-only order that is
 // repriced/resized re-enters matching outside onNew, and its reduce-only nature
 // (carried on the resting record) must be preserved and re-capped -- else the
@@ -496,6 +537,7 @@ TEST(Perp, EngineSuite)
   test_funding_triggers_liquidation();
   test_reduce_only_stop_cannot_open();
   test_perp_modify_respects_position_cap();
+  test_perp_risk_gate_consistent_across_paths();
   test_perp_modify_preserves_reduce_only();
   test_engine_adl();
   test_position_limit();

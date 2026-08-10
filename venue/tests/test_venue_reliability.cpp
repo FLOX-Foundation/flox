@@ -8,15 +8,17 @@
  */
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/symbol_router.h"
 #include "flox-venue/workload.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -98,6 +100,154 @@ void test_journal_replay()
   CHECK(hashLive == hashReplay);  // deterministic recovery
 }
 
+// A crash can leave a torn final record (partial bytes) or bit-rot. The loader
+// must return the largest intact prefix and never materialise a garbage command.
+void test_journal_torn_and_corrupt_tail()
+{
+  std::printf("test_journal_torn_and_corrupt_tail\n");
+  const std::string path = "/tmp/flox_test_venue_reliability_journal_torn.bin";
+
+  std::vector<InboundCommand> cmds;
+  for (uint64_t i = 1; i <= 10; ++i)
+  {
+    NewOrder o;
+    o.id = i;
+    o.symbol = 1;
+    o.side = (i % 2) ? Side::BUY : Side::SELL;
+    o.type = OrderType::LIMIT;
+    o.price = Price::fromDouble(100.0 + static_cast<double>(i));
+    o.quantity = Quantity::fromDouble(1.0);
+    cmds.emplace_back(o);
+  }
+  {
+    Journal j(path, Journal::Sync::Full);
+    for (const auto& c : cmds)
+    {
+      j.append(c);
+    }
+    j.flush();
+  }
+
+  // Full file loads cleanly.
+  CHECK(Journal::load(path).size() == cmds.size());
+
+  const auto fileBytes = [&]
+  {
+    std::ifstream in(path, std::ios::binary);
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)),
+                                std::istreambuf_iterator<char>());
+  }();
+
+  // Truncate at EVERY byte length: each prefix must load as a whole number of
+  // intact records (never a partial trailing one), monotonically non-decreasing.
+  size_t prev = 0;
+  for (size_t len = 0; len <= fileBytes.size(); ++len)
+  {
+    const std::string tp = "/tmp/flox_test_venue_reliability_journal_trunc.bin";
+    {
+      std::ofstream out(tp, std::ios::binary | std::ios::trunc);
+      out.write(reinterpret_cast<const char*>(fileBytes.data()),
+                static_cast<std::streamsize>(len));
+    }
+    const size_t got = Journal::load(tp).size();
+    CHECK(got <= cmds.size());
+    CHECK(got >= prev);  // a longer prefix never loses an already-intact record
+    prev = got;
+  }
+  CHECK(prev == cmds.size());  // the full length recovers everything
+
+  // Corrupt one byte in the last record's body: crc must reject it, so the
+  // loader returns the 9 intact records before it.
+  {
+    auto bytes = fileBytes;
+    const size_t recSize = Journal::kHeaderSize + sizeof(NewOrder) + sizeof(uint32_t);
+    CHECK(bytes.size() == recSize * cmds.size());
+    bytes[bytes.size() - recSize + Journal::kHeaderSize + 4] ^= 0xFF;  // flip a body byte
+    const std::string cp = "/tmp/flox_test_venue_reliability_journal_corrupt.bin";
+    {
+      std::ofstream out(cp, std::ios::binary | std::ios::trunc);
+      out.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    }
+    CHECK(Journal::load(cp).size() == cmds.size() - 1);
+  }
+}
+
+// The determinism digest must fold in every settlement-/risk-/client-visible
+// field, so a divergence in any of them is caught by the reproducibility tests.
+// Flip one field at a time and assert the hash changes.
+void test_event_hash_covers_fields()
+{
+  std::printf("test_event_hash_covers_fields\n");
+  auto H = [](const OutboundEvent& e)
+  { return hashEvent(1469598103934665603ULL, e); };
+  auto changes = [&](const OutboundEvent& a, const OutboundEvent& b)
+  { return H(a) != H(b); };
+
+  // Trade: taker side and both accounts drive settlement direction + fees.
+  {
+    Trade t{7, 1, Price::fromDouble(100), Quantity::fromDouble(2), 10, 11, Side::BUY, 100, 200};
+    Trade s = t;
+    s.takerSide = Side::SELL;
+    CHECK(changes(t, s));
+    s = t;
+    s.makerAccount = 999;
+    CHECK(changes(t, s));
+    s = t;
+    s.takerAccount = 999;
+    CHECK(changes(t, s));
+    s = t;
+    s.symbol = 2;
+    CHECK(changes(t, s));
+  }
+  // OrderExecuted: fill price, aggressor flag, displayed leaves.
+  {
+    OrderExecuted x{7, 1, Quantity::fromDouble(1), Quantity::fromDouble(1), false, false,
+                    Price::fromDouble(100), Quantity::fromDouble(1)};
+    OrderExecuted s = x;
+    s.lastPx = Price::fromDouble(101);
+    CHECK(changes(x, s));
+    s = x;
+    s.aggressor = true;
+    CHECK(changes(x, s));
+    s = x;
+    s.displayLeaves = Quantity::fromDouble(3);
+    CHECK(changes(x, s));
+    s = x;
+    s.symbol = 2;
+    CHECK(changes(x, s));
+  }
+  // Liquidation: ADL vs a plain force-close of the same size/price/account.
+  {
+    Liquidation l{5, 1, Quantity::fromDouble(2), Price::fromDouble(100), true, false};
+    Liquidation s = l;
+    s.adl = true;
+    CHECK(changes(l, s));
+    s = l;
+    s.symbol = 2;
+    CHECK(changes(l, s));
+  }
+  // OrderAccepted displayQty (iceberg peak) must be distinguishable.
+  {
+    OrderAccepted a{7, 1, Side::BUY, Price::fromDouble(100), Quantity::fromDouble(5), true,
+                    Quantity::fromDouble(1)};
+    OrderAccepted s = a;
+    s.displayQty = Quantity::fromDouble(2);
+    CHECK(changes(a, s));
+  }
+  // Symbol is folded into the id-only report events too.
+  {
+    OrderCanceled c{7, 1, CancelReason::UserRequested};
+    OrderCanceled s = c;
+    s.symbol = 2;
+    CHECK(changes(c, s));
+    OrderRejected r{7, 1, RejectReason::Halted};
+    OrderRejected rs = r;
+    rs.symbol = 2;
+    CHECK(changes(r, rs));
+  }
+}
+
 void test_sharding()
 {
   std::printf("test_sharding\n");
@@ -147,6 +297,8 @@ void test_sharding()
 TEST(Reliability, EngineSuite)
 {
   test_journal_replay();
+  test_journal_torn_and_corrupt_tail();
+  test_event_hash_covers_fields();
   test_sharding();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);

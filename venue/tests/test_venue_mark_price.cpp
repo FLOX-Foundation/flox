@@ -9,8 +9,8 @@
 #include "flox-venue/cross_margin.h"
 #include "flox-venue/index_feed.h"
 #include "flox-venue/ledger.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 

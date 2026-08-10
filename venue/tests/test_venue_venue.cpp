@@ -10,11 +10,11 @@
 #include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/metrics.h"
-#include "flox-venue/ouch_codec.h"
 #include "flox-venue/resend_buffer.h"
-#include "flox/book/matching_book.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 
 #include "flox/backtest/fee_schedule.h"
 
@@ -210,13 +210,13 @@ TEST(Venue, EngineSuite)
   eng.setFeeSchedule(fs);
   eng.setLedger(&led, VENUE);
 
-  // Drive the session through the OUCH wire codec, timing each submit.
+  // Drive the session through the SBE order-entry wire codec, timing each submit.
   const auto cmds = session();
   for (const auto& [ts, cmd] : cmds)
   {
     std::vector<uint8_t> wire;
-    OuchCodec::encode(cmd, wire);
-    auto decoded = OuchCodec::decode(wire.data(), wire.size());
+    SbeOrderEntryCodec::encode(cmd, wire);
+    auto decoded = SbeOrderEntryCodec::decode(wire.data(), wire.size());
     CHECK(decoded.has_value());
     const auto t0 = std::chrono::steady_clock::now();
     eng.submit(*decoded, ts);

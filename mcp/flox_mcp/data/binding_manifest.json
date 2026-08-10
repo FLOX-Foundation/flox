@@ -11491,7 +11491,7 @@
           "name": "CpuTopology"
         },
         {
-          "header": "include/flox/replay/binary_format_v1.h",
+          "header": "include/flox/util/crc32.h",
           "kind": "type",
           "name": "Crc32"
         },
@@ -12241,11 +12241,6 @@
           "name": "LiveRateLimitBudgeter"
         },
         {
-          "header": "include/flox/book/matching_book.h",
-          "kind": "type",
-          "name": "Loc"
-        },
-        {
           "header": "include/flox/position/multi_mode_position_tracker.h",
           "kind": "type",
           "name": "LockedConstRef"
@@ -12314,11 +12309,6 @@
           "header": "include/flox/backtest/simulated_executor.h",
           "kind": "type",
           "name": "MarketState"
-        },
-        {
-          "header": "include/flox/book/matching_book.h",
-          "kind": "type",
-          "name": "MatchingBook"
         },
         {
           "header": "include/flox/util/performance/memory_profile.h",
@@ -16532,16 +16522,6 @@
         },
         {
           "kind": "method",
-          "name": "isValid",
-          "parent": "Crc32"
-        },
-        {
-          "kind": "method",
-          "name": "sizeof",
-          "parent": "Crc32"
-        },
-        {
-          "kind": "method",
           "name": "absDiff",
           "parent": "CryptoswapCurve"
         },
@@ -17099,6 +17079,16 @@
           "kind": "method",
           "name": "message",
           "parent": "FloxError"
+        },
+        {
+          "kind": "method",
+          "name": "isValid",
+          "parent": "FrameHeader"
+        },
+        {
+          "kind": "method",
+          "name": "sizeof",
+          "parent": "FrameHeader"
         },
         {
           "kind": "method",
@@ -19047,11 +19037,6 @@
         },
         {
           "kind": "method",
-          "name": "fillFront",
-          "parent": "Loc"
-        },
-        {
-          "kind": "method",
           "name": "consumeSlot",
           "parent": "LogEntry"
         },
@@ -19359,81 +19344,6 @@
           "kind": "method",
           "name": "updateTrailingStops",
           "parent": "MarketState"
-        },
-        {
-          "kind": "method",
-          "name": "addResting",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "availableWithin",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "availableWithinExcl",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "bestAsk",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "bestBid",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "bestLevel",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "cancel",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "consumeById",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "contains",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "empty",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "fillBest",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "find",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "levels",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "peekBest",
-          "parent": "MatchingBook"
-        },
-        {
-          "kind": "method",
-          "name": "reduce",
-          "parent": "MatchingBook"
         },
         {
           "kind": "method",

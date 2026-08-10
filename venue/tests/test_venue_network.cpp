@@ -10,14 +10,14 @@
 #include "flox-venue/control_plane.h"
 #include "flox-venue/control_server.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 #include "flox-venue/session.h"
 #include "flox-venue/tcp_gateway.h"
 #include "flox-venue/udp_multicast.h"
 #include "flox-venue/ws_gateway.h"
-#include "flox/book/matching_book.h"
 #include "flox/util/crypto.h"
 #include "flox/util/websocket.h"
 
@@ -89,10 +89,10 @@ void test_session()
   flox::RateLimitPolicy limits;
   limits.addBucket("t", 1'000'000'000, 3);  // 3 actions / 1s window
   GatewaySession s(7, [](const uint8_t* p, size_t n)
-                   { return OuchCodec::decode(p, n); }, limits);
+                   { return SbeOrderEntryCodec::decode(p, n); }, limits);
 
   std::vector<uint8_t> buf;
-  OuchCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1)}, buf);
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1)}, buf);
 
   SessionReject rej{};
   CHECK(!s.handle(buf.data(), buf.size(), 1000, rej).has_value());
@@ -118,12 +118,12 @@ void test_tcp_gateway()
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      std::vector<uint8_t> b;
-                                     OuchCodec::encode(e, b);
+                                     SbeOrderEntryCodec::encode(e, b);
                                      if (!b.empty() && currentResp){ currentResp(b.data(), b.size());
 } });
 
   TcpGateway gw([](const uint8_t* p, size_t n)
-                { return OuchCodec::decode(p, n); });
+                { return SbeOrderEntryCodec::decode(p, n); });
   const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder& r)
                             {
                               std::lock_guard<std::mutex> lk(m);
@@ -146,7 +146,7 @@ void test_tcp_gateway()
   auto sendCmd = [&](const InboundCommand& cmd)
   {
     std::vector<uint8_t> b;
-    OuchCodec::encode(cmd, b);
+    SbeOrderEntryCodec::encode(cmd, b);
     net::writeFrame(c, b.data(), b.size());
   };
   sendCmd(InboundCommand{mk(1, Side::SELL, 100, 5, 1)});
@@ -160,11 +160,11 @@ void test_tcp_gateway()
   {
     if (!frame.empty())
     {
-      tags.insert(frame[0]);
+      tags.insert(static_cast<uint8_t>(SbeOrderEntryCodec::templateId(frame.data(), frame.size())));
     }
-    if (tags.count(static_cast<uint8_t>(OuchOut::Accepted)) &&
-        tags.count(static_cast<uint8_t>(OuchOut::Trade)) &&
-        tags.count(static_cast<uint8_t>(OuchOut::Executed)))
+    if (tags.count(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Accepted)) &&
+        tags.count(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Trade)) &&
+        tags.count(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Executed)))
     {
       break;
     }
@@ -172,22 +172,26 @@ void test_tcp_gateway()
   ::close(c);
   gw.stop();
 
-  CHECK(tags.count(static_cast<uint8_t>(OuchOut::Accepted)) == 1);
-  CHECK(tags.count(static_cast<uint8_t>(OuchOut::Trade)) == 1);
-  CHECK(tags.count(static_cast<uint8_t>(OuchOut::Executed)) == 1);
+  CHECK(tags.count(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Accepted)) == 1);
+  CHECK(tags.count(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Trade)) == 1);
+  CHECK(tags.count(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Executed)) == 1);
 }
 
 int deliverOverUdp(bool multicast)
 {
   const char* group = "239.7.7.7";
+  // Pin loopback so the same-host multicast path is hermetic in CI; production
+  // callers pass the data-NIC ip (or nullptr to let routing choose).
+  const char* iface = "127.0.0.1";
   UdpMdSubscriber sub;
-  if (!sub.join(group, 0, multicast))
+  if (!sub.join(group, 0, multicast, iface))
   {
     return -1;
   }
   sub.setTimeout(300);
   UdpMdPublisher pub;
-  if (!pub.open(multicast ? group : "127.0.0.1", static_cast<uint16_t>(sub.port()), multicast))
+  if (!pub.open(multicast ? group : "127.0.0.1", static_cast<uint16_t>(sub.port()), multicast,
+                iface))
   {
     return -1;
   }
@@ -233,13 +237,13 @@ void test_session_account_binding()
 {
   std::printf("test_session_account_binding\n");
   auto dec = [](const uint8_t* p, size_t n)
-  { return OuchCodec::decode(p, n); };
+  { return SbeOrderEntryCodec::decode(p, n); };
 
   // Bound to account 7; the wire order claims account 1 -> must be stamped to 7.
   GatewaySession bound(7, dec);
   bound.authenticate(true);
   std::vector<uint8_t> buf;
-  OuchCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1, /*acct*/ 1)}, buf);
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1, /*acct*/ 1)}, buf);
   SessionReject rej{};
   auto cmd = bound.handle(buf.data(), buf.size(), 1000, rej);
   CHECK(cmd.has_value());
@@ -251,7 +255,7 @@ void test_session_account_binding()
   GatewaySession open(0, dec);
   open.authenticate(true);
   std::vector<uint8_t> buf2;
-  OuchCodec::encode(InboundCommand{mk(2, Side::BUY, 100, 1, /*acct*/ 1)}, buf2);
+  SbeOrderEntryCodec::encode(InboundCommand{mk(2, Side::BUY, 100, 1, /*acct*/ 1)}, buf2);
   auto cmd2 = open.handle(buf2.data(), buf2.size(), 1000, rej);
   CHECK(cmd2.has_value());
   const auto* no2 = std::get_if<NewOrder>(&*cmd2);
@@ -263,7 +267,7 @@ void test_logon()
   std::printf("test_logon\n");
   const std::string secret = "topsecret";
   auto dec = [](const uint8_t* p, size_t n)
-  { return OuchCodec::decode(p, n); };
+  { return SbeOrderEntryCodec::decode(p, n); };
   const std::string apiKey = "key123";
   const uint64_t ts = 1000;
   const std::string payload = apiKey + ":" + std::to_string(ts);
@@ -556,12 +560,12 @@ void test_cancel_on_disconnect()
                                    {
                                      events.push_back(e);
                                      std::vector<uint8_t> b;
-                                     OuchCodec::encode(e, b);
+                                     SbeOrderEntryCodec::encode(e, b);
                                      if (!b.empty() && currentResp){ currentResp(b.data(), b.size());
 } });
 
   TcpGateway gw([](const uint8_t* p, size_t n)
-                { return OuchCodec::decode(p, n); });
+                { return SbeOrderEntryCodec::decode(p, n); });
   gw.setCancelOnDisconnect(true);
   const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder& r)
                             {
@@ -579,7 +583,7 @@ void test_cancel_on_disconnect()
   ::connect(c, reinterpret_cast<sockaddr*>(&a), sizeof a);
 
   std::vector<uint8_t> b;
-  OuchCodec::encode(InboundCommand{mk(1, Side::SELL, 100, 5, 3)}, b);
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::SELL, 100, 5, 3)}, b);
   net::writeFrame(c, b.data(), b.size());
 
   timeval tv{1, 0};

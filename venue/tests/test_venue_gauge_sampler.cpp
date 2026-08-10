@@ -8,10 +8,10 @@
  */
 #include "flox-venue/cross_margin.h"
 #include "flox-venue/ledger.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/metrics.h"
 #include "flox-venue/prometheus.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 

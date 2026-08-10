@@ -6,12 +6,12 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
-#include "flox-venue/itch_codec.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
+#include "flox-venue/sbe_md_codec.h"
 #include "flox-venue/workload.h"
 #include "flox/book/ladder_book.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 
@@ -103,18 +103,30 @@ void test_l2_and_codec()
   CHECK(md.book().bestAsk() == px(102));
   CHECK(md.book().askAtPrice(px(102)) == qty(3));
 
-  // ITCH round-trip on the whole feed
+  // SBE round-trip on the whole feed
   std::vector<uint8_t> buf;
   int rt = 0;
   for (const auto& m : feed)
   {
-    ItchCodec::encode(m, buf);
+    SbeMdCodec::encode(m, buf);
     MdMessage back;
-    CHECK(ItchCodec::decode(buf.data(), buf.size(), back));
+    CHECK(SbeMdCodec::decode(buf.data(), buf.size(), back));
     CHECK(sameMd(m, back));
+    // Framed message = SBE header + template block; never the fixed 46 bytes.
+    CHECK(buf.size() >= SbeMdCodec::kHeaderSize);
     ++rt;
   }
   CHECK(rt > 0);
+
+  // Header is well-formed SBE: schemaId matches, unknown schema is rejected.
+  {
+    MdMessage probe{MdType::Trade, 7, SYM, 42, Side::SELL, px(100), qty(3), 9};
+    SbeMdCodec::encode(probe, buf);
+    MdMessage back;
+    CHECK(SbeMdCodec::decode(buf.data(), buf.size(), back) && sameMd(probe, back));
+    buf[4] ^= 0xFF;  // corrupt schemaId in the header
+    CHECK(!SbeMdCodec::decode(buf.data(), buf.size(), back));
+  }
 }
 
 void test_book_agreement()

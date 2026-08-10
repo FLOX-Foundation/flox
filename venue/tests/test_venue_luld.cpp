@@ -6,8 +6,8 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox/book/matching_book.h"
 
 #include <gtest/gtest.h>
 
@@ -140,6 +140,26 @@ TEST(Luld, EngineSuite)
     // not a garbage value from the overflow).
     heng.submit(InboundCommand{limit(4, Side::BUY, 3e7, 1, 2)}, 3);
     CHECK(hc.rejects(RejectReason::LuldBreach) == 1);
+  }
+
+  // A MARKET order has no limit to gate it pre-trade, so it can sweep the book
+  // and print outside the band. The fills stand, but the breaching print trips
+  // the volatility pause, so the next order is halted -- market orders no longer
+  // bypass LULD.
+  {
+    Cap mc;
+    MatchingEngine<MatchingBook> meng(cfg(), mc.sink());  // band +/-5%
+    meng.submit(InboundCommand{limit(1, Side::SELL, 100, 5, 1)}, 0);
+    meng.submit(InboundCommand{limit(2, Side::BUY, 100, 5, 2)}, 1);  // trade @100, ask side empty
+    CHECK(mc.trades() == 1);                                         // band [95,105]
+    // Only liquidity left is above the band; a market buy sweeps it and prints @108.
+    meng.submit(InboundCommand{limit(3, Side::SELL, 108, 5, 1)}, 2);
+    NewOrder mkt = limit(4, Side::BUY, 0, 2, 2);
+    mkt.type = OrderType::MARKET;
+    meng.submit(InboundCommand{mkt}, 3);                             // fills @108 -> last=108 > 105
+    CHECK(mc.trades() == 2);                                         // the sweep printed
+    meng.submit(InboundCommand{limit(5, Side::BUY, 100, 1, 2)}, 4);  // within the pause
+    CHECK(mc.rejects(RejectReason::Halted) == 1);                    // market sweep tripped LULD
   }
 
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);

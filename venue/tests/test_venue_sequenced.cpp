@@ -90,8 +90,12 @@ TEST(Sequenced, EngineSuite)
 
   HashSink sink;
   // Heap-allocated: the shard embeds the Disruptor ring storage (large).
-  auto shard = std::make_unique<SequencedShard<LadderBook>>(cfg(), "/tmp/flox_test_venue_sequenced_seq_journal.bin",
-                                                            LadderBook{ladderCfg()});
+  // Throughput benchmark of the Disruptor path: journal in Sync::Off so the
+  // measurement is the ring + engine, not 500k fsyncs. Durability itself is
+  // covered by the journal round-trip / torn-tail tests.
+  auto shard = std::make_unique<SequencedShard<LadderBook>>(
+      cfg(), "/tmp/flox_test_venue_sequenced_seq_journal.bin", LadderBook{ladderCfg()},
+      Journal::Sync::Off);
   CHECK(shard->subscribeOutbound(&sink, true));
   shard->start();
 

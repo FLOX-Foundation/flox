@@ -41,7 +41,7 @@ ordinary backtest path (`run_backtest`) is the right tool, not this.
 ```cpp
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/ledger.h"
-#include "flox/book/matching_book.h"
+#include "flox-venue/matching_book.h"
 
 using namespace flox;
 using namespace flox::venue;
@@ -71,14 +71,14 @@ Interchangeable, and held identical by a differential fuzz.
 | Need | Header |
 |---|---|
 | Matching, order lifecycle, auctions, LULD | `flox-venue/matching_engine.h`, `flox-venue/matcher.h` |
-| Books | `flox/book/{matching_book,ladder_book}.h` (core) |
+| Books | `flox/book/ladder_book.h` (core), `flox-venue/matching_book.h` (oracle) |
 | Money (double entry, `__int128`, conservation-exact) | `flox-venue/ledger.h` |
 | Portfolio margin, collateral haircuts, segregation | `flox-venue/{cross_margin,collateral,segregation}.h` |
 | Mark/index price, feed circuit breaker | `flox-venue/{index_feed,mark_feed_driver}.h` |
 | Funding (live rate + scheduler) | `flox-venue/{funding_rate,funding_scheduler}.h` |
 | Single-writer runtime, WAL, replay determinism | `flox-venue/{sequenced_shard,journal,event_hash}.h` |
-| Market data out (L2 + ITCH) | `flox-venue/{market_data,itch_codec}.h` |
-| Gateways, sessions, FIX/OUCH/REST | `flox-venue/{tcp_gateway,ws_gateway,tls_gateway,session,fix_codec,ouch_codec,rest_json}.h` |
+| Market data out (L2 + SBE) | `flox-venue/{market_data,sbe_md_codec}.h` |
+| Gateways, sessions, FIX/SBE-OE/REST | `flox-venue/{tcp_gateway,ws_gateway,tls_gateway,session,fix_codec,sbe_order_entry_codec,rest_json}.h` |
 | Control plane, metrics | `flox-venue/{control_api,metrics,prometheus}.h` |
 
 ## Order vocabulary

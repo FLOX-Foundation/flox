@@ -10,9 +10,9 @@
 
 #include "flox-venue/ledger.h"
 #include "flox-venue/matcher.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/stop_book.h"
-#include "flox/book/matching_book.h"
 #include "flox/book/resting_order.h"
 
 #include "flox/backtest/fee_schedule.h"
@@ -70,6 +70,12 @@ struct SymbolConfig
   int64_t qtyScale{Quantity::Scale};
 };
 
+// Book selects the resting-book implementation. The default MatchingBook is
+// the allocation-heavy correctness oracle (fine for backtests and tests, needs
+// no per-symbol config). For latency-sensitive simulation instantiate with
+// flox::LadderBook and pass a configured instance:
+//   MatchingEngine<LadderBook> e(cfg, sink, LadderBook{ladderCfg});
+// Equivalence of the two books is enforced by test_venue_differential_fuzz.
 template <class Book = MatchingBook>
 class MatchingEngine
 {
@@ -688,36 +694,20 @@ class MatchingEngine
         return;
       }
     }
-    if (cfg_.linearPerp && o.reduceOnly)
+    // Perp risk gate (reduce-only cap + position-limit check). The single
+    // source of truth shared with the triggered-stop and modify paths -- see
+    // perpRiskGate. Runs BEFORE validate so the fat-finger size check sees the
+    // reduce-only-capped quantity, matching the pre-refactor behaviour. Spot:
+    // a no-op.
+    if (const RejectReason r = perpRiskGate(o); r != RejectReason::None)
     {
-      // Cap a reduce-only order to the opposing position size (never increases;
-      // 0 -> rejected by validate as invalid quantity).
-      const auto pit = positions_.find(o.accountId);
-      const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
-      const int64_t reducible = (o.side == Side::BUY && posQ < 0)    ? -posQ
-                                : (o.side == Side::SELL && posQ > 0) ? posQ
-                                                                     : 0;
-      if (o.quantity.raw() > reducible)
-      {
-        o.quantity = Quantity::fromRaw(reducible);
-      }
+      sink_(OrderRejected{o.id, o.symbol, r});
+      return;
     }
     if (const RejectReason r = validate(o); r != RejectReason::None)
     {
       sink_(OrderRejected{o.id, o.symbol, r});
       return;
-    }
-    if (cfg_.linearPerp && !cfg_.maxPositionQty.isZero())
-    {
-      // Reject if a full fill would grow the account's position past the cap.
-      const auto pit = positions_.find(o.accountId);
-      const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
-      const int64_t worst = posQ + (o.side == Side::BUY ? o.quantity.raw() : -o.quantity.raw());
-      if (iabs64(worst) > cfg_.maxPositionQty.raw())
-      {
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::PositionLimitExceeded});
-        return;
-      }
     }
     if (!reserveFunds(o))
     {
@@ -745,24 +735,22 @@ class MatchingEngine
       return;
     }
 
-    if (cfg_.luldBps > 0 && hasLast_ && o.type != OrderType::MARKET)
+    // LULD band, captured from the pre-trade reference (matching below moves the
+    // last price). Absent before the first trade -- documented pre-first-trade
+    // window where no band exists yet.
+    int64_t luldLo = 0, luldHi = 0;
+    const bool luldOn = luldBand(luldLo, luldHi);
+
+    if (luldOn && o.type != OrderType::MARKET)
     {
-      // Compute the band in 128-bit to avoid int64 overflow on a high-priced
-      // instrument (raw * bps can exceed INT64_MAX), then clamp it so the upper
-      // = last + band addition below cannot overflow either. An oversized band
-      // just means "no breach possible", which degrades safely.
-      const __int128 prod =
-          static_cast<__int128>(lastPrice_.raw()) * static_cast<__int128>(cfg_.luldBps) / 10000;
-      const int64_t maxBand = INT64_MAX - lastPrice_.raw();
-      const int64_t band = prod > static_cast<__int128>(maxBand) ? maxBand : static_cast<int64_t>(prod);
-      const Price upper = Price::fromRaw(lastPrice_.raw() + band);
-      const Price lower = Price::fromRaw(lastPrice_.raw() - band);
-      if ((o.side == Side::BUY && upper < o.price) || (o.side == Side::SELL && o.price < lower))
+      // A limit order priced outside the band is rejected pre-trade and trips the
+      // pause -- it never executes or rests out of band.
+      if ((o.side == Side::BUY && luldHi < o.price.raw()) ||
+          (o.side == Side::SELL && o.price.raw() < luldLo))
       {
         releaseReservation(o.id);
         sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach});
-        cfg_.halted = true;  // trip a timed volatility pause
-        haltUntil_ = now_ + cfg_.luldHaltNs;
+        tripLuldHalt();
         return;
       }
     }
@@ -812,6 +800,42 @@ class MatchingEngine
     }
 
     processTriggers();  // this order's trades may have crossed resting stops
+
+    // Post-trade LULD: a MARKET order (no limit to gate it pre-trade) can sweep
+    // the book and print outside the band, and a stop cascade in processTriggers
+    // can too. The breaching print stands, but it trips the volatility pause so
+    // subsequent trading halts -- the exchange-style volatility interruption. A
+    // limit order cannot breach here: it never trades through its own in-band
+    // limit, so this condition is naturally false for it.
+    if (luldOn && hasLast_ && (lastPrice_.raw() > luldHi || lastPrice_.raw() < luldLo))
+    {
+      tripLuldHalt();
+    }
+  }
+
+  // LULD band [loRaw, hiRaw] around the current last price, computed in 128-bit
+  // to avoid int64 overflow on a high-priced instrument and clamped so the upper
+  // bound cannot overflow. Returns false when LULD is off or there is no last
+  // price yet (no reference -> no band).
+  bool luldBand(int64_t& loRaw, int64_t& hiRaw) const
+  {
+    if (cfg_.luldBps <= 0 || !hasLast_)
+    {
+      return false;
+    }
+    const __int128 prod =
+        static_cast<__int128>(lastPrice_.raw()) * static_cast<__int128>(cfg_.luldBps) / 10000;
+    const int64_t maxBand = INT64_MAX - lastPrice_.raw();
+    const int64_t band = prod > static_cast<__int128>(maxBand) ? maxBand : static_cast<int64_t>(prod);
+    loRaw = lastPrice_.raw() - band;
+    hiRaw = lastPrice_.raw() + band;
+    return true;
+  }
+
+  void tripLuldHalt()
+  {
+    cfg_.halted = true;  // trip a timed volatility pause
+    haltUntil_ = now_ + cfg_.luldHaltNs;
   }
 
   // Conditional order (stop / take-profit / trailing): park in the stop book
@@ -1262,18 +1286,15 @@ class MatchingEngine
     {
       return;
     }
-    auto& dq = mmpFills_[account];
-    dq.emplace_back(now_, qty);
-    while (!dq.empty() && dq.front().first <= now_ - cfg->second.windowNs)
+    auto& w = mmpFills_[account];
+    w.fills.emplace_back(now_, qty);
+    w.sumRaw += qty.raw();
+    while (!w.fills.empty() && w.fills.front().first <= now_ - cfg->second.windowNs)
     {
-      dq.pop_front();
+      w.sumRaw -= w.fills.front().second.raw();
+      w.fills.pop_front();
     }
-    Quantity sum{};
-    for (const auto& p : dq)
-    {
-      sum += p.second;
-    }
-    if (!(sum < cfg->second.qtyLimit))  // sum >= limit
+    if (w.sumRaw >= cfg->second.qtyLimit.raw())  // sum >= limit
     {
       bool queued = false;
       for (uint64_t a : mmpBreached_)
@@ -1291,7 +1312,9 @@ class MatchingEngine
     for (uint64_t acc : mmpBreached_)
     {
       cancelAllForAccount(acc);
-      mmpFills_[acc].clear();  // re-arm
+      auto& w = mmpFills_[acc];  // re-arm: drop the window and its running sum
+      w.fills.clear();
+      w.sumRaw = 0;
       sink_(MmpTriggered{acc, cfg_.id});
     }
     mmpBreached_.clear();
@@ -2120,7 +2143,15 @@ class MatchingEngine
     int64_t windowNs{};
   };
   std::unordered_map<uint64_t, MmpCfg> mmpCfg_;
-  std::unordered_map<uint64_t, std::deque<std::pair<int64_t, Quantity>>> mmpFills_;
+  // Sliding fill window per account with an incrementally maintained sum, so a
+  // breach check is O(1) amortised rather than an O(n) rescan of the deque on
+  // every fill (an active MM inside the window would otherwise be O(n^2)).
+  struct MmpWindow
+  {
+    std::deque<std::pair<int64_t, Quantity>> fills;
+    int64_t sumRaw{0};  // running sum of fills.second.raw()
+  };
+  std::unordered_map<uint64_t, MmpWindow> mmpFills_;
   std::vector<uint64_t> mmpBreached_;
   CreditCheck credit_;
 

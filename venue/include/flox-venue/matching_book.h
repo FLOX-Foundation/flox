@@ -10,13 +10,14 @@
  * aggregate NLevelOrderBook (market-data depth): this tracks individual orders
  * so it can match, cancel by id, and refill icebergs.
  *
- * STAGE-0 REFERENCE IMPLEMENTATION. Correctness-first: std::map + std::list,
- * which ALLOCATES on the hot path. This is deliberate tech-debt for stage 0 so
- * the matcher can be built and tested against a provably correct book. It MUST
- * be replaced by the fixed-capacity, zero-alloc O(1) ladder described in
- * PLAN.md 4.3 (direct tick-indexed array + occupancy bitmap for O(1) best and
- * O(1) next-level) before any latency claim. The public surface below is the
- * seam the ladder plugs into unchanged.
+ * REFERENCE ORACLE, not a production book. Correctness-first std::map +
+ * std::list; allocates on the hot path by design. Its job is to be the
+ * obviously-correct baseline the venue matcher is verified against:
+ * test_venue_differential_fuzz drives this book and flox::LadderBook (the
+ * fixed-capacity, zero-alloc replacement in flox/book/ladder_book.h) through
+ * the same order flow and requires identical event streams. Use LadderBook for
+ * anything latency-sensitive; both plug into the same Book seam of
+ * MatchingEngine/SequencedShard/SymbolRouter.
  */
 #pragma once
 

@@ -6,10 +6,10 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox-venue/ouch_codec.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 #include "flox-venue/tls_gateway.h"
-#include "flox/book/matching_book.h"
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
@@ -75,12 +75,12 @@ void test_tls_roundtrip()
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      std::vector<uint8_t> b;
-                                     OuchCodec::encode(e, b);
+                                     SbeOrderEntryCodec::encode(e, b);
                                      if (!b.empty() && currentResp){ currentResp(b.data(), b.size());
 } });
 
   TlsGateway gw([](const uint8_t* p, size_t n)
-                { return OuchCodec::decode(p, n); });
+                { return SbeOrderEntryCodec::decode(p, n); });
   const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder& r)
                             {
                               std::lock_guard<std::mutex> lk(m);
@@ -108,7 +108,7 @@ void test_tls_roundtrip()
   auto sendCmd = [&](const InboundCommand& c)
   {
     std::vector<uint8_t> b;
-    OuchCodec::encode(c, b);
+    SbeOrderEntryCodec::encode(c, b);
     tls::writeFrame(ssl, b.data(), b.size());
   };
   sendCmd(InboundCommand{mk(1, Side::SELL, 100, 5, 1)});
@@ -120,10 +120,10 @@ void test_tls_roundtrip()
   {
     if (!frame.empty())
     {
-      tags.insert(frame[0]);
+      tags.insert(static_cast<uint8_t>(SbeOrderEntryCodec::templateId(frame.data(), frame.size())));
     }
-    if (tags.count(uint8_t(OuchOut::Accepted)) && tags.count(uint8_t(OuchOut::Trade)) &&
-        tags.count(uint8_t(OuchOut::Executed)))
+    if (tags.count(uint8_t(SbeOrderEntryCodec::OutTmpl::Accepted)) && tags.count(uint8_t(SbeOrderEntryCodec::OutTmpl::Trade)) &&
+        tags.count(uint8_t(SbeOrderEntryCodec::OutTmpl::Executed)))
     {
       break;
     }
@@ -134,9 +134,9 @@ void test_tls_roundtrip()
   SSL_CTX_free(cctx);
   gw.stop();
 
-  CHECK(tags.count(uint8_t(OuchOut::Accepted)) == 1);
-  CHECK(tags.count(uint8_t(OuchOut::Trade)) == 1);
-  CHECK(tags.count(uint8_t(OuchOut::Executed)) == 1);
+  CHECK(tags.count(uint8_t(SbeOrderEntryCodec::OutTmpl::Accepted)) == 1);
+  CHECK(tags.count(uint8_t(SbeOrderEntryCodec::OutTmpl::Trade)) == 1);
+  CHECK(tags.count(uint8_t(SbeOrderEntryCodec::OutTmpl::Executed)) == 1);
 }
 
 // A market maker quoting over the encrypted path must get the same disconnect
@@ -151,11 +151,11 @@ void test_tls_cancel_on_disconnect()
                                    {
                                      events.push_back(e);
                                      std::vector<uint8_t> b;
-                                     OuchCodec::encode(e, b);
+                                     SbeOrderEntryCodec::encode(e, b);
                                      if (!b.empty() && currentResp){ currentResp(b.data(), b.size());
 } });
   TlsGateway gw([](const uint8_t* p, size_t n)
-                { return OuchCodec::decode(p, n); });
+                { return SbeOrderEntryCodec::decode(p, n); });
   gw.setCancelOnDisconnect(true);
   const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder& r)
                             {
@@ -179,7 +179,7 @@ void test_tls_cancel_on_disconnect()
   ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
   std::vector<uint8_t> b;
-  OuchCodec::encode(InboundCommand{mk(1, Side::SELL, 100, 5, 1)}, b);
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::SELL, 100, 5, 1)}, b);
   tls::writeFrame(ssl, b.data(), b.size());
   std::vector<uint8_t> frame;
   tls::readFrame(ssl, frame);  // wait for Accepted -> resting

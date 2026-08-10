@@ -5,6 +5,11 @@
  * Copyright (c) 2025 FLOX Foundation
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
+ *
+ * WHEN TO USE: aggregate L2 market-data view (exchange depth feed in, best/top
+ * levels out). Flat tick-indexed array with a cached best cursor; no per-order
+ * state, no matching. For order-level books see flox/book/l3/l3_order_book.h
+ * (market data) and flox/book/ladder_book.h (venue matching).
  */
 
 #pragma once

@@ -8,8 +8,8 @@
  */
 #include "flox-venue/control_api.h"
 #include "flox-venue/control_plane.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox/book/matching_book.h"
 
 #include <string>
 

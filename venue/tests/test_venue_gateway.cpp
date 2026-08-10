@@ -7,10 +7,10 @@
  * license information.
  */
 #include "flox-venue/fix_codec.h"
+#include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
-#include "flox/book/matching_book.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 
 #include <gtest/gtest.h>
 
@@ -61,9 +61,9 @@ std::string fixJoin(std::initializer_list<std::pair<int, std::string>> fields)
   return s;
 }
 
-void test_ouch_roundtrip()
+void test_sbe_oe_roundtrip()
 {
-  std::printf("test_ouch_roundtrip\n");
+  std::printf("test_sbe_oe_roundtrip\n");
   NewOrder o;
   o.id = 42;
   o.symbol = SYM;
@@ -87,8 +87,8 @@ void test_ouch_roundtrip()
   o.pegOffsetRaw = -250;
 
   std::vector<uint8_t> buf;
-  OuchCodec::encode(InboundCommand{o}, buf);
-  auto back = OuchCodec::decode(buf.data(), buf.size());
+  SbeOrderEntryCodec::encode(InboundCommand{o}, buf);
+  auto back = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(back.has_value());
   const auto* n = std::get_if<NewOrder>(&*back);
   CHECK(n != nullptr);
@@ -102,12 +102,12 @@ void test_ouch_roundtrip()
   CHECK(n->reduceOnly && n->lastLook && n->peg == PegRef::Mid);
   CHECK(n->expiryNs == 1'700'000'000'000 && n->ocoGroup == 99 && n->pegOffsetRaw == -250);
 
-  OuchCodec::encode(InboundCommand{CancelOrder{42, SYM, 77}}, buf);
-  auto bc = OuchCodec::decode(buf.data(), buf.size());
+  SbeOrderEntryCodec::encode(InboundCommand{CancelOrder{42, SYM, 77}}, buf);
+  auto bc = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(bc && std::get_if<CancelOrder>(&*bc) && std::get<CancelOrder>(*bc).id == 42);
 
-  OuchCodec::encode(InboundCommand{ModifyOrder{42, SYM, px(102), qty(4), 77}}, buf);
-  auto bm = OuchCodec::decode(buf.data(), buf.size());
+  SbeOrderEntryCodec::encode(InboundCommand{ModifyOrder{42, SYM, px(102), qty(4), 77}}, buf);
+  auto bm = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(bm && std::get_if<ModifyOrder>(&*bm));
   CHECK(std::get<ModifyOrder>(*bm).newPrice == px(102) && std::get<ModifyOrder>(*bm).newQty == qty(4));
 }
@@ -155,24 +155,46 @@ void test_fix_parse()
   // Without ExecInst=E, reduceOnly stays false.
   auto cno = FixCodec::decode(fixJoin({{35, "D"}, {11, "9"}, {55, "1"}, {54, "1"}, {38, "5"}, {44, "100"}}));
   CHECK(cno && !std::get<NewOrder>(*cno).reduceOnly);
+
+  // Strictness: no guessed defaults, decimals straight to fixed-point.
+  CHECK(!FixCodec::decode(fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {38, "5"}, {44, "100"}})));  // no Side
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "9"}, {38, "5"}, {44, "100"}})));  // bad Side
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {40, "7"}, {38, "5"}, {44, "100"}})));  // bad OrdType
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {44, "100"}})));  // no OrderQty
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {38, "5"}, {44, "1e2"}})));  // exponent price
+  CHECK(!FixCodec::decode(fixJoin(
+      {{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {38, "5"}, {44, "100.123456789"}})));  // too precise
+  CHECK(!FixCodec::decode(fixJoin({{35, "F"}, {55, "1"}})));                              // cancel without OrigClOrdID
+
+  // Fixed-point survives exactly through decode and back out (no double).
+  auto fxd = FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {40, "2"}, {38, "5"}, {44, "100.25"}}));
+  CHECK(fxd && std::get<NewOrder>(*fxd).price == px(100.25));
+  const std::string er = FixCodec::encode(
+      OutboundEvent{OrderAccepted{1, SYM, Side::BUY, px(100.25), qty(5), true}});
+  CHECK(er.find("44=100.25\x01") != std::string::npos);  // exact, not 100.250000
 }
 
-void test_ouch_endtoend()
+void test_sbe_oe_endtoend()
 {
-  std::printf("test_ouch_endtoend\n");
+  std::printf("test_sbe_oe_endtoend\n");
   std::vector<uint8_t> reportTags;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      std::vector<uint8_t> b;
-                                     OuchCodec::encode(e, b);
-                                     if (!b.empty()){ reportTags.push_back(b[0]);
+                                     SbeOrderEntryCodec::encode(e, b);
+                                     if (!b.empty()){ reportTags.push_back(static_cast<uint8_t>(SbeOrderEntryCodec::templateId(b.data(), b.size())));
 } });
 
   auto submitWire = [&](const InboundCommand& c)
   {
     std::vector<uint8_t> b;
-    OuchCodec::encode(c, b);
-    auto decoded = OuchCodec::decode(b.data(), b.size());
+    SbeOrderEntryCodec::encode(c, b);
+    auto decoded = SbeOrderEntryCodec::decode(b.data(), b.size());
     CHECK(decoded.has_value());
     eng.submit(*decoded);
   };
@@ -199,9 +221,9 @@ void test_ouch_endtoend()
   bool sawAccepted = false, sawTrade = false, sawExec = false;
   for (uint8_t t : reportTags)
   {
-    sawAccepted |= (t == static_cast<uint8_t>(OuchOut::Accepted));
-    sawTrade |= (t == static_cast<uint8_t>(OuchOut::Trade));
-    sawExec |= (t == static_cast<uint8_t>(OuchOut::Executed));
+    sawAccepted |= (t == static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Accepted));
+    sawTrade |= (t == static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Trade));
+    sawExec |= (t == static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Executed));
   }
   CHECK(sawAccepted && sawTrade && sawExec);
 }
@@ -263,6 +285,32 @@ void test_rest_json()
   auto cm = RestJson::decode(R"({"action":"modify","id":7,"symbol":1,"price":101,"qty":3})");
   CHECK(cm && std::get_if<ModifyOrder>(&*cm) && std::get<ModifyOrder>(*cm).newQty == qty(3));
 
+  // Strictness: no guessed defaults, no open schema.
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"ordType":"limit","qty":5,"price":100})"));  // no side
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"hold","qty":5,"price":100})"));  // bad side
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","ordType":"limit","price":100})"));  // no qty
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","ordType":"vwap","qty":5})"));  // bad type
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"id":2,"symbol":1,"side":"buy","qty":5})"));  // duplicate key
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":5,"foo":1})"));  // unknown key
+  CHECK(!RestJson::decode(R"({"action":"cancel","id":7})"));                   // no symbol
+  CHECK(!RestJson::decode(R"({"action":"nuke","id":7,"symbol":1})"));          // bad action
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":5,"price":1e3})"));  // exponent
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":5,"price":0.123456789})"));  // precision
+
+  // Fixed-point survives the round trip exactly (no double in the path).
+  auto rt = RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":0.00000001,"price":100.25})");
+  CHECK(rt && std::get<NewOrder>(*rt).quantity.raw() == 1);
+  CHECK(rt && std::get<NewOrder>(*rt).price == px(100.25));
+
   // end-to-end: JSON orders -> engine -> JSON events
   std::vector<std::string> out;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
@@ -286,9 +334,9 @@ void test_rest_json()
 
 TEST(Gateway, EngineSuite)
 {
-  test_ouch_roundtrip();
+  test_sbe_oe_roundtrip();
   test_fix_parse();
-  test_ouch_endtoend();
+  test_sbe_oe_endtoend();
   test_fix_execreport();
   test_rest_json();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);

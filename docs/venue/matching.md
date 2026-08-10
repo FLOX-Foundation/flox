@@ -2,10 +2,11 @@
 
 ## Two books, one interface
 
-Order-level books live in core (`flox/book/`) and are distinct from
-`NLevelOrderBook`, which aggregates per-level totals for market data. Matching
-needs individual orders: to keep time priority, cancel by id, and refill
-icebergs.
+Matching needs individual orders -- to keep time priority, cancel by id, and
+refill icebergs -- so the matcher's resting books are distinct from
+`NLevelOrderBook`, which aggregates per-level totals for market data. The
+performance book `LadderBook` lives in core (`flox/book/ladder_book.h`); the
+reference `MatchingBook` lives in the module (`flox-venue/matching_book.h`).
 
 | Book | Shape | Use |
 |---|---|---|
@@ -103,6 +104,15 @@ limits during volatility without a restart:
 | Price band (collar) | `minPrice`, `maxPrice` | — |
 | Fat finger | `maxOrderQty`, `maxOrderNotional` | `setFatFinger` |
 | LULD volatility band | `luldBps`, `luldHaltNs` | `setLuldBps` |
+
+LULD (limit-up/limit-down) gates both sides of a trade. A limit order priced
+outside the band around the last price is rejected pre-trade (`LuldBreach`) and
+trips a timed pause. A market order has no limit to gate it, so it can sweep the
+book and print outside the band; that breaching print stands, but it trips the
+same pause so subsequent trading halts (the exchange-style volatility
+interruption) -- a stop cascade that prints out of band trips it the same way.
+Before the first trade there is no reference price, so no band exists yet.
+
 | Max resting orders per account | `maxOpenOrders` | `setMaxOpenOrders` |
 | Max position (perp) | `maxPositionQty` | `setPositionLimit` |
 | Margin requirement | `initialMarginBps`, `maintenanceMarginBps` | `setMarginBps` |

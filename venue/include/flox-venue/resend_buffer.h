@@ -10,6 +10,7 @@
 
 #include "flox-venue/messages.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -51,13 +52,14 @@ class ResendBuffer
     {
       return out;
     }
-    for (const auto& m : it->second.log)
-    {
-      if (m.seq >= fromSeq)
-      {
-        out.push_back(m);
-      }
-    }
+    // The log is append-ordered by seq (append increments lastSeq; ackThrough
+    // only trims the front), so binary-search the first seq >= fromSeq instead
+    // of scanning the whole history.
+    const auto& log = it->second.log;
+    const auto lo = std::lower_bound(log.begin(), log.end(), fromSeq,
+                                     [](const SeqMessage& m, uint64_t s)
+                                     { return m.seq < s; });
+    out.assign(lo, log.end());
     return out;
   }
 
