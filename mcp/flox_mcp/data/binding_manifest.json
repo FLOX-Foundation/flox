@@ -11491,7 +11491,7 @@
           "name": "CpuTopology"
         },
         {
-          "header": "include/flox/replay/binary_format_v1.h",
+          "header": "include/flox/util/crc32.h",
           "kind": "type",
           "name": "Crc32"
         },
@@ -16522,16 +16522,6 @@
         },
         {
           "kind": "method",
-          "name": "isValid",
-          "parent": "Crc32"
-        },
-        {
-          "kind": "method",
-          "name": "sizeof",
-          "parent": "Crc32"
-        },
-        {
-          "kind": "method",
           "name": "absDiff",
           "parent": "CryptoswapCurve"
         },
@@ -17089,6 +17079,16 @@
           "kind": "method",
           "name": "message",
           "parent": "FloxError"
+        },
+        {
+          "kind": "method",
+          "name": "isValid",
+          "parent": "FrameHeader"
+        },
+        {
+          "kind": "method",
+          "name": "sizeof",
+          "parent": "FrameHeader"
         },
         {
           "kind": "method",
