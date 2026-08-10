@@ -18,29 +18,6 @@
 namespace flox::venue
 {
 
-// Saturating double -> fixed-point conversion for UNTRUSTED input (REST/FIX
-// numeric fields). Decimal::fromDouble multiplies by Scale and casts to int64;
-// a hostile value like 5e52 would overflow that cast (undefined behavior). Clamp
-// to a safe range and neutralize NaN before converting.
-template <class D>
-inline D safeDecimal(double v)
-{
-  const double kMax = 9.0e18 / static_cast<double>(D::Scale);  // < INT64_MAX after *Scale
-  if (!(v == v))
-  {
-    v = 0.0;  // NaN
-  }
-  if (v > kMax)
-  {
-    v = kMax;
-  }
-  else if (v < -kMax)
-  {
-    v = -kMax;
-  }
-  return D::fromDouble(v);
-}
-
 // ---- Inbound commands -----------------------------------------------------
 
 // Peg reference: a resting order tracks the book, re-priced at each submit

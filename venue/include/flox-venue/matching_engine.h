@@ -735,24 +735,22 @@ class MatchingEngine
       return;
     }
 
-    if (cfg_.luldBps > 0 && hasLast_ && o.type != OrderType::MARKET)
+    // LULD band, captured from the pre-trade reference (matching below moves the
+    // last price). Absent before the first trade -- documented pre-first-trade
+    // window where no band exists yet.
+    int64_t luldLo = 0, luldHi = 0;
+    const bool luldOn = luldBand(luldLo, luldHi);
+
+    if (luldOn && o.type != OrderType::MARKET)
     {
-      // Compute the band in 128-bit to avoid int64 overflow on a high-priced
-      // instrument (raw * bps can exceed INT64_MAX), then clamp it so the upper
-      // = last + band addition below cannot overflow either. An oversized band
-      // just means "no breach possible", which degrades safely.
-      const __int128 prod =
-          static_cast<__int128>(lastPrice_.raw()) * static_cast<__int128>(cfg_.luldBps) / 10000;
-      const int64_t maxBand = INT64_MAX - lastPrice_.raw();
-      const int64_t band = prod > static_cast<__int128>(maxBand) ? maxBand : static_cast<int64_t>(prod);
-      const Price upper = Price::fromRaw(lastPrice_.raw() + band);
-      const Price lower = Price::fromRaw(lastPrice_.raw() - band);
-      if ((o.side == Side::BUY && upper < o.price) || (o.side == Side::SELL && o.price < lower))
+      // A limit order priced outside the band is rejected pre-trade and trips the
+      // pause -- it never executes or rests out of band.
+      if ((o.side == Side::BUY && luldHi < o.price.raw()) ||
+          (o.side == Side::SELL && o.price.raw() < luldLo))
       {
         releaseReservation(o.id);
         sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach});
-        cfg_.halted = true;  // trip a timed volatility pause
-        haltUntil_ = now_ + cfg_.luldHaltNs;
+        tripLuldHalt();
         return;
       }
     }
@@ -802,6 +800,42 @@ class MatchingEngine
     }
 
     processTriggers();  // this order's trades may have crossed resting stops
+
+    // Post-trade LULD: a MARKET order (no limit to gate it pre-trade) can sweep
+    // the book and print outside the band, and a stop cascade in processTriggers
+    // can too. The breaching print stands, but it trips the volatility pause so
+    // subsequent trading halts -- the exchange-style volatility interruption. A
+    // limit order cannot breach here: it never trades through its own in-band
+    // limit, so this condition is naturally false for it.
+    if (luldOn && hasLast_ && (lastPrice_.raw() > luldHi || lastPrice_.raw() < luldLo))
+    {
+      tripLuldHalt();
+    }
+  }
+
+  // LULD band [loRaw, hiRaw] around the current last price, computed in 128-bit
+  // to avoid int64 overflow on a high-priced instrument and clamped so the upper
+  // bound cannot overflow. Returns false when LULD is off or there is no last
+  // price yet (no reference -> no band).
+  bool luldBand(int64_t& loRaw, int64_t& hiRaw) const
+  {
+    if (cfg_.luldBps <= 0 || !hasLast_)
+    {
+      return false;
+    }
+    const __int128 prod =
+        static_cast<__int128>(lastPrice_.raw()) * static_cast<__int128>(cfg_.luldBps) / 10000;
+    const int64_t maxBand = INT64_MAX - lastPrice_.raw();
+    const int64_t band = prod > static_cast<__int128>(maxBand) ? maxBand : static_cast<int64_t>(prod);
+    loRaw = lastPrice_.raw() - band;
+    hiRaw = lastPrice_.raw() + band;
+    return true;
+  }
+
+  void tripLuldHalt()
+  {
+    cfg_.halted = true;  // trip a timed volatility pause
+    haltUntil_ = now_ + cfg_.luldHaltNs;
   }
 
   // Conditional order (stop / take-profit / trailing): park in the stop book

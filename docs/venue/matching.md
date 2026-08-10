@@ -104,6 +104,15 @@ limits during volatility without a restart:
 | Price band (collar) | `minPrice`, `maxPrice` | — |
 | Fat finger | `maxOrderQty`, `maxOrderNotional` | `setFatFinger` |
 | LULD volatility band | `luldBps`, `luldHaltNs` | `setLuldBps` |
+
+LULD (limit-up/limit-down) gates both sides of a trade. A limit order priced
+outside the band around the last price is rejected pre-trade (`LuldBreach`) and
+trips a timed pause. A market order has no limit to gate it, so it can sweep the
+book and print outside the band; that breaching print stands, but it trips the
+same pause so subsequent trading halts (the exchange-style volatility
+interruption) -- a stop cascade that prints out of band trips it the same way.
+Before the first trade there is no reference price, so no band exists yet.
+
 | Max resting orders per account | `maxOpenOrders` | `setMaxOpenOrders` |
 | Max position (perp) | `maxPositionQty` | `setPositionLimit` |
 | Margin requirement | `initialMarginBps`, `maintenanceMarginBps` | `setMarginBps` |
