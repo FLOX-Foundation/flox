@@ -44,7 +44,7 @@ connection and the process keeps running.
 | `OuchCodec` | binary, full fidelity: every field round-trips, including `reduceOnly`, `peg`, `expiryNs`, `ocoGroup`, `lastLook` |
 | `FixCodec` | FIX 4.4: `D`/`F`/`G` in, `ExecutionReport` out, with `BodyLength` and validated `CheckSum` |
 | `RestJson` | REST/JSON adoption path |
-| `ItchCodec` | outbound market data |
+| `SbeMdCodec` | outbound market data (SBE) |
 
 Round-trip tests pin every field, because a dropped field here changes
 behaviour: a `reduceOnly` flag lost on the wire turns a risk-reducing order

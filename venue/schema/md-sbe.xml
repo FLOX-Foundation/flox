@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Flox venue market-data SBE schema.
+
+  This is the source of truth for the wire format emitted by
+  flox-venue/sbe_md_codec.h. It follows the FIX/SBE (Simple Binary Encoding)
+  contract: a fixed messageHeader composite (blockLength, templateId, schemaId,
+  version) precedes every message, all encodings are little-endian, and a
+  reader uses the header's blockLength to skip trailing fields a newer sender
+  added (forward compatibility). One template per message type; each carries
+  only the fields that type needs (unlike a single fixed-width record).
+
+  The C++ codec is hand-written against THIS schema rather than generated, to
+  avoid a Java codegen toolchain in a C++/Python build. Keep the two in sync:
+  field order, ids, block lengths, schema id and version here are authoritative.
+-->
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="flox.venue.md"
+                   id="91"
+                   version="0"
+                   semanticVersion="1.0"
+                   description="Flox venue market-data feed"
+                   byteOrder="littleEndian">
+  <types>
+    <composite name="messageHeader" description="SBE message header">
+      <type name="blockLength" primitiveType="uint16"/>
+      <type name="templateId"  primitiveType="uint16"/>
+      <type name="schemaId"    primitiveType="uint16"/>
+      <type name="version"     primitiveType="uint16"/>
+    </composite>
+    <enum name="Side" encodingType="uint8">
+      <validValue name="Buy">0</validValue>
+      <validValue name="Sell">1</validValue>
+    </enum>
+    <!-- price and qty are the engine's fixed-point raw values (scale 1e-8). -->
+    <type name="Seq"     primitiveType="uint64"/>
+    <type name="Symbol"  primitiveType="uint32"/>
+    <type name="OrderId" primitiveType="uint64"/>
+    <type name="PriceRaw" primitiveType="int64"/>
+    <type name="QtyRaw"   primitiveType="int64"/>
+  </types>
+
+  <!-- A resting order was added to the book (displayed size). -->
+  <sbe:message name="AddOrder" id="1">
+    <field name="seq"     id="1" type="Seq"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="orderId" id="3" type="OrderId"/>
+    <field name="side"    id="4" type="Side"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+    <field name="qty"     id="6" type="QtyRaw"/>
+  </sbe:message>
+
+  <!-- A trade printed. orderId = taker, side = taker side, plus the maker id. -->
+  <sbe:message name="Trade" id="2">
+    <field name="seq"     id="1" type="Seq"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="orderId" id="3" type="OrderId"/>
+    <field name="side"    id="4" type="Side"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+    <field name="qty"     id="6" type="QtyRaw"/>
+    <field name="makerId" id="7" type="OrderId"/>
+  </sbe:message>
+
+  <!-- A resting order was (partially) executed; qty = displayed leaves. -->
+  <sbe:message name="Executed" id="3">
+    <field name="seq"     id="1" type="Seq"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="orderId" id="3" type="OrderId"/>
+    <field name="side"    id="4" type="Side"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+    <field name="qty"     id="6" type="QtyRaw"/>
+  </sbe:message>
+
+  <!-- A resting order was canceled/expired off the book. -->
+  <sbe:message name="Cancel" id="4">
+    <field name="seq"     id="1" type="Seq"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="orderId" id="3" type="OrderId"/>
+    <field name="side"    id="4" type="Side"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+    <field name="qty"     id="6" type="QtyRaw"/>
+  </sbe:message>
+
+  <!-- A resting order was repriced/replaced; qty = new displayed leaves. -->
+  <sbe:message name="Replace" id="5">
+    <field name="seq"     id="1" type="Seq"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="orderId" id="3" type="OrderId"/>
+    <field name="side"    id="4" type="Side"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+    <field name="qty"     id="6" type="QtyRaw"/>
+  </sbe:message>
+
+  <!-- A conditional (stop/take-profit) order triggered; price = reference. -->
+  <sbe:message name="Triggered" id="6">
+    <field name="seq"     id="1" type="Seq"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="orderId" id="3" type="OrderId"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+  </sbe:message>
+</sbe:messageSchema>

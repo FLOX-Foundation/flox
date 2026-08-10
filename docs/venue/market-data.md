@@ -55,21 +55,30 @@ The publisher drives depth from `displayLeaves`. Using the whole remaining
 would leak the reserve and, on a partial peak fill, corrupt the level
 aggregate.
 
-## ITCH codec and multicast
+## SBE codec and multicast
 
-`itch_codec.h` encodes `MdMessage` into a fixed 46-byte big-endian frame.
+`sbe_md_codec.h` encodes `MdMessage` in SBE (Simple Binary Encoding): a
+canonical SBE message header (`blockLength`, `templateId`, `schemaId`,
+`version`) followed by a per-type little-endian root block. One template per
+`MdType`, each carrying only the fields that type needs. The schema in
+`venue/schema/md-sbe.xml` is the source of truth; the codec is hand-written
+against it (no Java codegen in the build). This is the venue's own SBE schema,
+not Nasdaq ITCH.
+
 `UdpMdPublisher` (`udp_multicast.h`) publishes frames over IP multicast, with
 `UdpMdSubscriber` on the receiving end.
 
 ```cpp
 std::vector<uint8_t> buf;
-ItchCodec::encode(msg, buf);                       // appends the frame
+SbeMdCodec::encode(msg, buf);                        // header + template block
 
 MdMessage out;
-const bool ok = ItchCodec::decode(buf.data(), buf.size(), out);   // false if short
+const bool ok = SbeMdCodec::decode(buf.data(), buf.size(), out);  // false if short/foreign
 ```
 
-The decoder bounds-checks before reading, and the parser fuzz drives it with
+The decoder validates the SBE header (rejects a foreign `schemaId`), uses
+`blockLength` to skip trailing fields a newer schema version appended (forward
+compatible), and bounds-checks before reading. The parser fuzz drives it with
 hostile input alongside the FIX/OUCH/REST parsers.
 
 ## Tape

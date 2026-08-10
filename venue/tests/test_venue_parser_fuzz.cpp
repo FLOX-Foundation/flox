@@ -7,10 +7,10 @@
  * license information.
  */
 #include "flox-venue/fix_codec.h"
-#include "flox-venue/itch_codec.h"
 #include "flox-venue/market_data.h"
 #include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
+#include "flox-venue/sbe_md_codec.h"
 #include "flox/util/websocket.h"
 
 #include <gtest/gtest.h>
@@ -300,23 +300,23 @@ void test_ws_fuzz()
   std::printf("  ws survived truncation + corruption + random frames + handshake fuzz\n");
 }
 
-void test_itch_fuzz()
+void test_sbe_md_fuzz()
 {
-  std::printf("test_itch_parser_fuzz\n");
+  std::printf("test_sbe_md_parser_fuzz\n");
   Rng rng{0x1DC4C0DEULL};
   MdMessage m{};
   for (int i = 0; i < 300000; ++i)
   {
-    uint8_t buf[48];
-    const size_t n = rng.next() % 48;
+    uint8_t buf[64];
+    const size_t n = rng.next() % 64;
     for (size_t k = 0; k < n; ++k)
     {
       buf[k] = static_cast<uint8_t>(rng.next() & 0xFF);
     }
-    ItchCodec::decode(buf, n, m);  // big-endian field reads on short/garbage buffers
+    SbeMdCodec::decode(buf, n, m);  // header + block reads on short/garbage buffers
   }
   CHECK(true);
-  std::printf("  itch survived random buffers\n");
+  std::printf("  sbe md codec survived random buffers\n");
 }
 
 }  // namespace
@@ -327,7 +327,7 @@ TEST(ParserFuzz, EngineSuite)
   test_fix_fuzz();
   test_rest_fuzz();
   test_ws_fuzz();
-  test_itch_fuzz();
+  test_sbe_md_fuzz();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

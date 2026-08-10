@@ -52,7 +52,7 @@ someone's hands. This is useful for:
 | Ledger | Double-entry money, conservation-exact | [Clearing](clearing.md) |
 | Derivatives risk | Margin, liquidation, insurance, ADL, funding, mark price | [Risk](risk.md) |
 | Runtime | Single-writer sequenced core, journal, deterministic replay | [Runtime and recovery](runtime.md) |
-| Market data | Venue events to an L2 feed (ITCH-style) | [Market data](market-data.md) |
+| Market data | Venue events to an L2 feed (SBE) | [Market data](market-data.md) |
 | Perimeter | TCP/WS/TLS/UDP gateways, sessions, FIX/OUCH/REST codecs, control plane | [Perimeter](perimeter.md) |
 
 ## Design notes

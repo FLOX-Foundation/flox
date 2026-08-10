@@ -8,8 +8,8 @@
  */
 #pragma once
 
-#include "flox-venue/itch_codec.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/sbe_md_codec.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -52,7 +52,7 @@ class UdpMdPublisher
 
   void publish(const MdMessage& m)
   {
-    ItchCodec::encode(m, buf_);
+    SbeMdCodec::encode(m, buf_);
     ::sendto(fd_, buf_.data(), buf_.size(), 0, reinterpret_cast<sockaddr*>(&dst_), sizeof dst_);
   }
 
@@ -117,13 +117,13 @@ class UdpMdSubscriber
   // Receive and decode one message; returns false on timeout / error.
   bool recv(MdMessage& out)
   {
-    uint8_t buf[ItchCodec::kSize];
+    uint8_t buf[SbeMdCodec::kMaxSize];
     const ssize_t n = ::recvfrom(fd_, buf, sizeof buf, 0, nullptr, nullptr);
     if (n <= 0)
     {
       return false;
     }
-    return ItchCodec::decode(buf, static_cast<size_t>(n), out);
+    return SbeMdCodec::decode(buf, static_cast<size_t>(n), out);
   }
 
   int port() const noexcept { return port_; }

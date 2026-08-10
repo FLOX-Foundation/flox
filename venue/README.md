@@ -16,10 +16,11 @@ scalar types (`Price`, `Quantity`, `Side`, `OrderId`) come from
 `flox/common.h` as usual. Because the two sets overlap, avoid pulling both in
 unqualified; write `namespace venue = flox::venue;` and qualify.
 
-The order-level books stayed in core (`flox/book/*`, next to the aggregate
-`NLevelOrderBook`) along with the general utilities this layer needed
-(`flox/util/{crypto,wire,transport,websocket,system_clock}.h`), because they
-are useful on their own.
+The performance-path order-level book stayed in core (`flox/book/ladder_book.h`,
+next to the aggregate `NLevelOrderBook`) along with the general utilities this
+layer needed (`flox/util/{crypto,wire,transport,websocket,system_clock}.h`),
+because they are useful on their own. The map-based `MatchingBook` reference
+oracle lives in the module (`flox-venue/matching_book.h`).
 
 Platform: Linux and macOS. Skipped on MSVC/clang-cl, which have no `__int128`,
 the type the ledger keeps money in.
@@ -35,16 +36,16 @@ behaviour emerge from the interaction.
 
 | Area | Headers |
 |---|---|
-| Order-level books | `flox/book/{resting_order,matching_book,ladder_book}.h` — per-order FIFO + O(1) ladder (distinct from the aggregate `NLevelOrderBook`, which is market-data depth) |
+| Order-level books | `flox/book/{resting_order,ladder_book}.h` (core, O(1) ladder) + `flox-venue/matching_book.h` (module, map reference oracle) — per-order FIFO, distinct from the aggregate `NLevelOrderBook` (market-data depth) |
 | Matching | `matcher.h` (price-time FIFO, pro-rata, STP, last-look), `matching_engine.h` (order lifecycle, TIF, stops, OCO, peg, iceberg, auctions, LULD, perp clearing), `stop_book.h`, `symbol_router.h` |
 | Money | `ledger.h` — double-entry, `__int128`, `available`/`reserved`, conservation-exact, per-symbol scale helpers |
 | Derivatives risk | `cross_margin.h` (portfolio margin), `collateral.h` (haircut basket), `funding_rate.h` + `funding_scheduler.h`, `index_feed.h` (manipulation-resistant mark), `mark_feed_driver.h` (stale-feed circuit breaker) |
 | Runtime | `sequenced_shard.h` — single-writer core on the FLOX `EventBus`, journalled |
 | Recovery | `journal.h` (WAL + replay), `event_hash.h` (bit-identical determinism check) |
-| Market data out | `market_data.h` + `itch_codec.h` — turns venue events into an L2 feed |
+| Market data out | `market_data.h` + `sbe_md_codec.h` (SBE) — turns venue events into an L2 feed |
 | Protocol / ops | `fix_codec.h`, `resend_buffer.h`, `messages.h`, `reject_reason.h`, `metrics.h`, `prometheus.h` |
 | Perimeter | `socket_acceptor.h`, `session.h` (API-key HMAC logon, rate limits), `cancel_on_disconnect.h`, `tcp_gateway.h`, `ws_gateway.h`, `tls_gateway.h` (OpenSSL, optional), `udp_multicast.h`, `control_plane.h` / `control_api.h` / `control_server.h`, `metrics_server.h`, `tape_recorder.h` |
-| Wire protocols | `fix_codec.h`, `ouch_codec.h`, `rest_json.h`, `itch_codec.h` |
+| Wire protocols | `fix_codec.h`, `ouch_codec.h`, `rest_json.h`, `sbe_md_codec.h` |
 
 ## Two margin models
 
