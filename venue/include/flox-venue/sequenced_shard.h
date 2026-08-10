@@ -82,8 +82,12 @@ class SequencedShard
   using IngressBus = flox::EventBus<InboundCommandEvent, IngressCap, 4>;
   using OutboundBus = flox::EventBus<EngineEventMsg, OutboundCap, 8>;
 
-  SequencedShard(SymbolConfig cfg, const std::string& journalPath, Book book = Book{})
-      : journal_(journalPath),
+  // journalSync defaults to Full: the shard WAL is fsync-durable before a
+  // command is applied (production posture). Pass Journal::Sync::Off for
+  // throughput-oriented runs where power-loss durability is not required.
+  SequencedShard(SymbolConfig cfg, const std::string& journalPath, Book book = Book{},
+                 Journal::Sync journalSync = Journal::Sync::Full)
+      : journal_(journalPath, journalSync),
         consumer_(cfg, journal_, outbound_, std::move(book))
   {
     ingress_.enableDrainOnStop();

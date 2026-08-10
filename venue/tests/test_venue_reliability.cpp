@@ -17,6 +17,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -98,6 +100,79 @@ void test_journal_replay()
   CHECK(hashLive == hashReplay);  // deterministic recovery
 }
 
+// A crash can leave a torn final record (partial bytes) or bit-rot. The loader
+// must return the largest intact prefix and never materialise a garbage command.
+void test_journal_torn_and_corrupt_tail()
+{
+  std::printf("test_journal_torn_and_corrupt_tail\n");
+  const std::string path = "/tmp/flox_test_venue_reliability_journal_torn.bin";
+
+  std::vector<InboundCommand> cmds;
+  for (uint64_t i = 1; i <= 10; ++i)
+  {
+    NewOrder o;
+    o.id = i;
+    o.symbol = 1;
+    o.side = (i % 2) ? Side::BUY : Side::SELL;
+    o.type = OrderType::LIMIT;
+    o.price = Price::fromDouble(100.0 + static_cast<double>(i));
+    o.quantity = Quantity::fromDouble(1.0);
+    cmds.emplace_back(o);
+  }
+  {
+    Journal j(path, Journal::Sync::Full);
+    for (const auto& c : cmds)
+    {
+      j.append(c);
+    }
+    j.flush();
+  }
+
+  // Full file loads cleanly.
+  CHECK(Journal::load(path).size() == cmds.size());
+
+  const auto fileBytes = [&]
+  {
+    std::ifstream in(path, std::ios::binary);
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)),
+                                std::istreambuf_iterator<char>());
+  }();
+
+  // Truncate at EVERY byte length: each prefix must load as a whole number of
+  // intact records (never a partial trailing one), monotonically non-decreasing.
+  size_t prev = 0;
+  for (size_t len = 0; len <= fileBytes.size(); ++len)
+  {
+    const std::string tp = "/tmp/flox_test_venue_reliability_journal_trunc.bin";
+    {
+      std::ofstream out(tp, std::ios::binary | std::ios::trunc);
+      out.write(reinterpret_cast<const char*>(fileBytes.data()),
+                static_cast<std::streamsize>(len));
+    }
+    const size_t got = Journal::load(tp).size();
+    CHECK(got <= cmds.size());
+    CHECK(got >= prev);  // a longer prefix never loses an already-intact record
+    prev = got;
+  }
+  CHECK(prev == cmds.size());  // the full length recovers everything
+
+  // Corrupt one byte in the last record's body: crc must reject it, so the
+  // loader returns the 9 intact records before it.
+  {
+    auto bytes = fileBytes;
+    const size_t recSize = Journal::kHeaderSize + sizeof(NewOrder) + sizeof(uint32_t);
+    CHECK(bytes.size() == recSize * cmds.size());
+    bytes[bytes.size() - recSize + Journal::kHeaderSize + 4] ^= 0xFF;  // flip a body byte
+    const std::string cp = "/tmp/flox_test_venue_reliability_journal_corrupt.bin";
+    {
+      std::ofstream out(cp, std::ios::binary | std::ios::trunc);
+      out.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    }
+    CHECK(Journal::load(cp).size() == cmds.size() - 1);
+  }
+}
+
 void test_sharding()
 {
   std::printf("test_sharding\n");
@@ -147,6 +222,7 @@ void test_sharding()
 TEST(Reliability, EngineSuite)
 {
   test_journal_replay();
+  test_journal_torn_and_corrupt_tail();
   test_sharding();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
