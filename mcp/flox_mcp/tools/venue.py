@@ -78,7 +78,7 @@ Interchangeable, and held identical by a differential fuzz.
 | Funding (live rate + scheduler) | `flox-venue/{funding_rate,funding_scheduler}.h` |
 | Single-writer runtime, WAL, replay determinism | `flox-venue/{sequenced_shard,journal,event_hash}.h` |
 | Market data out (L2 + SBE) | `flox-venue/{market_data,sbe_md_codec}.h` |
-| Gateways, sessions, FIX/OUCH/REST | `flox-venue/{tcp_gateway,ws_gateway,tls_gateway,session,fix_codec,ouch_codec,rest_json}.h` |
+| Gateways, sessions, FIX/SBE-OE/REST | `flox-venue/{tcp_gateway,ws_gateway,tls_gateway,session,fix_codec,sbe_order_entry_codec,rest_json}.h` |
 | Control plane, metrics | `flox-venue/{control_api,metrics,prometheus}.h` |
 
 ## Order vocabulary

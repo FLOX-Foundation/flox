@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Flox venue order-entry SBE schema.
+
+  Source of truth for flox-venue/sbe_order_entry_codec.h. Same SBE contract as
+  the market-data schema (venue/schema/md-sbe.xml): a fixed messageHeader
+  composite (blockLength, templateId, schemaId, version) precedes every message,
+  all encodings are little-endian, and a reader uses blockLength to skip trailing
+  fields a newer sender added. One template per message type; each carries only
+  the fields that type needs.
+
+  Direction is by templateId: inbound (client -> venue) uses ids 1..3, outbound
+  exec reports (venue -> client) use ids 10..16. Real crypto venues run binary
+  order entry over SBE (Deribit Binary Order Entry, Binance SBE); this is the
+  venue's own SBE order-entry schema, replacing a homegrown record that was
+  misleadingly named "OUCH".
+
+  Prices and quantities are the engine's fixed-point raw values (scale 1e-8).
+  Enum byte fields (side, ordType, tif, stp, peg, cancel/reject reason) carry
+  the engine enum's underlying uint8 value.
+-->
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="flox.venue.oe"
+                   id="92"
+                   version="0"
+                   semanticVersion="1.0"
+                   description="Flox venue order entry + execution reports"
+                   byteOrder="littleEndian">
+  <types>
+    <composite name="messageHeader" description="SBE message header">
+      <type name="blockLength" primitiveType="uint16"/>
+      <type name="templateId"  primitiveType="uint16"/>
+      <type name="schemaId"    primitiveType="uint16"/>
+      <type name="version"     primitiveType="uint16"/>
+    </composite>
+    <type name="OrderId"  primitiveType="uint64"/>
+    <type name="Symbol"   primitiveType="uint32"/>
+    <type name="Account"  primitiveType="uint64"/>
+    <type name="PriceRaw" primitiveType="int64"/>
+    <type name="QtyRaw"   primitiveType="int64"/>
+    <type name="Flag"     primitiveType="uint8"/>   <!-- boolean 0/1 -->
+    <type name="EnumU8"   primitiveType="uint8"/>   <!-- engine enum underlying value -->
+    <type name="Nanos"    primitiveType="int64"/>
+  </types>
+
+  <!-- ============ inbound: client -> venue ============ -->
+
+  <!-- Enter a new order. Carries every NewOrder field the wire needs, including
+       derivatives / MM / advanced-order fields (reduceOnly must survive: an
+       order that loses it would OPEN a position). -->
+  <sbe:message name="EnterOrder" id="1">
+    <field name="orderId"        id="1"  type="OrderId"/>
+    <field name="symbol"         id="2"  type="Symbol"/>
+    <field name="side"           id="3"  type="EnumU8"/>
+    <field name="ordType"        id="4"  type="EnumU8"/>
+    <field name="tif"            id="5"  type="EnumU8"/>
+    <field name="postOnly"       id="6"  type="Flag"/>
+    <field name="stp"            id="7"  type="EnumU8"/>
+    <field name="price"          id="8"  type="PriceRaw"/>
+    <field name="qty"            id="9"  type="QtyRaw"/>
+    <field name="visibleQty"     id="10" type="QtyRaw"/>
+    <field name="triggerPrice"   id="11" type="PriceRaw"/>
+    <field name="trailingOffset" id="12" type="PriceRaw"/>
+    <field name="account"        id="13" type="Account"/>
+    <field name="clientOrderId"  id="14" type="OrderId"/>
+    <field name="reduceOnly"     id="15" type="Flag"/>
+    <field name="lastLook"       id="16" type="Flag"/>
+    <field name="peg"            id="17" type="EnumU8"/>
+    <field name="expiryNs"       id="18" type="Nanos"/>
+    <field name="ocoGroup"       id="19" type="OrderId"/>
+    <field name="pegOffsetRaw"   id="20" type="PriceRaw"/>
+  </sbe:message>
+
+  <!-- Cancel a resting order by id. -->
+  <sbe:message name="CancelOrder" id="2">
+    <field name="orderId" id="1" type="OrderId"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="account" id="3" type="Account"/>
+  </sbe:message>
+
+  <!-- Cancel/replace: new price and quantity. -->
+  <sbe:message name="ReplaceOrder" id="3">
+    <field name="orderId"  id="1" type="OrderId"/>
+    <field name="symbol"   id="2" type="Symbol"/>
+    <field name="newPrice" id="3" type="PriceRaw"/>
+    <field name="newQty"   id="4" type="QtyRaw"/>
+    <field name="account"  id="5" type="Account"/>
+  </sbe:message>
+
+  <!-- ============ outbound: venue -> client (execution reports) ============ -->
+
+  <!-- Order accepted / working. -->
+  <sbe:message name="Accepted" id="10">
+    <field name="orderId"      id="1" type="OrderId"/>
+    <field name="symbol"       id="2" type="Symbol"/>
+    <field name="side"         id="3" type="EnumU8"/>
+    <field name="price"        id="4" type="PriceRaw"/>
+    <field name="leavesQty"    id="5" type="QtyRaw"/>
+    <field name="restingOnBook" id="6" type="Flag"/>
+  </sbe:message>
+
+  <!-- Order (partially) executed. -->
+  <sbe:message name="Executed" id="11">
+    <field name="orderId"   id="1" type="OrderId"/>
+    <field name="symbol"    id="2" type="Symbol"/>
+    <field name="lastQty"   id="3" type="QtyRaw"/>
+    <field name="lastPx"    id="4" type="PriceRaw"/>
+    <field name="leavesQty" id="5" type="QtyRaw"/>
+    <field name="aggressor" id="6" type="Flag"/>
+    <field name="complete"  id="7" type="Flag"/>
+  </sbe:message>
+
+  <!-- Trade print. -->
+  <sbe:message name="Trade" id="12">
+    <field name="tradeId"   id="1" type="OrderId"/>
+    <field name="symbol"    id="2" type="Symbol"/>
+    <field name="price"     id="3" type="PriceRaw"/>
+    <field name="qty"       id="4" type="QtyRaw"/>
+    <field name="makerId"   id="5" type="OrderId"/>
+    <field name="takerId"   id="6" type="OrderId"/>
+    <field name="takerSide" id="7" type="EnumU8"/>
+  </sbe:message>
+
+  <!-- Order canceled (reason = CancelReason underlying value). -->
+  <sbe:message name="Canceled" id="13">
+    <field name="orderId" id="1" type="OrderId"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="reason"  id="3" type="EnumU8"/>
+  </sbe:message>
+
+  <!-- Order rejected (reason = RejectReason underlying value). -->
+  <sbe:message name="Rejected" id="14">
+    <field name="orderId" id="1" type="OrderId"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="reason"  id="3" type="EnumU8"/>
+  </sbe:message>
+
+  <!-- Order replaced (priorityKept = kept time priority in place). -->
+  <sbe:message name="Replaced" id="15">
+    <field name="orderId"      id="1" type="OrderId"/>
+    <field name="symbol"       id="2" type="Symbol"/>
+    <field name="price"        id="3" type="PriceRaw"/>
+    <field name="leavesQty"    id="4" type="QtyRaw"/>
+    <field name="priorityKept" id="5" type="Flag"/>
+  </sbe:message>
+
+  <!-- Conditional order triggered (refPrice = reference that crossed). -->
+  <sbe:message name="Triggered" id="16">
+    <field name="orderId"  id="1" type="OrderId"/>
+    <field name="symbol"   id="2" type="Symbol"/>
+    <field name="refPrice" id="3" type="PriceRaw"/>
+  </sbe:message>
+</sbe:messageSchema>

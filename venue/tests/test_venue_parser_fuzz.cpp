@@ -8,9 +8,9 @@
  */
 #include "flox-venue/fix_codec.h"
 #include "flox-venue/market_data.h"
-#include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
 #include "flox-venue/sbe_md_codec.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 #include "flox/util/websocket.h"
 
 #include <gtest/gtest.h>
@@ -67,15 +67,15 @@ NewOrder sampleOrder()
   return o;
 }
 
-void test_ouch_fuzz()
+void test_sbe_oe_fuzz()
 {
-  std::printf("test_ouch_parser_fuzz\n");
+  std::printf("test_sbe_oe_parser_fuzz\n");
   std::vector<uint8_t> wire;
-  OuchCodec::encode(InboundCommand{sampleOrder()}, wire);
+  SbeOrderEntryCodec::encode(InboundCommand{sampleOrder()}, wire);
   CHECK(!wire.empty());
 
   // Positive control: a valid frame round-trips.
-  auto ok = OuchCodec::decode(wire.data(), wire.size());
+  auto ok = SbeOrderEntryCodec::decode(wire.data(), wire.size());
   CHECK(ok.has_value());
 
   Rng rng{0xF0F0F0F0ULL};
@@ -83,7 +83,7 @@ void test_ouch_fuzz()
   // Truncation: decode every prefix length (including 0). Must not crash.
   for (size_t len = 0; len <= wire.size(); ++len)
   {
-    auto d = OuchCodec::decode(wire.data(), len);
+    auto d = SbeOrderEntryCodec::decode(wire.data(), len);
     (void)d;
   }
 
@@ -96,7 +96,7 @@ void test_ouch_fuzz()
     {
       c[rng.next() % c.size()] ^= static_cast<uint8_t>(rng.next() & 0xFF);
     }
-    auto d = OuchCodec::decode(c.data(), c.size());
+    auto d = SbeOrderEntryCodec::decode(c.data(), c.size());
     (void)d;
   }
 
@@ -110,14 +110,14 @@ void test_ouch_fuzz()
     {
       buf[k] = static_cast<uint8_t>(rng.next() & 0xFF);
     }
-    auto d = OuchCodec::decode(buf, n);
+    auto d = SbeOrderEntryCodec::decode(buf, n);
     if (d)
     {
       ++decoded;
     }
   }
   CHECK(true);  // reached here without crashing
-  std::printf("  ouch survived truncation + 200k corruptions + 300k random (%d parsed)\n", decoded);
+  std::printf("  sbe order-entry survived truncation + 200k corruptions + 300k random (%d parsed)\n", decoded);
 }
 
 void test_fix_fuzz()
@@ -323,7 +323,7 @@ void test_sbe_md_fuzz()
 
 TEST(ParserFuzz, EngineSuite)
 {
-  test_ouch_fuzz();
+  test_sbe_oe_fuzz();
   test_fix_fuzz();
   test_rest_fuzz();
   test_ws_fuzz();

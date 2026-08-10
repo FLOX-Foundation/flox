@@ -79,7 +79,7 @@ const bool ok = SbeMdCodec::decode(buf.data(), buf.size(), out);  // false if sh
 The decoder validates the SBE header (rejects a foreign `schemaId`), uses
 `blockLength` to skip trailing fields a newer schema version appended (forward
 compatible), and bounds-checks before reading. The parser fuzz drives it with
-hostile input alongside the FIX/OUCH/REST parsers.
+hostile input alongside the FIX / SBE order-entry / REST parsers.
 
 ## Tape
 

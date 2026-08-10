@@ -9,8 +9,8 @@
 #include "flox-venue/fix_codec.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
-#include "flox-venue/ouch_codec.h"
 #include "flox-venue/rest_json.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 
 #include <gtest/gtest.h>
 
@@ -61,9 +61,9 @@ std::string fixJoin(std::initializer_list<std::pair<int, std::string>> fields)
   return s;
 }
 
-void test_ouch_roundtrip()
+void test_sbe_oe_roundtrip()
 {
-  std::printf("test_ouch_roundtrip\n");
+  std::printf("test_sbe_oe_roundtrip\n");
   NewOrder o;
   o.id = 42;
   o.symbol = SYM;
@@ -87,8 +87,8 @@ void test_ouch_roundtrip()
   o.pegOffsetRaw = -250;
 
   std::vector<uint8_t> buf;
-  OuchCodec::encode(InboundCommand{o}, buf);
-  auto back = OuchCodec::decode(buf.data(), buf.size());
+  SbeOrderEntryCodec::encode(InboundCommand{o}, buf);
+  auto back = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(back.has_value());
   const auto* n = std::get_if<NewOrder>(&*back);
   CHECK(n != nullptr);
@@ -102,12 +102,12 @@ void test_ouch_roundtrip()
   CHECK(n->reduceOnly && n->lastLook && n->peg == PegRef::Mid);
   CHECK(n->expiryNs == 1'700'000'000'000 && n->ocoGroup == 99 && n->pegOffsetRaw == -250);
 
-  OuchCodec::encode(InboundCommand{CancelOrder{42, SYM, 77}}, buf);
-  auto bc = OuchCodec::decode(buf.data(), buf.size());
+  SbeOrderEntryCodec::encode(InboundCommand{CancelOrder{42, SYM, 77}}, buf);
+  auto bc = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(bc && std::get_if<CancelOrder>(&*bc) && std::get<CancelOrder>(*bc).id == 42);
 
-  OuchCodec::encode(InboundCommand{ModifyOrder{42, SYM, px(102), qty(4), 77}}, buf);
-  auto bm = OuchCodec::decode(buf.data(), buf.size());
+  SbeOrderEntryCodec::encode(InboundCommand{ModifyOrder{42, SYM, px(102), qty(4), 77}}, buf);
+  auto bm = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(bm && std::get_if<ModifyOrder>(&*bm));
   CHECK(std::get<ModifyOrder>(*bm).newPrice == px(102) && std::get<ModifyOrder>(*bm).newQty == qty(4));
 }
@@ -157,22 +157,22 @@ void test_fix_parse()
   CHECK(cno && !std::get<NewOrder>(*cno).reduceOnly);
 }
 
-void test_ouch_endtoend()
+void test_sbe_oe_endtoend()
 {
-  std::printf("test_ouch_endtoend\n");
+  std::printf("test_sbe_oe_endtoend\n");
   std::vector<uint8_t> reportTags;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      std::vector<uint8_t> b;
-                                     OuchCodec::encode(e, b);
-                                     if (!b.empty()){ reportTags.push_back(b[0]);
+                                     SbeOrderEntryCodec::encode(e, b);
+                                     if (!b.empty()){ reportTags.push_back(static_cast<uint8_t>(SbeOrderEntryCodec::templateId(b.data(), b.size())));
 } });
 
   auto submitWire = [&](const InboundCommand& c)
   {
     std::vector<uint8_t> b;
-    OuchCodec::encode(c, b);
-    auto decoded = OuchCodec::decode(b.data(), b.size());
+    SbeOrderEntryCodec::encode(c, b);
+    auto decoded = SbeOrderEntryCodec::decode(b.data(), b.size());
     CHECK(decoded.has_value());
     eng.submit(*decoded);
   };
@@ -199,9 +199,9 @@ void test_ouch_endtoend()
   bool sawAccepted = false, sawTrade = false, sawExec = false;
   for (uint8_t t : reportTags)
   {
-    sawAccepted |= (t == static_cast<uint8_t>(OuchOut::Accepted));
-    sawTrade |= (t == static_cast<uint8_t>(OuchOut::Trade));
-    sawExec |= (t == static_cast<uint8_t>(OuchOut::Executed));
+    sawAccepted |= (t == static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Accepted));
+    sawTrade |= (t == static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Trade));
+    sawExec |= (t == static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Executed));
   }
   CHECK(sawAccepted && sawTrade && sawExec);
 }
@@ -312,9 +312,9 @@ void test_rest_json()
 
 TEST(Gateway, EngineSuite)
 {
-  test_ouch_roundtrip();
+  test_sbe_oe_roundtrip();
   test_fix_parse();
-  test_ouch_endtoend();
+  test_sbe_oe_endtoend();
   test_fix_execreport();
   test_rest_json();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);

@@ -45,7 +45,7 @@ behaviour emerge from the interaction.
 | Market data out | `market_data.h` + `sbe_md_codec.h` (SBE) — turns venue events into an L2 feed |
 | Protocol / ops | `fix_codec.h`, `resend_buffer.h`, `messages.h`, `reject_reason.h`, `metrics.h`, `prometheus.h` |
 | Perimeter | `socket_acceptor.h`, `session.h` (API-key HMAC logon, rate limits), `cancel_on_disconnect.h`, `tcp_gateway.h`, `ws_gateway.h`, `tls_gateway.h` (OpenSSL, optional), `udp_multicast.h`, `control_plane.h` / `control_api.h` / `control_server.h`, `metrics_server.h`, `tape_recorder.h` |
-| Wire protocols | `fix_codec.h`, `ouch_codec.h`, `rest_json.h`, `sbe_md_codec.h` |
+| Wire protocols | `fix_codec.h`, `sbe_order_entry_codec.h`, `rest_json.h`, `sbe_md_codec.h` (+ shared `sbe.h`) |
 
 ## Two margin models
 

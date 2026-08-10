@@ -12,7 +12,7 @@ The perimeter is where untrusted bytes become `InboundCommand`s.
 | `UdpMdPublisher` / `UdpMdSubscriber` | outbound market data over IP multicast |
 
 ```cpp
-TcpGateway gw([](const uint8_t* p, size_t n) { return OuchCodec::decode(p, n); });
+TcpGateway gw([](const uint8_t* p, size_t n) { return SbeOrderEntryCodec::decode(p, n); });
 gw.start(port, [&](const InboundCommand& cmd, const Responder& respond) {
   venue.submit(cmd);
 });
@@ -41,10 +41,10 @@ connection and the process keeps running.
 
 | Codec | Notes |
 |---|---|
-| `OuchCodec` | binary, full fidelity: every field round-trips, including `reduceOnly`, `peg`, `expiryNs`, `ocoGroup`, `lastLook` |
+| `SbeOrderEntryCodec` | SBE binary order entry + exec reports, full fidelity: every field round-trips, including `reduceOnly`, `peg`, `expiryNs`, `ocoGroup`, `lastLook` (schema `venue/schema/order-entry-sbe.xml`) |
 | `FixCodec` | FIX 4.4: `D`/`F`/`G` in, `ExecutionReport` out, with `BodyLength` and validated `CheckSum` |
-| `RestJson` | REST/JSON adoption path |
-| `SbeMdCodec` | outbound market data (SBE) |
+| `RestJson` | REST/JSON adoption path (simdjson) |
+| `SbeMdCodec` | outbound market data (SBE, schema `venue/schema/md-sbe.xml`) |
 
 Round-trip tests pin every field, because a dropped field here changes
 behaviour: a `reduceOnly` flag lost on the wire turns a risk-reducing order
