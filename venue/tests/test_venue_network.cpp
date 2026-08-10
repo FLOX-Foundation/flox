@@ -180,14 +180,18 @@ void test_tcp_gateway()
 int deliverOverUdp(bool multicast)
 {
   const char* group = "239.7.7.7";
+  // Pin loopback so the same-host multicast path is hermetic in CI; production
+  // callers pass the data-NIC ip (or nullptr to let routing choose).
+  const char* iface = "127.0.0.1";
   UdpMdSubscriber sub;
-  if (!sub.join(group, 0, multicast))
+  if (!sub.join(group, 0, multicast, iface))
   {
     return -1;
   }
   sub.setTimeout(300);
   UdpMdPublisher pub;
-  if (!pub.open(multicast ? group : "127.0.0.1", static_cast<uint16_t>(sub.port()), multicast))
+  if (!pub.open(multicast ? group : "127.0.0.1", static_cast<uint16_t>(sub.port()), multicast,
+                iface))
   {
     return -1;
   }

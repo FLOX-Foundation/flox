@@ -66,7 +66,10 @@ against it (no Java codegen in the build). This is the venue's own SBE schema,
 not Nasdaq ITCH.
 
 `UdpMdPublisher` (`udp_multicast.h`) publishes frames over IP multicast, with
-`UdpMdSubscriber` on the receiving end.
+`UdpMdSubscriber` on the receiving end. Both take an optional interface selector
+(`ifaceIp`): the default (`nullptr`) lets the kernel routing table pick the
+egress NIC -- the production default so the feed reaches co-located clients on
+other hosts; pass `"127.0.0.1"` to pin loopback for same-host use.
 
 ```cpp
 std::vector<uint8_t> buf;
