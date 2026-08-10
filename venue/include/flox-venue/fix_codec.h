@@ -5,9 +5,21 @@
  * Copyright (c) 2025 FLOX Foundation
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
+ *
+ * FIX 4.4 codec for venue order entry (D/F/G in) and execution reports (35=8
+ * out): real tag=value/SOH framing with BodyLength (9) and a validated
+ * CheckSum (10).
+ *
+ * Numeric fields parse straight from the decimal string into fixed-point via
+ * decwire (no double round-trip): a bad, exponent, over-precise or overflowing
+ * number is rejected, not silently coerced. Required enum/quantity fields are
+ * strict -- a missing or invalid Side (54), a present-but-unknown OrdType (40),
+ * or a missing OrderQty (38) rejects the message rather than guessing a default.
+ * Outbound prices/quantities serialise exactly (100.25, not 100.250000).
  */
 #pragma once
 
+#include "flox-venue/decimal_wire.h"
 #include "flox-venue/messages.h"
 
 #include <cstdint>
@@ -72,14 +84,15 @@ class FixCodec
         }
       }
     }
+
     auto u64 = [&](int t)
     { return static_cast<uint64_t>(std::strtoull(s(t).c_str(), nullptr, 10)); };
     auto sym = [&](int t)
     { return static_cast<SymbolId>(std::strtoul(s(t).c_str(), nullptr, 10)); };
-    auto price = [&](int t)
-    { return safeDecimal<Price>(std::strtod(s(t).c_str(), nullptr)); };
-    auto qtyf = [&](int t)
-    { return safeDecimal<Quantity>(std::strtod(s(t).c_str(), nullptr)); };
+    // Strict fixed-point parse of a decimal FIX field; false if the tag is
+    // absent or the value is not a clean decimal.
+    auto fix = [&](int t, int64_t& out)
+    { return has(t) && decwire::parse(s(t), out); };
 
     const std::string type = s(35);
     if (type == "D")  // NewOrderSingle
@@ -88,37 +101,86 @@ class FixCodec
       o.id = u64(11);
       o.clientOrderId = u64(11);
       o.symbol = sym(55);
-      o.side = (s(54) == "2") ? Side::SELL : Side::BUY;
-      o.quantity = qtyf(38);
       o.accountId = u64(1);
-      switch (std::atoi(s(40).c_str()))  // OrdType
+
+      // Side (54) is required and must be Buy(1)/Sell(2) -- never a guessed default.
+      const std::string side = s(54);
+      if (side == "1")
       {
-        case 1:
-          o.type = OrderType::MARKET;
-          break;
-        case 3:
-          o.type = OrderType::STOP_MARKET;
-          break;
-        case 4:
-          o.type = OrderType::STOP_LIMIT;
-          break;
-        default:
-          o.type = OrderType::LIMIT;
-          break;
+        o.side = Side::BUY;
       }
+      else if (side == "2")
+      {
+        o.side = Side::SELL;
+      }
+      else
+      {
+        return std::nullopt;
+      }
+
+      // OrderQty (38) required.
+      int64_t qtyRaw;
+      if (!fix(38, qtyRaw))
+      {
+        return std::nullopt;
+      }
+      o.quantity = Quantity::fromRaw(qtyRaw);
+
+      // OrdType (40): absent -> Limit (the common default); present must be a
+      // known type -- a garbage value is rejected, not mapped to Limit.
+      if (has(40))
+      {
+        switch (std::atoi(s(40).c_str()))
+        {
+          case 1:
+            o.type = OrderType::MARKET;
+            break;
+          case 2:
+            o.type = OrderType::LIMIT;
+            break;
+          case 3:
+            o.type = OrderType::STOP_MARKET;
+            break;
+          case 4:
+            o.type = OrderType::STOP_LIMIT;
+            break;
+          default:
+            return std::nullopt;
+        }
+      }
+      else
+      {
+        o.type = OrderType::LIMIT;
+      }
+
+      // Optional decimals: present -> must parse.
+      int64_t v;
       if (has(44))
       {
-        o.price = price(44);
+        if (!fix(44, v))
+        {
+          return std::nullopt;
+        }
+        o.price = Price::fromRaw(v);
       }
       if (has(99))
       {
-        o.triggerPrice = price(99);
+        if (!fix(99, v))
+        {
+          return std::nullopt;
+        }
+        o.triggerPrice = Price::fromRaw(v);
       }
       if (has(111))
       {
-        o.visibleQuantity = qtyf(111);  // MaxFloor -> iceberg peak
+        if (!fix(111, v))
+        {
+          return std::nullopt;
+        }
+        o.visibleQuantity = Quantity::fromRaw(v);  // MaxFloor -> iceberg peak
       }
-      switch (std::atoi(s(59).c_str()))  // TimeInForce
+
+      switch (std::atoi(s(59).c_str()))  // TimeInForce (absent/other -> GTC)
       {
         case 3:
           o.tif = TimeInForce::IOC;
@@ -143,22 +205,40 @@ class FixCodec
     }
     if (type == "F")  // OrderCancelRequest
     {
+      if (!has(41))
+      {
+        return std::nullopt;  // OrigClOrdID required
+      }
       CancelOrder c;
-      c.id = u64(41);  // OrigClOrdID
+      c.id = u64(41);
       c.symbol = sym(55);
       c.accountId = u64(1);
       return InboundCommand{c};
     }
     if (type == "G")  // OrderCancelReplaceRequest
     {
+      if (!has(41))
+      {
+        return std::nullopt;  // OrigClOrdID required
+      }
       ModifyOrder m;
       m.id = u64(41);
       m.symbol = sym(55);
       if (has(44))
       {
-        m.newPrice = price(44);
+        int64_t pr;
+        if (!fix(44, pr))
+        {
+          return std::nullopt;
+        }
+        m.newPrice = Price::fromRaw(pr);
       }
-      m.newQty = qtyf(38);
+      int64_t qtyRaw;
+      if (!fix(38, qtyRaw))
+      {
+        return std::nullopt;  // new OrderQty required
+      }
+      m.newQty = Quantity::fromRaw(qtyRaw);
       m.accountId = u64(1);
       return InboundCommand{m};
     }
@@ -171,10 +251,18 @@ class FixCodec
     std::string b;  // body after 35
     auto add = [&](int tag, const std::string& val)
     { b += std::to_string(tag) + "=" + val + SOH; };
-    auto num = [](Price p)
-    { return std::to_string(p.toDouble()); };
-    auto qnum = [](Quantity q)
-    { return std::to_string(q.toDouble()); };
+    auto px = [](Price p)
+    {
+      std::string s;
+      decwire::append(s, p.raw());
+      return s;
+    };
+    auto qn = [](Quantity q)
+    {
+      std::string s;
+      decwire::append(s, q.raw());
+      return s;
+    };
 
     add(35, "8");  // ExecutionReport
     if (const auto* a = std::get_if<OrderAccepted>(&ev))
@@ -185,8 +273,8 @@ class FixCodec
       add(54, a->side == Side::SELL ? "2" : "1");
       add(150, "0");  // ExecType New
       add(39, "0");   // OrdStatus New
-      add(151, qnum(a->leavesQty));
-      add(44, num(a->price));
+      add(151, qn(a->leavesQty));
+      add(44, px(a->price));
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -194,10 +282,10 @@ class FixCodec
       add(55, std::to_string(x->symbol));
       add(150, "F");                     // ExecType Trade
       add(39, x->complete ? "2" : "1");  // Filled / Partially filled
-      add(32, qnum(x->lastQty));         // LastQty
-      add(31, num(x->lastPx));           // LastPx -- price of this fill
-      add(6, num(x->lastPx));            // AvgPx (single-fill report)
-      add(151, qnum(x->leavesQty));      // LeavesQty
+      add(32, qn(x->lastQty));           // LastQty
+      add(31, px(x->lastPx));            // LastPx -- price of this fill
+      add(6, px(x->lastPx));             // AvgPx (single-fill report)
+      add(151, qn(x->leavesQty));        // LeavesQty
     }
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
     {
@@ -217,8 +305,8 @@ class FixCodec
       add(37, std::to_string(m->id));
       add(150, "5");  // Replaced
       add(39, "5");
-      add(151, qnum(m->leavesQty));
-      add(44, num(m->price));
+      add(151, qn(m->leavesQty));
+      add(44, px(m->price));
     }
     else
     {

@@ -155,6 +155,28 @@ void test_fix_parse()
   // Without ExecInst=E, reduceOnly stays false.
   auto cno = FixCodec::decode(fixJoin({{35, "D"}, {11, "9"}, {55, "1"}, {54, "1"}, {38, "5"}, {44, "100"}}));
   CHECK(cno && !std::get<NewOrder>(*cno).reduceOnly);
+
+  // Strictness: no guessed defaults, decimals straight to fixed-point.
+  CHECK(!FixCodec::decode(fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {38, "5"}, {44, "100"}})));  // no Side
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "9"}, {38, "5"}, {44, "100"}})));  // bad Side
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {40, "7"}, {38, "5"}, {44, "100"}})));  // bad OrdType
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {44, "100"}})));  // no OrderQty
+  CHECK(!FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {38, "5"}, {44, "1e2"}})));  // exponent price
+  CHECK(!FixCodec::decode(fixJoin(
+      {{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {38, "5"}, {44, "100.123456789"}})));  // too precise
+  CHECK(!FixCodec::decode(fixJoin({{35, "F"}, {55, "1"}})));                              // cancel without OrigClOrdID
+
+  // Fixed-point survives exactly through decode and back out (no double).
+  auto fxd = FixCodec::decode(
+      fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {40, "2"}, {38, "5"}, {44, "100.25"}}));
+  CHECK(fxd && std::get<NewOrder>(*fxd).price == px(100.25));
+  const std::string er = FixCodec::encode(
+      OutboundEvent{OrderAccepted{1, SYM, Side::BUY, px(100.25), qty(5), true}});
+  CHECK(er.find("44=100.25\x01") != std::string::npos);  // exact, not 100.250000
 }
 
 void test_sbe_oe_endtoend()
