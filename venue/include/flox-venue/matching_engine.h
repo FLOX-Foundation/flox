@@ -1252,18 +1252,15 @@ class MatchingEngine
     {
       return;
     }
-    auto& dq = mmpFills_[account];
-    dq.emplace_back(now_, qty);
-    while (!dq.empty() && dq.front().first <= now_ - cfg->second.windowNs)
+    auto& w = mmpFills_[account];
+    w.fills.emplace_back(now_, qty);
+    w.sumRaw += qty.raw();
+    while (!w.fills.empty() && w.fills.front().first <= now_ - cfg->second.windowNs)
     {
-      dq.pop_front();
+      w.sumRaw -= w.fills.front().second.raw();
+      w.fills.pop_front();
     }
-    Quantity sum{};
-    for (const auto& p : dq)
-    {
-      sum += p.second;
-    }
-    if (!(sum < cfg->second.qtyLimit))  // sum >= limit
+    if (w.sumRaw >= cfg->second.qtyLimit.raw())  // sum >= limit
     {
       bool queued = false;
       for (uint64_t a : mmpBreached_)
@@ -1281,7 +1278,9 @@ class MatchingEngine
     for (uint64_t acc : mmpBreached_)
     {
       cancelAllForAccount(acc);
-      mmpFills_[acc].clear();  // re-arm
+      auto& w = mmpFills_[acc];  // re-arm: drop the window and its running sum
+      w.fills.clear();
+      w.sumRaw = 0;
       sink_(MmpTriggered{acc, cfg_.id});
     }
     mmpBreached_.clear();
@@ -2110,7 +2109,15 @@ class MatchingEngine
     int64_t windowNs{};
   };
   std::unordered_map<uint64_t, MmpCfg> mmpCfg_;
-  std::unordered_map<uint64_t, std::deque<std::pair<int64_t, Quantity>>> mmpFills_;
+  // Sliding fill window per account with an incrementally maintained sum, so a
+  // breach check is O(1) amortised rather than an O(n) rescan of the deque on
+  // every fill (an active MM inside the window would otherwise be O(n^2)).
+  struct MmpWindow
+  {
+    std::deque<std::pair<int64_t, Quantity>> fills;
+    int64_t sumRaw{0};  // running sum of fills.second.raw()
+  };
+  std::unordered_map<uint64_t, MmpWindow> mmpFills_;
   std::vector<uint64_t> mmpBreached_;
   CreditCheck credit_;
 
