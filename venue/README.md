@@ -7,7 +7,8 @@ the money, and manages the risk of doing so.
 It is an optional module with its own `CMakeLists.txt`, include prefix
 `<flox-venue/...>`, and target `flox::venue`, gated by `FLOX_BUILD_VENUE`.
 Core stays free of its weight, and the server perimeter carries its own
-dependencies (OpenSSL for the TLS gateway is optional and detected here).
+dependencies (simdjson via FetchContent for the REST codec; OpenSSL for the
+TLS gateway is optional and detected here).
 
 Namespace: `flox::venue`, nested so venue vocabulary can reuse names the
 strategy side already owns; `Trade` and `SymbolConfig` exist in both. Core

@@ -263,6 +263,32 @@ void test_rest_json()
   auto cm = RestJson::decode(R"({"action":"modify","id":7,"symbol":1,"price":101,"qty":3})");
   CHECK(cm && std::get_if<ModifyOrder>(&*cm) && std::get<ModifyOrder>(*cm).newQty == qty(3));
 
+  // Strictness: no guessed defaults, no open schema.
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"ordType":"limit","qty":5,"price":100})"));  // no side
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"hold","qty":5,"price":100})"));  // bad side
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","ordType":"limit","price":100})"));  // no qty
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","ordType":"vwap","qty":5})"));  // bad type
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"id":2,"symbol":1,"side":"buy","qty":5})"));  // duplicate key
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":5,"foo":1})"));  // unknown key
+  CHECK(!RestJson::decode(R"({"action":"cancel","id":7})"));                   // no symbol
+  CHECK(!RestJson::decode(R"({"action":"nuke","id":7,"symbol":1})"));          // bad action
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":5,"price":1e3})"));  // exponent
+  CHECK(!RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":5,"price":0.123456789})"));  // precision
+
+  // Fixed-point survives the round trip exactly (no double in the path).
+  auto rt = RestJson::decode(
+      R"({"action":"new","id":1,"symbol":1,"side":"buy","qty":0.00000001,"price":100.25})");
+  CHECK(rt && std::get<NewOrder>(*rt).quantity.raw() == 1);
+  CHECK(rt && std::get<NewOrder>(*rt).price == px(100.25));
+
   // end-to-end: JSON orders -> engine -> JSON events
   std::vector<std::string> out;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)

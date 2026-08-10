@@ -6,6 +6,14 @@
 #
 # Namespace: flox::venue.  Include prefix: <flox-venue/...>.
 
+include(FetchContent)
+FetchContent_Declare(
+  simdjson
+  GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+  GIT_TAG        0c0ce1bd48baa0677dc7c0945ea7cd1e8b52b297
+)
+FetchContent_MakeAvailable(simdjson)
+
 file(GLOB_RECURSE FLOX_VENUE_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 
 add_library(flox-venue STATIC ${FLOX_VENUE_SRC})
@@ -16,7 +24,7 @@ target_include_directories(flox-venue
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(flox-venue PUBLIC ${FLOX})
+target_link_libraries(flox-venue PUBLIC ${FLOX} simdjson::simdjson)
 target_compile_features(flox-venue PUBLIC cxx_std_23)
 
 # ── benchmarks ───────────────────────────────────────────────────────

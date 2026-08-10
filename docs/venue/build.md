@@ -34,9 +34,11 @@ Windows build configures with the module off and prints a status message.
 
 ## Dependencies
 
-The venue links only `${FLOX}` core. OpenSSL is needed by the TLS gateway
-alone; it is detected inside `venue/CMakeLists.txt`, and without it the module
-still builds, skipping only the TLS gateway test.
+The venue links `${FLOX}` core and `simdjson` (pulled via FetchContent at
+configure time, same pin as `connectors/`; the REST perimeter codec parses
+with it). OpenSSL is needed by the TLS gateway alone; it is detected inside
+`venue/CMakeLists.txt`, and without it the module still builds, skipping only
+the TLS gateway test.
 
 ## Consuming it
 
