@@ -21,6 +21,13 @@ inline uint64_t mix(uint64_t h, uint64_t v) noexcept
   return h;
 }
 
+// Fold an outbound event into the determinism digest. Every field that can
+// differ between two legal runs and that affects settlement, risk, or a
+// client-visible report is mixed in -- so a real divergence (e.g. flipped taker
+// side, a fill at a different price, ADL vs a plain force-close) changes the
+// hash and is caught by the reproducibility/differential tests. The ONLY things
+// intentionally excluded are values not carried by the event itself (wall-clock,
+// pointers); if a field is on the struct, it is hashed.
 inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
 {
   if (const auto* x = std::get_if<OrderAccepted>(&e))
@@ -32,40 +39,52 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
     h = mix(h, x->restingOnBook ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(x->displayQty.raw()));
   }
   else if (const auto* x = std::get_if<OrderRejected>(&e))
   {
     h = mix(h, 2);
     h = mix(h, x->id);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->reason));
   }
   else if (const auto* x = std::get_if<Trade>(&e))
   {
     h = mix(h, 3);
     h = mix(h, x->tradeId);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, static_cast<uint64_t>(x->quantity.raw()));
     h = mix(h, x->makerId);
     h = mix(h, x->takerId);
+    h = mix(h, static_cast<uint64_t>(x->takerSide));
+    h = mix(h, x->makerAccount);
+    h = mix(h, x->takerAccount);
   }
   else if (const auto* x = std::get_if<OrderExecuted>(&e))
   {
     h = mix(h, 4);
     h = mix(h, x->id);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->lastQty.raw()));
     h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
+    h = mix(h, x->aggressor ? 1U : 0U);
     h = mix(h, x->complete ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(x->lastPx.raw()));
+    h = mix(h, static_cast<uint64_t>(x->displayLeaves.raw()));
   }
   else if (const auto* x = std::get_if<OrderCanceled>(&e))
   {
     h = mix(h, 5);
     h = mix(h, x->id);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->reason));
   }
   else if (const auto* x = std::get_if<OrderModified>(&e))
   {
     h = mix(h, 6);
     h = mix(h, x->id);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
     h = mix(h, x->priorityKept ? 1U : 0U);
@@ -74,12 +93,14 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
   {
     h = mix(h, 7);
     h = mix(h, x->id);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->refPrice.raw()));
   }
   else if (const auto* x = std::get_if<FillHeld>(&e))
   {
     h = mix(h, 8);
     h = mix(h, x->heldId);
+    h = mix(h, x->symbol);
     h = mix(h, x->makerId);
     h = mix(h, x->takerId);
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
@@ -89,6 +110,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
   {
     h = mix(h, 9);
     h = mix(h, x->heldId);
+    h = mix(h, x->symbol);
     h = mix(h, x->takerId);
   }
   else if (const auto* x = std::get_if<MmpTriggered>(&e))
@@ -101,6 +123,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
   {
     h = mix(h, 11);
     h = mix(h, x->id);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->fee.raw()));
     h = mix(h, x->maker ? 1U : 0U);
   }
@@ -108,9 +131,11 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
   {
     h = mix(h, 12);
     h = mix(h, x->account);
+    h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->qty.raw()));
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, x->bankrupt ? 1U : 0U);
+    h = mix(h, x->adl ? 1U : 0U);
   }
   return h;
 }

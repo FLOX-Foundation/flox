@@ -173,6 +173,81 @@ void test_journal_torn_and_corrupt_tail()
   }
 }
 
+// The determinism digest must fold in every settlement-/risk-/client-visible
+// field, so a divergence in any of them is caught by the reproducibility tests.
+// Flip one field at a time and assert the hash changes.
+void test_event_hash_covers_fields()
+{
+  std::printf("test_event_hash_covers_fields\n");
+  auto H = [](const OutboundEvent& e)
+  { return hashEvent(1469598103934665603ULL, e); };
+  auto changes = [&](const OutboundEvent& a, const OutboundEvent& b)
+  { return H(a) != H(b); };
+
+  // Trade: taker side and both accounts drive settlement direction + fees.
+  {
+    Trade t{7, 1, Price::fromDouble(100), Quantity::fromDouble(2), 10, 11, Side::BUY, 100, 200};
+    Trade s = t;
+    s.takerSide = Side::SELL;
+    CHECK(changes(t, s));
+    s = t;
+    s.makerAccount = 999;
+    CHECK(changes(t, s));
+    s = t;
+    s.takerAccount = 999;
+    CHECK(changes(t, s));
+    s = t;
+    s.symbol = 2;
+    CHECK(changes(t, s));
+  }
+  // OrderExecuted: fill price, aggressor flag, displayed leaves.
+  {
+    OrderExecuted x{7, 1, Quantity::fromDouble(1), Quantity::fromDouble(1), false, false,
+                    Price::fromDouble(100), Quantity::fromDouble(1)};
+    OrderExecuted s = x;
+    s.lastPx = Price::fromDouble(101);
+    CHECK(changes(x, s));
+    s = x;
+    s.aggressor = true;
+    CHECK(changes(x, s));
+    s = x;
+    s.displayLeaves = Quantity::fromDouble(3);
+    CHECK(changes(x, s));
+    s = x;
+    s.symbol = 2;
+    CHECK(changes(x, s));
+  }
+  // Liquidation: ADL vs a plain force-close of the same size/price/account.
+  {
+    Liquidation l{5, 1, Quantity::fromDouble(2), Price::fromDouble(100), true, false};
+    Liquidation s = l;
+    s.adl = true;
+    CHECK(changes(l, s));
+    s = l;
+    s.symbol = 2;
+    CHECK(changes(l, s));
+  }
+  // OrderAccepted displayQty (iceberg peak) must be distinguishable.
+  {
+    OrderAccepted a{7, 1, Side::BUY, Price::fromDouble(100), Quantity::fromDouble(5), true,
+                    Quantity::fromDouble(1)};
+    OrderAccepted s = a;
+    s.displayQty = Quantity::fromDouble(2);
+    CHECK(changes(a, s));
+  }
+  // Symbol is folded into the id-only report events too.
+  {
+    OrderCanceled c{7, 1, CancelReason::UserRequested};
+    OrderCanceled s = c;
+    s.symbol = 2;
+    CHECK(changes(c, s));
+    OrderRejected r{7, 1, RejectReason::Halted};
+    OrderRejected rs = r;
+    rs.symbol = 2;
+    CHECK(changes(r, rs));
+  }
+}
+
 void test_sharding()
 {
   std::printf("test_sharding\n");
@@ -223,6 +298,7 @@ TEST(Reliability, EngineSuite)
 {
   test_journal_replay();
   test_journal_torn_and_corrupt_tail();
+  test_event_hash_covers_fields();
   test_sharding();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
