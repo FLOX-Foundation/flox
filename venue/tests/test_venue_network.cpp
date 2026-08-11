@@ -338,6 +338,23 @@ void test_websocket()
   std::vector<uint8_t> partial = {0x82, 0x04, 0xAA, 0xBB};
   CHECK(ws::parseFrame(partial.data(), partial.size(), op, pl) == 0);
 
+  // FIN bit is surfaced via the out-param: a final Text frame reports fin=true,
+  // a fragment start (FIN=0 Text) reports fin=false.
+  bool fin = false;
+  CHECK(ws::parseFrame(f.data(), f.size(), op, pl, &fin) == f.size() && fin);
+  std::vector<uint8_t> frag = {0x01, 0x02, 0xAA, 0xBB};  // FIN=0, Text, 2 bytes
+  CHECK(ws::parseFrame(frag.data(), frag.size(), op, pl, &fin) == frag.size());
+  CHECK(op == ws::Opcode::Text && !fin);
+
+  // RSV1 set without a negotiated extension is a protocol violation, not
+  // silently ignored (0xC2 = FIN + RSV1 + Binary).
+  std::vector<uint8_t> rsv = {0xC2, 0x01, 0x00};
+  CHECK(ws::parseFrame(rsv.data(), rsv.size(), op, pl) == ws::kParseError);
+
+  // A fragmented control frame (FIN=0 on a Ping) is illegal.
+  std::vector<uint8_t> fragPing = {0x09, 0x00};  // FIN=0, Ping
+  CHECK(ws::parseFrame(fragPing.data(), fragPing.size(), op, pl) == ws::kParseError);
+
   // Binary/TLS length-prefix path: a u32 prefix beyond net::kMaxFrame must make
   // readFrame reject rather than resize() up to 4 GiB. Drive it through a pipe.
   {
@@ -441,6 +458,32 @@ void test_md_snapshot()
   CHECK(md.book().askAtPrice(px(100)) == qty(5));  // snapshot agrees with live depth
 }
 
+// Split `s` across two masked frames: [Text FIN=0 | first half] then
+// [Continuation FIN=1 | second half]. The gateway must reassemble them into one
+// message (RFC 6455 5.4). Payload halves stay < 126 bytes (single-byte length).
+std::pair<std::vector<uint8_t>, std::vector<uint8_t>> wsClientFragments(const std::string& s)
+{
+  const uint8_t mask[4] = {9, 8, 7, 6};
+  auto frame = [&](uint8_t b0, const std::string& part)
+  {
+    std::vector<uint8_t> f;
+    f.push_back(b0);
+    f.push_back(static_cast<uint8_t>(0x80 | part.size()));
+    for (int i = 0; i < 4; ++i)
+    {
+      f.push_back(mask[i]);
+    }
+    for (size_t i = 0; i < part.size(); ++i)
+    {
+      f.push_back(static_cast<uint8_t>(part[i] ^ mask[i & 3]));
+    }
+    return f;
+  };
+  const size_t half = s.size() / 2;
+  return {frame(0x01, s.substr(0, half)),  // Text, FIN=0
+          frame(0x80, s.substr(half))};    // Continuation (0x0), FIN=1
+}
+
 std::vector<uint8_t> wsClientFrame(const std::string& s)
 {
   std::vector<uint8_t> f;
@@ -516,9 +559,12 @@ void test_ws_gateway()
   }
   CHECK(resp.find("101 Switching Protocols") != std::string::npos);
 
-  auto sell = wsClientFrame(
+  // Send the sell FRAGMENTED across two frames; reassembly must recombine it
+  // into a valid order that then rests and trades against the buy below.
+  auto [sf1, sf2] = wsClientFragments(
       R"({"action":"new","id":1,"symbol":1,"side":"sell","ordType":"limit","qty":5,"price":100})");
-  ::write(c, sell.data(), sell.size());
+  ::write(c, sf1.data(), sf1.size());
+  ::write(c, sf2.data(), sf2.size());
   auto buy = wsClientFrame(
       R"({"action":"new","id":2,"symbol":1,"side":"buy","ordType":"limit","qty":3,"price":100,"account":2})");
   ::write(c, buy.data(), buy.size());
