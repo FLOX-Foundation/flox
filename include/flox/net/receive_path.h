@@ -16,12 +16,12 @@
 //
 //   - UdpSocketReceivePath (here): non-blocking socket + recvmsg, kernel or
 //     NIC receive timestamps when available. Works everywhere; the default.
-//   - AF_XDP backend (designed, Linux-only, not yet implemented): kernel
+//   - AfXdpReceivePath (flox/net/af_xdp_receive_path.h, Linux-only): kernel
 //     keeps the NIC, an eBPF program redirects to a user-space UMEM ring --
-//     the pragmatic middle between the kernel path and full DPDK. Needs
-//     libxdp, a capable driver, and a Linux host to validate against; the
-//     interface below is shaped so it drops in (poll semantics, borrowed
-//     buffers, explicit rx timestamps).
+//     the pragmatic middle between the kernel path and full DPDK. Implemented
+//     against libxdp (xsk) and validated on a Linux host; needs a capable
+//     driver. The interface below is the seam it plugs into (poll semantics,
+//     borrowed buffers, explicit rx timestamps); see tools/afxdp_probe.cpp.
 //
 // Contract: payload spans are BORROWED -- valid only inside the callback.
 // The decoder consumes or copies before returning; nothing allocates on the

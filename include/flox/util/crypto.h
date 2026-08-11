@@ -5,6 +5,15 @@
  * Copyright (c) 2025 FLOX Foundation
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
+ *
+ * SCOPE: these are small, dependency-free SHA-1 / SHA-256 / HMAC-SHA256 /
+ * base64 implementations for the venue PERIMETER only -- the RFC 6455
+ * WebSocket handshake (SHA-1) and the venue session's API-key HMAC logon --
+ * and are covered by test vectors (venue/tests/test_venue_crypto.cpp). They are
+ * NOT for signing production exchange traffic: the live connectors sign their
+ * requests with OpenSSL (e.g. connectors/src/bitget/authenticated_rest_client
+ * .cpp), and any new signing path should do the same rather than reach for
+ * these. Kept hand-rolled so core carries no crypto dependency.
  */
 #pragma once
 
