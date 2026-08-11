@@ -85,14 +85,21 @@ class WsGateway
 
     std::vector<uint8_t> buf;
     DisconnectCanceller cod(cancelOnDisconnect_.load());
+    // Fragmentation reassembly (RFC 6455 5.4): a data message may span a
+    // FIN=0 Text/Binary frame followed by Continuation frames; control frames
+    // (Ping/Pong/Close) may interleave and are handled immediately.
+    std::vector<uint8_t> msg;
+    ws::Opcode msgOp{};
+    bool assembling = false;
     while (acceptor_.running())
     {
       ws::Opcode op{};
       std::vector<uint8_t> payload;
-      const size_t consumed = ws::parseFrame(buf.data(), buf.size(), op, payload);
+      bool fin = true;
+      const size_t consumed = ws::parseFrame(buf.data(), buf.size(), op, payload, &fin);
       if (consumed == ws::kParseError)
       {
-        break;  // hostile/oversized frame: drop the connection
+        break;  // hostile/oversized/malformed frame: drop the connection
       }
       if (consumed == 0)
       {
@@ -105,6 +112,8 @@ class WsGateway
         continue;
       }
       buf.erase(buf.begin(), buf.begin() + static_cast<std::ptrdiff_t>(consumed));
+
+      // Control frames are always final and may arrive mid-message.
       if (op == ws::Opcode::Close)
       {
         break;
@@ -115,19 +124,64 @@ class WsGateway
         net::writeAll(fd, pong.data(), pong.size());
         continue;
       }
+      if (op == ws::Opcode::Pong)
+      {
+        continue;
+      }
+
+      // Data frames: Text/Binary start a message, Continuation extends it.
       if (op == ws::Opcode::Text || op == ws::Opcode::Binary)
       {
-        SessionReject rej{};
-        auto cmd = session.handle(payload.data(), payload.size(), ++clock_, rej);
-        if (cmd)
+        if (assembling)
         {
-          cod.track(*cmd);
-          handler_(*cmd, responder);
+          break;  // new data frame before the previous message finished: violation
         }
+        if (fin)
+        {
+          dispatch(session, cod, responder, payload.data(), payload.size());
+          continue;
+        }
+        assembling = true;
+        msgOp = op;
+        msg = std::move(payload);
+        continue;
       }
+      if (op == ws::Opcode::Cont)
+      {
+        if (!assembling)
+        {
+          break;  // continuation with no message in progress: violation
+        }
+        if (msg.size() + payload.size() > ws::kMaxFramePayload)
+        {
+          break;  // reassembled message exceeds the bound
+        }
+        msg.insert(msg.end(), payload.begin(), payload.end());
+        if (fin)
+        {
+          dispatch(session, cod, responder, msg.data(), msg.size());
+          assembling = false;
+          msg.clear();
+        }
+        continue;
+      }
+      break;  // unknown opcode
     }
     cod.flush(handler_);
     ::close(fd);
+  }
+
+  // Decode one fully-assembled message and, if it is a valid command, run it.
+  void dispatch(GatewaySession& session, DisconnectCanceller& cod, const Responder& responder,
+                const uint8_t* p, size_t n)
+  {
+    SessionReject rej{};
+    auto cmd = session.handle(p, n, ++clock_, rej);
+    if (cmd)
+    {
+      cod.track(*cmd);
+      handler_(*cmd, responder);
+    }
   }
 
   GatewaySession::Decoder decoder_;

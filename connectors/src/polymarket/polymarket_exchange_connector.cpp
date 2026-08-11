@@ -208,15 +208,9 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
 
     auto obj = doc.get_object().value();
 
-    // Check for price_changes (incremental update)
-    if (auto pc = obj["price_changes"]; !pc.error())
-    {
-      // Incremental updates - for now just ignore them
-      // Full book updates will come via "book" event_type
-      return;
-    }
-
-    // Check for event_type
+    // event_type is the first field: read it first so every field access below
+    // stays forward-only (simdjson ondemand throws OUT_OF_ORDER when a later
+    // field is read and then an earlier one).
     auto eventTypeField = obj["event_type"];
     if (eventTypeField.error())
     {
@@ -228,6 +222,12 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
     if (eventType == "book")
     {
       processBookSnapshot(std::move(obj), recvNs);
+    }
+    else if (eventType == "price_change")
+    {
+      // Incremental book updates: apply them (previously dropped, leaving the
+      // book stale between snapshots).
+      processPriceChanges(std::move(obj), recvNs);
     }
     else if (eventType == "last_trade_price" || eventType == "trade")
     {
@@ -255,6 +255,9 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
 
         if (priceOpt && sizeOpt)
         {
+          // Polymarket trade price/size can arrive as a JSON number, so this
+          // path keeps parseStringOrDouble (string-or-number). Book levels
+          // below are always strings and use the fixed-point parser.
           ev.trade.price = Price::fromDouble(*priceOpt);
           ev.trade.quantity = Quantity::fromDouble(*sizeOpt);
 
@@ -341,26 +344,21 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
     for (auto level : bids.get_array())
     {
       auto lobj = level.get_object();
-      double price = 0, size = 0;
+      std::optional<Price> priceOpt;
+      std::optional<Quantity> sizeOpt;
 
       if (auto p = lobj["price"]; !p.error())
       {
-        if (auto pOpt = util::safeParseDouble(p.get_string().value()))
-        {
-          price = *pOpt;
-        }
+        priceOpt = util::parsePrice(p.get_string().value());
       }
       if (auto s = lobj["size"]; !s.error())
       {
-        if (auto sOpt = util::safeParseDouble(s.get_string().value()))
-        {
-          size = *sOpt;
-        }
+        sizeOpt = util::parseQty(s.get_string().value());
       }
 
-      if (price > 0 && size > 0)
+      if (priceOpt && sizeOpt && priceOpt->raw() > 0 && sizeOpt->raw() > 0)
       {
-        ev->update.bids.push_back({Price::fromDouble(price), Quantity::fromDouble(size)});
+        ev->update.bids.push_back({*priceOpt, *sizeOpt});
       }
     }
   }
@@ -371,26 +369,21 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
     for (auto level : asks.get_array())
     {
       auto lobj = level.get_object();
-      double price = 0, size = 0;
+      std::optional<Price> priceOpt;
+      std::optional<Quantity> sizeOpt;
 
       if (auto p = lobj["price"]; !p.error())
       {
-        if (auto pOpt = util::safeParseDouble(p.get_string().value()))
-        {
-          price = *pOpt;
-        }
+        priceOpt = util::parsePrice(p.get_string().value());
       }
       if (auto s = lobj["size"]; !s.error())
       {
-        if (auto sOpt = util::safeParseDouble(s.get_string().value()))
-        {
-          size = *sOpt;
-        }
+        sizeOpt = util::parseQty(s.get_string().value());
       }
 
-      if (price > 0 && size > 0)
+      if (priceOpt && sizeOpt && priceOpt->raw() > 0 && sizeOpt->raw() > 0)
       {
-        ev->update.asks.push_back({Price::fromDouble(price), Quantity::fromDouble(size)});
+        ev->update.asks.push_back({*priceOpt, *sizeOpt});
       }
     }
   }
@@ -399,6 +392,122 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
   ev->publishTsNs = nowNsMonotonic();
 
   _bookUpdateBus->publish(std::move(ev));
+}
+
+// Incremental book update. Each element of price_changes carries its own
+// asset_id, a price level, its new absolute size (0 = level removed), and a
+// side (BUY -> bid, SELL -> ask). A single message may touch several assets;
+// changes are grouped per symbol into one DELTA BookUpdateEvent each so the
+// downstream book applies them atomically.
+void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object obj,
+                                                      uint64_t recvNs)
+{
+  auto pcField = obj["price_changes"];
+  if (pcField.error())
+  {
+    return;
+  }
+
+  struct Change
+  {
+    SymbolId sym;
+    bool isBid;
+    Price price;
+    Quantity qty;
+  };
+  std::vector<Change> changes;
+  for (auto el : pcField.get_array())
+  {
+    auto e = el.get_object();
+
+    // Field order per element: asset_id, price, size, side (read forward).
+    std::string_view tokenId;
+    if (auto a = e["asset_id"]; !a.error())
+    {
+      tokenId = a.get_string().value();
+    }
+    else
+    {
+      continue;
+    }
+
+    std::optional<Price> priceOpt;
+    if (auto p = e["price"]; !p.error())
+    {
+      priceOpt = util::parsePrice(p.get_string().value());
+    }
+    std::optional<Quantity> qtyOpt;  // size 0 is a valid level removal
+    if (auto s = e["size"]; !s.error())
+    {
+      qtyOpt = util::parseQty(s.get_string().value());
+    }
+    bool isBid = true;
+    if (auto sd = e["side"]; !sd.error())
+    {
+      isBid = (sd.get_string().value() == "BUY");
+    }
+
+    if (!priceOpt || !qtyOpt)
+    {
+      continue;  // unparseable level; skip rather than corrupt the delta
+    }
+    changes.push_back({resolveSymbolId(tokenId), isBid, *priceOpt, *qtyOpt});
+  }
+
+  if (changes.empty())
+  {
+    return;
+  }
+
+  // Emit one DELTA event per distinct symbol touched by this message.
+  std::vector<SymbolId> seen;
+  for (const auto& c : changes)
+  {
+    if (std::find(seen.begin(), seen.end(), c.sym) != seen.end())
+    {
+      continue;
+    }
+    seen.push_back(c.sym);
+
+    auto evOpt = _bookPool.acquire();
+    if (!evOpt)
+    {
+      if (_logger)
+      {
+        _logger->warn("[Polymarket] Book pool exhausted (price_change)");
+      }
+      return;
+    }
+    auto& ev = *evOpt;
+    ev->recvNs = recvNs;
+    ev->update.symbol = c.sym;
+    ev->update.type = BookUpdateType::DELTA;
+    ev->update.bids.clear();
+    ev->update.asks.clear();
+
+    for (const auto& d : changes)
+    {
+      if (d.sym != c.sym)
+      {
+        continue;
+      }
+      // size 0 -> level removed; forwarded as a zero-quantity level, which the
+      // aggregate book erases.
+      const BookLevel lvl{d.price, d.qty};
+      if (d.isBid)
+      {
+        ev->update.bids.push_back(lvl);
+      }
+      else
+      {
+        ev->update.asks.push_back(lvl);
+      }
+    }
+
+    ev->update.exchangeTsNs = nowNsMonotonic();
+    ev->publishTsNs = nowNsMonotonic();
+    _bookUpdateBus->publish(std::move(ev));
+  }
 }
 
 }  // namespace flox

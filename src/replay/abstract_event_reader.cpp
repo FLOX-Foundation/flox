@@ -13,6 +13,8 @@
 #include "flox/replay/readers/parallel_reader.h"
 
 #include <atomic>
+#include <filesystem>
+#include <memory>
 #include <mutex>
 
 namespace flox::replay
@@ -22,37 +24,44 @@ class BinaryLogIteratorAdapter : public ISegmentReader
 {
  public:
   explicit BinaryLogIteratorAdapter(const std::filesystem::path& path)
-      : _iterator(path)
+      : _path(path), _iterator(std::make_unique<BinaryLogIterator>(path))
   {
-    if (_iterator.isValid())
+    if (_iterator->isValid())
     {
-      _iterator.loadIndex();
+      _iterator->loadIndex();
     }
   }
 
-  bool isValid() const override { return _iterator.isValid(); }
+  bool isValid() const override { return _iterator->isValid(); }
 
-  bool isCompressed() const override { return _iterator.isCompressed(); }
+  bool isCompressed() const override { return _iterator->isCompressed(); }
 
-  bool hasIndex() const override { return _iterator.hasIndex(); }
+  bool hasIndex() const override { return _iterator->hasIndex(); }
 
-  bool next(ReplayEvent& out) override { return _iterator.next(out); }
+  bool next(ReplayEvent& out) override { return _iterator->next(out); }
 
+  // BinaryLogIterator has no in-place rewind, so reconstruct it over the same
+  // path: a real reset to the first event, not a silent no-op that would make a
+  // second iteration pass continue from the current position.
   void reset() override
   {
-    // BinaryLogIterator doesn't have reset - recreate would be needed
-    // For now this is a limitation
+    _iterator = std::make_unique<BinaryLogIterator>(_path);
+    if (_iterator->isValid())
+    {
+      _iterator->loadIndex();
+    }
   }
 
   bool seekToTimestamp(int64_t target_ts_ns) override
   {
-    return _iterator.seekToTimestamp(target_ts_ns);
+    return _iterator->seekToTimestamp(target_ts_ns);
   }
 
-  const SegmentHeader& header() const override { return _iterator.header(); }
+  const SegmentHeader& header() const override { return _iterator->header(); }
 
  private:
-  BinaryLogIterator _iterator;
+  std::filesystem::path _path;
+  std::unique_ptr<BinaryLogIterator> _iterator;
 };
 
 class MmapSegmentReaderAdapter : public ISegmentReader

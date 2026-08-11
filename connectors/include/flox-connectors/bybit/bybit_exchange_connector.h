@@ -71,9 +71,19 @@ class BybitExchangeConnector : public IExchangeConnector
 
   SymbolId resolveSymbolId(std::string_view symbol);
 
- private:
+  // Public so protocol behaviour (sequencing, gap resync) is testable offline
+  // by feeding raw frames without a live socket.
   void handleMessage(std::string_view payload);
+
+  // Book deltas whose update id broke continuity (dropped + resync triggered).
+  uint64_t bookGapCount() const noexcept { return _bookGapCount.load(std::memory_order_relaxed); }
+
+ private:
   void handlePrivateMessage(std::string_view payload);
+
+  // Re-subscribe one symbol's orderbook topic so the exchange re-sends a
+  // snapshot (gap recovery). No-op before start() (no socket yet).
+  void resubscribeBook(std::string_view symbolName);
 
   BybitConfig _config;
 
@@ -82,7 +92,18 @@ class BybitExchangeConnector : public IExchangeConnector
 
   SymbolRegistry* _registry = nullptr;
 
-  std::unordered_map<SymbolId, int64_t> _lastBookSeq;
+  // Per-symbol book continuity: Bybit v5 orderbook deltas carry an update id
+  // ("u") that increments by 1 per message; a jump means a dropped frame and a
+  // silently wrong book, so the connector drops the delta and re-subscribes for
+  // a fresh snapshot. resyncInFlight suppresses repeat resubscribes while the
+  // snapshot is on its way.
+  struct BookSeqState
+  {
+    int64_t lastUpdateId{-1};
+    bool resyncInFlight{false};
+  };
+  std::unordered_map<SymbolId, BookSeqState> _bookSeq;
+  std::atomic<uint64_t> _bookGapCount{0};
 
   std::shared_ptr<ILogger> _logger;
 

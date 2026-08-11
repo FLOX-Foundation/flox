@@ -165,21 +165,6 @@ class CoreAssignmentManager
      * @return Vector of core IDs assigned to the component
      */
   std::vector<int> getCoresFor(const CoreAssignment& assignment, const std::string& component);
-
-  /**
-     * @brief Balance cores across NUMA nodes for optimal performance
-     * @param assignment Core assignment to balance
-     * @param topology NUMA topology information
-     * @return Balanced core assignment
-     */
-  CoreAssignment balanceAcrossNumaNodes(const CoreAssignment& assignment, const NumaTopology& topology);
-
-  /**
-     * @brief Optimize core assignment for cache locality
-     * @param assignment Core assignment to optimize
-     * @return Optimized core assignment
-     */
-  CoreAssignment optimizeForCacheLocality(const CoreAssignment& assignment);
 };
 
 // Inline implementations
@@ -206,7 +191,6 @@ inline CoreAssignment CoreAssignmentManager::getRecommendedCoreAssignment(const 
 inline CoreAssignment CoreAssignmentManager::getNumaAwareCoreAssignment(const CriticalComponentConfig& config)
 {
   CoreAssignment assignment;
-  auto topology = _cpuTopology->getNumaTopology();
   auto isolatedCores = _cpuTopology->getIsolatedCores();
 
   assignment.hasIsolatedCores = !isolatedCores.empty();
@@ -280,7 +264,7 @@ inline CoreAssignment CoreAssignmentManager::getNumaAwareCoreAssignment(const Cr
   assignment.criticalCores.insert(assignment.criticalCores.end(),
                                   assignment.riskCores.begin(), assignment.riskCores.end());
 
-  return balanceAcrossNumaNodes(assignment, topology);
+  return assignment;
 }
 
 inline CoreAssignment CoreAssignmentManager::getBasicCoreAssignment(int numCores, const std::vector<int>& isolatedCores)
@@ -530,27 +514,6 @@ inline std::vector<int> CoreAssignmentManager::getCoresFor(const CoreAssignment&
   }
 
   return {};
-}
-
-inline CoreAssignment CoreAssignmentManager::balanceAcrossNumaNodes(const CoreAssignment& assignment, const NumaTopology& topology)
-{
-  if (!topology.numaAvailable || topology.nodes.size() <= 1)
-  {
-    return assignment;
-  }
-
-  // For now, return assignment as-is
-  // In a full implementation, we would balance cores across NUMA nodes
-  // based on workload characteristics and memory access patterns
-  return assignment;
-}
-
-inline CoreAssignment CoreAssignmentManager::optimizeForCacheLocality(const CoreAssignment& assignment)
-{
-  // For now, return assignment as-is
-  // In a full implementation, we would optimize core assignment
-  // based on cache hierarchy and core topology
-  return assignment;
 }
 
 }  // namespace flox::performance

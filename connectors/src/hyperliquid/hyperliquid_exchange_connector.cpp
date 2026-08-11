@@ -250,16 +250,16 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
             continue;
           }
 
-          auto priceOpt = util::safeParseDouble(pxEl.get_string().value());
-          auto qtyOpt = util::safeParseDouble(szEl.get_string().value());
+          auto priceOpt = util::parsePrice(pxEl.get_string().value());
+          auto qtyOpt = util::parseQty(szEl.get_string().value());
           if (!priceOpt || !qtyOpt)
           {
             _logger->warn("[Hyperliquid] Invalid price/qty in book level");
             continue;
           }
 
-          Price price = Price::fromDouble(*priceOpt);
-          Quantity qty = Quantity::fromDouble(*qtyOpt);
+          Price price = *priceOpt;
+          Quantity qty = *qtyOpt;
 
           if (idx == 0)
           {
@@ -300,8 +300,8 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
           continue;
         }
 
-        auto priceOpt = util::safeParseDouble(pxEl.get_string().value());
-        auto qtyOpt = util::safeParseDouble(szEl.get_string().value());
+        auto priceOpt = util::parsePrice(pxEl.get_string().value());
+        auto qtyOpt = util::parseQty(szEl.get_string().value());
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Hyperliquid] Invalid trade price/qty");
@@ -312,8 +312,8 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 
         TradeEvent ev;
         ev.trade.symbol = sid;
-        ev.trade.price = Price::fromDouble(*priceOpt);
-        ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.trade.price = *priceOpt;
+        ev.trade.quantity = *qtyOpt;
         std::string_view side = sideEl.get_string().value();
         ev.trade.isBuy = (side == "B" || side == "buy");
 

@@ -1,11 +1,11 @@
 /*
-  * Flox Engine
-  * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
-  *
-  * Copyright (c) 2025 FLOX Foundation
-  * Licensed under the MIT License. See LICENSE file in the project root for full
-  * license information.
-  */
+ * Flox Engine
+ * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
+ * Copyright (c) 2025 FLOX Foundation
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ */
 
 #include "flox-connectors/bybit/bybit_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
@@ -317,6 +317,25 @@ void BybitExchangeConnector::stop()
   }
 }
 
+void BybitExchangeConnector::resubscribeBook(std::string_view symbolName)
+{
+  if (!_wsClient)
+  {
+    return;  // not started (offline tests / early frames): next snapshot re-baselines
+  }
+  for (const auto& entry : _config.symbols)
+  {
+    if (entry.name == symbolName)
+    {
+      const std::string topic =
+          "orderbook." + std::to_string(static_cast<int>(entry.depth)) + "." + entry.name;
+      _wsClient->send(R"({"op":"unsubscribe","args":[")" + topic + R"("]})");
+      _wsClient->send(R"({"op":"subscribe","args":[")" + topic + R"("]})");
+      return;
+    }
+  }
+}
+
 void BybitExchangeConnector::handleMessage(std::string_view payload)
 {
   static thread_local simdjson::ondemand::parser parser;
@@ -356,12 +375,10 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       return;
     }
 
-    auto data_field = root.find_field_unordered("data");
-    if (data_field.error())
-    {
-      return;
-    }
-
+    // `data` is fetched LAST in each branch, after the root scalar fields, so
+    // every simdjson ondemand access is forward-only (grabbing `data` -- the
+    // last field -- early and then reading earlier root fields throws
+    // OUT_OF_ORDER_ITERATION).
     auto topic = topic_field.get_string().value();
 
     if (topic.starts_with("orderbook."))
@@ -387,6 +404,18 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
       ev->update.type = updateType;
 
+      // Root scalars first (document order: topic, type, ts, cts, data), then
+      // descend into data -- keeps every access forward-only.
+      auto tsv = root.find_field_unordered("ts").get_int64().value();
+      auto ctsv = root.find_field_unordered("cts").get_int64().value();
+      ev->update.systemTsNs = msToNs(tsv);
+      ev->update.exchangeTsNs = msToNs(ctsv);
+
+      auto data_field = root.find_field_unordered("data");
+      if (data_field.error())
+      {
+        return;
+      }
       auto data_obj = data_field.get_object();
 
       // symbol
@@ -405,33 +434,6 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         }
       }
 
-      auto tsv = root.find_field_unordered("ts").get_int64().value();
-      auto ctsv = root.find_field_unordered("cts").get_int64().value();
-
-      ev->update.systemTsNs = msToNs(tsv);
-      ev->update.exchangeTsNs = msToNs(ctsv);
-
-      int seq = data_obj.find_field_unordered("seq").get_int64().value();
-      int64_t prev = 0;
-      if (updateType == BookUpdateType::SNAPSHOT)
-      {
-        prev = 0;
-        _lastBookSeq[sym] = seq;
-      }
-      else
-      {
-        auto it = _lastBookSeq.find(sym);
-        if (it != _lastBookSeq.end())
-        {
-          prev = it->second;
-        }
-
-        _lastBookSeq[sym] = seq;
-      }
-
-      ev->seq = seq;
-      ev->prevSeq = prev;
-
       ev->update.bids.clear();
       ev->update.asks.clear();
 
@@ -444,14 +446,14 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ++it;
         std::string_view qsv = (*it).get_string().value();
 
-        auto priceOpt = util::safeParseDouble(psv);
-        auto qtyOpt = util::safeParseDouble(qsv);
+        auto priceOpt = util::parsePrice(psv);
+        auto qtyOpt = util::parseQty(qsv);
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid bid price/qty in book update");
           continue;
         }
-        ev->update.bids.emplace_back(Price::fromDouble(*priceOpt), Quantity::fromDouble(*qtyOpt));
+        ev->update.bids.emplace_back(*priceOpt, *qtyOpt);
       }
 
       auto af = data_obj.find_field_unordered("a");
@@ -463,15 +465,52 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ++it;
         std::string_view qsv = (*it).get_string().value();
 
-        auto priceOpt = util::safeParseDouble(psv);
-        auto qtyOpt = util::safeParseDouble(qsv);
+        auto priceOpt = util::parsePrice(psv);
+        auto qtyOpt = util::parseQty(qsv);
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid ask price/qty in book update");
           continue;
         }
-        ev->update.asks.emplace_back(Price::fromDouble(*priceOpt), Quantity::fromDouble(*qtyOpt));
+        ev->update.asks.emplace_back(*priceOpt, *qtyOpt);
       }
+
+      // Continuity check (read after b/a to keep simdjson field access forward-
+      // only; data field order is s,b,a,u,seq). Bybit v5 update id ("u")
+      // increments by 1 per topic message -- a jump means a dropped frame, so
+      // applying this delta would silently corrupt the local book.
+      const int64_t updateId = data_obj.find_field_unordered("u").get_int64().value();
+      auto& seqState = _bookSeq[sym];
+      int64_t prev = 0;
+      if (updateType == BookUpdateType::SNAPSHOT)
+      {
+        seqState.lastUpdateId = updateId;
+        seqState.resyncInFlight = false;  // fresh baseline; any resync is complete
+      }
+      else
+      {
+        if (seqState.resyncInFlight)
+        {
+          return;  // deltas racing our re-subscribe; wait for the snapshot
+        }
+        if (seqState.lastUpdateId < 0 || updateId != seqState.lastUpdateId + 1)
+        {
+          // Gap: never apply onto a stale book. Drop, invalidate, and force a
+          // fresh snapshot by re-subscribing the topic.
+          _bookGapCount.fetch_add(1, std::memory_order_relaxed);
+          _logger->warn("[Bybit] book gap on " + std::string(ssv) +
+                        ": expected u=" + std::to_string(seqState.lastUpdateId + 1) +
+                        " got u=" + std::to_string(updateId) + " -- resyncing");
+          seqState.lastUpdateId = -1;
+          seqState.resyncInFlight = true;
+          resubscribeBook(ssv);
+          return;
+        }
+        prev = seqState.lastUpdateId;
+        seqState.lastUpdateId = updateId;
+      }
+      ev->seq = updateId;
+      ev->prevSeq = prev;
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
@@ -487,6 +526,11 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
     }
     else if (topic.starts_with("publicTrade."))
     {
+      auto data_field = root.find_field_unordered("data");
+      if (data_field.error())
+      {
+        return;
+      }
       auto data_arr = data_field.get_array().value();
       for (auto t : data_arr)
       {
@@ -517,15 +561,15 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
         ev.trade.isBuy = (obj.find_field_unordered("S").get_string().value() == "Buy");
 
-        auto priceOpt = util::safeParseDouble(obj.find_field_unordered("p").get_string().value());
-        auto qtyOpt = util::safeParseDouble(obj.find_field_unordered("v").get_string().value());
+        auto priceOpt = util::parsePrice(obj.find_field_unordered("p").get_string().value());
+        auto qtyOpt = util::parseQty(obj.find_field_unordered("v").get_string().value());
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid trade price/qty");
           continue;
         }
-        ev.trade.price = Price::fromDouble(*priceOpt);
-        ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.trade.price = *priceOpt;
+        ev.trade.quantity = *qtyOpt;
 
         ev.publishTsNs = nowNsMonotonic();
         auto [res, _] = _tradeBus->tryPublish(ev);
@@ -604,16 +648,16 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.id = static_cast<OrderId>(*orderIdOpt);
         ev.order.side = (d["side"].get_string().value() == "Buy") ? Side::BUY : Side::SELL;
 
-        auto priceOpt = util::safeParseDouble(d["price"].get_string().value());
-        auto qtyOpt = util::safeParseDouble(d["qty"].get_string().value());
+        auto priceOpt = util::parsePrice(d["price"].get_string().value());
+        auto qtyOpt = util::parseQty(d["qty"].get_string().value());
         auto filledOpt = util::safeParseDouble(d["cumExecQty"].get_string().value());
         if (!priceOpt || !qtyOpt || !filledOpt)
         {
           _logger->warn("[Bybit] Invalid price/qty in order event");
           continue;
         }
-        ev.order.price = Price::fromDouble(*priceOpt);
-        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.order.price = *priceOpt;
+        ev.order.quantity = *qtyOpt;
         ev.order.filledQuantity = Quantity::fromDouble(*filledOpt);
 
         ev.exchangeTsNs = msToNs(d["updatedTime"].get_int64().value());
@@ -670,15 +714,15 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.symbol = resolveSymbolId(d["symbol"].get_string().value());
         ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY : Side::SELL;
 
-        auto priceOpt = util::safeParseDouble(d["execPrice"].get_string().value());
-        auto qtyOpt = util::safeParseDouble(d["execQty"].get_string().value());
+        auto priceOpt = util::parsePrice(d["execPrice"].get_string().value());
+        auto qtyOpt = util::parseQty(d["execQty"].get_string().value());
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid price/qty in execution event");
           continue;
         }
-        ev.order.price = Price::fromDouble(*priceOpt);
-        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.order.price = *priceOpt;
+        ev.order.quantity = *qtyOpt;
         ev.order.filledQuantity = ev.order.quantity;
 
         if (auto et = d["execTime"]; !et.error())

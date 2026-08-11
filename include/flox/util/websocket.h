@@ -108,14 +108,29 @@ inline constexpr uint64_t kMaxFramePayload = 16u << 20;  // 16 MiB
 inline constexpr size_t kParseError = static_cast<size_t>(-1);
 
 // Parse one frame; returns bytes consumed (0 if incomplete, kParseError on a
-// protocol violation). Unmasks client payloads.
-inline size_t parseFrame(const uint8_t* p, size_t n, Opcode& op, std::vector<uint8_t>& payload)
+// protocol violation). Unmasks client payloads. When `finOut` is non-null it
+// receives the FIN bit, so the caller can reassemble fragmented messages
+// (RFC 6455 5.4); a caller that ignores it must treat every frame as final.
+// RSV1-3 must be zero (no extension is negotiated) -- a set RSV bit is a
+// protocol violation, not silently ignored.
+inline size_t parseFrame(const uint8_t* p, size_t n, Opcode& op, std::vector<uint8_t>& payload,
+                         bool* finOut = nullptr)
 {
   if (n < 2)
   {
     return 0;
   }
+  if ((p[0] & 0x70) != 0)
+  {
+    return kParseError;  // RSV1/2/3 set without a negotiated extension
+  }
+  const bool fin = (p[0] & 0x80) != 0;
   op = static_cast<Opcode>(p[0] & 0x0F);
+  // Control frames (Close/Ping/Pong) must not be fragmented.
+  if ((static_cast<uint8_t>(op) & 0x08) != 0 && !fin)
+  {
+    return kParseError;
+  }
   const bool masked = (p[1] & 0x80) != 0;
   uint64_t len = p[1] & 0x7F;
   size_t off = 2;
@@ -171,6 +186,10 @@ inline size_t parseFrame(const uint8_t* p, size_t n, Opcode& op, std::vector<uin
   for (uint64_t i = 0; i < len; ++i)
   {
     payload[i] = p[off + i] ^ (masked ? mask[i & 3] : 0);
+  }
+  if (finOut != nullptr)
+  {
+    *finOut = fin;
   }
   return off + len;
 }
