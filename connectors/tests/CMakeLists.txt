@@ -9,7 +9,12 @@ find_package(GTest REQUIRED)
 option(FLOX_RUN_CONNECTOR_INTEGRATION_TESTS
        "Register connector integration tests with ctest" OFF)
 
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS *.cpp)
+file(GLOB UNIT_TEST_SOURCES CONFIGURE_DEPENDS unit_test_*.cpp)
+set(TEST_SOURCES ${UNIT_TEST_SOURCES})
+if(FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS)
+    file(GLOB INTEGRATION_TEST_SOURCES CONFIGURE_DEPENDS integration_test_*.cpp)
+    list(APPEND TEST_SOURCES ${INTEGRATION_TEST_SOURCES})
+endif()
 
 foreach(test_src IN LISTS TEST_SOURCES)
     get_filename_component(test_name "${test_src}" NAME_WE)
@@ -28,7 +33,11 @@ foreach(test_src IN LISTS TEST_SOURCES)
 
     target_compile_features(${test_name} PRIVATE cxx_std_23)
 
-    if(FLOX_RUN_CONNECTOR_INTEGRATION_TESTS)
+    # unit_test_* are offline (no network) and always registered; the
+    # integration_test_* ones hit live exchanges and stay opt-in.
+    if(test_name MATCHES "^unit_test_")
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    elseif(FLOX_RUN_CONNECTOR_INTEGRATION_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()
 endforeach()

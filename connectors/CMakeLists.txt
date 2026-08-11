@@ -179,15 +179,16 @@ install(EXPORT flox-connectorsTargets
 
 # ── Tests ────────────────────────────────────────────────────────────
 #
-# Built only when the parent enables tests AND the user explicitly
-# opts in to the integration suite (it hits live exchange endpoints
-# and needs network + credentials). Without
-# FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON the test binaries are not
-# generated and `ctest` still runs only the core suite.
+# Two kinds live in tests/: offline protocol unit tests (unit_test_*,
+# no network -- always built and registered with ctest when the parent
+# builds tests) and the integration suite (integration_test_*, hits
+# live exchange endpoints; built only with
+# FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON and registered with ctest
+# only under FLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON).
 
 option(FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS
        "Build connector integration tests (require network access)" OFF)
 
-if(FLOX_BUILD_TESTS AND FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS)
+if(FLOX_BUILD_TESTS)
   add_subdirectory(tests)
 endif()
