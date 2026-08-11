@@ -446,14 +446,14 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ++it;
         std::string_view qsv = (*it).get_string().value();
 
-        auto priceOpt = util::safeParseDouble(psv);
-        auto qtyOpt = util::safeParseDouble(qsv);
+        auto priceOpt = util::parsePrice(psv);
+        auto qtyOpt = util::parseQty(qsv);
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid bid price/qty in book update");
           continue;
         }
-        ev->update.bids.emplace_back(Price::fromDouble(*priceOpt), Quantity::fromDouble(*qtyOpt));
+        ev->update.bids.emplace_back(*priceOpt, *qtyOpt);
       }
 
       auto af = data_obj.find_field_unordered("a");
@@ -465,14 +465,14 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ++it;
         std::string_view qsv = (*it).get_string().value();
 
-        auto priceOpt = util::safeParseDouble(psv);
-        auto qtyOpt = util::safeParseDouble(qsv);
+        auto priceOpt = util::parsePrice(psv);
+        auto qtyOpt = util::parseQty(qsv);
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid ask price/qty in book update");
           continue;
         }
-        ev->update.asks.emplace_back(Price::fromDouble(*priceOpt), Quantity::fromDouble(*qtyOpt));
+        ev->update.asks.emplace_back(*priceOpt, *qtyOpt);
       }
 
       // Continuity check (read after b/a to keep simdjson field access forward-
@@ -561,15 +561,15 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
         ev.trade.isBuy = (obj.find_field_unordered("S").get_string().value() == "Buy");
 
-        auto priceOpt = util::safeParseDouble(obj.find_field_unordered("p").get_string().value());
-        auto qtyOpt = util::safeParseDouble(obj.find_field_unordered("v").get_string().value());
+        auto priceOpt = util::parsePrice(obj.find_field_unordered("p").get_string().value());
+        auto qtyOpt = util::parseQty(obj.find_field_unordered("v").get_string().value());
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid trade price/qty");
           continue;
         }
-        ev.trade.price = Price::fromDouble(*priceOpt);
-        ev.trade.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.trade.price = *priceOpt;
+        ev.trade.quantity = *qtyOpt;
 
         ev.publishTsNs = nowNsMonotonic();
         auto [res, _] = _tradeBus->tryPublish(ev);
@@ -648,16 +648,16 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.id = static_cast<OrderId>(*orderIdOpt);
         ev.order.side = (d["side"].get_string().value() == "Buy") ? Side::BUY : Side::SELL;
 
-        auto priceOpt = util::safeParseDouble(d["price"].get_string().value());
-        auto qtyOpt = util::safeParseDouble(d["qty"].get_string().value());
+        auto priceOpt = util::parsePrice(d["price"].get_string().value());
+        auto qtyOpt = util::parseQty(d["qty"].get_string().value());
         auto filledOpt = util::safeParseDouble(d["cumExecQty"].get_string().value());
         if (!priceOpt || !qtyOpt || !filledOpt)
         {
           _logger->warn("[Bybit] Invalid price/qty in order event");
           continue;
         }
-        ev.order.price = Price::fromDouble(*priceOpt);
-        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.order.price = *priceOpt;
+        ev.order.quantity = *qtyOpt;
         ev.order.filledQuantity = Quantity::fromDouble(*filledOpt);
 
         ev.exchangeTsNs = msToNs(d["updatedTime"].get_int64().value());
@@ -714,15 +714,15 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.symbol = resolveSymbolId(d["symbol"].get_string().value());
         ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY : Side::SELL;
 
-        auto priceOpt = util::safeParseDouble(d["execPrice"].get_string().value());
-        auto qtyOpt = util::safeParseDouble(d["execQty"].get_string().value());
+        auto priceOpt = util::parsePrice(d["execPrice"].get_string().value());
+        auto qtyOpt = util::parseQty(d["execQty"].get_string().value());
         if (!priceOpt || !qtyOpt)
         {
           _logger->warn("[Bybit] Invalid price/qty in execution event");
           continue;
         }
-        ev.order.price = Price::fromDouble(*priceOpt);
-        ev.order.quantity = Quantity::fromDouble(*qtyOpt);
+        ev.order.price = *priceOpt;
+        ev.order.quantity = *qtyOpt;
         ev.order.filledQuantity = ev.order.quantity;
 
         if (auto et = d["execTime"]; !et.error())

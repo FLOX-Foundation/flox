@@ -255,6 +255,9 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
 
         if (priceOpt && sizeOpt)
         {
+          // Polymarket trade price/size can arrive as a JSON number, so this
+          // path keeps parseStringOrDouble (string-or-number). Book levels
+          // below are always strings and use the fixed-point parser.
           ev.trade.price = Price::fromDouble(*priceOpt);
           ev.trade.quantity = Quantity::fromDouble(*sizeOpt);
 
@@ -341,26 +344,21 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
     for (auto level : bids.get_array())
     {
       auto lobj = level.get_object();
-      double price = 0, size = 0;
+      std::optional<Price> priceOpt;
+      std::optional<Quantity> sizeOpt;
 
       if (auto p = lobj["price"]; !p.error())
       {
-        if (auto pOpt = util::safeParseDouble(p.get_string().value()))
-        {
-          price = *pOpt;
-        }
+        priceOpt = util::parsePrice(p.get_string().value());
       }
       if (auto s = lobj["size"]; !s.error())
       {
-        if (auto sOpt = util::safeParseDouble(s.get_string().value()))
-        {
-          size = *sOpt;
-        }
+        sizeOpt = util::parseQty(s.get_string().value());
       }
 
-      if (price > 0 && size > 0)
+      if (priceOpt && sizeOpt && priceOpt->raw() > 0 && sizeOpt->raw() > 0)
       {
-        ev->update.bids.push_back({Price::fromDouble(price), Quantity::fromDouble(size)});
+        ev->update.bids.push_back({*priceOpt, *sizeOpt});
       }
     }
   }
@@ -371,26 +369,21 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
     for (auto level : asks.get_array())
     {
       auto lobj = level.get_object();
-      double price = 0, size = 0;
+      std::optional<Price> priceOpt;
+      std::optional<Quantity> sizeOpt;
 
       if (auto p = lobj["price"]; !p.error())
       {
-        if (auto pOpt = util::safeParseDouble(p.get_string().value()))
-        {
-          price = *pOpt;
-        }
+        priceOpt = util::parsePrice(p.get_string().value());
       }
       if (auto s = lobj["size"]; !s.error())
       {
-        if (auto sOpt = util::safeParseDouble(s.get_string().value()))
-        {
-          size = *sOpt;
-        }
+        sizeOpt = util::parseQty(s.get_string().value());
       }
 
-      if (price > 0 && size > 0)
+      if (priceOpt && sizeOpt && priceOpt->raw() > 0 && sizeOpt->raw() > 0)
       {
-        ev->update.asks.push_back({Price::fromDouble(price), Quantity::fromDouble(size)});
+        ev->update.asks.push_back({*priceOpt, *sizeOpt});
       }
     }
   }
@@ -419,8 +412,8 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
   {
     SymbolId sym;
     bool isBid;
-    double price;
-    double size;
+    Price price;
+    Quantity qty;
   };
   std::vector<Change> changes;
   for (auto el : pcField.get_array())
@@ -438,21 +431,15 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
       continue;
     }
 
-    double price = -1.0;
+    std::optional<Price> priceOpt;
     if (auto p = e["price"]; !p.error())
     {
-      if (auto pOpt = util::safeParseDouble(p.get_string().value()))
-      {
-        price = *pOpt;
-      }
+      priceOpt = util::parsePrice(p.get_string().value());
     }
-    double size = -1.0;
+    std::optional<Quantity> qtyOpt;  // size 0 is a valid level removal
     if (auto s = e["size"]; !s.error())
     {
-      if (auto sOpt = util::safeParseDouble(s.get_string().value()))
-      {
-        size = *sOpt;
-      }
+      qtyOpt = util::parseQty(s.get_string().value());
     }
     bool isBid = true;
     if (auto sd = e["side"]; !sd.error())
@@ -460,11 +447,11 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
       isBid = (sd.get_string().value() == "BUY");
     }
 
-    if (price < 0.0 || size < 0.0)
+    if (!priceOpt || !qtyOpt)
     {
       continue;  // unparseable level; skip rather than corrupt the delta
     }
-    changes.push_back({resolveSymbolId(tokenId), isBid, price, size});
+    changes.push_back({resolveSymbolId(tokenId), isBid, *priceOpt, *qtyOpt});
   }
 
   if (changes.empty())
@@ -506,7 +493,7 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
       }
       // size 0 -> level removed; forwarded as a zero-quantity level, which the
       // aggregate book erases.
-      const BookLevel lvl{Price::fromDouble(d.price), Quantity::fromDouble(d.size)};
+      const BookLevel lvl{d.price, d.qty};
       if (d.isBid)
       {
         ev->update.bids.push_back(lvl);
