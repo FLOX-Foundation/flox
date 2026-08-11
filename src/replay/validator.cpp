@@ -9,6 +9,8 @@
 
 #include "flox/replay/ops/validator.h"
 
+#include "flox/replay/ops/index_builder.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -805,9 +807,17 @@ bool SegmentRepairer::fixEventCount(const std::filesystem::path& path,
 
 bool SegmentRepairer::rebuildIndex(const std::filesystem::path& path, RepairResult& result)
 {
-  // Use IndexBuilder to rebuild
-  // For now, just note that it would be done
-  result.actions_taken.push_back("Index rebuild requested (use IndexBuilder)");
+  // Actually rebuild the index (scan the record stream, write a fresh index)
+  // and verify it, instead of claiming success without doing anything.
+  IndexBuilder builder;  // default: verify_crc = true
+  const IndexBuildResult r = builder.buildForSegment(path);
+  if (!r.success)
+  {
+    result.errors.push_back("Index rebuild failed: " + r.error);
+    return false;
+  }
+  result.actions_taken.push_back("Rebuilt index: " + std::to_string(r.index_entries_created) +
+                                 " entries over " + std::to_string(r.events_scanned) + " events");
   return true;
 }
 

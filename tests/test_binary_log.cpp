@@ -1454,6 +1454,84 @@ TEST_F(BinaryLogTest, ValidatorValidSegment)
   }
 }
 
+// SegmentRepairer::rebuildIndex must actually rebuild (and verify) the index,
+// not fake success. Corrupt the index region so validation reports a present
+// but invalid index; repair must regenerate it and report the real action.
+TEST_F(BinaryLogTest, RepairerRebuildsCorruptIndex)
+{
+  {
+    WriterConfig config{.output_dir = _test_dir, .index_interval = 50};
+    BinaryLogWriter writer(config);
+    for (int i = 0; i < 300; ++i)
+    {
+      TradeRecord trade{};
+      trade.exchange_ts_ns = 1000000000LL + i * 1000000LL;
+      trade.symbol_id = 1;
+      trade.trade_id = static_cast<uint64_t>(i);
+      writer.writeTrade(trade);
+    }
+    writer.close();
+  }
+
+  std::filesystem::path segment_path;
+  for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
+  {
+    if (entry.path().extension() == ".floxlog")
+    {
+      segment_path = entry.path();
+      break;
+    }
+  }
+  ASSERT_FALSE(segment_path.empty());
+
+  // Read the header to find the index offset, then flip a byte inside the index.
+  SegmentHeader header{};
+  {
+    std::FILE* f = std::fopen(segment_path.string().c_str(), "rb");
+    ASSERT_NE(f, nullptr);
+    ASSERT_EQ(std::fread(&header, sizeof(header), 1, f), 1u);
+    std::fclose(f);
+  }
+  ASSERT_TRUE(header.hasIndex());
+  {
+    std::FILE* f = std::fopen(segment_path.string().c_str(), "r+b");
+    ASSERT_NE(f, nullptr);
+    std::fseek(f, static_cast<long>(header.index_offset), SEEK_SET);
+    uint8_t b = 0;
+    ASSERT_EQ(std::fread(&b, 1, 1, f), 1u);
+    b ^= 0xFF;
+    std::fseek(f, static_cast<long>(header.index_offset), SEEK_SET);
+    ASSERT_EQ(std::fwrite(&b, 1, 1, f), 1u);
+    std::fclose(f);
+  }
+
+  // Now the index is present but invalid.
+  SegmentValidator validator;
+  auto before = validator.validate(segment_path);
+  EXPECT_TRUE(before.has_index);
+  EXPECT_FALSE(before.index_valid);
+
+  // Repair: rebuild_index is on by default; it must call the real IndexBuilder.
+  RepairConfig rc;
+  rc.backup_before_repair = false;
+  SegmentRepairer repairer(rc);
+  auto rr = repairer.repair(segment_path);
+
+  bool rebuilt = false;
+  for (const auto& a : rr.actions_taken)
+  {
+    if (a.find("Rebuilt index") != std::string::npos)
+    {
+      rebuilt = true;
+    }
+  }
+  EXPECT_TRUE(rebuilt);  // the real action was reported, not a fake "requested"
+
+  auto after = validator.validate(segment_path);
+  EXPECT_TRUE(after.has_index);
+  EXPECT_TRUE(after.index_valid);  // index actually usable again
+}
+
 TEST_F(BinaryLogTest, ValidatorNonExistentFile)
 {
   SegmentValidator validator;
@@ -2354,6 +2432,59 @@ TEST_F(BinaryLogTest, ISegmentReaderFactoryIterator)
     ++count;
   }
   EXPECT_EQ(count, 30);
+}
+
+// reset() on the iterator adapter must rewind to the first event, so a second
+// pass yields the same sequence -- not a silent no-op that continues from the
+// current position (which returned nothing on the second pass).
+TEST_F(BinaryLogTest, IteratorAdapterResetRewinds)
+{
+  {
+    WriterConfig config{.output_dir = _test_dir};
+    BinaryLogWriter writer(config);
+    for (int i = 0; i < 20; ++i)
+    {
+      TradeRecord trade{};
+      trade.exchange_ts_ns = 1000000000LL + i * 1000000LL;
+      trade.symbol_id = 3;
+      trade.trade_id = static_cast<uint64_t>(i);
+      writer.writeTrade(trade);
+    }
+    writer.close();
+  }
+
+  std::filesystem::path segment_path;
+  for (const auto& entry : std::filesystem::directory_iterator(_test_dir))
+  {
+    if (entry.path().extension() == ".floxlog")
+    {
+      segment_path = entry.path();
+      break;
+    }
+  }
+
+  // prefer_mmap=false forces the BinaryLogIteratorAdapter (the one whose reset
+  // was a no-op).
+  auto reader = createSegmentReader(segment_path, /*prefer_mmap*/ false);
+  ASSERT_TRUE(reader->isValid());
+
+  auto drain = [&]
+  {
+    std::vector<uint64_t> ids;
+    ReplayEvent event;
+    while (reader->next(event))
+    {
+      ids.push_back(event.trade.trade_id);
+    }
+    return ids;
+  };
+
+  const auto first = drain();
+  EXPECT_EQ(first.size(), 20u);
+
+  reader->reset();
+  const auto second = drain();
+  EXPECT_EQ(second, first);  // identical, non-empty second pass
 }
 
 TEST_F(BinaryLogTest, IMultiSegmentReaderFactory)
