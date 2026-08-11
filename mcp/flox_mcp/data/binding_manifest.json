@@ -16252,11 +16252,6 @@
         },
         {
           "kind": "method",
-          "name": "balanceAcrossNumaNodes",
-          "parent": "CoreAssignmentManager"
-        },
-        {
-          "kind": "method",
           "name": "checkIsolatedCoreRequirements",
           "parent": "CoreAssignmentManager"
         },
@@ -16288,11 +16283,6 @@
         {
           "kind": "method",
           "name": "getRecommendedCoreAssignment",
-          "parent": "CoreAssignmentManager"
-        },
-        {
-          "kind": "method",
-          "name": "optimizeForCacheLocality",
           "parent": "CoreAssignmentManager"
         },
         {
