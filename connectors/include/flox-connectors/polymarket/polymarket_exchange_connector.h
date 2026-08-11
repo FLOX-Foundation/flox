@@ -43,9 +43,13 @@ class PolymarketExchangeConnector : public IExchangeConnector
 
   SymbolId resolveSymbolId(std::string_view tokenId);
 
- private:
+  // Public so protocol behaviour (snapshot vs incremental price_change) is
+  // testable offline by feeding raw frames without a live socket.
   void handleMessage(std::string_view payload);
+
+ private:
   void processBookSnapshot(simdjson::ondemand::object obj, uint64_t recvNs);
+  void processPriceChanges(simdjson::ondemand::object obj, uint64_t recvNs);
   void sendSubscribe(const std::vector<std::string>& tokenIds, const std::string& operation);
 
   PolymarketConfig _config;

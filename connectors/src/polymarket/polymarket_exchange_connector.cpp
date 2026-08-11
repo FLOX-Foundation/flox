@@ -208,15 +208,9 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
 
     auto obj = doc.get_object().value();
 
-    // Check for price_changes (incremental update)
-    if (auto pc = obj["price_changes"]; !pc.error())
-    {
-      // Incremental updates - for now just ignore them
-      // Full book updates will come via "book" event_type
-      return;
-    }
-
-    // Check for event_type
+    // event_type is the first field: read it first so every field access below
+    // stays forward-only (simdjson ondemand throws OUT_OF_ORDER when a later
+    // field is read and then an earlier one).
     auto eventTypeField = obj["event_type"];
     if (eventTypeField.error())
     {
@@ -228,6 +222,12 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
     if (eventType == "book")
     {
       processBookSnapshot(std::move(obj), recvNs);
+    }
+    else if (eventType == "price_change")
+    {
+      // Incremental book updates: apply them (previously dropped, leaving the
+      // book stale between snapshots).
+      processPriceChanges(std::move(obj), recvNs);
     }
     else if (eventType == "last_trade_price" || eventType == "trade")
     {
@@ -399,6 +399,128 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
   ev->publishTsNs = nowNsMonotonic();
 
   _bookUpdateBus->publish(std::move(ev));
+}
+
+// Incremental book update. Each element of price_changes carries its own
+// asset_id, a price level, its new absolute size (0 = level removed), and a
+// side (BUY -> bid, SELL -> ask). A single message may touch several assets;
+// changes are grouped per symbol into one DELTA BookUpdateEvent each so the
+// downstream book applies them atomically.
+void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object obj,
+                                                      uint64_t recvNs)
+{
+  auto pcField = obj["price_changes"];
+  if (pcField.error())
+  {
+    return;
+  }
+
+  struct Change
+  {
+    SymbolId sym;
+    bool isBid;
+    double price;
+    double size;
+  };
+  std::vector<Change> changes;
+  for (auto el : pcField.get_array())
+  {
+    auto e = el.get_object();
+
+    // Field order per element: asset_id, price, size, side (read forward).
+    std::string_view tokenId;
+    if (auto a = e["asset_id"]; !a.error())
+    {
+      tokenId = a.get_string().value();
+    }
+    else
+    {
+      continue;
+    }
+
+    double price = -1.0;
+    if (auto p = e["price"]; !p.error())
+    {
+      if (auto pOpt = util::safeParseDouble(p.get_string().value()))
+      {
+        price = *pOpt;
+      }
+    }
+    double size = -1.0;
+    if (auto s = e["size"]; !s.error())
+    {
+      if (auto sOpt = util::safeParseDouble(s.get_string().value()))
+      {
+        size = *sOpt;
+      }
+    }
+    bool isBid = true;
+    if (auto sd = e["side"]; !sd.error())
+    {
+      isBid = (sd.get_string().value() == "BUY");
+    }
+
+    if (price < 0.0 || size < 0.0)
+    {
+      continue;  // unparseable level; skip rather than corrupt the delta
+    }
+    changes.push_back({resolveSymbolId(tokenId), isBid, price, size});
+  }
+
+  if (changes.empty())
+  {
+    return;
+  }
+
+  // Emit one DELTA event per distinct symbol touched by this message.
+  std::vector<SymbolId> seen;
+  for (const auto& c : changes)
+  {
+    if (std::find(seen.begin(), seen.end(), c.sym) != seen.end())
+    {
+      continue;
+    }
+    seen.push_back(c.sym);
+
+    auto evOpt = _bookPool.acquire();
+    if (!evOpt)
+    {
+      if (_logger)
+      {
+        _logger->warn("[Polymarket] Book pool exhausted (price_change)");
+      }
+      return;
+    }
+    auto& ev = *evOpt;
+    ev->recvNs = recvNs;
+    ev->update.symbol = c.sym;
+    ev->update.type = BookUpdateType::DELTA;
+    ev->update.bids.clear();
+    ev->update.asks.clear();
+
+    for (const auto& d : changes)
+    {
+      if (d.sym != c.sym)
+      {
+        continue;
+      }
+      // size 0 -> level removed; forwarded as a zero-quantity level, which the
+      // aggregate book erases.
+      const BookLevel lvl{Price::fromDouble(d.price), Quantity::fromDouble(d.size)};
+      if (d.isBid)
+      {
+        ev->update.bids.push_back(lvl);
+      }
+      else
+      {
+        ev->update.asks.push_back(lvl);
+      }
+    }
+
+    ev->update.exchangeTsNs = nowNsMonotonic();
+    ev->publishTsNs = nowNsMonotonic();
+    _bookUpdateBus->publish(std::move(ev));
+  }
 }
 
 }  // namespace flox
