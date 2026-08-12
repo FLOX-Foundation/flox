@@ -308,6 +308,7 @@ class BacktestRunner : public ISignalHandler
   uint64_t _tradeCount{0};
   uint64_t _bookUpdateCount{0};
   uint64_t _signalCount{0};
+  uint64_t _skippedRecordCount{0};  // OptionQuote/PoolState records not dispatched
   std::optional<replay::EventType> _lastEventType;
 
   // Breakpoints

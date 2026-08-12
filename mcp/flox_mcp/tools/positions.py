@@ -80,8 +80,9 @@ def _idle_payload(reason: str, data: Any) -> str:
         "data": data,
         "hint": (
             "No engine has written a runtime snapshot yet. Start one "
-            "with `flox engine sim --strategy s.py` (W2-T035), or "
-            "point FLOX_RUNTIME_STATE at an existing snapshot file."
+            "with `flox engine sim --strategy s.py --tape ./tape.floxlog` "
+            "(--tape is required), or point FLOX_RUNTIME_STATE at an "
+            "existing snapshot file."
         ),
     }, indent=2, sort_keys=True)
 

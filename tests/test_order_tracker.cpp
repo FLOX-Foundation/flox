@@ -146,6 +146,26 @@ TEST(OrderTrackerTest, PruneTerminal)
   EXPECT_FALSE(tracker.exists(o2.id));
 }
 
+TEST(OrderTrackerTest, ExpiredBecomesTerminalAndPrunes)
+{
+  OrderTracker tracker;
+
+  Order o;
+  o.id = 200;
+  tracker.onSubmitted(o, "e1");
+  EXPECT_EQ(tracker.activeOrderCount(), 1u);
+
+  EXPECT_TRUE(tracker.onExpired(o.id));
+  EXPECT_EQ(tracker.getStatus(o.id), OrderEventStatus::EXPIRED);
+  EXPECT_EQ(tracker.activeOrderCount(), 0u);  // no longer counted as active
+
+  // Terminal: a second lifecycle event is refused, and prune removes it.
+  EXPECT_FALSE(tracker.onExpired(o.id));
+  EXPECT_FALSE(tracker.onFilled(o.id, o.quantity));
+  tracker.pruneTerminal();
+  EXPECT_FALSE(tracker.exists(o.id));
+}
+
 TEST(OrderTrackerTest, StatusHelpers)
 {
   OrderTracker tracker;

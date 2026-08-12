@@ -50,7 +50,12 @@ namespace flox::net
 struct Datagram
 {
   std::span<const std::byte> payload;  // borrowed: valid inside the callback only
-  int64_t rxTimestampNs{0};            // hop zero of the latency contour
+  // Receive timestamp. CLOCK DOMAIN VARIES: CLOCK_REALTIME with a software
+  // stamp, the raw NIC clock with a hardware stamp, or CLOCK_MONOTONIC when no
+  // stamp is present (always CLOCK_MONOTONIC on AF_XDP). Do NOT subtract this
+  // from monotonicNs() without normalizing -- the offset is wrong across
+  // domains. See tools/afxdp_probe.cpp.
+  int64_t rxTimestampNs{0};
 };
 
 class IReceivePath

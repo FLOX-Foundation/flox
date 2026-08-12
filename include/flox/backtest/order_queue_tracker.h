@@ -41,9 +41,10 @@ struct QueueSnapshot
 };
 
 // Tracks order queue position per price level for limit-order fill simulation.
-// TOB mode tracks only the level at which the order was registered (typically
-// the current best bid/ask). FULL mode additionally handles movement across
-// nearby levels up to queueDepth.
+// TOB and FULL both track FIFO queue position at the order's own price level;
+// they differ only in that FULL retains levels below the touch instead of just
+// the best. Cross-level queue movement bounded by `depth` is not yet
+// implemented, so `depth` is reserved (a value > 1 changes nothing today).
 class OrderQueueTracker
 {
  public:

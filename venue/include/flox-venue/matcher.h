@@ -23,7 +23,7 @@ namespace flox::venue
 enum class MatchPolicy : uint8_t
 {
   PriceTimeFifo = 0,
-  ProRata = 1,  // TODO: thick-level distribution for derivatives
+  ProRata = 1,  // thick-level proportional distribution (crossProRata)
 };
 
 struct MatchOutcome
@@ -262,8 +262,10 @@ class Matcher
 
   // Pro-rata matching: at each crossing level distribute the aggressor across all
   // resting orders proportionally to size (deterministic floor + FIFO remainder),
-  // for instruments with thick display levels. Scope: no
-  // iceberg refill and STP treated as None on pro-rata instruments.
+  // for instruments with thick display levels. Icebergs ARE refilled here (via
+  // consumeById). Scope limitations: STP is treated as None, and last-look is
+  // NOT honoured -- a resting lastLook maker on a pro-rata instrument is filled
+  // immediately rather than held (onLastLook_ fires only on the FIFO path).
   MatchOutcome crossProRata(const NewOrder& order, Book& book,
                             const std::function<uint64_t()>& nextTradeId,
                             const EventSink& sink) const

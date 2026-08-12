@@ -192,7 +192,16 @@ class SimulatedExecutor : public IOrderExecutor
                     const std::pmr::vector<BookLevel>& asks);
   void onTrade(SymbolId symbol, Price price, bool isBuy);
   void onTrade(SymbolId symbol, Price price, Quantity qty, bool isBuy);
+  // Close-only: sets bid=ask=last=close and matches at close. Intrabar SL/TP
+  // that would have triggered against the wick are missed. Prefer the
+  // high/low/close overload for realistic stop/target fills.
   void onBar(SymbolId symbol, Price close);
+
+  // Walks the bar low -> high -> close so resting stops and take-profits match
+  // against the intrabar extremes, not just the close. low-then-high is the
+  // pessimistic order for a long (its protective stop is tested before its
+  // target). Bars must be in non-decreasing time order.
+  void onBar(SymbolId symbol, Price high, Price low, Price close);
 
   const std::vector<Fill>& fills() const { return _fills; }
   std::vector<Fill> extractFills() { return std::move(_fills); }
@@ -301,6 +310,7 @@ class SimulatedExecutor : public IOrderExecutor
   // alongside the ack finalizers from onBookUpdate / onTrade so the
   // expiry fires deterministically at the next event boundary.
   void processExpiredOrders();
+  void stepBarPrice(SymbolId symbol, Price price);
 
   // reduce_only enforcement: simulator-side net position per symbol,
   // updated in executeFill. A reduce-only submit that would open or

@@ -70,6 +70,8 @@ ChildOrder& ExecutionAlgo::submit(double qty, int64_t now_ns,
   rec.qty = qty;
   rec.price = price;
   rec.type = type;
+  rec.side = _side;
+  rec.symbol = _symbol;
   _pending.push_back(rec);
   _submitted_qty += qty;
   return _pending.back();

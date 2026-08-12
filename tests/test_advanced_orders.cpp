@@ -60,6 +60,38 @@ class AdvancedOrdersTest : public ::testing::Test
 // Stop Market Tests
 // ============================================================================
 
+// Regression: bar replay must match SL/TP against the intrabar wick, not just
+// the close. A bar that opens at 100, dips to 94 (triggering a stop at 95),
+// then closes back at 99 must still fill the stop. The close-only path missed
+// this systematically (optimistic backtests).
+TEST_F(AdvancedOrdersTest, StopTriggersOnBarWickNotClose)
+{
+  sendTrade(1, Price::fromDouble(100.0));
+
+  Order order;
+  order.id = 1;
+  order.symbol = 1;
+  order.side = Side::SELL;
+  order.type = OrderType::STOP_MARKET;
+  order.triggerPrice = Price::fromDouble(95.0);
+  order.quantity = Quantity::fromDouble(1.0);
+  executor->submitOrder(order);
+
+  // A bar whose CLOSE (99) never breaches 95, but whose LOW (94) does.
+  executor->onBar(1, Price::fromDouble(101.0), Price::fromDouble(94.0),
+                  Price::fromDouble(99.0));
+
+  bool triggered = false;
+  for (const auto& ev : events)
+  {
+    if (ev.status == OrderEventStatus::TRIGGERED || ev.status == OrderEventStatus::FILLED)
+    {
+      triggered = true;
+    }
+  }
+  EXPECT_TRUE(triggered);
+}
+
 TEST_F(AdvancedOrdersTest, StopMarketSellTriggers)
 {
   // Setup: price at 100

@@ -262,6 +262,57 @@ void test_session_account_binding()
   CHECK(no2 != nullptr && no2->accountId == 1);  // trusted passthrough
 }
 
+// A gateway constructed with a real account must bind every connection's
+// session to it, so a client that writes a different accountId into the payload
+// is stamped back to the bound account (cross-account protection at the wire).
+void test_gateway_binds_account()
+{
+  std::printf("test_gateway_binds_account\n");
+  std::mutex m;
+  uint64_t seenAccount = 0;
+  TcpGateway gw([](const uint8_t* p, size_t n)
+                { return SbeOrderEntryCodec::decode(p, n); },
+                /*account=*/7);
+  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&)
+                            {
+                              std::lock_guard<std::mutex> lk(m);
+                              if (const auto* no = std::get_if<NewOrder>(&c))
+                              {
+                                seenAccount = no->accountId;
+                              } });
+  CHECK(port > 0);
+  if (port <= 0)
+  {
+    return;
+  }
+  const int c = ::socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  a.sin_port = htons(static_cast<uint16_t>(port));
+  CHECK(::connect(c, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0);
+
+  std::vector<uint8_t> b;
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::SELL, 100, 5, /*acct*/ 99)}, b);
+  net::writeFrame(c, b.data(), b.size());
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < deadline)
+  {
+    {
+      std::lock_guard<std::mutex> lk(m);
+      if (seenAccount != 0)
+      {
+        break;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  ::close(c);
+  gw.stop();
+  CHECK(seenAccount == 7);  // spoofed 99 overridden by the gateway's bound account
+}
+
 void test_logon()
 {
   std::printf("test_logon\n");
@@ -749,6 +800,7 @@ TEST(Network, EngineSuite)
 {
   test_session();
   test_session_account_binding();
+  test_gateway_binds_account();
   test_logon();
   test_websocket();
   test_control_server();

@@ -320,4 +320,45 @@ TEST(EventBusHealth, MonitorThreadSweepsAutomatically)
   bus.stop();
 }
 
+// Regression: STOP_BUS tripped from the monitor thread used to call stop(),
+// which reset (joined) the monitor thread from within its own body -> self-join
+// -> std::terminate. This must complete without crashing.
+TEST(EventBusHealth, StopBusFromMonitorThreadDoesNotSelfJoin)
+{
+  SmallBus bus;
+  SmallBus::HealthConfig cfg;
+  cfg.deadPolicy = SmallBus::DeadConsumerPolicy::STOP_BUS;
+  cfg.stallThreshold = std::chrono::milliseconds(10);
+  cfg.enableMonitorThread = true;
+  bus.setHealthConfig(cfg);
+
+  ThrowingOnFirst throwing;
+  bus.subscribe(&throwing, /*required=*/true);
+  bus.start();
+
+  HealthTestEvent ev;
+  ev.value = 1;
+  bus.publish(ev);
+
+  // The monitor thread detects the dead consumer and stops the bus on its own.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  bool stopped = false;
+  while (std::chrono::steady_clock::now() < deadline)
+  {
+    if (bus.publish(ev) < 0)
+    {
+      stopped = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  EXPECT_TRUE(stopped);
+
+  // Level-triggered query works after the bus stopped itself.
+  EXPECT_EQ(bus.consumerHealth(0), SmallBus::ConsumerHealth::DEAD);
+  EXPECT_EQ(bus.healthSnapshot().dead, 1u);
+
+  bus.stop();  // idempotent; must not double-join or crash
+}
+
 }  // namespace

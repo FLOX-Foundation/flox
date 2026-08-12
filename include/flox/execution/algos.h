@@ -39,6 +39,8 @@ struct ChildOrder
   double qty{0.0};
   double price{0.0};
   OrderType type{OrderType::Market};
+  Side side{Side::Buy};
+  uint32_t symbol{0};
 };
 
 // Abstract base. Subclasses keep state, accumulate child orders into

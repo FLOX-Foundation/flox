@@ -10,6 +10,7 @@
 #include "flox/backtest/venue_stack.h"
 
 #include <cctype>
+#include <stdexcept>
 
 namespace flox
 {
@@ -159,9 +160,9 @@ VenueStack VenueStack::fromVenue(const std::string& name, uint64_t accountId,
   {
     return deribit(accountId, equity);
   }
-  // Unknown venue: return an empty stack. Caller checks venueName().
-  VenueStack empty;
-  return empty;
+  // Unknown venue: throw rather than return a null-filled stack, whose
+  // account()/executor() would then dereference null.
+  throw std::invalid_argument("VenueStack::fromVenue: unknown venue '" + name + "'");
 }
 
 }  // namespace flox

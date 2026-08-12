@@ -32,13 +32,16 @@ from . import _flox_py as _core
 # function of the same name (which shares its implementation with the
 # streaming class -- that is what buys online/offline parity). Close-based
 # indicators consume close; the second group consumes high/low(/close).
+# Only indicators whose batch function is fn(<inputs>, period) and returns a
+# single column belong here. Excluded on purpose: autocorrelation (needs
+# window+lag), cvd (needs OHLCV), obv (needs close+volume), adx / stochastic
+# (return dicts, not a column) -- listing them made the DSL raise on use.
 _CLOSE_BASED = {
     "sma", "ema", "rma", "dema", "tema", "kama", "rsi", "slope",
     "skewness", "kurtosis", "rolling_zscore", "shannon_entropy",
-    "autocorrelation", "cvd", "obv",
 }
 _HL_BASED = {"parkinson_vol"}
-_HLC_BASED = {"atr", "cci", "adx", "chop", "stochastic"}
+_HLC_BASED = {"atr", "cci", "chop"}
 
 
 def _parse_feature(name):

@@ -24,9 +24,15 @@
 namespace flox::memory
 {
 
-// Backing store for large, long-lived, hot allocations (event-bus rings,
-// object pools). 4K pages burn TLB coverage: ~1500 dTLB entries * 4K is ~6MB
-// -- a single big ring blows through it and every access pays a page walk.
+// EXPERIMENTAL / not yet wired: EventBus and the object pools have no arena
+// option or config knob, so nothing in flox currently allocates over a
+// LargeArena and a real deployment always reports huge-arena=n/a. The arena
+// itself is real (MAP_HUGETLB on Linux); wiring the rings/pools onto it is
+// tracked in W25.
+//
+// Intended backing store for large, long-lived, hot allocations (event-bus
+// rings, object pools). 4K pages burn TLB coverage: ~1500 dTLB entries * 4K is
+// ~6MB -- a single big ring blows through it and every access pays a page walk.
 // 2MB pages cover gigabytes with the same entries and shorten the walk by a
 // level.
 //
@@ -214,7 +220,7 @@ class ArenaBacked
  public:
   template <typename... Args>
   explicit ArenaBacked(Args&&... args)
-      : _arena(sizeof(T)), _obj(::new(_arena.data()) T(std::forward<Args>(args)...))
+      : _arena(sizeof(T)), _obj(::new (_arena.data()) T(std::forward<Args>(args)...))
   {
   }
 

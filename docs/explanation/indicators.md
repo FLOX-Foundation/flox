@@ -1,8 +1,8 @@
 # Indicators
 
-FLOX has 26 indicators, split across moving averages, oscillators, trend, volatility, volume, and statistics. The same set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
+FLOX has 21 streaming indicator classes plus several batch-only functions, split across moving averages, oscillators, trend, volatility, volume, and statistics. The same set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
 
-Most of them work in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). Five — **ADX**, **CHOP**, **OBV**, **VWAP** and **CVD** — are batch-only: there is a free function (`adx(...)`, `chop(...)`, ...) but no indicator class and no streaming mode. The 21 classes are the ones in `include/flox/indicator/registry.def`; `flox.list_indicators()` returns exactly that list at runtime.
+Most of them work in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). Several are batch-only — a free function but no indicator class or streaming mode: **ADX**, **CHOP**, **OBV**, **VWAP**, **CVD**, plus the statistical **ADF** stationarity test and **Hurst/DFA** (`hurst_dfa`, `rolling_hurst`). The 21 streaming classes are the ones in `include/flox/indicator/registry.def`; `flox.list_indicators()` returns exactly that list at runtime.
 
 This page covers what each one actually measures and when you'd want it.
 

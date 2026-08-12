@@ -70,9 +70,9 @@ void PortfolioRiskAggregator::resetKillSwitch()
   _kill_switch_active = false;
 }
 
-std::optional<Breach> PortfolioRiskAggregator::checkOrder(const std::string& /*strategy*/,
+std::optional<Breach> PortfolioRiskAggregator::checkOrder(const std::string& strategy,
                                                           double notional,
-                                                          const std::string& /*side*/) const
+                                                          const std::string& side) const
 {
   std::lock_guard<std::mutex> guard(_mutex);
   if (_kill_switch_active)
@@ -80,7 +80,43 @@ std::optional<Breach> PortfolioRiskAggregator::checkOrder(const std::string& /*s
     return Breach{"kill_switch_active", 1.0, 0.0,
                   "portfolio kill switch is engaged"};
   }
-  if (_rules.max_gross_exposure.has_value())
+
+  // State-based limits are pre-trade gates too, not just post-fill kill-switch
+  // triggers: refuse a new order once the book is already in breach.
+  if (_rules.max_daily_loss.has_value())
+  {
+    const double loss = -totalDailyPnlLocked();  // positive when losing
+    if (loss >= *_rules.max_daily_loss)
+    {
+      return Breach{"max_daily_loss", loss, *_rules.max_daily_loss,
+                    "daily loss " + std::to_string(loss) + " at/over cap " + std::to_string(*_rules.max_daily_loss)};
+    }
+  }
+  if (_rules.max_drawdown_pct.has_value())
+  {
+    const double dd = drawdownPctLocked();
+    if (dd >= *_rules.max_drawdown_pct)
+    {
+      return Breach{"max_drawdown_pct", dd, *_rules.max_drawdown_pct,
+                    "drawdown " + std::to_string(dd) + " at/over cap " + std::to_string(*_rules.max_drawdown_pct)};
+    }
+  }
+
+  // Direction: a "sell" moves net exposure down, a "buy" up. An order that
+  // shrinks |net| for this strategy reduces gross and must never be blocked by
+  // an exposure cap -- you need risk-reducing orders through most of all when
+  // you are near the limit.
+  const double delta = (side == "sell" || side == "SELL" || side == "reduce") ? -std::abs(notional)
+                                                                              : std::abs(notional);
+  double curNet = 0.0;
+  auto it = _accounts.find(strategy);
+  if (it != _accounts.end())
+  {
+    curNet = it->second.net_exposure;
+  }
+  const bool increasesExposure = std::abs(curNet + delta) > std::abs(curNet);
+
+  if (increasesExposure && _rules.max_gross_exposure.has_value())
   {
     const double cap = *_rules.max_gross_exposure;
     const double proposed = totalGrossLocked() + std::abs(notional);
@@ -90,6 +126,22 @@ std::optional<Breach> PortfolioRiskAggregator::checkOrder(const std::string& /*s
                     "order would push gross exposure to " + std::to_string(proposed) + " (cap " + std::to_string(cap) + ")"};
     }
   }
+
+  if (increasesExposure && _rules.max_concentration_pct.has_value())
+  {
+    const double total = totalGrossLocked() + std::abs(notional);
+    if (total > 0.0)
+    {
+      const double stratGross = (it != _accounts.end() ? it->second.gross_exposure : 0.0) + std::abs(notional);
+      const double conc = stratGross / total;
+      if (conc > *_rules.max_concentration_pct)
+      {
+        return Breach{"max_concentration_pct", conc, *_rules.max_concentration_pct,
+                      "strategy concentration " + std::to_string(conc) + " over cap " + std::to_string(*_rules.max_concentration_pct)};
+      }
+    }
+  }
+
   return std::nullopt;
 }
 

@@ -1,8 +1,8 @@
-"""The 37 tool schemas and the dispatch chain must agree.
+"""The 38 tool schemas and the dispatch chain must agree.
 
 No test imported `flox_mcp.server` at all: CI ran `pytest mcp/tests/` without
 installing the `mcp` package, so `server.py` was unimportable and both halves
-of the tool surface went unchecked -- the 37 `Tool(...)` schemas returned by
+of the tool surface went unchecked -- the 38 `Tool(...)` schemas returned by
 `list_tools`, and the ~220-line if/elif chain in `_call_tool` that has to
 match them name for name.
 

@@ -97,7 +97,7 @@ jobs:
         python3 scripts/sync_mcp_data.py --check
     - name: flox-mcp unit tests
       # `mcp` was never installed, so flox_mcp.server was unimportable and
-      # nothing tested the 37 tool schemas or the dispatch chain that has to
+      # nothing tested the 38 tool schemas or the dispatch chain that has to
       # match them. test_tool_dispatch.py needs it.
       run: |
         # Pinned below 2.0: the 2.x SDK dropped the @server.list_tools() /

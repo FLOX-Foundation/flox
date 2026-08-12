@@ -103,8 +103,8 @@ TEST(VenueStack, FromVenueByNameAcceptsAllVenues)
             "bybit_linear");
   EXPECT_EQ(VenueStack::fromVenue("okx_swap", 1, 100.0).venueName(), "okx_swap");
   EXPECT_EQ(VenueStack::fromVenue("deribit", 1, 100.0).venueName(), "deribit");
-  // Unknown name → empty stack.
-  EXPECT_EQ(VenueStack::fromVenue("garbage", 1, 100.0).venueName(), "");
+  // Unknown name throws rather than returning a null-filled stack.
+  EXPECT_THROW(VenueStack::fromVenue("garbage", 1, 100.0), std::invalid_argument);
 }
 
 TEST(VenueStack, AccountFlowFiresLiquidationAfterUnderwaterMark)

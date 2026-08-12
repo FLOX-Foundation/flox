@@ -121,9 +121,15 @@ def scan_dts(path: Path) -> tuple[set[str], set[str]]:
 
 
 def scan_codon_groups(path: Path) -> set[str]:
-    """Codon golden file is grouped by '# ── group_name ──' comments. We
-    take any group present in the file as covered (the file is generated
-    from IDL, so anything emitted in IDL ends up here)."""
+    """Scan the IDL-derived Codon GOLDEN for '# ── group_name ──' markers.
+
+    IMPORTANT: this validates that the codegen golden is structurally complete,
+    NOT that the shipped `codon/flox/*.codon` module actually imports every
+    group. Because the golden is generated from the IDL, every group in the IDL
+    is present here by construction -- so a `codon: required` group can pass
+    this check while being absent from the importable module. Verifying the
+    shipped module's real coverage is tracked separately (W27); do not read a
+    green result here as "Codon imports this group"."""
     if not path.exists():
         return set()
     seen: set[str] = set()

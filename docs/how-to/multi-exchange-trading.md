@@ -63,9 +63,11 @@ if (clockSync.hasReliableSync(binance)) {
 CompositeBookMatrix<4> books;
 
 // Subscribe to BookUpdateEvents from all exchanges
-// The matrix updates atomically on each event
+// Each event updates one exchange's slot
 
-// Query best prices (thread-safe, lock-free)
+// Query best prices (lock-free reads; price and qty are independent atomics,
+// so a reader may see a price from update N with the qty from update N+1 --
+// not a single-quote atomic snapshot). Use for signals, re-check before acting.
 auto bestBid = books.bestBid(btcBinance);  // Best bid across all exchanges
 auto bestAsk = books.bestAsk(btcBinance);  // Best ask across all exchanges
 

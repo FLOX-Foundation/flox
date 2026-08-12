@@ -10,6 +10,7 @@
 #pragma once
 
 #include "flox/common.h"
+#include "flox/log/log.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -230,6 +231,27 @@ class FundingSchedule
                                    const std::vector<double>& markPrices)
   {
     std::vector<FundingPayment> out;
+
+    // Guard against the epoch walk: a first tick with _lastTickNs == 0 and a
+    // real unix-nanos `now` would iterate every boundary since 1970 (~6e13).
+    // If a single tick would cross more than kMaxBoundariesPerTick boundaries,
+    // clamp the lower bound forward and warn -- this only trips on the misuse
+    // (unseeded schedule + real timestamps), never on a backtest driving time
+    // from a small base.
+    if (_intervalNs > 0 && !_seeded)
+    {
+      _seeded = true;
+      const int64_t span = nowNs - _lastTickNs;
+      if (span / _intervalNs > kMaxBoundariesPerTick)
+      {
+        FLOX_LOG_WARN("[FundingSchedule] first tick would cross "
+                      << (span / _intervalNs) << " boundaries; clamping to the "
+                      << "last " << kMaxBoundariesPerTick
+                      << " (seed the schedule at your backtest start to avoid this)");
+        _lastTickNs = nowNs - kMaxBoundariesPerTick * _intervalNs;
+      }
+    }
+
     if (_intervalNs > 0)
     {
       // Fixed-interval mode: emit every boundary in (lastTick, now].
@@ -291,7 +313,11 @@ class FundingSchedule
   }
 
   // Reset the internal cursor — useful when restarting a backtest.
-  void reset() noexcept { _lastTickNs = 0; }
+  void reset() noexcept
+  {
+    _lastTickNs = 0;
+    _seeded = false;
+  }
   int64_t lastTickNs() const noexcept { return _lastTickNs; }
 
  private:
@@ -301,6 +327,10 @@ class FundingSchedule
   std::vector<FundingTapeEntry> _perSymbolTape;
   std::vector<int64_t> _settlementTimestamps;
   int64_t _lastTickNs{0};
+  bool _seeded{false};  // first tick clamps an epoch-sized gap (see tick())
+  // ~1 year of 8h funding is 1095 settlements; 100k covers any realistic
+  // backtest span while still catching the 1970 walk (~6e13).
+  static constexpr int64_t kMaxBoundariesPerTick = 100'000;
 
   // Resolve rate for a (symbol, ts) pair. Search per-symbol tape for
   // an exact match; fall back to a wildcard (symbol == kAnySymbol)

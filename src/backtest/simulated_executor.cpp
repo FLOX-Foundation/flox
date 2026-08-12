@@ -295,12 +295,16 @@ int64_t SimulatedExecutor::applySlippage(int64_t priceRaw, Side side, SymbolId s
       break;
     case SlippageModel::VOLUME_IMPACT:
     {
-      const double levelQty = (levelQtyRaw > 0)
-                                  ? static_cast<double>(levelQtyRaw)
-                                  : 1.0;
-      const double ratio = static_cast<double>(qty.raw()) / levelQty;
-      offsetRaw = static_cast<int64_t>(
-          std::llround(static_cast<double>(priceRaw) * prof.impactCoeff * ratio));
+      // No visible depth (bar/trade-only tapes never set level qty): the model
+      // has no denominator, so it cannot say anything about impact. Falling back
+      // to "1 raw unit" made ratio ~1e8 and produced a garbage fill price;
+      // disabling the model (zero offset) is the honest behaviour.
+      if (levelQtyRaw > 0)
+      {
+        const double ratio = static_cast<double>(qty.raw()) / static_cast<double>(levelQtyRaw);
+        offsetRaw = static_cast<int64_t>(
+            std::llround(static_cast<double>(priceRaw) * prof.impactCoeff * ratio));
+      }
       break;
     }
     case SlippageModel::NONE:
@@ -1279,6 +1283,40 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price price)
       return;
     }
   }
+  stepBarPrice(symbol, price);
+}
+
+void SimulatedExecutor::onBar(SymbolId symbol, Price high, Price low, Price close)
+{
+  if (_venue)
+  {
+    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const bool up = _venue->isUp(now);
+    if (!up && _venueWasUp)
+    {
+      applyOutagePolicy();
+      _venueWasUp = false;
+    }
+    else if (up && !_venueWasUp)
+    {
+      _venueWasUp = true;
+      flushOutageBuffer();
+    }
+    if (!up)
+    {
+      return;
+    }
+  }
+  // low first (a long's protective stop is tested before its target), then the
+  // opposite extreme, then settle at close. Each step runs the full matching
+  // pass so wick-triggered stops/TPs fill.
+  stepBarPrice(symbol, low);
+  stepBarPrice(symbol, high);
+  stepBarPrice(symbol, close);
+}
+
+void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
+{
   MarketState& state = getMarketState(symbol);
   const int64_t priceRaw = price.raw();
   state.bestBidRaw = priceRaw;

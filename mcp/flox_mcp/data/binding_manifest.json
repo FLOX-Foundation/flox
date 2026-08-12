@@ -11806,11 +11806,6 @@
           "name": "GridSearchResult"
         },
         {
-          "header": "include/flox/backtest/grid_search_runner.h",
-          "kind": "type",
-          "name": "GridSearchRunner"
-        },
-        {
           "header": "include/flox/execution/order_group.h",
           "kind": "type",
           "name": "GroupRiskBreach"
@@ -12099,11 +12094,6 @@
           "header": "include/flox/indicator/kama.h",
           "kind": "type",
           "name": "KAMA"
-        },
-        {
-          "header": "include/flox/engine/engine_config.h",
-          "kind": "type",
-          "name": "KillSwitchConfig"
         },
         {
           "header": "include/flox/indicator/kurtosis.h",
@@ -16797,6 +16787,11 @@
         },
         {
           "kind": "method",
+          "name": "none",
+          "parent": "ExchangeCapabilities"
+        },
+        {
+          "kind": "method",
           "name": "simulated",
           "parent": "ExchangeCapabilities"
         },
@@ -17277,16 +17272,6 @@
         },
         {
           "kind": "method",
-          "name": "optimizer",
-          "parent": "GridSearchRunner"
-        },
-        {
-          "kind": "method",
-          "name": "run",
-          "parent": "GridSearchRunner"
-        },
-        {
-          "kind": "method",
           "name": "get",
           "parent": "Handle"
         },
@@ -17313,6 +17298,16 @@
         {
           "kind": "method",
           "name": "checkHealth",
+          "parent": "HealthSweep"
+        },
+        {
+          "kind": "method",
+          "name": "consumerHealth",
+          "parent": "HealthSweep"
+        },
+        {
+          "kind": "method",
+          "name": "healthSnapshot",
           "parent": "HealthSweep"
         },
         {
@@ -19317,6 +19312,11 @@
         },
         {
           "kind": "method",
+          "name": "stepBarPrice",
+          "parent": "MarketState"
+        },
+        {
+          "kind": "method",
           "name": "timestampsFor",
           "parent": "MarketState"
         },
@@ -19642,12 +19642,27 @@
         },
         {
           "kind": "method",
+          "name": "onOrderEvent",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderExpired",
           "parent": "MultiExecutionListener"
         },
         {
           "kind": "method",
           "name": "onOrderFilled",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderGasReplaced",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderMarketPositionChange",
           "parent": "MultiExecutionListener"
         },
         {
@@ -19662,7 +19677,37 @@
         },
         {
           "kind": "method",
+          "name": "onOrderPendingOnchain",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderPendingTrigger",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderQueuePositionChange",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderRejected",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderReplaceAccepted",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderReplaceRejected",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderReplaceSubmitted",
           "parent": "MultiExecutionListener"
         },
         {
@@ -19672,7 +19717,22 @@
         },
         {
           "kind": "method",
+          "name": "onOrderReverted",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderSubmitted",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderTriggered",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onTrailingStopUpdated",
           "parent": "MultiExecutionListener"
         },
         {
@@ -20378,6 +20438,11 @@
         {
           "kind": "method",
           "name": "onCanceled",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
+          "name": "onExpired",
           "parent": "OrderTracker"
         },
         {
@@ -23263,6 +23328,11 @@
         {
           "kind": "method",
           "name": "consumerCount",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
+          "name": "doStop",
           "parent": "Stats"
         },
         {

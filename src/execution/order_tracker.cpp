@@ -113,6 +113,30 @@ bool OrderTracker::onCanceled(OrderId id)
   return true;
 }
 
+bool OrderTracker::onExpired(OrderId id)
+{
+  FLOX_PROFILE_SCOPE("OrderTracker::onExpired");
+
+  std::lock_guard<std::mutex> lock(_mutex);
+
+  auto it = _orders.find(id);
+  if (it == _orders.end())
+  {
+    FLOX_LOG_WARN("[OrderTracker] onExpired for unknown orderId=" << id);
+    return false;
+  }
+
+  auto& state = it->second;
+  if (state.isTerminal())
+  {
+    return false;
+  }
+
+  state.status = OrderEventStatus::EXPIRED;
+  state.lastUpdate = now();
+  return true;
+}
+
 bool OrderTracker::onRejected(OrderId id, std::string_view reason)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onRejected");

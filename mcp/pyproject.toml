@@ -47,4 +47,8 @@ flox_mcp = [
     "data/*.sqlite",
     "data/errors/*.md",
     "data/templates/strategy/*/*.tmpl",
+    "data/docs/examples/*.py",
+    "data/docs/examples/*.js",
+    "data/docs/examples/*.codon",
+    "data/docs/examples/*.cpp",
 ]

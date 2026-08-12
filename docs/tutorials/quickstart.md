@@ -10,7 +10,7 @@ cd flox
 
 mkdir build && cd build
 cmake .. -DFLOX_BUILD_DEMO=ON
-make -j$(nproc)
+make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 ```
 
 ## 2. Run the Demo
@@ -108,7 +108,7 @@ Run the tests to verify everything works:
 
 ```bash
 cmake .. -DFLOX_BUILD_TESTS=ON
-make -j$(nproc)
+make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 ctest --output-on-failure
 ```
 

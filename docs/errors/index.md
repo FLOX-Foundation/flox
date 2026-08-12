@@ -12,25 +12,33 @@ subsystem; `NUMBER` is a zero-padded 3-digit counter within that domain.
 Codes never change meaning once published; if the cause shifts, a new
 code is allocated.
 
-| Domain    | Subsystem                                        |
-|-----------|--------------------------------------------------|
-| `SYM`     | Symbol registry / lookups                         |
-| `DATA`    | Input data loading and parsing                    |
-| `KEY`     | Event field lookups and required keys             |
-| `TIME`    | Calendar, intervals, timestamps                   |
-| `LEN`     | Array length mismatches                           |
-| `ORDER`   | Order submission and lifecycle                    |
-| `RISK`    | Pre-trade risk hooks                              |
-| `IDX`     | Index out of range                                |
-| `IO`      | Filesystem and binary log I/O                     |
-| `CONFIG`  | Configuration validation                          |
+| Domain     | Subsystem                                        |
+|------------|--------------------------------------------------|
+| `SYM`      | Symbol registry / lookups                         |
+| `DATA`     | Input data loading and parsing                    |
+| `INPUT`    | Tape loading and input validation                 |
+| `KEY`      | Event field lookups and required keys             |
+| `TIME`     | Calendar, intervals, timestamps                   |
+| `LEN`      | Array length mismatches                           |
+| `VAL`      | Binding argument validation                       |
+| `GRAPH`    | Indicator graph construction                      |
+| `ADF`      | ADF stationarity test                             |
+| `RUN`      | Backtest / runner lifecycle                       |
+| `BACKTEST` | Backtest configuration and execution              |
+| `IO`       | Filesystem and binary log I/O                     |
 
 ## Catalog
+
+Every code has its own page in this directory (`E_<DOMAIN>_<NNN>.md`); a few
+representative entries:
 
 | Code           | Message                                                       |
 |----------------|---------------------------------------------------------------|
 | [`E_SYM_001`](E_SYM_001.md) | Symbol is not registered                       |
 | [`E_RUN_003`](E_RUN_003.md) | Invalid factory return value (GridSearch)      |
+| [`E_ADF_001`](E_ADF_001.md) | ADF — invalid regression mode                  |
+
+Browse the full set by opening any `E_*.md` in this folder.
 
 ## How to add a new code
 

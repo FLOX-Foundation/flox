@@ -101,7 +101,7 @@ struct u256
       {
         throw std::invalid_argument("u256::fromDec: not a digit");
       }
-      r = r * u256(10) + u256(static_cast<uint64_t>(c - '0'));
+      r = mulAddChecked(r, 10, static_cast<uint64_t>(c - '0'));
     }
     return r;
   }
@@ -134,7 +134,7 @@ struct u256
       {
         throw std::invalid_argument("u256::fromHex: not a hex digit");
       }
-      r = r * u256(16) + u256(static_cast<uint64_t>(d));
+      r = mulAddChecked(r, 16, static_cast<uint64_t>(d));
     }
     return r;
   }
@@ -290,6 +290,26 @@ struct u256
     u256 r;
     r.w = {f[0], f[1], f[2], f[3]};
     return r;
+  }
+
+  // r*base + digit, THROWING on 256-bit overflow in every build (not just an
+  // assert). Parsing untrusted decimal/hex must not silently wrap mod 2^256.
+  static u256 mulAddChecked(const u256& r, uint64_t base, uint64_t digit)
+  {
+    auto f = mulFull(r, u256(base));
+    if ((f[4] | f[5] | f[6] | f[7]) != 0)
+    {
+      throw std::out_of_range("u256: value exceeds 256 bits");
+    }
+    u256 prod;
+    prod.w = {f[0], f[1], f[2], f[3]};
+    // add digit with carry; overflow out of the top limb is also out of range
+    u256 out = prod + u256(digit);
+    if (out < prod)  // wrapped
+    {
+      throw std::out_of_range("u256: value exceeds 256 bits");
+    }
+    return out;
   }
 
   static u256 shl1(u256 x)

@@ -1589,7 +1589,9 @@ export class OrderBook {
   bestAsk(): number | null;
   mid(): number | null;
   spread(): number | null;
+  /** Up to `n` levels; silently clamped to 100 (the Python binding is uncapped). */
   getBids(n: number): Array<[number, number]>;
+  /** Up to `n` levels; silently clamped to 100 (the Python binding is uncapped). */
   getAsks(n: number): Array<[number, number]>;
   isCrossed(): boolean;
   clear(): void;
@@ -2123,7 +2125,9 @@ export class MergedTapeReader {
   /** Streaming aggregator dispatch over the merged stream in a single
    *  decompression pass. Same contract as `DataReader.run` — events
    *  carry global-rewritten symbol ids; per-tape provenance is not
-   *  surfaced to aggregators. */
+   *  surfaced to aggregators.
+   *  NOTE: `nThreads` is reserved -- the C ABI ignores it and runs
+   *  single-threaded (unlike `DataReader.run`, which honours it). */
   run(aggregators: Array<EventTypeStatsAggregator | BinCountAggregator | VolumeBinAggregator | OHLCBinAggregator | PeakAggregator | QuantileAggregator | BookSnapshotBinAggregator>, nThreads?: number): boolean;
 }
 

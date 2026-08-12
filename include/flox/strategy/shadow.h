@@ -11,10 +11,14 @@
 
 // Shadow mode: run a candidate strategy on the live feed with execution
 // suppressed, next to a reference implementation of the same logic, and
-// compare what they WOULD have done. This is how the codon path graduates
-// from "passes byte-identical replay fixtures" to "lived on production
-// timing": replay parity cannot see divergences that only appear under live
-// nondeterministic event arrival.
+// compare what they WOULD have done.
+//
+// EXPERIMENTAL scope: the comparison lives in an in-process std::deque with no
+// serialization/export/binding, and ShadowSignalHandler::onSignal /
+// records() are NOT synchronized -- a monitoring thread reading records()
+// while signals arrive on the feed thread is a data race. Use it single-
+// threaded for now; live-feed threading and a readable export are tracked in
+// W25.
 //
 // Wiring: instead of strategy -> execution signal handler, wire
 // strategy -> ShadowSignalHandler (records, forwards nowhere by default).
