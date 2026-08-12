@@ -220,7 +220,7 @@ class ArenaBacked
  public:
   template <typename... Args>
   explicit ArenaBacked(Args&&... args)
-      : _arena(sizeof(T)), _obj(::new (_arena.data()) T(std::forward<Args>(args)...))
+      : _arena(sizeof(T)), _obj(::new(_arena.data()) T(std::forward<Args>(args)...))
   {
   }
 
