@@ -61,6 +61,14 @@ struct MemoryReport
   uint64_t hugeArenaBytes{0};
   std::string hugeArenaMode{"n/a"};
 
+  // Allocations that escaped a pool's inline buffer into the heap
+  // (see counting_resource.h). Non-zero means some pool is undersized for
+  // the traffic and is holding heap memory a monotonic arena never returns;
+  // if it grows after startup, the pool allocated during trading. Fix by
+  // sizing the pool via Pool::prewarm() at startup.
+  uint64_t poolHeapAllocations{0};
+  uint64_t poolHeapBytes{0};
+
   std::string toString() const
   {
     std::ostringstream os;
@@ -95,6 +103,15 @@ struct MemoryReport
     if (hugeArenaBytes > 0)
     {
       os << "(" << hugeArenaBytes << "B)";
+    }
+    os << " pool-heap-fallback=";
+    if (poolHeapAllocations == 0)
+    {
+      os << "none";
+    }
+    else
+    {
+      os << poolHeapAllocations << "(" << poolHeapBytes << "B)";
     }
     return os.str();
   }
