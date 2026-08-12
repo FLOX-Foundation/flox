@@ -30,6 +30,35 @@
 #include <malloc.h>  // _aligned_malloc / _aligned_free
 #endif
 
+// Replacing the global operator new is fundamentally incompatible with the
+// sanitizers: they interpose new/delete themselves, so an allocation served
+// by the sanitizer's operator new and released through this file's delete
+// (which goes to free) is reported as alloc-dealloc-mismatch -- on gtest's
+// own memory, before any flox code runs. Under a sanitizer build the counter
+// is left alone and the cases skip; the guard still runs in every normal
+// build, which is where it does its job.
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define FLOX_TEST_UNDER_SANITIZER 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || \
+    __has_feature(memory_sanitizer)
+#define FLOX_TEST_UNDER_SANITIZER 1
+#endif
+#endif
+
+#ifndef FLOX_TEST_UNDER_SANITIZER
+#define FLOX_TEST_UNDER_SANITIZER 0
+#endif
+
+#if FLOX_TEST_UNDER_SANITIZER
+#define SKIP_UNDER_SANITIZER()                                         \
+  GTEST_SKIP() << "allocation counting replaces global operator new, " \
+                  "which the sanitizers interpose; covered by the "    \
+                  "non-sanitizer builds"
+#else
+#define SKIP_UNDER_SANITIZER() ((void)0)
+#endif
+
 namespace
 {
 
@@ -89,6 +118,8 @@ void publish(BookPool& pool, TestBus& bus, int events, int depth)
 }
 
 }  // namespace
+
+#if !FLOX_TEST_UNDER_SANITIZER
 
 void* operator new(size_t bytes)
 {
@@ -151,8 +182,11 @@ void operator delete(void* p, size_t) noexcept { std::free(p); }
 void operator delete(void* p, std::align_val_t) noexcept { alignedFree(p); }
 void operator delete(void* p, size_t, std::align_val_t) noexcept { alignedFree(p); }
 
+#endif  // !FLOX_TEST_UNDER_SANITIZER
+
 TEST(HotPathAllocation, SteadyStatePublishDoesNotAllocate)
 {
+  SKIP_UNDER_SANITIZER();
   auto pool = std::make_unique<BookPool>();
   TestBus bus;
   DepthSink sink;
@@ -181,6 +215,7 @@ TEST(HotPathAllocation, SteadyStatePublishDoesNotAllocate)
 // inline buffer runs out -- an allocation in the middle of trading.
 TEST(HotPathAllocation, PrewarmAbsorbsALaterDepthIncrease)
 {
+  SKIP_UNDER_SANITIZER();
   auto pool = std::make_unique<BookPool>();
   TestBus bus;
   DepthSink sink;
@@ -209,6 +244,8 @@ TEST(HotPathAllocation, PrewarmAbsorbsALaterDepthIncrease)
 // undersized pool can be caught in the startup memory report.
 TEST(HotPathAllocation, ArenaHeapFallbackIsCounted)
 {
+  // No global-new interposition here -- this reads the pool's own counter,
+  // so it runs under the sanitizers too.
   auto pool = std::make_unique<BookPool>();
   const uint64_t before = pool->upstreamAllocations();
 
