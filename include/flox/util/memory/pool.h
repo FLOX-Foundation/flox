@@ -10,6 +10,7 @@
 #pragma once
 
 #include "flox/util/concurrency/spsc_queue.h"
+#include "flox/util/memory/counting_resource.h"
 #include "flox/util/memory/ref_countable.h"
 
 #include <algorithm>
@@ -140,7 +141,7 @@ class Pool
   using ObjectType = T;
 
   Pool()
-      : _arena(_buffer.data(), _buffer.size()),
+      : _arena(_buffer.data(), _buffer.size(), &_upstream),
         _pool(&_arena)
   {
     for (size_t i = 0; i < Capacity; ++i)
@@ -166,6 +167,34 @@ class Pool
   using ExhaustionCallback = void (*)(size_t capacity, size_t inUse);
 
   void setExhaustionCallback(ExhaustionCallback cb) { _exhaustionCb = cb; }
+
+  // Grow every pooled object to the size the traffic will actually need,
+  // at startup. The pmr vectors inside pooled events keep their capacity
+  // across clear(), so reserving here means the steady state never touches
+  // the arena -- and, more importantly, that the arena's fall back to the
+  // heap happens now instead of on the first deep snapshot mid-session.
+  //
+  //   pool.prewarm([](BookUpdateEvent& e) {
+  //     e.update.bids.reserve(maxDepth);
+  //     e.update.asks.reserve(maxDepth);
+  //   });
+  //
+  // Check upstreamAllocations() afterwards: non-zero means the inline
+  // buffer is too small for this configuration and the pool is holding
+  // heap memory it will never give back.
+  template <typename Fn>
+  void prewarm(Fn&& fn)
+  {
+    for (size_t i = 0; i < Capacity; ++i)
+    {
+      fn(*std::launder(reinterpret_cast<T*>(&_slots[i])));
+    }
+  }
+
+  // Allocations that escaped the inline buffer into the heap. Zero is the
+  // healthy value; see prewarm().
+  uint64_t upstreamAllocations() const noexcept { return _upstream.allocations(); }
+  uint64_t upstreamBytes() const noexcept { return _upstream.bytes(); }
 
   // Pop up to `count` objects with one freelist index publish per
   // contiguous segment instead of one per object. Appends Handles to `out`
@@ -246,6 +275,7 @@ class Pool
   Storage _slots[Capacity];
 
   std::array<std::byte, 128 * 1024> _buffer;
+  memory::CountingResource _upstream;
   std::pmr::monotonic_buffer_resource _arena;
   std::pmr::unsynchronized_pool_resource _pool;
 

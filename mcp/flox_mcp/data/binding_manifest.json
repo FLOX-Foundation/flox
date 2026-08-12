@@ -11481,6 +11481,11 @@
           "name": "CostOfHedge"
         },
         {
+          "header": "include/flox/util/memory/counting_resource.h",
+          "kind": "type",
+          "name": "CountingResource"
+        },
+        {
           "header": "include/flox/util/performance/cpu_affinity.h",
           "kind": "type",
           "name": "CpuAffinity"
@@ -16317,6 +16322,51 @@
         },
         {
           "kind": "method",
+          "name": "allocations",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "bytes",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "do_allocate",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "do_deallocate",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "do_is_equal",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "globalAllocations",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "globalBytes",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "totalAllocations",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "totalBytes",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
           "name": "checkIsolatedCoreRequirements",
           "parent": "CpuAffinity"
         },
@@ -20872,6 +20922,11 @@
         },
         {
           "kind": "method",
+          "name": "prewarm",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
           "name": "release",
           "parent": "Pool"
         },
@@ -20883,6 +20938,16 @@
         {
           "kind": "method",
           "name": "setExhaustionCallback",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "upstreamAllocations",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "upstreamBytes",
           "parent": "Pool"
         },
         {
