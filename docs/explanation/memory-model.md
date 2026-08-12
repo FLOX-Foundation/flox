@@ -294,7 +294,7 @@ alignas(64) std::atomic<int64_t> _next{-1};
 std::array<Storage, CapacityPow2> _storage{};
 ```
 
-This ensures:
+The effect:
 
 - No false sharing between atomics
 - Sequential access patterns for events

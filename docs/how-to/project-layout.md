@@ -53,9 +53,9 @@ A live deployment swaps step 2 for the `live` template's `main.py`, which feeds 
 
 These are deliberately not in any template:
 
-- **A `flox.toml` project file.** The framework does not own your project's metadata. Use `pyproject.toml` (Python) or `package.json` (Node) — both already work.
-- **A bundled sample tape.** The templates ship pointers at how to record data, not the data itself. Redistributing exchange data crosses TOS lines.
-- **An opinionated stack picker.** `requirements.txt` vs `pyproject.toml` vs `uv` is your choice; the templates assume `pip install -r requirements.txt` because it is the universal floor.
+- A `flox.toml` project file. The framework does not own your project's metadata. Use `pyproject.toml` (Python) or `package.json` (Node) — both already work.
+- A bundled sample tape. The templates ship pointers at how to record data, not the data itself. Redistributing exchange data crosses TOS lines.
+- An opinionated stack picker. `requirements.txt` vs `pyproject.toml` vs `uv` is your choice; the templates assume `pip install -r requirements.txt` because it is the universal floor.
 
 If you find yourself wanting one of these, that is a signal you are stretching the framework beyond what it intends to own.
 

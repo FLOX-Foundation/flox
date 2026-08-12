@@ -1,11 +1,11 @@
 # Market-making quoter
 
 A market maker posts bids and asks on both sides of a fair price and earns the
-spread when both fill. Doing that well means more than placing one bid and one
-ask. The quotes step out across several levels, they lean against the
-position the maker is already carrying, and they hold still through small
-price moves instead of churning the book. `Quoter` packages that into a
-reusable primitive so a strategy does not rebuild it each time.
+spread when both fill. One bid and one ask is rarely enough. Real quotes step
+out across several levels, they lean against the position the maker is already
+carrying, and they hold still through small price moves instead of churning the
+book. `Quoter` packages that into a reusable primitive so a strategy does not
+rebuild it each time.
 
 ## The ladder
 
@@ -35,7 +35,7 @@ when the price has moved past a tolerance.
 ## What the strategy still owns
 
 The quoter computes the desired quotes. It does not place them. Reconciling the
-ladder with live orders, deciding what to cancel, what to modify, and what to
-leave, stays with the strategy, which is where the order ids and the venue
-rules live. The toolkit is the math a maker would otherwise write by hand, not
-a replacement for the strategy's own order management.
+ladder with live orders stays with the strategy, which holds the order ids and
+knows the venue rules: it decides what to cancel, what to modify, what to
+leave. You get the math a maker would otherwise write by hand. Order management
+is still your code.

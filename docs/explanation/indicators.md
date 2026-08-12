@@ -18,7 +18,7 @@ Arithmetic mean over a sliding window. Every bar gets equal weight.
 SMA(n) = (x₁ + x₂ + ... + xₙ) / n
 ```
 
-Responds slowly to recent price movement — which makes it less useful for short-term signals but reasonable for long-term trend reference. If you need a baseline to compare against, this is the simplest one.
+Responds slowly to recent price movement, which makes it less useful for short-term signals but reasonable as a long-term trend reference. If you need a baseline to compare against, this is the simplest one.
 
 ### EMA
 
@@ -81,7 +81,7 @@ RSI = 100 − 100 / (1 + RS)
 RS  = avg_gain / avg_loss   (Wilder's RMA)
 ```
 
-The classic levels (70 = overbought, 30 = oversold) work well in ranging markets. In a strong trend, RSI can stay above 70 for a long time — which is a feature, not a bug, depending on your strategy. Period 14 is standard; shorter periods make it noisier.
+The classic levels (70 = overbought, 30 = oversold) work well in ranging markets. In a strong trend, RSI can stay above 70 for a long time; whether that helps or hurts depends on your strategy. Period 14 is standard; shorter periods make it noisier.
 
 ### MACD
 
@@ -262,7 +262,7 @@ Positive = right tail (large gains skew the distribution). Negative = left tail.
 
 Tail heaviness relative to a normal distribution (Fisher excess kurtosis, so a normal distribution = 0).
 
-High kurtosis means fat tails — more outliers than a normal distribution would predict. Used in risk models to understand tail exposure. Requires period ≥ 4; NaN if std = 0.
+High kurtosis means fat tails: more outliers than a normal distribution would predict. Used in risk models to understand tail exposure. Requires period ≥ 4; NaN if std = 0.
 
 ### Shannon entropy
 
@@ -272,7 +272,7 @@ How random is the recent price distribution? Normalized to [0, 1] using histogra
 H = −Σ p(x) × ln(p(x)) / ln(bins)
 ```
 
-1 = uniform distribution (maximum uncertainty). 0 = all values identical. Entropy tends to drop before trends develop and rise in choppy, uncertain markets — useful as a regime filter.
+1 = uniform distribution (maximum uncertainty). 0 = all values identical. Entropy tends to drop before trends develop and rise in choppy, uncertain markets. That makes it usable as a regime filter.
 
 ### Autocorrelation
 

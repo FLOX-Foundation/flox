@@ -6,7 +6,7 @@ Base class for Codon event-driven strategies. Mirrors C++ `flox::Strategy`.
 
 ### Constructor
 
-```python
+```codon
 Strategy(symbols: List[int], strategy_id: int = 1, registry: cobj = cobj())
 ```
 

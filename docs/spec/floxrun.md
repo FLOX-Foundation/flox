@@ -1,6 +1,6 @@
 # `.floxrun` strategy-trace format specification
 
-**Version 1.0, frozen 2026-05-08.** This is the on-disk format flox uses to record what a strategy did during a run: the signals it produced, the orders it submitted, and the fills it received. Tape (`.floxlog`) records what came in from the exchange; this format records what the strategy emitted in response. The two are complementary and live side by side.
+**Version 1.0, frozen 2026-05-08.** This is the on-disk format flox uses to record what a strategy did during a run: the signals it produced, the orders it submitted, and the fills it received. Tape (`.floxlog`) records what came in from the exchange; this format records what the strategy emitted in response. The two live side by side.
 
 The spec is published so third-party tooling can read and write trace artifacts without depending on flox itself.
 

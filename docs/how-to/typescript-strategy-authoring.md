@@ -67,9 +67,11 @@ If you decorate the same callback twice on a class, the last one wins. Private m
 
 ## Why use it
 
-- **Types you can autocomplete against.** `SymbolContext`, `TradeData`, `EmitMethods` come from the binding's own `index.d.ts`, so the IDE knows what `ctx.position` is and what `emit.marketBuy` expects.
-- **Per-strategy state belongs on `this`.** Indicators, position counters, debug flags. No closures over a builder, no shared mutable scope between symbols.
-- **The runtime contract is unchanged.** `compile()` produces the same Strategy object you would have written by hand, so feature parity with the plain-object form is automatic.
+`SymbolContext`, `TradeData` and `EmitMethods` come from the binding's own `index.d.ts`, so the IDE knows what `ctx.position` is and what `emit.marketBuy` expects.
+
+Per-strategy state lives on `this`: indicators, position counters, debug flags. No closures over a builder, no shared mutable scope between symbols.
+
+The runtime contract does not change. `compile()` produces the same Strategy object you would have written by hand, so feature parity with the plain-object form is automatic.
 
 ## What it is not
 

@@ -67,8 +67,8 @@ the balances, the rates, `A`, and the fee, and `n` is the number of coins.
 `CryptoswapCurve` is a Curve V2 pool (a tricrypto pool of volatile assets), exact
 in integer. It is a direct transcription of the contract's integer algorithm: the
 invariant `D` and the output balance come from the contract's Newton solvers, and
-the divisions floor exactly where the Vyper floors, so the rounding matches and
-not just the formula. The balances are normalized by per-coin precisions and an
+the divisions floor exactly where the Vyper floors, so both the formula and the
+rounding match. The balances are normalized by per-coin precisions and an
 internal price scale, the amplification `A` and `gamma` come in their on-chain
 packing, and the fee is dynamic, taken on the output and computed from the
 post-swap balances so a lopsided pool charges more.
@@ -165,7 +165,7 @@ fixed-point unit and the min/max sqrt price change. The Whirlpool program writes
 `get_amount_delta_a` as one division over the full 256-bit numerator where v3
 nests two divisions, but those give the same result for every input
 (`ceil(ceil(a/b)/c) == ceil(a/(b·c))`, and the floor analogue), so the rounding is
-identical, not merely close.
+identical.
 
 The state is the current Q64.64 sqrt price, the active liquidity, the fee rate in
 hundredths of a basis point, and the table of initialized ticks. A swap within a

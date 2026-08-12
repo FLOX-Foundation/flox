@@ -156,7 +156,7 @@ Default `0.0` leaves the behaviour untouched. The penalty is on top of the usual
 
 ## One policy, three deployment modes
 
-The point of the venue-stack-backed env is not training in isolation. It is producing a policy you can run unchanged through `PaperBroker` and `CcxtBroker`. `flox_py.rl_env` ships three small pieces to close that loop:
+The venue-stack-backed env exists to produce a policy you can then run unchanged through `PaperBroker` and `CcxtBroker`. `flox_py.rl_env` ships three small pieces to close that loop:
 
 - `ObservationBuilder` — stateful builder that turns a stream of trades plus a current position into the same observation vector the env uses. Plug live ticks via `on_trade(price)`, update position via `set_position`, and call `build()` whenever the model needs an input.
 - `ActionDecoder` — pure function that maps a continuous `Box((3,))` action to a structured intent (market or limit, side, quantity, price, TIF). Same decode logic the env uses internally.
@@ -303,11 +303,11 @@ obs, reward, terminated, truncated, info = env.step(action)
 
 What the multi-symbol path does:
 
-- **Tape merge.** All per-symbol tapes are sorted into a single event stream by `ts_ns`. One env step consumes exactly one event; the event's symbol gets its mark and price-window updated.
-- **Per-symbol state.** Positions, entry prices, open orders, and observation builders are tracked separately for each symbol. Switching one symbol's position has no effect on another's bookkeeping.
-- **Cross-margin Account.** All positions share the stack's single Account. After every event the liquidation engine walks; the first liquidation event terminates the episode.
-- **Account-level observation.** The `"account"` key carries `[equity, total_notional, total_unrealized_pnl]`. The agent learns portfolio-level risk through this slot.
-- **Continuous-only action mode.** Multi-symbol mode requires `action_mode="continuous"`. The Discrete(3) shorthand does not generalise meaningfully to a dict-of-actions.
+- All per-symbol tapes are sorted into a single event stream by `ts_ns`. One env step consumes exactly one event; the event's symbol gets its mark and price-window updated.
+- Positions, entry prices, open orders, and observation builders are tracked separately for each symbol. Switching one symbol's position has no effect on another's bookkeeping.
+- All positions share the stack's single cross-margin Account. After every event the liquidation engine walks; the first liquidation event terminates the episode.
+- The `"account"` observation key carries `[equity, total_notional, total_unrealized_pnl]`. The agent learns portfolio-level risk through this slot.
+- Multi-symbol mode requires `action_mode="continuous"`. The Discrete(3) shorthand does not generalise meaningfully to a dict-of-actions.
 
 Plugging this into Stable-Baselines3 needs `MultiInputPolicy` (Dict obs / Dict action support is built in). For RLlib see their `Multi-Agent` and `Dict` observation guides; for CleanRL roll a small wrapper that flattens to one big Box if your trainer needs it.
 

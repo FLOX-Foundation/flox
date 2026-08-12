@@ -1,6 +1,6 @@
 # The replay-equivalence CI gate
 
-flox positions itself on three legs: deterministic backtest ↔ live replay equivalence, AI-controllable via MCP, polyglot strategy authoring. The first leg is the easiest to claim and the hardest to keep. Every engine release risks a subtle drift that makes a replayed backtest produce different fills than it did yesterday. The replay-equivalence CI gate is what turns that claim into a check that fails before merge.
+flox rests on three claims: deterministic backtest ↔ live replay equivalence, AI control via MCP, polyglot strategy authoring. The first is the easiest to state and the hardest to keep. Every engine release risks a subtle drift that makes a replayed backtest produce different fills than it did yesterday. The replay-equivalence CI gate is what turns that claim into a check that fails before merge.
 
 ## What it does
 

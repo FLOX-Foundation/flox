@@ -210,10 +210,10 @@ Each `Bar` carries `open / high / low / close / volume / buyVolume / tradeCount 
 
 ## Performance tips
 
-1. **mmap for big data** — `MmapBarStorage` lets the OS manage paging
-2. **Pre-aggregate offline** for repeated parameter sweeps
-3. **Pick coarser timeframes** for faster iteration; smaller bars = more events
-4. **Batch flushes** — `MmapBarWriter` buffers; call `flush()` periodically for durability
+1. `MmapBarStorage` mmaps the bar files, so the OS handles paging. Worth it on large datasets.
+2. Pre-aggregate offline when you plan repeated parameter sweeps.
+3. Coarser timeframes iterate faster; smaller bars mean more events.
+4. `MmapBarWriter` buffers writes, so call `flush()` periodically for durability.
 
 ## See also
 

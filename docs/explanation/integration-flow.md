@@ -195,7 +195,7 @@ start / sleep / stop shape.
 
 ## 6. Handle Execution Feedback
 
-When orders are submitted, the system maintains consistency:
+When a fill arrives from the venue, the executor updates the tracker and publishes the resulting event:
 
 ```cpp
 // In your executor implementation
@@ -285,7 +285,7 @@ on-chain states are covered in
 
 ## 7. Shutdown Procedure
 
-Graceful shutdown ensures no data loss:
+Shut down in order so queued events are drained before their consumers stop:
 
 ```cpp
 // Signal shutdown (e.g., from signal handler)

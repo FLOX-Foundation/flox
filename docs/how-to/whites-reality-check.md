@@ -73,7 +73,7 @@ console.log(result);  // { p_value, best_stat, best_index }
 
 ## Codon
 
-```python
+```codon
 from C import flox_stat_whites_reality_check(cobj, u64, u64, u32, f64,
                                               cobj, cobj, cobj) -> None
 

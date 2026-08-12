@@ -9,7 +9,7 @@ Capture live market data to disk for later replay and backtesting. The same `.fl
 
 ## What gets recorded
 
-FLOX writes a custom binary format optimised for sequential writes and fast sequential / indexed reads. Optional LZ4 compression. Automatic segment rotation.
+FLOX writes a custom binary format optimised for sequential writes and fast sequential / indexed reads, with optional LZ4 compression and automatic segment rotation.
 
 ## Basic recording
 
