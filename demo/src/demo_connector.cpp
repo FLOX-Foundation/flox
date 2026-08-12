@@ -18,7 +18,7 @@ namespace demo
 {
 
 DemoConnector::DemoConnector(const std::string& id, SymbolId symbol, BookUpdateBus& bookUpdateBus, TradeBus& tradeBus)
-    : _id(id), _symbol(symbol), _boolUpdateBus(bookUpdateBus), _tradeBus(tradeBus)
+    : _id(id), _symbol(symbol), _bookUpdateBus(bookUpdateBus), _tradeBus(tradeBus)
 {
 }
 
@@ -97,7 +97,20 @@ void DemoConnector::run()
     if (now >= nextBookUpdate)
     {
       auto evOpt = _bookPool.acquire();
-      if (evOpt)
+      if (!evOpt)
+      {
+        // Silently skipping here is how an exhausted pool used to look like
+        // a healthy-but-quiet feed. Say it once, then keep going.
+        if (!_poolExhaustionReported)
+        {
+          _poolExhaustionReported = true;
+          FLOX_LOG_WARN("[demo] book pool exhausted (capacity "
+                        << _bookPool.capacity()
+                        << "); book updates are being dropped. The pool must be larger than the "
+                           "bus ring, otherwise it never gets its events back.");
+        }
+      }
+      else
       {
         auto& ev = *evOpt;
         ev->update.symbol = _symbol;
@@ -115,7 +128,7 @@ void DemoConnector::run()
         {
           FLOX_PROFILE_SCOPE("BookBusPublish");
           MEASURE_LATENCY(LatencyCollector::BusPublish);
-          _boolUpdateBus.publish(std::move(ev));
+          _bookUpdateBus.publish(std::move(ev));
         }
       }
 
