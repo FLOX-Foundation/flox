@@ -81,6 +81,18 @@ set(FLOX ${PROJECT_NAME})
 add_library(${FLOX} STATIC ${SRC_FILES})
 add_library(flox::${FLOX} ALIAS ${FLOX})
 
+# Global EventBus sizing knobs. The headers guard these with #ifndef, but they
+# only take effect if forwarded as compile definitions -- passing them as -D
+# cache vars alone did nothing. Documented in docs/how-to/optimize-performance.md.
+set(FLOX_DEFAULT_EVENTBUS_CAPACITY "" CACHE STRING "Default EventBus ring capacity (power of 2)")
+set(FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS "" CACHE STRING "Default EventBus max consumers")
+if(FLOX_DEFAULT_EVENTBUS_CAPACITY)
+  target_compile_definitions(${FLOX} PUBLIC FLOX_DEFAULT_EVENTBUS_CAPACITY=${FLOX_DEFAULT_EVENTBUS_CAPACITY})
+endif()
+if(FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS)
+  target_compile_definitions(${FLOX} PUBLIC FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS=${FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS})
+endif()
+
 # Platform-specific settings
 if(WIN32)
   # Prevent Windows.h from defining min/max macros that break std::min/max

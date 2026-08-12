@@ -10,6 +10,7 @@
 #include "flox/engine/engine.h"
 
 #include "flox/log/log.h"
+#include "flox/util/memory/counting_resource.h"
 #include "flox/util/memory/large_arena.h"
 #include "flox/util/performance/memory_profile.h"
 
@@ -31,7 +32,17 @@ void Engine::start()
       performance::memoryProfileFromString(_config.memoryProfile));
   memReport.hugeArenaBytes = memory::LargeArena::totalBytesAll();
   memReport.hugeArenaMode = memory::LargeArena::aggregateMode();
+  memReport.poolHeapAllocations = memory::CountingResource::totalAllocations();
+  memReport.poolHeapBytes = memory::CountingResource::totalBytes();
   FLOX_LOG_INFO(memReport.toString());
+  if (memReport.poolHeapAllocations > 0)
+  {
+    FLOX_LOG_WARN("pool arenas fell back to the heap "
+                  << memReport.poolHeapAllocations << " time(s) ("
+                  << memReport.poolHeapBytes
+                  << "B): a pool's inline buffer is too small for its events. Size it at "
+                     "startup with Pool::prewarm() so this does not happen mid-session.");
+  }
   if (memReport.mlockRequested && !memReport.mlockApplied)
   {
     FLOX_LOG_WARN("memory profile 'colo' requested but mlockall failed ("

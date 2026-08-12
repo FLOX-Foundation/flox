@@ -36,7 +36,7 @@ class _Stream1 {
         if (this._history.length === 0) return null;
         return _optNum(_last(this._batchFn(this._history, this._period)));
     }
-    get ready() { return this._history.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._history.length; }
     reset() { this._history = []; }
 }
@@ -56,7 +56,7 @@ class _StreamBar {
         if (this._h.length === 0) return null;
         return _optNum(_last(this._batchFn(this._h, this._l, this._c, this._period)));
     }
-    get ready() { return this._h.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._h.length; }
     reset() { this._h = []; this._l = []; this._c = []; }
 }
@@ -76,7 +76,7 @@ class _StreamHighLow {
         if (this._h.length === 0) return null;
         return _optNum(_last(this._batchFn(this._h, this._l, this._period)));
     }
-    get ready() { return this._h.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._h.length; }
     reset() { this._h = []; this._l = []; }
 }
@@ -96,7 +96,7 @@ class _StreamOhlc {
         if (this._o.length === 0) return null;
         return _optNum(_last(this._batchFn(this._o, this._h, this._l, this._c, this._period)));
     }
-    get ready() { return this._o.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._o.length; }
     reset() { this._o = []; this._h = []; this._l = []; this._c = []; }
 }
@@ -116,7 +116,7 @@ class _StreamPair {
         if (this._x.length === 0) return null;
         return _optNum(_last(this._batchFn(this._x, this._y, this._period)));
     }
-    get ready() { return this._x.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._x.length; }
     reset() { this._x = []; this._y = []; }
 }
@@ -174,7 +174,7 @@ class KAMA {
         if (this._history.length === 0) return null;
         return _optNum(_last(__flox_indicator_kama(this._history, this._period, this._fast, this._slow)));
     }
-    get ready() { return this._history.length > this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._history.length; }
     reset() { this._history = []; }
     compute(data) { return __flox_indicator_kama(data, this._period, this._fast, this._slow); }
@@ -246,9 +246,7 @@ class MACD {
         const r = __flox_indicator_macd(this._history, this._fast, this._slow, this._signal);
         return _optNum(_last(r.histogram));
     }
-    get ready() {
-        return this._history.length >= this._slow + this._signal - 1;
-    }
+    get ready() { return this.value !== null; }
     get count() { return this._history.length; }
     reset() { this._history = []; }
     compute(data) { return __flox_indicator_macd(data, this._fast, this._slow, this._signal); }
@@ -280,7 +278,7 @@ class Bollinger {
         if (this._history.length === 0) return null;
         return _optNum(_last(__flox_indicator_bollinger(this._history, this._period, this._mul).lower));
     }
-    get ready() { return this._history.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._history.length; }
     reset() { this._history = []; }
     compute(data) { return __flox_indicator_bollinger(data, this._period, this._mul); }
@@ -308,7 +306,7 @@ class Stochastic {
         if (this._h.length === 0) return null;
         return _optNum(_last(__flox_indicator_stochastic(this._h, this._l, this._c, this._k, this._d).d));
     }
-    get ready() { return this._h.length >= this._k; }
+    get ready() { return this.value !== null; }
     get count() { return this._h.length; }
     reset() { this._h = []; this._l = []; this._c = []; }
     compute(high, low, close) { return __flox_indicator_stochastic(high, low, close, this._k, this._d); }
@@ -363,7 +361,7 @@ class ShannonEntropy {
         if (this._history.length === 0) return null;
         return _optNum(_last(__flox_indicator_shannon_entropy(this._history, this._period, this._bins)));
     }
-    get ready() { return this._history.length >= this._period; }
+    get ready() { return this.value !== null; }
     get count() { return this._history.length; }
     reset() { this._history = []; }
     compute(data) { return __flox_indicator_shannon_entropy(data, this._period, this._bins); }
@@ -413,7 +411,7 @@ class AutoCorrelation {
         if (this._history.length === 0) return null;
         return _optNum(_last(__flox_indicator_autocorrelation(this._history, this._window, this._lag)));
     }
-    get ready() { return this._history.length >= this._window + this._lag; }
+    get ready() { return this.value !== null; }
     get count() { return this._history.length; }
     reset() { this._history = []; }
     compute(data) { return __flox_indicator_autocorrelation(data, this._window, this._lag); }

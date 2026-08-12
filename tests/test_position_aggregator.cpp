@@ -313,6 +313,21 @@ TEST_F(PerSideModeTest, ReduceOnlyWithNoPositionIsNoop)
   EXPECT_DOUBLE_EQ(tracker.getLongPosition(100).toDouble(), 0.0);
 }
 
+TEST(GroupedModeAvgEntry, AccessorsDoNotDerefNullNetStates)
+{
+  // Regression: getLongAvgEntry/getShortAvgEntry used to deref _netStates,
+  // which is nullptr in GROUPED mode.
+  MultiModePositionTracker grouped{1, PositionAggregationMode::GROUPED};
+  grouped.openLong(100, Price::fromDouble(100.0), Quantity::fromDouble(4.0), 7);
+
+  EXPECT_NO_FATAL_FAILURE({
+    const double lav = grouped.getLongAvgEntry(100).toDouble();
+    const double sav = grouped.getShortAvgEntry(100).toDouble();
+    EXPECT_NEAR(lav, 100.0, 0.01);
+    EXPECT_DOUBLE_EQ(sav, 0.0);
+  });
+}
+
 class GroupedModeTest : public ::testing::Test
 {
  protected:

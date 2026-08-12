@@ -233,10 +233,8 @@ public:
 
 ## Compression Trade-offs
 
-For replay:
-
-- **No compression:** Fastest read, largest files
-- **LZ4:** ~3-5x compression, small CPU overhead
+For replay, no compression gives the fastest read and the largest files. LZ4 gets
+~3-5x at a small CPU cost.
 
 For recording, LZ4 is usually worth it:
 ```cpp
@@ -285,7 +283,7 @@ make -j
 ./benchmarks/nlevel_order_book_benchmark
 ```
 
-Run your own latency measurements to establish baseline for your hardware.
+Run your own latency measurements to establish a baseline for your hardware.
 
 ## See Also
 

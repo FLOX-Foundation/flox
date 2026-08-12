@@ -86,14 +86,12 @@ void OrderJourneyTracer::onOrderEvent(const OrderEvent& ev)
   }
 
   auto& trace = it->second;
-  if (trace.size() >= _cfg.maxRecordsPerOrder)
-  {
-    return;
-  }
 
   OrderTraceRecord rec{};
   rec.orderId = id;
-  rec.seq = static_cast<uint32_t>(trace.size());
+  // Monotonic across truncation: derive from the newest kept record, not the
+  // vector size (which shrinks when the oldest is dropped).
+  rec.seq = trace.empty() ? 0u : trace.back().seq + 1u;
   rec.status = static_cast<uint8_t>(ev.status);
   rec.isMaker = ev.isMaker ? 1 : 0;
   rec.tsNs = ev.exchangeTsNs;
@@ -102,6 +100,14 @@ void OrderJourneyTracer::onOrderEvent(const OrderEvent& ev)
   rec.queueAheadRaw = ev.queueAhead.raw();
   rec.queueTotalRaw = ev.queueTotal.raw();
   rec.timestamps = ev.timestamps;
+
+  // Ring semantics: at the cap, drop the OLDEST record and keep this one. A
+  // tail-drop would discard the terminal fills/cancels forensics exist for.
+  // seq keeps counting so a reader can tell the trace was truncated.
+  if (_cfg.maxRecordsPerOrder > 0 && trace.size() >= _cfg.maxRecordsPerOrder)
+  {
+    trace.erase(trace.begin());
+  }
   trace.push_back(rec);
 }
 

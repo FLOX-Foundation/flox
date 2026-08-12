@@ -196,8 +196,9 @@ struct RepairConfig
   bool fix_header_timestamps{true};
   bool fix_event_count{true};
   bool rebuild_index{true};
-  bool remove_corrupted_frames{false};
-  bool truncate_at_corruption{false};
+  // remove_corrupted_frames / truncate_at_corruption were config knobs the
+  // repair pass never read. Removed rather than left as silent no-ops; frame
+  // removal / truncation is future work tracked in W6.
 };
 
 struct RepairResult

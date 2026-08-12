@@ -2,11 +2,13 @@
 #include "flox/capi/flox_capi.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 namespace flox
@@ -1669,11 +1671,16 @@ static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, i
                                                  JSValueConst* argv)
 {
   const char* name = JS_ToCString(ctx, argv[1]);
-  flox_simulated_executor_apply_latency_profile(
+  const int ok = flox_simulated_executor_apply_latency_profile(
       static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), name);
+  std::string nameCopy = name ? name : "";
   if (name)
   {
     JS_FreeCString(ctx, name);
+  }
+  if (!ok)
+  {
+    return JS_ThrowTypeError(ctx, "unknown latency profile: %s", nameCopy.c_str());
   }
   return JS_UNDEFINED;
 }
@@ -1794,11 +1801,16 @@ static JSValue js_rate_limit_load_profile(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
   const char* name = JS_ToCString(ctx, argv[1]);
-  flox_rate_limit_policy_load_profile(
+  const int ok = flox_rate_limit_policy_load_profile(
       static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])), name);
+  std::string nameCopy = name ? name : "";
   if (name)
   {
     JS_FreeCString(ctx, name);
+  }
+  if (!ok)
+  {
+    return JS_ThrowTypeError(ctx, "unknown rate-limit profile: %s", nameCopy.c_str());
   }
   return JS_UNDEFINED;
 }
@@ -1976,11 +1988,16 @@ static JSValue js_fee_schedule_load_profile(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
   const char* name = JS_ToCString(ctx, argv[1]);
-  flox_fee_schedule_load_profile(
+  const int ok = flox_fee_schedule_load_profile(
       static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])), name);
+  std::string nameCopy = name ? name : "";
   if (name)
   {
     JS_FreeCString(ctx, name);
+  }
+  if (!ok)
+  {
+    return JS_ThrowTypeError(ctx, "unknown fee-schedule profile: %s", nameCopy.c_str());
   }
   return JS_UNDEFINED;
 }
@@ -2761,10 +2778,15 @@ static JSValue js_funding_schedule_load_profile(JSContext* ctx, JSValueConst, in
 {
   auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
   const char* name = JS_ToCString(ctx, argv[1]);
-  flox_funding_schedule_load_profile(h, name);
+  const int ok = flox_funding_schedule_load_profile(h, name);
+  std::string nameCopy = name ? name : "";
   if (name)
   {
     JS_FreeCString(ctx, name);
+  }
+  if (!ok)
+  {
+    return JS_ThrowTypeError(ctx, "unknown funding-schedule profile: %s", nameCopy.c_str());
   }
   return JS_UNDEFINED;
 }
@@ -5496,8 +5518,8 @@ static JSValue js_recorder_on_trade(JSContext* c, JSValueConst, int, JSValueCons
   td.symbol = toUint32(c, a[1]);
   double px = toDouble(c, a[2]);
   double qty = toDouble(c, a[3]);
-  td.price_raw = static_cast<int64_t>(px * 1e8);
-  td.quantity_raw = static_cast<int64_t>(qty * 1e8);
+  td.price_raw = static_cast<int64_t>(std::llround(px * 1e8));
+  td.quantity_raw = static_cast<int64_t>(std::llround(qty * 1e8));
   td.is_buy = JS_ToBool(c, a[4]) ? 1 : 0;
   td.exchange_ts_ns = toInt64(c, a[5]);
   cb->on_trade(cb->user_data, &td);
@@ -6168,7 +6190,7 @@ static JSValue js_part_by_event_count(JSContext* c, JSValueConst, int, JSValueCo
 
 #include <algorithm>
 #include <fstream>
-#include <sstream>
+#include <string>
 
 static std::vector<int64_t> jsArrayToInt64s(JSContext* ctx, JSValueConst arr)
 {

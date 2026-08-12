@@ -39,7 +39,8 @@ struct OrderTraceRecord
 };
 
 // Listener that records the full event sequence of every order it
-// observes into per-order ring buffers. Attach to a BacktestRunner
+// observes into per-order ring buffers (at the cap the oldest record is
+// dropped so the terminal fills/cancels survive). Attach to a BacktestRunner
 // via addExecutionListener(). Designed for post-trade forensics:
 // median ack latency, maker fill ratio, cancel-race loss rate.
 //

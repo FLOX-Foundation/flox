@@ -41,7 +41,7 @@ backtest patterns (use vectorbt for those).
   (backtest-first), `live` (live trading), `indicator-library`
   (custom indicators).
 - `flox templates` — list templates.
-- `flox tape record <out>` — capture a live ccxt feed into a `.floxlog`.
+- `flox tape record <exchange> <symbol> --output <out>` — capture a live ccxt feed into a `.floxlog`.
 - `flox tape replay <tape>` — drive a strategy off a recorded tape.
 - `flox tape inspect <tape>` — header + summary.
 - `flox tape diff <a> <b>` — byte-level diff between two tapes.
@@ -62,8 +62,8 @@ backtest patterns (use vectorbt for those).
 - `lookup_symbol(name, language?)` — cross-binding symbol resolver
   (C ABI / Python / Node / Codon / QuickJS).
 - `list_bindings(language, filter?, limit?)` — browse a binding.
-- `examples_search(query)` / `get_example(topic, language?)` —
-  fetch a recipe to copy from `docs/examples/`.
+- `get_example(topic, language?)` — fetch a recipe to copy from
+  `docs/examples/`.
 - `list_capi_functions(filter?, limit?)` — C ABI catalog.
 - `list_indicators(filter?)` — indicator catalog.
 - `lookup_error_code(code)` — resolve a FloxError to its docs page.
@@ -76,8 +76,8 @@ backtest patterns (use vectorbt for those).
 3. `get_example(topic="backtest")` — copy a runnable recipe.
 4. `validate_strategy(code)` / `validate_strategy_no_lookahead(code)` —
    sanity gate before running.
-5. `run_backtest(strategy_code, tape_path, ...)` — execute via the
-   control plane.
+5. `run_backtest(strategy_code, dataset_path, ...)` — run the strategy
+   locally over a CSV dataset (subprocess, no control plane).
 
 ### Realistic backtest stack
 
@@ -179,8 +179,8 @@ Mutating tools:
 - `replay_pool_tape(pool, swaps | evm_logs)` — replay a recorded
   history into a price / LP-value / impermanent-loss / drift series.
 - `whatif(...)` — counterfactual replay with overridden inputs.
-- `lookahead(strategy_code, ...)` — bias detection.
-- `replay_window(start_ns, end_ns)` — re-run a slice for debugging.
+- `validate_strategy_no_lookahead(code)` — bias detection.
+- `replay_window(from_ts_ns, to_ts_ns)` — re-run a slice for debugging.
 - `record_data(...)` — capture market data into `.floxlog`.
 
 ## Recent additions (W15 round 4 + 5)
@@ -203,7 +203,7 @@ Mutating tools:
 ### "make me a realistic backtest"
 
 1. `lookup_symbol("VenueStack")` — confirm the factory.
-2. `examples_search("realistic backtest")` — get the recipe.
+2. `get_example("realistic backtest")` — get the recipe.
 3. Adapt account_id / equity / venue / strategy signal.
 4. `validate_strategy(code)` to catch issues.
 5. `run_backtest(...)` to execute.

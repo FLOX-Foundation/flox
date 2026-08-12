@@ -65,8 +65,8 @@ class VenueStack
   // String-based dispatcher for codegen / AI agents that build
   // the call from data. Accepts "binance_um_futures",
   // "bybit_linear", "okx_swap", "deribit" (case-insensitive).
-  // Throws / returns empty stack on unknown name; check via
-  // `venueName()`.
+  // Throws std::invalid_argument on an unknown name (never returns a
+  // null-filled stack).
   static VenueStack fromVenue(const std::string& name, uint64_t accountId,
                               double equity);
 
@@ -87,11 +87,12 @@ class VenueStack
   // constructed by the assemble() escape hatch.
   const std::string& venueName() const noexcept { return _venueName; }
 
-  // Escape hatch for custom venues. Caller passes already-built
-  // subsystems; VenueStack takes ownership and wires the
-  // peer-pointer relationships consistently with the canned path.
-  // Callers populating this must ensure subsystems aren't already
-  // wired elsewhere.
+  // Escape hatch for custom venues. VenueStack takes ownership but does NOT
+  // wire the subsystems together -- the caller must have already done the
+  // peer-pointer wiring the canned factories do before calling assemble():
+  //   executor->setQueueModel/setVenueAvailability/setRateLimitPolicy,
+  //   fees->bindAccount, liquidation->attachAccount/setExecutor.
+  // An unwired stack has a detached fee schedule and liquidation engine.
   struct AssembleArgs
   {
     std::unique_ptr<SimulatedClock> clock;

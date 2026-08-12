@@ -126,7 +126,12 @@ struct BacktestConfig
   int64_t submitAckJitterNs{0};
 
   double riskFreeRate{0.0};
-  double metricsAnnualizationFactor{252.0};  // daily-equivalent sampling
+  // Annualization factor for Sharpe/Sortino/Calmar. NOTE: the equity curve is
+  // sampled once PER CLOSED TRADE, not per calendar day, so 252 treats the
+  // series as if each trade were one trading day. Set this to your strategy's
+  // actual trades-per-year for a meaningful annualization, or leave 252 for a
+  // per-trade-normalized comparison across runs.
+  double metricsAnnualizationFactor{252.0};
 };
 
 }  // namespace flox

@@ -33,8 +33,8 @@ struct PolymarketConfig
   int pingIntervalSec{5};
 
   bool isValid() const { return !wsEndpoint.empty(); }
-
-  bool hasCredentials() const { return !privateKey.empty() && !funderWallet.empty(); }
+  // (hasCredentials() removed -- it had zero call sites; the executor takes
+  //  credentials via its constructor, not this config.)
 };
 
 }  // namespace flox

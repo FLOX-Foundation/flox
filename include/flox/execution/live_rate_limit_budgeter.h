@@ -22,11 +22,17 @@
 namespace flox
 {
 
+// EXPERIMENTAL / not yet wired into a production executor path. The enforcement
+// mechanism is real and tested, but no connector executor currently wraps
+// RateLimitedExecutor, a locally-rejected order emits no order event unless the
+// caller supplies an onReject callback (there is no listener chain on the
+// IRoutableExecutor decorator), and Replace is not charged (IRoutableExecutor
+// has only submit/cancel). Track completion in W25 before relying on it live.
+//
 // Live-side rate-limit budgeter: venue quotas as a first-class resource
 // instead of a source of surprise rejects. Shares the quota core
 // (RateLimitPolicy, same buckets and venue profiles) with the backtest
-// SimulatedExecutor -- one mechanism, so a strategy that fits the budget in
-// backtest fits it live.
+// SimulatedExecutor.
 //
 // Adds the concerns the backtest model does not need:
 //   - cancel headroom: a slice of every trading bucket is reserved for

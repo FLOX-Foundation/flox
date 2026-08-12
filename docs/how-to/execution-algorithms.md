@@ -1,6 +1,6 @@
 # Execution algorithms (TWAP / VWAP / Iceberg / POV)
 
-A strategy emits a target intent ("buy 1.0 BTC over the next hour" or "sell into 5 percent of market volume"). The execution algorithm turns that intent into a stream of child orders. flox ships four composable algos. They live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface: `step(now_ns)` drives the state machine and yields any newly emitted child orders, the user dispatches them through whichever executor is running, and `report_fill(qty)` (plus `observe_volume(qty)` for POV) feeds state back so the next step makes the right decision.
+A strategy emits a target intent ("buy 1.0 BTC over the next hour" or "sell into 5 percent of market volume"). The execution algorithm turns that intent into a stream of child orders. flox ships four of them. They live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface: `step(now_ns)` drives the state machine and yields any newly emitted child orders, the user dispatches them through whichever executor is running, and `report_fill(qty)` (plus `observe_volume(qty)` for POV) feeds state back so the next step makes the right decision.
 
 ## When to reach for which algo
 

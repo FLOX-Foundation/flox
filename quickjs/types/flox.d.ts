@@ -157,48 +157,48 @@ declare class Strategy {
 
 declare class SMA {
     constructor(period: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number): number[];
 }
 
 declare class EMA {
     constructor(period: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number): number[];
 }
 
 declare class RMA {
     constructor(period: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number): number[];
 }
 
 declare class DEMA {
     constructor(period: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number): number[];
 }
 
 declare class TEMA {
     constructor(period: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number): number[];
 }
 
 declare class KAMA {
     constructor(period: number, fast?: number, slow?: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number, fast?: number, slow?: number): number[];
 }
@@ -207,34 +207,34 @@ declare class KAMA {
 
 declare class RSI {
     constructor(period: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period: number): number[];
 }
 
 declare class Stochastic {
     constructor(kPeriod?: number, dPeriod?: number);
-    update(high: number, low: number, close: number): number;
-    readonly k: number;
-    readonly d: number;
-    readonly value: number;
+    update(high: number, low: number, close: number): number | null;
+    readonly k: number | null;
+    readonly d: number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(high: number[], low: number[], close: number[], kPeriod?: number, dPeriod?: number): { k: number[]; d: number[] };
 }
 
 declare class CCI {
     constructor(period?: number);
-    update(high: number, low: number, close: number): number;
-    readonly value: number;
+    update(high: number, low: number, close: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(high: number[], low: number[], close: number[], period?: number): number[];
 }
 
 declare class CHOP {
     constructor(period: number);
-    update(high: number, low: number, close: number): number;
-    readonly value: number;
+    update(high: number, low: number, close: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(high: number[], low: number[], close: number[], period: number): number[];
 }
@@ -243,38 +243,32 @@ declare class CHOP {
 
 declare class ATR {
     constructor(period: number);
-    update(high: number, low: number, close: number): number;
-    readonly value: number;
+    update(high: number, low: number, close: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(high: number[], low: number[], close: number[], period: number): number[];
 }
 
 declare class ADX {
-    constructor(period: number);
-    update(high: number, low: number, close: number): number;
-    readonly adx: number;
-    readonly plusDi: number;
-    readonly minusDi: number;
-    readonly value: number;
-    readonly ready: boolean;
+    // Batch-only: there is no streaming ADX in the embedded runtime.
     static compute(high: number[], low: number[], close: number[], period: number): { adx: number[]; plusDi: number[]; minusDi: number[] };
 }
 
 declare class Slope {
     constructor(length: number);
-    update(value: number): number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], length: number): number[];
 }
 
 declare class MACD {
     constructor(fastPeriod?: number, slowPeriod?: number, signalPeriod?: number);
-    update(value: number): number;
-    readonly line: number;
-    readonly signal: number;
-    readonly histogram: number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly line: number | null;
+    readonly signal: number | null;
+    readonly histogram: number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], fast?: number, slow?: number, signal?: number): {
         line: number[];
@@ -285,11 +279,11 @@ declare class MACD {
 
 declare class Bollinger {
     constructor(period?: number, multiplier?: number);
-    update(value: number): number;
-    readonly upper: number;
-    readonly middle: number;
-    readonly lower: number;
-    readonly value: number;
+    update(value: number): number | null;
+    readonly upper: number | null;
+    readonly middle: number | null;
+    readonly lower: number | null;
+    readonly value: number | null;
     readonly ready: boolean;
     static compute(data: number[], period?: number, multiplier?: number): {
         upper: number[];

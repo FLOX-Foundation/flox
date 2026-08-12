@@ -1,8 +1,8 @@
 # Indicators
 
-FLOX has 26 indicators, split across moving averages, oscillators, trend, volatility, volume, and statistics. The same set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
+FLOX has 21 streaming indicator classes plus several batch-only functions, split across moving averages, oscillators, trend, volatility, volume, and statistics. The same set is exposed by every binding — Python, Node.js, Codon, and the C++ core all share one implementation.
 
-Most of them work in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). Five — **ADX**, **CHOP**, **OBV**, **VWAP** and **CVD** — are batch-only: there is a free function (`adx(...)`, `chop(...)`, ...) but no indicator class and no streaming mode. The 21 classes are the ones in `include/flox/indicator/registry.def`; `flox.list_indicators()` returns exactly that list at runtime.
+Most of them work in two modes: batch (pass an array, get an array back) and streaming (call `.update()` each tick, check `.ready` before reading `.value`). Several are batch-only — a free function but no indicator class or streaming mode: **ADX**, **CHOP**, **OBV**, **VWAP**, **CVD**, plus the statistical **ADF** stationarity test and **Hurst/DFA** (`hurst_dfa`, `rolling_hurst`). The 21 streaming classes are the ones in `include/flox/indicator/registry.def`; `flox.list_indicators()` returns exactly that list at runtime.
 
 This page covers what each one actually measures and when you'd want it.
 
@@ -18,7 +18,7 @@ Arithmetic mean over a sliding window. Every bar gets equal weight.
 SMA(n) = (x₁ + x₂ + ... + xₙ) / n
 ```
 
-Responds slowly to recent price movement — which makes it less useful for short-term signals but reasonable for long-term trend reference. If you need a baseline to compare against, this is the simplest one.
+Responds slowly to recent price movement, which makes it less useful for short-term signals but reasonable as a long-term trend reference. If you need a baseline to compare against, this is the simplest one.
 
 ### EMA
 
@@ -81,7 +81,7 @@ RSI = 100 − 100 / (1 + RS)
 RS  = avg_gain / avg_loss   (Wilder's RMA)
 ```
 
-The classic levels (70 = overbought, 30 = oversold) work well in ranging markets. In a strong trend, RSI can stay above 70 for a long time — which is a feature, not a bug, depending on your strategy. Period 14 is standard; shorter periods make it noisier.
+The classic levels (70 = overbought, 30 = oversold) work well in ranging markets. In a strong trend, RSI can stay above 70 for a long time; whether that helps or hurts depends on your strategy. Period 14 is standard; shorter periods make it noisier.
 
 ### MACD
 
@@ -262,7 +262,7 @@ Positive = right tail (large gains skew the distribution). Negative = left tail.
 
 Tail heaviness relative to a normal distribution (Fisher excess kurtosis, so a normal distribution = 0).
 
-High kurtosis means fat tails — more outliers than a normal distribution would predict. Used in risk models to understand tail exposure. Requires period ≥ 4; NaN if std = 0.
+High kurtosis means fat tails: more outliers than a normal distribution would predict. Used in risk models to understand tail exposure. Requires period ≥ 4; NaN if std = 0.
 
 ### Shannon entropy
 
@@ -272,7 +272,7 @@ How random is the recent price distribution? Normalized to [0, 1] using histogra
 H = −Σ p(x) × ln(p(x)) / ln(bins)
 ```
 
-1 = uniform distribution (maximum uncertainty). 0 = all values identical. Entropy tends to drop before trends develop and rise in choppy, uncertain markets — useful as a regime filter.
+1 = uniform distribution (maximum uncertainty). 0 = all values identical. Entropy tends to drop before trends develop and rise in choppy, uncertain markets. That makes it usable as a regime filter.
 
 ### Autocorrelation
 

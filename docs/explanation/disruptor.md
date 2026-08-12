@@ -238,14 +238,18 @@ The producer waits for the **slowest** consumer before overwriting.
 // Required (default): affects backpressure
 tradeBus->subscribe(strategyA.get(), /*required=*/true);
 
-// Optional: doesn't gate the producer
+// Optional: does not gate wrap, but still gates the reclaim fence by default
 tradeBus->subscribe(logger.get(), /*required=*/false);
 ```
 
 Optional consumers:
 
-- Won't slow down the system if they fall behind
-- May miss events if too slow
+- Do not gate the producer at wrap, but the reclaim fence still scans every
+  consumer (use-after-free protection), so by default a slow optional consumer
+  DOES stall `publish()`. Enable `dropBehindOptional` in `HealthConfig` to let
+  them jump ahead instead.
+- With `dropBehindOptional`, may miss events if too slow (skipped events are
+  counted, never silently lost); without it, they block rather than miss.
 - Useful for monitoring, logging, metrics
 
 ## Batch Publishing
@@ -302,7 +306,7 @@ where there is no producer to hide behind.
 
 | Metric | Notes |
 |--------|-------|
-| Publish latency | Lock-free atomic operations only |
+| Publish latency | Wait-free when the ring has space; blocks with backoff (see Degradation) when a consumer lags |
 | Consume latency | Depends on backoff strategy and load |
 | Throughput | Limited by slowest consumer |
 | Memory overhead | Fixed: `sizeof(Event) × Capacity` |

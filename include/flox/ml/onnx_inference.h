@@ -36,6 +36,7 @@
 #include <memory>
 #include <mutex>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -98,9 +99,17 @@ class OnnxModel
   size_t outputCount() const noexcept { return _output.size(); }
 
   // Scores one feature vector. Returns the model outputs; the span stays
-  // valid until the next run(). No allocations.
+  // valid until the next run(). No allocations. `features` must have exactly
+  // _featureCount elements -- a shorter span was a silent heap over-read, a
+  // longer one silent truncation.
   std::span<const float> run(std::span<const double> features)
   {
+    if (features.size() != _featureCount)
+    {
+      throw std::invalid_argument(
+          "OnnxModel::run: feature count mismatch (expected " +
+          std::to_string(_featureCount) + ", got " + std::to_string(features.size()) + ")");
+    }
     for (size_t i = 0; i < _featureCount; ++i)
     {
       _input[i] = static_cast<float>(features[i]);

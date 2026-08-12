@@ -9,7 +9,6 @@
 
 #include "flox/backtest/backtest_optimizer.h"
 #include "flox/backtest/bar_replay_source.h"
-#include "flox/backtest/grid_search_runner.h"
 
 #include <gtest/gtest.h>
 #include <filesystem>

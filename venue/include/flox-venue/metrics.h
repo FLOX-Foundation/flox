@@ -98,9 +98,12 @@ struct Metrics
   std::unordered_map<SymbolId, std::pair<int64_t, int64_t>> scales_;
 };
 
-// Point-in-time venue state that is NOT derivable from the outbound event stream
-// -- sampled from the ledger and risk manager by the monitoring thread and
-// exported as Prometheus gauges. Zero is a valid, meaningful value here.
+// Point-in-time venue state that is NOT derivable from the outbound event
+// stream. The library does not sample these itself -- it has no monitoring
+// thread -- so a deployment must populate a Gauges from its ledger/risk state
+// and feed it to the Prometheus exporter (see the sampler in
+// venue/tests for the shape). Left unsampled, every fme_* gauge reads zero.
+// Zero is otherwise a valid, meaningful value here.
 struct Gauges
 {
   __int128 insuranceFundRaw{0};    // venue collateral balance (insurance fund)

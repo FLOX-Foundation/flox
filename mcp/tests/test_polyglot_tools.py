@@ -394,7 +394,7 @@ def test_flox_overview_returns_markdown_catalogue():
     for tool_name in (
         "docs_search",
         "lookup_symbol",
-        "examples_search",
+        "get_example",
         "scaffold_strategy",
         "validate_strategy",
         "run_backtest",

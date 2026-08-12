@@ -5,7 +5,7 @@ CMake options for tailoring a FLOX build to a specific use case. Two prefixes, b
 - `FLOX_ENABLE_*` — capabilities of the core library (backtest module, LZ4 compression, Tracy profiler, CPU affinity).
 - `FLOX_BUILD_*` — optional build artefacts (binding wheels, demo, tools, tests, benchmarks, connectors).
 
-Most options default to OFF unless noted, so a bare `cmake -B build` produces only the core C++ static library. Two exceptions are flagged explicitly in the tables below (`FLOX_NATIVE`, `FLOX_ENABLE_LZ4`).
+Most options default to OFF unless noted. The exceptions default ON: `FLOX_NATIVE`, `FLOX_ENABLE_LZ4`, and **`FLOX_BUILD_VENUE`** — and because `FLOX_BUILD_VENUE=ON` force-enables `FLOX_ENABLE_BACKTEST`, a bare `cmake -B build` builds the core library **plus the venue and backtest modules** (venue is disabled automatically on MSVC/clang-cl, which lack native 128-bit ints). To get only the core library, pass `-DFLOX_BUILD_VENUE=OFF`. `FLOX_ENABLE_ONNX` and `FLOX_ENABLE_AF_XDP` default OFF and hard-fail if their libraries are absent.
 
 A third prefix gates compiler/portability flags rather than features:
 

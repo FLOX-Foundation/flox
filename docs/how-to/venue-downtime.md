@@ -2,9 +2,9 @@
 
 Real exchanges go down — scheduled maintenance, surprise outages,
 matching-engine restarts. A strategy that ignores this is brittle
-in production. flox lets you model both planned and random outages
-inside the backtest so you can measure their PnL impact and harden
-the recovery path before live trading.
+in production. flox models planned and random outages inside the
+backtest, so you can measure the PnL cost and fix the recovery path
+before going live.
 
 ## What an outage does
 

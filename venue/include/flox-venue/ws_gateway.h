@@ -17,6 +17,7 @@
 
 #include <unistd.h>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -32,7 +33,10 @@ class WsGateway
   using Responder = std::function<void(const uint8_t*, size_t)>;
   using Handler = std::function<void(const InboundCommand&, const Responder&)>;
 
-  explicit WsGateway(GatewaySession::Decoder decoder) : decoder_(std::move(decoder)) {}
+  // See TcpGateway: `account` binds each session so a client cannot spoof
+  // another account's id. account == 0 is single-tenant-trusted mode.
+  explicit WsGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
+      : decoder_(std::move(decoder)), account_(account) {}
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
 
@@ -75,7 +79,7 @@ class WsGateway
     net::writeAll(fd, reinterpret_cast<const uint8_t*>(resp.data()), resp.size());
 
     // 2. Frame loop.
-    GatewaySession session(0, decoder_);
+    GatewaySession session(account_, decoder_);
     session.authenticate(true);
     const Responder responder = [fd](const uint8_t* p, size_t n)
     {
@@ -176,7 +180,12 @@ class WsGateway
                 const uint8_t* p, size_t n)
   {
     SessionReject rej{};
-    auto cmd = session.handle(p, n, ++clock_, rej);
+    // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
+    // ++clock_ frame counter never advanced time -> permanent bans.
+    const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              std::chrono::steady_clock::now().time_since_epoch())
+                              .count();
+    auto cmd = session.handle(p, n, nowNs, rej);
     if (cmd)
     {
       cod.track(*cmd);
@@ -185,10 +194,10 @@ class WsGateway
   }
 
   GatewaySession::Decoder decoder_;
+  uint64_t account_{0};
   Handler handler_;
   SocketAcceptor acceptor_;
   std::atomic<bool> cancelOnDisconnect_{false};
-  std::atomic<int64_t> clock_{0};
 };
 
 }  // namespace flox::venue

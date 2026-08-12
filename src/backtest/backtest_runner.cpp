@@ -11,6 +11,7 @@
 
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/events/trade_event.h"
+#include "flox/log/log.h"
 #include "flox/replay/merged_tape_reader.h"
 #include "flox/strategy/strategy.h"
 
@@ -217,9 +218,9 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
     advanceClocks(ev.bar.endTime.time_since_epoch().count());
     ++_eventCount;
 
-    // Feed the bar's close into the executor so resting orders can match.
-    // (SimulatedExecutor::onBar already handles SL/TP triggers using close.)
-    sim().onBar(ev.symbol, ev.bar.close);
+    // Feed the bar's full range so resting stops/take-profits match against the
+    // intrabar high/low, not just the close.
+    sim().onBar(ev.symbol, ev.bar.high, ev.bar.low, ev.bar.close);
 
     if (_strategy)
     {
@@ -398,6 +399,20 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     }
 
     _pool->release();
+  }
+  else if (event.type == replay::EventType::OptionQuote ||
+           event.type == replay::EventType::PoolState)
+  {
+    // Not dispatched: there is no strategy/subscriber handler for option-quote
+    // or pool-state records. Count them and warn once so a tape that is mostly
+    // these records does not look like it was fully replayed.
+    if (_skippedRecordCount++ == 0)
+    {
+      FLOX_LOG_WARN(
+          "[BacktestRunner] tape contains OptionQuote/PoolState records "
+          "that this runner does not dispatch; they are counted in "
+          "skippedRecordCount, not delivered to the strategy");
+    }
   }
 
   // Invoke callback if set (interactive mode)

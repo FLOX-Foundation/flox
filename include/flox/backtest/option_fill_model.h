@@ -44,15 +44,6 @@ struct OptionBBO
   double width() const { return ask - bid; }
 };
 
-// What a caller does when a leg has no usable quote. The fill functions never
-// fabricate a fill; this records the caller's intent for the empty bar.
-enum class NoQuoteAction
-{
-  Skip,    // skip the bar, try again next quote
-  Hold,    // keep the position, do not trade
-  Reject,  // reject the order outright
-};
-
 // Fraction of the half-spread an N-leg order crosses toward the touch. One leg
 // crosses the most (~0.75); each added leg earns package price improvement, to
 // ~0.56 at four legs, then flat. Linear between the ORATS endpoints.

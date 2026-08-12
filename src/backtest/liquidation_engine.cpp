@@ -330,11 +330,11 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     {
       continue;
     }
-    const double notional = std::abs(p.quantity) * markPrice;
+    const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
     const double mm = mmFractionFor(notional);
     const double mmReq = notional * mm;
     // Unrealised PnL at mark.
-    const double upnl = p.quantity * (markPrice - p.entryPrice);
+    const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
     if (p.equity + upnl < mmReq)
     {
       underwater.push_back(i);
@@ -485,7 +485,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       case AdlRanking::Binance:
       case AdlRanking::Bybit:
       {
-        const double notional = std::abs(p.quantity) * markPrice;
+        const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
         const double leverage =
             (p.equity > 0.0) ? (notional / p.equity) : 0.0;
         return upnl * leverage;
@@ -504,7 +504,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     {
       continue;
     }
-    const double upnl = p.quantity * (markPrice - p.entryPrice);
+    const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
     if (upnl > 0.0)
     {
       candidates.push_back({nullptr, i, scorePosition(p, upnl), upnl, p.accountId});
@@ -525,7 +525,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       {
         continue;
       }
-      const double upnl = p.quantity * (markPrice - p.entryPrice);
+      const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
       if (upnl > 0.0)
       {
         candidates.push_back({acct, i, scorePosition(p, upnl), upnl, p.accountId});
@@ -754,10 +754,10 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
     {
       continue;
     }
-    const double notional = std::abs(p.quantity) * markPrice;
+    const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
     const double mm = mmFractionFor(notional);
     const double mmReq = notional * mm;
-    const double upnl = p.quantity * (markPrice - p.entryPrice);
+    const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
     if (p.equity + upnl >= mmReq)
     {
       continue;  // healthy

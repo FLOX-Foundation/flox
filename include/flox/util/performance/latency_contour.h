@@ -30,13 +30,15 @@ inline int64_t monotonicNs() noexcept
       .count();
 }
 
-// Per-hop latency contour: a fixed set of named segments (parse, bus,
-// strategy, risk, send, tick-to-order, ...), one histogram per segment,
-// recording cheap enough to stay on in production. Answers "where did the
-// microsecond go" with a distribution per hop instead of a debate.
+// Per-hop latency contour: one histogram per named segment, recording cheap
+// enough to stay on in production. Answers "where did the microsecond go" with
+// a distribution per hop.
 //
-// Segment registration happens at wiring time (not thread-safe); recording
-// is wait-free and thread-safe.
+// This is a PRIMITIVE the caller wires: flox does not itself register or record
+// any hop (no connector/bus/strategy/executor calls recordSpan today), so the
+// segment set is whatever you register. Register segments at wiring time (not
+// thread-safe); record() is lock-free and thread-safe (a CAS retry on the max,
+// so lock-free, not wait-free).
 template <size_t MaxSegments = 32>
 class LatencyContour
 {
@@ -116,12 +118,23 @@ class LatencyContour
     }
   }
 
-  LatencyHistogram& histogram(SegmentId id) { return _hist[id]; }
+  // Bounds-checked like record(): an out-of-range id (including kInvalid, which
+  // registerSegment returns on overflow) returns a shared throwaway histogram
+  // rather than reading past the array.
+  LatencyHistogram& histogram(SegmentId id)
+  {
+    if (id >= _count.load(std::memory_order_acquire))
+    {
+      return _sink;
+    }
+    return _hist[id];
+  }
 
  private:
   LatencyHistogram _hist[MaxSegments]{};
   std::string _names[MaxSegments]{};
   std::atomic<uint32_t> _count{0};
+  LatencyHistogram _sink{};  // returned for out-of-range histogram(id)
 };
 
 }  // namespace flox::performance

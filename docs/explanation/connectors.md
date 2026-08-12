@@ -6,12 +6,14 @@ The module is gated by `FLOX_BUILD_CONNECTORS` in CMake. It is **off** by defaul
 
 ## Adapters in tree
 
-| Venue | Trades | BBO | Book | Orders | Positions |
-|---|---|---|---|---|---|
-| Bybit (V5) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Bitget (V2) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Hyperliquid | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Polymarket | ✓ | ✓ | — | ✓ | — |
+| Venue | Trades | BBO | Book | Orders |
+|---|---|---|---|---|
+| Bybit (V5) | ✓ | ✓ | ✓ | ✓ |
+| Bitget (V2) | ✓ | ✓ | ✓ | ✓ |
+| Hyperliquid | ✓ | ✓ | ✓ | ✓ |
+| Polymarket | ✓ | ✓ | — | ✓ |
+
+(No position query/stream is implemented in any connector yet — the earlier "Positions" column was aspirational.)
 
 Each adapter sits under `connectors/src/<venue>/` with public headers under `connectors/include/flox-connectors/<venue>/`. The header layout uses the `flox-connectors/` prefix so consumers' include sites are stable across the repo move.
 

@@ -25,24 +25,24 @@ enum class RoutingStrategy : uint8_t
   BestPrice,      // Route to exchange with best price
   LowestLatency,  // Route to exchange with lowest latency
   LargestSize,    // Route to exchange with largest size at best price
-  RoundRobin,     // Round-robin across enabled exchanges
-  Explicit        // Use explicit exchange from order
+  RoundRobin      // Round-robin across enabled exchanges
+  // (No "Explicit" strategy: route() carries no per-order exchange. To target a
+  //  specific venue use routeTo(exchange, ...), which is the explicit API.)
 };
 
 enum class FailoverPolicy : uint8_t
 {
-  Reject,          // Reject order if target exchange unavailable
-  FailoverToBest,  // Failover to best available exchange
-  Notify           // Notify via callback and wait
+  Reject,         // Reject order if target exchange unavailable
+  FailoverToBest  // Failover to best available exchange
+  // (No "Notify" policy: there is no callback member to notify through. A
+  //  caller that wants notify-and-wait builds it around Reject.)
 };
 
 enum class RoutingError : uint8_t
 {
   Success = 0,
   NoExecutor,
-  ExchangeDisabled,
-  InvalidSymbol,
-  RejectedByPolicy
+  ExchangeDisabled
 };
 
 // The router's own narrow order sink. Deliberately NOT
@@ -189,7 +189,6 @@ class OrderRouter : public ISubsystem
         return selectByLargestSize(symbol, side);
       case RoutingStrategy::RoundRobin:
         return selectRoundRobin();
-      case RoutingStrategy::Explicit:
       default:
         return findAnyEnabled();
     }

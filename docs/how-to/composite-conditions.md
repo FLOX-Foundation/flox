@@ -110,7 +110,9 @@ btc_m5 = g.get(btc_id, BAR_TYPE_TIME, M5_NS)
 
 ## Cross-binding
 
-The DSL ships in every binding. The Python form uses Python operator overloading; the JS / Codon forms use named methods because their type systems do not give the same operator-overload latitude. The semantics are identical.
+The DSL ships in every binding. The Python form uses Python operator overloading; the JS / Codon forms use named methods because their type systems do not give the same operator-overload latitude. The semantics are identical **across the four bindings**.
+
+Note that the DSL's `.ema()` and `.rsi()` are lightweight window computations, NOT the engine's indicators: `.ema()` seeds from the first value in the window (the engine seeds from the SMA of the first `period` values over the full series), and `.rsi()` is a simple gain/loss average (the engine uses Wilder smoothing). Use them for composite entry conditions; for the exact engine values use `flox.ema(...)` / `flox.rsi(...)` directly.
 
 ```javascript
 // node

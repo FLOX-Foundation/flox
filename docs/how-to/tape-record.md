@@ -206,7 +206,7 @@ A complete record-then-replay round-trip with synthetic trades, no ccxt needed:
 --8<-- "examples/python_tape_roundtrip.py"
 ```
 
-Runs in CI and serves as the regression test for the recorder hook plus
+Runs in CI as the regression test for the recorder hook plus
 replay reader.
 
 ## See also

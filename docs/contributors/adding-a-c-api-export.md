@@ -26,7 +26,7 @@ then bindings:
   codon/     auto-imported via golden
   quickjs/   hand-written wrapper
 
-then docs sync (eight scripts, see ci-pipeline.md):
+then docs sync (the four that matter here; full eight-step chain in ci-pipeline.md):
   scripts/gen_pyi_stubs.py     ← regenerates Python .pyi
   scripts/gen_api_index.py     ← regenerates docs/reference/python/_api_index.md
   scripts/gen_llms_txt.py      ← regenerates docs/llms*.txt

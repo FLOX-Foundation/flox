@@ -9,7 +9,8 @@
 
 #pragma once
 
-#include "flox/util/concurrency/spsc_queue.h"
+#include "flox/util/memory/counting_resource.h"
+#include "flox/util/memory/freelist.h"
 #include "flox/util/memory/ref_countable.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 #include <cassert>
 #include <cstddef>
 #include <memory_resource>
+#include <new>
 #include <optional>
 #include <type_traits>
 #include <vector>
@@ -140,7 +142,7 @@ class Pool
   using ObjectType = T;
 
   Pool()
-      : _arena(_buffer.data(), _buffer.size()),
+      : _arena(_buffer.data(), _buffer.size(), &_upstream),
         _pool(&_arena)
   {
     for (size_t i = 0; i < Capacity; ++i)
@@ -154,7 +156,7 @@ class Pool
         static_cast<Pool<T, Capacity>*>(pool)->release(static_cast<T*>(ptr));
       };
 
-      _queue.push(obj);
+      _freelist.push(static_cast<uint32_t>(i));
     }
   }
 
@@ -167,35 +169,53 @@ class Pool
 
   void setExhaustionCallback(ExhaustionCallback cb) { _exhaustionCb = cb; }
 
-  // Pop up to `count` objects with one freelist index publish per
-  // contiguous segment instead of one per object. Appends Handles to `out`
-  // and returns how many it got. Fewer than `count` means the pool ran dry.
+  // Grow every pooled object to the size the traffic will actually need,
+  // at startup. The pmr vectors inside pooled events keep their capacity
+  // across clear(), so reserving here means the steady state never touches
+  // the arena -- and, more importantly, that the arena's fall back to the
+  // heap happens now instead of on the first deep snapshot mid-session.
+  //
+  //   pool.prewarm([](BookUpdateEvent& e) {
+  //     e.update.bids.reserve(maxDepth);
+  //     e.update.asks.reserve(maxDepth);
+  //   });
+  //
+  // Check upstreamAllocations() afterwards: non-zero means the inline
+  // buffer is too small for this configuration and the pool is holding
+  // heap memory it will never give back.
+  template <typename Fn>
+  void prewarm(Fn&& fn)
+  {
+    for (size_t i = 0; i < Capacity; ++i)
+    {
+      fn(*std::launder(reinterpret_cast<T*>(&_slots[i])));
+    }
+  }
+
+  // Allocations that escaped the inline buffer into the heap. Zero is the
+  // healthy value; see prewarm().
+  uint64_t upstreamAllocations() const noexcept { return _upstream.allocations(); }
+  uint64_t upstreamBytes() const noexcept { return _upstream.bytes(); }
+
+  // Appends up to `count` Handles to `out` and returns how many it got.
+  // Fewer than `count` means the pool ran dry.
   size_t acquireBatch(std::vector<Handle<T>>& out, size_t count)
   {
     size_t got = 0;
     while (got < count)
     {
-      T** seg = nullptr;
-      const size_t avail = _queue.read_segment(seg);
-      if (avail == 0)
+      T* obj = popSlot();
+      if (!obj)
       {
         break;
       }
-      const size_t n = std::min(avail, count - got);
-      for (size_t k = 0; k < n; ++k)
-      {
-        T* obj = seg[k];
-        obj->resetRefCount();
-        obj->setPool(this);
-        out.emplace_back(obj);
-      }
-      _queue.commit_read(n);
-      got += n;
+      out.emplace_back(obj);
+      ++got;
     }
-    _acquired += got;
+    _acquired.fetch_add(got, std::memory_order_relaxed);
     if (got < count)
     {
-      ++_exhaustionCount;
+      _exhaustionCount.fetch_add(1, std::memory_order_relaxed);
       if (_exhaustionCb)
       {
         _exhaustionCb(Capacity, inUse());
@@ -206,17 +226,13 @@ class Pool
 
   std::optional<Handle<T>> acquire()
   {
-    T* obj = nullptr;
-    if (_queue.pop(obj))
+    if (T* obj = popSlot())
     {
-      obj->resetRefCount();
-      obj->setPool(this);
-
-      ++_acquired;
+      _acquired.fetch_add(1, std::memory_order_relaxed);
       return Handle<T>(obj);
     }
 
-    ++_exhaustionCount;
+    _exhaustionCount.fetch_add(1, std::memory_order_relaxed);
     if (_exhaustionCb)
     {
       _exhaustionCb(Capacity, inUse());
@@ -225,20 +241,48 @@ class Pool
     return std::nullopt;
   }
 
+  // Called from whichever thread drops the last reference, which is not
+  // necessarily the thread that acquired the object: a bus slot is destroyed
+  // by the publisher that overwrites it, so with several connectors on one bus
+  // an event returns to its pool from a foreign thread. The freelist and these
+  // counters are therefore all multi-producer safe.
   void release(T* obj)
   {
     obj->clear();
-    _queue.push(obj);
-    ++_released;
+    _freelist.push(indexOf(obj));
+    _released.fetch_add(1, std::memory_order_relaxed);
   }
 
-  size_t inUse() const { return _acquired - _released; }
+  size_t inUse() const
+  {
+    const size_t acquired = _acquired.load(std::memory_order_relaxed);
+    const size_t released = _released.load(std::memory_order_relaxed);
+    return acquired - released;
+  }
   size_t capacity() const { return Capacity; }
-  size_t exhaustionCount() const { return _exhaustionCount; }
-  size_t acquireCount() const { return _acquired; }
-  size_t releaseCount() const { return _released; }
+  size_t exhaustionCount() const { return _exhaustionCount.load(std::memory_order_relaxed); }
+  size_t acquireCount() const { return _acquired.load(std::memory_order_relaxed); }
+  size_t releaseCount() const { return _released.load(std::memory_order_relaxed); }
 
  private:
+  uint32_t indexOf(const T* obj) const noexcept
+  {
+    return static_cast<uint32_t>(reinterpret_cast<const Storage*>(obj) - &_slots[0]);
+  }
+
+  T* popSlot() noexcept
+  {
+    const uint32_t index = _freelist.pop();
+    if (index == memory::IndexFreelist<Capacity>::kNull)
+    {
+      return nullptr;
+    }
+    T* obj = std::launder(reinterpret_cast<T*>(&_slots[index]));
+    obj->resetRefCount();
+    obj->setPool(this);
+    return obj;
+  }
+
   struct alignas(alignof(T)) Storage
   {
     std::byte data[sizeof(T)];
@@ -246,14 +290,23 @@ class Pool
   Storage _slots[Capacity];
 
   std::array<std::byte, 128 * 1024> _buffer;
+  memory::CountingResource _upstream;
   std::pmr::monotonic_buffer_resource _arena;
-  std::pmr::unsynchronized_pool_resource _pool;
+  // Synchronized, not unsynchronized: pooled events are filled by whichever
+  // thread acquired them, so two publishers growing their own event's vectors
+  // hit this one resource concurrently -- with the unsynchronized variant they
+  // could be handed the same block. The mutex is only touched when a vector
+  // actually grows; after prewarm() the steady state never allocates, so the
+  // hot path does not pay for it. Every call the pool makes into _arena also
+  // happens under that mutex, which is what makes the non-thread-safe
+  // monotonic arena underneath safe to share.
+  std::pmr::synchronized_pool_resource _pool;
 
-  SPSCQueue<T*, Capacity + 1> _queue;
+  memory::IndexFreelist<Capacity> _freelist;
 
-  size_t _acquired = 0;
-  size_t _released = 0;
-  size_t _exhaustionCount = 0;
+  std::atomic<size_t> _acquired{0};
+  std::atomic<size_t> _released{0};
+  std::atomic<size_t> _exhaustionCount{0};
   ExhaustionCallback _exhaustionCb = nullptr;
 };
 

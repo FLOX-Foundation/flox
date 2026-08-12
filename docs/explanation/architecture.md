@@ -351,7 +351,7 @@ See [Control engine over MCP](../how-to/mcp-control-plane.md) and [MCP control p
 
 ## Next Steps
 
-- [The Disruptor Pattern](disruptor.md) — Deep dive into event delivery
+- [The Disruptor Pattern](disruptor.md) — How event delivery works
 - [Memory Model](memory-model.md) — Zero-allocation design
 - [MCP control plane](mcp-control-plane.md) — scoped AI control over the engine
 - [First Strategy](../tutorials/first-strategy.md) — Write your first strategy

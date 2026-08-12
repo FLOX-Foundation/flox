@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <cassert>
+
 #include "flox/position/position_aggregation_mode.h"
 #include "flox/position/position_group.h"
 #include "flox/position/position_reconciler.h"
@@ -231,24 +233,19 @@ class MultiModePositionTracker : public IPositionManager
     return pos.raw() < 0 ? Quantity::fromRaw(-pos.raw()) : Quantity{};
   }
 
+  // Route through snapshotUnlocked, which handles all three modes. The old
+  // code dereferenced _netStates unconditionally, which is nullptr in GROUPED
+  // mode (the ctor allocates exactly one of the three state containers).
   Price getLongAvgEntry(SymbolId symbol) const
   {
     std::lock_guard<std::mutex> lock(_mutex);
-    if (_mode == PositionAggregationMode::PER_SIDE)
-    {
-      return (*_perSideStates)[symbol].longAvgEntryPrice();
-    }
-    return (*_netStates)[symbol].avgEntryPrice();
+    return snapshotUnlocked(symbol).longAvgEntry;
   }
 
   Price getShortAvgEntry(SymbolId symbol) const
   {
     std::lock_guard<std::mutex> lock(_mutex);
-    if (_mode == PositionAggregationMode::PER_SIDE)
-    {
-      return (*_perSideStates)[symbol].shortAvgEntryPrice();
-    }
-    return (*_netStates)[symbol].avgEntryPrice();
+    return snapshotUnlocked(symbol).shortAvgEntry;
   }
 
   Volume getUnrealizedPnl(SymbolId symbol, Price currentPrice) const
@@ -256,19 +253,31 @@ class MultiModePositionTracker : public IPositionManager
     return snapshot(symbol).unrealizedPnl(currentPrice);
   }
 
+  // group accessors are only valid in GROUPED mode (_groups is nullptr in
+  // NET/PER_SIDE). Assert rather than deref null so misuse fails loudly.
   LockedRef<PositionGroupTracker> lockedGroups()
   {
+    assert(_groups && "lockedGroups() requires GROUPED aggregation mode");
     return {_mutex, *_groups};
   }
 
   LockedConstRef<PositionGroupTracker> lockedGroups() const
   {
+    assert(_groups && "lockedGroups() requires GROUPED aggregation mode");
     return {_mutex, *_groups};
   }
 
   // Raw access (caller must ensure thread safety)
-  PositionGroupTracker& groups() { return *_groups; }
-  const PositionGroupTracker& groups() const { return *_groups; }
+  PositionGroupTracker& groups()
+  {
+    assert(_groups && "groups() requires GROUPED aggregation mode");
+    return *_groups;
+  }
+  const PositionGroupTracker& groups() const
+  {
+    assert(_groups && "groups() requires GROUPED aggregation mode");
+    return *_groups;
+  }
 
   Price getRealizedPnl(SymbolId symbol) const
   {

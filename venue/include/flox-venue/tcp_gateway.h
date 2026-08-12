@@ -16,6 +16,7 @@
 
 #include <unistd.h>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <utility>
@@ -30,7 +31,14 @@ class TcpGateway
   using Responder = std::function<void(const uint8_t*, size_t)>;
   using Handler = std::function<void(const InboundCommand&, const Responder&)>;
 
-  explicit TcpGateway(GatewaySession::Decoder decoder) : decoder_(std::move(decoder)) {}
+  // `account` is the account this endpoint serves. Every connection binds its
+  // session to it, so a client cannot act as another account by writing a
+  // different id into the payload (stampAccount forces the bound id). Run one
+  // gateway per tenant, or extend with a logon handshake for multi-tenant.
+  // account == 0 is the single-tenant-trusted mode: it trusts the
+  // client-supplied accountId and must only face a trusted local producer.
+  explicit TcpGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
+      : decoder_(std::move(decoder)), account_(account) {}
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
 
@@ -50,7 +58,7 @@ class TcpGateway
  private:
   void connLoop(int fd)
   {
-    GatewaySession session(0, decoder_);
+    GatewaySession session(account_, decoder_);
     session.authenticate(true);  // transport-level auth out of scope here
     const Responder responder = [fd](const uint8_t* p, size_t n)
     { net::writeFrame(fd, p, n); };
@@ -59,7 +67,14 @@ class TcpGateway
     while (acceptor_.running() && net::readFrame(fd, frame))
     {
       SessionReject rej{};
-      auto cmd = session.handle(frame.data(), frame.size(), ++clock_, rej);
+      // Real monotonic nanoseconds: the rate-limit windows are wall-clock. A
+      // per-connection frame counter (the old ++clock_) never advanced time, so
+      // the Nth command was limited regardless of elapsed time and the ban was
+      // permanent.
+      const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count();
+      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej);
       if (cmd)
       {
         cod.track(*cmd);
@@ -71,10 +86,10 @@ class TcpGateway
   }
 
   GatewaySession::Decoder decoder_;
+  uint64_t account_{0};
   Handler handler_;
   SocketAcceptor acceptor_;
   std::atomic<bool> cancelOnDisconnect_{false};
-  std::atomic<int64_t> clock_{0};
 };
 
 }  // namespace flox::venue

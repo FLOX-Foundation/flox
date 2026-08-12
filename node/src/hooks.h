@@ -30,6 +30,7 @@
 
 #include "flox/capi/flox_capi.h"
 
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -1150,10 +1151,10 @@ struct ReplaySourceHost
       out->trade_symbol = obj.Get("tradeSymbol").As<Napi::Number>().Uint32Value();
       out->trade_is_buy =
           obj.Get("tradeIsBuy").As<Napi::Boolean>().Value() ? 1u : 0u;
-      out->trade_price_raw = static_cast<int64_t>(
-          obj.Get("tradePrice").As<Napi::Number>().DoubleValue() * 1e8);
-      out->trade_quantity_raw = static_cast<int64_t>(
-          obj.Get("tradeQuantity").As<Napi::Number>().DoubleValue() * 1e8);
+      out->trade_price_raw = static_cast<int64_t>(std::llround(
+          obj.Get("tradePrice").As<Napi::Number>().DoubleValue() * 1e8));
+      out->trade_quantity_raw = static_cast<int64_t>(std::llround(
+          obj.Get("tradeQuantity").As<Napi::Number>().DoubleValue() * 1e8));
       out->n_bids = 0;
       out->n_asks = 0;
       out->bids = nullptr;
@@ -1175,8 +1176,8 @@ struct ReplaySourceHost
         {
           auto pair = arr.Get(i).As<Napi::Array>();
           self->_bids_buf.push_back({
-              static_cast<int64_t>(pair.Get(uint32_t{0}).As<Napi::Number>().DoubleValue() * 1e8),
-              static_cast<int64_t>(pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue() * 1e8),
+              static_cast<int64_t>(std::llround(pair.Get(uint32_t{0}).As<Napi::Number>().DoubleValue() * 1e8)),
+              static_cast<int64_t>(std::llround(pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue() * 1e8)),
           });
         }
       }
@@ -1187,8 +1188,8 @@ struct ReplaySourceHost
         {
           auto pair = arr.Get(i).As<Napi::Array>();
           self->_asks_buf.push_back({
-              static_cast<int64_t>(pair.Get(uint32_t{0}).As<Napi::Number>().DoubleValue() * 1e8),
-              static_cast<int64_t>(pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue() * 1e8),
+              static_cast<int64_t>(std::llround(pair.Get(uint32_t{0}).As<Napi::Number>().DoubleValue() * 1e8)),
+              static_cast<int64_t>(std::llround(pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue() * 1e8)),
           });
         }
       }

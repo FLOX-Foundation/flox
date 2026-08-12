@@ -22,6 +22,20 @@ import numpy as np
 import flox_py as flox
 from flox_py.dataset import build_dataset, _register_feature
 
+try:  # pragma: no cover - environment guard
+    import pytest
+except ImportError:  # running as a plain script
+    pytest = None
+
+# The dataset builder needs the indicator-graph binding. Skip (do not error)
+# when the built module predates it, so a stale local build stays green while
+# a fresh CI build runs the real assertions below.
+from flox_py import _flox_py as _core
+_HAS_GRAPH = hasattr(_core, "IndicatorGraph")
+if pytest is not None:
+    pytestmark = pytest.mark.skipif(
+        not _HAS_GRAPH, reason="built flox_py has no IndicatorGraph (rebuild the binding)")
+
 _passed = 0
 _failed = 0
 
@@ -34,6 +48,10 @@ def check(condition, msg):
     else:
         print(f"  FAIL  {msg}")
         _failed += 1
+    # A real assertion so `pytest` actually fails on regression -- previously
+    # this only counted and the counter was inspected only under __main__, so
+    # the point-in-time / no-lookahead tests always passed under the CI runner.
+    assert condition, msg
 
 
 def synthetic_bars(n=300, seed=7):

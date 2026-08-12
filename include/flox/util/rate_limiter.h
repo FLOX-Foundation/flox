@@ -10,13 +10,15 @@
 #pragma once
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 
 namespace flox
 {
 
-/// Token bucket rate limiter
-/// Thread-safe, lock-free implementation
+/// Token bucket rate limiter.
+/// Thread-safe and lock-free (a CAS loop, so lock-free but not wait-free: a
+/// thread can retry under contention).
 class RateLimiter
 {
  public:
@@ -26,12 +28,14 @@ class RateLimiter
   struct Config
   {
     uint32_t capacity;    ///< Maximum tokens in bucket
-    uint32_t refillRate;  ///< Tokens added per second
+    uint32_t refillRate;  ///< Tokens added per second (must be > 0)
   };
 
   explicit RateLimiter(Config config)
       : _capacity(config.capacity), _refillRate(config.refillRate), _tokens(config.capacity), _lastRefill(Clock::now().time_since_epoch().count())
   {
+    // refillRate == 0 would divide by zero in refill()/timeUntilAvailable().
+    assert(config.refillRate > 0 && "RateLimiter refillRate must be > 0");
   }
 
   /// Try to acquire tokens. Returns true if successful.

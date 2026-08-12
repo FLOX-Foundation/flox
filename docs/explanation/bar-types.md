@@ -4,7 +4,7 @@ This document explains the different bar types available in Flox and when to use
 
 ## The Problem with Time Bars
 
-Traditional time-based bars (1-minute, hourly, daily) have a fundamental issue: **information content varies with market activity**.
+Traditional time-based bars (1-minute, hourly, daily) have one problem: **information content varies with market activity**.
 
 - During high activity: bars pack lots of information
 - During low activity: bars contain little information (noise)
@@ -81,7 +81,7 @@ TickBarAggregator aggregator(TickBarPolicy(100), &bus);  // 100 trades per bar
 - Statistical arbitrage
 - Eliminating time-of-day effects
 
-**Example insight**: A 100-tick bar during high volatility might span 1 second; during quiet periods, 10 minutes. But each bar represents the same amount of "market activity."
+**Example**: A 100-tick bar during high volatility might span 1 second; during quiet periods, 10 minutes. But each bar represents the same amount of "market activity."
 
 ## Volume Bars
 
@@ -209,7 +209,6 @@ HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(std::chrono::seconds(60))
 - Smoother trends, easier to identify
 - Reduces noise from individual bars
 - Bullish bars always have close > open
-- Great for visual trend analysis
 
 **Cons**:
 
@@ -225,7 +224,7 @@ HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(std::chrono::seconds(60))
 - Reducing false signals in choppy markets
 - Swing trading with trend filters
 
-**Unique property**: In a strong uptrend, Heikin-Ashi bars will show no lower wicks (or very small ones). Conversely, strong downtrends show no upper wicks. This makes trend strength immediately visible.
+**Unique property**: In a strong uptrend, Heikin-Ashi bars will show no lower wicks (or very small ones). Strong downtrends show no upper wicks.
 
 **Multi-symbol support**: The Heikin-Ashi aggregator maintains independent state per symbol, so a single aggregator instance can correctly handle multiple symbols simultaneously.
 
@@ -277,7 +276,7 @@ What matters most for your strategy?
 
 ## Multi-Timeframe with Mixed Types
 
-Combine bar types for better analysis:
+One aggregator can carry several bar types at once:
 
 ```cpp
 MultiTimeframeAggregator<4> aggregator(&bus);
@@ -306,13 +305,7 @@ The main difference is **bar frequency**, not computational overhead.
 
 ## Summary
 
-- **Time bars**: Traditional, familiar, but information-inconsistent
-- **Tick bars**: Consistent activity, good for HFT
-- **Volume bars**: Consistent economic significance
-- **Renko bars**: Noise-free trend visualization
-- **Range bars**: Volatility-normalized in absolute price units
-- **BpsRange bars**: Volatility-normalized in basis points of the open
-- **Heikin-Ashi bars**: Smoothed trends, noise reduction
+Time bars are the familiar default, at the cost of inconsistent information per bar. Tick bars hold activity constant, which is what HFT work usually wants; volume bars hold economic significance constant instead. Renko strips noise out of the trend picture. Range bars normalize volatility in absolute price units and BpsRange in basis points of the open. Heikin-Ashi smooths the trend but gives up exact prices.
 
 Choose based on what your strategy needs to hold constant: **time**, **activity**, **volume**, **price movement**, **volatility**, or **trend clarity**.
 

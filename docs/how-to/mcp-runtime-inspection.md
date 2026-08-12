@@ -6,7 +6,7 @@ The `flox-mcp` server can read positions, open orders, PnL, and the kill-switch 
 
 The MCP server is a child process the AI client spawns; the engine is a separate long-running process the user owns. They talk through a shared file: the user's app writes the engine state to a JSON snapshot at a known path, and the MCP tools read that snapshot on each query.
 
-Trade-off: snapshots are point-in-time, so the agent gets state with `snapshot_age_ms` of staleness. The tools surface this in every response so the agent knows when data is fresh and when it is not.
+Trade-off: snapshots are point-in-time, so the agent gets state with `snapshot_age_ms` of staleness. Every response carries that number.
 
 ## Snapshot path
 

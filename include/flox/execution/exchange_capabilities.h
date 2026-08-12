@@ -92,6 +92,29 @@ struct ExchangeCapabilities
     return caps;
   }
 
+  // Everything unsupported. The base IOrderExecutor advertises this so a real
+  // adapter that forgets to override capabilities() cannot claim support it
+  // lacks; the adapter opts in explicitly.
+  static ExchangeCapabilities none()
+  {
+    ExchangeCapabilities caps;
+    caps.supportsStopMarket = false;
+    caps.supportsStopLimit = false;
+    caps.supportsTakeProfitMarket = false;
+    caps.supportsTakeProfitLimit = false;
+    caps.supportsTrailingStop = false;
+    caps.supportsIceberg = false;
+    caps.supportsOCO = false;
+    caps.supportsGTC = false;
+    caps.supportsIOC = false;
+    caps.supportsFOK = false;
+    caps.supportsGTD = false;
+    caps.supportsPostOnly = false;
+    caps.supportsReduceOnly = false;
+    caps.supportsClosePosition = false;
+    return caps;
+  }
+
   static ExchangeCapabilities simulated() { return all(); }
 };
 

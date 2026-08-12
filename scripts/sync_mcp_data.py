@@ -222,6 +222,35 @@ def _sync_text(name: str, dst: Path, builder, drifts: List[str], *, check_only: 
     dst.write_bytes(new)
 
 
+def _sync_example_sources(drifts: List[str], *, check_only: bool) -> None:
+    """Copy the runnable example SOURCES (not just the index) into
+    data/docs/examples/ so `get_example` can serve them from an installed
+    wheel -- previously only the index shipped and every source read
+    'unavailable' off-checkout."""
+    dst_dir = DST_DATA / "docs" / "examples"
+    exts = (".py", ".js", ".codon", ".cpp")
+    srcs = [p for p in sorted(SRC_EXAMPLES.glob("*")) if p.suffix in exts]
+    for src in srcs:
+        dst = dst_dir / src.name
+        new = src.read_bytes()
+        if dst.exists() and dst.read_bytes() == new:
+            continue
+        if check_only:
+            drifts.append(str(dst.relative_to(REPO_ROOT)))
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(new)
+    # Drop stale bundled copies whose source was removed.
+    if dst_dir.exists():
+        keep = {s.name for s in srcs}
+        for old in dst_dir.glob("*"):
+            if old.name not in keep:
+                if check_only:
+                    drifts.append(str(old.relative_to(REPO_ROOT)) + " (stale)")
+                else:
+                    old.unlink()
+
+
 def _sync_binary(name: str, dst: Path, build_to_path, drifts: List[str], *, check_only: bool) -> None:
     """Build via a function that writes to a path; compare byte-for-byte."""
     with tempfile.TemporaryDirectory() as td:
@@ -404,6 +433,7 @@ def main(argv=None) -> int:
                _build_binding_manifest_json, drifts, check_only=args.check)
     _sync_text("examples_index.json", DST_EXAMPLES, _build_examples_json,
                drifts, check_only=args.check)
+    _sync_example_sources(drifts, check_only=args.check)
 
     # 4. Docs FTS5 index — content-equal (row set), not byte-equal.
     _sync_docs_fts(DST_FTS, drifts, check_only=args.check)

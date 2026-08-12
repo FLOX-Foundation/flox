@@ -18,7 +18,6 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <thread>
 #include <vector>
 
 namespace flox
@@ -69,8 +68,12 @@ class BacktestOptimizer
 
   size_t totalCombinations() const { return _grid.totalCombinations(); }
 
+  // Runs the grid sequentially on the calling thread. numThreads is reserved
+  // for a future parallel path and is currently ignored (the previous code
+  // logged "Using N threads" while running single-threaded, which lied).
   std::vector<OptimizationResult<ParamsT>> runLocal(size_t numThreads = 0)
   {
+    (void)numThreads;
     if (!_factory)
     {
       FLOX_LOG_ERROR("BacktestOptimizer: No factory set");
@@ -84,18 +87,7 @@ class BacktestOptimizer
       return {};
     }
 
-    FLOX_LOG_INFO("Running optimization: " << total << " parameter combinations");
-
-    if (numThreads == 0)
-    {
-      numThreads = std::thread::hardware_concurrency();
-      if (numThreads == 0)
-      {
-        numThreads = 1;
-      }
-    }
-
-    FLOX_LOG_INFO("Using " << numThreads << " threads");
+    FLOX_LOG_INFO("Running optimization: " << total << " parameter combinations (sequential)");
 
     std::vector<OptimizationResult<ParamsT>> results(total);
     _completedTasks = 0;

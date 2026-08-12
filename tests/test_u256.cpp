@@ -105,4 +105,19 @@ TEST(U256Test, Literal)
   EXPECT_EQ(1000000000000000000_u256, u256::pow10(18));
 }
 
+TEST(U256Test, ParseThrowsOnOverflow)
+{
+  // 2^256 in decimal is one past the max; parsing must throw, not wrap to 0.
+  const std::string twoPow256 =
+      "115792089237316195423570985008687907853269984665640564039457584007913129639936";
+  EXPECT_THROW(u256::fromDec(twoPow256), std::out_of_range);
+  // 2^256 - 1 (max) parses fine.
+  const std::string maxU256 =
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+  EXPECT_NO_THROW(u256::fromDec(maxU256));
+  // 65 hex digits (> 256 bits) throws.
+  EXPECT_THROW(u256::fromHex("0x1" + std::string(64, '0')), std::out_of_range);
+  EXPECT_NO_THROW(u256::fromHex("0x" + std::string(64, 'f')));
+}
+
 }  // namespace

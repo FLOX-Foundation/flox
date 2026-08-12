@@ -96,6 +96,86 @@ class MultiExecutionListener : public IOrderExecutionListener
         { l->onOrderReplaced(oldOrder, newOrder); });
   }
 
+  // Conditional-order callbacks.
+  void onOrderPendingTrigger(const Order& order) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderPendingTrigger(order); });
+  }
+
+  void onOrderTriggered(const Order& order) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderTriggered(order); });
+  }
+
+  void onTrailingStopUpdated(const Order& order, Price newTriggerPrice) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onTrailingStopUpdated(order, newTriggerPrice); });
+  }
+
+  // Queue / market-position transitions.
+  void onOrderQueuePositionChange(const Order& order, Quantity queueAhead,
+                                  Quantity queueTotal) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderQueuePositionChange(order, queueAhead, queueTotal); });
+  }
+
+  void onOrderMarketPositionChange(const Order& order, uint8_t position,
+                                   int32_t distanceToBestTicks) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderMarketPositionChange(order, position, distanceToBestTicks); });
+  }
+
+  // Replace-in-flight lifecycle.
+  void onOrderReplaceSubmitted(const Order& oldOrder, const Order& newOrder) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderReplaceSubmitted(oldOrder, newOrder); });
+  }
+
+  void onOrderReplaceAccepted(const Order& oldOrder, const Order& newOrder) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderReplaceAccepted(oldOrder, newOrder); });
+  }
+
+  void onOrderReplaceRejected(const Order& oldOrder, const Order& newOrder,
+                              const std::string& reason) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderReplaceRejected(oldOrder, newOrder, reason); });
+  }
+
+  // On-chain (DEX) lifecycle.
+  void onOrderPendingOnchain(const Order& order, const std::string& txHash) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderPendingOnchain(order, txHash); });
+  }
+
+  void onOrderReverted(const Order& order, const std::string& reason) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderReverted(order, reason); });
+  }
+
+  void onOrderGasReplaced(const Order& oldOrder, const Order& newOrder) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderGasReplaced(oldOrder, newOrder); });
+  }
+
+  // Raw OrderEvent fan-out — the hook OrderJourneyTracer relies on.
+  void onOrderEvent(const OrderEvent& ev) override
+  {
+    std::ranges::for_each(_listeners, [&](auto* l)
+                          { l->onOrderEvent(ev); });
+  }
+
  private:
   std::vector<IOrderExecutionListener*> _listeners;
 };

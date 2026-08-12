@@ -11481,6 +11481,11 @@
           "name": "CostOfHedge"
         },
         {
+          "header": "include/flox/util/memory/counting_resource.h",
+          "kind": "type",
+          "name": "CountingResource"
+        },
+        {
           "header": "include/flox/util/performance/cpu_affinity.h",
           "kind": "type",
           "name": "CpuAffinity"
@@ -11806,11 +11811,6 @@
           "name": "GridSearchResult"
         },
         {
-          "header": "include/flox/backtest/grid_search_runner.h",
-          "kind": "type",
-          "name": "GridSearchRunner"
-        },
-        {
           "header": "include/flox/execution/order_group.h",
           "kind": "type",
           "name": "GroupRiskBreach"
@@ -12071,6 +12071,11 @@
           "name": "IndexBuilderConfig"
         },
         {
+          "header": "include/flox/util/memory/freelist.h",
+          "kind": "type",
+          "name": "IndexFreelist"
+        },
+        {
           "header": "include/flox/indicator/indicator_pipeline.h",
           "kind": "type",
           "name": "IndicatorGraph"
@@ -12099,11 +12104,6 @@
           "header": "include/flox/indicator/kama.h",
           "kind": "type",
           "name": "KAMA"
-        },
-        {
-          "header": "include/flox/engine/engine_config.h",
-          "kind": "type",
-          "name": "KillSwitchConfig"
         },
         {
           "header": "include/flox/indicator/kurtosis.h",
@@ -16327,6 +16327,51 @@
         },
         {
           "kind": "method",
+          "name": "allocations",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "bytes",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "do_allocate",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "do_deallocate",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "do_is_equal",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "globalAllocations",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "globalBytes",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "totalAllocations",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
+          "name": "totalBytes",
+          "parent": "CountingResource"
+        },
+        {
+          "kind": "method",
           "name": "checkIsolatedCoreRequirements",
           "parent": "CpuAffinity"
         },
@@ -16793,6 +16838,11 @@
         {
           "kind": "method",
           "name": "all",
+          "parent": "ExchangeCapabilities"
+        },
+        {
+          "kind": "method",
+          "name": "none",
           "parent": "ExchangeCapabilities"
         },
         {
@@ -17277,16 +17327,6 @@
         },
         {
           "kind": "method",
-          "name": "optimizer",
-          "parent": "GridSearchRunner"
-        },
-        {
-          "kind": "method",
-          "name": "run",
-          "parent": "GridSearchRunner"
-        },
-        {
-          "kind": "method",
           "name": "get",
           "parent": "Handle"
         },
@@ -17313,6 +17353,16 @@
         {
           "kind": "method",
           "name": "checkHealth",
+          "parent": "HealthSweep"
+        },
+        {
+          "kind": "method",
+          "name": "consumerHealth",
+          "parent": "HealthSweep"
+        },
+        {
+          "kind": "method",
+          "name": "healthSnapshot",
           "parent": "HealthSweep"
         },
         {
@@ -18124,6 +18174,31 @@
           "kind": "method",
           "name": "removeIndex",
           "parent": "IndexBuilder"
+        },
+        {
+          "kind": "method",
+          "name": "indexOf",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "pack",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "pop",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "push",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "tagOf",
+          "parent": "IndexFreelist"
         },
         {
           "kind": "method",
@@ -19317,6 +19392,11 @@
         },
         {
           "kind": "method",
+          "name": "stepBarPrice",
+          "parent": "MarketState"
+        },
+        {
+          "kind": "method",
           "name": "timestampsFor",
           "parent": "MarketState"
         },
@@ -19642,12 +19722,27 @@
         },
         {
           "kind": "method",
+          "name": "onOrderEvent",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderExpired",
           "parent": "MultiExecutionListener"
         },
         {
           "kind": "method",
           "name": "onOrderFilled",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderGasReplaced",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderMarketPositionChange",
           "parent": "MultiExecutionListener"
         },
         {
@@ -19662,7 +19757,37 @@
         },
         {
           "kind": "method",
+          "name": "onOrderPendingOnchain",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderPendingTrigger",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderQueuePositionChange",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderRejected",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderReplaceAccepted",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderReplaceRejected",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderReplaceSubmitted",
           "parent": "MultiExecutionListener"
         },
         {
@@ -19672,7 +19797,22 @@
         },
         {
           "kind": "method",
+          "name": "onOrderReverted",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderSubmitted",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onOrderTriggered",
+          "parent": "MultiExecutionListener"
+        },
+        {
+          "kind": "method",
+          "name": "onTrailingStopUpdated",
           "parent": "MultiExecutionListener"
         },
         {
@@ -20382,6 +20522,11 @@
         },
         {
           "kind": "method",
+          "name": "onExpired",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
           "name": "onFilled",
           "parent": "OrderTracker"
         },
@@ -20807,6 +20952,21 @@
         },
         {
           "kind": "method",
+          "name": "indexOf",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "popSlot",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "prewarm",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
           "name": "release",
           "parent": "Pool"
         },
@@ -20818,6 +20978,16 @@
         {
           "kind": "method",
           "name": "setExhaustionCallback",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "upstreamAllocations",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "upstreamBytes",
           "parent": "Pool"
         },
         {
@@ -23263,6 +23433,11 @@
         {
           "kind": "method",
           "name": "consumerCount",
+          "parent": "Stats"
+        },
+        {
+          "kind": "method",
+          "name": "doStop",
           "parent": "Stats"
         },
         {

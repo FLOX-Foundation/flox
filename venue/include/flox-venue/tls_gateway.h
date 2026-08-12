@@ -20,6 +20,7 @@
 
 #include <unistd.h>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <utility>
@@ -120,8 +121,10 @@ class TlsGateway
   using Responder = std::function<void(const uint8_t*, size_t)>;
   using Handler = std::function<void(const InboundCommand&, const Responder&)>;
 
-  explicit TlsGateway(GatewaySession::Decoder decoder)
-      : decoder_(std::move(decoder)), ctx_(tls::serverCtx())
+  // See TcpGateway: `account` binds each session so a client cannot spoof
+  // another account's id. account == 0 is single-tenant-trusted mode.
+  explicit TlsGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
+      : decoder_(std::move(decoder)), account_(account), ctx_(tls::serverCtx())
   {
   }
   ~TlsGateway()
@@ -159,7 +162,7 @@ class TlsGateway
       ::close(fd);
       return;
     }
-    GatewaySession session(0, decoder_);
+    GatewaySession session(account_, decoder_);
     session.authenticate(true);
     const Responder responder = [ssl](const uint8_t* p, size_t n)
     { tls::writeFrame(ssl, p, n); };
@@ -168,7 +171,12 @@ class TlsGateway
     while (acceptor_.running() && tls::readFrame(ssl, frame))
     {
       SessionReject rej{};
-      auto cmd = session.handle(frame.data(), frame.size(), ++clock_, rej);
+      // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
+      // ++clock_ frame counter never advanced time -> permanent bans.
+      const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count();
+      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej);
       if (cmd)
       {
         cod.track(*cmd);
@@ -182,11 +190,11 @@ class TlsGateway
   }
 
   GatewaySession::Decoder decoder_;
+  uint64_t account_{0};
   SSL_CTX* ctx_{nullptr};
   Handler handler_;
   SocketAcceptor acceptor_;
   std::atomic<bool> cancelOnDisconnect_{false};
-  std::atomic<int64_t> clock_{0};
 };
 
 }  // namespace flox::venue

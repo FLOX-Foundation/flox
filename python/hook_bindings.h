@@ -175,11 +175,11 @@ inline FloxOrder cOrderFromPy(const PyOrder& po)
     flags |= 0x04;
   }
   o.flags = flags;
-  o.price_raw = static_cast<int64_t>(po.price * 1e8);
-  o.quantity_raw = static_cast<int64_t>(po.quantity * 1e8);
-  o.filled_quantity_raw = static_cast<int64_t>(po.filled_quantity * 1e8);
-  o.trigger_price_raw = static_cast<int64_t>(po.trigger_price * 1e8);
-  o.trailing_offset_raw = static_cast<int64_t>(po.trailing_offset * 1e8);
+  o.price_raw = static_cast<int64_t>(std::llround((po.price) * 1e8));
+  o.quantity_raw = static_cast<int64_t>(std::llround((po.quantity) * 1e8));
+  o.filled_quantity_raw = static_cast<int64_t>(std::llround((po.filled_quantity) * 1e8));
+  o.trigger_price_raw = static_cast<int64_t>(std::llround((po.trigger_price) * 1e8));
+  o.trailing_offset_raw = static_cast<int64_t>(std::llround((po.trailing_offset) * 1e8));
   o.created_at_ns = po.created_at_ns;
   o.exchange_ts_ns = po.exchange_ts_ns;
   return o;
@@ -739,8 +739,8 @@ inline uint8_t replayNextBridge(void* ud, FloxReplayEvent* out)
       out->type = 1;
       out->trade_symbol = ev.trade_symbol;
       out->trade_is_buy = ev.trade_is_buy ? 1 : 0;
-      out->trade_price_raw = static_cast<int64_t>(ev.trade_price * 1e8);
-      out->trade_quantity_raw = static_cast<int64_t>(ev.trade_quantity * 1e8);
+      out->trade_price_raw = static_cast<int64_t>(std::llround((ev.trade_price ) * 1e8));
+      out->trade_quantity_raw = static_cast<int64_t>(std::llround((ev.trade_quantity ) * 1e8));
       out->n_bids = 0;
       out->n_asks = 0;
       out->bids = nullptr;
@@ -755,10 +755,10 @@ inline uint8_t replayNextBridge(void* ud, FloxReplayEvent* out)
       buf.bids.reserve(ev.bids.size());
       buf.asks.reserve(ev.asks.size());
       for (const auto& [p, q] : ev.bids){
-        buf.bids.push_back({static_cast<int64_t>(p * 1e8), static_cast<int64_t>(q * 1e8)});
+        buf.bids.push_back({static_cast<int64_t>(std::llround((p ) * 1e8)), static_cast<int64_t>(std::llround((q ) * 1e8))});
 }
       for (const auto& [p, q] : ev.asks){
-        buf.asks.push_back({static_cast<int64_t>(p * 1e8), static_cast<int64_t>(q * 1e8)});
+        buf.asks.push_back({static_cast<int64_t>(std::llround((p ) * 1e8)), static_cast<int64_t>(std::llround((q ) * 1e8))});
 }
       out->n_bids = static_cast<uint32_t>(buf.bids.size());
       out->n_asks = static_cast<uint32_t>(buf.asks.size());

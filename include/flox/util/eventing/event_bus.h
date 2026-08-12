@@ -156,6 +156,41 @@ class EventBus : public ISubsystem
     uint32_t dead{0};
   };
 
+  // Level-triggered query: the last observed health of one consumer, readable
+  // at any time (including after stop()), unlike the edge-triggered callback
+  // and unlike checkHealth() which returns an empty sweep once stopped. A
+  // supervisor that starts after a consumer already stalled uses this to ask
+  // "who is unhealthy right now".
+  ConsumerHealth consumerHealth(uint32_t consumerIndex) const
+  {
+    if (consumerIndex >= MaxConsumers)
+    {
+      return ConsumerHealth::HEALTHY;
+    }
+    return _healthBook[consumerIndex].state;
+  }
+
+  // Counts from the last recorded per-consumer states, without re-sweeping and
+  // without the running-guard, so a stopped bus still reports its dead/stalled
+  // consumers.
+  HealthSweep healthSnapshot() const
+  {
+    HealthSweep sweep;
+    const uint32_t n = _consumerCount.load(std::memory_order_acquire);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      if (_healthBook[i].state == ConsumerHealth::STALLED)
+      {
+        ++sweep.stalled;
+      }
+      else if (_healthBook[i].state == ConsumerHealth::DEAD)
+      {
+        ++sweep.dead;
+      }
+    }
+    return sweep;
+  }
+
   // One health sweep over all consumers. Fires the callback on state
   // transitions. Single-checker contract: call from one thread at a time
   // (the built-in monitor thread or your own health checker, not both).
@@ -214,7 +249,11 @@ class EventBus : public ISubsystem
             _healthCfg.deadPolicy == DeadConsumerPolicy::STOP_BUS)
         {
           FLOX_LOG_ERROR("EventBus: required consumer " << i << " dead, stopping bus");
-          stop();
+          // checkHealth() runs on the monitor thread, so joining that thread
+          // here (as full stop() does) would join self -> terminate. Stop
+          // everything EXCEPT the monitor thread; it exits its own loop when
+          // it sees _running==false, and is joined later by stop()/dtor.
+          doStop(/*joinMonitor=*/false);
           return sweep;
         }
       }
@@ -401,14 +440,31 @@ class EventBus : public ISubsystem
     }
   }
 
-  void stop() override
+  void stop() override { doStop(/*joinMonitor=*/true); }
+
+ private:
+  // joinMonitor=false is the path taken when checkHealth() (running ON the
+  // monitor thread) trips DeadConsumerPolicy::STOP_BUS: resetting the monitor
+  // jthread from within its own body would join self and terminate. The
+  // monitor loop exits on its own once _running is false; its thread is joined
+  // later by a subsequent stop() or by the destructor.
+  void doStop(bool joinMonitor)
   {
     if (!_running.exchange(false, std::memory_order_acq_rel))
     {
+      // Already stopping; still make sure the monitor thread is joined if a
+      // real stop()/dtor asks for it (the STOP_BUS path left it dangling).
+      if (joinMonitor)
+      {
+        _monitorThread.reset();
+      }
       return;
     }
 
-    _monitorThread.reset();
+    if (joinMonitor)
+    {
+      _monitorThread.reset();
+    }
 
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
@@ -427,6 +483,7 @@ class EventBus : public ISubsystem
     _cachedMinConsumed.store(-1, std::memory_order_relaxed);
   }
 
+ public:
   int64_t publish(const Event& ev) { return do_publish(ev, std::nullopt).second; }
   int64_t publish(Event&& ev) { return do_publish(std::move(ev), std::nullopt).second; }
 
