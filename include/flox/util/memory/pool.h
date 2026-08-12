@@ -292,7 +292,15 @@ class Pool
   std::array<std::byte, 128 * 1024> _buffer;
   memory::CountingResource _upstream;
   std::pmr::monotonic_buffer_resource _arena;
-  std::pmr::unsynchronized_pool_resource _pool;
+  // Synchronized, not unsynchronized: pooled events are filled by whichever
+  // thread acquired them, so two publishers growing their own event's vectors
+  // hit this one resource concurrently -- with the unsynchronized variant they
+  // could be handed the same block. The mutex is only touched when a vector
+  // actually grows; after prewarm() the steady state never allocates, so the
+  // hot path does not pay for it. Every call the pool makes into _arena also
+  // happens under that mutex, which is what makes the non-thread-safe
+  // monotonic arena underneath safe to share.
+  std::pmr::synchronized_pool_resource _pool;
 
   memory::IndexFreelist<Capacity> _freelist;
 

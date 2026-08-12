@@ -80,7 +80,12 @@ TEST(PoolConcurrentRelease, TwoPublishersShareOneBusAndPool)
             auto& ev = **handle;
             ev.update.symbol = static_cast<SymbolId>(p);
             ev.update.type = BookUpdateType::DELTA;
-            for (int level = 0; level < 4; ++level)
+            // Vary the depth so the pooled vectors keep reallocating. Both
+            // publishers then hit the pool's shared pmr resource concurrently,
+            // which is the second half of this bug: an unsynchronized resource
+            // can hand the same block to two threads.
+            const int depth = 1 + (i % 48);
+            for (int level = 0; level < depth; ++level)
             {
               ev.update.bids.emplace_back(Price::fromDouble(100.0 - level),
                                           Quantity::fromDouble(1.0));
