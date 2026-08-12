@@ -12071,6 +12071,11 @@
           "name": "IndexBuilderConfig"
         },
         {
+          "header": "include/flox/util/memory/freelist.h",
+          "kind": "type",
+          "name": "IndexFreelist"
+        },
+        {
           "header": "include/flox/indicator/indicator_pipeline.h",
           "kind": "type",
           "name": "IndicatorGraph"
@@ -18172,6 +18177,31 @@
         },
         {
           "kind": "method",
+          "name": "indexOf",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "pack",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "pop",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "push",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
+          "name": "tagOf",
+          "parent": "IndexFreelist"
+        },
+        {
+          "kind": "method",
           "name": "addNode",
           "parent": "IndicatorGraph"
         },
@@ -20918,6 +20948,16 @@
         {
           "kind": "method",
           "name": "inUse",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "indexOf",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "popSlot",
           "parent": "Pool"
         },
         {
