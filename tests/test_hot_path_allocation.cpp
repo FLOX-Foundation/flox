@@ -26,6 +26,10 @@
 #include <memory>
 #include <new>
 
+#if defined(_MSC_VER)
+#include <malloc.h>  // _aligned_malloc / _aligned_free
+#endif
+
 namespace
 {
 
@@ -100,6 +104,32 @@ void* operator new(size_t bytes)
   return p;
 }
 
+namespace
+{
+
+// MSVC's CRT has no std::aligned_alloc, and memory from _aligned_malloc must
+// go back through _aligned_free rather than free().
+void* alignedAlloc(size_t bytes, size_t align)
+{
+#if defined(_MSC_VER)
+  return _aligned_malloc(bytes, align);
+#else
+  const size_t rounded = ((bytes + align - 1) / align) * align;
+  return std::aligned_alloc(align, rounded);
+#endif
+}
+
+void alignedFree(void* p) noexcept
+{
+#if defined(_MSC_VER)
+  _aligned_free(p);
+#else
+  std::free(p);
+#endif
+}
+
+}  // namespace
+
 // pmr resources allocate through the aligned overload; counting only the
 // plain one is how this guard silently measured nothing at first.
 void* operator new(size_t bytes, std::align_val_t align)
@@ -108,10 +138,7 @@ void* operator new(size_t bytes, std::align_val_t align)
   {
     g_allocations.fetch_add(1, std::memory_order_relaxed);
   }
-  void* p = std::aligned_alloc(static_cast<size_t>(align),
-                               ((bytes + static_cast<size_t>(align) - 1) /
-                                static_cast<size_t>(align)) *
-                                   static_cast<size_t>(align));
+  void* p = alignedAlloc(bytes, static_cast<size_t>(align));
   if (!p)
   {
     throw std::bad_alloc();
@@ -121,8 +148,8 @@ void* operator new(size_t bytes, std::align_val_t align)
 
 void operator delete(void* p) noexcept { std::free(p); }
 void operator delete(void* p, size_t) noexcept { std::free(p); }
-void operator delete(void* p, std::align_val_t) noexcept { std::free(p); }
-void operator delete(void* p, size_t, std::align_val_t) noexcept { std::free(p); }
+void operator delete(void* p, std::align_val_t) noexcept { alignedFree(p); }
+void operator delete(void* p, size_t, std::align_val_t) noexcept { alignedFree(p); }
 
 TEST(HotPathAllocation, SteadyStatePublishDoesNotAllocate)
 {
