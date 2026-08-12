@@ -576,11 +576,30 @@ jobs:
     - name: Install ninja
       run: choco install ninja -y
 
+    # Every one of these three steps reaches the network, and all three have
+    # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
+    # backoff, and cap the step so a hung download fails in minutes instead of
+    # sitting at the job's default limit.
     - name: Install vcpkg dependencies
+      timeout-minutes: 25
+      shell: pwsh
       run: |
-        git clone https://github.com/microsoft/vcpkg.git
-        .\vcpkg\bootstrap-vcpkg.bat
-        .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows
+        $ErrorActionPreference = 'Continue'
+        function Invoke-WithRetry {
+          param([string]$What, [int]$Attempts, [scriptblock]$Action)
+          for ($i = 1; $i -le $Attempts; $i++) {
+            & $Action
+            if ($LASTEXITCODE -eq 0) { return }
+            Write-Host "::warning::$What failed (attempt $i/$Attempts, exit $LASTEXITCODE)"
+            if ($i -lt $Attempts) { Start-Sleep -Seconds (20 * $i) }
+          }
+          Write-Host "::error::$What failed after $Attempts attempts"
+          exit 1
+        }
+        if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
+        Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
+        Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
+        Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows }
 
     - name: Configure
       run: |
@@ -635,11 +654,30 @@ jobs:
     - name: Install dependencies
       run: choco install ninja llvm -y
 
+    # Every one of these three steps reaches the network, and all three have
+    # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
+    # backoff, and cap the step so a hung download fails in minutes instead of
+    # sitting at the job's default limit.
     - name: Install vcpkg dependencies
+      timeout-minutes: 25
+      shell: pwsh
       run: |
-        git clone https://github.com/microsoft/vcpkg.git
-        .\vcpkg\bootstrap-vcpkg.bat
-        .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows
+        $ErrorActionPreference = 'Continue'
+        function Invoke-WithRetry {
+          param([string]$What, [int]$Attempts, [scriptblock]$Action)
+          for ($i = 1; $i -le $Attempts; $i++) {
+            & $Action
+            if ($LASTEXITCODE -eq 0) { return }
+            Write-Host "::warning::$What failed (attempt $i/$Attempts, exit $LASTEXITCODE)"
+            if ($i -lt $Attempts) { Start-Sleep -Seconds (20 * $i) }
+          }
+          Write-Host "::error::$What failed after $Attempts attempts"
+          exit 1
+        }
+        if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
+        Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
+        Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
+        Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows }
 
     - name: Configure with clang-cl
       run: |
