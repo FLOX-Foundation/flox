@@ -6,8 +6,15 @@ import logging
 from typing import Any
 
 import mcp.server.stdio
-from mcp.server import Server
-from mcp.types import TextContent, Tool
+from mcp.server.lowlevel import Server
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 from .tools import (
     analytics,
@@ -37,9 +44,8 @@ def build_server() -> Server:
     """Construct the MCP server with all registered tools."""
     server = Server("flox-mcp")
 
-    @server.list_tools()
-    async def _list_tools() -> list[Tool]:
-        return [
+    async def _list_tools(ctx: Any, params: PaginatedRequestParams | None) -> ListToolsResult:
+        return ListToolsResult(tools=[
             Tool(
                 name="flox_venue_guide",
                 description=(
@@ -1204,10 +1210,11 @@ def build_server() -> Server:
                     },
                 },
             ),
-        ]
+        ])
 
-    @server.call_tool()
-    async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    async def _call_tool(ctx: Any, params: CallToolRequestParams) -> CallToolResult:
+        name = params.name
+        arguments = params.arguments or {}
         try:
             if name == "flox_overview":
                 text = overview.flox_overview()
@@ -1425,8 +1432,10 @@ def build_server() -> Server:
             log.exception("tool %s failed", name)
             text = f"flox-mcp error: {type(exc).__name__}: {exc}"
 
-        return [TextContent(type="text", text=text)]
+        return CallToolResult(content=[TextContent(type="text", text=text)])
 
+    server.add_request_handler("tools/list", PaginatedRequestParams, _list_tools)
+    server.add_request_handler("tools/call", CallToolRequestParams, _call_tool)
     return server
 
 

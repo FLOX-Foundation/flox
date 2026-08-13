@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "mcp>=1.0",
+    "mcp>=2.0,<3",
     "flox-py>=0.5",
 ]
 

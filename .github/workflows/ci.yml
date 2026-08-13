@@ -95,14 +95,19 @@ jobs:
         # to be present in this job for --check to run end-to-end.
         python3 -m pip install --break-system-packages libclang pyyaml
         python3 scripts/sync_mcp_data.py --check
+    - name: Dependency ranges match between package and CI
+      # flox-mcp shipped `mcp>=1.0` while this file installed `mcp>=1.0,<2`, so
+      # CI was green on 1.x and users got the 2.0 SDK, which crashes on start.
+      run: python3 scripts/check_dep_pins.py
+
     - name: flox-mcp unit tests
       # `mcp` was never installed, so flox_mcp.server was unimportable and
       # nothing tested the 38 tool schemas or the dispatch chain that has to
       # match them. test_tool_dispatch.py needs it.
       run: |
-        # Pinned below 2.0: the 2.x SDK dropped the @server.list_tools() /
-        # @server.call_tool() decorators this server is built on.
-        python3 -m pip install --break-system-packages pytest "mcp>=1.0,<2"
+        # Keep this range identical to mcp/pyproject.toml; check_dep_pins.py
+        # enforces that.
+        python3 -m pip install --break-system-packages pytest "mcp>=2.0,<3"
         python3 -m pytest mcp/tests/ -q
 
   linux-gcc:

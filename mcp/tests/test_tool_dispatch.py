@@ -30,17 +30,19 @@ from flox_mcp.server import build_server  # noqa: E402
 
 
 def _handlers() -> tuple[Any, Any]:
+    # mcp 2.0 stores handlers by method string in HandlerEntry records, keyed
+    # off the wire method rather than the request class.
     server = build_server()
-    return (server.request_handlers[mcp_types.ListToolsRequest],
-            server.request_handlers[mcp_types.CallToolRequest])
+    return (server.get_request_handler("tools/list").handler,
+            server.get_request_handler("tools/call").handler)
 
 
 def _tool_names() -> list[str]:
     list_tools, _ = _handlers()
 
     async def go() -> list[str]:
-        res = await list_tools(mcp_types.ListToolsRequest(method="tools/list"))
-        return [t.name for t in res.root.tools]
+        res = await list_tools(None, None)
+        return [t.name for t in res.tools]
 
     return asyncio.run(go())
 
@@ -49,13 +51,9 @@ def _call(name: str, arguments: dict[str, Any] | None = None) -> str:
     _, call_tool = _handlers()
 
     async def go() -> str:
-        req = mcp_types.CallToolRequest(
-            method="tools/call",
-            params=mcp_types.CallToolRequestParams(
-                name=name, arguments=arguments or {}),
-        )
-        res = await call_tool(req)
-        parts = res.root.content
+        params = mcp_types.CallToolRequestParams(name=name, arguments=arguments or {})
+        res = await call_tool(None, params)
+        parts = res.content
         return "\n".join(getattr(p, "text", "") for p in parts)
 
     return asyncio.run(go())
