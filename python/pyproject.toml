@@ -54,7 +54,7 @@ classifiers = [
 [project.optional-dependencies]
 ccxt = ["ccxt[pro]>=4.0"]
 mlflow = ["mlflow>=2.0"]
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=2.0,<3"]
 
 [project.urls]
 Homepage = "https://flox-foundation.github.io/flox/"
