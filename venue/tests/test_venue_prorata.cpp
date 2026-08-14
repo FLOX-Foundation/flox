@@ -162,6 +162,49 @@ void run(const std::function<Book()>& mk, const char* label)
     CHECK(cap.total() == qty(16));
     CHECK(eng.book().empty());
   }
+  {  // defensive: a lastLook maker planted PAST validate() is skipped, not
+     // filled as firm -- pro-rata cannot hold a slice, so filling it would
+     // fake firmness the maker never granted. The counter records the event;
+     // the allocation over the firm participants is unchanged.
+    Cap cap;
+    Matcher<Book> m(MatchPolicy::ProRata);
+    Book book = mk();
+    RestingOrder ll{1, 1, px(100), qty(5), Side::SELL};
+    ll.lastLook = true;  // only possible here by bypassing admission
+    book.addResting(Side::SELL, ll);
+    book.addResting(Side::SELL, RestingOrder{2, 1, px(100), qty(2), Side::SELL});
+    book.addResting(Side::SELL, RestingOrder{3, 1, px(100), qty(3), Side::SELL});
+    uint64_t seq = 0;
+    const NewOrder agg = limit(9, Side::BUY, 100, 4, 2);
+    const MatchOutcome out = m.cross(agg, book, [&]
+                                     { return ++seq; }, cap.sink());
+    CHECK(cap.forMaker(1).isZero());     // the LL maker never fills
+    CHECK(cap.forMaker(2) == qty(1.6));  // 4 pro-rata over firm 2/3
+    CHECK(cap.forMaker(3) == qty(2.4));
+    CHECK(cap.total() == qty(4));
+    CHECK(out.takerComplete);
+    CHECK(m.skippedLastLookProRata() >= 1);  // defensive path counted
+    CHECK(book.find(1) != nullptr);
+    CHECK(book.find(1)->leaves == qty(5));  // LL maker untouched on the book
+  }
+  {  // defensive: a level that is ONLY lastLook liquidity stops the sweep --
+     // the aggressor residual follows its TIF instead of faking a fill
+    Cap cap;
+    Matcher<Book> m(MatchPolicy::ProRata);
+    Book book = mk();
+    RestingOrder ll{1, 1, px(100), qty(5), Side::SELL};
+    ll.lastLook = true;
+    book.addResting(Side::SELL, ll);
+    uint64_t seq = 0;
+    const NewOrder agg = limit(9, Side::BUY, 100, 4, 2);
+    const MatchOutcome out = m.cross(agg, book, [&]
+                                     { return ++seq; }, cap.sink());
+    CHECK(cap.trades() == 0);
+    CHECK(out.leaves == qty(4));
+    CHECK(out.residualRests);  // GTC residual rests as usual
+    CHECK(m.skippedLastLookProRata() >= 1);
+    CHECK(book.find(1)->leaves == qty(5));
+  }
 }
 
 }  // namespace

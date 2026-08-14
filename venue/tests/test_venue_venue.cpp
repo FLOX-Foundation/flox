@@ -13,8 +13,8 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/metrics.h"
-#include "flox-venue/resend_buffer.h"
 #include "flox-venue/sbe_order_entry_codec.h"
+#include "flox-venue/session_registry.h"
 
 #include "flox/backtest/fee_schedule.h"
 
@@ -23,7 +23,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 using namespace flox;
@@ -77,6 +80,20 @@ NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct)
   return o;
 }
 
+// Balance genesis as journaled commands: every replay below starts from an
+// EMPTY ledger and rebuilds balances from the stream itself.
+std::vector<std::pair<int64_t, InboundCommand>> genesis()
+{
+  std::vector<std::pair<int64_t, InboundCommand>> g;
+  int64_t ts = 1;
+  for (uint64_t a = 1; a <= 3; ++a)
+  {
+    g.emplace_back(ts++, InboundCommand{Deposit{a, BASE, static_cast<int64_t>(base(1000)), SYM}});
+    g.emplace_back(ts++, InboundCommand{Deposit{a, QUOTE, static_cast<int64_t>(quote(100000)), SYM}});
+  }
+  return g;
+}
+
 // A representative session of order flow (crossing pairs + a cancel).
 std::vector<std::pair<int64_t, InboundCommand>> session()
 {
@@ -90,13 +107,10 @@ std::vector<std::pair<int64_t, InboundCommand>> session()
   return s;
 }
 
+// Replay from an EMPTY ledger: deposits are part of `cmds` (genesis in the
+// WAL), so no manual seeding happens here.
 uint64_t runReplay(const std::vector<std::pair<int64_t, InboundCommand>>& cmds, Ledger& led)
 {
-  for (int a = 1; a <= 3; ++a)
-  {
-    led.deposit(a, BASE, base(1000));
-    led.deposit(a, QUOTE, quote(100000));
-  }
   uint64_t h = 1469598103934665603ULL;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { h = hashEvent(h, e); });
@@ -119,19 +133,15 @@ void test_auction_recovery()
 {
   std::printf("test_auction_recovery\n");
   const std::string jpath = "/tmp/flox_test_venue_venue_auction_journal.bin";
-  std::vector<std::pair<int64_t, InboundCommand>> cmds;
+  std::vector<std::pair<int64_t, InboundCommand>> cmds = genesis();  // deposits in the stream
   cmds.emplace_back(10, InboundCommand{AdminCmd{SYM, AdminAction::BeginPreOpen}});
   cmds.emplace_back(20, InboundCommand{limit(1, Side::SELL, 100, 5, 1)});             // accumulate (no match)
   cmds.emplace_back(30, InboundCommand{limit(2, Side::BUY, 100, 5, 2)});              // crossed book in pre-open
   cmds.emplace_back(40, InboundCommand{AdminCmd{SYM, AdminAction::OpenContinuous}});  // uncross @100
 
   // Live run: journal every command, hash the event stream, count trades.
+  // The ledger starts empty; the genesis deposits fund it through the stream.
   Ledger liveLed;
-  for (int a = 1; a <= 3; ++a)
-  {
-    liveLed.deposit(a, BASE, base(1000));
-    liveLed.deposit(a, QUOTE, quote(100000));
-  }
   Journal jr(jpath);
   uint64_t liveHash = 1469598103934665603ULL;
   int liveTrades = 0;
@@ -148,15 +158,12 @@ void test_auction_recovery()
   jr.flush();
   CHECK(liveTrades > 0);  // the uncross produced fills -> AdminCmd(OpenContinuous) dispatched
 
-  // Recovery: replay the journal into a fresh engine; state must match bit-for-bit.
+  // Recovery: replay the journal into a fresh engine and an EMPTY ledger;
+  // state must match bit-for-bit (deposits replay from the WAL).
   const auto replayed = Journal::loadTimed(jpath);
   CHECK(replayed.size() == cmds.size());  // AdminCmds round-tripped (not truncated at an unknown tag)
   Ledger recLed;
-  for (int a = 1; a <= 3; ++a)
-  {
-    recLed.deposit(a, BASE, base(1000));
-    recLed.deposit(a, QUOTE, quote(100000));
-  }
+  CHECK(recLed.available(1, BASE) == 0);  // nothing seeded before replay
   uint64_t recHash = 1469598103934665603ULL;
   int recTrades = 0;
   MatchingEngine<MatchingBook> reng(cfg(), [&](const OutboundEvent& e)
@@ -183,32 +190,73 @@ TEST(Venue, EngineSuite)
   test_auction_recovery();
 
   Ledger led;
-  for (int a = 1; a <= 3; ++a)
-  {
-    led.deposit(a, BASE, base(1000));
-    led.deposit(a, QUOTE, quote(100000));
-  }
   const Amount initBase = base(1000) * 3;
   const Amount initQuote = quote(100000) * 3;
 
   Metrics metrics;
-  ResendBuffer resend;
+  // Delivery/resend now lives in SessionRegistry: per-account seq + frame log,
+  // replayable via resendFrom (what the SBE ResendRequest verb serves).
+  SessionRegistry registry(DeliveryConfig{4096, 4096});
+  std::mutex wiresMutex;
+  std::unordered_map<uint64_t, std::vector<std::vector<uint8_t>>> wires;
+  const SessionRegistry::Encoder enc =
+      [](const OutboundEvent& e, uint64_t seq, int64_t, std::vector<uint8_t>& out)
+  {
+    SbeOrderEntryCodec::encode(e, out, seq);
+    return !out.empty();
+  };
+  auto attachAccount = [&](uint64_t a)
+  {
+    return registry.attach(a, enc, [&wiresMutex, &wires, a](const uint8_t* fp, size_t fn)
+                           {
+                             std::lock_guard<std::mutex> lk(wiresMutex);
+                             wires[a].emplace_back(fp, fp + fn);
+                             return true; }, [] {});
+  };
+  std::vector<std::shared_ptr<SessionWriter>> writers;
+  for (uint64_t a = 1; a <= 3; ++a)
+  {
+    writers.push_back(attachAccount(a));
+  }
+  auto frameCount = [&](uint64_t a)
+  {
+    std::lock_guard<std::mutex> lk(wiresMutex);
+    return wires[a].size();
+  };
+  auto waitFrames = [&](uint64_t a, size_t want)
+  {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (frameCount(a) < want && std::chrono::steady_clock::now() < deadline)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return frameCount(a) >= want;
+  };
   MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
   const std::string journalPath = "/tmp/flox_test_venue_venue_venue_journal.bin";
   Journal journal(journalPath);
-  const uint64_t clientSession = 7;
   uint64_t liveHash = 1469598103934665603ULL;
 
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      metrics.observe(e);
                                      md.onEvent(e);
-                                     resend.append(clientSession, e, /*ts*/ 0);
+                                     registry.route(e);
                                      liveHash = hashEvent(liveHash, e); });
   flox::FeeSchedule fs;
   fs.addTier(0.0, -1.0, 2.0);
   eng.setFeeSchedule(fs);
   eng.setLedger(&led, VENUE);
+
+  // Genesis deposits enter as sequenced commands (journaled like everything
+  // else). They are not order-entry wire, so they bypass the SBE codec: an ops
+  // channel, not a client session, originates them.
+  const auto gen = genesis();
+  for (const auto& [ts, cmd] : gen)
+  {
+    eng.submit(cmd, ts);
+    journal.append(cmd, ts);
+  }
 
   // Drive the session through the SBE order-entry wire codec, timing each submit.
   const auto cmds = session();
@@ -253,18 +301,34 @@ TEST(Venue, EngineSuite)
               (unsigned long long)metrics.trades,
               (double)metrics.volumeRaw / 1e8);
 
-  // 4. Reconnect: client had seen through seq K, resends the remainder.
-  const uint64_t total = resend.lastSeq(clientSession);
+  // 4. Reconnect: account 1 had seen through seq K; a resend replays the
+  // remainder byte-for-byte with the original per-session seqs.
+  const uint64_t total = registry.lastSeq(1);
   CHECK(total > 0);
   const uint64_t k = total / 2;
-  const auto gap = resend.resend(clientSession, k + 1);
-  CHECK(gap.size() == total - k);
-  CHECK(gap.front().seq == k + 1 && gap.back().seq == total);
+  CHECK(waitFrames(1, total));  // live delivery flushed through the writer
+  const size_t before = frameCount(1);
+  CHECK(registry.resendFrom(1, k + 1) == SessionRegistry::ResendResult::Served);
+  CHECK(waitFrames(1, before + (total - k)));
+  {
+    std::lock_guard<std::mutex> lk(wiresMutex);
+    const auto& fs1 = wires[1];
+    CHECK(fs1.size() == before + (total - k));
+    CHECK(SbeOrderEntryCodec::seqOf(fs1[before].data(), fs1[before].size()) == k + 1);
+    CHECK(SbeOrderEntryCodec::seqOf(fs1.back().data(), fs1.back().size()) == total);
+  }
+  for (uint64_t a = 1; a <= 3; ++a)
+  {
+    registry.detach(a, writers[a - 1]);
+    writers[a - 1]->stop();
+  }
 
-  // 5. Deterministic recovery: replay the journal reproduces the event stream.
+  // 5. Deterministic recovery: replay the journal (genesis + session) into an
+  // EMPTY ledger reproduces the event stream and every balance.
   const auto replayed = Journal::loadTimed(journalPath);
-  CHECK(replayed.size() == cmds.size());
+  CHECK(replayed.size() == gen.size() + cmds.size());
   Ledger recovered;
+  CHECK(recovered.available(1, BASE) == 0);  // nothing seeded before replay
   CHECK(runReplay(replayed, recovered) == liveHash);
 
   // 6. Real-money recovery: the recovered ledger balances match the live ledger

@@ -133,6 +133,65 @@ TEST(ControlPlane, EngineSuite)
   CHECK(has(api.handle(R"({"method":"bogus"})"), "unknown_method"));
   CHECK(has(api.handle(R"({"method":"halt","symbol":99,"halted":true})"), "unknown_symbol"));
 
+  // Configuration mutations forward journalable commands to the sink, so they
+  // reach the WAL and replay on restart (InstrumentRegistry::apply consumes
+  // the same records). Failed mutations must NOT forward.
+  std::printf("test_control_api_command_sink\n");
+  InstrumentRegistry reg3;
+  std::vector<InboundCommand> forwarded;
+  ControlApi api2(reg3, [&](const InboundCommand& c)
+                  { forwarded.push_back(c); });
+  CHECK(has(api2.handle(R"({"method":"listInstrument","symbol":7,"tick":0.01,"minPrice":50,"maxPrice":150})"),
+            "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"setBand","symbol":7,"minPrice":90,"maxPrice":110})"),
+            "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"setTriggerRef","symbol":7,"ref":"mark"})"), "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"halt","symbol":7,"halted":true})"), "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"halt","symbol":42,"halted":true})"), "unknown_symbol"));
+  CHECK(has(api2.handle(R"({"method":"setTriggerRef","symbol":42,"ref":"mark"})"), "unknown_symbol"));
+
+  // SnapshotNow: triggers the shard-checkpoint hook. Deliberately NOT
+  // forwarded to the command sink -- a snapshot must never become a
+  // journaled, replay-visible record (verified by the sink count below).
+  CHECK(has(api2.handle(R"({"method":"snapshotNow","symbol":7})"), "unsupported"));  // no hook yet
+  SymbolId snapSym = 0;
+  api2.setSnapshotHook([&](SymbolId s)
+                       {
+                         snapSym = s;
+                         return true; });
+  CHECK(has(api2.handle(R"({"method":"snapshotNow","symbol":7})"), "\"ok\":true"));
+  CHECK(snapSym == 7);
+  CHECK(has(api2.handle(R"({"method":"snapshotNow","symbol":42})"), "unknown_symbol"));
+
+  // setStpGroup: engine state (not registry state) -- forwarded onto the
+  // sequenced stream so it journals, snapshots and replays with matching.
+  CHECK(has(api2.handle(R"({"method":"setStpGroup","symbol":7,"account":11,"group":77})"),
+            "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"setStpGroup","symbol":42,"account":11,"group":77})"),
+            "unknown_symbol"));
+
+  CHECK(forwarded.size() == 5);  // failed halt / setTriggerRef / snapshotNow forwarded nothing
+  CHECK(std::get_if<ListInstrument>(&forwarded[0]) != nullptr);
+  CHECK(std::get_if<SetBands>(&forwarded[1]) != nullptr);
+  const auto* trigCmd = std::get_if<SetTriggerRef>(&forwarded[2]);
+  CHECK(trigCmd != nullptr && trigCmd->ref == TriggerRef::Mark && trigCmd->symbol == 7);
+  const auto* haltCmd = std::get_if<AdminCmd>(&forwarded[3]);
+  CHECK(haltCmd != nullptr && haltCmd->action == AdminAction::Halt && haltCmd->symbol == 7);
+  const auto* stpCmd = std::get_if<SetStpGroup>(&forwarded[4]);
+  CHECK(stpCmd != nullptr && stpCmd->symbol == 7 && stpCmd->account == 11 && stpCmd->group == 77);
+
+  // Replaying the forwarded commands into a FRESH registry reproduces the
+  // configuration -- the stream is the configuration store.
+  InstrumentRegistry reg4;
+  for (const auto& c : forwarded)
+  {
+    CHECK(reg4.apply(c));
+  }
+  CHECK(reg4.has(7));
+  CHECK(reg4.get(7)->minPrice == px(90) && reg4.get(7)->maxPrice == px(110));
+  CHECK(reg4.get(7)->triggerRef == TriggerRef::Mark);
+  CHECK(reg4.get(7)->halted);
+
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

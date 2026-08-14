@@ -55,7 +55,35 @@ inline SymbolId symbolOf(const InboundCommand& c) noexcept
   {
     return af->symbol;
   }
-  return std::get<AdminCmd>(c).symbol;
+  if (const auto* ad = std::get_if<AdminCmd>(&c))
+  {
+    return ad->symbol;
+  }
+  if (const auto* d = std::get_if<Deposit>(&c))
+  {
+    return d->symbol;
+  }
+  if (const auto* w = std::get_if<Withdraw>(&c))
+  {
+    return w->symbol;
+  }
+  if (const auto* li = std::get_if<ListInstrument>(&c))
+  {
+    return li->symbol;
+  }
+  if (const auto* sb = std::get_if<SetBands>(&c))
+  {
+    return sb->symbol;
+  }
+  if (const auto* st = std::get_if<SetTriggerRef>(&c))
+  {
+    return st->symbol;
+  }
+  if (const auto* tt = std::get_if<TimeTick>(&c))
+  {
+    return tt->symbol;
+  }
+  return 0;  // snapshot-only records never route by symbol (recovery-path only)
 }
 
 template <class Book = MatchingBook>

@@ -13,6 +13,7 @@
 #include "flox-venue/reject_reason.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <unordered_map>
 
@@ -96,6 +97,26 @@ struct Metrics
 
  private:
   std::unordered_map<SymbolId, std::pair<int64_t, int64_t>> scales_;
+};
+
+// Perimeter (gateway/delivery) counters. Atomics: they are bumped from
+// connection reader threads, per-session writer threads and the matching
+// thread concurrently, unlike Metrics which lives on the engine thread.
+struct GatewayCounters
+{
+  std::atomic<uint64_t> slowConsumerDisconnects{0};  // outbound queue overflow -> session dropped
+  std::atomic<uint64_t> idleDisconnects{0};          // liveness timeout -> session dropped
+  std::atomic<uint64_t> resendServed{0};             // ResendRequest served from the session log
+};
+
+// Market-data feed counters. Atomics: sendDrops is bumped on the matching
+// thread (publish path), the recovery counters on MdRecoveryServer connection
+// threads.
+struct MdCounters
+{
+  std::atomic<uint64_t> sendDrops{0};        // sendto failed/partial: datagram never left the host
+  std::atomic<uint64_t> resendServed{0};     // recovery requests answered by ring replay
+  std::atomic<uint64_t> snapshotsServed{0};  // recovery requests answered by a full snapshot
 };
 
 // Point-in-time venue state that is NOT derivable from the outbound event

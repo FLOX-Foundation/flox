@@ -12,8 +12,10 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace flox::venue
 {
@@ -21,7 +23,23 @@ namespace flox::venue
 class ControlApi
 {
  public:
-  explicit ControlApi(InstrumentRegistry& reg) : reg_(reg) {}
+  // Configuration mutations must survive a restart, so every successful
+  // mutation is also forwarded as an InboundCommand to `sink` -- the caller
+  // wires it into the sequenced/journaled path (and to the live engines). On
+  // replay, InstrumentRegistry::apply consumes the same records. A read-only
+  // deployment may omit the sink.
+  using CommandSink = std::function<void(const InboundCommand&)>;
+
+  explicit ControlApi(InstrumentRegistry& reg, CommandSink sink = {})
+      : reg_(reg), sink_(std::move(sink))
+  {
+  }
+
+  // SnapshotNow support: the hook triggers SequencedShard::checkpointNow for
+  // the symbol's shard. Deliberately NOT forwarded to the command sink -- a
+  // snapshot must never become a journaled, replay-visible record.
+  using SnapshotHook = std::function<bool(SymbolId)>;
+  void setSnapshotHook(SnapshotHook hook) { snapshotHook_ = std::move(hook); }
 
   std::string handle(const std::string& request)
   {
@@ -39,22 +57,73 @@ class ControlApi
       c.tickSize = priceOf(f, "tick");
       c.minPrice = priceOf(f, "minPrice");
       c.maxPrice = priceOf(f, "maxPrice");
-      return reg_.listInstrument(c) ? ok() : err("exists");
+      if (!reg_.listInstrument(c))
+      {
+        return err("exists");
+      }
+      forward(InboundCommand{ListInstrument{c.id, c.tickSize, c.lotSize, c.minPrice, c.maxPrice}});
+      return ok();
     }
     if (method == "halt")
     {
-      return reg_.halt(symOf(f, "symbol"), get(f, "halted") == "true") ? ok() : err("unknown_symbol");
+      const SymbolId sym = symOf(f, "symbol");
+      const bool halted = get(f, "halted") == "true";
+      if (!reg_.halt(sym, halted))
+      {
+        return err("unknown_symbol");
+      }
+      forward(InboundCommand{AdminCmd{sym, halted ? AdminAction::Halt : AdminAction::Resume}});
+      return ok();
     }
     if (method == "setBand")
     {
-      return reg_.setPriceBand(symOf(f, "symbol"), priceOf(f, "minPrice"), priceOf(f, "maxPrice"))
-                 ? ok()
-                 : err("unknown_symbol");
+      const SymbolId sym = symOf(f, "symbol");
+      const Price lo = priceOf(f, "minPrice");
+      const Price hi = priceOf(f, "maxPrice");
+      if (!reg_.setPriceBand(sym, lo, hi))
+      {
+        return err("unknown_symbol");
+      }
+      forward(InboundCommand{SetBands{sym, lo, hi}});
+      return ok();
     }
     if (method == "setTriggerRef")
     {
+      const SymbolId sym = symOf(f, "symbol");
       const TriggerRef ref = (get(f, "ref") == "mark") ? TriggerRef::Mark : TriggerRef::Last;
-      return reg_.setTriggerRef(symOf(f, "symbol"), ref) ? ok() : err("unknown_symbol");
+      if (!reg_.setTriggerRef(sym, ref))
+      {
+        return err("unknown_symbol");
+      }
+      forward(InboundCommand{SetTriggerRef{sym, ref}});
+      return ok();
+    }
+    if (method == "setStpGroup")
+    {
+      // Firm-group STP membership (group 0 removes it). Engine state, not
+      // registry state: the forwarded SetStpGroup rides the sequenced /
+      // journaled stream and is re-emitted by checkpoints, so it survives
+      // replay and recovery like every other matching-relevant mutation.
+      const SymbolId sym = symOf(f, "symbol");
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      forward(InboundCommand{SetStpGroup{sym, u64Of(f, "account"), u64Of(f, "group")}});
+      return ok();
+    }
+    if (method == "snapshotNow")
+    {
+      const SymbolId sym = symOf(f, "symbol");
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      if (!snapshotHook_)
+      {
+        return err("unsupported");
+      }
+      return snapshotHook_(sym) ? ok() : err("snapshot_failed");
     }
     if (method == "get")
     {
@@ -81,6 +150,14 @@ class ControlApi
   }
 
  private:
+  void forward(const InboundCommand& cmd)
+  {
+    if (sink_)
+    {
+      sink_(cmd);
+    }
+  }
+
   static std::string ok() { return "{\"ok\":true}"; }
   static std::string err(const char* e) { return std::string("{\"ok\":false,\"error\":\"") + e + "\"}"; }
 
@@ -102,6 +179,10 @@ class ControlApi
   static SymbolId symOf(const std::unordered_map<std::string, std::string>& f, const char* k)
   {
     return static_cast<SymbolId>(std::strtoul(get(f, k).c_str(), nullptr, 10));
+  }
+  static uint64_t u64Of(const std::unordered_map<std::string, std::string>& f, const char* k)
+  {
+    return std::strtoull(get(f, k).c_str(), nullptr, 10);
   }
   static Price priceOf(const std::unordered_map<std::string, std::string>& f, const char* k)
   {
@@ -191,6 +272,8 @@ class ControlApi
   }
 
   InstrumentRegistry& reg_;
+  CommandSink sink_;
+  SnapshotHook snapshotHook_;
 };
 
 }  // namespace flox::venue

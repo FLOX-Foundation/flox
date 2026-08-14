@@ -266,6 +266,31 @@ class LadderBook
     }
   }
 
+  // Enumerate every resting order in canonical book order: bids best-first,
+  // then asks best-first, FIFO within each level. Same seam as
+  // MatchingBook::forEachOrder -- the venue checkpoint serializer and state
+  // hash iterate through it (not a hot path).
+  template <class Fn>
+  void forEachOrder(Fn&& fn) const
+  {
+    for (int32_t l = bestBidLevel_; l >= 0; l = highestSetAtOrBelow(bidBits_, l - 1))
+    {
+      for (int32_t i = bidLevels_[static_cast<size_t>(l)].head; i >= 0;
+           i = nodes_[static_cast<size_t>(i)].next)
+      {
+        fn(nodes_[static_cast<size_t>(i)].order);
+      }
+    }
+    for (int32_t l = bestAskLevel_; l >= 0; l = lowestSetAtOrAbove(askBits_, l + 1))
+    {
+      for (int32_t i = askLevels_[static_cast<size_t>(l)].head; i >= 0;
+           i = nodes_[static_cast<size_t>(i)].next)
+      {
+        fn(nodes_[static_cast<size_t>(i)].order);
+      }
+    }
+  }
+
   std::optional<Price> bestBid() const noexcept
   {
     return bestBidLevel_ < 0 ? std::nullopt : std::optional<Price>{priceOf(bestBidLevel_)};
@@ -299,9 +324,10 @@ class LadderBook
     return total;
   }
 
-  // availableWithin, skipping makers for which skip(acct) is true. Iterates the
+  // availableWithin, skipping makers for which skip(order) is true. Iterates the
   // per-level node lists (not the aggregate totalQty) so an STP-aware FOK
-  // precheck can exclude same-scope liquidity. See MatchingBook::availableWithinExcl.
+  // precheck can exclude same-scope liquidity, and a last-look-aware one can
+  // exclude non-firm liquidity. See MatchingBook::availableWithinExcl.
   template <class Skip>
   Quantity availableWithinExcl(Side takerSide, Price limit, bool isMarket, Skip skip) const noexcept
   {
@@ -316,7 +342,7 @@ class LadderBook
              idx = nodes_[static_cast<size_t>(idx)].next)
         {
           const RestingOrder& o = nodes_[static_cast<size_t>(idx)].order;
-          if (!skip(o.accountId))
+          if (!skip(o))
           {
             total += o.leaves + o.hidden;
           }
@@ -333,7 +359,7 @@ class LadderBook
              idx = nodes_[static_cast<size_t>(idx)].next)
         {
           const RestingOrder& o = nodes_[static_cast<size_t>(idx)].order;
-          if (!skip(o.accountId))
+          if (!skip(o))
           {
             total += o.leaves + o.hidden;
           }

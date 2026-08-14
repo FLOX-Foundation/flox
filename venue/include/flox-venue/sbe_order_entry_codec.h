@@ -16,7 +16,7 @@
  * One template per message type, carrying only that type's fields.
  *
  * Direction is by templateId: inbound (client -> venue) EnterOrder/Cancel/
- * Replace use ids 1..3; outbound execution reports use ids 10..16. decode()
+ * Replace use ids 1..3; outbound execution reports use ids 10..18. decode()
  * handles the inbound side; encode() serialises either an InboundCommand or an
  * OutboundEvent.
  *
@@ -40,13 +40,34 @@ class SbeOrderEntryCodec
 {
  public:
   static constexpr uint16_t kSchemaId = 92;
-  static constexpr uint16_t kVersion = 0;
+  // Schema version 1: every OUTBOUND template gained a trailing `seq` (u64,
+  // sinceVersion=1) -- the per-session monotonic exec-report sequence number.
+  // Appending to the end of the root block (and bumping blockLength) is the
+  // SBE-sanctioned extension path: a version-0 reader skips the trailing bytes
+  // via the header's blockLength, and this version-1 decoder accepts version-0
+  // frames (their shorter blockLength simply has no seq -> seqOf returns 0).
+  // Inbound templates are unchanged.
+  // Schema version 2:
+  //  - SnapshotEnd gained a trailing `lastSeq` (u64, sinceVersion=2): the
+  //    stream's last assigned outbound seq at snapshot time, so the client
+  //    resumes gap detection from the exact point (a version-1 frame's shorter
+  //    blockLength decodes with lastSeq 0).
+  //  - New inbound SetSessionConfig (6): wire negotiation of per-session
+  //    cancel-on-disconnect (fire-and-forget, handled at the gateway).
+  //  - New outbound BalanceUpdate (21): balance change on a sequenced
+  //    Deposit/Withdraw (including a rejected withdraw).
+  static constexpr uint16_t kVersion = 2;
 
   enum class InTmpl : uint16_t
   {
     EnterOrder = 1,
     CancelOrder = 2,
     ReplaceOrder = 3,
+    // Session-layer verbs (handled by the gateway delivery layer, never
+    // forwarded to matching):
+    ResendRequest = 4,           // {fromSeq}: replay exec reports with seq >= fromSeq
+    AccountSnapshotRequest = 5,  // {}: open orders + position for the session account
+    SetSessionConfig = 6,        // {codEnabled}: per-session cancel-on-disconnect
   };
   enum class OutTmpl : uint16_t
   {
@@ -57,19 +78,35 @@ class SbeOrderEntryCodec
     Rejected = 14,
     Replaced = 15,
     Triggered = 16,
+    FillHeld = 17,      // last-look: fill held pending the maker's decision
+    FillRejected = 18,  // last-look: held fill rejected / timed out
+    // Session-layer replies (not sequenced, not in the resend log):
+    SnapshotRequired = 19,  // resend fromSeq is older than the retained log -> re-sync via snapshot
+    SnapshotEnd = 20,       // terminates a snapshot reply (position + open-order count + lastSeq)
+    BalanceUpdate = 21,     // balance change on Deposit/Withdraw (sequenced exec-report stream)
   };
 
   // Root-block lengths (bytes after the header). Must match order-entry-sbe.xml.
+  // Outbound blocks are the version-1 lengths: version-0 length + 8 (seq).
   static constexpr uint16_t kBlockEnter = 100;
   static constexpr uint16_t kBlockCancel = 20;
   static constexpr uint16_t kBlockReplace = 36;
-  static constexpr uint16_t kBlockAccepted = 30;
-  static constexpr uint16_t kBlockExecuted = 38;
-  static constexpr uint16_t kBlockTrade = 45;
-  static constexpr uint16_t kBlockCanceled = 13;
-  static constexpr uint16_t kBlockRejected = 13;
-  static constexpr uint16_t kBlockReplaced = 29;
-  static constexpr uint16_t kBlockTriggered = 20;
+  static constexpr uint16_t kBlockResendRequest = 8;
+  static constexpr uint16_t kBlockSnapshotRequest = 0;
+  static constexpr uint16_t kBlockSetSessionConfig = 1;
+  static constexpr uint16_t kBlockAccepted = 38;
+  static constexpr uint16_t kBlockExecuted = 46;
+  static constexpr uint16_t kBlockTrade = 53;
+  static constexpr uint16_t kBlockCanceled = 21;
+  static constexpr uint16_t kBlockRejected = 21;
+  static constexpr uint16_t kBlockReplaced = 37;
+  static constexpr uint16_t kBlockTriggered = 28;
+  static constexpr uint16_t kBlockFillHeld = 60;
+  static constexpr uint16_t kBlockFillRejected = 52;
+  static constexpr uint16_t kBlockSnapshotRequired = 8;
+  static constexpr uint16_t kBlockSnapshotEndV1 = 28;  // pre-lastSeq layout (schema v1)
+  static constexpr uint16_t kBlockSnapshotEnd = 36;    // v2: + trailing lastSeq (u64)
+  static constexpr uint16_t kBlockBalanceUpdate = 35;
 
   static constexpr size_t kMaxSize = sbe::kHeaderSize + kBlockEnter;
 
@@ -207,12 +244,17 @@ class SbeOrderEntryCodec
         m.accountId = sbe::getU64(b + 28);
         return InboundCommand{m};
       }
+      default:
+        break;  // session verbs (ResendRequest / AccountSnapshotRequest) are
+                // handled by the gateway delivery layer, never decoded here
     }
     return std::nullopt;  // unknown / outbound template
   }
 
   // ---- outbound: execution report -> wire ----
-  static void encode(const OutboundEvent& ev, std::vector<uint8_t>& out)
+  // `seq` is the per-session exec-report sequence number (schema v1, trailing
+  // field of every outbound root block). 0 = unsequenced (embedded/test use).
+  static void encode(const OutboundEvent& ev, std::vector<uint8_t>& out, uint64_t seq = 0)
   {
     out.clear();
     out.reserve(kMaxSize);
@@ -225,6 +267,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, a->price.raw());
       sbe::putI64(out, a->leavesQty.raw());
       sbe::putU8(out, a->restingOnBook ? 1 : 0);
+      sbe::putU64(out, seq);
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -236,6 +279,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, x->leavesQty.raw());
       sbe::putU8(out, x->aggressor ? 1 : 0);
       sbe::putU8(out, x->complete ? 1 : 0);
+      sbe::putU64(out, seq);
     }
     else if (const auto* t = std::get_if<Trade>(&ev))
     {
@@ -247,6 +291,7 @@ class SbeOrderEntryCodec
       sbe::putU64(out, t->makerId);
       sbe::putU64(out, t->takerId);
       sbe::putU8(out, static_cast<uint8_t>(t->takerSide));
+      sbe::putU64(out, seq);
     }
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
     {
@@ -254,6 +299,7 @@ class SbeOrderEntryCodec
       sbe::putU64(out, c->id);
       sbe::putU32(out, c->symbol);
       sbe::putU8(out, static_cast<uint8_t>(c->reason));
+      sbe::putU64(out, seq);
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
@@ -261,6 +307,7 @@ class SbeOrderEntryCodec
       sbe::putU64(out, j->id);
       sbe::putU32(out, j->symbol);
       sbe::putU8(out, static_cast<uint8_t>(j->reason));
+      sbe::putU64(out, seq);
     }
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {
@@ -270,6 +317,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, m->price.raw());
       sbe::putI64(out, m->leavesQty.raw());
       sbe::putU8(out, m->priorityKept ? 1 : 0);
+      sbe::putU64(out, seq);
     }
     else if (const auto* g = std::get_if<OrderTriggered>(&ev))
     {
@@ -277,9 +325,190 @@ class SbeOrderEntryCodec
       sbe::putU64(out, g->id);
       sbe::putU32(out, g->symbol);
       sbe::putI64(out, g->refPrice.raw());
+      sbe::putU64(out, seq);
     }
-    // Events without an order-entry exec-report mapping (FillHeld, FillRejected,
-    // MmpTriggered, FeeCharged, Liquidation) produce no frame.
+    else if (const auto* fh = std::get_if<FillHeld>(&ev))
+    {
+      sbe::putHeader(out, kBlockFillHeld, u16(OutTmpl::FillHeld), kSchemaId, kVersion);
+      sbe::putU64(out, fh->heldId);
+      sbe::putU32(out, fh->symbol);
+      sbe::putU64(out, fh->makerId);
+      sbe::putU64(out, fh->takerId);
+      sbe::putI64(out, fh->price.raw());
+      sbe::putI64(out, fh->qty.raw());
+      sbe::putI64(out, fh->makerDisplayAfter.raw());
+      sbe::putU64(out, seq);
+    }
+    else if (const auto* fr = std::get_if<FillRejected>(&ev))
+    {
+      sbe::putHeader(out, kBlockFillRejected, u16(OutTmpl::FillRejected), kSchemaId, kVersion);
+      sbe::putU64(out, fr->heldId);
+      sbe::putU32(out, fr->symbol);
+      sbe::putU64(out, fr->takerId);
+      sbe::putU64(out, fr->makerId);
+      sbe::putI64(out, fr->price.raw());
+      sbe::putI64(out, fr->qty.raw());
+      sbe::putU64(out, seq);
+    }
+    else if (const auto* bu = std::get_if<venue::BalanceUpdate>(&ev))
+    {
+      sbe::putHeader(out, kBlockBalanceUpdate, u16(OutTmpl::BalanceUpdate), kSchemaId, kVersion);
+      sbe::putU64(out, bu->account);
+      sbe::putU16(out, bu->asset);
+      sbe::putI64(out, bu->availableRaw);
+      sbe::putI64(out, bu->reservedRaw);
+      sbe::putU8(out, static_cast<uint8_t>(bu->reason));
+      sbe::putU64(out, seq);
+    }
+    // Events without an order-entry exec-report mapping (MmpTriggered,
+    // FeeCharged, Liquidation) produce no frame.
+  }
+
+  // Per-session seq of an outbound exec report (schema v1 trailing field).
+  // 0 for inbound templates, foreign schemas, or version-0 frames.
+  static uint64_t seqOf(const uint8_t* p, size_t n)
+  {
+    if (n < sbe::kHeaderSize)
+    {
+      return 0;
+    }
+    const sbe::Header h = sbe::readHeader(p);
+    if (h.schemaId != kSchemaId || h.version < 1 || h.templateId < 10 || h.blockLength < 8 ||
+        n < sbe::kHeaderSize + h.blockLength)
+    {
+      return 0;
+    }
+    return sbe::getU64(p + sbe::kHeaderSize + h.blockLength - 8);
+  }
+
+  // ---- session-layer verbs (gateway delivery layer, never matched) ----
+  static void encodeResendRequest(uint64_t fromSeq, std::vector<uint8_t>& out)
+  {
+    out.clear();
+    sbe::putHeader(out, kBlockResendRequest, u16(InTmpl::ResendRequest), kSchemaId, kVersion);
+    sbe::putU64(out, fromSeq);
+  }
+  static std::optional<uint64_t> decodeResendRequest(const uint8_t* p, size_t n)
+  {
+    if (n < sbe::kHeaderSize)
+    {
+      return std::nullopt;
+    }
+    const sbe::Header h = sbe::readHeader(p);
+    if (h.schemaId != kSchemaId || h.templateId != u16(InTmpl::ResendRequest) ||
+        h.blockLength < kBlockResendRequest || n < sbe::kHeaderSize + h.blockLength)
+    {
+      return std::nullopt;
+    }
+    return sbe::getU64(p + sbe::kHeaderSize);
+  }
+  // The snapshot request carries no fields: the session IS the account.
+  static void encodeSnapshotRequest(std::vector<uint8_t>& out)
+  {
+    out.clear();
+    sbe::putHeader(out, kBlockSnapshotRequest, u16(InTmpl::AccountSnapshotRequest), kSchemaId,
+                   kVersion);
+  }
+  static bool isSnapshotRequest(const uint8_t* p, size_t n)
+  {
+    return templateId(p, n) == u16(InTmpl::AccountSnapshotRequest);
+  }
+  // Session config (fire-and-forget): per-session cancel-on-disconnect.
+  static void encodeSetSessionConfig(bool codEnabled, std::vector<uint8_t>& out)
+  {
+    out.clear();
+    sbe::putHeader(out, kBlockSetSessionConfig, u16(InTmpl::SetSessionConfig), kSchemaId,
+                   kVersion);
+    sbe::putU8(out, codEnabled ? 1 : 0);
+  }
+  static std::optional<bool> decodeSetSessionConfig(const uint8_t* p, size_t n)
+  {
+    if (n < sbe::kHeaderSize)
+    {
+      return std::nullopt;
+    }
+    const sbe::Header h = sbe::readHeader(p);
+    if (h.schemaId != kSchemaId || h.templateId != u16(InTmpl::SetSessionConfig) ||
+        h.blockLength < kBlockSetSessionConfig || n < sbe::kHeaderSize + h.blockLength)
+    {
+      return std::nullopt;
+    }
+    return p[sbe::kHeaderSize] != 0;
+  }
+  static void encodeSnapshotRequired(uint64_t lastSeq, std::vector<uint8_t>& out)
+  {
+    out.clear();
+    sbe::putHeader(out, kBlockSnapshotRequired, u16(OutTmpl::SnapshotRequired), kSchemaId,
+                   kVersion);
+    sbe::putU64(out, lastSeq);
+  }
+  struct SnapshotEnd
+  {
+    uint64_t account{};
+    int64_t positionQtyRaw{};
+    int64_t positionEntryRaw{};
+    uint32_t openOrders{};
+    // Last assigned outbound seq of the account's exec-report stream at
+    // snapshot time (schema v2, trailing field; 0 on a v1 frame). Snapshot
+    // frames themselves are unsequenced and never in the resend log; this is
+    // the exact point the client resumes gap detection from.
+    uint64_t lastSeq{};
+  };
+  static void encodeSnapshotEnd(const SnapshotEnd& se, std::vector<uint8_t>& out)
+  {
+    out.clear();
+    sbe::putHeader(out, kBlockSnapshotEnd, u16(OutTmpl::SnapshotEnd), kSchemaId, kVersion);
+    sbe::putU64(out, se.account);
+    sbe::putI64(out, se.positionQtyRaw);
+    sbe::putI64(out, se.positionEntryRaw);
+    sbe::putU32(out, se.openOrders);
+    sbe::putU64(out, se.lastSeq);
+  }
+  static std::optional<SnapshotEnd> decodeSnapshotEnd(const uint8_t* p, size_t n)
+  {
+    if (n < sbe::kHeaderSize)
+    {
+      return std::nullopt;
+    }
+    const sbe::Header h = sbe::readHeader(p);
+    if (h.schemaId != kSchemaId || h.templateId != u16(OutTmpl::SnapshotEnd) ||
+        h.blockLength < kBlockSnapshotEndV1 || n < sbe::kHeaderSize + h.blockLength)
+    {
+      return std::nullopt;
+    }
+    const uint8_t* b = p + sbe::kHeaderSize;
+    SnapshotEnd se;
+    se.account = sbe::getU64(b + 0);
+    se.positionQtyRaw = sbe::getI64(b + 8);
+    se.positionEntryRaw = sbe::getI64(b + 16);
+    se.openOrders = sbe::getU32(b + 24);
+    if (h.blockLength >= kBlockSnapshotEnd)
+    {
+      se.lastSeq = sbe::getU64(b + 28);
+    }
+    return se;
+  }
+  // Balance change on a sequenced Deposit/Withdraw (schema v2).
+  static std::optional<venue::BalanceUpdate> decodeBalanceUpdate(const uint8_t* p, size_t n)
+  {
+    if (n < sbe::kHeaderSize)
+    {
+      return std::nullopt;
+    }
+    const sbe::Header h = sbe::readHeader(p);
+    if (h.schemaId != kSchemaId || h.templateId != u16(OutTmpl::BalanceUpdate) ||
+        h.blockLength < kBlockBalanceUpdate || n < sbe::kHeaderSize + h.blockLength)
+    {
+      return std::nullopt;
+    }
+    const uint8_t* b = p + sbe::kHeaderSize;
+    venue::BalanceUpdate bu;
+    bu.account = sbe::getU64(b + 0);
+    bu.asset = static_cast<AssetId>(sbe::getU16(b + 8));
+    bu.availableRaw = sbe::getI64(b + 10);
+    bu.reservedRaw = sbe::getI64(b + 18);
+    bu.reason = static_cast<BalanceReason>(b[26]);
+    return bu;
   }
 
  private:

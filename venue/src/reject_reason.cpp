@@ -48,6 +48,20 @@ const char* toString(RejectReason r) noexcept
       return "PositionLimitExceeded";
     case RejectReason::TooManyOpenOrders:
       return "TooManyOpenOrders";
+    case RejectReason::NotOrderOwner:
+      return "NotOrderOwner";
+    case RejectReason::DuplicateClientOrderId:
+      return "DuplicateClientOrderId";
+    case RejectReason::LastLookUnsupported:
+      return "LastLookUnsupported";
+    case RejectReason::RateLimited:
+      return "RateLimited";
+    case RejectReason::MalformedMessage:
+      return "MalformedMessage";
+    case RejectReason::Unauthenticated:
+      return "Unauthenticated";
+    case RejectReason::SessionSeqGap:
+      return "SessionSeqGap";
   }
   return "?";
 }

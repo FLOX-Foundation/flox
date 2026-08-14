@@ -123,6 +123,18 @@ class Ledger
 
   void credit(uint64_t account, AssetId asset, Amount raw) { bal(account, asset).avail += raw; }
 
+  // RECOVERY-ONLY: overwrite an (account, asset) balance with an exact signed
+  // available/reserved split (snapshot RestoreBalance application). This is a
+  // direct write, not a flow -- it deliberately bypasses the reserve/release
+  // discipline so any live moment restores bit-for-bit, including a negative
+  // wallet mid-liquidation. Never call it on the live trading path.
+  void restore(uint64_t account, AssetId asset, Amount avail, Amount rsvd)
+  {
+    Bal& b = bal(account, asset);
+    b.avail = avail;
+    b.rsvd = rsvd;
+  }
+
   // Enumerate every (account, asset, total) balance -- for reconciliation and
   // segregation reporting (compliance). Not on the hot path.
   template <class Fn>
@@ -131,6 +143,18 @@ class Ledger
     for (const auto& [k, b] : bal_)
     {
       fn(k >> 16, static_cast<AssetId>(k & 0xFFFF), b.avail + b.rsvd);
+    }
+  }
+
+  // Enumerate every (account, asset, available, reserved) balance -- for the
+  // venue checkpoint (balances serialize as totals; reserved reconstitutes by
+  // re-reservation) and its state hash. Not on the hot path.
+  template <class Fn>
+  void forEachBalanceSplit(Fn&& fn) const
+  {
+    for (const auto& [k, b] : bal_)
+    {
+      fn(k >> 16, static_cast<AssetId>(k & 0xFFFF), b.avail, b.rsvd);
     }
   }
 

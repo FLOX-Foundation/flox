@@ -62,13 +62,35 @@ class Matcher
  public:
   explicit Matcher(MatchPolicy policy = MatchPolicy::PriceTimeFifo) noexcept : policy_(policy) {}
 
+  MatchPolicy policy() const noexcept { return policy_; }
+
   using LastLookHook = std::function<void(const RestingOrder& maker, Quantity fill,
                                           const NewOrder& taker)>;
   void setLastLookHook(LastLookHook hook) { onLastLook_ = std::move(hook); }
 
   // Firm-group STP: map an account to a firm/group id so self-trade prevention
   // fires across all accounts of the same firm, not just the same account.
-  void setStpGroup(uint64_t account, uint64_t group) { stpGroup_[account] = group; }
+  // group 0 removes the membership (back to account-level STP), keeping the
+  // table canonical for the checkpoint state hash.
+  void setStpGroup(uint64_t account, uint64_t group)
+  {
+    if (group == 0)
+    {
+      stpGroup_.erase(account);
+    }
+    else
+    {
+      stpGroup_[account] = group;
+    }
+  }
+
+  // Live STP-group table (checkpoint serialization / state hash / clone).
+  const std::unordered_map<uint64_t, uint64_t>& stpGroups() const noexcept { return stpGroup_; }
+
+  // Defensive-path counter: pro-rata allocation met a resting lastLook maker
+  // (possible only when admission was bypassed) and skipped it instead of
+  // filling it as firm. See crossProRata.
+  uint64_t skippedLastLookProRata() const noexcept { return skippedLastLookProRata_; }
 
   MatchOutcome cross(const NewOrder& order, Book& book,
                      const std::function<uint64_t()>& nextTradeId, const EventSink& sink) const
@@ -97,17 +119,36 @@ class Matcher
     // With STP on, exclude same-scope liquidity: it will be canceled/decremented
     // rather than traded, so it cannot fill the FOK -- counting it would let the
     // FOK pass the precheck and then rest with 0 fills after STP removes it.
+    // With last look active, last-look makers are NON-FIRM liquidity: they can
+    // only be held, never guaranteed, so (a) they do not count toward the FOK
+    // precheck and (b) a FOK whose crossing range contains ANY last-look maker
+    // is rejected outright -- the sweep is strict price-time, so a last-look
+    // maker inside the range could be hit before the FOK completes, and a
+    // partial execution followed by a hold would violate all-or-none.
     if (order.tif == TimeInForce::FOK)
     {
-      const Quantity avail =
-          (order.stp == STPMode::None)
-              ? book.availableWithin(order.side, order.price, isMarket)
-              : book.availableWithinExcl(order.side, order.price, isMarket, [&](uint64_t maker)
-                                         { return stpScope(maker) == stpScope(order.accountId); });
-      if (avail < order.quantity)
+      const bool lastLookActive = static_cast<bool>(onLastLook_);
+      const bool stpActive = (order.stp != STPMode::None);
+      auto skipStp = [&](const RestingOrder& m)
+      { return stpActive && stpScope(m.accountId) == stpScope(order.accountId); };
+      auto skipStpOrLastLook = [&](const RestingOrder& m)
+      { return (lastLookActive && m.lastLook) || skipStp(m); };
+      const Quantity firm =
+          book.availableWithinExcl(order.side, order.price, isMarket, skipStpOrLastLook);
+      if (firm < order.quantity)
       {
         out.reject = RejectReason::FillOrKillUnfulfillable;
         return out;
+      }
+      if (lastLookActive)
+      {
+        const Quantity withLastLook =
+            book.availableWithinExcl(order.side, order.price, isMarket, skipStp);
+        if (firm < withLastLook)  // a last-look maker sits inside the crossing range
+        {
+          out.reject = RejectReason::FillOrKillUnfulfillable;
+          return out;
+        }
       }
     }
 
@@ -127,14 +168,16 @@ class Matcher
         switch (order.stp)
         {
           case STPMode::CancelOldest:
-            sink(OrderCanceled{m->id, order.symbol, CancelReason::SelfTradePrevention});
+            sink(OrderCanceled{m->id, order.symbol, CancelReason::SelfTradePrevention,
+                               m->accountId});
             book.cancel(m->id);
             continue;
           case STPMode::CancelNewest:
             takerCanceledBySTP = true;
             break;
           case STPMode::CancelBoth:
-            sink(OrderCanceled{m->id, order.symbol, CancelReason::SelfTradePrevention});
+            sink(OrderCanceled{m->id, order.symbol, CancelReason::SelfTradePrevention,
+                               m->accountId});
             book.cancel(m->id);
             takerCanceledBySTP = true;
             break;
@@ -146,7 +189,8 @@ class Matcher
             const Quantity dec = qmin(leaves, restTotal);
             if (!(dec < restTotal))  // resting <= incoming: resting fully removed
             {
-              sink(OrderCanceled{m->id, order.symbol, CancelReason::SelfTradePrevention});
+              sink(OrderCanceled{m->id, order.symbol, CancelReason::SelfTradePrevention,
+                                 m->accountId});
               book.cancel(m->id);
             }
             else  // incoming smaller: reduce resting, incoming fully decremented
@@ -204,9 +248,9 @@ class Matcher
       out.filled += fill;
 
       sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
-                         makerTotalAfter.isZero(), makerPrice, makerDisplayAfter});
+                         makerTotalAfter.isZero(), makerPrice, makerDisplayAfter, makerAccount});
       sink(OrderExecuted{order.id, order.symbol, fill, leaves, true, leaves.isZero(), makerPrice,
-                         leaves});
+                         leaves, order.accountId});
     }
 
     out.leaves = leaves;
@@ -264,8 +308,14 @@ class Matcher
   // resting orders proportionally to size (deterministic floor + FIFO remainder),
   // for instruments with thick display levels. Icebergs ARE refilled here (via
   // consumeById). Scope limitations: STP is treated as None, and last-look is
-  // NOT honoured -- a resting lastLook maker on a pro-rata instrument is filled
-  // immediately rather than held (onLastLook_ fires only on the FIFO path).
+  // NOT honoured. The engine refuses lastLook orders on pro-rata instruments
+  // at admission (RejectReason::LastLookUnsupported), so a lastLook maker can
+  // only appear here if the caller bypassed validate(). DEFENSIVE PATH: such
+  // a maker is NOT filled as firm (pro-rata cannot hold a slice, so filling
+  // would fake firmness the maker never granted) -- it is skipped, the
+  // skippedLastLookProRata counter is bumped, and the allocation runs over
+  // the remaining (firm) participants of the level unchanged. A level whose
+  // firm size is zero stops the sweep.
   MatchOutcome crossProRata(const NewOrder& order, Book& book,
                             const std::function<uint64_t()>& nextTradeId,
                             const EventSink& sink) const
@@ -314,10 +364,22 @@ class Matcher
       {
         break;
       }
+      // Defensive: a resting lastLook maker here means validate() was bypassed
+      // (admission rejects the combination). It is non-firm liquidity and is
+      // excluded from the allocation entirely -- see the method comment.
       int64_t tot = 0;
       for (const auto& o : level)
       {
+        if (o.lastLook)
+        {
+          ++skippedLastLookProRata_;
+          continue;
+        }
         tot += o.leaves.raw();
+      }
+      if (tot == 0)
+      {
+        break;  // the whole level is non-firm: nothing to allocate against
       }
       const int64_t want = std::min<int64_t>(leaves.raw(), tot);
 
@@ -325,12 +387,20 @@ class Matcher
       int64_t assigned = 0;
       for (size_t i = 0; i < level.size(); ++i)
       {
+        if (level[i].lastLook)
+        {
+          continue;  // excluded participant keeps alloc 0
+        }
         alloc[i] = static_cast<int64_t>(static_cast<__int128>(want) * level[i].leaves.raw() / tot);
         assigned += alloc[i];
       }
       int64_t leftover = want - assigned;  // deterministic FIFO remainder
       for (size_t i = 0; i < level.size() && leftover > 0; ++i)
       {
+        if (level[i].lastLook)
+        {
+          continue;
+        }
         const int64_t room = level[i].leaves.raw() - alloc[i];
         if (room > 0)
         {
@@ -360,9 +430,10 @@ class Matcher
         leaves = Quantity::fromRaw(leaves.raw() - alloc[i]);
         out.filled += fill;
         sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
-                           makerTotalAfter.isZero(), levelPrice, makerDisplayAfter});
+                           makerTotalAfter.isZero(), levelPrice, makerDisplayAfter,
+                           level[i].accountId});
         sink(OrderExecuted{order.id, order.symbol, fill, leaves, true, leaves.isZero(), levelPrice,
-                           leaves});
+                           leaves, order.accountId});
       }
       if (want < tot)
       {
@@ -395,6 +466,8 @@ class Matcher
   MatchPolicy policy_;
   LastLookHook onLastLook_;
   std::unordered_map<uint64_t, uint64_t> stpGroup_;  // account -> firm group (empty = account-level STP)
+  // mutable: cross() is const; this is a diagnostic counter, not matching state.
+  mutable uint64_t skippedLastLookProRata_{0};
 };
 
 }  // namespace flox::venue

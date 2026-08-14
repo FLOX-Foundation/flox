@@ -145,6 +145,31 @@ class MatchingBook
     return copy;
   }
 
+  // Enumerate every resting order in canonical book order: bids best-first,
+  // then asks best-first, FIFO within each level. Used by the venue checkpoint
+  // serializer and state hash (not a hot path); the canonical order is what
+  // makes a snapshot file deterministic and tail-appending restores exact.
+  template <class Fn>
+  void forEachOrder(Fn&& fn) const
+  {
+    for (const auto& [p, lst] : bids_)
+    {
+      (void)p;
+      for (const auto& o : lst)
+      {
+        fn(o);
+      }
+    }
+    for (const auto& [p, lst] : asks_)
+    {
+      (void)p;
+      for (const auto& o : lst)
+      {
+        fn(o);
+      }
+    }
+  }
+
   // Aggregated (price, total qty) per level, best-first (bids descending, asks
   // ascending). Used by the auction uncross.
   void levels(Side side, std::vector<std::pair<Price, Quantity>>& out) const
@@ -259,14 +284,16 @@ class MatchingBook
   // FOK all-or-none precheck.
   Quantity availableWithin(Side takerSide, Price limit, bool isMarket) const
   {
-    return availableWithinExcl(takerSide, limit, isMarket, [](uint64_t)
+    return availableWithinExcl(takerSide, limit, isMarket, [](const RestingOrder&)
                                { return false; });
   }
 
-  // availableWithin, skipping makers for which skip(acct) is true. An STP-aware
+  // availableWithin, skipping makers for which skip(order) is true. An STP-aware
   // FOK precheck uses this: same-STP-scope liquidity can never fill the taker (it
   // is canceled/decremented, not traded), so it must not count toward "can this
-  // order fully fill" -- otherwise a FOK+STP rests instead of being killed.
+  // order fully fill" -- otherwise a FOK+STP rests instead of being killed. The
+  // predicate sees the whole resting order so non-firm (last-look) liquidity can
+  // be excluded the same way.
   template <class Skip>
   Quantity availableWithinExcl(Side takerSide, Price limit, bool isMarket, Skip skip) const
   {
@@ -281,7 +308,7 @@ class MatchingBook
         }
         for (const auto& o : lst)
         {
-          if (!skip(o.accountId))
+          if (!skip(o))
           {
             total += o.leaves + o.hidden;  // hidden reserve is real liquidity
           }
@@ -298,7 +325,7 @@ class MatchingBook
         }
         for (const auto& o : lst)
         {
-          if (!skip(o.accountId))
+          if (!skip(o))
           {
             total += o.leaves + o.hidden;
           }

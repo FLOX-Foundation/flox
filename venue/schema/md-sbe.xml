@@ -13,11 +13,28 @@
   The C++ codec is hand-written against THIS schema rather than generated, to
   avoid a Java codegen toolchain in a C++/Python build. Keep the two in sync:
   field order, ids, block lengths, schema id and version here are authoritative.
+
+  Version 1 (snapshot + recovery):
+  - Every incremental template gained a trailing `epoch` field (uint64,
+    sinceVersion="1"): a random value fixed for one publisher lifetime.
+    Appended to the END of each root block, so a version-0 reader skips it via
+    the header blockLength (same extension path as order-entry v1). A restart
+    mints a new epoch; a consumer that sees the epoch change knows its book is
+    stale and re-snapshots. This replaces persisting the sequence counter
+    across restarts: the feed is rebuildable from the matching state, so the
+    venue restarts with seq=1 under a fresh epoch instead of carrying seq
+    durability it does not need.
+  - New recovery templates: ResendRequest (7, inbound on the TCP recovery
+    channel) asks for increments with seq >= fromSeq; the server replays them
+    from a bounded ring, or answers SnapshotRequired (10) followed by
+    SnapshotBegin (8) + AddOrder body + SnapshotEnd (9) when fromSeq is older
+    than the ring's tail. Snapshot body AddOrders carry seq=0 and the epoch;
+    the incremental feed resumes at lastSeq+1.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.md"
                    id="91"
-                   version="0"
+                   version="1"
                    semanticVersion="1.0"
                    description="Flox venue market-data feed"
                    byteOrder="littleEndian">
@@ -38,6 +55,8 @@
     <type name="OrderId" primitiveType="uint64"/>
     <type name="PriceRaw" primitiveType="int64"/>
     <type name="QtyRaw"   primitiveType="int64"/>
+    <type name="Epoch"   primitiveType="uint64"/>  <!-- publisher lifetime id -->
+    <type name="Count"   primitiveType="uint32"/>
   </types>
 
   <!-- A resting order was added to the book (displayed size). -->
@@ -48,6 +67,7 @@
     <field name="side"    id="4" type="Side"/>
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
+    <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
   </sbe:message>
 
   <!-- A trade printed. orderId = taker, side = taker side, plus the maker id. -->
@@ -59,6 +79,7 @@
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="makerId" id="7" type="OrderId"/>
+    <field name="epoch"   id="8" type="Epoch" sinceVersion="1"/>
   </sbe:message>
 
   <!-- A resting order was (partially) executed; qty = displayed leaves. -->
@@ -69,6 +90,7 @@
     <field name="side"    id="4" type="Side"/>
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
+    <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
   </sbe:message>
 
   <!-- A resting order was canceled/expired off the book. -->
@@ -79,6 +101,7 @@
     <field name="side"    id="4" type="Side"/>
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
+    <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
   </sbe:message>
 
   <!-- A resting order was repriced/replaced; qty = new displayed leaves. -->
@@ -89,6 +112,7 @@
     <field name="side"    id="4" type="Side"/>
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
+    <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
   </sbe:message>
 
   <!-- A conditional (stop/take-profit) order triggered; price = reference. -->
@@ -97,5 +121,41 @@
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="orderId" id="3" type="OrderId"/>
     <field name="price"   id="5" type="PriceRaw"/>
+    <field name="epoch"   id="6" type="Epoch" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Recovery channel (TCP, length-prefixed frames): ask for increments with
+       seq >= fromSeq. fromSeq=0 is the late-joiner form: always answered with
+       a snapshot. One request per connection; the reply ends at EOF (replay)
+       or after SnapshotEnd (snapshot). -->
+  <sbe:message name="ResendRequest" id="7" sinceVersion="1">
+    <field name="symbol"  id="1" type="Symbol" sinceVersion="1"/>
+    <field name="fromSeq" id="2" type="Seq" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Opens a full-book snapshot: orderCount AddOrder messages (seq=0, epoch
+       set) follow, closed by SnapshotEnd. The incremental feed resumes at
+       lastSeq+1. -->
+  <sbe:message name="SnapshotBegin" id="8" sinceVersion="1">
+    <field name="symbol"     id="1" type="Symbol" sinceVersion="1"/>
+    <field name="epoch"      id="2" type="Epoch" sinceVersion="1"/>
+    <field name="lastSeq"    id="3" type="Seq" sinceVersion="1"/>
+    <field name="orderCount" id="4" type="Count" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Closes a full-book snapshot. -->
+  <sbe:message name="SnapshotEnd" id="9" sinceVersion="1">
+    <field name="symbol"  id="1" type="Symbol" sinceVersion="1"/>
+    <field name="epoch"   id="2" type="Epoch" sinceVersion="1"/>
+    <field name="lastSeq" id="3" type="Seq" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Answers a ResendRequest whose fromSeq is older than the retained ring:
+       the requested increments are gone, a full snapshot follows immediately
+       on the same connection. -->
+  <sbe:message name="SnapshotRequired" id="10" sinceVersion="1">
+    <field name="symbol"  id="1" type="Symbol" sinceVersion="1"/>
+    <field name="epoch"   id="2" type="Epoch" sinceVersion="1"/>
+    <field name="lastSeq" id="3" type="Seq" sinceVersion="1"/>
   </sbe:message>
 </sbe:messageSchema>

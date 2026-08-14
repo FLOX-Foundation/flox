@@ -57,7 +57,9 @@ constexpr uint64_t VENUE = 1000;
 constexpr int NACCT = 64;  // matches the workload's account spread
 
 // Ledger-backed engine: settlement runs, so replicas must reconstruct not just
-// the event stream but the exact per-account balances.
+// the event stream but the exact per-account balances. The ledger starts EMPTY
+// -- deposits arrive as journaled commands (genesis in the WAL), so recovery
+// needs no out-of-band seeding.
 struct HashEng
 {
   uint64_t h = 1469598103934665603ULL;
@@ -67,15 +69,25 @@ struct HashEng
       : eng(cfg(), [this](const OutboundEvent& e)
             { h = hashEvent(h, e); }, LadderBook{lc()})
   {
-    for (int a = 1; a <= NACCT; ++a)
-    {
-      led.deposit(a, BASE, amountOf(Quantity::fromDouble(10000)));
-      led.deposit(a, QUOTE, amountOf(Volume::fromDouble(1000000)));
-    }
     eng.setLedger(&led, VENUE);
   }
   void submit(const InboundCommand& c) { eng.submit(c); }
 };
+
+// Balance genesis as commands: the same stream every replica and every
+// recovery replays, so balances are reproducible from an empty ledger.
+std::vector<InboundCommand> genesisDeposits()
+{
+  std::vector<InboundCommand> g;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    g.emplace_back(Deposit{static_cast<uint64_t>(a), BASE,
+                           static_cast<int64_t>(amountOf(Quantity::fromDouble(10000))), SYM});
+    g.emplace_back(Deposit{static_cast<uint64_t>(a), QUOTE,
+                           static_cast<int64_t>(amountOf(Volume::fromDouble(1000000))), SYM});
+  }
+  return g;
+}
 
 // Every balance (per account + venue, base + quote, available + reserved) equal.
 bool ledgersEqual(const Ledger& a, const Ledger& b)
@@ -110,7 +122,11 @@ TEST(Ha, EngineSuite)
   workload::Params p;
   p.symbol = SYM;
   p.count = 200'000;
-  const auto cmds = workload::symmetricLimits(p);
+  auto cmds = genesisDeposits();  // genesis first: balances come from the stream
+  {
+    const auto orders = workload::symmetricLimits(p);
+    cmds.insert(cmds.end(), orders.begin(), orders.end());
+  }
 
   const std::string path = "/tmp/flox_test_venue_ha_ha_journal.bin";
 
@@ -131,10 +147,13 @@ TEST(Ha, EngineSuite)
   CHECK(primary.eng.book().bestAsk() == standby.eng.book().bestAsk());
   CHECK(ledgersEqual(primary.led, standby.led));  // standby balances match primary exactly
 
-  // 3: journal recovery -- a fresh replica rebuilt from the WAL.
+  // 3: journal recovery -- a fresh replica rebuilt from the WAL. Its ledger
+  // starts EMPTY: the deposits are in the journal, so the replay alone must
+  // reproduce every balance (no manual seeding).
   const auto replayed = Journal::load(path);
   CHECK(replayed.size() == cmds.size());
   HashEng recovered;
+  CHECK(recovered.led.available(1, BASE) == 0);  // truly empty before replay
   for (const auto& c : replayed)
   {
     recovered.submit(c);

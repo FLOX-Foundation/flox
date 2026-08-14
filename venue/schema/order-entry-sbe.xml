@@ -10,7 +10,7 @@
   the fields that type needs.
 
   Direction is by templateId: inbound (client -> venue) uses ids 1..3, outbound
-  exec reports (venue -> client) use ids 10..16. Real crypto venues run binary
+  exec reports (venue -> client) use ids 10..18. Real crypto venues run binary
   order entry over SBE (Deribit Binary Order Entry, Binance SBE); this is the
   venue's own SBE order-entry schema, replacing a homegrown record that was
   misleadingly named "OUCH".
@@ -18,11 +18,40 @@
   Prices and quantities are the engine's fixed-point raw values (scale 1e-8).
   Enum byte fields (side, ordType, tif, stp, peg, cancel/reject reason) carry
   the engine enum's underlying uint8 value.
+
+  Version 1 (session-layer recovery):
+  - Every OUTBOUND template gained a trailing `seq` field (uint64,
+    sinceVersion="1"): the per-session monotonic execution-report sequence
+    number. Appended to the END of each root block, so a version-0 reader
+    skips it via the header blockLength -- the SBE-sanctioned extension path
+    (no wrapper template, no re-layout).
+  - New inbound session verbs: ResendRequest (4) replays reports with
+    seq >= fromSeq from the venue's per-session log; AccountSnapshotRequest
+    (5) requests open orders (a series of Accepted frames) + position,
+    terminated by SnapshotEnd (20). SnapshotRequired (19) answers a
+    ResendRequest whose fromSeq is older than the retained log.
+  These verbs are handled at the gateway session layer and never reach
+  matching.
+
+  Version 2:
+  - SnapshotEnd gained a trailing `lastSeq` field (uint64, sinceVersion="2"):
+    the last assigned outbound seq of the account's exec-report stream at
+    snapshot time, so the client resumes gap detection from the exact point.
+    Snapshot frames themselves stay unsequenced and are never in the resend
+    log.
+  - New inbound session verb SetSessionConfig (6): per-session
+    cancel-on-disconnect negotiation. Fire-and-forget -- the update takes
+    effect immediately, there is no reply frame (the effect is observable: a
+    later disconnect sweeps or keeps the session's orders).
+  - New outbound BalanceUpdate (21): balance change on a sequenced
+    Deposit/Withdraw, carrying the post-event available/reserved of the
+    touched (account, asset). reason: 0=Deposit, 1=Withdraw,
+    2=WithdrawRejected (insufficient available; balances unchanged).
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="0"
+                   version="2"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -41,6 +70,7 @@
     <type name="Flag"     primitiveType="uint8"/>   <!-- boolean 0/1 -->
     <type name="EnumU8"   primitiveType="uint8"/>   <!-- engine enum underlying value -->
     <type name="Nanos"    primitiveType="int64"/>
+    <type name="SeqNum"   primitiveType="uint64"/>  <!-- per-session exec-report sequence -->
   </types>
 
   <!-- ============ inbound: client -> venue ============ -->
@@ -87,6 +117,25 @@
     <field name="account"  id="5" type="Account"/>
   </sbe:message>
 
+  <!-- Session verb: replay exec reports with seq >= fromSeq from the venue's
+       per-session resend log (reconnect gap-fill). Answered by the replayed
+       frames, or by SnapshotRequired when fromSeq is older than the log. -->
+  <sbe:message name="ResendRequest" id="4" sinceVersion="1">
+    <field name="fromSeq" id="1" type="SeqNum" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Session verb: request the session account's open orders + position.
+       Carries no fields -- the authenticated session IS the account. Answered
+       by a series of Accepted frames (restingOnBook=0 for pending stops)
+       terminated by SnapshotEnd. -->
+  <sbe:message name="AccountSnapshotRequest" id="5" sinceVersion="1"/>
+
+  <!-- Session verb: per-session config negotiation (today: cancel-on-
+       disconnect). Fire-and-forget, applied at the gateway; no reply frame. -->
+  <sbe:message name="SetSessionConfig" id="6" sinceVersion="2">
+    <field name="codEnabled" id="1" type="Flag" sinceVersion="2"/>
+  </sbe:message>
+
   <!-- ============ outbound: venue -> client (execution reports) ============ -->
 
   <!-- Order accepted / working. -->
@@ -97,6 +146,7 @@
     <field name="price"        id="4" type="PriceRaw"/>
     <field name="leavesQty"    id="5" type="QtyRaw"/>
     <field name="restingOnBook" id="6" type="Flag"/>
+    <field name="seq"     id="7" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
   <!-- Order (partially) executed. -->
@@ -108,6 +158,7 @@
     <field name="leavesQty" id="5" type="QtyRaw"/>
     <field name="aggressor" id="6" type="Flag"/>
     <field name="complete"  id="7" type="Flag"/>
+    <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
   <!-- Trade print. -->
@@ -119,6 +170,7 @@
     <field name="makerId"   id="5" type="OrderId"/>
     <field name="takerId"   id="6" type="OrderId"/>
     <field name="takerSide" id="7" type="EnumU8"/>
+    <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
   <!-- Order canceled (reason = CancelReason underlying value). -->
@@ -126,6 +178,7 @@
     <field name="orderId" id="1" type="OrderId"/>
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="reason"  id="3" type="EnumU8"/>
+    <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
   <!-- Order rejected (reason = RejectReason underlying value). -->
@@ -133,6 +186,7 @@
     <field name="orderId" id="1" type="OrderId"/>
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="reason"  id="3" type="EnumU8"/>
+    <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
   <!-- Order replaced (priorityKept = kept time priority in place). -->
@@ -142,6 +196,7 @@
     <field name="price"        id="3" type="PriceRaw"/>
     <field name="leavesQty"    id="4" type="QtyRaw"/>
     <field name="priorityKept" id="5" type="Flag"/>
+    <field name="seq"     id="6" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
   <!-- Conditional order triggered (refPrice = reference that crossed). -->
@@ -149,5 +204,63 @@
     <field name="orderId"  id="1" type="OrderId"/>
     <field name="symbol"   id="2" type="Symbol"/>
     <field name="refPrice" id="3" type="PriceRaw"/>
+    <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Last look: a fill is held pending the maker's decision. heldId is the
+       handle a LastLookDecision answers with. makerDisplayAfter is the maker's
+       displayed remaining after the held qty left the book (public feed sync). -->
+  <sbe:message name="FillHeld" id="17">
+    <field name="heldId"            id="1" type="OrderId"/>
+    <field name="symbol"            id="2" type="Symbol"/>
+    <field name="makerId"           id="3" type="OrderId"/>
+    <field name="takerId"           id="4" type="OrderId"/>
+    <field name="price"             id="5" type="PriceRaw"/>
+    <field name="qty"               id="6" type="QtyRaw"/>
+    <field name="makerDisplayAfter" id="7" type="QtyRaw"/>
+    <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Last look: the held fill was rejected (or timed out). Carries the
+       counterparty order, price and size so the taker has a usable report. -->
+  <sbe:message name="FillRejected" id="18">
+    <field name="heldId"  id="1" type="OrderId"/>
+    <field name="symbol"  id="2" type="Symbol"/>
+    <field name="takerId" id="3" type="OrderId"/>
+    <field name="makerId" id="4" type="OrderId"/>
+    <field name="price"   id="5" type="PriceRaw"/>
+    <field name="qty"     id="6" type="QtyRaw"/>
+    <field name="seq"     id="7" type="SeqNum" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Session layer: the requested resend fromSeq is older than the retained
+       log -- the client must reconcile via AccountSnapshotRequest instead.
+       lastSeq = the venue's current per-session sequence. -->
+  <sbe:message name="SnapshotRequired" id="19" sinceVersion="1">
+    <field name="lastSeq" id="1" type="SeqNum" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Session layer: terminates an account snapshot reply. lastSeq = the
+       stream's last assigned outbound seq at snapshot time (snapshot frames
+       are unsequenced and never in the resend log); the client resumes gap
+       detection from it. -->
+  <sbe:message name="SnapshotEnd" id="20" sinceVersion="1">
+    <field name="account"          id="1" type="Account" sinceVersion="1"/>
+    <field name="positionQtyRaw"   id="2" type="QtyRaw" sinceVersion="1"/>
+    <field name="positionEntryRaw" id="3" type="PriceRaw" sinceVersion="1"/>
+    <field name="openOrders"       id="4" type="uint32" sinceVersion="1"/>
+    <field name="lastSeq"          id="5" type="SeqNum" sinceVersion="2"/>
+  </sbe:message>
+
+  <!-- Balance change on a sequenced Deposit/Withdraw: post-event available/
+       reserved of the touched (account, asset). reason: 0=Deposit,
+       1=Withdraw, 2=WithdrawRejected (insufficient available; unchanged). -->
+  <sbe:message name="BalanceUpdate" id="21" sinceVersion="2">
+    <field name="account"      id="1" type="Account" sinceVersion="2"/>
+    <field name="asset"        id="2" type="uint16" sinceVersion="2"/>
+    <field name="availableRaw" id="3" type="QtyRaw" sinceVersion="2"/>
+    <field name="reservedRaw"  id="4" type="QtyRaw" sinceVersion="2"/>
+    <field name="reason"       id="5" type="EnumU8" sinceVersion="2"/>
+    <field name="seq"          id="6" type="SeqNum" sinceVersion="2"/>
   </sbe:message>
 </sbe:messageSchema>

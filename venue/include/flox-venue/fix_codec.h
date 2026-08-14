@@ -23,10 +23,14 @@
 #include "flox-venue/messages.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace flox::venue
 {
@@ -36,8 +40,8 @@ class FixCodec
  public:
   static constexpr char SOH = '\x01';
 
-  // ---- inbound: FIX message -> InboundCommand ----
-  static std::optional<InboundCommand> decode(const std::string& msg)
+  // tag=value fields of a raw FIX message (last occurrence wins on repeats).
+  static std::unordered_map<int, std::string> parseFields(const std::string& msg)
   {
     std::unordered_map<int, std::string> f;
     size_t i = 0;
@@ -57,32 +61,42 @@ class FixCodec
       f[tag] = msg.substr(eq + 1, soh - eq - 1);
       i = soh + 1;
     }
+    return f;
+  }
+
+  // FIX integrity: if a CheckSum (tag 10) is present it MUST be correct --
+  // sum of every byte up to and including the SOH before "10=", mod 256.
+  // Lenient when absent, for internal/test callers that don't append one.
+  static bool checksumValid(const std::string& msg)
+  {
+    const std::string marker = std::string(1, SOH) + "10=";
+    const size_t p = msg.rfind(marker);
+    if (p == std::string::npos)
+    {
+      return true;
+    }
+    unsigned sum = 0;
+    for (size_t k = 0; k <= p; ++k)
+    {
+      sum += static_cast<unsigned char>(msg[k]);
+    }
+    return (sum % 256) ==
+           static_cast<unsigned>(std::atoi(msg.c_str() + p + marker.size()));
+  }
+
+  // ---- inbound: FIX message -> InboundCommand ----
+  static std::optional<InboundCommand> decode(const std::string& msg)
+  {
+    std::unordered_map<int, std::string> f = parseFields(msg);
 
     auto has = [&](int t)
     { return f.count(t) != 0; };
     auto s = [&](int t)
     { return has(t) ? f[t] : std::string{}; };
 
-    // FIX integrity: if a CheckSum (tag 10) is present it MUST be correct --
-    // sum of every byte up to and including the SOH before "10=", mod 256. A
-    // corrupted message with a bad checksum is rejected. (Lenient when absent,
-    // for internal/test callers that don't append one.)
-    if (has(10))
+    if (!checksumValid(msg))
     {
-      const std::string marker = std::string(1, SOH) + "10=";
-      const size_t p = msg.rfind(marker);
-      if (p != std::string::npos)
-      {
-        unsigned sum = 0;
-        for (size_t k = 0; k <= p; ++k)
-        {
-          sum += static_cast<unsigned char>(msg[k]);
-        }
-        if ((sum % 256) != static_cast<unsigned>(std::atoi(f[10].c_str())))
-        {
-          return std::nullopt;  // checksum mismatch -> reject
-        }
-      }
+      return std::nullopt;  // checksum mismatch -> reject
     }
 
     auto u64 = [&](int t)
@@ -245,7 +259,83 @@ class FixCodec
     return std::nullopt;
   }
 
+  // MsgSeqNum (34) of a raw FIX message; 0 when absent (a structurally
+  // incomplete message -- FIX 4.4 requires 34 on every message).
+  static uint64_t msgSeqNum(const std::string& msg)
+  {
+    return tagValueU64(msg, 34);
+  }
+
   // ---- outbound: OutboundEvent -> ExecutionReport (35=8) ----
+  // Session-framed variant: injects the FIX 4.4 required header fields --
+  // MsgSeqNum (34), SenderCompID (49), TargetCompID (56), SendingTime (52) --
+  // that the bare encode() (embedded/test use) omits. Empty on events with no
+  // exec-report mapping. A resend replay sets possDup (PossDupFlag 43=Y) and
+  // origSendingTime (OrigSendingTime 122, the first transmission's 52) -- the
+  // reason resends re-encode instead of replaying bytes: 43/122 change
+  // BodyLength and CheckSum.
+  static std::string encode(const OutboundEvent& ev, uint64_t seq, const std::string& senderCompId,
+                            const std::string& targetCompId, const std::string& sendingTime,
+                            bool possDup = false, const std::string& origSendingTime = {})
+  {
+    const std::string bare = encode(ev);
+    if (bare.empty())
+    {
+      return bare;
+    }
+    // Re-frame: keep the body after 35=8, prepend the session header fields.
+    const std::string marker = std::string("35=8") + SOH;
+    const size_t p = bare.find(marker);
+    if (p == std::string::npos)
+    {
+      return {};
+    }
+    const size_t bodyStart = p + marker.size();
+    const size_t csum = bare.rfind(std::string(1, SOH) + "10=");
+    const std::string tail =
+        bare.substr(bodyStart, (csum == std::string::npos ? bare.size() : csum + 1) - bodyStart);
+    std::string b = marker;
+    b += "34=" + std::to_string(seq) + SOH;
+    b += "49=" + senderCompId + SOH;
+    b += "56=" + targetCompId + SOH;
+    b += "52=" + sendingTime + SOH;
+    if (possDup)
+    {
+      b += std::string("43=Y") + SOH;
+    }
+    if (!origSendingTime.empty())
+    {
+      b += "122=" + origSendingTime + SOH;
+    }
+    b += tail;
+    return frame(b);
+  }
+
+  // Session/admin message (Logon 35=A, Heartbeat 35=0, TestRequest 35=1,
+  // ResendRequest 35=2, SequenceReset 35=4, Logout 35=5) with the full FIX 4.4
+  // header and body `fields`, framed with BodyLength and CheckSum.
+  static std::string encodeAdmin(const std::string& msgType, uint64_t seq,
+                                 const std::string& senderCompId, const std::string& targetCompId,
+                                 const std::string& sendingTime,
+                                 const std::vector<std::pair<int, std::string>>& fields = {},
+                                 bool possDup = false)
+  {
+    std::string b = "35=" + msgType + SOH;
+    b += "34=" + std::to_string(seq) + SOH;
+    b += "49=" + senderCompId + SOH;
+    b += "56=" + targetCompId + SOH;
+    b += "52=" + sendingTime + SOH;
+    if (possDup)
+    {
+      b += std::string("43=Y") + SOH;
+    }
+    for (const auto& [tag, val] : fields)
+    {
+      b += std::to_string(tag) + "=" + val + SOH;
+    }
+    return frame(b);
+  }
+
   static std::string encode(const OutboundEvent& ev)
   {
     std::string b;  // body after 35
@@ -308,6 +398,37 @@ class FixCodec
       add(151, qn(m->leavesQty));
       add(44, px(m->price));
     }
+    else if (const auto* fh = std::get_if<FillHeld>(&ev))
+    {
+      // Last-look hold: FIX has no honest ExecType for "fill pending the
+      // maker's confirmation", so this uses the documented custom value
+      // ExecType=U plus custom tags 20001 (heldId) / 20002 (makerId); see
+      // docs/venue/matching.md. The order is still working (39=0); 32/31
+      // carry the held size and price.
+      add(37, std::to_string(fh->takerId));
+      add(55, std::to_string(fh->symbol));
+      add(150, "U");  // custom ExecType: fill held pending last look
+      add(39, "0");   // OrdStatus New/working -- nothing has executed yet
+      add(32, qn(fh->qty));
+      add(31, px(fh->price));
+      add(20001, std::to_string(fh->heldId));
+      add(20002, std::to_string(fh->makerId));
+    }
+    else if (const auto* fr = std::get_if<FillRejected>(&ev))
+    {
+      // Held fill rejected/timed out: the pending fill is busted, which maps
+      // honestly onto ExecType=H (Trade Cancel). Same custom tags identify the
+      // held fill being cancelled.
+      add(37, std::to_string(fr->takerId));
+      add(55, std::to_string(fr->symbol));
+      add(150, "H");  // ExecType Trade Cancel: the held fill will not stand
+      add(39, "0");
+      add(32, qn(fr->qty));
+      add(31, px(fr->price));
+      add(20001, std::to_string(fr->heldId));
+      add(20002, std::to_string(fr->makerId));
+      add(58, "LastLookRejected");
+    }
     else
     {
       return {};  // Trade/Triggered are market-data, not exec reports
@@ -316,7 +437,6 @@ class FixCodec
     return frame(b);
   }
 
- private:
   // Prepend 8/9, append 10 with correct BodyLength and CheckSum.
   static std::string frame(const std::string& body)
   {
@@ -333,6 +453,101 @@ class FixCodec
     msg += std::string("10=") + cs + SOH;
     return msg;
   }
+
+ private:
+  // Value of the first `tag=` field as u64 (0 when absent / non-numeric).
+  static uint64_t tagValueU64(const std::string& msg, int tag)
+  {
+    const std::string needle = std::to_string(tag) + "=";
+    size_t p = 0;
+    while ((p = msg.find(needle, p)) != std::string::npos)
+    {
+      if (p == 0 || msg[p - 1] == SOH)  // field boundary, not a substring of another tag
+      {
+        return std::strtoull(msg.c_str() + p + needle.size(), nullptr, 10);
+      }
+      p += needle.size();
+    }
+    return 0;
+  }
+};
+
+// FIX session-layer state: monotonic outbound MsgSeqNum, inbound MsgSeqNum
+// validation, CompIDs from the gateway configuration and SendingTime.
+//
+// Scope: sequencing/framing building block for embedded and test use. The
+// full session layer -- Logon negotiation, Heartbeat/TestRequest liveness,
+// ResendRequest 35=2 / SequenceReset-GapFill 35=4, PossDup replay -- lives in
+// fix_session.h (FixSessionHost / FixConnection), wired into the gateways via
+// setFixSession. See docs/venue/perimeter.md.
+class FixSession
+{
+ public:
+  FixSession(std::string senderCompId, std::string targetCompId)
+      : sender_(std::move(senderCompId)), target_(std::move(targetCompId))
+  {
+  }
+
+  // Encode an exec report as the next sequenced session message. Empty string
+  // = the event has no FIX mapping (the seq is NOT consumed).
+  std::string encode(const OutboundEvent& ev, int64_t wallClockNs)
+  {
+    const std::string msg =
+        FixCodec::encode(ev, nextOut_, sender_, target_, sendingTime(wallClockNs));
+    if (!msg.empty())
+    {
+      ++nextOut_;
+    }
+    return msg;
+  }
+
+  uint64_t nextOutboundSeq() const noexcept { return nextOut_; }
+
+  enum class InSeq : uint8_t
+  {
+    Ok,         // expected seq (or first message)
+    Gap,        // seq jumped forward: messages lost -> reject the session
+    Duplicate,  // seq at or below the last accepted one
+    Missing,    // no tag 34: structurally invalid FIX 4.4
+  };
+
+  // Validate the inbound MsgSeqNum. Ok advances the expectation; anything else
+  // leaves it unchanged so the caller can terminate the session.
+  InSeq acceptInbound(const std::string& msg)
+  {
+    const uint64_t seq = FixCodec::msgSeqNum(msg);
+    if (seq == 0)
+    {
+      return InSeq::Missing;
+    }
+    if (seq == expectedIn_)
+    {
+      ++expectedIn_;
+      return InSeq::Ok;
+    }
+    return seq > expectedIn_ ? InSeq::Gap : InSeq::Duplicate;
+  }
+
+  uint64_t expectedInboundSeq() const noexcept { return expectedIn_; }
+
+  // UTCTimestamp for tag 52: YYYYMMDD-HH:MM:SS.sss from wall-clock ns.
+  static std::string sendingTime(int64_t wallClockNs)
+  {
+    const time_t secs = static_cast<time_t>(wallClockNs / 1'000'000'000);
+    const int millis = static_cast<int>((wallClockNs / 1'000'000) % 1000);
+    tm g{};
+    gmtime_r(&secs, &g);
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%04d%02d%02d-%02d:%02d:%02d.%03d", g.tm_year + 1900,
+                  g.tm_mon + 1, g.tm_mday, g.tm_hour, g.tm_min, g.tm_sec, millis);
+    return buf;
+  }
+
+ private:
+  std::string sender_;
+  std::string target_;
+  uint64_t nextOut_{1};
+  uint64_t expectedIn_{1};
 };
 
 }  // namespace flox::venue

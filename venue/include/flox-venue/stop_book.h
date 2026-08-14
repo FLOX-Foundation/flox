@@ -47,6 +47,14 @@ class StopBook
 
   bool contains(OrderId id) const noexcept { return loc_.count(id) != 0; }
 
+  // Owner of a pending conditional order (0 if unknown) -- so a cancel event
+  // for a parked stop can be routed to its session.
+  uint64_t accountOf(OrderId id) const noexcept
+  {
+    auto it = loc_.find(id);
+    return it == loc_.end() ? 0 : it->second.account;
+  }
+
   // All pending conditional-order ids (for venue-wide emergency cancel).
   std::vector<OrderId> ids() const
   {
@@ -86,7 +94,7 @@ class StopBook
     if (trailing)
     {
       trailing_.push_back(Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Trailing, initialTrigger};
+      loc_[o.id] = Loc{Container::Trailing, initialTrigger, o.accountId};
       return;
     }
     // Up = fires when ref >= trigger (BUY stop-loss, SELL take-profit).
@@ -94,12 +102,12 @@ class StopBook
     if (up)
     {
       up_.emplace(initialTrigger, Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Up, initialTrigger};
+      loc_[o.id] = Loc{Container::Up, initialTrigger, o.accountId};
     }
     else
     {
       down_.emplace(initialTrigger, Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Down, initialTrigger};
+      loc_[o.id] = Loc{Container::Down, initialTrigger, o.accountId};
     }
   }
 
@@ -297,6 +305,7 @@ class StopBook
   {
     Container container{};
     Price trigger{};
+    uint64_t account{};
   };
 
   static NewOrder toAggressor(const Pending& s)
