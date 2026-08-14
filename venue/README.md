@@ -42,10 +42,10 @@ behaviour emerge from the interaction.
 | Derivatives risk | `cross_margin.h` (portfolio margin), `collateral.h` (haircut basket), `funding_rate.h` + `funding_scheduler.h`, `index_feed.h` (manipulation-resistant mark), `mark_feed_driver.h` (stale-feed circuit breaker) |
 | Runtime | `sequenced_shard.h` — single-writer core on the FLOX `EventBus`, journalled |
 | Recovery | `journal.h` (WAL + replay), `event_hash.h` (bit-identical determinism check) |
-| Market data out | `market_data.h` + `sbe_md_codec.h` (SBE) — turns venue events into an L2 feed |
+| Market data out | `market_data.h` + `sbe_md_codec.h` (SBE) — turns venue events into an L2 feed; `md_recovery.h` (snapshot/resend), `md_distribution.h` + `md_encoder.h` (unicast TCP, pluggable encoding) |
 | Protocol / ops | `fix_codec.h`, `resend_buffer.h`, `messages.h`, `reject_reason.h`, `metrics.h`, `prometheus.h` |
 | Perimeter | `socket_acceptor.h`, `session.h` (API-key HMAC logon, rate limits), `cancel_on_disconnect.h`, `tcp_gateway.h`, `ws_gateway.h`, `tls_gateway.h` (OpenSSL, optional), `udp_multicast.h`, `control_plane.h` / `control_api.h` / `control_server.h`, `metrics_server.h`, `tape_recorder.h` |
-| Wire protocols | `fix_codec.h`, `sbe_order_entry_codec.h`, `rest_json.h`, `sbe_md_codec.h` (+ shared `sbe.h`) |
+| Wire protocols | `fix_codec.h`, `fix_md_codec.h`, `sbe_order_entry_codec.h`, `rest_json.h`, `sbe_md_codec.h` (+ shared `sbe.h`) |
 
 ## Two margin models
 

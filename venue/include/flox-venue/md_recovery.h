@@ -161,6 +161,26 @@ class MdRecoveryServer
     {
       return;
     }
+    // Current trading status and derivatives layer BEFORE the book body: a
+    // consumer that reconnects into a halted or paused instrument must not have
+    // to guess it from the absence of increments (SnapshotBegin's orderCount
+    // still counts only the AddOrder body).
+    if (snap.hasStatus)
+    {
+      SbeMdCodec::encode(snap.status, buf);
+      if (!net::writeFrame(fd, buf.data(), buf.size()))
+      {
+        return;
+      }
+    }
+    if (snap.hasDerivatives)
+    {
+      SbeMdCodec::encode(snap.derivatives, buf);
+      if (!net::writeFrame(fd, buf.data(), buf.size()))
+      {
+        return;
+      }
+    }
     for (const MdMessage& m : snap.orders)
     {
       SbeMdCodec::encode(m, buf);
@@ -210,6 +230,12 @@ class MdRecoveryClient
     std::vector<MdMessage> messages;  // replayed increments, or AddOrder body records (seq=0)
     MdSnapshotBegin begin{};          // valid when `snapshot`
     MdSnapshotEnd end{};              // valid when `snapshot`
+    // Instrument state carried by a snapshot, kept OUT of `messages` so that
+    // vector stays exactly what it has always been -- the book body.
+    bool hasStatus{false};
+    MdMessage status{};
+    bool hasDerivatives{false};
+    MdMessage derivatives{};
     // Resume point: the incremental feed continues at lastSeq + 1. On the
     // snapshot path these come from SnapshotEnd; on a replay, from the last
     // increment. An EMPTY replay (fromSeq ahead of the stream) keeps the
@@ -302,7 +328,24 @@ class MdRecoveryClient
           {
             return Status::ProtocolError;
           }
-          out.messages.push_back(m);
+          // Inside a snapshot these two are the instrument's CURRENT state
+          // (seq=0), not book records, so they are lifted out of the body. On a
+          // replay they are ordinary sequenced increments and must stay in the
+          // stream -- diverting them there would punch a hole in the seq run.
+          if (out.snapshot && m.type == MdType::TradingStatus)
+          {
+            out.hasStatus = true;
+            out.status = m;
+          }
+          else if (out.snapshot && m.type == MdType::DerivativesUpdate)
+          {
+            out.hasDerivatives = true;
+            out.derivatives = m;
+          }
+          else
+          {
+            out.messages.push_back(m);
+          }
           break;
         }
       }
@@ -382,12 +425,21 @@ class RecoveringMdSubscriber
   using SnapshotFn = std::function<void(SymbolId symbol, const MdSnapshotBegin& begin,
                                         const std::vector<MdMessage>& orders)>;
 
+  // Instrument state carried by the same snapshot: the CURRENT trading status
+  // and derivatives layer (null when the publisher has not published one yet).
+  // Separate from SnapshotFn because these are not book records -- a consumer
+  // that only rebuilds a book ignores them, one that tracks halts or values a
+  // perp position takes them before applying the body.
+  using SnapshotStateFn =
+      std::function<void(SymbolId symbol, const MdMessage* status, const MdMessage* derivatives)>;
+
   RecoveringMdSubscriber(UdpMdSubscriber& sub, Config cfg, GapDetector::Config gdCfg = {})
       : sub_(sub), cfg_(std::move(cfg)), gd_(gdCfg)
   {
   }
 
   void onSnapshot(SnapshotFn fn) { onSnapshot_ = std::move(fn); }
+  void onSnapshotState(SnapshotStateFn fn) { onSnapshotState_ = std::move(fn); }
 
   // Receive the next IN-ORDER message; false on socket timeout / error with
   // no recovery pending (a pending recovery is serviced before giving up).
@@ -520,6 +572,11 @@ class RecoveringMdSubscriber
       // Server chose (or we requested) the snapshot path. Hand the book body
       // to the consumer, then fast-forward the sequencer: held datagrams past
       // lastSeq drain into the in-order stream immediately.
+      if (onSnapshotState_)
+      {
+        onSnapshotState_(sym, res.hasStatus ? &res.status : nullptr,
+                         res.hasDerivatives ? &res.derivatives : nullptr);
+      }
       if (onSnapshot_)
       {
         onSnapshot_(sym, res.begin, res.messages);
@@ -548,6 +605,7 @@ class RecoveringMdSubscriber
   Config cfg_;
   GapDetector gd_;
   SnapshotFn onSnapshot_;
+  SnapshotStateFn onSnapshotState_;
   std::deque<MdMessage> ready_;  // sequenced, deliverable messages
   std::unordered_map<SymbolId, Pending> pending_;
   uint64_t gaps_{0};

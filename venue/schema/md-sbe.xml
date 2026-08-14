@@ -30,11 +30,42 @@
     SnapshotBegin (8) + AddOrder body + SnapshotEnd (9) when fromSeq is older
     than the ring's tail. Snapshot body AddOrders carry seq=0 and the epoch;
     the incremental feed resumes at lastSeq+1.
+
+  Version 2 (unicast distribution):
+  - Templates ONLY -- no existing root block changed, so a version-1 reader
+    decodes every incremental and recovery message byte for byte as before.
+  - Subscribe (11) / Unsubscribe (12) / SubscribeReject (13) are the verbs of
+    the long-lived unicast distribution session (md_distribution.h). The
+    recovery channel serves one request per connection and needs no start/stop
+    verb; a distribution session does. ResendRequest (7) keeps its meaning on
+    both channels.
+
+  Version 3 (time, trading status, derivatives):
+  - Every incremental template gained TWO trailing fields (sinceVersion="3"),
+    appended to the END of the root block exactly as `epoch` was in version 1,
+    so a version-1/2 reader keeps decoding every existing field byte for byte
+    and skips these via the header blockLength:
+      engineTs -- sequencer-ts the ENGINE produced the event at. Journaled
+                  input, so a replay of the same journal reproduces it exactly.
+      sendTs   -- wall clock when the publisher SENT this copy. Deliberately
+                  not reproducible: a resend of the same message carries a
+                  later sendTs than the original, which is how a consumer
+                  tells a replay from live flow. Never hash it.
+  - New templates, no existing block touched:
+      TradingStatus (14)     -- halt, LULD volatility pause, auction phase,
+                                session close/open and their release, from the
+                                engine's own state transitions rather than
+                                inferred from silence.
+      DerivativesUpdate (15) -- mark price, funding rate + next funding time,
+                                open interest.
+    Both also travel INSIDE a snapshot (between SnapshotBegin and the AddOrder
+    body, seq=0), so a late joiner starts with the instrument's real status and
+    mark. SnapshotBegin's orderCount still counts AddOrder messages only.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.md"
                    id="91"
-                   version="1"
+                   version="3"
                    semanticVersion="1.0"
                    description="Flox venue market-data feed"
                    byteOrder="littleEndian">
@@ -57,6 +88,41 @@
     <type name="QtyRaw"   primitiveType="int64"/>
     <type name="Epoch"   primitiveType="uint64"/>  <!-- publisher lifetime id -->
     <type name="Count"   primitiveType="uint32"/>
+    <type name="Flags"   primitiveType="uint8"/>   <!-- Subscribe: bit 0 = snapshotOnly -->
+    <type name="TimeNs"  primitiveType="int64"/>   <!-- nanoseconds; engine = sequencer time, send = wall clock -->
+    <!-- Funding rate as a raw fixed-point value at the SAME scale prices and
+         quantities use (1e-8): a rate never travels as a float. -->
+    <type name="RateRaw" primitiveType="int64"/>
+    <enum name="RejectReason" encodingType="uint8">
+      <validValue name="UnknownSymbol">0</validValue>
+      <validValue name="UnsupportedRequest">1</validValue>
+    </enum>
+    <!-- The trading states the engine HAS. Closed is a SESSION state and is
+         deliberately not the same value as Halted: a halt is an exception, a
+         closed session is the instrument's normal out-of-hours condition, and
+         they reject an order with different reasons. The engine holds the state
+         and the transitions; the CALENDAR that fires them belongs to the
+         operator / control plane.
+         Values are append-only: Closed sits at the end, so the root block is
+         unchanged and a reader of the previous version still decodes every
+         field -- it sees an unrecognised status code, which it must treat as
+         "not tradeable" rather than as Trading. -->
+    <enum name="TradingStatus" encodingType="uint8">
+      <validValue name="Trading">0</validValue>
+      <validValue name="Halted">1</validValue>
+      <validValue name="LuldPause">2</validValue>
+      <validValue name="AuctionPreOpen">3</validValue>
+      <validValue name="AuctionUncross">4</validValue>
+      <validValue name="Closed">5</validValue>
+    </enum>
+    <enum name="StatusReason" encodingType="uint8">
+      <validValue name="None">0</validValue>
+      <validValue name="Administrative">1</validValue>
+      <validValue name="LuldBreach">2</validValue>
+      <validValue name="LuldPauseElapsed">3</validValue>
+      <validValue name="Auction">4</validValue>
+      <validValue name="Session">5</validValue>
+    </enum>
   </types>
 
   <!-- A resting order was added to the book (displayed size). -->
@@ -68,6 +134,8 @@
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
+    <field name="engineTs" id="8" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="9" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
   <!-- A trade printed. orderId = taker, side = taker side, plus the maker id. -->
@@ -80,6 +148,8 @@
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="makerId" id="7" type="OrderId"/>
     <field name="epoch"   id="8" type="Epoch" sinceVersion="1"/>
+    <field name="engineTs" id="9" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="10" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
   <!-- A resting order was (partially) executed; qty = displayed leaves. -->
@@ -91,6 +161,8 @@
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
+    <field name="engineTs" id="8" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="9" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
   <!-- A resting order was canceled/expired off the book. -->
@@ -102,6 +174,8 @@
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
+    <field name="engineTs" id="8" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="9" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
   <!-- A resting order was repriced/replaced; qty = new displayed leaves. -->
@@ -113,6 +187,8 @@
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="epoch"   id="7" type="Epoch" sinceVersion="1"/>
+    <field name="engineTs" id="8" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="9" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
   <!-- A conditional (stop/take-profit) order triggered; price = reference. -->
@@ -122,6 +198,8 @@
     <field name="orderId" id="3" type="OrderId"/>
     <field name="price"   id="5" type="PriceRaw"/>
     <field name="epoch"   id="6" type="Epoch" sinceVersion="1"/>
+    <field name="engineTs" id="7" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="8" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
   <!-- Recovery channel (TCP, length-prefixed frames): ask for increments with
@@ -157,5 +235,67 @@
     <field name="symbol"  id="1" type="Symbol" sinceVersion="1"/>
     <field name="epoch"   id="2" type="Epoch" sinceVersion="1"/>
     <field name="lastSeq" id="3" type="Seq" sinceVersion="1"/>
+  </sbe:message>
+
+  <!-- Unicast distribution session (TCP, length-prefixed frames): start
+       streaming `symbol` on this connection. fromSeq=0 asks for an atomic
+       snapshot followed by increments; fromSeq>0 asks to resume at that seq
+       (ring replay, or SnapshotRequired + snapshot when it is older than the
+       ring). flags bit 0 = snapshotOnly: serve one snapshot and drop the
+       subscription. -->
+  <sbe:message name="Subscribe" id="11" sinceVersion="2">
+    <field name="symbol"  id="1" type="Symbol" sinceVersion="2"/>
+    <field name="fromSeq" id="2" type="Seq" sinceVersion="2"/>
+    <field name="flags"   id="3" type="Flags" sinceVersion="2"/>
+  </sbe:message>
+
+  <!-- Stop streaming `symbol` on this connection. Other symbols keep flowing. -->
+  <sbe:message name="Unsubscribe" id="12" sinceVersion="2">
+    <field name="symbol" id="1" type="Symbol" sinceVersion="2"/>
+  </sbe:message>
+
+  <!-- A Subscribe / ResendRequest that cannot be served at all (unknown
+       symbol, unsupported request). No subscription is left behind. -->
+  <sbe:message name="SubscribeReject" id="13" sinceVersion="2">
+    <field name="symbol" id="1" type="Symbol" sinceVersion="2"/>
+    <field name="reason" id="2" type="RejectReason" sinceVersion="2"/>
+  </sbe:message>
+
+  <!-- Trading state transition of the instrument: halt, LULD volatility pause,
+       auction phase and their release. Emitted on the TRANSITION only, from the
+       engine's own state change -- a subscriber never has to infer a halt from
+       the absence of messages. untilNs is the sequencer-ts a timed pause
+       expires at (0 = the state has no deadline). Also carried inside a
+       snapshot, so a late joiner starts in the right state. -->
+  <sbe:message name="TradingStatus" id="14" sinceVersion="3">
+    <field name="seq"      id="1" type="Seq" sinceVersion="3"/>
+    <field name="symbol"   id="2" type="Symbol" sinceVersion="3"/>
+    <field name="epoch"    id="3" type="Epoch" sinceVersion="3"/>
+    <field name="engineTs" id="4" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"   id="5" type="TimeNs" sinceVersion="3"/>
+    <field name="status"   id="6" type="TradingStatus" sinceVersion="3"/>
+    <field name="reason"   id="7" type="StatusReason" sinceVersion="3"/>
+    <field name="untilNs"  id="8" type="TimeNs" sinceVersion="3"/>
+  </sbe:message>
+
+  <!-- Derivatives layer: the numbers a perp holder needs to value a position --
+       mark price, funding rate with the next funding time, open interest.
+       Published when the engine LEARNS them (a sequenced mark, funding or
+       schedule command), not on every fill. openInterest is the long side of
+       the open positions (equal to the short side). nextFundingNs is the
+       boundary the venue will actually settle on when an operator has set a
+       schedule (engine state, advanced by each settlement); with no schedule it
+       falls back to the interval configured for the instrument, and 0 means the
+       venue does not fund it at all. Also carried inside a snapshot. -->
+  <sbe:message name="DerivativesUpdate" id="15" sinceVersion="3">
+    <field name="seq"           id="1" type="Seq" sinceVersion="3"/>
+    <field name="symbol"        id="2" type="Symbol" sinceVersion="3"/>
+    <field name="epoch"         id="3" type="Epoch" sinceVersion="3"/>
+    <field name="engineTs"      id="4" type="TimeNs" sinceVersion="3"/>
+    <field name="sendTs"        id="5" type="TimeNs" sinceVersion="3"/>
+    <field name="mark"          id="6" type="PriceRaw" sinceVersion="3"/>
+    <field name="fundingRate"   id="7" type="RateRaw" sinceVersion="3"/>
+    <field name="nextFundingNs" id="8" type="TimeNs" sinceVersion="3"/>
+    <field name="openInterest"  id="9" type="QtyRaw" sinceVersion="3"/>
   </sbe:message>
 </sbe:messageSchema>

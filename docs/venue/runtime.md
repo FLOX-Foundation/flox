@@ -32,8 +32,9 @@ Same commands in, same events out, byte for byte. That is what makes replay
 and hot standby work, and the tests enforce it:
 
 - **Every state-mutating input is a command.** Orders, cancels, modifies, mass
-  cancels, quotes, last-look decisions, and also `SetMark`, `ApplyFunding`, and
-  `AdminCmd` (auction transitions, halts, emergency cancel-all). A crash after
+  cancels, quotes, last-look decisions, and also `SetMark`, `ApplyFunding`,
+  `SetFundingSchedule` (the funding calendar) and `AdminCmd` (auction
+  transitions, halts, emergency cancel-all, session open/close). A crash after
   an opening uncross must recover the same book, so the uncross has to be in
   the stream. The same holds for money and configuration: `Deposit` /
   `Withdraw` (balance genesis; a withdraw exceeding `available` is rejected and
@@ -55,6 +56,32 @@ trigger-reference switches and halts arrive as `ListInstrument` / `SetBands` /
 registry from the same stream the engines replay. Structural knobs the control
 plane cannot express (assets, scales, margin parameters, fee schedule) are
 startup configuration supplied when a shard is constructed.
+
+## Trading sessions and the funding calendar
+
+The engine owns two pieces of *schedule-shaped* state, and in both cases it
+holds the **state and the transitions** while the **calendar stays outside**.
+Nothing in the matching path fires on a clock.
+
+| State | Set by | Engine behaviour |
+|---|---|---|
+| Session open / closed | `AdminCmd{CloseSession \| OpenSession}` (control-plane `session` verb) | while closed, new orders are rejected with `MarketClosed`; the resting book stands and cancels are still accepted |
+| Next funding boundary | `SetFundingSchedule{intervalNs, nextFundingNs}` (control-plane verb of the same name) | published on the derivatives feed; advanced by one whole interval on each `ApplyFunding` |
+
+**There is deliberately no session calendar in the engine.** A venue's trading
+hours are a product-level configuration — holidays, half days, per-instrument
+variations, timezone rules — and none of it belongs in a matching engine that
+must stay deterministic and clock-free. The operator (or the control plane
+driving it) runs the schedule and sends the command; what the engine guarantees
+is that the transition is *sequenced*: journaled, replayed at its exact point in
+the stream, hashed into the determinism digest, published to the feed as a
+`TradingStatusChanged`, and carried by the checkpoint. The same contract holds
+for funding: the engine publishes and advances the calendar, but settles only
+when told to with `ApplyFunding`.
+
+`Closed` is not a halt (see [market-data.md](market-data.md)): a close leaves a
+halt or auction phase underneath it untouched, so reopening returns to exactly
+the state the close interrupted.
 
 ## Journal and replay
 
@@ -111,7 +138,16 @@ deterministic):
   reinterpret every price and quantity;
 - instrument config as the **existing** records (`ListInstrument`, `SetBands`,
   `SetTriggerRef`, `SetStpGroup` firm-group STP memberships, `AdminCmd`
-  halt/auction state);
+  halt/auction/session state -- the session record is written last of the
+  three so it restores as the outermost state);
+- derivatives funding state as a snapshot-only `RestoreFunding` record: the
+  last applied rate and the live funding calendar (`nextFundingNs`,
+  `intervalNs`). It is a record rather than three more fields on `SnapshotEnd`
+  because `SnapshotEnd` is a strictly-sized journal body -- widening it would
+  change its `expectedBodySize` and make every existing snapshot unreadable.
+  An engine with no funding state at all writes no such record, and a file
+  without one restores rate 0 and no schedule, exactly as before the record
+  existed (read compatibility, pinned by a test);
 - balances as snapshot-only `RestoreBalance` records, one per account x asset
   carrying the EXACT signed `(available, reserved)` split -- every live
   moment is representable, including a negative wallet mid-liquidation.
@@ -133,7 +169,12 @@ deterministic):
 
 `stateHash` is an event-hash-style FNV fold over the same canonical traversal
 (book, stops, holds, positions, balances available+reserved, MMP windows,
-STP groups, config, sequence counters). The loader re-verifies it at
+STP groups, config, session and funding state, sequence counters). The session
+and funding terms fold in **only when set**, the same "zero == absent" rule the
+balance traversal follows -- an engine that was never closed and never saw a
+funding rate or schedule hashes exactly as it did before those fields existed,
+which is what lets a snapshot written without them still verify on load. The
+loader re-verifies it at
 `SnapshotEnd`; a mismatch rejects the generation. Startup wiring
 (`setLedger`, `setFeeSchedule`, ladder config) is construction state, not
 snapshot state -- re-apply it before `start()`, exactly as for plain journal

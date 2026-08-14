@@ -170,7 +170,18 @@ TEST(ControlPlane, EngineSuite)
   CHECK(has(api2.handle(R"({"method":"setStpGroup","symbol":42,"account":11,"group":77})"),
             "unknown_symbol"));
 
-  CHECK(forwarded.size() == 5);  // failed halt / setTriggerRef / snapshotNow forwarded nothing
+  // session / setFundingSchedule: the operator's schedule surface. The engine
+  // owns the state; the CALENDAR lives out here, and both transitions ride the
+  // sequenced stream so they journal, snapshot and replay.
+  CHECK(has(api2.handle(R"({"method":"session","symbol":7,"open":false})"), "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"session","symbol":42,"open":false})"), "unknown_symbol"));
+  CHECK(has(api2.handle(
+                R"({"method":"setFundingSchedule","symbol":7,"intervalNs":28800000000000,"nextFundingNs":100})"),
+            "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"setFundingSchedule","symbol":42,"intervalNs":1,"nextFundingNs":2})"),
+            "unknown_symbol"));
+
+  CHECK(forwarded.size() == 7);  // failed halt / setTriggerRef / snapshotNow forwarded nothing
   CHECK(std::get_if<ListInstrument>(&forwarded[0]) != nullptr);
   CHECK(std::get_if<SetBands>(&forwarded[1]) != nullptr);
   const auto* trigCmd = std::get_if<SetTriggerRef>(&forwarded[2]);
@@ -179,6 +190,12 @@ TEST(ControlPlane, EngineSuite)
   CHECK(haltCmd != nullptr && haltCmd->action == AdminAction::Halt && haltCmd->symbol == 7);
   const auto* stpCmd = std::get_if<SetStpGroup>(&forwarded[4]);
   CHECK(stpCmd != nullptr && stpCmd->symbol == 7 && stpCmd->account == 11 && stpCmd->group == 77);
+  const auto* closeCmd = std::get_if<AdminCmd>(&forwarded[5]);
+  CHECK(closeCmd != nullptr && closeCmd->action == AdminAction::CloseSession &&
+        closeCmd->symbol == 7);
+  const auto* fundCmd = std::get_if<SetFundingSchedule>(&forwarded[6]);
+  CHECK(fundCmd != nullptr && fundCmd->symbol == 7 && fundCmd->intervalNs == 28'800'000'000'000LL &&
+        fundCmd->nextFundingNs == 100);
 
   // Replaying the forwarded commands into a FRESH registry reproduces the
   // configuration -- the stream is the configuration store.

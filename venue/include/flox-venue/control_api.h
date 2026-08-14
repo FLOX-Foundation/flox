@@ -75,6 +75,33 @@ class ControlApi
       forward(InboundCommand{AdminCmd{sym, halted ? AdminAction::Halt : AdminAction::Resume}});
       return ok();
     }
+    if (method == "session")
+    {
+      // Session boundary. The engine holds the STATE; the CALENDAR that decides
+      // when to call this is the operator's -- a scheduler here, not in the
+      // matching path. Registry-invisible (a closed session is not instrument
+      // configuration), so only the sequenced AdminCmd is forwarded.
+      const SymbolId sym = symOf(f, "symbol");
+      if (reg_.get(sym) == nullptr)
+      {
+        return err("unknown_symbol");
+      }
+      const bool open = get(f, "open") == "true";
+      forward(InboundCommand{
+          AdminCmd{sym, open ? AdminAction::OpenSession : AdminAction::CloseSession}});
+      return ok();
+    }
+    if (method == "setFundingSchedule")
+    {
+      const SymbolId sym = symOf(f, "symbol");
+      if (reg_.get(sym) == nullptr)
+      {
+        return err("unknown_symbol");
+      }
+      forward(InboundCommand{
+          SetFundingSchedule{sym, i64Of(f, "intervalNs"), i64Of(f, "nextFundingNs")}});
+      return ok();
+    }
     if (method == "setBand")
     {
       const SymbolId sym = symOf(f, "symbol");
@@ -183,6 +210,10 @@ class ControlApi
   static uint64_t u64Of(const std::unordered_map<std::string, std::string>& f, const char* k)
   {
     return std::strtoull(get(f, k).c_str(), nullptr, 10);
+  }
+  static int64_t i64Of(const std::unordered_map<std::string, std::string>& f, const char* k)
+  {
+    return static_cast<int64_t>(std::strtoll(get(f, k).c_str(), nullptr, 10));
   }
   static Price priceOf(const std::unordered_map<std::string, std::string>& f, const char* k)
   {

@@ -361,7 +361,10 @@ class SbeOrderEntryCodec
       sbe::putU64(out, seq);
     }
     // Events without an order-entry exec-report mapping (MmpTriggered,
-    // FeeCharged, Liquidation) produce no frame.
+    // FeeCharged, Liquidation) produce no frame. TradingStatusChanged and
+    // DerivativesUpdated are instrument-wide, not account-scoped: they carry
+    // no account to route to and belong on the public market-data feed
+    // (market_data.h), not in a client's exec-report stream.
   }
 
   // Per-session seq of an outbound exec report (schema v1 trailing field).

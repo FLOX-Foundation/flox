@@ -68,6 +68,17 @@ struct SymbolConfig
   // kMoneyScale regardless. Must satisfy scalesValid().
   int64_t priceScale{Price::Scale};
   int64_t qtyScale{Quantity::Scale};
+
+  // Startup FALLBACK funding interval (0 = the venue does not fund this
+  // instrument). The engine settles funding only when told to (the sequenced
+  // ApplyFunding command); this is the calendar it publishes when no schedule
+  // has been set -- the next boundary of a fixed-interval grid anchored at the
+  // sequencer-ts origin, a function of (now, interval). The AUTHORITATIVE
+  // calendar is engine state set by SetFundingSchedule, which overrides this;
+  // see MatchingEngine::nextFundingNs. Excluded from configHash for the same
+  // reason the other mutable knobs are: it reinterprets no stored number, so it
+  // cannot invalidate a snapshot.
+  int64_t fundingIntervalNs{0};
 };
 
 // Book selects the resting-book implementation. The default MatchingBook is
@@ -153,6 +164,7 @@ class MatchingEngine
     {
       cfg_.halted = false;  // timed LULD volatility pause elapsed
       haltUntil_ = 0;
+      publishStatus(TradingStatusReason::LuldPauseElapsed);
     }
     expireHolds();
     expireOrders();
@@ -219,6 +231,13 @@ class MatchingEngine
       if (sg->symbol == cfg_.id)
       {
         setStpGroup(sg->account, sg->group);  // sequenced -> journaled -> replayed
+      }
+    }
+    else if (const auto* fs = std::get_if<SetFundingSchedule>(&cmd))
+    {
+      if (fs->symbol == cfg_.id)
+      {
+        setFundingSchedule(fs->intervalNs, fs->nextFundingNs);  // sequenced -> journaled -> replayed
       }
     }
     else if (std::get_if<TimeTick>(&cmd) != nullptr)
@@ -294,6 +313,110 @@ class MatchingEngine
   // Live resting orders tracked on this symbol (observability gauge).
   uint64_t restingOrderCount() const noexcept { return orderAccount_.size(); }
 
+  // Sequencer-ts of the last command the engine applied. This is the ONLY
+  // honest "when" an outbound event has: the events themselves carry no time,
+  // and a wall-clock read taken downstream would not reproduce on replay. A
+  // publisher that stamps market data with it (market_data.h) produces the same
+  // timestamps on a journal replay as it did live.
+  int64_t engineTimeNs() const noexcept { return now_; }
+
+  // Open interest: the long side of the perp positions the engine tracks for
+  // this symbol. Every contract has a long and a short leg, so the long side is
+  // the open interest; summing signed quantities would give zero. Integer sum
+  // over an unordered map -- addition is associative, so the result does not
+  // depend on the map's layout.
+  Quantity openInterest() const
+  {
+    int64_t oi = 0;
+    for (const auto& [acct, p] : positions_)
+    {
+      (void)acct;
+      if (p.qtyRaw > 0)
+      {
+        oi += p.qtyRaw;
+      }
+    }
+    return Quantity::fromRaw(oi);
+  }
+
+  // Next funding boundary, in sequencer time. A schedule set by the operator
+  // (SetFundingSchedule) is a FACT: it is engine state, hashed, checkpointed
+  // and advanced by each ApplyFunding, so what the feed publishes is what the
+  // venue will actually settle on. With no schedule set the value falls back to
+  // the historical derivation from (now, SymbolConfig::fundingIntervalNs) --
+  // a computation over startup config, kept so an engine that never learned a
+  // schedule behaves exactly as it did before the command existed. 0 = neither
+  // a schedule nor a configured interval, i.e. the venue does not fund this
+  // instrument.
+  int64_t nextFundingNs() const noexcept
+  {
+    if (nextFundingNs_ > 0)
+    {
+      return nextFundingNs_;
+    }
+    if (cfg_.fundingIntervalNs <= 0)
+    {
+      return 0;
+    }
+    return (now_ / cfg_.fundingIntervalNs + 1) * cfg_.fundingIntervalNs;
+  }
+
+  // The live funding interval: the operator-set schedule when there is one,
+  // otherwise the startup config value it falls back to.
+  int64_t fundingIntervalNs() const noexcept
+  {
+    return fundingIntervalNs_ > 0 ? fundingIntervalNs_ : cfg_.fundingIntervalNs;
+  }
+
+  // Last funding rate the engine applied, at kFundingRateScale. Carried by the
+  // checkpoint (RestoreFunding), so a restored engine publishes the real rate
+  // instead of 0 until the next ApplyFunding.
+  int64_t fundingRateRaw() const noexcept { return fundingRateRaw_; }
+
+  // Operator-set funding calendar. Sequenced as SetFundingSchedule in
+  // production (journaled, replayed, checkpointed); this direct setter is the
+  // pre-start wiring / recovery path, like setStpGroup. A non-positive interval
+  // or boundary clears the schedule, dropping back to the config derivation.
+  void setFundingSchedule(int64_t intervalNs, int64_t nextFundingNs)
+  {
+    fundingIntervalNs_ = intervalNs > 0 ? intervalNs : 0;
+    nextFundingNs_ = nextFundingNs > 0 ? nextFundingNs : 0;
+    // The calendar is a published field, so a change is news -- but only for an
+    // instrument the engine has a mark for. Publishing before the first SetMark
+    // would break the feed's standing promise that an unmarked instrument gets
+    // no DerivativesUpdate at all (the first mark carries the new schedule
+    // anyway).
+    if (hasMark_)
+    {
+      publishDerivatives(markPrice_);
+    }
+  }
+
+  // Current trading state, derived from the engine's own session / halt /
+  // pause / auction flags -- the same value the transition events publish.
+  // Closed wins over everything: a closed session is the instrument's outermost
+  // state, and the halt or auction phase underneath it is preserved untouched
+  // so reopening returns to exactly the state the close interrupted.
+  TradingStatus tradingStatus() const noexcept
+  {
+    if (closed_)
+    {
+      return TradingStatus::Closed;
+    }
+    if (auctionMode_)
+    {
+      return TradingStatus::AuctionPreOpen;
+    }
+    if (cfg_.halted)
+    {
+      return haltUntil_ > 0 ? TradingStatus::LuldPause : TradingStatus::Halted;
+    }
+    return TradingStatus::Trading;
+  }
+
+  // Session state (see AdminAction::CloseSession / OpenSession).
+  bool sessionClosed() const noexcept { return closed_; }
+
   struct OrderView
   {
     OrderId id{};
@@ -365,8 +488,14 @@ class MatchingEngine
   // to/from the clearing pool -- longs pay when rate > 0. `mark` values the leg.
   void applyFunding(double rate, Price mark)
   {
+    // The rate is known whether or not there is a ledger to settle against, and
+    // it is what the derivatives feed publishes -- record it before the early
+    // return, or a venue running without a bound ledger would never publish one.
+    fundingRateRaw_ = static_cast<int64_t>(rate * static_cast<double>(kFundingRateScale));
+    advanceFundingSchedule();
     if (ledger_ == nullptr)
     {
+      publishDerivatives(mark);
       return;
     }
     for (auto& [acct, p] : positions_)
@@ -384,6 +513,7 @@ class MatchingEngine
     // equity -- so an unaffordable funding payment triggers liquidation instead
     // of accruing silent bad debt.
     checkLiquidations(mark);
+    publishDerivatives(mark);
   }
 
   // External mark-price update (derivatives). Drives mark-referenced stops and
@@ -394,6 +524,10 @@ class MatchingEngine
     hasMark_ = true;
     processTriggers();
     checkLiquidations(mark);
+    // After the consequences, so the published open interest matches the state
+    // the mark left behind (a liquidation the mark caused has already closed
+    // its position).
+    publishDerivatives(mark);
   }
 
   // Unrealized PnL of an account's perp position marked at `mark` (quote raw).
@@ -414,7 +548,19 @@ class MatchingEngine
   uint64_t tradesGenerated() const noexcept { return tradeSeq_; }
 
   const SymbolConfig& config() const noexcept { return cfg_; }
-  void setHalted(bool halted) noexcept { cfg_.halted = halted; }  // control-plane hook
+
+  // Control-plane hook (and the AdminCmd Halt/Resume path). Clears any timed
+  // pause deadline on resume, so the state the feed publishes is the state the
+  // engine is actually in.
+  void setHalted(bool halted)
+  {
+    cfg_.halted = halted;
+    if (!halted)
+    {
+      haltUntil_ = 0;
+    }
+    publishStatus(TradingStatusReason::Administrative);
+  }
 
   // Live risk-limit adjustment (control-plane): operators tighten these during
   // volatility without a restart. Only the risk knobs are mutable -- structural
@@ -457,6 +603,11 @@ class MatchingEngine
   void haltAndCancelAll()
   {
     cfg_.halted = true;
+    haltUntil_ = 0;  // an operator halt has no deadline, unlike the LULD pause
+    // The halt reaches the feed BEFORE the flood of cancels it causes, so a
+    // subscriber reads them as consequences of a halt rather than as an
+    // unexplained mass cancel.
+    publishStatus(TradingStatusReason::Administrative);
     // Resolve every open hold first: restored quantity lands back on the book
     // and is then swept by the cancel loop below, so nothing survives the halt.
     rejectAllHolds();
@@ -488,9 +639,36 @@ class MatchingEngine
     }
   }
 
+  // ---- session ----
+  // Close the trading session: new orders are rejected with MarketClosed, and
+  // the resting book STANDS (a close is not a cancel-all -- an operator who
+  // wants the book pulled has HaltAndCancelAll). The halt / auction state
+  // underneath is deliberately untouched, so a close during a halt reopens
+  // still halted: the session boundary must not silently clear an exception
+  // state an operator raised for a reason.
+  //
+  // The engine owns the STATE, never the calendar: nothing here fires on a
+  // clock. The schedule that decides when to send CloseSession / OpenSession is
+  // the operator's / control plane's (docs/venue/runtime.md).
+  void closeSession()
+  {
+    closed_ = true;
+    publishStatus(TradingStatusReason::Session);
+  }
+
+  void openSession()
+  {
+    closed_ = false;
+    publishStatus(TradingStatusReason::Session);
+  }
+
   // ---- session / auctions ----
   // Pre-open: orders accumulate without matching (a crossed book is allowed).
-  void beginPreOpen() noexcept { auctionMode_ = true; }
+  void beginPreOpen()
+  {
+    auctionMode_ = true;
+    publishStatus(TradingStatusReason::Auction);
+  }
 
   // Dispatch a sequenced operator action (see AdminCmd). Routing admin actions
   // through the command stream (not direct method calls) is what makes them
@@ -518,6 +696,12 @@ class MatchingEngine
       case AdminAction::Resume:
         setHalted(false);
         break;
+      case AdminAction::CloseSession:
+        closeSession();
+        break;
+      case AdminAction::OpenSession:
+        openSession();
+        break;
     }
   }
 
@@ -526,18 +710,24 @@ class MatchingEngine
   // book without matching until the operator calls openContinuous(), which
   // uncrosses at the single volume-maximizing price and switches to continuous.
   // This is how venues reopen after a halt -- never straight into continuous.
-  void resumeWithAuction() noexcept
+  void resumeWithAuction()
   {
     cfg_.halted = false;
     haltUntil_ = 0;
     auctionMode_ = true;
+    publishStatus(TradingStatusReason::Auction);
   }
   // Run the (opening / closing) uncross auction: match everything at the single
   // volume-maximizing price, then resume continuous trading.
   void openContinuous()
   {
+    // The uncross is a state of its own for exactly as long as it runs: a
+    // subscriber must be able to attribute the burst of fills to it rather than
+    // to continuous trading that has not resumed yet.
+    emitStatus(TradingStatus::AuctionUncross, TradingStatusReason::Auction, 0);
     runAuction();
     auctionMode_ = false;
+    publishStatus(TradingStatusReason::Auction);
   }
   // Explicit uncross without changing session mode (closing auction, etc.).
   void runAuction()
@@ -662,6 +852,23 @@ class MatchingEngine
     h = mix(h, static_cast<uint64_t>(cfg_.triggerRef));
     h = mix(h, auctionMode_ ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(haltUntil_));
+    // Session and funding state fold in only when they are set, the same
+    // "zero == absent" rule the balance traversal follows. An engine that has
+    // never been closed and never seen a funding rate or schedule therefore
+    // hashes exactly as it did before these fields existed -- which is what
+    // lets a snapshot written without them still verify on load.
+    if (closed_)
+    {
+      h = mix(h, 0xB00AU);
+      h = mix(h, 1U);
+    }
+    if (fundingRateRaw_ != 0 || fundingIntervalNs_ != 0 || nextFundingNs_ != 0)
+    {
+      h = mix(h, 0xB00BU);
+      h = mix(h, static_cast<uint64_t>(fundingRateRaw_));
+      h = mix(h, static_cast<uint64_t>(fundingIntervalNs_));
+      h = mix(h, static_cast<uint64_t>(nextFundingNs_));
+    }
     h = mix(h, hasLast_ ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(lastPrice_.raw()));
     h = mix(h, hasMark_ ? 1U : 0U);
@@ -915,6 +1122,21 @@ class MatchingEngine
     {
       out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::BeginPreOpen}}, ts);
     }
+    // The session state rides the same existing AdminCmd path the halt and the
+    // auction phase do. Written last of the three so it restores as the
+    // outermost state, exactly as tradingStatus() ranks it.
+    if (closed_)
+    {
+      out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::CloseSession}}, ts);
+    }
+    // Funding state: written only when there is any, so an engine with none
+    // produces the same file it did before the record existed (and that file
+    // still loads -- see RestoreFunding).
+    if (fundingRateRaw_ != 0 || fundingIntervalNs_ != 0 || nextFundingNs_ != 0)
+    {
+      out.append(InboundCommand{RestoreFunding{fundingRateRaw_, nextFundingNs_, fundingIntervalNs_}},
+                 ts);
+    }
 
     if (ledger_ != nullptr)
     {
@@ -1167,6 +1389,16 @@ class MatchingEngine
       }
       return true;
     }
+    if (const auto* r = std::get_if<RestoreFunding>(&cmd))
+    {
+      // Restored verbatim: the rate is a fact the venue published and the
+      // calendar is a fact it will settle on. Neither is re-derived from
+      // config, which is the whole point of the record.
+      fundingRateRaw_ = r->fundingRateRaw;
+      nextFundingNs_ = r->nextFundingNs > 0 ? r->nextFundingNs : 0;
+      fundingIntervalNs_ = r->fundingIntervalNs > 0 ? r->fundingIntervalNs : 0;
+      return true;
+    }
     if (const auto* r = std::get_if<RestoreReservation>(&cmd))
     {
       return applyRestoreReservation(*r);
@@ -1241,6 +1473,13 @@ class MatchingEngine
     e.positions_ = positions_;
     e.auctionMode_ = auctionMode_;
     e.haltUntil_ = haltUntil_;
+    e.closed_ = closed_;
+    e.lastStatus_ = lastStatus_;
+    e.lastStatusUntil_ = lastStatusUntil_;
+    e.statusPublished_ = statusPublished_;
+    e.fundingRateRaw_ = fundingRateRaw_;
+    e.fundingIntervalNs_ = fundingIntervalNs_;
+    e.nextFundingNs_ = nextFundingNs_;
     for (const auto& [acct, grp] : matcher_.stpGroups())
     {
       e.matcher_.setStpGroup(acct, grp);
@@ -1266,6 +1505,13 @@ class MatchingEngine
     if (o.symbol != cfg_.id)
     {
       return RejectReason::UnknownSymbol;
+    }
+    // Ahead of the halt check: a client whose order is refused deserves the
+    // outer reason. "The market is closed" tells it to come back next session;
+    // "halted" would tell it something is wrong with the instrument.
+    if (closed_)
+    {
+      return RejectReason::MarketClosed;
     }
     if (cfg_.halted)
     {
@@ -1586,6 +1832,63 @@ class MatchingEngine
   {
     cfg_.halted = true;  // trip a timed volatility pause
     haltUntil_ = now_ + cfg_.luldHaltNs;
+    publishStatus(TradingStatusReason::LuldBreach);
+  }
+
+  // ---- instrument-wide publications ----
+  // Emit the state the engine is now in, if it differs from the last one
+  // published. Every halt / pause / auction transition routes through here, so
+  // the feed carries transitions and only transitions: no duplicate on a
+  // re-halt of an already halted symbol, and nothing to infer downstream.
+  void publishStatus(TradingStatusReason reason)
+  {
+    const TradingStatus s = tradingStatus();
+    // The deadline belongs to the timed pause and to nothing else. A state that
+    // is not the pause publishes 0 even when a pause deadline is still stored
+    // underneath it (a closed session or an auction phase over a paused
+    // instrument) -- a subscriber must never be handed an expiry for a state
+    // that does not expire.
+    emitStatus(s, reason, s == TradingStatus::LuldPause ? haltUntil_ : 0);
+  }
+
+  void emitStatus(TradingStatus status, TradingStatusReason reason, int64_t untilNs)
+  {
+    if (statusPublished_ && status == lastStatus_ && untilNs == lastStatusUntil_)
+    {
+      return;
+    }
+    statusPublished_ = true;
+    lastStatus_ = status;
+    lastStatusUntil_ = untilNs;
+    sink_(TradingStatusChanged{cfg_.id, status, reason, untilNs});
+  }
+
+  // A settlement just happened, so the calendar moves on: one whole interval
+  // past the boundary that was settled, and further whole intervals if the
+  // settlement ran late enough that one step would still leave the boundary in
+  // the past (an operator catching up after an outage must not leave a stale
+  // "next funding" in the feed). Only an operator-set schedule moves -- with no
+  // schedule the published value is derived from `now` and moves by itself.
+  void advanceFundingSchedule()
+  {
+    if (fundingIntervalNs_ <= 0 || nextFundingNs_ <= 0)
+    {
+      return;
+    }
+    nextFundingNs_ += fundingIntervalNs_;
+    if (nextFundingNs_ <= now_)
+    {
+      const int64_t behind = now_ - nextFundingNs_;
+      nextFundingNs_ += (behind / fundingIntervalNs_ + 1) * fundingIntervalNs_;
+    }
+  }
+
+  // Emit the derivatives layer the engine knows: the mark it was just given,
+  // the last funding rate it applied, the next funding boundary of the
+  // configured schedule and the live open interest.
+  void publishDerivatives(Price mark)
+  {
+    sink_(DerivativesUpdated{cfg_.id, mark, fundingRateRaw_, nextFundingNs(), openInterest()});
   }
 
   // Conditional order (stop / take-profit / trailing): park in the stop book
@@ -1598,6 +1901,11 @@ class MatchingEngine
     if (o.symbol != cfg_.id)
     {
       sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol, o.accountId});
+      return false;
+    }
+    if (closed_)
+    {
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::MarketClosed, o.accountId});
       return false;
     }
     if (cfg_.halted)
@@ -2897,6 +3205,12 @@ class MatchingEngine
     markPrice_ = Price::fromRaw(e.markPriceRaw);
     hasMark_ = e.hasMark;
     haltUntil_ = e.haltUntilNs;
+    // The restored flags are the state the feed must start from: re-sync the
+    // transition memo so the next real transition is measured against the
+    // recovered state, not against the one the config records replayed.
+    lastStatus_ = tradingStatus();
+    lastStatusUntil_ = lastStatus_ == TradingStatus::LuldPause ? haltUntil_ : 0;
+    statusPublished_ = true;
     // Full verification: the reconstructed state must hash to what the writer
     // measured. A mismatch (torn/corrupted/semantically-drifted snapshot)
     // rejects the generation.
@@ -3496,6 +3810,28 @@ class MatchingEngine
   std::unordered_map<uint64_t, Position> positions_;  // perp positions per account
   bool auctionMode_{false};
   int64_t haltUntil_{0};
+  // Session state, deliberately separate from cfg_.halted: a closed session and
+  // an operator halt are different facts with different reject reasons, and a
+  // close must not clear a halt underneath it. Hashed and checkpointed.
+  bool closed_{false};
+
+  // Last trading state published, so the feed carries transitions only. Not
+  // hashed and not snapshotted: it is a de-duplication memo of what went OUT,
+  // not engine state -- the state itself is (halted, haltUntil_, auctionMode_,
+  // closed_), which stateHash already covers and a snapshot already restores.
+  TradingStatus lastStatus_{TradingStatus::Trading};
+  int64_t lastStatusUntil_{0};
+  bool statusPublished_{false};
+
+  // Last funding rate applied, kFundingRateScale (published, never used in
+  // matching), and the live funding calendar set by SetFundingSchedule
+  // (0 = none: nextFundingNs() falls back to the config derivation). All three
+  // are hashed and carried by the checkpoint as RestoreFunding -- a restored
+  // engine publishes the rate and the boundary the venue will actually settle
+  // on, not a zero and a formula.
+  int64_t fundingRateRaw_{0};
+  int64_t fundingIntervalNs_{0};
+  int64_t nextFundingNs_{0};
 };
 
 }  // namespace flox::venue

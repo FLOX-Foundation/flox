@@ -240,7 +240,7 @@ TEST(Venue, EngineSuite)
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      metrics.observe(e);
-                                     md.onEvent(e);
+                                     md.onEvent(e, eng.engineTimeNs());
                                      registry.route(e);
                                      liveHash = hashEvent(liveHash, e); });
   flox::FeeSchedule fs;

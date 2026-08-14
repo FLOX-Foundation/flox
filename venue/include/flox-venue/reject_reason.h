@@ -40,6 +40,10 @@ enum class RejectReason : uint8_t
   MalformedMessage,  // frame did not decode to a valid command
   Unauthenticated,   // command before a successful logon
   SessionSeqGap,     // FIX: inbound MsgSeqNum gap -- session must resync
+  // The instrument's SESSION is closed -- distinct from Halted, which is an
+  // operator exception. A client retries after the next session opens; a halt
+  // has no such promise. Appended value (the wire enum is append-only).
+  MarketClosed,
 };
 
 enum class CancelReason : uint8_t

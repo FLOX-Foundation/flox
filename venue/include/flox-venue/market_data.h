@@ -37,6 +37,11 @@ enum class MdType : uint8_t
   Cancel,
   Replace,
   Triggered,
+  // Appended types. The order-level types above map onto SBE template ids
+  // 1..6; these do NOT continue that arithmetic (7..13 are the recovery and
+  // session verbs), so the codec maps them explicitly.
+  TradingStatus,      // halt / LULD pause / auction phase transition
+  DerivativesUpdate,  // mark price, funding rate + next funding time, open interest
 };
 
 struct MdMessage
@@ -46,19 +51,54 @@ struct MdMessage
   SymbolId symbol{};
   OrderId id{};  // subject order; for Trade this is the taker
   Side side{};
-  Price price{};
-  Quantity qty{};     // AddOrder: shown qty; Trade: exec qty; Executed/Replace: leaves
+  Price price{};      // DerivativesUpdate: the mark price
+  Quantity qty{};     // AddOrder: shown qty; Trade: exec qty; Executed/Replace: leaves;
+                      // DerivativesUpdate: open interest
   OrderId makerId{};  // Trade only
   uint64_t epoch{};   // publisher lifetime id; changes on restart (consumer re-snapshots)
+
+  // ---- time (every type, every path) ----
+  // When the ENGINE produced the event: the sequencer-ts of the command that
+  // caused it (MatchingEngine::engineTimeNs), handed to the publisher by the
+  // caller. It is journaled input, so a replay of the same journal produces the
+  // same value -- time bars, latency budgets and a faithful tape are all built
+  // on this one, and determinism checks may hash it.
+  int64_t engineTsNs{};
+  // When the PUBLISHER sent this copy: a wall-clock read at send time. It is
+  // deliberately NOT reproducible -- a resend of the same message carries a
+  // later value than the original -- so it must never enter an event hash or a
+  // determinism comparison. Its use is measuring the venue's own outbound
+  // latency (sendTsNs - engineTsNs) and the wire delay a consumer sees.
+  int64_t sendTsNs{};
+
+  // ---- TradingStatus only ----
+  flox::venue::TradingStatus status{};
+  TradingStatusReason reason{};
+  int64_t untilNs{};  // pause deadline in sequencer time (0 = state has no deadline)
+
+  // ---- DerivativesUpdate only (mark = price, open interest = qty) ----
+  int64_t fundingRateRaw{};  // kFundingRateScale, per funding interval
+  int64_t nextFundingNs{};   // next funding boundary (0 = no funding schedule)
 };
 
 // Consistent (snapshot, lastSeq) pair from MarketDataPublisher::snapshotAtomic:
 // apply `orders`, then resume the incremental feed at lastSeq+1 under `epoch`.
+//
+// The book alone is not a startable state for a late joiner: an instrument that
+// is halted, paused or in a pre-open auction looks exactly like a quiet one,
+// and a perp position cannot be valued without a mark. So the snapshot carries
+// the CURRENT trading status and the current derivatives layer alongside the
+// orders -- the same messages the incremental feed publishes on a transition,
+// with seq=0 like the rest of the body.
 struct MdSnapshot
 {
   uint64_t epoch{};
   uint64_t lastSeq{};
   std::vector<MdMessage> orders;  // AddOrder body messages (seq=0, epoch set)
+  bool hasStatus{false};
+  MdMessage status{};  // current TradingStatus (valid when hasStatus)
+  bool hasDerivatives{false};
+  MdMessage derivatives{};  // current DerivativesUpdate (valid when hasDerivatives)
 };
 
 // One publisher per symbol. Each emitted message carries (symbol, epoch, seq):
@@ -91,9 +131,15 @@ class MarketDataPublisher
   {
   }
 
-  void onEvent(const OutboundEvent& e)
+  // `engineTsNs` is the sequencer-ts the engine applied the causing command at
+  // (MatchingEngine::engineTimeNs()). The publisher does NOT invent one: an
+  // OutboundEvent carries no time of its own, and a clock read here would make
+  // the feed unreproducible on replay -- so the caller, which knows the engine's
+  // time, passes it in and every message inherits it verbatim.
+  void onEvent(const OutboundEvent& e, int64_t engineTsNs)
   {
     std::lock_guard<std::mutex> lk(m_);
+    engineTs_ = engineTsNs;
     if (const auto* x = std::get_if<OrderAccepted>(&e))
     {
       onAccepted(*x);
@@ -121,6 +167,14 @@ class MarketDataPublisher
     else if (const auto* x = std::get_if<FillHeld>(&e))
     {
       onFillHeld(*x);
+    }
+    else if (const auto* x = std::get_if<TradingStatusChanged>(&e))
+    {
+      onTradingStatus(*x);
+    }
+    else if (const auto* x = std::get_if<DerivativesUpdated>(&e))
+    {
+      onDerivatives(*x);
     }
     // FillRejected itself has no direct market impact: when a rejected hold
     // returns quantity to the book the engine emits OrderModified (combine /
@@ -156,10 +210,31 @@ class MarketDataPublisher
     s.epoch = epoch_;
     s.lastSeq = seq_;
     s.orders.reserve(orders_.size());
+    const int64_t sendTs = stampSendLocked();
     for (const auto& [id, r] : orders_)
     {
-      s.orders.push_back(
-          MdMessage{MdType::AddOrder, 0, r.symbol, id, r.side, r.price, r.leaves, 0, epoch_});
+      MdMessage m{MdType::AddOrder, 0, r.symbol, id, r.side, r.price, r.leaves, 0, epoch_};
+      // The order's engine time is the one it was accepted at -- the snapshot
+      // states when each resting order arrived, not when the snapshot was taken.
+      m.engineTsNs = r.engineTsNs;
+      m.sendTsNs = sendTs;
+      s.orders.push_back(m);
+    }
+    // Current state, so a late joiner starts halted when the instrument is
+    // halted and can value a position from the first message it applies.
+    if (statusValid_)
+    {
+      s.hasStatus = true;
+      s.status = status_;
+      s.status.seq = 0;
+      s.status.sendTsNs = sendTs;
+    }
+    if (derivativesValid_)
+    {
+      s.hasDerivatives = true;
+      s.derivatives = derivatives_;
+      s.derivatives.seq = 0;
+      s.derivatives.sendTsNs = sendTs;
     }
     return s;
   }
@@ -179,17 +254,35 @@ class MarketDataPublisher
       return std::nullopt;
     }
     std::vector<MdMessage> out;
+    const int64_t sendTs = stampSendLocked();
     for (const auto& m : ring_)
     {
       if (m.seq >= fromSeq)
       {
         out.push_back(m);
+        // A replayed copy is being sent NOW: engineTsNs is the event's own time
+        // and never changes, sendTsNs is this transmission's. That asymmetry is
+        // the point -- it is what lets a consumer tell a replay from live flow.
+        out.back().sendTsNs = sendTs;
       }
     }
     return out;
   }
 
  private:
+  // Wall clock for sendTsNs, latched non-decreasing: a step backwards in the
+  // system clock must not make an already-sent message look newer than one that
+  // follows it. Callers hold m_.
+  int64_t stampSendLocked() const
+  {
+    const int64_t now = static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    lastSend_ = now > lastSend_ ? now : lastSend_;
+    return lastSend_;
+  }
+
   static uint64_t makeEpoch()
   {
     std::random_device rd;
@@ -206,6 +299,7 @@ class MarketDataPublisher
     Side side{};
     Price price{};
     Quantity leaves{};
+    int64_t engineTsNs{};  // engine time the order was accepted at (snapshot bodies carry it)
   };
 
   Quantity atPrice(Side s, Price p) const
@@ -234,12 +328,43 @@ class MarketDataPublisher
   {
     m.seq = ++seq_;
     m.epoch = epoch_;
+    m.engineTsNs = engineTs_;
+    m.sendTsNs = stampSendLocked();
     ring_.push_back(m);
     if (ring_.size() > resendCapacity_)
     {
       ring_.pop_front();
     }
     sink_(m);
+  }
+
+  void onTradingStatus(const TradingStatusChanged& s)
+  {
+    MdMessage m{};
+    m.type = MdType::TradingStatus;
+    m.symbol = s.symbol;
+    m.status = s.status;
+    m.reason = s.reason;
+    m.untilNs = s.untilNs;
+    emit(m);
+    // Remember it AFTER emit stamped seq/epoch/time, so the snapshot copy is
+    // the message the incremental feed actually published.
+    status_ = ring_.back();
+    statusValid_ = true;
+  }
+
+  void onDerivatives(const DerivativesUpdated& d)
+  {
+    MdMessage m{};
+    m.type = MdType::DerivativesUpdate;
+    m.symbol = d.symbol;
+    m.price = d.mark;
+    m.qty = d.openInterest;
+    m.fundingRateRaw = d.fundingRateRaw;
+    m.nextFundingNs = d.nextFundingNs;
+    emit(m);
+    derivatives_ = ring_.back();
+    derivativesValid_ = true;
   }
 
   void onAccepted(const OrderAccepted& a)
@@ -251,7 +376,7 @@ class MarketDataPublisher
     // Public depth shows only the displayed size; an iceberg's hidden reserve is
     // never leaked (displayQty carries the peak, 0 -> non-iceberg, use leavesQty).
     const Quantity shown = a.displayQty.raw() > 0 ? a.displayQty : a.leavesQty;
-    orders_[a.id] = Resting{a.symbol, a.side, a.price, shown};
+    orders_[a.id] = Resting{a.symbol, a.side, a.price, shown, engineTs_};
     applyLevel(a.side, a.price, atPrice(a.side, a.price) + shown);
     emit(MdMessage{MdType::AddOrder, 0, a.symbol, a.id, a.side, a.price, shown, 0});
   }
@@ -355,8 +480,16 @@ class MarketDataPublisher
   uint64_t seq_{0};
   uint64_t epoch_{};
   size_t resendCapacity_{};
-  std::deque<MdMessage> ring_;  // recent increments (seq embedded) for resendFrom
-  mutable std::mutex m_;        // matching thread vs recovery-server threads
+  std::deque<MdMessage> ring_;   // recent increments (seq embedded) for resendFrom
+  int64_t engineTs_{0};          // engine time of the event being processed
+  mutable int64_t lastSend_{0};  // latched wall clock, so sendTsNs never goes backwards
+  // Last published instrument state, replayed into every snapshot so a late
+  // joiner starts with the real status and mark instead of a blank one.
+  MdMessage status_{};
+  bool statusValid_{false};
+  MdMessage derivatives_{};
+  bool derivativesValid_{false};
+  mutable std::mutex m_;  // matching thread vs recovery-server threads
 };
 
 }  // namespace flox::venue

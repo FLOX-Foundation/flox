@@ -62,6 +62,8 @@ const char* toString(RejectReason r) noexcept
       return "Unauthenticated";
     case RejectReason::SessionSeqGap:
       return "SessionSeqGap";
+    case RejectReason::MarketClosed:
+      return "MarketClosed";
   }
   return "?";
 }

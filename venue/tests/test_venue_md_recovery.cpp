@@ -118,6 +118,8 @@ struct ConsumerBook
         break;
       case MdType::Trade:
       case MdType::Triggered:
+      case MdType::TradingStatus:
+      case MdType::DerivativesUpdate:
         break;  // no direct depth impact (depth moves via Executed)
     }
   }
@@ -206,7 +208,7 @@ void test_late_joiner_snapshot()
                              udpPub.publish(m); },
                            px(0.01), SYM, /*epoch*/ 0, /*resendCapacity*/ 8);
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                   { md.onEvent(e); });
+                                   { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);
   rec.addPublisher(md);
   CHECK(rec.start(0) > 0);
@@ -321,7 +323,7 @@ void test_resend_served()
   MarketDataPublisher<> md([&](const MdMessage& m)
                            { sent.push_back(m); }, px(0.01), SYM);
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                   { md.onEvent(e); });
+                                   { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);
   rec.addPublisher(md);
   CHECK(rec.start(0) > 0);
@@ -362,7 +364,7 @@ void test_resend_served()
   MdCounters counters2;
   MarketDataPublisher<> md2([](const MdMessage&) {}, px(0.01), SYM, 0, /*resendCapacity*/ 4);
   MatchingEngine<MatchingBook> eng2(cfg(), [&](const OutboundEvent& e)
-                                    { md2.onEvent(e); });
+                                    { md2.onEvent(e, eng2.engineTimeNs()); });
   MdRecoveryServer rec2(&counters2);
   rec2.addPublisher(md2);
   CHECK(rec2.start(0) > 0);
@@ -422,7 +424,7 @@ void test_publisher_restart_epoch()
   const uint64_t epoch1 = md1->epoch();
   {
     MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                     { md1->onEvent(e); });
+                                     { md1->onEvent(e, eng.engineTimeNs()); });
     eng.submit(limit(1, Side::SELL, 101, 1));
     eng.submit(limit(2, Side::BUY, 99, 2));
     const uint64_t t1 = md1->seq();
@@ -451,7 +453,7 @@ void test_publisher_restart_epoch()
   md1.reset();
   CHECK(md2->epoch() != epoch1);
   MatchingEngine<MatchingBook> eng2(cfg(), [&](const OutboundEvent& e)
-                                    { md2->onEvent(e); });
+                                    { md2->onEvent(e, eng2.engineTimeNs()); });
   eng2.submit(limit(1, Side::SELL, 105, 3));  // ids restart too: a different book
   eng2.submit(limit(2, Side::BUY, 95, 4));
   eng2.submit(limit(3, Side::SELL, 106, 1));
@@ -520,7 +522,7 @@ void test_recovery_backoff_bounded()
                              } },
                            px(0.01), SYM, /*epoch*/ 7);
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                   { md.onEvent(e); });
+                                   { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);
   rec.addPublisher(md);
   const int port = rec.start(0);
@@ -587,7 +589,7 @@ void test_recovery_server_bind_address()
   MdCounters counters;
   MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                   { md.onEvent(e); });
+                                   { md.onEvent(e, eng.engineTimeNs()); });
   for (int i = 1; i <= 3; ++i)
   {
     eng.submit(limit(static_cast<OrderId>(i), Side::SELL, 100 + i, i));
@@ -632,6 +634,75 @@ void test_send_drop_counted()
   CHECK(got.seq == 1 && got.epoch == 1);
 }
 
+// The new message types are ordinary feed messages: they cross the datagram
+// transport intact, and the recovery channel's snapshot carries the CURRENT
+// status and derivatives so a consumer that reconnects into a halted
+// instrument is not left reading an idle book.
+void test_status_and_derivatives_over_multicast_and_recovery()
+{
+  std::printf("test_status_and_derivatives_over_multicast_and_recovery\n");
+  MdCounters counters;
+  UdpMdPublisher udpPub;
+  UdpMdSubscriber sub;
+  CHECK(setupUdp(udpPub, sub, "239.7.8.4"));
+
+  MarketDataPublisher<> md([&](const MdMessage& m)
+                           { udpPub.publish(m); }, px(0.01), SYM);
+  SymbolConfig c = cfg();
+  c.fundingIntervalNs = 8'000'000'000LL;
+  MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
+                                   { md.onEvent(e, eng.engineTimeNs()); });
+  MdRecoveryServer rec(&counters);
+  rec.addPublisher(md);
+  CHECK(rec.start(0) > 0);
+
+  eng.submit(limit(1, Side::SELL, 100, 5), 1'000);
+  eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 2'000);
+  eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}}, 3'000);
+
+  // Multicast: both new types arrive decoded, with both timestamps.
+  bool sawStatus = false;
+  bool sawDerivatives = false;
+  MdMessage m;
+  while (sub.recv(m))
+  {
+    CHECK(m.engineTsNs != 0 && m.sendTsNs != 0);
+    if (m.type == MdType::TradingStatus)
+    {
+      sawStatus = m.status == TradingStatus::Halted && m.engineTsNs == 3'000;
+    }
+    if (m.type == MdType::DerivativesUpdate)
+    {
+      sawDerivatives = m.price == px(100) && m.nextFundingNs == 8'000'000'000LL;
+    }
+  }
+  CHECK(sawStatus);
+  CHECK(sawDerivatives);
+
+  // Recovery channel: a late joiner (fromSeq = 0) gets the state alongside the
+  // book, kept out of the order body.
+  MdRecoveryClient::Result res;
+  CHECK(client(rec.port()).recover(SYM, 0, res) == MdRecoveryClient::Status::Ok);
+  CHECK(res.snapshot);
+  CHECK(res.hasStatus && res.status.status == TradingStatus::Halted);
+  CHECK(res.hasDerivatives && res.derivatives.price == px(100));
+  CHECK(res.messages.size() == res.begin.orderCount);  // body is orders only
+
+  // A RESEND is a different case: there they are sequenced increments and must
+  // stay in the stream, or the replay would have a hole in it.
+  MdRecoveryClient::Result replay;
+  CHECK(client(rec.port()).recover(SYM, 1, replay) == MdRecoveryClient::Status::Ok);
+  CHECK(!replay.snapshot);
+  CHECK(replay.messages.size() == md.seq());
+  CHECK(replay.lastSeq == md.seq());
+  bool statusInStream = false;
+  for (const MdMessage& r : replay.messages)
+  {
+    statusInStream = statusInStream || r.type == MdType::TradingStatus;
+  }
+  CHECK(statusInStream);
+}
+
 }  // namespace
 
 TEST(MdRecovery, EngineSuite)
@@ -644,6 +715,7 @@ TEST(MdRecovery, EngineSuite)
   test_recovery_backoff_bounded();
   test_recovery_server_bind_address();
   test_send_drop_counted();
+  test_status_and_derivatives_over_multicast_and_recovery();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

@@ -83,6 +83,14 @@ inline SymbolId symbolOf(const InboundCommand& c) noexcept
   {
     return tt->symbol;
   }
+  if (const auto* sg = std::get_if<SetStpGroup>(&c))
+  {
+    return sg->symbol;
+  }
+  if (const auto* fs = std::get_if<SetFundingSchedule>(&c))
+  {
+    return fs->symbol;
+  }
   return 0;  // snapshot-only records never route by symbol (recovery-path only)
 }
 

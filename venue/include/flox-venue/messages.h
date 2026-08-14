@@ -138,6 +138,16 @@ enum class AdminAction : uint8_t
   HaltAndCancelAll,  // emergency: halt + cancel the entire resting book
   Halt,              // reject new orders
   Resume,            // clear halt
+  // Session boundary. Appended values (the enum is append-only: it rides an
+  // existing journal tag, so a reordering would reinterpret every AdminCmd
+  // record already on disk). Carried by AdminCmd rather than a command of its
+  // own on purpose: a session transition is the same KIND of state as a halt or
+  // an auction phase -- an operator action that mutates matchable state and must
+  // replay at its exact point in the stream -- so it belongs in the record that
+  // already carries those, and costs no new journal tag, no expectedBodySize
+  // entry and no snapshot-format change.
+  CloseSession,  // close the session: new orders rejected (MarketClosed), the book stands
+  OpenSession,   // reopen the session; the halt/auction state underneath is untouched
 };
 
 struct AdminCmd
@@ -213,6 +223,24 @@ struct SetStpGroup
 struct TimeTick
 {
   SymbolId symbol{};  // routing key
+};
+
+// Perp funding calendar as STATE rather than as a formula. Without it the next
+// funding boundary is derived from (now, SymbolConfig::fundingIntervalNs) -- a
+// computation over startup config, not a fact, which silently disagrees with
+// reality the moment an operator changes the interval or shifts a settlement.
+// This command makes the calendar an engine fact: journaled, so it replays;
+// hashed and checkpointed (RestoreFunding), so it survives a restart; and
+// published on the derivatives feed as the actual next boundary. ApplyFunding
+// then advances nextFundingNs by whole intervals.
+//
+// The engine still settles funding only when told to (ApplyFunding). This is
+// the calendar it publishes and advances, NOT a timer that fires payments.
+struct SetFundingSchedule
+{
+  SymbolId symbol{};
+  int64_t intervalNs{0};     // funding interval (<= 0 clears the schedule)
+  int64_t nextFundingNs{0};  // next settlement boundary, sequencer time (<= 0 clears)
 };
 
 // ---- Snapshot-only records ------------------------------------------------
@@ -386,6 +414,23 @@ struct RestoreMmpFills
   int64_t qtyRaw[kMmpFillBatch]{};
 };
 
+// Derivatives funding state: the last applied rate and the live funding
+// calendar. A snapshot-only record and not three more fields on SnapshotEnd,
+// because SnapshotEnd is a strictly-sized journal body -- widening it would
+// change its expectedBodySize and make every existing snapshot unreadable
+// (the loader stops at the first wrong-sized record). The same additive path
+// balances (RestoreBalance), MMP windows (RestoreMmpFills) and STP groups took.
+//
+// A snapshot written by an engine with no funding state at all does not carry
+// this record; a file without it restores rate 0 and no schedule, exactly as
+// before the record existed (read compatibility, pinned by a test).
+struct RestoreFunding
+{
+  int64_t fundingRateRaw{0};     // last applied rate, kFundingRateScale
+  int64_t nextFundingNs{0};      // next settlement boundary (0 = no schedule set)
+  int64_t fundingIntervalNs{0};  // schedule interval (0 = no schedule set)
+};
+
 struct SnapshotEnd
 {
   uint64_t stateHash{0};  // must equal the loader's recomputed hash, or the snapshot is corrupt
@@ -405,13 +450,14 @@ struct SnapshotEnd
 // (SetTriggerRef postdates TimeTick, hence its position at the tail; the
 // snapshot-only records postdate SetTriggerRef; RestoreBalance/RestoreMmpFills
 // and the live SetStpGroup command postdate the original snapshot block, so
-// live and snapshot-only tags interleave past tag 24.)
+// live and snapshot-only tags interleave past tag 24. SetFundingSchedule (live)
+// and RestoreFunding (snapshot-only) are the newest pair, tags 28 and 29.)
 using InboundCommand =
     std::variant<NewOrder, CancelOrder, ModifyOrder, MassCancel, Quote, LastLookDecision, SetMark,
                  ApplyFunding, AdminCmd, Deposit, Withdraw, ListInstrument, SetBands, TimeTick,
                  SetTriggerRef, SnapshotBegin, RestoreOrder, RestoreStop, RestorePeg, RestoreHeld,
                  RestorePosition, RestoreMmpCfg, RestoreClOrdIds, SnapshotEnd, RestoreReservation,
-                 RestoreBalance, RestoreMmpFills, SetStpGroup>;
+                 RestoreBalance, RestoreMmpFills, SetStpGroup, SetFundingSchedule, RestoreFunding>;
 
 inline constexpr size_t kFirstSnapshotTag = 15;
 inline constexpr size_t kLastContiguousSnapshotTag = 24;
@@ -431,7 +477,8 @@ inline bool isSnapshotRecord(const InboundCommand& c) noexcept
 {
   const size_t i = c.index();
   return (i >= kFirstSnapshotTag && i <= kLastContiguousSnapshotTag) ||
-         std::holds_alternative<RestoreBalance>(c) || std::holds_alternative<RestoreMmpFills>(c);
+         std::holds_alternative<RestoreBalance>(c) || std::holds_alternative<RestoreMmpFills>(c) ||
+         std::holds_alternative<RestoreFunding>(c);
 }
 
 // ---- Outbound events ------------------------------------------------------
@@ -599,11 +646,89 @@ struct BalanceUpdate
   BalanceReason reason{};
 };
 
+// ---- Instrument-wide outbound events --------------------------------------
+// These carry no account: they describe the instrument, not a client's order,
+// so the delivery layer routes them to nobody and the order-entry codecs have
+// no exec-report form for them (like MmpTriggered / FeeCharged / Liquidation).
+// Their consumer is the public market-data feed (market_data.h).
+
+// Trading state of the instrument. Exactly the states the engine HAS:
+// continuous matching, an operator halt, the timed limit-up/limit-down
+// volatility pause, pre-open accumulation, the uncross that ends it, and a
+// closed session.
+//
+// Closed and Halted are deliberately DIFFERENT states, not one state with two
+// names. A halt is an exception -- something went wrong and the operator
+// stopped the instrument; a closed session is the instrument's normal
+// out-of-hours condition. A subscriber that cannot tell them apart cannot tell
+// a broken market from a sleeping one, and the two reject an order with
+// different reasons (Halted vs MarketClosed). What the engine deliberately does
+// NOT own is the CALENDAR: it holds the state and the transitions, while the
+// schedule that fires them belongs to the operator / control plane (see
+// docs/venue/runtime.md).
+enum class TradingStatus : uint8_t
+{
+  Trading = 0,         // continuous matching
+  Halted = 1,          // operator halt: new orders rejected (no deadline)
+  LuldPause = 2,       // timed volatility pause after a band breach (untilNs = deadline)
+  AuctionPreOpen = 3,  // pre-open accumulation, no matching (a crossed book is legal)
+  AuctionUncross = 4,  // the uncross itself; the next transition ends the auction
+  // Appended value -- wire enums are append-only, so a decoder of the previous
+  // schema keeps reading every field of the message and sees only an unknown
+  // status code (which it must treat as "not tradeable", never as Trading).
+  Closed = 5,  // session closed: new orders rejected, the book stands
+};
+
+enum class TradingStatusReason : uint8_t
+{
+  None = 0,
+  Administrative = 1,    // operator action (AdminCmd Halt / Resume / HaltAndCancelAll)
+  LuldBreach = 2,        // a limit-up/limit-down band breach tripped the pause
+  LuldPauseElapsed = 3,  // the timed pause deadline passed and trading resumed
+  Auction = 4,           // an auction phase transition (pre-open, uncross, re-open)
+  Session = 5,           // a session boundary (AdminCmd CloseSession / OpenSession)
+};
+
+// Emitted on every trading-state TRANSITION of the symbol -- from the engine's
+// own state changes, never inferred downstream and never repeated periodically.
+// untilNs is the sequencer-ts the timed pause expires at (0 = no deadline), so
+// it replays identically.
+struct TradingStatusChanged
+{
+  SymbolId symbol{};
+  TradingStatus status{};
+  TradingStatusReason reason{};
+  int64_t untilNs{0};
+};
+
+// Funding rate fixed-point scale: the same power of ten prices and quantities
+// use, so a rate travels as a raw int64 like every other wire number and never
+// as a double. 0.0001 (1bp per interval) = 10'000 raw.
+inline constexpr int64_t kFundingRateScale = Price::Scale;
+
+// Derivatives state of the instrument, emitted when the engine LEARNS it: on a
+// sequenced SetMark and on a sequenced ApplyFunding. Both are journaled, so the
+// values reproduce on replay.
+//
+// openInterest is the long side of the open positions the engine tracks for
+// this symbol (equal to the short side, since every contract has both legs) --
+// a real sum over positions_, not an estimate. It is published with the mark
+// rather than on every fill: a per-trade open-interest message would multiply
+// the feed's message rate for a number consumers read at mark cadence.
+struct DerivativesUpdated
+{
+  SymbolId symbol{};
+  Price mark{};               // last mark price the engine was given (0 before the first SetMark)
+  int64_t fundingRateRaw{0};  // last applied rate, kFundingRateScale, per funding interval
+  int64_t nextFundingNs{0};   // next funding boundary (0 = no funding interval configured)
+  Quantity openInterest{};    // long side of open positions on this symbol
+};
+
 // Appended alternatives go at the END (wire codecs and the event hash key off
 // the alternative order).
 using OutboundEvent =
     std::variant<OrderAccepted, OrderRejected, Trade, OrderExecuted, OrderCanceled, OrderModified,
                  OrderTriggered, FillHeld, FillRejected, MmpTriggered, FeeCharged, Liquidation,
-                 BalanceUpdate>;
+                 BalanceUpdate, TradingStatusChanged, DerivativesUpdated>;
 
 }  // namespace flox::venue

@@ -485,7 +485,7 @@ void test_md_snapshot()
   std::printf("test_md_snapshot\n");
   MarketDataPublisher<> md([](const MdMessage&) {}, Price::fromDouble(0.01), SYM);
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                   { md.onEvent(e); });
+                                   { md.onEvent(e, eng.engineTimeNs()); });
   eng.submit(mk(1, Side::SELL, 100, 5));
   eng.submit(mk(2, Side::SELL, 101, 3));
   eng.submit(mk(3, Side::BUY, 99, 4));
