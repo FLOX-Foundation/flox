@@ -51,6 +51,24 @@ enum class SessionReject : uint8_t
   DecodeError,
 };
 
+// Wire form of a session-level rejection: reuse the exec-report reject (the
+// client already understands OrderRejected) with a session-scoped reason.
+inline RejectReason toRejectReason(SessionReject r) noexcept
+{
+  switch (r)
+  {
+    case SessionReject::Unauthenticated:
+      return RejectReason::Unauthenticated;
+    case SessionReject::RateLimited:
+      return RejectReason::RateLimited;
+    case SessionReject::DecodeError:
+      return RejectReason::MalformedMessage;
+    case SessionReject::None:
+      break;
+  }
+  return RejectReason::None;
+}
+
 inline const char* toString(SessionReject r) noexcept
 {
   switch (r)
@@ -82,6 +100,13 @@ class GatewaySession
   void authenticate(bool ok) noexcept { authed_ = ok; }
   bool authenticated() const noexcept { return authed_; }
   uint64_t account() const noexcept { return account_; }
+
+  // Per-SESSION cancel-on-disconnect. The gateway-wide atomic is only the
+  // default seeded into each new session; this flag is what the connection
+  // actually honours. Wire-level negotiation (a logon COD field / per-account
+  // config) is future work -- today deployments set it at accept time.
+  void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_ = on; }
+  bool cancelOnDisconnect() const noexcept { return cancelOnDisconnect_; }
   // Bind this session to an authenticated account (e.g. after logon resolves the
   // API key to an account). Once bound to a non-zero account, handle() forces
   // that account onto every command -- see stampAccount.
@@ -196,6 +221,7 @@ class GatewaySession
   flox::RateLimitPolicy limits_;
   std::string secret_;
   bool authed_{false};
+  bool cancelOnDisconnect_{false};
 };
 
 }  // namespace flox::venue

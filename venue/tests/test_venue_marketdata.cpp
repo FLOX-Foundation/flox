@@ -9,6 +9,7 @@
 #include "flox-venue/market_data.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
+#include "flox-venue/resend_buffer.h"
 #include "flox-venue/sbe_md_codec.h"
 #include "flox-venue/workload.h"
 #include "flox/book/ladder_book.h"
@@ -71,7 +72,8 @@ NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct = 1)
 bool sameMd(const MdMessage& a, const MdMessage& b)
 {
   return a.type == b.type && a.seq == b.seq && a.symbol == b.symbol && a.id == b.id &&
-         a.side == b.side && a.price == b.price && a.qty == b.qty && a.makerId == b.makerId;
+         a.side == b.side && a.price == b.price && a.qty == b.qty && a.makerId == b.makerId &&
+         a.epoch == b.epoch;
 }
 
 void test_l2_and_codec()
@@ -102,6 +104,16 @@ void test_l2_and_codec()
   CHECK(md.book().askAtPrice(px(100)) == qty(0));
   CHECK(md.book().bestAsk() == px(102));
   CHECK(md.book().askAtPrice(px(102)) == qty(3));
+
+  // The wire stream is sequenced from 1 (contiguous) and every message carries
+  // the publisher's non-zero epoch -- the demux/recovery key on the wire.
+  CHECK(md.epoch() != 0);
+  for (size_t i = 0; i < feed.size(); ++i)
+  {
+    CHECK(feed[i].seq == i + 1);
+    CHECK(feed[i].epoch == md.epoch());
+  }
+  CHECK(md.seq() == feed.size());
 
   // SBE round-trip on the whole feed
   std::vector<uint8_t> buf;
@@ -261,6 +273,133 @@ void test_iceberg_hidden_from_md()
   CHECK(sawMakerExec);
 }
 
+// Harness around GapDetector: feeds synthetic seq/epoch messages and records
+// deliveries, gap reports and epoch changes.
+struct GdHarness
+{
+  GapDetector gd;
+  std::vector<uint64_t> delivered;                    // seqs, in delivery order
+  std::vector<uint64_t> gaps;                         // fromSeq per gap report
+  std::vector<std::pair<uint64_t, uint64_t>> epochs;  // (old, new)
+
+  explicit GdHarness(GapDetector::Config cfg = {16, 1024}) : gd(cfg) {}
+
+  void feed(uint64_t seq, uint64_t epoch = 1, SymbolId sym = SYM)
+  {
+    MdMessage m;
+    m.type = MdType::Trade;
+    m.seq = seq;
+    m.symbol = sym;
+    m.epoch = epoch;
+    gd.observe(m, [&](const MdMessage& d)
+               { delivered.push_back(d.seq); }, [&](SymbolId, uint64_t, uint64_t from)
+               { gaps.push_back(from); }, [&](SymbolId, uint64_t o, uint64_t n)
+               { epochs.emplace_back(o, n); });
+  }
+};
+
+void test_gap_detector_reordering()
+{
+  std::printf("test_gap_detector_reordering\n");
+  // Reordered datagrams: everything delivers exactly once, in seq order, with
+  // no false duplicates -- the old detector returned a late 3 as "duplicate".
+  GdHarness h;
+  h.feed(1);
+  h.feed(2);
+  h.feed(5);  // gap: 3,4 missing; 5 held
+  h.feed(4);  // still held
+  CHECK(h.delivered.size() == 2);
+  CHECK(h.gaps.size() == 1 && h.gaps[0] == 3);
+  h.feed(3);  // fills the gap: 3,4,5 drain in order
+  CHECK((h.delivered == std::vector<uint64_t>{1, 2, 3, 4, 5}));
+  h.feed(6);
+  CHECK(h.delivered.back() == 6);
+  CHECK(h.gaps.size() == 1);  // closed gap is not re-reported
+
+  // A true duplicate (below the watermark or of a held message) is dropped.
+  h.feed(2);
+  h.feed(6);
+  CHECK(h.delivered.size() == 6);
+}
+
+void test_gap_detector_reraise()
+{
+  std::printf("test_gap_detector_reraise\n");
+  // An unfilled gap is re-reported every reraiseAfter received messages, so a
+  // lost resend request does not strand the consumer.
+  GdHarness h(GapDetector::Config{3, 1024});
+  h.feed(1);
+  h.feed(5);  // gap from 2 -> first report
+  CHECK(h.gaps.size() == 1 && h.gaps[0] == 2);
+  h.feed(6);
+  h.feed(7);
+  h.feed(8);  // 3rd message with the gap open -> re-raise
+  CHECK(h.gaps.size() == 2 && h.gaps[1] == 2);
+  h.feed(9);
+  h.feed(10);
+  h.feed(11);  // re-raise again
+  CHECK(h.gaps.size() == 3 && h.gaps[2] == 2);
+  h.feed(2);
+  h.feed(3);
+  h.feed(4);  // gap closes; 2..11 all delivered
+  CHECK(h.delivered.size() == 11);
+  for (size_t i = 0; i < h.delivered.size(); ++i)
+  {
+    CHECK(h.delivered[i] == i + 1);
+  }
+}
+
+void test_gap_detector_epoch_change()
+{
+  std::printf("test_gap_detector_epoch_change\n");
+  // A new epoch = publisher restart: the stream resets to seq 1 and the epoch
+  // callback fires -- a surviving consumer re-snapshots instead of treating
+  // the restarted feed as duplicates (the silent-stall defect).
+  GdHarness h;
+  h.feed(1, /*epoch*/ 7);
+  h.feed(2, 7);
+  h.feed(1, 9);  // restart: new epoch, seq starts over
+  h.feed(2, 9);
+  CHECK((h.delivered == std::vector<uint64_t>{1, 2, 1, 2}));
+  CHECK(h.epochs.size() == 1 && h.epochs[0].first == 7 && h.epochs[0].second == 9);
+  CHECK(h.gaps.empty());
+}
+
+void test_gap_detector_per_symbol()
+{
+  std::printf("test_gap_detector_per_symbol\n");
+  // Streams are keyed by symbol: a gap on one symbol does not disturb the
+  // other's sequencing (several per-symbol publishers can share one group).
+  GdHarness h;
+  h.feed(1, 1, /*sym*/ 1);
+  h.feed(1, 1, /*sym*/ 2);
+  h.feed(3, 1, /*sym*/ 1);  // gap on symbol 1 only
+  h.feed(2, 1, /*sym*/ 2);
+  CHECK(h.gaps.size() == 1 && h.gaps[0] == 2);
+  CHECK(h.delivered.size() == 3);  // 1@1, 1@2, 2@2; 3@1 held
+  h.feed(2, 1, /*sym*/ 1);
+  CHECK(h.delivered.size() == 5);
+  CHECK(h.gd.expected(1) == 4 && h.gd.expected(2) == 3);
+}
+
+void test_gap_detector_held_overflow()
+{
+  std::printf("test_gap_detector_held_overflow\n");
+  // maxHeld overflow abandons the gap: everything held is delivered in seq
+  // order (with the hole) rather than buffered forever -- held-out datagrams
+  // are never lost.
+  GdHarness h(GapDetector::Config{100, 4});
+  h.feed(1);
+  for (uint64_t s = 3; s <= 7; ++s)  // 2 never arrives; 5 held > maxHeld=4 -> flush
+  {
+    h.feed(s);
+  }
+  CHECK((h.delivered == std::vector<uint64_t>{1, 3, 4, 5, 6, 7}));
+  CHECK(!h.gaps.empty() && h.gaps[0] == 2);
+  h.feed(8);  // stream continues normally after the flush
+  CHECK(h.delivered.back() == 8);
+}
+
 }  // namespace
 
 TEST(Marketdata, EngineSuite)
@@ -268,6 +407,11 @@ TEST(Marketdata, EngineSuite)
   test_l2_and_codec();
   test_book_agreement();
   test_iceberg_hidden_from_md();
+  test_gap_detector_reordering();
+  test_gap_detector_reraise();
+  test_gap_detector_epoch_change();
+  test_gap_detector_per_symbol();
+  test_gap_detector_held_overflow();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

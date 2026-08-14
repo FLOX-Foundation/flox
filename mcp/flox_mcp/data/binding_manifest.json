@@ -16002,6 +16002,11 @@
         },
         {
           "kind": "method",
+          "name": "forEachOrder",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "forEachRawTrade",
           "parent": "Config"
         },

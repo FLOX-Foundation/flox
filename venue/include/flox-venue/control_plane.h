@@ -73,6 +73,52 @@ class InstrumentRegistry
     return true;
   }
 
+  // Rebuild registry state from the journaled command stream. Listing, band
+  // changes, trigger-reference switches and halts are sequenced commands
+  // (forwarded by ControlApi), so a restart replays the same journal into the
+  // registry that the engines replay -- the WAL is the configuration source of
+  // truth, not an external store.
+  bool apply(const InboundCommand& cmd)
+  {
+    if (const auto* li = std::get_if<ListInstrument>(&cmd))
+    {
+      SymbolConfig c;
+      c.id = li->symbol;
+      c.tickSize = li->tickSize;
+      c.lotSize = li->lotSize;
+      c.minPrice = li->minPrice;
+      c.maxPrice = li->maxPrice;
+      return listInstrument(c);
+    }
+    if (const auto* sb = std::get_if<SetBands>(&cmd))
+    {
+      return setPriceBand(sb->symbol, sb->minPrice, sb->maxPrice);
+    }
+    if (const auto* st = std::get_if<SetTriggerRef>(&cmd))
+    {
+      return setTriggerRef(st->symbol, st->ref);
+    }
+    if (const auto* ad = std::get_if<AdminCmd>(&cmd))
+    {
+      switch (ad->action)
+      {
+        case AdminAction::Halt:
+        case AdminAction::HaltAndCancelAll:
+          return halt(ad->symbol, true);
+        case AdminAction::Resume:
+        case AdminAction::ResumeAuction:
+          return halt(ad->symbol, false);
+        default:
+          return true;  // auction transitions carry no registry state
+      }
+    }
+    if (std::get_if<SetStpGroup>(&cmd) != nullptr)
+    {
+      return true;  // engine-owned state: the shards consume it, no registry state
+    }
+    return false;  // not a configuration command
+  }
+
   std::vector<SymbolId> list() const
   {
     std::vector<SymbolId> out;

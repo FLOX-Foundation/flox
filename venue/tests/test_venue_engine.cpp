@@ -108,7 +108,11 @@ TEST(VenueEngine, CancelReleasesReservation)
 TEST(VenueEngine, JournalReplayIsDeterministic)
 {
   const std::string path = "/tmp/flox_venue_journal_test.bin";
+  // Deposits are commands in the stream, not out-of-band Ledger calls: the
+  // journal alone must rebuild balances from an EMPTY ledger.
   std::vector<std::pair<int64_t, InboundCommand>> cmds{
+      {1, InboundCommand{Deposit{1, BASE, static_cast<int64_t>(base(10)), SYM}}},
+      {2, InboundCommand{Deposit{2, QUOTE, static_cast<int64_t>(quote(10000)), SYM}}},
       {10, InboundCommand{limitOrder(1, Side::SELL, 100, 5, 1)}},
       {20, InboundCommand{limitOrder(2, Side::BUY, 100, 3, 2)}},
       {30, InboundCommand{CancelOrder{1, SYM, 1}}},
@@ -116,8 +120,6 @@ TEST(VenueEngine, JournalReplayIsDeterministic)
 
   auto run = [&](Ledger& led, const std::vector<std::pair<int64_t, InboundCommand>>& in)
   {
-    led.deposit(1, BASE, base(10));
-    led.deposit(2, QUOTE, quote(10000));
     uint64_t h = 1469598103934665603ULL;
     MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                      { h = hashEvent(h, e); });
@@ -141,14 +143,18 @@ TEST(VenueEngine, JournalReplayIsDeterministic)
   }
   const uint64_t liveHash = run(liveLed, cmds);
 
-  // Recovery run from the journal.
+  // Recovery run from the journal into an EMPTY ledger: the replayed deposits
+  // reproduce the balances without any manual seeding.
   const auto replayed = Journal::loadTimed(path);
   ASSERT_EQ(replayed.size(), cmds.size());
   Ledger recLed;
+  EXPECT_EQ(i64(recLed.available(1, BASE)), 0);  // nothing seeded
   const uint64_t recHash = run(recLed, replayed);
 
   EXPECT_EQ(recHash, liveHash);  // identical event stream
   EXPECT_EQ(i64(recLed.available(2, BASE)), i64(liveLed.available(2, BASE)));
   EXPECT_EQ(i64(recLed.available(1, QUOTE)), i64(liveLed.available(1, QUOTE)));
+  EXPECT_EQ(i64(recLed.available(2, BASE)), i64(base(3)));      // buyer's fill, from replay alone
+  EXPECT_EQ(i64(recLed.available(1, QUOTE)), i64(quote(300)));  // seller's proceeds
   std::remove(path.c_str());
 }

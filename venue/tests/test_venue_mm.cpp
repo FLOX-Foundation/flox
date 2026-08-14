@@ -152,9 +152,10 @@ void test_last_look()
   }
 }
 
-// Last-look reject/timeout must return BOTH parties' held buying power to
-// available -- otherwise it is stranded in `reserved` forever and the taker is
-// never made whole for a fill that never happened.
+// Last-look reject/timeout restores both legs to the book (the maker's
+// displayed qty back at its level, the GTC taker residual rests), so the
+// reservations KEEP backing the restored resting orders -- nothing stranded,
+// nothing double-released -- and canceling the restored orders frees it all.
 void test_last_look_reject_releases_reservation()
 {
   std::printf("test_last_look_reject_releases_reservation\n");
@@ -179,12 +180,21 @@ void test_last_look_reject_releases_reservation()
   CHECK(h != nullptr);
   eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);  // reject
   CHECK(cap.trades() == 0);
-  // Both parties fully made whole: reservations returned, no fill happened.
-  CHECK(led.available(1, BASE) == base3 && led.reserved(1, BASE) == 0);     // maker
-  CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);  // taker
+  // Liquidity restored: maker's ask is back, the taker's GTC residual rests.
+  CHECK(eng.book().bestAsk() == px(100));
+  CHECK(eng.book().bestBid() == px(100));
+  // Reservations still back the restored resting orders.
+  CHECK(led.available(1, BASE) == 0 && led.reserved(1, BASE) == base3);     // maker
+  CHECK(led.available(2, QUOTE) == 0 && led.reserved(2, QUOTE) == usd300);  // taker
   // Conservation: nothing created or destroyed.
   CHECK(led.total(1, BASE) == base3);
   CHECK(led.total(2, QUOTE) == usd300);
+  // Cancel the restored orders: every reserved unit returns to available.
+  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 3);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 4);
+  CHECK(eng.book().empty());
+  CHECK(led.available(1, BASE) == base3 && led.reserved(1, BASE) == 0);
+  CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);
 }
 
 void test_mmp()

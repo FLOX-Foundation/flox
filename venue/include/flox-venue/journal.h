@@ -34,6 +34,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -56,6 +57,29 @@ static_assert(std::is_trivially_copyable_v<LastLookDecision>, "LastLookDecision 
 static_assert(std::is_trivially_copyable_v<SetMark>, "SetMark must be blittable");
 static_assert(std::is_trivially_copyable_v<ApplyFunding>, "ApplyFunding must be blittable");
 static_assert(std::is_trivially_copyable_v<AdminCmd>, "AdminCmd must be blittable");
+static_assert(std::is_trivially_copyable_v<Deposit>, "Deposit must be blittable");
+static_assert(std::is_trivially_copyable_v<Withdraw>, "Withdraw must be blittable");
+static_assert(std::is_trivially_copyable_v<ListInstrument>, "ListInstrument must be blittable");
+static_assert(std::is_trivially_copyable_v<SetBands>, "SetBands must be blittable");
+static_assert(std::is_trivially_copyable_v<TimeTick>, "TimeTick must be blittable");
+static_assert(std::is_trivially_copyable_v<SetTriggerRef>, "SetTriggerRef must be blittable");
+static_assert(std::is_trivially_copyable_v<SnapshotBegin>, "SnapshotBegin must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreOrder>, "RestoreOrder must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreStop>, "RestoreStop must be blittable");
+static_assert(std::is_trivially_copyable_v<RestorePeg>, "RestorePeg must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreHeld>, "RestoreHeld must be blittable");
+static_assert(std::is_trivially_copyable_v<RestorePosition>, "RestorePosition must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreMmpCfg>, "RestoreMmpCfg must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreClOrdIds>, "RestoreClOrdIds must be blittable");
+static_assert(std::is_trivially_copyable_v<SnapshotEnd>, "SnapshotEnd must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreReservation>,
+              "RestoreReservation must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreBalance>, "RestoreBalance must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreMmpFills>, "RestoreMmpFills must be blittable");
+static_assert(std::is_trivially_copyable_v<SetStpGroup>, "SetStpGroup must be blittable");
+static_assert(std::variant_size_v<InboundCommand> == 28,
+              "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
+              "blittable asserts above");
 
 class Journal
 {
@@ -66,11 +90,23 @@ class Journal
     Full,  // + fsync per record (survives power loss); production WAL default
   };
 
+  // A recovering writer MUST open in Append: Truncate erases the very log the
+  // process is supposed to replay. SequencedShard always uses Append; Truncate
+  // is for starting a fresh log on a path the caller knows is disposable.
+  enum class OpenMode
+  {
+    Truncate,
+    Append,
+  };
+
   static constexpr size_t kHeaderSize = sizeof(int64_t) + 1 + sizeof(uint32_t);  // ts+tag+len = 13
 
-  explicit Journal(const std::string& path, Sync sync = Sync::Off) : sync_(sync)
+  explicit Journal(const std::string& path, Sync sync = Sync::Off,
+                   OpenMode mode = OpenMode::Truncate)
+      : sync_(sync)
   {
-    fd_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    const int flags = O_WRONLY | O_CREAT | (mode == OpenMode::Truncate ? O_TRUNC : O_APPEND);
+    fd_ = ::open(path.c_str(), flags, 0644);
     if (fd_ < 0)
     {
       throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
@@ -87,6 +123,27 @@ class Journal
 
   Journal(const Journal&) = delete;
   Journal& operator=(const Journal&) = delete;
+
+  // Close the current file and continue on `path` (segment rotation at a
+  // checkpoint). Resets the per-segment record/byte counters; they count
+  // appends since open, so on an Append reopen of an existing file they
+  // approximate the segment size from this process's perspective only.
+  void reopen(const std::string& path, OpenMode mode)
+  {
+    if (fd_ >= 0)
+    {
+      ::fsync(fd_);
+      ::close(fd_);
+    }
+    const int flags = O_WRONLY | O_CREAT | (mode == OpenMode::Truncate ? O_TRUNC : O_APPEND);
+    fd_ = ::open(path.c_str(), flags, 0644);
+    if (fd_ < 0)
+    {
+      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
+    }
+    count_.store(0, std::memory_order_relaxed);
+    bytes_.store(0, std::memory_order_relaxed);
+  }
 
   void append(const InboundCommand& c) { append(c, 0); }
 
@@ -113,7 +170,8 @@ class Journal
     {
       ::fsync(fd_);
     }
-    ++count_;
+    count_.fetch_add(1, std::memory_order_relaxed);
+    bytes_.fetch_add(rec_.size(), std::memory_order_relaxed);
   }
 
   void flush()
@@ -123,7 +181,10 @@ class Journal
       ::fsync(fd_);
     }
   }
-  uint64_t count() const noexcept { return count_; }
+  // Records/bytes appended since open (atomic: the shard's idle sweeper reads
+  // them from another thread for the checkpoint auto-trigger).
+  uint64_t count() const noexcept { return count_.load(std::memory_order_relaxed); }
+  uint64_t bytes() const noexcept { return bytes_.load(std::memory_order_relaxed); }
 
   static std::vector<InboundCommand> load(const std::string& path)
   {
@@ -211,6 +272,44 @@ class Journal
         return sizeof(ApplyFunding);
       case 8:
         return sizeof(AdminCmd);
+      case 9:
+        return sizeof(Deposit);
+      case 10:
+        return sizeof(Withdraw);
+      case 11:
+        return sizeof(ListInstrument);
+      case 12:
+        return sizeof(SetBands);
+      case 13:
+        return sizeof(TimeTick);
+      case 14:
+        return sizeof(SetTriggerRef);
+      case 15:
+        return sizeof(SnapshotBegin);
+      case 16:
+        return sizeof(RestoreOrder);
+      case 17:
+        return sizeof(RestoreStop);
+      case 18:
+        return sizeof(RestorePeg);
+      case 19:
+        return sizeof(RestoreHeld);
+      case 20:
+        return sizeof(RestorePosition);
+      case 21:
+        return sizeof(RestoreMmpCfg);
+      case 22:
+        return sizeof(RestoreClOrdIds);
+      case 23:
+        return sizeof(SnapshotEnd);
+      case 24:
+        return sizeof(RestoreReservation);
+      case 25:
+        return sizeof(RestoreBalance);
+      case 26:
+        return sizeof(RestoreMmpFills);
+      case 27:
+        return sizeof(SetStpGroup);
       default:
         return 0;
     }
@@ -256,6 +355,63 @@ class Journal
       case 8:
         v.emplace_back(ts, fromBody<AdminCmd>(body));
         break;
+      case 9:
+        v.emplace_back(ts, fromBody<Deposit>(body));
+        break;
+      case 10:
+        v.emplace_back(ts, fromBody<Withdraw>(body));
+        break;
+      case 11:
+        v.emplace_back(ts, fromBody<ListInstrument>(body));
+        break;
+      case 12:
+        v.emplace_back(ts, fromBody<SetBands>(body));
+        break;
+      case 13:
+        v.emplace_back(ts, fromBody<TimeTick>(body));
+        break;
+      case 14:
+        v.emplace_back(ts, fromBody<SetTriggerRef>(body));
+        break;
+      case 15:
+        v.emplace_back(ts, fromBody<SnapshotBegin>(body));
+        break;
+      case 16:
+        v.emplace_back(ts, fromBody<RestoreOrder>(body));
+        break;
+      case 17:
+        v.emplace_back(ts, fromBody<RestoreStop>(body));
+        break;
+      case 18:
+        v.emplace_back(ts, fromBody<RestorePeg>(body));
+        break;
+      case 19:
+        v.emplace_back(ts, fromBody<RestoreHeld>(body));
+        break;
+      case 20:
+        v.emplace_back(ts, fromBody<RestorePosition>(body));
+        break;
+      case 21:
+        v.emplace_back(ts, fromBody<RestoreMmpCfg>(body));
+        break;
+      case 22:
+        v.emplace_back(ts, fromBody<RestoreClOrdIds>(body));
+        break;
+      case 23:
+        v.emplace_back(ts, fromBody<SnapshotEnd>(body));
+        break;
+      case 24:
+        v.emplace_back(ts, fromBody<RestoreReservation>(body));
+        break;
+      case 25:
+        v.emplace_back(ts, fromBody<RestoreBalance>(body));
+        break;
+      case 26:
+        v.emplace_back(ts, fromBody<RestoreMmpFills>(body));
+        break;
+      case 27:
+        v.emplace_back(ts, fromBody<SetStpGroup>(body));
+        break;
     }
   }
 
@@ -281,7 +437,8 @@ class Journal
 
   int fd_{-1};
   Sync sync_{Sync::Off};
-  uint64_t count_{0};
+  std::atomic<uint64_t> count_{0};
+  std::atomic<uint64_t> bytes_{0};
   std::vector<uint8_t> rec_;
 };
 

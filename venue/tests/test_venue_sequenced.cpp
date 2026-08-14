@@ -93,9 +93,13 @@ TEST(Sequenced, EngineSuite)
   // Throughput benchmark of the Disruptor path: journal in Sync::Off so the
   // measurement is the ring + engine, not 500k fsyncs. Durability itself is
   // covered by the journal round-trip / torn-tail tests.
+  //
+  // The shard opens its journal for APPEND and replays it on start (recovery
+  // semantics), so a stale file from a previous run must be removed first.
+  const char* journalPath = "/tmp/flox_test_venue_sequenced_seq_journal.bin";
+  std::remove(journalPath);
   auto shard = std::make_unique<SequencedShard<LadderBook>>(
-      cfg(), "/tmp/flox_test_venue_sequenced_seq_journal.bin", LadderBook{ladderCfg()},
-      Journal::Sync::Off);
+      cfg(), journalPath, LadderBook{ladderCfg()}, Journal::Sync::Off);
   CHECK(shard->subscribeOutbound(&sink, true));
   shard->start();
 

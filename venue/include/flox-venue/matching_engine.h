@@ -8,6 +8,8 @@
  */
 #pragma once
 
+#include "flox-venue/event_hash.h"
+#include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
 #include "flox-venue/matcher.h"
 #include "flox-venue/matching_book.h"
@@ -18,9 +20,12 @@
 #include "flox/backtest/fee_schedule.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -30,13 +35,8 @@
 namespace flox::venue
 {
 
-// Reference price a conditional order (stop / take-profit / trailing) triggers
-// against. Spot: last trade price. Derivatives: usually the mark price.
-enum class TriggerRef : uint8_t
-{
-  Last = 0,
-  Mark = 1,
-};
+// TriggerRef (the conditional-order reference price selector) lives in
+// messages.h next to the SetTriggerRef command that carries it.
 
 struct SymbolConfig
 {
@@ -97,7 +97,11 @@ class MatchingEngine
       }
       else if (const auto* x = std::get_if<OrderExecuted>(&e))
       {
-        if (x->complete)
+        // Hold-aware: an order can report complete while a last-look hold on it
+        // is still pending (its held slice already left `leaves`); releasing the
+        // whole reservation here would strand the eventual accept with nothing
+        // to settle from. Cleanup is deferred to resolveHeld in that case.
+        if (x->complete && !hasHoldsFor(x->id))
         {
           releaseReservation(x->id);  // free any over-reserved remainder
           forgetOrder(x->id);
@@ -115,9 +119,15 @@ class MatchingEngine
       }
     };
 
-    // Last look: the matcher hands each held fill here.
-    matcher_.setLastLookHook([this](const RestingOrder& maker, Quantity fill, const NewOrder& taker)
-                             { createHeld(maker, fill, taker); });
+    // Last look: the matcher hands each held fill here. lastLookWindowNs == 0
+    // means last look is disabled venue-wide (as the config promises): the hook
+    // is never installed, so a lastLook-flagged maker fills like any other.
+    if (cfg_.lastLookWindowNs > 0)
+    {
+      matcher_.setLastLookHook(
+          [this](const RestingOrder& maker, Quantity fill, const NewOrder& taker)
+          { createHeld(maker, fill, taker); });
+    }
   }
 
   void submit(const InboundCommand& cmd) { submit(cmd, ++timeCounter_); }
@@ -126,6 +136,18 @@ class MatchingEngine
   // windows deterministically.
   void submit(const InboundCommand& cmd, int64_t tsNs)
   {
+    // Snapshot-only records are forbidden in live traffic: a client that could
+    // sneak a Restore* through submit would "restore" itself an order or a
+    // balance. They apply exclusively through applySnapshotRecord (recovery).
+    // Dropping (not rejecting per-order) is deterministic on replay too: a
+    // journaled stray record is dropped identically.
+    if (isSnapshotRecord(cmd))
+    {
+      ++droppedSnapshotRecords_;
+      std::fprintf(stderr, "flox-venue: dropped snapshot-only record (tag %zu) from live traffic\n",
+                   cmd.index());
+      return;
+    }
     now_ = tsNs;
     if (cfg_.halted && haltUntil_ > 0 && now_ >= haltUntil_)
     {
@@ -170,10 +192,65 @@ class MatchingEngine
     {
       onAdmin(ad->action);  // sequenced -> journaled -> replayed (auction/halt reproduce)
     }
+    else if (const auto* d = std::get_if<Deposit>(&cmd))
+    {
+      onDeposit(*d);  // journaled genesis: replay from an empty ledger reproduces balances
+    }
+    else if (const auto* w = std::get_if<Withdraw>(&cmd))
+    {
+      onWithdraw(*w);
+    }
+    else if (const auto* sb = std::get_if<SetBands>(&cmd))
+    {
+      if (sb->symbol == cfg_.id)
+      {
+        setPriceBand(sb->minPrice, sb->maxPrice);  // sequenced -> journaled -> replayed
+      }
+    }
+    else if (const auto* st = std::get_if<SetTriggerRef>(&cmd))
+    {
+      if (st->symbol == cfg_.id)
+      {
+        setTriggerRef(st->ref);  // sequenced -> journaled -> replayed
+      }
+    }
+    else if (const auto* sg = std::get_if<SetStpGroup>(&cmd))
+    {
+      if (sg->symbol == cfg_.id)
+      {
+        setStpGroup(sg->account, sg->group);  // sequenced -> journaled -> replayed
+      }
+    }
+    else if (std::get_if<TimeTick>(&cmd) != nullptr)
+    {
+      // Pure time sweep: expireHolds/expireOrders already ran above. Sequenced
+      // and journaled so a replay reproduces the same timeouts (see tick()).
+    }
+    // ListInstrument is consumed above the engine (InstrumentRegistry / router);
+    // an existing engine has nothing to do with its own listing record.
     processOco();
     repeg();
     mmpEnforce();
   }
+
+  // Idempotent time sweep: advance engine time and resolve overdue last-look
+  // holds and GTD expiries without any order-flow traffic (a quiet symbol must
+  // not hold liquidity forever). NOT journaled here -- when the engine runs
+  // under a SequencedShard, route the sweep through the command stream as a
+  // TimeTick so a replay reproduces the timeouts (the shard's idle sweeper does
+  // exactly that). Direct callers (tests, embedded use) may call this freely.
+  void tick(int64_t nowNs)
+  {
+    if (nowNs > now_)
+    {
+      now_ = nowNs;
+    }
+    expireHolds();
+    expireOrders();
+  }
+
+  // Open last-look holds (approximate cross-thread gauge for the idle sweeper).
+  uint64_t openHolds() const noexcept { return heldOpen_.load(std::memory_order_relaxed); }
 
   void setFeeSchedule(flox::FeeSchedule fees)
   {
@@ -344,6 +421,12 @@ class MatchingEngine
   // fields (symbol id, tick size, assets, linearPerp) stay fixed. Applies to
   // subsequent orders; existing resting orders are unaffected.
   void setLuldBps(int32_t bps) noexcept { cfg_.luldBps = bps; }
+  void setTriggerRef(TriggerRef ref) noexcept { cfg_.triggerRef = ref; }
+  void setPriceBand(Price minPrice, Price maxPrice) noexcept
+  {
+    cfg_.minPrice = minPrice;
+    cfg_.maxPrice = maxPrice;
+  }
   void setFatFinger(Quantity maxOrderQty, Volume maxOrderNotional) noexcept
   {
     cfg_.maxOrderQty = maxOrderQty;
@@ -358,8 +441,15 @@ class MatchingEngine
   }
 
   // Firm-group STP: register an account under a firm/group id so self-trade
-  // prevention fires across all of a firm's accounts, not just the same account.
+  // prevention fires across all of a firm's accounts, not just the same account
+  // (group 0 removes the membership). Runtime mutations MUST arrive as the
+  // sequenced SetStpGroup command (journaled, snapshot-carried, hashed) --
+  // this direct setter is for pre-start() wiring and the recovery path.
   void setStpGroup(uint64_t account, uint64_t group) { matcher_.setStpGroup(account, group); }
+
+  // Pro-rata defensive-path counter (see Matcher::crossProRata): a resting
+  // lastLook maker met by a pro-rata allocation was skipped, not filled firm.
+  uint64_t skippedLastLookProRata() const noexcept { return matcher_.skippedLastLookProRata(); }
 
   // Operator emergency stop: halt the symbol (reject new orders) AND pull the
   // entire resting book -- every live limit order and pending conditional --
@@ -367,6 +457,9 @@ class MatchingEngine
   void haltAndCancelAll()
   {
     cfg_.halted = true;
+    // Resolve every open hold first: restored quantity lands back on the book
+    // and is then swept by the cancel loop below, so nothing survives the halt.
+    rejectAllHolds();
     std::vector<OrderId> resting;
     for (const auto& [acct, ids] : byAccount_)
     {
@@ -378,17 +471,19 @@ class MatchingEngine
     {
       if (book_.cancel(id).has_value())
       {
+        const uint64_t acct = ownerOf(id);
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::VenueHalt});
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::VenueHalt, acct});
       }
     }
     for (OrderId id : stops_.ids())
     {
+      const uint64_t acct = stops_.accountOf(id);
       if (stops_.cancel(id))
       {
         releaseReservation(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::VenueHalt});
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::VenueHalt, acct});
       }
     }
   }
@@ -543,10 +638,627 @@ class MatchingEngine
       // Post-consume displayed peak (b2/a2 already refilled) for the public feed.
       const Quantity bDisp = b2 ? b2->leaves : Quantity{};
       const Quantity aDisp = a2 ? a2->leaves : Quantity{};
-      emit_(OrderExecuted{bidId, cfg_.id, fill, bl, false, bl.isZero(), P, bDisp});
-      emit_(OrderExecuted{askId, cfg_.id, fill, al, false, al.isZero(), P, aDisp});
+      emit_(OrderExecuted{bidId, cfg_.id, fill, bl, false, bl.isZero(), P, bDisp, bAcct});
+      emit_(OrderExecuted{askId, cfg_.id, fill, al, false, al.isZero(), P, aDisp, aAcct});
     }
   }
+
+  // ---- checkpoint (journal-format snapshot) ----
+
+  // Deterministic digest of the full engine state over a canonical traversal
+  // (event_hash-style FNV fold): instrument config and market state, sequence
+  // counters, book (price levels best-first, FIFO within each level), stops,
+  // pegs, open holds, positions, MMP config, clientOrderId dedup sets and
+  // ledger balances (available AND reserved per account x asset). Written into
+  // SnapshotBegin/SnapshotEnd and re-verified on load: a mismatch marks the
+  // snapshot corrupt and recovery falls back a generation.
+  uint64_t stateHash() const
+  {
+    uint64_t h = 0xcbf29ce484222325ULL;
+    h = mix(h, cfg_.id);
+    h = mix(h, cfg_.halted ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(cfg_.minPrice.raw()));
+    h = mix(h, static_cast<uint64_t>(cfg_.maxPrice.raw()));
+    h = mix(h, static_cast<uint64_t>(cfg_.triggerRef));
+    h = mix(h, auctionMode_ ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(haltUntil_));
+    h = mix(h, hasLast_ ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(lastPrice_.raw()));
+    h = mix(h, hasMark_ ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(markPrice_.raw()));
+    h = mix(h, tradeSeq_);
+    h = mix(h, heldSeq_);
+    h = mix(h, static_cast<uint64_t>(timeCounter_));
+    h = mix(h, static_cast<uint64_t>(now_));
+
+    book_.forEachOrder(
+        [&](const RestingOrder& o)
+        {
+          h = mix(h, 0xB001U);
+          h = mix(h, o.id);
+          h = mix(h, o.accountId);
+          h = mix(h, static_cast<uint64_t>(o.price.raw()));
+          h = mix(h, static_cast<uint64_t>(o.leaves.raw()));
+          h = mix(h, static_cast<uint64_t>(o.hidden.raw()));
+          h = mix(h, static_cast<uint64_t>(o.peak.raw()));
+          h = mix(h, static_cast<uint64_t>(o.side));
+          h = mix(h, o.lastLook ? 1U : 0U);
+          h = mix(h, o.reduceOnly ? 1U : 0U);
+          h = mix(h, static_cast<uint64_t>(expiryOf(o.id)));
+          h = mix(h, ocoOf(o.id));
+        });
+
+    for (const auto& [o, trig] : sortedStops())
+    {
+      h = mix(h, 0xB002U);
+      h = mix(h, o.id);
+      h = mix(h, o.accountId);
+      h = mix(h, static_cast<uint64_t>(o.side));
+      h = mix(h, static_cast<uint64_t>(o.type));
+      h = mix(h, static_cast<uint64_t>(o.price.raw()));
+      h = mix(h, static_cast<uint64_t>(o.quantity.raw()));
+      h = mix(h, static_cast<uint64_t>(o.tif));
+      h = mix(h, static_cast<uint64_t>(o.visibleQuantity.raw()));
+      h = mix(h, static_cast<uint64_t>(o.triggerPrice.raw()));
+      h = mix(h, static_cast<uint64_t>(o.trailingOffset.raw()));
+      h = mix(h, o.lastLook ? 1U : 0U);
+      h = mix(h, o.reduceOnly ? 1U : 0U);
+      h = mix(h, static_cast<uint64_t>(o.expiryNs));
+      h = mix(h, o.ocoGroup);
+      h = mix(h, static_cast<uint64_t>(trig.raw()));
+    }
+
+    for (OrderId id : sortedKeys(pegged_))
+    {
+      const Peg& p = pegged_.at(id);
+      h = mix(h, 0xB003U);
+      h = mix(h, id);
+      h = mix(h, static_cast<uint64_t>(p.side));
+      h = mix(h, static_cast<uint64_t>(p.ref));
+      h = mix(h, static_cast<uint64_t>(p.offsetRaw));
+    }
+
+    for (uint64_t hid : sortedKeys(held_))
+    {
+      const Held& x = held_.at(hid);
+      h = mix(h, 0xB004U);
+      h = mix(h, x.id);
+      h = mix(h, x.taker);
+      h = mix(h, x.takerAccount);
+      h = mix(h, static_cast<uint64_t>(x.takerSide));
+      h = mix(h, x.maker);
+      h = mix(h, x.makerAccount);
+      h = mix(h, static_cast<uint64_t>(x.price.raw()));
+      h = mix(h, static_cast<uint64_t>(x.qty.raw()));
+      h = mix(h, static_cast<uint64_t>(x.deadline));
+      h = mix(h, static_cast<uint64_t>(x.takerTif));
+      h = mix(h, static_cast<uint64_t>(x.takerType));
+      h = mix(h, static_cast<uint64_t>(x.takerPrice.raw()));
+      h = mix(h, static_cast<uint64_t>(x.takerExpiryNs));
+      h = mix(h, x.makerReduceOnly ? 1U : 0U);
+      h = mix(h, x.takerReduceOnly ? 1U : 0U);
+      // Live-tracking truth of the maker (see RestoreHeld::makerTracked).
+      h = mix(h, orderAccount_.count(x.maker) != 0 ? 1U : 0U);
+    }
+
+    for (OrderId id : sortedKeys(reserve_))
+    {
+      const Reservation& r = reserve_.at(id);
+      h = mix(h, 0xB009U);
+      h = mix(h, id);
+      h = mix(h, r.account);
+      h = mix(h, r.asset);
+      h = mix(h, static_cast<uint64_t>(r.side));
+      h = mix(h, static_cast<uint64_t>(r.limitPriceRaw));
+      h = mixAmount(h, r.reservedRaw);
+    }
+
+    for (uint64_t acct : sortedKeys(positions_))
+    {
+      const Position& p = positions_.at(acct);
+      h = mix(h, 0xB005U);
+      h = mix(h, acct);
+      h = mix(h, static_cast<uint64_t>(p.qtyRaw));
+      h = mix(h, static_cast<uint64_t>(p.entryRaw));
+      h = mixAmount(h, p.margin);
+    }
+
+    for (uint64_t acct : sortedKeys(mmpCfg_))
+    {
+      const MmpCfg& c = mmpCfg_.at(acct);
+      h = mix(h, 0xB006U);
+      h = mix(h, acct);
+      h = mix(h, static_cast<uint64_t>(c.qtyLimit.raw()));
+      h = mix(h, static_cast<uint64_t>(c.windowNs));
+    }
+
+    // MMP sliding-window fills, deque (time) order. An EMPTY window contributes
+    // nothing, so it is indistinguishable from absence -- which also keeps
+    // pre-window-serialization snapshots (that restored windows empty) hashing
+    // identically when the windows really were empty.
+    for (uint64_t acct : sortedKeys(mmpFills_))
+    {
+      const MmpWindow& w = mmpFills_.at(acct);
+      if (w.fills.empty())
+      {
+        continue;
+      }
+      h = mix(h, 0xB00AU);
+      h = mix(h, acct);
+      for (const auto& [ts, q] : w.fills)
+      {
+        h = mix(h, static_cast<uint64_t>(ts));
+        h = mix(h, static_cast<uint64_t>(q.raw()));
+      }
+    }
+
+    // Firm-group STP table (feeds matching decisions, journaled as SetStpGroup).
+    if (const auto& groups = matcher_.stpGroups(); !groups.empty())
+    {
+      for (uint64_t acct : sortedKeys(groups))
+      {
+        h = mix(h, 0xB00BU);
+        h = mix(h, acct);
+        h = mix(h, groups.at(acct));
+      }
+    }
+
+    for (uint64_t acct : sortedKeys(clientOrderIds_))
+    {
+      h = mix(h, 0xB007U);
+      h = mix(h, acct);
+      const auto& seen = clientOrderIds_.at(acct);
+      std::vector<uint64_t> ids(seen.begin(), seen.end());
+      std::sort(ids.begin(), ids.end());
+      for (uint64_t id : ids)
+      {
+        h = mix(h, id);
+      }
+    }
+
+    if (ledger_ != nullptr)
+    {
+      std::vector<std::tuple<uint64_t, AssetId, Amount, Amount>> bals;
+      ledger_->forEachBalanceSplit(
+          [&](uint64_t acct, AssetId asset, Amount avail, Amount rsvd)
+          {
+            if (avail != 0 || rsvd != 0)  // a zeroed entry is indistinguishable from absence
+            {
+              bals.emplace_back(acct, asset, avail, rsvd);
+            }
+          });
+      std::sort(bals.begin(), bals.end(),
+                [](const auto& a, const auto& b)
+                {
+                  return std::get<0>(a) != std::get<0>(b) ? std::get<0>(a) < std::get<0>(b)
+                                                          : std::get<1>(a) < std::get<1>(b);
+                });
+      for (const auto& [acct, asset, avail, rsvd] : bals)
+      {
+        h = mix(h, 0xB008U);
+        h = mix(h, acct);
+        h = mix(h, asset);
+        h = mixAmount(h, avail);
+        h = mixAmount(h, rsvd);
+      }
+    }
+    return h;
+  }
+
+  // Digest of the CONSTRUCTOR configuration -- the structural parameters a
+  // snapshot cannot restore and recovery cannot verify through stateHash
+  // alone: fixed-point scales, assets, tick/lot/minQty, last-look window,
+  // perp mode and the match policy. Written into SnapshotBegin and compared
+  // on load: restoring raw fixed-point state into an engine constructed with
+  // different scales (or a different policy) would silently reinterpret every
+  // number, so a mismatch rejects the snapshot. Mutable knobs (bands, halted,
+  // triggerRef, LULD, fat-finger, margins, position/order caps) are excluded:
+  // they are carried by the snapshot itself or owned by the control plane.
+  uint64_t configHash() const
+  {
+    uint64_t h = 0xcbf29ce484222325ULL;
+    h = mix(h, 0xC0F1U);
+    h = mix(h, cfg_.id);
+    h = mix(h, static_cast<uint64_t>(cfg_.tickSize.raw()));
+    h = mix(h, static_cast<uint64_t>(cfg_.lotSize.raw()));
+    h = mix(h, static_cast<uint64_t>(cfg_.minQty.raw()));
+    h = mix(h, cfg_.baseAsset);
+    h = mix(h, cfg_.quoteAsset);
+    h = mix(h, static_cast<uint64_t>(cfg_.lastLookWindowNs));
+    h = mix(h, cfg_.lastLookAcceptOnTimeout ? 1U : 0U);
+    h = mix(h, cfg_.linearPerp ? 1U : 0U);
+    h = mix(h, cfg_.autoDeleverage ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(cfg_.priceScale));
+    h = mix(h, static_cast<uint64_t>(cfg_.qtyScale));
+    h = mix(h, static_cast<uint64_t>(matcher_.policy()));
+    return h;
+  }
+
+  // Serialize the engine into `out` as a journal-format snapshot: SnapshotBegin
+  // (with the constructor-config hash), existing config records
+  // (ListInstrument/SetBands/SetTriggerRef/SetStpGroup/AdminCmd), one
+  // RestoreBalance per (account, asset) carrying the EXACT signed
+  // available/reserved split, then the Restore* records in canonical order,
+  // closed by SnapshotEnd. The canonical traversal (levels by price
+  // best-first, FIFO within; everything else sorted by key) makes the file
+  // byte-for-byte deterministic, and tail-appending RestoreOrder application
+  // reproduces the exact book layout. Because balances restore exactly,
+  // RestoreReservation / RestorePosition rebuild only the engine-side tables
+  // on apply (no ledger re-reservation); the records still carry the exact
+  // live amounts (history-dependent -- partial fills, held slices, STP; a
+  // formula re-derivation is NOT faithful).
+  void writeSnapshot(Journal& out) const
+  {
+    const int64_t ts = now_;
+    const uint64_t h = stateHash();
+    out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, ts, h, configHash()}}, ts);
+
+    out.append(InboundCommand{ListInstrument{cfg_.id, cfg_.tickSize, cfg_.lotSize, cfg_.minPrice,
+                                             cfg_.maxPrice}},
+               ts);
+    out.append(InboundCommand{SetBands{cfg_.id, cfg_.minPrice, cfg_.maxPrice}}, ts);
+    out.append(InboundCommand{SetTriggerRef{cfg_.id, cfg_.triggerRef}}, ts);
+    // STP groups are engine state journaled as SetStpGroup commands; the
+    // snapshot re-emits the live table as the same records (config section,
+    // applied through the ordinary submit path on load).
+    if (const auto& groups = matcher_.stpGroups(); !groups.empty())
+    {
+      for (uint64_t acct : sortedKeys(groups))
+      {
+        out.append(InboundCommand{SetStpGroup{cfg_.id, acct, groups.at(acct)}}, ts);
+      }
+    }
+    out.append(InboundCommand{AdminCmd{cfg_.id, cfg_.halted ? AdminAction::Halt
+                                                            : AdminAction::Resume}},
+               ts);
+    if (auctionMode_)
+    {
+      out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::BeginPreOpen}}, ts);
+    }
+
+    if (ledger_ != nullptr)
+    {
+      // Exact signed split per (account, asset): every live moment is
+      // representable, including a negative wallet mid-liquidation and
+      // non-positive totals (states the v1 Deposit-total encoding could not
+      // express, forcing recovery a generation back). A fully zero entry is
+      // skipped -- indistinguishable from absence, matching stateHash.
+      std::vector<std::tuple<uint64_t, AssetId, Amount, Amount>> bals;
+      ledger_->forEachBalanceSplit(
+          [&](uint64_t acct, AssetId asset, Amount avail, Amount rsvd)
+          {
+            if (avail != 0 || rsvd != 0)
+            {
+              bals.emplace_back(acct, asset, avail, rsvd);
+            }
+          });
+      std::sort(bals.begin(), bals.end(),
+                [](const auto& a, const auto& b)
+                {
+                  return std::get<0>(a) != std::get<0>(b) ? std::get<0>(a) < std::get<0>(b)
+                                                          : std::get<1>(a) < std::get<1>(b);
+                });
+      for (const auto& [acct, asset, avail, rsvd] : bals)
+      {
+        out.append(InboundCommand{RestoreBalance{acct, asset, avail, rsvd}}, ts);
+      }
+    }
+
+    for (uint64_t acct : sortedKeys(mmpCfg_))
+    {
+      const MmpCfg& c = mmpCfg_.at(acct);
+      out.append(InboundCommand{RestoreMmpCfg{acct, c.qtyLimit, c.windowNs}}, ts);
+    }
+
+    // MMP sliding-window fills, exact, in deque (time) order -- a maker one
+    // fill from its limit stays one fill from it across recovery.
+    for (uint64_t acct : sortedKeys(mmpFills_))
+    {
+      const MmpWindow& w = mmpFills_.at(acct);
+      if (w.fills.empty())
+      {
+        continue;
+      }
+      RestoreMmpFills batch{};
+      batch.account = acct;
+      for (const auto& [fts, q] : w.fills)
+      {
+        batch.tsNs[batch.count] = fts;
+        batch.qtyRaw[batch.count] = q.raw();
+        if (++batch.count == kMmpFillBatch)
+        {
+          out.append(InboundCommand{batch}, ts);
+          batch = RestoreMmpFills{};
+          batch.account = acct;
+        }
+      }
+      if (batch.count > 0)
+      {
+        out.append(InboundCommand{batch}, ts);
+      }
+    }
+
+    for (uint64_t acct : sortedKeys(clientOrderIds_))
+    {
+      const auto& seen = clientOrderIds_.at(acct);
+      std::vector<uint64_t> ids(seen.begin(), seen.end());
+      std::sort(ids.begin(), ids.end());
+      RestoreClOrdIds batch{};
+      batch.account = acct;
+      for (uint64_t id : ids)
+      {
+        batch.ids[batch.count++] = id;
+        if (batch.count == kClOrdIdBatch)
+        {
+          out.append(InboundCommand{batch}, ts);
+          batch = RestoreClOrdIds{};
+          batch.account = acct;
+        }
+      }
+      if (batch.count > 0)
+      {
+        out.append(InboundCommand{batch}, ts);
+      }
+    }
+
+    book_.forEachOrder(
+        [&](const RestingOrder& o)
+        {
+          RestoreOrder r{o.id, o.accountId, o.price, o.leaves, o.side, o.hidden,
+                         o.peak, o.lastLook, o.reduceOnly};
+          r.expiryNs = expiryOf(o.id);
+          r.ocoGroup = ocoOf(o.id);
+          out.append(InboundCommand{r}, ts);
+        });
+
+    for (const auto& [o, trig] : sortedStops())
+    {
+      out.append(InboundCommand{RestoreStop{o, trig}}, ts);
+    }
+
+    for (OrderId id : sortedKeys(pegged_))
+    {
+      const Peg& p = pegged_.at(id);
+      out.append(InboundCommand{RestorePeg{id, p.side, p.ref, p.offsetRaw}}, ts);
+    }
+
+    for (uint64_t acct : sortedKeys(positions_))
+    {
+      const Position& p = positions_.at(acct);
+      out.append(InboundCommand{RestorePosition{acct, p.qtyRaw, p.entryRaw, p.margin}}, ts);
+    }
+
+    for (uint64_t hid : sortedKeys(held_))
+    {
+      const Held& x = held_.at(hid);
+      RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide, x.maker,
+                    x.makerAccount, x.price, x.qty, x.deadline, x.takerTif,
+                    x.takerType, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly,
+                    x.takerReduceOnly};
+      r.makerTracked = orderAccount_.count(x.maker) != 0;
+      out.append(InboundCommand{r}, ts);
+    }
+
+    for (OrderId id : sortedKeys(reserve_))
+    {
+      const Reservation& r = reserve_.at(id);
+      out.append(
+          InboundCommand{RestoreReservation{id, r.account, r.asset, r.side, r.limitPriceRaw,
+                                            r.reservedRaw}},
+          ts);
+    }
+
+    SnapshotEnd end{};
+    end.stateHash = h;
+    end.tradeSeq = tradeSeq_;
+    end.heldSeq = heldSeq_;
+    end.timeCounter = timeCounter_;
+    end.nowNs = now_;
+    end.mdEpoch = 0;  // the engine carries no MD epoch today
+    end.lastPriceRaw = lastPrice_.raw();
+    end.hasLast = hasLast_;
+    end.markPriceRaw = markPrice_.raw();
+    end.hasMark = hasMark_;
+    end.haltUntilNs = haltUntil_;
+    out.append(InboundCommand{end}, ts);
+  }
+
+  // Recovery-only application of one snapshot record. Existing journaled
+  // record types (config, deposits) route through the normal submit path;
+  // Restore* records rebuild state directly, WITHOUT a matching pass -- the
+  // snapshot book is uncrossed by invariant, and a crossing RestoreOrder
+  // marks the snapshot corrupt. Returns false when the record proves the
+  // snapshot corrupt (version mismatch, crossed book, un-backable
+  // reservation, hash mismatch at SnapshotEnd); the caller then discards the
+  // generation. NEVER wire this to live traffic: submit() drops snapshot tags
+  // for exactly that reason.
+  bool applySnapshotRecord(const InboundCommand& cmd, int64_t tsNs)
+  {
+    if (const auto* b = std::get_if<SnapshotBegin>(&cmd))
+    {
+      if (b->formatVersion != kSnapshotFormatVersion)
+      {
+        return false;
+      }
+      // Constructor-config guard: a snapshot written by an engine with other
+      // structural parameters (scales, assets, policy, ...) must not restore
+      // -- the raw fixed-point state would be silently reinterpreted.
+      if (b->configHash != 0 && b->configHash != configHash())
+      {
+        std::fprintf(stderr,
+                     "flox-venue: snapshot rejected for symbol %llu: constructor-config hash "
+                     "mismatch (snapshot %016llx, engine %016llx) -- scales/assets/policy differ "
+                     "from the writer's\n",
+                     static_cast<unsigned long long>(cfg_.id),
+                     static_cast<unsigned long long>(b->configHash),
+                     static_cast<unsigned long long>(configHash()));
+        return false;
+      }
+      return true;
+    }
+    if (const auto* r = std::get_if<RestoreOrder>(&cmd))
+    {
+      return applyRestoreOrder(*r);
+    }
+    if (const auto* r = std::get_if<RestoreStop>(&cmd))
+    {
+      return applyRestoreStop(*r);
+    }
+    if (const auto* r = std::get_if<RestorePeg>(&cmd))
+    {
+      if (!book_.contains(r->id))
+      {
+        return false;  // a peg spec must reference a restored resting order
+      }
+      pegged_[r->id] = Peg{r->side, r->ref, r->offsetRaw};
+      return true;
+    }
+    if (const auto* r = std::get_if<RestoreHeld>(&cmd))
+    {
+      return applyRestoreHeld(*r);
+    }
+    if (const auto* r = std::get_if<RestorePosition>(&cmd))
+    {
+      return applyRestorePosition(*r);
+    }
+    if (const auto* r = std::get_if<RestoreMmpCfg>(&cmd))
+    {
+      // Fill windows arrive separately as RestoreMmpFills records (exact
+      // restore); a snapshot without them restores the windows empty.
+      mmpCfg_[r->account] = MmpCfg{r->qtyLimit, r->windowNs};
+      return true;
+    }
+    if (const auto* r = std::get_if<RestoreMmpFills>(&cmd))
+    {
+      if (r->count > kMmpFillBatch)
+      {
+        return false;
+      }
+      auto& w = mmpFills_[r->account];
+      for (uint32_t i = 0; i < r->count; ++i)
+      {
+        w.fills.emplace_back(r->tsNs[i], Quantity::fromRaw(r->qtyRaw[i]));
+        w.sumRaw += r->qtyRaw[i];
+      }
+      return true;
+    }
+    if (const auto* r = std::get_if<RestoreBalance>(&cmd))
+    {
+      if (ledger_ != nullptr)
+      {
+        ledger_->restore(r->account, r->asset, r->availableRaw, r->reservedRaw);
+        // Balances are now exact: the RestoreReservation / RestorePosition
+        // records that follow must NOT re-reserve (the reserved side is
+        // already in place); they only rebuild the engine-side tables.
+        exactBalanceRestore_ = true;
+      }
+      return true;
+    }
+    if (const auto* r = std::get_if<RestoreClOrdIds>(&cmd))
+    {
+      if (r->count > kClOrdIdBatch)
+      {
+        return false;
+      }
+      auto& seen = clientOrderIds_[r->account];
+      for (uint32_t i = 0; i < r->count; ++i)
+      {
+        seen.insert(r->ids[i]);
+      }
+      return true;
+    }
+    if (const auto* r = std::get_if<RestoreReservation>(&cmd))
+    {
+      return applyRestoreReservation(*r);
+    }
+    if (const auto* e = std::get_if<SnapshotEnd>(&cmd))
+    {
+      return applySnapshotEnd(*e);
+    }
+    submit(cmd, tsNs);  // existing record types apply through the live path
+    return true;
+  }
+
+  // Live-traffic snapshot-tag drops (observability; see the guard in submit).
+  uint64_t droppedSnapshotRecords() const noexcept { return droppedSnapshotRecords_; }
+
+  // ---- asynchronous checkpoint support ----
+  // A full engine clone taken under the consumer pause; serialization (fsync,
+  // rename, rotation bookkeeping) then runs on a background thread against the
+  // clone while matching continues. fork()-based copy-on-write snapshotting
+  // was considered and REJECTED deliberately: the venue process is
+  // multi-threaded (journal writer semantics aside -- gateway/ingress threads,
+  // the idle sweeper, metrics/monitor threads), and fork() in a multi-threaded
+  // process clones only the calling thread while every lock keeps the state
+  // its holder left it in; a malloc arena lock held by another thread at fork
+  // time deadlocks the child on its first allocation inside writeSnapshot.
+  // An explicit deep copy is O(state) but safe, and the measured pause is the
+  // clone alone, not serialize+fsync.
+  struct SnapshotClone
+  {
+    std::unique_ptr<Ledger> ledger;  // owned deep copy (null: live engine had no ledger)
+    std::unique_ptr<MatchingEngine> engine;
+  };
+
+  // `emptyBook` must be a PRISTINE book instance carrying only construction
+  // config (ladder geometry); the resting orders are re-added canonically
+  // (levels best-first, FIFO within -- forEachOrder order), which reproduces
+  // the exact live layout the same way snapshot restore does. A default
+  // MatchingBook needs no config, so the default argument suffices for it.
+  SnapshotClone cloneForSnapshot(Book emptyBook = Book{}) const
+  {
+    SnapshotClone c;
+    c.engine = std::make_unique<MatchingEngine>(cfg_, EventSink{[](const OutboundEvent&) {}},
+                                                std::move(emptyBook), matcher_.policy());
+    MatchingEngine& e = *c.engine;
+    book_.forEachOrder([&](const RestingOrder& o)
+                       { e.book_.addResting(o.side, o); });
+    e.stops_ = stops_;
+    e.lastPrice_ = lastPrice_;
+    e.hasLast_ = hasLast_;
+    e.markPrice_ = markPrice_;
+    e.hasMark_ = hasMark_;
+    e.tradeSeq_ = tradeSeq_;
+    e.now_ = now_;
+    e.timeCounter_ = timeCounter_;
+    e.orderAccount_ = orderAccount_;
+    e.byAccount_ = byAccount_;
+    e.expiry_ = expiry_;
+    e.orderOco_ = orderOco_;
+    e.ocoMembers_ = ocoMembers_;
+    e.ocoPending_ = ocoPending_;  // empty at a command boundary; copied for completeness
+    e.pegged_ = pegged_;
+    e.fees_ = fees_;
+    e.feesEnabled_ = feesEnabled_;
+    e.mmpCfg_ = mmpCfg_;
+    e.mmpFills_ = mmpFills_;
+    e.mmpBreached_ = mmpBreached_;
+    e.held_ = held_;
+    e.heldSeq_ = heldSeq_;
+    e.heldOpen_.store(e.held_.size(), std::memory_order_relaxed);
+    e.clientOrderIds_ = clientOrderIds_;
+    e.reserve_ = reserve_;
+    e.positions_ = positions_;
+    e.auctionMode_ = auctionMode_;
+    e.haltUntil_ = haltUntil_;
+    for (const auto& [acct, grp] : matcher_.stpGroups())
+    {
+      e.matcher_.setStpGroup(acct, grp);
+    }
+    if (ledger_ != nullptr)
+    {
+      c.ledger = std::make_unique<Ledger>(*ledger_);
+      e.setLedger(c.ledger.get(), venueAccount_);
+    }
+    else
+    {
+      e.venueAccount_ = venueAccount_;
+    }
+    return c;
+  }
+
+  Ledger* ledger() const noexcept { return ledger_; }
+  uint64_t venueAccount() const noexcept { return venueAccount_; }
 
  private:
   RejectReason validate(const NewOrder& o) const
@@ -562,6 +1274,13 @@ class MatchingEngine
     if (o.quantity.raw() <= 0)
     {
       return RejectReason::InvalidQuantity;
+    }
+    // Pro-rata allocation does not honour last look (a held slice cannot be
+    // carved out of a proportional round), so the combination is refused at
+    // admission instead of silently filling the maker as firm.
+    if (o.lastLook && matcher_.policy() == MatchPolicy::ProRata)
+    {
+      return RejectReason::LastLookUnsupported;
     }
     if (!cfg_.minQty.isZero() && o.quantity < cfg_.minQty)
     {
@@ -602,6 +1321,20 @@ class MatchingEngine
     if (book_.contains(o.id) || stops_.contains(o.id))
     {
       return RejectReason::DuplicateOrderId;
+    }
+    // An id referenced by an active last-look hold is still live even when its
+    // order is (fully held) out of the book: a reject will restore quantity
+    // under that id, so a reused id would merge two unrelated orders.
+    if (!held_.empty())
+    {
+      for (const auto& [hid, h] : held_)
+      {
+        (void)hid;
+        if (h.maker == o.id || h.taker == o.id)
+        {
+          return RejectReason::DuplicateOrderId;
+        }
+      }
     }
     return RejectReason::None;
   }
@@ -649,6 +1382,22 @@ class MatchingEngine
 
   void onNew(NewOrder o)
   {
+    // clientOrderId dedup (per account, window = engine session/uptime; see
+    // docs/venue/matching.md). Registered on receipt, BEFORE any other gate:
+    // a resend of an already-seen clOrdId must reject deterministically even
+    // when the first instance has long filled or canceled -- that is the whole
+    // point (double execution after an ambiguous disconnect). clientOrderId 0
+    // means "not set" and is never deduplicated. Replay-safe: the index is
+    // rebuilt by the same submits during journal replay.
+    if (o.clientOrderId != 0)
+    {
+      auto& seen = clientOrderIds_[o.accountId];
+      if (!seen.insert(o.clientOrderId).second)
+      {
+        sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateClientOrderId, o.accountId});
+        return;
+      }
+    }
     if (o.ocoGroup > 0)
     {
       orderOco_[o.id] = o.ocoGroup;  // link before matching so a taker fill triggers OCO too
@@ -690,7 +1439,7 @@ class MatchingEngine
       auto it = byAccount_.find(o.accountId);
       if (it != byAccount_.end() && it->second.size() >= cfg_.maxOpenOrders)
       {
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::TooManyOpenOrders});
+        sink_(OrderRejected{o.id, o.symbol, RejectReason::TooManyOpenOrders, o.accountId});
         return;
       }
     }
@@ -701,17 +1450,17 @@ class MatchingEngine
     // a no-op.
     if (const RejectReason r = perpRiskGate(o); r != RejectReason::None)
     {
-      sink_(OrderRejected{o.id, o.symbol, r});
+      sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
       return;
     }
     if (const RejectReason r = validate(o); r != RejectReason::None)
     {
-      sink_(OrderRejected{o.id, o.symbol, r});
+      sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
       return;
     }
     if (!reserveFunds(o))
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InsufficientFunds});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InsufficientFunds, o.accountId});
       return;  // pre-trade buying-power (ledger reservation or credit hook)
     }
     committed = true;  // past all reject gates: the order will match/rest, and any
@@ -731,7 +1480,7 @@ class MatchingEngine
       ro.reduceOnly = o.reduceOnly;
       book_.addResting(o.side, ro);
       trackResting(o.id, o.accountId);
-      sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true});
+      sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, Quantity{}, o.accountId});
       return;
     }
 
@@ -749,7 +1498,7 @@ class MatchingEngine
           (o.side == Side::SELL && o.price.raw() < luldLo))
       {
         releaseReservation(o.id);
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach});
+        sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach, o.accountId});
         tripLuldHalt();
         return;
       }
@@ -762,14 +1511,14 @@ class MatchingEngine
     if (out.reject != RejectReason::None)
     {
       releaseReservation(o.id);  // post-only-would-cross / FOK-unfulfillable: free the reserve
-      sink_(OrderRejected{o.id, o.symbol, out.reject});
+      sink_(OrderRejected{o.id, o.symbol, out.reject, o.accountId});
       return;
     }
     if (out.residualRests)
     {
       RestingOrder ro{o.id, o.accountId, o.price, out.leaves, o.side};
-      ro.lastLook = o.lastLook;
-      ro.reduceOnly = o.reduceOnly;  // carried so a later modify preserves it
+      ro.lastLook = o.lastLook && cfg_.lastLookWindowNs > 0;  // window 0 = feature off
+      ro.reduceOnly = o.reduceOnly;                           // carried so a later modify preserves it
       if (o.visibleQuantity.raw() > 0 && o.visibleQuantity < out.leaves)
       {
         ro.peak = o.visibleQuantity;    // iceberg: show a peak, hide the rest
@@ -788,15 +1537,16 @@ class MatchingEngine
       }
       // Public feed shows only the displayed peak (ro.leaves); the hidden iceberg
       // reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg: they match.
-      sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves});
+      sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId});
     }
     else if (out.residualCanceled)
     {
       // The unfilled residual (IOC/FOK/MARKET/STP-newest) never rests, so its
       // buying-power reservation must be released here -- this raw-sink path does
-      // not run the emit_ wrapper's release-on-cancel.
-      releaseReservation(o.id);
-      sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason});
+      // not run the emit_ wrapper's release-on-cancel. Held slices stay
+      // reserved: their accept still has to settle (reject releases later).
+      releaseReservationExceptHeld(o.id);
+      sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId});
     }
 
     processTriggers();  // this order's trades may have crossed resting stops
@@ -847,38 +1597,38 @@ class MatchingEngine
   {
     if (o.symbol != cfg_.id)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol, o.accountId});
       return false;
     }
     if (cfg_.halted)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::Halted});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::Halted, o.accountId});
       return false;
     }
     if (o.quantity.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidQuantity});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidQuantity, o.accountId});
       return false;
     }
     const bool trailing = (o.type == OrderType::TRAILING_STOP);
     if (!trailing && o.triggerPrice.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId});
       return false;
     }
     if (trailing && o.trailingOffset.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId});
       return false;
     }
     if (isLimitStop(o.type) && o.price.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId});
       return false;
     }
     if (book_.contains(o.id) || stops_.contains(o.id))
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateOrderId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateOrderId, o.accountId});
       return false;
     }
 
@@ -897,8 +1647,9 @@ class MatchingEngine
       initTrig = o.triggerPrice;
     }
     stops_.add(o, initTrig, trailing);
-    sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false});  // pending, not on book
-    processTriggers();                                                                // may already be in-the-money
+    sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false, Quantity{},
+                        o.accountId});  // pending, not on book
+    processTriggers();                  // may already be in-the-money
     return true;
   }
 
@@ -923,7 +1674,7 @@ class MatchingEngine
     stops_.updateTrailing(*ref);
     while (auto agg = stops_.popTriggered(*ref))
     {
-      sink_(OrderTriggered{agg->id, cfg_.id, *ref});
+      sink_(OrderTriggered{agg->id, cfg_.id, *ref, agg->accountId});
       // Perp risk gates: a triggered stop re-enters matching HERE, not through
       // onNew, so it must run the same reduce-only cap + position-limit checks --
       // else a reduce-only stop opens an uncollateralized (im=0) position and a
@@ -931,7 +1682,7 @@ class MatchingEngine
       // reserved) if the reduce-only cap leaves nothing or the cap is breached.
       if (const RejectReason r = perpRiskGate(*agg); r != RejectReason::None)
       {
-        sink_(OrderRejected{agg->id, cfg_.id, r});
+        sink_(OrderRejected{agg->id, cfg_.id, r, agg->accountId});
         ref = triggerReference();
         if (!ref)
         {
@@ -945,7 +1696,7 @@ class MatchingEngine
       // value (buyer receives base it can't pay for).
       if (!reserveFunds(*agg))
       {
-        sink_(OrderRejected{agg->id, cfg_.id, RejectReason::InsufficientFunds});
+        sink_(OrderRejected{agg->id, cfg_.id, RejectReason::InsufficientFunds, agg->accountId});
         ref = triggerReference();
         if (!ref)
         {
@@ -960,7 +1711,7 @@ class MatchingEngine
       if (out.reject != RejectReason::None)
       {
         releaseReservation(agg->id);
-        sink_(OrderRejected{agg->id, cfg_.id, out.reject});
+        sink_(OrderRejected{agg->id, cfg_.id, out.reject, agg->accountId});
       }
       else if (out.residualRests)
       {
@@ -968,12 +1719,13 @@ class MatchingEngine
         rro.reduceOnly = agg->reduceOnly;
         book_.addResting(agg->side, rro);
         trackResting(agg->id, agg->accountId);
-        sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true});
+        sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true, Quantity{},
+                            agg->accountId});
       }
       else if (out.residualCanceled)
       {
-        releaseReservation(agg->id);
-        sink_(OrderCanceled{agg->id, cfg_.id, out.residualCancelReason});
+        releaseReservationExceptHeld(agg->id);  // held slices stay reserved
+        sink_(OrderCanceled{agg->id, cfg_.id, out.residualCancelReason, agg->accountId});
       }
       ref = triggerReference();  // trades may have moved the last-price reference
       if (!ref)
@@ -988,18 +1740,22 @@ class MatchingEngine
   {
     if (m.symbol != cfg_.id)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::UnknownSymbol});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::UnknownSymbol, m.accountId});
       return;
     }
+    // Resolve (reject) any last-look holds referencing this order FIRST: both
+    // modify paths re-shape the order and its reservation, and a hold left
+    // behind would later settle against a reservation that no longer covers it.
+    rejectHoldsFor(m.id);
     const RestingOrder* cur = book_.find(m.id);
     if (cur == nullptr)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::UnknownOrder});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId});
       return;
     }
     if (m.newQty.raw() <= 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidQuantity});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidQuantity, m.accountId});
       return;
     }
 
@@ -1015,27 +1771,27 @@ class MatchingEngine
     // original order untouched.
     if (newPrice.raw() <= 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct});
       return;
     }
     if (!cfg_.tickSize.isZero() && (newPrice.raw() % cfg_.tickSize.raw()) != 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::TickSizeViolation});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::TickSizeViolation, acct});
       return;
     }
     if (!cfg_.minPrice.isZero() && newPrice < cfg_.minPrice)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct});
       return;
     }
     if (!cfg_.maxPrice.isZero() && cfg_.maxPrice < newPrice)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct});
       return;
     }
     if (!cfg_.lotSize.isZero() && (m.newQty.raw() % cfg_.lotSize.raw()) != 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::LotSizeViolation});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::LotSizeViolation, acct});
       return;
     }
 
@@ -1061,7 +1817,7 @@ class MatchingEngine
           it->second.reservedRaw -= freed;
         }
       }
-      sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true});
+      sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true, acct});
       return;
     }
 
@@ -1089,13 +1845,13 @@ class MatchingEngine
     if (const RejectReason r = perpRiskGate(re); r != RejectReason::None)
     {
       forgetOrder(m.id);  // order was already canceled above -> stays gone
-      sink_(OrderRejected{m.id, m.symbol, r});
+      sink_(OrderRejected{m.id, m.symbol, r, acct});
       return;
     }
     if (!reserveFunds(re))  // cannot fund the modified order -> reject; order is gone
     {
       forgetOrder(m.id);
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InsufficientFunds});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::InsufficientFunds, acct});
       return;
     }
     const MatchOutcome out =
@@ -1108,7 +1864,7 @@ class MatchingEngine
       book_.addResting(side, mro);
       trackResting(m.id, acct);
     }
-    sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false});
+    sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct});
     processTriggers();  // a reprice-into-cross may have moved the last price
   }
 
@@ -1116,26 +1872,42 @@ class MatchingEngine
   {
     if (c.symbol != cfg_.id)
     {
-      sink_(OrderRejected{c.id, c.symbol, RejectReason::UnknownSymbol});
+      sink_(OrderRejected{c.id, c.symbol, RejectReason::UnknownSymbol, c.accountId});
       return;
     }
+    // Cancel-while-held: deterministically resolve (reject) the order's holds
+    // BEFORE removing it. The reject restores held quantity to the book (so the
+    // cancel below removes ALL of it and releases the full reservation), and a
+    // later accept of the same heldId is impossible (UnknownOrder) -- without
+    // this, releaseReservation would strip the held slice and the accept would
+    // settle through the unchecked-debit path, breaking conservation.
+    rejectHoldsFor(c.id);
+    const uint64_t restingAcct = ownerOf(c.id);
+    const uint64_t stopAcct = stops_.accountOf(c.id);
     if (book_.cancel(c.id).has_value())
     {
       releaseReservation(c.id);
       forgetOrder(c.id);
-      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested});
+      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, restingAcct});
     }
     else if (stops_.cancel(c.id))
     {
-      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested});
+      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct});
     }
     else
     {
-      sink_(OrderRejected{c.id, c.symbol, RejectReason::UnknownOrder});
+      sink_(OrderRejected{c.id, c.symbol, RejectReason::UnknownOrder, c.accountId});
     }
   }
 
   // ---- per-account resting-order tracking (mass-cancel / MMP) ----
+  // Owner of a live tracked order (0 if unknown) -- read BEFORE forgetOrder so
+  // async cancel events can be routed to the owner's session.
+  uint64_t ownerOf(OrderId id) const noexcept
+  {
+    auto it = orderAccount_.find(id);
+    return it == orderAccount_.end() ? 0 : it->second;
+  }
   void trackResting(OrderId id, uint64_t account)
   {
     orderAccount_[id] = account;
@@ -1184,6 +1956,12 @@ class MatchingEngine
   }
   void cancelAllForAccount(uint64_t account, CancelReason reason = CancelReason::UserRequested)
   {
+    // Resolve every hold touching this account FIRST (mass-cancel / MMP /
+    // liquidation must not leave held fills behind): the account's own held
+    // slices are restored and then canceled below; counterparty slices return
+    // to the book. Resolving before the id snapshot also catches an order of
+    // this account that a restore would re-create.
+    rejectHoldsForAccount(account);
     auto it = byAccount_.find(account);
     if (it == byAccount_.end())
     {
@@ -1197,7 +1975,7 @@ class MatchingEngine
       {
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, reason});
+        sink_(OrderCanceled{id, cfg_.id, reason, account});
       }
     }
   }
@@ -1217,17 +1995,21 @@ class MatchingEngine
     {
       return;
     }
+    rejectHoldsFor(q.bidId);  // a replaced quote may carry open holds
+    rejectHoldsFor(q.askId);
     if (book_.cancel(q.bidId).has_value())
     {
+      const uint64_t acct = ownerOf(q.bidId);
       releaseReservation(q.bidId);
       forgetOrder(q.bidId);
-      sink_(OrderCanceled{q.bidId, cfg_.id, CancelReason::UserRequested});
+      sink_(OrderCanceled{q.bidId, cfg_.id, CancelReason::UserRequested, acct});
     }
     if (book_.cancel(q.askId).has_value())
     {
+      const uint64_t acct = ownerOf(q.askId);
       releaseReservation(q.askId);
       forgetOrder(q.askId);
-      sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested});
+      sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested, acct});
     }
     if (q.bidQty.raw() > 0)
     {
@@ -1331,8 +2113,10 @@ class MatchingEngine
         static_cast<double>(
             notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
         kMoneyScale;
-    sink_(FeeCharged{t.makerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, true)), true});
-    sink_(FeeCharged{t.takerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, false)), false});
+    sink_(FeeCharged{t.makerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, true)),
+                     true, t.makerAccount});
+    sink_(FeeCharged{t.takerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, false)),
+                     false, t.takerAccount});
   }
 
   // ---- settlement ledger ----
@@ -1415,6 +2199,43 @@ class MatchingEngine
     return true;
   }
 
+  // ---- journaled balance genesis ----
+  // Deposits/withdrawals are sequenced commands, not direct Ledger calls, so
+  // the WAL is the single source of truth for balances: a replay from an empty
+  // ledger reproduces them. Without a ledger bound they are no-ops.
+  void onDeposit(const Deposit& d)
+  {
+    if (ledger_ == nullptr || d.amountRaw <= 0)
+    {
+      return;
+    }
+    ledger_->deposit(d.accountId, d.asset, static_cast<Amount>(d.amountRaw));
+    // The owner sees the credit land. Deterministic (post-event ledger state),
+    // so it is part of the event hash; journal replay re-emits it and the
+    // shard's recovery suppression keeps replayed/snapshot-restored copies off
+    // the wire.
+    emitBalance(d.accountId, d.asset, BalanceReason::Deposit);
+  }
+
+  void onWithdraw(const Withdraw& w)
+  {
+    if (ledger_ == nullptr || w.amountRaw <= 0)
+    {
+      return;
+    }
+    // debit is all-or-nothing (checks available >= amount): an uncovered
+    // withdraw changes nothing, so conservation and replay stay intact.
+    const bool ok = ledger_->debit(w.accountId, w.asset, static_cast<Amount>(w.amountRaw));
+    emitBalance(w.accountId, w.asset,
+                ok ? BalanceReason::Withdraw : BalanceReason::WithdrawRejected);
+  }
+
+  void emitBalance(uint64_t account, AssetId asset, BalanceReason reason)
+  {
+    sink_(BalanceUpdate{account, asset, static_cast<int64_t>(ledger_->available(account, asset)),
+                        static_cast<int64_t>(ledger_->reserved(account, asset)), reason});
+  }
+
   void releaseReservation(OrderId id)
   {
     if (ledger_ == nullptr)
@@ -1431,6 +2252,92 @@ class MatchingEngine
       ledger_->release(it->second.account, it->second.asset, it->second.reservedRaw);
     }
     reserve_.erase(it);
+  }
+
+  // Any open last-look hold referencing this order (as maker or taker)?
+  bool hasHoldsFor(OrderId id) const
+  {
+    if (held_.empty())
+    {
+      return false;
+    }
+    for (const auto& [hid, h] : held_)
+    {
+      (void)hid;
+      if (h.maker == id || h.taker == id)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // releaseReservation, but keep the slice backing this order's open held
+  // fills reserved: a canceled residual must not strip the collateral an
+  // accept still needs to settle from (the unchecked-debit fallback would
+  // credit the counterparty against a possibly failing debit).
+  void releaseReservationExceptHeld(OrderId id)
+  {
+    if (ledger_ == nullptr)
+    {
+      return;
+    }
+    Quantity heldQty{};
+    for (const auto& [hid, h] : held_)
+    {
+      (void)hid;
+      if (h.taker == id || h.maker == id)
+      {
+        heldQty += h.qty;
+      }
+    }
+    if (heldQty.isZero())
+    {
+      releaseReservation(id);
+      return;
+    }
+    auto it = reserve_.find(id);
+    if (it == reserve_.end())
+    {
+      return;
+    }
+    Amount keep;
+    if (cfg_.linearPerp)
+    {
+      keep = imForRaw(heldQty.raw(), it->second.limitPriceRaw);
+    }
+    else if (it->second.side == Side::BUY)
+    {
+      keep = notionalRaw(it->second.limitPriceRaw, heldQty.raw(), cfg_.priceScale, cfg_.qtyScale);
+    }
+    else
+    {
+      keep = amountOf(heldQty);
+    }
+    if (keep > it->second.reservedRaw)
+    {
+      keep = it->second.reservedRaw;
+    }
+    const Amount rel = it->second.reservedRaw - keep;
+    if (rel > 0)
+    {
+      ledger_->release(it->second.account, it->second.asset, rel);
+      it->second.reservedRaw = keep;
+    }
+  }
+
+  // After the last hold on an order resolves: if the order is gone from the
+  // book (and the stop book), free any leftover reservation and drop tracking.
+  // Complements the emit_ wrapper, which defers this cleanup while holds are
+  // open (see the complete-with-holds note there).
+  void cleanupOrderIfDone(OrderId id)
+  {
+    if (book_.contains(id) || stops_.contains(id) || hasHoldsFor(id))
+    {
+      return;
+    }
+    releaseReservation(id);
+    forgetOrder(id);
   }
 
   void settleTrade(const Trade& t)
@@ -1501,7 +2408,7 @@ class MatchingEngine
     // Signed move: participant -fee, venue +fee (conserves value; fee<0 = rebate).
     ledger_->credit(acct, cfg_.quoteAsset, -fee);
     ledger_->credit(venueAccount_, cfg_.quoteAsset, fee);
-    sink_(FeeCharged{id, cfg_.id, Volume::fromDouble(feeD), maker});
+    sink_(FeeCharged{id, cfg_.id, Volume::fromDouble(feeD), maker, acct});
   }
 
   // ---- linear-perp clearing ----
@@ -1784,6 +2691,218 @@ class MatchingEngine
     }
   }
 
+  // ---- checkpoint helpers ----
+  static uint64_t mixAmount(uint64_t h, Amount a) noexcept
+  {
+    h = mix(h, static_cast<uint64_t>(static_cast<unsigned __int128>(a)));
+    h = mix(h, static_cast<uint64_t>(static_cast<unsigned __int128>(a) >> 64));
+    return h;
+  }
+
+  template <class Map>
+  static std::vector<typename Map::key_type> sortedKeys(const Map& m)
+  {
+    std::vector<typename Map::key_type> keys;
+    keys.reserve(m.size());
+    for (const auto& [k, v] : m)
+    {
+      (void)v;
+      keys.push_back(k);
+    }
+    std::sort(keys.begin(), keys.end());
+    return keys;
+  }
+
+  int64_t expiryOf(OrderId id) const
+  {
+    auto it = expiry_.find(id);
+    return it == expiry_.end() ? 0 : it->second;
+  }
+  uint64_t ocoOf(OrderId id) const
+  {
+    auto it = orderOco_.find(id);
+    return it == orderOco_.end() ? 0 : it->second;
+  }
+
+  // Pending conditional orders with their current triggers, sorted by order id
+  // (the stop book's internal container order is not state: firing and cancel
+  // are id-deterministic, so the canonical order for hash/serialization is id).
+  std::vector<std::pair<NewOrder, Price>> sortedStops() const
+  {
+    std::vector<std::pair<NewOrder, Price>> v;
+    stops_.forEachPending([&](const NewOrder& o, Price trigger)
+                          { v.emplace_back(o, trigger); });
+    std::sort(v.begin(), v.end(),
+              [](const auto& a, const auto& b)
+              { return a.first.id < b.first.id; });
+    return v;
+  }
+
+  void linkOco(OrderId id, uint64_t group)
+  {
+    orderOco_[id] = group;
+    ocoMembers_[group].push_back(id);
+  }
+
+  bool applyRestoreOrder(const RestoreOrder& r)
+  {
+    if (book_.contains(r.id) || stops_.contains(r.id))
+    {
+      return false;
+    }
+    // Corruption tripwire: a continuous-trading book without last look is
+    // uncrossed by invariant, so a crossing restore marks the file corrupt.
+    // Two legal exceptions: a pre-open (auction) book accumulates crossed
+    // (the AdminCmd{BeginPreOpen} record earlier in the file has set
+    // auctionMode_ by the time orders restore), and a last-look venue can
+    // legitimately hold a crossed book -- a rejected hold restores the maker
+    // at its original price on top of a residual that rested through it (see
+    // restoreMakerHeld). There the SnapshotEnd stateHash remains the
+    // corruption check.
+    if (!auctionMode_ && cfg_.lastLookWindowNs == 0)
+    {
+      if (r.side == Side::BUY)
+      {
+        if (auto ba = book_.bestAsk(); ba && !(r.price < *ba))
+        {
+          return false;
+        }
+      }
+      else
+      {
+        if (auto bb = book_.bestBid(); bb && !(*bb < r.price))
+        {
+          return false;
+        }
+      }
+    }
+    RestingOrder ro{r.id, r.accountId, r.price, r.leaves, r.side};
+    ro.hidden = r.hidden;
+    ro.peak = r.peak;
+    ro.lastLook = r.lastLook;
+    ro.reduceOnly = r.reduceOnly;
+    // Straight to the tail of its level, NO matching pass: the canonical write
+    // order (levels best-first, FIFO within) makes tail-appends reproduce the
+    // exact live book layout.
+    book_.addResting(r.side, ro);
+    trackResting(r.id, r.accountId);
+    if (r.expiryNs > 0)
+    {
+      expiry_[r.id] = r.expiryNs;
+    }
+    if (r.ocoGroup > 0)
+    {
+      linkOco(r.id, r.ocoGroup);
+    }
+    // Buying power is NOT re-derived here: the order's exact reservation
+    // arrives as its own RestoreReservation record (live amounts are
+    // history-dependent -- partial fills, held slices, STP interactions).
+    return true;
+  }
+
+  bool applyRestoreStop(const RestoreStop& r)
+  {
+    if (!isConditional(r.order.type) || stops_.contains(r.order.id) ||
+        book_.contains(r.order.id))
+    {
+      return false;
+    }
+    if (r.order.ocoGroup > 0)
+    {
+      linkOco(r.order.id, r.order.ocoGroup);  // a parked stop keeps its OCO link
+    }
+    // No processTriggers: a restore is not a market event; an in-the-money
+    // stop at write time would already have fired live.
+    stops_.add(r.order, r.trigger, r.order.type == OrderType::TRAILING_STOP);
+    return true;
+  }
+
+  bool applyRestoreHeld(const RestoreHeld& r)
+  {
+    if (held_.count(r.heldId) != 0 || r.qty.raw() <= 0)
+    {
+      return false;
+    }
+    Held h{r.heldId, r.taker, r.takerAccount, r.takerSide, r.maker,
+           r.makerAccount, r.price, r.qty, r.deadline};
+    h.takerTif = r.takerTif;
+    h.takerType = r.takerType;
+    h.takerPrice = r.takerPrice;
+    h.takerExpiryNs = r.takerExpiryNs;
+    h.makerReduceOnly = r.makerReduceOnly;
+    h.takerReduceOnly = r.takerReduceOnly;
+    held_[r.heldId] = h;
+    heldOpen_.store(held_.size(), std::memory_order_relaxed);
+    // Tracking follows the recorded live truth: a held maker normally stays
+    // tracked even fully off the book (see createHeld), but an STP-cancel can
+    // have removed it while the hold stayed open. Idempotent when the maker
+    // also rests (RestoreOrder tracked it). The taker is tracked only while
+    // resting. Reservations backing the legs arrive as RestoreReservation
+    // records -- nothing is re-derived here.
+    if (r.makerTracked)
+    {
+      trackResting(h.maker, h.makerAccount);
+    }
+    return true;
+  }
+
+  // Restore one buying-power reservation entry EXACTLY as recorded. With
+  // exact RestoreBalance splits in the snapshot the ledger's reserved side is
+  // already in place, so only the engine-side table is rebuilt; a v1
+  // (Deposit-total) snapshot instead moves the amount available -> reserved
+  // through the ledger, and a total that cannot back its recorded reservation
+  // marks the snapshot corrupt.
+  bool applyRestoreReservation(const RestoreReservation& r)
+  {
+    if (reserve_.count(r.id) != 0)
+    {
+      return false;
+    }
+    if (ledger_ == nullptr)
+    {
+      return true;  // no ledger bound: reservations do not exist
+    }
+    if (!exactBalanceRestore_ && r.reservedRaw > 0 &&
+        !ledger_->reserve(r.account, r.asset, r.reservedRaw))
+    {
+      return false;
+    }
+    reserve_[r.id] = Reservation{r.account, r.asset, r.reservedRaw, r.limitPriceRaw, r.side};
+    return true;
+  }
+
+  bool applyRestorePosition(const RestorePosition& r)
+  {
+    if (r.qtyRaw == 0 || positions_.count(r.account) != 0)
+    {
+      return false;
+    }
+    if (ledger_ != nullptr && !exactBalanceRestore_ && r.marginRaw > 0 &&
+        !ledger_->reserve(r.account, cfg_.quoteAsset, r.marginRaw))
+    {
+      return false;  // deposited total cannot back the posted margin -> corrupt
+    }
+    positions_[r.account] = Position{r.qtyRaw, r.entryRaw, r.marginRaw};
+    return true;
+  }
+
+  bool applySnapshotEnd(const SnapshotEnd& e)
+  {
+    tradeSeq_ = e.tradeSeq;
+    heldSeq_ = e.heldSeq;
+    timeCounter_ = e.timeCounter;
+    now_ = e.nowNs;
+    lastPrice_ = Price::fromRaw(e.lastPriceRaw);
+    hasLast_ = e.hasLast;
+    markPrice_ = Price::fromRaw(e.markPriceRaw);
+    hasMark_ = e.hasMark;
+    haltUntil_ = e.haltUntilNs;
+    // Full verification: the reconstructed state must hash to what the writer
+    // measured. A mismatch (torn/corrupted/semantically-drifted snapshot)
+    // rejects the generation.
+    return stateHash() == e.stateHash;
+  }
+
   // ---- last look ----
   struct Held
   {
@@ -1796,17 +2915,42 @@ class MatchingEngine
     Price price{};
     Quantity qty{};
     int64_t deadline{};
+    // Captured at hold time so a reject can route the taker residual by its
+    // TIF and rebuild either leg if it was fully held out of the book.
+    TimeInForce takerTif{TimeInForce::GTC};
+    OrderType takerType{OrderType::LIMIT};
+    Price takerPrice{};
+    int64_t takerExpiryNs{0};
+    bool makerReduceOnly{false};
+    // Captured so a checkpoint can re-reserve the taker leg's held backing
+    // exactly (a perp reduce-only taker reserves nothing).
+    bool takerReduceOnly{false};
   };
   void createHeld(const RestingOrder& maker, Quantity fill, const NewOrder& taker)
   {
     const uint64_t id = ++heldSeq_;
-    held_[id] = Held{id, taker.id, taker.accountId, taker.side, maker.id,
-                     maker.accountId, maker.price, fill, now_ + cfg_.lastLookWindowNs};
-    sink_(FillHeld{id, cfg_.id, maker.id, taker.id, maker.price, fill});
-    if (!book_.contains(maker.id))
-    {
-      forgetOrder(maker.id);
-    }
+    Held h{id, taker.id, taker.accountId, taker.side, maker.id,
+           maker.accountId, maker.price, fill, now_ + cfg_.lastLookWindowNs};
+    h.takerTif = taker.tif;
+    h.takerType = taker.type;
+    h.takerPrice = taker.price;
+    h.takerExpiryNs = taker.expiryNs;
+    h.makerReduceOnly = maker.reduceOnly;
+    h.takerReduceOnly = taker.reduceOnly;
+    held_[id] = h;
+    heldOpen_.store(held_.size(), std::memory_order_relaxed);
+    // Called BEFORE the matcher reserves the qty out of the book, so the
+    // maker's post-hold displayed size is computed here the same way a normal
+    // fill would (partial peak -> remainder shown; full peak -> iceberg refill).
+    const Quantity displayAfter =
+        (fill < maker.leaves) ? (maker.leaves - fill)
+                              : ((maker.peak < maker.hidden) ? maker.peak : maker.hidden);
+    sink_(FillHeld{id, cfg_.id, maker.id, taker.id, maker.price, fill, displayAfter,
+                   maker.accountId, taker.accountId});
+    // NOTE: the maker stays tracked (orderAccount_/byAccount_) even when the
+    // hold empties its displayed size and fillBest removes it from the book --
+    // the id is still live (a reject restores it) and mass-cancel paths must
+    // still find it.
   }
   // Release one leg's buying-power reservation for a held quantity that will NOT
   // trade (last-look reject / timeout). Mirrors the per-fill decrement settleTrade
@@ -1857,6 +3001,7 @@ class MatchingEngine
   {
     const Held h = it->second;
     held_.erase(it);
+    heldOpen_.store(held_.size(), std::memory_order_relaxed);
     if (accept)
     {
       emit_(Trade{++tradeSeq_, cfg_.id, h.price, h.qty, h.maker, h.taker, h.takerSide,
@@ -1865,25 +3010,183 @@ class MatchingEngine
       const Quantity makerLeaves = mk ? Quantity::fromRaw(mk->leaves.raw() + mk->hidden.raw()) : Quantity{};
       const Quantity makerDisp = mk ? mk->leaves : Quantity{};  // displayed peak for public feed
       emit_(OrderExecuted{h.maker, cfg_.id, h.qty, makerLeaves, false, makerLeaves.isZero(), h.price,
-                          makerDisp});
-      emit_(OrderExecuted{h.taker, cfg_.id, h.qty, Quantity{}, true, false, h.price, Quantity{}});
+                          makerDisp, h.makerAccount});
+      emit_(OrderExecuted{h.taker, cfg_.id, h.qty, Quantity{}, true, false, h.price, Quantity{},
+                          h.takerAccount});
     }
     else
     {
-      // Reject / timeout: the held qty does not trade. Return both parties' held
-      // buying power to available (else it is stranded in `reserved` forever and
-      // the taker is never made whole for the fill that did not happen).
-      releaseHeldLeg(h.taker, h.qty);
-      releaseHeldLeg(h.maker, h.qty);
-      sink_(FillRejected{h.id, cfg_.id, h.taker});
+      // Reject / timeout: the held qty does not trade, and liquidity must not
+      // be destroyed. The maker's displayed qty returns to its price level (at
+      // the TAIL, as-if re-entered -- see docs/venue/matching.md); its
+      // reservation was never touched and keeps backing it. The taker residual
+      // follows its TIF: GTC/GTD rests, IOC/FOK/MARKET is canceled with the
+      // matching residual reason (that leg's buying power is released). The
+      // cancel paths resolve holds BEFORE removing an order, so a leg that is
+      // absent from the book here was fully held out of it -- never "gone".
+      restoreMakerHeld(h);
+      restoreTakerHeld(h);
+      sink_(FillRejected{h.id, cfg_.id, h.taker, h.maker, h.price, h.qty, h.takerAccount,
+                         h.makerAccount});
+    }
+    // Whichever way the hold resolved: if this was the last hold on a leg and
+    // that leg no longer rests, free its leftover reservation and tracking
+    // (deferred from the emit_ wrapper while holds were open).
+    cleanupOrderIfDone(h.taker);
+    cleanupOrderIfDone(h.maker);
+  }
+
+  // Return a rejected hold's qty to the maker: back onto its price level at the
+  // tail (as-if re-entered). If the hold consumed the whole displayed size the
+  // order left the book -- rebuild it from the hold record.
+  void restoreMakerHeld(const Held& h)
+  {
+    if (auto ro = book_.cancel(h.maker); ro.has_value())
+    {
+      ro->leaves += h.qty;  // the returned slice was displayed when it was held
+      book_.addResting(ro->side, *ro);
+      sink_(OrderModified{h.maker, cfg_.id, ro->price, ro->leaves, false, h.makerAccount});
+    }
+    else
+    {
+      const Side makerSide = (h.takerSide == Side::BUY) ? Side::SELL : Side::BUY;
+      RestingOrder rebuilt{h.maker, h.makerAccount, h.price, h.qty, makerSide};
+      rebuilt.lastLook = true;
+      rebuilt.reduceOnly = h.makerReduceOnly;
+      book_.addResting(makerSide, rebuilt);
+      // Still tracked in orderAccount_/byAccount_: a fully-held maker is never
+      // forgotten while its hold is open (see createHeld).
+      sink_(OrderModified{h.maker, cfg_.id, h.price, h.qty, false, h.makerAccount});
     }
   }
+
+  // Return a rejected hold's qty to the taker per its TIF.
+  void restoreTakerHeld(const Held& h)
+  {
+    const bool rests = h.takerType == OrderType::LIMIT &&
+                       (h.takerTif == TimeInForce::GTC || h.takerTif == TimeInForce::GTD);
+    if (rests)
+    {
+      // Reservation keeps backing the restored resting quantity.
+      if (auto ro = book_.cancel(h.taker); ro.has_value())
+      {
+        ro->leaves += h.qty;  // combine with the already-resting remainder, tail requeue
+        book_.addResting(ro->side, *ro);
+        sink_(OrderModified{h.taker, cfg_.id, ro->price, ro->leaves, false, h.takerAccount});
+      }
+      else
+      {
+        RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
+        book_.addResting(h.takerSide, rebuilt);
+        trackResting(h.taker, h.takerAccount);
+        if (h.takerTif == TimeInForce::GTD && h.takerExpiryNs > 0)
+        {
+          expiry_[h.taker] = h.takerExpiryNs;
+        }
+        sink_(OrderAccepted{h.taker, cfg_.id, h.takerSide, h.takerPrice, h.qty, true, h.qty,
+                            h.takerAccount});
+      }
+      return;
+    }
+    // IOC / FOK / MARKET: the residual never rests -- release the taker's held
+    // buying power and cancel it with the reason its TIF would have produced.
+    releaseHeldLeg(h.taker, h.qty);
+    const CancelReason reason = (h.takerType == OrderType::MARKET) ? CancelReason::MarketResidual
+                                : (h.takerTif == TimeInForce::FOK)
+                                    ? CancelReason::FillOrKillResidual
+                                    : CancelReason::ImmediateOrCancelResidual;
+    sink_(OrderCanceled{h.taker, cfg_.id, reason, h.takerAccount});
+  }
+
+  // Deterministically resolve (reject) every open hold that references `id` as
+  // maker or taker. MUST run before any path that permanently removes the order
+  // or reshapes its reservation (cancel/modify/quote-replace/expiry/OCO/peg):
+  // a hold left behind would let a later accept settle with no backing
+  // reservation (unchecked debit -> conservation breach).
+  void rejectHoldsFor(OrderId id)
+  {
+    if (held_.empty())
+    {
+      return;
+    }
+    std::vector<uint64_t> due;
+    for (const auto& [hid, h] : held_)
+    {
+      if (h.maker == id || h.taker == id)
+      {
+        due.push_back(hid);
+      }
+    }
+    std::sort(due.begin(), due.end());  // deterministic resolution/event order
+    for (uint64_t hid : due)
+    {
+      if (auto it = held_.find(hid); it != held_.end())
+      {
+        resolveHeld(it, false);
+      }
+    }
+  }
+
+  // Account-scope variant for mass-cancel / MMP / liquidation.
+  void rejectHoldsForAccount(uint64_t account)
+  {
+    if (held_.empty())
+    {
+      return;
+    }
+    std::vector<uint64_t> due;
+    for (const auto& [hid, h] : held_)
+    {
+      if (h.makerAccount == account || h.takerAccount == account)
+      {
+        due.push_back(hid);
+      }
+    }
+    std::sort(due.begin(), due.end());
+    for (uint64_t hid : due)
+    {
+      if (auto it = held_.find(hid); it != held_.end())
+      {
+        resolveHeld(it, false);
+      }
+    }
+  }
+
+  void rejectAllHolds()
+  {
+    if (held_.empty())
+    {
+      return;
+    }
+    std::vector<uint64_t> due;
+    due.reserve(held_.size());
+    for (const auto& [hid, h] : held_)
+    {
+      (void)h;
+      due.push_back(hid);
+    }
+    std::sort(due.begin(), due.end());
+    for (uint64_t hid : due)
+    {
+      if (auto it = held_.find(hid); it != held_.end())
+      {
+        resolveHeld(it, false);
+      }
+    }
+  }
+
   void onLastLookDecision(const LastLookDecision& d)
   {
     auto it = held_.find(d.heldId);
     if (it == held_.end())
     {
-      sink_(OrderRejected{d.heldId, cfg_.id, RejectReason::UnknownOrder});
+      sink_(OrderRejected{d.heldId, cfg_.id, RejectReason::UnknownOrder, d.accountId});
+      return;
+    }
+    // Ownership: only the maker whose quote is held may decide its fate.
+    if (d.accountId != it->second.makerAccount)
+    {
+      sink_(OrderRejected{d.heldId, cfg_.id, RejectReason::NotOrderOwner, d.accountId});
       return;
     }
     resolveHeld(it, d.accept);
@@ -1908,11 +3211,13 @@ class MatchingEngine
     for (OrderId id : due)
     {
       expiry_.erase(id);
+      rejectHoldsFor(id);                // expiry removes the order: resolve holds first
       if (book_.cancel(id).has_value())  // still resting -> expire it
       {
+        const uint64_t acct = ownerOf(id);
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired});
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct});
       }
     }
   }
@@ -1993,6 +3298,10 @@ class MatchingEngine
         continue;
       }
       const Peg pg = pit->second;
+      // A peg reprice releases and re-reserves buying power at the new price;
+      // an open hold against the old price/reservation would settle against a
+      // reservation that no longer covers it -- resolve holds first.
+      rejectHoldsFor(id);
       // Remove the order from the book BEFORE computing its peg target: otherwise
       // pegTargetRaw reads best-bid/ask/mid INCLUDING this order's own resting
       // quantity, so a peg that is the touch references itself and ratchets one
@@ -2026,14 +3335,14 @@ class MatchingEngine
         {
           forgetOrder(id);
           pegged_.erase(id);
-          sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested});
+          sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested, ro->accountId});
           continue;
         }
       }
       RestingOrder nr = *ro;
       nr.price = Price::fromRaw(target);
       book_.addResting(nr.side, nr);
-      sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false});
+      sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId});
     }
   }
 
@@ -2052,7 +3361,11 @@ class MatchingEngine
       {
         continue;  // already resolved this submit
       }
-      const std::vector<OrderId> members = git->second;  // copy: cancel mutates maps
+      std::vector<OrderId> members = git->second;  // copy: cancel mutates maps
+      // Deterministic sibling order by id: group membership is a SET (the
+      // insertion order is not state -- a checkpoint restore rebuilds it in
+      // canonical book order), so the cancel/event order must not depend on it.
+      std::sort(members.begin(), members.end());
       ocoMembers_.erase(git);
       for (OrderId id : members)
       {
@@ -2067,15 +3380,18 @@ class MatchingEngine
   }
   void cancelOcoSibling(OrderId id)
   {
+    rejectHoldsFor(id);  // the sibling leaves for good: resolve its holds first
+    const uint64_t restingAcct = ownerOf(id);
+    const uint64_t stopAcct = stops_.accountOf(id);
     if (book_.cancel(id).has_value())
     {
       releaseReservation(id);
       forgetOrder(id);
-      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered});
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, restingAcct});
     }
     else if (stops_.cancel(id))
     {
-      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered});
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, stopAcct});
     }
   }
 
@@ -2157,6 +3473,22 @@ class MatchingEngine
 
   std::unordered_map<uint64_t, Held> held_;
   uint64_t heldSeq_{0};
+  // Mirror of held_.size() readable from other threads (the shard's idle
+  // sweeper); the engine itself never reads it for logic.
+  std::atomic<uint64_t> heldOpen_{0};
+
+  // clientOrderId dedup index, per account. Window = the engine session
+  // (uptime); rotation/compaction is a future checkpoint concern -- see
+  // docs/venue/matching.md. Rebuilt naturally by journal replay.
+  std::unordered_map<uint64_t, std::unordered_set<uint64_t>> clientOrderIds_;
+
+  // Snapshot-only records seen (and dropped) on the live submit path.
+  uint64_t droppedSnapshotRecords_{0};
+
+  // Recovery mode flag: this snapshot carried exact RestoreBalance splits, so
+  // RestoreReservation / RestorePosition must not move ledger money (v1
+  // Deposit-total snapshots leave it false and keep the re-reservation path).
+  bool exactBalanceRestore_{false};
 
   Ledger* ledger_{nullptr};
   uint64_t venueAccount_{0};

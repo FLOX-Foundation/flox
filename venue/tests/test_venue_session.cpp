@@ -11,12 +11,17 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/resend_buffer.h"
+#include "flox-venue/sbe_order_entry_codec.h"
+#include "flox-venue/session_registry.h"
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace flox;
@@ -64,35 +69,115 @@ NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct)
   return o;
 }
 
+// Session-layer resend now lives in SessionRegistry (the ResendBuffer event
+// log was removed): the per-account stream assigns the seq at serialization
+// time and retains the framed bytes, so a replay repeats the original reports
+// byte-for-byte -- across a disconnect.
 void test_resend()
 {
   std::printf("test_resend\n");
-  ResendBuffer buf;
-  const uint64_t sess = 42;
+  SessionRegistry reg(DeliveryConfig{/*queueCapacity*/ 64, /*resendLogCapacity*/ 4});
+  const uint64_t acct = 42;
+  std::mutex m;
+  std::vector<std::vector<uint8_t>> wire;
+  auto frames = [&]
+  {
+    std::lock_guard<std::mutex> lk(m);
+    return wire;
+  };
+  auto waitFrames = [&](size_t want)
+  {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (frames().size() < want && std::chrono::steady_clock::now() < deadline)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return frames().size() >= want;
+  };
+  const SessionRegistry::Encoder enc =
+      [](const OutboundEvent& e, uint64_t seq, int64_t, std::vector<uint8_t>& out)
+  {
+    SbeOrderEntryCodec::encode(e, out, seq);
+    return !out.empty();
+  };
+  auto attach = [&]
+  {
+    return reg.attach(acct, enc, [&](const uint8_t* p, size_t n)
+                      {
+                        std::lock_guard<std::mutex> lk(m);
+                        wire.emplace_back(p, p + n);
+                        return true; }, [] {});
+  };
+
+  auto w = attach();
   for (int i = 1; i <= 5; ++i)
   {
-    const uint64_t seq =
-        buf.append(sess, OutboundEvent{OrderCanceled{static_cast<OrderId>(i), SYM, CancelReason::UserRequested}},
-                   /*ts*/ i * 100);
-    CHECK(seq == static_cast<uint64_t>(i));
+    reg.route(OutboundEvent{
+        OrderCanceled{static_cast<OrderId>(i), SYM, CancelReason::UserRequested, acct}});
   }
-  CHECK(buf.lastSeq(sess) == 5);
+  CHECK(reg.lastSeq(acct) == 5);
+  CHECK(waitFrames(5));
+  {
+    const auto fs = frames();
+    CHECK(SbeOrderEntryCodec::seqOf(fs.front().data(), fs.front().size()) == 1);
+    CHECK(SbeOrderEntryCodec::seqOf(fs.back().data(), fs.back().size()) == 5);
+  }
 
-  // Reconnect: client had seen through seq 2, requests resend from 3.
-  const auto gap = buf.resend(sess, 3);
-  CHECK(gap.size() == 3);
-  CHECK(gap.front().seq == 3 && gap.back().seq == 5);
-  CHECK(gap.front().tsNs == 300);
+  // Disconnect; an event that fires while the account is offline is still
+  // sequenced and logged -- exactly the maker-fill-during-reconnect case.
+  reg.detach(acct, w);
+  w->stop();
+  reg.route(OutboundEvent{OrderCanceled{6, SYM, CancelReason::UserRequested, acct}});
+  CHECK(reg.lastSeq(acct) == 6);
 
-  buf.ackThrough(sess, 4);
-  CHECK(buf.resend(sess, 1).size() == 1);  // only seq 5 remains buffered
+  // Reconnect: client had seen through seq 3, requests resend from 4. Log
+  // capacity is 4, so seqs 3..6 are retained -> served.
+  {
+    std::lock_guard<std::mutex> lk(m);
+    wire.clear();
+  }
+  auto w2 = attach();
+  CHECK(reg.resendFrom(acct, 4) == SessionRegistry::ResendResult::Served);
+  CHECK(waitFrames(3));
+  {
+    const auto fs = frames();
+    CHECK(fs.size() == 3);
+    CHECK(SbeOrderEntryCodec::seqOf(fs.front().data(), fs.front().size()) == 4);
+    CHECK(SbeOrderEntryCodec::seqOf(fs.back().data(), fs.back().size()) == 6);
+  }
 
-  // Client-side gap detection.
+  // A fromSeq older than the retained log is an explicit TooOld (the verb
+  // layer answers SnapshotRequired), never a silent hole.
+  CHECK(reg.resendFrom(acct, 1) == SessionRegistry::ResendResult::TooOld);
+  reg.detach(acct, w2);
+  w2->stop();
+
+  // Client-side gap detection (message-level, in-order delivery; the full
+  // reordering / re-raise / epoch semantics are covered in the MD tests).
   GapDetector gd;
-  CHECK(!gd.observe(1).first);
-  CHECK(!gd.observe(2).first);
-  auto g = gd.observe(5);  // skipped 3,4
-  CHECK(g.first && g.second == 3);
+  std::vector<uint64_t> delivered;
+  std::vector<uint64_t> gaps;
+  auto deliver = [&](const MdMessage& d)
+  { delivered.push_back(d.seq); };
+  auto onGap = [&](SymbolId, uint64_t, uint64_t from)
+  { gaps.push_back(from); };
+  auto msg = [](uint64_t seq)
+  {
+    MdMessage d;
+    d.symbol = SYM;
+    d.epoch = 1;
+    d.seq = seq;
+    return d;
+  };
+  gd.observe(msg(1), deliver, onGap);
+  gd.observe(msg(2), deliver, onGap);
+  gd.observe(msg(5), deliver, onGap);  // skipped 3,4 -> gap from 3; 5 is held
+  CHECK(gaps.size() == 1 && gaps[0] == 3);
+  CHECK(delivered.size() == 2);
+  gd.observe(msg(3), deliver, onGap);  // late arrival fills part of the gap -> 3 delivers
+  gd.observe(msg(4), deliver, onGap);  // gap closed -> 4 and the held 5 drain in order
+  CHECK((delivered == std::vector<uint64_t>{1, 2, 3, 4, 5}));
+  CHECK(gaps.size() == 1);
 }
 
 uint64_t runTimed(const std::vector<std::pair<int64_t, InboundCommand>>& cmds)

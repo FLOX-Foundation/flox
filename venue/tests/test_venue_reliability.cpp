@@ -235,6 +235,30 @@ void test_event_hash_covers_fields()
     s.displayQty = Quantity::fromDouble(2);
     CHECK(changes(a, s));
   }
+  // FillHeld: the appended makerDisplayAfter (public-feed sync) must be folded.
+  {
+    FillHeld f{5, 1, 10, 11, Price::fromDouble(100), Quantity::fromDouble(2),
+               Quantity::fromDouble(3)};
+    FillHeld s = f;
+    s.makerDisplayAfter = Quantity::fromDouble(1);
+    CHECK(changes(f, s));
+    s = f;
+    s.qty = Quantity::fromDouble(4);
+    CHECK(changes(f, s));
+  }
+  // FillRejected: the appended makerId/price/qty (taker-facing report) fold in.
+  {
+    FillRejected f{5, 1, 11, 10, Price::fromDouble(100), Quantity::fromDouble(2)};
+    FillRejected s = f;
+    s.makerId = 99;
+    CHECK(changes(f, s));
+    s = f;
+    s.price = Price::fromDouble(101);
+    CHECK(changes(f, s));
+    s = f;
+    s.qty = Quantity::fromDouble(3);
+    CHECK(changes(f, s));
+  }
   // Symbol is folded into the id-only report events too.
   {
     OrderCanceled c{7, 1, CancelReason::UserRequested};

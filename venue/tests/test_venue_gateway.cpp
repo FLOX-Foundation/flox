@@ -258,6 +258,67 @@ void test_fix_execreport()
                 "6=") != std::string::npos);  // AvgPx present
 }
 
+// FIX 4.4 session framing: every outbound message carries MsgSeqNum (34),
+// SenderCompID (49), TargetCompID (56) and SendingTime (52); inbound 34 is
+// validated (gap/duplicate/missing -> session error). Recovery itself
+// (ResendRequest 35=2 / GapFill) is intentionally NOT implemented -- see
+// docs/venue/perimeter.md: session-layer recovery is the SBE path.
+void test_fix_session()
+{
+  std::printf("test_fix_session\n");
+  FixSession fs("VENUE", "CLIENT");
+  const int64_t wallNs = 1'700'000'000'123'000'000;  // 2023-11-14 22:13:20.123 UTC
+
+  const std::string m1 = fs.encode(
+      OutboundEvent{OrderAccepted{7, SYM, Side::BUY, px(100), qty(5), true}}, wallNs);
+  CHECK(m1.rfind("8=FIX.4.4", 0) == 0);
+  CHECK(m1.find("\x01"
+                "34=1\x01") != std::string::npos);  // MsgSeqNum
+  CHECK(m1.find("\x01"
+                "49=VENUE\x01") != std::string::npos);  // SenderCompID
+  CHECK(m1.find("\x01"
+                "56=CLIENT\x01") != std::string::npos);  // TargetCompID
+  CHECK(m1.find("\x01"
+                "52=20231114-22:13:20.123\x01") != std::string::npos);  // SendingTime
+  // Frame integrity survives the re-frame: BodyLength + CheckSum are correct.
+  {
+    const size_t bodyStart = m1.find("35=");
+    const size_t csPos = m1.rfind(
+        "\x01"
+        "10=");
+    CHECK(bodyStart != std::string::npos && csPos != std::string::npos);
+    unsigned sum = 0;
+    for (size_t i = 0; i <= csPos; ++i)
+    {
+      sum += static_cast<unsigned char>(m1[i]);
+    }
+    CHECK(static_cast<unsigned>(std::atoi(m1.c_str() + csPos + 4)) == sum % 256);
+  }
+  // Seq is monotonic per message; a non-mapping event consumes no seq.
+  CHECK(fs.encode(OutboundEvent{MmpTriggered{1, SYM}}, wallNs).empty());
+  const std::string m2 = fs.encode(
+      OutboundEvent{OrderCanceled{7, SYM, CancelReason::UserRequested}}, wallNs);
+  CHECK(m2.find("\x01"
+                "34=2\x01") != std::string::npos);
+
+  // Inbound MsgSeqNum validation.
+  auto inbound = [](uint64_t seq)
+  {
+    return fixJoin({{35, "D"}, {34, std::to_string(seq)}, {11, "1"}, {55, "1"}, {54, "1"}, {38, "5"}});
+  };
+  CHECK(fs.acceptInbound(inbound(1)) == FixSession::InSeq::Ok);
+  CHECK(fs.acceptInbound(inbound(2)) == FixSession::InSeq::Ok);
+  CHECK(fs.acceptInbound(inbound(5)) == FixSession::InSeq::Gap);        // 3,4 lost -> reject session
+  CHECK(fs.expectedInboundSeq() == 3);                                  // a gap does not advance
+  CHECK(fs.acceptInbound(inbound(2)) == FixSession::InSeq::Duplicate);  // replayed old message
+  CHECK(fs.acceptInbound(fixJoin({{35, "D"}, {11, "1"}, {55, "1"}, {54, "1"}, {38, "5"}})) ==
+        FixSession::InSeq::Missing);  // no 34: structurally invalid FIX 4.4
+
+  // msgSeqNum must match tag 34 at a field boundary only (134= is not 34=).
+  CHECK(FixCodec::msgSeqNum(fixJoin({{35, "D"}, {134, "9"}, {34, "6"}})) == 6);
+  CHECK(FixCodec::msgSeqNum(fixJoin({{35, "D"}, {134, "9"}})) == 0);
+}
+
 void test_rest_json()
 {
   std::printf("test_rest_json\n");

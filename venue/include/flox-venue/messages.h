@@ -10,15 +10,26 @@
 
 #include "flox/common.h"  // Price, Quantity, Side, OrderId, OrderType, TimeInForce, STPMode, SymbolId
 
+#include "flox-venue/ledger.h"  // AssetId, kMoneyScale (Deposit/Withdraw amounts)
 #include "flox-venue/reject_reason.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <variant>
 
 namespace flox::venue
 {
 
 // ---- Inbound commands -----------------------------------------------------
+
+// Reference price a conditional order (stop / take-profit / trailing) triggers
+// against. Spot: last trade price. Derivatives: usually the mark price.
+enum class TriggerRef : uint8_t
+{
+  Last = 0,
+  Mark = 1,
+};
 
 // Peg reference: a resting order tracks the book, re-priced at each submit
 // boundary. Bid/Ask peg to the near or far touch; Mid to the midpoint.
@@ -135,11 +146,303 @@ struct AdminCmd
   AdminAction action{};
 };
 
-using InboundCommand = std::variant<NewOrder, CancelOrder, ModifyOrder, MassCancel, Quote,
-                                    LastLookDecision, SetMark, ApplyFunding, AdminCmd>;
+// Genesis flows through the SAME sequenced, journaled stream as orders, so a
+// replay from an EMPTY ledger/registry reproduces balances and instrument
+// state without out-of-band seeding. Amounts travel as int64 raw at
+// kMoneyScale (1e-8 units) -- the scale the ledger settles in -- matching the
+// raw fixed-point convention of every other wire number (SetMark, prices).
+struct Deposit  // credit external funds into an account
+{
+  uint64_t accountId{};
+  AssetId asset{};
+  int64_t amountRaw{};  // kMoneyScale units; <= 0 is ignored
+  SymbolId symbol{};    // routing key only: the shard owning this account's ledger
+};
+
+struct Withdraw  // debit available funds; a no-op unless available >= amount
+{
+  uint64_t accountId{};
+  AssetId asset{};
+  int64_t amountRaw{};  // kMoneyScale units; <= 0 is ignored
+  SymbolId symbol{};    // routing key only
+};
+
+// Instrument configuration mutations, sequenced so a restart replays them.
+// ListInstrument carries the control-plane listing surface (see ControlApi);
+// structural knobs beyond it (assets, scales, margin, fees) are startup
+// configuration supplied when the shard is constructed.
+struct ListInstrument
+{
+  SymbolId symbol{};
+  Price tickSize{};
+  Quantity lotSize{};
+  Price minPrice{};
+  Price maxPrice{};
+};
+
+struct SetBands  // adjust the static price band (collar) of a listed instrument
+{
+  SymbolId symbol{};
+  Price minPrice{};
+  Price maxPrice{};
+};
+
+struct SetTriggerRef  // switch the conditional-order reference (last trade vs mark)
+{
+  SymbolId symbol{};
+  TriggerRef ref{TriggerRef::Last};
+};
+
+// Firm-group STP membership: map an account to a firm/group id so self-trade
+// prevention fires across all of a firm's accounts. Sequenced and journaled
+// like every other engine-state mutation (the group table feeds matching
+// decisions), so replay and recovery reproduce the same STP outcomes; a
+// checkpoint re-emits the live table as SetStpGroup records in its config
+// section. group 0 removes the membership (back to account-level STP).
+struct SetStpGroup
+{
+  SymbolId symbol{};  // routing key
+  uint64_t account{};
+  uint64_t group{};
+};
+
+// Idle time sweep: carries no order flow, only advances engine time so
+// last-look holds (and GTD expiries) resolve on a quiet symbol instead of
+// waiting for the next order. Sequenced and journaled like any other command,
+// so a replay reproduces every timeout at the same point in the stream.
+struct TimeTick
+{
+  SymbolId symbol{};  // routing key
+};
+
+// ---- Snapshot-only records ------------------------------------------------
+// A checkpoint is NOT a parallel binary format: it is a journal-format file
+// (same [ts][tag][len][body][crc] framing, same CRC/torn-tail protection)
+// whose records rebuild engine state through the same apply machinery live
+// traffic uses. These records are SNAPSHOT-ONLY: MatchingEngine::submit drops
+// them from live traffic (a client must never be able to "restore" itself an
+// order or a balance); they apply exclusively through
+// MatchingEngine::applySnapshotRecord during shard recovery.
+//
+// Balances travel as snapshot-only RestoreBalance records carrying the EXACT
+// signed (available, reserved) split -- so any live moment is representable,
+// including a negative wallet mid-liquidation. RestoreReservation /
+// RestorePosition then only rebuild the engine-side reservation/position
+// tables; they do not move ledger money when the balances were restored
+// exactly. Snapshots written by format version 1 carried Deposit records
+// (TOTAL per account x asset) instead; those still apply through the same
+// journaled-deposit path and reconstitute `reserved` by re-reservation
+// (backward read compatibility). Instrument configuration travels as existing
+// ListInstrument / SetBands / SetTriggerRef / SetStpGroup / AdminCmd records.
+
+// v2: SnapshotBegin gained configHash; balances moved from Deposit totals to
+// exact RestoreBalance splits; MMP fill windows serialize (RestoreMmpFills).
+inline constexpr uint32_t kSnapshotFormatVersion = 2;
+
+struct SnapshotBegin
+{
+  uint32_t formatVersion{kSnapshotFormatVersion};
+  int64_t lastAppliedTs{0};  // sequencer-ts of the last command folded into this snapshot
+  uint64_t stateHash{0};     // MatchingEngine::stateHash() at write time (repeated in SnapshotEnd)
+  // Hash of the engine's CONSTRUCTOR configuration (scales, assets, tick/lot,
+  // last-look window, perp mode, match policy -- MatchingEngine::configHash).
+  // Recovery compares it against the loading engine and rejects the snapshot
+  // on mismatch: restoring raw fixed-point state into an engine with, say,
+  // different scales would silently reinterpret every price and quantity.
+  // 0 = unknown (crafted/legacy file): the check is skipped.
+  uint64_t configHash{0};
+};
+
+struct RestoreOrder  // one resting book order, applied straight to the TAIL of its level
+{
+  OrderId id{};
+  uint64_t accountId{};
+  Price price{};
+  Quantity leaves{};  // displayed peak
+  Side side{};
+  Quantity hidden{};  // iceberg reserve (0 = none)
+  Quantity peak{};    // iceberg display size (0 = non-iceberg)
+  bool lastLook{false};
+  bool reduceOnly{false};
+  // The engine keeps only the per-account dedup SET (restored via
+  // RestoreClOrdIds), not an order -> clientOrderId mapping, so writeSnapshot
+  // emits 0 here; the field exists so the record stays self-contained if a
+  // future engine retains the mapping.
+  uint64_t clientOrderId{0};
+  int64_t expiryNs{0};   // GTD expiry sequencer-ts (0 = none)
+  uint64_t ocoGroup{0};  // OCO group (0 = none)
+};
+
+struct RestoreStop  // one pending conditional order (stop book)
+{
+  NewOrder order{};
+  Price trigger{};  // current trigger; trailing: the ratcheted value (raw 0 = unarmed)
+};
+
+struct RestorePeg  // peg spec of a resting order (pegged_ entry)
+{
+  OrderId id{};
+  Side side{};
+  PegRef ref{PegRef::None};
+  int64_t offsetRaw{0};
+};
+
+struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
+{
+  uint64_t heldId{};
+  OrderId taker{};
+  uint64_t takerAccount{};
+  Side takerSide{};
+  OrderId maker{};
+  uint64_t makerAccount{};
+  Price price{};
+  Quantity qty{};
+  int64_t deadline{};
+  TimeInForce takerTif{TimeInForce::GTC};
+  OrderType takerType{OrderType::LIMIT};
+  Price takerPrice{};
+  int64_t takerExpiryNs{0};
+  bool makerReduceOnly{false};
+  bool takerReduceOnly{false};
+  // Whether the maker is in the engine's live-order tracking maps. Normally
+  // true (a held maker stays tracked even fully off the book), but an
+  // STP-cancel can legally remove a maker while its hold stays open -- the
+  // write side records the live truth instead of re-deriving it.
+  bool makerTracked{true};
+};
+
+struct RestorePosition  // one perp position (qty, average entry, posted margin)
+{
+  uint64_t account{};
+  int64_t qtyRaw{0};    // signed contracts (Quantity raw)
+  int64_t entryRaw{0};  // average entry price (Price raw)
+  Amount marginRaw{0};  // posted position margin (quote raw); re-reserved on apply
+};
+
+struct RestoreMmpCfg  // market-maker-protection config for one account.
+{
+  // The mmp FILL WINDOWS restore EMPTY by design: the sliding window is
+  // shorter than any realistic checkpoint interval, so the lost tail of the
+  // window cannot span a restart (see docs/venue/runtime.md).
+  uint64_t account{};
+  Quantity qtyLimit{};
+  int64_t windowNs{0};
+};
+
+inline constexpr uint32_t kClOrdIdBatch = 32;
+
+struct RestoreClOrdIds  // fixed-size batch of an account's clientOrderId dedup set
+{
+  // The set can be large; it serializes as repeated fixed-size batches so the
+  // journal's strictly-sized blittable body model is preserved.
+  uint64_t account{};
+  uint32_t count{0};  // ids[0..count) valid, count <= kClOrdIdBatch
+  uint64_t ids[kClOrdIdBatch]{};
+};
+
+// One buying-power reservation entry (MatchingEngine::reserve_), serialized
+// EXACTLY as held live. Reservations are deliberately not re-derived from
+// order formulas on load: partial fills, held slices and STP interactions
+// make the live amount history-dependent, so the record carries it. Applying
+// still moves the amount available -> reserved through Ledger::reserve, so
+// the deposited totals split back into the exact live available/reserved.
+struct RestoreReservation
+{
+  OrderId id{};
+  uint64_t account{};
+  AssetId asset{};
+  Side side{};
+  int64_t limitPriceRaw{0};
+  Amount reservedRaw{0};
+};
+
+// One (account, asset) ledger balance, EXACT signed available/reserved split.
+// Snapshot-only: a client that could submit this would set its own balance.
+// Applied via Ledger::restore (recovery-only direct write); RestoreReservation
+// and RestorePosition records that follow rebuild the engine-side tables
+// WITHOUT re-reserving, so the split is preserved bit-for-bit -- including
+// states Deposit records could not represent (negative available mid-
+// liquidation, non-positive totals).
+struct RestoreBalance
+{
+  uint64_t account{};
+  AssetId asset{};
+  Amount availableRaw{0};  // signed, kMoneyScale units
+  Amount reservedRaw{0};
+};
+
+inline constexpr uint32_t kMmpFillBatch = 16;
+
+// Fixed-size batch of one account's MMP sliding-window fills, in deque (time)
+// order; consecutive batches for the same account concatenate. Restores the
+// window EXACTLY, so a market maker sitting one fill from its qtyLimit is
+// still one fill from it after recovery -- the window no longer restores
+// empty.
+struct RestoreMmpFills
+{
+  uint64_t account{};
+  uint32_t count{0};  // entries [0..count) valid, count <= kMmpFillBatch
+  int64_t tsNs[kMmpFillBatch]{};
+  int64_t qtyRaw[kMmpFillBatch]{};
+};
+
+struct SnapshotEnd
+{
+  uint64_t stateHash{0};  // must equal the loader's recomputed hash, or the snapshot is corrupt
+  uint64_t tradeSeq{0};
+  uint64_t heldSeq{0};
+  int64_t timeCounter{0};
+  int64_t nowNs{0};
+  uint64_t mdEpoch{0};  // 0 = none (the engine carries no MD epoch today)
+  int64_t lastPriceRaw{0};
+  bool hasLast{false};
+  int64_t markPriceRaw{0};
+  bool hasMark{false};
+  int64_t haltUntilNs{0};  // pending timed (LULD) halt deadline (0 = none)
+};
+
+// Journal tags are the variant indices: append-only, never reorder.
+// (SetTriggerRef postdates TimeTick, hence its position at the tail; the
+// snapshot-only records postdate SetTriggerRef; RestoreBalance/RestoreMmpFills
+// and the live SetStpGroup command postdate the original snapshot block, so
+// live and snapshot-only tags interleave past tag 24.)
+using InboundCommand =
+    std::variant<NewOrder, CancelOrder, ModifyOrder, MassCancel, Quote, LastLookDecision, SetMark,
+                 ApplyFunding, AdminCmd, Deposit, Withdraw, ListInstrument, SetBands, TimeTick,
+                 SetTriggerRef, SnapshotBegin, RestoreOrder, RestoreStop, RestorePeg, RestoreHeld,
+                 RestorePosition, RestoreMmpCfg, RestoreClOrdIds, SnapshotEnd, RestoreReservation,
+                 RestoreBalance, RestoreMmpFills, SetStpGroup>;
+
+inline constexpr size_t kFirstSnapshotTag = 15;
+inline constexpr size_t kLastContiguousSnapshotTag = 24;
+static_assert(std::is_same_v<std::variant_alternative_t<kFirstSnapshotTag, InboundCommand>,
+                             SnapshotBegin>,
+              "kFirstSnapshotTag must index SnapshotBegin");
+static_assert(std::is_same_v<std::variant_alternative_t<kLastContiguousSnapshotTag, InboundCommand>,
+                             RestoreReservation>,
+              "kLastContiguousSnapshotTag must index RestoreReservation");
+
+// Snapshot-only records are forbidden in live traffic; the engine's submit
+// dispatcher drops them and recovery applies them through a dedicated path.
+// Tags [kFirstSnapshotTag, kLastContiguousSnapshotTag] are the original
+// contiguous snapshot block; appended alternatives past it interleave live
+// commands with snapshot-only records, so membership is explicit from there.
+inline bool isSnapshotRecord(const InboundCommand& c) noexcept
+{
+  const size_t i = c.index();
+  return (i >= kFirstSnapshotTag && i <= kLastContiguousSnapshotTag) ||
+         std::holds_alternative<RestoreBalance>(c) || std::holds_alternative<RestoreMmpFills>(c);
+}
 
 // ---- Outbound events ------------------------------------------------------
 
+// Owner account on per-order events (appended fields; wire codecs place them
+// last, and the order-entry wire does not carry them -- the session already IS
+// the account). They exist so the delivery layer (SessionRegistry) can route an
+// asynchronous exec report to the session that owns it: a maker fill from a
+// foreign aggressor, a stop trigger, a GTD expiry or a liquidation cancel has
+// no request/response context to answer on. account == 0 = unrouteable
+// (unbound/trusted-transport sessions).
 struct OrderAccepted  // order accepted / working
 {
   OrderId id{};
@@ -149,6 +452,7 @@ struct OrderAccepted  // order accepted / working
   Quantity leavesQty{};      // full working quantity (for the owner's ack)
   bool restingOnBook{true};  // false = working but not on the visible book (pending stop)
   Quantity displayQty{};     // publicly visible size (== leavesQty unless iceberg; 0 = use leavesQty)
+  uint64_t account{0};       // owner (appended: delivery routing)
 };
 
 struct OrderRejected
@@ -156,6 +460,7 @@ struct OrderRejected
   OrderId id{};
   SymbolId symbol{};
   RejectReason reason{};
+  uint64_t account{0};  // owner (appended: delivery routing)
 };
 
 struct Trade
@@ -185,6 +490,7 @@ struct OrderExecuted  // per-order execution report on a fill
   // (never the hidden reserve), so the public book cannot be probed for hidden
   // size. leavesQty stays the whole remaining for the owner's exec report.
   Quantity displayLeaves{};
+  uint64_t account{0};  // owner of this order leg (appended: delivery routing)
 };
 
 struct OrderCanceled
@@ -192,6 +498,7 @@ struct OrderCanceled
   OrderId id{};
   SymbolId symbol{};
   CancelReason reason{};
+  uint64_t account{0};  // owner (appended: delivery routing)
 };
 
 struct OrderModified
@@ -201,13 +508,15 @@ struct OrderModified
   Price price{};
   Quantity leavesQty{};
   bool priorityKept{false};  // false = re-entered at the tail (lost time priority)
+  uint64_t account{0};       // owner (appended: delivery routing)
 };
 
 struct OrderTriggered  // a stop / take-profit activated and was injected into matching
 {
   OrderId id{};
   SymbolId symbol{};
-  Price refPrice{};  // reference (last-trade) price that crossed the trigger
+  Price refPrice{};     // reference (last-trade) price that crossed the trigger
+  uint64_t account{0};  // owner (appended: delivery routing)
 };
 
 struct FillHeld  // last-look: a fill is held pending the maker's decision
@@ -218,6 +527,12 @@ struct FillHeld  // last-look: a fill is held pending the maker's decision
   OrderId takerId{};
   Price price{};
   Quantity qty{};
+  // Maker's DISPLAYED remaining after the held qty is reserved out of the book
+  // (iceberg: the refilled peak). Lets the public feed keep level == book while
+  // the qty is in limbo. Appended field -- wire codecs place it last.
+  Quantity makerDisplayAfter{};
+  uint64_t makerAccount{0};  // appended: delivery routing (both parties get the report)
+  uint64_t takerAccount{0};
 };
 
 struct FillRejected  // last-look: the held fill was rejected (or timed out)
@@ -225,6 +540,14 @@ struct FillRejected  // last-look: the held fill was rejected (or timed out)
   uint64_t heldId{};
   SymbolId symbol{};
   OrderId takerId{};
+  // Appended fields (wire codecs place them last): what was rejected, so the
+  // taker can show a usable report -- counterparty order, price and size of the
+  // fill that did not happen.
+  OrderId makerId{};
+  Price price{};
+  Quantity qty{};
+  uint64_t takerAccount{0};  // appended: delivery routing (both parties get the report)
+  uint64_t makerAccount{0};
 };
 
 struct MmpTriggered  // market-maker protection fired: the account was mass-canceled
@@ -239,6 +562,7 @@ struct FeeCharged  // per-leg maker/taker fee (negative = rebate)
   SymbolId symbol{};
   Volume fee{};
   bool maker{};
+  uint64_t account{0};  // charged account (appended: delivery routing)
 };
 
 struct Liquidation  // a perp position was force-closed below maintenance margin
@@ -251,8 +575,35 @@ struct Liquidation  // a perp position was force-closed below maintenance margin
   bool adl{};       // auto-deleveraged: closed to absorb a bankrupt counterparty
 };
 
+enum class BalanceReason : uint8_t
+{
+  Deposit = 0,
+  Withdraw = 1,
+  WithdrawRejected = 2,  // insufficient available: nothing moved
+};
+
+// Balance change report on a sequenced Deposit/Withdraw. Carries the POST-event
+// available/reserved of the touched (account, asset) so the owner needs no
+// arithmetic of its own; a rejected withdraw reports the unchanged balances
+// with reason WithdrawRejected -- the client is told, never left guessing.
+// Emitted from the engine's journaled money path only: snapshot restore
+// (Deposit records inside a checkpoint) replays through the same code but the
+// shard's recovery suppression keeps it off the wire, like every replayed
+// event.
+struct BalanceUpdate
+{
+  uint64_t account{};
+  AssetId asset{};
+  int64_t availableRaw{};  // kMoneyScale units after this event
+  int64_t reservedRaw{};
+  BalanceReason reason{};
+};
+
+// Appended alternatives go at the END (wire codecs and the event hash key off
+// the alternative order).
 using OutboundEvent =
     std::variant<OrderAccepted, OrderRejected, Trade, OrderExecuted, OrderCanceled, OrderModified,
-                 OrderTriggered, FillHeld, FillRejected, MmpTriggered, FeeCharged, Liquidation>;
+                 OrderTriggered, FillHeld, FillRejected, MmpTriggered, FeeCharged, Liquidation,
+                 BalanceUpdate>;
 
 }  // namespace flox::venue

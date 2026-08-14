@@ -161,6 +161,37 @@ class RestJson
       w.u64("id", g->id);
       w.fixed("refPrice", g->refPrice.raw());
     }
+    else if (const auto* fh = std::get_if<FillHeld>(&ev))
+    {
+      // Last look: heldId is the handle the maker answers with; the taker sees
+      // which fill is in limbo, at what price and size.
+      w.str("type", "fillHeld");
+      w.u64("heldId", fh->heldId);
+      w.u64("maker", fh->makerId);
+      w.u64("taker", fh->takerId);
+      w.fixed("price", fh->price.raw());
+      w.fixed("qty", fh->qty.raw());
+    }
+    else if (const auto* fr = std::get_if<FillRejected>(&ev))
+    {
+      w.str("type", "fillRejected");
+      w.u64("heldId", fr->heldId);
+      w.u64("maker", fr->makerId);
+      w.u64("taker", fr->takerId);
+      w.fixed("price", fr->price.raw());
+      w.fixed("qty", fr->qty.raw());
+    }
+    else if (const auto* bu = std::get_if<BalanceUpdate>(&ev))
+    {
+      w.str("type", "balance");
+      w.u64("account", bu->account);
+      w.u64("asset", bu->asset);
+      w.fixed("available", bu->availableRaw);
+      w.fixed("reserved", bu->reservedRaw);
+      w.str("reason", bu->reason == BalanceReason::Deposit    ? "deposit"
+                      : bu->reason == BalanceReason::Withdraw ? "withdraw"
+                                                              : "withdrawRejected");
+    }
     w.finish();
   }
 

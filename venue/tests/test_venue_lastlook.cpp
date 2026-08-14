@@ -1,0 +1,773 @@
+/*
+ * Flox Engine
+ * Developed by FLOX Foundation (https://github.com/FLOX-Foundation)
+ *
+ * Copyright (c) 2025 FLOX Foundation
+ * Licensed under the MIT License. See LICENSE file in the project root for full
+ * license information.
+ *
+ * Last-look lifecycle (T016) and clientOrderId dedup (T020).
+ *
+ * Last look: a reject/timeout must RESTORE liquidity -- the maker's displayed
+ * qty back onto its price level (tail, as-if re-entered), the taker residual
+ * routed by its TIF (GTC/GTD rest, IOC/FOK/MARKET cancel). The public feed
+ * must equal the matching book after any hold/accept/reject sequence. Holds
+ * are owned by the maker account, expire on idle via tick()/TimeTick, resolve
+ * deterministically on cancel-while-held, and never count as firm liquidity
+ * for a FOK. lastLookWindowNs == 0 disables the feature entirely.
+ *
+ * clOrdId dedup: per-account, session-window; a resend of a used clientOrderId
+ * rejects (DuplicateClientOrderId) whether the original is resting, filled or
+ * canceled; accounts do not collide; replay rebuilds the index.
+ */
+#include "flox-venue/event_hash.h"
+#include "flox-venue/journal.h"
+#include "flox-venue/ledger.h"
+#include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
+#include "flox-venue/matching_engine.h"
+#include "flox-venue/sequenced_shard.h"
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <memory>
+#include <thread>
+#include <vector>
+
+using namespace flox;
+using namespace flox::venue;
+
+namespace
+{
+int g_failures = 0;
+int g_checks = 0;
+void check(bool ok, const char* e, int line)
+{
+  ++g_checks;
+  if (!ok)
+  {
+    ++g_failures;
+    std::printf("  FAIL line %d: %s\n", line, e);
+  }
+}
+#define CHECK(x) check((x), #x, __LINE__)
+
+constexpr SymbolId SYM = 1;
+Price px(double v) { return Price::fromDouble(v); }
+Quantity qty(double v) { return Quantity::fromDouble(v); }
+
+venue::SymbolConfig cfg(int64_t llWindow = 1000, bool acceptOnTimeout = false)
+{
+  venue::SymbolConfig c;
+  c.id = SYM;
+  c.tickSize = px(0.01);
+  c.minPrice = px(50.0);
+  c.maxPrice = px(150.0);
+  c.lastLookWindowNs = llWindow;
+  c.lastLookAcceptOnTimeout = acceptOnTimeout;
+  return c;
+}
+
+NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct)
+{
+  NewOrder o;
+  o.id = id;
+  o.symbol = SYM;
+  o.side = s;
+  o.type = OrderType::LIMIT;
+  o.price = px(p);
+  o.quantity = qty(q);
+  o.accountId = acct;
+  return o;
+}
+
+struct Cap
+{
+  std::vector<OutboundEvent> ev;
+  EventSink sink()
+  {
+    return [this](const OutboundEvent& e)
+    { ev.push_back(e); };
+  }
+  template <class T>
+  int count() const
+  {
+    int n = 0;
+    for (auto& e : ev)
+    {
+      if (std::get_if<T>(&e))
+      {
+        ++n;
+      }
+    }
+    return n;
+  }
+  int trades() const { return count<venue::Trade>(); }
+  const FillHeld* lastHeld() const
+  {
+    const FillHeld* out = nullptr;
+    for (auto& e : ev)
+    {
+      if (auto* h = std::get_if<FillHeld>(&e))
+      {
+        out = h;
+      }
+    }
+    return out;
+  }
+  const FillRejected* lastFillRejected() const
+  {
+    const FillRejected* out = nullptr;
+    for (auto& e : ev)
+    {
+      if (auto* h = std::get_if<FillRejected>(&e))
+      {
+        out = h;
+      }
+    }
+    return out;
+  }
+  bool sawReject(RejectReason r) const
+  {
+    for (auto& e : ev)
+    {
+      if (auto* j = std::get_if<OrderRejected>(&e); j != nullptr && j->reason == r)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+  bool sawCancel(CancelReason r) const
+  {
+    for (auto& e : ev)
+    {
+      if (auto* c = std::get_if<OrderCanceled>(&e); c != nullptr && c->reason == r)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
+// Displayed qty resting at a price on one side of the matching book.
+Quantity bookAt(const MatchingBook& b, Side s, double p)
+{
+  std::vector<std::pair<Price, Quantity>> lv;
+  b.levels(s, lv);
+  for (const auto& [price, q] : lv)
+  {
+    if (price == px(p))
+    {
+      return q;
+    }
+  }
+  return Quantity{};
+}
+
+// ---- pro-rata guard: lastLook orders are refused at admission ---------------
+
+void test_prorata_lastlook_rejected()
+{
+  std::printf("test_prorata_lastlook_rejected\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink(), MatchingBook{}, MatchPolicy::ProRata);
+  NewOrder ll = limit(1, Side::SELL, 100, 5, 1);
+  ll.lastLook = true;
+  eng.submit(InboundCommand{ll}, 1);
+  CHECK(cap.sawReject(RejectReason::LastLookUnsupported));
+  CHECK(bookAt(eng.book(), Side::SELL, 100).isZero());
+
+  // Firm order on the same pro-rata instrument is fine.
+  NewOrder firm = limit(2, Side::SELL, 100, 5, 1);
+  eng.submit(InboundCommand{firm}, 2);
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));
+
+  // Same lastLook order on a price-time instrument is fine.
+  Cap cap2;
+  MatchingEngine<MatchingBook> ptEng(cfg(), cap2.sink());
+  NewOrder ok = limit(3, Side::SELL, 100, 5, 1);
+  ok.lastLook = true;
+  ptEng.submit(InboundCommand{ok}, 1);
+  CHECK(bookAt(ptEng.book(), Side::SELL, 100) == qty(5));
+}
+
+// ---- T016: reject restores the book ----------------------------------------
+
+void test_reject_restores_book()
+{
+  std::printf("test_reject_restores_book\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+  CHECK(cap.trades() == 0);
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(2));  // 3 held out of the book
+  const auto* h = cap.lastHeld();
+  CHECK(h != nullptr && h->qty == qty(3) && h->makerDisplayAfter == qty(2));
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+  CHECK(cap.trades() == 0);
+  // Maker's 3 are back on its level (tail); the GTC taker residual rests too.
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));
+  CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(3));
+  const auto* fr = cap.lastFillRejected();
+  CHECK(fr != nullptr && fr->qty == qty(3) && fr->makerId == 1 && fr->takerId == 2 &&
+        fr->price == px(100));
+  // The taker fully exited with zero fills before the reject; the restore is
+  // what made it whole -- resend of either id must be a duplicate while resting.
+  eng.submit(InboundCommand{limit(1, Side::SELL, 101, 1, 1)}, 3);
+  CHECK(cap.sawReject(RejectReason::DuplicateOrderId));
+}
+
+void test_partial_hold_reject()
+{
+  std::printf("test_partial_hold_reject\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  eng.submit(InboundCommand{limit(1, Side::SELL, 100, 2, 3)}, 0);  // firm maker, acct 3
+  NewOrder mk = limit(2, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 1);
+  // Taker 6: fills 2 firm (trade), holds 4 from the last-look maker, leaves 0.
+  eng.submit(InboundCommand{limit(3, Side::BUY, 100, 6, 2)}, 2);
+  CHECK(cap.trades() == 1);
+  const auto* h = cap.lastHeld();
+  CHECK(h != nullptr && h->qty == qty(4));
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 3);
+  CHECK(cap.trades() == 1);                              // no new prints
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));  // maker fully restored
+  CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(4));   // held taker slice rests
+}
+
+// ---- T016: taker residual per TIF -------------------------------------------
+
+void test_taker_residual_tifs()
+{
+  std::printf("test_taker_residual_tifs\n");
+  {  // GTC: residual rests (covered above too; assert no cancel event)
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+    eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, 1}}, 2);
+    CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(3));
+    CHECK(cap.count<OrderCanceled>() == 0);
+  }
+  {  // IOC: residual canceled with the IOC reason, nothing rests
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    NewOrder tk = limit(2, Side::BUY, 100, 3, 2);
+    tk.tif = TimeInForce::IOC;
+    eng.submit(InboundCommand{tk}, 1);
+    eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, 1}}, 2);
+    CHECK(cap.sawCancel(CancelReason::ImmediateOrCancelResidual));
+    CHECK(bookAt(eng.book(), Side::BUY, 100).isZero());
+    CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));  // maker still restored
+  }
+  {  // MARKET: residual canceled with the market reason
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    NewOrder tk;
+    tk.id = 2;
+    tk.symbol = SYM;
+    tk.side = Side::BUY;
+    tk.type = OrderType::MARKET;
+    tk.quantity = qty(3);
+    tk.accountId = 2;
+    eng.submit(InboundCommand{tk}, 1);
+    const auto* h = cap.lastHeld();
+    CHECK(h != nullptr && h->qty == qty(3));
+    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+    CHECK(cap.sawCancel(CancelReason::MarketResidual));
+    CHECK(bookAt(eng.book(), Side::BUY, 100).isZero());
+  }
+}
+
+// ---- T016: public feed == matching book -------------------------------------
+
+void test_md_equals_book()
+{
+  std::printf("test_md_equals_book\n");
+  std::vector<MdMessage> md;
+  MarketDataPublisher<1 << 16> pub([&](const MdMessage& m)
+                                   { md.push_back(m); }, px(0.01), SYM);
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                   {
+                                     cap.ev.push_back(e);
+                                     pub.onEvent(e); });
+
+  auto feedMatchesBook = [&](std::vector<double> prices)
+  {
+    for (double p : prices)
+    {
+      if (pub.book().bidAtPrice(px(p)).raw() != bookAt(eng.book(), Side::BUY, p).raw())
+      {
+        return false;
+      }
+      if (pub.book().askAtPrice(px(p)).raw() != bookAt(eng.book(), Side::SELL, p).raw())
+      {
+        return false;
+      }
+    }
+    return true;
+  };
+  const std::vector<double> prices{99.0, 100.0, 101.0};
+
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  CHECK(feedMatchesBook(prices));
+
+  // Hold: the feed must drop the held size immediately (no phantom liquidity).
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+  CHECK(pub.book().askAtPrice(px(100)) == qty(2));
+  CHECK(feedMatchesBook(prices));
+
+  // Reject: maker restored, taker residual rests -- feed follows both.
+  eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, 1}}, 2);
+  CHECK(pub.book().askAtPrice(px(100)) == qty(5));
+  CHECK(pub.book().bidAtPrice(px(100)) == qty(3));
+  CHECK(feedMatchesBook(prices));
+
+  // Hold + accept: depth already left at hold time; the print must not change it.
+  NewOrder tk = limit(3, Side::BUY, 100, 2, 3);
+  tk.tif = TimeInForce::IOC;
+  eng.submit(InboundCommand{tk}, 3);
+  CHECK(feedMatchesBook(prices));
+  eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, true, 1}}, 4);
+  CHECK(cap.trades() == 1);
+  CHECK(pub.book().askAtPrice(px(100)) == qty(3));
+  CHECK(feedMatchesBook(prices));
+
+  // Cancel-while-held: resolve + cancel must drain both feed and book.
+  eng.submit(InboundCommand{limit(4, Side::BUY, 100, 1, 3)}, 5);  // new hold (1 of maker's 3)
+  CHECK(cap.count<FillHeld>() == 3);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 6);  // maker cancels with a live hold
+  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 7);
+  eng.submit(InboundCommand{CancelOrder{4, SYM, 3}}, 8);
+  CHECK(eng.book().empty());
+  CHECK(feedMatchesBook(prices));
+}
+
+// ---- T016: ownership --------------------------------------------------------
+
+void test_ownership()
+{
+  std::printf("test_ownership\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+  const auto* h = cap.lastHeld();
+  CHECK(h != nullptr);
+  const uint64_t heldId = h->heldId;  // copy: cap.ev may reallocate below
+  // The taker (or anyone but the maker) must not be able to accept its own fill.
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 2}}, 2);
+  CHECK(cap.sawReject(RejectReason::NotOrderOwner));
+  CHECK(cap.trades() == 0);  // the hold is untouched
+  // The real maker still can.
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 3);
+  CHECK(cap.trades() == 1);
+}
+
+// ---- T016: timeout accept, idle expiry, window=0 ----------------------------
+
+void test_timeout_accept()
+{
+  std::printf("test_timeout_accept\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(1000, /*acceptOnTimeout*/ true), cap.sink());
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);  // deadline 1001
+  CHECK(cap.trades() == 0);
+  eng.submit(InboundCommand{CancelOrder{999, SYM, 9}}, 5000);  // time passes -> accept
+  CHECK(cap.trades() == 1);
+  CHECK(cap.count<FillRejected>() == 0);
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(2));
+}
+
+void test_idle_expiry_via_tick()
+{
+  std::printf("test_idle_expiry_via_tick\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);  // deadline 1001
+  CHECK(eng.openHolds() == 1);
+  eng.tick(500);  // before the deadline: nothing happens
+  CHECK(eng.openHolds() == 1);
+  eng.tick(5000);  // NO traffic -- the sweep alone expires the hold (reject)
+  CHECK(eng.openHolds() == 0);
+  CHECK(cap.count<FillRejected>() == 1);
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));
+  CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(3));
+  eng.tick(6000);  // idempotent
+  CHECK(cap.count<FillRejected>() == 1);
+}
+
+void test_window_zero_disables()
+{
+  std::printf("test_window_zero_disables\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(/*window*/ 0), cap.sink());
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;  // flag set, but the venue has last look OFF
+  eng.submit(InboundCommand{mk}, 0);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+  CHECK(cap.count<FillHeld>() == 0);
+  CHECK(cap.trades() == 1);  // fills like a normal maker
+}
+
+// ---- T016: cancel-while-held + conservation ---------------------------------
+
+void test_cancel_while_held_conservation()
+{
+  std::printf("test_cancel_while_held_conservation\n");
+  constexpr AssetId BASE = 0, QUOTE = 1;
+  constexpr uint64_t VENUE = 999;
+  const Amount base5 = amountOf(qty(5));
+  const Amount usd300 = amountOf(Volume::fromDouble(300));
+  Ledger led;
+  led.deposit(1, BASE, base5);
+  led.deposit(2, QUOTE, usd300);
+  auto c = cfg();
+  c.baseAsset = BASE;
+  c.quoteAsset = QUOTE;
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(c, cap.sink());
+  eng.setLedger(&led, VENUE);
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+  const auto* h = cap.lastHeld();
+  CHECK(h != nullptr);
+  const uint64_t heldId = h->heldId;
+
+  // Maker cancels its order while the hold is live: the hold resolves (reject)
+  // FIRST, deterministically, then the whole order cancels.
+  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 2);
+  CHECK(cap.count<FillRejected>() == 1);
+  CHECK(cap.sawCancel(CancelReason::UserRequested));
+  CHECK(bookAt(eng.book(), Side::SELL, 100).isZero());
+  // Maker made whole immediately; taker's restored GTC residual rests, backed
+  // by its reservation.
+  CHECK(led.available(1, BASE) == base5 && led.reserved(1, BASE) == 0);
+  CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(3));
+  CHECK(led.reserved(2, QUOTE) == usd300);
+
+  // Accept-after-cancel must be impossible.
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 3);
+  CHECK(cap.trades() == 0);
+  CHECK(cap.sawReject(RejectReason::UnknownOrder));
+
+  // Conservation, then a full drain returns every reserved unit.
+  CHECK(led.total(1, BASE) == base5 && led.total(2, QUOTE) == usd300);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 4);
+  CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);
+}
+
+// ---- T016: FOK vs last-look -------------------------------------------------
+
+void test_fok_vs_lastlook()
+{
+  std::printf("test_fok_vs_lastlook\n");
+  {  // crossable liquidity is last-look only -> FOK rejected, book untouched
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    NewOrder tk = limit(2, Side::BUY, 100, 3, 2);
+    tk.tif = TimeInForce::FOK;
+    eng.submit(InboundCommand{tk}, 1);
+    CHECK(cap.sawReject(RejectReason::FillOrKillUnfulfillable));
+    CHECK(cap.count<FillHeld>() == 0);
+    CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));
+  }
+  {  // enough firm size, but a last-look maker inside the crossing range -> reject
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder ll = limit(1, Side::SELL, 100, 5, 1);
+    ll.lastLook = true;
+    eng.submit(InboundCommand{ll}, 0);
+    eng.submit(InboundCommand{limit(2, Side::SELL, 101, 5, 3)}, 1);  // firm
+    NewOrder tk = limit(3, Side::BUY, 101, 5, 2);
+    tk.tif = TimeInForce::FOK;
+    eng.submit(InboundCommand{tk}, 2);
+    CHECK(cap.sawReject(RejectReason::FillOrKillUnfulfillable));
+    CHECK(cap.trades() == 0 && cap.count<FillHeld>() == 0);
+  }
+  {  // last-look maker OUTSIDE the crossing range: FOK executes normally
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder ll = limit(1, Side::SELL, 102, 5, 1);
+    ll.lastLook = true;
+    eng.submit(InboundCommand{ll}, 0);
+    eng.submit(InboundCommand{limit(2, Side::SELL, 101, 5, 3)}, 1);  // firm
+    NewOrder tk = limit(3, Side::BUY, 101, 5, 2);
+    tk.tif = TimeInForce::FOK;
+    eng.submit(InboundCommand{tk}, 2);
+    CHECK(cap.trades() == 1);
+    CHECK(cap.count<FillHeld>() == 0);
+  }
+}
+
+// ---- T016: idle sweeper on the sequenced shard (journaled TimeTick) ---------
+
+void test_shard_idle_sweeper()
+{
+  std::printf("test_shard_idle_sweeper\n");
+  const std::string path = "/tmp/flox_test_venue_lastlook_sweeper.bin";
+  std::remove(path.c_str());
+
+  auto now = std::make_shared<std::atomic<int64_t>>(1000);
+  SequencedShard<>::TimeSource clk = [now]
+  { return now->load(); };
+
+  std::atomic<int> fillHeld{0};
+  std::atomic<int> fillRejected{0};
+  struct Sink : IEngineEventListener
+  {
+    std::atomic<int>* held{nullptr};
+    std::atomic<int>* rejected{nullptr};
+    void onEngineEvent(const EngineEventMsg& e) override
+    {
+      if (std::get_if<FillHeld>(&e.event))
+      {
+        held->fetch_add(1);
+      }
+      if (std::get_if<FillRejected>(&e.event))
+      {
+        rejected->fetch_add(1);
+      }
+    }
+  } sink;
+  sink.held = &fillHeld;
+  sink.rejected = &fillRejected;
+
+  {
+    auto shard = std::make_unique<SequencedShard<>>(cfg(/*window*/ 5000), path, MatchingBook{},
+                                                    Journal::Sync::Off, clk,
+                                                    /*idleSweepIntervalNs*/ 1000);
+    shard->subscribeOutbound(&sink);
+    shard->start();
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    shard->submit(InboundCommand{mk});
+    shard->submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)});
+    shard->flush();
+    CHECK(fillHeld.load() == 1);
+    CHECK(fillRejected.load() == 0);
+
+    // NO further traffic. Advance the injected clock past the window; the idle
+    // sweeper must inject a TimeTick that expires the hold.
+    now->store(1'000'000);
+    for (int i = 0; i < 2000 && fillRejected.load() == 0; ++i)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(fillRejected.load() == 1);
+    shard->stop();
+  }
+
+  // The sweep went through the journal: replaying it reproduces the timeout.
+  const auto records = Journal::loadTimed(path);
+  int ticks = 0;
+  for (const auto& [ts, cmd] : records)
+  {
+    (void)ts;
+    if (std::get_if<TimeTick>(&cmd))
+    {
+      ++ticks;
+    }
+  }
+  CHECK(ticks >= 1);
+  int replayRejected = 0;
+  MatchingEngine<MatchingBook> rec(cfg(5000), [&](const OutboundEvent& e)
+                                   {
+                                     if (std::get_if<FillRejected>(&e))
+                                     {
+                                       ++replayRejected;
+                                     } });
+  for (const auto& [ts, cmd] : records)
+  {
+    rec.submit(cmd, ts);
+  }
+  CHECK(replayRejected == 1);
+  std::remove(path.c_str());
+}
+
+// ---- T020: clientOrderId dedup ----------------------------------------------
+
+void test_clordid_dedup()
+{
+  std::printf("test_clordid_dedup\n");
+  {  // resend after the original FILLED -> reject, no second execution
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(0), cap.sink());
+    eng.submit(InboundCommand{limit(1, Side::SELL, 100, 3, 1)}, 0);
+    NewOrder tk = limit(2, Side::BUY, 100, 3, 2);
+    tk.clientOrderId = 77;
+    eng.submit(InboundCommand{tk}, 1);
+    CHECK(cap.trades() == 1);
+    NewOrder resend = limit(3, Side::BUY, 100, 3, 2);  // fresh venue id, same clOrdId
+    resend.clientOrderId = 77;
+    eng.submit(InboundCommand{resend}, 2);
+    CHECK(cap.trades() == 1);  // did NOT execute twice
+    CHECK(cap.sawReject(RejectReason::DuplicateClientOrderId));
+    CHECK(eng.book().empty());  // book untouched by the resend
+  }
+  {  // resend while the original still RESTS -> reject, original unharmed
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(0), cap.sink());
+    NewOrder o = limit(10, Side::SELL, 100, 3, 1);
+    o.clientOrderId = 88;
+    eng.submit(InboundCommand{o}, 0);
+    NewOrder resend = limit(11, Side::SELL, 100, 3, 1);
+    resend.clientOrderId = 88;
+    eng.submit(InboundCommand{resend}, 1);
+    CHECK(cap.sawReject(RejectReason::DuplicateClientOrderId));
+    CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(3));  // only the original
+  }
+  {  // resend after cancel -> still a duplicate (session window)
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(0), cap.sink());
+    NewOrder o = limit(10, Side::SELL, 100, 3, 1);
+    o.clientOrderId = 88;
+    eng.submit(InboundCommand{o}, 0);
+    eng.submit(InboundCommand{CancelOrder{10, SYM, 1}}, 1);
+    NewOrder resend = limit(11, Side::SELL, 100, 3, 1);
+    resend.clientOrderId = 88;
+    eng.submit(InboundCommand{resend}, 2);
+    CHECK(cap.sawReject(RejectReason::DuplicateClientOrderId));
+  }
+  {  // dedup is per account: two accounts may use the same clientOrderId
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(0), cap.sink());
+    NewOrder a = limit(20, Side::SELL, 101, 1, 1);
+    a.clientOrderId = 99;
+    NewOrder b = limit(21, Side::SELL, 102, 1, 2);
+    b.clientOrderId = 99;
+    eng.submit(InboundCommand{a}, 0);
+    eng.submit(InboundCommand{b}, 1);
+    CHECK(cap.count<OrderAccepted>() == 2);
+    CHECK(cap.count<OrderRejected>() == 0);
+  }
+  {  // clientOrderId 0 = unset: never deduplicated
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(0), cap.sink());
+    eng.submit(InboundCommand{limit(30, Side::SELL, 101, 1, 1)}, 0);
+    eng.submit(InboundCommand{limit(31, Side::SELL, 102, 1, 1)}, 1);
+    CHECK(cap.count<OrderAccepted>() == 2);
+  }
+}
+
+// Replay safety: the dedup index is rebuilt by the same submits during journal
+// replay, so a post-restart resend behaves exactly like a live one.
+void test_clordid_dedup_survives_replay()
+{
+  std::printf("test_clordid_dedup_survives_replay\n");
+  const std::string path = "/tmp/flox_test_venue_lastlook_clordid.bin";
+  std::remove(path.c_str());
+
+  struct Sink : IEngineEventListener
+  {
+    std::atomic<int> trades{0};
+    std::atomic<int> dupRejects{0};
+    void onEngineEvent(const EngineEventMsg& e) override
+    {
+      if (std::get_if<venue::Trade>(&e.event))
+      {
+        trades.fetch_add(1);
+      }
+      if (auto* j = std::get_if<OrderRejected>(&e.event);
+          j != nullptr && j->reason == RejectReason::DuplicateClientOrderId)
+      {
+        dupRejects.fetch_add(1);
+      }
+    }
+  };
+
+  {  // live session: submit + fill with clOrdId 55
+    Sink sink;
+    auto shard = std::make_unique<SequencedShard<>>(cfg(0), path, MatchingBook{},
+                                                    Journal::Sync::Off);
+    shard->subscribeOutbound(&sink);
+    shard->start();
+    shard->submit(InboundCommand{limit(1, Side::SELL, 100, 3, 1)});
+    NewOrder tk = limit(2, Side::BUY, 100, 3, 2);
+    tk.clientOrderId = 55;
+    shard->submit(InboundCommand{tk});
+    shard->flush();
+    shard->stop();
+    CHECK(sink.trades.load() == 1);
+  }
+  {  // restart: recovery replays the journal, then the resend must reject
+    Sink sink;
+    auto shard = std::make_unique<SequencedShard<>>(cfg(0), path, MatchingBook{},
+                                                    Journal::Sync::Off);
+    shard->subscribeOutbound(&sink);
+    shard->start();
+    CHECK(shard->recoveredCommands() == 2u);
+    NewOrder resend = limit(3, Side::BUY, 100, 3, 2);
+    resend.clientOrderId = 55;
+    shard->submit(InboundCommand{resend});
+    shard->flush();
+    shard->stop();
+    CHECK(sink.trades.load() == 0);  // recovery does not re-broadcast, resend did not trade
+    CHECK(sink.dupRejects.load() == 1);
+  }
+  std::remove(path.c_str());
+}
+
+}  // namespace
+
+TEST(VenueLastLook, LifecycleSuite)
+{
+  test_prorata_lastlook_rejected();
+  test_reject_restores_book();
+  test_partial_hold_reject();
+  test_taker_residual_tifs();
+  test_md_equals_book();
+  test_ownership();
+  test_timeout_accept();
+  test_idle_expiry_via_tick();
+  test_window_zero_disables();
+  test_cancel_while_held_conservation();
+  test_fok_vs_lastlook();
+  test_shard_idle_sweeper();
+  std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+  EXPECT_EQ(g_failures, 0);
+}
+
+TEST(VenueClientOrderId, DedupSuite)
+{
+  const int before = g_failures;
+  test_clordid_dedup();
+  test_clordid_dedup_survives_replay();
+  std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+  EXPECT_EQ(g_failures, before);
+}

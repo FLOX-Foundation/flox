@@ -23,6 +23,9 @@
 #include <gtest/gtest.h>
 #include <array>
 #include <cstdint>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <cstdio>
 #include <cstdlib>
@@ -217,6 +220,148 @@ void test_spot_conservation()
   CHECK(reservedLeaks == 0);
   std::printf("  200000 ops, base/quote conserved (%d breaches); reserved drained clean (%d leaks)\n",
               breaches, reservedLeaks);
+}
+
+// Last-look lifecycle under the conservation invariant: a slice of the flow is
+// lastLook makers, and holds resolve through every path -- explicit accepts,
+// explicit rejects, wrong-owner decision attempts, timeout (acceptOnTimeout
+// exercises the timeout-accept settle), and cancel-while-held during the
+// drain. Money must never be created or destroyed, and after the drain every
+// reservation (including restored held slices) must return to zero.
+void test_spot_conservation_lastlook()
+{
+  std::printf("test_spot_conservation_lastlook\n");
+  Ledger led;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    led.deposit(a, BASE, base(1000));
+    led.deposit(a, QUOTE, quote(100000));
+  }
+  const Amount initBase = base(1000) * NACCT;
+  const Amount initQuote = quote(100000) * NACCT;
+
+  SymbolConfig c;
+  c.id = SYM;
+  c.tickSize = px(0.01);
+  c.minPrice = px(50);
+  c.maxPrice = px(150);
+  c.baseAsset = BASE;
+  c.quoteAsset = QUOTE;
+  c.lastLookWindowNs = 40;           // fuzz time = op index, so holds expire quickly
+  c.lastLookAcceptOnTimeout = true;  // timeout-accept settles like a real fill
+  std::unordered_map<OrderId, uint64_t> acctOf;
+  std::vector<std::pair<uint64_t, uint64_t>> pendingHolds;  // (heldId, makerAccount)
+  uint64_t totalHolds = 0;
+  MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
+                                   {
+                                     if (const auto* h = std::get_if<FillHeld>(&e))
+                                     {
+                                       ++totalHolds;
+                                       pendingHolds.emplace_back(h->heldId, acctOf[h->makerId]);
+                                     } });
+  flox::FeeSchedule fs;
+  fs.addTier(0.0, -1.0, 2.0);
+  eng.setFeeSchedule(fs);
+  eng.setLedger(&led, VENUE);
+
+  auto sumAsset = [&](AssetId asset)
+  {
+    Amount t = 0;
+    for (int a = 1; a <= NACCT; ++a)
+    {
+      t += led.total(a, asset);
+    }
+    t += led.total(VENUE, asset);
+    return t;
+  };
+
+  Rng rng{0xFEEDFACE77ULL};
+  const int64_t midRaw = px(100).raw();
+  const int64_t tickRaw = px(0.01).raw();
+  int breaches = 0;
+  OrderId nextId = 1;
+  for (int i = 0; i < 100000; ++i)
+  {
+    const uint64_t r = rng.next();
+    const uint32_t kind = r % 100;
+    if (kind < 12 && !pendingHolds.empty())
+    {
+      // Resolve a random pending hold: correct owner half the time (accept or
+      // reject), a random -- usually wrong -- account otherwise (NotOrderOwner
+      // reject path, the hold stays pending until timeout).
+      const size_t pick = (r >> 16) % pendingHolds.size();
+      const auto [hid, makerAcct] = pendingHolds[pick];
+      pendingHolds.erase(pendingHolds.begin() + static_cast<ptrdiff_t>(pick));
+      const uint64_t acct = (r & 4) ? makerAcct : 1 + ((r >> 24) % NACCT);
+      eng.submit(InboundCommand{LastLookDecision{hid, SYM, (r & 8) != 0, acct}}, i);
+    }
+    else if (kind < 27 && nextId > 1)
+    {
+      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, 0}}, i);
+    }
+    else
+    {
+      NewOrder o;
+      o.id = nextId++;
+      o.symbol = SYM;
+      o.side = (r & 1) ? Side::BUY : Side::SELL;
+      o.accountId = 1 + (r >> 8) % NACCT;
+      const int ticks = static_cast<int>((r >> 1) % 101) - 50;
+      o.price = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
+      o.quantity = qty(1.0 + static_cast<double>((r >> 20) % 5));
+      o.type = (kind < 32) ? OrderType::MARKET : OrderType::LIMIT;
+      if (o.type == OrderType::LIMIT)
+      {
+        const uint32_t t = static_cast<uint32_t>((r >> 32) % 100);
+        if (t < 35)
+        {
+          o.lastLook = true;  // a third of the resting flow quotes with last look
+        }
+        else if (t < 45)
+        {
+          o.tif = TimeInForce::IOC;  // held IOC residual must cancel + release
+        }
+        else if (t < 52)
+        {
+          o.tif = TimeInForce::FOK;  // FOK never executes into last-look range
+        }
+      }
+      acctOf[o.id] = o.accountId;
+      eng.submit(InboundCommand{o}, i);
+    }
+    if (sumAsset(BASE) != initBase || sumAsset(QUOTE) != initQuote)
+    {
+      ++breaches;
+      if (breaches == 1)
+      {
+        std::printf("  first breach at op %d\n", i);
+      }
+    }
+  }
+  CHECK(breaches == 0);
+
+  // Drain: cancel everything (cancel-while-held resolves any hold left), then
+  // every account's reserved must be zero -- a held slice whose reservation
+  // was stripped or stranded shows up here.
+  for (OrderId id = 1; id < nextId; ++id)
+  {
+    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 999999);
+  }
+  CHECK(sumAsset(BASE) == initBase && sumAsset(QUOTE) == initQuote);
+  int reservedLeaks = 0;
+  for (int a = 1; a <= NACCT; ++a)
+  {
+    if (led.reserved(a, BASE) != 0 || led.reserved(a, QUOTE) != 0)
+    {
+      ++reservedLeaks;
+    }
+  }
+  CHECK(reservedLeaks == 0);
+  CHECK(totalHolds > 1000);  // coverage guard: the scenario really exercised holds
+  std::printf(
+      "  100000 ops, %llu holds (accept/reject/wrong-owner/timeout-accept/cancel-while-held), "
+      "base/quote conserved (%d breaches); reserved drained clean (%d leaks)\n",
+      static_cast<unsigned long long>(totalHolds), breaches, reservedLeaks);
 }
 
 void test_perp_conservation(bool adl)
@@ -490,6 +635,13 @@ TEST(VenueConservationFuzz, SpotValueAndReservationsConserved)
 {
   g_failures = 0;  // independent baseline: a prior scenario must not taint this one
   test_spot_conservation();
+  EXPECT_EQ(g_failures, 0);
+}
+
+TEST(VenueConservationFuzz, SpotLastLookConserved)
+{
+  g_failures = 0;  // independent baseline: a prior scenario must not taint this one
+  test_spot_conservation_lastlook();
   EXPECT_EQ(g_failures, 0);
 }
 

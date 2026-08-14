@@ -40,6 +40,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
     h = mix(h, x->restingOnBook ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(x->displayQty.raw()));
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<OrderRejected>(&e))
   {
@@ -47,6 +48,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->id);
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->reason));
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<Trade>(&e))
   {
@@ -72,6 +74,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->complete ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(x->lastPx.raw()));
     h = mix(h, static_cast<uint64_t>(x->displayLeaves.raw()));
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<OrderCanceled>(&e))
   {
@@ -79,6 +82,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->id);
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->reason));
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<OrderModified>(&e))
   {
@@ -88,6 +92,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
     h = mix(h, x->priorityKept ? 1U : 0U);
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<OrderTriggered>(&e))
   {
@@ -95,6 +100,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->id);
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->refPrice.raw()));
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<FillHeld>(&e))
   {
@@ -105,6 +111,9 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->takerId);
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, static_cast<uint64_t>(x->qty.raw()));
+    h = mix(h, static_cast<uint64_t>(x->makerDisplayAfter.raw()));
+    h = mix(h, x->makerAccount);
+    h = mix(h, x->takerAccount);
   }
   else if (const auto* x = std::get_if<FillRejected>(&e))
   {
@@ -112,6 +121,11 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->heldId);
     h = mix(h, x->symbol);
     h = mix(h, x->takerId);
+    h = mix(h, x->makerId);
+    h = mix(h, static_cast<uint64_t>(x->price.raw()));
+    h = mix(h, static_cast<uint64_t>(x->qty.raw()));
+    h = mix(h, x->takerAccount);
+    h = mix(h, x->makerAccount);
   }
   else if (const auto* x = std::get_if<MmpTriggered>(&e))
   {
@@ -126,6 +140,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->fee.raw()));
     h = mix(h, x->maker ? 1U : 0U);
+    h = mix(h, x->account);
   }
   else if (const auto* x = std::get_if<Liquidation>(&e))
   {
@@ -136,6 +151,15 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->price.raw()));
     h = mix(h, x->bankrupt ? 1U : 0U);
     h = mix(h, x->adl ? 1U : 0U);
+  }
+  else if (const auto* x = std::get_if<BalanceUpdate>(&e))
+  {
+    h = mix(h, 13);
+    h = mix(h, x->account);
+    h = mix(h, x->asset);
+    h = mix(h, static_cast<uint64_t>(x->availableRaw));
+    h = mix(h, static_cast<uint64_t>(x->reservedRaw));
+    h = mix(h, static_cast<uint64_t>(x->reason));
   }
   return h;
 }

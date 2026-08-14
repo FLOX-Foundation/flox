@@ -9,20 +9,31 @@
 #pragma once
 
 #include "flox-venue/cancel_on_disconnect.h"
+#include "flox-venue/fix_session.h"
 #include "flox-venue/messages.h"
+#include "flox-venue/metrics.h"
 #include "flox-venue/session.h"
+#include "flox-venue/session_registry.h"
 #include "flox-venue/socket_acceptor.h"
+#include "flox-venue/tcp_gateway.h"  // setRecvTimeoutMs / wasRecvTimeout
 #include "flox/util/transport.h"
 
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
+#include <poll.h>
 #include <unistd.h>
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -115,6 +126,16 @@ inline bool readFrame(SSL* s, std::vector<uint8_t>& out)
 
 }  // namespace tls
 
+// Delivery over TLS: OpenSSL forbids CONCURRENT SSL_read/SSL_write on one
+// SSL*, not serialized use from two threads. Each connection carries a
+// std::mutex over its SSL*: the read loop establishes readiness OUTSIDE the
+// lock (::poll on the fd / SSL_has_pending) and takes it only for the actual
+// SSL_read; the SessionWriter's write callback takes it for the SSL_write of
+// one frame -- the two interleave, never overlap, and an idle reader cannot
+// starve the writer by camping on the mutex. SSL_read keeps its own
+// partial-record state across WANT_READ, so a frame split across polls is
+// resumed, never lost. Without a registry the gateway stays in the embedded
+// per-frame responder mode, exactly like TcpGateway.
 class TlsGateway
 {
  public:
@@ -138,38 +159,283 @@ class TlsGateway
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
 
+  // Delivery mode (see TcpGateway::setDelivery): register every connection in
+  // `registry` and deliver exec reports through per-session bounded queues.
+  void setDelivery(SessionRegistry* registry, SessionRegistry::Encoder encoder)
+  {
+    registry_ = registry;
+    encoder_ = std::move(encoder);
+  }
+
+  // Session-layer verbs (SBE resend/snapshot; see session_verbs.h). Only
+  // consulted in delivery mode.
+  void setSessionVerbs(SessionVerbHandler verbs) { verbs_ = std::move(verbs); }
+
+  // Wire negotiation of per-session config (SBE SetSessionConfig -> COD; see
+  // session_verbs.h makeSbeSessionConfigVerb). Fire-and-forget.
+  void setSessionConfigVerb(SessionConfigHandler h) { sessionCfg_ = std::move(h); }
+
+  // FIX session layer over TLS (fix_session.h; requires delivery mode). Same
+  // wire shape as TcpGateway -- one FIX message per length-prefixed frame,
+  // here inside the TLS stream: outbound goes through the existing
+  // per-connection sslMu writer path (writeFrameLocked adds the length
+  // prefix, so the FixConnection needs no wire wrap), inbound through the
+  // poll-before-lock read loop. The FIX timers run on the read loop's poll
+  // tick; FIX liveness (TestRequest death) replaces the plain idle timeout.
+  void setFixSession(FixSessionHost* host) noexcept { fixHost_ = host; }
+
+  void setCounters(GatewayCounters* counters) noexcept { counters_ = counters; }
+
+  // Liveness: no inbound bytes for this long closes the session (COD fires).
+  void setIdleTimeout(std::chrono::milliseconds t) noexcept { idleTimeoutMs_.store(t.count()); }
+
   int start(uint16_t port, Handler handler)
   {
     handler_ = std::move(handler);
     // Contain any exception to this one connection -- connLoop is a thread body,
     // so an escape would reach std::terminate and take down the whole venue.
+    // The acceptor owns the fd (closes it after the handler returns).
     return acceptor_.start(port, [this](int fd)
                            {
                              try { connLoop(fd); }
-                             catch (...) { ::close(fd); } });
+                             catch (...) {} });
   }
   void stop() { acceptor_.stop(); }
   int port() const noexcept { return acceptor_.port(); }
 
  private:
+  // Delivery mode polls SSL_read at this interval so the session writer can
+  // take the SSL mutex between polls (and the shutdown sweep is noticed).
+  static constexpr int64_t kPollMs = 20;
+
+  enum class ReadResult : uint8_t
+  {
+    Frame,
+    IdleTimeout,
+    Closed,
+  };
+
+  // One length-prefixed frame over TLS. The mutex is taken only while there is
+  // something to read: readiness is established OUTSIDE the lock (::poll on
+  // the fd, or SSL_has_pending for records already buffered inside the SSL),
+  // so an idle reader holds the mutex for microseconds per poll interval and
+  // the writer thread is never starved by an unfair unlock/relock cycle.
+  // SSL_read's internal record state and the running byte offset preserve a
+  // frame split across polls; SO_RCVTIMEO bounds the lock hold when poll
+  // reported a partial record. SSL_ERROR_ZERO_RETURN / SSL_ERROR_SYSCALL
+  // (peer close, shutdown sweep) end the session.
+  // `tick` (FIX mode): run on every idle poll interval; returning false ends
+  // the session (FIX liveness lost -- reported as IdleTimeout so the caller's
+  // counter accounting matches the plain-idle path).
+  ReadResult readFrameLocked(int fd, SSL* ssl, std::mutex& mu, std::vector<uint8_t>& out,
+                             int64_t idleMs, std::chrono::steady_clock::time_point& lastInbound,
+                             const std::function<bool()>* tick = nullptr)
+  {
+    uint8_t h[4];
+    uint32_t len = 0;
+    bool haveLen = false;
+    size_t got = 0;
+    out.clear();
+    while (acceptor_.running())
+    {
+      bool ready;
+      {
+        std::lock_guard<std::mutex> lk(mu);
+        ready = SSL_has_pending(ssl) != 0;
+      }
+      if (!ready)
+      {
+        pollfd pfd{fd, POLLIN, 0};
+        const int pr = ::poll(&pfd, 1, static_cast<int>(kPollMs));
+        if (pr < 0 && errno != EINTR)
+        {
+          return ReadResult::Closed;
+        }
+        ready = pr > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR)) != 0;
+      }
+      if (!ready)
+      {
+        if (tick != nullptr)
+        {
+          if (!(*tick)())
+          {
+            return ReadResult::IdleTimeout;  // FIX liveness lost (TestRequest death)
+          }
+        }
+        else if (idleMs > 0)
+        {
+          const auto idle = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - lastInbound)
+                                .count();
+          if (idle >= idleMs)
+          {
+            return ReadResult::IdleTimeout;
+          }
+        }
+        continue;
+      }
+      uint8_t* dst = haveLen ? out.data() + got : h + got;
+      const size_t want = (haveLen ? len : sizeof h) - got;
+      int r;
+      int err = SSL_ERROR_NONE;
+      {
+        std::lock_guard<std::mutex> lk(mu);
+        errno = 0;
+        r = SSL_read(ssl, dst, static_cast<int>(want));
+        if (r <= 0)
+        {
+          err = SSL_get_error(ssl, r);  // before any other call touches the SSL*
+        }
+      }
+      if (r > 0)
+      {
+        lastInbound = std::chrono::steady_clock::now();
+        got += static_cast<size_t>(r);
+        if (!haveLen)
+        {
+          if (got < sizeof h)
+          {
+            continue;
+          }
+          len = (uint32_t(h[0]) << 24) | (uint32_t(h[1]) << 16) | (uint32_t(h[2]) << 8) | h[3];
+          if (len > flox::net::kMaxFrame)
+          {
+            return ReadResult::Closed;  // hostile length prefix (see tls::readFrame)
+          }
+          out.resize(len);
+          haveLen = true;
+          got = 0;
+        }
+        if (haveLen && got == len)
+        {
+          return ReadResult::Frame;
+        }
+        continue;
+      }
+      const bool retryable = err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE ||
+                             (err == SSL_ERROR_SYSCALL && wasRecvTimeout());
+      if (!retryable)
+      {
+        return ReadResult::Closed;
+      }
+    }
+    return ReadResult::Closed;
+  }
+
+  // One frame under one mutex acquisition: header and body leave as a single
+  // SSL_write so the writer holds the SSL* for a bounded, contiguous burst.
+  static bool writeFrameLocked(SSL* ssl, std::mutex& mu, const uint8_t* p, size_t n)
+  {
+    std::vector<uint8_t> buf(4 + n);
+    buf[0] = static_cast<uint8_t>(n >> 24);
+    buf[1] = static_cast<uint8_t>(n >> 16);
+    buf[2] = static_cast<uint8_t>(n >> 8);
+    buf[3] = static_cast<uint8_t>(n);
+    std::memcpy(buf.data() + 4, p, n);
+    std::lock_guard<std::mutex> lk(mu);
+    return tls::writeAll(ssl, buf.data(), buf.size());
+  }
+
   void connLoop(int fd)
   {
+    const int64_t idleMs = idleTimeoutMs_.load();
+    setRecvTimeoutMs(fd, idleMs);
     SSL* ssl = SSL_new(ctx_);
     SSL_set_fd(ssl, fd);
     if (SSL_accept(ssl) <= 0)
     {
       SSL_free(ssl);
-      ::close(fd);
-      return;
+      return;  // acceptor owns the fd
     }
     GatewaySession session(account_, decoder_);
     session.authenticate(true);
-    const Responder responder = [ssl](const uint8_t* p, size_t n)
-    { tls::writeFrame(ssl, p, n); };
-    std::vector<uint8_t> frame;
-    DisconnectCanceller cod(cancelOnDisconnect_.load());
-    while (acceptor_.running() && tls::readFrame(ssl, frame))
+    session.setCancelOnDisconnect(cancelOnDisconnect_.load());
+    DisconnectCanceller cod(session.cancelOnDisconnect());
+
+    std::mutex sslMu;  // serializes SSL_read (reader) vs SSL_write (writer thread)
+    std::shared_ptr<SessionWriter> writer;
+    if (registry_ != nullptr)
     {
+      // Handshake done: switch to the short poll so a blocked SSL_read never
+      // holds the mutex longer than one poll interval.
+      setRecvTimeoutMs(fd, idleMs > 0 ? std::min<int64_t>(idleMs, kPollMs) : kPollMs);
+      writer = registry_->attach(
+          session.account(), encoder_,
+          [ssl, &sslMu](const uint8_t* p, size_t n)
+          { return writeFrameLocked(ssl, sslMu, p, n); },
+          [fd]
+          { ::shutdown(fd, SHUT_RDWR); },
+          [&cod](const OutboundEvent& e)
+          { cod.observe(e); });
+    }
+    // In delivery mode the responder feeds the same per-session queue as the
+    // routed events (single writer owns the SSL*'s write side).
+    const Responder responder =
+        (writer != nullptr)
+            ? Responder([w = writer.get()](const uint8_t* p, size_t n)
+                        { w->enqueue(std::vector<uint8_t>(p, p + n)); })
+            : Responder([ssl](const uint8_t* p, size_t n)
+                        { tls::writeFrame(ssl, p, n); });
+
+    // FIX mode (see setFixSession): the FixConnection gates every inbound
+    // frame; its timers run on the read loop's poll tick via the tick hook.
+    const bool fixMode = fixHost_ != nullptr && writer != nullptr;
+    std::unique_ptr<FixConnection> fix;
+    std::function<bool()> fixTick;
+    if (fixMode)
+    {
+      fix = std::make_unique<FixConnection>(*fixHost_, *registry_, session.account(),
+                                            wallClockNs());
+      fix->setCodListener([&session, &cod](bool on)
+                          {
+                            session.setCancelOnDisconnect(on);
+                            cod.setEnabled(on); });
+      fixTick = [&fix]
+      { return fix->onTick(wallClockNs()); };
+    }
+
+    auto lastInbound = std::chrono::steady_clock::now();
+    std::vector<uint8_t> frame;
+    while (acceptor_.running())
+    {
+      const ReadResult rr = readFrameLocked(fd, ssl, sslMu, frame, idleMs, lastInbound,
+                                            fixMode ? &fixTick : nullptr);
+      if (rr != ReadResult::Frame)
+      {
+        if (rr == ReadResult::IdleTimeout && counters_ != nullptr)
+        {
+          counters_->idleDisconnects.fetch_add(1, std::memory_order_relaxed);
+        }
+        break;
+      }
+      if (fixMode)
+      {
+        const auto verdict =
+            fix->onFrame(std::string(frame.begin(), frame.end()), wallClockNs());
+        if (verdict == FixConnection::Verdict::Disconnect)
+        {
+          break;  // Logout exchanged / fatal session error; COD sweeps below
+        }
+        if (verdict == FixConnection::Verdict::Handled)
+        {
+          continue;  // session-layer message, fully consumed
+        }
+        // Verdict::App: fall through to the decoder / admission path.
+      }
+      if (sessionCfg_)
+      {
+        if (const auto u = sessionCfg_(frame.data(), frame.size()))
+        {
+          session.setCancelOnDisconnect(u->cancelOnDisconnect);
+          cod.setEnabled(u->cancelOnDisconnect);
+          continue;
+        }
+      }
+      if (writer != nullptr && verbs_ &&
+          verbs_(frame.data(), frame.size(), session.account(), *registry_))
+      {
+        continue;  // session-layer verb (resend / snapshot), fully handled
+      }
       SessionReject rej{};
       // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
       // ++clock_ frame counter never advanced time -> permanent bans.
@@ -182,11 +448,27 @@ class TlsGateway
         cod.track(*cmd);
         handler_(*cmd, responder);
       }
+      else if (rej != SessionReject::None && registry_ != nullptr)
+      {
+        // A rejected frame answers with a sequenced exec-report reject (id 0)
+        // instead of the old silence -- same policy as TcpGateway.
+        registry_->send(session.account(),
+                        OutboundEvent{OrderRejected{0, 0, toRejectReason(rej),
+                                                    session.account()}});
+      }
+    }
+    if (writer != nullptr)
+    {
+      // Order matters: detach (no new frames are routed here), stop (drain and
+      // JOIN the writer thread -- its last SSL_write finishes) and only then
+      // SSL_shutdown/SSL_free below. The writer never sees a freed SSL*.
+      registry_->detach(session.account(), writer);
+      writer->stop();
     }
     cod.flush(handler_);
     SSL_shutdown(ssl);
     SSL_free(ssl);
-    ::close(fd);
+    ::shutdown(fd, SHUT_RDWR);  // acceptor owns the close
   }
 
   GatewaySession::Decoder decoder_;
@@ -195,6 +477,13 @@ class TlsGateway
   Handler handler_;
   SocketAcceptor acceptor_;
   std::atomic<bool> cancelOnDisconnect_{false};
+  SessionRegistry* registry_{nullptr};
+  SessionRegistry::Encoder encoder_;
+  SessionVerbHandler verbs_;
+  SessionConfigHandler sessionCfg_;
+  FixSessionHost* fixHost_{nullptr};
+  GatewayCounters* counters_{nullptr};
+  std::atomic<int64_t> idleTimeoutMs_{30'000};
 };
 
 }  // namespace flox::venue

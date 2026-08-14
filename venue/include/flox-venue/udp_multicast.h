@@ -9,15 +9,20 @@
 #pragma once
 
 #include "flox-venue/market_data.h"
+#include "flox-venue/metrics.h"
+#include "flox-venue/resend_buffer.h"
 #include "flox-venue/sbe_md_codec.h"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <cstdint>
 #include <cstring>
+#include <deque>
+#include <utility>
 #include <vector>
 
 namespace flox::venue
@@ -68,13 +73,33 @@ class UdpMdPublisher
       ::setsockopt(fd_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof loop);
       ::setsockopt(fd_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof ttl);
     }
+    // Non-blocking: a full socket buffer must never stall the matching thread.
+    // The failed datagram is a counted drop, not a wait -- consumers recover
+    // the hole via gap detection + the recovery channel.
+    const int fl = ::fcntl(fd_, F_GETFL, 0);
+    ::fcntl(fd_, F_SETFL, fl | O_NONBLOCK);
     return true;
   }
 
-  void publish(const MdMessage& m)
+  void setCounters(MdCounters* counters) noexcept { counters_ = counters; }
+
+  // Returns false when the datagram was NOT handed to the kernel (socket
+  // buffer full, closed fd, ...). The drop is counted; the publisher never
+  // blocks and never retries -- gap recovery is the consumer's job.
+  bool publish(const MdMessage& m)
   {
     SbeMdCodec::encode(m, buf_);
-    ::sendto(fd_, buf_.data(), buf_.size(), 0, reinterpret_cast<sockaddr*>(&dst_), sizeof dst_);
+    const ssize_t n =
+        ::sendto(fd_, buf_.data(), buf_.size(), 0, reinterpret_cast<sockaddr*>(&dst_), sizeof dst_);
+    if (n != static_cast<ssize_t>(buf_.size()))
+    {
+      if (counters_ != nullptr)
+      {
+        counters_->sendDrops.fetch_add(1, std::memory_order_relaxed);
+      }
+      return false;
+    }
+    return true;
   }
 
   void close()
@@ -91,6 +116,7 @@ class UdpMdPublisher
   int fd_{-1};
   sockaddr_in dst_{};
   std::vector<uint8_t> buf_;
+  MdCounters* counters_{nullptr};
 };
 
 class UdpMdSubscriber
@@ -138,16 +164,53 @@ class UdpMdSubscriber
     ::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
   }
 
-  // Receive and decode one message; returns false on timeout / error.
+  // Optional client-side sequencing: with a detector attached, recv() delivers
+  // messages strictly in seq order per (symbol, epoch) -- held-out reordered
+  // datagrams are buffered and drained when the missing seq arrives -- and
+  // gap / publisher-restart signals surface through the callbacks. The
+  // detector is owned by the caller and must outlive the subscriber. Without
+  // a detector recv() is the raw decode path, unchanged.
+  void setGapDetector(GapDetector* gd, GapDetector::GapFn onGap = {},
+                      GapDetector::EpochFn onEpoch = {})
+  {
+    gd_ = gd;
+    onGap_ = std::move(onGap);
+    onEpoch_ = std::move(onEpoch);
+  }
+
+  // Receive and decode one message; returns false on timeout / error. With a
+  // gap detector attached, keeps reading until an in-order message is
+  // deliverable (held-out datagrams do not surface) or the socket times out.
   bool recv(MdMessage& out)
   {
-    uint8_t buf[SbeMdCodec::kMaxSize];
-    const ssize_t n = ::recvfrom(fd_, buf, sizeof buf, 0, nullptr, nullptr);
-    if (n <= 0)
+    if (gd_ == nullptr)
     {
-      return false;
+      return recvRaw(out);
     }
-    return SbeMdCodec::decode(buf, static_cast<size_t>(n), out);
+    while (ready_.empty())
+    {
+      MdMessage m;
+      if (!recvRaw(m))
+      {
+        return false;
+      }
+      gd_->observe(m, [this](const MdMessage& d)
+                   { ready_.push_back(d); }, onGap_, onEpoch_);
+    }
+    out = ready_.front();
+    ready_.pop_front();
+    return true;
+  }
+
+  // After applying a snapshot with lastSeq L: fast-forward the stream to L+1.
+  // Held datagrams beyond the snapshot become deliverable immediately.
+  void resetSequencer(SymbolId symbol, uint64_t epoch, uint64_t nextSeq)
+  {
+    if (gd_ != nullptr)
+    {
+      gd_->reset(symbol, epoch, nextSeq, [this](const MdMessage& d)
+                 { ready_.push_back(d); });
+    }
   }
 
   int port() const noexcept { return port_; }
@@ -163,8 +226,23 @@ class UdpMdSubscriber
   ~UdpMdSubscriber() { close(); }
 
  private:
+  bool recvRaw(MdMessage& out)
+  {
+    uint8_t buf[SbeMdCodec::kMaxSize];
+    const ssize_t n = ::recvfrom(fd_, buf, sizeof buf, 0, nullptr, nullptr);
+    if (n <= 0)
+    {
+      return false;
+    }
+    return SbeMdCodec::decode(buf, static_cast<size_t>(n), out);
+  }
+
   int fd_{-1};
   int port_{0};
+  GapDetector* gd_{nullptr};
+  GapDetector::GapFn onGap_;
+  GapDetector::EpochFn onEpoch_;
+  std::deque<MdMessage> ready_;  // sequenced, deliverable messages
 };
 
 }  // namespace flox::venue
