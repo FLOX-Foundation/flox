@@ -71,6 +71,10 @@ STP interacts with `FOK`: an all-or-none order cannot count liquidity it would
 never be allowed to trade with, so the precheck excludes same-scope resting
 size.
 
+A mass quote carries the mode too, and both of its legs inherit it -- so a
+maker that quotes rather than sending individual orders is not left without the
+control.
+
 STP also interacts with **last look**: the maker it pulls may have a hold open,
 so the hold is resolved (rejected, liquidity restored) before the order is
 removed -- the same order every engine-side cancel path follows. Removing first
@@ -119,6 +123,15 @@ killing the residual afterwards: an order resting here that the sender does not
 track will not be reconciled, and nothing looks wrong until it fills. The
 rejection happens before the `clientOrderId` is consumed, so a corrected
 message can be resent under the same id.
+
+It also refuses **every** order from that counterparty while the instrument is
+in a call auction, whatever its time in force. An auction rests everything it
+admits -- there is no matching to be immediate about, so an IOC accumulates in
+the book like any other order and sits there until the uncross. A counterparty
+that does not track resting orders therefore cannot take part in one: its order
+would sit in the book for the length of the auction while it believes the order
+filled or died on arrival, and at the uncross it could trade against its own
+other side.
 
 The profile arrives as the sequenced `SetAdmissionProfile` command
 (control-plane verb of the same name), so it journals, survives checkpoints,
@@ -197,7 +210,12 @@ Before the first trade there is no reference price, so no band exists yet.
 - **MMP.** `setMmp(account, qtyLimit, windowNs)`: if an account is filled
   faster than its limit inside the window, its book is pulled and
   `MmpTriggered` fires.
-- **Mass quote.** `Quote` replaces both sides of a two-sided quote atomically.
+- **Mass quote.** `Quote` replaces both sides of a two-sided quote atomically,
+  by id: the engine cancels `bidId` and `askId` and re-posts them at the new
+  prices, so a maker keeps one pair of ids and reuses it. The quote carries its
+  own `stp`, which both legs inherit -- a maker quoting continuously is the
+  participant that most needs self-trade prevention, and the mode has to reach
+  the orders it creates.
 
 ### Last-look lifecycle
 
