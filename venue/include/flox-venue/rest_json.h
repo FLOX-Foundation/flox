@@ -148,6 +148,12 @@ class RestJson
       w.u64("id", j->id);
       w.str("reason", toString(j->reason));
     }
+    else if (const auto* j = std::get_if<CancelRejected>(&ev))
+    {
+      w.str("type", j->wasReplace ? "replace_rejected" : "cancel_rejected");
+      w.u64("id", j->id);
+      w.str("reason", toString(j->reason));
+    }
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {
       w.str("type", "modified");

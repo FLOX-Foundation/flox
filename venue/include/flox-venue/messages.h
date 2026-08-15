@@ -148,6 +148,14 @@ enum class AdminAction : uint8_t
   // entry and no snapshot-format change.
   CloseSession,  // close the session: new orders rejected (MarketClosed), the book stands
   OpenSession,   // reopen the session; the halt/auction state underneath is untouched
+  // Withdrawal from trading, as distinct from a halt or a closed session. A
+  // halt promises the instrument comes back and a closed session promises the
+  // next one; delisting promises neither, so it pulls the resting book on the
+  // way out rather than leaving orders waiting for an open that is not coming.
+  // Reversible by Relist on purpose: an irreversible operator action is one
+  // mistake away from needing a restart to undo.
+  Delist,
+  Relist,
 };
 
 struct AdminCmd
@@ -209,6 +217,78 @@ struct SetTriggerRef  // switch the conditional-order reference (last trade vs m
 // decisions), so replay and recovery reproduce the same STP outcomes; a
 // checkpoint re-emits the live table as SetStpGroup records in its config
 // section. group 0 removes the membership (back to account-level STP).
+// What a counterparty is entitled to send.
+//
+// Not every session plays the same role. One routes flow it manages itself and
+// must never leave an order resting here -- an order the framework holds and
+// the counterparty does not know it owns is a position nobody reconciles.
+// Another exists to post and pull quotes, and cancel/replace is its hot path.
+// Those are opposite rights, so they are stated per account and refused on
+// admission rather than assumed.
+//
+// A zero-valued profile permits everything, which is the behaviour of an
+// engine that was never given one.
+struct AdmissionProfile
+{
+  uint32_t allowedTypes{0};  // bit i = OrderType(i) allowed; 0 = all
+  uint32_t allowedTif{0};    // bit i = TimeInForce(i) allowed; 0 = all
+  uint8_t deny{0};           // bitmask of AdmissionDeny
+};
+
+// Rights withheld from a profile. A bitmask rather than four bools so the
+// record stays blittable and appending a right does not change its size.
+enum AdmissionDeny : uint8_t
+{
+  DenyResting = 1u << 0,  // a residual may not join the book
+  DenyAmend = 1u << 1,    // ModifyOrder refused
+  DenyCancel = 1u << 2,   // CancelOrder refused
+  DenyQuote = 1u << 3,    // Quote refused
+};
+
+struct SetAdmissionProfile
+{
+  SymbolId symbol{};  // routing key
+  uint64_t account{};
+  AdmissionProfile profile{};
+};
+
+// Which risk limits a SetRiskLimits record carries.
+//
+// A mask rather than replace-all semantics: an operator raising a position cap
+// must not silently zero the fat-finger cap by omitting it, and a record that
+// says exactly what it changes replays the same way whatever else moved in
+// between. Related knobs travel together because they are only meaningful as
+// a pair.
+enum RiskLimitField : uint16_t
+{
+  RiskLuld = 1u << 0,       // luldBps + luldHaltNs
+  RiskFatFinger = 1u << 1,  // maxOrderQty + maxOrderNotional
+  RiskMaxOpenOrders = 1u << 2,
+  RiskMaxPosition = 1u << 3,
+  RiskMargin = 1u << 4,  // initialMarginBps + maintenanceMarginBps
+};
+
+// Live risk limits.
+//
+// These used to be reachable only through direct setters on the engine, which
+// applied immediately and rode nothing: a restart reverted them and a replica
+// replaying the journal never saw the change. As a sequenced command they
+// behave like the rest of engine state -- journaled, re-emitted by a
+// checkpoint, replayed.
+struct SetRiskLimits
+{
+  SymbolId symbol{};
+  uint16_t fields{};  // bitmask of RiskLimitField; 0 = no-op
+  int32_t luldBps{};
+  int64_t luldHaltNs{};
+  Quantity maxOrderQty{};
+  Volume maxOrderNotional{};
+  uint32_t maxOpenOrders{};
+  Quantity maxPositionQty{};
+  int32_t initialMarginBps{};
+  int32_t maintenanceMarginBps{};
+};
+
 struct SetStpGroup
 {
   SymbolId symbol{};  // routing key
@@ -313,6 +393,19 @@ struct RestorePeg  // peg spec of a resting order (pegged_ entry)
   Side side{};
   PegRef ref{PegRef::None};
   int64_t offsetRaw{0};
+};
+
+// Self-trade-prevention mode of one resting order.
+//
+// In continuous trading only the aggressor's mode counts, so the book never
+// needed to carry it. An auction has no aggressor: both legs of an uncross
+// print are resting, and the mode each of them asked for is the only thing
+// that says whether they may trade with each other. Kept sparse -- orders
+// with STPMode::None have no entry.
+struct RestoreOrderStp
+{
+  OrderId id{};
+  uint8_t mode{};  // STPMode
 };
 
 struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
@@ -452,12 +545,26 @@ struct SnapshotEnd
 // and the live SetStpGroup command postdate the original snapshot block, so
 // live and snapshot-only tags interleave past tag 24. SetFundingSchedule (live)
 // and RestoreFunding (snapshot-only) are the newest pair, tags 28 and 29.)
+// Force-close a perp position from OUTSIDE the engine. Isolated margin lets the
+// engine decide for itself (it sees one symbol and the collateral behind it),
+// but a portfolio-margin model decides on the whole basket and lives above the
+// per-symbol engines -- it can already stop an account trading (MassCancel) and
+// until now had no way to close what it holds. Journaled like any command, so
+// replay reproduces an externally-driven liquidation exactly.
+struct ForceClosePosition
+{
+  uint64_t accountId{};
+  SymbolId symbol{};
+  int64_t qtyRaw{};  // 0 = the whole position
+};
+
 using InboundCommand =
     std::variant<NewOrder, CancelOrder, ModifyOrder, MassCancel, Quote, LastLookDecision, SetMark,
                  ApplyFunding, AdminCmd, Deposit, Withdraw, ListInstrument, SetBands, TimeTick,
                  SetTriggerRef, SnapshotBegin, RestoreOrder, RestoreStop, RestorePeg, RestoreHeld,
                  RestorePosition, RestoreMmpCfg, RestoreClOrdIds, SnapshotEnd, RestoreReservation,
-                 RestoreBalance, RestoreMmpFills, SetStpGroup, SetFundingSchedule, RestoreFunding>;
+                 RestoreBalance, RestoreMmpFills, SetStpGroup, SetFundingSchedule, RestoreFunding,
+                 ForceClosePosition, RestoreOrderStp, SetAdmissionProfile, SetRiskLimits>;
 
 inline constexpr size_t kFirstSnapshotTag = 15;
 inline constexpr size_t kLastContiguousSnapshotTag = 24;
@@ -677,6 +784,10 @@ enum class TradingStatus : uint8_t
   // schema keeps reading every field of the message and sees only an unknown
   // status code (which it must treat as "not tradeable", never as Trading).
   Closed = 5,  // session closed: new orders rejected, the book stands
+  // Appended: withdrawn from trading with no scheduled return. Ranked outside
+  // every other status -- a delisted instrument is not halted, not closed and
+  // not in an auction, and nothing underneath it can make it tradeable.
+  Delisted = 6,
 };
 
 enum class TradingStatusReason : uint8_t
@@ -726,9 +837,27 @@ struct DerivativesUpdated
 
 // Appended alternatives go at the END (wire codecs and the event hash key off
 // the alternative order).
+// A cancel or a cancel/replace that was refused.
+//
+// Distinct from OrderRejected because it answers a different request and, on
+// the wire, a different message: FIX 4.4 answers a refused 35=F/35=G with
+// OrderCancelReject (35=9), not with an execution report. Carrying which
+// request it was ON THE EVENT is what makes that encodable -- a resend
+// re-encodes from the event log long after the session forgot the context, and
+// a replayed message that changes type is a protocol violation exactly when
+// the counterparty is recovering.
+struct CancelRejected
+{
+  OrderId id{};
+  SymbolId symbol{};
+  RejectReason reason{};
+  uint64_t account{0};
+  bool wasReplace{false};  // false = cancel request, true = cancel/replace
+};
+
 using OutboundEvent =
     std::variant<OrderAccepted, OrderRejected, Trade, OrderExecuted, OrderCanceled, OrderModified,
                  OrderTriggered, FillHeld, FillRejected, MmpTriggered, FeeCharged, Liquidation,
-                 BalanceUpdate, TradingStatusChanged, DerivativesUpdated>;
+                 BalanceUpdate, TradingStatusChanged, DerivativesUpdated, CancelRejected>;
 
 }  // namespace flox::venue

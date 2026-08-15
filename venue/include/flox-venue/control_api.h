@@ -139,6 +139,106 @@ class ControlApi
       forward(InboundCommand{SetStpGroup{sym, u64Of(f, "account"), u64Of(f, "group")}});
       return ok();
     }
+    if (method == "setRiskLimits")
+    {
+      // Only the limits named in the request are touched. Replace-all
+      // semantics would let an operator raising a position cap silently zero
+      // the fat-finger cap by not mentioning it.
+      const SymbolId sym = symOf(f, "symbol");
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      SetRiskLimits r;
+      r.symbol = sym;
+      if (f.count("luldBps") != 0 || f.count("luldHaltNs") != 0)
+      {
+        r.fields |= RiskLimitField::RiskLuld;
+        r.luldBps = static_cast<int32_t>(i64Of(f, "luldBps"));
+        r.luldHaltNs = i64Of(f, "luldHaltNs");
+      }
+      if (f.count("maxOrderQty") != 0 || f.count("maxOrderNotional") != 0)
+      {
+        r.fields |= RiskLimitField::RiskFatFinger;
+        r.maxOrderQty = qtyOf(f, "maxOrderQty");
+        r.maxOrderNotional = volOf(f, "maxOrderNotional");
+      }
+      if (f.count("maxOpenOrders") != 0)
+      {
+        r.fields |= RiskLimitField::RiskMaxOpenOrders;
+        r.maxOpenOrders = static_cast<uint32_t>(u64Of(f, "maxOpenOrders"));
+      }
+      if (f.count("maxPositionQty") != 0)
+      {
+        r.fields |= RiskLimitField::RiskMaxPosition;
+        r.maxPositionQty = qtyOf(f, "maxPositionQty");
+      }
+      if (f.count("initialMarginBps") != 0 || f.count("maintenanceMarginBps") != 0)
+      {
+        r.fields |= RiskLimitField::RiskMargin;
+        r.initialMarginBps = static_cast<int32_t>(u64Of(f, "initialMarginBps"));
+        r.maintenanceMarginBps = static_cast<int32_t>(u64Of(f, "maintenanceMarginBps"));
+      }
+      if (r.fields == 0)
+      {
+        return err("no_limits_named");
+      }
+      forward(InboundCommand{r});
+      return ok();
+    }
+    if (method == "delist")
+    {
+      // Withdraw from trading with no scheduled return: the resting book is
+      // pulled, unlike a halt or a session close. Reversible by delist=false.
+      const SymbolId sym = symOf(f, "symbol");
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      const bool off = get(f, "delisted") != "false";
+      forward(InboundCommand{
+          AdminCmd{sym, off ? AdminAction::Delist : AdminAction::Relist}});
+      return ok();
+    }
+    if (method == "setAdmissionProfile")
+    {
+      // What a counterparty may send. Engine state on the same footing as the
+      // STP groups above: the forwarded command is sequenced and journaled, so
+      // an entitlement survives replay and recovery rather than living only in
+      // whatever process happened to set it.
+      //
+      // Omitted type/tif lists mean "no restriction on that axis", which is
+      // how an operator narrows one dimension without having to enumerate
+      // every value of the other.
+      const SymbolId sym = symOf(f, "symbol");
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      AdmissionProfile p;
+      p.allowedTypes = static_cast<uint32_t>(u64Of(f, "allowedTypes"));
+      p.allowedTif = static_cast<uint32_t>(u64Of(f, "allowedTif"));
+      uint8_t deny = 0;
+      if (get(f, "denyResting") == "true")
+      {
+        deny |= AdmissionDeny::DenyResting;
+      }
+      if (get(f, "denyAmend") == "true")
+      {
+        deny |= AdmissionDeny::DenyAmend;
+      }
+      if (get(f, "denyCancel") == "true")
+      {
+        deny |= AdmissionDeny::DenyCancel;
+      }
+      if (get(f, "denyQuote") == "true")
+      {
+        deny |= AdmissionDeny::DenyQuote;
+      }
+      p.deny = deny;
+      forward(InboundCommand{SetAdmissionProfile{sym, u64Of(f, "account"), p}});
+      return ok();
+    }
     if (method == "snapshotNow")
     {
       const SymbolId sym = symOf(f, "symbol");
@@ -218,6 +318,14 @@ class ControlApi
   static Price priceOf(const std::unordered_map<std::string, std::string>& f, const char* k)
   {
     return Price::fromDouble(std::strtod(get(f, k).c_str(), nullptr));
+  }
+  static Quantity qtyOf(const std::unordered_map<std::string, std::string>& f, const char* k)
+  {
+    return Quantity::fromDouble(std::strtod(get(f, k).c_str(), nullptr));
+  }
+  static Volume volOf(const std::unordered_map<std::string, std::string>& f, const char* k)
+  {
+    return Volume::fromDouble(std::strtod(get(f, k).c_str(), nullptr));
   }
 
   static std::string parseString(const std::string& s, size_t& i)

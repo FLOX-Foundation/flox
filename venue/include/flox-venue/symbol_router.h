@@ -91,6 +91,10 @@ inline SymbolId symbolOf(const InboundCommand& c) noexcept
   {
     return fs->symbol;
   }
+  if (const auto* fc = std::get_if<ForceClosePosition>(&c))
+  {
+    return fc->symbol;
+  }
   return 0;  // snapshot-only records never route by symbol (recovery-path only)
 }
 

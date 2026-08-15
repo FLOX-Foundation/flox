@@ -54,6 +54,8 @@ const char* toString(RejectReason r) noexcept
       return "DuplicateClientOrderId";
     case RejectReason::LastLookUnsupported:
       return "LastLookUnsupported";
+    case RejectReason::NoLedgerBound:
+      return "NoLedgerBound";
     case RejectReason::RateLimited:
       return "RateLimited";
     case RejectReason::MalformedMessage:
@@ -64,6 +66,20 @@ const char* toString(RejectReason r) noexcept
       return "SessionSeqGap";
     case RejectReason::MarketClosed:
       return "MarketClosed";
+    case RejectReason::OrderTypeNotPermitted:
+      return "OrderTypeNotPermitted";
+    case RejectReason::TimeInForceNotPermitted:
+      return "TimeInForceNotPermitted";
+    case RejectReason::RestingNotPermitted:
+      return "RestingNotPermitted";
+    case RejectReason::AmendNotPermitted:
+      return "AmendNotPermitted";
+    case RejectReason::CancelNotPermitted:
+      return "CancelNotPermitted";
+    case RejectReason::QuoteNotPermitted:
+      return "QuoteNotPermitted";
+    case RejectReason::InstrumentDelisted:
+      return "InstrumentDelisted";
   }
   return "?";
 }
@@ -90,6 +106,10 @@ const char* toString(CancelReason r) noexcept
       return "Liquidation";
     case CancelReason::FillOrKillResidual:
       return "FillOrKillResidual";
+    case CancelReason::ReduceOnlyNotReducing:
+      return "ReduceOnlyNotReducing";
+    case CancelReason::PositionLimitExceeded:
+      return "PositionLimitExceeded";
   }
   return "?";
 }

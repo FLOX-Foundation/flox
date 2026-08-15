@@ -55,7 +55,11 @@ behaviour emerge from the interaction.
 - **`LiquidationEngine` (backtest).** Positions and equity in `double`, driven
   by a mark tape. Built for simulation: fast, tolerant, models cascades,
   slippage, ADL ranking, and mark impact.
-- **`CrossMarginManager` (venue).** Portfolio margin backed by the `Ledger`
+- **`CrossMarginManager` (venue).** Portfolio margin over a `Ledger`, used
+  standalone -- the matching engine does not instantiate it, and it posts no
+  reservations of its own, so one account must be owned by one margin model:
+  isolated margin in the engine or portfolio margin here, not both on one
+  ledger. Backed by the `Ledger`
   (`__int128`), conservation-exact per asset, with multi-asset collateral
   haircuts and segregation. Built for a venue moving real balances, where a
   rounding drift is a money bug.

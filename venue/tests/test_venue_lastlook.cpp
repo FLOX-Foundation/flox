@@ -489,6 +489,86 @@ void test_cancel_while_held_conservation()
   CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);
 }
 
+// ---- T028: STP-cancel of a held maker ---------------------------------------
+
+// Self-trade prevention removes a resting maker from INSIDE the matcher, which
+// is the one cancel path that never went through the engine's hold discipline.
+// A last-look maker with displayed size reaches that path: STP cancels it, the
+// cancel frees the collateral that its OPEN hold still needs, and the later
+// accept settles with no reservation behind it -- the branch where the debit's
+// result was discarded and the counterparty credited anyway (value minted).
+// The STP path must resolve the maker's holds FIRST, exactly like every other
+// removal.
+void test_stp_cancel_while_held_conservation()
+{
+  std::printf("test_stp_cancel_while_held_conservation\n");
+  constexpr AssetId BASE = 0, QUOTE = 1;
+  constexpr uint64_t VENUE = 999;
+  const Amount base5 = amountOf(qty(5));
+  const Amount usd300 = amountOf(Volume::fromDouble(300));
+  Ledger led;
+  led.deposit(1, BASE, base5);    // maker: exactly the 5 base it quotes
+  led.deposit(2, QUOTE, usd300);  // taker
+  led.deposit(1, QUOTE, usd300);  // maker's STP order needs quote to reserve
+  auto c = cfg();
+  c.baseAsset = BASE;
+  c.quoteAsset = QUOTE;
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(c, cap.sink());
+  eng.setLedger(&led, VENUE);
+  const Amount initBase = led.total(1, BASE) + led.total(2, BASE) + led.total(VENUE, BASE);
+  const Amount initQuote = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(VENUE, QUOTE);
+
+  NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 0);
+  CHECK(led.reserved(1, BASE) == base5);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);  // holds 3 of the 5
+  const auto* h = cap.lastHeld();
+  CHECK(h != nullptr);
+  const uint64_t heldId = h != nullptr ? h->heldId : 0;
+  CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(2));  // 3 held out of the book
+
+  // The maker's OWN account crosses its own quote with self-trade prevention:
+  // the resting (held) maker is pulled from inside the matcher.
+  NewOrder stp = limit(3, Side::BUY, 100, 2, 1);
+  stp.stp = STPMode::CancelOldest;
+  eng.submit(InboundCommand{stp}, 2);
+  CHECK(cap.sawCancel(CancelReason::SelfTradePrevention));
+  CHECK(cap.count<FillRejected>() == 1);  // the hold was resolved before the cancel
+  CHECK(bookAt(eng.book(), Side::SELL, 100).isZero());
+  // Maker made whole: the full 5 base is back in `available`, nothing stranded.
+  CHECK(led.available(1, BASE) == base5 && led.reserved(1, BASE) == 0);
+
+  // The maker now spends the freed collateral elsewhere. If the STP cancel had
+  // stripped a live hold's backing, the accept below would settle from an empty
+  // account and print base that does not exist.
+  eng.submit(InboundCommand{Withdraw{1, BASE, static_cast<int64_t>(base5), SYM}}, 3);
+  CHECK(led.available(1, BASE) == 0);
+
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 4);
+  CHECK(cap.trades() == 0);                          // no fill can settle from a resolved hold
+  CHECK(cap.sawReject(RejectReason::UnknownOrder));  // the heldId is gone for good
+  CHECK(eng.unsettledTrades() == 0);                 // and nothing reached the no-reservation path
+
+  // Conservation: base only left through the withdrawal, quote never moved.
+  const Amount endBase = led.total(1, BASE) + led.total(2, BASE) + led.total(VENUE, BASE);
+  const Amount endQuote = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(VENUE, QUOTE);
+  CHECK(endBase == initBase - base5);
+  CHECK(endQuote == initQuote);
+
+  // Book and tracking agree: the STP-canceled maker is gone from both, and the
+  // live orders are exactly the taker's restored residual plus the STP
+  // aggressor's own (uncrossed) remainder.
+  CHECK(!eng.book().contains(1));
+  CHECK(eng.restingOrderCount() == 2);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 5);
+  eng.submit(InboundCommand{CancelOrder{3, SYM, 1}}, 6);
+  CHECK(eng.restingOrderCount() == 0);
+  CHECK(led.reserved(2, QUOTE) == 0 && led.available(2, QUOTE) == usd300);
+  CHECK(led.reserved(1, QUOTE) == 0 && led.available(1, QUOTE) == usd300);
+}
+
 // ---- T016: FOK vs last-look -------------------------------------------------
 
 void test_fok_vs_lastlook()
@@ -757,6 +837,7 @@ TEST(VenueLastLook, LifecycleSuite)
   test_idle_expiry_via_tick();
   test_window_zero_disables();
   test_cancel_while_held_conservation();
+  test_stp_cancel_while_held_conservation();
   test_fok_vs_lastlook();
   test_shard_idle_sweeper();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);

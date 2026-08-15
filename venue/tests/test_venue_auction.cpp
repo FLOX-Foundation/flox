@@ -135,6 +135,95 @@ void run(const std::function<Book()>& mk, const char* label)
   CHECK(eng.book().bestBid() == px(100));
   eng.submit(InboundCommand{limit(5, Side::SELL, 100, 1)}, 4);
   CHECK(cap.tradedQty() == qty(8));  // +1
+
+  {  // An uncross must not print an account against itself. There is no
+     // aggressor in an auction, so the mode is read off each resting order and
+     // applied from its owner's point of view: the counterparty is the
+     // "oldest" leg, the requester's own order is the "newest".
+    Cap c2;
+    MatchingEngine<Book> e2(cfg(), c2.sink(), mk());
+    e2.beginPreOpen();
+    NewOrder b = limit(11, Side::BUY, 100, 5);
+    b.accountId = 42;
+    b.stp = STPMode::CancelOldest;  // kill the counterparty, keep mine
+    NewOrder a = limit(12, Side::SELL, 100, 5);
+    a.accountId = 42;
+    e2.submit(InboundCommand{b}, 0);
+    e2.submit(InboundCommand{a}, 1);
+    e2.openContinuous();
+    CHECK(c2.trades() == 0);               // no wash print
+    CHECK(e2.book().find(12) == nullptr);  // counterparty pulled
+    CHECK(e2.book().find(11) != nullptr);  // requester survives
+  }
+  {  // CancelNewest from the requester pulls its own order and leaves the
+     // counterparty resting.
+    Cap c2;
+    MatchingEngine<Book> e2(cfg(), c2.sink(), mk());
+    e2.beginPreOpen();
+    NewOrder b = limit(11, Side::BUY, 100, 5);
+    b.accountId = 42;
+    b.stp = STPMode::CancelNewest;
+    NewOrder a = limit(12, Side::SELL, 100, 5);
+    a.accountId = 42;
+    e2.submit(InboundCommand{b}, 0);
+    e2.submit(InboundCommand{a}, 1);
+    e2.openContinuous();
+    CHECK(c2.trades() == 0);
+    CHECK(e2.book().find(11) == nullptr);
+    CHECK(e2.book().find(12) != nullptr);
+  }
+  {  // Decrement trims both legs by the overlap; the larger leg keeps its
+     // remainder and a stranger can still trade with it.
+    Cap c2;
+    MatchingEngine<Book> e2(cfg(), c2.sink(), mk());
+    e2.beginPreOpen();
+    NewOrder b = limit(11, Side::BUY, 100, 5);
+    b.accountId = 42;
+    b.stp = STPMode::Decrement;
+    NewOrder a = limit(12, Side::SELL, 100, 2);
+    a.accountId = 42;
+    e2.submit(InboundCommand{b}, 0);
+    e2.submit(InboundCommand{a}, 1);
+    e2.openContinuous();
+    CHECK(c2.trades() == 0);
+    CHECK(e2.book().find(12) == nullptr);         // smaller leg gone
+    CHECK(e2.book().find(11)->leaves == qty(3));  // 5 - 2 left resting
+  }
+  {  // Two different accounts of one firm are the same trader for this
+     // purpose, and an order with no mode still prints normally.
+    Cap c2;
+    MatchingEngine<Book> e2(cfg(), c2.sink(), mk());
+    e2.setStpGroup(42, 900);
+    e2.setStpGroup(43, 900);
+    e2.beginPreOpen();
+    NewOrder b = limit(11, Side::BUY, 100, 5);
+    b.accountId = 42;
+    b.stp = STPMode::CancelOldest;
+    NewOrder a = limit(12, Side::SELL, 100, 5);
+    a.accountId = 43;  // same firm
+    NewOrder a2 = limit(13, Side::SELL, 100, 5);
+    a2.accountId = 77;  // a stranger
+    e2.submit(InboundCommand{b}, 0);
+    e2.submit(InboundCommand{a}, 1);
+    e2.submit(InboundCommand{a2}, 2);
+    e2.openContinuous();
+    CHECK(e2.book().find(12) == nullptr);  // same-firm leg pulled
+    CHECK(c2.tradedQty() == qty(5));       // the stranger fills instead
+  }
+  {  // Without a mode nothing changes: an account that never asked for
+     // prevention still crosses itself, exactly as continuous trading does.
+    Cap c2;
+    MatchingEngine<Book> e2(cfg(), c2.sink(), mk());
+    e2.beginPreOpen();
+    NewOrder b = limit(11, Side::BUY, 100, 5);
+    b.accountId = 42;
+    NewOrder a = limit(12, Side::SELL, 100, 5);
+    a.accountId = 42;
+    e2.submit(InboundCommand{b}, 0);
+    e2.submit(InboundCommand{a}, 1);
+    e2.openContinuous();
+    CHECK(c2.tradedQty() == qty(5));
+  }
 }
 
 }  // namespace

@@ -1606,3 +1606,61 @@ TEST(VenueCheckpoint, CrashBeforeSnapshotPublishRecoversViaPreviousGeneration)
   std::error_code ec;
   fs::remove(snapB + ".tmp", ec);
 }
+
+// Falling back a generation is unbounded; what pruning keeps is not. Two
+// checkpoints delete the pre-checkpoint journal, so once neither retained
+// snapshot validates there is nothing left covering history before the first
+// checkpoint. Replaying only the surviving segments would rebuild a state that
+// looks fine and is missing its opening balance, so recovery must refuse.
+//
+// This is the state the recovery model in scripts/check_recovery_model.py
+// reaches in four steps; the guard is what makes that state unreachable at
+// runtime rather than merely unlikely.
+TEST(VenueCheckpoint, RefusesToStartWhenNoGenerationCanCoverHistory)
+{
+  const std::string base = "/tmp/flox_test_venue_checkpoint_exhausted.bin";
+  cleanFiles(base);
+
+  venue::SymbolConfig c = cfg();
+  Ledger led1;
+  auto t1 = clockState(1'000'000);
+  {
+    // The shard carries its ingress/outbound rings inline; it lives on the
+    // heap here for the same reason every other shard in this file does.
+    auto s1 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
+                                                 clockOf(t1));
+    s1->engine().setLedger(&led1, VENUE_ACCT);
+    s1->start();
+    s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
+    s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+    s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
+    ASSERT_TRUE(s1->checkpointNow());  // generation A
+    s1->submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)});
+    ASSERT_TRUE(s1->checkpointNow());  // generation B -- prune drops the legacy file
+    s1->flush();
+    s1->stop();
+  }
+
+  const auto gens = SequencedShard<>::scanGenerations(base);
+  ASSERT_EQ(gens.snapshots.size(), 2u);
+  // The default retention deletes the pre-checkpoint journal at the second
+  // generation. That is the file the no-valid-snapshot path replays.
+  ASSERT_FALSE(std::filesystem::exists(base));
+
+  // Both retained snapshots stop validating -- what a state-hash or format
+  // change does to every generation at once, not a one-off torn write.
+  for (int64_t ts : gens.snapshots)
+  {
+    std::ofstream out(SequencedShard<>::snapshotPath(base, ts),
+                      std::ios::binary | std::ios::trunc);
+    out << "not a snapshot";
+  }
+
+  Ledger led2;
+  auto t2 = clockState(9'000'000);
+  auto s2 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
+                                               clockOf(t2));
+  s2->engine().setLedger(&led2, VENUE_ACCT);
+  EXPECT_THROW(s2->start(), std::runtime_error);
+  EXPECT_FALSE(s2->ready());
+}

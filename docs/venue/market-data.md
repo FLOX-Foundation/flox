@@ -167,10 +167,10 @@ number consumers read at mark cadence.
 
 ### The funding calendar is state, not a formula
 
-`nextFundingNs` used to be derived from `(now, SymbolConfig::fundingIntervalNs)`
-— a computation over startup config rather than a fact, which drifts from
-reality the moment an operator changes the interval or shifts a settlement. It
-is now engine state:
+`nextFundingNs` is engine state, not a computation over
+`(now, SymbolConfig::fundingIntervalNs)`. Deriving it from startup config would
+drift from reality the moment an operator changes the interval or shifts a
+settlement:
 
 - **`SetFundingSchedule{symbol, intervalNs, nextFundingNs}`** — a sequenced,
   journaled command (control-plane verb of the same name). The operator owns the

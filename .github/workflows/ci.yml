@@ -809,6 +809,42 @@ jobs:
   # The venue module must stay genuinely optional: a build with it OFF has to
   # configure, compile and pass its suite with no venue code involved. Cheap
   # job, but it is the only thing that stops the OFF path from rotting.
+  # Static proof that every handler reaching the matcher applies its pre-trade
+  # gates first. Property tests can only assert this for the paths someone
+  # enumerated; this asserts it over the code, so a new path cannot skip a
+  # check silently. Configure only -- the check reads compile_commands.json and
+  # never needs a compiled object.
+  venue-gate-reachability:
+    needs: [format-check, verify-docs-current]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-18 libgtest-dev libgmock-dev
+        pip install libclang
+
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=clang++-18 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_BUILD_VENUE=ON \
+              -DFLOX_BUILD_TESTS=ON
+
+    - name: Prove every path into matching applies its gates
+      run: python3 scripts/check_gate_reachability.py
+
+    - name: Exhaustively check the checkpoint/recovery protocol
+      run: python3 scripts/check_recovery_model.py
+
   venue-optional:
     needs: [format-check, verify-docs-current]
     runs-on: ubuntu-24.04

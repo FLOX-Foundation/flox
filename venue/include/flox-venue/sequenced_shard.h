@@ -24,6 +24,7 @@
 #include <functional>
 #include <future>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -489,6 +490,22 @@ class SequencedShard
     }
     else
     {
+      // Falling back a generation is unbounded, but what pruning keeps is not.
+      // Once no snapshot validates, the only thing covering history before the
+      // first checkpoint is the pre-checkpoint journal -- and pruning deletes
+      // it as soon as `retainGenerations` snapshots exist. Replaying what is
+      // left would rebuild a state that looks plausible, is missing everything
+      // before the oldest surviving segment, and would then be served. Refuse
+      // instead: a venue that will not start is an incident, a venue that
+      // starts on a truncated ledger is a disaster.
+      const bool haveLegacy = std::filesystem::exists(journalPath_);
+      if (!haveLegacy && (!g.snapshots.empty() || !g.segments.empty()))
+      {
+        throw std::runtime_error(
+            "flox-venue: no snapshot validates and the pre-checkpoint journal " + journalPath_ +
+            " is gone, so history cannot be replayed in full. Refusing to start on a "
+            "truncated state -- restore a good snapshot generation from backup.");
+      }
       if (!g.snapshots.empty())
       {
         std::fprintf(stderr, "flox-venue: WARN no valid snapshot for %s, full-history replay\n",

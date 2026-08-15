@@ -94,6 +94,9 @@ class DisconnectCanceller
     {
       untrack(r->id);
     }
+    // CancelRejected is deliberately NOT untracked: a refused cancel leaves the
+    // order resting, and forgetting it here would leave an order this is
+    // supposed to pull on disconnect.
   }
 
   // On disconnect, cancel everything this session still has live.

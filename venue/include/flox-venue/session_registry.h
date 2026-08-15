@@ -645,6 +645,10 @@ class SessionRegistry
     {
       out[n++] = r->account;
     }
+    else if (const auto* r = std::get_if<CancelRejected>(&e))
+    {
+      out[n++] = r->account;
+    }
     else if (const auto* t = std::get_if<Trade>(&e))
     {
       out[n++] = t->makerAccount;

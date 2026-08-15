@@ -205,6 +205,61 @@ void run(const std::function<Book()>& mk, const char* label)
     CHECK(m.skippedLastLookProRata() >= 1);
     CHECK(book.find(1)->leaves == qty(5));
   }
+  {  // Self-trade prevention binds under pro-rata exactly as it does under
+     // price-time. The allocation is a different way of choosing who fills,
+     // not a different set of participants: an account must never be on both
+     // sides of the same print whatever the policy is.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk(), MatchPolicy::ProRata);
+    eng.submit(limit(1, Side::SELL, 100, 4, 7));  // same account as the taker
+    eng.submit(limit(2, Side::SELL, 100, 6, 8));  // a stranger at the same level
+    NewOrder agg = limit(9, Side::BUY, 100, 10, 7);
+    agg.stp = STPMode::CancelOldest;
+    eng.submit(agg);
+    CHECK(cap.forMaker(1).isZero());  // never trades with itself
+    CHECK(cap.forMaker(2) == qty(6));
+    CHECK(eng.book().find(1) == nullptr);  // CancelOldest pulled the resting leg
+  }
+  {  // CancelNewest under pro-rata cancels the aggressor and prints nothing,
+     // even though strangers at the level would otherwise have filled.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk(), MatchPolicy::ProRata);
+    eng.submit(limit(1, Side::SELL, 100, 4, 7));
+    eng.submit(limit(2, Side::SELL, 100, 6, 8));
+    NewOrder agg = limit(9, Side::BUY, 100, 10, 7);
+    agg.stp = STPMode::CancelNewest;
+    eng.submit(agg);
+    CHECK(cap.trades() == 0);
+    CHECK(eng.book().find(1) != nullptr);  // the resting leg survives
+    CHECK(eng.book().find(9) == nullptr);  // the aggressor does not rest
+  }
+  {  // Decrement trims both legs by the overlap without printing, and the
+     // aggressor's remainder still fills against the stranger.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk(), MatchPolicy::ProRata);
+    eng.submit(limit(1, Side::SELL, 100, 4, 7));
+    eng.submit(limit(2, Side::SELL, 100, 6, 8));
+    NewOrder agg = limit(9, Side::BUY, 100, 10, 7);
+    agg.stp = STPMode::Decrement;
+    eng.submit(agg);
+    CHECK(cap.forMaker(1).isZero());
+    CHECK(cap.forMaker(2) == qty(6));  // 10 - 4 decremented = 6 left to trade
+    CHECK(eng.book().find(1) == nullptr);
+  }
+  {  // The firm group is the STP scope under pro-rata too: two different
+     // accounts in one group must not trade with each other.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk(), MatchPolicy::ProRata);
+    eng.setStpGroup(7, 99);
+    eng.setStpGroup(11, 99);
+    eng.submit(limit(1, Side::SELL, 100, 4, 11));  // same firm, different account
+    eng.submit(limit(2, Side::SELL, 100, 6, 8));
+    NewOrder agg = limit(9, Side::BUY, 100, 10, 7);
+    agg.stp = STPMode::CancelOldest;
+    eng.submit(agg);
+    CHECK(cap.forMaker(1).isZero());
+    CHECK(cap.forMaker(2) == qty(6));
+  }
 }
 
 }  // namespace

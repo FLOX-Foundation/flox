@@ -20,6 +20,7 @@
 
 #include "flox/common.h"
 
+#include <cassert>
 #include <cstdint>
 #include <unordered_map>
 
@@ -176,9 +177,16 @@ class Ledger
     Amount avail{0};
     Amount rsvd{0};
   };
+  // Account ids are packed into the top 48 bits. An id that does not fit would
+  // wrap and silently share a balance row with another account -- two customers
+  // spending one balance -- so it is a programming error, not a runtime case to
+  // recover from.
+  static constexpr uint64_t kMaxAccountId = (1ULL << 48) - 1;
+
   static uint64_t key(uint64_t account, AssetId asset)
   {
-    return (account << 16) | asset;  // account uses low 48 bits in practice
+    assert(account <= kMaxAccountId && "account id must fit 48 bits (ledger key packing)");
+    return (account << 16) | asset;
   }
   Bal& bal(uint64_t account, AssetId asset) { return bal_[key(account, asset)]; }
   const Bal* find(uint64_t account, AssetId asset) const

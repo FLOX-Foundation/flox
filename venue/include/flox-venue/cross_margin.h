@@ -134,8 +134,12 @@ class CrossMarginManager
   // otherwise it is the single quote balance.
   Amount equity(uint64_t acct) const
   {
+    // Both branches mean the same thing: collateral this account can still
+    // commit. portfolioValue (which counts reserved balance) would have made
+    // attaching a schedule silently treat margin posted elsewhere -- isolated
+    // IM locked by a matching engine on the same ledger -- as free equity.
     const Amount wallet =
-        collat_ ? collat_->portfolioValue(led_, acct) : led_.available(acct, collateral_);
+        collat_ ? collat_->freeValue(led_, acct) : led_.available(acct, collateral_);
     return wallet + unrealizedPnl(acct);
   }
 

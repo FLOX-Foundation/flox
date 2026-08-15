@@ -169,6 +169,15 @@ inline void Metrics::observe(const OutboundEvent& e) noexcept
       ++rejectsByReason[idx];
     }
   }
+  else if (const auto* r = std::get_if<CancelRejected>(&e))
+  {
+    ++rejects;
+    const size_t idx = static_cast<size_t>(r->reason);
+    if (idx < kReasons)
+    {
+      ++rejectsByReason[idx];
+    }
+  }
   else if (std::get_if<OrderModified>(&e))
   {
     ++modifies;

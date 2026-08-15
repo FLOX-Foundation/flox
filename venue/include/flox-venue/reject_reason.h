@@ -34,6 +34,7 @@ enum class RejectReason : uint8_t
   NotOrderOwner,           // last-look decision from an account that does not own the held maker order
   DuplicateClientOrderId,  // clientOrderId already used by this account this session (resend dedup)
   LastLookUnsupported,     // lastLook order on a pro-rata instrument (allocation would not honour the hold)
+  NoLedgerBound,           // a money command reached an engine that holds no ledger (funds live elsewhere)
   // Session-level admission rejects, surfaced to the client as an exec-report
   // reject instead of silence (appended values -- wire enum is append-only).
   RateLimited,       // per-session rate limit tripped; the command was not admitted
@@ -44,6 +45,20 @@ enum class RejectReason : uint8_t
   // operator exception. A client retries after the next session opens; a halt
   // has no such promise. Appended value (the wire enum is append-only).
   MarketClosed,
+  // Admission profile: what a counterparty is entitled to send. A broker
+  // routing flow it manages itself must not be able to leave an order resting
+  // in a book it does not know it owns, so the entitlement is refused on
+  // admission rather than assumed by agreement (appended -- wire enum is
+  // append-only).
+  OrderTypeNotPermitted,    // the profile does not allow this order type
+  TimeInForceNotPermitted,  // the profile does not allow this time in force
+  RestingNotPermitted,      // the profile forbids leaving a residual on the book
+  AmendNotPermitted,        // the profile forbids modify
+  CancelNotPermitted,       // the profile forbids cancel
+  QuoteNotPermitted,        // the profile forbids mass quoting
+  // Withdrawn from trading with no scheduled return, unlike Halted (comes back)
+  // or MarketClosed (next session). Appended -- wire enum is append-only.
+  InstrumentDelisted,
 };
 
 enum class CancelReason : uint8_t
@@ -57,6 +72,10 @@ enum class CancelReason : uint8_t
   VenueHalt,           // canceled by an operator emergency halt-and-cancel
   Liquidation,         // canceled because the account was liquidated (free its collateral)
   FillOrKillResidual,  // a FOK that did not fully fill -- killed, never rests
+  // Fill-time perp risk re-check (the position an order was sized against can
+  // move while it rests). Appended values -- the wire enum is append-only.
+  ReduceOnlyNotReducing,  // the order would no longer reduce: it would open or flip the position
+  PositionLimitExceeded,  // the fill would carry the account past maxPositionQty
 };
 
 const char* toString(RejectReason r) noexcept;
