@@ -102,6 +102,11 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   // most needs the control -- a maker quoting both sides continuously -- was
   // the only one unable to ask for it.
   STPMode stp{STPMode::None};
+  // Same reasoning for last look. A maker holds fills to protect a tight quote,
+  // and quoting continuously is exactly when a quote is tight; a mass quote
+  // that could not be marked non-firm left that maker choosing between the
+  // primitive built for it and the control it needs.
+  bool lastLook{false};
 };
 
 struct LastLookDecision  // maker accepts or rejects a held last-look fill

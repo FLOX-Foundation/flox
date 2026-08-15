@@ -226,6 +226,54 @@ void test_reject_restores_book()
   CHECK(cap.sawReject(RejectReason::DuplicateOrderId));
 }
 
+// A mass quote can be marked non-firm, and both of its legs are.
+//
+// Holding a fill is how a maker protects a tight quote, and quoting
+// continuously is exactly when a quote is tight. Before the flag reached the
+// legs a maker had to choose between the primitive built for two-sided quoting
+// and the control that makes two-sided quoting safe.
+void test_quote_carries_lastlook()
+{
+  std::printf("test_quote_carries_lastlook\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  Quote q;
+  q.bidId = 1;
+  q.askId = 2;
+  q.symbol = SYM;
+  q.bidPrice = px(99);
+  q.bidQty = qty(5);
+  q.askPrice = px(101);
+  q.askQty = qty(5);
+  q.accountId = 1;
+  q.lastLook = true;
+  eng.submit(InboundCommand{q}, 0);
+
+  // Hitting the ask leg holds instead of printing: the leg is non-firm. IOC so
+  // the residual does not rest and get in the way of the second aggressor.
+  NewOrder t1 = limit(3, Side::BUY, 101, 2, 2);
+  t1.tif = TimeInForce::IOC;
+  eng.submit(InboundCommand{t1}, 1);
+  CHECK(cap.trades() == 0);
+  const auto* h = cap.lastHeld();
+  CHECK(h != nullptr && h->makerId == 2 && h->qty == qty(2));
+
+  // Refused: the liquidity returns to the book rather than vanishing.
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+  CHECK(cap.trades() == 0);
+  CHECK(bookAt(eng.book(), Side::SELL, 101) == qty(5));
+
+  // The bid leg is non-firm too -- both legs inherit it, not just the one the
+  // first aggressor happened to hit.
+  NewOrder t2 = limit(4, Side::SELL, 99, 2, 3);  // a different account, cleanly
+  t2.tif = TimeInForce::IOC;
+  eng.submit(InboundCommand{t2}, 3);
+  CHECK(cap.trades() == 0);
+  const auto* h2 = cap.lastHeld();
+  CHECK(h2 != nullptr && h2->makerId == 1);
+}
+
 void test_partial_hold_reject()
 {
   std::printf("test_partial_hold_reject\n");
@@ -829,6 +877,7 @@ TEST(VenueLastLook, LifecycleSuite)
 {
   test_prorata_lastlook_rejected();
   test_reject_restores_book();
+  test_quote_carries_lastlook();
   test_partial_hold_reject();
   test_taker_residual_tifs();
   test_md_equals_book();

@@ -3018,6 +3018,7 @@ class MatchingEngine
       b.quantity = q.bidQty;
       b.accountId = q.accountId;
       b.stp = q.stp;
+      b.lastLook = q.lastLook;
       onNew(b);
     }
     if (q.askQty.raw() > 0)
@@ -3031,6 +3032,7 @@ class MatchingEngine
       a.quantity = q.askQty;
       a.accountId = q.accountId;
       a.stp = q.stp;
+      a.lastLook = q.lastLook;
       onNew(a);
     }
   }

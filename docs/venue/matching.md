@@ -213,9 +213,11 @@ Before the first trade there is no reference price, so no band exists yet.
 - **Mass quote.** `Quote` replaces both sides of a two-sided quote atomically,
   by id: the engine cancels `bidId` and `askId` and re-posts them at the new
   prices, so a maker keeps one pair of ids and reuses it. The quote carries its
-  own `stp`, which both legs inherit -- a maker quoting continuously is the
-  participant that most needs self-trade prevention, and the mode has to reach
-  the orders it creates.
+  own `stp` and `lastLook`, which both legs inherit. A maker quoting
+  continuously is the participant that most needs self-trade prevention, and
+  the one whose quotes are tight enough to want holding -- without those two
+  fields it had to choose between the primitive built for two-sided quoting and
+  the controls that make two-sided quoting safe.
 
 ### Last-look lifecycle
 
