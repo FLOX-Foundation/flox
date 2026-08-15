@@ -881,6 +881,19 @@ class EventBus : public ISubsystem
         ++run;
       }
 
+      // End of everything that was available: the consumer has drained the
+      // ring for now. A listener that batches work -- amortising an fsync, a
+      // syscall, a flush -- needs exactly this edge, because it is the moment
+      // where waiting longer buys nothing. Opt-in: a dispatcher without the
+      // hook compiles to nothing.
+      if (delivered != 0)
+      {
+        if constexpr (requires { EventDispatcher<Event>::endOfBatch(*l); })
+        {
+          EventDispatcher<Event>::endOfBatch(*l);
+        }
+      }
+
       _consumers[i].seq.store(last, std::memory_order_release);
       if (required)
       {

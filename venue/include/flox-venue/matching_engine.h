@@ -2009,8 +2009,16 @@ class MatchingEngine
     // must never be accepted from a counterparty that does not track resting
     // orders. POST_ONLY exists only to rest; GTC and GTD outlive the message
     // that carried them.
+    //
+    // A call auction rests EVERYTHING it admits -- there is no matching to be
+    // immediate about, so an IOC accumulates like any other order and sits in
+    // the book until the uncross. A counterparty that does not track resting
+    // orders therefore cannot participate in one at all: its order would sit
+    // there for the length of the auction while it believes the order either
+    // filled or died on arrival, and at the uncross it can trade against that
+    // counterparty's own other side.
     if ((p.deny & AdmissionDeny::DenyResting) != 0 &&
-        (o.tif == TimeInForce::GTC || o.tif == TimeInForce::GTD ||
+        (auctionMode_ || o.tif == TimeInForce::GTC || o.tif == TimeInForce::GTD ||
          o.tif == TimeInForce::POST_ONLY || o.postOnly))
     {
       return RejectReason::RestingNotPermitted;
@@ -3009,6 +3017,8 @@ class MatchingEngine
       b.price = q.bidPrice;
       b.quantity = q.bidQty;
       b.accountId = q.accountId;
+      b.stp = q.stp;
+      b.lastLook = q.lastLook;
       onNew(b);
     }
     if (q.askQty.raw() > 0)
@@ -3021,6 +3031,8 @@ class MatchingEngine
       a.price = q.askPrice;
       a.quantity = q.askQty;
       a.accountId = q.accountId;
+      a.stp = q.stp;
+      a.lastLook = q.lastLook;
       onNew(a);
     }
   }

@@ -40,6 +40,10 @@ struct ICommandListener
 {
   virtual ~ICommandListener() = default;
   virtual void onCommand(const InboundCommandEvent& ev) = 0;
+  // The ingress has been drained of what was available. Where a batched
+  // durability barrier belongs: waiting past this point buys no more
+  // amortisation and only adds latency.
+  virtual void onBatchEnd() {}
 };
 struct InboundCommandEvent
 {
@@ -73,6 +77,7 @@ struct EventDispatcher<flox::venue::InboundCommandEvent>
   {
     l.onCommand(ev);
   }
+  static void endOfBatch(flox::venue::ICommandListener& l) { l.onBatchEnd(); }
 };
 template <>
 struct EventDispatcher<flox::venue::EngineEventMsg>
@@ -228,6 +233,10 @@ class SequencedShard
   {
     ingress_.enableDrainOnStop();
     outbound_.enableDrainOnStop();
+    if (journalSync == Journal::Sync::Group)
+    {
+      consumer_.enableGroupCommit();
+    }
   }
 
   ~SequencedShard()
@@ -305,6 +314,10 @@ class SequencedShard
 
   uint64_t journaled() const noexcept { return journal_.count(); }
 
+  // Durability barriers taken by the journal (Sync::Group). One per drained
+  // ingress batch rather than one per command, which is the whole trade.
+  uint64_t journalSyncs() const noexcept { return journal_.syncs(); }
+
   // Checkpoint on demand (the control-plane SnapshotNow verb): requests a
   // snapshot at the next command boundary on the consumer thread -- the only
   // point of natural quiescence -- and waits for it. The TimeTick nudge
@@ -362,10 +375,20 @@ class SequencedShard
           owner_(owner),
           engine_(cfg, [this](const OutboundEvent& ev)
                   {
-                    if (!replaying_)
+                    if (replaying_)
                     {
-                      out_.publish(EngineEventMsg{ev});
-                    } }, std::move(book))
+                      return;
+                    }
+                    if (staged_ != nullptr)
+                    {
+                      // Group commit: an event is a promise, and a promise
+                      // made before the record behind it is durable is the
+                      // promise this mode exists to keep. Held until the
+                      // barrier at the end of the batch.
+                      staged_->push_back(EngineEventMsg{ev});
+                      return;
+                    }
+                    out_.publish(EngineEventMsg{ev}); }, std::move(book))
     {
     }
 
@@ -412,8 +435,41 @@ class SequencedShard
       const int64_t ts = nextTs();
       journal_.append(ev.cmd, ts);  // write-ahead, before applying
       engine_.submit(ev.cmd, ts);   // the SAME timestamp the journal holds
-      owner_->maybeCheckpoint(ts);  // command boundary: natural quiescence
+      lastBatchTs_ = ts;
+      if (staged_ == nullptr)
+      {
+        owner_->maybeCheckpoint(ts);  // command boundary: natural quiescence
+      }
     }
+
+    // The ingress is drained. Under group commit this is the durability
+    // barrier: one fsync for the whole batch, and only then are the events it
+    // produced allowed out. Under the other modes the records are already as
+    // durable as they are going to get and nothing was staged, so this costs a
+    // branch.
+    void onBatchEnd() override
+    {
+      if (staged_ == nullptr)
+      {
+        return;
+      }
+      journal_.sync();
+      for (const EngineEventMsg& m : *staged_)
+      {
+        out_.publish(m);
+      }
+      staged_->clear();
+      // Checkpointing is deferred to here for the same reason: a snapshot
+      // taken mid-batch would capture state whose journal records are not
+      // durable yet.
+      if (lastBatchTs_ != 0)
+      {
+        owner_->maybeCheckpoint(lastBatchTs_);
+      }
+    }
+
+    // Called once at construction when the journal batches its barrier.
+    void enableGroupCommit() { staged_ = &stagedStorage_; }
 
     MatchingEngine<Book>& engine() noexcept { return engine_; }
     const MatchingEngine<Book>& engine() const noexcept { return engine_; }
@@ -434,6 +490,9 @@ class SequencedShard
 
     Journal& journal_;
     OutboundBus& out_;
+    std::vector<EngineEventMsg> stagedStorage_;
+    std::vector<EngineEventMsg>* staged_{nullptr};  // non-null = group commit
+    int64_t lastBatchTs_{0};
     TimeSource clock_;
     SequencedShard* owner_;
     bool replaying_{false};

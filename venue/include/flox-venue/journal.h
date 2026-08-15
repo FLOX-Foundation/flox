@@ -95,8 +95,14 @@ class Journal
  public:
   enum class Sync
   {
-    Off,   // record is in the OS cache before append returns (survives process crash)
-    Full,  // + fsync per record (survives power loss); production WAL default
+    Off,    // record is in the OS cache before append returns (survives process crash)
+    Full,   // + fsync per record (survives power loss); production WAL default
+    Group,  // + fsync on demand, not per record: the caller decides where the
+            // barrier goes and pays for one fsync per batch instead of one per
+            // command. Only durable if the caller calls sync() BEFORE telling
+            // anyone the commands took effect -- an unsynced batch that has
+            // already been acknowledged is exactly the promise Full exists to
+            // keep, broken more cheaply.
   };
 
   // A recovering writer MUST open in Append: Truncate erases the very log the
@@ -179,9 +185,33 @@ class Journal
     {
       ::fsync(fd_);
     }
+    else if (sync_ == Sync::Group)
+    {
+      dirty_ = true;
+    }
     count_.fetch_add(1, std::memory_order_relaxed);
     bytes_.fetch_add(rec_.size(), std::memory_order_relaxed);
   }
+
+  // Make everything appended since the last call durable. A no-op unless there
+  // is something to make durable, so calling it on every quiet batch costs a
+  // branch rather than a syscall.
+  void sync()
+  {
+    if (dirty_ && fd_ >= 0)
+    {
+      ::fsync(fd_);
+      ++syncs_;
+      dirty_ = false;
+    }
+  }
+
+  // Barriers taken. Observable because the barrier's ORDER relative to
+  // publication is testable from this machine and its physics is not: a normal
+  // read sees the page cache whether or not fsync ran, so a test that reads the
+  // file back proves nothing about durability. This counter proves the code
+  // took the barrier before it spoke, which is the part a test can own.
+  uint64_t syncs() const noexcept { return syncs_; }
 
   void flush()
   {
@@ -476,6 +506,8 @@ class Journal
 
   int fd_{-1};
   Sync sync_{Sync::Off};
+  bool dirty_{false};  // Group mode: records appended since the last sync()
+  uint64_t syncs_{0};
   std::atomic<uint64_t> count_{0};
   std::atomic<uint64_t> bytes_{0};
   std::vector<uint8_t> rec_;

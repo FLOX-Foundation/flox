@@ -269,6 +269,46 @@ void run(const std::function<Book()>& mk, const char* label)
     b.submit(InboundCommand{SetAdmissionProfile{SYM, 7, takerOnly()}}, 2);
     CHECK(a.stateHash() == b.stateHash());
   }
+  {  // A call auction rests everything it admits, so a counterparty that may
+     // not rest cannot take part in one. Its IOC would accumulate in the book
+     // for the length of the auction -- while it believes the order filled or
+     // died on arrival -- and at the uncross it can trade against that same
+     // counterparty's other side.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    eng.setAdmissionProfile(7, takerOnly());
+    eng.beginPreOpen();
+
+    NewOrder ioc = limit(1, Side::BUY, 100, 5, 7);
+    ioc.tif = TimeInForce::IOC;  // permitted in continuous trading
+    eng.submit(InboundCommand{ioc});
+    NewOrder sell = limit(2, Side::SELL, 100, 5, 7);
+    sell.tif = TimeInForce::IOC;
+    eng.submit(InboundCommand{sell});
+
+    CHECK(cap.rejects(RejectReason::RestingNotPermitted) == 2);
+    CHECK(eng.book().empty());  // nothing of theirs accumulated
+
+    eng.openContinuous();
+    CHECK(cap.trades() == 0);  // and so nothing of theirs matched itself at the uncross
+
+    // The same order is fine once continuous trading resumes.
+    NewOrder after = limit(3, Side::BUY, 100, 5, 7);
+    after.tif = TimeInForce::IOC;
+    eng.submit(InboundCommand{after});
+    CHECK(cap.rejects(RejectReason::RestingNotPermitted) == 2);
+  }
+  {  // A counterparty that MAY rest takes part in the auction normally.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    AdmissionProfile mm;
+    mm.allowedTypes = typeBit(OrderType::LIMIT);
+    mm.allowedTif = tifBit(TimeInForce::GTC);
+    eng.setAdmissionProfile(8, mm);
+    eng.beginPreOpen();
+    eng.submit(InboundCommand{limit(1, Side::BUY, 100, 5, 8)});
+    CHECK(eng.book().find(1) != nullptr);
+  }
   {  // Risk limits arrive as a command, so they survive what a direct setter
      // does not: a replica that replayed the journal agrees, and a checkpoint
      // carries them. Only the named limits move.

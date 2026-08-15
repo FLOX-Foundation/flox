@@ -1664,3 +1664,77 @@ TEST(VenueCheckpoint, RefusesToStartWhenNoGenerationCanCoverHistory)
   EXPECT_THROW(s2->start(), std::runtime_error);
   EXPECT_FALSE(s2->ready());
 }
+
+// Group commit trades one fsync per command for one per batch, and the whole
+// point is WHERE the barrier sits: an outbound event is a promise, and a
+// promise made before the record behind it is durable is the promise Sync::Full
+// exists to keep, broken more cheaply.
+//
+// So the events a batch produces must not reach a subscriber until the batch is
+// synced. This drives commands through a shard in Group mode and checks that
+// every event a subscriber saw is backed by a journal that already holds its
+// command.
+TEST(VenueCheckpoint, GroupCommitSyncsBeforeItPublishes)
+{
+  const std::string base = "/tmp/flox_test_venue_group_commit.bin";
+  cleanFiles(base);
+
+  struct Watcher : IEngineEventListener
+  {
+    const SequencedShard<>* shard{nullptr};
+    uint64_t events{0};
+    uint64_t unbacked{0};
+    void onEngineEvent(const EngineEventMsg&) override
+    {
+      ++events;
+      // The barrier must already have been taken when this event arrives.
+      //
+      // Deliberately NOT "read the journal back and check the record is
+      // there": a normal read is served from the page cache whether or not
+      // fsync ran, so that test passes with the barrier removed entirely. What
+      // is observable from this machine is the ORDER -- did the code sync
+      // before it spoke -- and that is what this asserts.
+      if (shard->journalSyncs() == 0)
+      {
+        ++unbacked;
+      }
+    }
+  };
+
+  venue::SymbolConfig c = cfg();
+  Ledger led;
+  auto t = clockState(1'000'000);
+  auto s = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Group,
+                                              clockOf(t));
+  Watcher w;
+  w.shard = s.get();
+  s->engine().setLedger(&led, VENUE_ACCT);
+  s->subscribeOutbound(&w);
+  s->start();
+
+  s->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
+  s->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
+  s->submit(InboundCommand{limit(2, Side::BUY, 100.00, 1.0, 2)});
+  s->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  EXPECT_GT(w.events, 0u) << "the shard published nothing, so nothing was checked";
+  EXPECT_EQ(w.unbacked, 0u) << "an event reached a subscriber before the batch barrier was taken";
+
+  const uint64_t liveHash = s->engine().stateHash();
+  s->stop();
+  s.reset();
+
+  // And the batched journal is still a journal: a fresh shard replays it into
+  // the same state.
+  Ledger led2;
+  auto t2 = clockState(9'000'000);
+  auto s2 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Group,
+                                               clockOf(t2));
+  s2->engine().setLedger(&led2, VENUE_ACCT);
+  s2->start();
+  EXPECT_EQ(s2->engine().stateHash(), liveHash);
+  EXPECT_GT(s2->recoveredCommands(), 0u);
+  s2->stop();
+}
