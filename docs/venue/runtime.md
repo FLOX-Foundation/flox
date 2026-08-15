@@ -93,6 +93,40 @@ j.flush();
 for (const auto& [ts, cmd] : Journal::loadTimed(path)) engine.submit(cmd, ts);
 ```
 
+### Durability
+
+| `Journal::Sync` | Barrier | Survives |
+|---|---|---|
+| `Off` | none | process crash (the record is in the OS cache) |
+| `Full` | `fsync` per record | power loss |
+| `Group` | one `fsync` per drained ingress batch | power loss |
+
+`Group` exists because `Full` pays for something it does not need. The barrier
+only has to be taken before anyone is TOLD the batch took effect, and the
+ingress already arrives in batches -- so `SequencedShard` stages the outbound
+events a batch produced and releases them only after the barrier. An outbound
+event is a promise, and a promise made before the record behind it is durable
+is the promise `Full` exists to keep, broken more cheaply.
+
+The batch edge comes from the bus: a consumer that has drained what was
+available emits end-of-batch, which is the moment where waiting longer buys no
+more amortisation.
+
+Measured on one shard, an M-series laptop, saturated ingest:
+
+| | throughput | p50 | p99 | p99.9 |
+|---|---|---|---|---|
+| `Off` | 450k cmd/s | 24us | 42us | 56us |
+| `Group` | 451k cmd/s | 58us | 90us | 136us |
+| `Full` | 44k cmd/s | 124us | 335us | 563us |
+
+Durability against power loss therefore costs about 35us of median latency and
+nothing in throughput, rather than a factor of ten.
+
+One caveat worth stating: on macOS `fsync` does not flush the drive's write
+cache (`F_FULLFSYNC` does), so these figures are an upper bound for durability
+on that platform and the Linux gap may be larger.
+
 Records are `[ts:8][tag:1][struct]`; every command type is trivially copyable
 (enforced by `static_assert`), so a record is a tag plus a raw blob. The
 sequencer timestamp is stored, so `loadTimed` reproduces time-dependent
