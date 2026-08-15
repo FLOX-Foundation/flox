@@ -117,7 +117,9 @@ class InstrumentRegistry
       }
     }
     if (std::get_if<SetStpGroup>(&cmd) != nullptr ||
-        std::get_if<SetFundingSchedule>(&cmd) != nullptr)
+        std::get_if<SetFundingSchedule>(&cmd) != nullptr ||
+        std::get_if<SetAdmissionProfile>(&cmd) != nullptr ||
+        std::get_if<SetRiskLimits>(&cmd) != nullptr)
     {
       return true;  // engine-owned state: the shards consume it, no registry state
     }

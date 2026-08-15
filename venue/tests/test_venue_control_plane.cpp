@@ -170,6 +170,28 @@ TEST(ControlPlane, EngineSuite)
   CHECK(has(api2.handle(R"({"method":"setStpGroup","symbol":42,"account":11,"group":77})"),
             "unknown_symbol"));
 
+  // setAdmissionProfile: entitlements ride the same sequenced stream, so a
+  // right granted by an operator survives a restart instead of living only in
+  // the process that granted it.
+  CHECK(has(api2.handle(
+                R"({"method":"setAdmissionProfile","symbol":7,"account":11,"allowedTif":6,"denyResting":true})"),
+            "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"setAdmissionProfile","symbol":42,"account":11})"),
+            "unknown_symbol"));
+
+  // setRiskLimits: only the limits named in the request are carried, so an
+  // operator raising one cannot silently zero another by omission.
+  CHECK(has(api2.handle(R"({"method":"setRiskLimits","symbol":7,"maxOpenOrders":25})"),
+            "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"setRiskLimits","symbol":7})"), "no_limits_named"));
+  CHECK(has(api2.handle(R"({"method":"setRiskLimits","symbol":42,"maxOpenOrders":1})"),
+            "unknown_symbol"));
+
+  // delist: withdrawal from trading, forwarded as an AdminCmd like the halt
+  // and the session boundary.
+  CHECK(has(api2.handle(R"({"method":"delist","symbol":7,"delisted":true})"), "\"ok\":true"));
+  CHECK(has(api2.handle(R"({"method":"delist","symbol":42,"delisted":true})"), "unknown_symbol"));
+
   // session / setFundingSchedule: the operator's schedule surface. The engine
   // owns the state; the CALENDAR lives out here, and both transitions ride the
   // sequenced stream so they journal, snapshot and replay.
@@ -181,7 +203,7 @@ TEST(ControlPlane, EngineSuite)
   CHECK(has(api2.handle(R"({"method":"setFundingSchedule","symbol":42,"intervalNs":1,"nextFundingNs":2})"),
             "unknown_symbol"));
 
-  CHECK(forwarded.size() == 7);  // failed halt / setTriggerRef / snapshotNow forwarded nothing
+  CHECK(forwarded.size() == 10);  // failed halt / setTriggerRef / snapshotNow forwarded nothing
   CHECK(std::get_if<ListInstrument>(&forwarded[0]) != nullptr);
   CHECK(std::get_if<SetBands>(&forwarded[1]) != nullptr);
   const auto* trigCmd = std::get_if<SetTriggerRef>(&forwarded[2]);
@@ -190,10 +212,22 @@ TEST(ControlPlane, EngineSuite)
   CHECK(haltCmd != nullptr && haltCmd->action == AdminAction::Halt && haltCmd->symbol == 7);
   const auto* stpCmd = std::get_if<SetStpGroup>(&forwarded[4]);
   CHECK(stpCmd != nullptr && stpCmd->symbol == 7 && stpCmd->account == 11 && stpCmd->group == 77);
-  const auto* closeCmd = std::get_if<AdminCmd>(&forwarded[5]);
+  const auto* admCmd = std::get_if<SetAdmissionProfile>(&forwarded[5]);
+  CHECK(admCmd != nullptr && admCmd->symbol == 7 && admCmd->account == 11);
+  // allowedTif 6 = bits for IOC(1) and FOK(2); resting denied, the rest open.
+  CHECK(admCmd != nullptr && admCmd->profile.allowedTif == 6 &&
+        admCmd->profile.allowedTypes == 0 &&
+        (admCmd->profile.deny & AdmissionDeny::DenyResting) != 0 &&
+        (admCmd->profile.deny & AdmissionDeny::DenyAmend) == 0);
+  const auto* riskCmd = std::get_if<SetRiskLimits>(&forwarded[6]);
+  CHECK(riskCmd != nullptr && riskCmd->symbol == 7 && riskCmd->maxOpenOrders == 25 &&
+        riskCmd->fields == RiskLimitField::RiskMaxOpenOrders);
+  const auto* delistCmd = std::get_if<AdminCmd>(&forwarded[7]);
+  CHECK(delistCmd != nullptr && delistCmd->action == AdminAction::Delist);
+  const auto* closeCmd = std::get_if<AdminCmd>(&forwarded[8]);
   CHECK(closeCmd != nullptr && closeCmd->action == AdminAction::CloseSession &&
         closeCmd->symbol == 7);
-  const auto* fundCmd = std::get_if<SetFundingSchedule>(&forwarded[6]);
+  const auto* fundCmd = std::get_if<SetFundingSchedule>(&forwarded[9]);
   CHECK(fundCmd != nullptr && fundCmd->symbol == 7 && fundCmd->intervalNs == 28'800'000'000'000LL &&
         fundCmd->nextFundingNs == 100);
 

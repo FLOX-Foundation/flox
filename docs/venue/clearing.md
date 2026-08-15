@@ -44,11 +44,31 @@ account; it is simply frozen. The fuzz therefore asserts a second property:
 after the book is drained, every account's `reserved` is zero. See
 [Verification](verification.md).
 
+Two rules keep step 3 from turning into step 2's problem:
+
+- **A removal resolves last-look holds first.** Every path that pulls an order
+  -- including the ones the matcher owns itself, self-trade prevention and a
+  fill-time risk block -- resolves that order's open holds before releasing its
+  reservation. Releasing first would hand the collateral back while a hold that
+  still has to settle from it is open.
+- **A leg that cannot pay does not settle.** `Ledger::debit` is all-or-nothing.
+  Both unreserved legs of a fill are funded before anything is credited, and if
+  either refuses the settlement is abandoned as a unit: nothing moves, the trade
+  is counted in `unsettledTrades()`, and the venue does not invent the
+  difference. That counter must read zero.
+
 ## Conservation
 
 Assets are only ever exchanged, so each asset's total across all accounts plus
 the venue account is invariant. The conservation fuzz checks this after every
-command over a random stream of all order types.
+command, over a random stream covering limits, market and stop orders, GTD,
+OCO, pegs, icebergs, modify and cancel, last look under every STP mode, and
+perp fills with liquidation and ADL.
+
+What the fuzz does NOT drive, so read its green run accordingly: mass cancel,
+market-maker protection, halt-and-cancel-all, Deposit/Withdraw commands,
+two-sided quote replace, and engine-level funding application. Those paths have
+point tests, not randomized ones.
 
 Cash and inventory are conserved exactly. Total mark-to-market equity moves
 with the last price, which is valuation, not a leak; the

@@ -424,15 +424,65 @@ class FixConnection
     {
       return Verdict::App;
     }
-    // Unknown / unsupported MsgType: consumed in sequence, answered with a
-    // session Reject (35=3) naming the offending seq and type -- never a
-    // silent swallow, never a session kill.
+    // Consumed in sequence and answered -- never a silent swallow, never a
+    // session kill. WHICH answer depends on what is wrong with the message,
+    // and the two are not interchangeable:
+    //
+    //   35=3 (session Reject) says the session layer could not process this.
+    //     Counterparties count these against session health and some drop the
+    //     connection on a run of them.
+    //   35=j (BusinessMessageReject) says the session is fine and the
+    //     application will not handle this message. That is the truth about a
+    //     well-formed FIX message we simply do not implement, and it leaves
+    //     the session healthy.
+    //
+    // Sending 35=3 for a message type the counterparty is entitled to send
+    // reads as our fault, not as a declined capability.
+    if (isApplicationMsgType(type))
+    {
+      sendAdmin("j",
+                {{45, std::to_string(seq)},
+                 {372, type},
+                 {380, "3"},  // BusinessRejectReason = Unsupported Message Type
+                 {58, "message type not supported by this venue"}},
+                nowNs);
+      return Verdict::Handled;
+    }
     sendAdmin("3",
               {{45, std::to_string(seq)},
                {372, type.empty() ? std::string("?") : type},
-               {58, "unsupported MsgType"}},
+               {373, "11"},  // SessionRejectReason = Invalid MsgType
+               {58, "invalid MsgType"}},
               nowNs);
     return Verdict::Handled;
+  }
+
+  // Is this a FIX 4.4 APPLICATION message type -- something a counterparty may
+  // legitimately send, that this venue does not implement? Those earn a
+  // business-level reject. Anything else (garbage, a session type out of
+  // place) is a session-level problem.
+  //
+  // Deliberately a list rather than "not one of the session types": an
+  // unrecognised byte is not a message we declined to support, it is a message
+  // we could not parse, and saying otherwise hides a framing bug behind a
+  // polite refusal.
+  static bool isApplicationMsgType(const std::string& t)
+  {
+    static const char* kAppTypes[] = {
+        "6", "7", "8", "9", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AI", "AJ", "AK",
+        "AL", "AM", "AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW", "AX", "AY",
+        "AZ", "B", "BA", "BB", "BC", "BD", "BE", "BF", "BG", "C", "D", "E", "F", "G",
+        "H", "J", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "X",
+        "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
+        "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"};
+    for (const char* a : kAppTypes)
+    {
+      if (t == a)
+      {
+        return true;
+      }
+    }
+    return false;
   }
 
   // Timer pass on the gateway idle tick. False = liveness lost, disconnect.

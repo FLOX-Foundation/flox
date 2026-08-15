@@ -63,6 +63,9 @@ class CollateralSchedule
   }
 
   // Total haircut-adjusted collateral value of an account's whole basket.
+  // What the account OWNS, reserved balance included: collateral locked
+  // against an obligation is still owned. This is the basket's worth, not its
+  // spendable part -- see freeValue for that.
   Amount portfolioValue(const Ledger& led, uint64_t account) const
   {
     Amount t = 0;
@@ -70,6 +73,21 @@ class CollateralSchedule
     {
       (void)c;
       t += value(asset, led.total(account, asset));
+    }
+    return t;
+  }
+
+  // What the account can still commit: reserved balance excluded. Margin
+  // decisions need this one -- counting collateral already posted against
+  // another obligation as spendable is how an account gets to use the same
+  // money twice.
+  Amount freeValue(const Ledger& led, uint64_t account) const
+  {
+    Amount t = 0;
+    for (const auto& [asset, c] : cfg_)
+    {
+      (void)c;
+      t += value(asset, led.available(account, asset));
     }
     return t;
   }

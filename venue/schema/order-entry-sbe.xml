@@ -51,7 +51,7 @@
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="2"
+                   version="3"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -262,5 +262,17 @@
     <field name="reservedRaw"  id="4" type="QtyRaw" sinceVersion="2"/>
     <field name="reason"       id="5" type="EnumU8" sinceVersion="2"/>
     <field name="seq"          id="6" type="SeqNum" sinceVersion="2"/>
+  </sbe:message>
+
+  <!-- A cancel or cancel/replace that was refused. Distinct from Rejected
+       because it answers a different request: FIX 4.4 maps it to 35=9, not to
+       an execution report, and wasReplace is what says which of the two the
+       counterparty sent. -->
+  <sbe:message name="CancelRejected" id="22" sinceVersion="3">
+    <field name="orderId"    id="1" type="OrderId"/>
+    <field name="symbol"     id="2" type="Symbol"/>
+    <field name="reason"     id="3" type="EnumU8"/>
+    <field name="wasReplace" id="4" type="Flag"/>
+    <field name="seq"        id="5" type="SeqNum"/>
   </sbe:message>
 </sbe:messageSchema>

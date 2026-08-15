@@ -90,6 +90,20 @@ struct Capture
     }
     return nullptr;
   }
+  // Cancel and replace refusals are their own event: FIX answers them with
+  // 35=9, not an execution report, so the engine reports them separately too.
+  int cancelRejects(RejectReason r) const
+  {
+    int n = 0;
+    for (auto& e : ev)
+    {
+      if (auto* x = std::get_if<CancelRejected>(&e); x && x->reason == r)
+      {
+        ++n;
+      }
+    }
+    return n;
+  }
   int rejects(RejectReason r) const
   {
     int n = 0;
@@ -336,7 +350,8 @@ void runAll(const std::function<Book()>& mk, const char* label)
     CHECK(cap.cancels(CancelReason::UserRequested) == 1);
     CHECK(eng.book().empty());
     eng.submit(CancelOrder{999, SYM, 1});
-    CHECK(cap.rejects(RejectReason::UnknownOrder) == 1);
+    CHECK(cap.cancelRejects(RejectReason::UnknownOrder) == 1);
+    CHECK(cap.rejects(RejectReason::UnknownOrder) == 0);  // not an exec report
   }
   {  // duplicate order id reject
     Capture cap;
@@ -370,7 +385,8 @@ void runAll(const std::function<Book()>& mk, const char* label)
     Capture cap;
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
     eng.submit(ModifyOrder{42, SYM, px(100), qty(1), 1});
-    CHECK(cap.rejects(RejectReason::UnknownOrder) == 1);
+    CHECK(cap.cancelRejects(RejectReason::UnknownOrder) == 1);
+    CHECK(cap.rejects(RejectReason::UnknownOrder) == 0);
   }
   {  // iceberg fully consumed via peak refills
     Capture cap;
@@ -623,6 +639,22 @@ void runAll(const std::function<Book()>& mk, const char* label)
     ok.stp = STPMode::CancelOldest;
     eng.submit(ok);
     CHECK(cap.trades() == 1);  // different firms -> allowed
+  }
+  {  // A modify re-enters matching as a fresh aggressor, and it must carry the
+     // self-trade prevention the order was admitted with. Rebuilding the order
+     // from its resting record alone would drop the mode and let the reprice
+     // trade against its own account.
+    Capture cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    NewOrder passive = limit(1, Side::BUY, 99, 5, 7);
+    passive.stp = STPMode::CancelOldest;
+    eng.submit(passive);
+    eng.submit(limit(2, Side::SELL, 100, 5, 7));  // same account rests on the other side
+    CHECK(cap.trades() == 0);                     // no cross yet
+    // Reprice the bid up through the account's own offer.
+    eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(5), 0}});
+    CHECK(cap.trades() == 0);  // still no self-trade
+    CHECK(cap.cancels(CancelReason::SelfTradePrevention) >= 1);
   }
   {  // account snapshot for reconnect reconciliation: open orders + position
     Capture cap;

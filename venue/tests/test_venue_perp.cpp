@@ -437,6 +437,239 @@ void test_perp_modify_preserves_reduce_only()
   CHECK(eng.positionQty(1) == 0);  // reduced to flat -- bug flips it to -5 (opened a short)
 }
 
+// T029: an unpriced (market / stop) perp order is bounded by the price band for
+// margin purposes, and on a linear perp that bound is the band's TOP on BOTH
+// sides -- nothing is delivered, so notional and initial margin grow with price
+// whether the account ends long or short. Bounding a SELL at minPrice (correct
+// only for a SPOT seller) under-reserves it by the whole band ratio and
+// consumeOrderIM then posts the position that under-reserved margin.
+void test_perp_unpriced_sell_margin_matches_buy()
+{
+  std::printf("test_perp_unpriced_sell_margin_matches_buy\n");
+  // Band is [1, 1000] and IM is 10%: an unpriced order for 10 contracts must
+  // reserve 10 * 1000 * 10% = 1000 quote regardless of side (bounding a sell at
+  // minPrice would have asked for 1).
+  const Amount imAtBand = quote(1000);
+
+  auto marginAfterMarketFill = [&](Side takerSide)
+  {
+    Ledger led;
+    led.deposit(1, QUOTE, quote(100000));  // resting counterparty
+    led.deposit(2, QUOTE, imAtBand);       // aggressor: exactly the band-bounded IM
+    MatchingEngine<MatchingBook> eng(cfg(), [](const OutboundEvent&) {});
+    eng.setLedger(&led, VENUE);
+    const Side restingSide = (takerSide == Side::BUY) ? Side::SELL : Side::BUY;
+    eng.submit(InboundCommand{ord(1, restingSide, 100, 10, 1)}, 0);
+    NewOrder mkt;
+    mkt.id = 2;
+    mkt.symbol = SYM;
+    mkt.side = takerSide;
+    mkt.type = OrderType::MARKET;
+    mkt.quantity = qty(10);
+    mkt.accountId = 2;
+    eng.submit(InboundCommand{mkt}, 1);
+    CHECK(eng.positionQty(2) == (takerSide == Side::BUY ? qty(10).raw() : -qty(10).raw()));
+    return led.reserved(2, QUOTE);  // == the position's posted margin
+  };
+
+  const Amount buyMargin = marginAfterMarketFill(Side::BUY);
+  const Amount sellMargin = marginAfterMarketFill(Side::SELL);
+  CHECK(buyMargin == imAtBand);
+  CHECK(sellMargin == buyMargin);  // the short was margined at minPrice before the fix
+
+  // And the reservation gate is symmetric: one raw unit short of the
+  // band-bounded IM must reject either side, not just the buy.
+  auto rejectsAtDeposit = [](Side side, Amount deposit)
+  {
+    Ledger led;
+    led.deposit(2, QUOTE, deposit);
+    std::vector<OutboundEvent> ev;
+    MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                     { ev.push_back(e); });
+    eng.setLedger(&led, VENUE);
+    NewOrder mkt;
+    mkt.id = 1;
+    mkt.symbol = SYM;
+    mkt.side = side;
+    mkt.type = OrderType::MARKET;
+    mkt.quantity = qty(10);
+    mkt.accountId = 2;
+    eng.submit(InboundCommand{mkt}, 0);
+    for (auto& e : ev)
+    {
+      if (auto* r = std::get_if<OrderRejected>(&e);
+          r && r->reason == RejectReason::InsufficientFunds)
+      {
+        return true;
+      }
+    }
+    return false;
+  };
+  CHECK(rejectsAtDeposit(Side::SELL, imAtBand - 1));
+  CHECK(rejectsAtDeposit(Side::BUY, imAtBand - 1));
+  CHECK(!rejectsAtDeposit(Side::SELL, imAtBand));
+  CHECK(!rejectsAtDeposit(Side::BUY, imAtBand));
+}
+
+// T030: reduce-only and maxPositionQty are gated when an order is ADMITTED, but
+// a resting order fills later -- against a position that has moved since. A
+// reduce-only order reserves no initial margin, so any part of it that opens or
+// flips the position opens it with ZERO margin; the flags must therefore be
+// re-measured at fill time, on the live position.
+void test_reduce_only_resting_cannot_flip_at_fill()
+{
+  std::printf("test_perp_reduce_only_resting_cannot_flip_at_fill\n");
+  Ledger led;
+  led.deposit(1, QUOTE, quote(100000));
+  led.deposit(2, QUOTE, quote(100000));
+  led.deposit(3, QUOTE, quote(100000));
+  const Amount init = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(3, QUOTE) +
+                      led.total(VENUE, QUOTE);
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  eng.setLedger(&led, VENUE);
+
+  eng.submit(InboundCommand{ord(1, Side::BUY, 100, 10, 1)}, 0);
+  eng.submit(InboundCommand{ord(2, Side::SELL, 100, 10, 2)}, 1);
+  CHECK(eng.positionQty(1) == qty(10).raw());  // acct1 long 10
+
+  // Reduce-only exit for the WHOLE position, resting above the market.
+  eng.submit(InboundCommand{ord(3, Side::SELL, 110, 10, 1, /*reduceOnly*/ true)}, 2);
+  // The position then shrinks by 6 through another exit, leaving +4 behind the
+  // resting order's 10.
+  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 1, /*reduceOnly*/ true)}, 3);
+  eng.submit(InboundCommand{ord(5, Side::BUY, 100, 6, 3)}, 4);
+  CHECK(eng.positionQty(1) == qty(4).raw());
+
+  // Someone lifts the whole resting reduce-only order: only the 4 that still
+  // reduces may print. The rest must not flip acct1 into a short it posted no
+  // margin for.
+  ev.clear();
+  eng.submit(InboundCommand{ord(6, Side::BUY, 110, 10, 2)}, 5);
+  CHECK(eng.positionQty(1) == 0);  // flat, never short
+  CHECK(eng.totalPositionMargin() >= 0);
+  bool canceled = false;
+  for (auto& e : ev)
+  {
+    if (auto* c = std::get_if<OrderCanceled>(&e);
+        c && c->id == 3 && c->reason == CancelReason::ReduceOnlyNotReducing)
+    {
+      canceled = true;
+    }
+  }
+  CHECK(canceled);  // the residual that could not reduce is pulled, with a reason
+  CHECK(!eng.book().contains(3));
+
+  // Margin invariant and conservation both hold afterwards (drained first, so
+  // every reserved unit left must be a position's posted margin).
+  for (OrderId id = 1; id <= 6; ++id)
+  {
+    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 6);
+  }
+  Amount reservedSum = 0;
+  for (uint64_t a = 1; a <= 3; ++a)
+  {
+    reservedSum += led.reserved(a, QUOTE);
+  }
+  CHECK(reservedSum == eng.totalPositionMargin());
+  CHECK(led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(3, QUOTE) + led.total(VENUE, QUOTE) ==
+        init);
+}
+
+// The auction uncross prints its own fills instead of going through the
+// matcher, so it needs the same fill-time re-check: a reduce-only order that
+// rested through a position change must not be flipped by the reopening
+// auction either.
+void test_auction_uncross_respects_reduce_only()
+{
+  std::printf("test_perp_auction_uncross_respects_reduce_only\n");
+  Ledger led;
+  led.deposit(1, QUOTE, quote(100000));
+  led.deposit(2, QUOTE, quote(100000));
+  led.deposit(3, QUOTE, quote(100000));
+  const Amount init = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(3, QUOTE) +
+                      led.total(VENUE, QUOTE);
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  eng.setLedger(&led, VENUE);
+
+  eng.submit(InboundCommand{ord(1, Side::BUY, 100, 10, 1)}, 0);
+  eng.submit(InboundCommand{ord(2, Side::SELL, 100, 10, 2)}, 1);  // acct1 long 10
+  eng.submit(InboundCommand{ord(3, Side::SELL, 110, 10, 1, /*reduceOnly*/ true)}, 2);
+  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 1, /*reduceOnly*/ true)}, 3);
+  eng.submit(InboundCommand{ord(5, Side::BUY, 100, 6, 3)}, 4);
+  CHECK(eng.positionQty(1) == qty(4).raw());  // order 3 now over-sized for the position
+
+  // Reopening auction: accumulate a bid that lifts the whole resting sell.
+  eng.beginPreOpen();
+  eng.submit(InboundCommand{ord(6, Side::BUY, 110, 10, 2)}, 5);
+  ev.clear();
+  eng.openContinuous();
+
+  CHECK(eng.positionQty(1) == 0);  // reduced to flat, never flipped short
+  bool canceled = false;
+  for (auto& e : ev)
+  {
+    if (auto* c = std::get_if<OrderCanceled>(&e);
+        c && c->id == 3 && c->reason == CancelReason::ReduceOnlyNotReducing)
+    {
+      canceled = true;
+    }
+  }
+  CHECK(canceled);
+  CHECK(led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(3, QUOTE) + led.total(VENUE, QUOTE) ==
+        init);
+}
+
+// T030: maxPositionQty is checked against the INCOMING order at admission, so
+// two orders that each pass individually can settle into a position past the
+// cap. The cap must bind the RESULTING position, at fill time.
+void test_position_cap_not_circumvented_by_several_orders()
+{
+  std::printf("test_perp_position_cap_not_circumvented_by_several_orders\n");
+  Ledger led;
+  led.deposit(1, QUOTE, quote(100000));
+  led.deposit(2, QUOTE, quote(100000));
+  led.deposit(3, QUOTE, quote(100000));
+  auto c = cfg();
+  c.maxPositionQty = qty(10);
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  eng.setLedger(&led, VENUE);
+
+  // Two resting bids of 6 each: each passes the admission cap (the position is
+  // 0 when both are placed), together they would build 12 against a cap of 10.
+  eng.submit(InboundCommand{ord(1, Side::BUY, 100, 6, 1)}, 0);
+  eng.submit(InboundCommand{ord(2, Side::BUY, 100, 6, 1)}, 1);
+  eng.submit(InboundCommand{ord(3, Side::SELL, 100, 6, 2)}, 2);  // fills the first: +6
+  CHECK(eng.positionQty(1) == qty(6).raw());
+  ev.clear();
+  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 3)}, 3);  // would take acct1 to +12
+
+  CHECK(eng.positionQty(1) == qty(10).raw());  // capped exactly, not 12
+  bool capCanceled = false;
+  for (auto& e : ev)
+  {
+    if (auto* cc = std::get_if<OrderCanceled>(&e);
+        cc && cc->id == 2 && cc->reason == CancelReason::PositionLimitExceeded)
+    {
+      capCanceled = true;
+    }
+  }
+  CHECK(capCanceled);  // the maker slice that would breach the cap is pulled
+  CHECK(!eng.book().contains(2));
+
+  for (OrderId id = 1; id <= 4; ++id)
+  {
+    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 4);
+  }
+  Amount reservedSum = led.reserved(1, QUOTE) + led.reserved(2, QUOTE) + led.reserved(3, QUOTE);
+  CHECK(reservedSum == eng.totalPositionMargin());
+}
+
 void test_engine_adl()
 {
   std::printf("test_perp_engine_adl\n");
@@ -526,6 +759,202 @@ void test_position_limit()
 
 }  // namespace
 
+// ---- T031: a ledgerless perp still tracks exposure --------------------------
+//
+// Positions are exposure, not cash. With no ledger bound the engine skips
+// settlement, and it used to skip position tracking with it -- which made every
+// reduce-only order reject ("nothing to reduce"), degraded maxPositionQty to a
+// per-order cap, and published open interest as a flat zero on the public feed.
+
+void test_ledgerless_perp_tracks_exposure()
+{
+  std::printf("test_ledgerless_perp_tracks_exposure\n");
+  SymbolConfig c = cfg();
+  c.maxPositionQty = qty(10);
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  // no setLedger: funds live in another system
+
+  // Open a 5-lot long for account 1 against account 2.
+  eng.submit(InboundCommand{ord(1, Side::SELL, 100, 5, 2)}, 1);
+  eng.submit(InboundCommand{ord(2, Side::BUY, 100, 5, 1)}, 2);
+  CHECK(eng.positionQty(1) == qty(5).raw());
+  CHECK(eng.positionQty(2) == -qty(5).raw());
+  CHECK(eng.openInterest() == qty(5));  // was a flat zero regardless of volume
+
+  // Reduce-only now has something to reduce and is accepted.
+  eng.submit(InboundCommand{ord(3, Side::BUY, 100, 3, 2)}, 3);
+  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 3, 1, /*reduceOnly=*/true)}, 4);
+  bool bogusReject = false;
+  for (auto& e : ev)
+  {
+    if (auto* r = std::get_if<OrderRejected>(&e);
+        r != nullptr && r->reason == RejectReason::InvalidQuantity)
+    {
+      bogusReject = true;
+    }
+  }
+  CHECK(!bogusReject);  // used to reject every reduce-only: "nothing to reduce"
+  CHECK(eng.positionQty(1) == qty(2).raw());
+  CHECK(eng.openInterest() == qty(2));
+
+  // The position cap is cumulative again, not per order: 6 + 6 > 10.
+  // Two 6-lot buys against separate makers: each is under the 10 cap on its
+  // own, so only a cumulative check can stop the pair. Makers are distinct
+  // accounts because the cap binds their short side too.
+  std::vector<OutboundEvent> ev2;
+  MatchingEngine<MatchingBook> eng2(c, [&](const OutboundEvent& e)
+                                    { ev2.push_back(e); });
+  eng2.submit(InboundCommand{ord(10, Side::SELL, 100, 6, 2)}, 10);
+  eng2.submit(InboundCommand{ord(11, Side::BUY, 100, 6, 1)}, 11);
+  CHECK(eng2.positionQty(1) == qty(6).raw());
+  eng2.submit(InboundCommand{ord(12, Side::SELL, 100, 6, 3)}, 12);
+  eng2.submit(InboundCommand{ord(13, Side::BUY, 100, 6, 1)}, 13);
+  // 6 + 6 would be 12 against a cap of 10, so the second order is refused
+  // outright rather than trimmed. Without a cumulative check the position
+  // would have reached 12: each order is under the cap on its own.
+  CHECK(eng2.positionQty(1) == qty(6).raw());
+
+  // No money moved anywhere: settlement is the other system's job.
+  CHECK(eng.ledger() == nullptr);
+}
+
+// A money command against a ledgerless engine is answered, not swallowed.
+void test_ledgerless_money_commands_answer()
+{
+  std::printf("test_ledgerless_money_commands_answer\n");
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  Deposit d{};
+  d.accountId = 7;
+  d.asset = QUOTE;
+  d.amountRaw = 1000;
+  eng.submit(InboundCommand{d}, 1);
+  bool depositAnswered = false;
+  for (auto& e : ev)
+  {
+    if (auto* r = std::get_if<OrderRejected>(&e);
+        r != nullptr && r->reason == RejectReason::NoLedgerBound)
+    {
+      depositAnswered = true;
+    }
+  }
+  CHECK(depositAnswered);  // used to vanish with no event at all
+
+  std::vector<OutboundEvent> ev2;
+  MatchingEngine<MatchingBook> eng2(cfg(), [&](const OutboundEvent& e)
+                                    { ev2.push_back(e); });
+  Withdraw w{};
+  w.accountId = 7;
+  w.asset = QUOTE;
+  w.amountRaw = 1000;
+  eng2.submit(InboundCommand{w}, 1);
+  bool withdrawAnswered = false;
+  for (auto& e : ev2)
+  {
+    if (auto* r = std::get_if<OrderRejected>(&e);
+        r != nullptr && r->reason == RejectReason::NoLedgerBound)
+    {
+      withdrawAnswered = true;
+    }
+  }
+  CHECK(withdrawAnswered);
+}
+
+// ---- external risk owner: the three seams it needs ------------------------
+//
+// A portfolio-margin model lives above the per-symbol engines: it sees the
+// whole basket, so it decides entry and liquidation, and the engine executes.
+// This exercises all three seams together the way such an owner would use
+// them: approve/refuse on entry, watch fills, close on its own decision.
+
+void test_external_risk_owner_seams()
+{
+  std::printf("test_external_risk_owner_seams\n");
+  using Eng = MatchingEngine<MatchingBook>;
+  Ledger led;
+  led.deposit(1, QUOTE, quote(10000));
+  led.deposit(2, QUOTE, quote(10000));
+  std::vector<OutboundEvent> ev;
+  SymbolConfig c = cfg();
+  c.maintenanceMarginBps = 500;
+  c.externalLiquidation = true;  // the engine must not liquidate on its own
+  MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  eng.setLedger(&led, VENUE);
+
+  // Seam 1: the risk owner approves entry and can say why it refuses.
+  bool allow = true;
+  eng.setCreditCheck(
+      [&](const Eng::CreditRequest& r) -> Eng::CreditDecision
+      {
+        CHECK(r.symbol == SYM);  // it serves many instruments: it must be told which
+        if (!allow && !r.reduceOnly)
+        {
+          return {false, RejectReason::PositionLimitExceeded};
+        }
+        return {true, RejectReason::None};
+      });
+
+  eng.submit(InboundCommand{ord(1, Side::SELL, 100, 5, 2)}, 1);
+  eng.submit(InboundCommand{ord(2, Side::BUY, 100, 5, 1)}, 2);
+  CHECK(eng.positionQty(1) == qty(5).raw());
+
+  // Refusal carries the owner's reason to the client, not a flat funds error.
+  allow = false;
+  ev.clear();
+  eng.submit(InboundCommand{ord(3, Side::BUY, 100, 1, 1)}, 3);
+  bool refusedWithReason = false;
+  for (auto& e : ev)
+  {
+    if (auto* r = std::get_if<OrderRejected>(&e);
+        r != nullptr && r->reason == RejectReason::PositionLimitExceeded)
+    {
+      refusedWithReason = true;
+    }
+  }
+  CHECK(refusedWithReason);
+  allow = true;
+
+  // Seam 2: the engine does NOT liquidate by itself, however bad the mark.
+  ev.clear();
+  eng.setMarkPrice(px(10));  // far past maintenance for a 5-lot long at 100
+  bool selfLiquidated = false;
+  for (auto& e : ev)
+  {
+    if (std::get_if<Liquidation>(&e) != nullptr)
+    {
+      selfLiquidated = true;
+    }
+  }
+  CHECK(!selfLiquidated);
+  CHECK(eng.positionQty(1) == qty(5).raw());  // still open: not the engine's call
+
+  // Seam 3: the owner closes it, and the engine settles exactly as its own
+  // sweep would have.
+  ev.clear();
+  ForceClosePosition fc{};
+  fc.accountId = 1;
+  fc.symbol = SYM;
+  eng.submit(InboundCommand{fc}, 4);
+  CHECK(eng.positionQty(1) == 0);
+  bool liquidated = false;
+  for (auto& e : ev)
+  {
+    if (std::get_if<Liquidation>(&e) != nullptr)
+    {
+      liquidated = true;
+    }
+  }
+  CHECK(liquidated);
+
+  // Money is still conserved across the externally driven close.
+  const Amount total = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(VENUE, QUOTE);
+  CHECK(total == quote(20000));
+}
+
 TEST(Perp, EngineSuite)
 {
   test_open_and_close();
@@ -539,8 +968,15 @@ TEST(Perp, EngineSuite)
   test_perp_modify_respects_position_cap();
   test_perp_risk_gate_consistent_across_paths();
   test_perp_modify_preserves_reduce_only();
+  test_perp_unpriced_sell_margin_matches_buy();
+  test_reduce_only_resting_cannot_flip_at_fill();
+  test_auction_uncross_respects_reduce_only();
+  test_position_cap_not_circumvented_by_several_orders();
   test_engine_adl();
   test_position_limit();
+  test_ledgerless_perp_tracks_exposure();
+  test_ledgerless_money_commands_answer();
+  test_external_risk_owner_seams();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

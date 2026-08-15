@@ -271,8 +271,16 @@ void test_credit()
   Cap cap;
   MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
   // Reject any order whose notional exceeds 1000 (toy buying-power gate).
-  eng.setCreditCheck([](uint64_t, Side, Price p, Quantity q)
-                     { return (p * q).toDouble() <= 1000.0; });
+  using Eng = MatchingEngine<MatchingBook>;
+  eng.setCreditCheck(
+      [](const Eng::CreditRequest& r) -> Eng::CreditDecision
+      {
+        if ((r.price * r.quantity).toDouble() > 1000.0)
+        {
+          return {false, RejectReason::InsufficientFunds};
+        }
+        return {true, RejectReason::None};
+      });
   eng.submit(InboundCommand{limit(1, Side::BUY, 100, 20, 1)}, 0);  // notional 2000 -> reject
   CHECK(cap.count<OrderRejected>() == 1);
   cap.ev.clear();

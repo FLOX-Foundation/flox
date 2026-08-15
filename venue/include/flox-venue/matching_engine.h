@@ -59,9 +59,13 @@ struct SymbolConfig
   bool linearPerp{false};               // derivatives: linear perpetual (margin, no asset delivery)
   int32_t initialMarginBps{0};          // IM as bps of notional (1000 = 10% = 10x leverage)
   int32_t maintenanceMarginBps{0};      // MM; position liquidated when equity < MM (0 = off)
-  bool autoDeleverage{false};           // ADL: recover a bankruptcy deficit from winners before insurance
-  Quantity maxPositionQty{};            // 0 = unchecked (max |position| per account, perp risk cap)
-  uint32_t maxOpenOrders{0};            // 0 = unchecked (max live resting orders per account)
+  // Liquidation decided elsewhere (portfolio margin above the per-symbol
+  // engines). The engine still posts isolated IM and settles, but never
+  // liquidates on its own -- it closes only on ForceClosePosition.
+  bool externalLiquidation{false};
+  bool autoDeleverage{false};  // ADL: recover a bankruptcy deficit from winners before insurance
+  Quantity maxPositionQty{};   // 0 = unchecked (max |position| per account, perp risk cap)
+  uint32_t maxOpenOrders{0};   // 0 = unchecked (max live resting orders per account)
 
   // Per-symbol fixed-point scale, same semantics as core SymbolInfo. Default
   // 1e8 = the compile-time Price/Quantity scale. Money always settles at
@@ -120,8 +124,25 @@ class MatchingEngine
       }
       else if (const auto* c = std::get_if<OrderCanceled>(&e))
       {
-        releaseReservation(c->id);
-        forgetOrder(c->id);
+        // Only the matcher's own removals (self-trade prevention, a fill-time
+        // risk block) reach this branch -- every engine-side cancel path emits
+        // through sink_ and does its own cleanup. Those removals resolve the
+        // order's holds first (Matcher's resting-hold hook), so the common case
+        // has no hold left here. The guard is the belt to that brace: stripping
+        // the reservation while a hold is still open would leave the eventual
+        // accept nothing to settle from, and settlement without a reservation
+        // is exactly the path that used to mint value. Hold-aware, like the
+        // executed branch above: release only what no hold needs, and defer
+        // dropping the order until resolveHeld cleans it up.
+        if (!hasHoldsFor(c->id))
+        {
+          releaseReservation(c->id);
+          forgetOrder(c->id);
+        }
+        else
+        {
+          releaseReservationExceptHeld(c->id);
+        }
       }
       sink_(e);
       if (const auto* t = std::get_if<Trade>(&e))
@@ -138,6 +159,37 @@ class MatchingEngine
       matcher_.setLastLookHook(
           [this](const RestingOrder& maker, Quantity fill, const NewOrder& taker)
           { createHeld(maker, fill, taker); });
+      // The matcher removes resting orders on two of its own paths (STP and a
+      // fill-time risk block). Both must resolve that order's open holds first,
+      // like every engine-side cancel path does -- otherwise the removal frees
+      // collateral an open hold still needs. Only wired when last look is on:
+      // with the window at 0 no hold can exist.
+      matcher_.setRestingHoldHook(
+          [this](OrderId resting)
+          {
+            if (!hasHoldsFor(resting))
+            {
+              return false;
+            }
+            rejectHoldsFor(resting);
+            return true;  // liquidity may have been restored: the caller re-peeks
+          });
+    }
+
+    // An STP decrement trims a resting order in place. Freeing the reservation
+    // for the part that no longer rests has nothing to do with last look, so
+    // this is wired unconditionally -- inside the block above it would only
+    // work on instruments that happen to enable holds.
+    matcher_.setRestingReducedHook([this](OrderId id, int64_t fromQtyRaw, int64_t toQtyRaw)
+                                   { releaseReservationPro(id, fromQtyRaw, toQtyRaw); });
+
+    // Fill-time perp risk re-check. Spot has no positions to re-check, so the
+    // hook stays unwired there and the matching hot path is untouched.
+    if (cfg_.linearPerp)
+    {
+      matcher_.setFillLimitHook([this](const RestingOrder& maker, const NewOrder& taker,
+                                       Quantity want)
+                                { return fillLimit(maker, taker, want); });
     }
   }
 
@@ -226,6 +278,14 @@ class MatchingEngine
         setTriggerRef(st->ref);  // sequenced -> journaled -> replayed
       }
     }
+    else if (const auto* rl = std::get_if<SetRiskLimits>(&cmd))
+    {
+      applyRiskLimits(*rl);  // sequenced -> journaled -> replayed
+    }
+    else if (const auto* ap = std::get_if<SetAdmissionProfile>(&cmd))
+    {
+      setAdmissionProfile(ap->account, ap->profile);  // sequenced -> journaled -> replayed
+    }
     else if (const auto* sg = std::get_if<SetStpGroup>(&cmd))
     {
       if (sg->symbol == cfg_.id)
@@ -238,6 +298,13 @@ class MatchingEngine
       if (fs->symbol == cfg_.id)
       {
         setFundingSchedule(fs->intervalNs, fs->nextFundingNs);  // sequenced -> journaled -> replayed
+      }
+    }
+    else if (const auto* fc = std::get_if<ForceClosePosition>(&cmd))
+    {
+      if (fc->symbol == cfg_.id)
+      {
+        onForceClose(*fc);
       }
     }
     else if (std::get_if<TimeTick>(&cmd) != nullptr)
@@ -286,7 +353,28 @@ class MatchingEngine
 
   // Pre-trade credit / buying-power gate. Returns true if the account may place
   // the order. A real deployment binds this to the account/balance service.
-  using CreditCheck = std::function<bool(uint64_t account, Side, Price, Quantity)>;
+  // What an external risk owner is told about an order it must approve. The
+  // old shape (account, side, price, quantity) could not answer a portfolio
+  // question: it did not say WHICH instrument -- the engine knows its own, the
+  // risk layer serves many -- nor whether the order reduces exposure, and a
+  // bare false gave the client no reason for the refusal.
+  struct CreditRequest
+  {
+    OrderId order{};
+    uint64_t account{};
+    SymbolId symbol{};
+    Side side{};
+    OrderType type{};
+    Price price{};
+    Quantity quantity{};
+    bool reduceOnly{false};
+  };
+  struct CreditDecision
+  {
+    bool allowed{true};
+    RejectReason reason{RejectReason::InsufficientFunds};  // used when allowed == false
+  };
+  using CreditCheck = std::function<CreditDecision(const CreditRequest&)>;
   void setCreditCheck(CreditCheck c) { credit_ = std::move(c); }
 
   // Bind a settlement ledger. When set, order entry reserves buying power
@@ -399,6 +487,10 @@ class MatchingEngine
   // so reopening returns to exactly the state the close interrupted.
   TradingStatus tradingStatus() const noexcept
   {
+    if (delisted_)
+    {
+      return TradingStatus::Delisted;
+    }
     if (closed_)
     {
       return TradingStatus::Closed;
@@ -416,6 +508,9 @@ class MatchingEngine
 
   // Session state (see AdminAction::CloseSession / OpenSession).
   bool sessionClosed() const noexcept { return closed_; }
+
+  // Withdrawn from trading (see AdminAction::Delist / Relist).
+  bool delisted() const noexcept { return delisted_; }
 
   struct OrderView
   {
@@ -566,6 +661,55 @@ class MatchingEngine
   // volatility without a restart. Only the risk knobs are mutable -- structural
   // fields (symbol id, tick size, assets, linearPerp) stay fixed. Applies to
   // subsequent orders; existing resting orders are unaffected.
+  // Apply only the limits the record claims. The direct setters below still
+  // exist for pre-start wiring; on a running engine this is the route that
+  // survives a restart and reproduces on a replica.
+  void applyRiskLimits(const SetRiskLimits& r) noexcept
+  {
+    if ((r.fields & RiskLimitField::RiskLuld) != 0)
+    {
+      cfg_.luldBps = r.luldBps;
+      cfg_.luldHaltNs = r.luldHaltNs;
+    }
+    if ((r.fields & RiskLimitField::RiskFatFinger) != 0)
+    {
+      cfg_.maxOrderQty = r.maxOrderQty;
+      cfg_.maxOrderNotional = r.maxOrderNotional;
+    }
+    if ((r.fields & RiskLimitField::RiskMaxOpenOrders) != 0)
+    {
+      cfg_.maxOpenOrders = r.maxOpenOrders;
+    }
+    if ((r.fields & RiskLimitField::RiskMaxPosition) != 0)
+    {
+      cfg_.maxPositionQty = r.maxPositionQty;
+    }
+    if ((r.fields & RiskLimitField::RiskMargin) != 0)
+    {
+      cfg_.initialMarginBps = r.initialMarginBps;
+      cfg_.maintenanceMarginBps = r.maintenanceMarginBps;
+    }
+  }
+
+  // The live limits, as a record that would reproduce them.
+  SetRiskLimits riskLimits() const noexcept
+  {
+    SetRiskLimits r;
+    r.symbol = cfg_.id;
+    r.fields = RiskLimitField::RiskLuld | RiskLimitField::RiskFatFinger |
+               RiskLimitField::RiskMaxOpenOrders | RiskLimitField::RiskMaxPosition |
+               RiskLimitField::RiskMargin;
+    r.luldBps = cfg_.luldBps;
+    r.luldHaltNs = cfg_.luldHaltNs;
+    r.maxOrderQty = cfg_.maxOrderQty;
+    r.maxOrderNotional = cfg_.maxOrderNotional;
+    r.maxOpenOrders = cfg_.maxOpenOrders;
+    r.maxPositionQty = cfg_.maxPositionQty;
+    r.initialMarginBps = cfg_.initialMarginBps;
+    r.maintenanceMarginBps = cfg_.maintenanceMarginBps;
+    return r;
+  }
+
   void setLuldBps(int32_t bps) noexcept { cfg_.luldBps = bps; }
   void setTriggerRef(TriggerRef ref) noexcept { cfg_.triggerRef = ref; }
   void setPriceBand(Price minPrice, Price maxPrice) noexcept
@@ -593,6 +737,29 @@ class MatchingEngine
   // this direct setter is for pre-start() wiring and the recovery path.
   void setStpGroup(uint64_t account, uint64_t group) { matcher_.setStpGroup(account, group); }
 
+  // Admission profile of one account. A default-constructed profile clears the
+  // entry (back to "everything permitted"), which keeps the table canonical
+  // for the checkpoint state hash.
+  void setAdmissionProfile(uint64_t account, const AdmissionProfile& p)
+  {
+    if (p.allowedTypes == 0 && p.allowedTif == 0 && p.deny == 0)
+    {
+      admission_.erase(account);
+      return;
+    }
+    admission_[account] = p;
+  }
+
+  const std::unordered_map<uint64_t, AdmissionProfile>& admissionProfiles() const noexcept
+  {
+    return admission_;
+  }
+
+  // Orders refused because the sender was not entitled to send them. Non-zero
+  // means a counterparty is sending what it may not -- visible immediately
+  // rather than a week later as a position nobody can explain.
+  uint64_t admissionRejects() const noexcept { return admissionRejects_; }
+
   // Pro-rata defensive-path counter (see Matcher::crossProRata): a resting
   // lastLook maker met by a pro-rata allocation was skipped, not filled firm.
   uint64_t skippedLastLookProRata() const noexcept { return matcher_.skippedLastLookProRata(); }
@@ -608,8 +775,16 @@ class MatchingEngine
     // subscriber reads them as consequences of a halt rather than as an
     // unexplained mass cancel.
     publishStatus(TradingStatusReason::Administrative);
+    cancelEntireBook(CancelReason::VenueHalt);
+  }
+
+  // Pull every resting and pending order. Shared by the emergency halt and by
+  // delisting, because "nothing survives" has exactly one correct
+  // implementation and a second copy is how the two drift apart.
+  void cancelEntireBook(CancelReason reason)
+  {
     // Resolve every open hold first: restored quantity lands back on the book
-    // and is then swept by the cancel loop below, so nothing survives the halt.
+    // and is then swept by the loop below, so nothing survives.
     rejectAllHolds();
     std::vector<OrderId> resting;
     for (const auto& [acct, ids] : byAccount_)
@@ -625,7 +800,7 @@ class MatchingEngine
         const uint64_t acct = ownerOf(id);
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::VenueHalt, acct});
+        sink_(OrderCanceled{id, cfg_.id, reason, acct});
       }
     }
     for (OrderId id : stops_.ids())
@@ -634,7 +809,7 @@ class MatchingEngine
       if (stops_.cancel(id))
       {
         releaseReservation(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::VenueHalt, acct});
+        sink_(OrderCanceled{id, cfg_.id, reason, acct});
       }
     }
   }
@@ -660,6 +835,29 @@ class MatchingEngine
   {
     closed_ = false;
     publishStatus(TradingStatusReason::Session);
+  }
+
+  // Withdraw the instrument from trading. Unlike a halt or a closed session,
+  // this carries no promise of a return, so leaving orders resting would leave
+  // them waiting for an open that is not coming -- the book is pulled on the
+  // way out, through the same path an emergency halt uses.
+  void delist()
+  {
+    if (delisted_)
+    {
+      return;
+    }
+    delisted_ = true;
+    // The status reaches the feed before the cancels it causes, so a subscriber
+    // reads them as a consequence rather than as an unexplained mass cancel.
+    publishStatus(TradingStatusReason::Administrative);
+    cancelEntireBook(CancelReason::VenueHalt);
+  }
+
+  void relist()
+  {
+    delisted_ = false;
+    publishStatus(TradingStatusReason::Administrative);
   }
 
   // ---- session / auctions ----
@@ -701,6 +899,12 @@ class MatchingEngine
         break;
       case AdminAction::OpenSession:
         openSession();
+        break;
+      case AdminAction::Delist:
+        delist();
+        break;
+      case AdminAction::Relist:
+        relist();
         break;
     }
   }
@@ -813,11 +1017,82 @@ class MatchingEngine
       {
         break;
       }
-      const Quantity fill = (bid->leaves < ask->leaves) ? bid->leaves : ask->leaves;
+      Quantity fill = (bid->leaves < ask->leaves) ? bid->leaves : ask->leaves;
       const OrderId bidId = bid->id;
       const OrderId askId = ask->id;
       const uint64_t bAcct = bid->accountId;
       const uint64_t aAcct = ask->accountId;
+      // Self-trade prevention. An auction has no aggressor -- both legs are
+      // resting -- so the mode is read off each order and applied from the
+      // requester's point of view: its counterparty is the "oldest" leg (it is
+      // resting) and its own order is the "newest". When both legs ask, the
+      // cancellations union, which needs no precedence rule between modes and
+      // lands the same way whichever order the book hands them to us in.
+      if (stpScope(bAcct) == stpScope(aAcct))
+      {
+        const STPMode bidStp = stpOf(bidId);
+        const STPMode askStp = stpOf(askId);
+        if (bidStp != STPMode::None || askStp != STPMode::None)
+        {
+          if (bidStp == STPMode::Decrement || askStp == STPMode::Decrement)
+          {
+            // Trim both legs by the overlap; no print, and whatever is left of
+            // the larger leg stays in the auction.
+            decrementForStp(bidId, fill);
+            decrementForStp(askId, fill);
+            continue;
+          }
+          bool killBid = false, killAsk = false;
+          if (bidStp == STPMode::CancelOldest || bidStp == STPMode::CancelBoth)
+          {
+            killAsk = true;
+          }
+          if (bidStp == STPMode::CancelNewest || bidStp == STPMode::CancelBoth)
+          {
+            killBid = true;
+          }
+          if (askStp == STPMode::CancelOldest || askStp == STPMode::CancelBoth)
+          {
+            killBid = true;
+          }
+          if (askStp == STPMode::CancelNewest || askStp == STPMode::CancelBoth)
+          {
+            killAsk = true;
+          }
+          if (killBid)
+          {
+            cancelForStp(bidId, bAcct);
+          }
+          if (killAsk)
+          {
+            cancelForStp(askId, aAcct);
+          }
+          continue;  // this pair never prints
+        }
+      }
+
+      // The uncross prints its own fills instead of going through the matcher,
+      // so it applies the fill-time perp limits itself: an auction is a fill
+      // moment like any other, and a reduce-only order must not flip a position
+      // (with no margin) just because it was filled here.
+      if (cfg_.linearPerp && ledger_ != nullptr)
+      {
+        const FillLimit lim = pairFillLimit(aAcct, Side::SELL, ask->reduceOnly, bAcct, Side::BUY,
+                                            bid->reduceOnly, fill);
+        if (lim.qty.isZero())
+        {
+          // Nothing this pair may trade: pull the blocked leg so the uncross
+          // moves on to the next order at this price (and terminates).
+          const OrderId blocked = lim.makerBlocked ? askId : bidId;
+          const uint64_t blockedAcct = lim.makerBlocked ? aAcct : bAcct;
+          book_.cancel(blocked);
+          releaseReservation(blocked);
+          forgetOrder(blocked);
+          sink_(OrderCanceled{blocked, cfg_.id, lim.reason, blockedAcct});
+          continue;
+        }
+        fill = lim.qty;
+      }
       emit_(Trade{++tradeSeq_, cfg_.id, P, fill, askId, bidId, Side::BUY, aAcct, bAcct});
       book_.consumeById(bidId, fill);
       book_.consumeById(askId, fill);
@@ -851,6 +1126,10 @@ class MatchingEngine
     h = mix(h, static_cast<uint64_t>(cfg_.maxPrice.raw()));
     h = mix(h, static_cast<uint64_t>(cfg_.triggerRef));
     h = mix(h, auctionMode_ ? 1U : 0U);
+    if (delisted_)
+    {
+      h = mix(h, 0xB00EU);  // only when set: an engine that never delisted hashes as before
+    }
     h = mix(h, static_cast<uint64_t>(haltUntil_));
     // Session and funding state fold in only when they are set, the same
     // "zero == absent" rule the balance traversal follows. An engine that has
@@ -915,6 +1194,21 @@ class MatchingEngine
       h = mix(h, static_cast<uint64_t>(trig.raw()));
     }
 
+    for (uint64_t acct : sortedKeys(admission_))
+    {
+      const AdmissionProfile& p = admission_.at(acct);
+      h = mix(h, 0xB00DU);
+      h = mix(h, acct);
+      h = mix(h, p.allowedTypes);
+      h = mix(h, p.allowedTif);
+      h = mix(h, static_cast<uint64_t>(p.deny));
+    }
+    for (OrderId id : sortedKeys(orderStp_))
+    {
+      h = mix(h, 0xB00CU);
+      h = mix(h, static_cast<uint64_t>(id));
+      h = mix(h, static_cast<uint64_t>(orderStp_.at(id)));
+    }
     for (OrderId id : sortedKeys(pegged_))
     {
       const Peg& p = pegged_.at(id);
@@ -1104,6 +1398,10 @@ class MatchingEngine
                                              cfg_.maxPrice}},
                ts);
     out.append(InboundCommand{SetBands{cfg_.id, cfg_.minPrice, cfg_.maxPrice}}, ts);
+    // Risk limits ride the config section for the same reason the bands do:
+    // they decide what is admitted, so a recovered engine that lost them would
+    // admit orders the live one refused.
+    out.append(InboundCommand{riskLimits()}, ts);
     out.append(InboundCommand{SetTriggerRef{cfg_.id, cfg_.triggerRef}}, ts);
     // STP groups are engine state journaled as SetStpGroup commands; the
     // snapshot re-emits the live table as the same records (config section,
@@ -1114,6 +1412,13 @@ class MatchingEngine
       {
         out.append(InboundCommand{SetStpGroup{cfg_.id, acct, groups.at(acct)}}, ts);
       }
+    }
+    // Admission profiles are engine state of the same kind: they decide what
+    // is accepted, so they are re-emitted as the command that set them and
+    // applied through the ordinary submit path on load.
+    for (uint64_t acct : sortedKeys(admission_))
+    {
+      out.append(InboundCommand{SetAdmissionProfile{cfg_.id, acct, admission_.at(acct)}}, ts);
     }
     out.append(InboundCommand{AdminCmd{cfg_.id, cfg_.halted ? AdminAction::Halt
                                                             : AdminAction::Resume}},
@@ -1128,6 +1433,13 @@ class MatchingEngine
     if (closed_)
     {
       out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::CloseSession}}, ts);
+    }
+    // Delisting is outermost of all, so it is written after the session state.
+    // Only when set, so an engine that never delisted writes the file it always
+    // did and its state hash is unchanged.
+    if (delisted_)
+    {
+      out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::Delist}}, ts);
     }
     // Funding state: written only when there is any, so an engine with none
     // produces the same file it did before the record existed (and that file
@@ -1244,6 +1556,11 @@ class MatchingEngine
       out.append(InboundCommand{RestorePeg{id, p.side, p.ref, p.offsetRaw}}, ts);
     }
 
+    for (OrderId id : sortedKeys(orderStp_))
+    {
+      out.append(InboundCommand{RestoreOrderStp{id, static_cast<uint8_t>(orderStp_.at(id))}}, ts);
+    }
+
     for (uint64_t acct : sortedKeys(positions_))
     {
       const Position& p = positions_.at(acct);
@@ -1325,6 +1642,15 @@ class MatchingEngine
     if (const auto* r = std::get_if<RestoreStop>(&cmd))
     {
       return applyRestoreStop(*r);
+    }
+    if (const auto* r = std::get_if<RestoreOrderStp>(&cmd))
+    {
+      const auto mode = static_cast<STPMode>(r->mode);
+      if (mode != STPMode::None)
+      {
+        orderStp_[r->id] = mode;
+      }
+      return true;
     }
     if (const auto* r = std::get_if<RestorePeg>(&cmd))
     {
@@ -1414,6 +1740,19 @@ class MatchingEngine
   // Live-traffic snapshot-tag drops (observability; see the guard in submit).
   uint64_t droppedSnapshotRecords() const noexcept { return droppedSnapshotRecords_; }
 
+  // Trades that printed but could not be settled without creating value, so
+  // nothing moved (see reportUnsettled). Must stay at zero: a non-zero value
+  // means a fill reached clearing with neither a reservation nor the balance to
+  // pay for it, and the venue refused to invent the difference.
+  uint64_t unsettledTrades() const noexcept { return unsettledTrades_; }
+
+  // Last-look accepts turned into rejects because the fill would have breached
+  // a perp risk limit by the time the maker answered (see resolveHeld).
+  uint64_t riskRejectedHolds() const noexcept { return riskRejectedHolds_; }
+
+  // Pro-rata participants excluded by the fill-time risk limits.
+  uint64_t skippedRiskProRata() const noexcept { return matcher_.skippedRiskProRata(); }
+
   // ---- asynchronous checkpoint support ----
   // A full engine clone taken under the consumer pause; serialization (fsync,
   // rename, rotation bookkeeping) then runs on a background thread against the
@@ -1460,6 +1799,8 @@ class MatchingEngine
     e.ocoMembers_ = ocoMembers_;
     e.ocoPending_ = ocoPending_;  // empty at a command boundary; copied for completeness
     e.pegged_ = pegged_;
+    e.orderStp_ = orderStp_;
+    e.admission_ = admission_;
     e.fees_ = fees_;
     e.feesEnabled_ = feesEnabled_;
     e.mmpCfg_ = mmpCfg_;
@@ -1500,15 +1841,67 @@ class MatchingEngine
   uint64_t venueAccount() const noexcept { return venueAccount_; }
 
  private:
+  // Instrument conformance for a conditional order: the trigger is a price and
+  // the size is a size, so tick, band and lot apply exactly as they do to a
+  // resting limit. State and duplicate checks already ran before this point.
+  RejectReason validateConditional(const NewOrder& o) const
+  {
+    if (o.quantity.raw() <= 0)
+    {
+      return RejectReason::InvalidQuantity;
+    }
+    if (!cfg_.lotSize.isZero() && (o.quantity.raw() % cfg_.lotSize.raw()) != 0)
+    {
+      return RejectReason::InvalidQuantity;
+    }
+    const int64_t trig = o.triggerPrice.raw();
+    if (trig > 0)
+    {
+      if (!cfg_.tickSize.isZero() && (trig % cfg_.tickSize.raw()) != 0)
+      {
+        return RejectReason::InvalidPrice;
+      }
+      if (!cfg_.minPrice.isZero() && trig < cfg_.minPrice.raw())
+      {
+        return RejectReason::InvalidPrice;
+      }
+      if (!cfg_.maxPrice.isZero() && trig > cfg_.maxPrice.raw())
+      {
+        return RejectReason::InvalidPrice;
+      }
+    }
+    // A stop-LIMIT also carries the limit price it will rest at.
+    if (o.type == OrderType::STOP_LIMIT || o.type == OrderType::TAKE_PROFIT_LIMIT)
+    {
+      if (!cfg_.tickSize.isZero() && (o.price.raw() % cfg_.tickSize.raw()) != 0)
+      {
+        return RejectReason::InvalidPrice;
+      }
+      if (!cfg_.minPrice.isZero() && o.price.raw() < cfg_.minPrice.raw())
+      {
+        return RejectReason::InvalidPrice;
+      }
+      if (!cfg_.maxPrice.isZero() && o.price.raw() > cfg_.maxPrice.raw())
+      {
+        return RejectReason::InvalidPrice;
+      }
+    }
+    return RejectReason::None;
+  }
+
   RejectReason validate(const NewOrder& o) const
   {
     if (o.symbol != cfg_.id)
     {
       return RejectReason::UnknownSymbol;
     }
-    // Ahead of the halt check: a client whose order is refused deserves the
-    // outer reason. "The market is closed" tells it to come back next session;
-    // "halted" would tell it something is wrong with the instrument.
+    // Outermost first: a client whose order is refused deserves the reason that
+    // tells it what to do next. Delisted means do not come back; closed means
+    // next session; halted means something is wrong with the instrument now.
+    if (delisted_)
+    {
+      return RejectReason::InstrumentDelisted;
+    }
     if (closed_)
     {
       return RejectReason::MarketClosed;
@@ -1591,6 +1984,50 @@ class MatchingEngine
   // plain stop bypasses the position cap). Caps a reduce-only order to the
   // opposing position (0 reducible -> reject: nothing to reduce) and rejects a
   // fill that would breach maxPositionQty. Mutates o.quantity for the cap.
+  // Entitlement gate. Every admission path consults this before anything else
+  // decides the order's fate, so a counterparty cannot reach the book through
+  // a path that forgot to ask. Declared in scripts/check_gate_reachability.py,
+  // which fails the build if a path stops calling it.
+  RejectReason admissionGate(const NewOrder& o) const
+  {
+    auto it = admission_.find(o.accountId);
+    if (it == admission_.end())
+    {
+      return RejectReason::None;  // no profile: everything permitted
+    }
+    const AdmissionProfile& p = it->second;
+    if (p.allowedTypes != 0 && (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0)
+    {
+      return RejectReason::OrderTypeNotPermitted;
+    }
+    // Tested before the TIF list so the answer names the policy rather than the
+    // field: "you may not leave an order resting" tells the counterparty what
+    // to change, "this time in force is not allowed" leaves it guessing which
+    // of the allowed ones is safe.
+    //
+    // Refused on admission, not killed on the way out: an order that could rest
+    // must never be accepted from a counterparty that does not track resting
+    // orders. POST_ONLY exists only to rest; GTC and GTD outlive the message
+    // that carried them.
+    if ((p.deny & AdmissionDeny::DenyResting) != 0 &&
+        (o.tif == TimeInForce::GTC || o.tif == TimeInForce::GTD ||
+         o.tif == TimeInForce::POST_ONLY || o.postOnly))
+    {
+      return RejectReason::RestingNotPermitted;
+    }
+    if (p.allowedTif != 0 && (p.allowedTif & (1u << static_cast<uint32_t>(o.tif))) == 0)
+    {
+      return RejectReason::TimeInForceNotPermitted;
+    }
+    return RejectReason::None;
+  }
+
+  bool admissionDenies(uint64_t account, uint8_t bit) const
+  {
+    auto it = admission_.find(account);
+    return it != admission_.end() && (it->second.deny & bit) != 0;
+  }
+
   RejectReason perpRiskGate(NewOrder& o)
   {
     if (!cfg_.linearPerp)
@@ -1626,8 +2063,109 @@ class MatchingEngine
     return RejectReason::None;
   }
 
+  // How much of one leg's prospective fill the perp risk limits still allow,
+  // measured against the position the account holds RIGHT NOW. `reason` names
+  // the limit that cut it (meaningful only when the result is below `want`).
+  int64_t legFillLimit(uint64_t account, Side side, bool reduceOnly, int64_t want,
+                       CancelReason& reason) const
+  {
+    const auto pit = positions_.find(account);
+    const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
+    int64_t allowed = want;
+    if (reduceOnly)
+    {
+      // A reduce-only order may only close what is open on the other side. Its
+      // reserved IM is 0 by construction, so any part of it that opened a
+      // position would open it with NO margin at all.
+      const int64_t reducible = (side == Side::BUY && posQ < 0)    ? -posQ
+                                : (side == Side::SELL && posQ > 0) ? posQ
+                                                                   : 0;
+      if (reducible < allowed)
+      {
+        allowed = reducible;
+        reason = CancelReason::ReduceOnlyNotReducing;
+      }
+    }
+    if (!cfg_.maxPositionQty.isZero())
+    {
+      // Room left before the RESULTING position breaches the cap. Checking the
+      // incoming order alone (the admission gate) lets several orders, each
+      // under the cap, settle into a position past it.
+      const int64_t room =
+          (side == Side::BUY) ? cfg_.maxPositionQty.raw() - posQ : cfg_.maxPositionQty.raw() + posQ;
+      if (room < allowed)
+      {
+        allowed = room;
+        reason = CancelReason::PositionLimitExceeded;
+      }
+    }
+    return allowed < 0 ? 0 : allowed;
+  }
+
+  // Fill-time risk re-check for one prospective bite (see the FillLimit hook).
+  // reduceOnly and maxPositionQty are gated at submit / stop-trigger / modify,
+  // but a RESTING order fills later, against a position that has since moved:
+  // a reduce-only order whose position shrank would open or flip it (with zero
+  // margin -- reduce-only reserves none), and orders that each passed the cap
+  // individually would settle past it together. Both legs are therefore
+  // re-measured here, on live engine state, so a replay reproduces it.
+  FillLimit fillLimit(const RestingOrder& maker, const NewOrder& taker, Quantity want) const
+  {
+    if (ledger_ == nullptr)
+    {
+      // No ledger: the engine keeps no positions to measure against.
+      return FillLimit{want, want, want, false, false, CancelReason::ReduceOnlyNotReducing};
+    }
+    return pairFillLimit(maker.accountId, maker.side, maker.reduceOnly, taker.accountId, taker.side,
+                         taker.reduceOnly, want);
+  }
+
+  // fillLimit over two legs described directly -- used by the auction uncross,
+  // where BOTH legs are resting orders and neither is an incoming NewOrder.
+  FillLimit pairFillLimit(uint64_t makerAcct, Side makerSide, bool makerReduceOnly,
+                          uint64_t takerAcct, Side takerSide, bool takerReduceOnly,
+                          Quantity want) const
+  {
+    FillLimit out;
+    out.qty = want;
+    out.makerQty = want;
+    out.takerQty = want;
+    CancelReason makerReason = CancelReason::ReduceOnlyNotReducing;
+    CancelReason takerReason = CancelReason::ReduceOnlyNotReducing;
+    const int64_t makerAllowed =
+        legFillLimit(makerAcct, makerSide, makerReduceOnly, want.raw(), makerReason);
+    const int64_t takerAllowed =
+        legFillLimit(takerAcct, takerSide, takerReduceOnly, want.raw(), takerReason);
+    out.makerQty = Quantity::fromRaw(makerAllowed);
+    out.takerQty = Quantity::fromRaw(takerAllowed);
+    // The maker is the leg reported as blocked when both are: it is the one the
+    // matcher can act on (pull it from the book) without killing an aggressor
+    // that may still trade elsewhere.
+    if (makerAllowed <= takerAllowed)
+    {
+      out.qty = out.makerQty;
+      out.makerBlocked = makerAllowed <= 0;
+      out.reason = makerReason;
+    }
+    else
+    {
+      out.qty = out.takerQty;
+      out.takerBlocked = takerAllowed <= 0;
+      out.reason = takerReason;
+    }
+    return out;
+  }
+
   void onNew(NewOrder o)
   {
+    // Entitlement first: an order the counterparty may not send should not
+    // consume a clientOrderId, link an OCO group or reach any later gate.
+    if (const RejectReason r = admissionGate(o); r != RejectReason::None)
+    {
+      ++admissionRejects_;
+      sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
+      return;
+    }
     // clientOrderId dedup (per account, window = engine session/uptime; see
     // docs/venue/matching.md). Registered on receipt, BEFORE any other gate:
     // a resend of an already-seen clOrdId must reject deterministically even
@@ -1675,6 +2213,16 @@ class MatchingEngine
     }
     if (isConditional(o.type))
     {
+      // Conditional orders branch off before validate(), which is written for
+      // an order carrying a live limit price. They still have a price (the
+      // trigger) and a quantity, and both must obey the instrument -- an
+      // off-tick or out-of-band trigger, or a sub-lot size, used to be parked
+      // happily and only surfaced when the stop fired.
+      if (const RejectReason r = validateConditional(o); r != RejectReason::None)
+      {
+        sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
+        return;
+      }
       committed = onStop(o);  // parked in the stop book -> committed (keep OCO link)
       return;
     }
@@ -1706,8 +2254,9 @@ class MatchingEngine
     }
     if (!reserveFunds(o))
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InsufficientFunds, o.accountId});
-      return;  // pre-trade buying-power (ledger reservation or credit hook)
+      sink_(OrderRejected{o.id, o.symbol, creditReason_, o.accountId});
+      creditReason_ = RejectReason::InsufficientFunds;  // reset for the next order
+      return;                                           // pre-trade buying-power (ledger reservation or credit hook)
     }
     committed = true;  // past all reject gates: the order will match/rest, and any
                        // OCO resolution is now owned by processOco / forgetOrder.
@@ -1725,7 +2274,7 @@ class MatchingEngine
       RestingOrder ro{o.id, o.accountId, restPx, o.quantity, o.side};
       ro.reduceOnly = o.reduceOnly;
       book_.addResting(o.side, ro);
-      trackResting(o.id, o.accountId);
+      trackResting(o.id, o.accountId, o.stp);
       sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, Quantity{}, o.accountId});
       return;
     }
@@ -1772,7 +2321,7 @@ class MatchingEngine
         ro.hidden = out.leaves - o.visibleQuantity;
       }
       book_.addResting(o.side, ro);
-      trackResting(o.id, o.accountId);
+      trackResting(o.id, o.accountId, o.stp);
       if (o.tif == TimeInForce::GTD && o.expiryNs > 0)
       {
         expiry_[o.id] = o.expiryNs;
@@ -1903,6 +2452,11 @@ class MatchingEngine
       sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol, o.accountId});
       return false;
     }
+    if (delisted_)
+    {
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InstrumentDelisted, o.accountId});
+      return false;
+    }
     if (closed_)
     {
       sink_(OrderRejected{o.id, o.symbol, RejectReason::MarketClosed, o.accountId});
@@ -1955,6 +2509,13 @@ class MatchingEngine
       initTrig = o.triggerPrice;
     }
     stops_.add(o, initTrig, trailing);
+    // GTD binds a conditional order as much as a resting one: a stop whose
+    // deadline passes before it ever triggers has to expire, not wait forever
+    // for a price that may never come.
+    if (o.tif == TimeInForce::GTD && o.expiryNs > 0)
+    {
+      expiry_[o.id] = o.expiryNs;
+    }
     sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false, Quantity{},
                         o.accountId});  // pending, not on book
     processTriggers();                  // may already be in-the-money
@@ -1974,6 +2535,15 @@ class MatchingEngine
 
   void processTriggers()
   {
+    // A stop re-enters matching here rather than through onNew, so the
+    // instrument-state check that guards new orders has to be repeated -- it
+    // is not inherited. Without this a mark update fires stops straight
+    // through a halt, a LULD pause, a closed session or a pre-open auction:
+    // the trigger reference keeps moving even when trading does not.
+    if (tradingStatus() != TradingStatus::Trading)
+    {
+      return;
+    }
     auto ref = triggerReference();
     if (!ref)
     {
@@ -2026,7 +2596,7 @@ class MatchingEngine
         RestingOrder rro{agg->id, agg->accountId, agg->price, out.leaves, agg->side};
         rro.reduceOnly = agg->reduceOnly;
         book_.addResting(agg->side, rro);
-        trackResting(agg->id, agg->accountId);
+        trackResting(agg->id, agg->accountId, agg->stp);
         sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true, Quantity{},
                             agg->accountId});
       }
@@ -2048,7 +2618,13 @@ class MatchingEngine
   {
     if (m.symbol != cfg_.id)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::UnknownSymbol, m.accountId});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::UnknownSymbol, m.accountId, true});
+      return;
+    }
+    if (admissionDenies(m.accountId, AdmissionDeny::DenyAmend))
+    {
+      ++admissionRejects_;
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::AmendNotPermitted, m.accountId, true});
       return;
     }
     // Resolve (reject) any last-look holds referencing this order FIRST: both
@@ -2058,12 +2634,12 @@ class MatchingEngine
     const RestingOrder* cur = book_.find(m.id);
     if (cur == nullptr)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId, true});
       return;
     }
     if (m.newQty.raw() <= 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidQuantity, m.accountId});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidQuantity, m.accountId, true});
       return;
     }
 
@@ -2079,27 +2655,27 @@ class MatchingEngine
     // original order untouched.
     if (newPrice.raw() <= 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
       return;
     }
     if (!cfg_.tickSize.isZero() && (newPrice.raw() % cfg_.tickSize.raw()) != 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::TickSizeViolation, acct});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::TickSizeViolation, acct, true});
       return;
     }
     if (!cfg_.minPrice.isZero() && newPrice < cfg_.minPrice)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
       return;
     }
     if (!cfg_.maxPrice.isZero() && cfg_.maxPrice < newPrice)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
       return;
     }
     if (!cfg_.lotSize.isZero() && (m.newQty.raw() % cfg_.lotSize.raw()) != 0)
     {
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::LotSizeViolation, acct});
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::LotSizeViolation, acct, true});
       return;
     }
 
@@ -2115,16 +2691,7 @@ class MatchingEngine
     if (newPrice == curPrice && m.newQty <= curLeaves && curHidden.isZero())
     {
       book_.reduce(m.id, m.newQty);
-      if (ledger_ != nullptr && m.newQty < curLeaves)
-      {
-        if (auto it = reserve_.find(m.id); it != reserve_.end() && curLeaves.raw() > 0)
-        {
-          const Amount freed = static_cast<Amount>(static_cast<__int128>(it->second.reservedRaw) *
-                                                   (curLeaves.raw() - m.newQty.raw()) / curLeaves.raw());
-          ledger_->release(it->second.account, it->second.asset, freed);
-          it->second.reservedRaw -= freed;
-        }
-      }
+      releaseReservationPro(m.id, curLeaves.raw(), m.newQty.raw());
       sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true, acct});
       return;
     }
@@ -2144,6 +2711,10 @@ class MatchingEngine
     re.tif = TimeInForce::GTC;
     re.accountId = acct;
     re.reduceOnly = curReduceOnly;  // preserve reduce-only across the modify
+    // A modify re-enters matching as a fresh aggressor, so it must carry the
+    // self-trade prevention the original order was admitted with. Rebuilding
+    // the order from the resting record alone would silently drop it.
+    re.stp = stpOf(m.id);
 
     // Perp risk gate: a modified perp order re-enters matching HERE, not through
     // onNew, so it must run the same reduce-only cap + position-cap checks (spot:
@@ -2170,7 +2741,7 @@ class MatchingEngine
       RestingOrder mro{m.id, acct, newPrice, out.leaves, side};
       mro.reduceOnly = re.reduceOnly;
       book_.addResting(side, mro);
-      trackResting(m.id, acct);
+      trackResting(m.id, acct, re.stp);
     }
     sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct});
     processTriggers();  // a reprice-into-cross may have moved the last price
@@ -2180,7 +2751,13 @@ class MatchingEngine
   {
     if (c.symbol != cfg_.id)
     {
-      sink_(OrderRejected{c.id, c.symbol, RejectReason::UnknownSymbol, c.accountId});
+      sink_(CancelRejected{c.id, c.symbol, RejectReason::UnknownSymbol, c.accountId, false});
+      return;
+    }
+    if (admissionDenies(c.accountId, AdmissionDeny::DenyCancel))
+    {
+      ++admissionRejects_;
+      sink_(CancelRejected{c.id, c.symbol, RejectReason::CancelNotPermitted, c.accountId, false});
       return;
     }
     // Cancel-while-held: deterministically resolve (reject) the order's holds
@@ -2200,11 +2777,16 @@ class MatchingEngine
     }
     else if (stops_.cancel(c.id))
     {
+      // A pending stop holds no reservation, but it does hold an OCO
+      // membership: leaving it behind means a later trigger of the sibling
+      // looks for an order that no longer exists.
+      unlinkOco(c.id);
+      forgetOrder(c.id);
       sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct});
     }
     else
     {
-      sink_(OrderRejected{c.id, c.symbol, RejectReason::UnknownOrder, c.accountId});
+      sink_(CancelRejected{c.id, c.symbol, RejectReason::UnknownOrder, c.accountId, false});
     }
   }
 
@@ -2216,10 +2798,77 @@ class MatchingEngine
     auto it = orderAccount_.find(id);
     return it == orderAccount_.end() ? 0 : it->second;
   }
-  void trackResting(OrderId id, uint64_t account)
+  // Self-trade-prevention mode recorded for an order, or None if it asked for
+  // none. Reading it back is how a re-entering order keeps the control it was
+  // admitted with.
+  STPMode stpOf(OrderId id) const
+  {
+    auto it = orderStp_.find(id);
+    return it == orderStp_.end() ? STPMode::None : it->second;
+  }
+
+  // Self-trade-prevention scope: the firm group if the account is in one, else
+  // the account itself. Read off the matcher's table so the two can never
+  // disagree about who counts as the same trader.
+  uint64_t stpScope(uint64_t account) const
+  {
+    const auto& groups = matcher_.stpGroups();
+    if (groups.empty())
+    {
+      return account;
+    }
+    auto it = groups.find(account);
+    return it == groups.end() ? account : it->second;
+  }
+
+  // Cancel one leg of a self-matching auction pair, with the same discipline
+  // every other engine-side cancel follows: free the reservation, drop the
+  // tracking, tell the owner.
+  void cancelForStp(OrderId id, uint64_t account)
+  {
+    book_.cancel(id);
+    releaseReservation(id);
+    forgetOrder(id);
+    sink_(OrderCanceled{id, cfg_.id, CancelReason::SelfTradePrevention, account});
+  }
+
+  // Trim one leg by the overlapping quantity without printing. A leg trimmed
+  // to nothing is canceled outright, which is also what keeps the uncross loop
+  // making progress.
+  void decrementForStp(OrderId id, Quantity by)
+  {
+    const RestingOrder* r = book_.find(id);
+    if (r == nullptr)
+    {
+      return;
+    }
+    const uint64_t acct = r->accountId;
+    const int64_t fromRaw = r->leaves.raw();
+    const int64_t toRaw = fromRaw - by.raw();
+    if (toRaw <= 0)
+    {
+      cancelForStp(id, acct);
+      return;
+    }
+    book_.reduce(id, Quantity::fromRaw(toRaw));
+    releaseReservationPro(id, fromRaw, toRaw);
+  }
+
+  // Every path that puts an order on the book comes through here, and the STP
+  // mode is a required argument on purpose: a new rest path cannot compile
+  // without saying what self-trade prevention the order carries.
+  void trackResting(OrderId id, uint64_t account, STPMode stp)
   {
     orderAccount_[id] = account;
     byAccount_[account].insert(id);
+    if (stp != STPMode::None)
+    {
+      orderStp_[id] = stp;
+    }
+    else
+    {
+      orderStp_.erase(id);  // an id can be reused after the previous order left
+    }
   }
   void forgetOrder(OrderId id)
   {
@@ -2237,6 +2886,7 @@ class MatchingEngine
     expiry_.erase(id);
     unlinkOco(id);
     pegged_.erase(id);
+    orderStp_.erase(id);
   }
 
   // Remove an order from its OCO group, keeping orderOco_ and ocoMembers_ in
@@ -2244,6 +2894,30 @@ class MatchingEngine
   // (cancel / expiry / MMP / halt / liquidation / reject) must route through
   // here, or a departed leg lingers in ocoMembers_ and later cancels a reused
   // OrderId when the surviving sibling resolves (and the group vector leaks).
+  // Free the reservation covering the quantity an order just lost. Any path
+  // that shrinks a resting order owes this: buying power held against size
+  // that no longer rests is the account's money, frozen for nothing.
+  void releaseReservationPro(OrderId id, int64_t fromQtyRaw, int64_t toQtyRaw)
+  {
+    if (ledger_ == nullptr || fromQtyRaw <= 0 || toQtyRaw >= fromQtyRaw)
+    {
+      return;
+    }
+    auto it = reserve_.find(id);
+    if (it == reserve_.end())
+    {
+      return;
+    }
+    const Amount freed = static_cast<Amount>(static_cast<__int128>(it->second.reservedRaw) *
+                                             (fromQtyRaw - toQtyRaw) / fromQtyRaw);
+    if (freed <= 0)
+    {
+      return;
+    }
+    ledger_->release(it->second.account, it->second.asset, freed);
+    it->second.reservedRaw -= freed;
+  }
+
   void unlinkOco(OrderId id)
   {
     auto it = orderOco_.find(id);
@@ -2301,6 +2975,12 @@ class MatchingEngine
   {
     if (q.symbol != cfg_.id)
     {
+      return;
+    }
+    if (admissionDenies(q.accountId, AdmissionDeny::DenyQuote))
+    {
+      ++admissionRejects_;
+      sink_(OrderRejected{q.bidId, q.symbol, RejectReason::QuoteNotPermitted, q.accountId});
       return;
     }
     rejectHoldsFor(q.bidId);  // a replaced quote may carry open holds
@@ -2445,13 +3125,36 @@ class MatchingEngine
 
   bool reserveFunds(const NewOrder& o)
   {
+    // Permission first, funding second. An external risk owner answers a
+    // question the engine cannot ("is this account good for it across every
+    // instrument it holds?"), so it has to be asked whether or not this engine
+    // also posts collateral -- both money branches below used to return before
+    // the hook was ever reached, so binding a ledger silently disabled it.
+    if (credit_)
+    {
+      const CreditDecision d = credit_(CreditRequest{o.id, o.accountId, cfg_.id, o.side, o.type,
+                                                     o.price, o.quantity, o.reduceOnly});
+      if (!d.allowed)
+      {
+        creditReason_ = d.reason;  // surfaced by the caller's reject
+        return false;
+      }
+    }
     if (ledger_ != nullptr && cfg_.linearPerp)
     {
       // Derivatives: reserve initial margin in quote collateral (reduce-only
       // reserves nothing -- it frees position margin instead).
-      const int64_t limitRaw =
-          (o.type == OrderType::LIMIT) ? o.price.raw()
-                                       : (o.side == Side::BUY ? cfg_.maxPrice.raw() : cfg_.minPrice.raw());
+      //
+      // An unpriced (market / triggered-stop) order is bounded by the price
+      // band, and for a linear perp that bound is the band's TOP on BOTH sides.
+      // Nothing is delivered here: the exposure is notional, and notional --
+      // hence initial margin -- grows with price whether the account is long or
+      // short. Bounding a perp SELL at minPrice (which is the correct worst case
+      // for a SPOT seller, who delivers base and whose quote proceeds only grow
+      // with price -- see the spot branch below) under-reserves it by the whole
+      // maxPrice/minPrice ratio, and consumeOrderIM then caps the position's
+      // margin at that under-reserved number.
+      const int64_t limitRaw = (o.type == OrderType::LIMIT) ? o.price.raw() : cfg_.maxPrice.raw();
       // A market/stop order with no price band (limitRaw == 0) cannot be bounded
       // for margin: reserving 0 IM would let it open a position with no
       // collateral. Reject rather than admit an uncollateralized fill.
@@ -2500,10 +3203,6 @@ class MatchingEngine
       reserve_[o.id] = Reservation{o.accountId, asset, amt, limitRaw, o.side};
       return true;
     }
-    if (credit_)
-    {
-      return credit_(o.accountId, o.side, o.price, o.quantity);
-    }
     return true;
   }
 
@@ -2513,7 +3212,15 @@ class MatchingEngine
   // ledger reproduces them. Without a ledger bound they are no-ops.
   void onDeposit(const Deposit& d)
   {
-    if (ledger_ == nullptr || d.amountRaw <= 0)
+    // A money command against an engine that holds no ledger is answered, not
+    // swallowed: silence is indistinguishable from a lost command, and the
+    // sender has no other way to learn the funds went nowhere.
+    if (ledger_ == nullptr)
+    {
+      sink_(OrderRejected{0, cfg_.id, RejectReason::NoLedgerBound, d.accountId});
+      return;
+    }
+    if (d.amountRaw <= 0)
     {
       return;
     }
@@ -2527,7 +3234,12 @@ class MatchingEngine
 
   void onWithdraw(const Withdraw& w)
   {
-    if (ledger_ == nullptr || w.amountRaw <= 0)
+    if (ledger_ == nullptr)
+    {
+      sink_(OrderRejected{0, cfg_.id, RejectReason::NoLedgerBound, w.accountId});
+      return;
+    }
+    if (w.amountRaw <= 0)
     {
       return;
     }
@@ -2648,10 +3360,41 @@ class MatchingEngine
     forgetOrder(id);
   }
 
+  // A printed trade could not be settled without creating value, so nothing was
+  // moved. Counted and logged rather than event-carried: the counter is a
+  // diagnostic (like droppedSnapshotRecords), and adding an event here would
+  // change the outbound stream on a path that must stay unreachable.
+  void reportUnsettled(const Trade& t, uint64_t account, const char* why)
+  {
+    ++unsettledTrades_;
+    std::fprintf(stderr,
+                 "flox-venue: trade %llu on symbol %u NOT settled (%s, account %llu) -- "
+                 "no value moved\n",
+                 static_cast<unsigned long long>(t.tradeId), static_cast<unsigned>(cfg_.id), why,
+                 static_cast<unsigned long long>(account));
+  }
+
   void settleTrade(const Trade& t)
   {
     if (ledger_ == nullptr)
     {
+      // A position is EXPOSURE, not cash: it is what reduce-only, the position
+      // cap and open interest are computed from, and none of those are money
+      // questions. So a ledgerless perp still tracks positions -- only the
+      // settlement (PnL, margin, fees) is skipped. Leaving positions_ empty
+      // here is what used to make reduce-only reject unconditionally, degrade
+      // the position cap to a per-order cap, and publish open interest as a
+      // flat zero.
+      if (cfg_.linearPerp)
+      {
+        const bool takerBuys = (t.takerSide == Side::BUY);
+        updatePerpPosition(takerBuys ? t.takerAccount : t.makerAccount,
+                           takerBuys ? t.takerId : t.makerId, true, t.quantity.raw(),
+                           t.price.raw());
+        updatePerpPosition(takerBuys ? t.makerAccount : t.takerAccount,
+                           takerBuys ? t.makerId : t.takerId, false, t.quantity.raw(),
+                           t.price.raw());
+      }
       emitFees(t);  // no settlement: fee events only
       return;
     }
@@ -2669,8 +3412,40 @@ class MatchingEngine
     const OrderId sellerId = takerBuys ? t.makerId : t.takerId;
     const uint64_t sellerAcct = takerBuys ? t.makerAccount : t.takerAccount;
 
+    auto rb = reserve_.find(buyerId);
+    auto rs = reserve_.find(sellerId);
+    const bool buyerUnreserved = (rb == reserve_.end());
+    const bool sellerUnreserved = (rs == reserve_.end());
+
+    // VALUE INTEGRITY. A leg with no reservation has to settle straight out of
+    // `available`, and Ledger::debit is all-or-nothing: it can refuse. Crediting
+    // the counterparty regardless -- which is what discarding the debit's result
+    // amounts to -- CREATES the credited amount out of nothing. So both
+    // unreserved legs are funded first, each checked, before anything is
+    // credited: if either refuses, the settlement is abandoned as a unit (the
+    // first debit, if it happened, is credited back by exactly the same amount),
+    // the trade is counted as unsettled and nothing moves. Every path that
+    // reaches here is supposed to hold a reservation; this is the floor under
+    // any path that ever stops doing so.
+    if (buyerUnreserved && !ledger_->debit(buyerAcct, cfg_.quoteAsset, notional))
+    {
+      reportUnsettled(t, buyerAcct, "buyer cannot fund quote");
+      return;
+    }
+    if (sellerUnreserved && !ledger_->debit(sellerAcct, cfg_.baseAsset, qtyRaw))
+    {
+      if (buyerUnreserved)
+      {
+        ledger_->credit(buyerAcct, cfg_.quoteAsset, notional);  // exact undo of the debit above
+      }
+      reportUnsettled(t, sellerAcct, "seller cannot deliver base");
+      return;
+    }
+
+    // Past this point the settlement cannot fail: what is left is reserved
+    // spending (already ring-fenced) and credits.
     // Buyer: pay quote from reserved (refund over-reservation), receive base.
-    if (auto rb = reserve_.find(buyerId); rb != reserve_.end())
+    if (!buyerUnreserved)
     {
       const Amount limitNotional = notionalRaw(rb->second.limitPriceRaw, t.quantity.raw(),
                                                cfg_.priceScale, cfg_.qtyScale);
@@ -2681,21 +3456,13 @@ class MatchingEngine
       }
       rb->second.reservedRaw -= limitNotional;
     }
-    else
-    {
-      ledger_->debit(buyerAcct, cfg_.quoteAsset, notional);
-    }
     ledger_->credit(buyerAcct, cfg_.baseAsset, qtyRaw);
 
     // Seller: deliver base from reserved, receive quote.
-    if (auto rs = reserve_.find(sellerId); rs != reserve_.end())
+    if (!sellerUnreserved)
     {
       ledger_->spendReserved(sellerAcct, cfg_.baseAsset, qtyRaw);
       rs->second.reservedRaw -= qtyRaw;
-    }
-    else
-    {
-      ledger_->debit(sellerAcct, cfg_.baseAsset, qtyRaw);
     }
     ledger_->credit(sellerAcct, cfg_.quoteAsset, notional);
 
@@ -2778,16 +3545,19 @@ class MatchingEngine
     {
       const int64_t reduceQty = std::min<int64_t>(remaining, iabs64(p.qtyRaw));
       // realized PnL vs entry (long: (price-entry)*qty; short: (entry-price)*qty)
-      const Amount pnl =
-          notionalRaw(priceRaw - p.entryRaw, reduceQty, cfg_.priceScale, cfg_.qtyScale) * posSign;
-      ledger_->credit(acct, cfg_.quoteAsset, pnl);
-      ledger_->credit(venueAccount_, cfg_.quoteAsset, -pnl);
-      // release position margin for the reduced portion
-      const Amount relMargin =
-          static_cast<Amount>(static_cast<__int128>(p.margin) * reduceQty / iabs64(p.qtyRaw));
-      ledger_->release(acct, cfg_.quoteAsset, relMargin);
-      p.margin -= relMargin;
-      releaseOrderIM(orderId, reduceQty, acct);
+      if (ledger_ != nullptr)
+      {
+        const Amount pnl =
+            notionalRaw(priceRaw - p.entryRaw, reduceQty, cfg_.priceScale, cfg_.qtyScale) * posSign;
+        ledger_->credit(acct, cfg_.quoteAsset, pnl);
+        ledger_->credit(venueAccount_, cfg_.quoteAsset, -pnl);
+        // release position margin for the reduced portion
+        const Amount relMargin =
+            static_cast<Amount>(static_cast<__int128>(p.margin) * reduceQty / iabs64(p.qtyRaw));
+        ledger_->release(acct, cfg_.quoteAsset, relMargin);
+        p.margin -= relMargin;
+        releaseOrderIM(orderId, reduceQty, acct);
+      }
       p.qtyRaw += fillSign * reduceQty;  // toward zero
       remaining -= reduceQty;
       if (p.qtyRaw == 0)
@@ -2798,7 +3568,7 @@ class MatchingEngine
 
     if (remaining > 0)
     {
-      const Amount im = consumeOrderIM(orderId, remaining);
+      const Amount im = (ledger_ != nullptr) ? consumeOrderIM(orderId, remaining) : 0;
       const int64_t absOld = iabs64(p.qtyRaw);
       const __int128 num = static_cast<__int128>(absOld) * p.entryRaw +
                            static_cast<__int128>(remaining) * priceRaw;
@@ -2809,11 +3579,11 @@ class MatchingEngine
 
     if (p.qtyRaw == 0)
     {
-      if (p.margin > 0)
+      if (p.margin > 0 && ledger_ != nullptr)
       {
         ledger_->release(acct, cfg_.quoteAsset, p.margin);
-        p.margin = 0;
       }
+      p.margin = 0;
       positions_.erase(acct);
     }
   }
@@ -2838,10 +3608,41 @@ class MatchingEngine
     }
   }
 
+  // Close a position on someone else's decision. The engine sees one symbol;
+  // a portfolio-margin model sees the whole basket and is the only party that
+  // can judge an account solvent or not across instruments. Same settlement
+  // path as the engine's own sweep, so both produce identical events and the
+  // replay cannot tell them apart.
+  void onForceClose(const ForceClosePosition& fc)
+  {
+    if (ledger_ == nullptr)
+    {
+      sink_(OrderRejected{0, cfg_.id, RejectReason::NoLedgerBound, fc.accountId});
+      return;
+    }
+    if (!cfg_.linearPerp || !hasMark_)
+    {
+      sink_(OrderRejected{0, cfg_.id, RejectReason::UnknownOrder, fc.accountId});
+      return;
+    }
+    if (positions_.find(fc.accountId) == positions_.end())
+    {
+      return;  // nothing open: a no-op, not an error
+    }
+    forceClose(fc.accountId, markPrice_);
+  }
+
   // Maintenance-margin sweep: liquidate every position whose equity (posted
   // margin + unrealized PnL) has fallen below the maintenance requirement.
+  // Skipped entirely when an external risk owner drives liquidation: two
+  // systems closing the same position from different numbers is worse than
+  // either doing it alone.
   void checkLiquidations(Price mark)
   {
+    if (cfg_.externalLiquidation)
+    {
+      return;
+    }
     if (ledger_ == nullptr || !cfg_.linearPerp || cfg_.maintenanceMarginBps == 0)
     {
       return;
@@ -3093,7 +3894,7 @@ class MatchingEngine
     // order (levels best-first, FIFO within) makes tail-appends reproduce the
     // exact live book layout.
     book_.addResting(r.side, ro);
-    trackResting(r.id, r.accountId);
+    trackResting(r.id, r.accountId, STPMode::None);  // set by the RestoreOrderStp that follows
     if (r.expiryNs > 0)
     {
       expiry_[r.id] = r.expiryNs;
@@ -3141,15 +3942,16 @@ class MatchingEngine
     h.takerReduceOnly = r.takerReduceOnly;
     held_[r.heldId] = h;
     heldOpen_.store(held_.size(), std::memory_order_relaxed);
-    // Tracking follows the recorded live truth: a held maker normally stays
-    // tracked even fully off the book (see createHeld), but an STP-cancel can
-    // have removed it while the hold stayed open. Idempotent when the maker
-    // also rests (RestoreOrder tracked it). The taker is tracked only while
-    // resting. Reservations backing the legs arrive as RestoreReservation
-    // records -- nothing is re-derived here.
+    // Tracking follows the recorded live truth rather than being re-derived: a
+    // held maker stays tracked even fully off the book (see createHeld), and
+    // the flag also carries snapshots written before the matcher's own removals
+    // learned to resolve holds first. Idempotent when the maker also rests
+    // (RestoreOrder tracked it). The taker is tracked only while resting.
+    // Reservations backing the legs arrive as RestoreReservation records --
+    // nothing is re-derived here.
     if (r.makerTracked)
     {
-      trackResting(h.maker, h.makerAccount);
+      trackResting(h.maker, h.makerAccount, stpOf(h.maker));
     }
     return true;
   }
@@ -3168,7 +3970,19 @@ class MatchingEngine
     }
     if (ledger_ == nullptr)
     {
-      return true;  // no ledger bound: reservations do not exist
+      // The snapshot describes a venue that held money; this engine does not.
+      // Accepting it would leave reserve_ empty while stateHash folds it in,
+      // and the generation would later be discarded as "corrupt" -- a wrong
+      // diagnosis of a sound file. Refuse here, where the reason is knowable.
+      if (r.reservedRaw > 0)
+      {
+        std::fprintf(stderr,
+                     "venue: snapshot carries reservations but no ledger is bound "
+                     "(order %llu) -- restore refused\n",
+                     static_cast<unsigned long long>(r.id));
+        return false;
+      }
+      return true;  // nothing reserved: nothing to honour
     }
     if (!exactBalanceRestore_ && r.reservedRaw > 0 &&
         !ledger_->reserve(r.account, r.asset, r.reservedRaw))
@@ -3245,6 +4059,13 @@ class MatchingEngine
     const uint64_t id = ++heldSeq_;
     Held h{id, taker.id, taker.accountId, taker.side, maker.id,
            maker.accountId, maker.price, fill, now_ + cfg_.lastLookWindowNs};
+    // The taker is an aggressor now, but its residual may rest once the hold
+    // resolves -- and a resting order's STP mode is what an auction reads.
+    // Capture it here, where the mode is still in hand.
+    if (taker.stp != STPMode::None)
+    {
+      orderStp_[taker.id] = taker.stp;
+    }
     h.takerTif = taker.tif;
     h.takerType = taker.type;
     h.takerPrice = taker.price;
@@ -3316,6 +4137,18 @@ class MatchingEngine
     const Held h = it->second;
     held_.erase(it);
     heldOpen_.store(held_.size(), std::memory_order_relaxed);
+    // An accept settles a fill that was risk-checked when the hold was created,
+    // possibly a whole window ago. Re-measure it against the position as it is
+    // now: a perp fill that would open or flip a reduce-only leg (with no margin
+    // behind it) or carry an account past the position cap must not print just
+    // because the maker said yes late. The hold is rejected instead -- the
+    // honest outcome, since the venue cannot part-accept a hold: liquidity is
+    // restored to both legs exactly as a maker reject would.
+    if (accept && !holdStillAllowed(h))
+    {
+      ++riskRejectedHolds_;
+      accept = false;
+    }
     if (accept)
     {
       emit_(Trade{++tradeSeq_, cfg_.id, h.price, h.qty, h.maker, h.taker, h.takerSide,
@@ -3348,6 +4181,26 @@ class MatchingEngine
     // (deferred from the emit_ wrapper while holds were open).
     cleanupOrderIfDone(h.taker);
     cleanupOrderIfDone(h.maker);
+  }
+
+  // Would settling this hold in full still pass the perp risk limits? Both legs
+  // are measured on the live position (see fillLimit); spot and ledgerless
+  // engines have no positions, so nothing constrains them.
+  bool holdStillAllowed(const Held& h) const
+  {
+    if (!cfg_.linearPerp || ledger_ == nullptr)
+    {
+      return true;
+    }
+    const Side makerSide = (h.takerSide == Side::BUY) ? Side::SELL : Side::BUY;
+    CancelReason ignored = CancelReason::ReduceOnlyNotReducing;
+    if (legFillLimit(h.makerAccount, makerSide, h.makerReduceOnly, h.qty.raw(), ignored) <
+        h.qty.raw())
+    {
+      return false;
+    }
+    return legFillLimit(h.takerAccount, h.takerSide, h.takerReduceOnly, h.qty.raw(), ignored) >=
+           h.qty.raw();
   }
 
   // Return a rejected hold's qty to the maker: back onto its price level at the
@@ -3392,7 +4245,7 @@ class MatchingEngine
       {
         RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
         book_.addResting(h.takerSide, rebuilt);
-        trackResting(h.taker, h.takerAccount);
+        trackResting(h.taker, h.takerAccount, stpOf(h.taker));
         if (h.takerTif == TimeInForce::GTD && h.takerExpiryNs > 0)
         {
           expiry_[h.taker] = h.takerExpiryNs;
@@ -3533,6 +4386,13 @@ class MatchingEngine
         forgetOrder(id);
         sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct});
       }
+      else if (stops_.cancel(id))  // never triggered -> expire the conditional
+      {
+        const uint64_t acct = ownerOf(id);
+        unlinkOco(id);
+        forgetOrder(id);
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct});
+      }
     }
   }
 
@@ -3634,9 +4494,12 @@ class MatchingEngine
         book_.addResting(ro->side, *ro);  // unchanged -> put it back
         continue;
       }
-      if (ledger_ != nullptr)
+      // The reprice is re-funded whether or not a ledger is bound: with no
+      // ledger reserveFunds still consults the setCreditCheck hook, and
+      // skipping the whole block here was the one path where a repriced peg
+      // escaped a check that submit and stop-trigger both apply.
       {
-        releaseReservation(id);
+        releaseReservation(id);  // no-op without a ledger
         NewOrder synth;
         synth.id = id;
         synth.symbol = cfg_.id;
@@ -3763,6 +4626,16 @@ class MatchingEngine
     int64_t offsetRaw;
   };
   std::unordered_map<OrderId, Peg> pegged_;  // orderId -> peg spec (re-priced each submit)
+  // orderId -> self-trade-prevention mode, for orders that asked for one. Only
+  // the auction uncross and a modify re-entry read it: continuous matching
+  // takes the mode off the aggressor. Sparse -- STPMode::None is absent.
+  std::unordered_map<OrderId, STPMode> orderStp_;
+  // account -> admission profile. Empty table and absent entries both mean
+  // "everything permitted", so an engine that was never given profiles behaves
+  // exactly as before.
+  std::unordered_map<uint64_t, AdmissionProfile> admission_;
+  bool delisted_{false};          // withdrawn from trading; outranks halt / session / auction
+  uint64_t admissionRejects_{0};  // observability: a counterparty sending what it may not
 
   flox::FeeSchedule fees_;
   bool feesEnabled_{false};
@@ -3784,6 +4657,9 @@ class MatchingEngine
   std::unordered_map<uint64_t, MmpWindow> mmpFills_;
   std::vector<uint64_t> mmpBreached_;
   CreditCheck credit_;
+  // Reason from the last refused credit check, so the reject the client sees
+  // says why ("portfolio margin", say) instead of a flat InsufficientFunds.
+  mutable RejectReason creditReason_{RejectReason::InsufficientFunds};
 
   std::unordered_map<uint64_t, Held> held_;
   uint64_t heldSeq_{0};
@@ -3798,6 +4674,12 @@ class MatchingEngine
 
   // Snapshot-only records seen (and dropped) on the live submit path.
   uint64_t droppedSnapshotRecords_{0};
+
+  // Clearing-integrity counters (diagnostics, not hashed state): trades left
+  // unsettled rather than settled by creating value, and last-look accepts
+  // refused at decision time by a perp risk limit.
+  uint64_t unsettledTrades_{0};
+  uint64_t riskRejectedHolds_{0};
 
   // Recovery mode flag: this snapshot carried exact RestoreBalance splits, so
   // RestoreReservation / RestorePosition must not move ledger money (v1

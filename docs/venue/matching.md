@@ -71,6 +71,61 @@ STP interacts with `FOK`: an all-or-none order cannot count liquidity it would
 never be allowed to trade with, so the precheck excludes same-scope resting
 size.
 
+STP also interacts with **last look**: the maker it pulls may have a hold open,
+so the hold is resolved (rejected, liquidity restored) before the order is
+removed -- the same order every engine-side cancel path follows. Removing first
+would release the collateral the hold still had to settle from.
+
+### Live risk limits
+
+The band, the fat-finger caps, the per-account order cap, the position cap and
+the margin requirement are changed with the sequenced `SetRiskLimits` command
+(control-plane verb `setRiskLimits`). A field mask says which limits the record
+carries, so raising one cannot zero another by omission.
+
+The direct setters on the engine remain for pre-start wiring. On a running
+engine they apply immediately and ride nothing: a restart reverts them and a
+replica replaying the journal never sees the change. Use the command.
+
+### Delisting
+
+`AdminAction::Delist` withdraws an instrument from trading and pulls the
+resting book with it. A halt promises the instrument comes back and a closed
+session promises the next one; delisting promises neither, so leaving orders
+resting would leave them waiting for an open that is not coming. New orders are
+rejected with `InstrumentDelisted`, which says that rather than promising a
+return.
+
+It outranks halt, session and auction state: reopening the session does not
+make a delisted instrument tradeable. `Relist` reverses it -- an irreversible
+operator action is one mistake away from needing a restart to undo.
+
+### Admission profiles
+
+Counterparties have different rights. One routes flow it manages itself and
+should never leave an order resting here; another posts and pulls quotes, where
+cancel/replace is the main operation. The rights are set per account and
+checked on entry.
+
+| Field | Meaning |
+|---|---|
+| `allowedTypes` | bitmask over `OrderType`; 0 = no restriction |
+| `allowedTif` | bitmask over `TimeInForce`; 0 = no restriction |
+| `deny` | `DenyResting`, `DenyAmend`, `DenyCancel`, `DenyQuote` |
+
+An absent profile permits everything, so an engine never given one behaves as
+before. `DenyResting` rejects GTC, GTD and post-only on admission rather than
+killing the residual afterwards: an order resting here that the sender does not
+track will not be reconciled, and nothing looks wrong until it fills. The
+rejection happens before the `clientOrderId` is consumed, so a corrected
+message can be resent under the same id.
+
+The profile arrives as the sequenced `SetAdmissionProfile` command
+(control-plane verb of the same name), so it journals, survives checkpoints,
+enters the state hash and replays. `MatchingEngine::admissionRejects()` counts
+the rejections; a non-zero value means a counterparty is sending something its
+profile does not allow.
+
 ## Order types and time in force
 
 `NewOrder` carries the full venue vocabulary:
@@ -84,7 +139,8 @@ size.
   submit boundary, tick-aligned, clamped so it never crosses.
 - **OCO.** `ocoGroup`; a fill on one leg cancels its siblings.
 - **Reduce-only.** Perp orders that may only reduce a position, re-capped on
-  submit, trigger, and modify.
+  submit, trigger, modify -- and re-measured at fill time against the position
+  as it is then (see [Risk](risk.md)).
 
 ## The engine
 
@@ -116,8 +172,8 @@ limits during volatility without a restart:
 
 | Control | Config | Live setter |
 |---|---|---|
-| Tick / lot / min quantity | `tickSize`, `lotSize`, `minQty` | — |
-| Price band (collar) | `minPrice`, `maxPrice` | — |
+| Tick / lot / min quantity | `tickSize`, `lotSize`, `minQty` | -- |
+| Price band (collar) | `minPrice`, `maxPrice` | -- |
 | Fat finger | `maxOrderQty`, `maxOrderNotional` | `setFatFinger` |
 | LULD volatility band | `luldBps`, `luldHaltNs` | `setLuldBps` |
 
@@ -231,3 +287,89 @@ Sequenced through `AdminCmd`, so they survive replay:
 - `ResumeAuction`: clear a halt into a re-opening auction.
 - `HaltAndCancelAll`: emergency halt that also pulls the resting book.
 - `Halt` / `Resume`.
+
+## Order paths and the gates on them
+
+Eight paths admit or re-admit an order into matching, and each applies the
+pre-trade checks itself. A stop that fires is not covered by the validation its
+submission passed: the instrument may have halted in between.
+
+```mermaid
+flowchart TD
+    NEW[NewOrder] --> DEDUP{clOrdId<br/>already used?}
+    DEDUP -->|yes| REJ[Reject]
+    DEDUP -->|no| COND{conditional?}
+
+    COND -->|yes| VC[validateConditional<br/>tick / band / lot on the trigger]
+    VC -->|fails| REJ
+    VC -->|ok| PARK[park in the stop book]
+
+    COND -->|no| CAP{maxOpenOrders}
+    CAP -->|exceeded| REJ
+    CAP -->|ok| PERP[perpRiskGate<br/>reduce-only, position cap]
+    PERP -->|fails| REJ
+    PERP -->|ok| VAL[validate<br/>state, tick, lot, band, LULD]
+    VAL -->|fails| REJ
+    VAL -->|ok| FUND[reserveFunds]
+
+    FUND --> CRED{credit hook<br/>external risk owner}
+    CRED -->|refuses| REJ
+    CRED -->|allows| RES[reserve collateral<br/>if a ledger is bound]
+    RES -->|insufficient| REJ
+    RES -->|ok| MATCH[matcher.cross]
+
+    MARK[mark / last price moves] --> TRIG{instrument<br/>trading?}
+    TRIG -->|halted, closed,<br/>paused, auction| STOPPED[no trigger]
+    TRIG -->|yes| POP[pop triggered stops]
+    POP --> PERP2[perpRiskGate] --> FUND2[reserveFunds] --> MATCH
+
+    MOD[ModifyOrder] --> HOLDS[resolve open holds] --> VM[tick / band / lot]
+    VM --> PERP3[perpRiskGate] --> FUND3[reserveFunds] --> MATCH
+
+    QUOTE[Quote] --> HOLDS2[resolve open holds] --> LEGS[each leg through NewOrder]
+    LEGS --> DEDUP
+
+    PEG[reference moves] --> HOLDS3[resolve open holds] --> FUND4[reserveFunds<br/>at the new price] --> BOOK[re-enter book]
+
+    MATCH --> FR{fill-time risk<br/>perp only}
+    FR -->|blocked| PULL[pull the blocked leg]
+    FR -->|ok| TRADE[Trade]
+
+    AUCT[auction uncross] --> FR
+    ACCEPT[hold accepted] --> FR
+```
+
+The table below is the same thing checked against the source, including gates
+inherited through delegation -- a quote runs every new-order gate because each
+leg goes through that path.
+
+| path | state | dedup | tick/lot/band | perp risk | credit hook | collateral | self-trade | fill-time risk | holds |
+|---|---|---|---|---|---|---|---|---|---|
+| new order | yes | yes | yes | yes | yes | yes | yes | - | - |
+| conditional (parked) | yes | - | yes | yes | yes | yes | - | - | - |
+| stop trigger | yes | - | yes | yes | yes | yes | yes | - | - |
+| modify | yes | - | yes | yes | yes | yes | yes | - | yes |
+| quote (per leg) | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| peg reprice | - | - | yes | yes | yes | yes | yes | - | yes |
+| auction uncross | - | - | - | yes | - | - | yes | yes | - |
+| hold accept | - | - | - | - | - | - | - | yes | yes |
+
+Self-trade prevention applies under both matching policies and in the auction,
+and where it reads the mode from differs. In continuous trading it comes off
+the aggressor: pro-rata resolves every same-scope maker at the level before
+computing the split, price-time resolves each one as the sweep reaches it, and
+both call `applySelfTradePrevention`. A modify carries the mode of the order it
+replaces. An auction has no aggressor, so the mode comes off each resting order
+(the book stores it for that) and applies from its owner's side.
+
+Two blanks in the table are intentional. A peg reprice does not re-check
+instrument state: it only runs on a submit, and that submit is rejected first
+when trading is stopped. The auction uncross does not re-validate prices or
+take collateral, because every order in the book passed both on admission and
+the uncross only picks the clearing price. Both cases are covered by tests.
+
+`test_venue_gate_coverage.cpp` asserts these as properties rather than as a
+list: each admission path must ask the credit hook for the order it admits,
+nothing may print while the instrument is not trading (under both trigger
+references), and a conditional order must obey tick, band and lot. Removing any
+one guard makes it fail -- verified by mutation, one guard at a time.

@@ -225,9 +225,12 @@ void test_spot_conservation()
 // Last-look lifecycle under the conservation invariant: a slice of the flow is
 // lastLook makers, and holds resolve through every path -- explicit accepts,
 // explicit rejects, wrong-owner decision attempts, timeout (acceptOnTimeout
-// exercises the timeout-accept settle), and cancel-while-held during the
-// drain. Money must never be created or destroyed, and after the drain every
-// reservation (including restored held slices) must return to zero.
+// exercises the timeout-accept settle), cancel-while-held during the drain, and
+// SELF-TRADE PREVENTION removing a maker that has a hold open (T028: the one
+// removal path that lives inside the matcher, where a cancel that ignored the
+// hold used to free the collateral the later accept had to settle from). Money
+// must never be created or destroyed, and after the drain every reservation
+// (including restored held slices) must return to zero.
 void test_spot_conservation_lastlook()
 {
   std::printf("test_spot_conservation_lastlook\n");
@@ -252,13 +255,34 @@ void test_spot_conservation_lastlook()
   std::unordered_map<OrderId, uint64_t> acctOf;
   std::vector<std::pair<uint64_t, uint64_t>> pendingHolds;  // (heldId, makerAccount)
   uint64_t totalHolds = 0;
-  MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
-                                   {
-                                     if (const auto* h = std::get_if<FillHeld>(&e))
-                                     {
-                                       ++totalHolds;
-                                       pendingHolds.emplace_back(h->heldId, acctOf[h->makerId]);
-                                     } });
+  uint64_t stpCancels = 0;
+  uint64_t stpCancelsOnHeldMaker = 0;  // T028 coverage: STP pulled a maker mid-hold
+  OrderId lastRejectedMaker = 0;
+  MatchingEngine<MatchingBook> eng(
+      c,
+      [&](const OutboundEvent& e)
+      {
+        if (const auto* h = std::get_if<FillHeld>(&e))
+        {
+          ++totalHolds;
+          pendingHolds.emplace_back(h->heldId, acctOf[h->makerId]);
+        }
+        else if (const auto* fr = std::get_if<FillRejected>(&e))
+        {
+          lastRejectedMaker = fr->makerId;  // a hold on this maker just resolved
+        }
+        else if (const auto* oc = std::get_if<OrderCanceled>(&e);
+                 oc != nullptr && oc->reason == CancelReason::SelfTradePrevention)
+        {
+          ++stpCancels;
+          // The STP path resolves the maker's holds immediately before pulling
+          // it, so this pairing is exactly the interaction under test.
+          if (oc->id == lastRejectedMaker)
+          {
+            ++stpCancelsOnHeldMaker;
+          }
+        }
+      });
   flox::FeeSchedule fs;
   fs.addTier(0.0, -1.0, 2.0);
   eng.setFeeSchedule(fs);
@@ -326,6 +350,30 @@ void test_spot_conservation_lastlook()
           o.tif = TimeInForce::FOK;  // FOK never executes into last-look range
         }
       }
+      // Self-trade prevention on a slice of the aggressive flow, ON TOP of the
+      // last-look makers above: with 8 accounts an aggressor regularly crosses
+      // its own quote, so the matcher's own cancel path meets held makers. All
+      // four modes, since each removes or reshapes the maker differently.
+      if (!o.lastLook)
+      {
+        switch (static_cast<uint32_t>((r >> 56) % 8))
+        {
+          case 0:
+            o.stp = STPMode::CancelOldest;
+            break;
+          case 1:
+            o.stp = STPMode::CancelNewest;
+            break;
+          case 2:
+            o.stp = STPMode::CancelBoth;
+            break;
+          case 3:
+            o.stp = STPMode::Decrement;
+            break;
+          default:
+            break;  // the rest trade through their own quotes as before
+        }
+      }
       acctOf[o.id] = o.accountId;
       eng.submit(InboundCommand{o}, i);
     }
@@ -357,11 +405,16 @@ void test_spot_conservation_lastlook()
     }
   }
   CHECK(reservedLeaks == 0);
-  CHECK(totalHolds > 1000);  // coverage guard: the scenario really exercised holds
+  CHECK(eng.unsettledTrades() == 0);  // no fill ever reached clearing unbacked
+  CHECK(totalHolds > 1000);           // coverage guard: the scenario really exercised holds
+  CHECK(stpCancels > 100);            // ... and that STP really fired alongside them
+  CHECK(stpCancelsOnHeldMaker > 0);   // ... including on makers with a live hold (T028)
   std::printf(
       "  100000 ops, %llu holds (accept/reject/wrong-owner/timeout-accept/cancel-while-held), "
-      "base/quote conserved (%d breaches); reserved drained clean (%d leaks)\n",
-      static_cast<unsigned long long>(totalHolds), breaches, reservedLeaks);
+      "%llu STP cancels (%llu on a held maker), base/quote conserved (%d breaches); reserved "
+      "drained clean (%d leaks)\n",
+      static_cast<unsigned long long>(totalHolds), static_cast<unsigned long long>(stpCancels),
+      static_cast<unsigned long long>(stpCancelsOnHeldMaker), breaches, reservedLeaks);
 }
 
 void test_perp_conservation(bool adl)
@@ -392,6 +445,7 @@ void test_perp_conservation(bool adl)
   c.initialMarginBps = 1000;
   c.maintenanceMarginBps = 500;
   c.autoDeleverage = adl;
+  c.maxPositionQty = qty(20);  // the cap must bind the RESULTING position (T030)
   MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
   eng.setLedger(&led, VENUE);
 
@@ -410,6 +464,7 @@ void test_perp_conservation(bool adl)
   const int64_t midRaw = px(100).raw();
   const int64_t tickRaw = px(0.01).raw();
   int breaches = 0;
+  int capBreaches = 0;
   OrderId nextId = 1;
   for (int i = 0; i < 100000; ++i)
   {
@@ -435,6 +490,30 @@ void test_perp_conservation(bool adl)
       const int ticks = static_cast<int>((r >> 1) % 61) - 30;
       o.price = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
       o.quantity = qty(1.0 + static_cast<double>((r >> 20) % 5));
+      // Unpriced flow: a perp market/stop order is margined against the price
+      // BAND, not its own price, and the band bound must be the same on both
+      // sides (T029) -- a LIMIT-only fuzz never touches that arithmetic.
+      const uint32_t t = static_cast<uint32_t>((r >> 32) % 100);
+      if (t < 15)
+      {
+        o.type = OrderType::MARKET;
+      }
+      else if (t < 25)
+      {
+        o.type = OrderType::STOP_MARKET;
+        const int tt = static_cast<int>((r >> 40) % 61) - 30;
+        o.triggerPrice = Price::fromRaw(midRaw + static_cast<int64_t>(tt) * tickRaw);
+      }
+      else if (t < 32)
+      {
+        o.type = OrderType::STOP_LIMIT;
+        const int tt = static_cast<int>((r >> 40) % 61) - 30;
+        o.triggerPrice = Price::fromRaw(midRaw + static_cast<int64_t>(tt) * tickRaw);
+      }
+      // Reduce-only flow: capped at admission, re-measured at fill time. It
+      // reserves no margin, so a slice of it that opened a position would open
+      // one with none (T030).
+      o.reduceOnly = ((r >> 48) % 100) < 20;
       eng.submit(InboundCommand{o}, i);
     }
     if (sumQuote() != initQuote)
@@ -445,8 +524,25 @@ void test_perp_conservation(bool adl)
         std::printf("  first breach at op %d\n", i);
       }
     }
+    // The position cap binds the RESULT, not just the incoming order: no
+    // account may ever be carried past it by fills.
+    for (int a = 1; a <= NACCT; ++a)
+    {
+      const int64_t q = eng.positionQty(a);
+      if ((q < 0 ? -q : q) > qty(20).raw())
+      {
+        ++capBreaches;
+        if (capBreaches == 1)
+        {
+          std::printf("  first position-cap breach at op %d (acct %d, qty %lld)\n", i, a,
+                      static_cast<long long>(q));
+        }
+      }
+    }
   }
   CHECK(breaches == 0);
+  CHECK(capBreaches == 0);
+  CHECK(eng.unsettledTrades() == 0);
 
   // Perp reserved-invariant: drain resting orders, then every reserved quote
   // unit must be backed by an open position's posted margin -- no IM leak.
@@ -461,9 +557,9 @@ void test_perp_conservation(bool adl)
   }
   CHECK(reservedSum == eng.totalPositionMargin());
   std::printf(
-      "  100000 ops (orders+marks+liquidations), collateral conserved (%d breaches); "
-      "reserved==position-margin (%s)\n",
-      breaches, reservedSum == eng.totalPositionMargin() ? "ok" : "LEAK");
+      "  100000 ops (limit+market+stop+reduce-only orders, marks, liquidations), collateral "
+      "conserved (%d breaches); position cap held (%d breaches); reserved==position-margin (%s)\n",
+      breaches, capBreaches, reservedSum == eng.totalPositionMargin() ? "ok" : "LEAK");
 }
 
 void test_cross_margin_conservation()

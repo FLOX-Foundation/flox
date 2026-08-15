@@ -22,6 +22,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox/book/ladder_book.h"
+#include "support/counterexample.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -150,6 +151,41 @@ InboundCommand genCommand(uint64_t& s, uint64_t seq, OrderId& nextId)
 }
 
 int g_failures = 0;
+
+// Pure replay used by the minimiser: fresh engines every time, same three
+// comparisons as the live loop. Nothing is carried over between calls.
+bool diverges(const std::vector<InboundCommand>& cmds)
+{
+  uint64_t hRef = 1469598103934665603ULL;
+  uint64_t hLad = hRef;
+  std::vector<OutboundEvent> evRef;
+  std::vector<OutboundEvent> evLad;
+  MatchingEngine<MatchingBook> refE(cfg(), [&](const OutboundEvent& e)
+                                    { evRef.push_back(e); });
+  MatchingEngine<LadderBook> ladE(cfg(), [&](const OutboundEvent& e)
+                                  { evLad.push_back(e); }, LadderBook{ladderCfg()});
+  for (const InboundCommand& cmd : cmds)
+  {
+    evRef.clear();
+    evLad.clear();
+    refE.submit(cmd);
+    ladE.submit(cmd);
+    if (evRef.size() != evLad.size())
+    {
+      return true;
+    }
+    for (size_t k = 0; k < evRef.size(); ++k)
+    {
+      hRef = hashEvent(hRef, evRef[k]);
+      hLad = hashEvent(hLad, evLad[k]);
+    }
+    if (hRef != hLad || crossed(refE.book()) || crossed(ladE.book()))
+    {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 TEST(VenueDifferentialFuzz, LadderMatchesReferenceBook)
@@ -169,9 +205,15 @@ TEST(VenueDifferentialFuzz, LadderMatchesReferenceBook)
   uint64_t s = 0xC0FFEE123456789ULL;
   OrderId nextId = 1;
 
+  // The stream is recorded so a failure can be handed over minimised instead
+  // of as an index into 200k commands.
+  std::vector<InboundCommand> stream;
+  stream.reserve(N);
+
   for (uint64_t i = 0; i < N; ++i)
   {
     const InboundCommand cmd = genCommand(s, i, nextId);
+    stream.push_back(cmd);
     evRef.clear();
     evLad.clear();
     refE.submit(cmd);
@@ -209,6 +251,63 @@ TEST(VenueDifferentialFuzz, LadderMatchesReferenceBook)
                 static_cast<unsigned long long>(N));
     std::printf("final event-stream hash: %016llx\n", static_cast<unsigned long long>(hRef));
   }
+  else
+  {
+    const auto report = fuzz::shrinkCounterexample(stream, diverges);
+    fuzz::printCounterexample(report);
+  }
 
   EXPECT_EQ(g_failures, 0);
+}
+
+// The minimiser is only exercised when the fuzz fails, which is exactly when
+// nobody wants to discover it does not work. This drives it against a
+// synthetic predicate with a known-minimal witness: a stream fails when it
+// holds both a SELL and a modify, so the smallest failing stream is those two
+// commands and nothing else.
+TEST(VenueDifferentialFuzz, MinimiserReducesToTheWitness)
+{
+  std::vector<InboundCommand> stream;
+  for (int i = 0; i < 500; ++i)
+  {
+    NewOrder o;
+    o.id = static_cast<OrderId>(i + 1);
+    o.symbol = SYM;
+    o.side = (i == 137) ? Side::SELL : Side::BUY;
+    o.type = OrderType::LIMIT;
+    o.price = Price::fromDouble(99.0);
+    o.quantity = Quantity::fromDouble(1.0);
+    o.accountId = 1;
+    stream.push_back(InboundCommand{o});
+    if (i == 400)
+    {
+      stream.push_back(InboundCommand{ModifyOrder{1, SYM, Price::fromDouble(98.0),
+                                                  Quantity::fromDouble(2.0), 0}});
+    }
+  }
+
+  auto witnessPresent = [](const std::vector<InboundCommand>& cmds)
+  {
+    bool sell = false, modify = false;
+    for (const auto& c : cmds)
+    {
+      if (const auto* o = std::get_if<NewOrder>(&c); o && o->side == Side::SELL)
+      {
+        sell = true;
+      }
+      if (std::get_if<ModifyOrder>(&c) != nullptr)
+      {
+        modify = true;
+      }
+    }
+    return sell && modify;
+  };
+
+  ASSERT_TRUE(witnessPresent(stream));
+  const auto report = fuzz::shrinkCounterexample(stream, witnessPresent);
+
+  EXPECT_TRUE(witnessPresent(report.commands)) << "minimiser lost the failure it was shrinking";
+  EXPECT_EQ(report.commands.size(), 2u) << "did not reach the two-command witness";
+  EXPECT_GT(report.replays, 0) << "minimiser never replayed anything";
+  EXPECT_LT(report.replays, 400) << "hit the replay cap on a 501-command stream";
 }

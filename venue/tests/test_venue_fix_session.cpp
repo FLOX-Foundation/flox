@@ -251,6 +251,29 @@ struct FixClient
     send(FixCodec::frame(b));
   }
 
+  // 35=F OrderCancelRequest / 35=G OrderCancelReplaceRequest.
+  void cancelOrReplace(const char* type, uint64_t id, const char* side, const char* price,
+                       const char* quantity)
+  {
+    const uint64_t s = seq++;
+    std::string b;
+    auto add = [&](int t, const std::string& v)
+    { b += std::to_string(t) + "=" + v + std::string(1, FixCodec::SOH); };
+    add(35, type);
+    add(34, std::to_string(s));
+    add(49, "CLIENT");
+    add(56, "VENUE");
+    add(52, FixSession::sendingTime(wallClockNs()));
+    add(41, std::to_string(id));  // OrigClOrdID
+    add(11, std::to_string(id));
+    add(55, "1");
+    add(54, side);
+    add(38, quantity);
+    add(44, price);
+    add(40, "2");
+    send(FixCodec::frame(b));
+  }
+
   bool read(Fields& f)
   {
     std::vector<uint8_t> frame;
@@ -620,9 +643,64 @@ void test_restart_with_sidecar()
   std::remove(sidecar.c_str());
 }
 
-// (8) Unknown MsgType: consumed in sequence and answered with a session
-// Reject (35=3, 45=RefSeqNum, 372=RefMsgType); the session stays alive and
-// application flow continues.
+// (8b) A refused cancel or cancel/replace is answered with OrderCancelReject
+// (35=9), not an execution report. An exec report describes the state of an
+// ORDER, and a refused cancel changed no order state at all -- a counterparty
+// that reconciles on exec reports would record a state transition that never
+// happened, or leave the order hanging in its own book waiting for one.
+//
+// CxlRejResponseTo (434) says which request was refused, and it has to come
+// off the event rather than off session context: a ResendRequest re-encodes
+// from the log long after the context is gone, and a replayed message that
+// changes type is a protocol violation precisely when the counterparty is
+// recovering.
+void test_cancel_reject_is_35_9()
+{
+  std::printf("test_cancel_reject_is_35_9\n");
+  Venue v;
+  auto gw = v.gateway(1);
+  const int port = gw->start(0, v.handler());
+  CHECK(port > 0);
+
+  FixClient c;
+  CHECK(c.connectTo(port));
+  c.admin("A", {{108, "30"}, {141, "Y"}});
+  Fields f;
+  CHECK(c.readType("A", f));
+
+  c.cancelOrReplace("F", 777, "1", "100", "1");  // cancel an order that never existed
+  CHECK(c.readType("9", f));
+  CHECK(u64f(f, 37) == 777);
+  CHECK(f[434] == "1");  // CxlRejResponseTo: Order Cancel Request
+  CHECK(f[102] == "1");  // CxlRejReason: Unknown order
+  CHECK(f[39] == "8");   // OrdStatus: Rejected -- we never had it
+  CHECK(f.count(58) != 0);
+
+  c.cancelOrReplace("G", 778, "1", "100", "1");  // replace one that never existed
+  CHECK(c.readType("9", f));
+  CHECK(u64f(f, 37) == 778);
+  CHECK(f[434] == "2");  // CxlRejResponseTo: Order Cancel/Replace Request
+
+  c.order(40, "2", "100", "1");  // the session is healthy through both
+  CHECK(c.readType("8", f));
+  CHECK(u64f(f, 37) == 40 && f[150] == "0");
+
+  c.close();
+  gw->stop();
+}
+
+// (8) An unhandled MsgType is consumed in sequence and answered, and WHICH
+// answer it gets is itself part of the contract.
+//
+// A well-formed application message this venue does not implement earns a
+// BusinessMessageReject (35=j, BusinessRejectReason=3): the session is
+// healthy, the capability is declined. A session-level Reject would blame the
+// session for our own missing feature, and counterparties count those against
+// session health.
+//
+// Something that is not a FIX message type at all is a different failure and
+// still earns 35=3 with SessionRejectReason=11 -- it is a parsing problem, not
+// a declined capability, and dressing it up as one would hide a framing bug.
 void test_session_reject_unknown_type()
 {
   std::printf("test_session_reject_unknown_type\n");
@@ -637,13 +715,19 @@ void test_session_reject_unknown_type()
   Fields f;
   CHECK(c.readType("A", f));
 
-  c.admin("B", {{58, "hello"}});  // News: not in the supported set
-  CHECK(c.readType("3", f));
+  c.admin("B", {{58, "hello"}});  // News: a real application type, unsupported
+  CHECK(c.readType("j", f));
   CHECK(u64f(f, 45) == 2);  // RefSeqNum of the offending message
   CHECK(f[372] == "B");     // RefMsgType
+  CHECK(f[380] == "3");     // BusinessRejectReason: Unsupported Message Type
   CHECK(f.count(58) != 0);
 
-  c.order(40, "2", "100", "1");  // the session survived the reject
+  c.admin("%%", {{58, "garbage"}});  // not a FIX message type at all
+  CHECK(c.readType("3", f));
+  CHECK(u64f(f, 45) == 3);
+  CHECK(f[373] == "11");  // SessionRejectReason: Invalid MsgType
+
+  c.order(40, "2", "100", "1");  // the session survived both rejects
   CHECK(c.readType("8", f));
   CHECK(u64f(f, 37) == 40 && f[150] == "0");
 
@@ -912,6 +996,7 @@ TEST(FixSessionLayer, EngineSuite)
   test_restart_requires_reset();
   test_restart_with_sidecar();
   test_session_reject_unknown_type();
+  test_cancel_reject_is_35_9();
   test_cod_negotiation();
   test_ws_fix_logon_trade_heartbeat_resend();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);

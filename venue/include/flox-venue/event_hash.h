@@ -50,6 +50,15 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->reason));
     h = mix(h, x->account);
   }
+  else if (const auto* x = std::get_if<CancelRejected>(&e))
+  {
+    h = mix(h, 0xC17U);
+    h = mix(h, static_cast<uint64_t>(x->id));
+    h = mix(h, static_cast<uint64_t>(x->symbol));
+    h = mix(h, static_cast<uint64_t>(x->reason));
+    h = mix(h, x->account);
+    h = mix(h, x->wasReplace ? 1U : 0U);
+  }
   else if (const auto* x = std::get_if<Trade>(&e))
   {
     h = mix(h, 3);

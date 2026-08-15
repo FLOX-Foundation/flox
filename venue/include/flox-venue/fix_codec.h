@@ -283,14 +283,23 @@ class FixCodec
     {
       return bare;
     }
-    // Re-frame: keep the body after 35=8, prepend the session header fields.
-    const std::string marker = std::string("35=8") + SOH;
-    const size_t p = bare.find(marker);
-    if (p == std::string::npos)
+    // Re-frame: keep the body after the message type, prepend the session
+    // header fields. The type is whatever encode() chose -- an execution report
+    // for most events, OrderCancelReject for a refused cancel -- so it is read
+    // off the message rather than assumed.
+    const std::string anchor = std::string(1, SOH) + "35=";
+    const size_t a = bare.find(anchor);
+    if (a == std::string::npos)
     {
       return {};
     }
-    const size_t bodyStart = p + marker.size();
+    const size_t tend = bare.find(SOH, a + anchor.size());
+    if (tend == std::string::npos)
+    {
+      return {};
+    }
+    const std::string marker = bare.substr(a + 1, tend - a);
+    const size_t bodyStart = tend + 1;
     const size_t csum = bare.rfind(std::string(1, SOH) + "10=");
     const std::string tail =
         bare.substr(bodyStart, (csum == std::string::npos ? bare.size() : csum + 1) - bodyStart);
@@ -353,6 +362,28 @@ class FixCodec
       decwire::append(s, q.raw());
       return s;
     };
+
+    // OrderCancelReject (35=9). FIX 4.4 answers a refused 35=F / 35=G with
+    // this, not with an execution report: an exec report describes the state of
+    // an ORDER, and a refused cancel changed no order state at all. Handled
+    // before the exec-report body below because it is a different message, not
+    // a variant of one.
+    if (const auto* cr = std::get_if<CancelRejected>(&ev))
+    {
+      add(35, "9");
+      add(37, std::to_string(cr->id));
+      add(11, std::to_string(cr->id));
+      add(41, std::to_string(cr->id));  // OrigClOrdID: the order being acted on
+      // OrdStatus: an order we never had is Rejected; anything else is still
+      // working, and 0 is the most this venue can substantiate without
+      // carrying the resting state onto the event.
+      const bool unknown = cr->reason == RejectReason::UnknownOrder;
+      add(39, unknown ? "8" : "0");
+      add(434, cr->wasReplace ? "2" : "1");  // CxlRejResponseTo
+      add(102, unknown ? "1" : "99");        // CxlRejReason: Unknown order / Other
+      add(58, std::string(toString(cr->reason)));
+      return frame(b);
+    }
 
     add(35, "8");  // ExecutionReport
     if (const auto* a = std::get_if<OrderAccepted>(&ev))

@@ -359,12 +359,108 @@ void test_auction_settlement()
   CHECK(leaks == 0);
 }
 
+// A leg with no reservation settles straight out of `available`, and that debit
+// can refuse. Crediting the counterparty anyway mints exactly the credited
+// amount -- the failure mode behind T028. This is the floor under EVERY such
+// path, not just the one that was found: an order that reached the book before
+// a ledger was bound has no reservation, so its fill takes the unreserved
+// branch with an empty account behind it. Nothing may move, and the venue must
+// count the trade as unsettled rather than pay for it.
+void test_unreserved_leg_cannot_mint()
+{
+  std::printf("test_unreserved_leg_cannot_mint\n");
+  Ledger led;
+  led.deposit(2, QUOTE, quote(1000));  // buyer funded; seller owns no base at all
+  const Amount initBase = led.total(1, BASE) + led.total(2, BASE) + led.total(VENUE, BASE);
+  const Amount initQuote = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(VENUE, QUOTE);
+
+  MatchingEngine<MatchingBook> eng(cfg(), [](const OutboundEvent&) {});
+  eng.submit(InboundCommand{limit(1, Side::SELL, 100, 5, 1)}, 0);  // no ledger yet: no reservation
+  eng.setLedger(&led, VENUE);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 5, 2)}, 1);  // reserved buyer takes it
+
+  CHECK(eng.unsettledTrades() == 1);  // the print could not be settled honestly
+  // Nothing moved: no base conjured for the buyer, no quote paid to the seller.
+  CHECK(led.total(1, BASE) == 0 && led.total(2, BASE) == 0);
+  CHECK(led.total(1, QUOTE) == 0);
+  const Amount endBase = led.total(1, BASE) + led.total(2, BASE) + led.total(VENUE, BASE);
+  const Amount endQuote = led.total(1, QUOTE) + led.total(2, QUOTE) + led.total(VENUE, QUOTE);
+  CHECK(endBase == initBase);
+  CHECK(endQuote == initQuote);
+  // The buyer's own money is intact and free again (its order left the book).
+  CHECK(led.available(2, QUOTE) == quote(1000) && led.reserved(2, QUOTE) == 0);
+}
+
 }  // namespace
+
+// ---- three defects that used to be "accepted" ------------------------------
+
+// STP Decrement trims a resting order in place. The reservation covering the
+// trimmed quantity used to stay locked until the order was cancelled: the
+// account's own money, frozen against size that no longer rests.
+void test_stp_decrement_frees_trimmed_reservation()
+{
+  std::printf("test_stp_decrement_frees_trimmed_reservation\n");
+  Ledger led;
+  led.deposit(1, QUOTE, quote(10000));
+  led.deposit(1, BASE, base(10));
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  eng.setLedger(&led, VENUE);
+  eng.setStpGroup(1, 1);  // same firm on both sides
+
+  NewOrder resting = limit(1, Side::SELL, 100, 5, 1);
+  resting.stp = STPMode::Decrement;
+  eng.submit(InboundCommand{resting}, 1);
+  const Amount reservedAfterRest = led.reserved(1, BASE);
+  CHECK(reservedAfterRest == base(5));
+
+  // Same firm crosses with 2: STP decrements the resting side to 3.
+  NewOrder crossing = limit(2, Side::BUY, 100, 2, 1);
+  crossing.stp = STPMode::Decrement;
+  eng.submit(InboundCommand{crossing}, 2);
+  CHECK(led.reserved(1, BASE) == base(3));  // was still 5 -- 2 units frozen for nothing
+  CHECK(led.available(1, BASE) + led.reserved(1, BASE) == base(10));
+}
+
+// A GTD conditional order used to live forever: expiry was registered only for
+// orders resting on the book, so a stop that never triggered never expired.
+void test_gtd_binds_conditional_orders()
+{
+  std::printf("test_gtd_binds_conditional_orders\n");
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+
+  NewOrder stop = limit(1, Side::SELL, 0, 1, 1);
+  stop.type = OrderType::STOP_MARKET;
+  stop.triggerPrice = px(50);  // far from any print: never triggers
+  stop.tif = TimeInForce::GTD;
+  stop.expiryNs = 1000;
+  eng.submit(InboundCommand{stop}, 10);
+
+  // Any later command drives the deterministic sweep past the deadline.
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 1, 2)}, 2000);
+  bool expired = false;
+  for (auto& e : ev)
+  {
+    if (auto* c = std::get_if<OrderCanceled>(&e);
+        c != nullptr && c->id == 1 && c->reason == CancelReason::Expired)
+    {
+      expired = true;
+    }
+  }
+  CHECK(expired);
+}
 
 TEST(VenueLedger, EngineSuite)
 {
+  test_unreserved_leg_cannot_mint();
   test_settlement();
   test_taker_fee_policy();
+  test_stp_decrement_frees_trimmed_reservation();
+  test_gtd_binds_conditional_orders();
   test_auction_settlement();
   test_insufficient();
   test_modify_reservation();

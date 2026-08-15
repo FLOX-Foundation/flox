@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Fail when CI installs a different dependency range than the package declares.
 
-flox-mcp shipped `mcp>=1.0` while CI installed `mcp>=1.0,<2`. CI was therefore
-green against 1.x forever, and the day the SDK released 2.0 -- which dropped the
-decorator API the server is built on -- every fresh `pip install flox-mcp`
-started crashing on startup. Nothing in the repo could notice: the tested range
-and the shipped range were simply different strings in different files.
+A tighter bound in CI than in the manifest means CI is green against versions
+users never get, and a new major release of the dependency breaks every fresh
+install with nothing in the repo able to notice -- the tested range and the
+shipped range are just different strings in different files.
 
 This gate reads the ranges out of the packaging manifests and out of the CI
 workflow and requires them to agree, so a bound can only be relaxed in both
