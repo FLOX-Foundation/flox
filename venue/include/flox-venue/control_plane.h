@@ -109,10 +109,15 @@ class InstrumentRegistry
         case AdminAction::ResumeAuction:
           return halt(ad->symbol, false);
         default:
-          return true;  // auction transitions carry no registry state
+          // Auction phases and session boundaries carry no registry state: the
+          // registry holds instrument CONFIGURATION, and neither an uncross nor
+          // a closed session is configuration -- both are engine state the
+          // shards own and the checkpoint carries.
+          return true;
       }
     }
-    if (std::get_if<SetStpGroup>(&cmd) != nullptr)
+    if (std::get_if<SetStpGroup>(&cmd) != nullptr ||
+        std::get_if<SetFundingSchedule>(&cmd) != nullptr)
     {
       return true;  // engine-owned state: the shards consume it, no registry state
     }

@@ -83,7 +83,7 @@ void test_l2_and_codec()
   MarketDataPublisher<> md([&](const MdMessage& m)
                            { feed.push_back(m); }, px(0.01), SYM);
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
-                                   { md.onEvent(e); });
+                                   { md.onEvent(e, eng.engineTimeNs()); });
 
   eng.submit(limit(1, Side::SELL, 100, 5));
   eng.submit(limit(2, Side::SELL, 101, 3));
@@ -146,7 +146,7 @@ void test_book_agreement()
   std::printf("test_book_agreement\n");
   MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
   MatchingEngine<LadderBook> eng(cfg(), [&](const OutboundEvent& e)
-                                 { md.onEvent(e); }, LadderBook{ladderCfg()});
+                                 { md.onEvent(e, eng.engineTimeNs()); }, LadderBook{ladderCfg()});
 
   workload::Params p;
   p.symbol = SYM;
@@ -209,7 +209,7 @@ void test_iceberg_hidden_from_md()
                                      {
                                        execs.push_back(*x);
                                      }
-                                     md.onEvent(e);
+                                     md.onEvent(e, eng.engineTimeNs());
                                    });
 
   NewOrder ice = limit(1, Side::SELL, 100, 20, 1);

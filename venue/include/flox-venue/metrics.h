@@ -110,13 +110,18 @@ struct GatewayCounters
 };
 
 // Market-data feed counters. Atomics: sendDrops is bumped on the matching
-// thread (publish path), the recovery counters on MdRecoveryServer connection
-// threads.
+// thread (publish path), the recovery counters on MdRecoveryServer and
+// MdDistributionServer connection threads.
 struct MdCounters
 {
   std::atomic<uint64_t> sendDrops{0};        // sendto failed/partial: datagram never left the host
   std::atomic<uint64_t> resendServed{0};     // recovery requests answered by ring replay
   std::atomic<uint64_t> snapshotsServed{0};  // recovery requests answered by a full snapshot
+  // Unicast distribution (md_distribution.h).
+  std::atomic<uint64_t> subscribers{0};              // live distribution sessions (gauge)
+  std::atomic<uint64_t> slowConsumerDisconnects{0};  // outbound queue overflow -> subscriber dropped
+  std::atomic<uint64_t> idleDisconnects{0};          // no inbound traffic within the idle timeout
+  std::atomic<uint64_t> subscribeRejects{0};         // subscribe/resend refused (unknown symbol, ...)
 };
 
 // Point-in-time venue state that is NOT derivable from the outbound event

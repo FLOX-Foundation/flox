@@ -77,7 +77,10 @@ static_assert(std::is_trivially_copyable_v<RestoreReservation>,
 static_assert(std::is_trivially_copyable_v<RestoreBalance>, "RestoreBalance must be blittable");
 static_assert(std::is_trivially_copyable_v<RestoreMmpFills>, "RestoreMmpFills must be blittable");
 static_assert(std::is_trivially_copyable_v<SetStpGroup>, "SetStpGroup must be blittable");
-static_assert(std::variant_size_v<InboundCommand> == 28,
+static_assert(std::is_trivially_copyable_v<SetFundingSchedule>,
+              "SetFundingSchedule must be blittable");
+static_assert(std::is_trivially_copyable_v<RestoreFunding>, "RestoreFunding must be blittable");
+static_assert(std::variant_size_v<InboundCommand> == 30,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
@@ -310,6 +313,10 @@ class Journal
         return sizeof(RestoreMmpFills);
       case 27:
         return sizeof(SetStpGroup);
+      case 28:
+        return sizeof(SetFundingSchedule);
+      case 29:
+        return sizeof(RestoreFunding);
       default:
         return 0;
     }
@@ -411,6 +418,12 @@ class Journal
         break;
       case 27:
         v.emplace_back(ts, fromBody<SetStpGroup>(body));
+        break;
+      case 28:
+        v.emplace_back(ts, fromBody<SetFundingSchedule>(body));
+        break;
+      case 29:
+        v.emplace_back(ts, fromBody<RestoreFunding>(body));
         break;
     }
   }

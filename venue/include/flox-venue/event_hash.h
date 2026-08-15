@@ -161,6 +161,23 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->reservedRaw));
     h = mix(h, static_cast<uint64_t>(x->reason));
   }
+  else if (const auto* x = std::get_if<TradingStatusChanged>(&e))
+  {
+    h = mix(h, 14);
+    h = mix(h, x->symbol);
+    h = mix(h, static_cast<uint64_t>(x->status));
+    h = mix(h, static_cast<uint64_t>(x->reason));
+    h = mix(h, static_cast<uint64_t>(x->untilNs));  // sequencer-ts deadline: reproducible
+  }
+  else if (const auto* x = std::get_if<DerivativesUpdated>(&e))
+  {
+    h = mix(h, 15);
+    h = mix(h, x->symbol);
+    h = mix(h, static_cast<uint64_t>(x->mark.raw()));
+    h = mix(h, static_cast<uint64_t>(x->fundingRateRaw));
+    h = mix(h, static_cast<uint64_t>(x->nextFundingNs));
+    h = mix(h, static_cast<uint64_t>(x->openInterest.raw()));
+  }
   return h;
 }
 

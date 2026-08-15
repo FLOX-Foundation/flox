@@ -310,7 +310,7 @@ void test_md_equals_book()
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
                                      cap.ev.push_back(e);
-                                     pub.onEvent(e); });
+                                     pub.onEvent(e, eng.engineTimeNs()); });
 
   auto feedMatchesBook = [&](std::vector<double> prices)
   {

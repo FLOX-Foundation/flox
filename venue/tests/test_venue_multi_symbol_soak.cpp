@@ -107,10 +107,12 @@ void test_soak()
   for (int s = 0; s < NSYM; ++s)
   {
     MarketDataPublisher<>* md = mds[s].get();
-    auto& eng = router.addSymbol(cfg(SYMS[s], BASES[s]), [&metrics, md](const OutboundEvent& e)
+    // engines[] is filled below and outlives the lambda; the engine's own
+    // sequencer time is what stamps the feed.
+    auto& eng = router.addSymbol(cfg(SYMS[s], BASES[s]), [&metrics, md, &engines, s](const OutboundEvent& e)
                                  {
                                    metrics.observe(e);
-                                   md->onEvent(e); });
+                                   md->onEvent(e, engines[s] != nullptr ? engines[s]->engineTimeNs() : 0); });
     flox::FeeSchedule fs;
     fs.addTier(0.0, -1.0, 2.0);  // maker rebate / taker fee -> venue nets fees
     eng.setFeeSchedule(fs);
