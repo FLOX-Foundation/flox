@@ -640,6 +640,34 @@ void runAll(const std::function<Book()>& mk, const char* label)
     eng.submit(ok);
     CHECK(cap.trades() == 1);  // different firms -> allowed
   }
+  {  // A mass quote is two orders, and each leg carries the quote's self-trade
+     // prevention. A maker quoting both sides continuously is the participant
+     // that most needs the control; before the mode reached the legs it was the
+     // only one unable to ask for it.
+    Capture cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    eng.setStpGroup(10, /*firm*/ 5);
+    eng.setStpGroup(11, /*firm*/ 5);               // same firm, two quoting accounts
+    eng.submit(limit(1, Side::SELL, 100, 5, 10));  // firm 5 resting on the offer
+
+    Quote q;
+    q.bidId = 2;
+    q.askId = 3;
+    q.symbol = SYM;
+    q.bidPrice = px(101);  // crosses the firm's own resting ask
+    q.bidQty = qty(5);
+    q.askPrice = px(103);
+    q.askQty = qty(5);
+    q.accountId = 11;
+    q.stp = STPMode::CancelOldest;
+    eng.submit(InboundCommand{q});
+    CHECK(cap.trades() == 0);  // the firm did not trade with itself
+    CHECK(cap.cancels(CancelReason::SelfTradePrevention) == 1);
+
+    // A stranger still trades with the quote normally.
+    eng.submit(limit(4, Side::SELL, 101, 2, 20));
+    CHECK(cap.trades() == 1);
+  }
   {  // A modify re-enters matching as a fresh aggressor, and it must carry the
      // self-trade prevention the order was admitted with. Rebuilding the order
      // from its resting record alone would drop the mode and let the reprice

@@ -97,6 +97,11 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   Price askPrice{};
   Quantity askQty{};  // 0 = no ask side
   uint64_t accountId{};
+  // A quote is two orders, and every other order-bearing command carries its
+  // own self-trade-prevention mode. Without it here, the one participant that
+  // most needs the control -- a maker quoting both sides continuously -- was
+  // the only one unable to ask for it.
+  STPMode stp{STPMode::None};
 };
 
 struct LastLookDecision  // maker accepts or rejects a held last-look fill
