@@ -4127,10 +4127,11 @@ class MatchingEngine
            maker.price,
            fill,
            now_ + cfg_.lastLookWindowNs,
-           // Where the market was when the hold started. Before the first
-           // trade there is no reference, and 0 means the move is unmeasurable
-           // rather than enormous.
-           hasLast_ ? lastPrice_.raw() : 0};
+           // Where the market was when the hold started. Taken before the
+           // matcher reserves the fill out of the book, so the maker's own
+           // quote still counts towards the mid -- the same market the maker
+           // was looking at when it quoted.
+           referenceRaw()};
     // The taker is an aggressor now, but its residual may rest once the hold
     // resolves -- and a resting order's STP mode is what an auction reads.
     // Capture it here, where the mode is still in hand.
@@ -4267,17 +4268,48 @@ class MatchingEngine
     cleanupOrderIfDone(h.maker);
   }
 
+  // Where the market is, for judging a held fill: the mid of the book when both
+  // sides are quoted, and the last trade only when they are not.
+  //
+  // The two are not interchangeable here. A trade prints half a spread off the
+  // mid, on whichever side the aggressor took, so consecutive prints move by
+  // the spread even in a market that has not moved at all. Over a hold window
+  // measured in milliseconds that is most of what the last price does, and a
+  // tolerance or a conduct statistic built on it is reading the spread.
+  //
+  // It also decides whether the statistic has any power. A maker prices off its
+  // own view of the market, not off this venue's tape; measuring its behaviour
+  // against a series it never looked at classifies its refusals at random. In
+  // this deployment that is the normal case rather than the exception -- the
+  // liquidity provider aggregates several venues and this one is a fraction of
+  // what it sees. The mid is the closest thing here to what it is actually
+  // looking at.
+  //
+  // Zero when neither is available, which is the only honest answer before
+  // anything has traded or been quoted: it means unmeasurable, not unmoved.
+  int64_t referenceRaw() const
+  {
+    const auto bb = book_.bestBid();
+    const auto ba = book_.bestAsk();
+    if (bb && ba)
+    {
+      return (bb->raw() + ba->raw()) / 2;
+    }
+    return hasLast_ ? lastPrice_.raw() : 0;
+  }
+
   // How far the reference has moved since the hold was taken, signed so that a
   // positive value means it moved AGAINST the maker: it sold and the price rose,
   // or it bought and the price fell. Zero when there is no reference to compare
-  // against, which is the only honest answer before the first trade.
+  // against.
   int64_t referenceMoveSinceHold(const Held& h) const
   {
-    if (!hasLast_ || h.refAtHoldRaw == 0)
+    const int64_t nowRaw = referenceRaw();
+    if (nowRaw == 0 || h.refAtHoldRaw == 0)
     {
       return 0;
     }
-    const int64_t delta = lastPrice_.raw() - h.refAtHoldRaw;
+    const int64_t delta = nowRaw - h.refAtHoldRaw;
     // takerSide is the aggressor's. A taker buying leaves the maker short, so a
     // rising price hurts the maker.
     return h.takerSide == Side::BUY ? delta : -delta;
