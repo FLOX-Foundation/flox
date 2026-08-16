@@ -415,6 +415,93 @@ void test_last_look_conduct_is_visible()
   }
 }
 
+// The market can move without anything trading, and the classification has to
+// follow it.
+//
+// Quotes move far more often than trades do, and in a window measured in
+// milliseconds a hold will usually resolve with no print in between at all.
+// Measuring the move off the last trade calls every one of those episodes
+// unmeasurable, so a maker refusing exactly the ones that went its way lands in
+// neither bucket and the statistic stays empty while the behaviour it exists to
+// catch happens in front of it.
+//
+// Here nothing trades between the hold and the answer -- the book is requoted
+// well below, which is a market falling away from a maker that sold.
+void test_conduct_follows_quotes_not_only_prints()
+{
+  std::printf("test_conduct_follows_quotes_not_only_prints\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  eng.submit(InboundCommand{limit(90, Side::SELL, 101, 1, 8)}, 0);
+  eng.submit(InboundCommand{limit(91, Side::BUY, 99, 1, 9)}, 0);
+
+  NewOrder mk = limit(1, Side::SELL, 100, 1, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 1);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 1, 2)}, 2);
+  CHECK(cap.lastHeld() != nullptr);
+  const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+
+  // Requote roughly nine points lower. No order crosses another, so not one
+  // trade happens and the last price never changes -- the whole point.
+  eng.submit(InboundCommand{CancelOrder{90, SYM, 8}}, 3);
+  eng.submit(InboundCommand{CancelOrder{91, SYM, 9}}, 3);
+  eng.submit(InboundCommand{limit(92, Side::SELL, 92, 1, 8)}, 3);
+  eng.submit(InboundCommand{limit(93, Side::BUY, 90, 1, 9)}, 3);
+
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, 1}}, 4);
+
+  const auto& stats = eng.lastLookStats();
+  auto it = stats.find(1);
+  CHECK(it != stats.end());
+  if (it != stats.end())
+  {
+    CHECK(it->second.held == 1);
+    // The maker sold and the market fell away from it: the refusal was of a
+    // fill that had become profitable.
+    CHECK(it->second.favourable == 1 && it->second.rejectedFavourable == 1);
+    CHECK(it->second.adverse == 0);
+  }
+}
+
+// Opening the hold is not a market move.
+//
+// Reserving the maker's quantity takes the touch off the side the aggressor
+// hit, so the mid steps away from the aggressor the moment the hold opens --
+// and always in the same direction, because a buyer always removes an ask. If
+// the two ends of the comparison straddle that step, every hold on a still
+// market is filed as adverse and the conduct statistic measures the venue's own
+// machinery.
+//
+// Nothing moves here at all: one hold opens and is refused, with no other
+// order, no requote and no trade in between.
+void test_hold_itself_is_not_a_market_move()
+{
+  std::printf("test_hold_itself_is_not_a_market_move\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  eng.submit(InboundCommand{limit(90, Side::SELL, 101, 1, 8)}, 0);
+  eng.submit(InboundCommand{limit(91, Side::BUY, 99, 1, 9)}, 0);
+
+  NewOrder mk = limit(1, Side::SELL, 100, 1, 1);
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 1);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 1, 2)}, 2);
+  CHECK(cap.lastHeld() != nullptr);
+  const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, 1}}, 3);
+
+  const auto& stats = eng.lastLookStats();
+  auto it = stats.find(1);
+  CHECK(it != stats.end());
+  if (it != stats.end())
+  {
+    CHECK(it->second.held == 1 && it->second.rejected == 1);
+    // Neither bucket: there was no move to have a direction.
+    CHECK(it->second.adverse == 0 && it->second.favourable == 0);
+  }
+}
+
 void test_partial_hold_reject()
 {
   std::printf("test_partial_hold_reject\n");
@@ -1021,6 +1108,8 @@ TEST(VenueLastLook, LifecycleSuite)
   test_quote_carries_lastlook();
   test_symmetric_price_tolerance();
   test_last_look_conduct_is_visible();
+  test_conduct_follows_quotes_not_only_prints();
+  test_hold_itself_is_not_a_market_move();
   test_partial_hold_reject();
   test_taker_residual_tifs();
   test_md_equals_book();

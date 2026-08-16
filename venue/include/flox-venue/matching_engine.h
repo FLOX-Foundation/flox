@@ -2353,6 +2353,7 @@ class MatchingEngine
     const MatchOutcome out =
         matcher_.cross(o, book_, [this]()
                        { return ++tradeSeq_; }, emit_);
+    stampFreshHolds();
 
     if (out.reject != RejectReason::None)
     {
@@ -2637,6 +2638,7 @@ class MatchingEngine
       const MatchOutcome out =
           matcher_.cross(*agg, book_, [this]()
                          { return ++tradeSeq_; }, emit_);
+      stampFreshHolds();
       if (out.reject != RejectReason::None)
       {
         releaseReservation(agg->id);
@@ -2787,6 +2789,7 @@ class MatchingEngine
     const MatchOutcome out =
         matcher_.cross(re, book_, [this]()
                        { return ++tradeSeq_; }, emit_);
+    stampFreshHolds();
     if (out.residualRests)
     {
       RestingOrder mro{m.id, acct, newPrice, out.leaves, side};
@@ -4127,10 +4130,9 @@ class MatchingEngine
            maker.price,
            fill,
            now_ + cfg_.lastLookWindowNs,
-           // Where the market was when the hold started. Before the first
-           // trade there is no reference, and 0 means the move is unmeasurable
-           // rather than enormous.
-           hasLast_ ? lastPrice_.raw() : 0};
+           // Stamped once the matching pass finishes, not here. See
+           // stampFreshHolds().
+           0};
     // The taker is an aggressor now, but its residual may rest once the hold
     // resolves -- and a resting order's STP mode is what an auction reads.
     // Capture it here, where the mode is still in hand.
@@ -4145,6 +4147,7 @@ class MatchingEngine
     h.makerReduceOnly = maker.reduceOnly;
     h.takerReduceOnly = taker.reduceOnly;
     held_[id] = h;
+    freshHolds_.push_back(id);
     heldOpen_.store(held_.size(), std::memory_order_relaxed);
     // Called BEFORE the matcher reserves the qty out of the book, so the
     // maker's post-hold displayed size is computed here the same way a normal
@@ -4267,17 +4270,81 @@ class MatchingEngine
     cleanupOrderIfDone(h.maker);
   }
 
+  // Where the market is, for judging a held fill: the mid of the book when both
+  // sides are quoted, and the last trade only when they are not.
+  //
+  // The two are not interchangeable here. A trade prints half a spread off the
+  // mid, on whichever side the aggressor took, so consecutive prints move by
+  // the spread even in a market that has not moved at all. Over a hold window
+  // measured in milliseconds that is most of what the last price does, and a
+  // tolerance or a conduct statistic built on it is reading the spread.
+  //
+  // It also decides whether the statistic has any power. A maker prices off its
+  // own view of the market, not off this venue's tape; measuring its behaviour
+  // against a series it never looked at classifies its refusals at random. In
+  // this deployment that is the normal case rather than the exception -- the
+  // liquidity provider aggregates several venues and this one is a fraction of
+  // what it sees. The mid is the closest thing here to what it is actually
+  // looking at.
+  //
+  // Zero when neither is available, which is the only honest answer before
+  // anything has traded or been quoted: it means unmeasurable, not unmoved.
+  // The reference a hold is judged from has to describe the book as it stands
+  // FOR THE DURATION of the hold, which is not the book that existed the
+  // instant before it opened.
+  //
+  // Opening a hold reserves the maker's quantity out of the book, so the side
+  // the aggressor hit loses its touch and the mid steps away from the
+  // aggressor. Stamping before that and comparing after makes the hold's own
+  // mechanism look like a market move -- always in the same direction, since a
+  // buyer always removes an ask. In an example run with buy-only probe flow
+  // this put 1,204 holds in the adverse bucket against 556 favourable, on a
+  // market whose moves were symmetric by construction, and it flattened the
+  // conduct statistic it was feeding.
+  //
+  // So the stamp waits until the matching pass is over and the book has
+  // settled. Both ends of the comparison then describe the same book.
+  void stampFreshHolds()
+  {
+    if (freshHolds_.empty())
+    {
+      return;
+    }
+    const int64_t ref = referenceRaw();
+    for (uint64_t id : freshHolds_)
+    {
+      auto it = held_.find(id);
+      if (it != held_.end())
+      {
+        it->second.refAtHoldRaw = ref;
+      }
+    }
+    freshHolds_.clear();
+  }
+
+  int64_t referenceRaw() const
+  {
+    const auto bb = book_.bestBid();
+    const auto ba = book_.bestAsk();
+    if (bb && ba)
+    {
+      return (bb->raw() + ba->raw()) / 2;
+    }
+    return hasLast_ ? lastPrice_.raw() : 0;
+  }
+
   // How far the reference has moved since the hold was taken, signed so that a
   // positive value means it moved AGAINST the maker: it sold and the price rose,
   // or it bought and the price fell. Zero when there is no reference to compare
-  // against, which is the only honest answer before the first trade.
+  // against.
   int64_t referenceMoveSinceHold(const Held& h) const
   {
-    if (!hasLast_ || h.refAtHoldRaw == 0)
+    const int64_t nowRaw = referenceRaw();
+    if (nowRaw == 0 || h.refAtHoldRaw == 0)
     {
       return 0;
     }
-    const int64_t delta = lastPrice_.raw() - h.refAtHoldRaw;
+    const int64_t delta = nowRaw - h.refAtHoldRaw;
     // takerSide is the aggressor's. A taker buying leaves the maker short, so a
     // rising price hurts the maker.
     return h.takerSide == Side::BUY ? delta : -delta;
@@ -4737,6 +4804,7 @@ class MatchingEngine
   StopBook stops_;
   Price lastPrice_{};
   bool hasLast_{false};
+  std::vector<uint64_t> freshHolds_;  // stamped at the end of the matching pass
   Price markPrice_{};
   bool hasMark_{false};
   uint64_t tradeSeq_{0};
