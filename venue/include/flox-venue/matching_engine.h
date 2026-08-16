@@ -2353,6 +2353,7 @@ class MatchingEngine
     const MatchOutcome out =
         matcher_.cross(o, book_, [this]()
                        { return ++tradeSeq_; }, emit_);
+    stampFreshHolds();
 
     if (out.reject != RejectReason::None)
     {
@@ -2637,6 +2638,7 @@ class MatchingEngine
       const MatchOutcome out =
           matcher_.cross(*agg, book_, [this]()
                          { return ++tradeSeq_; }, emit_);
+      stampFreshHolds();
       if (out.reject != RejectReason::None)
       {
         releaseReservation(agg->id);
@@ -2787,6 +2789,7 @@ class MatchingEngine
     const MatchOutcome out =
         matcher_.cross(re, book_, [this]()
                        { return ++tradeSeq_; }, emit_);
+    stampFreshHolds();
     if (out.residualRests)
     {
       RestingOrder mro{m.id, acct, newPrice, out.leaves, side};
@@ -4127,11 +4130,9 @@ class MatchingEngine
            maker.price,
            fill,
            now_ + cfg_.lastLookWindowNs,
-           // Where the market was when the hold started. Taken before the
-           // matcher reserves the fill out of the book, so the maker's own
-           // quote still counts towards the mid -- the same market the maker
-           // was looking at when it quoted.
-           referenceRaw()};
+           // Stamped once the matching pass finishes, not here. See
+           // stampFreshHolds().
+           0};
     // The taker is an aggressor now, but its residual may rest once the hold
     // resolves -- and a resting order's STP mode is what an auction reads.
     // Capture it here, where the mode is still in hand.
@@ -4146,6 +4147,7 @@ class MatchingEngine
     h.makerReduceOnly = maker.reduceOnly;
     h.takerReduceOnly = taker.reduceOnly;
     held_[id] = h;
+    freshHolds_.push_back(id);
     heldOpen_.store(held_.size(), std::memory_order_relaxed);
     // Called BEFORE the matcher reserves the qty out of the book, so the
     // maker's post-hold displayed size is computed here the same way a normal
@@ -4287,6 +4289,39 @@ class MatchingEngine
   //
   // Zero when neither is available, which is the only honest answer before
   // anything has traded or been quoted: it means unmeasurable, not unmoved.
+  // The reference a hold is judged from has to describe the book as it stands
+  // FOR THE DURATION of the hold, which is not the book that existed the
+  // instant before it opened.
+  //
+  // Opening a hold reserves the maker's quantity out of the book, so the side
+  // the aggressor hit loses its touch and the mid steps away from the
+  // aggressor. Stamping before that and comparing after makes the hold's own
+  // mechanism look like a market move -- always in the same direction, since a
+  // buyer always removes an ask. In an example run with buy-only probe flow
+  // this put 1,204 holds in the adverse bucket against 556 favourable, on a
+  // market whose moves were symmetric by construction, and it flattened the
+  // conduct statistic it was feeding.
+  //
+  // So the stamp waits until the matching pass is over and the book has
+  // settled. Both ends of the comparison then describe the same book.
+  void stampFreshHolds()
+  {
+    if (freshHolds_.empty())
+    {
+      return;
+    }
+    const int64_t ref = referenceRaw();
+    for (uint64_t id : freshHolds_)
+    {
+      auto it = held_.find(id);
+      if (it != held_.end())
+      {
+        it->second.refAtHoldRaw = ref;
+      }
+    }
+    freshHolds_.clear();
+  }
+
   int64_t referenceRaw() const
   {
     const auto bb = book_.bestBid();
@@ -4769,6 +4804,7 @@ class MatchingEngine
   StopBook stops_;
   Price lastPrice_{};
   bool hasLast_{false};
+  std::vector<uint64_t> freshHolds_;  // stamped at the end of the matching pass
   Price markPrice_{};
   bool hasMark_{false};
   uint64_t tradeSeq_{0};
