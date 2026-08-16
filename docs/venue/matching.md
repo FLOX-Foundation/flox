@@ -75,6 +75,35 @@ A mass quote carries the mode too, and both of its legs inherit it -- so a
 maker that quotes rather than sending individual orders is not left without the
 control.
 
+### Last look, and the option inside it
+
+A held fill is an option the maker holds for the length of the window, and an
+option nobody can see the exercise of is one that gets exercised in one
+direction. Over enough holds, a maker free to answer as it likes fills the ones
+that moved its way and refuses the ones that did not; the taker sees only a
+reject rate and cannot tell that from an honest wide tolerance.
+
+Two controls address that, and they work together.
+
+`lastLookToleranceRaw` is a **symmetric price tolerance applied by the venue**,
+on magnitude alone. Outside the band the fill is rejected whoever it would have
+favoured — including when the move was in the maker's favour, which is the half
+a cherry-picking maker would otherwise keep. Inside the band the maker's answer
+still stands: the tolerance caps the option rather than abolishing last look.
+`0` disables the check.
+
+`MatchingEngine::lastLookStats()` reports per maker how many holds it saw, how
+many it refused, and — the number that matters — the split by which way the
+price had moved. A maker applying a symmetric rule refuses about as often when
+the move favoured it as when it did not. One taking the free option refuses
+almost only when it was losing. That split makes the conduct visible without
+anyone seeing the maker's code, which is what a reject rate on its own can
+never do.
+
+`lastLookAcceptOnTimeout` decides what silence means, and it is the same
+argument: with `false`, a maker that stalls and says nothing pays nothing, so
+stalling is free; with `true`, it costs the maker the trade.
+
 STP also interacts with **last look**: the maker it pulls may have a hold open,
 so the hold is resolved (rejected, liquidity restored) before the order is
 removed -- the same order every engine-side cancel path follows. Removing first

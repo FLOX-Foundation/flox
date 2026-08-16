@@ -274,6 +274,139 @@ void test_quote_carries_lastlook()
   CHECK(h2 != nullptr && h2->makerId == 1);
 }
 
+// The venue applies the price tolerance itself, on magnitude alone.
+//
+// A maker allowed to answer however it likes will, over enough holds, fill the
+// ones that moved its way and refuse the ones that did not. The taker sees only
+// a reject rate and cannot tell that from an honest wide tolerance. Enforcing
+// the threshold at the venue leaves nothing to be asymmetric about outside the
+// band -- a move too far is refused whoever it would have favoured.
+void test_symmetric_price_tolerance()
+{
+  std::printf("test_symmetric_price_tolerance\n");
+
+  // A move AGAINST the maker, beyond tolerance: refused even though the maker
+  // said yes.
+  {
+    Cap cap;
+    venue::SymbolConfig c = cfg();
+    c.lastLookToleranceRaw = px(0.50).raw();
+    MatchingEngine<MatchingBook> eng(c, cap.sink());
+    // The whole quote is held, so nothing of the maker's is left on the book to
+    // intercept the trades that move the price.
+    NewOrder mk = limit(1, Side::SELL, 100, 3, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+    CHECK(cap.lastHeld() != nullptr);
+    // Copied out now: lastHeld points into the capture vector, and the submits
+    // below reallocate it.
+    const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+    // The maker sold at 100; the market trades up to 102, so it is losing.
+    eng.submit(InboundCommand{limit(3, Side::SELL, 102, 1, 3)}, 2);
+    eng.submit(InboundCommand{limit(4, Side::BUY, 102, 1, 4)}, 3);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 4);
+    CHECK(eng.toleranceRejectedHolds() == 1);
+  }
+
+  // The SAME magnitude in the maker's favour is refused too. That is what
+  // symmetric means, and it is the half a cherry-picking maker would keep.
+  {
+    Cap cap;
+    venue::SymbolConfig c = cfg();
+    c.lastLookToleranceRaw = px(0.50).raw();
+    MatchingEngine<MatchingBook> eng(c, cap.sink());
+    NewOrder mk = limit(1, Side::SELL, 100, 3, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+    CHECK(cap.lastHeld() != nullptr);
+    const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+    // Down to 98: the maker sold at 100 and is now winning.
+    eng.submit(InboundCommand{limit(3, Side::SELL, 98, 1, 3)}, 2);
+    eng.submit(InboundCommand{limit(4, Side::BUY, 98, 1, 4)}, 3);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 4);
+    CHECK(eng.toleranceRejectedHolds() == 1);
+  }
+
+  // Inside the band the maker's answer still stands: the tolerance caps the
+  // option, it does not abolish last look.
+  {
+    Cap cap;
+    venue::SymbolConfig c = cfg();
+    c.lastLookToleranceRaw = px(5.0).raw();
+    MatchingEngine<MatchingBook> eng(c, cap.sink());
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
+    const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 2);
+    CHECK(cap.trades() == 1);
+    CHECK(eng.toleranceRejectedHolds() == 0);
+  }
+}
+
+// Conduct is measured by WHICH holds a maker refused, not how many.
+//
+// A maker with an honest wide tolerance and one taking the free option post the
+// same reject rate. What separates them is the direction the price had moved
+// when they said no.
+void test_last_look_conduct_is_visible()
+{
+  std::printf("test_last_look_conduct_is_visible\n");
+  Cap cap;
+  venue::SymbolConfig c = cfg();
+  MatchingEngine<MatchingBook> eng(c, cap.sink());
+
+  int64_t ts = 0;
+  // Run the same episode twice: once with the price moving against the maker,
+  // once in its favour. The maker refuses only when it is losing.
+  for (int round = 0; round < 2; ++round)
+  {
+    const bool adverse = (round == 0);
+    NewOrder mk = limit(100 + round * 10, Side::SELL, 100, 1, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, ++ts);
+    eng.submit(InboundCommand{limit(101 + round * 10, Side::BUY, 100, 1, 2)}, ++ts);
+    CHECK(cap.lastHeld() != nullptr);
+    const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+    const double to = adverse ? 102 : 98;
+    eng.submit(InboundCommand{limit(102 + round * 10, Side::SELL, to, 1, 3)}, ++ts);
+    eng.submit(InboundCommand{limit(103 + round * 10, Side::BUY, to, 1, 4)}, ++ts);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, !adverse, 1}}, ++ts);
+  }
+
+  // The same on the other side of the book. A maker that BOUGHT is hurt by a
+  // falling price, not a rising one -- so which move counts as adverse depends
+  // on the side the maker took. Testing only one side leaves the sign
+  // unverified, and a sign error there mislabels every maker on the bid.
+  {
+    NewOrder mkBid = limit(200, Side::BUY, 100, 1, 1);
+    mkBid.lastLook = true;
+    eng.submit(InboundCommand{mkBid}, ++ts);
+    eng.submit(InboundCommand{limit(201, Side::SELL, 100, 1, 2)}, ++ts);
+    CHECK(cap.lastHeld() != nullptr);
+    const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
+    // Down to 98: the maker bought at 100, so this is adverse for it.
+    eng.submit(InboundCommand{limit(202, Side::SELL, 98, 1, 3)}, ++ts);
+    eng.submit(InboundCommand{limit(203, Side::BUY, 98, 1, 4)}, ++ts);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, 1}}, ++ts);
+  }
+
+  const auto& stats = eng.lastLookStats();
+  auto it = stats.find(1);
+  CHECK(it != stats.end());
+  if (it != stats.end())
+  {
+    CHECK(it->second.held == 3);
+    // Two adverse holds -- one where the maker sold into a rising market, one
+    // where it bought into a falling one -- and it refused both.
+    CHECK(it->second.adverse == 2 && it->second.rejectedAdverse == 2);
+    CHECK(it->second.favourable == 1 && it->second.rejectedFavourable == 0);
+  }
+}
+
 void test_partial_hold_reject()
 {
   std::printf("test_partial_hold_reject\n");
@@ -878,6 +1011,8 @@ TEST(VenueLastLook, LifecycleSuite)
   test_prorata_lastlook_rejected();
   test_reject_restores_book();
   test_quote_carries_lastlook();
+  test_symmetric_price_tolerance();
+  test_last_look_conduct_is_visible();
   test_partial_hold_reject();
   test_taker_residual_tifs();
   test_md_equals_book();

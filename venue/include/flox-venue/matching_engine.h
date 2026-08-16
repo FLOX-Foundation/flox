@@ -52,13 +52,27 @@ struct SymbolConfig
   TriggerRef triggerRef{TriggerRef::Last};
   int64_t lastLookWindowNs{0};          // 0 = last look disabled venue-wide
   bool lastLookAcceptOnTimeout{false};  // window elapses with no decision -> accept vs reject
-  AssetId baseAsset{0};                 // e.g. BTC in BTC-USD (settled to the seller/buyer)
-  AssetId quoteAsset{1};                // e.g. USD in BTC-USD
-  int32_t luldBps{0};                   // limit-up/limit-down band around the reference (0 = off)
-  int64_t luldHaltNs{0};                // trading pause on a band breach
-  bool linearPerp{false};               // derivatives: linear perpetual (margin, no asset delivery)
-  int32_t initialMarginBps{0};          // IM as bps of notional (1000 = 10% = 10x leverage)
-  int32_t maintenanceMarginBps{0};      // MM; position liquidated when equity < MM (0 = off)
+  // Symmetric price tolerance. When set, the VENUE decides whether the price
+  // moved too far during the hold, and it applies the same threshold in both
+  // directions: outside it, the fill is rejected whoever it would have
+  // favoured.
+  //
+  // This is what removes the free option. A maker allowed to answer a held
+  // fill however it likes will, over enough samples, fill the ones that moved
+  // its way and refuse the ones that did not -- and that asymmetry is
+  // invisible to the taker, who sees only a reject rate. Enforcing magnitude
+  // at the venue leaves nothing to be asymmetric about outside the band, and
+  // lastLookStats makes what happens inside it visible.
+  //
+  // 0 = no venue-side check: the maker's answer stands whatever the price did.
+  int64_t lastLookToleranceRaw{0};
+  AssetId baseAsset{0};             // e.g. BTC in BTC-USD (settled to the seller/buyer)
+  AssetId quoteAsset{1};            // e.g. USD in BTC-USD
+  int32_t luldBps{0};               // limit-up/limit-down band around the reference (0 = off)
+  int64_t luldHaltNs{0};            // trading pause on a band breach
+  bool linearPerp{false};           // derivatives: linear perpetual (margin, no asset delivery)
+  int32_t initialMarginBps{0};      // IM as bps of notional (1000 = 10% = 10x leverage)
+  int32_t maintenanceMarginBps{0};  // MM; position liquidated when equity < MM (0 = off)
   // Liquidation decided elsewhere (portfolio margin above the per-symbol
   // engines). The engine still posts isolated IM and settles, but never
   // liquidates on its own -- it closes only on ForceClosePosition.
@@ -1749,6 +1763,34 @@ class MatchingEngine
   // Last-look accepts turned into rejects because the fill would have breached
   // a perp risk limit by the time the maker answered (see resolveHeld).
   uint64_t riskRejectedHolds() const noexcept { return riskRejectedHolds_; }
+
+  // Per-maker last-look conduct.
+  //
+  // The reject RATE on its own says nothing: a maker with a wide tolerance and
+  // a maker cherry-picking its fills can post the same number. What separates
+  // them is which way the price had moved when they refused. A maker applying a
+  // symmetric rule refuses roughly as often when the move favoured it as when
+  // it did not; one taking the free option refuses almost only when it was
+  // losing. That single split is what makes the behaviour visible without
+  // anyone having to see the maker's code.
+  struct LastLookStats
+  {
+    uint64_t held{0};
+    uint64_t accepted{0};
+    uint64_t rejected{0};
+    uint64_t adverse{0};          // holds where the move went against the maker
+    uint64_t rejectedAdverse{0};  // ... of which it refused
+    uint64_t favourable{0};       // holds where the move went its way
+    uint64_t rejectedFavourable{0};
+  };
+
+  const std::unordered_map<uint64_t, LastLookStats>& lastLookStats() const noexcept
+  {
+    return lastLookStats_;
+  }
+
+  // Holds refused by the venue's own tolerance rather than by the maker.
+  uint64_t toleranceRejectedHolds() const noexcept { return toleranceRejectedHolds_; }
 
   // Pro-rata participants excluded by the fill-time risk limits.
   uint64_t skippedRiskProRata() const noexcept { return matcher_.skippedRiskProRata(); }
@@ -4161,6 +4203,18 @@ class MatchingEngine
       ++riskRejectedHolds_;
       accept = false;
     }
+    // Symmetric price tolerance, applied by the venue on magnitude alone.
+    const int64_t moveRaw = referenceMoveSinceHold(h);
+    if (cfg_.lastLookToleranceRaw > 0)
+    {
+      const int64_t mag = moveRaw < 0 ? -moveRaw : moveRaw;
+      if (mag > cfg_.lastLookToleranceRaw)
+      {
+        ++toleranceRejectedHolds_;
+        accept = false;
+      }
+    }
+    recordHoldOutcome(h, moveRaw, accept);
     if (accept)
     {
       emit_(Trade{++tradeSeq_, cfg_.id, h.price, h.qty, h.maker, h.taker, h.takerSide,
@@ -4193,6 +4247,52 @@ class MatchingEngine
     // (deferred from the emit_ wrapper while holds were open).
     cleanupOrderIfDone(h.taker);
     cleanupOrderIfDone(h.maker);
+  }
+
+  // How far the reference has moved since the hold was taken, signed so that a
+  // positive value means it moved AGAINST the maker: it sold and the price rose,
+  // or it bought and the price fell. Zero when there is no reference to compare
+  // against, which is the only honest answer before the first trade.
+  int64_t referenceMoveSinceHold(const Held& h) const
+  {
+    if (!hasLast_)
+    {
+      return 0;
+    }
+    const int64_t delta = lastPrice_.raw() - h.price.raw();
+    // takerSide is the aggressor's. A taker buying leaves the maker short, so a
+    // rising price hurts the maker.
+    return h.takerSide == Side::BUY ? delta : -delta;
+  }
+
+  void recordHoldOutcome(const Held& h, int64_t moveRaw, bool accepted)
+  {
+    LastLookStats& st = lastLookStats_[h.makerAccount];
+    ++st.held;
+    if (accepted)
+    {
+      ++st.accepted;
+    }
+    else
+    {
+      ++st.rejected;
+    }
+    if (moveRaw > 0)
+    {
+      ++st.adverse;
+      if (!accepted)
+      {
+        ++st.rejectedAdverse;
+      }
+    }
+    else if (moveRaw < 0)
+    {
+      ++st.favourable;
+      if (!accepted)
+      {
+        ++st.rejectedFavourable;
+      }
+    }
   }
 
   // Would settling this hold in full still pass the perp risk limits? Both legs
@@ -4672,6 +4772,10 @@ class MatchingEngine
   // Reason from the last refused credit check, so the reject the client sees
   // says why ("portfolio margin", say) instead of a flat InsufficientFunds.
   mutable RejectReason creditReason_{RejectReason::InsufficientFunds};
+  // Diagnostic only, like the pro-rata skip counters: conduct measurement, not
+  // matching state, so it stays out of the state hash and the snapshot.
+  std::unordered_map<uint64_t, LastLookStats> lastLookStats_;
+  uint64_t toleranceRejectedHolds_{0};
 
   std::unordered_map<uint64_t, Held> held_;
   uint64_t heldSeq_{0};
