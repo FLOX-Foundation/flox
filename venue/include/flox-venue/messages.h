@@ -440,6 +440,10 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   // STP-cancel can legally remove a maker while its hold stays open -- the
   // write side records the live truth instead of re-deriving it.
   bool makerTracked{true};
+  // Reference when the hold was taken; the move that last look is about is
+  // measured from here. Appended -- the record grows, and this module has not
+  // shipped.
+  int64_t refAtHoldRaw{0};
 };
 
 struct RestorePosition  // one perp position (qty, average entry, posted margin)

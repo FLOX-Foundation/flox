@@ -1589,6 +1589,7 @@ class MatchingEngine
                     x.takerType, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly,
                     x.takerReduceOnly};
       r.makerTracked = orderAccount_.count(x.maker) != 0;
+      r.refAtHoldRaw = x.refAtHoldRaw;
       out.append(InboundCommand{r}, ts);
     }
 
@@ -3994,6 +3995,7 @@ class MatchingEngine
     h.takerExpiryNs = r.takerExpiryNs;
     h.makerReduceOnly = r.makerReduceOnly;
     h.takerReduceOnly = r.takerReduceOnly;
+    h.refAtHoldRaw = r.refAtHoldRaw;
     held_[r.heldId] = h;
     heldOpen_.store(held_.size(), std::memory_order_relaxed);
     // Tracking follows the recorded live truth rather than being re-derived: a
@@ -4097,6 +4099,11 @@ class MatchingEngine
     Price price{};
     Quantity qty{};
     int64_t deadline{};
+    // The reference when the hold was taken. Last look is about the move
+    // DURING the window, so the move has to be measured from here -- measuring
+    // from the quoted price instead reports the distance between a quote and
+    // the last print, which is a stale quote, not a move.
+    int64_t refAtHoldRaw{0};
     // Captured at hold time so a reject can route the taker residual by its
     // TIF and rebuild either leg if it was fully held out of the book.
     TimeInForce takerTif{TimeInForce::GTC};
@@ -4111,8 +4118,19 @@ class MatchingEngine
   void createHeld(const RestingOrder& maker, Quantity fill, const NewOrder& taker)
   {
     const uint64_t id = ++heldSeq_;
-    Held h{id, taker.id, taker.accountId, taker.side, maker.id,
-           maker.accountId, maker.price, fill, now_ + cfg_.lastLookWindowNs};
+    Held h{id,
+           taker.id,
+           taker.accountId,
+           taker.side,
+           maker.id,
+           maker.accountId,
+           maker.price,
+           fill,
+           now_ + cfg_.lastLookWindowNs,
+           // Where the market was when the hold started. Before the first
+           // trade there is no reference, and 0 means the move is unmeasurable
+           // rather than enormous.
+           hasLast_ ? lastPrice_.raw() : 0};
     // The taker is an aggressor now, but its residual may rest once the hold
     // resolves -- and a resting order's STP mode is what an auction reads.
     // Capture it here, where the mode is still in hand.
@@ -4255,11 +4273,11 @@ class MatchingEngine
   // against, which is the only honest answer before the first trade.
   int64_t referenceMoveSinceHold(const Held& h) const
   {
-    if (!hasLast_)
+    if (!hasLast_ || h.refAtHoldRaw == 0)
     {
       return 0;
     }
-    const int64_t delta = lastPrice_.raw() - h.price.raw();
+    const int64_t delta = lastPrice_.raw() - h.refAtHoldRaw;
     // takerSide is the aggressor's. A taker buying leaves the maker short, so a
     // rising price hurts the maker.
     return h.takerSide == Side::BUY ? delta : -delta;

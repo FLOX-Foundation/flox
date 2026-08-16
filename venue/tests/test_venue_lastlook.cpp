@@ -292,6 +292,10 @@ void test_symmetric_price_tolerance()
     venue::SymbolConfig c = cfg();
     c.lastLookToleranceRaw = px(0.50).raw();
     MatchingEngine<MatchingBook> eng(c, cap.sink());
+    // Establish a reference first: before the first trade there is nothing to
+    // measure a move from, and the venue says so by not measuring one.
+    eng.submit(InboundCommand{limit(90, Side::SELL, 100, 1, 8)}, 0);
+    eng.submit(InboundCommand{limit(91, Side::BUY, 100, 1, 9)}, 0);
     // The whole quote is held, so nothing of the maker's is left on the book to
     // intercept the trades that move the price.
     NewOrder mk = limit(1, Side::SELL, 100, 3, 1);
@@ -316,6 +320,8 @@ void test_symmetric_price_tolerance()
     venue::SymbolConfig c = cfg();
     c.lastLookToleranceRaw = px(0.50).raw();
     MatchingEngine<MatchingBook> eng(c, cap.sink());
+    eng.submit(InboundCommand{limit(90, Side::SELL, 100, 1, 8)}, 0);
+    eng.submit(InboundCommand{limit(91, Side::BUY, 100, 1, 9)}, 0);
     NewOrder mk = limit(1, Side::SELL, 100, 3, 1);
     mk.lastLook = true;
     eng.submit(InboundCommand{mk}, 0);
@@ -358,6 +364,8 @@ void test_last_look_conduct_is_visible()
   Cap cap;
   venue::SymbolConfig c = cfg();
   MatchingEngine<MatchingBook> eng(c, cap.sink());
+  eng.submit(InboundCommand{limit(90, Side::SELL, 100, 1, 8)}, 0);
+  eng.submit(InboundCommand{limit(91, Side::BUY, 100, 1, 9)}, 0);
 
   int64_t ts = 0;
   // Run the same episode twice: once with the price moving against the maker,
