@@ -185,7 +185,7 @@ class BridgeStrategy : public Strategy
     ftrade.price_raw = ev.trade.price.raw();
     ftrade.quantity_raw = ev.trade.quantity.raw();
     ftrade.is_buy = ev.trade.isBuy ? 1 : 0;
-    ftrade.exchange_ts_ns = static_cast<int64_t>(ev.trade.exchangeTsNs);
+    ftrade.exchange_ts_ns = ev.trade.exchangeTsNs.raw();
 
     cb->on_trade(cb->user_data, &fctx, &ftrade);
   }
@@ -201,7 +201,7 @@ class BridgeStrategy : public Strategy
     FloxSymbolContext fctx = toFloxContext(c);
     FloxBookData fbook{};
     fbook.symbol = ev.update.symbol;
-    fbook.exchange_ts_ns = static_cast<int64_t>(ev.update.exchangeTsNs);
+    fbook.exchange_ts_ns = ev.update.exchangeTsNs.raw();
     fbook.snapshot = toBookSnapshot(c);
 
     cb->on_book(cb->user_data, &fctx, &fbook);

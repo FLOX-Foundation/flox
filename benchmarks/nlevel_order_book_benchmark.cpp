@@ -35,7 +35,7 @@ static void BM_ApplyBookUpdate(benchmark::State& state)
 
     auto& update = *opt;
     update->update.type = BookUpdateType::DELTA;
-    update->publishTsNs = nowNsMonotonic();
+    update->publishTsNs = MonoNanos::fromRaw(nowNsMonotonic());
 
     update->update.bids.clear();
     update->update.asks.clear();

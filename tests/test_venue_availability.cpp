@@ -59,12 +59,12 @@ TEST(VenueAvailability, ScheduledOutageCancelsAllOpenOrders)
   va.scheduleOutage(/*start=*/1000, /*duration=*/500, OnOutage::CANCEL_ALL);
   ex.setVenueAvailability(&va);
 
-  clock.advanceTo(0);
+  clock.advanceTo(UnixNanos::fromRaw(0));
   ex.submitOrder(makeLimit(1, Side::BUY, 100.0, 1.0));
   ex.submitOrder(makeLimit(2, Side::BUY, 99.0, 1.0));
 
   // Step into the outage; the next market event drives the edge detection.
-  clock.advanceTo(1000);
+  clock.advanceTo(UnixNanos::fromRaw(1000));
   ex.onBar(BTC, Price::fromDouble(100.0));
 
   size_t canceled = 0;
@@ -89,10 +89,10 @@ TEST(VenueAvailability, HoldKeepsOpenOrdersIntact)
   va.scheduleOutage(1000, 500, OnOutage::HOLD);
   ex.setVenueAvailability(&va);
 
-  clock.advanceTo(0);
+  clock.advanceTo(UnixNanos::fromRaw(0));
   ex.submitOrder(makeLimit(1, Side::BUY, 100.0, 1.0));
 
-  clock.advanceTo(1000);
+  clock.advanceTo(UnixNanos::fromRaw(1000));
   ex.onBar(BTC, Price::fromDouble(100.0));
 
   size_t canceled = 0;
@@ -117,12 +117,12 @@ TEST(VenueAvailability, MarketDataGappedDuringOutage)
   va.scheduleOutage(1000, 500, OnOutage::HOLD);
   ex.setVenueAvailability(&va);
 
-  clock.advanceTo(0);
+  clock.advanceTo(UnixNanos::fromRaw(0));
   ex.submitOrder(makeLimit(1, Side::BUY, 100.0, 1.0));
   const size_t baselineEvents = cap.statuses.size();
 
   // Trades during outage are silently dropped; no fill events emitted.
-  clock.advanceTo(1100);
+  clock.advanceTo(UnixNanos::fromRaw(1100));
   ex.onTrade(BTC, Price::fromDouble(99.0), Quantity::fromDouble(2.0), false);
   EXPECT_EQ(cap.statuses.size(), baselineEvents);
 }
@@ -140,7 +140,7 @@ TEST(VenueAvailability, BufferedSubmissionsFlushAtRecoveryInFIFOOrder)
 
   // Pre-outage: nothing.
   // During outage: three buffered submits.
-  clock.advanceTo(1100);
+  clock.advanceTo(UnixNanos::fromRaw(1100));
   ex.onBar(BTC, Price::fromDouble(100.0));  // transitions to down state
   ex.submitOrder(makeLimit(10, Side::BUY, 99.0, 1.0));
   ex.submitOrder(makeLimit(11, Side::BUY, 98.0, 1.0));
@@ -152,7 +152,7 @@ TEST(VenueAvailability, BufferedSubmissionsFlushAtRecoveryInFIFOOrder)
   }
 
   // Recovery: edge detection on the next event flushes in FIFO order.
-  clock.advanceTo(2000);
+  clock.advanceTo(UnixNanos::fromRaw(2000));
   ex.onBar(BTC, Price::fromDouble(100.0));
 
   std::vector<OrderId> submittedOrder;

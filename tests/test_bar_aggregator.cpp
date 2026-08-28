@@ -46,7 +46,7 @@ TradeEvent makeTrade(SymbolId symbol, double price, double qty, int sec,
   event.trade.price = Price::fromDouble(price);
   event.trade.quantity = Quantity::fromDouble(qty);
   event.trade.isBuy = isBuy;
-  event.trade.exchangeTsNs = ts(sec).time_since_epoch().count();
+  event.trade.exchangeTsNs = UnixNanos::fromRaw(ts(sec).time_since_epoch().count());
   return event;
 }
 
@@ -165,7 +165,7 @@ TEST(TimeBarPolicyTest, SupportsSubSecondIntervals)
     event.trade.price = Price::fromDouble(price);
     event.trade.quantity = Quantity::fromDouble(qty);
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = std::chrono::nanoseconds(std::chrono::milliseconds(ms)).count();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(std::chrono::nanoseconds(std::chrono::milliseconds(ms)).count());
     return event;
   };
 
@@ -219,7 +219,7 @@ TEST(TimeBarPolicyTest, SupportsMicrosecondIntervals)
     event.trade.price = Price::fromDouble(price);
     event.trade.quantity = Quantity::fromDouble(qty);
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = std::chrono::nanoseconds(std::chrono::microseconds(us)).count();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(std::chrono::nanoseconds(std::chrono::microseconds(us)).count());
     return event;
   };
 

@@ -49,7 +49,7 @@ static void BM_TimeBarAggregator_OnTrade(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -86,7 +86,7 @@ static void BM_TickBarAggregator_OnTrade(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -123,7 +123,7 @@ static void BM_VolumeBarAggregator_OnTrade(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -147,7 +147,7 @@ static void BM_TimeBarPolicy_ShouldClose(benchmark::State& state)
   bar.endTime = TimePoint{};
 
   TradeEvent event;
-  event.trade.exchangeTsNs = 30'000'000'000;  // 30 seconds in
+  event.trade.exchangeTsNs = UnixNanos::fromRaw(30'000'000'000);  // 30 seconds in
 
   for (auto _ : state)
   {
@@ -219,7 +219,7 @@ static void BM_MultiTimeframeAggregator_4TF(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -272,7 +272,7 @@ static void BM_MultiTimeframeAggregator_Scaling(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -331,7 +331,7 @@ static void BM_SeparateAggregators_Scaling(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     for (auto& agg : aggregators)
     {
@@ -395,7 +395,7 @@ static void BM_MTF_TimeOnly(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -442,7 +442,7 @@ static void BM_MTF_VolumeOnly(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }
@@ -647,7 +647,7 @@ static void BM_TimeBarAggregator_100Symbols(benchmark::State& state)
     event.trade.price = Price::fromDouble(priceDist(rng));
     event.trade.quantity = Quantity::fromDouble(qtyDist(rng));
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape: any monotone series works
 
     aggregator.onTrade(event);
   }

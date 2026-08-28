@@ -188,7 +188,7 @@ inline void bindBareExecutor(py::module_& m)
               d["side"] = (f.side == Side::BUY) ? "buy" : "sell";
               d["price"] = f.price.toDouble();
               d["quantity"] = f.quantity.toDouble();
-              d["timestamp_ns"] = static_cast<int64_t>(f.timestampNs);
+              d["timestamp_ns"] = f.timestampNs.raw();
               d["is_maker"] = f.isMaker;
               out.append(d);
             }

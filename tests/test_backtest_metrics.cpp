@@ -20,8 +20,8 @@ using namespace flox;
 
 namespace
 {
-void roundTrip(BacktestResult& result, double entry, double exit, UnixNanos enterTs,
-               UnixNanos exitTs, OrderId baseId)
+void roundTrip(BacktestResult& result, double entry, double exit, int64_t enterTsRaw,
+               int64_t exitTsRaw, OrderId baseId)
 {
   Fill buy;
   buy.orderId = baseId;
@@ -29,7 +29,7 @@ void roundTrip(BacktestResult& result, double entry, double exit, UnixNanos ente
   buy.side = Side::BUY;
   buy.price = Price::fromDouble(entry);
   buy.quantity = Quantity::fromDouble(1.0);
-  buy.timestampNs = enterTs;
+  buy.timestampNs = UnixNanos::fromRaw(enterTsRaw);
   result.recordFill(buy);
 
   Fill sell;
@@ -38,7 +38,7 @@ void roundTrip(BacktestResult& result, double entry, double exit, UnixNanos ente
   sell.side = Side::SELL;
   sell.price = Price::fromDouble(exit);
   sell.quantity = Quantity::fromDouble(1.0);
-  sell.timestampNs = exitTs;
+  sell.timestampNs = UnixNanos::fromRaw(exitTsRaw);
   result.recordFill(sell);
 }
 }  // namespace
@@ -55,8 +55,8 @@ TEST(BacktestMetrics, TradeRecordPopulatedFully)
   EXPECT_DOUBLE_EQ(t.entryPrice.toDouble(), 100.0);
   EXPECT_DOUBLE_EQ(t.exitPrice.toDouble(), 110.0);
   EXPECT_DOUBLE_EQ(t.quantity.toDouble(), 1.0);
-  EXPECT_EQ(t.entryTimeNs, 1000);
-  EXPECT_EQ(t.exitTimeNs, 2000);
+  EXPECT_EQ(t.entryTimeNs.raw(), 1000);
+  EXPECT_EQ(t.exitTimeNs.raw(), 2000);
 }
 
 TEST(BacktestMetrics, ConsecutiveStreaks)
@@ -76,7 +76,7 @@ TEST(BacktestMetrics, ConsecutiveStreaks)
       {100, 95},   // 1 loss
   };
   OrderId id = 1;
-  UnixNanos ts = 1000;
+  int64_t ts = 1000;
   for (const auto& p : pairs)
   {
     roundTrip(result, p[0], p[1], ts, ts + 100, id);
@@ -116,7 +116,7 @@ TEST(BacktestMetrics, EquityCurveRecordedPerTrade)
   ASSERT_EQ(curve.size(), 2u);
   EXPECT_GT(curve[0].equity, cfg.initialCapital);
   EXPECT_LT(curve[1].equity, curve[0].equity);
-  EXPECT_EQ(curve[1].timestampNs, 4000u);
+  EXPECT_EQ(curve[1].timestampNs.raw(), 4000);
 }
 
 TEST(BacktestMetrics, EquityCurveCsvRoundTrip)
@@ -202,7 +202,7 @@ TEST(BacktestMetrics, PartialCloseProratesEntryFee)
   buy.side = Side::BUY;
   buy.price = Price::fromDouble(100.0);
   buy.quantity = Quantity::fromDouble(2.0);
-  buy.timestampNs = 1000;
+  buy.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(buy);
 
   // Close 1 @ 110. Exit fee = 110 * 1 * 0.001 = 0.11.
@@ -213,7 +213,7 @@ TEST(BacktestMetrics, PartialCloseProratesEntryFee)
   sell1.side = Side::SELL;
   sell1.price = Price::fromDouble(110.0);
   sell1.quantity = Quantity::fromDouble(1.0);
-  sell1.timestampNs = 2000;
+  sell1.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(sell1);
 
   ASSERT_EQ(result.trades().size(), 1u);
@@ -226,7 +226,7 @@ TEST(BacktestMetrics, PartialCloseProratesEntryFee)
   sell2.side = Side::SELL;
   sell2.price = Price::fromDouble(120.0);
   sell2.quantity = Quantity::fromDouble(1.0);
-  sell2.timestampNs = 3000;
+  sell2.timestampNs = UnixNanos::fromRaw(3000);
   result.recordFill(sell2);
 
   ASSERT_EQ(result.trades().size(), 2u);

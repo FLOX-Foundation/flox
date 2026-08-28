@@ -85,7 +85,7 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
     trade.trade.price = Price::fromDouble(px[i]);
     trade.trade.quantity = Quantity::fromDouble(qty[i]);
     trade.trade.isBuy = (ib[i] != 0);
-    trade.trade.exchangeTsNs = ts[i];
+    trade.trade.exchangeTsNs = UnixNanos::fromRaw(ts[i]);
     trade.trade.symbol = 1;
     trade.trade.instrument = InstrumentType::Spot;
 

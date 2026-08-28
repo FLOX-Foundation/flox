@@ -393,7 +393,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         return;
       }
       auto& ev = *evOpt;
-      ev->recvNs = recvNs;
+      ev->recvNs = MonoNanos::fromRaw(recvNs);
 
       BookUpdateType updateType = BookUpdateType::SNAPSHOT;
       auto utv = root.find_field_unordered("type").get_string().value();
@@ -408,8 +408,8 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       // descend into data -- keeps every access forward-only.
       auto tsv = root.find_field_unordered("ts").get_int64().value();
       auto ctsv = root.find_field_unordered("cts").get_int64().value();
-      ev->update.systemTsNs = msToNs(tsv);
-      ev->update.exchangeTsNs = msToNs(ctsv);
+      ev->update.systemTsNs = msToUnixNs(tsv);
+      ev->update.exchangeTsNs = msToUnixNs(ctsv);
 
       auto data_field = root.find_field_unordered("data");
       if (data_field.error())
@@ -514,7 +514,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
-        ev->publishTsNs = nowNsMonotonic();
+        ev->publishTsNs = nowMonoNanos();
         auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev));
         if (res != BookUpdateBus::PublishResult::SUCCESS)
         {
@@ -540,7 +540,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         SymbolId sym = resolveSymbolId(ssv);
 
         TradeEvent ev{};
-        ev.recvNs = recvNs;
+        ev.recvNs = MonoNanos::fromRaw(recvNs);
         ev.trade.symbol = sym;
 
         if (_registry)
@@ -552,7 +552,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         }
 
         auto T = obj.find_field_unordered("T");
-        ev.trade.exchangeTsNs = msToNs(T.get_int64().value());
+        ev.trade.exchangeTsNs = msToUnixNs(T.get_int64().value());
 
         ev.seq = obj.find_field_unordered("seq").get_int64().value();
 
@@ -571,7 +571,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         ev.trade.price = *priceOpt;
         ev.trade.quantity = *qtyOpt;
 
-        ev.publishTsNs = nowNsMonotonic();
+        ev.publishTsNs = nowMonoNanos();
         auto [res, _] = _tradeBus->tryPublish(ev);
         if (res != TradeBus::PublishResult::SUCCESS)
         {
@@ -634,7 +634,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
       for (auto d : data.get_array().value())
       {
         OrderEvent ev{};
-        ev.recvNs = recvNs;
+        ev.recvNs = MonoNanos::fromRaw(recvNs);
 
         std::string_view symbol = d["symbol"].get_string().value();
         ev.order.symbol = resolveSymbolId(symbol);
@@ -702,7 +702,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
       for (auto d : data.get_array().value())
       {
         OrderEvent ev{};
-        ev.recvNs = recvNs;
+        ev.recvNs = MonoNanos::fromRaw(recvNs);
 
         auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
         if (!orderIdOpt)

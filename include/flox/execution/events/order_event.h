@@ -11,6 +11,7 @@
 
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/execution/order.h"
+#include "flox/util/base/time.h"
 
 namespace flox
 {
@@ -134,7 +135,7 @@ struct OrderEvent
 
   uint64_t tickSequence{0};  // internal, set by bus
 
-  uint64_t recvNs{0};
+  MonoNanos recvNs{};
   uint64_t publishNs{0};
   int64_t exchangeTsNs{0};
 

@@ -11586,6 +11586,11 @@
           "name": "DlmmVolatility"
         },
         {
+          "header": "include/flox/util/base/time.h",
+          "kind": "type",
+          "name": "DurationNs"
+        },
+        {
           "header": "include/flox/indicator/ema.h",
           "kind": "type",
           "name": "EMA"
@@ -12394,6 +12399,11 @@
           "header": "include/flox/replay/readers/mmap_reader.h",
           "kind": "type",
           "name": "MmapSegmentReader"
+        },
+        {
+          "header": "include/flox/util/base/time.h",
+          "kind": "type",
+          "name": "MonoTag"
         },
         {
           "header": "include/flox/execution/multi_execution_listener.h",
@@ -13251,6 +13261,11 @@
           "name": "StableSwapCurve"
         },
         {
+          "header": "include/flox/util/base/time.h",
+          "kind": "type",
+          "name": "Stamp"
+        },
+        {
           "header": "include/flox/util/eventing/event_bus.h",
           "kind": "type",
           "name": "Stats"
@@ -13549,6 +13564,11 @@
           "header": "include/flox/net/receive_path.h",
           "kind": "type",
           "name": "UdpSocketReceivePath"
+        },
+        {
+          "header": "include/flox/util/base/time.h",
+          "kind": "type",
+          "name": "UnixTag"
         },
         {
           "header": "include/flox/indicator/vwap.h",
@@ -16767,6 +16787,11 @@
         },
         {
           "kind": "method",
+          "name": "count",
+          "parent": "DurationNs"
+        },
+        {
+          "kind": "method",
           "name": "compute",
           "parent": "EMA"
         },
@@ -19709,6 +19734,16 @@
           "kind": "method",
           "name": "totalSize",
           "parent": "MmapSegmentReader"
+        },
+        {
+          "kind": "method",
+          "name": "fromFloxNs",
+          "parent": "MonoTag"
+        },
+        {
+          "kind": "method",
+          "name": "fromRaw",
+          "parent": "MonoTag"
         },
         {
           "kind": "method",
@@ -23434,6 +23469,21 @@
           "kind": "method",
           "name": "xpMem",
           "parent": "StableSwapCurve"
+        },
+        {
+          "kind": "method",
+          "name": "bool",
+          "parent": "Stamp"
+        },
+        {
+          "kind": "method",
+          "name": "fromRaw",
+          "parent": "Stamp"
+        },
+        {
+          "kind": "method",
+          "name": "raw",
+          "parent": "Stamp"
         },
         {
           "kind": "method",

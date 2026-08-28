@@ -319,7 +319,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
   Order accepted = order;
   accepted.createdAt = fromUnixNs(_clock.nowNs());
 
-  if (_venue && !_venue->submitsAllowed(static_cast<int64_t>(_clock.nowNs())))
+  if (_venue && !_venue->submitsAllowed(_clock.nowNs().raw()))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::SUBMIT,
                                             .order = accepted});
@@ -348,7 +348,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
 
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Submit,
-                             static_cast<int64_t>(_clock.nowNs())))
+                             _clock.nowNs().raw()))
   {
     emitEvent(OrderEventStatus::REJECTED_RATE_LIMIT, accepted);
     return;
@@ -389,7 +389,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
         OrderEvent ev;
         ev.status = OrderEventStatus::REJECTED;
         ev.order = accepted;
-        ev.exchangeTsNs = _clock.nowNs();
+        ev.exchangeTsNs = _clock.nowNs().raw();
         ev.timestamps = timestampsFor(accepted.id);
         ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
         ev.rejectReason = reason;
@@ -465,7 +465,7 @@ stp_done:
       OrderEvent ev;
       ev.status = OrderEventStatus::REJECTED;
       ev.order = accepted;
-      ev.exchangeTsNs = _clock.nowNs();
+      ev.exchangeTsNs = _clock.nowNs().raw();
       ev.timestamps = timestampsFor(accepted.id);
       ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
       ev.rejectReason = "reduce_only";
@@ -520,7 +520,7 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
         OrderEvent ev;
         ev.status = OrderEventStatus::REJECTED;
         ev.order = accepted;
-        ev.exchangeTsNs = _clock.nowNs();
+        ev.exchangeTsNs = _clock.nowNs().raw();
         ev.timestamps = timestampsFor(accepted.id);
         ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
         if (fromAck)
@@ -570,7 +570,7 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
       OrderEvent ev;
       ev.status = OrderEventStatus::REJECTED;
       ev.order = accepted;
-      ev.exchangeTsNs = _clock.nowNs();
+      ev.exchangeTsNs = _clock.nowNs().raw();
       ev.timestamps = timestampsFor(accepted.id);
       ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
       ev.rejectReason = (_fokMode == FokMode::SinglePrice && canCross && !exactLevel)
@@ -681,7 +681,7 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
-  if (_venue && !_venue->cancelsAllowed(static_cast<int64_t>(_clock.nowNs())))
+  if (_venue && !_venue->cancelsAllowed(_clock.nowNs().raw()))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL,
                                             .oldOrderId = orderId});
@@ -689,7 +689,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
   }
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Cancel,
-                             static_cast<int64_t>(_clock.nowNs())))
+                             _clock.nowNs().raw()))
   {
     for (const auto& o : _pending_orders)
     {
@@ -775,7 +775,7 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
 
 void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 {
-  if (_venue && !_venue->cancelsAllowed(static_cast<int64_t>(_clock.nowNs())))
+  if (_venue && !_venue->cancelsAllowed(_clock.nowNs().raw()))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL_ALL_SYMBOL,
                                             .cancelAllSymbol = symbol});
@@ -834,7 +834,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
   // Replace is a cancel + submit pair; if either action is currently
   // gated we have to buffer the whole request until both are open.
-  const int64_t nowNs = static_cast<int64_t>(_clock.nowNs());
+  const int64_t nowNs = _clock.nowNs().raw();
   if (_venue && (!_venue->cancelsAllowed(nowNs) || !_venue->submitsAllowed(nowNs)))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::REPLACE,
@@ -844,7 +844,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
   }
   if (_hasRateLimit &&
       !_rateLimit.tryConsume(RateLimitPolicy::ActionKind::Replace,
-                             static_cast<int64_t>(_clock.nowNs())))
+                             _clock.nowNs().raw()))
   {
     for (const auto& o : _pending_orders)
     {
@@ -871,7 +871,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
         ev.status = OrderEventStatus::REPLACE_SUBMITTED;
         ev.order = order;
         ev.newOrder = newOrder;
-        ev.exchangeTsNs = _clock.nowNs();
+        ev.exchangeTsNs = _clock.nowNs().raw();
         ev.timestamps = timestampsFor(order.id);
         if (_callback)
         {
@@ -895,7 +895,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
       ev.status = OrderEventStatus::REPLACED;
       ev.order = oldOrder;
       ev.newOrder = newOrder;
-      ev.exchangeTsNs = _clock.nowNs();
+      ev.exchangeTsNs = _clock.nowNs().raw();
       if (_callback)
       {
         _callback(ev);
@@ -1073,7 +1073,7 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
 {
   if (_venue)
   {
-    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const int64_t now = _clock.nowNs().raw();
     const bool up = _venue->isUp(now);
     if (!up && _venueWasUp)
     {
@@ -1177,7 +1177,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
 {
   if (_venue)
   {
-    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const int64_t now = _clock.nowNs().raw();
     const bool up = _venue->isUp(now);
     if (!up && _venueWasUp)
     {
@@ -1266,7 +1266,7 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price price)
 {
   if (_venue)
   {
-    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const int64_t now = _clock.nowNs().raw();
     const bool up = _venue->isUp(now);
     if (!up && _venueWasUp)
     {
@@ -1290,7 +1290,7 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price high, Price low, Price clos
 {
   if (_venue)
   {
-    const int64_t now = static_cast<int64_t>(_clock.nowNs());
+    const int64_t now = _clock.nowNs().raw();
     const bool up = _venue->isUp(now);
     if (!up && _venueWasUp)
     {
@@ -1515,7 +1515,7 @@ void SimulatedExecutor::maybeRefreshIceberg(Order& order)
   {
     return;
   }
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   if (st.refreshDueNs == 0)
   {
     st.refreshDueNs = now + st.refreshLatencyNs;
@@ -1603,7 +1603,7 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
   ev.fillQty = qty;
   ev.fillPrice = price;
   ev.isMaker = isMaker;
-  ev.exchangeTsNs = now;
+  ev.exchangeTsNs = now.raw();
   ev.status =
       (order.filledQuantity >= order.quantity) ? OrderEventStatus::FILLED : OrderEventStatus::PARTIALLY_FILLED;
   if (auto snap = _queueTracker.snapshot(order.id))
@@ -1614,9 +1614,9 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
   auto& ts = timestampsFor(order.id);
   if (ts.firstFillAtNs == 0)
   {
-    ts.firstFillAtNs = static_cast<int64_t>(now);
+    ts.firstFillAtNs = now.raw();
   }
-  ts.lastFillAtNs = static_cast<int64_t>(now);
+  ts.lastFillAtNs = now.raw();
   ev.timestamps = ts;
 
   if (_callback)
@@ -1646,7 +1646,7 @@ void SimulatedExecutor::emitEvent(OrderEventStatus status, const Order& order)
   {
     return;
   }
-  const int64_t nowNs = static_cast<int64_t>(_clock.nowNs());
+  const int64_t nowNs = _clock.nowNs().raw();
   auto& ts = timestampsFor(order.id);
   switch (status)
   {
@@ -1711,7 +1711,7 @@ void SimulatedExecutor::maybeEmitQueuePositionChanges()
     ev.order = *ord;
     ev.queueAhead = snap.ahead;
     ev.queueTotal = snap.total;
-    ev.exchangeTsNs = _clock.nowNs();
+    ev.exchangeTsNs = _clock.nowNs().raw();
     ev.timestamps = timestampsFor(snap.orderId);
     _callback(ev);
     _lastEmittedQueueAheadRaw[snap.orderId] = snap.ahead.raw();
@@ -1733,7 +1733,7 @@ int64_t SimulatedExecutor::sampleReplaceAckLatency()
   int64_t base = _replaceAckDist.sample(_cancelAckRng);
   if (_venue)
   {
-    const double mult = _venue->latencyMultiplier(static_cast<int64_t>(_clock.nowNs()));
+    const double mult = _venue->latencyMultiplier(_clock.nowNs().raw());
     if (mult > 1.0)
     {
       base = static_cast<int64_t>(static_cast<double>(base) * mult);
@@ -1745,7 +1745,7 @@ int64_t SimulatedExecutor::sampleReplaceAckLatency()
 void SimulatedExecutor::enqueuePendingReplace(const Order& oldOrder,
                                               const Order& newOrder)
 {
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   _pendingReplaces.push_back(
       PendingReplace{.orderId = oldOrder.id,
                      .ackAtNs = now + sampleReplaceAckLatency(),
@@ -1774,7 +1774,7 @@ void SimulatedExecutor::finalizePendingReplaces()
   {
     return;
   }
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   size_t i = 0;
   while (i < _pendingReplaces.size())
   {
@@ -1822,7 +1822,7 @@ int64_t SimulatedExecutor::sampleSubmitAckLatency()
   int64_t base = _submitAckDist.sample(_cancelAckRng);
   if (_venue)
   {
-    const double mult = _venue->latencyMultiplier(static_cast<int64_t>(_clock.nowNs()));
+    const double mult = _venue->latencyMultiplier(_clock.nowNs().raw());
     if (mult > 1.0)
     {
       base = static_cast<int64_t>(static_cast<double>(base) * mult);
@@ -1833,7 +1833,7 @@ int64_t SimulatedExecutor::sampleSubmitAckLatency()
 
 void SimulatedExecutor::enqueuePendingSubmission(const Order& order)
 {
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   _pendingSubmissions.push_back(
       PendingSubmission{.ackAtNs = now + sampleSubmitAckLatency(), .order = order});
 }
@@ -1844,7 +1844,7 @@ void SimulatedExecutor::finalizePendingSubmissions()
   {
     return;
   }
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   size_t i = 0;
   while (i < _pendingSubmissions.size())
   {
@@ -1877,7 +1877,7 @@ void SimulatedExecutor::resolveLateReplaceOnFill(const Order& order)
     ev.order = it->oldSnapshot;
     ev.newOrder = it->newOrder;
     ev.rejectReason = "late_replace_after_fill";
-    ev.exchangeTsNs = _clock.nowNs();
+    ev.exchangeTsNs = _clock.nowNs().raw();
     ev.timestamps = timestampsFor(order.id);
     _callback(ev);
     *it = _pendingReplaces.back();
@@ -2037,7 +2037,7 @@ void SimulatedExecutor::maybeEmitMarketPositionChanges()
     ev.order = o;
     ev.marketPosition = pos;
     ev.distanceToBestTicks = dist;
-    ev.exchangeTsNs = _clock.nowNs();
+    ev.exchangeTsNs = _clock.nowNs().raw();
     ev.timestamps = timestampsFor(o.id);
     _callback(ev);
   }
@@ -2048,7 +2048,7 @@ int64_t SimulatedExecutor::sampleCancelAckLatency()
   int64_t base = _cancelAckDist.sample(_cancelAckRng);
   if (_venue)
   {
-    const double mult = _venue->latencyMultiplier(static_cast<int64_t>(_clock.nowNs()));
+    const double mult = _venue->latencyMultiplier(_clock.nowNs().raw());
     if (mult > 1.0)
     {
       base = static_cast<int64_t>(static_cast<double>(base) * mult);
@@ -2059,7 +2059,7 @@ int64_t SimulatedExecutor::sampleCancelAckLatency()
 
 void SimulatedExecutor::enqueuePendingCancel(const Order& order)
 {
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   _pendingCancels.push_back(
       PendingCancel{.orderId = order.id,
                     .ackAtNs = now + sampleCancelAckLatency(),
@@ -2072,7 +2072,7 @@ void SimulatedExecutor::finalizePendingCancels()
   {
     return;
   }
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   size_t i = 0;
   while (i < _pendingCancels.size())
   {
@@ -2143,7 +2143,7 @@ void SimulatedExecutor::resolveLateCancelOnFill(const Order& order)
     ev.status = OrderEventStatus::REJECTED;
     ev.order = order;
     ev.rejectReason = "late_cancel_after_fill";
-    ev.exchangeTsNs = _clock.nowNs();
+    ev.exchangeTsNs = _clock.nowNs().raw();
     ev.timestamps = timestampsFor(order.id);
     _callback(ev);
     *it = _pendingCancels.back();
@@ -2170,7 +2170,7 @@ void SimulatedExecutor::emitTrailingUpdate(const Order& order, Price newTrigger)
     ev.status = OrderEventStatus::TRAILING_UPDATED;
     ev.order = order;
     ev.newTrailingPrice = newTrigger;
-    ev.exchangeTsNs = _clock.nowNs();
+    ev.exchangeTsNs = _clock.nowNs().raw();
     _callback(ev);
   }
 }
@@ -2412,7 +2412,7 @@ int64_t SimulatedExecutor::netPositionRaw(SymbolId symbol) const
 
 void SimulatedExecutor::processExpiredOrders()
 {
-  const int64_t nowNs = static_cast<int64_t>(_clock.nowNs());
+  const int64_t nowNs = _clock.nowNs().raw();
   for (auto it = _pending_orders.begin(); it != _pending_orders.end();)
   {
     if (it->timeInForce == TimeInForce::GTD && it->expiresAfter.has_value())
@@ -2442,7 +2442,7 @@ void SimulatedExecutor::applyOutagePolicy()
   {
     return;
   }
-  const int64_t now = static_cast<int64_t>(_clock.nowNs());
+  const int64_t now = _clock.nowNs().raw();
   const auto* outage = _venue->activeOutage(now);
   if (!outage)
   {

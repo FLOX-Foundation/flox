@@ -422,7 +422,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           auto tsOpt = util::parseInt64(tsStr);
           if (tsOpt)
           {
-            ev->update.exchangeTsNs = *tsOpt * 1'000'000;
+            ev->update.exchangeTsNs = UnixNanos::fromRaw(*tsOpt * 1'000'000);
           }
         }
       }
@@ -477,7 +477,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           auto tsOpt = util::parseInt64(tsStr);
           if (tsOpt)
           {
-            ev.trade.exchangeTsNs = *tsOpt * 1'000'000;
+            ev.trade.exchangeTsNs = UnixNanos::fromRaw(*tsOpt * 1'000'000);
           }
         }
 

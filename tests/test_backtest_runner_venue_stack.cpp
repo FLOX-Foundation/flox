@@ -135,7 +135,7 @@ TEST(BacktestRunnerVenueStack, VenueClockAdvancesWithTheReplay)
   strat.set_symbol(sym);
 
   auto stack = VenueStack::binance_um_futures(42, 10'000.0);
-  EXPECT_EQ(stack.clock().nowNs(), 0) << "a fresh stack clock starts at zero";
+  EXPECT_EQ(stack.clock().nowNs().raw(), 0) << "a fresh stack clock starts at zero";
 
   BacktestRunner runner;
   runner.setStrategy(&strat);
@@ -144,7 +144,7 @@ TEST(BacktestRunnerVenueStack, VenueClockAdvancesWithTheReplay)
 
   // Without this the venue executor would model ack latency and queue
   // timing against a frozen clock.
-  EXPECT_GT(stack.clock().nowNs(), 0)
+  EXPECT_GT(stack.clock().nowNs().raw(), 0)
       << "the runner must advance the venue clock in lockstep";
 
   std::filesystem::remove_all(tape);

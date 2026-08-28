@@ -23,16 +23,16 @@ class AdvancedOrdersTest : public ::testing::Test
  protected:
   void SetUp() override
   {
-    currentTimeNs = 1000000000;  // 1 second
+    currentTimeNs = UnixNanos::fromRaw(1000000000);  // 1 second
     clock = std::make_unique<SimulatedClock>(currentTimeNs);
     executor = std::make_unique<SimulatedExecutor>(*clock);
     executor->setOrderEventCallback([this](const OrderEvent& ev)
                                     { events.push_back(ev); });
   }
 
-  void advanceTime(UnixNanos deltaNs)
+  void advanceTime(int64_t deltaNs)
   {
-    currentTimeNs += deltaNs;
+    currentTimeNs = currentTimeNs + DurationNs{deltaNs};
     clock->advanceTo(currentTimeNs);
   }
 

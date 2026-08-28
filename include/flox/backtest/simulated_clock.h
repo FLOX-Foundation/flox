@@ -30,7 +30,7 @@ class SimulatedClock : public IClock
     }
   }
 
-  void reset(UnixNanos ns = 0) { _current_ns = ns; }
+  void reset(UnixNanos ns = UnixNanos{}) { _current_ns = ns; }
 
  private:
   UnixNanos _current_ns{0};

@@ -96,7 +96,7 @@ class MockConnector
     event.trade.price = price;
     event.trade.quantity = qty;
     event.trade.isBuy = true;
-    event.trade.exchangeTsNs = nowNsMonotonic();
+    event.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(nowNsMonotonic()));  // synthetic tape
 
     _tradeBus.publish(event);
   }

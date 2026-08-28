@@ -174,11 +174,14 @@ void ReplayConnector::emitTradeFromRecord(const replay::TradeRecord& record)
   event.trade.price = Price::fromRaw(record.price_raw);
   event.trade.quantity = Quantity::fromRaw(record.qty_raw);
   event.trade.isBuy = (record.side == 1);
-  event.trade.exchangeTsNs = record.exchange_ts_ns;
+  event.trade.exchangeTsNs = UnixNanos::fromRaw(record.exchange_ts_ns);
 
   event.trade_id = record.trade_id;
-  event.recvNs = static_cast<MonoNanos>(record.recv_ts_ns);
-  event.exchangeMsgTsNs = record.exchange_ts_ns;
+  // A tape's recv_ts is a wall-clock recording; the live field is monotonic.
+  // Replay reuses the field as "position on the recorded timeline", which is
+  // the one place the domains legitimately meet -- and now it is explicit.
+  event.recvNs = MonoNanos::fromRaw(static_cast<uint64_t>(record.recv_ts_ns));
+  event.exchangeMsgTsNs = UnixNanos::fromRaw(record.exchange_ts_ns);
   event.sourceExchange = record.exchange_id;
 
   emitTrade(event);
@@ -195,7 +198,7 @@ void ReplayConnector::emitBookFromRecord(const replay::BookRecordHeader& header,
   event.update.symbol = header.symbol_id;
   event.update.instrument = static_cast<InstrumentType>(header.instrument);
   event.update.type = (header.type == 0) ? BookUpdateType::SNAPSHOT : BookUpdateType::DELTA;
-  event.update.exchangeTsNs = header.exchange_ts_ns;
+  event.update.exchangeTsNs = UnixNanos::fromRaw(header.exchange_ts_ns);
 
   event.seq = header.seq;
   event.recvNs = static_cast<MonoNanos>(header.recv_ts_ns);

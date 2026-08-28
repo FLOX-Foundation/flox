@@ -170,7 +170,7 @@ BacktestStats BacktestResult::computeStats() const
     if (trade.exitTimeNs >= trade.entryTimeNs)
     {
       durations.push_back(
-          static_cast<double>(trade.exitTimeNs - trade.entryTimeNs));
+          static_cast<double>((trade.exitTimeNs - trade.entryTimeNs).count()));
     }
   }
 
@@ -264,7 +264,7 @@ bool BacktestResult::writeEquityCurveCsv(const std::string& path) const
   out << "timestamp_ns,equity,drawdown_pct\n";
   for (const auto& p : _equityCurve)
   {
-    out << static_cast<int64_t>(p.timestampNs) << ',' << p.equity << ','
+    out << p.timestampNs.raw() << ',' << p.equity << ','
         << p.drawdownPct << '\n';
   }
   return static_cast<bool>(out);
@@ -331,7 +331,7 @@ void BacktestResult::updatePositionLong(Position& pos, Quantity qty, Price price
     }
     else if (pos.quantity.raw() == 0)
     {
-      pos.entryTimeNs = 0;
+      pos.entryTimeNs = UnixNanos{};
     }
   }
 }
@@ -367,7 +367,7 @@ void BacktestResult::updatePositionShort(Position& pos, Quantity qty, Price pric
     }
     else if (pos.quantity.raw() == 0)
     {
-      pos.entryTimeNs = 0;
+      pos.entryTimeNs = UnixNanos{};
     }
   }
 }

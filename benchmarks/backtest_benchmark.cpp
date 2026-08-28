@@ -26,7 +26,7 @@ static void BM_BacktestResult_RecordFill(benchmark::State& state)
   BacktestResult result(config);
 
   OrderId orderId = 0;
-  UnixNanos ts = 0;
+  int64_t ts = 0;
 
   for (auto _ : state)
   {
@@ -36,7 +36,7 @@ static void BM_BacktestResult_RecordFill(benchmark::State& state)
     fill.side = (orderId % 2 == 0) ? Side::BUY : Side::SELL;
     fill.price = Price::fromDouble(100.0);
     fill.quantity = Quantity::fromDouble(1.0);
-    fill.timestampNs = ts++;
+    fill.timestampNs = UnixNanos::fromRaw(ts++);
 
     result.recordFill(fill);
   }
@@ -310,7 +310,7 @@ static void BM_BacktestOptimizer_RunLocal(benchmark::State& state)
           buyFill.side = Side::BUY;
           buyFill.price = Price::fromDouble(100.0);
           buyFill.quantity = Quantity::fromDouble(1.0);
-          buyFill.timestampNs = 1000;
+          buyFill.timestampNs = UnixNanos::fromRaw(1000);
           result.recordFill(buyFill);
 
           Fill sellFill;
@@ -319,7 +319,7 @@ static void BM_BacktestOptimizer_RunLocal(benchmark::State& state)
           sellFill.side = Side::SELL;
           sellFill.price = Price::fromDouble(100.0 + params.param1);
           sellFill.quantity = Quantity::fromDouble(1.0);
-          sellFill.timestampNs = 2000;
+          sellFill.timestampNs = UnixNanos::fromRaw(2000);
           result.recordFill(sellFill);
 
           return result;
