@@ -44,7 +44,7 @@ class PyCompositeBookMatrix
     BookUpdateEvent ev(&res);
     ev.update.symbol = symbol;
     ev.sourceExchange = exchange;
-    ev.recvNs = static_cast<uint64_t>(recvNs);
+    ev.recvNs = MonoNanos::fromRaw(static_cast<uint64_t>(recvNs));
 
     ev.update.bids.reserve(nb);
     for (size_t i = 0; i < nb; ++i)

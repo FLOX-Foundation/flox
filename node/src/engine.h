@@ -473,7 +473,7 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
 
     for (const auto& mb : merged)
     {
-      clock.advanceTo(mb.ts);
+      clock.advanceTo(UnixNanos::fromRaw(mb.ts));
       executor.onBar(mb.sym, Price::fromRaw(mb.close));
       while (si < sigs.size() && sigs[sigOrder[si]].timestamp_ns <= mb.ts)
       {

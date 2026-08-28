@@ -120,7 +120,7 @@ TEST_F(GridSearchTest, OptimizerBasicRun)
         buyFill.side = Side::BUY;
         buyFill.price = Price::fromDouble(100.0);
         buyFill.quantity = Quantity::fromDouble(1.0);
-        buyFill.timestampNs = 1000;
+        buyFill.timestampNs = UnixNanos::fromRaw(1000);
         result.recordFill(buyFill);
 
         Fill sellFill;
@@ -129,7 +129,7 @@ TEST_F(GridSearchTest, OptimizerBasicRun)
         sellFill.side = Side::SELL;
         sellFill.price = Price::fromDouble(100.0 + params.param1 + params.param2 * 0.1);
         sellFill.quantity = Quantity::fromDouble(1.0);
-        sellFill.timestampNs = 2000;
+        sellFill.timestampNs = UnixNanos::fromRaw(2000);
         result.recordFill(sellFill);
 
         return result;
@@ -205,7 +205,7 @@ TEST_F(GridSearchTest, OptimizerRunSingle)
         buyFill.side = Side::BUY;
         buyFill.price = Price::fromDouble(100.0);
         buyFill.quantity = Quantity::fromDouble(1.0);
-        buyFill.timestampNs = 1000;
+        buyFill.timestampNs = UnixNanos::fromRaw(1000);
         result.recordFill(buyFill);
 
         Fill sellFill;
@@ -214,7 +214,7 @@ TEST_F(GridSearchTest, OptimizerRunSingle)
         sellFill.side = Side::SELL;
         sellFill.price = Price::fromDouble(100.0 + params.param1);
         sellFill.quantity = Quantity::fromDouble(1.0);
-        sellFill.timestampNs = 2000;
+        sellFill.timestampNs = UnixNanos::fromRaw(2000);
         result.recordFill(sellFill);
 
         return result;

@@ -134,13 +134,13 @@ TEST(IcebergOrders, RefreshLatencyDelaysExposure)
   EXPECT_EQ(ex.icebergHiddenRemainingRaw(1), Quantity::fromDouble(2.0).raw());
 
   // Fill the visible tranche at t=0; the refresh isn't due until t=1000.
-  clock.advanceTo(0);
+  clock.advanceTo(UnixNanos::fromRaw(0));
   ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
   // Hidden not yet exposed because the refresh deadline hasn't passed.
   EXPECT_EQ(ex.icebergHiddenRemainingRaw(1), Quantity::fromDouble(2.0).raw());
 
   // Advance past the latency window and feed another tick.
-  clock.advanceTo(2000);
+  clock.advanceTo(UnixNanos::fromRaw(2000));
   ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
   EXPECT_EQ(ex.icebergHiddenRemainingRaw(1), 0);
 }

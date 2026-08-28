@@ -1276,7 +1276,7 @@ void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle h, uint32_t sy
 
 void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle h, int64_t timestamp_ns)
 {
-  static_cast<FloxSimulatedExecutorImpl*>(h)->clock.advanceTo(timestamp_ns);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->clock.advanceTo(UnixNanos::fromRaw(timestamp_ns));
 }
 
 uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle h)
@@ -1303,7 +1303,7 @@ static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px
     trade.trade.price = Price::fromDouble(px[i]);
     trade.trade.quantity = Quantity::fromDouble(qty[i]);
     trade.trade.isBuy = (ib[i] != 0);
-    trade.trade.exchangeTsNs = ts[i];
+    trade.trade.exchangeTsNs = UnixNanos::fromRaw(ts[i]);
     trade.trade.symbol = 1;
     trade.trade.instrument = InstrumentType::Spot;
 
@@ -2227,7 +2227,7 @@ void flox_market_profile_add_trade(FloxMarketProfileHandle h, int64_t timestamp_
   te.trade.price = Price::fromDouble(price);
   te.trade.quantity = Quantity::fromDouble(qty);
   te.trade.isBuy = (is_buy != 0);
-  te.trade.exchangeTsNs = timestamp_ns;
+  te.trade.exchangeTsNs = UnixNanos::fromRaw(timestamp_ns);
   static_cast<MarketProfile<>*>(h)->addTrade(te);
 }
 
@@ -2347,7 +2347,7 @@ uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle h, FloxFi
     fills_out[i].side = fills[i].side == Side::BUY ? 0 : 1;
     fills_out[i].price_raw = fills[i].price.raw();
     fills_out[i].quantity_raw = fills[i].quantity.raw();
-    fills_out[i].timestamp_ns = static_cast<int64_t>(fills[i].timestampNs);
+    fills_out[i].timestamp_ns = fills[i].timestampNs.raw();
   }
   return count;
 }
@@ -3305,8 +3305,8 @@ void flox_backtest_result_stats(FloxBacktestResultHandle h, FloxBacktestStats* o
   out->calmarRatio = stats.calmarRatio;
   out->timeWeightedReturn = stats.timeWeightedReturn;
   out->returnPct = stats.returnPct;
-  out->startTimeNs = static_cast<int64_t>(stats.startTimeNs);
-  out->endTimeNs = static_cast<int64_t>(stats.endTimeNs);
+  out->startTimeNs = stats.startTimeNs.raw();
+  out->endTimeNs = stats.endTimeNs.raw();
 }
 
 uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle h, FloxEquityPoint* out,
@@ -3321,7 +3321,7 @@ uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle h, FloxEquit
   const uint32_t n = (total < max_points) ? total : max_points;
   for (uint32_t i = 0; i < n; ++i)
   {
-    out[i].timestamp_ns = static_cast<int64_t>(curve[i].timestampNs);
+    out[i].timestamp_ns = curve[i].timestampNs.raw();
     out[i].equity = curve[i].equity;
     out[i].drawdown_pct = curve[i].drawdownPct;
   }
@@ -3355,8 +3355,8 @@ uint32_t flox_backtest_result_trades(FloxBacktestResultHandle h, FloxBacktestTra
     out[i].entry_price = t.entryPrice.toDouble();
     out[i].exit_price = t.exitPrice.toDouble();
     out[i].quantity = t.quantity.toDouble();
-    out[i].entry_time_ns = static_cast<int64_t>(t.entryTimeNs);
-    out[i].exit_time_ns = static_cast<int64_t>(t.exitTimeNs);
+    out[i].entry_time_ns = t.entryTimeNs.raw();
+    out[i].exit_time_ns = t.exitTimeNs.raw();
     out[i].pnl = t.pnl.toDouble();
     out[i].fee = t.fee.toDouble();
   }
@@ -7200,8 +7200,8 @@ void fillStatsStruct(const BacktestStats& s, FloxBacktestStats* out)
   out->calmarRatio = s.calmarRatio;
   out->timeWeightedReturn = s.timeWeightedReturn;
   out->returnPct = s.returnPct;
-  out->startTimeNs = static_cast<int64_t>(s.startTimeNs);
-  out->endTimeNs = static_cast<int64_t>(s.endTimeNs);
+  out->startTimeNs = s.startTimeNs.raw();
+  out->endTimeNs = s.endTimeNs.raw();
 }
 
 }  // namespace

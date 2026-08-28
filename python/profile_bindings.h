@@ -213,7 +213,7 @@ class PyMarketProfile
     te.trade.price = Price::fromDouble(price);
     te.trade.quantity = Quantity::fromDouble(quantity);
     te.trade.isBuy = isBuy;
-    te.trade.exchangeTsNs = timestampNs;
+    te.trade.exchangeTsNs = UnixNanos::fromRaw(timestampNs);
     _mp.addTrade(te);
   }
 
@@ -242,7 +242,7 @@ class PyMarketProfile
       te.trade.price = Price::fromDouble(px[i]);
       te.trade.quantity = Quantity::fromDouble(qt[i]);
       te.trade.isBuy = (ib[i] != 0);
-      te.trade.exchangeTsNs = ts[i];
+      te.trade.exchangeTsNs = UnixNanos::fromRaw(ts[i]);
       _mp.addTrade(te);
     }
   }

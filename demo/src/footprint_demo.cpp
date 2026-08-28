@@ -31,7 +31,7 @@ TradeEvent makeTrade(SymbolId symbol, double price, double qty, int sec, bool is
   ev.trade.price = Price::fromDouble(price);
   ev.trade.quantity = Quantity::fromDouble(qty);
   ev.trade.isBuy = isBuy;
-  ev.trade.exchangeTsNs = static_cast<uint64_t>(sec) * 1'000'000'000ULL;
+  ev.trade.exchangeTsNs = UnixNanos::fromRaw(static_cast<int64_t>(sec) * 1'000'000'000LL);
   return ev;
 }
 

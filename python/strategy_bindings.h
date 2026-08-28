@@ -2281,7 +2281,7 @@ class PyBacktestRunner
     auto pdd = dd.mutable_unchecked<1>();
     for (size_t i = 0; i < curve.size(); ++i)
     {
-      pts(i) = static_cast<int64_t>(curve[i].timestampNs);
+      pts(i) = curve[i].timestampNs.raw();
       peq(i) = curve[i].equity;
       pdd(i) = curve[i].drawdownPct;
     }
@@ -2324,8 +2324,8 @@ class PyBacktestRunner
       a_qty(i) = tr[i].quantity.toDouble();
       a_pnl(i) = tr[i].pnl.toDouble();
       a_fee(i) = tr[i].fee.toDouble();
-      a_ets(i) = static_cast<int64_t>(tr[i].entryTimeNs);
-      a_xts(i) = static_cast<int64_t>(tr[i].exitTimeNs);
+      a_ets(i) = tr[i].entryTimeNs.raw();
+      a_xts(i) = tr[i].exitTimeNs.raw();
     }
     py::dict d;
     d["symbol"] = sym;

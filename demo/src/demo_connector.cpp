@@ -87,7 +87,7 @@ void DemoConnector::run()
     te.trade.price = price;
     te.trade.quantity = Quantity::fromDouble(qtyDist(_rng));
     te.trade.isBuy = sideDist(_rng);
-    te.trade.exchangeTsNs = nowNsMonotonic();
+    te.trade.exchangeTsNs = nowUnixNanos();
     {
       FLOX_PROFILE_SCOPE("TradeBusPublish");
       MEASURE_LATENCY(LatencyCollector::BusPublish);

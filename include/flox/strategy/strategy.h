@@ -95,7 +95,7 @@ class Strategy : public IStrategy
 
     auto& c = _contexts[sym];
     c.lastTradePrice = ev.trade.price;
-    c.lastUpdateNs = ev.trade.exchangeTsNs;
+    c.lastUpdateNs = ev.trade.exchangeTsNs.raw();
     refreshPosition(c, sym);
 
     onSymbolTrade(c, ev);
@@ -111,7 +111,7 @@ class Strategy : public IStrategy
 
     auto& c = _contexts[sym];
     c.book.applyBookUpdate(ev);
-    c.lastUpdateNs = ev.update.exchangeTsNs;
+    c.lastUpdateNs = ev.update.exchangeTsNs.raw();
     refreshPosition(c, sym);
 
     onSymbolBook(c, ev);

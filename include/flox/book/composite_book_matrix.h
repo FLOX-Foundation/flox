@@ -84,7 +84,7 @@ class CompositeBookMatrix : public IMarketDataSubscriber
     exState.bidQty.store(bestBidQty, std::memory_order_release);
     exState.askPrice.store(bestAskPrice, std::memory_order_release);
     exState.askQty.store(bestAskQty, std::memory_order_release);
-    exState.lastUpdateNs.store(static_cast<int64_t>(ev.recvNs), std::memory_order_release);
+    exState.lastUpdateNs.store(static_cast<int64_t>(ev.recvNs.raw()), std::memory_order_release);
     exState.stale.store(false, std::memory_order_release);
   }
 

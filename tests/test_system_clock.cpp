@@ -17,8 +17,8 @@ namespace
 {
 // Bounds for a plausible wall-clock reading: after 2020-01-01 and before 2100.
 // This distinguishes a real live clock from a simulated/zero value.
-constexpr UnixNanos kAfter2020 = 1'577'836'800'000'000'000LL;
-constexpr UnixNanos kBefore2100 = 4'102'444'800'000'000'000LL;
+constexpr UnixNanos kAfter2020 = UnixNanos{1'577'836'800'000'000'000LL};
+constexpr UnixNanos kBefore2100 = UnixNanos{4'102'444'800'000'000'000LL};
 }  // namespace
 
 TEST(SystemClock, NowNsReturnsWallClockUnixNs)
@@ -32,7 +32,7 @@ TEST(SystemClock, NowNsReturnsWallClockUnixNs)
 TEST(SystemClock, AdvanceToIsNoOpDoesNotRewind)
 {
   SystemClock c;
-  c.advanceTo(0);  // real time is not advanceable/rewindable
+  c.advanceTo(UnixNanos{});  // real time is not advanceable/rewindable
   EXPECT_GT(c.nowNs(), kAfter2020);
 }
 

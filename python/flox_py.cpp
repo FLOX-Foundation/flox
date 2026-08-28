@@ -542,7 +542,7 @@ class Engine
 
     for (const auto& mb : merged)
     {
-      clock.advanceTo(mb.timestamp_ns);
+      clock.advanceTo(UnixNanos::fromRaw(mb.timestamp_ns));
       executor.onBar(mb.symbol_id, Price::fromRaw(mb.close_raw));
 
       while (sigIdx < sigs.size() &&

@@ -215,7 +215,7 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 
   for (const auto& ev : bars)
   {
-    advanceClocks(ev.bar.endTime.time_since_epoch().count());
+    advanceClocks(UnixNanos::fromRaw(ev.bar.endTime.time_since_epoch().count()));
     ++_eventCount;
 
     // Feed the bar's full range so resting stops/take-profits match against the
@@ -332,7 +332,7 @@ void BacktestRunner::start(replay::IMultiSegmentReader& reader)
 
 void BacktestRunner::processEvent(const replay::ReplayEvent& event)
 {
-  advanceClocks(event.timestamp_ns);
+  advanceClocks(UnixNanos::fromRaw(event.timestamp_ns));
   ++_eventCount;
   _lastEventType = event.type;
 
@@ -345,9 +345,9 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     trade_ev.trade.price = Price::fromRaw(event.trade.price_raw);
     trade_ev.trade.quantity = Quantity::fromRaw(event.trade.qty_raw);
     trade_ev.trade.isBuy = (event.trade.side == 1);
-    trade_ev.trade.exchangeTsNs = event.trade.exchange_ts_ns;
+    trade_ev.trade.exchangeTsNs = UnixNanos::fromRaw(event.trade.exchange_ts_ns);
     trade_ev.trade.instrument = static_cast<InstrumentType>(event.trade.instrument);
-    trade_ev.exchangeMsgTsNs = event.trade.exchange_ts_ns;
+    trade_ev.exchangeMsgTsNs = UnixNanos::fromRaw(event.trade.exchange_ts_ns);
 
     sim().onTrade(trade_ev.trade.symbol, trade_ev.trade.price, trade_ev.trade.quantity,
                   trade_ev.trade.isBuy);
@@ -371,7 +371,7 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     book_ev.update.type =
         (event.type == replay::EventType::BookSnapshot) ? BookUpdateType::SNAPSHOT : BookUpdateType::DELTA;
     book_ev.update.instrument = static_cast<InstrumentType>(event.book_header.instrument);
-    book_ev.update.exchangeTsNs = event.book_header.exchange_ts_ns;
+    book_ev.update.exchangeTsNs = UnixNanos::fromRaw(event.book_header.exchange_ts_ns);
     book_ev.seq = event.book_header.seq;
 
     book_ev.update.bids.reserve(event.bids.size());
@@ -441,7 +441,7 @@ bool BacktestRunner::checkBreakpoints(const replay::ReplayEvent& event)
     switch (bp.type)
     {
       case Breakpoint::Type::Time:
-        if (event.timestamp_ns >= static_cast<int64_t>(bp.timestampNs))
+        if (event.timestamp_ns >= bp.timestampNs.raw())
         {
           return true;
         }

@@ -370,7 +370,7 @@ TEST_F(ReplayConnectorTest, SeekTo)
                        [&](const TradeEvent& ev)
                        {
                          int64_t expected = 0;
-                         first_received_ts.compare_exchange_strong(expected, ev.trade.exchangeTsNs);
+                         first_received_ts.compare_exchange_strong(expected, ev.trade.exchangeTsNs.raw());
                          ++trade_count;
                        });
 

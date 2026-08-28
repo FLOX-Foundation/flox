@@ -69,7 +69,7 @@ TradeEvent makeTrade(SymbolId symbol, double price, double qty, int sec)
   event.trade.price = Price::fromDouble(price);
   event.trade.quantity = Quantity::fromDouble(qty);
   event.trade.isBuy = true;
-  event.trade.exchangeTsNs = ts(sec).time_since_epoch().count();
+  event.trade.exchangeTsNs = UnixNanos::fromRaw(ts(sec).time_since_epoch().count());
   return event;
 }
 

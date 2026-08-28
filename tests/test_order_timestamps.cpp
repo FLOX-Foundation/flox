@@ -103,9 +103,9 @@ TEST(OrderTimestamps, FirstAndLastFillStampedOnPartialFlow)
   pushBook(exec, 1, 100.0, 0.0, 101.0, 5.0);
   exec.submitOrder(limitBuy(1, 1, 100.0, 3.0));
 
-  clock.advanceTo(clock.nowNs() + 10);
+  clock.advanceTo(clock.nowNs() + DurationNs{10});
   exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
-  clock.advanceTo(clock.nowNs() + 10);
+  clock.advanceTo(clock.nowNs() + DurationNs{10});
   exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
 
   OrderEvent firstFill{};
@@ -147,7 +147,7 @@ TEST(OrderTimestamps, CanceledAtStampedOnCancel)
 
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
   exec.submitOrder(limitBuy(42, 1, 99.0, 1.0));
-  clock.advanceTo(clock.nowNs() + 50);
+  clock.advanceTo(clock.nowNs() + DurationNs{50});
   exec.cancelOrder(42);
 
   bool sawCancel = false;

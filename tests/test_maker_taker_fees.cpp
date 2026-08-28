@@ -48,7 +48,7 @@ Fill makeFill(Side side, bool isMaker)
   f.side = side;
   f.price = Price::fromDouble(100.0);
   f.quantity = Quantity::fromDouble(1.0);
-  f.timestampNs = 1'700'000'000'000'000'000;
+  f.timestampNs = UnixNanos::fromRaw(1'700'000'000'000'000'000);
   f.isMaker = isMaker;
   return f;
 }

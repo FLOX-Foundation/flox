@@ -176,6 +176,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_option_exercise)
   add_flox_test(test_option_fill_model)
   add_flox_test(test_system_clock)
+  add_flox_test(test_time_domains)
 endif()
 
 add_flox_test(test_indicators)

@@ -38,19 +38,19 @@ class BacktestTest : public ::testing::Test
 TEST_F(BacktestTest, SimulatedClockBasic)
 {
   SimulatedClock clock;
-  EXPECT_EQ(clock.nowNs(), 0);
+  EXPECT_EQ(clock.nowNs().raw(), 0);
 
-  clock.advanceTo(1000);
-  EXPECT_EQ(clock.nowNs(), 1000);
+  clock.advanceTo(UnixNanos::fromRaw(1000));
+  EXPECT_EQ(clock.nowNs().raw(), 1000);
 
-  clock.advanceTo(500);
-  EXPECT_EQ(clock.nowNs(), 1000);
+  clock.advanceTo(UnixNanos::fromRaw(500));
+  EXPECT_EQ(clock.nowNs().raw(), 1000);
 
-  clock.advanceTo(2000);
-  EXPECT_EQ(clock.nowNs(), 2000);
+  clock.advanceTo(UnixNanos::fromRaw(2000));
+  EXPECT_EQ(clock.nowNs().raw(), 2000);
 
-  clock.reset(100);
-  EXPECT_EQ(clock.nowNs(), 100);
+  clock.reset(UnixNanos::fromRaw(100));
+  EXPECT_EQ(clock.nowNs().raw(), 100);
 }
 
 TEST_F(BacktestTest, SimulatedExecutorMarketOrderFill)
@@ -182,7 +182,7 @@ TEST_F(BacktestTest, BacktestResultPnlTracking)
   buyFill.side = Side::BUY;
   buyFill.price = Price::fromDouble(100.0);
   buyFill.quantity = Quantity::fromDouble(1.0);
-  buyFill.timestampNs = 1000;
+  buyFill.timestampNs = UnixNanos::fromRaw(1000);
 
   result.recordFill(buyFill);
 
@@ -192,7 +192,7 @@ TEST_F(BacktestTest, BacktestResultPnlTracking)
   sellFill.side = Side::SELL;
   sellFill.price = Price::fromDouble(110.0);
   sellFill.quantity = Quantity::fromDouble(1.0);
-  sellFill.timestampNs = 2000;
+  sellFill.timestampNs = UnixNanos::fromRaw(2000);
 
   result.recordFill(sellFill);
 
@@ -215,7 +215,7 @@ TEST_F(BacktestTest, BacktestResultDrawdown)
   buy1.side = Side::BUY;
   buy1.price = Price::fromDouble(100.0);
   buy1.quantity = Quantity::fromDouble(1.0);
-  buy1.timestampNs = 1000;
+  buy1.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(buy1);
 
   Fill sell1;
@@ -224,7 +224,7 @@ TEST_F(BacktestTest, BacktestResultDrawdown)
   sell1.side = Side::SELL;
   sell1.price = Price::fromDouble(120.0);
   sell1.quantity = Quantity::fromDouble(1.0);
-  sell1.timestampNs = 2000;
+  sell1.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(sell1);
 
   Fill buy2;
@@ -233,7 +233,7 @@ TEST_F(BacktestTest, BacktestResultDrawdown)
   buy2.side = Side::BUY;
   buy2.price = Price::fromDouble(120.0);
   buy2.quantity = Quantity::fromDouble(1.0);
-  buy2.timestampNs = 3000;
+  buy2.timestampNs = UnixNanos::fromRaw(3000);
   result.recordFill(buy2);
 
   Fill sell2;
@@ -242,7 +242,7 @@ TEST_F(BacktestTest, BacktestResultDrawdown)
   sell2.side = Side::SELL;
   sell2.price = Price::fromDouble(100.0);
   sell2.quantity = Quantity::fromDouble(1.0);
-  sell2.timestampNs = 4000;
+  sell2.timestampNs = UnixNanos::fromRaw(4000);
   result.recordFill(sell2);
 
   auto stats = result.computeStats();
@@ -335,7 +335,7 @@ TEST_F(BacktestTest, BacktestStatsCalculation)
       {100.0, 110.0}, {110.0, 105.0}, {105.0, 115.0}, {115.0, 112.0}, {112.0, 120.0}};
 
   OrderId orderId = 0;
-  UnixNanos ts = 0;
+  int64_t ts = 0;
 
   for (const auto& [entry, exit] : trades)
   {
@@ -345,7 +345,7 @@ TEST_F(BacktestTest, BacktestStatsCalculation)
     buyFill.side = Side::BUY;
     buyFill.price = Price::fromDouble(entry);
     buyFill.quantity = Quantity::fromDouble(1.0);
-    buyFill.timestampNs = ts++;
+    buyFill.timestampNs = UnixNanos::fromRaw(ts++);
     result.recordFill(buyFill);
 
     Fill sellFill;
@@ -354,7 +354,7 @@ TEST_F(BacktestTest, BacktestStatsCalculation)
     sellFill.side = Side::SELL;
     sellFill.price = Price::fromDouble(exit);
     sellFill.quantity = Quantity::fromDouble(1.0);
-    sellFill.timestampNs = ts++;
+    sellFill.timestampNs = UnixNanos::fromRaw(ts++);
     result.recordFill(sellFill);
   }
 
@@ -387,7 +387,7 @@ TEST_F(BacktestTest, HighPricePnlNoOverflow)
   buy.side = Side::BUY;
   buy.price = Price::fromDouble(50000.0);
   buy.quantity = Quantity::fromDouble(0.5);
-  buy.timestampNs = 1000;
+  buy.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(buy);
 
   Fill sell;
@@ -396,7 +396,7 @@ TEST_F(BacktestTest, HighPricePnlNoOverflow)
   sell.side = Side::SELL;
   sell.price = Price::fromDouble(51000.0);
   sell.quantity = Quantity::fromDouble(0.5);
-  sell.timestampNs = 2000;
+  sell.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(sell);
 
   auto stats = result.computeStats();
@@ -419,7 +419,7 @@ TEST_F(BacktestTest, HighPriceShortPnlNoOverflow)
   sell.side = Side::SELL;
   sell.price = Price::fromDouble(80000.0);
   sell.quantity = Quantity::fromDouble(1.0);
-  sell.timestampNs = 1000;
+  sell.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(sell);
 
   Fill buy;
@@ -428,7 +428,7 @@ TEST_F(BacktestTest, HighPriceShortPnlNoOverflow)
   buy.side = Side::BUY;
   buy.price = Price::fromDouble(75000.0);
   buy.quantity = Quantity::fromDouble(1.0);
-  buy.timestampNs = 2000;
+  buy.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(buy);
 
   auto stats = result.computeStats();
@@ -449,7 +449,7 @@ TEST_F(BacktestTest, HighPriceFeeNoOverflow)
   buy.side = Side::BUY;
   buy.price = Price::fromDouble(100000.0);
   buy.quantity = Quantity::fromDouble(2.0);
-  buy.timestampNs = 1000;
+  buy.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(buy);
 
   Fill sell;
@@ -458,7 +458,7 @@ TEST_F(BacktestTest, HighPriceFeeNoOverflow)
   sell.side = Side::SELL;
   sell.price = Price::fromDouble(100000.0);
   sell.quantity = Quantity::fromDouble(2.0);
-  sell.timestampNs = 2000;
+  sell.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(sell);
 
   auto stats = result.computeStats();
@@ -483,7 +483,7 @@ TEST_F(BacktestTest, HighPriceWeightedAverageNoOverflow)
   buy1.side = Side::BUY;
   buy1.price = Price::fromDouble(50000.0);
   buy1.quantity = Quantity::fromDouble(1.0);
-  buy1.timestampNs = 1000;
+  buy1.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(buy1);
 
   Fill buy2;
@@ -492,7 +492,7 @@ TEST_F(BacktestTest, HighPriceWeightedAverageNoOverflow)
   buy2.side = Side::BUY;
   buy2.price = Price::fromDouble(60000.0);
   buy2.quantity = Quantity::fromDouble(1.0);
-  buy2.timestampNs = 2000;
+  buy2.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(buy2);
 
   // Close at 58000: avg entry = 55000, PnL = (58000-55000)*2 = 6000
@@ -502,7 +502,7 @@ TEST_F(BacktestTest, HighPriceWeightedAverageNoOverflow)
   sell.side = Side::SELL;
   sell.price = Price::fromDouble(58000.0);
   sell.quantity = Quantity::fromDouble(2.0);
-  sell.timestampNs = 3000;
+  sell.timestampNs = UnixNanos::fromRaw(3000);
   result.recordFill(sell);
 
   auto stats = result.computeStats();
@@ -532,7 +532,7 @@ TEST_F(BacktestTest, HighPriceMultipleRoundTrips)
   };
 
   OrderId oid = 0;
-  UnixNanos ts = 0;
+  int64_t ts = 0;
   double expectedPnl = 0;
 
   for (const auto& [entry, exit] : trades)
@@ -543,7 +543,7 @@ TEST_F(BacktestTest, HighPriceMultipleRoundTrips)
     buy.side = Side::BUY;
     buy.price = Price::fromDouble(entry);
     buy.quantity = Quantity::fromDouble(0.5);
-    buy.timestampNs = ts++;
+    buy.timestampNs = UnixNanos::fromRaw(ts++);
     result.recordFill(buy);
 
     Fill sell;
@@ -552,7 +552,7 @@ TEST_F(BacktestTest, HighPriceMultipleRoundTrips)
     sell.side = Side::SELL;
     sell.price = Price::fromDouble(exit);
     sell.quantity = Quantity::fromDouble(0.5);
-    sell.timestampNs = ts++;
+    sell.timestampNs = UnixNanos::fromRaw(ts++);
     result.recordFill(sell);
 
     expectedPnl += (exit - entry) * 0.5;
@@ -583,7 +583,7 @@ TEST_F(BacktestTest, ExtremePriceNoOverflow)
   buy.side = Side::BUY;
   buy.price = Price::fromDouble(150000.0);
   buy.quantity = Quantity::fromDouble(10.0);
-  buy.timestampNs = 1000;
+  buy.timestampNs = UnixNanos::fromRaw(1000);
   result.recordFill(buy);
 
   Fill sell;
@@ -592,7 +592,7 @@ TEST_F(BacktestTest, ExtremePriceNoOverflow)
   sell.side = Side::SELL;
   sell.price = Price::fromDouble(155000.0);
   sell.quantity = Quantity::fromDouble(10.0);
-  sell.timestampNs = 2000;
+  sell.timestampNs = UnixNanos::fromRaw(2000);
   result.recordFill(sell);
 
   auto stats = result.computeStats();

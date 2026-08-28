@@ -76,7 +76,7 @@ inline PyFill fillToPyFill(const Fill& f)
           ._pad = {},
           .price_raw = f.price.raw(),
           .quantity_raw = f.quantity.raw(),
-          .timestamp_ns = static_cast<int64_t>(f.timestampNs)};
+          .timestamp_ns = f.timestampNs.raw()};
 }
 
 inline PyTradeRecord tradeRecToPy(const TradeRecord& t)
@@ -87,15 +87,15 @@ inline PyTradeRecord tradeRecToPy(const TradeRecord& t)
           .entry_price_raw = t.entryPrice.raw(),
           .exit_price_raw = t.exitPrice.raw(),
           .quantity_raw = t.quantity.raw(),
-          .entry_time_ns = static_cast<int64_t>(t.entryTimeNs),
-          .exit_time_ns = static_cast<int64_t>(t.exitTimeNs),
+          .entry_time_ns = t.entryTimeNs.raw(),
+          .exit_time_ns = t.exitTimeNs.raw(),
           .pnl_raw = t.pnl.raw(),
           .fee_raw = t.fee.raw()};
 }
 
 inline PyEquityPoint equityToPy(const EquityPoint& p)
 {
-  return {.timestamp_ns = static_cast<int64_t>(p.timestampNs),
+  return {.timestamp_ns = p.timestampNs.raw(),
           .equity = p.equity,
           .drawdown_pct = p.drawdownPct};
 }
@@ -350,7 +350,7 @@ class PySimulatedExecutor
     _executor.onBookUpdate(symbol, bids, asks);
   }
 
-  void advanceClock(int64_t timestampNs) { _clock.advanceTo(timestampNs); }
+  void advanceClock(int64_t timestampNs) { _clock.advanceTo(UnixNanos::fromRaw(timestampNs)); }
 
   void setDefaultSlippage(const std::string& model, int32_t ticks, double tick_size,
                           double bps, double impact)
@@ -514,7 +514,7 @@ class PySimulatedExecutor
       d["side"] = (f.side == Side::BUY) ? "buy" : "sell";
       d["price"] = f.price.toDouble();
       d["quantity"] = f.quantity.toDouble();
-      d["timestamp_ns"] = static_cast<int64_t>(f.timestampNs);
+      d["timestamp_ns"] = f.timestampNs.raw();
       d["is_maker"] = f.isMaker;
       result.append(d);
     }
@@ -587,7 +587,7 @@ class PyBacktestResult
     fill.side = (sideStr == "buy") ? Side::BUY : Side::SELL;
     fill.price = Price::fromDouble(price);
     fill.quantity = Quantity::fromDouble(qty);
-    fill.timestampNs = static_cast<UnixNanos>(timestampNs);
+    fill.timestampNs = UnixNanos::fromRaw(timestampNs);
     fill.isMaker = isMaker;
     _result->recordFill(fill);
   }
@@ -631,8 +631,8 @@ class PyBacktestResult
     d["calmar_ratio"] = s.calmarRatio;
     d["time_weighted_return"] = s.timeWeightedReturn;
     d["return_pct"] = s.returnPct;
-    d["start_time_ns"] = static_cast<int64_t>(s.startTimeNs);
-    d["end_time_ns"] = static_cast<int64_t>(s.endTimeNs);
+    d["start_time_ns"] = s.startTimeNs.raw();
+    d["end_time_ns"] = s.endTimeNs.raw();
     return d;
   }
 

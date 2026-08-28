@@ -109,7 +109,7 @@ TEST(SubmitAckLatency, AsyncAcceptDeferredUntilDeadline)
   EXPECT_FALSE(sawAcceptedEarly);
 
   // Advance past the ack deadline and feed a book tick.
-  clock.advanceTo(clock.nowNs() + 11'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{11'000'000});
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
 
   bool sawAccepted = false;
@@ -138,11 +138,11 @@ TEST(SubmitAckLatency, LatePostOnlyCrossedRejectsWithReason)
   exec.submitOrder(limitBuy(1, 1, 100.5, 1.0, TimeInForce::POST_ONLY));
 
   // Market moves: best ask drops to 100.0, below our 100.5 → would cross.
-  clock.advanceTo(clock.nowNs() + 5'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{5'000'000});
   pushBook(exec, 1, 99.0, 5.0, 100.0, 5.0);
 
   // Advance past ack deadline and tick.
-  clock.advanceTo(clock.nowNs() + 6'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{6'000'000});
   pushBook(exec, 1, 99.0, 5.0, 100.0, 5.0);
 
   bool sawAccepted = false;
@@ -181,7 +181,7 @@ TEST(SubmitAckLatency, OrderDoesNotFillUntilAccepted)
 
   // Aggressive sell at 100 arrives BEFORE the ack deadline. Should not
   // fill our order — it is not yet in the queue tracker.
-  clock.advanceTo(clock.nowNs() + 1'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{1'000'000});
   exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
 
   bool sawFilledEarly = false;

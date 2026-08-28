@@ -288,7 +288,7 @@ TEST(InteractiveRunnerTest, BreakpointAtTime)
   BacktestRunner runner;
 
   // Break at timestamp 50ms
-  runner.addBreakpoint(Breakpoint::atTime(50000000));
+  runner.addBreakpoint(Breakpoint::atTime(UnixNanos::fromRaw(50000000)));
 
   RunnerThread t(runner, [&]()
                  { runner.start(reader); });
@@ -297,11 +297,11 @@ TEST(InteractiveRunnerTest, BreakpointAtTime)
                       { return runner.isPaused(); }));
   runner.resume();
   ASSERT_TRUE(waitFor([&]()
-                      { return runner.isPaused() && runner.state().currentTimeNs >= 50000000u; }));
+                      { return runner.isPaused() && runner.state().currentTimeNs.raw() >= 50000000; }));
 
   auto state = runner.state();
   EXPECT_TRUE(state.isPaused);
-  EXPECT_GE(state.currentTimeNs, 50000000u);
+  EXPECT_GE(state.currentTimeNs.raw(), 50000000);
 }
 
 TEST(InteractiveRunnerTest, CustomBreakpoint)

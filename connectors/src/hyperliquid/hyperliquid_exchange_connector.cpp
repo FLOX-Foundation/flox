@@ -228,7 +228,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
       if (!timeEl.error())
       {
         int64_t tsMs = timeEl.get_int64().value();
-        ev->update.exchangeTsNs = tsMs * 1'000'000;
+        ev->update.exchangeTsNs = msToUnixNs(tsMs);
       }
 
       auto levelsEl = dataEl["levels"];
@@ -322,7 +322,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         if (!timeEl.error())
         {
           int64_t tsMs = timeEl.get_int64().value();
-          ev.trade.exchangeTsNs = tsMs * 1'000'000;
+          ev.trade.exchangeTsNs = msToUnixNs(tsMs);
         }
 
         if (const auto info = _registry->getSymbolInfo(sid))

@@ -120,7 +120,7 @@ TradeEvent makeTrade(SymbolId symbol, double price, double qty, uint64_t tsNs)
   ev.trade.price = Price::fromDouble(price);
   ev.trade.quantity = Quantity::fromDouble(qty);
   ev.trade.isBuy = true;
-  ev.trade.exchangeTsNs = tsNs;
+  ev.trade.exchangeTsNs = UnixNanos::fromRaw(tsNs);
   return ev;
 }
 

@@ -59,7 +59,7 @@ class MarketProfile
 
   void addTrade(const TradeEvent& trade) noexcept
   {
-    const size_t period = calculatePeriod(trade.trade.exchangeTsNs);
+    const size_t period = calculatePeriod(static_cast<uint64_t>(trade.trade.exchangeTsNs.raw()));
     if (period >= MaxPeriods)
     {
       return;  // Beyond max periods

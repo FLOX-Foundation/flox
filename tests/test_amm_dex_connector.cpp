@@ -81,7 +81,7 @@ TEST(AmmDexConnectorTest, SwapEmitsTrade)
   EXPECT_FALSE(captured.trade.isBuy);  // sold base into the pool
   EXPECT_NEAR(captured.trade.quantity.toDouble(), 10.0, 1e-6);
   EXPECT_GT(captured.trade.price.toDouble(), 0.0);
-  EXPECT_EQ(captured.trade.exchangeTsNs, 12345u);
+  EXPECT_EQ(captured.trade.exchangeTsNs.raw(), 12345);
 }
 
 TEST(AmmDexConnectorTest, ExchangeId)

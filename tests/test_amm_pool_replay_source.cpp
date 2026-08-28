@@ -45,7 +45,7 @@ TEST(AmmPoolReplaySourceTest, ReplaysPriceOverSnapshots)
       {
         ASSERT_FALSE(ev.update.bids.empty());
         bestBid.push_back(ev.update.bids.front().price.toDouble());
-        stamps.push_back(static_cast<int64_t>(ev.update.exchangeTsNs));
+        stamps.push_back(ev.update.exchangeTsNs.raw());
       },
       [](const TradeEvent&) {});
 

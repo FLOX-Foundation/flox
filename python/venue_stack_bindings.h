@@ -32,12 +32,15 @@ inline void bindVenueStack(py::module_& m)
       "Simulated time source shared by a VenueStack. Monotonic: advance_to()\n"
       "with a timestamp at or before the current one is a no-op. Use reset()\n"
       "to move backwards.")
-      .def("now_ns", &flox::SimulatedClock::nowNs,
-           "Current simulated time in nanoseconds.")
-      .def("advance_to", &flox::SimulatedClock::advanceTo, py::arg("ns"),
-           "Advance to `ns`. Ignored if `ns` is not ahead of the current time.")
-      .def("reset", &flox::SimulatedClock::reset, py::arg("ns") = 0,
-           "Set the clock to `ns`, backwards included.");
+      // UnixNanos is a strong type with no implicit integer path -- by design,
+      // and pybind rightly refuses to guess. Python keeps seeing plain ints;
+      // the domain typing is a C++ compile-time guarantee, not a Python API.
+      .def("now_ns", [](const flox::SimulatedClock& c)
+           { return c.nowNs().raw(); }, "Current simulated time in nanoseconds.")
+      .def("advance_to", [](flox::SimulatedClock& c, int64_t ns)
+           { c.advanceTo(flox::UnixNanos::fromRaw(ns)); }, py::arg("ns"), "Advance to `ns`. Ignored if `ns` is not ahead of the current time.")
+      .def("reset", [](flox::SimulatedClock& c, int64_t ns)
+           { c.reset(flox::UnixNanos::fromRaw(ns)); }, py::arg("ns") = 0, "Set the clock to `ns`, backwards included.");
 
   py::class_<flox::VenueStack>(m, "VenueStack",
                                "Single-call venue-realistic backtest stack.\n\n"

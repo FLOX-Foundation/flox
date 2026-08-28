@@ -241,7 +241,7 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
       SymbolId sym = resolveSymbolId(tokenId);
 
       TradeEvent ev{};
-      ev.recvNs = recvNs;
+      ev.recvNs = MonoNanos::fromRaw(recvNs);
       ev.trade.symbol = sym;
 
       auto priceField = obj["price"];
@@ -266,8 +266,8 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
             ev.trade.isBuy = (sideField.get_string().value() == "BUY");
           }
 
-          ev.trade.exchangeTsNs = nowNsMonotonic();
-          ev.publishTsNs = nowNsMonotonic();
+          ev.trade.exchangeTsNs = nowUnixNanos();
+          ev.publishTsNs = nowMonoNanos();
           _tradeBus->publish(ev);
         }
       }
@@ -333,7 +333,7 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
   }
 
   auto& ev = *evOpt;
-  ev->recvNs = recvNs;
+  ev->recvNs = MonoNanos::fromRaw(recvNs);
   ev->update.symbol = sym;
   ev->update.bids.clear();
   ev->update.asks.clear();
@@ -388,8 +388,8 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
     }
   }
 
-  ev->update.exchangeTsNs = nowNsMonotonic();
-  ev->publishTsNs = nowNsMonotonic();
+  ev->update.exchangeTsNs = nowUnixNanos();
+  ev->publishTsNs = nowMonoNanos();
 
   _bookUpdateBus->publish(std::move(ev));
 }
@@ -479,7 +479,7 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
       return;
     }
     auto& ev = *evOpt;
-    ev->recvNs = recvNs;
+    ev->recvNs = MonoNanos::fromRaw(recvNs);
     ev->update.symbol = c.sym;
     ev->update.type = BookUpdateType::DELTA;
     ev->update.bids.clear();
@@ -504,8 +504,8 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
       }
     }
 
-    ev->update.exchangeTsNs = nowNsMonotonic();
-    ev->publishTsNs = nowNsMonotonic();
+    ev->update.exchangeTsNs = nowUnixNanos();
+    ev->publishTsNs = nowMonoNanos();
     _bookUpdateBus->publish(std::move(ev));
   }
 }

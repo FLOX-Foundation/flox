@@ -270,7 +270,7 @@ TEST(ExtendedTIF, GTD_ExpiresAfterDeadline)
   // GTD limit BUY at 49500 — rests; expires in 1s.
   Order o = makeLimit(1, Side::BUY, 49500.0, 1.0, TimeInForce::GTD);
   o.expiresAfter =
-      TimePoint(std::chrono::nanoseconds(static_cast<int64_t>(clock.nowNs()) + 1'000'000'000LL));
+      TimePoint(std::chrono::nanoseconds(clock.nowNs().raw() + 1'000'000'000LL));
   exec.submitOrder(o);
 
   // Tick the clock past the deadline; need a market event to drive
@@ -295,7 +295,7 @@ TEST(ExtendedTIF, GTD_StaysWhenNotYetExpired)
 
   Order o = makeLimit(1, Side::BUY, 49500.0, 1.0, TimeInForce::GTD);
   o.expiresAfter =
-      TimePoint(std::chrono::nanoseconds(static_cast<int64_t>(clock.nowNs()) + 10'000'000'000LL));
+      TimePoint(std::chrono::nanoseconds(clock.nowNs().raw() + 10'000'000'000LL));
   exec.submitOrder(o);
 
   // Clock advances inside the budget.

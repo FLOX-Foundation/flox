@@ -116,7 +116,7 @@ TEST(ReplaceInFlight, AsyncReplaceFiresSubmittedThenAcceptedAndReplaced)
   EXPECT_TRUE(sawSubmitted);
   EXPECT_FALSE(sawAcceptedEarly);
 
-  clock.advanceTo(clock.nowNs() + 11'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{11'000'000});
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
 
   bool sawAccepted = false;
@@ -152,7 +152,7 @@ TEST(ReplaceInFlight, LateReplaceAfterFillEmitsRejected)
   exec.replaceOrder(1, replacement);
 
   // Trade arrives within the 10 ms window and fills the original order.
-  clock.advanceTo(clock.nowNs() + 1'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{1'000'000});
   exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
 
   bool sawFilled = false;
@@ -190,7 +190,7 @@ TEST(ReplaceInFlight, AckCarriesNewOrderPayload)
   Order replacement = limitBuy(1, 1, 99.5, 2.0);
   exec.replaceOrder(1, replacement);
 
-  clock.advanceTo(clock.nowNs() + 6'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{6'000'000});
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
 
   for (const auto& ev : events)

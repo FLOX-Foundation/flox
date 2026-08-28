@@ -116,7 +116,7 @@ TEST(CancelLatency, AsyncCancelEmitsPendingThenCanceledAfterAck)
 
   // Advance the clock past the ack deadline and feed a no-op book update
   // to give the simulator a tick.
-  clock.advanceTo(clock.nowNs() + 11'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{11'000'000});
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
 
   bool sawCanceledAfter = false;
@@ -146,7 +146,7 @@ TEST(CancelLatency, LateCancelAfterFillEmitsRejected)
 
   // Aggressive trade arrives within the 10 ms ack window and fills the
   // resting order.
-  clock.advanceTo(clock.nowNs() + 1'000'000);  // 1 ms in
+  clock.advanceTo(clock.nowNs() + DurationNs{1'000'000});  // 1 ms in
   exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
 
   bool sawFilled = false;
@@ -184,7 +184,7 @@ TEST(CancelLatency, AckDeferredBelowBandFinalizedAbove)
   exec.cancelOrder(1);
 
   // 7 ms is strictly below `base - jitter` (= 8 ms). No CANCELED yet.
-  clock.advanceTo(clock.nowNs() + 7'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{7'000'000});
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
   for (const auto& ev : events)
   {
@@ -193,7 +193,7 @@ TEST(CancelLatency, AckDeferredBelowBandFinalizedAbove)
 
   // 13 ms total is strictly above `base + jitter` (= 12 ms). Now the
   // ack must have fired.
-  clock.advanceTo(clock.nowNs() + 6'000'000);
+  clock.advanceTo(clock.nowNs() + DurationNs{6'000'000});
   pushBook(exec, 1, 100.0, 5.0, 101.0, 5.0);
   bool sawCanceled = false;
   for (const auto& ev : events)
