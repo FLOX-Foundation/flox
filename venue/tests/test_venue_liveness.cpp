@@ -139,7 +139,7 @@ void test_idle_disconnect_cod()
   gw.setCounters(&counters);
   gw.setCancelOnDisconnect(true);
   gw.setIdleTimeout(std::chrono::milliseconds(300));
-  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               eng.submit(c); });
@@ -172,7 +172,7 @@ void test_stop_with_silent_client()
   std::printf("test_stop_with_silent_client\n");
   TcpGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); });
-  const int port = gw.start(0, [](const InboundCommand&, const TcpGateway::Responder&) {});
+  const int port = gw.start(0, [](const InboundCommand&, const TcpGateway::Responder&, int64_t) {});
   CHECK(port > 0);
   const int c = tcpConnect(port);
   CHECK(c >= 0);
@@ -198,7 +198,7 @@ void test_ws_idle_disconnect()
                { return RestJson::decode(std::string(reinterpret_cast<const char*>(p), n)); });
   gw.setCounters(&counters);
   gw.setIdleTimeout(std::chrono::milliseconds(400));
-  const int port = gw.start(0, [](const InboundCommand&, const WsGateway::Responder&) {});
+  const int port = gw.start(0, [](const InboundCommand&, const WsGateway::Responder&, int64_t) {});
   CHECK(port > 0);
 
   const int c = tcpConnect(port);
@@ -275,7 +275,7 @@ void test_cod_prunes_filled_orders()
                    SbeOrderEntryCodec::encode(e, out, seq);
                    return !out.empty(); });
   gw.setCancelOnDisconnect(true);
-  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               if (std::get_if<CancelOrder>(&c) != nullptr)

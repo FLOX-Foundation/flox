@@ -39,7 +39,7 @@ class WsGateway
 {
  public:
   using Responder = std::function<void(const uint8_t*, size_t)>;
-  using Handler = std::function<void(const InboundCommand&, const Responder&)>;
+  using Handler = DisconnectCanceller::Handler;  // (cmd, responder, recvMonoNs)
 
   // See TcpGateway: `account` binds each session so a client cannot spoof
   // another account's id. account == 0 is single-tenant-trusted mode.
@@ -380,7 +380,7 @@ class WsGateway
     if (cmd)
     {
       cod.track(*cmd);
-      handler_(*cmd, responder);
+      handler_(*cmd, responder, nowNs);
     }
     else if (rej != SessionReject::None && registry_ != nullptr)
     {

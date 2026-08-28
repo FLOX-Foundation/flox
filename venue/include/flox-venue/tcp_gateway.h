@@ -54,7 +54,7 @@ class TcpGateway
 {
  public:
   using Responder = std::function<void(const uint8_t*, size_t)>;
-  using Handler = std::function<void(const InboundCommand&, const Responder&)>;
+  using Handler = DisconnectCanceller::Handler;  // (cmd, responder, recvMonoNs)
 
   // `account` is the account this endpoint serves. Every connection binds its
   // session to it, so a client cannot act as another account by writing a
@@ -241,7 +241,7 @@ class TcpGateway
       if (cmd)
       {
         cod.track(*cmd);
-        handler_(*cmd, responder);
+        handler_(*cmd, responder, nowNs);
       }
       else if (rej != SessionReject::None && registry_ != nullptr)
       {

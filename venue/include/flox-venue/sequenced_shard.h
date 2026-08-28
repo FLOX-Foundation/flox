@@ -12,6 +12,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/messages.h"
+#include "flox-venue/shard_events.h"
 
 #include "flox/util/eventing/event_bus.h"
 
@@ -35,36 +36,6 @@ namespace flox::venue
 {
 
 // ---- ingress: normalized commands from every gateway ----
-struct InboundCommandEvent;
-struct ICommandListener
-{
-  virtual ~ICommandListener() = default;
-  virtual void onCommand(const InboundCommandEvent& ev) = 0;
-  // The ingress has been drained of what was available. Where a batched
-  // durability barrier belongs: waiting past this point buys no more
-  // amortisation and only adds latency.
-  virtual void onBatchEnd() {}
-};
-struct InboundCommandEvent
-{
-  using Listener = ICommandListener;
-  InboundCommand cmd{};
-  uint64_t tickSequence = 0;  // gateway sequence number, stamped by the bus
-};
-
-// ---- outbound: engine events fanned out to exec-report / market-data / ... ----
-struct EngineEventMsg;
-struct IEngineEventListener
-{
-  virtual ~IEngineEventListener() = default;
-  virtual void onEngineEvent(const EngineEventMsg& ev) = 0;
-};
-struct EngineEventMsg
-{
-  using Listener = IEngineEventListener;
-  OutboundEvent event{};
-  uint64_t tickSequence = 0;
-};
 
 }  // namespace flox::venue
 
@@ -293,7 +264,15 @@ class SequencedShard
   const MatchingEngine<Book>& engine() const noexcept { return consumer_.engine(); }
 
   // Producer side (gateway). Returns the ingress sequence number.
-  int64_t submit(const InboundCommand& cmd) { return ingress_.publish(InboundCommandEvent{cmd}); }
+  // `recvMonoNs` is the steady-clock moment the producer took the command off
+  // the wire; pass 0 when there is no wire (tests, replay drivers).
+  int64_t submit(const InboundCommand& cmd, int64_t recvMonoNs = 0)
+  {
+    InboundCommandEvent ev{cmd};
+    ev.recvMonoNs = recvMonoNs;
+    ev.ingressMonoNs = venueMonoNs();
+    return ingress_.publish(std::move(ev));
+  }
 
   void flush()
   {
@@ -379,16 +358,27 @@ class SequencedShard
                     {
                       return;
                     }
+                    EngineEventMsg msg{ev};
+                    // Provenance of the command being applied, captured at
+                    // stage time -- under group commit the publish happens
+                    // later, in onBatchEnd, when these members already
+                    // describe a different command.
+                    msg.causeRecvMonoNs = causeRecvMonoNs_;
+                    msg.causeIngressMonoNs = causeIngressMonoNs_;
                     if (staged_ != nullptr)
                     {
                       // Group commit: an event is a promise, and a promise
                       // made before the record behind it is durable is the
                       // promise this mode exists to keep. Held until the
-                      // barrier at the end of the batch.
-                      staged_->push_back(EngineEventMsg{ev});
+                      // barrier at the end of the batch. publishMonoNs stays
+                      // 0 until the actual publish -- stamping it here would
+                      // hide the barrier wait, which is the whole cost of
+                      // this mode and exactly what the stamp exists to show.
+                      staged_->push_back(std::move(msg));
                       return;
                     }
-                    out_.publish(EngineEventMsg{ev}); }, std::move(book))
+                    msg.publishMonoNs = venueMonoNs();
+                    out_.publish(std::move(msg)); }, std::move(book))
     {
     }
 
@@ -432,6 +422,8 @@ class SequencedShard
 
     void onCommand(const InboundCommandEvent& ev) override
     {
+      causeRecvMonoNs_ = ev.recvMonoNs;
+      causeIngressMonoNs_ = ev.ingressMonoNs;
       const int64_t ts = nextTs();
       journal_.append(ev.cmd, ts);  // write-ahead, before applying
       engine_.submit(ev.cmd, ts);   // the SAME timestamp the journal holds
@@ -454,8 +446,10 @@ class SequencedShard
         return;
       }
       journal_.sync();
-      for (const EngineEventMsg& m : *staged_)
+      const int64_t published = venueMonoNs();  // one stamp: one barrier
+      for (EngineEventMsg& m : *staged_)
       {
+        m.publishMonoNs = published;
         out_.publish(m);
       }
       staged_->clear();
@@ -490,6 +484,8 @@ class SequencedShard
 
     Journal& journal_;
     OutboundBus& out_;
+    int64_t causeRecvMonoNs_ = 0;
+    int64_t causeIngressMonoNs_ = 0;
     std::vector<EngineEventMsg> stagedStorage_;
     std::vector<EngineEventMsg>* staged_{nullptr};  // non-null = group commit
     int64_t lastBatchTs_{0};

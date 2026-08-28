@@ -11,6 +11,7 @@
 #include "flox-venue/ledger.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/reject_reason.h"
+#include "flox-venue/shard_events.h"
 
 #include <array>
 #include <atomic>
@@ -74,7 +75,20 @@ class LatencyHistogram
 
 struct Metrics
 {
+  // Fed by observe(const EngineEventMsg&) from the envelope stamps -- the
+  // caller passes the message through and never computes an interval itself.
+  // Passing only the naked OutboundEvent leaves all three empty, which is what
+  // this looked like before the envelopes carried stamps at all: the
+  // fme_submit_latency_ns line exported zeros unless a caller hand-fed the
+  // histogram, and no caller outside the tests did.
+  //
+  // submitLatency   ingress -> observed by this consumer (end to end)
+  // wireToIngress   off the wire -> enqueued (decode + admission; needs a
+  //                 producer that passes recvMonoNs to submit)
+  // applyToDeliver  engine publish -> observed (outbound bus residency)
   LatencyHistogram submitLatency;
+  LatencyHistogram wireToIngress;
+  LatencyHistogram applyToDeliver;
   uint64_t accepted{0};
   uint64_t trades{0};
   uint64_t cancels{0};
@@ -94,6 +108,11 @@ struct Metrics
   }
 
   void observe(const OutboundEvent& e) noexcept;
+
+  // The overload deployments should call from their outbound listener: counts
+  // the event AND resolves the envelope stamps into the latency histograms.
+  // Safe on a single listener thread, like every other member here.
+  void observe(const EngineEventMsg& m) noexcept;
 
  private:
   std::unordered_map<SymbolId, std::pair<int64_t, int64_t>> scales_;
@@ -140,6 +159,24 @@ struct Gauges
   int64_t markPriceAgeNs{0};       // age of the current mark/index (feed-lag alert)
   uint64_t liquidationsPaused{0};  // 1 = liquidation circuit breaker engaged
 };
+
+inline void Metrics::observe(const EngineEventMsg& m) noexcept
+{
+  observe(m.event);
+  const int64_t now = venueMonoNs();
+  if (m.causeIngressMonoNs > 0)
+  {
+    submitLatency.record(static_cast<uint64_t>(now - m.causeIngressMonoNs));
+    if (m.causeRecvMonoNs > 0 && m.causeIngressMonoNs >= m.causeRecvMonoNs)
+    {
+      wireToIngress.record(static_cast<uint64_t>(m.causeIngressMonoNs - m.causeRecvMonoNs));
+    }
+  }
+  if (m.publishMonoNs > 0)
+  {
+    applyToDeliver.record(static_cast<uint64_t>(now - m.publishMonoNs));
+  }
+}
 
 inline void Metrics::observe(const OutboundEvent& e) noexcept
 {
