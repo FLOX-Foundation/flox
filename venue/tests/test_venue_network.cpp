@@ -124,7 +124,7 @@ void test_tcp_gateway()
 
   TcpGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); });
-  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder& r)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder& r, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               currentResp = r;
@@ -273,7 +273,7 @@ void test_gateway_binds_account()
   TcpGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); },
                 /*account=*/7);
-  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder&, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               if (const auto* no = std::get_if<NewOrder>(&c))
@@ -575,7 +575,7 @@ void test_ws_gateway()
 } });
   WsGateway gw([](const uint8_t* p, size_t n)
                { return RestJson::decode(std::string(reinterpret_cast<const char*>(p), n)); });
-  const int port = gw.start(0, [&](const InboundCommand& c, const WsGateway::Responder& r)
+  const int port = gw.start(0, [&](const InboundCommand& c, const WsGateway::Responder& r, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               currentResp = r;
@@ -664,7 +664,7 @@ void test_cancel_on_disconnect()
   TcpGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); });
   gw.setCancelOnDisconnect(true);
-  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder& r)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TcpGateway::Responder& r, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               currentResp = r;
@@ -718,7 +718,7 @@ void test_ws_cancel_on_disconnect()
   WsGateway gw([](const uint8_t* p, size_t n)
                { return RestJson::decode(std::string(reinterpret_cast<const char*>(p), n)); });
   gw.setCancelOnDisconnect(true);
-  const int port = gw.start(0, [&](const InboundCommand& c, const WsGateway::Responder& r)
+  const int port = gw.start(0, [&](const InboundCommand& c, const WsGateway::Responder& r, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               currentResp = r;

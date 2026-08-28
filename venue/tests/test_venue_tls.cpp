@@ -89,7 +89,7 @@ void test_tls_roundtrip()
 
   TlsGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); });
-  const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder& r)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder& r, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               currentResp = r;
@@ -165,7 +165,7 @@ void test_tls_cancel_on_disconnect()
   TlsGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); });
   gw.setCancelOnDisconnect(true);
-  const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder& r)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder& r, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               currentResp = r;
@@ -312,7 +312,7 @@ void test_tls_cross_session_delivery()
     gw->setCounters(&counters);
     return gw;
   };
-  const TlsGateway::Handler handler = [&](const InboundCommand& c, const TlsGateway::Responder&)
+  const TlsGateway::Handler handler = [&](const InboundCommand& c, const TlsGateway::Responder&, int64_t)
   {
     std::lock_guard<std::mutex> lk(m);
     eng.submit(c);
@@ -385,7 +385,7 @@ void test_tls_fix_session()
   gw.setDelivery(&registry, encoder);
   gw.setFixSession(&fixHost);
   gw.setCounters(&counters);
-  const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder&)
+  const int port = gw.start(0, [&](const InboundCommand& c, const TlsGateway::Responder&, int64_t)
                             {
                               std::lock_guard<std::mutex> lk(m);
                               eng.submit(c); });

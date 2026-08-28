@@ -170,7 +170,7 @@ struct Venue
 
   TcpGateway::Handler handler()
   {
-    return [this](const InboundCommand& c, const TcpGateway::Responder&)
+    return [this](const InboundCommand& c, const TcpGateway::Responder&, int64_t)
     { submit(c); };
   }
 

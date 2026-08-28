@@ -142,7 +142,11 @@ inline std::string render(const Metrics& m)
     out += '\n';
   }
 
-  latencySummary(out, "fme_submit_latency_ns", "Submit-to-response latency (ns)", m.submitLatency);
+  latencySummary(out, "fme_submit_latency_ns", "Ingress-to-delivery latency (ns)", m.submitLatency);
+  latencySummary(out, "fme_wire_to_ingress_ns", "Wire-receipt-to-enqueue latency (ns)",
+                 m.wireToIngress);
+  latencySummary(out, "fme_apply_to_deliver_ns", "Engine-publish-to-delivery latency (ns)",
+                 m.applyToDeliver);
   return out;
 }
 

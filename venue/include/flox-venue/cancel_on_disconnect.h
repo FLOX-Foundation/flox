@@ -37,7 +37,11 @@ class DisconnectCanceller
 {
  public:
   using Responder = std::function<void(const uint8_t*, size_t)>;
-  using Handler = std::function<void(const InboundCommand&, const Responder&)>;
+  // Third argument: steady-clock receipt time of the frame that carried the
+  // command, 0 when there is no frame (synthetic cancels from flush). The
+  // stamp exists so a shard can decompose latency; a handler that does not
+  // care simply ignores it.
+  using Handler = std::function<void(const InboundCommand&, const Responder&, int64_t)>;
 
   explicit DisconnectCanceller(bool enabled) noexcept : enabled_(enabled) {}
 
@@ -125,7 +129,7 @@ class DisconnectCanceller
     const Responder noop = [](const uint8_t*, size_t) {};
     for (const auto& c : ordered)
     {
-      handler(InboundCommand{c}, noop);
+      handler(InboundCommand{c}, noop, 0);
     }
   }
 
