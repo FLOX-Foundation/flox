@@ -64,7 +64,14 @@ void IxWebSocketClient::stop()
   {
     return;
   }
-  _ws->stop();
+  // Deliberately does not touch _ws. The run() thread owns the socket: it
+  // replaces it under _sendMutex on every reconnect attempt and stops it when
+  // its wait loop observes _running == false. Stopping it from here as well
+  // raced that ownership two ways at once: two threads joining ix's worker
+  // thread (the loser gets EINVAL and ix throws -- fatally, when the loser is
+  // the run() thread, because the exception leaves the thread body), and an
+  // unsynchronized read of _ws while run() swaps in a fresh socket. The cost
+  // of the single-owner rule is shutdown latency of one wait-loop tick.
 }
 
 void IxWebSocketClient::send(const std::string& data)
@@ -164,8 +171,18 @@ void IxWebSocketClient::run()
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // Ensure socket is fully stopped before creating a new one
-    _ws->stop();
+    // Ensure socket is fully stopped before creating a new one. Sole owner of
+    // this call -- see stop(). The catch is belt-and-braces: an exception
+    // escaping a thread body is std::terminate, and no teardown problem on one
+    // socket is worth the process.
+    try
+    {
+      _ws->stop();
+    }
+    catch (const std::exception& e)
+    {
+      _logger->error("WebSocket stop threw (continuing): " + std::string(e.what()));
+    }
 
     if (_running)
     {
