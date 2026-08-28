@@ -1815,9 +1815,9 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 
 **Members**
 
-- `advance_to(*args, **kwargs) -> None`
-- `reset(*args, **kwargs) -> None`
-- `now_ns(self) -> ...`
+- `advance_to(self, ns: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `now_ns(self) -> int`
+- `reset(self, ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 
 ### `class SimulatedExecutor`
 

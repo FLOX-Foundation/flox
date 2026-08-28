@@ -2701,19 +2701,17 @@ class SimulatedClock:
     with a timestamp at or before the current one is a no-op. Use reset()
     to move backwards.
     """
-    @staticmethod
-    def advance_to(*args, **kwargs) -> None:
+    def advance_to(self, ns: typing.SupportsInt | typing.SupportsIndex) -> None:
         """
         Advance to `ns`. Ignored if `ns` is not ahead of the current time.
         """
-    @staticmethod
-    def reset(*args, **kwargs) -> None:
-        """
-        Set the clock to `ns`, backwards included.
-        """
-    def now_ns(self) -> ...:
+    def now_ns(self) -> int:
         """
         Current simulated time in nanoseconds.
+        """
+    def reset(self, ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+        """
+        Set the clock to `ns`, backwards included.
         """
 class SimulatedExecutor:
     def __init__(self) -> None:
