@@ -1,0 +1,24 @@
+# Temporary smoke test: proves the release app can mint an installation token
+# through the gated environment, without releasing anything. Deleted after one
+# green run.
+name: App token smoke
+on:
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - name: Token sees the repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api /installation/repositories --jq '"repos visible: " + (.total_count|tostring) + " -> " + (.repositories[].full_name)'
