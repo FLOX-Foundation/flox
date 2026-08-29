@@ -1,0 +1,2 @@
+# Workflow changes gate the release path; they need the owner's eyes.
+/.github/workflows/ @eeiaao

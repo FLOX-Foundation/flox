@@ -85,6 +85,10 @@ jobs:
   publish:
     needs: [build]
     runs-on: ubuntu-latest
+    # Registry publishing runs only inside the gated environment: the
+    # trusted-publisher OIDC subject is pinned to it, so a token cannot be
+    # minted from anywhere else.
+    environment: registry
     if: |
       always() &&
       needs.build.result == 'success' &&
