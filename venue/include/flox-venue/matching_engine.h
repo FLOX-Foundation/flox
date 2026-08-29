@@ -50,7 +50,7 @@ struct SymbolConfig
   Volume maxOrderNotional{};  // 0 = unchecked (fat-finger max notional, limit orders)
   bool halted{false};
   TriggerRef triggerRef{TriggerRef::Last};
-  int64_t lastLookWindowNs{0};          // 0 = last look disabled venue-wide
+  DurationNs lastLookWindowNs{};        // 0 = last look disabled venue-wide
   bool lastLookAcceptOnTimeout{false};  // window elapses with no decision -> accept vs reject
   // Symmetric price tolerance. When set, the VENUE decides whether the price
   // moved too far during the hold, and it applies the same threshold in both
@@ -69,7 +69,7 @@ struct SymbolConfig
   AssetId baseAsset{0};             // e.g. BTC in BTC-USD (settled to the seller/buyer)
   AssetId quoteAsset{1};            // e.g. USD in BTC-USD
   int32_t luldBps{0};               // limit-up/limit-down band around the reference (0 = off)
-  int64_t luldHaltNs{0};            // trading pause on a band breach
+  DurationNs luldHaltNs{};          // trading pause LENGTH on a band breach
   bool linearPerp{false};           // derivatives: linear perpetual (margin, no asset delivery)
   int32_t initialMarginBps{0};      // IM as bps of notional (1000 = 10% = 10x leverage)
   int32_t maintenanceMarginBps{0};  // MM; position liquidated when equity < MM (0 = off)
@@ -96,7 +96,7 @@ struct SymbolConfig
   // see MatchingEngine::nextFundingNs. Excluded from configHash for the same
   // reason the other mutable knobs are: it reinterprets no stored number, so it
   // cannot invalidate a snapshot.
-  int64_t fundingIntervalNs{0};
+  DurationNs fundingIntervalNs{};
 };
 
 // Book selects the resting-book implementation. The default MatchingBook is
@@ -168,7 +168,7 @@ class MatchingEngine
     // Last look: the matcher hands each held fill here. lastLookWindowNs == 0
     // means last look is disabled venue-wide (as the config promises): the hook
     // is never installed, so a lastLook-flagged maker fills like any other.
-    if (cfg_.lastLookWindowNs > 0)
+    if (cfg_.lastLookWindowNs.count() > 0)
     {
       matcher_.setLastLookHook(
           [this](const RestingOrder& maker, Quantity fill, const NewOrder& taker)
@@ -207,11 +207,16 @@ class MatchingEngine
     }
   }
 
-  void submit(const InboundCommand& cmd) { submit(cmd, ++timeCounter_); }
+  void submit(const InboundCommand& cmd) { submit(cmd, SeqNanos::fromRaw(++timeCounter_)); }
 
   // Timestamped submit (sequencer-stamped). Drives last-look expiry and MMP
   // windows deterministically.
-  void submit(const InboundCommand& cmd, int64_t tsNs)
+  // The ingestion boundary is the one legitimate crossing into sequencer time:
+  // the caller hands a raw tick (wall-derived at capture, journal-derived on
+  // replay) and it becomes SeqNanos here, in exactly one place.
+  void submit(const InboundCommand& cmd, int64_t tsRawNs) { submit(cmd, SeqNanos::fromRaw(tsRawNs)); }
+
+  void submit(const InboundCommand& cmd, SeqNanos tsNs)
   {
     // Snapshot-only records are forbidden in live traffic: a client that could
     // sneak a Restore* through submit would "restore" itself an order or a
@@ -226,10 +231,10 @@ class MatchingEngine
       return;
     }
     now_ = tsNs;
-    if (cfg_.halted && haltUntil_ > 0 && now_ >= haltUntil_)
+    if (cfg_.halted && static_cast<bool>(haltUntil_) && now_ >= haltUntil_)
     {
       cfg_.halted = false;  // timed LULD volatility pause elapsed
-      haltUntil_ = 0;
+      haltUntil_ = SeqNanos{};
       publishStatus(TradingStatusReason::LuldPauseElapsed);
     }
     expireHolds();
@@ -339,8 +344,11 @@ class MatchingEngine
   // under a SequencedShard, route the sweep through the command stream as a
   // TimeTick so a replay reproduces the timeouts (the shard's idle sweeper does
   // exactly that). Direct callers (tests, embedded use) may call this freely.
-  void tick(int64_t nowNs)
+  // Same ingestion boundary as submit(): a raw tick becomes sequencer time
+  // here and nowhere deeper.
+  void tick(int64_t nowRawNs)
   {
+    const SeqNanos nowNs = SeqNanos::fromRaw(nowRawNs);
     if (nowNs > now_)
     {
       now_ = nowNs;
@@ -360,7 +368,7 @@ class MatchingEngine
 
   // Market-maker protection: if `qtyLimit` is filled for `account` within
   // `windowNs`, all its resting orders are pulled.
-  void setMmp(uint64_t account, Quantity qtyLimit, int64_t windowNs)
+  void setMmp(uint64_t account, Quantity qtyLimit, DurationNs windowNs)
   {
     mmpCfg_[account] = MmpCfg{qtyLimit, windowNs};
   }
@@ -420,7 +428,8 @@ class MatchingEngine
   // and a wall-clock read taken downstream would not reproduce on replay. A
   // publisher that stamps market data with it (market_data.h) produces the same
   // timestamps on a journal replay as it did live.
-  int64_t engineTimeNs() const noexcept { return now_; }
+  SeqNanos engineTime() const noexcept { return now_; }
+  int64_t engineTimeNs() const noexcept { return now_.raw(); }
 
   // Open interest: the long side of the perp positions the engine tracks for
   // this symbol. Every contract has a long and a short leg, so the long side is
@@ -450,24 +459,27 @@ class MatchingEngine
   // schedule behaves exactly as it did before the command existed. 0 = neither
   // a schedule nor a configured interval, i.e. the venue does not fund this
   // instrument.
-  int64_t nextFundingNs() const noexcept
+  SeqNanos nextFundingNs() const noexcept
   {
-    if (nextFundingNs_ > 0)
+    if (static_cast<bool>(nextFundingNs_))
     {
       return nextFundingNs_;
     }
-    if (cfg_.fundingIntervalNs <= 0)
+    if (cfg_.fundingIntervalNs.count() <= 0)
     {
-      return 0;
+      return SeqNanos{};
     }
-    return (now_ / cfg_.fundingIntervalNs + 1) * cfg_.fundingIntervalNs;
+    // Boundary alignment is modular math on one domain's raw ticks; the result
+    // is restated as the same domain.
+    return SeqNanos::fromRaw((now_.raw() / cfg_.fundingIntervalNs.count() + 1) *
+                             cfg_.fundingIntervalNs.count());
   }
 
   // The live funding interval: the operator-set schedule when there is one,
   // otherwise the startup config value it falls back to.
   int64_t fundingIntervalNs() const noexcept
   {
-    return fundingIntervalNs_ > 0 ? fundingIntervalNs_ : cfg_.fundingIntervalNs;
+    return (fundingIntervalNs_.count() > 0 ? fundingIntervalNs_ : cfg_.fundingIntervalNs).count();
   }
 
   // Last funding rate the engine applied, at kFundingRateScale. Carried by the
@@ -479,10 +491,10 @@ class MatchingEngine
   // production (journaled, replayed, checkpointed); this direct setter is the
   // pre-start wiring / recovery path, like setStpGroup. A non-positive interval
   // or boundary clears the schedule, dropping back to the config derivation.
-  void setFundingSchedule(int64_t intervalNs, int64_t nextFundingNs)
+  void setFundingSchedule(DurationNs intervalNs, SeqNanos nextFundingNs)
   {
-    fundingIntervalNs_ = intervalNs > 0 ? intervalNs : 0;
-    nextFundingNs_ = nextFundingNs > 0 ? nextFundingNs : 0;
+    fundingIntervalNs_ = intervalNs.count() > 0 ? intervalNs : DurationNs{};
+    nextFundingNs_ = nextFundingNs.raw() > 0 ? nextFundingNs : SeqNanos{};
     // The calendar is a published field, so a change is news -- but only for an
     // instrument the engine has a mark for. Publishing before the first SetMark
     // would break the feed's standing promise that an unmarked instrument gets
@@ -515,7 +527,7 @@ class MatchingEngine
     }
     if (cfg_.halted)
     {
-      return haltUntil_ > 0 ? TradingStatus::LuldPause : TradingStatus::Halted;
+      return static_cast<bool>(haltUntil_) ? TradingStatus::LuldPause : TradingStatus::Halted;
     }
     return TradingStatus::Trading;
   }
@@ -666,7 +678,7 @@ class MatchingEngine
     cfg_.halted = halted;
     if (!halted)
     {
-      haltUntil_ = 0;
+      haltUntil_ = SeqNanos{};
     }
     publishStatus(TradingStatusReason::Administrative);
   }
@@ -784,7 +796,7 @@ class MatchingEngine
   void haltAndCancelAll()
   {
     cfg_.halted = true;
-    haltUntil_ = 0;  // an operator halt has no deadline, unlike the LULD pause
+    haltUntil_ = SeqNanos{};  // an operator halt has no deadline, unlike the LULD pause
     // The halt reaches the feed BEFORE the flood of cancels it causes, so a
     // subscriber reads them as consequences of a halt rather than as an
     // unexplained mass cancel.
@@ -931,7 +943,7 @@ class MatchingEngine
   void resumeWithAuction()
   {
     cfg_.halted = false;
-    haltUntil_ = 0;
+    haltUntil_ = SeqNanos{};
     auctionMode_ = true;
     publishStatus(TradingStatusReason::Auction);
   }
@@ -1144,7 +1156,7 @@ class MatchingEngine
     {
       h = mix(h, 0xB00EU);  // only when set: an engine that never delisted hashes as before
     }
-    h = mix(h, static_cast<uint64_t>(haltUntil_));
+    h = mix(h, static_cast<uint64_t>(haltUntil_.raw()));
     // Session and funding state fold in only when they are set, the same
     // "zero == absent" rule the balance traversal follows. An engine that has
     // never been closed and never seen a funding rate or schedule therefore
@@ -1155,12 +1167,12 @@ class MatchingEngine
       h = mix(h, 0xB00AU);
       h = mix(h, 1U);
     }
-    if (fundingRateRaw_ != 0 || fundingIntervalNs_ != 0 || nextFundingNs_ != 0)
+    if (fundingRateRaw_ != 0 || fundingIntervalNs_.count() != 0 || nextFundingNs_.raw() != 0)
     {
       h = mix(h, 0xB00BU);
       h = mix(h, static_cast<uint64_t>(fundingRateRaw_));
-      h = mix(h, static_cast<uint64_t>(fundingIntervalNs_));
-      h = mix(h, static_cast<uint64_t>(nextFundingNs_));
+      h = mix(h, static_cast<uint64_t>(fundingIntervalNs_.count()));
+      h = mix(h, static_cast<uint64_t>(nextFundingNs_.raw()));
     }
     h = mix(h, hasLast_ ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(lastPrice_.raw()));
@@ -1169,7 +1181,7 @@ class MatchingEngine
     h = mix(h, tradeSeq_);
     h = mix(h, heldSeq_);
     h = mix(h, static_cast<uint64_t>(timeCounter_));
-    h = mix(h, static_cast<uint64_t>(now_));
+    h = mix(h, static_cast<uint64_t>(now_.raw()));
 
     book_.forEachOrder(
         [&](const RestingOrder& o)
@@ -1184,7 +1196,7 @@ class MatchingEngine
           h = mix(h, static_cast<uint64_t>(o.side));
           h = mix(h, o.lastLook ? 1U : 0U);
           h = mix(h, o.reduceOnly ? 1U : 0U);
-          h = mix(h, static_cast<uint64_t>(expiryOf(o.id)));
+          h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
           h = mix(h, ocoOf(o.id));
         });
 
@@ -1203,7 +1215,7 @@ class MatchingEngine
       h = mix(h, static_cast<uint64_t>(o.trailingOffset.raw()));
       h = mix(h, o.lastLook ? 1U : 0U);
       h = mix(h, o.reduceOnly ? 1U : 0U);
-      h = mix(h, static_cast<uint64_t>(o.expiryNs));
+      h = mix(h, static_cast<uint64_t>(o.expiryNs.raw()));
       h = mix(h, o.ocoGroup);
       h = mix(h, static_cast<uint64_t>(trig.raw()));
     }
@@ -1245,11 +1257,11 @@ class MatchingEngine
       h = mix(h, x.makerAccount);
       h = mix(h, static_cast<uint64_t>(x.price.raw()));
       h = mix(h, static_cast<uint64_t>(x.qty.raw()));
-      h = mix(h, static_cast<uint64_t>(x.deadline));
+      h = mix(h, static_cast<uint64_t>(x.deadline.raw()));
       h = mix(h, static_cast<uint64_t>(x.takerTif));
       h = mix(h, static_cast<uint64_t>(x.takerType));
       h = mix(h, static_cast<uint64_t>(x.takerPrice.raw()));
-      h = mix(h, static_cast<uint64_t>(x.takerExpiryNs));
+      h = mix(h, static_cast<uint64_t>(x.takerExpiryNs.raw()));
       h = mix(h, x.makerReduceOnly ? 1U : 0U);
       h = mix(h, x.takerReduceOnly ? 1U : 0U);
       // Live-tracking truth of the maker (see RestoreHeld::makerTracked).
@@ -1284,7 +1296,7 @@ class MatchingEngine
       h = mix(h, 0xB006U);
       h = mix(h, acct);
       h = mix(h, static_cast<uint64_t>(c.qtyLimit.raw()));
-      h = mix(h, static_cast<uint64_t>(c.windowNs));
+      h = mix(h, static_cast<uint64_t>(c.windowNs.count()));
     }
 
     // MMP sliding-window fills, deque (time) order. An EMPTY window contributes
@@ -1302,7 +1314,7 @@ class MatchingEngine
       h = mix(h, acct);
       for (const auto& [ts, q] : w.fills)
       {
-        h = mix(h, static_cast<uint64_t>(ts));
+        h = mix(h, static_cast<uint64_t>(ts.raw()));
         h = mix(h, static_cast<uint64_t>(q.raw()));
       }
     }
@@ -1379,7 +1391,7 @@ class MatchingEngine
     h = mix(h, static_cast<uint64_t>(cfg_.minQty.raw()));
     h = mix(h, cfg_.baseAsset);
     h = mix(h, cfg_.quoteAsset);
-    h = mix(h, static_cast<uint64_t>(cfg_.lastLookWindowNs));
+    h = mix(h, static_cast<uint64_t>(cfg_.lastLookWindowNs.count()));
     h = mix(h, cfg_.lastLookAcceptOnTimeout ? 1U : 0U);
     h = mix(h, cfg_.linearPerp ? 1U : 0U);
     h = mix(h, cfg_.autoDeleverage ? 1U : 0U);
@@ -1404,7 +1416,7 @@ class MatchingEngine
   // formula re-derivation is NOT faithful).
   void writeSnapshot(Journal& out) const
   {
-    const int64_t ts = now_;
+    const int64_t ts = now_.raw();  // snapshot records carry raw sequencer ticks
     const uint64_t h = stateHash();
     out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, ts, h, configHash()}}, ts);
 
@@ -1458,7 +1470,7 @@ class MatchingEngine
     // Funding state: written only when there is any, so an engine with none
     // produces the same file it did before the record existed (and that file
     // still loads -- see RestoreFunding).
-    if (fundingRateRaw_ != 0 || fundingIntervalNs_ != 0 || nextFundingNs_ != 0)
+    if (fundingRateRaw_ != 0 || fundingIntervalNs_.count() != 0 || nextFundingNs_.raw() != 0)
     {
       out.append(InboundCommand{RestoreFunding{fundingRateRaw_, nextFundingNs_, fundingIntervalNs_}},
                  ts);
@@ -1511,7 +1523,7 @@ class MatchingEngine
       batch.account = acct;
       for (const auto& [fts, q] : w.fills)
       {
-        batch.tsNs[batch.count] = fts;
+        batch.tsNs[batch.count] = fts.raw();  // wire batch: raw ticks
         batch.qtyRaw[batch.count] = q.raw();
         if (++batch.count == kMmpFillBatch)
         {
@@ -1607,13 +1619,13 @@ class MatchingEngine
     end.tradeSeq = tradeSeq_;
     end.heldSeq = heldSeq_;
     end.timeCounter = timeCounter_;
-    end.nowNs = now_;
-    end.mdEpoch = 0;  // the engine carries no MD epoch today
+    end.nowNs = now_.raw();  // snapshot wire: raw
+    end.mdEpoch = 0;         // the engine carries no MD epoch today
     end.lastPriceRaw = lastPrice_.raw();
     end.hasLast = hasLast_;
     end.markPriceRaw = markPrice_.raw();
     end.hasMark = hasMark_;
-    end.haltUntilNs = haltUntil_;
+    end.haltUntilNs = haltUntil_.raw();
     out.append(InboundCommand{end}, ts);
   }
 
@@ -1700,7 +1712,7 @@ class MatchingEngine
       auto& w = mmpFills_[r->account];
       for (uint32_t i = 0; i < r->count; ++i)
       {
-        w.fills.emplace_back(r->tsNs[i], Quantity::fromRaw(r->qtyRaw[i]));
+        w.fills.emplace_back(SeqNanos::fromRaw(r->tsNs[i]), Quantity::fromRaw(r->qtyRaw[i]));
         w.sumRaw += r->qtyRaw[i];
       }
       return true;
@@ -1736,8 +1748,8 @@ class MatchingEngine
       // calendar is a fact it will settle on. Neither is re-derived from
       // config, which is the whole point of the record.
       fundingRateRaw_ = r->fundingRateRaw;
-      nextFundingNs_ = r->nextFundingNs > 0 ? r->nextFundingNs : 0;
-      fundingIntervalNs_ = r->fundingIntervalNs > 0 ? r->fundingIntervalNs : 0;
+      nextFundingNs_ = r->nextFundingNs.raw() > 0 ? r->nextFundingNs : SeqNanos{};
+      fundingIntervalNs_ = r->fundingIntervalNs.count() > 0 ? r->fundingIntervalNs : DurationNs{};
       return true;
     }
     if (const auto* r = std::get_if<RestoreReservation>(&cmd))
@@ -2364,8 +2376,8 @@ class MatchingEngine
     if (out.residualRests)
     {
       RestingOrder ro{o.id, o.accountId, o.price, out.leaves, o.side};
-      ro.lastLook = o.lastLook && cfg_.lastLookWindowNs > 0;  // window 0 = feature off
-      ro.reduceOnly = o.reduceOnly;                           // carried so a later modify preserves it
+      ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;  // window 0 = feature off
+      ro.reduceOnly = o.reduceOnly;                                   // carried so a later modify preserves it
       if (o.visibleQuantity.raw() > 0 && o.visibleQuantity < out.leaves)
       {
         ro.peak = o.visibleQuantity;    // iceberg: show a peak, hide the rest
@@ -2374,7 +2386,7 @@ class MatchingEngine
       }
       book_.addResting(o.side, ro);
       trackResting(o.id, o.accountId, o.stp);
-      if (o.tif == TimeInForce::GTD && o.expiryNs > 0)
+      if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
       {
         expiry_[o.id] = o.expiryNs;
       }
@@ -2449,7 +2461,7 @@ class MatchingEngine
     // underneath it (a closed session or an auction phase over a paused
     // instrument) -- a subscriber must never be handed an expiry for a state
     // that does not expire.
-    emitStatus(s, reason, s == TradingStatus::LuldPause ? haltUntil_ : 0);
+    emitStatus(s, reason, s == TradingStatus::LuldPause ? haltUntil_.raw() : 0);
   }
 
   void emitStatus(TradingStatus status, TradingStatusReason reason, int64_t untilNs)
@@ -2472,15 +2484,16 @@ class MatchingEngine
   // schedule the published value is derived from `now` and moves by itself.
   void advanceFundingSchedule()
   {
-    if (fundingIntervalNs_ <= 0 || nextFundingNs_ <= 0)
+    if (fundingIntervalNs_.count() <= 0 || nextFundingNs_.raw() <= 0)
     {
       return;
     }
     nextFundingNs_ += fundingIntervalNs_;
     if (nextFundingNs_ <= now_)
     {
-      const int64_t behind = now_ - nextFundingNs_;
-      nextFundingNs_ += (behind / fundingIntervalNs_ + 1) * fundingIntervalNs_;
+      const DurationNs behind = now_ - nextFundingNs_;
+      nextFundingNs_ += DurationNs{(behind.count() / fundingIntervalNs_.count() + 1) *
+                                   fundingIntervalNs_.count()};
     }
   }
 
@@ -2564,7 +2577,7 @@ class MatchingEngine
     // GTD binds a conditional order as much as a resting one: a stop whose
     // deadline passes before it ever triggers has to expire, not wait forever
     // for a price that may never come.
-    if (o.tif == TimeInForce::GTD && o.expiryNs > 0)
+    if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
     {
       expiry_[o.id] = o.expiryNs;
     }
@@ -3159,9 +3172,9 @@ class MatchingEngine
         static_cast<double>(
             notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
         kMoneyScale;
-    sink_(FeeCharged{t.makerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, true)),
+    sink_(FeeCharged{t.makerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_.raw(), notional, true)),
                      true, t.makerAccount});
-    sink_(FeeCharged{t.takerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_, notional, false)),
+    sink_(FeeCharged{t.takerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_.raw(), notional, false)),
                      false, t.takerAccount});
   }
 
@@ -3530,8 +3543,8 @@ class MatchingEngine
           static_cast<double>(
               notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
           kMoneyScale;
-      chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_, notionalD, true), true);
-      chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_, notionalD, false), false);
+      chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_.raw(), notionalD, true), true);
+      chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_.raw(), notionalD, false), false);
     }
   }
 
@@ -3661,8 +3674,8 @@ class MatchingEngine
           static_cast<double>(
               notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
           kMoneyScale;
-      chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_, notionalD, true), true);
-      chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_, notionalD, false), false);
+      chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_.raw(), notionalD, true), true);
+      chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_.raw(), notionalD, false), false);
     }
   }
 
@@ -3880,10 +3893,10 @@ class MatchingEngine
     return keys;
   }
 
-  int64_t expiryOf(OrderId id) const
+  SeqNanos expiryOf(OrderId id) const
   {
     auto it = expiry_.find(id);
-    return it == expiry_.end() ? 0 : it->second;
+    return it == expiry_.end() ? SeqNanos{} : it->second;
   }
   uint64_t ocoOf(OrderId id) const
   {
@@ -3926,7 +3939,7 @@ class MatchingEngine
     // at its original price on top of a residual that rested through it (see
     // restoreMakerHeld). There the SnapshotEnd stateHash remains the
     // corruption check.
-    if (!auctionMode_ && cfg_.lastLookWindowNs == 0)
+    if (!auctionMode_ && cfg_.lastLookWindowNs.count() == 0)
     {
       if (r.side == Side::BUY)
       {
@@ -3953,7 +3966,7 @@ class MatchingEngine
     // exact live book layout.
     book_.addResting(r.side, ro);
     trackResting(r.id, r.accountId, STPMode::None);  // set by the RestoreOrderStp that follows
-    if (r.expiryNs > 0)
+    if (static_cast<bool>(r.expiryNs))
     {
       expiry_[r.id] = r.expiryNs;
     }
@@ -4072,17 +4085,17 @@ class MatchingEngine
     tradeSeq_ = e.tradeSeq;
     heldSeq_ = e.heldSeq;
     timeCounter_ = e.timeCounter;
-    now_ = e.nowNs;
+    now_ = SeqNanos::fromRaw(e.nowNs);  // snapshot wire -> sequencer domain
     lastPrice_ = Price::fromRaw(e.lastPriceRaw);
     hasLast_ = e.hasLast;
     markPrice_ = Price::fromRaw(e.markPriceRaw);
     hasMark_ = e.hasMark;
-    haltUntil_ = e.haltUntilNs;
+    haltUntil_ = SeqNanos::fromRaw(e.haltUntilNs);
     // The restored flags are the state the feed must start from: re-sync the
     // transition memo so the next real transition is measured against the
     // recovered state, not against the one the config records replayed.
     lastStatus_ = tradingStatus();
-    lastStatusUntil_ = lastStatus_ == TradingStatus::LuldPause ? haltUntil_ : 0;
+    lastStatusUntil_ = lastStatus_ == TradingStatus::LuldPause ? haltUntil_.raw() : 0;
     statusPublished_ = true;
     // Full verification: the reconstructed state must hash to what the writer
     // measured. A mismatch (torn/corrupted/semantically-drifted snapshot)
@@ -4101,7 +4114,7 @@ class MatchingEngine
     uint64_t makerAccount{};
     Price price{};
     Quantity qty{};
-    int64_t deadline{};
+    SeqNanos deadline{};
     // The reference when the hold was taken. Last look is about the move
     // DURING the window, so the move has to be measured from here -- measuring
     // from the quoted price instead reports the distance between a quote and
@@ -4112,7 +4125,7 @@ class MatchingEngine
     TimeInForce takerTif{TimeInForce::GTC};
     OrderType takerType{OrderType::LIMIT};
     Price takerPrice{};
-    int64_t takerExpiryNs{0};
+    SeqNanos takerExpiryNs{};
     bool makerReduceOnly{false};
     // Captured so a checkpoint can re-reserve the taker leg's held backing
     // exactly (a perp reduce-only taker reserves nothing).
@@ -4443,7 +4456,7 @@ class MatchingEngine
         RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
         book_.addResting(h.takerSide, rebuilt);
         trackResting(h.taker, h.takerAccount, stpOf(h.taker));
-        if (h.takerTif == TimeInForce::GTD && h.takerExpiryNs > 0)
+        if (h.takerTif == TimeInForce::GTD && static_cast<bool>(h.takerExpiryNs))
         {
           expiry_[h.taker] = h.takerExpiryNs;
         }
@@ -4809,11 +4822,11 @@ class MatchingEngine
   bool hasMark_{false};
   uint64_t tradeSeq_{0};
 
-  int64_t now_{0};
+  SeqNanos now_{};
   int64_t timeCounter_{0};
   std::unordered_map<OrderId, uint64_t> orderAccount_;
   std::unordered_map<uint64_t, std::unordered_set<OrderId>> byAccount_;
-  std::unordered_map<OrderId, int64_t> expiry_;                    // GTD: orderId -> expiry sequencer-ts
+  std::unordered_map<OrderId, SeqNanos> expiry_;                   // GTD: orderId -> expiry, sequencer time
   std::unordered_map<OrderId, uint64_t> orderOco_;                 // orderId -> OCO group
   std::unordered_map<uint64_t, std::vector<OrderId>> ocoMembers_;  // group -> member orderIds
   std::vector<std::pair<uint64_t, OrderId>> ocoPending_;           // (group, winner) collected while matching
@@ -4841,7 +4854,7 @@ class MatchingEngine
   struct MmpCfg
   {
     Quantity qtyLimit{};
-    int64_t windowNs{};
+    DurationNs windowNs{};
   };
   std::unordered_map<uint64_t, MmpCfg> mmpCfg_;
   // Sliding fill window per account with an incrementally maintained sum, so a
@@ -4849,7 +4862,7 @@ class MatchingEngine
   // every fill (an active MM inside the window would otherwise be O(n^2)).
   struct MmpWindow
   {
-    std::deque<std::pair<int64_t, Quantity>> fills;
+    std::deque<std::pair<SeqNanos, Quantity>> fills;
     int64_t sumRaw{0};  // running sum of fills.second.raw()
   };
   std::unordered_map<uint64_t, MmpWindow> mmpFills_;
@@ -4893,7 +4906,7 @@ class MatchingEngine
   std::unordered_map<OrderId, Reservation> reserve_;
   std::unordered_map<uint64_t, Position> positions_;  // perp positions per account
   bool auctionMode_{false};
-  int64_t haltUntil_{0};
+  SeqNanos haltUntil_{};
   // Session state, deliberately separate from cfg_.halted: a closed session and
   // an operator halt are different facts with different reject reasons, and a
   // close must not clear a halt underneath it. Hashed and checkpointed.
@@ -4914,8 +4927,8 @@ class MatchingEngine
   // engine publishes the rate and the boundary the venue will actually settle
   // on, not a zero and a formula.
   int64_t fundingRateRaw_{0};
-  int64_t fundingIntervalNs_{0};
-  int64_t nextFundingNs_{0};
+  DurationNs fundingIntervalNs_{};
+  SeqNanos nextFundingNs_{};
 };
 
 }  // namespace flox::venue

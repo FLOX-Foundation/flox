@@ -99,7 +99,8 @@ class ControlApi
         return err("unknown_symbol");
       }
       forward(InboundCommand{
-          SetFundingSchedule{sym, i64Of(f, "intervalNs"), i64Of(f, "nextFundingNs")}});
+          SetFundingSchedule{sym, DurationNs{i64Of(f, "intervalNs")},
+                             SeqNanos::fromRaw(i64Of(f, "nextFundingNs"))}});
       return ok();
     }
     if (method == "setBand")
@@ -155,7 +156,7 @@ class ControlApi
       {
         r.fields |= RiskLimitField::RiskLuld;
         r.luldBps = static_cast<int32_t>(i64Of(f, "luldBps"));
-        r.luldHaltNs = i64Of(f, "luldHaltNs");
+        r.luldHaltNs = DurationNs{i64Of(f, "luldHaltNs")};
       }
       if (f.count("maxOrderQty") != 0 || f.count("maxOrderNotional") != 0)
       {

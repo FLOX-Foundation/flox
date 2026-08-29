@@ -68,8 +68,8 @@ SymbolConfig perpCfg()
   SymbolConfig c = cfg();
   c.quoteAsset = QUOTE;
   c.linearPerp = true;
-  c.initialMarginBps = 1000;      // 10x
-  c.fundingIntervalNs = 8 * SEC;  // a funding calendar the feed can publish
+  c.initialMarginBps = 1000;                  // 10x
+  c.fundingIntervalNs = DurationNs{8 * SEC};  // a funding calendar the feed can publish
   return c;
 }
 
@@ -267,8 +267,8 @@ void test_luld_pause_visible()
 {
   std::printf("test_luld_pause_visible\n");
   SymbolConfig c = cfg();
-  c.luldBps = 500;       // +/- 5%
-  c.luldHaltNs = 1'000;  // short pause
+  c.luldBps = 500;                   // +/- 5%
+  c.luldHaltNs = DurationNs{1'000};  // short pause
   Feed f(c);
   f.eng.submit(limit(1, Side::SELL, 100, 5), 100);
   f.eng.submit(limit(2, Side::BUY, 100, 5, 2), 200);  // last price = 100 -> band [95, 105]

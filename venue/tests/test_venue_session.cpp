@@ -53,7 +53,7 @@ SymbolConfig cfg()
   c.tickSize = px(0.01);
   c.minPrice = px(1.0);
   c.maxPrice = px(1000.0);
-  c.lastLookWindowNs = 1000;  // exercise time-driven behaviour under replay
+  c.lastLookWindowNs = DurationNs{1000};  // exercise time-driven behaviour under replay
   return c;
 }
 NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct)

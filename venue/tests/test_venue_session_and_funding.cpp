@@ -67,7 +67,7 @@ SymbolConfig perpCfg()
   SymbolConfig c = cfg();
   c.linearPerp = true;
   c.initialMarginBps = 1000;
-  c.fundingIntervalNs = 8 * SEC;  // the config-derived calendar, kept as fallback
+  c.fundingIntervalNs = DurationNs{8 * SEC};  // the config-derived calendar, kept as fallback
   return c;
 }
 
@@ -392,7 +392,7 @@ void test_snapshot_without_funding_record_still_loads()
 
   // The calendar falls back to the configured interval, exactly as before.
   dst.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 1 * SEC);
-  CHECK(dst.lastDerivatives()->nextFundingNs == 8 * SEC);
+  CHECK(dst.lastDerivatives()->nextFundingNs.raw() == 8 * SEC);
 }
 
 // The calendar is state, not a formula: what the operator set is what the feed
@@ -402,32 +402,32 @@ void test_funding_schedule_is_state_not_a_formula()
   std::printf("test_funding_schedule_is_state_not_a_formula\n");
   Eng e(perpCfg());
   e.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 1 * SEC);
-  CHECK(e.lastDerivatives()->nextFundingNs == 8 * SEC);  // config-derived, pre-schedule
+  CHECK(e.lastDerivatives()->nextFundingNs.raw() == 8 * SEC);  // config-derived, pre-schedule
 
   // A settlement that does not sit on the config grid: 10s intervals, next at 25s.
-  e.eng.submit(InboundCommand{SetFundingSchedule{SYM, 10 * SEC, 25 * SEC}}, 2 * SEC);
-  CHECK(e.eng.nextFundingNs() == 25 * SEC);
+  e.eng.submit(InboundCommand{SetFundingSchedule{SYM, DurationNs{10 * SEC}, SeqNanos::fromRaw(25 * SEC)}}, 2 * SEC);
+  CHECK(e.eng.nextFundingNs().raw() == 25 * SEC);
   CHECK(e.eng.fundingIntervalNs() == 10 * SEC);
   // Setting it is news on the feed (the engine has a mark), not a silent change.
-  CHECK(e.lastDerivatives()->nextFundingNs == 25 * SEC);
+  CHECK(e.lastDerivatives()->nextFundingNs.raw() == 25 * SEC);
 
   e.eng.submit(InboundCommand{SetMark{SYM, px(101)}}, 3 * SEC);
-  CHECK(e.lastDerivatives()->nextFundingNs == 25 * SEC);  // survives an unrelated mark
+  CHECK(e.lastDerivatives()->nextFundingNs.raw() == 25 * SEC);  // survives an unrelated mark
 
   // The settlement moves the calendar on by one whole interval.
   e.eng.submit(InboundCommand{ApplyFunding{SYM, 0.0002, px(101)}}, 25 * SEC);
-  CHECK(e.eng.nextFundingNs() == 35 * SEC);
-  CHECK(e.lastDerivatives()->nextFundingNs == 35 * SEC);
+  CHECK(e.eng.nextFundingNs().raw() == 35 * SEC);
+  CHECK(e.lastDerivatives()->nextFundingNs.raw() == 35 * SEC);
   CHECK(e.lastDerivatives()->fundingRateRaw == 2 * (kFundingRateScale / 10'000));
 
   // A settlement run late (an operator catching up after an outage) skips whole
   // intervals rather than leaving a boundary in the past.
   e.eng.submit(InboundCommand{ApplyFunding{SYM, 0.0002, px(101)}}, 68 * SEC);
-  CHECK(e.eng.nextFundingNs() == 75 * SEC);
+  CHECK(e.eng.nextFundingNs().raw() == 75 * SEC);
 
   // Clearing the schedule falls back to the config derivation.
-  e.eng.submit(InboundCommand{SetFundingSchedule{SYM, 0, 0}}, 69 * SEC);
-  CHECK(e.eng.nextFundingNs() == 72 * SEC);  // 8s grid, first boundary past 69s
+  e.eng.submit(InboundCommand{SetFundingSchedule{SYM, DurationNs{0}, SeqNanos::fromRaw(0)}}, 69 * SEC);
+  CHECK(e.eng.nextFundingNs().raw() == 72 * SEC);  // 8s grid, first boundary past 69s
 }
 
 // An engine that never learned a schedule behaves exactly as it did before the
@@ -437,19 +437,19 @@ void test_no_schedule_falls_back_to_config()
   std::printf("test_no_schedule_falls_back_to_config\n");
   Eng withInterval(perpCfg());
   withInterval.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 9 * SEC);
-  CHECK(withInterval.lastDerivatives()->nextFundingNs == 16 * SEC);
+  CHECK(withInterval.lastDerivatives()->nextFundingNs.raw() == 16 * SEC);
 
   Eng spot(cfg());
   spot.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 9 * SEC);
-  CHECK(spot.lastDerivatives()->nextFundingNs == 0);
+  CHECK(spot.lastDerivatives()->nextFundingNs.raw() == 0);
 
   // A schedule set before the first mark publishes nothing (the feed's standing
   // promise: no mark, no derivatives message) but is in force when one arrives.
   Eng early(perpCfg());
-  early.eng.submit(InboundCommand{SetFundingSchedule{SYM, 10 * SEC, 25 * SEC}}, 1 * SEC);
+  early.eng.submit(InboundCommand{SetFundingSchedule{SYM, DurationNs{10 * SEC}, SeqNanos::fromRaw(25 * SEC)}}, 1 * SEC);
   CHECK(early.lastDerivatives() == nullptr);
   early.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 2 * SEC);
-  CHECK(early.lastDerivatives()->nextFundingNs == 25 * SEC);
+  CHECK(early.lastDerivatives()->nextFundingNs.raw() == 25 * SEC);
 }
 
 // The schedule replays from the journal and survives a checkpoint, like every
@@ -462,7 +462,7 @@ void test_funding_schedule_replays_and_checkpoints()
 
   const std::vector<std::pair<int64_t, InboundCommand>> stream{
       {1 * SEC, InboundCommand{SetMark{SYM, px(100)}}},
-      {2 * SEC, InboundCommand{SetFundingSchedule{SYM, 10 * SEC, 25 * SEC}}},
+      {2 * SEC, InboundCommand{SetFundingSchedule{SYM, DurationNs{10 * SEC}, SeqNanos::fromRaw(25 * SEC)}}},
       {25 * SEC, InboundCommand{ApplyFunding{SYM, 0.0001, px(100)}}},
       {26 * SEC, InboundCommand{SetMark{SYM, px(101)}}},
   };
@@ -477,7 +477,7 @@ void test_funding_schedule_replays_and_checkpoints()
     }
     j.flush();
   }
-  CHECK(live.eng.nextFundingNs() == 35 * SEC);
+  CHECK(live.eng.nextFundingNs().raw() == 35 * SEC);
 
   Eng replayed(perpCfg());
   for (const auto& [ts, c] : Journal::loadTimed(path))
@@ -486,7 +486,7 @@ void test_funding_schedule_replays_and_checkpoints()
   }
   CHECK(replayed.hash == live.hash);  // the published calendar is in the digest
   CHECK(replayed.eng.stateHash() == live.eng.stateHash());
-  CHECK(replayed.eng.nextFundingNs() == 35 * SEC);
+  CHECK(replayed.eng.nextFundingNs().raw() == 35 * SEC);
   std::remove(path.c_str());
 
   Eng restored(perpCfg());
@@ -495,13 +495,13 @@ void test_funding_schedule_replays_and_checkpoints()
   CHECK(r.allApplied);
   CHECK(carriesFunding(r));
   CHECK(restored.eng.stateHash() == live.eng.stateHash());
-  CHECK(restored.eng.nextFundingNs() == 35 * SEC);
+  CHECK(restored.eng.nextFundingNs().raw() == 35 * SEC);
   CHECK(restored.eng.fundingIntervalNs() == 10 * SEC);
   CHECK(restored.eng.fundingRateRaw() == kFundingRateScale / 10'000);
 
   // The restored calendar keeps advancing from where it was, not from config.
   restored.eng.submit(InboundCommand{ApplyFunding{SYM, 0.0001, px(101)}}, 35 * SEC);
-  CHECK(restored.eng.nextFundingNs() == 45 * SEC);
+  CHECK(restored.eng.nextFundingNs().raw() == 45 * SEC);
 }
 
 // ---------------------------------------------------------------------- wire

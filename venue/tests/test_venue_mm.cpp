@@ -47,7 +47,7 @@ SymbolConfig cfg(int64_t llWindow = 0)
   c.tickSize = px(0.01);
   c.minPrice = px(50.0);
   c.maxPrice = px(150.0);
-  c.lastLookWindowNs = llWindow;
+  c.lastLookWindowNs = DurationNs{llWindow};
   return c;
 }
 
@@ -202,7 +202,7 @@ void test_mmp()
   std::printf("test_mmp\n");
   Cap cap;
   MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
-  eng.setMmp(/*account*/ 1, /*qtyLimit*/ qty(10), /*windowNs*/ 1000);
+  eng.setMmp(/*account*/ 1, /*qtyLimit*/ qty(10), DurationNs{1000});
   eng.submit(InboundCommand{limit(1, Side::SELL, 100, 20, 1)}, 0);  // MM rests 20
   eng.submit(InboundCommand{limit(2, Side::BUY, 100, 11, 2)}, 1);   // fills 11 from acct 1 -> breach
   CHECK(cap.count<MmpTriggered>() == 1);

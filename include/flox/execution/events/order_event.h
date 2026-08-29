@@ -72,19 +72,24 @@ enum class MarketPosition : uint8_t
   Crossed,     // our price crosses the opposite side
 };
 
-// Per-lifecycle-stage timestamps stamped by the engine when the
-// corresponding status transition fires. Zero means "not reached
-// yet". Engine-time on backtests, exchange-time on live.
+// Per-lifecycle-stage timestamps stamped when the corresponding status
+// transition fires. Zero means "not reached yet".
+//
+// Domain: UnixNanos on both paths. The backtest stamps them from the
+// simulated wall clock; a live venue reports them in its own wall epoch.
+// "Engine-time on backtests" in the old comment meant the simulated wall
+// clock, not the sequencer -- the two paths were always the same domain, the
+// aliases just could not say so.
 struct OrderTimestamps
 {
-  int64_t submittedAtNs{0};
-  int64_t acceptedAtNs{0};
-  int64_t firstFillAtNs{0};
-  int64_t lastFillAtNs{0};
-  int64_t canceledAtNs{0};
-  int64_t rejectedAtNs{0};
-  int64_t triggeredAtNs{0};
-  int64_t expiredAtNs{0};
+  UnixNanos submittedAtNs{};
+  UnixNanos acceptedAtNs{};
+  UnixNanos firstFillAtNs{};
+  UnixNanos lastFillAtNs{};
+  UnixNanos canceledAtNs{};
+  UnixNanos rejectedAtNs{};
+  UnixNanos triggeredAtNs{};
+  UnixNanos expiredAtNs{};
 };
 
 struct OrderEvent
@@ -136,8 +141,12 @@ struct OrderEvent
   uint64_t tickSequence{0};  // internal, set by bus
 
   MonoNanos recvNs{};
-  uint64_t publishNs{0};
-  int64_t exchangeTsNs{0};
+  // Bus-publish stamp, like every publish stamp in the engine. One bybit path
+  // used to store the venue's createTime here -- a wall epoch in a steady
+  // field, read by nobody; it now stamps mono like its sibling paths, and the
+  // venue's own clock lives where it belongs, in exchangeTsNs.
+  MonoNanos publishNs{};
+  UnixNanos exchangeTsNs{};
 
   void dispatchTo(IOrderExecutionListener& listener) const
   {

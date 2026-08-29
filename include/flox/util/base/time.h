@@ -84,6 +84,11 @@ struct Stamp
   {
     return Stamp{static_cast<Rep>(static_cast<int64_t>(_raw) - d.ns)};
   }
+  constexpr Stamp& operator+=(DurationNs d) noexcept
+  {
+    _raw = static_cast<Rep>(static_cast<int64_t>(_raw) + d.ns);
+    return *this;
+  }
 };
 
 struct UnixTag
@@ -92,14 +97,26 @@ struct UnixTag
 struct MonoTag
 {
 };
+struct SeqTag
+{
+};
 
 }  // namespace detail
 
 using UnixNanos = detail::Stamp<detail::UnixTag, int64_t>;
 using MonoNanos = detail::Stamp<detail::MonoTag, uint64_t>;
 
+// Venue sequencer time: the deterministic clock a matching shard journals.
+// Captured FROM the wall clock at ingestion, but a different domain from that
+// moment on -- a replayed journal re-derives the same SeqNanos values at a
+// completely different wall time, so comparing one against UnixNanos is
+// meaningful exactly once (at capture) and wrong forever after. The type makes
+// that one legitimate crossing explicit and every other one a compile error.
+using SeqNanos = detail::Stamp<detail::SeqTag, int64_t>;
+
 static_assert(sizeof(UnixNanos) == 8 && std::is_trivially_copyable_v<UnixNanos>);
 static_assert(sizeof(MonoNanos) == 8 && std::is_trivially_copyable_v<MonoNanos>);
+static_assert(sizeof(SeqNanos) == 8 && std::is_trivially_copyable_v<SeqNanos>);
 
 using FloxClock = std::chrono::steady_clock;
 using TimePoint = FloxClock::time_point;

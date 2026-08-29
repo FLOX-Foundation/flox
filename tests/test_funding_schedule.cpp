@@ -33,7 +33,7 @@ TEST(FundingSchedule, ConstantIntervalFiresAtBoundaries)
   // Tick at 9h — crossed the 8h boundary once.
   auto p2 = sched.tick(9 * HOUR, {BTC}, {1.0}, {50000.0});
   ASSERT_EQ(p2.size(), 1u);
-  EXPECT_EQ(p2[0].timestampNs, 8 * HOUR);
+  EXPECT_EQ(p2[0].timestampNs.raw(), 8 * HOUR);
   EXPECT_EQ(p2[0].symbol, BTC);
   // long position pays positive funding: 1.0 * 50000 * 0.0001 = 5.0 paid
   EXPECT_NEAR(p2[0].amount, -5.0, 1e-9);
@@ -86,7 +86,7 @@ TEST(FundingSchedule, AdvanceCursorPreventsReplay)
   // Next boundary at 16h.
   auto p3 = sched.tick(17 * HOUR, {BTC}, {1.0}, {50000.0});
   ASSERT_EQ(p3.size(), 1u);
-  EXPECT_EQ(p3[0].timestampNs, 16 * HOUR);
+  EXPECT_EQ(p3[0].timestampNs.raw(), 16 * HOUR);
 }
 
 TEST(FundingSchedule, MultipleBoundariesInSingleTick)
@@ -139,10 +139,10 @@ TEST(FundingSchedule, TapeBySymbolPicksRatePerSymbolPerSettlement)
 {
   // Two symbols, two settlements, four (sym, ts) rates.
   std::vector<FundingTapeEntry> entries = {
-      {8 * HOUR, BTC, 0.0001},
-      {8 * HOUR, ETH, -0.0002},
-      {16 * HOUR, BTC, 0.0003},
-      {16 * HOUR, ETH, 0.00015},
+      {UnixNanos::fromRaw(8 * HOUR), BTC, 0.0001},
+      {UnixNanos::fromRaw(8 * HOUR), ETH, -0.0002},
+      {UnixNanos::fromRaw(16 * HOUR), BTC, 0.0003},
+      {UnixNanos::fromRaw(16 * HOUR), ETH, 0.00015},
   };
   auto sched = FundingSchedule::tapeBySymbol(entries);
 
@@ -166,9 +166,9 @@ TEST(FundingSchedule, TapeBySymbolFallsBackToConstantWhenSymbolMissing)
   // settlement uses the constant-rate fallback for ETH (which we
   // override to a non-zero value to make the difference visible).
   std::vector<FundingTapeEntry> entries = {
-      {8 * HOUR, BTC, 0.0001},
-      {16 * HOUR, BTC, 0.0003},
-      {16 * HOUR, ETH, 0.00015},
+      {UnixNanos::fromRaw(8 * HOUR), BTC, 0.0001},
+      {UnixNanos::fromRaw(16 * HOUR), BTC, 0.0003},
+      {UnixNanos::fromRaw(16 * HOUR), ETH, 0.00015},
   };
   auto sched = FundingSchedule::tapeBySymbol(entries);
   sched.setConstantRate(0.00005);  // fallback for missing (sym, ts)

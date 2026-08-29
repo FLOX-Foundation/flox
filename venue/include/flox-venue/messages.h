@@ -12,6 +12,7 @@
 
 #include "flox-venue/ledger.h"  // AssetId, kMoneyScale (Deposit/Withdraw amounts)
 #include "flox-venue/reject_reason.h"
+#include "flox/util/base/time.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -59,7 +60,7 @@ struct NewOrder
   Price trailingOffset{};      // trailing-stop offset (price distance from extreme)
   bool lastLook{false};        // maker holds a fill for a last-look window before confirming
   bool reduceOnly{false};      // derivatives: may only reduce/close a position, never increase
-  int64_t expiryNs{0};         // GTD: sequencer-ts at/after which a resting order auto-cancels (0 = none)
+  SeqNanos expiryNs{};         // GTD: sequencer time at/after which a resting order auto-cancels (0 = none)
   uint64_t ocoGroup{0};        // OCO: orders sharing a group cancel each other on the first fill (0 = none)
   PegRef peg{PegRef::None};    // peg: re-price to track Bid/Ask/Mid each submit boundary
   int64_t pegOffsetRaw{0};     // signed price offset from the peg reference (raw ticks)
@@ -290,7 +291,7 @@ struct SetRiskLimits
   SymbolId symbol{};
   uint16_t fields{};  // bitmask of RiskLimitField; 0 = no-op
   int32_t luldBps{};
-  int64_t luldHaltNs{};
+  DurationNs luldHaltNs{};  // pause LENGTH -- an interval, not a moment (haltUntil = now + this)
   Quantity maxOrderQty{};
   Volume maxOrderNotional{};
   uint32_t maxOpenOrders{};
@@ -329,8 +330,8 @@ struct TimeTick
 struct SetFundingSchedule
 {
   SymbolId symbol{};
-  int64_t intervalNs{0};     // funding interval (<= 0 clears the schedule)
-  int64_t nextFundingNs{0};  // next settlement boundary, sequencer time (<= 0 clears)
+  DurationNs intervalNs{};   // funding interval (<= 0 clears the schedule)
+  SeqNanos nextFundingNs{};  // next settlement boundary, sequencer time (<= 0 clears)
 };
 
 // ---- Snapshot-only records ------------------------------------------------
@@ -387,7 +388,7 @@ struct RestoreOrder  // one resting book order, applied straight to the TAIL of 
   // emits 0 here; the field exists so the record stays self-contained if a
   // future engine retains the mapping.
   uint64_t clientOrderId{0};
-  int64_t expiryNs{0};   // GTD expiry sequencer-ts (0 = none)
+  SeqNanos expiryNs{};   // GTD expiry, sequencer time (0 = none)
   uint64_t ocoGroup{0};  // OCO group (0 = none)
 };
 
@@ -428,11 +429,11 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   uint64_t makerAccount{};
   Price price{};
   Quantity qty{};
-  int64_t deadline{};
+  SeqNanos deadline{};
   TimeInForce takerTif{TimeInForce::GTC};
   OrderType takerType{OrderType::LIMIT};
   Price takerPrice{};
-  int64_t takerExpiryNs{0};
+  SeqNanos takerExpiryNs{};
   bool makerReduceOnly{false};
   bool takerReduceOnly{false};
   // Whether the maker is in the engine's live-order tracking maps. Normally
@@ -461,7 +462,7 @@ struct RestoreMmpCfg  // market-maker-protection config for one account.
   // window cannot span a restart (see docs/venue/runtime.md).
   uint64_t account{};
   Quantity qtyLimit{};
-  int64_t windowNs{0};
+  DurationNs windowNs{};
 };
 
 inline constexpr uint32_t kClOrdIdBatch = 32;
@@ -533,9 +534,9 @@ struct RestoreMmpFills
 // before the record existed (read compatibility, pinned by a test).
 struct RestoreFunding
 {
-  int64_t fundingRateRaw{0};     // last applied rate, kFundingRateScale
-  int64_t nextFundingNs{0};      // next settlement boundary (0 = no schedule set)
-  int64_t fundingIntervalNs{0};  // schedule interval (0 = no schedule set)
+  int64_t fundingRateRaw{0};       // last applied rate, kFundingRateScale
+  SeqNanos nextFundingNs{};        // next settlement boundary (0 = no schedule set)
+  DurationNs fundingIntervalNs{};  // schedule interval (0 = no schedule set)
 };
 
 struct SnapshotEnd
@@ -845,7 +846,7 @@ struct DerivativesUpdated
   SymbolId symbol{};
   Price mark{};               // last mark price the engine was given (0 before the first SetMark)
   int64_t fundingRateRaw{0};  // last applied rate, kFundingRateScale, per funding interval
-  int64_t nextFundingNs{0};   // next funding boundary (0 = no funding interval configured)
+  SeqNanos nextFundingNs{};   // next funding boundary (0 = no funding interval configured)
   Quantity openInterest{};    // long side of open positions on this symbol
 };
 

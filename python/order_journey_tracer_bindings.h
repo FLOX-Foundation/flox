@@ -55,14 +55,14 @@ inline PyOrderTraceRow toPyRow(const flox::OrderTraceRecord& r)
   out.fill_price = static_cast<double>(r.fillPriceRaw) / 1e8;
   out.queue_ahead = static_cast<double>(r.queueAheadRaw) / 1e8;
   out.queue_total = static_cast<double>(r.queueTotalRaw) / 1e8;
-  out.submitted_at_ns = r.timestamps.submittedAtNs;
-  out.accepted_at_ns = r.timestamps.acceptedAtNs;
-  out.first_fill_at_ns = r.timestamps.firstFillAtNs;
-  out.last_fill_at_ns = r.timestamps.lastFillAtNs;
-  out.canceled_at_ns = r.timestamps.canceledAtNs;
-  out.rejected_at_ns = r.timestamps.rejectedAtNs;
-  out.triggered_at_ns = r.timestamps.triggeredAtNs;
-  out.expired_at_ns = r.timestamps.expiredAtNs;
+  out.submitted_at_ns = r.timestamps.submittedAtNs.raw();
+  out.accepted_at_ns = r.timestamps.acceptedAtNs.raw();
+  out.first_fill_at_ns = r.timestamps.firstFillAtNs.raw();
+  out.last_fill_at_ns = r.timestamps.lastFillAtNs.raw();
+  out.canceled_at_ns = r.timestamps.canceledAtNs.raw();
+  out.rejected_at_ns = r.timestamps.rejectedAtNs.raw();
+  out.triggered_at_ns = r.timestamps.triggeredAtNs.raw();
+  out.expired_at_ns = r.timestamps.expiredAtNs.raw();
   return out;
 }
 }  // namespace

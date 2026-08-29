@@ -184,7 +184,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->mark.raw()));
     h = mix(h, static_cast<uint64_t>(x->fundingRateRaw));
-    h = mix(h, static_cast<uint64_t>(x->nextFundingNs));
+    h = mix(h, static_cast<uint64_t>(x->nextFundingNs.raw()));
     h = mix(h, static_cast<uint64_t>(x->openInterest.raw()));
   }
   return h;

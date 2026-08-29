@@ -94,7 +94,7 @@ void OrderJourneyTracer::onOrderEvent(const OrderEvent& ev)
   rec.seq = trace.empty() ? 0u : trace.back().seq + 1u;
   rec.status = static_cast<uint8_t>(ev.status);
   rec.isMaker = ev.isMaker ? 1 : 0;
-  rec.tsNs = ev.exchangeTsNs;
+  rec.tsNs = ev.exchangeTsNs.raw();  // trace record: raw wire layout
   rec.fillQtyRaw = ev.fillQty.raw();
   rec.fillPriceRaw = ev.fillPrice.raw();
   rec.queueAheadRaw = ev.queueAhead.raw();
@@ -188,9 +188,9 @@ double OrderJourneyTracer::medianAckLatencyNs() const
   {
     for (const auto& rec : trace)
     {
-      if (rec.timestamps.acceptedAtNs > 0 && rec.timestamps.submittedAtNs > 0)
+      if (rec.timestamps.acceptedAtNs && rec.timestamps.submittedAtNs)
       {
-        samples.push_back(rec.timestamps.acceptedAtNs - rec.timestamps.submittedAtNs);
+        samples.push_back((rec.timestamps.acceptedAtNs - rec.timestamps.submittedAtNs).count());
         break;
       }
     }
@@ -206,9 +206,9 @@ double OrderJourneyTracer::medianTimeToFirstFillNs() const
   {
     for (const auto& rec : trace)
     {
-      if (rec.timestamps.firstFillAtNs > 0 && rec.timestamps.submittedAtNs > 0)
+      if (rec.timestamps.firstFillAtNs && rec.timestamps.submittedAtNs)
       {
-        samples.push_back(rec.timestamps.firstFillAtNs - rec.timestamps.submittedAtNs);
+        samples.push_back((rec.timestamps.firstFillAtNs - rec.timestamps.submittedAtNs).count());
         break;
       }
     }

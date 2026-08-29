@@ -389,7 +389,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
         OrderEvent ev;
         ev.status = OrderEventStatus::REJECTED;
         ev.order = accepted;
-        ev.exchangeTsNs = _clock.nowNs().raw();
+        ev.exchangeTsNs = _clock.nowNs();
         ev.timestamps = timestampsFor(accepted.id);
         ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
         ev.rejectReason = reason;
@@ -465,7 +465,7 @@ stp_done:
       OrderEvent ev;
       ev.status = OrderEventStatus::REJECTED;
       ev.order = accepted;
-      ev.exchangeTsNs = _clock.nowNs().raw();
+      ev.exchangeTsNs = _clock.nowNs();
       ev.timestamps = timestampsFor(accepted.id);
       ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
       ev.rejectReason = "reduce_only";
@@ -520,7 +520,7 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
         OrderEvent ev;
         ev.status = OrderEventStatus::REJECTED;
         ev.order = accepted;
-        ev.exchangeTsNs = _clock.nowNs().raw();
+        ev.exchangeTsNs = _clock.nowNs();
         ev.timestamps = timestampsFor(accepted.id);
         ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
         if (fromAck)
@@ -570,7 +570,7 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
       OrderEvent ev;
       ev.status = OrderEventStatus::REJECTED;
       ev.order = accepted;
-      ev.exchangeTsNs = _clock.nowNs().raw();
+      ev.exchangeTsNs = _clock.nowNs();
       ev.timestamps = timestampsFor(accepted.id);
       ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
       ev.rejectReason = (_fokMode == FokMode::SinglePrice && canCross && !exactLevel)
@@ -871,7 +871,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
         ev.status = OrderEventStatus::REPLACE_SUBMITTED;
         ev.order = order;
         ev.newOrder = newOrder;
-        ev.exchangeTsNs = _clock.nowNs().raw();
+        ev.exchangeTsNs = _clock.nowNs();
         ev.timestamps = timestampsFor(order.id);
         if (_callback)
         {
@@ -895,7 +895,7 @@ void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
       ev.status = OrderEventStatus::REPLACED;
       ev.order = oldOrder;
       ev.newOrder = newOrder;
-      ev.exchangeTsNs = _clock.nowNs().raw();
+      ev.exchangeTsNs = _clock.nowNs();
       if (_callback)
       {
         _callback(ev);
@@ -1603,7 +1603,7 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
   ev.fillQty = qty;
   ev.fillPrice = price;
   ev.isMaker = isMaker;
-  ev.exchangeTsNs = now.raw();
+  ev.exchangeTsNs = now;
   ev.status =
       (order.filledQuantity >= order.quantity) ? OrderEventStatus::FILLED : OrderEventStatus::PARTIALLY_FILLED;
   if (auto snap = _queueTracker.snapshot(order.id))
@@ -1612,11 +1612,11 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
     ev.queueTotal = snap->total;
   }
   auto& ts = timestampsFor(order.id);
-  if (ts.firstFillAtNs == 0)
+  if (!ts.firstFillAtNs)
   {
-    ts.firstFillAtNs = now.raw();
+    ts.firstFillAtNs = now;
   }
-  ts.lastFillAtNs = now.raw();
+  ts.lastFillAtNs = now;
   ev.timestamps = ts;
 
   if (_callback)
@@ -1646,27 +1646,28 @@ void SimulatedExecutor::emitEvent(OrderEventStatus status, const Order& order)
   {
     return;
   }
-  const int64_t nowNs = _clock.nowNs().raw();
+  const UnixNanos nowT = _clock.nowNs();
+  const int64_t nowNs = nowT.raw();
   auto& ts = timestampsFor(order.id);
   switch (status)
   {
     case OrderEventStatus::SUBMITTED:
-      ts.submittedAtNs = nowNs;
+      ts.submittedAtNs = nowT;
       break;
     case OrderEventStatus::ACCEPTED:
-      ts.acceptedAtNs = nowNs;
+      ts.acceptedAtNs = nowT;
       break;
     case OrderEventStatus::CANCELED:
-      ts.canceledAtNs = nowNs;
+      ts.canceledAtNs = nowT;
       break;
     case OrderEventStatus::REJECTED:
-      ts.rejectedAtNs = nowNs;
+      ts.rejectedAtNs = nowT;
       break;
     case OrderEventStatus::TRIGGERED:
-      ts.triggeredAtNs = nowNs;
+      ts.triggeredAtNs = nowT;
       break;
     case OrderEventStatus::EXPIRED:
-      ts.expiredAtNs = nowNs;
+      ts.expiredAtNs = nowT;
       break;
     default:
       break;
@@ -1674,7 +1675,7 @@ void SimulatedExecutor::emitEvent(OrderEventStatus status, const Order& order)
   OrderEvent ev;
   ev.status = status;
   ev.order = order;
-  ev.exchangeTsNs = nowNs;
+  ev.exchangeTsNs = nowT;
   ev.timestamps = ts;
   _callback(ev);
 }
@@ -1711,7 +1712,7 @@ void SimulatedExecutor::maybeEmitQueuePositionChanges()
     ev.order = *ord;
     ev.queueAhead = snap.ahead;
     ev.queueTotal = snap.total;
-    ev.exchangeTsNs = _clock.nowNs().raw();
+    ev.exchangeTsNs = _clock.nowNs();
     ev.timestamps = timestampsFor(snap.orderId);
     _callback(ev);
     _lastEmittedQueueAheadRaw[snap.orderId] = snap.ahead.raw();
@@ -1801,7 +1802,7 @@ void SimulatedExecutor::finalizePendingReplaces()
     accepted.status = OrderEventStatus::REPLACE_ACCEPTED;
     accepted.order = oldSnapshot;
     accepted.newOrder = newOrder;
-    accepted.exchangeTsNs = now;
+    accepted.exchangeTsNs = UnixNanos::fromRaw(now);
     accepted.timestamps = timestampsFor(orderId);
     _callback(accepted);
 
@@ -1811,7 +1812,7 @@ void SimulatedExecutor::finalizePendingReplaces()
     replaced.status = OrderEventStatus::REPLACED;
     replaced.order = oldSnapshot;
     replaced.newOrder = newOrder;
-    replaced.exchangeTsNs = now;
+    replaced.exchangeTsNs = UnixNanos::fromRaw(now);
     replaced.timestamps = timestampsFor(orderId);
     _callback(replaced);
   }
@@ -1877,7 +1878,7 @@ void SimulatedExecutor::resolveLateReplaceOnFill(const Order& order)
     ev.order = it->oldSnapshot;
     ev.newOrder = it->newOrder;
     ev.rejectReason = "late_replace_after_fill";
-    ev.exchangeTsNs = _clock.nowNs().raw();
+    ev.exchangeTsNs = _clock.nowNs();
     ev.timestamps = timestampsFor(order.id);
     _callback(ev);
     *it = _pendingReplaces.back();
@@ -2037,7 +2038,7 @@ void SimulatedExecutor::maybeEmitMarketPositionChanges()
     ev.order = o;
     ev.marketPosition = pos;
     ev.distanceToBestTicks = dist;
-    ev.exchangeTsNs = _clock.nowNs().raw();
+    ev.exchangeTsNs = _clock.nowNs();
     ev.timestamps = timestampsFor(o.id);
     _callback(ev);
   }
@@ -2143,7 +2144,7 @@ void SimulatedExecutor::resolveLateCancelOnFill(const Order& order)
     ev.status = OrderEventStatus::REJECTED;
     ev.order = order;
     ev.rejectReason = "late_cancel_after_fill";
-    ev.exchangeTsNs = _clock.nowNs().raw();
+    ev.exchangeTsNs = _clock.nowNs();
     ev.timestamps = timestampsFor(order.id);
     _callback(ev);
     *it = _pendingCancels.back();
@@ -2170,7 +2171,7 @@ void SimulatedExecutor::emitTrailingUpdate(const Order& order, Price newTrigger)
     ev.status = OrderEventStatus::TRAILING_UPDATED;
     ev.order = order;
     ev.newTrailingPrice = newTrigger;
-    ev.exchangeTsNs = _clock.nowNs().raw();
+    ev.exchangeTsNs = _clock.nowNs();
     _callback(ev);
   }
 }

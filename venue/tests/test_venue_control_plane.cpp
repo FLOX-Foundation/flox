@@ -228,8 +228,8 @@ TEST(ControlPlane, EngineSuite)
   CHECK(closeCmd != nullptr && closeCmd->action == AdminAction::CloseSession &&
         closeCmd->symbol == 7);
   const auto* fundCmd = std::get_if<SetFundingSchedule>(&forwarded[9]);
-  CHECK(fundCmd != nullptr && fundCmd->symbol == 7 && fundCmd->intervalNs == 28'800'000'000'000LL &&
-        fundCmd->nextFundingNs == 100);
+  CHECK(fundCmd != nullptr && fundCmd->symbol == 7 && fundCmd->intervalNs.count() == 28'800'000'000'000LL &&
+        fundCmd->nextFundingNs.raw() == 100);
 
   // Replaying the forwarded commands into a FRESH registry reproduces the
   // configuration -- the stream is the configuration store.

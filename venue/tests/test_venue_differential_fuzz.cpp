@@ -134,7 +134,7 @@ InboundCommand genCommand(uint64_t& s, uint64_t seq, OrderId& nextId)
     else if (t < 42)
     {
       o.tif = TimeInForce::GTD;  // some expire, some never
-      o.expiryNs = static_cast<int64_t>((r >> 40) % 2'000'000);
+      o.expiryNs = SeqNanos::fromRaw(static_cast<int64_t>((r >> 40) % 2'000'000));
     }
     else if (t < 50)
     {

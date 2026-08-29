@@ -77,16 +77,16 @@ TEST(OrderTimestamps, SubmittedAcceptedStampedOnLimit)
       accepted = ev;
     }
   }
-  EXPECT_NE(submitted.timestamps.submittedAtNs, 0);
-  EXPECT_NE(accepted.timestamps.submittedAtNs, 0);
-  EXPECT_NE(accepted.timestamps.acceptedAtNs, 0);
+  EXPECT_TRUE(static_cast<bool>(submitted.timestamps.submittedAtNs));
+  EXPECT_TRUE(static_cast<bool>(accepted.timestamps.submittedAtNs));
+  EXPECT_TRUE(static_cast<bool>(accepted.timestamps.acceptedAtNs));
   // ack timestamp is at least as large as submit (same clock tick in this
   // sim is fine since they fire back-to-back).
   EXPECT_GE(accepted.timestamps.acceptedAtNs,
             accepted.timestamps.submittedAtNs);
   // Stages not reached yet read zero.
-  EXPECT_EQ(accepted.timestamps.firstFillAtNs, 0);
-  EXPECT_EQ(accepted.timestamps.canceledAtNs, 0);
+  EXPECT_FALSE(static_cast<bool>(accepted.timestamps.firstFillAtNs));
+  EXPECT_FALSE(static_cast<bool>(accepted.timestamps.canceledAtNs));
 }
 
 TEST(OrderTimestamps, FirstAndLastFillStampedOnPartialFlow)
@@ -125,7 +125,7 @@ TEST(OrderTimestamps, FirstAndLastFillStampedOnPartialFlow)
     }
   }
   ASSERT_TRUE(sawFirst);
-  EXPECT_NE(firstFill.timestamps.firstFillAtNs, 0);
+  EXPECT_TRUE(static_cast<bool>(firstFill.timestamps.firstFillAtNs));
   EXPECT_EQ(firstFill.timestamps.firstFillAtNs,
             firstFill.timestamps.lastFillAtNs);
   // Last fill keeps the original first-fill timestamp but updates lastFill.
@@ -156,8 +156,8 @@ TEST(OrderTimestamps, CanceledAtStampedOnCancel)
     if (ev.status == OrderEventStatus::CANCELED && ev.order.id == 42)
     {
       sawCancel = true;
-      EXPECT_NE(ev.timestamps.canceledAtNs, 0);
-      EXPECT_NE(ev.timestamps.submittedAtNs, 0);
+      EXPECT_TRUE(static_cast<bool>(ev.timestamps.canceledAtNs));
+      EXPECT_TRUE(static_cast<bool>(ev.timestamps.submittedAtNs));
       EXPECT_GT(ev.timestamps.canceledAtNs, ev.timestamps.submittedAtNs);
     }
   }
@@ -183,7 +183,7 @@ TEST(OrderTimestamps, MarketOrderFillStampsFirstFillImmediately)
     if (ev.status == OrderEventStatus::FILLED && ev.order.id == 7)
     {
       sawFill = true;
-      EXPECT_NE(ev.timestamps.firstFillAtNs, 0);
+      EXPECT_TRUE(static_cast<bool>(ev.timestamps.firstFillAtNs));
       EXPECT_EQ(ev.timestamps.firstFillAtNs, ev.timestamps.lastFillAtNs);
     }
   }

@@ -1972,14 +1972,14 @@ FloxOrderTraceRow toCapiRow(const flox::OrderTraceRecord& r)
   row.fill_price_raw = r.fillPriceRaw;
   row.queue_ahead_raw = r.queueAheadRaw;
   row.queue_total_raw = r.queueTotalRaw;
-  row.submitted_at_ns = r.timestamps.submittedAtNs;
-  row.accepted_at_ns = r.timestamps.acceptedAtNs;
-  row.first_fill_at_ns = r.timestamps.firstFillAtNs;
-  row.last_fill_at_ns = r.timestamps.lastFillAtNs;
-  row.canceled_at_ns = r.timestamps.canceledAtNs;
-  row.rejected_at_ns = r.timestamps.rejectedAtNs;
-  row.triggered_at_ns = r.timestamps.triggeredAtNs;
-  row.expired_at_ns = r.timestamps.expiredAtNs;
+  row.submitted_at_ns = r.timestamps.submittedAtNs.raw();
+  row.accepted_at_ns = r.timestamps.acceptedAtNs.raw();
+  row.first_fill_at_ns = r.timestamps.firstFillAtNs.raw();
+  row.last_fill_at_ns = r.timestamps.lastFillAtNs.raw();
+  row.canceled_at_ns = r.timestamps.canceledAtNs.raw();
+  row.rejected_at_ns = r.timestamps.rejectedAtNs.raw();
+  row.triggered_at_ns = r.timestamps.triggeredAtNs.raw();
+  row.expired_at_ns = r.timestamps.expiredAtNs.raw();
   return row;
 }
 }  // namespace
@@ -3258,7 +3258,7 @@ void flox_backtest_result_record_fill(FloxBacktestResultHandle h, uint64_t order
   fill.side = (side == 0) ? Side::BUY : Side::SELL;
   fill.price = Price::fromDouble(price);
   fill.quantity = Quantity::fromDouble(quantity);
-  fill.timestampNs = static_cast<UnixNanos>(timestamp_ns);
+  fill.timestampNs = UnixNanos::fromRaw(timestamp_ns);
   static_cast<FloxBacktestResultImpl*>(h)->result->recordFill(fill);
 }
 
@@ -9500,7 +9500,7 @@ extern "C" void flox_funding_schedule_set_tape_by_symbol(
   for (uint32_t i = 0; i < n; ++i)
   {
     flox::FundingTapeEntry e;
-    e.timestampNs = timestamps_ns ? timestamps_ns[i] : 0;
+    e.timestampNs = UnixNanos::fromRaw(timestamps_ns ? timestamps_ns[i] : 0);
     e.symbol = symbols ? static_cast<flox::SymbolId>(symbols[i])
                        : flox::FundingTapeEntry::kAnySymbol;
     e.rate = rates ? rates[i] : 0.0;
@@ -9580,7 +9580,7 @@ extern "C" uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int6
   uint32_t n = std::min<uint32_t>(max_events, static_cast<uint32_t>(events.size()));
   for (uint32_t i = 0; i < n; ++i)
   {
-    out_buf[i * 6 + 0] = static_cast<double>(events[i].timestampNs);
+    out_buf[i * 6 + 0] = static_cast<double>(events[i].timestampNs.raw());
     out_buf[i * 6 + 1] = static_cast<double>(events[i].symbol);
     out_buf[i * 6 + 2] = events[i].rate;
     out_buf[i * 6 + 3] = events[i].markPrice;
