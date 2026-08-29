@@ -226,6 +226,7 @@ nav:
       - explanation/README.md
       - Architecture: explanation/architecture.md
       - Bar Types: explanation/bar-types.md
+      - Clock Domains: explanation/clock-domains.md
       - Disruptor Pattern: explanation/disruptor.md
       - Memory Model: explanation/memory-model.md
       - Integration Flow: explanation/integration-flow.md
