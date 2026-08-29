@@ -11,9 +11,16 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The real gate. A required reviewer on this environment pauses every run
+    # for manual approval in the UI -- a platform control that neither a
+    # compromised token nor an edited workflow file can skip. The app key
+    # lives in this environment's secrets, so no job outside the gate can
+    # read it.
+    environment: release
     permissions:
       contents: write
     steps:
+      # Defense in depth only; the environment above is what actually gates.
       - name: Restrict manual trigger
         if: github.actor != 'eeiaao'
         run: |
@@ -27,11 +34,21 @@ jobs:
             exit 1
           fi
 
+      # Short-lived installation token from the release app: minted per run,
+      # dies in minutes, scoped to this repository. Replaces the fine-grained
+      # PAT that expired twice and was readable by any workflow on any branch.
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/setup-node@v5
         with:
