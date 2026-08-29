@@ -1003,7 +1003,7 @@ class FundingPayment:
     def symbol(self) -> int:
         ...
     @property
-    def timestamp_ns(self) -> ...:
+    def timestamp_ns(self) -> int:
         ...
 class FundingSchedule:
     @staticmethod
@@ -1065,13 +1065,11 @@ class FundingTapeEntry:
     def symbol(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
     @property
-    def timestamp_ns(self) -> ...:
+    def timestamp_ns(self) -> int:
         ...
     @timestamp_ns.setter
-    def timestamp_ns(*args, **kwargs):
-        """
-        (self: flox_py._flox_py.FundingTapeEntry, arg0: flox::detail::Stamp<flox::detail::UnixTag, long long>) -> None
-        """
+    def timestamp_ns(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None:
+        ...
 class GaussianLatency(LatencyModel):
     """
     Independent normal samples per component, clamped to non-negative. Stddev <= 0 collapses the component to a deterministic mean.

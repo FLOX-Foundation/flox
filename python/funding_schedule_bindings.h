@@ -22,7 +22,9 @@ namespace flox_py
 inline void bindFundingSchedule(py::module_& m)
 {
   py::class_<flox::FundingPayment>(m, "FundingPayment")
-      .def_readonly("timestamp_ns", &flox::FundingPayment::timestampNs)
+      // UnixNanos has no pybind caster on purpose; Python keeps integer ns.
+      .def_property_readonly("timestamp_ns", [](const flox::FundingPayment& p)
+                             { return p.timestampNs.raw(); })
       .def_readonly("symbol", &flox::FundingPayment::symbol)
       .def_readonly("rate", &flox::FundingPayment::rate)
       .def_readonly("mark_price", &flox::FundingPayment::markPrice)
@@ -31,7 +33,11 @@ inline void bindFundingSchedule(py::module_& m)
 
   py::class_<flox::FundingTapeEntry>(m, "FundingTapeEntry")
       .def(py::init<>())
-      .def_readwrite("timestamp_ns", &flox::FundingTapeEntry::timestampNs)
+      .def_property(
+          "timestamp_ns", [](const flox::FundingTapeEntry& e)
+          { return e.timestampNs.raw(); },
+          [](flox::FundingTapeEntry& e, int64_t v)
+          { e.timestampNs = flox::UnixNanos::fromRaw(v); })
       .def_readwrite("symbol", &flox::FundingTapeEntry::symbol)
       .def_readwrite("rate", &flox::FundingTapeEntry::rate);
 

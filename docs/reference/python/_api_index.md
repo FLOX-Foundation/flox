@@ -766,7 +766,7 @@ Footprint bar for order flow analysis. Tracks bid/ask volume at each price level
 - *property* `position_signed: float`
 - *property* `rate: float`
 - *property* `symbol: int`
-- *property* `timestamp_ns: ...`
+- *property* `timestamp_ns: int`
 
 ### `class FundingSchedule`
 
@@ -805,8 +805,8 @@ Footprint bar for order flow analysis. Tracks bid/ask volume at each price level
 - *property* `rate: None`
 - *property* `symbol: int`
 - *property* `symbol: None`
-- *property* `timestamp_ns: ...`
-- *property* `timestamp_ns: Any`
+- *property* `timestamp_ns: int`
+- *property* `timestamp_ns: None`
 
 ### `class GaussianLatency(LatencyModel)`
 
