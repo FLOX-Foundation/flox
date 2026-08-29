@@ -155,7 +155,7 @@ void test_spot_conservation()
         if (t < 15)
         {
           o.tif = TimeInForce::GTD;
-          o.expiryNs = i + 1 + static_cast<int64_t>((r >> 40) % 50);  // expires soon
+          o.expiryNs = SeqNanos::fromRaw(i + 1 + static_cast<int64_t>((r >> 40) % 50));  // expires soon
         }
         else if (t < 25)
         {
@@ -250,8 +250,8 @@ void test_spot_conservation_lastlook()
   c.maxPrice = px(150);
   c.baseAsset = BASE;
   c.quoteAsset = QUOTE;
-  c.lastLookWindowNs = 40;           // fuzz time = op index, so holds expire quickly
-  c.lastLookAcceptOnTimeout = true;  // timeout-accept settles like a real fill
+  c.lastLookWindowNs = DurationNs{40};  // fuzz time = op index, so holds expire quickly
+  c.lastLookAcceptOnTimeout = true;     // timeout-accept settles like a real fill
   std::unordered_map<OrderId, uint64_t> acctOf;
   std::vector<std::pair<uint64_t, uint64_t>> pendingHolds;  // (heldId, makerAccount)
   uint64_t totalHolds = 0;

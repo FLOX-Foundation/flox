@@ -11,6 +11,7 @@
 
 #include "flox/common.h"
 #include "flox/log/log.h"
+#include "flox/util/base/time.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -30,7 +31,7 @@ namespace flox
 struct FundingTapeEntry
 {
   static constexpr SymbolId kAnySymbol = 0;
-  int64_t timestampNs{0};
+  UnixNanos timestampNs{};  // wall epoch: funding archives are venue history
   SymbolId symbol{kAnySymbol};
   double rate{0.0};
 };
@@ -43,7 +44,7 @@ struct FundingTapeEntry
 // negative funding.
 struct FundingPayment
 {
-  int64_t timestampNs{0};
+  UnixNanos timestampNs{};  // wall epoch: stamped from the (simulated) wall clock
   SymbolId symbol{};
   double rate{0.0};
   double markPrice{0.0};
@@ -161,7 +162,7 @@ class FundingSchedule
       try
       {
         FundingTapeEntry e;
-        e.timestampNs = static_cast<int64_t>(std::stoll(tsStr));
+        e.timestampNs = UnixNanos::fromRaw(std::stoll(tsStr));
         e.symbol = static_cast<SymbolId>(std::stoul(symStr));
         e.rate = std::stod(rateStr);
         rows.push_back(e);
@@ -269,7 +270,7 @@ class FundingSchedule
             continue;
           }
           FundingPayment p;
-          p.timestampNs = t;
+          p.timestampNs = UnixNanos::fromRaw(t);
           p.symbol = symbols[i];
           p.rate = _constantRate;
           p.markPrice = markPrices[i];
@@ -298,7 +299,7 @@ class FundingSchedule
           }
           const double rate = rateFor(symbols[i], ts);
           FundingPayment p;
-          p.timestampNs = ts;
+          p.timestampNs = UnixNanos::fromRaw(ts);
           p.symbol = symbols[i];
           p.rate = rate;
           p.markPrice = markPrices[i];
@@ -341,7 +342,7 @@ class FundingSchedule
     bool wildcardSet = false;
     for (const auto& e : _perSymbolTape)
     {
-      if (e.timestampNs != ts)
+      if (e.timestampNs.raw() != ts)
       {
         continue;
       }
@@ -368,9 +369,9 @@ class FundingSchedule
     for (const auto& e : _perSymbolTape)
     {
       if (_settlementTimestamps.empty() ||
-          _settlementTimestamps.back() != e.timestampNs)
+          _settlementTimestamps.back() != e.timestampNs.raw())
       {
-        _settlementTimestamps.push_back(e.timestampNs);
+        _settlementTimestamps.push_back(e.timestampNs.raw());
       }
     }
   }
@@ -384,7 +385,7 @@ class FundingSchedule
     for (const auto& [ts, rate] : _tape)
     {
       FundingTapeEntry e;
-      e.timestampNs = ts;
+      e.timestampNs = UnixNanos::fromRaw(ts);
       e.symbol = FundingTapeEntry::kAnySymbol;
       e.rate = rate;
       _perSymbolTape.push_back(e);

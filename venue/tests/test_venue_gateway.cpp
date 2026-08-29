@@ -82,7 +82,7 @@ void test_sbe_oe_roundtrip()
   o.reduceOnly = true;
   o.lastLook = true;
   o.peg = PegRef::Mid;
-  o.expiryNs = 1'700'000'000'000;
+  o.expiryNs = SeqNanos::fromRaw(1'700'000'000'000);
   o.ocoGroup = 99;
   o.pegOffsetRaw = -250;
 
@@ -100,7 +100,7 @@ void test_sbe_oe_roundtrip()
   CHECK(n->accountId == 77 && n->clientOrderId == 12345);
   // Derivatives / MM / advanced-order fields survive the wire round-trip.
   CHECK(n->reduceOnly && n->lastLook && n->peg == PegRef::Mid);
-  CHECK(n->expiryNs == 1'700'000'000'000 && n->ocoGroup == 99 && n->pegOffsetRaw == -250);
+  CHECK(n->expiryNs.raw() == 1'700'000'000'000 && n->ocoGroup == 99 && n->pegOffsetRaw == -250);
 
   SbeOrderEntryCodec::encode(InboundCommand{CancelOrder{42, SYM, 77}}, buf);
   auto bc = SbeOrderEntryCodec::decode(buf.data(), buf.size());

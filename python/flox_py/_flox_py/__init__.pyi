@@ -1068,7 +1068,7 @@ class FundingTapeEntry:
     def timestamp_ns(self) -> int:
         ...
     @timestamp_ns.setter
-    def timestamp_ns(self, arg0: typing.SupportsInt | typing.SupportsIndex) -> None:
+    def timestamp_ns(self, arg1: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
 class GaussianLatency(LatencyModel):
     """

@@ -41,6 +41,18 @@ constexpr bool kImplicitFromInt = std::is_convertible_v<int64_t, T>;
 template <typename T>
 constexpr bool kImplicitToInt = std::is_convertible_v<T, int64_t>;
 
+static_assert(!kCrossAssignable<UnixNanos, SeqNanos>,
+              "sequencer time is not wall time: a replayed journal re-derives "
+              "the same SeqNanos at a different wall moment");
+static_assert(!kCrossAssignable<SeqNanos, UnixNanos>,
+              "the one legitimate crossing (capture) goes through fromRaw, named");
+static_assert(!kCrossAssignable<SeqNanos, MonoNanos> && !kCrossAssignable<MonoNanos, SeqNanos>,
+              "sequencer and steady never meet");
+static_assert(!kCrossSubtractable<UnixNanos, SeqNanos> && !kCrossSubtractable<SeqNanos, MonoNanos>,
+              "cross-domain intervals are fiction in every pairing");
+static_assert(!kIntAssignable<SeqNanos> && !kImplicitFromInt<SeqNanos> && !kImplicitToInt<SeqNanos>,
+              "SeqNanos holds the same no-implicit-integer line as the other two");
+
 static_assert(!kCrossAssignable<UnixNanos, MonoNanos>,
               "a monotonic reading must not assign into a wall-clock field");
 static_assert(!kCrossAssignable<MonoNanos, UnixNanos>,

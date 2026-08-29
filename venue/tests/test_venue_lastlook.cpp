@@ -67,7 +67,7 @@ venue::SymbolConfig cfg(int64_t llWindow = 1000, bool acceptOnTimeout = false)
   c.tickSize = px(0.01);
   c.minPrice = px(50.0);
   c.maxPrice = px(150.0);
-  c.lastLookWindowNs = llWindow;
+  c.lastLookWindowNs = DurationNs{llWindow};
   c.lastLookAcceptOnTimeout = acceptOnTimeout;
   return c;
 }

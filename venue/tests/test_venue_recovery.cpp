@@ -315,7 +315,7 @@ TEST(VenueRecovery, TimedReplayReproducesLastLookExpiry)
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
-  c.lastLookWindowNs = 5'000;  // five clock steps
+  c.lastLookWindowNs = DurationNs{5'000};  // five clock steps
   c.lastLookAcceptOnTimeout = false;
 
   HashSink sink;

@@ -514,7 +514,7 @@ void runAll(const std::function<Book()>& mk, const char* label)
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
     NewOrder o = limit(1, Side::BUY, 99, 5, 1);
     o.tif = TimeInForce::GTD;
-    o.expiryNs = 1000;
+    o.expiryNs = SeqNanos::fromRaw(1000);
     eng.submit(InboundCommand{o}, 100);  // rests at t=100
     CHECK(cap.accepts() == 1);
     eng.submit(InboundCommand{limit(2, Side::BUY, 98, 1, 2)}, 500);  // t=500, not expired

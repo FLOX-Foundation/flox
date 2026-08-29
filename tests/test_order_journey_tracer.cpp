@@ -24,8 +24,8 @@ OrderEvent makeSubmittedEvent(OrderId id, int64_t ts)
   OrderEvent ev{};
   ev.status = OrderEventStatus::SUBMITTED;
   ev.order.id = id;
-  ev.exchangeTsNs = ts;
-  ev.timestamps.submittedAtNs = ts;
+  ev.exchangeTsNs = UnixNanos::fromRaw(ts);
+  ev.timestamps.submittedAtNs = UnixNanos::fromRaw(ts);
   return ev;
 }
 
@@ -34,9 +34,9 @@ OrderEvent makeAcceptedEvent(OrderId id, int64_t submittedAt, int64_t acceptedAt
   OrderEvent ev{};
   ev.status = OrderEventStatus::ACCEPTED;
   ev.order.id = id;
-  ev.exchangeTsNs = acceptedAt;
-  ev.timestamps.submittedAtNs = submittedAt;
-  ev.timestamps.acceptedAtNs = acceptedAt;
+  ev.exchangeTsNs = UnixNanos::fromRaw(acceptedAt);
+  ev.timestamps.submittedAtNs = UnixNanos::fromRaw(submittedAt);
+  ev.timestamps.acceptedAtNs = UnixNanos::fromRaw(acceptedAt);
   return ev;
 }
 
@@ -46,13 +46,13 @@ OrderEvent makeFillEvent(OrderId id, int64_t submittedAt, int64_t firstFillAt,
   OrderEvent ev{};
   ev.status = OrderEventStatus::FILLED;
   ev.order.id = id;
-  ev.exchangeTsNs = firstFillAt;
+  ev.exchangeTsNs = UnixNanos::fromRaw(firstFillAt);
   ev.fillQty = Quantity::fromDouble(1.0);
   ev.fillPrice = Price::fromDouble(100.0);
   ev.isMaker = isMaker;
-  ev.timestamps.submittedAtNs = submittedAt;
-  ev.timestamps.firstFillAtNs = firstFillAt;
-  ev.timestamps.lastFillAtNs = firstFillAt;
+  ev.timestamps.submittedAtNs = UnixNanos::fromRaw(submittedAt);
+  ev.timestamps.firstFillAtNs = UnixNanos::fromRaw(firstFillAt);
+  ev.timestamps.lastFillAtNs = UnixNanos::fromRaw(firstFillAt);
   return ev;
 }
 }  // namespace

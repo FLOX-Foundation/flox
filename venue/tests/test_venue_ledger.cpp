@@ -437,7 +437,7 @@ void test_gtd_binds_conditional_orders()
   stop.type = OrderType::STOP_MARKET;
   stop.triggerPrice = px(50);  // far from any print: never triggers
   stop.tif = TimeInForce::GTD;
-  stop.expiryNs = 1000;
+  stop.expiryNs = SeqNanos::fromRaw(1000);
   eng.submit(InboundCommand{stop}, 10);
 
   // Any later command drives the deterministic sweep past the deadline.

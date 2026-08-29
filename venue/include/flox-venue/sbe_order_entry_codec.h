@@ -147,7 +147,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, n->reduceOnly ? 1 : 0);
       sbe::putU8(out, n->lastLook ? 1 : 0);
       sbe::putU8(out, static_cast<uint8_t>(n->peg));
-      sbe::putI64(out, n->expiryNs);
+      sbe::putI64(out, n->expiryNs.raw());
       sbe::putU64(out, n->ocoGroup);
       sbe::putI64(out, n->pegOffsetRaw);
     }
@@ -213,7 +213,7 @@ class SbeOrderEntryCodec
         o.reduceOnly = b[73] != 0;
         o.lastLook = b[74] != 0;
         o.peg = static_cast<PegRef>(b[75]);
-        o.expiryNs = sbe::getI64(b + 76);
+        o.expiryNs = SeqNanos::fromRaw(sbe::getI64(b + 76));
         o.ocoGroup = sbe::getU64(b + 84);
         o.pegOffsetRaw = sbe::getI64(b + 92);
         return InboundCommand{o};

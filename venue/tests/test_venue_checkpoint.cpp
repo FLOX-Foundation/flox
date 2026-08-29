@@ -270,8 +270,8 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
     else if (t < 45)
     {
       o.tif = TimeInForce::GTD;
-      o.expiryNs = 1'000'000 + static_cast<int64_t>(i) * 1000 +
-                   (1 + static_cast<int64_t>((r >> 40) % 60)) * 1000;
+      o.expiryNs = SeqNanos::fromRaw(1'000'000 + static_cast<int64_t>(i) * 1000 +
+                                     (1 + static_cast<int64_t>((r >> 40) % 60)) * 1000);
     }
     else if (t < 53)
     {
@@ -318,7 +318,7 @@ TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
-  c.lastLookWindowNs = 10'000'000;
+  c.lastLookWindowNs = DurationNs{10'000'000};
 
   Ledger led;
   MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
@@ -340,7 +340,7 @@ TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
   eng.submit(InboundCommand{stop}, 6000);
   NewOrder gtd = limit(5, Side::BUY, 99.0, 2.0, 2);
   gtd.tif = TimeInForce::GTD;
-  gtd.expiryNs = 50'000'000;
+  gtd.expiryNs = SeqNanos::fromRaw(50'000'000);
   eng.submit(InboundCommand{gtd}, 7000);
 
   {
@@ -381,7 +381,7 @@ TEST(VenueCheckpoint, DifferentialRandomSessionCheckpointInvisible)
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
-  c.lastLookWindowNs = 20'000;  // 20 clock steps: holds open and expire mid-stream
+  c.lastLookWindowNs = DurationNs{20'000};  // 20 clock steps: holds open and expire mid-stream
   c.lastLookAcceptOnTimeout = false;
 
   Ledger led1;
@@ -543,7 +543,7 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
-  c.lastLookWindowNs = 100'000'000;  // survives the restart window
+  c.lastLookWindowNs = DurationNs{100'000'000};  // survives the restart window
   c.lastLookAcceptOnTimeout = false;
 
   Ledger led1;
@@ -552,7 +552,7 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
   auto s1 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
                                                clockOf(t1));
   s1->engine().setLedger(&led1, VENUE_ACCT);
-  s1->engine().setMmp(1, qty(100.0), 1'000'000'000);
+  s1->engine().setMmp(1, qty(100.0), DurationNs{1'000'000'000});
   s1->subscribeOutbound(&sink1);
   s1->start();
 
@@ -573,7 +573,7 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
   s1->submit(InboundCommand{ice});
   NewOrder gtd = limit(4, Side::BUY, 99.00, 2.0, 2);
   gtd.tif = TimeInForce::GTD;
-  gtd.expiryNs = 5'000'000;
+  gtd.expiryNs = SeqNanos::fromRaw(5'000'000);
   s1->submit(InboundCommand{gtd});
   NewOrder ocoBook = limit(5, Side::BUY, 98.00, 2.0, 2);
   ocoBook.ocoGroup = 7;
@@ -1060,7 +1060,7 @@ TEST(VenueCheckpoint, ConservationHoldsAcrossPeriodicCheckpoints)
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
-  c.lastLookWindowNs = 40'000;
+  c.lastLookWindowNs = DurationNs{40'000};
   c.lastLookAcceptOnTimeout = true;  // timeout-accepts settle like real fills
 
   Ledger led1;
@@ -1348,7 +1348,7 @@ TEST(VenueCheckpoint, MmpWindowRestoredExactly)
   std::vector<OutboundEvent> evA;
   MatchingEngine<MatchingBook> a(c, [&](const OutboundEvent& e)
                                  { evA.push_back(e); });
-  a.setMmp(1, qty(10.0), 1'000'000'000);
+  a.setMmp(1, qty(10.0), DurationNs{1'000'000'000});
 
   // Two fills, 9.0 total inside the window: one unit below the limit.
   a.submit(InboundCommand{limit(1, Side::SELL, 100.00, 4.0, 1)}, 1000);

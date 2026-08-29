@@ -13156,6 +13156,11 @@
           "name": "SegmentWriter"
         },
         {
+          "header": "include/flox/util/base/time.h",
+          "kind": "type",
+          "name": "SeqTag"
+        },
+        {
           "header": "include/flox/strategy/shadow.h",
           "kind": "type",
           "name": "ShadowComparator"
@@ -19737,16 +19742,6 @@
         },
         {
           "kind": "method",
-          "name": "fromFloxNs",
-          "parent": "MonoTag"
-        },
-        {
-          "kind": "method",
-          "name": "fromRaw",
-          "parent": "MonoTag"
-        },
-        {
-          "kind": "method",
           "name": "addListener",
           "parent": "MultiExecutionListener"
         },
@@ -22749,6 +22744,16 @@
           "kind": "method",
           "name": "writeManifest",
           "parent": "SegmentWriter"
+        },
+        {
+          "kind": "method",
+          "name": "fromFloxNs",
+          "parent": "SeqTag"
+        },
+        {
+          "kind": "method",
+          "name": "fromRaw",
+          "parent": "SeqTag"
         },
         {
           "kind": "method",

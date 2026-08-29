@@ -361,7 +361,7 @@ class MarketDataPublisher
     m.price = d.mark;
     m.qty = d.openInterest;
     m.fundingRateRaw = d.fundingRateRaw;
-    m.nextFundingNs = d.nextFundingNs;
+    m.nextFundingNs = d.nextFundingNs.raw();  // MD wire: raw ns
     emit(m);
     derivatives_ = ring_.back();
     derivativesValid_ = true;

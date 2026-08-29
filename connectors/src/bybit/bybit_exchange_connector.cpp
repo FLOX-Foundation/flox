@@ -660,8 +660,8 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.quantity = *qtyOpt;
         ev.order.filledQuantity = Quantity::fromDouble(*filledOpt);
 
-        ev.exchangeTsNs = msToNs(d["updatedTime"].get_int64().value());
-        ev.publishNs = msToNs(d["createTime"].get_int64().value());
+        ev.exchangeTsNs = msToUnixNs(d["updatedTime"].get_int64().value());
+        ev.publishNs = nowMonoNanos();
 
         std::string_view status = d["orderStatus"].get_string().value();
         if (status == "New")
@@ -693,7 +693,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           ev.status = OrderEventStatus::SUBMITTED;
         }
 
-        ev.publishNs = nowNsMonotonic();
+        ev.publishNs = nowMonoNanos();
         _orderBus->publish(std::move(ev));
       }
     }
@@ -727,18 +727,18 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 
         if (auto et = d["execTime"]; !et.error())
         {
-          ev.exchangeTsNs = msToNs(et.get_int64().value());
+          ev.exchangeTsNs = msToUnixNs(et.get_int64().value());
         }
         else if (auto ts = d["ts"]; !ts.error())
         {
-          ev.exchangeTsNs = msToNs(ts.get_int64().value());
+          ev.exchangeTsNs = msToUnixNs(ts.get_int64().value());
         }
 
         ev.status = (d["execType"].get_string().value() == "Trade")
                         ? OrderEventStatus::PARTIALLY_FILLED
                         : OrderEventStatus::SUBMITTED;
 
-        ev.publishNs = nowNsMonotonic();
+        ev.publishNs = nowMonoNanos();
         _orderBus->publish(std::move(ev));
       }
     }

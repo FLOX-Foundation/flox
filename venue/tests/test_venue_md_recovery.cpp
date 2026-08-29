@@ -649,7 +649,7 @@ void test_status_and_derivatives_over_multicast_and_recovery()
   MarketDataPublisher<> md([&](const MdMessage& m)
                            { udpPub.publish(m); }, px(0.01), SYM);
   SymbolConfig c = cfg();
-  c.fundingIntervalNs = 8'000'000'000LL;
+  c.fundingIntervalNs = DurationNs{8'000'000'000LL};
   MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);

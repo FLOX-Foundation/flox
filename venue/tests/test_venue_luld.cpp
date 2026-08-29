@@ -44,8 +44,8 @@ SymbolConfig cfg()
   c.tickSize = px(0.01);
   c.minPrice = px(1.0);
   c.maxPrice = px(1000.0);
-  c.luldBps = 500;      // +/- 5%
-  c.luldHaltNs = 1000;  // 1000 ns pause
+  c.luldBps = 500;                  // +/- 5%
+  c.luldHaltNs = DurationNs{1000};  // 1000 ns pause
   return c;
 }
 NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct = 1)
@@ -128,7 +128,7 @@ TEST(Luld, EngineSuite)
     c.minPrice = px(1.0);
     c.maxPrice = px(5e7);
     c.luldBps = 9999;  // +/- 99.99%
-    c.luldHaltNs = 1000;
+    c.luldHaltNs = DurationNs{1000};
     MatchingEngine<MatchingBook> heng(c, hc.sink());
     heng.submit(InboundCommand{limit(1, Side::SELL, 1e7, 5, 1)}, 0);
     heng.submit(InboundCommand{limit(2, Side::BUY, 1e7, 3, 2)}, 1);  // trade @1e7 -> last=1e7
