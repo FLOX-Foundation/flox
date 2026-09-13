@@ -9,6 +9,7 @@
 
 #include "flox-connectors/bitget/bitget_order_executor.h"
 #include "flox-connectors/bitget/authenticated_rest_client.h"
+#include "flox-connectors/execution/order_tif.h"
 
 #include <flox/common.h>
 #include <flox/engine/symbol_registry.h>
@@ -65,6 +66,51 @@ static std::string trimDouble(double v, int max_decimals = 1)
   }
   return s;
 }
+
+namespace
+{
+
+std::string_view bitgetForceToken(NormalizedTif tif)
+{
+  switch (tif)
+  {
+    case NormalizedTif::GTC:
+      return "gtc";
+    case NormalizedTif::IOC:
+      return "ioc";
+    case NormalizedTif::FOK:
+      return "fok";
+    case NormalizedTif::POST_ONLY:
+      return "post_only";
+    case NormalizedTif::UNSUPPORTED:
+      return "";
+  }
+  return "";
+}
+
+// tradeSide/posSide only get sent once the account's position mode is
+// actually known. Sending them unconditionally off reduceOnly alone (the
+// pre-fix behaviour) meant the field's meaning depended on an account
+// setting this connector never tracked (CONN-08).
+void appendPositionFields(std::string& body, const Order& order, const Bitget::Params& params)
+{
+  if (params.positionMode != Bitget::PositionMode::Hedge)
+  {
+    return;
+  }
+  body.append("\"tradeSide\":\"").append(order.flags.reduceOnly ? "close" : "open").append("\",");
+  const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
+  if (holdSide == HoldSide::Long)
+  {
+    body.append("\"posSide\":\"long\",");
+  }
+  else if (holdSide == HoldSide::Short)
+  {
+    body.append("\"posSide\":\"short\",");
+  }
+}
+
+}  // namespace
 
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int leverage)
@@ -163,8 +209,19 @@ void BitgetOrderExecutorT<Policies>::submitOrderWithLeverage(const Order& order,
           return;
         }
 
+        if (order.type == OrderType::TRAILING_STOP || order.type == OrderType::ICEBERG)
+        {
+          publishRejection(order, "order type not implemented by this connector");
+          return;
+        }
+
         bool isMarket = (order.type == OrderType::MARKET);
-        std::string_view tradeSide = order.flags.reduceOnly ? "close" : "open";
+        const NormalizedTif tif = normalizeTif(order.timeInForce, order.flags.postOnly);
+        if (!isMarket && tif == NormalizedTif::UNSUPPORTED)
+        {
+          publishRejection(order, "Bitget has no native good-till-date order");
+          return;
+        }
 
         std::string body;
         body.reserve(384);
@@ -189,31 +246,15 @@ void BitgetOrderExecutorT<Policies>::submitOrderWithLeverage(const Order& order,
           body.append("\"price\":\"").append(order.price.toString()).append("\",");
         }
 
-        body.append("\"side\":\"")
-            .append(order.side == Side::BUY ? "buy" : "sell")
-            .append("\",")
-            .append("\"tradeSide\":\"")
-            .append(tradeSide)
-            .append("\",")
-            .append("\"orderType\":\"")
-            .append(isMarket ? "market" : "limit")
-            .append("\",");
+        body.append("\"side\":\"").append(order.side == Side::BUY ? "buy" : "sell").append("\",");
 
-        // Hedge-mode posSide hint. Bitget requires this when the account is
-        // in hedge_mode; ignored in one_way_mode.
-        const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
-        if (holdSide == HoldSide::Long)
-        {
-          body.append("\"posSide\":\"long\",");
-        }
-        else if (holdSide == HoldSide::Short)
-        {
-          body.append("\"posSide\":\"short\",");
-        }
+        appendPositionFields(body, order, _params);
+
+        body.append("\"orderType\":\"").append(isMarket ? "market" : "limit").append("\",");
 
         if (!isMarket)
         {
-          body.append("\"force\":\"").append(_params.forcePolicy).append("\",");
+          body.append("\"force\":\"").append(bitgetForceToken(tif)).append("\",");
         }
 
         if (slPrice > 0)
@@ -281,10 +322,32 @@ void BitgetOrderExecutorT<Policies>::publishRejection(const Order& order, const 
   }
 }
 
+// A client-side rate-limit rejection never reached the venue and left no
+// trace anywhere -- the tracker (if any record existed) kept reporting the
+// order active with no signal that a cancel or replace silently never left
+// the process (CONN-05). Deliberately does not touch OrderTracker: unlike
+// publishRejection, there was no submission attempt to mark rejected.
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::publishRateLimited(const Order& order)
+{
+  if (_orderBus)
+  {
+    OrderEvent ev;
+    ev.status = OrderEventStatus::REJECTED_RATE_LIMIT;
+    ev.order = order;
+    ev.rejectReason = "client-side rate limit";
+    _orderBus->publish(std::move(ev));
+  }
+}
+
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-  if (!_policies.rateLimit.tryAcquire(order.id))
+  if (!_policies.rateLimit.tryAcquire(order.id,
+                                      [this, &order]
+                                      {
+                                        publishRateLimited(order);
+                                      }))
   {
     return;
   }
@@ -307,8 +370,25 @@ void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
     return;
   }
 
+  if (order.type == OrderType::TRAILING_STOP)
+  {
+    publishRejection(order, "Bitget trailing stop is not implemented by this connector");
+    return;
+  }
+  if (order.type == OrderType::ICEBERG)
+  {
+    publishRejection(order, "Bitget iceberg (visible-quantity) orders are not implemented");
+    return;
+  }
+
   bool isMarket = (order.type == OrderType::MARKET);
-  std::string_view tradeSide = order.flags.reduceOnly ? "close" : "open";
+
+  const NormalizedTif tif = normalizeTif(order.timeInForce, order.flags.postOnly);
+  if (!isMarket && tif == NormalizedTif::UNSUPPORTED)
+  {
+    publishRejection(order, "Bitget has no native good-till-date order");
+    return;
+  }
 
   std::string body;
   body.reserve(256);
@@ -333,32 +413,17 @@ void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
     body.append("\"price\":\"").append(order.price.toString()).append("\",");
   }
 
-  body.append("\"side\":\"")
-      .append(order.side == Side::BUY ? "buy" : "sell")
-      .append("\",")
-      .append("\"tradeSide\":\"")
-      .append(tradeSide)
-      .append("\",")
-      .append("\"orderType\":\"")
-      .append(isMarket ? "market" : "limit")
-      .append("\",");
+  body.append("\"side\":\"").append(order.side == Side::BUY ? "buy" : "sell").append("\",");
 
-  // Hedge-mode posSide hint.
-  {
-    const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
-    if (holdSide == HoldSide::Long)
-    {
-      body.append("\"posSide\":\"long\",");
-    }
-    else if (holdSide == HoldSide::Short)
-    {
-      body.append("\"posSide\":\"short\",");
-    }
-  }
+  appendPositionFields(body, order, _params);
+
+  body.append("\"orderType\":\"").append(isMarket ? "market" : "limit").append("\",");
 
   if (!isMarket)
   {
-    body.append("\"force\":\"").append(_params.forcePolicy).append("\",");
+    // force carries the order's own timeInForce/postOnly now, not a static
+    // config value that ignored per-order intent (CONN-02).
+    body.append("\"force\":\"").append(bitgetForceToken(tif)).append("\",");
   }
 
   body.append("\"clientOid\":\"").append(std::to_string(order.id)).append("\"}");
@@ -397,8 +462,6 @@ void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const SymbolInfo& info)
 {
-  std::string_view tradeSide = order.flags.reduceOnly ? "close" : "open";
-
   std::string body;
   body.reserve(320);
   body.append("{\"planType\":\"normal_plan\",")
@@ -423,24 +486,11 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
       .append("\"triggerType\":\"mark_price\",")
       .append("\"side\":\"")
       .append(order.side == Side::BUY ? "buy" : "sell")
-      .append("\",")
-      .append("\"tradeSide\":\"")
-      .append(tradeSide)
-      .append("\",")
-      .append("\"orderType\":\"market\",");
+      .append("\",");
 
-  // Hedge-mode posSide hint.
-  {
-    const auto holdSide = static_cast<HoldSide>(order.flags.holdSide);
-    if (holdSide == HoldSide::Long)
-    {
-      body.append("\"posSide\":\"long\",");
-    }
-    else if (holdSide == HoldSide::Short)
-    {
-      body.append("\"posSide\":\"short\",");
-    }
-  }
+  appendPositionFields(body, order, _params);
+
+  body.append("\"orderType\":\"market\",");
 
   body.append("\"clientOid\":\"").append(std::to_string(order.id)).append("\"}");
 
@@ -478,15 +528,22 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
 {
-  if (!_policies.rateLimit.tryAcquire(id))
-  {
-    return;
-  }
-
   auto st = _orderTracker->get(id);
   if (!st)
   {
     FLOX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
+    return;
+  }
+
+  // Looked up before the rate-limit check so a rejected cancel can still be
+  // reported against the order it targeted (CONN-05) instead of vanishing
+  // with no event while the tracker keeps reporting the order active.
+  if (!_policies.rateLimit.tryAcquire(id,
+                                      [this, &st]
+                                      {
+                                        publishRateLimited(st->localOrder);
+                                      }))
+  {
     return;
   }
 
@@ -555,15 +612,19 @@ void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::replaceOrder(OrderId oldId, const Order& newOrd)
 {
-  if (!_policies.rateLimit.tryAcquire(oldId))
-  {
-    return;
-  }
-
   auto st = _orderTracker->get(oldId);
   if (!st)
   {
     FLOX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
+    return;
+  }
+
+  if (!_policies.rateLimit.tryAcquire(oldId,
+                                      [this, &st]
+                                      {
+                                        publishRateLimited(st->localOrder);
+                                      }))
+  {
     return;
   }
 

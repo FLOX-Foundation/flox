@@ -13,10 +13,12 @@
 
 #include <flox/engine/symbol_registry.h>
 #include <flox/execution/abstract_executor.h>
+#include <flox/execution/bus/order_execution_bus.h>
 #include <flox/execution/order.h>
 #include <flox/execution/order_tracker.h>
 
 #include <memory>
+#include <string>
 
 namespace flox
 {
@@ -95,11 +97,21 @@ class BybitOrderExecutorT : public IOrderExecutor
   void cancelOrder(OrderId orderId) override;
   void replaceOrder(OrderId oldOrderId, const Order& newOrder) override;
 
+  // Without this, a venue rejection was logged and dropped: no event on any
+  // bus, no tracker record, and (since clearPending() ran before the
+  // retCode check) the timeout watchdog disarmed itself at the exact moment
+  // it should have fired. Bitget already has this; Bybit did not.
+  void setOrderBus(OrderExecutionBus* bus) { _orderBus = bus; }
+
  private:
+  void publishRejection(const Order& order, const std::string& reason);
+  void publishRateLimited(const Order& order);
+
   std::unique_ptr<AuthenticatedRestClient> _client;
   SymbolRegistry* _registry;
   OrderTracker* _orderTracker;
   Policies _policies;
+  OrderExecutionBus* _orderBus = nullptr;
 };
 
 using BybitOrderExecutor = BybitOrderExecutorT<NoPolicies>;

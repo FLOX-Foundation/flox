@@ -48,8 +48,11 @@ class PolymarketExchangeConnector : public IExchangeConnector
   void handleMessage(std::string_view payload);
 
  private:
-  void processBookSnapshot(simdjson::ondemand::object obj, uint64_t recvNs);
-  void processPriceChanges(simdjson::ondemand::object obj, uint64_t recvNs);
+  // exchangeTs is the venue-supplied timestamp for this message (read once,
+  // outside these functions, via a fresh re-parse so field access here stays
+  // forward-only regardless of where "timestamp" sits in the payload).
+  void processBookSnapshot(simdjson::ondemand::object obj, uint64_t recvNs, UnixNanos exchangeTs);
+  void processPriceChanges(simdjson::ondemand::object obj, uint64_t recvNs, UnixNanos exchangeTs);
   void sendSubscribe(const std::vector<std::string>& tokenIds, const std::string& operation);
 
   PolymarketConfig _config;

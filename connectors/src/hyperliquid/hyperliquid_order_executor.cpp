@@ -8,6 +8,7 @@
  */
 
 #include "flox-connectors/hyperliquid/hyperliquid_order_executor.h"
+#include "flox-connectors/execution/order_tif.h"
 #include "flox-connectors/hyperliquid/hl_signer.h"
 #include "flox-connectors/net/curl_transport.h"
 
@@ -67,6 +68,61 @@ std::string genCloid128()
   return oss.str();
 }
 
+// Hyperliquid's tif token spelling for the "limit" order-type object. Alo =
+// Add Liquidity Only, HL's post-only. There is no native FOK or
+// good-till-date tif on this venue.
+std::string_view hlTifToken(NormalizedTif tif)
+{
+  switch (tif)
+  {
+    case NormalizedTif::GTC:
+      return "Gtc";
+    case NormalizedTif::IOC:
+      return "Ioc";
+    case NormalizedTif::POST_ONLY:
+      return "Alo";
+    case NormalizedTif::FOK:
+    case NormalizedTif::UNSUPPORTED:
+      return "";
+  }
+  return "";
+}
+
+// This connector only ever builds HL's "limit" order-type object (used for
+// both resting limit orders and, per HL's own SDK convention, IOC-priced
+// market orders). Stop/take-profit/trailing need HL's separate "trigger"
+// order shape and trailing has no server-side primitive on HL at all; none
+// of that is implemented here. Returns the tif token to send, or empty if
+// the order should be rejected outright -- silently sending an
+// unsupported order type as a plain resting Gtc limit is how CONN-01/
+// CONN-02 happened (a strategy believing a stop or an IOC/reduce-only
+// order exists on the venue when what actually rests there is neither).
+std::optional<std::string_view> hlOrderTifOrReject(const Order& order)
+{
+  if (order.type == OrderType::STOP_MARKET || order.type == OrderType::STOP_LIMIT ||
+      order.type == OrderType::TAKE_PROFIT_MARKET || order.type == OrderType::TAKE_PROFIT_LIMIT ||
+      order.type == OrderType::TRAILING_STOP || order.type == OrderType::ICEBERG)
+  {
+    return std::nullopt;
+  }
+
+  if (order.type == OrderType::MARKET)
+  {
+    // HL has no distinct market-order primitive; the standard SDK
+    // convention is an IOC limit at a slippage-adjusted price, which the
+    // caller already supplied via order.price.
+    return "Ioc";
+  }
+
+  const NormalizedTif tif = normalizeTif(order.timeInForce, order.flags.postOnly);
+  const auto token = hlTifToken(tif);
+  if (token.empty())
+  {
+    return std::nullopt;
+  }
+  return token;
+}
+
 }  // namespace
 
 template <typename Policies>
@@ -80,6 +136,24 @@ HyperliquidOrderExecutorT<Policies>::HyperliquidOrderExecutorT(
       _orderTracker(orderTracker),
       _logger(std::move(logger)),
       _transport(std::make_unique<CurlTransport>()),
+      _accountAddress(std::move(accountAddress)),
+      _vaultAddress(std::move(vaultAddress)),
+      _mainnet(mainnet)
+{
+  loadAssetIds();
+}
+
+template <typename Policies>
+HyperliquidOrderExecutorT<Policies>::HyperliquidOrderExecutorT(
+    std::unique_ptr<ITransport> transport, std::string url, std::string privateKey,
+    SymbolRegistry* registry, OrderTracker* orderTracker, std::shared_ptr<ILogger> logger,
+    std::string accountAddress, std::optional<std::string> vaultAddress, bool mainnet)
+    : _url(std::move(url)),
+      _privateKey(std::move(privateKey)),
+      _registry(registry),
+      _orderTracker(orderTracker),
+      _logger(std::move(logger)),
+      _transport(std::move(transport)),
       _accountAddress(std::move(accountAddress)),
       _vaultAddress(std::move(vaultAddress)),
       _mainnet(mainnet)
@@ -233,6 +307,15 @@ void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
     return;
   }
 
+  auto tifToken = hlOrderTifOrReject(order);
+  if (!tifToken)
+  {
+    FLOX_LOG_ERROR("[HL] order type " << static_cast<int>(order.type)
+                                      << " is not supported by this connector (id=" << order.id
+                                      << ")");
+    return;
+  }
+
   const std::string px = tidy(order.price.toDouble(), 8);
   const std::string qty = tidy(order.quantity.toDouble(), 8);
 
@@ -244,8 +327,8 @@ void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
   orderObj += ",\"b\":" + std::string(order.side == Side::BUY ? "true" : "false");
   orderObj += ",\"p\":\"" + px + "\"";
   orderObj += ",\"s\":\"" + qty + "\"";
-  orderObj += ",\"r\":false";
-  orderObj += ",\"t\":{\"limit\":{\"tif\":\"Gtc\"}}";
+  orderObj += ",\"r\":" + std::string(order.flags.reduceOnly ? "true" : "false");
+  orderObj += ",\"t\":{\"limit\":{\"tif\":\"" + std::string(*tifToken) + "\"}}";
   orderObj += ",\"c\":\"" + cloid + "\"}";
 
   std::string actionJson =
@@ -465,6 +548,15 @@ void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const
     return;
   }
 
+  auto tifToken = hlOrderTifOrReject(n);
+  if (!tifToken)
+  {
+    FLOX_LOG_ERROR("[HL] replaceOrder: order type "
+                   << static_cast<int>(n.type)
+                   << " is not supported by this connector (oldLocalId=" << oldLocalId << ")");
+    return;
+  }
+
   const std::string px = tidy(n.price.toDouble(), 8);
   const std::string qty = tidy(n.quantity.toDouble(), 8);
 
@@ -474,8 +566,8 @@ void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const
   orderObj += ",\"b\":" + std::string(n.side == Side::BUY ? "true" : "false");
   orderObj += ",\"p\":\"" + px + "\"";
   orderObj += ",\"s\":\"" + qty + "\"";
-  orderObj += ",\"r\":false";
-  orderObj += ",\"t\":{\"limit\":{\"tif\":\"Gtc\"}}";
+  orderObj += ",\"r\":" + std::string(n.flags.reduceOnly ? "true" : "false");
+  orderObj += ",\"t\":{\"limit\":{\"tif\":\"" + std::string(*tifToken) + "\"}}";
   orderObj += ",\"c\":\"" + cloid + "\"}";
 
   std::string action = "{\"type\":\"modify\",\"oid\":" + exId + ",\"order\":" + orderObj + "}";

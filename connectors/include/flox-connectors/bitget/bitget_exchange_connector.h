@@ -64,6 +64,13 @@ class BitgetExchangeConnector : public IExchangeConnector
                           TradeBus* tradeBus, OrderExecutionBus* orderBus, SymbolRegistry* registry,
                           std::shared_ptr<ILogger> logger);
 
+  // _pingThread is a joinable std::thread once start() has run; destroying it
+  // joinable is std::terminate. stop() already joins it, so the destructor
+  // only needs to make sure stop() has happened on every teardown path, not
+  // just the ones that call it explicitly. Same pattern as
+  // BybitExchangeConnector.
+  ~BitgetExchangeConnector() override { stop(); }
+
   void start() override;
   void stop() override;
 

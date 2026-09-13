@@ -43,12 +43,29 @@ inline std::string_view category(InstrumentType type)
   return "mix";
 }
 
+// Bitget's account-level position mode. tradeSide (open/close) and posSide
+// (long/short) only mean what the venue's mix v2 API documents them to mean
+// once the caller's account mode is known; sending them unconditionally,
+// derived only from reduceOnly, is what CONN-08 flagged. This makes the mode
+// an explicit input instead of an assumption baked into every request body.
+enum class PositionMode
+{
+  OneWay,
+  Hedge,
+};
+
 struct Params
 {
   std::string productType;
   std::string marginCoin;
   std::string marginMode;
+  // Unused by the executor: "force" (GTC/IOC/FOK/post_only) is now derived
+  // per order from Order::timeInForce / ExecutionFlags::postOnly, not from
+  // one static value applied to every order regardless of what it asked
+  // for. Kept on the struct for source compatibility with existing config
+  // loaders that set it.
   std::string forcePolicy;
+  PositionMode positionMode = PositionMode::OneWay;
 };
 
 }  // namespace Bitget
@@ -145,6 +162,7 @@ class BitgetOrderExecutorT : public IOrderExecutor
  private:
   void submitPlanOrder(const Order& order, const SymbolInfo& info);
   void publishRejection(const Order& order, const std::string& reason);
+  void publishRateLimited(const Order& order);
 
   std::unique_ptr<BitgetAuthenticatedRestClient> _client;
   SymbolRegistry* _registry;
