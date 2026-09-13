@@ -119,14 +119,14 @@ class BybitExchangeConnector : public IExchangeConnector
   std::unordered_map<SymbolId, BookSeqState> _bookSeq;
   std::atomic<uint64_t> _bookGapCount{0};
 
-  // Cumulative filled quantity last reported for each order via the
+  // Filled quantity known so far for each order, last reported via the
   // "order" topic. The order-topic message carries the venue's cumulative
   // fill state (cumExecQty), not a per-message delta; this lets the
   // handler derive the incremental fillQty that OrderEvent::dispatchTo()
-  // needs for onOrderPartiallyFilled(order, fillQty) -- previously left at
-  // its default of zero on every fill (CONN-09). Only touched from the
+  // needs for onOrderPartiallyFilled(order, fillQty), which used to be
+  // left at its default of zero on every fill. Only touched from the
   // private-stream callback, so no additional locking.
-  std::unordered_map<OrderId, Quantity> _lastCumFilled;
+  std::unordered_map<OrderId, Quantity> _filledSoFar;
 
   std::shared_ptr<ILogger> _logger;
 

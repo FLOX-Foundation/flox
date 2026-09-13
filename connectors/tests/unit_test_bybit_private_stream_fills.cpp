@@ -6,7 +6,7 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Offline protocol test (CONN-09): Bybit's private "order" and "execution"
+ * Offline protocol test: Bybit's private "order" and "execution"
  * WS topics used to leave OrderEvent::fillQty at its default of zero on
  * every partial fill, so the canonical typed callback
  * IOrderExecutionListener::onOrderPartiallyFilled(order, fillQty) -- the

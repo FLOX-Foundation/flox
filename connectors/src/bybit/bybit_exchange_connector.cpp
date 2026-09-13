@@ -737,24 +737,22 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           ev.status = OrderEventStatus::SUBMITTED;
         }
 
-        // The "order" topic reports cumulative filled quantity, not a
-        // per-message delta; OrderEvent::dispatchTo() needs the delta for
-        // onOrderPartiallyFilled(order, fillQty), which was always 0
-        // before (CONN-09) because nothing here ever set ev.fillQty.
+        // Cumulative-to-delta conversion for fillQty; see _filledSoFar's
+        // declaration for why this is needed.
         {
-          auto prevIt = _lastCumFilled.find(ev.order.id);
-          Quantity previous = (prevIt != _lastCumFilled.end()) ? prevIt->second : Quantity{};
+          auto prevIt = _filledSoFar.find(ev.order.id);
+          Quantity previous = (prevIt != _filledSoFar.end()) ? prevIt->second : Quantity{};
           ev.fillQty = (ev.order.filledQuantity.raw() > previous.raw())
                            ? Quantity::fromRaw(ev.order.filledQuantity.raw() - previous.raw())
                            : Quantity{};
           if (ev.status == OrderEventStatus::CANCELED || ev.status == OrderEventStatus::REJECTED ||
               ev.status == OrderEventStatus::EXPIRED || ev.status == OrderEventStatus::FILLED)
           {
-            _lastCumFilled.erase(ev.order.id);
+            _filledSoFar.erase(ev.order.id);
           }
           else
           {
-            _lastCumFilled[ev.order.id] = ev.order.filledQuantity;
+            _filledSoFar[ev.order.id] = ev.order.filledQuantity;
           }
         }
 
@@ -792,7 +790,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         // (a) fabricated an order size equal to whatever fraction happened
         // to fill and (b) left ev.fillQty (the field dispatchTo() actually
         // hands to onOrderPartiallyFilled) at its default of zero on every
-        // partial fill (CONN-09). orderQty/leavesQty are the documented
+        // partial fill. orderQty/leavesQty are the documented
         // Bybit V5 execution-topic fields for the order's real size and
         // remaining size; when present they replace the guess, and when
         // absent order.quantity/filledQuantity are left unset (0) rather
