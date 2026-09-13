@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 729 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 72 groups.
+**Surface:** 730 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 72 groups.
 
 ## Opaque handles
 
@@ -426,6 +426,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `book_updates_read` | `uint64_t` |
 | `bytes_read` | `uint64_t` |
 | `crc_errors` | `uint64_t` |
+| `late_dropped` | `uint64_t` |
+| `unknown_frames_skipped` | `uint64_t` |
 
 ### `FloxTradeRecord`
 
@@ -1041,6 +1043,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 ### datareader
 
 - `FloxDataReaderHandle flox_data_reader_create_filtered(const char * data_dir, int64_t from_ns, int64_t to_ns, const uint32_t * symbols, uint32_t num_symbols)`
+- `FloxDataReaderHandle flox_data_reader_create_ordered(const char * data_dir, int64_t from_ns, int64_t to_ns, const uint32_t * symbols, uint32_t num_symbols, int64_t reorder_window_ns, int32_t strict_ordering)`
 - `FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle reader)`
 - `FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle reader)`
 - `uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader, FloxTradeRecord * trades_out, uint64_t max_trades)`

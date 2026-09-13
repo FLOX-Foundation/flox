@@ -117,6 +117,13 @@ std::unique_ptr<SegmentBuffer> ParallelReader::readSegment(const SegmentInfo& se
     iter.seekToTimestamp(*_config.from_ns);
   }
 
+  // Only a segment the writer marked Sorted is guaranteed monotonic, and only
+  // then can the first event past the upper bound end the walk. On an
+  // unsorted segment that shortcut dropped everything behind a single out-of
+  // order frame, so this path disagreed with the single-threaded reader on
+  // the same file.
+  const bool ordered = iter.header().isSorted();
+
   ReplayEvent event;
   while (iter.next(event))
   {
@@ -127,7 +134,11 @@ std::unique_ptr<SegmentBuffer> ParallelReader::readSegment(const SegmentInfo& se
     }
     if (_config.to_ns.has_value() && event.timestamp_ns > *_config.to_ns)
     {
-      break;  // Events are ordered by time
+      if (ordered)
+      {
+        break;
+      }
+      continue;
     }
 
     // Apply symbol filter

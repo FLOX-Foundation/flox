@@ -75,6 +75,7 @@ add_flox_test(test_event_bus)
 
 # Replay tests
 add_flox_test(test_binary_log)
+add_flox_test(test_replay_tape_integrity)
 add_flox_test(test_delta_book)
 add_flox_test(test_replay_connector)
 add_flox_test(test_aggregator_framework)

@@ -163,7 +163,26 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     int64_t from = info.Length() > 1 && (info[1].IsNumber() || info[1].IsBigInt()) ? toInt64Ns(info[1]) : 0;
     int64_t to = info.Length() > 2 && (info[2].IsNumber() || info[2].IsBigInt()) ? toInt64Ns(info[2]) : 0;
     // TODO: symbol filter array
-    _h = flox_data_reader_create_filtered(dir.c_str(), from, to, nullptr, 0);
+    int64_t reorderWindowNs = 0;
+    int32_t strictOrdering = 0;
+    if (info.Length() > 3 && info[3].IsObject())
+    {
+      Napi::Object opts = info[3].As<Napi::Object>();
+      if (opts.Has("reorderWindowNs"))
+      {
+        Napi::Value v = opts.Get("reorderWindowNs");
+        if (v.IsNumber() || v.IsBigInt())
+        {
+          reorderWindowNs = toInt64Ns(v);
+        }
+      }
+      if (opts.Has("strictOrdering"))
+      {
+        strictOrdering = opts.Get("strictOrdering").ToBoolean().Value() ? 1 : 0;
+      }
+    }
+    _h = flox_data_reader_create_ordered(dir.c_str(), from, to, nullptr, 0, reorderWindowNs,
+                                         strictOrdering);
   }
   ~DataReaderWrap()
   {
@@ -197,6 +216,8 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
     o.Set("bookUpdatesRead", (double)s.book_updates_read);
     o.Set("bytesRead", (double)s.bytes_read);
     o.Set("crcErrors", (double)s.crc_errors);
+    o.Set("lateDropped", (double)s.late_dropped);
+    o.Set("unknownFramesSkipped", (double)s.unknown_frames_skipped);
     return o;
   }
   Napi::Value ReadTrades(const Napi::CallbackInfo& info)

@@ -3530,6 +3530,34 @@ FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int6
   return new replay::BinaryLogReader(cfg);
 }
 
+FloxDataReaderHandle flox_data_reader_create_ordered(const char* data_dir, int64_t from_ns,
+                                                     int64_t to_ns, const uint32_t* symbols,
+                                                     uint32_t num_symbols,
+                                                     int64_t reorder_window_ns,
+                                                     int32_t strict_ordering)
+{
+  replay::ReaderConfig cfg;
+  cfg.data_dir = data_dir;
+  if (from_ns > 0)
+  {
+    cfg.from_ns = from_ns;
+  }
+  if (to_ns > 0)
+  {
+    cfg.to_ns = to_ns;
+  }
+  if (symbols && num_symbols > 0)
+  {
+    cfg.symbols.insert(symbols, symbols + num_symbols);
+  }
+  if (reorder_window_ns > 0)
+  {
+    cfg.reorder_window_ns = reorder_window_ns;
+  }
+  cfg.strict_ordering = strict_ordering != 0;
+  return new replay::BinaryLogReader(cfg);
+}
+
 FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle h)
 {
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
@@ -3542,8 +3570,8 @@ FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle h)
 {
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   auto s = reader->stats();
-  return {s.files_read, s.events_read, s.trades_read, s.book_updates_read, s.bytes_read,
-          s.crc_errors};
+  return {s.files_read, s.events_read, s.trades_read, s.book_updates_read,
+          s.bytes_read, s.crc_errors, s.late_dropped, s.unknown_frames_skipped};
 }
 
 uint64_t flox_data_reader_read_trades(FloxDataReaderHandle h, FloxTradeRecord* trades_out,

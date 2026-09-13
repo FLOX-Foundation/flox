@@ -73,6 +73,15 @@ class IAggregator
   // (≤ max(window_ns) per partition seam) may be under-counted. See
   // the T020 tracker entry for the full discussion.
   virtual void merge(const IAggregator& other) = 0;
+
+  // False for aggregators whose result depends on seeing the whole tape in
+  // order -- book reconstruction, for one. `run(panel, n_threads)` asks
+  // before it partitions anything: with n_threads=0 (auto) it resolves to a
+  // single thread, and with an explicit n_threads>1 it refuses up front
+  // instead of letting cloneEmpty() throw from inside a worker partway
+  // through the walk. Without this the outcome depended on whether the tape
+  // happened to be compressed into enough blocks to trigger partitioning.
+  virtual bool supportsParallel() const { return true; }
 };
 
 }  // namespace flox::replay

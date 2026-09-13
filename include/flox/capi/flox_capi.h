@@ -377,6 +377,12 @@ extern "C"
     uint64_t book_updates_read;
     uint64_t bytes_read;
     uint64_t crc_errors;
+    // Events discarded because they arrived past the reorder window. Always 0
+    // when the reader was created with strict ordering (it raises instead).
+    uint64_t late_dropped;
+    // Frames whose record type this build does not know. The tape format is
+    // additive, so they are stepped over rather than ending the read.
+    uint64_t unknown_frames_skipped;
   } FloxReaderStats;
 
   typedef struct
@@ -1194,6 +1200,11 @@ extern "C"
   FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int64_t from_ns,
                                                         int64_t to_ns, const uint32_t* symbols,
                                                         uint32_t num_symbols);
+  FloxDataReaderHandle flox_data_reader_create_ordered(const char* data_dir, int64_t from_ns,
+                                                       int64_t to_ns, const uint32_t* symbols,
+                                                       uint32_t num_symbols,
+                                                       int64_t reorder_window_ns,
+                                                       int32_t strict_ordering);
   FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle reader);
   FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle reader);
   uint64_t flox_data_reader_read_trades(FloxDataReaderHandle reader, FloxTradeRecord* trades_out,
