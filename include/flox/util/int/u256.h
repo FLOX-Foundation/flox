@@ -73,10 +73,15 @@ inline unsigned char subb(unsigned char borrow, uint64_t a, uint64_t b, uint64_t
 //
 // Reads like math: the full operator set is here, so a contract formula
 // transcribes directly. Two safety choices matter for fidelity:
-//   - operator* is checked: it asserts in debug if the product exceeds 256 bits
-//     (the contract would revert), so an overflow is a caught bug, not a silent
-//     wraparound. A product that is meant to exceed 256 bits before a divide
-//     goes through mulDiv / mulDivUp, which carry the full 512-bit intermediate.
+//   - operator* is checked only in debug builds: it asserts if the product
+//     exceeds 256 bits (the contract would revert). In a release build
+//     (NDEBUG, which is how this library ships) the assert compiles out, so
+//     an overflowing operator* wraps mod 2^256 silently -- there is no
+//     runtime guard left, and the wrap is indistinguishable from a valid
+//     small result. A product that is meant to exceed 256 bits before a
+//     divide MUST go through mulDiv / mulDivUp, which carry the full
+//     512-bit intermediate and never truncate; do not reach for operator*
+//     on values whose product might not fit, even "just this once".
 //   - the wei<->human boundary is explicit: toDecimalString and pow10 take the
 //     token decimals, so amounts of different decimals cannot be mixed silently.
 struct u256

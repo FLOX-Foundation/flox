@@ -19313,11 +19313,13 @@ Useful if you want one MA that self-adjusts across regimes rather than manually 
 
 ### Slope
 
-Linear regression slope over a rolling window. Not exactly a moving average, but used in similar ways.
+Two-point rate of change over a rolling window, not a linear regression: the difference between the current value and the value `length` bars back, divided by the window length.
 
 ```
-slope = Σ(x − x̄)(y − ȳ) / Σ(x − x̄)²
+slope = (x[i] − x[i − length]) / length
 ```
+
+This is cheaper than an OLS fit and reacts only to the window's two endpoints, ignoring the points between them. On a clean straight line the two formulas agree, so the difference is easy to miss in a simple example; on a noisy series they can diverge by 50% or more, since the two-point version does not average away the noise the way a regression slope does.
 
 Positive = upward trend. Magnitude is the steepness. Good for momentum filtering.
 

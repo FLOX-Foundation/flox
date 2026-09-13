@@ -109,7 +109,13 @@ class IndicatorGraph
           "Indicator graph: circular dependency at '" + name +
               "'. A node depends on itself transitively; break the cycle.");
     }
+    // Scope guard: erase cycleKey on every exit path, including an exception
+    // thrown by a dependency or by this node's own compute function. Without
+    // this, a node that throws once stays marked "in progress" forever --
+    // every later require() for it reports a phantom circular dependency
+    // instead of retrying the computation.
     _computing.insert(cycleKey);
+    ComputingGuard computingGuard{_computing, cycleKey};
 
     for (const auto& dep : nodeIt->second.deps)
     {
@@ -117,7 +123,6 @@ class IndicatorGraph
     }
 
     auto result = nodeIt->second.fn(*this, symbol);
-    _computing.erase(cycleKey);
     return _cache.emplace(key, std::move(result)).first->second;
   }
 
@@ -151,12 +156,29 @@ class IndicatorGraph
         ++it;
       }
     }
+    // Defense in depth alongside the ComputingGuard in require(): a stray
+    // "in progress" marker for this symbol should not survive an
+    // invalidation either. In normal operation the guard already erases
+    // every key it inserts, so this is a no-op; it only matters if some
+    // future caller re-enters the graph in a way the guard doesn't see.
+    for (auto it = _computing.begin(); it != _computing.end();)
+    {
+      if (it->first == symbol)
+      {
+        it = _computing.erase(it);
+      }
+      else
+      {
+        ++it;
+      }
+    }
   }
 
   void invalidateAll()
   {
     _cache.clear();
     _fields.clear();
+    _computing.clear();
   }
 
   // ── Streaming path ─────────────────────────────────────────────────
@@ -231,6 +253,16 @@ class IndicatorGraph
     {
       return std::hash<SymbolId>{}(k.first) ^ (std::hash<int>{}(k.second) * 2654435761u);
     }
+  };
+
+  // RAII guard used by require() to erase a _computing entry on every exit
+  // path (normal return or exception), so a node that throws once does not
+  // stay marked "in progress" forever.
+  struct ComputingGuard
+  {
+    std::unordered_set<CacheKey, CacheKeyHash>& set;
+    const CacheKey& key;
+    ~ComputingGuard() { set.erase(key); }
   };
 
   template <typename Fn>

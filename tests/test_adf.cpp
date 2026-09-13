@@ -96,6 +96,33 @@ TEST(ADF, ZeroLagWorks)
   EXPECT_TRUE(std::isfinite(r.test_stat));
 }
 
+// The AIC-based lag search used to compare candidates on a floating sample
+// size (n = T - lag - 1, different for every candidate lag), so rescaling the
+// series -- dollars to cents, price to log-price, BTC-sized values to
+// ETH/BTC-sized ones -- shifted every candidate's AIC by an amount that
+// depends on that candidate's lag and flipped which lag AIC preferred. The
+// regression itself is scale-invariant (beta and its SE both scale linearly,
+// so tau cancels the scale exactly); only the lag *selection* wasn't. Fixing
+// the sample to T - max_lag - 1 for every candidate (matching
+// statsmodels' adfuller(autolag="AIC")) makes the selected lag, and therefore
+// the reported statistic, invariant to a pure rescaling of the input.
+TEST(ADF, ScaleInvariantLagSelection)
+{
+  auto y = stationaryAR1(300, 0.95);
+  std::vector<double> scaled(y.size());
+  for (size_t i = 0; i < y.size(); ++i)
+  {
+    scaled[i] = y[i] * 1000.0;
+  }
+
+  auto r1 = adf(y, 10, AdfRegression::Constant);
+  auto r2 = adf(scaled, 10, AdfRegression::Constant);
+
+  EXPECT_EQ(r1.used_lag, r2.used_lag);
+  EXPECT_NEAR(r1.test_stat, r2.test_stat, 1e-6);
+  EXPECT_NEAR(r1.p_value, r2.p_value, 1e-9);
+}
+
 TEST(ADF, PValueMonotoneInTestStat)
 {
   // Ensure p-value monotonicity by feeding two series with very different

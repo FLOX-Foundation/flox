@@ -86,6 +86,31 @@ inline double binomialPrice(OptionType type, double spot, double strike, double 
 namespace detail
 {
 
+// 4*rate / (vol^2 * K) with K = 1 - exp(-rate*t), the term that drives the
+// BAW quadratic exponent q. At rate=0 -- the crypto default -- both the
+// numerator (m = 2*rate/vol^2) and K vanish, but their ratio has a finite,
+// nonzero limit: writing x = rate*t, m/K = (2/(vol^2*t)) * x/(1-e^-x), and
+// x/(1-e^-x) -> 1 as x -> 0. Evaluating m and K separately and dividing
+// collapses to 0/0 exactly at rate=0, which is why that path used to hand
+// back NaN. Compute the ratio as one expression instead, with a short
+// Taylor expansion of x/(1-e^-x) near zero to dodge the cancellation.
+inline double fourMOverK(double rate, double t, double v2) noexcept
+{
+  const double x = rate * t;
+  double ratio;  // x / (1 - exp(-x)), well-defined at x=0 (limit 1)
+  if (std::fabs(x) < 1e-4)
+  {
+    // 1 + x/2 + x^2/12 - x^4/720 + ... ; O(x^2) is far below double precision
+    // noise for |x| < 1e-4, so two terms suffice.
+    ratio = 1.0 + x * (0.5 + x / 12.0);
+  }
+  else
+  {
+    ratio = x / (1.0 - std::exp(-x));
+  }
+  return (8.0 / (v2 * t)) * ratio;
+}
+
 // Newton solve for the critical spot price S* above which an American call (or
 // below which an American put) is exercised immediately. Follows Barone-Adesi &
 // Whaley (1987) via Haug's formulation.
@@ -95,7 +120,6 @@ inline double bawCriticalPrice(OptionType type, double strike, double t, double 
   const double v2 = vol * vol;
   const double nn = 2.0 * carry / v2;
   const double m = 2.0 * rate / v2;
-  const double K = 1.0 - std::exp(-rate * t);
   const double sqrtT = std::sqrt(t);
 
   // Seed from the perpetual-option critical price, then damp toward the strike.
@@ -113,9 +137,10 @@ inline double bawCriticalPrice(OptionType type, double strike, double t, double 
     si = strike;
   }
 
+  const double fmk = fourMOverK(rate, t, v2);
   const double q = type == OptionType::CALL
-                       ? (-(nn - 1.0) + std::sqrt((nn - 1.0) * (nn - 1.0) + 4.0 * m / K)) / 2.0
-                       : (-(nn - 1.0) - std::sqrt((nn - 1.0) * (nn - 1.0) + 4.0 * m / K)) / 2.0;
+                       ? (-(nn - 1.0) + std::sqrt((nn - 1.0) * (nn - 1.0) + fmk)) / 2.0
+                       : (-(nn - 1.0) - std::sqrt((nn - 1.0) * (nn - 1.0) + fmk)) / 2.0;
 
   for (int i = 0; i < 100; ++i)
   {
@@ -184,8 +209,7 @@ inline double bawPrice(OptionType type, double spot, double strike, double t, do
 
   const double v2 = vol * vol;
   const double nn = 2.0 * carry / v2;
-  const double m = 2.0 * rate / v2;
-  const double K = 1.0 - std::exp(-rate * t);
+  const double fmk = detail::fourMOverK(rate, t, v2);
   const double carryDisc = std::exp((carry - rate) * t);
 
   const double sk = detail::bawCriticalPrice(type, strike, t, rate, carry, vol);
@@ -197,7 +221,7 @@ inline double bawPrice(OptionType type, double spot, double strike, double t, do
     {
       return spot - strike;  // immediate exercise region
     }
-    const double q2 = (-(nn - 1.0) + std::sqrt((nn - 1.0) * (nn - 1.0) + 4.0 * m / K)) / 2.0;
+    const double q2 = (-(nn - 1.0) + std::sqrt((nn - 1.0) * (nn - 1.0) + fmk)) / 2.0;
     const double a2 = (sk / q2) * (1.0 - carryDisc * normCdf(d1k));
     return euro + a2 * std::pow(spot / sk, q2);
   }
@@ -206,7 +230,7 @@ inline double bawPrice(OptionType type, double spot, double strike, double t, do
   {
     return strike - spot;  // immediate exercise region
   }
-  const double q1 = (-(nn - 1.0) - std::sqrt((nn - 1.0) * (nn - 1.0) + 4.0 * m / K)) / 2.0;
+  const double q1 = (-(nn - 1.0) - std::sqrt((nn - 1.0) * (nn - 1.0) + fmk)) / 2.0;
   const double a1 = -(sk / q1) * (1.0 - carryDisc * normCdf(-d1k));
   return euro + a1 * std::pow(spot / sk, q1);
 }
@@ -220,6 +244,18 @@ inline double bawCriticalPrice(OptionType type, double strike, double t, double 
   if (strike <= 0.0 || t <= 0.0 || vol <= 0.0)
   {
     return strike;
+  }
+  if (type == OptionType::CALL && carry >= rate)
+  {
+    // Mirrors the guard in bawPrice: a call on an asset whose carry covers
+    // the rate is never exercised early (holding costs nothing extra versus
+    // exercising), so the critical price is unreachable. Without this, the
+    // quadratic-approximation root is numerically unstable here -- it can
+    // land on the strike itself (rate=carry=0, the crypto default) or on
+    // some other finite spot a real underlying can reach, both of which
+    // would make a caller like OptionExerciseEngine trigger exercise that
+    // is never actually optimal.
+    return std::numeric_limits<double>::infinity();
   }
   return detail::bawCriticalPrice(type, strike, t, rate, carry, vol);
 }

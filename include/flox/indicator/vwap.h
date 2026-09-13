@@ -21,25 +21,57 @@ class VWAP
     const size_t n = close.size();
     std::vector<double> out(n, std::nan(""));
 
-    if (n < _window)
+    // A zero window has no well-defined range; treat it like "not enough
+    // data yet" instead of underflowing _window - 1 into a huge index below.
+    if (_window == 0 || n < _window)
     {
       return out;
     }
 
+    // NaN in the window poisons only that window, not the rest of the
+    // series: a NaN close or volume is excluded from the running sums and
+    // tracked in nanCount, so the output withholds a value while the
+    // window is contaminated and recovers on its own once the NaN slides
+    // out (see SMA's NaN handling for the same pattern).
     double pvSum = 0.0;
     double vSum = 0.0;
+    size_t nanCount = 0;
+    auto addBar = [&](size_t i)
+    {
+      if (std::isnan(close[i]) || std::isnan(volume[i]))
+      {
+        ++nanCount;
+      }
+      else
+      {
+        pvSum += close[i] * volume[i];
+        vSum += volume[i];
+      }
+    };
+    auto removeBar = [&](size_t i)
+    {
+      if (std::isnan(close[i]) || std::isnan(volume[i]))
+      {
+        --nanCount;
+      }
+      else
+      {
+        pvSum -= close[i] * volume[i];
+        vSum -= volume[i];
+      }
+    };
+
     for (size_t i = 0; i < _window; ++i)
     {
-      pvSum += close[i] * volume[i];
-      vSum += volume[i];
+      addBar(i);
     }
-    out[_window - 1] = vSum > 0 ? pvSum / vSum : close[_window - 1];
+    out[_window - 1] = nanCount > 0 ? std::nan("") : (vSum > 0 ? pvSum / vSum : close[_window - 1]);
 
     for (size_t i = _window; i < n; ++i)
     {
-      pvSum += close[i] * volume[i] - close[i - _window] * volume[i - _window];
-      vSum += volume[i] - volume[i - _window];
-      out[i] = vSum > 0 ? pvSum / vSum : close[i];
+      addBar(i);
+      removeBar(i - _window);
+      out[i] = nanCount > 0 ? std::nan("") : (vSum > 0 ? pvSum / vSum : close[i]);
     }
 
     return out;

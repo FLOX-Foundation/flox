@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -112,6 +113,23 @@ TEST(OnnxSidecar, DeliversPredictionsWithStalenessMetadata)
   ASSERT_FALSE(p.values.empty());
   EXPECT_NEAR(p.values[0], 2.0 * 2.0 + 3.0 * 2.0 + 0.5, 1e-5);
   EXPECT_EQ(p.featureTsNs, 12345);
+}
+
+// OnnxModel::run checks the feature-vector size and throws on a mismatch --
+// with a comment explaining exactly why (a short span was a silent heap
+// over-read, a long one silent truncation). OnnxSidecar::submit copies into
+// the same fixed-size buffer on the async path but, unlike run(), never
+// checked the size: a longer span overflowed _pendingFeatures (a heap
+// buffer-overflow WRITE, confirmed under AddressSanitizer), and a shorter one
+// left a stale tail from the previous submit scored as if it were fresh
+// input, with no exception at all.
+TEST(OnnxSidecar, SubmitRejectsFeatureCountMismatch)
+{
+  OnnxSidecar sidecar(std::make_unique<OnnxModel>(modelPath()));
+  const std::vector<double> tooFew{1.0};
+  const std::vector<double> tooMany{1.0, 2.0, 3.0};
+  EXPECT_THROW(sidecar.submit(tooFew, 0), std::invalid_argument);
+  EXPECT_THROW(sidecar.submit(tooMany, 0), std::invalid_argument);
 }
 
 TEST(OnnxGraphNode, BatchColumnMatchesModelRowByRow)

@@ -108,11 +108,11 @@ inline SecondOrderGreeks secondOrderGreeks(OptionType type, double spot, double 
                         (2.0 * t * vol * sqrtT);
   if (type == OptionType::CALL)
   {
-    s.charm = -common + (carry - rate) * carryDisc * normCdf(d1);
+    s.charm = -common - (carry - rate) * carryDisc * normCdf(d1);
   }
   else
   {
-    s.charm = -common - (carry - rate) * carryDisc * normCdf(-d1);
+    s.charm = -common + (carry - rate) * carryDisc * normCdf(-d1);
   }
   return s;
 }

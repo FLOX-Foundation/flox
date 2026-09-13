@@ -231,8 +231,20 @@ class OnnxSidecar
 
   // Hot path: submit the newest features. Never blocks on inference; if the
   // worker is busy, the previous pending vector is overwritten (latest wins).
+  // `features` must have exactly featureCount() elements -- same contract as
+  // OnnxModel::run, and the same failure modes without this check: a longer
+  // span silently overflows the fixed-size _pendingFeatures buffer, a
+  // shorter one leaves a stale tail from the previous submit scored as if it
+  // were fresh input.
   void submit(std::span<const double> features, int64_t nowNs)
   {
+    if (features.size() != _pendingFeatures.size())
+    {
+      throw std::invalid_argument(
+          "OnnxSidecar::submit: feature count mismatch (expected " +
+          std::to_string(_pendingFeatures.size()) + ", got " +
+          std::to_string(features.size()) + ")");
+    }
     {
       std::lock_guard lk(_inMutex);
       std::copy(features.begin(), features.end(), _pendingFeatures.begin());
