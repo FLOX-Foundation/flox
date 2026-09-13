@@ -19338,6 +19338,8 @@ RS  = avg_gain / avg_loss   (Wilder's RMA)
 
 The classic levels (70 = overbought, 30 = oversold) work well in ranging markets. In a strong trend, RSI can stay above 70 for a long time; whether that helps or hurts depends on your strategy. Period 14 is standard; shorter periods make it noisier.
 
+A window with zero gain and zero loss (the instrument hasn't moved at all) reports the neutral 50, not 100: on a flat market, "maximally overbought" would be a misleading signal. A genuine uptrend (all gains) still reports 100, and a decline followed by a flat plateau still reports 0.
+
 ### MACD
 
 Difference between a fast EMA and a slow EMA, with a signal line on top.
