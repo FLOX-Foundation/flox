@@ -1779,7 +1779,14 @@ extern "C"
     uint64_t bytes_written;
   } FloxExportResult;
 
-  // merge: input_paths is \0-separated list of paths, total_len is combined length
+  // merge: input_paths is one buffer holding num_paths consecutive
+  // NUL-terminated paths, back to back ("a.flox\0b.flox\0"). The function
+  // walks forward exactly num_paths times and has no way to notice a buffer
+  // that ends early -- pass the count the buffer actually contains. NULL
+  // input_paths or output_dir returns success = 0.
+  //
+  // flox_backtest_runner_run_tapes takes the ordinary const char* const*
+  // array instead; prefer that shape in new code.
   FLOX_EXPORT(group = "segment")
   FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_paths,
                                           const char* output_dir, const char* output_name,
@@ -3439,10 +3446,14 @@ extern "C"
     uint64_t trade_count;
   } FloxStrategyAccountFields;
 
-  // Single breach record. `rule` and `detail` strings are owned by
-  // the aggregator and remain valid until the next state-mutating
-  // call on the same handle; copy them out if the caller needs to
-  // outlive that.
+  // A single breach.
+  //
+  // `rule` and `detail` point into storage the library keeps for this handle,
+  // not into the caller's memory. They stay valid until the next call that
+  // refills that storage for the same handle -- check_order, breach_count --
+  // or until flox_portfolio_risk_destroy. A call on a different handle, or on
+  // another thread, does not disturb them. Copy the strings out if they have
+  // to live longer than that.
   typedef struct
   {
     const char* rule;
@@ -4788,6 +4799,34 @@ extern "C"
   FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay);
   FLOX_EXPORT(group = "pool_tape")
   void flox_pool_replay_destroy(FloxPoolReplayHandle replay);
+
+  // ============================================================
+  // Diagnostics
+  // ============================================================
+
+  // ABI version compiled into the library. Compare against the
+  // FLOX_CAPI_ABI_VERSION macro from the header you built with and refuse the
+  // mismatch: the structs on this boundary have no reserved tail, so a skew
+  // shows up as wrong numbers rather than a failed load.
+  FLOX_EXPORT(group = "capi_diagnostics")
+  uint32_t flox_capi_abi_version(void);
+
+  // The last failure on the calling thread, set by a call that returned its
+  // failure value. 0 = no error recorded, 1 = a NULL handle was passed,
+  // 2 = an exception was stopped at the boundary. Only meaningful straight
+  // after a call that reported failure; a successful call does not clear it.
+  FLOX_EXPORT(group = "capi_diagnostics")
+  int flox_last_error_code(void);
+
+  // Text for the code above: the function that failed, and what the exception
+  // said. Never NULL -- an empty string means nothing has been recorded on
+  // this thread. Valid until the next failure on this thread or the next
+  // flox_clear_last_error.
+  FLOX_EXPORT(group = "capi_diagnostics")
+  const char* flox_last_error_message(void);
+
+  FLOX_EXPORT(group = "capi_diagnostics")
+  void flox_clear_last_error(void);
 
 #ifdef __cplusplus
 }

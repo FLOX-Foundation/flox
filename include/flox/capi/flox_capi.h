@@ -16,6 +16,49 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* ABI version of this header and of the library that ships with it.
+ * Bumped whenever a struct on this boundary changes shape, a function
+ * changes signature, or an existing code space gains a meaning. The
+ * structs here are solid, with no reserved tail, so a header from one
+ * version used against a library from another produces wrong numbers
+ * rather than a failed load -- compare FLOX_CAPI_ABI_VERSION against
+ * flox_capi_abi_version() once at startup and refuse the mismatch. */
+#define FLOX_CAPI_ABI_VERSION 1
+
+/* ============================================================
+ * Calling contract
+ * ============================================================
+ *
+ * Handles. Every flox_*Handle is an opaque pointer owned by whoever
+ * created it. Passing NULL where a handle is expected is safe on every
+ * function on this page: the call does nothing and returns the value it
+ * documents for failure -- 0 for the integer and floating-point returns,
+ * NULL for handles and strings, an all-zero struct for the by-value
+ * struct returns. It is not an error to destroy NULL either. Arguments
+ * that are not handles -- strings, output buffers, arrays -- are checked
+ * where the function says so and are otherwise required to be valid.
+ *
+ * Ownership. A function whose name ends in _create returns a handle the
+ * caller owns and must pass to the matching _destroy. Accessors that
+ * reach inside a composite -- flox_venue_stack_account and its siblings
+ * -- return a BORROWED handle: it stays valid while the composite lives,
+ * it must not be destroyed, and calling _destroy on it does nothing.
+ *
+ * Exceptions. None escape. The engine underneath is C++ and throws;
+ * unwinding out of a frame with C linkage is undefined behaviour, so
+ * every function on this page catches. A call that was stopped this way
+ * returns its failure value and leaves a description behind:
+ * flox_last_error_code() and flox_last_error_message() report it for the
+ * calling thread.
+ *
+ * Threads. Handles are not synchronised. Two threads may use two
+ * different handles freely; sharing one handle between threads is the
+ * caller's problem to serialise. Results that a function stores for a
+ * follow-up call -- the delta-book encoder's level lists, the portfolio
+ * risk breach list -- belong to the handle, not to the calling thread,
+ * so the pair may be split across threads.
+ */
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -510,6 +553,16 @@ extern "C"
 #define FLOX_SIGNAL_TYPE_CANCEL_ALL 8
 #define FLOX_SIGNAL_TYPE_MODIFY 9
 #define FLOX_SIGNAL_TYPE_ICEBERG 10
+#define FLOX_SIGNAL_TYPE_OCO 11
+/* The liquidity pair acts on an AMM pool rather than on an order book, so
+ * `price` and `quantity` on the signal carry nothing: the range and the
+ * amount live on the C++ Signal and do not cross this struct. A pre-trade
+ * gate that filters on notional will wave these through -- check the code
+ * first. Before the codes existed all three fell into the switch default
+ * and arrived as FLOX_SIGNAL_TYPE_MARKET with two zeros, which no gate
+ * could tell from a real market order. */
+#define FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY 12
+#define FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY 13
 
   typedef struct
   {
@@ -656,6 +709,15 @@ extern "C"
     uint64_t trade_count;
   } FloxStrategyAccountFields;
 
+  /* A single breach.
+   *
+   * `rule` and `detail` point into storage the library keeps for this
+   * handle, not into the caller's memory. They stay valid until the next
+   * call that refills that storage for the same handle --
+   * flox_portfolio_risk_check_order, flox_portfolio_risk_breach_count --
+   * or until flox_portfolio_risk_destroy. A call on a different handle,
+   * or on another thread, does not disturb them. Copy the strings out if
+   * they have to live longer than that. */
   typedef struct
   {
     const char* rule;
@@ -2133,6 +2195,14 @@ extern "C"
 
   uint8_t flox_segment_validate(const char* path);
   uint8_t flox_segment_merge(const char* input_dir, const char* output_path);
+  /* input_paths is one buffer holding num_paths consecutive NUL-terminated
+   * paths, back to back ("a.flox\0b.flox\0"). The function walks forward
+   * exactly num_paths times and has no way to notice a buffer that ends
+   * early -- pass the count the buffer actually contains. NULL input_paths
+   * or output_dir returns success = 0.
+   *
+   * flox_backtest_runner_run_tapes takes the ordinary const char* const*
+   * array instead; prefer that shape in new code. */
   FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_paths,
                                           const char* output_dir, const char* output_name,
                                           uint8_t sort);
@@ -2469,6 +2539,31 @@ extern "C"
                                      const FloxWalkForwardConfig* cfg,
                                      FloxWalkForwardFactoryFn factory, void* user_data,
                                      FloxWalkForwardFold* folds_out, uint32_t max_folds);
+
+  // ============================================================
+  // Diagnostics
+  // ============================================================
+
+  /* ABI version compiled into the library. Compare against the
+   * FLOX_CAPI_ABI_VERSION macro from the header you built with and refuse
+   * the mismatch: the structs on this boundary have no reserved tail, so
+   * a skew shows up as wrong numbers rather than a failed load. */
+  uint32_t flox_capi_abi_version(void);
+
+  /* The last failure on the calling thread, set by a call that returned
+   * its failure value. 0 = no error recorded, 1 = a NULL handle was
+   * passed, 2 = an exception was stopped at the boundary. The value is
+   * only meaningful straight after a call that reported failure; it is
+   * not cleared by a successful call. */
+  int flox_last_error_code(void);
+
+  /* Text for the code above: the function that failed, and what the
+   * exception said. Never NULL -- an empty string means nothing has been
+   * recorded on this thread. Valid until the next failure on this
+   * thread or the next flox_clear_last_error. */
+  const char* flox_last_error_message(void);
+
+  void flox_clear_last_error(void);
 
 #ifdef __cplusplus
 }

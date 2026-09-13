@@ -463,6 +463,16 @@
           "name": "flox_book_spread"
         },
         {
+          "group": "capi_diagnostics",
+          "kind": "function",
+          "name": "flox_capi_abi_version"
+        },
+        {
+          "group": "capi_diagnostics",
+          "kind": "function",
+          "name": "flox_clear_last_error"
+        },
+        {
           "group": "composite_book",
           "kind": "function",
           "name": "flox_composite_book_best_ask"
@@ -1496,6 +1506,16 @@
           "group": "l3_order",
           "kind": "function",
           "name": "flox_l3_book_remove_order"
+        },
+        {
+          "group": "capi_diagnostics",
+          "kind": "function",
+          "name": "flox_last_error_code"
+        },
+        {
+          "group": "capi_diagnostics",
+          "kind": "function",
+          "name": "flox_last_error_message"
         },
         {
           "group": "context_queries",
@@ -4145,6 +4165,7 @@
         "bar_aggregation",
         "bar_dispatch",
         "binary_log_recorder_hook",
+        "capi_diagnostics",
         "composite_book",
         "context_queries",
         "data_reader",
@@ -8453,6 +8474,14 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_capi_abi_version"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_clear_last_error"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_composite_book_best_ask"
         },
         {
@@ -9278,6 +9307,14 @@
         {
           "kind": "c_import",
           "name": "flox_l3_book_remove_order"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_last_error_code"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_last_error_message"
         },
         {
           "kind": "c_import",
@@ -39885,6 +39922,28 @@
         ],
         "functions": [],
         "status": "required"
+      }
+    },
+    "capi_diagnostics": {
+      "capi_functions": [
+        "flox_capi_abi_version",
+        "flox_clear_last_error",
+        "flox_last_error_code",
+        "flox_last_error_message"
+      ],
+      "codon": {
+        "present": true,
+        "status": "required"
+      },
+      "napi": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
       }
     },
     "composite_book": {

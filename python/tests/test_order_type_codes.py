@@ -1,4 +1,4 @@
-"""Regression test for the order-type code spaces (CAPI-01 / CAPI-09 / NC-06).
+"""Regression test for the order-type code spaces.
 
 Python's ``SimulatedExecutor.submit_order`` already parses the order-type
 string symbolically (``python/backtest_bindings.h:parseOrderType``), unlike
