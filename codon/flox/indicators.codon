@@ -99,33 +99,51 @@ def slope(data: List[float], length: int) -> List[float]:
     return out
 
 def atr(high: List[float], low: List[float], close: List[float], period: int) -> List[float]:
-    n = len(high); out = [0.0] * n
+    n = len(high)
+    if len(low) != n or len(close) != n:
+        raise ValueError("atr: high, low, close must have the same length")
+    out = [0.0] * n
     flox_indicator_atr(high.arr.ptr, low.arr.ptr, close.arr.ptr, n, period, out.arr.ptr)
     return out
 
 def cci(high: List[float], low: List[float], close: List[float], period: int) -> List[float]:
-    n = len(high); out = [0.0] * n
+    n = len(high)
+    if len(low) != n or len(close) != n:
+        raise ValueError("cci: high, low, close must have the same length")
+    out = [0.0] * n
     flox_indicator_cci(high.arr.ptr, low.arr.ptr, close.arr.ptr, n, period, out.arr.ptr)
     return out
 
 def chop(high: List[float], low: List[float], close: List[float], period: int) -> List[float]:
-    n = len(high); out = [0.0] * n
+    n = len(high)
+    if len(low) != n or len(close) != n:
+        raise ValueError("chop: high, low, close must have the same length")
+    out = [0.0] * n
     flox_indicator_chop(high.arr.ptr, low.arr.ptr, close.arr.ptr, n, period, out.arr.ptr)
     return out
 
 def obv(close: List[float], volume: List[float]) -> List[float]:
-    n = len(close); out = [0.0] * n
+    n = len(close)
+    if len(volume) != n:
+        raise ValueError("obv: close, volume must have the same length")
+    out = [0.0] * n
     flox_indicator_obv(close.arr.ptr, volume.arr.ptr, n, out.arr.ptr)
     return out
 
 def vwap(close: List[float], volume: List[float], window: int) -> List[float]:
-    n = len(close); out = [0.0] * n
+    n = len(close)
+    if len(volume) != n:
+        raise ValueError("vwap: close, volume must have the same length")
+    out = [0.0] * n
     flox_indicator_vwap(close.arr.ptr, volume.arr.ptr, n, window, out.arr.ptr)
     return out
 
 def cvd(open_: List[float], high: List[float], low: List[float],
         close: List[float], volume: List[float]) -> List[float]:
-    n = len(close); out = [0.0] * n
+    n = len(close)
+    if len(open_) != n or len(high) != n or len(low) != n or len(volume) != n:
+        raise ValueError("cvd: open, high, low, close, volume must have the same length")
+    out = [0.0] * n
     flox_indicator_cvd(open_.arr.ptr, high.arr.ptr, low.arr.ptr, close.arr.ptr,
                        volume.arr.ptr, n, out.arr.ptr)
     return out
@@ -151,19 +169,33 @@ def shannon_entropy(data: List[float], period: int, bins: int = 10) -> List[floa
     return out
 
 def parkinson_vol(high: List[float], low: List[float], period: int) -> List[float]:
-    n = len(high); out = [0.0] * n
+    n = len(high)
+    if len(low) != n:
+        raise ValueError("parkinson_vol: high, low must have the same length")
+    out = [0.0] * n
     flox_indicator_parkinson_vol(high.arr.ptr, low.arr.ptr, n, period, out.arr.ptr)
     return out
 
 def rogers_satchell_vol(open_: List[float], high: List[float], low: List[float],
                         close: List[float], period: int) -> List[float]:
-    n = len(open_); out = [0.0] * n
+    n = len(open_)
+    if len(high) != n or len(low) != n or len(close) != n:
+        raise ValueError("rogers_satchell_vol: open, high, low, close must have the same length")
+    out = [0.0] * n
     flox_indicator_rogers_satchell_vol(open_.arr.ptr, high.arr.ptr, low.arr.ptr,
                                         close.arr.ptr, n, period, out.arr.ptr)
     return out
 
-def correlation(x: List[float], y: List[float], period: int) -> List[float]:
-    n = len(x); out = [0.0] * n
+# Named rolling_correlation (not correlation) to avoid colliding with the
+# single-number Pearson helper in flox.tools -- see __init__.codon, which
+# imports flox.indicators.* then flox.tools.* into the same namespace.
+# Node and Python resolve the same collision the same way
+# (rollingCorrelation / rolling_correlation).
+def rolling_correlation(x: List[float], y: List[float], period: int) -> List[float]:
+    n = len(x)
+    if len(y) != n:
+        raise ValueError("rolling_correlation: x, y must have the same length")
+    out = [0.0] * n
     flox_indicator_correlation(x.arr.ptr, y.arr.ptr, n, period, out.arr.ptr)
     return out
 
@@ -217,6 +249,8 @@ class StochasticResult:
 def stochastic(high: List[float], low: List[float], close: List[float],
                k_period: int = 14, d_period: int = 3) -> StochasticResult:
     n = len(high)
+    if len(low) != n or len(close) != n:
+        raise ValueError("stochastic: high, low, close must have the same length")
     k = [0.0] * n; d = [0.0] * n
     flox_indicator_stochastic(high.arr.ptr, low.arr.ptr, close.arr.ptr, n,
                                k_period, d_period, k.arr.ptr, d.arr.ptr)
@@ -233,6 +267,8 @@ class AdxResult:
 
 def adx(high: List[float], low: List[float], close: List[float], period: int = 14) -> AdxResult:
     n = len(high)
+    if len(low) != n or len(close) != n:
+        raise ValueError("adx: high, low, close must have the same length")
     a = [0.0] * n; pdi = [0.0] * n; ndi = [0.0] * n
     flox_indicator_adx(high.arr.ptr, low.arr.ptr, close.arr.ptr, n, period,
                        a.arr.ptr, pdi.arr.ptr, ndi.arr.ptr)
@@ -689,7 +725,7 @@ class Correlation:
     @property
     def value(self) -> float:
         if len(self._x) == 0: return math.nan
-        out = correlation(self._x, self._y, self._period)
+        out = rolling_correlation(self._x, self._y, self._period)
         return out[len(out) - 1]
     @property
     def ready(self) -> bool: return not math.isnan(self.value)

@@ -2,6 +2,7 @@
 
 #pragma once
 #include <napi.h>
+#include "data_ops.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -49,6 +50,17 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
     auto bq = info[1].As<Napi::Float64Array>();
     auto ap = info[2].As<Napi::Float64Array>();
     auto aq = info[3].As<Napi::Float64Array>();
+    // The C ABI takes one length per side, so it assumes price and qty
+    // arrays for that side already match. A caller passing mismatched
+    // arrays used to have the qty side read out of bounds at whatever
+    // length the price side happened to report.
+    if (bp.ElementLength() != bq.ElementLength() || ap.ElementLength() != aq.ElementLength())
+    {
+      Napi::RangeError::New(info.Env(),
+                            "OrderBook: bid price/qty and ask price/qty arrays must each have the same length")
+          .ThrowAsJavaScriptException();
+      return;
+    }
     fn(_h, bp.Data(), bq.Data(), bp.ElementLength(), ap.Data(), aq.Data(), ap.ElementLength());
   }
   void ApplySnapshot(const Napi::CallbackInfo& info) { applyUpdate(info, flox_book_apply_snapshot); }
@@ -199,7 +211,7 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
   }
   Napi::Value HasArb(const Napi::CallbackInfo& info) { return Napi::Boolean::New(info.Env(), flox_composite_book_has_arb(_h, info[0].As<Napi::Number>().Uint32Value())); }
   void MarkStale(const Napi::CallbackInfo& info) { flox_composite_book_mark_stale(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().Uint32Value()); }
-  void CheckStaleness(const Napi::CallbackInfo& info) { flox_composite_book_check_staleness(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().Int64Value()); }
+  void CheckStaleness(const Napi::CallbackInfo& info) { flox_composite_book_check_staleness(_h, toInt64Ns(info[0]), toInt64Ns(info[1])); }
   FloxCompositeBookHandle _h;
 };
 

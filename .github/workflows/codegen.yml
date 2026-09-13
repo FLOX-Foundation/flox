@@ -11,6 +11,8 @@ concurrency:
 jobs:
   codegen-check:
     runs-on: ubuntu-latest
+    # Observed: 15-30s.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:

@@ -4,7 +4,40 @@
 // drift between the C++ binding and the .d.ts. Companion to
 // `scripts/check_dts_exports.py` which catches name-level drift.
 //
-// Not run at runtime — type-check only.
+// Also RUNS: `npx tsc -p test/tsconfig.types.json && node .test-build/test_types.js`
+// (see the "Verify Node.js TypeScript authoring layer" CI step). A call that
+// type-checks against index.d.ts can still throw against the native addon at
+// runtime if the binding's actual accepted types drifted from what the .d.ts
+// promises -- tsc alone never catches that, only executing the call does.
+// `check()` below asserts on values a mismatched runtime type could produce
+// silently (e.g. a declared `bigint` field that is actually `number`).
+
+declare const console: { log(...args: unknown[]): void; error(...args: unknown[]): void };
+declare const process: { exitCode?: number; exit(code?: number): never };
+
+let _passed = 0;
+let _failed = 0;
+function check(condition: unknown, msg: string): void {
+  if (condition) {
+    _passed += 1;
+  } else {
+    _failed += 1;
+    console.error(`  FAIL - ${msg}`);
+  }
+}
+// Calls a declared `number | bigint` overload with a real bigint and
+// checks it does not throw -- tsc accepts these calls (they match the
+// .d.ts), but several of them used to reject bigint at runtime because
+// only some call sites were wired to the number/bigint conversion helper.
+function checkAcceptsBigint(fn: () => void, msg: string): void {
+  try {
+    fn();
+    _passed += 1;
+  } catch (e) {
+    _failed += 1;
+    console.error(`  FAIL - ${msg}: threw ${(e as Error).message}`);
+  }
+}
 
 import * as flox from "..";
 import {
@@ -97,7 +130,9 @@ const strategy: Strategy = {
   onTrade(ctx: SymbolContext, trade: TradeData, emit: EmitMethods) {
     void ctx.position;
     void trade.price;
-    void trade.timestampNs;
+    // TradeData.timestampNs is declared bigint -- a plain `number` here
+    // would silently lose precision on a real nanosecond timestamp.
+    check(typeof trade.timestampNs === "bigint", "TradeData.timestampNs is bigint at runtime");
     emit.marketBuy(0.1);
     emit.marketSell(0.1);
     emit.limitBuy(100, 0.1);
@@ -120,9 +155,9 @@ const runner = new Runner(registry, (sig: Signal) => {
 });
 runner.addStrategy(strategy);
 runner.start();
-runner.onTrade(sym, 100, 1, true, 0n);
+checkAcceptsBigint(() => runner.onTrade(sym, 100, 1, true, 0n), "Runner.onTrade accepts bigint ts");
 runner.onTrade(1, 100, 1, false, 0);
-runner.onBookSnapshot(sym, arr, arr, arr, arr, 0n);
+checkAcceptsBigint(() => runner.onBookSnapshot(sym, arr, arr, arr, arr, 0n), "Runner.onBookSnapshot accepts bigint ts and Float64Array levels");
 runner.onBar(sym, { open: 1, high: 2, low: 0.5, close: 1.5 });
 runner.stop();
 
@@ -175,7 +210,7 @@ exec.cancelOrder(1);
 exec.cancelAll(1);
 exec.onBar(1, 100);
 exec.onTrade(1, 100, true);
-exec.advanceClock(1n);
+checkAcceptsBigint(() => exec.advanceClock(1n), "SimulatedExecutor.advanceClock accepts bigint ts");
 exec.setDefaultSlippage("fixed_bps", 0, 0, 2.0, 0);
 exec.setDefaultSlippage(SLIPPAGE_FIXED_BPS, 0, 0, 2.0, 0);
 exec.setQueueModel("tob", 1);
@@ -183,7 +218,7 @@ exec.setQueueModel(QUEUE_TOB, 1);
 const _fc: number = exec.fillCount;
 
 const result = new BacktestResult(100000, 0.0001);
-result.recordFill(1, 1, "buy", 100, 0.1, 0n);
+checkAcceptsBigint(() => result.recordFill(1, 1, "buy", 100, 0.1, 0n), "BacktestResult.recordFill accepts bigint ts");
 result.ingestExecutor(exec);
 const _resStats = result.stats();
 void _resStats.profitFactor;
@@ -267,10 +302,25 @@ void flox.kurtosis(arr, 20);
 void flox.rolling_zscore(arr, 20);
 void flox.shannon_entropy(arr, 20, 8);
 void flox.autocorrelation(arr, 20, 1);
-const adfV: number = flox.adf(arr, 1);
-void adfV;
+const adfV = flox.adf(arr, 1, "c");
+check(typeof adfV.testStat === "number", "adf() returns { testStat, pValue, usedLag }");
+void adfV.pValue;
+void adfV.usedLag;
 void flox.chop(arr, arr, arr, 14);
 void flox.atr(arr, arr, arr, 14);
+{
+  // Mismatched array lengths used to be read past the short array's end
+  // (denormals on a small input, SIGSEGV on a large one) instead of
+  // being rejected. `high` is length 5, `low` is length 1.
+  const shortArr = new Float64Array([1]);
+  let threw = false;
+  try {
+    flox.atr(arr, shortArr, arr, 14);
+  } catch {
+    threw = true;
+  }
+  check(threw, "flox.atr rejects mismatched array lengths instead of reading out of bounds");
+}
 void flox.cci(arr, arr, arr, 14);
 void flox.parkinson_vol(arr, arr, 14);
 void flox.rogers_satchell_vol(arr, arr, arr, arr, 14);
@@ -301,6 +351,18 @@ void flox.aggregateHeikinAshiBars(arr, arr, arr, ib, 60);
 // ── Books ─────────────────────────────────────────────────────────────
 const ob = new OrderBook(0.01);
 ob.applySnapshot(arr, arr, arr, arr);
+{
+  // Same class of bug as the indicator check above: bidQty shorter than
+  // bidPrice used to be read at bidPrice's length.
+  const shortArr = new Float64Array([1]);
+  let threw = false;
+  try {
+    ob.applySnapshot(arr, shortArr, arr, arr);
+  } catch {
+    threw = true;
+  }
+  check(threw, "OrderBook.applySnapshot rejects mismatched bid price/qty lengths");
+}
 ob.applyDelta(arr, arr, arr, arr);
 const _bid: number | null = ob.bestBid();
 const _ask: number | null = ob.bestAsk();
@@ -365,8 +427,9 @@ void vp.valueAreaLow();
 void vp.totalVolume();
 vp.clear();
 
-const mp = new MarketProfile(0.01, 30, 0n);
-mp.addTrade(0n, 100, 0.1, true);
+let mp!: MarketProfile;
+checkAcceptsBigint(() => { mp = new MarketProfile(0.01, 30, 0n); }, "MarketProfile constructor accepts bigint ts");
+checkAcceptsBigint(() => mp.addTrade(0n, 100, 0.1, true), "MarketProfile.addTrade accepts bigint ts");
 void mp.poc();
 void mp.initialBalanceHigh();
 void mp.initialBalanceLow();
@@ -396,7 +459,13 @@ void flox.barReturns(sigInt, sigInt, arr);
 void flox.tradePnl(sigInt, sigInt, arr);
 
 // ── Data I/O ─────────────────────────────────────────────────────────
-const dw = new DataWriter("/tmp/flox-test", 64, 1);
+// A fresh directory per run: this block writes/reads/re-writes the
+// same path in sequence (DataWriter -> DataReader -> BinaryLogRecorderHook
+// -> Partitioner), and a fixed path accumulated trades across repeated
+// local runs (DataReader.readTrades returning more each time), unlike a
+// CI job which always starts from a clean /tmp.
+const testDataDir = `/tmp/flox-test-types-${Date.now()}`;
+const dw = new DataWriter(testDataDir, 64, 1);
 void dw.writeTrade(0n, 0n, 100, 0.1, 1, 1, "buy");
 dw.flush();
 const dwStats = dw.stats();
@@ -404,7 +473,7 @@ void dwStats.bytesWritten;
 void dwStats.eventsWritten;
 dw.close();
 
-const dr = new DataReader("/tmp/flox-test", 0n, 1n);
+const dr = new DataReader(testDataDir, 0n, 1n);
 const _drCount: number = dr.count;
 const summary = dr.summary();
 void summary.totalEvents;
@@ -413,6 +482,15 @@ const drStats = dr.stats();
 void drStats.tradesRead;
 const trades: TradeRecord[] = dr.readTrades(100);
 void trades[0]?.price;
+check(trades.length === 1, `DataReader.readTrades returns the trade written above (got ${trades.length})`);
+if (trades[0]) {
+  // TradeRecord declares `number`, not `bigint` -- DataReader and
+  // MergedTapeReader must agree, or `a.exchangeTsNs === b.exchangeTsNs`
+  // is always false across the two readers.
+  check(typeof trades[0].exchangeTsNs === "number", "TradeRecord.exchangeTsNs is number at runtime");
+  // TradeRecord.side is declared "buy" | "sell", not a raw number.
+  check(trades[0].side === "buy", `TradeRecord.side is the string "buy" (got ${JSON.stringify(trades[0].side)})`);
+}
 void dr.readTradesFrom(0n, 100);
 const bbo: BboRecord[] = dr.readBBO();
 void bbo[0]?.bidPrice;
@@ -421,16 +499,17 @@ const bookU: BookUpdateRecord[] = dr.readBookUpdates();
 void bookU[0]?.bids;
 void dr.readBookUpdatesFrom(0n);
 
-const recorder = new BinaryLogRecorderHook("/tmp/flox-test", 64, 0, "lz4");
+const recorder = new BinaryLogRecorderHook(testDataDir, 64, 0, "lz4");
 recorder.addSymbol(1, "BTCUSDT", "BTC", "USDT", 2, 8);
 recorder.flush();
 const _recStats = recorder.stats();
 void _recStats.tradesWritten;
 
-const part = new Partitioner("/tmp/flox-test");
-const parts: Partition[] = part.byTime(4, 0n);
+const part = new Partitioner(testDataDir);
+let parts: Partition[] = [];
+checkAcceptsBigint(() => { parts = part.byTime(4, 0n); }, "Partitioner.byTime accepts bigint warmup");
 void parts[0]?.fromNs;
-void part.byDuration(1_000_000n, 0n);
+checkAcceptsBigint(() => part.byDuration(1_000_000n, 0n), "Partitioner.byDuration accepts bigint duration and warmup");
 void part.byCalendar('day', 0n);
 void part.bySymbol(2);
 void part.perSymbol();
@@ -511,3 +590,17 @@ void QUEUE_TOB;
 void QUEUE_FULL;
 void POSITION_FIFO;
 void POSITION_AVG_COST;
+
+console.log(`test_types: ${_passed} passed, ${_failed} failed`);
+// Forced exit, not process.exitCode: the threadedRunner constructed above
+// (new Runner(registry, cb, true)) holds a ThreadSafeFunction that is
+// never released on stop() -- only in a destructor that GC may or may not
+// run before Node would otherwise decide the loop is idle. Locally this
+// often finishes anyway once GC happens to collect it; on CI it hung one
+// run for hours before a human cancelled it. That non-release is a real,
+// separately tracked defect (TSFN lifecycle on Runner.stop()), not
+// something this test should paper over silently -- hence this comment
+// instead of a quiet process.exit(). This test's job is to check the type
+// contract, not to prove the process exits, so forcing the exit here is
+// legitimate; it is called out because it is also hiding a bug.
+process.exit(_failed > 0 ? 1 : 0);

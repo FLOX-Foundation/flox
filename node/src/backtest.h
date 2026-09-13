@@ -2,6 +2,7 @@
 
 #pragma once
 #include <napi.h>
+#include "data_ops.h"
 #include "flox/capi/flox_capi.h"
 #include "flox/capi/order_type_names.hpp"
 #include "rate_limit.h"
@@ -221,7 +222,7 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   void CancelAll(const Napi::CallbackInfo& info) { flox_simulated_executor_cancel_all(_h, info[0].As<Napi::Number>().Uint32Value()); }
   void OnBar(const Napi::CallbackInfo& info) { flox_simulated_executor_on_bar(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue()); }
   void OnTrade(const Napi::CallbackInfo& info) { flox_simulated_executor_on_trade(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
-  void AdvanceClock(const Napi::CallbackInfo& info) { flox_simulated_executor_advance_clock(_h, info[0].As<Napi::Number>().Int64Value()); }
+  void AdvanceClock(const Napi::CallbackInfo& info) { flox_simulated_executor_advance_clock(_h, toInt64Ns(info[0])); }
   void SetDefaultSlippage(const Napi::CallbackInfo& info)
   {
     // Accept either the string name or the exported SLIPPAGE_* constant.
@@ -582,7 +583,7 @@ class BacktestResultWrap : public Napi::ObjectWrap<BacktestResultWrap>
                                      info[2].As<Napi::String>().Utf8Value() == "buy" ? 0 : 1,
                                      info[3].As<Napi::Number>().DoubleValue(),
                                      info[4].As<Napi::Number>().DoubleValue(),
-                                     info[5].As<Napi::Number>().Int64Value());
+                                     toInt64Ns(info[5]));
   }
   void IngestExecutor(const Napi::CallbackInfo& info)
   {

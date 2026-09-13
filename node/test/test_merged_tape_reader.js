@@ -52,16 +52,19 @@ function writeTape(outDir, exchange, symbolName, trades, exchangeId, books)
   runner.start();
   for (const [tsNs, price, qty, isBuy] of trades)
   {
-    // RunnerNode::onTrade currently accepts only Number for the
-    // timestamp; we keep test timestamps under 2^53 to round-trip
-    // losslessly. Real ns timestamps need BigInt support upstream.
-    runner.onTrade(Number(sym), price, qty, isBuy, Number(tsNs));
+    // RunnerNode::onTrade accepts BigInt for the timestamp (as well as
+    // Number, for callers whose values fit under 2^53) so a real ns
+    // timestamp round-trips losslessly. Pass the BigInt straight through.
+    runner.onTrade(Number(sym), price, qty, isBuy, tsNs);
   }
   for (const entry of (books || []))
   {
     const [tsNs, bidP, bidQ, askP, askQ] = entry;
+    // onBookSnapshot takes Float64Array; fixture entries above are
+    // plain array literals for readability.
     runner.onBookSnapshot(
-        Number(sym), bidP, bidQ, askP, askQ, Number(tsNs));
+        Number(sym), Float64Array.from(bidP), Float64Array.from(bidQ),
+        Float64Array.from(askP), Float64Array.from(askQ), tsNs);
   }
   runner.stop();
   hook.flush();
@@ -74,8 +77,11 @@ function testSingleTapeRoundTrip()
   console.log('test_single_tape_round_trip');
   const d = mkTmpDir('single');
   const tape = path.join(d, 'bybit');
-  // Keep below 2^53 so runner.onTrade's Number path doesn't truncate.
-  const base = 1_000_000_000_000n;
+  // A real exchange nanosecond timestamp (~1.7e18), not a value that
+  // happens to survive a double -- runner.onTrade now takes the ts
+  // straight through to a bigint-aware conversion, so precision must
+  // survive the whole write/read round trip through both readers.
+  const base = 1_765_615_835_519_000_000n;
   const trades = [];
   for (let i = 0; i < 5; i++)
   {
@@ -93,15 +99,31 @@ function testSingleTapeRoundTrip()
   let priceOk = true;
   let qtyOk = true;
   let sideOk = true;
+  let tsTypeOk = true;
+  let tsValueOk = true;
   for (let i = 0; i < single.length; i++)
   {
     if (single[i].price !== merged[i].price) { priceOk = false; }
     if (single[i].qty !== merged[i].qty) { qtyOk = false; }
     if (single[i].side !== merged[i].side) { sideOk = false; }
+    // TradeRecord.exchangeTsNs is declared `number` for both DataReader
+    // and MergedTapeReader -- they used to disagree (number vs bigint),
+    // so `single[i].exchangeTsNs === merged[i].exchangeTsNs` was always
+    // false and arithmetic between the two readers threw.
+    if (typeof single[i].exchangeTsNs !== 'number' || typeof merged[i].exchangeTsNs !== 'number')
+    {
+      tsTypeOk = false;
+    }
+    if (single[i].exchangeTsNs !== merged[i].exchangeTsNs) { tsValueOk = false; }
   }
   check(priceOk, 'price preserved across rekey');
   check(qtyOk, 'qty preserved across rekey');
   check(sideOk, 'side preserved across rekey');
+  check(typeof single[0]?.side === 'string', `side is a string (got ${typeof single[0]?.side})`);
+  check(tsTypeOk, 'exchangeTsNs is number on both readers');
+  check(tsValueOk, 'exchangeTsNs matches exactly between DataReader and MergedTapeReader');
+  check(Number(single[0]?.exchangeTsNs) === Number(base),
+        `DataReader exchangeTsNs survives a real ns timestamp (${single[0]?.exchangeTsNs} == ${base})`);
 
   const tbl = mr.symbolTable();
   check(tbl.length === 1, `symbolTable has one entry (got ${tbl.length})`);

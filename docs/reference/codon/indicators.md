@@ -14,7 +14,7 @@ Batch indicators are **free functions**, not class methods. Import them by name.
 ```codon
 from flox.indicators import ema, sma, rsi, atr, macd, bollinger
 from flox.indicators import skewness, kurtosis, rolling_zscore, shannon_entropy
-from flox.indicators import parkinson_vol, rogers_satchell_vol, correlation, autocorrelation
+from flox.indicators import parkinson_vol, rogers_satchell_vol, rolling_correlation, autocorrelation
 from flox.indicators import obv, vwap, cvd, chop, adx, adf, stochastic
 ```
 
@@ -24,7 +24,7 @@ from flox.indicators import obv, vwap, cvd, chop, adx, adf, stochastic
 
 **OHLC / multi-input** — returns `List[float]`:
 
-`atr(high, low, close, period)`, `cci(high, low, close, period)`, `chop(high, low, close, period)`, `parkinson_vol(high, low, period)`, `rogers_satchell_vol(open_, high, low, close, period)`, `correlation(x, y, period)`
+`atr(high, low, close, period)`, `cci(high, low, close, period)`, `chop(high, low, close, period)`, `parkinson_vol(high, low, period)`, `rogers_satchell_vol(open_, high, low, close, period)`, `rolling_correlation(x, y, period)`
 
 **Statistical** — returns `List[float]`:
 
@@ -326,7 +326,7 @@ series = cci(highs, lows, closes, 20)      # batch via the free function
 | `Stochastic` | `Stochastic(k_period=14, d_period=3)` | BarInput | none — free function `stochastic(high, low, close, k_period=14, d_period=3)` |
 | `ParkinsonVol` | `ParkinsonVol(period)` | HighLowInput | none — free function `parkinson_vol(high, low, period)` |
 | `RogersSatchellVol` | `RogersSatchellVol(period)` | OhlcInput | none — free function `rogers_satchell_vol(open_, high, low, close, period)` |
-| `Correlation` | `Correlation(period)` | PairInput | none — free function `correlation(x, y, period)` |
+| `Correlation` | `Correlation(period)` | PairInput | none |
 | `MACD` | `MACD(fast=12, slow=26, signal=9)` | MultiOutput | instance `compute(data)` |
 | `Bollinger` | `Bollinger(period=20, multiplier=2.0)` | MultiOutput | instance `compute(data)` |
 

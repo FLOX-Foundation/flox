@@ -252,7 +252,8 @@ class DataReaderWrap : public Napi::ObjectWrap<DataReaderWrap>
       o.Set("qty", (double)trades[i].qty_raw / 1e8);
       o.Set("tradeId", (double)trades[i].trade_id);
       o.Set("symbolId", trades[i].symbol_id);
-      o.Set("side", trades[i].side);
+      // TradeRecord.side is declared "buy" | "sell", not a number.
+      o.Set("side", Napi::String::New(env, trades[i].side == 0 ? "buy" : "sell"));
       arr.Set((uint32_t)i, o);
     }
     return arr;
@@ -767,13 +768,18 @@ class MergedTapeReaderWrap : public Napi::ObjectWrap<MergedTapeReaderWrap>
     for (uint64_t i = 0; i < n; ++i)
     {
       auto o = Napi::Object::New(env);
-      o.Set("exchangeTsNs", Napi::BigInt::New(env, trades[i].exchange_ts_ns));
-      o.Set("recvTsNs", Napi::BigInt::New(env, trades[i].recv_ts_ns));
+      // Mirrors DataReaderWrap.ReadTrades (above): same TradeRecord
+      // interface, same field types. This used to hand back BigInt here
+      // while DataReader handed back Number for the same declared
+      // `number` fields, so `a.exchangeTsNs === b.exchangeTsNs` was
+      // always false and arithmetic between the two readers threw.
+      o.Set("exchangeTsNs", (double)trades[i].exchange_ts_ns);
+      o.Set("recvTsNs", (double)trades[i].recv_ts_ns);
       o.Set("price", (double)trades[i].price_raw / 1e8);
       o.Set("qty", (double)trades[i].qty_raw / 1e8);
-      o.Set("tradeId", Napi::BigInt::New(env, trades[i].trade_id));
+      o.Set("tradeId", (double)trades[i].trade_id);
       o.Set("symbolId", trades[i].symbol_id);
-      o.Set("side", trades[i].side);
+      o.Set("side", Napi::String::New(env, trades[i].side == 0 ? "buy" : "sell"));
       arr.Set((uint32_t)i, o);
     }
     return arr;
@@ -797,9 +803,11 @@ class MergedTapeReaderWrap : public Napi::ObjectWrap<MergedTapeReaderWrap>
     {
       const auto& h = headers[i];
       auto o = Napi::Object::New(env);
-      o.Set("exchangeTsNs", Napi::BigInt::New(env, h.exchange_ts_ns));
-      o.Set("recvTsNs", Napi::BigInt::New(env, h.recv_ts_ns));
-      o.Set("seq", Napi::BigInt::New(env, h.seq));
+      // Mirrors DataReaderWrap.ReadBookUpdates: same BookUpdateRecord
+      // interface (`number` fields), same reasoning as ReadTrades above.
+      o.Set("exchangeTsNs", (double)h.exchange_ts_ns);
+      o.Set("recvTsNs", (double)h.recv_ts_ns);
+      o.Set("seq", (double)h.seq);
       o.Set("symbolId", h.symbol_id);
       o.Set("eventType", h.event_type);
 
@@ -918,7 +926,7 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
   Napi::Value ByTime(const Napi::CallbackInfo& info)
   {
     uint32_t n = info[0].As<Napi::Number>().Uint32Value();
-    int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    int64_t warmup = info.Length() > 1 ? toInt64Ns(info[1]) : 0;
     uint32_t count = flox_partitioner_by_time(_h, n, warmup, nullptr, 0);
     std::vector<FloxPartition> parts(count);
     flox_partitioner_by_time(_h, n, warmup, parts.data(), count);
@@ -926,8 +934,8 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
   }
   Napi::Value ByDuration(const Napi::CallbackInfo& info)
   {
-    int64_t dur = info[0].As<Napi::Number>().Int64Value();
-    int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    int64_t dur = toInt64Ns(info[0]);
+    int64_t warmup = info.Length() > 1 ? toInt64Ns(info[1]) : 0;
     uint32_t count = flox_partitioner_by_duration(_h, dur, warmup, nullptr, 0);
     std::vector<FloxPartition> parts(count);
     flox_partitioner_by_duration(_h, dur, warmup, parts.data(), count);
@@ -973,7 +981,7 @@ class PartitionerWrap : public Napi::ObjectWrap<PartitionerWrap>
           .ThrowAsJavaScriptException();
       return info.Env().Undefined();
     }
-    int64_t warmup = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    int64_t warmup = info.Length() > 1 ? toInt64Ns(info[1]) : 0;
     uint32_t count = flox_partitioner_by_calendar(_h, unit, warmup, nullptr, 0);
     std::vector<FloxPartition> parts(count);
     flox_partitioner_by_calendar(_h, unit, warmup, parts.data(), count);
@@ -1083,8 +1091,8 @@ inline Napi::Value seg_split(const Napi::CallbackInfo& info)
       info[0].As<Napi::String>().Utf8Value().c_str(),
       info[1].As<Napi::String>().Utf8Value().c_str(),
       mode,
-      info.Length() > 3 ? info[3].As<Napi::Number>().Int64Value() : 3600000000000LL,
-      info.Length() > 4 ? info[4].As<Napi::Number>().Int64Value() : 1000000);
+      info.Length() > 3 ? toInt64Ns(info[3]) : 3600000000000LL,
+      info.Length() > 4 ? toInt64Ns(info[4]) : 1000000);
   auto o = Napi::Object::New(info.Env());
   o.Set("success", (bool)r.success);
   o.Set("segmentsCreated", r.segments_created);
@@ -1115,8 +1123,8 @@ inline Napi::Value seg_export(const Napi::CallbackInfo& info)
       info[0].As<Napi::String>().Utf8Value().c_str(),
       info[1].As<Napi::String>().Utf8Value().c_str(),
       fmt,
-      info.Length() > 3 && info[3].IsNumber() ? info[3].As<Napi::Number>().Int64Value() : 0,
-      info.Length() > 4 && info[4].IsNumber() ? info[4].As<Napi::Number>().Int64Value() : 0,
+      info.Length() > 3 && (info[3].IsNumber() || info[3].IsBigInt()) ? toInt64Ns(info[3]) : 0,
+      info.Length() > 4 && (info[4].IsNumber() || info[4].IsBigInt()) ? toInt64Ns(info[4]) : 0,
       nullptr, 0);
   auto o = Napi::Object::New(info.Env());
   o.Set("success", (bool)r.success);
@@ -1155,8 +1163,8 @@ inline Napi::Value seg_extract_time_range(const Napi::CallbackInfo& info)
   return Napi::Number::New(info.Env(), (double)flox_segment_extract_time_range(
                                            info[0].As<Napi::String>().Utf8Value().c_str(),
                                            info[1].As<Napi::String>().Utf8Value().c_str(),
-                                           info[2].As<Napi::Number>().Int64Value(),
-                                           info[3].As<Napi::Number>().Int64Value()));
+                                           toInt64Ns(info[2]),
+                                           toInt64Ns(info[3])));
 }
 
 // ── Registration ────────────────────────────────────────────────────

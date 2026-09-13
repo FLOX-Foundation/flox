@@ -11,6 +11,7 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # The real gate. A required reviewer on this environment pauses every run
     # for manual approval in the UI -- a platform control that neither a
     # compromised token nor an edited workflow file can skip. The app key

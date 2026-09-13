@@ -4831,6 +4831,10 @@
         },
         {
           "kind": "function",
+          "name": "rolling_correlation"
+        },
+        {
+          "kind": "function",
           "name": "rolling_zscore"
         },
         {
@@ -25599,14 +25603,6 @@
         },
         {
           "kind": "class",
-          "name": "ReplayEvent"
-        },
-        {
-          "kind": "class",
-          "name": "ReplaySource"
-        },
-        {
-          "kind": "class",
           "name": "RiskManager"
         },
         {
@@ -29985,71 +29981,6 @@
           "kind": "method",
           "name": "setBan",
           "parent": "RateLimitPolicy"
-        },
-        {
-          "kind": "method",
-          "name": "asks",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "bids",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "bookSymbol",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "timestampNs",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "tradeIsBuy",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "tradePrice",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "tradeQuantity",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "tradeSymbol",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "type",
-          "parent": "ReplayEvent"
-        },
-        {
-          "kind": "method",
-          "name": "next",
-          "parent": "ReplaySource"
-        },
-        {
-          "kind": "method",
-          "name": "onStart",
-          "parent": "ReplaySource"
-        },
-        {
-          "kind": "method",
-          "name": "onStop",
-          "parent": "ReplaySource"
-        },
-        {
-          "kind": "method",
-          "name": "seekTo",
-          "parent": "ReplaySource"
         },
         {
           "kind": "method",
@@ -41248,11 +41179,10 @@
         "status": "required"
       },
       "napi": {
-        "classes": [
-          "ReplaySource"
-        ],
+        "classes": [],
         "functions": [],
-        "status": "required"
+        "reason": "the napi ReplaySourceHost adapter was written but never wired to a constructible class or a BacktestRunner method that would accept one, so it was unreachable dead code; removed along with the ReplaySource/ReplayEvent interfaces in index.d.ts that referenced the same nonexistent method. Python is the only binding that implements this group today.",
+        "status": "allowlist"
       },
       "pybind11": {
         "classes": [

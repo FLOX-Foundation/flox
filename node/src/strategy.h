@@ -12,6 +12,7 @@
 #include "flox/engine/symbol_registry.h"
 #include "hooks.h"
 #include "run_trace.h"
+#include "tsfn_util.h"
 
 #include <memory>
 #include <string>
@@ -186,7 +187,7 @@ struct NodeStrategyHost
   {
     _threaded = true;
     auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-    _tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_strategy_cb", 0, 1);
+    _tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_strategy_cb", kTsfnMaxQueueSize, 1);
   }
 
   ~NodeStrategyHost()
@@ -414,6 +415,11 @@ struct NodeStrategyHost
 
   static void callOnTrade(Napi::Env env, Napi::Function, TradeCallData* d)
   {
+    // Guards against the leak on exception: previously a bare `delete d`
+    // at the end of the function never ran if on_trade_fn.Call() threw
+    // (NODE_ADDON_API_CPP_EXCEPTIONS_ALL turns a JS throw into a C++
+    // exception here), so every strategy exception leaked its CallData.
+    std::unique_ptr<TradeCallData> guard(d);
     auto* self = d->host;
     if (!self->on_trade_fn.IsEmpty())
     {
@@ -425,14 +431,16 @@ struct NodeStrategyHost
       tradeObj.Set("qty", Napi::Number::New(env, flox_quantity_to_double(d->trade.quantity_raw)));
       tradeObj.Set("isBuy", Napi::Boolean::New(env, d->trade.is_buy != 0));
       tradeObj.Set("side", Napi::String::New(env, d->trade.is_buy ? "buy" : "sell"));
-      tradeObj.Set("timestampNs", Napi::Number::New(env, static_cast<double>(d->trade.exchange_ts_ns)));
+      // TradeData.timestampNs is declared bigint in index.d.ts: a real ns
+      // timestamp does not survive a double (see toInt64Ns in data_ops.h).
+      tradeObj.Set("timestampNs", Napi::BigInt::New(env, static_cast<int64_t>(d->trade.exchange_ts_ns)));
       self->on_trade_fn.Call({ctxObj, tradeObj, self->emitter.Value()});
     }
-    delete d;
   }
 
   static void callOnBook(Napi::Env env, Napi::Function, BookCallData* d)
   {
+    std::unique_ptr<BookCallData> guard(d);
     auto* self = d->host;
     if (!self->on_book_fn.IsEmpty())
     {
@@ -440,7 +448,6 @@ struct NodeStrategyHost
       buildCtxObj(env, ctxObj, &d->ctx);
       self->on_book_fn.Call({ctxObj, self->emitter.Value()});
     }
-    delete d;
   }
 
   static void buildBarObj(Napi::Env env, Napi::Object& o, const FloxBarData* bar)
@@ -461,6 +468,7 @@ struct NodeStrategyHost
 
   static void callOnBar(Napi::Env env, Napi::Function, BarCallData* d)
   {
+    std::unique_ptr<BarCallData> guard(d);
     auto* self = d->host;
     if (!self->on_bar_fn.IsEmpty())
     {
@@ -470,7 +478,6 @@ struct NodeStrategyHost
       buildBarObj(env, barObj, &d->bar);
       self->on_bar_fn.Call({ctxObj, barObj, self->emitter.Value()});
     }
-    delete d;
   }
 
   static void onTrade(void* ud, const FloxSymbolContext* ctx,
@@ -485,7 +492,7 @@ struct NodeStrategyHost
     if (self->_threaded)
     {
       auto* d = new TradeCallData{*ctx, *trade, self};
-      self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnTrade);
+      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnTrade);
     }
     else
     {
@@ -498,7 +505,8 @@ struct NodeStrategyHost
       tradeObj.Set("qty", Napi::Number::New(env, flox_quantity_to_double(trade->quantity_raw)));
       tradeObj.Set("isBuy", Napi::Boolean::New(env, trade->is_buy != 0));
       tradeObj.Set("side", Napi::String::New(env, trade->is_buy ? "buy" : "sell"));
-      tradeObj.Set("timestampNs", Napi::Number::New(env, static_cast<double>(trade->exchange_ts_ns)));
+      // See callOnTrade above: timestampNs is declared bigint.
+      tradeObj.Set("timestampNs", Napi::BigInt::New(env, static_cast<int64_t>(trade->exchange_ts_ns)));
       self->on_trade_fn.Call({ctxObj, tradeObj, self->emitter.Value()});
     }
   }
@@ -515,7 +523,7 @@ struct NodeStrategyHost
     if (self->_threaded)
     {
       auto* d = new BookCallData{*ctx, self};
-      self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnBook);
+      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnBook);
     }
     else
     {
@@ -538,7 +546,7 @@ struct NodeStrategyHost
     if (self->_threaded)
     {
       auto* d = new BarCallData{*ctx, *bar, self};
-      self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnBar);
+      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnBar);
     }
     else
     {
@@ -708,6 +716,7 @@ struct NodeStrategyHost
 
   static void callOnOrderEvent(Napi::Env env, Napi::Function, OrderEventCallData* d)
   {
+    std::unique_ptr<OrderEventCallData> guard(d);
     auto* self = d->host;
     auto& fn = pickFnRef(self, d->kind);
     if (!fn.IsEmpty())
@@ -718,7 +727,6 @@ struct NodeStrategyHost
       buildOrderEventObj(env, evObj, &d->ev, &d->reject_reason_owned);
       fn.Call({ctxObj, evObj, self->emitter.Value()});
     }
-    delete d;
   }
 
   static void dispatchOrderEvent(NodeStrategyHost* self,
@@ -737,7 +745,7 @@ struct NodeStrategyHost
           *ctx, *ev,
           ev->reject_reason ? std::string(ev->reject_reason) : std::string{},
           self, kind};
-      self->_tsfn.NonBlockingCall(d, &NodeStrategyHost::callOnOrderEvent);
+      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnOrderEvent);
     }
     else
     {
@@ -792,10 +800,10 @@ struct NodeStrategyHost
     if (self->_threaded)
     {
       auto* d = new LifecycleCallData{self, true};
-      self->_tsfn.NonBlockingCall(d, [](Napi::Env, Napi::Function, LifecycleCallData* d)
-                                  {
-        d->host->on_start_fn.Call({});
-        delete d; });
+      tsfnCall(self->_tsfn, d, [](Napi::Env, Napi::Function, LifecycleCallData* d)
+               {
+        std::unique_ptr<LifecycleCallData> guard(d);
+        d->host->on_start_fn.Call({}); });
     }
     else
     {
@@ -813,398 +821,15 @@ struct NodeStrategyHost
     if (self->_threaded)
     {
       auto* d = new LifecycleCallData{self, false};
-      self->_tsfn.NonBlockingCall(d, [](Napi::Env, Napi::Function, LifecycleCallData* d)
-                                  {
-        d->host->on_stop_fn.Call({});
-        delete d; });
+      tsfnCall(self->_tsfn, d, [](Napi::Env, Napi::Function, LifecycleCallData* d)
+               {
+        std::unique_ptr<LifecycleCallData> guard(d);
+        d->host->on_stop_fn.Call({}); });
     }
     else
     {
       self->on_stop_fn.Call({});
     }
-  }
-};
-
-// ──────────────────────────────────────────────────────────────
-// StrategyRunnerNode — synchronous runner (JS thread)
-// ──────────────────────────────────────────────────────────────
-
-class StrategyRunnerNode : public Napi::ObjectWrap<StrategyRunnerNode>
-{
- public:
-  static Napi::Function Init(Napi::Env env)
-  {
-    return DefineClass(env, "StrategyRunner",
-                       {
-                           InstanceMethod("addStrategy", &StrategyRunnerNode::addStrategy),
-                           InstanceMethod("replaceStrategy", &StrategyRunnerNode::replaceStrategy),
-                           InstanceMethod("start", &StrategyRunnerNode::start),
-                           InstanceMethod("stop", &StrategyRunnerNode::stop),
-                           InstanceMethod("onTrade", &StrategyRunnerNode::onTrade),
-                           InstanceMethod("onBookSnapshot", &StrategyRunnerNode::onBookSnapshot),
-                           InstanceMethod("onBar", &StrategyRunnerNode::onBar),
-                       });
-  }
-
-  StrategyRunnerNode(const Napi::CallbackInfo& info)
-      : Napi::ObjectWrap<StrategyRunnerNode>(info)
-  {
-    auto env = info.Env();
-    if (info.Length() < 2)
-    {
-      Napi::TypeError::New(env, "StrategyRunner(registry, onSignal)").ThrowAsJavaScriptException();
-    }
-
-    _reg = Napi::ObjectWrap<SymbolRegistryNode>::Unwrap(info[0].As<Napi::Object>())->get();
-    _on_signal = Napi::Persistent(info[1].As<Napi::Function>());
-    _runner = flox_runner_create(static_cast<FloxRegistryHandle>(_reg),
-                                 &StrategyRunnerNode::signalCb, this);
-  }
-
-  ~StrategyRunnerNode()
-  {
-    if (_runner)
-    {
-      flox_runner_destroy(_runner);
-    }
-  }
-
- private:
-  SymbolRegistry* _reg{nullptr};
-  FloxRunnerHandle _runner{nullptr};
-  Napi::FunctionReference _on_signal;
-  std::vector<std::unique_ptr<NodeStrategyHost>> _hosts;
-
-  Napi::Value addStrategy(const Napi::CallbackInfo& info)
-  {
-    auto env = info.Env();
-    auto obj = info[0].As<Napi::Object>();
-    auto symsV = obj.Get("symbols");
-    std::vector<uint32_t> syms;
-    if (symsV.IsArray())
-    {
-      auto arr = symsV.As<Napi::Array>();
-      for (uint32_t i = 0; i < arr.Length(); ++i)
-      {
-        syms.push_back(symId(arr.Get(i)));
-      }
-    }
-    uint32_t id = static_cast<uint32_t>(_hosts.size()) + 1;
-    auto host = std::make_unique<NodeStrategyHost>(env, obj, _reg, id, syms);
-    flox_runner_add_strategy(_runner,
-                             static_cast<FloxStrategyHandle>(host->bridge.get()));
-    _hosts.push_back(std::move(host));
-    return env.Undefined();
-  }
-
-  Napi::Value replaceStrategy(const Napi::CallbackInfo& info)
-  {
-    auto env = info.Env();
-    if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsObject())
-    {
-      Napi::TypeError::New(env, "replaceStrategy(index, newStrategy) expected")
-          .ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-    uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
-    if (idx >= _hosts.size())
-    {
-      auto err = Napi::Error::New(env, "replaceStrategy: index out of range");
-      err.Value().Set("code", Napi::String::New(env, "E_VAL_002"));
-      err.Value().Set("name", Napi::String::New(env, "FloxError"));
-      err.ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-    _hosts[idx]->replaceStrategy(info[1].As<Napi::Object>());
-    return env.Undefined();
-  }
-
-  Napi::Value start(const Napi::CallbackInfo& info)
-  {
-    flox_runner_start(_runner);
-    return info.Env().Undefined();
-  }
-
-  Napi::Value stop(const Napi::CallbackInfo& info)
-  {
-    flox_runner_stop(_runner);
-    return info.Env().Undefined();
-  }
-
-  Napi::Value onTrade(const Napi::CallbackInfo& info)
-  {
-    uint32_t sym = symId(info[0]);
-    double price = info[1].As<Napi::Number>().DoubleValue();
-    double qty = info[2].As<Napi::Number>().DoubleValue();
-    bool isBuy = info[3].As<Napi::Boolean>().Value();
-    int64_t ts = info.Length() > 4 ? static_cast<int64_t>(info[4].As<Napi::Number>().Int64Value()) : 0;
-    flox_runner_on_trade(_runner, sym, price, qty, isBuy ? 1 : 0, ts);
-    return info.Env().Undefined();
-  }
-
-  Napi::Value onBookSnapshot(const Napi::CallbackInfo& info)
-  {
-    auto env = info.Env();
-    uint32_t sym = symId(info[0]);
-    auto bidP = info[1].As<Napi::Array>();
-    auto bidQ = info[2].As<Napi::Array>();
-    auto askP = info[3].As<Napi::Array>();
-    auto askQ = info[4].As<Napi::Array>();
-    int64_t ts = info.Length() > 5 ? static_cast<int64_t>(info[5].As<Napi::Number>().Int64Value()) : 0;
-
-    auto toVec = [](const Napi::Array& a)
-    {
-      std::vector<double> v(a.Length());
-      for (uint32_t i = 0; i < a.Length(); ++i)
-      {
-        v[i] = a.Get(i).As<Napi::Number>().DoubleValue();
-      }
-      return v;
-    };
-    auto bp = toVec(bidP), bq = toVec(bidQ), ap = toVec(askP), aq = toVec(askQ);
-    flox_runner_on_book_snapshot(_runner, sym,
-                                 bp.data(), bq.data(), static_cast<uint32_t>(bp.size()),
-                                 ap.data(), aq.data(), static_cast<uint32_t>(ap.size()), ts);
-    return env.Undefined();
-  }
-
-  // onBar(symbol, { open, high, low, close, volume?, buyVolume?,
-  //                 startTimeNs?, endTimeNs?, barType?, barTypeParam?,
-  //                 closeReason? })
-  Napi::Value onBar(const Napi::CallbackInfo& info)
-  {
-    auto env = info.Env();
-    uint32_t sym = symId(info[0]);
-    auto opts = info[1].As<Napi::Object>();
-    auto getNum = [&](const char* k, double dflt) -> double
-    {
-      auto v = opts.Get(k);
-      return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
-    };
-    auto getInt = [&](const char* k, int64_t dflt) -> int64_t
-    {
-      auto v = opts.Get(k);
-      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
-    };
-    auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
-    {
-      auto v = opts.Get(k);
-      return v.IsNumber() ? static_cast<uint8_t>(v.As<Napi::Number>().Uint32Value()) : dflt;
-    };
-    flox_runner_on_bar(_runner, sym,
-                       getU8("barType", 0),
-                       static_cast<uint64_t>(getInt("barTypeParam", 0)),
-                       getNum("open", 0.0), getNum("high", 0.0),
-                       getNum("low", 0.0), getNum("close", 0.0),
-                       getNum("volume", 0.0), getNum("buyVolume", 0.0),
-                       getInt("startTimeNs", 0), getInt("endTimeNs", 0),
-                       getU8("closeReason", 0));
-    return env.Undefined();
-  }
-
-  static void signalCb(void* ud, const FloxSignal* sig)
-  {
-    auto* self = static_cast<StrategyRunnerNode*>(ud);
-    self->_on_signal.Call({signalToJs(self->_on_signal.Env(), sig)});
-  }
-};
-
-// ──────────────────────────────────────────────────────────────
-// LiveEngineNode — Disruptor-based live engine (async)
-//
-// Note: strategy callbacks fire from C++ consumer threads.
-// In Node.js, crossing the thread boundary requires a ThreadSafeFunction.
-// publish_trade / publish_book_snapshot are safe to call from JS thread.
-// ──────────────────────────────────────────────────────────────
-
-class LiveEngineNode : public Napi::ObjectWrap<LiveEngineNode>
-{
- public:
-  static Napi::Function Init(Napi::Env env)
-  {
-    return DefineClass(env, "LiveEngine",
-                       {
-                           InstanceMethod("addStrategy", &LiveEngineNode::addStrategy),
-                           InstanceMethod("replaceStrategy", &LiveEngineNode::replaceStrategy),
-                           InstanceMethod("start", &LiveEngineNode::start),
-                           InstanceMethod("stop", &LiveEngineNode::stop),
-                           InstanceMethod("publishTrade", &LiveEngineNode::publishTrade),
-                           InstanceMethod("publishBookSnapshot", &LiveEngineNode::publishBookSnapshot),
-                           InstanceMethod("publishBar", &LiveEngineNode::publishBar),
-                       });
-  }
-
-  LiveEngineNode(const Napi::CallbackInfo& info)
-      : Napi::ObjectWrap<LiveEngineNode>(info)
-  {
-    auto env = info.Env();
-    if (info.Length() < 2)
-    {
-      Napi::TypeError::New(env, "LiveEngine(registry, onSignal)").ThrowAsJavaScriptException();
-    }
-
-    _reg = Napi::ObjectWrap<SymbolRegistryNode>::Unwrap(info[0].As<Napi::Object>())->get();
-    _engine = flox_live_engine_create(static_cast<FloxRegistryHandle>(_reg));
-
-    // ThreadSafeFunction: routes signal callbacks from C++ threads → Node.js event loop
-    _tsfn = Napi::ThreadSafeFunction::New(
-        env,
-        info[1].As<Napi::Function>(),
-        "flox_live_signal",
-        0, 1);
-  }
-
-  ~LiveEngineNode()
-  {
-    if (_engine)
-    {
-      flox_live_engine_destroy(_engine);
-    }
-    _tsfn.Release();
-  }
-
- private:
-  SymbolRegistry* _reg{nullptr};
-  FloxLiveEngineHandle _engine{nullptr};
-  Napi::ThreadSafeFunction _tsfn;
-  std::vector<std::unique_ptr<NodeStrategyHost>> _hosts;
-
-  Napi::Value addStrategy(const Napi::CallbackInfo& info)
-  {
-    auto env = info.Env();
-    auto obj = info[0].As<Napi::Object>();
-    auto symsV = obj.Get("symbols");
-    std::vector<uint32_t> syms;
-    if (symsV.IsArray())
-    {
-      auto arr = symsV.As<Napi::Array>();
-      for (uint32_t i = 0; i < arr.Length(); ++i)
-      {
-        syms.push_back(symId(arr.Get(i)));
-      }
-    }
-    uint32_t id = static_cast<uint32_t>(_hosts.size()) + 1;
-    auto host = std::make_unique<NodeStrategyHost>(env, obj, _reg, id, syms);
-    host->enableThreaded();
-    flox_live_engine_add_strategy(_engine,
-                                  static_cast<FloxStrategyHandle>(host->bridge.get()),
-                                  &LiveEngineNode::signalCb, this);
-    _hosts.push_back(std::move(host));
-    return env.Undefined();
-  }
-
-  Napi::Value replaceStrategy(const Napi::CallbackInfo& info)
-  {
-    auto env = info.Env();
-    if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsObject())
-    {
-      Napi::TypeError::New(env, "replaceStrategy(index, newStrategy) expected")
-          .ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-    uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
-    if (idx >= _hosts.size())
-    {
-      auto err = Napi::Error::New(env, "replaceStrategy: index out of range");
-      err.Value().Set("code", Napi::String::New(env, "E_VAL_002"));
-      err.Value().Set("name", Napi::String::New(env, "FloxError"));
-      err.ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-    _hosts[idx]->replaceStrategy(info[1].As<Napi::Object>());
-    return env.Undefined();
-  }
-
-  Napi::Value start(const Napi::CallbackInfo& info)
-  {
-    flox_live_engine_start(_engine);
-    return info.Env().Undefined();
-  }
-
-  Napi::Value stop(const Napi::CallbackInfo& info)
-  {
-    flox_live_engine_stop(_engine);
-    return info.Env().Undefined();
-  }
-
-  Napi::Value publishTrade(const Napi::CallbackInfo& info)
-  {
-    uint32_t sym = symId(info[0]);
-    double price = info[1].As<Napi::Number>().DoubleValue();
-    double qty = info[2].As<Napi::Number>().DoubleValue();
-    bool isBuy = info[3].As<Napi::Boolean>().Value();
-    int64_t ts = info.Length() > 4 ? static_cast<int64_t>(info[4].As<Napi::Number>().Int64Value()) : 0;
-    flox_live_engine_publish_trade(_engine, sym, price, qty, isBuy ? 1 : 0, ts);
-    return info.Env().Undefined();
-  }
-
-  Napi::Value publishBookSnapshot(const Napi::CallbackInfo& info)
-  {
-    uint32_t sym = symId(info[0]);
-    auto bidP = info[1].As<Napi::Array>();
-    auto bidQ = info[2].As<Napi::Array>();
-    auto askP = info[3].As<Napi::Array>();
-    auto askQ = info[4].As<Napi::Array>();
-    int64_t ts = info.Length() > 5 ? static_cast<int64_t>(info[5].As<Napi::Number>().Int64Value()) : 0;
-
-    auto toVec = [](const Napi::Array& a)
-    {
-      std::vector<double> v(a.Length());
-      for (uint32_t i = 0; i < a.Length(); ++i)
-      {
-        v[i] = a.Get(i).As<Napi::Number>().DoubleValue();
-      }
-      return v;
-    };
-    auto bp = toVec(bidP), bq = toVec(bidQ), ap = toVec(askP), aq = toVec(askQ);
-    flox_live_engine_publish_book_snapshot(_engine, sym,
-                                           bp.data(), bq.data(), static_cast<uint32_t>(bp.size()),
-                                           ap.data(), aq.data(), static_cast<uint32_t>(ap.size()), ts);
-    return info.Env().Undefined();
-  }
-
-  // publishBar(symbol, { open, high, low, close, volume?, buyVolume?,
-  //                      startTimeNs?, endTimeNs?, barType?, barTypeParam?,
-  //                      closeReason? })
-  Napi::Value publishBar(const Napi::CallbackInfo& info)
-  {
-    uint32_t sym = symId(info[0]);
-    auto opts = info[1].As<Napi::Object>();
-    auto getNum = [&](const char* k, double dflt) -> double
-    {
-      auto v = opts.Get(k);
-      return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
-    };
-    auto getInt = [&](const char* k, int64_t dflt) -> int64_t
-    {
-      auto v = opts.Get(k);
-      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
-    };
-    auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
-    {
-      auto v = opts.Get(k);
-      return v.IsNumber() ? static_cast<uint8_t>(v.As<Napi::Number>().Uint32Value()) : dflt;
-    };
-    flox_live_engine_publish_bar(_engine, sym,
-                                 getU8("barType", 0),
-                                 static_cast<uint64_t>(getInt("barTypeParam", 0)),
-                                 getNum("open", 0.0), getNum("high", 0.0),
-                                 getNum("low", 0.0), getNum("close", 0.0),
-                                 getNum("volume", 0.0), getNum("buyVolume", 0.0),
-                                 getInt("startTimeNs", 0), getInt("endTimeNs", 0),
-                                 getU8("closeReason", 0));
-    return info.Env().Undefined();
-  }
-
-  static void signalCb(void* ud, const FloxSignal* sig)
-  {
-    auto* self = static_cast<LiveEngineNode*>(ud);
-    // Heap-allocate the copy — the lambda owns it and deletes after use.
-    auto* copy = new FloxSignal(*sig);
-    self->_tsfn.NonBlockingCall(copy, [](Napi::Env env, Napi::Function fn, FloxSignal* s)
-                                {
-      fn.Call({signalToJs(env, s)});
-      delete s; });
   }
 };
 
@@ -1606,7 +1231,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     {
       _reg = reg;
       _engine = flox_live_engine_create(static_cast<FloxRegistryHandle>(reg));
-      _tsfn = Napi::ThreadSafeFunction::New(env, onSig, "flox_runner_signal", 0, 1);
+      _tsfn = Napi::ThreadSafeFunction::New(env, onSig, "flox_runner_signal", kTsfnMaxQueueSize, 1);
       _mode = Mode::Threaded;
     }
     else
@@ -1743,7 +1368,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     double price = info[1].As<Napi::Number>().DoubleValue();
     double qty = info[2].As<Napi::Number>().DoubleValue();
     bool isBuy = info[3].As<Napi::Boolean>().Value();
-    int64_t ts = info.Length() > 4 ? static_cast<int64_t>(info[4].As<Napi::Number>().Int64Value()) : 0;
+    int64_t ts = info.Length() > 4 ? toInt64Ns(info[4]) : 0;
     if (_mode == Mode::Sync)
     {
       flox_runner_on_trade(_runner, sym, price, qty, isBuy ? 1 : 0, ts);
@@ -1758,32 +1383,35 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   Napi::Value onBookSnapshot(const Napi::CallbackInfo& info)
   {
     uint32_t sym = symId(info[0]);
-    auto bidP = info[1].As<Napi::Array>();
-    auto bidQ = info[2].As<Napi::Array>();
-    auto askP = info[3].As<Napi::Array>();
-    auto askQ = info[4].As<Napi::Array>();
-    int64_t ts = info.Length() > 5 ? static_cast<int64_t>(info[5].As<Napi::Number>().Int64Value()) : 0;
-    auto toVec = [](const Napi::Array& a)
+    // index.d.ts declares these as Float64Array; reading them as a plain
+    // Napi::Array made every call written to the declared contract throw
+    // "An array was expected".
+    auto bidP = info[1].As<Napi::Float64Array>();
+    auto bidQ = info[2].As<Napi::Float64Array>();
+    auto askP = info[3].As<Napi::Float64Array>();
+    auto askQ = info[4].As<Napi::Float64Array>();
+    int64_t ts = info.Length() > 5 ? toInt64Ns(info[5]) : 0;
+    // The C ABI takes one length per side (bp/bq share bpLen, ap/aq share
+    // apLen), so mismatched price/qty arrays on one side used to make the
+    // qty side get read at the price side's length.
+    if (bidP.ElementLength() != bidQ.ElementLength() || askP.ElementLength() != askQ.ElementLength())
     {
-      std::vector<double> v(a.Length());
-      for (uint32_t i = 0; i < a.Length(); ++i)
-      {
-        v[i] = a.Get(i).As<Napi::Number>().DoubleValue();
-      }
-      return v;
-    };
-    auto bp = toVec(bidP), bq = toVec(bidQ), ap = toVec(askP), aq = toVec(askQ);
+      Napi::RangeError::New(info.Env(),
+                            "onBookSnapshot: bid price/qty and ask price/qty arrays must each have the same length")
+          .ThrowAsJavaScriptException();
+      return info.Env().Undefined();
+    }
     if (_mode == Mode::Sync)
     {
       flox_runner_on_book_snapshot(_runner, sym,
-                                   bp.data(), bq.data(), static_cast<uint32_t>(bp.size()),
-                                   ap.data(), aq.data(), static_cast<uint32_t>(ap.size()), ts);
+                                   bidP.Data(), bidQ.Data(), static_cast<uint32_t>(bidP.ElementLength()),
+                                   askP.Data(), askQ.Data(), static_cast<uint32_t>(askP.ElementLength()), ts);
     }
     else
     {
       flox_live_engine_publish_book_snapshot(_engine, sym,
-                                             bp.data(), bq.data(), static_cast<uint32_t>(bp.size()),
-                                             ap.data(), aq.data(), static_cast<uint32_t>(ap.size()), ts);
+                                             bidP.Data(), bidQ.Data(), static_cast<uint32_t>(bidP.ElementLength()),
+                                             askP.Data(), askQ.Data(), static_cast<uint32_t>(askP.ElementLength()), ts);
     }
     return info.Env().Undefined();
   }
@@ -1839,10 +1467,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   {
     auto* self = static_cast<RunnerNode*>(ud);
     auto* copy = new FloxSignal(*sig);
-    self->_tsfn.NonBlockingCall(copy, [](Napi::Env env, Napi::Function fn, FloxSignal* s)
-                                {
-      fn.Call({signalToJs(env, s)});
-      delete s; });
+    tsfnCall(self->_tsfn, copy, [](Napi::Env env, Napi::Function fn, FloxSignal* s)
+             {
+      std::unique_ptr<FloxSignal> guard(s);
+      fn.Call({signalToJs(env, s)}); });
   }
 
   // ── Hook setters ────────────────────────────────────────────────────
